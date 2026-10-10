@@ -2095,3 +2095,18 @@ Spec `docs/superpowers/specs/2026-10-09-negatives-one-owner-design.md` (with its
 - Small production sample: 3 pancreas/lung cases from production plus 3 from Sept 29.
 - The DICTATED brief line quotes the sheet text.
 - The L-47 `_NEG_LIST` `.*?` exposure is pre-existing, and now behind the Jev type guard.
+
+### L-60 · Dictated gate: one Jev question decides which report clauses are dictated, 2026-10-10
+
+Branch `feat/dictated-gate`. Production text stays in the scratchpad. L-60 is the first free ID after L-59; the PR #12–#15 backfill was not found in this file at the time of writing.
+
+- **Change:** a dictated gate. One Jev choice per alignment unit (distinct outermost report span), against the raw dictation, plus the tier rule (spec §4.2).
+  - The question is the frozen Q3s wording in `review_engine/dictated_gate.py`, asked together with the production `q_type` in the same batch.
+  - Units are the distinct outermost real report spans of the alignment clauses.
+- **Parameters:** `GATE_MIN = 0.7`; `CHUNK = 4`; at most 8 requests in flight; flag `RR_DICTATED_GATE` off / shadow / live.
+- **Evidence** (labs `gate_a`, `confirm`, `confirm2`, `sorter`, `amber`, `amber_fix`; scratchpad, 2026-10-10):
+  - Over 24 reports, AI text left plain falls from 54 (live path) to 3–4 with the gate, and 6 of 75 dictated clauses get tinted.
+  - Review recall is 64–65/70 at precision 0.97, about 2.75 highlights per report.
+  - **Rejected:** the lexical-diff backstop and the tighter amber prompt.
+- **Rollout:** live shows the gate, with today's path logged alongside (`dictated_gate.today`) for comparison.
+- **Status:** pending deploy.

@@ -157,12 +157,12 @@ export const reviewTheme = EditorView.baseTheme({
 	'.rv-info': { textDecorationLine: 'none' }, // gutter only
 	'.rv-preapplied': { textDecorationColor: 'color-mix(in srgb, var(--rv-blue-line) 50%, transparent)' },
 	// the AI-generated layer: plain editable text when the legend's "AI-generated" toggle is off; on (the default),
-	// a very light tint by category (normals green, negatives bearing on a finding amber and always shown, synthesis
-	// violet), no underline
+	// a very light tint by category (normals green, only with the toggle; negatives bearing on a finding amber and
+	// synthesis violet, always shown), no underline
 	'.rv-normal, .rv-check, .rv-synth': { cursor: 'text', textDecorationLine: 'none', borderRadius: '3px' },
 	'&[data-rv-emph~="ai"] .rv-form-normal': { backgroundColor: 'var(--rv-tint-normal)' },
 	'.rv-form-negative': { backgroundColor: 'var(--rv-tint-negative)' }, // amber ignores the AI-generated toggle
-	'&[data-rv-emph~="ai"] .rv-form-synthesis': { backgroundColor: 'var(--rv-tint-synthesis)' },
+	'.rv-form-synthesis': { backgroundColor: 'var(--rv-tint-synthesis)' }, // violet ignores the toggle (review tier)
 	// recommendations: their own dotted underline (their control is the impression's checklist)
 	'.rv-rec': {
 		cursor: 'text',

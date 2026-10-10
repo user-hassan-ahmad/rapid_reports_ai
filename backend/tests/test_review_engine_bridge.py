@@ -203,3 +203,39 @@ def test_bridge_insert_has_no_anchor_when_the_preceding_sentence_repeats():
     qc = {"applied_edits": [{"type": "insertion", "sentence": "Small effusion."}]}
     (ins,) = live.bridge_items(inp(final, "- x", quality_check=qc, pre_edit=pre), "r1")[0]
     assert ins.edit.after is None and ins.edit.section == "FINDINGS"
+
+
+async def test_live_gate_leaves_post_check_edits_and_the_bridged_span_alone(qc_stubs, monkeypatch):
+    final, tel = await _post_gen()
+    _engine_stubs(monkeypatch, final)
+    base = rc._jev
+
+    async def gate(state, qs):                       # the inserted effusion sentence is an added normal statement
+        out = await base(state, qs)
+        for k, q in qs.items():
+            if k[:1] in "gt" and k[1:].isdigit():
+                add = "pleural effusion" in q["instructions"]
+                if k.startswith("g"):
+                    p = 0.1 if add else 0.9
+                    out[k] = {"probabilities": {"all_stated": p, "some_details_added": 1 - p, "not_stated": 0.0}}
+                else:
+                    t = "normal" if add else "abnormal"
+                    out[k] = {"probabilities": {x: float(x == t) for x in ("abnormal", "normal", "mixed", "not_a_finding")}}
+        return out
+    monkeypatch.setattr(rc, "_jev", gate)
+
+    def sig(res):
+        return (res.report, [{k: v for k, v in e.items() if k != "item_id"} for e in res.run["pre_apply"]],
+                sorted(i.key for i in res.items if i.status == "pre_applied" or i.kind == "removed"))
+    monkeypatch.setenv("RR_DICTATED_GATE", "off")
+    off = await engine.run_review(inp(final, DICT, quality_check=tel, pre_edit=PRE),
+                                  run_id="00000000-0000-0000-0000-0000000000b3")
+    monkeypatch.setenv("RR_DICTATED_GATE", "live")
+    lv = await engine.run_review(inp(final, DICT, quality_check=tel, pre_edit=PRE),
+                                 run_id="00000000-0000-0000-0000-0000000000b3")
+    assert lv.run["dictated_gate"]["mode"] == "live"
+    assert sig(off) == sig(lv)
+    ins = next(i for i in lv.items if i.detectors == ["post_check.insert"])
+    gate_items = [i for i in lv.items if (i.evidence or {}).get("source") == "dictated_gate"
+                  and i.anchor is not None and i.anchor.start < ins.anchor.end and ins.anchor.start < i.anchor.end]
+    assert gate_items == []

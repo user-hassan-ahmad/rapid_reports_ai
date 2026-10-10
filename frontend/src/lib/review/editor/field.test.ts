@@ -259,6 +259,20 @@ describe('check reasons', () => {
 });
 
 describe('review field (generalised to review items)', () => {
+	it('an ai_generated item paints its also_anchors too; other kinds paint only their anchor', () => {
+		const D = 'An 11 mm crescentic subdural with acute traumatic shift.';
+		const at = (t: string) => ({ start: D.indexOf(t), end: D.indexOf(t) + t.length, text: t });
+		const { items } = fromItems(D, [
+			item({ id: 's1', kind: 'ai_generated', cls: 'info', anchor: at('crescentic'), evidence: { form: 'synthesis', also_anchors: [at('traumatic')] } }),
+			item({ id: 'c1', kind: 'check', cls: 'minor', anchor: at('acute'), evidence: { also_anchors: [at('shift')] } })
+		]);
+		expect(items.marks.map((m) => [m.id, D.slice(m.from, m.to)])).toEqual([
+			['s1', 'crescentic'],
+			['c1', 'acute'],
+			['s1', 'traumatic']
+		]);
+	});
+
 	it('other anchored items become lane-group marks by cls', () => {
 		const DOC = 'FINDINGS:\nA 5 mm nodule in the right lung. Mild atelectasis. Old rib fracture.';
 		const at = (t: string) => ({ start: DOC.indexOf(t), end: DOC.indexOf(t) + t.length, text: t });

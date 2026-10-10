@@ -513,3 +513,39 @@ def test_coordination_gate_three_item_list_needs_every_item():
     text = "The liver, spleen and kidneys are unremarkable"
     assert not _cov(text, "liver", "kidneys")
     assert _cov(text, "liver", "spleen", "kidneys")
+
+
+from rapid_reports_ai.review_engine.items import ReviewItem, Span  # noqa: E402
+
+
+def _amber(key, s, e, pointer, text="No hydronephrosis."):
+    return ReviewItem(key=key, report_id="00000000-0000-0000-0000-000000000001",
+                      run_id="00000000-0000-0000-0000-0000000000f1", lane="accuracy", detectors=["negatives.v5"],
+                      kind="assumed_normal", cls="info", section="FINDINGS",
+                      anchor=Span(start=s, end=e, text=text, text_hash="h"), label=neg.AMBER,
+                      reason="r", evidence={"form": "negative", "pointer": pointer}, status="open", history=[])
+
+
+def test_amber_without_a_pointer_goes_quiet():
+    n, brief, log = neg.amber_hygiene([_amber("a", 0, 18, "")], [_amber("b", 30, 48, "—")])
+    assert [it.evidence["form"] for it in n + brief] == ["normal", "normal"]
+    assert [it.label for it in n + brief] == ["Assumed normal", "Assumed normal"]
+    assert log == {"no_pointer": 2, "duplicate": 0}
+
+
+def test_overlapping_amber_collapses_to_the_first():
+    n, brief, log = neg.amber_hygiene([_amber("a", 0, 18, "stone")], [_amber("b", 5, 18, "stone")])
+    assert [it.key for it in n] == ["a"] and brief == []
+    assert log == {"no_pointer": 0, "duplicate": 1}
+
+
+def test_other_items_pass_through():
+    green = _amber("g", 0, 18, "x").model_copy(update={"evidence": {"form": "normal"}})
+    n, brief, log = neg.amber_hygiene([green], [])
+    assert n == [green] and log == {"no_pointer": 0, "duplicate": 0}
+
+
+def test_amber_hygiene_leaves_items_that_are_not_open():
+    done = _amber("d", 0, 18, "").model_copy(update={"status": "dismissed"})
+    n, brief, log = neg.amber_hygiene([done], [])
+    assert n == [done] and log == {"no_pointer": 0, "duplicate": 0}

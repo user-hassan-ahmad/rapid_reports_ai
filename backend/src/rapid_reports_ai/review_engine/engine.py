@@ -78,7 +78,7 @@ from pydantic import BaseModel
 from ..report_reconcile import strip_p_values
 from ..report_review import is_negative
 from ..report_review import report_body as report_review_body
-from . import adjudicator, brief_normals, claims, jev_pass, live, negatives, provenance, store, verifier
+from . import adjudicator, brief_normals, claims, dictated_gate, jev_pass, live, negatives, provenance, store, verifier
 from .alignment import Alignment, align
 from .checks import run_checks
 from .items import Candidate, Edit, ReviewInput, ReviewItem, Span, item_key, merge, report_body, text_hash
@@ -577,11 +577,12 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         if {"coverage", "accuracy"} & set(names):
             t = time.monotonic()
             try:
-                jp = await jev_pass.run(inp, body)
+                jp = await jev_pass.run(inp, body, gate_texts=(
+                    [body[s:e] for s, e, _ in dictated_gate.units(al)] if dictated_gate.mode() != "off" else None))
             except Exception as e:  # noqa: BLE001 - lanes then run on code checks only
                 errors["jev"] = f"{type(e).__name__}: {str(e)[:200]}"
             timings["jev_ms"] = int((time.monotonic() - t) * 1000)
-            for k in ("contra_error", "omit_error", "support_error"):
+            for k in ("contra_error", "omit_error", "support_error", "gate_error"):
                 if jp is not None and getattr(jp, k, None):
                     errors[f"jev_{k}"] = getattr(jp, k)
         # The classifier reads the Jev statement types (normal clauses, mixed clauses' tails), so it starts after the
@@ -701,6 +702,38 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
             errors["synthesis"] = syn_log["error"]
     except Exception as e:  # noqa: BLE001 - never fails the run; build_items' items stand
         errors["synthesis"] = f"{type(e).__name__}: {str(e)[:200]}"
+    gate_log: Optional[dict] = None
+    gm = dictated_gate.mode()
+    if gm != "off" and jp is not None and jp.gate_error:
+        gate_log = {"mode": gm, "error": jp.gate_error}    # a replay sees the failed report, not a silent gap
+    if gm != "off" and jp is not None and jp.gate and not jp.gate_error:
+        try:                             # the dictated gate (spec 2026-10-10): pure code over the Jev pass answers
+            gate_clauses = dictated_gate.classify(inp, body, al, jp)
+            if not gate_clauses:
+                raise ValueError("the gate has no clauses")
+            if all(g.tier == "unknown" for g in gate_clauses):
+                raise ValueError("every gate answer was unreadable")
+            today = dictated_gate.shadow_log(gate_clauses, neg_items + brief_items + prov)   # what today tints
+            gate_log = today
+            if gm == "live":             # the gate's items are shown; today's stay in the log for comparison
+                g_prov, g_neg, g_brief, live_log = dictated_gate.apply(inp, run_id, al, gate_clauses, neg_items,
+                                                                       brief_items)
+                g_neg, g_brief, live_log["amber_hygiene"] = negatives.amber_hygiene(g_neg, g_brief)
+                for it in g_prov:
+                    it.engine_version = ENGINE_VERSION
+                if bridge:
+                    g_prov, _ = live.dedupe(g_prov, bridge)
+                for c, tc in zip(live_log["clauses"], today["clauses"]):
+                    c["old"] = tc["old"]
+                live_log["today"] = {k: today[k] for k in ("counts", "added_plain_today", "dictated_tinted_today")}
+                live_log["today_items"] = [{"kind": it.kind, "form": (it.evidence or {}).get("form"),
+                                            "start": it.anchor.start if it.anchor else None,
+                                            "end": it.anchor.end if it.anchor else None}
+                                           for it in prov]
+                prov, neg_items, brief_items, gate_log = g_prov, g_neg, g_brief, live_log
+        except Exception as e:  # noqa: BLE001 - never fails the run: today's items stand
+            errors["dictated_gate"] = f"{type(e).__name__}: {str(e)[:200]}"
+            gate_log = {"mode": "shadow", "error": errors["dictated_gate"]} if gm == "shadow" else None
     for it in surface_gate(inp, items + neg_items + brief_items + prov):
         plans.pop(it.id, None)
     report, pre_log = _would_preapply(inp, items, plans, neg_log, neg_items)
@@ -715,6 +748,7 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
                     "candidates": len(cands), "prefiltered": len(held),
                     "negatives_calls": 1 if neg_log and neg_log.get("candidates") else 0},
            "pre_apply": pre_log, "negatives": _neg_summary(neg_log), "deduped": deduped, "post_check": bridge_log, "provenance": prov_log,
+           "dictated_gate": gate_log,
            "negatives_report": (neg_log or {}).get("report"),
            "negatives_post_removal_anchors": (neg_log or {}).get("post_removal_anchors") or {}}
     return ReviewResult(run=run, items=items, report=report)
@@ -905,7 +939,9 @@ async def _run_and_store(inp: ReviewInput, report_id: str, run_id: str) -> str:
               "report_hash": text_hash(inp.artifacts.report),
               "pre_applied_hash": text_hash(res.report), "final_report": res.report,
               "negatives_report": res.run["negatives_report"],
-              "negatives_post_removal_anchors": res.run["negatives_post_removal_anchors"]}
+              "negatives_post_removal_anchors": res.run["negatives_post_removal_anchors"],
+              "provenance": res.run.get("provenance"),
+              "dictated_gate": res.run.get("dictated_gate")}
     await asyncio.to_thread(_with_session, store.save_items, shadow_items(res.items))
     await asyncio.to_thread(_with_session, store.finish_run, run_id, res.run["lanes"], res.run["timings_ms"],
                             res.run["cost"], errors, shadow)
