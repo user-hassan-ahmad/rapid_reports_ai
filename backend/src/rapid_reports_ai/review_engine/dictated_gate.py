@@ -57,19 +57,49 @@ def state(inp: ReviewInput) -> str:
     return f"SCAN TYPE: {inp.scan_type}\n{h}DICTATED FINDINGS:\n{inp.artifacts.dictated_findings or ''}"
 
 
-def questions(texts: List[str]) -> List[Dict[str, dict]]:
+REWORDED_MIN = 0.7      # log-only: P(restates_with_change) a later tier rule would use (lab reworded_neg, thin margin)
+
+
+def q_reworded(clause: str) -> dict:
+    """Lab gate_a/reworded_neg wording, verbatim. Log-only (spec 2026-10-10 follow-up): does a normal / negative
+    statement restate a dictated one with a changed qualifier, scope or side? 4/218 such clauses in the lab."""
+    return {"type": "choice", "instructions": (
+        f'The report says: "{clause}". This is a normal or negative statement. How does it relate to what the '
+        "dictated findings say?"),
+        "criteria": {
+            "restates_with_change": "It restates something the dictation says about the same structure or finding, "
+                                    "but changes or adds a qualifier, scope or side.",
+            "adds_separate_items": "It states normal or negative findings about structures or items the dictation "
+                                   "does not mention, possibly listed alongside a dictated one.",
+            "same_meaning": "It restates the dictation without changing its meaning."}}
+
+
+def questions(texts: List[str], dictation: str = "") -> List[Dict[str, dict]]:
     """One dict per request, CHUNK clauses each, i indexing `texts` (the alignment's report clauses): g{i} the gate
     question and t{i} the production statement-type question (asked in the gate's state; the sorter lab saw 0 type
-    flips against a dictation-findings state)."""
+    flips against a dictation-findings state). r{i} (log-only, `q_reworded`) only for a clause sharing a content
+    word with the dictation: a cost filter, never a decision."""
     from .jev_pass import q_type              # jev_pass imports this module
+    words = dictated_words(dictation) if dictation else set()
     out = []
     for k in range(0, len(texts), CHUNK):
         qs: Dict[str, dict] = {}
         for i in range(k, min(k + CHUNK, len(texts))):
             qs[f"g{i}"] = q_gate(texts[i])
             qs[f"t{i}"] = q_type(texts[i])
+            if words & content_words(texts[i]):
+                qs[f"r{i}"] = q_reworded(texts[i])
         out.append(qs)
     return out
+
+
+def _p_choice(ans: Any, key: str) -> Optional[float]:
+    """P(key) of a Jev choice answer; None when absent or unreadable."""
+    probs = ans.get("probabilities") if isinstance(ans, dict) else None
+    try:
+        return float(probs[key]) if isinstance(probs, dict) and key in probs else None
+    except (TypeError, ValueError):
+        return None
 
 
 def p_all_stated(ans: Any) -> Optional[float]:
@@ -111,6 +141,7 @@ class GateClause:
     runs: List[Tuple[int, int]] = field(default_factory=list)   # report spans of words absent from the dictation
     aclause: Optional[ReportClause] = None                      # the alignment clause holding `start`
     quiet_span: Optional[Tuple[int, int]] = None   # quiet by the bolted-on-negative rule: the negation only
+    reworded: Optional[float] = None   # log-only P(restates_with_change); never changes the tier
 
 
 def dictated_words(dictation: str) -> set:
@@ -194,7 +225,8 @@ def classify(inp: ReviewInput, body: str, al: Alignment, jp) -> List[GateClause]
         # negation ("without cavitation") is quiet, never the whole clause
         span = (ns, runs[-1][1]) if tier == "quiet" and q != "normal" and ns is not None else None
         out.append(GateClause(i=i, text=text, start=us, end=ue, section=c.section, p=p, q_type=q,
-                              tier=tier, runs=runs, aclause=c, quiet_span=span))
+                              tier=tier, runs=runs, aclause=c, quiet_span=span,
+                              reworded=_p_choice(jp.gate.get(f"r{i}"), "restates_with_change")))
     return out
 
 
@@ -211,7 +243,7 @@ def _overlaps(it, s: int, e: int) -> bool:
 
 def _clause_log(g: GateClause) -> dict:
     return {"i": g.i, "section": g.section, "start": g.start, "end": g.end, "p": g.p, "q_type": g.q_type,
-            "tier": g.tier, "runs": [list(r) for r in g.runs]}
+            "tier": g.tier, "runs": [list(r) for r in g.runs], "reworded": g.reworded}
 
 
 def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], neg_items: list, brief_items: list):
