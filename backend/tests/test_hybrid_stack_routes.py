@@ -1,0 +1,90 @@
+import uuid
+
+import pytest
+
+from rapid_reports_ai.auth import get_current_user
+from rapid_reports_ai.database.models import DictationStackLog, StackSchemaFamily, User
+from rapid_reports_ai.hybrid_stack import routes as R
+from rapid_reports_ai.hybrid_stack import service as S
+from rapid_reports_ai.hybrid_stack.schemas import Region
+from rapid_reports_ai.main import app
+
+
+@pytest.fixture
+def user(db_session):
+    u = User(id=uuid.uuid4(), email="rad@nhs.net", password_hash="x", full_name="T",
+             is_active=True, is_verified=True, is_approved=True)
+    db_session.add(u)
+    db_session.commit()
+    return u
+
+
+@pytest.fixture
+def authed(client, user, monkeypatch):
+    monkeypatch.setenv("RR_DICTATION_V2", "1")
+    monkeypatch.delenv("RR_HYBRID_STACK", raising=False)
+    app.dependency_overrides[get_current_user] = lambda: user
+    yield client
+    app.dependency_overrides.pop(get_current_user, None)
+
+
+def test_kill_switch_404(authed, monkeypatch):
+    monkeypatch.setenv("RR_HYBRID_STACK", "0")
+    assert authed.post("/api/canvas/stack/group", json={"scan_type": "", "text": "", "regions": []}).status_code == 404
+
+
+def test_off_without_dictation_package(authed, monkeypatch):
+    monkeypatch.delenv("RR_DICTATION_V2", raising=False)
+    monkeypatch.delenv("RR_TRIAGE_DEBUG", raising=False)
+    assert R.stack_allowed() is False
+
+
+def test_group_route(authed, monkeypatch):
+    async def fake(scan_type, text, regions, previous):
+        return S.GroupResult(units=[], new_ids=[], pills=["Liver"])
+    monkeypatch.setattr(R, "group_update", fake)
+    d = authed.post("/api/canvas/stack/group", json={"scan_type": "CT", "text": "x",
+                                                     "regions": [{"name": "Liver", "includes": "l"}]}).json()
+    assert d["pills"] == ["Liver"]
+
+
+def test_schema_route_quick(authed, monkeypatch):
+    async def fake(scan_type, history, structure, db):
+        assert structure is None
+        return S._result([Region(name="Liver", includes="l")], "family", "ct", family="abdomen_pelvis")
+    monkeypatch.setattr(R, "resolve_schema", fake)
+    d = authed.post("/api/canvas/stack/schema", json={"scan_type": "CT", "clinical_history": ""}).json()
+    assert d["groups"] == ["Technique", "Liver", "General", "Conclusion"] and d["pills"] == ["Liver"]
+
+
+def test_log_upserts_by_session(authed, db_session):
+    body = {"session_id": "s1", "scan_type": "CT", "schema_key": "ct", "schema_source": "family",
+            "provisional": False, "units": [], "pills_derived": ["Liver"], "pills_jev": [], "sections": [],
+            "structured_text": "", "manual_moves": 0, "latency_ms": {}}
+    assert authed.post("/api/canvas/stack/log", json=body).json() == {"ok": True}
+    assert authed.post("/api/canvas/stack/log", json={**body, "manual_moves": 2}).json() == {"ok": True}
+    rows = db_session.query(DictationStackLog).filter_by(session_id="s1").all()
+    assert len(rows) == 1 and rows[0].manual_moves == 2
+
+
+def test_reviewer_endpoints(authed, db_session, monkeypatch):
+    db_session.add(StackSchemaFamily(key="mri ankle", scan_type="MRI ankle", regions=[{"name": "T", "includes": "t"}],
+                                     source="reconciler:composed", status="provisional"))
+    db_session.commit()
+    monkeypatch.setenv("RR_STACK_REVIEWERS", "someone@else.net")
+    assert authed.get("/api/canvas/stack/families").status_code == 403
+    monkeypatch.setenv("RR_STACK_REVIEWERS", "Rad@NHS.net")
+    rows = authed.get("/api/canvas/stack/families?status=provisional").json()
+    assert rows[0]["key"] == "mri ankle"
+    upd = authed.post("/api/canvas/stack/families/mri ankle", json={"status": "approved",
+                                                                    "regions": [{"name": "Tendons", "includes": "x"}]})
+    assert upd.status_code == 200
+    row = db_session.get(StackSchemaFamily, "mri ankle")
+    db_session.refresh(row)
+    assert row.status == "approved" and row.regions[0]["name"] == "Tendons" and row.source == "admin"
+
+
+def test_settings_status_carries_the_flags(authed, monkeypatch):
+    monkeypatch.setenv("RR_STACK_SHADOW_RATE", "0.5")
+    d = authed.get("/api/settings/status").json()
+    assert d["hybrid_stack"] is True and d["hybrid_stack_shadow_rate"] == 0.5

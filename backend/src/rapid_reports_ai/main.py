@@ -84,6 +84,7 @@ from .auth import (
 from .email_utils import send_magic_link_email, send_admin_signup_notification
 from .encryption import encrypt_api_key, decrypt_api_key, get_system_api_key
 from .canvas_routes import canvas_router
+from .hybrid_stack.routes import router as hybrid_stack_router
 from .agentic_routes import agentic_router
 from .chat_prompt import build_chat_system_prompt
 from . import chat_edits as _chat_edits
@@ -3377,6 +3378,7 @@ async def get_api_key_status(
     """Get API key configuration status - all keys from system env (DEEPGRAM_API_KEY central)"""
     db.refresh(current_user)
     from rapid_reports_ai.dictation_v2 import v2_allowed
+    from rapid_reports_ai.hybrid_stack.routes import shadow_rate, stack_allowed
     
     # All API keys are system-wide via environment variables
     has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
@@ -3393,6 +3395,10 @@ async def get_api_key_status(
         "has_at_least_one_model": has_anthropic or has_groq or has_cerebras,
         # the dictation package (rr_dictation_v2): the browser runs it only when allowed here
         "dictation_v2": v2_allowed(),
+        # the hybrid dictation stack: default on with the dictation package; RR_HYBRID_STACK=0 turns it off
+        "hybrid_stack": stack_allowed(),
+        # share of sessions that also build the old Structured text once, at session end (shadow)
+        "hybrid_stack_shadow_rate": shadow_rate(),
         "using_user_keys": {
             "deepgram": has_deepgram  # backward compat: same as deepgram_configured
         }
@@ -5981,6 +5987,7 @@ async def list_report_audits(
 
 
 app.include_router(canvas_router)
+app.include_router(hybrid_stack_router)
 # Experimental planning/execution pipeline (/api/v2/*). Product report generation uses monolithic
 # prompts + /api/chat + generate_auto_report; keep router mounted for future work and manual API tests.
 app.include_router(agentic_router)
