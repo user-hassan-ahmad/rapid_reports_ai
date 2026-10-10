@@ -299,3 +299,9 @@ def test_a_bolted_on_negative_is_quiet_and_its_quiet_item_covers_only_the_negati
     assert g[0].tier == "quiet"
     prov, *_ = dg.apply(i, RUN, al, g, [], [])
     assert [it.anchor.text for it in prov if it.kind == "assumed_normal"] == ["without cavitation"]
+
+
+def test_state_with_no_dictated_findings_is_not_none():
+    i = inp("FINDINGS:\nX.", "")
+    i.artifacts.dictated_findings = None
+    assert dg.state(i).endswith("DICTATED FINDINGS:\n")
