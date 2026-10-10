@@ -41,6 +41,19 @@ export function renderChatMarkdown(md: string | null | undefined): string {
 }
 
 /** Sources with an http(s) URL, deduplicated by URL (first title kept); entries with no URL are kept once by title. */
+/** A readable label from a link: its last path segments and host ("Appendicitis management · cks.nice.org.uk"). */
+function pageLabel(url: string): string | null {
+	try {
+		const u = new URL(url);
+		const parts = u.pathname.split('/').filter(Boolean).filter((p) => !/^(topics?|pages?|guidance|en|www)$/i.test(p));
+		const words = parts.slice(-2).join(' ').replace(/[-_]+/g, ' ').replace(/\.\w+$/, '').trim();
+		const host = u.hostname.replace(/^www\./, '');
+		return words ? `${words.charAt(0).toUpperCase()}${words.slice(1)} · ${host}` : host;
+	} catch {
+		return null;
+	}
+}
+
 export function dedupeSources<T extends { url?: string | null; title?: string | null }>(sources: readonly T[]): T[] {
 	const seen = new Set<string>();
 	const out: T[] = [];
@@ -50,5 +63,16 @@ export function dedupeSources<T extends { url?: string | null; title?: string | 
 		seen.add(key);
 		out.push(s);
 	}
-	return out;
+	// one title on several different links is a site's generic or block-page title (live: "CKS is only available
+	// in the UK | NICE" ×3): it says nothing about the page, so label those by their link instead
+	const titles = new Map<string, number>();
+	for (const s of out) {
+		const t = (s.title || '').trim().toLowerCase();
+		if (t) titles.set(t, (titles.get(t) ?? 0) + 1);
+	}
+	return out.map((s) => {
+		const t = (s.title || '').trim().toLowerCase();
+		const label = t && (titles.get(t) ?? 0) > 1 && s.url ? pageLabel(s.url) : null;
+		return label ? { ...s, title: label } : s;
+	});
 }

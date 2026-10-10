@@ -244,6 +244,11 @@ export function fromItems(
 	const suggestions: SuggestionEntry[] = [];
 	const inserted: InsertedSpan[] = [];
 	for (const it of items) {
+		// an applied chat edit's new text is shown like a ticked suggestion's: tinted where it landed
+		if (it.lane === 'chat' && it.status === 'applied' && it.edit?.replace?.trim()) {
+			const span = appliedSpan(doc, it);
+			if (span) inserted.push({ id: it.id, ...span });
+		}
 		// suggestions: open ones with a placeable insert, and applied ones (ticked); never stale or answered
 		if (!isSuggestion(it) || it.cls === 'suppress' || (it.status !== 'open' && it.status !== 'applied')) continue;
 		const text = it.edit?.replace?.trim();

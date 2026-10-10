@@ -176,3 +176,58 @@ def test_a_malformed_open_item_never_fails_the_chat(client, auth_headers, chat_e
                     json={"message": "m", "open_items": [{"id": ["not", "hashable"]}]}, headers=auth_headers)
     assert r.status_code == 200 and r.json()["success"] is True
     assert "Open review items" not in _FakeGroq.calls[-1]["messages"][0]["content"]
+
+
+# ── a whole-report rewrite becomes surgical edits (live b4e8e644: rewrite only, edits []) ─────────────────────────
+
+CUR = ("FINDINGS:\nThe appendix is dilated to 11 mm. A 9 mm left adrenal nodule measures -5 HU. No hydronephrosis.\n\n"
+       "IMPRESSION:\nPerforated acute appendicitis. Urgent surgical referral recommended.\n")
+
+
+def test_diff_edits_turns_a_rewrite_into_sentence_edits_that_apply_once():
+    new = CUR.replace("A 9 mm left adrenal nodule measures -5 HU.",
+                      "A 9 mm left adrenal nodule measures -5 HU, in keeping with a lipid-rich adenoma.") \
+             .replace("Perforated acute appendicitis.", "Perforated acute appendicitis without a drainable collection.")
+    edits = ce.diff_edits(CUR, new)
+    assert edits == [
+        {"section": "FINDINGS", "find": "A 9 mm left adrenal nodule measures -5 HU.",
+         "replace": "A 9 mm left adrenal nodule measures -5 HU, in keeping with a lipid-rich adenoma."},
+        {"section": "IMPRESSION", "find": "Perforated acute appendicitis.",
+         "replace": "Perforated acute appendicitis without a drainable collection."}]
+    assert all(CUR.count(e["find"]) == 1 for e in edits)
+
+
+def test_diff_edits_inserts_after_the_previous_sentence_and_deletes():
+    new = CUR.replace("No hydronephrosis.\n", "No hydronephrosis. No follow-up is needed for the adrenal nodule.\n") \
+             .replace(" Urgent surgical referral recommended.", "")
+    edits = ce.diff_edits(CUR, new)
+    assert {"section": "FINDINGS", "find": "No hydronephrosis.",
+            "replace": "No hydronephrosis. No follow-up is needed for the adrenal nodule."} in edits
+    assert {"section": "IMPRESSION", "find": "Urgent surgical referral recommended.", "replace": ""} in edits
+
+
+def test_diff_edits_gives_nothing_for_an_identical_or_restructured_report():
+    assert ce.diff_edits(CUR, CUR) == []
+    assert ce.diff_edits(CUR, "") == []
+    restructured = "\n".join(f"Line {i} entirely new." for i in range(30))
+    assert ce.diff_edits(CUR, restructured) == []          # beyond MAX_DIFF_EDITS: a restructure, not surgery
+
+
+def test_diff_edits_ignore_whitespace_only_changes():
+    assert ce.diff_edits(CUR, CUR.replace("11 mm.", "11  mm.").replace("\n\n", "\n")) == []
+
+
+def test_edits_for_reply_prefers_the_models_edits_then_the_rewrite():
+    mine = [{"section": "FINDINGS", "find": "No hydronephrosis.", "replace": "No hydronephrosis or hydroureter."}]
+    new = CUR.replace("No hydronephrosis.", "No hydronephrosis or hydroureter.")
+    assert ce.edits_for_reply(mine, CUR, new) == mine
+    assert ce.edits_for_reply([], CUR, new) == mine
+    assert ce.edits_for_reply([], CUR, None) == []
+
+
+def test_reply_text_never_promises_edits_that_are_not_there():
+    ok = [{"verified": True}]
+    assert ce.reply_text(ce.PROPOSAL_REPLY, ok) == ce.PROPOSAL_REPLY
+    assert ce.reply_text(ce.PROPOSAL_REPLY, []) == ce.NO_EDIT_REPLY
+    assert ce.reply_text(ce.PROPOSAL_REPLY, [{"verified": False}]) == ce.NO_EDIT_REPLY
+    assert ce.reply_text("Here is my answer.", []) == "Here is my answer."
