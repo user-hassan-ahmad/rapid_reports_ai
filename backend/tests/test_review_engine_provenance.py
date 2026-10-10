@@ -274,3 +274,44 @@ def test_a_supported_finding_part_gets_no_ai_generated_item():
     jp = JevPass(clauses=[part], types={part: "abnormal"}, support={"sup0": {"noul": 0.9}})
     items, _ = _run(report, MIXED_DICT, jp=jp)
     assert _texts(items, "ai_generated") == []
+
+
+# ── live audit 2, 1b: an IMPRESSION recommendation with no lexicon word (L1 shape) ──
+
+REPEAT = "Short-interval repeat CT in 24 hours to assess for interval change."
+REPEAT_REPORT = ("FINDINGS:\nThe appendix is dilated to 11 mm with periappendiceal fat stranding.\n\n"
+                 f"IMPRESSION:\nAcute appendicitis.\n{REPEAT}\n")
+
+
+def test_impression_not_a_finding_is_a_recommendation_without_lexicon_words():
+    assert not provenance.is_recommendation(REPEAT)                       # the lexicon alone misses it
+    jp = JevPass(clauses=["Acute appendicitis.", REPEAT],
+                 types={"Acute appendicitis.": "abnormal", REPEAT: "not_a_finding"})
+    items, log = _run(REPEAT_REPORT, MIXED_DICT, jp=jp)
+    r = next(i for i in items if i.kind == "recommendation")
+    assert r.anchor.text == REPEAT and r.section == "IMPRESSION"
+    assert r.edit is not None and r.edit.mode == "remove" and r.edit.find == REPEAT
+    out = verifier.apply_edit(REPEAT_REPORT, r.edit, ["FINDINGS", "IMPRESSION"])
+    assert out is not None and "repeat CT" not in out and "Acute appendicitis." in out
+    assert log["skipped"]["not_a_finding"] == 0
+
+
+def test_findings_not_a_finding_without_lexicon_words_stays_skipped():
+    report = f"FINDINGS:\nAcute appendicitis.\n{REPEAT}\n\nIMPRESSION:\nAcute appendicitis.\n"
+    jp = JevPass(clauses=[REPEAT], types={REPEAT: "not_a_finding"})
+    items, log = _run(report, MIXED_DICT, jp=jp)
+    assert [i for i in items if i.kind == "recommendation"] == []
+    assert REPEAT not in " ".join(_texts(items, "ai_generated"))
+
+
+def test_without_a_jev_type_the_lexicon_still_decides():
+    jp = JevPass(clauses=[], types={})
+    items, _ = _run(REPEAT_REPORT, MIXED_DICT, jp=jp)
+    assert [i for i in items if i.kind == "recommendation"] == []
+
+
+def test_dictated_lexicon_free_recommendation_gives_no_item():
+    jp = JevPass(clauses=[REPEAT], types={REPEAT: "not_a_finding"})
+    items, _ = _run(REPEAT_REPORT, MIXED_DICT + "\n- Short-interval repeat CT in 24 hours to assess for interval change",
+                    jp=jp)
+    assert [i for i in items if i.kind == "recommendation"] == []

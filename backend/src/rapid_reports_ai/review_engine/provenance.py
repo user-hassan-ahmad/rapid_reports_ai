@@ -9,7 +9,8 @@
   Clause level only, never sub-clause word spans; adjacent marked clauses of one sentence merge into one span.
   `evidence.form` is "synthesis" (the rail's AI layer: negatives / normals carry "negative" / "normal").
 - `recommendation` (lane additions, cls minor, detector `code.recommendation`): a recommendation sentence
-  (`jev_pass.recommendation`, minus interpretive "suggests" / "suggestive") that no dictated line states, with a
+  (`jev_pass.recommendation`, minus interpretive "suggests" / "suggestive"; in IMPRESSION also any clause Jev
+  types `not_a_finding`, lexicon or not) that no dictated line states, with a
   code-built whole-sentence removal (`Edit(mode="remove")`) checked with `verifier.apply_edit`; never pre-applied.
   A sentence that also holds other parts ("No X identified; referral recommended.") is anchored and removed on its
   recommendation part only (`_rec_target`), or gets no edit when that part cannot be isolated safely; its other
@@ -28,7 +29,7 @@ import re
 from datetime import datetime, timezone
 from typing import List, Optional, Tuple
 
-from .alignment import Alignment, ReportClause
+from .alignment import Alignment, ReportClause, _role
 from .checks import hedge_tag
 from .claims import content_words
 from .items import Edit, ReviewInput, ReviewItem, Span, item_key, text_hash
@@ -78,9 +79,13 @@ def _jev_type(jp: Optional[JevPass], i: Optional[int]) -> Optional[str]:
     return jp.clause_type(i) if jp is not None and i is not None else None
 
 
-def is_recommendation(text: str, jev_type: Optional[str] = None) -> bool:
+def is_recommendation(text: str, jev_type: Optional[str] = None, section: Optional[str] = None) -> bool:
     """A recommendation sentence: the shared lexicon, without interpretive "suggests"; a Jev type that says the
-    statement is about the patient (abnormal / normal / mixed) overrides the lexicon."""
+    statement is about the patient (abnormal / normal / mixed) overrides the lexicon. In an IMPRESSION section Jev's
+    `not_a_finding` alone decides ("Short-interval repeat CT in 24 hours." has no lexicon word): live audit 2 found
+    every not_a_finding impression clause to be a recommendation / follow-up. FINDINGS keep the lexicon."""
+    if jev_type == "not_a_finding" and section is not None and _role(section) == "impression":
+        return True
     if not recommendation(_INTERPRETIVE.sub(" ", text)):
         return False
     return jev_type in (None, "not_a_finding")
@@ -158,7 +163,7 @@ def build_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPa
     for c in sorted(al.clauses, key=lambda x: x.start):
         i = _jev_index(jp, c.text)
         t = _jev_type(jp, i)
-        if is_recommendation(c.text, t):
+        if is_recommendation(c.text, t, c.section):
             if c.sentence_start in rec_seen:
                 continue
             rec_seen.add(c.sentence_start)
