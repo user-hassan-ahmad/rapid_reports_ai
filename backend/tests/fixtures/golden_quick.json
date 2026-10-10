@@ -859,6 +859,10 @@
        },
        "instructions": "Read only this one dictated line: \"3 mm midline shift\". Find what the report says about the same finding or structure, then choose how the report covers this line.",
        "type": "choice"
+      },
+      "ro0": {
+       "instructions": "If this statement were added to the report, it would contradict something the report already states. Statement: \"No hydrocephalus.\"",
+       "type": "noul"
       }
      }
     ]
@@ -885,6 +889,7 @@
    "n_clauses": 6,
    "n_items": 2,
    "n_selected": 2,
+   "report_contra_option_ids": [],
    "selector": "regex"
   }
  },
