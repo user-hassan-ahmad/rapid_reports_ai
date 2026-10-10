@@ -77,10 +77,11 @@ from pydantic import BaseModel
 
 from ..report_reconcile import strip_p_values
 from ..report_review import is_negative
+from ..report_review import report_body as report_review_body
 from . import adjudicator, brief_normals, claims, jev_pass, live, negatives, provenance, store, verifier
 from .alignment import Alignment, align
 from .checks import run_checks
-from .items import Candidate, Edit, ReviewInput, ReviewItem, Span, item_key, merge, text_hash
+from .items import Candidate, Edit, ReviewInput, ReviewItem, Span, item_key, merge, report_body, text_hash
 from .lanes import LaneContext, registry
 from .lanes.additions import s4_insert_anchor
 
@@ -569,13 +570,14 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
     types: Dict[str, str] = {}
     brief_items: List[ReviewItem] = []
     try:
-        al = align(a.report, a.dictated_findings, inp.clinical_history, a.sections)
-        checks = run_checks(a.report, a.dictated_findings, inp.clinical_history, inp.scan_type, al, inp.study_title)
+        body = report_body(inp)          # the report without its signature block: a prefix, positions unchanged
+        al = align(body, a.dictated_findings, inp.clinical_history, a.sections)
+        checks = run_checks(body, a.dictated_findings, inp.clinical_history, inp.scan_type, al, inp.study_title)
         jp = None
         if {"coverage", "accuracy"} & set(names):
             t = time.monotonic()
             try:
-                jp = await jev_pass.run(inp, a.report)
+                jp = await jev_pass.run(inp, body)
             except Exception as e:  # noqa: BLE001 - lanes then run on code checks only
                 errors["jev"] = f"{type(e).__name__}: {str(e)[:200]}"
             timings["jev_ms"] = int((time.monotonic() - t) * 1000)
@@ -618,7 +620,7 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
                 cands += r
         held: List[Candidate] = []
         if neg_task is not None:
-            cands, held = prefilter(cands, negatives.candidate_spans(a.report, types))
+            cands, held = prefilter(cands, negatives.candidate_spans(body, types))
         items: List[ReviewItem] = []
         plans: Dict[str, _Plan] = {}
         group_of: Dict[str, List[Candidate]] = {}
@@ -718,7 +720,7 @@ async def gate_d_log(inp: ReviewInput) -> Optional[dict]:
     kept = {k.get("text") for k in qc.get("kept_dictated_negative") or []}
     pre_inp = inp.model_copy(update={"artifacts": a.model_copy(update={"report": pre})})
     try:
-        al = align(pre, a.dictated_findings, inp.clinical_history, names)
+        al = align(report_review_body(pre, a.signature), a.dictated_findings, inp.clinical_history, names)
     except Exception:  # noqa: BLE001 - only the line context is lost
         al = None
     entries = []

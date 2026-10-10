@@ -138,12 +138,43 @@ _HEADER = re.compile(r"^([A-Z][A-Z /&()-]{2,}):\s*$", re.M)
 
 
 def report_sections(report: str) -> Tuple[str, str]:
-    """FINDINGS and IMPRESSION text; the impression stops at the signature's blank line."""
+    """FINDINGS and IMPRESSION text, the impression whole (a numbered impression may have blank lines between its
+    items). The post-generation check reads the report before the signature is appended; a reader of the FINAL
+    report passes `report_body(report, signature)` so the signature block is not read as impression."""
     parts, marks = {}, list(_HEADER.finditer(report))
     for m, nxt in zip(marks, marks[1:] + [None]):
         parts[m.group(1)] = report[m.end():nxt.start() if nxt else len(report)].strip()
-    imp = re.split(r"\n\s*\n", parts.get("IMPRESSION", ""), maxsplit=1)[0].strip()
-    return parts.get("FINDINGS", ""), imp
+    return parts.get("FINDINGS", ""), parts.get("IMPRESSION", "").strip()
+
+
+_PARA_BREAK = re.compile(r"\n[ \t]*\r?\n")
+_SENTENCE_END = re.compile(r"[.!?]\s*$")
+
+
+def signature_start(report: str, signature: Optional[str] = None) -> int:
+    """Where the user signature appended after the report starts (`rstrip() + "\n\n" + signature` in the generators);
+    len(report) when there is none. `signature`: the persisted signature, "" when the user has none (no cut). None
+    (a report from before it was persisted): drop only the LAST paragraph, and only when it follows other text of the
+    last section (after a paragraph break) and none of its lines ends with sentence-final punctuation. Mechanics."""
+    end = len(report.rstrip())
+    if signature is not None:
+        sig = signature.strip()
+        if sig and report[:end].endswith(sig):
+            return len(report[:end - len(sig)].rstrip())
+        return len(report)
+    marks = list(_HEADER.finditer(report))
+    brks = list(_PARA_BREAK.finditer(report, marks[-1].end() if marks else 0, end))
+    if not marks or not brks or not report[marks[-1].end():brks[-1].start()].strip():
+        return len(report)
+    tail = report[brks[-1].end():end]
+    if any(_SENTENCE_END.search(ln) for ln in tail.splitlines() if ln.strip()):
+        return len(report)
+    return brks[-1].start()
+
+
+def report_body(report: str, signature: Optional[str] = None) -> str:
+    """The report without its trailing user signature (`signature_start`): a prefix, so positions are unchanged."""
+    return report[:signature_start(report, signature)]
 
 
 def _sentences(text: str) -> List[str]:

@@ -16,7 +16,7 @@ from ...report_review import CONTRA_FLAG, DICTATED_KEEP, RESTATED_FLAG, checked_
 from ..alignment import ReportClause, section_models
 from ..checks import hedge_tag
 from ..claims import content_words
-from ..items import Candidate, ReviewInput, Span
+from ..items import Candidate, ReviewInput, Span, report_body
 from ..jev_pass import CODE_TIER, TIER_RANK, JevPass, dictation_tier_of, noul, positive, report_tier
 from ..verifier import _negative_fix, guard_failures
 from . import LaneContext, confident
@@ -150,7 +150,7 @@ class AccuracyLane:
 
     async def candidates(self, inp: ReviewInput, ctx: LaneContext) -> List[Candidate]:
         out: List[Candidate] = []
-        jp, report = ctx.jev, inp.artifacts.report
+        jp, report = ctx.jev, report_body(inp)     # without the signature block (prefix: same positions)
         names = inp.artifacts.sections
         if jp is not None and jp.contra_error is None:
             for i, t in enumerate(jp.clauses):

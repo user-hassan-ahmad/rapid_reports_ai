@@ -33,9 +33,7 @@ REPORT = """FINDINGS:
 An 8 mm right subdural haematoma. No skull fracture. No hydrocephalus, no herniation, and no intraventricular extension.
 
 IMPRESSION:
-Acute right subdural haematoma with 3 mm midline shift.
-
-Dr A"""
+Acute right subdural haematoma with 3 mm midline shift."""   # the check runs before the signature is appended
 LIST_REPORT = "FINDINGS:\nNo ascites, collection or free air.\n\nIMPRESSION:\nNormal."
 FINDINGS_C = "10 mm right acute subdural. 12 mm left adrenal nodule"
 

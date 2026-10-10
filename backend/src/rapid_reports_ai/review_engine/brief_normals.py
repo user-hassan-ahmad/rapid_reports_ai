@@ -42,7 +42,7 @@ from typing import Dict, List, Optional, Tuple
 from .. import brief_anchor
 from .. import linked_normals as ln
 from . import negatives, verifier
-from .items import ReviewInput, ReviewItem, Span, item_key, text_hash
+from .items import ReviewInput, ReviewItem, Span, item_key, report_body, text_hash
 from .jev_pass import statement_form
 
 DETECTOR = "brief.linked_normals"
@@ -158,7 +158,7 @@ def owned_spans(inp: ReviewInput) -> Optional[List[Tuple[int, int]]]:
     if anchors is None:
         return None
     report = inp.artifacts.report or ""
-    us = brief_anchor.units(report)
+    us = brief_anchor.units(report_body(inp))             # never the signature block (a prefix: same positions)
     spans = [sp for a in anchors if isinstance(a, dict) and brief_anchor.anchored(a) and owned(a)
              and (sp := brief_anchor.relocate_one(a, report, us))]
     return spans + [sp for _, sp in _conflicts(inp) if sp]

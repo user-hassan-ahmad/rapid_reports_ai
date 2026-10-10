@@ -70,7 +70,7 @@ from ..enhancement_utils import _run_agent_with_model
 from ..report_review import checked_clauses_in_context, remove_negative_clause, restate
 from . import checks, claims, verifier
 from .jev_pass import normal_statement, recommendation, recommendation_parts, split_tails, statement_form
-from .items import Edit, ReviewInput, ReviewItem, Span, item_key, text_hash
+from .items import Edit, ReviewInput, ReviewItem, Span, item_key, report_body, text_hash
 
 logger = logging.getLogger(__name__)
 
@@ -566,7 +566,8 @@ async def classify_negatives(inp: ReviewInput, run_id: str, types: Optional[Dict
     t0 = time.monotonic()
     report = inp.artifacts.report or ""
     dictation, history = inp.artifacts.dictated_findings or "", inp.clinical_history or ""
-    listed = candidates(report, types) if types else candidates(report)
+    body = report_body(inp)                           # never the signature block (a prefix: same positions)
+    listed = candidates(body, types) if types else candidates(body)
     cands = [{**c, "number": code_number_flag(c["clause"], dictation, history)} for c in listed]
     skip = set(owned_indices(report, cands, owned)) if owned else set()
     asked = [i for i in range(1, len(cands) + 1) if i not in skip]

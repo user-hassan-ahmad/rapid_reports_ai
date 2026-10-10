@@ -362,6 +362,7 @@ async def generate_template_report(*, sheet: str, scan_type: str, findings: str,
         "brief_decisions": brief.decisions if brief else None,
         "options": options, "gate_dropped": gate_dropped, "quality_check": quality,
         "sections": [x.name for x in sections], "history_inserted": bool(hist_text), "phase1_used": phase1_used,
+        "signature": signature or "",
         "protected": protected,
         "jev_calls": ({"brief": jev_brief - jev0, "post_generation": jev_end - jev_brief}
                       if jev_log is not None else {}),
@@ -377,7 +378,8 @@ def candidate_record(result: dict, latency_ms: int) -> dict:
             "options_applied": [], "quality_check": result.get("quality_check"),
             "brief": ({"text": result.get("brief_text"), "decisions": result.get("brief_decisions")}
                       if result.get("brief_used") else None),
-            "sections": result.get("sections") or [], "lat": result.get("lat") or {}}
+            "sections": result.get("sections") or [], "lat": result.get("lat") or {},
+            "signature": result.get("signature")}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

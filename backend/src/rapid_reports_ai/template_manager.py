@@ -2695,6 +2695,7 @@ Findings: {findings_input}{history_note}
             "scan_type": scan_type,
             "model_used": model_name,
             "fallback_from": fallback_from,
+            "signature": user_signature or "",
         }
 
     # ========================================================================

@@ -210,13 +210,49 @@ def test_mixed_recommendation_sentence_that_cannot_be_isolated_gets_no_remove_ed
     assert r.edit is None and r.verified["code"] is False
 
 
-def test_the_signature_block_after_the_impression_is_never_ai_generated():
-    """Live audit 1: the user's signature appended after the impression's paragraph break is not report content."""
-    report = ("FINDINGS:\nThe appendix is dilated to 11 mm with periappendiceal fat stranding.\n\n"
-              "IMPRESSION:\nAcute appendicitis.\n\nDr Jane Example\nFRCR, Radiology ST4\n")
-    items, _ = _run(report, MIXED_DICT)
-    marked = " ".join(i.anchor.text for i in items)
+SIGNED = ("FINDINGS:\nThe appendix is dilated to 11 mm with periappendiceal fat stranding.\n\n"
+          "IMPRESSION:\n1. Acute appendicitis.\n\n2. Small volume pelvic free fluid.\n\n"
+          "Dr Jane Example\nFRCR, Radiology ST4")
+SIG_BLOCK = "Dr Jane Example\nFRCR, Radiology ST4"
+
+
+@pytest.mark.parametrize("signature", [SIG_BLOCK, None])      # persisted, and the older-report fallback
+async def test_signature_untagged_and_every_numbered_impression_item_kept(monkeypatch, signature):
+    """Live audit 1 (review fix 1): the engine strips exactly the appended signature, never a later impression
+    paragraph; a report from before the signature was persisted drops only an unpunctuated last paragraph."""
+    async def no_neg(inp_, run_id, types=None, owned=None):
+        return [], {"candidates": []}
+    monkeypatch.setattr(rc, "_jev", jev({"sup*": {"noul": 0.1}}))    # W1n: nothing stated, so every read clause is marked
+    monkeypatch.setattr(negatives, "classify_negatives", no_neg)
+    monkeypatch.setattr(adj, "adjudicate", lambda inp_, groups: _outcomes(groups))
+    i = inp(SIGNED, MIXED_DICT)
+    i.artifacts.signature = signature
+    res = await engine.run_review(i, RUN)
+    marked = " ".join(it.anchor.text for it in res.items if it.anchor)
     assert "Jane Example" not in marked and "FRCR" not in marked
-    assert "Acute appendicitis." in _texts(items, "ai_generated")   # the impression itself is still read
-    al = align(report, MIXED_DICT, "", inp(report, MIXED_DICT).artifacts.sections)
-    assert not any("Example" in c.text or "FRCR" in c.text for c in al.clauses)
+    ai = _texts(res.items, "ai_generated")
+    assert "Acute appendicitis." in ai and "Small volume pelvic free fluid." in ai
+
+
+async def _outcomes(groups):
+    return [adj.Outcome(group=g) for g in groups]
+
+
+def test_report_body_strips_exactly_the_signature():
+    from rapid_reports_ai.report_review import report_body
+    assert report_body(SIGNED, SIG_BLOCK).endswith("2. Small volume pelvic free fluid.")
+    assert report_body(SIGNED, None).endswith("2. Small volume pelvic free fluid.")       # fallback
+    assert report_body(SIGNED, "") == SIGNED                                             # known: no signature
+    unsigned = SIGNED[:SIGNED.index("\n\nDr Jane")]
+    assert report_body(unsigned, None) == unsigned       # punctuated last paragraph: an impression item, kept
+    assert report_body(unsigned, "Dr Somebody Else") == unsigned
+    al = align(report_body(SIGNED, SIG_BLOCK), MIXED_DICT, "", inp(SIGNED, MIXED_DICT).artifacts.sections)
+    texts = [c.text for c in al.clauses]
+    assert "Small volume pelvic free fluid." in texts and not any("Jane" in t for t in texts)
+
+
+def test_the_candidate_record_carries_the_signature_into_the_artifacts():
+    from rapid_reports_ai.generation_artifacts import GenerationArtifacts
+    rec = {"content": SIGNED, "sections": ["FINDINGS", "IMPRESSION"], "signature": SIG_BLOCK}
+    assert GenerationArtifacts.from_candidate(rec, "x").signature == SIG_BLOCK
+    assert GenerationArtifacts.from_candidate({"content": SIGNED}, "x").signature is None   # older record

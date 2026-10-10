@@ -17,6 +17,7 @@ class GenerationArtifacts(BaseModel):
     options: List[dict]                 # {id, kind, section, sentence, reason, source, finding?}
     brief: Optional[dict] = None        # {"decisions": {...}} — routing rows
     quality_check: Optional[dict] = None
+    signature: Optional[str] = None     # the user signature appended after the report; "" none; None unknown (older)
 
     @classmethod
     def from_candidate(cls, record: dict, dictated_findings: str) -> "GenerationArtifacts":
@@ -32,4 +33,4 @@ class GenerationArtifacts(BaseModel):
         decisions = brief.get("decisions") if brief else None
         return cls(report=record.get("content", ""), dictated_findings=dictated_findings, sections=sections,
                    options=options, brief={"decisions": decisions} if decisions is not None else None,
-                   quality_check=record.get("quality_check"))
+                   quality_check=record.get("quality_check"), signature=record.get("signature"))

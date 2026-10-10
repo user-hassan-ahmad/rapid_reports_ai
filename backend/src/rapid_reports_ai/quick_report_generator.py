@@ -162,4 +162,5 @@ async def generate_quick_report(
             "brief_decisions": brief.decisions if brief else None,
             "brief_text": brief.text if brief else None,
             "brief_options": options,
-            "quality_check": quality}
+            "quality_check": quality,
+            "signature": user_signature or ""}   # appended after the report (the review engine strips it)
