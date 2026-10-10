@@ -240,12 +240,13 @@ describe('review decorations', () => {
 		}
 		expect(tints.size).toBe(3); // green, amber, violet
 		view.dispatch({ effects: setEmphasis.of([]) });
-		for (const id of ['g1', 's1']) {
+		for (const id of ['g1']) {
 			expect(cs(id).backgroundColor, id).toBe(NONE);
 			expect(cs(id).textDecorationLine, id).toBe('none');
 		}
-		// amber (negative) ignores the toggle: always shown
+		// amber (negative) and violet (synthesis) ignore the toggle: always shown
 		expect(cs('c1').backgroundColor).not.toBe(NONE);
+		expect(cs('s1').backgroundColor).not.toBe(NONE);
 	});
 
 	it('with the AI-generated toggle off, an amber statement is still tinted and a green normal is not', () => {

@@ -2,7 +2,7 @@
 	// The review legend, directly under the "Report Editor" title (ReportResponseViewer); not part of the rail.
 	// "Dictated · Removed by you | AI-generated ▾ · Removed (contradicts dictation)". Only "AI-generated" is a toggle
 	// (editor/theme.ts `setEmphasis`: the AI-generated layer's tints, ON by default; off = plain text); its breakdown
-	// (Normals green, Bears on your finding amber, Synthesis violet) expands inline. The other entries are static labels
+	// (Normals green, Bears on your finding amber, Added by the AI violet) expands inline. The other entries are static labels
 	// for what the editor draws. It wraps onto new lines when narrow (never scrolls sideways). The density toggle is a
 	// dev-page capability only (`showDensity`): the app's density is fixed to Quiet.
 	import { AI_BREAKDOWN, DEFAULT_LEGEND, LEGEND, type LegendKey } from '../editor/decorations';

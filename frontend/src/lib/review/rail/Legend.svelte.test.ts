@@ -36,11 +36,11 @@ describe('Legend', () => {
 		}
 	});
 
-	it('AI-generated is on by default and its breakdown is shown inline: Normals, Bears on your finding, Synthesis', async () => {
+	it('AI-generated is on by default and its breakdown is shown inline: Normals, Bears on your finding, Added by the AI', async () => {
 		render(Legend, {});
 		await expect.element(page.getByRole('button', { name: /^AI-generated$/ })).toHaveAttribute('aria-pressed', 'true');
 		const items = [...legend().querySelectorAll<HTMLElement>('[data-rv-breakdown] [data-rv-form]')];
-		expect(items.map((i) => i.textContent?.trim())).toEqual(['Normals', 'Bears on your finding', 'Synthesis']);
+		expect(items.map((i) => i.textContent?.trim())).toEqual(['Normals', 'Bears on your finding', 'Added by the AI']);
 		expect(items.map((i) => i.dataset.rvForm)).toEqual(['normal', 'negative', 'synthesis']);
 		const sw = items.map((i) => getComputedStyle(i.querySelector('.rv-swatch')!).backgroundColor);
 		expect(new Set(sw).size).toBe(3); // green, amber, violet swatches

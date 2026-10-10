@@ -113,7 +113,7 @@ export type LegendKey = keyof typeof LEGEND_SHORT;
 const LEGEND_TITLE: Record<LegendKey, string> = {
 	dictated: 'Plain text is your dictation',
 	excluded: 'Struck through in grey: text you removed',
-	ai: 'Text not from your dictation, tinted by kind: normals (green), negatives bearing on your finding (amber, always shown), synthesis (violet). Show or hide',
+	ai: 'Text not from your dictation. Always shown: violet, details or conclusions the AI added (check them), and amber, negatives bearing on your finding. Green normals the AI assumed show with this toggle',
 	removed: 'Struck through in red: removed by AI because it contradicts your dictation'
 };
 
@@ -134,9 +134,9 @@ export const LEGEND: { key: LegendKey; icon: string; label: string; title: strin
 
 /** The AI-generated layer's categories, as the legend's breakdown shows them (swatch = the tint in the editor). */
 export const AI_BREAKDOWN: { form: AiForm; label: string; title: string }[] = [
-	{ form: 'normal', label: 'Normals', title: 'Normal findings you did not dictate, stated by the AI' },
+	{ form: 'normal', label: 'Normals', title: 'Normal findings you did not dictate, stated by the AI (shown with the toggle)' },
 	{ form: 'negative', label: 'Bears on your finding', title: 'Negatives the AI added that bear on a dictated finding: in the report, worth a glance (always shown)' },
-	{ form: 'synthesis', label: 'Synthesis', title: 'Conclusions the AI drew from your findings' }
+	{ form: 'synthesis', label: 'Added by the AI', title: 'Details, conclusions or interpretation not in your dictation: check them (always shown)' }
 ];
 
 const MARK_MEANING: Record<MarkClass, Meaning> = {

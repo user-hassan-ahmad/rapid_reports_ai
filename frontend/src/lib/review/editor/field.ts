@@ -323,6 +323,13 @@ export function fromItems(
 			continue;
 		}
 		marks.push({ ...metaOf(it), from: at.from, to: at.to, text: doc.slice(at.from, at.to) });
+		if (it.kind === 'ai_generated') {
+			// the dictated gate marks every added-word run of a clause: the rest ride in also_anchors
+			for (const a of it.evidence?.also_anchors ?? []) {
+				const more = locate(doc, { ...it, anchor: a });
+				if (more && more.to > more.from) marks.push({ ...metaOf(it), from: more.from, to: more.to, text: doc.slice(more.from, more.to) });
+			}
+		}
 	}
 	// an AI-generated clause overlapping an actionable mark (e.g. an accuracy item on the same clause) is not drawn:
 	// the actionable item's styling and control win
