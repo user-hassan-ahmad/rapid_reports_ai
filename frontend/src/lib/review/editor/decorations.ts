@@ -56,7 +56,7 @@ export const LABELS = {
 	normal: 'Assumed normal',
 	check: 'Check',
 	synth: 'AI synthesis',
-	ai: 'AI-generated',
+	ai: 'AI highlights',
 	rec: 'Recommendation',
 	removed: 'Removed · contradicts your dictation',
 	removedNumber: 'Removed · a measurement you did not dictate',
@@ -101,21 +101,18 @@ export type Meaning = keyof typeof ICONS;
  * static label for what the editor draws (a removal that contradicts the dictation, shown only while the report has
  * one). Plain text is the radiologist's own and needs no entry. The full meaning is the entry's `title`. */
 const LEGEND_SHORT = {
-	ai: 'AI-generated',
+	ai: 'AI highlights',
 	removed: 'Removed (contradicts dictation)'
 } as const;
 
 export type LegendKey = keyof typeof LEGEND_SHORT;
 
 const LEGEND_TITLE: Record<LegendKey, string> = {
-	ai: 'Text not from your dictation. Always shown: violet, details or conclusions the AI added (check them), and amber, negatives bearing on your finding. Green normals the AI assumed show with this toggle',
+	ai: 'Text the AI added that is not in your dictation. Key: pertinent negatives (amber), AI synthesis (violet) and recommendations. All: also the normals the AI assumed (green). Off: plain text',
 	removed: 'Struck through in red: removed by AI because it contradicts your dictation'
 };
 
-/** The legend filters on by default: the AI-generated layer. */
-export const DEFAULT_LEGEND: readonly LegendKey[] = ['ai'];
-
-/** The legend, in order. `toggle`: a filter button (else a static label). */
+/** The legend, in order. `toggle`: the three-way AI highlights control (else a static label). */
 export const LEGEND: { key: LegendKey; icon: string; label: string; title: string; ai: boolean; toggle: boolean }[] = (
 	['ai', 'removed'] as const
 ).map((key) => ({
@@ -127,7 +124,8 @@ export const LEGEND: { key: LegendKey; icon: string; label: string; title: strin
 	toggle: key === 'ai'
 }));
 
-/** The AI-generated layer's categories, as the legend's breakdown shows them (swatch = the tint in the editor). */
+/** The AI layer's categories, as the legend's breakdown shows them (swatch = the tint in the editor). Normals
+ * show only in the All mode. */
 export const AI_BREAKDOWN: { form: AiForm; label: string; title: string }[] = [
 	{ form: 'negative', label: 'Pertinent negatives', title: 'Negatives the AI added because they bear on a dictated finding: worth a glance' },
 	{ form: 'synthesis', label: 'AI synthesis', title: "Conclusions or details the AI added that aren't in your dictation: check them" },

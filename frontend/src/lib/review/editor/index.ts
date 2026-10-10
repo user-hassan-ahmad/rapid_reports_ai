@@ -61,7 +61,6 @@ export {
 	DESCRIPTIONS,
 	ICONS,
 	LABELS,
-	DEFAULT_LEGEND,
 	LEGEND,
 	type LegendKey,
 	onReviewCommand,
@@ -74,6 +73,14 @@ export {
 	type Meaning,
 	type ReviewCommandCallback
 } from './decorations';
+export {
+	AI_MODE_KEYS,
+	AI_MODES,
+	DEFAULT_AI_MODE,
+	readAiMode,
+	writeAiMode,
+	type AiMode
+} from './aiMode';
 export {
 	DEFAULT_DENSITY,
 	DEFAULT_EMPHASIS,

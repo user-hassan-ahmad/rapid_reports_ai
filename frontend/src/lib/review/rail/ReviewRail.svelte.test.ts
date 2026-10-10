@@ -356,7 +356,7 @@ describe('ReviewRail', () => {
 		await expect
 			.element(page.getByRole('button', { name: 'Full' }))
 			.toHaveAttribute('aria-pressed', 'true');
-		expect(rail()!.querySelector('[data-rv-legend]')!.textContent).toContain('AI-generated');
+		expect(rail()!.querySelector('[data-rv-legend]')!.textContent).toContain('AI highlights');
 	});
 
 	it('pending: a fixed-width skeleton before the store answers, the same width once items arrive (no shift)', async () => {

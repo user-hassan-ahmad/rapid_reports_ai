@@ -247,7 +247,7 @@ describe('legend', () => {
 		expect(legend.closest('[data-testid="review-rail"]')).toBeNull();
 		const title = page.getByRole('heading', { name: 'Report Editor' }).element();
 		expect(title.nextElementSibling).toBe(legend);
-		expect(legend.textContent).toContain('AI-generated');
+		expect(legend.textContent).toContain('AI highlights');
 		expect(document.querySelector('[aria-label="Density"]')).toBeNull();
 	});
 
@@ -257,11 +257,11 @@ describe('legend', () => {
 		render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });
 		await expect.element(page.getByTestId('review-rail')).toBeInTheDocument();
 		const legend = document.querySelector<HTMLElement>('[data-testid="review-legend"]')!;
-		const items = [...legend.querySelectorAll<HTMLElement>('[data-rv-label], button[data-rv-filter]')];
+		const items = [...legend.querySelectorAll<HTMLElement>('[data-rv-label], .rv-ai-group')];
 		// no removal in this report: only the AI toggle
-		expect(items.map((b) => b.querySelector('.rv-legend-label')?.textContent)).toEqual(['AI-generated']);
+		expect(items.map((b) => b.querySelector('.rv-legend-label')?.textContent)).toEqual(['AI highlights']);
 		expect(legend.textContent).not.toContain('(AI)');
-		expect(items[0].title).toMatch(/violet.*amber.*normals/i);
+		expect(items[0].querySelector<HTMLElement>('.rv-legend-label')!.title).toMatch(/amber.*violet.*normals/i);
 		expect(legend.scrollWidth).toBeLessThanOrEqual(legend.clientWidth + 1);
 		const controls = document.querySelector<HTMLElement>('[data-testid="editor-controls"]')!;
 		const copy = controls.querySelector<HTMLElement>('[aria-label="Copy report"]')!;
@@ -278,20 +278,29 @@ describe('legend', () => {
 		await page.viewport(414, 896);
 	});
 
-	it('AI-generated is on by default; pressing it turns the layer off in the editor (plain text) and on again', async () => {
+	it('AI highlights is Key by default; All adds normals, Off clears every tint, and the choice is remembered', async () => {
+		localStorage.removeItem('rv_ai_mode');
 		getReview.mockResolvedValue(review('live', true, [action()]));
-		render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });
+		const first = render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });
 		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
 		const editor = () => document.querySelector<HTMLElement>('.cm-editor')!;
 		expect(editor().getAttribute('data-rv-emph')).toBe('ai');
-		const ai = page.getByRole('button', { name: /^AI-generated$/ });
-		await expect.element(ai).toHaveAttribute('aria-pressed', 'true');
-		await ai.click();
-		await expect.element(ai).toHaveAttribute('aria-pressed', 'false');
+		await expect.element(page.getByRole('radio', { name: 'Key' })).toHaveAttribute('aria-checked', 'true');
+		await page.getByRole('radio', { name: 'All' }).click();
+		expect(editor().getAttribute('data-rv-emph')).toBe('ai normals');
+		await page.getByRole('radio', { name: 'Off' }).click();
 		expect(editor().hasAttribute('data-rv-emph')).toBe(false);
-		await ai.click();
+		expect(localStorage.getItem('rv_ai_mode')).toBe('off');
+		// a fresh viewer restores it
+		first.unmount();
+		render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep1' });
+		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
+		expect(editor().hasAttribute('data-rv-emph')).toBe(false);
+		await expect.element(page.getByRole('radio', { name: 'Off' })).toHaveAttribute('aria-checked', 'true');
+		await page.getByRole('radio', { name: 'Key' }).click();
 		expect(editor().getAttribute('data-rv-emph')).toBe('ai');
 		expect(document.querySelector('[data-testid="review-legend"]')!.textContent).not.toContain('Recommendations');
+		localStorage.removeItem('rv_ai_mode');
 	});
 
 	it('shows Removed (contradicts dictation) only while the report has such a removal', async () => {

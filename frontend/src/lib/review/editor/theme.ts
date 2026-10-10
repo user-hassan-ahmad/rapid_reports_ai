@@ -34,11 +34,11 @@ export function densityExtension(density: Density = DEFAULT_DENSITY): Extension 
 	return densityField.init(() => density);
 }
 
-/** The legend's filters: the classes brought forward (legend keys: dictated, excluded, normal, check, removed,
- * option). Empty: everything at rest. */
+/** The AI highlights mode as emphasis keys (Legend's three-way control): Key `['ai']` (amber, violet and the
+ * recommendation underline), All `['ai', 'normals']` (plus green normals), Off `[]` (no AI tints at all). */
 export const setEmphasis = StateEffect.define<readonly string[]>();
 
-/** The AI-generated layer on (editor/decorations.ts DEFAULT_LEGEND). */
+/** Key mode: the default (editor/decorations.ts DEFAULT_LEGEND). */
 export const DEFAULT_EMPHASIS: readonly string[] = ['ai'];
 
 export const emphasisField = StateField.define<readonly string[]>({
@@ -156,18 +156,20 @@ export const reviewTheme = EditorView.baseTheme({
 	'.rv-minor': { textDecorationColor: 'color-mix(in srgb, var(--rv-amber-line) 65%, transparent)' },
 	'.rv-info': { textDecorationLine: 'none' }, // gutter only
 	'.rv-preapplied': { textDecorationColor: 'color-mix(in srgb, var(--rv-blue-line) 50%, transparent)' },
-	// the AI-generated layer: plain editable text when the legend's "AI-generated" toggle is off; on (the default),
-	// a very light tint by category (normals green, only with the toggle; negatives bearing on a finding amber and
-	// synthesis violet, always shown), no underline
+	// the AI-generated layer, by the legend's three-way control (data-rv-emph): Key = "ai" (amber negatives, violet
+	// synthesis and the teal recommendation underline), All = "ai normals" (plus green normals), Off = none (plain
+	// editable text; rail cards, action marks and the recommendation checkboxes are unaffected). No underline on tints.
 	'.rv-normal, .rv-check, .rv-synth': { cursor: 'text', textDecorationLine: 'none', borderRadius: '3px' },
-	'&[data-rv-emph~="ai"] .rv-form-normal': { backgroundColor: 'var(--rv-tint-normal)' },
-	'.rv-form-negative': { backgroundColor: 'var(--rv-tint-negative)' }, // amber ignores the AI-generated toggle
-	'.rv-form-synthesis': { backgroundColor: 'var(--rv-tint-synthesis)' }, // violet ignores the toggle (review tier)
-	// recommendations: their own dotted underline (their control is the impression's checklist)
+	'&[data-rv-emph~="normals"] .rv-form-normal': { backgroundColor: 'var(--rv-tint-normal)' },
+	'&[data-rv-emph~="ai"] .rv-form-negative': { backgroundColor: 'var(--rv-tint-negative)' },
+	'&[data-rv-emph~="ai"] .rv-form-synthesis': { backgroundColor: 'var(--rv-tint-synthesis)' },
+	// recommendations: their own dotted underline in Key and All (their control is the impression's checklist)
 	'.rv-rec': {
 		cursor: 'text',
+		textDecorationLine: 'none',
 		textDecorationColor: 'color-mix(in srgb, var(--rv-teal-line) 70%, transparent)'
 	},
+	'&[data-rv-emph~="ai"] .rv-rec': { textDecorationLine: 'underline' },
 	// lit: hovered, or its inline control open (`rv-active`)
 	'.rv-action:hover, .rv-active.rv-action, .rv-active .rv-action': {
 		textDecorationColor: 'var(--rv-red-line)',
