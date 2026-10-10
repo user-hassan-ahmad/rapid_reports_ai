@@ -16,8 +16,12 @@ provenance's; today's path is the fallback on any gate failure)."""
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, List, Optional
+import re
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
 
+from .alignment import Alignment, ReportClause
+from .claims import content_words
 from .items import ReviewInput
 
 GATE_MIN = 0.7          # P(all_stated) >= this → dictated (lab Q3s: lowest firm-gold dictated clause 0.74-0.80)
@@ -68,3 +72,90 @@ def p_all_stated(ans: Any) -> Optional[float]:
             return None
     ch = ans.get("choice")
     return None if ch not in CHOICES else (1.0 if ch == "all_stated" else 0.0)
+
+
+# Common radiology abbreviations in a dictation, expanded so the report's spelled-out words are not "new" words.
+# Fixed list: it only shapes WHERE a highlight falls inside a clause the gate already called added; never grow it
+# by example (spec §4.3; the lab's hand-grown synonym trim overfitted).
+ABBREV = {"rll": "right lower lobe", "rul": "right upper lobe", "rml": "right middle lobe", "lll": "left lower lobe",
+          "lul": "left upper lobe", "gb": "gallbladder", "cbd": "common bile duct", "vuj": "vesicoureteric junction",
+          "uvj": "ureterovesical junction", "rv": "right ventricle", "lv": "left ventricle",
+          "sdh": "subdural haematoma", "sah": "subarachnoid haemorrhage", "ich": "intracranial haemorrhage",
+          "pe": "pulmonary embolism", "ivc": "inferior vena cava", "smv": "superior mesenteric vein",
+          "sma": "superior mesenteric artery", "pv": "portal vein", "pod": "pouch of douglas"}
+_NEGATOR = re.compile(r"\b(?:no|not|without|nor)\b", re.I)
+
+
+@dataclass
+class GateClause:
+    i: int
+    text: str
+    start: Optional[int]          # report offsets; None when the clause is not found in the report
+    end: Optional[int]
+    section: Optional[str]
+    p: Optional[float]            # P(all_stated); None when unreadable
+    q_type: Optional[str]
+    tier: str                     # dictated | quiet | rec | synth | unknown
+    runs: List[Tuple[int, int]] = field(default_factory=list)   # report spans of words absent from the dictation
+    aclause: Optional[ReportClause] = None                      # the alignment clause holding `start`
+
+
+def dictated_words(dictation: str) -> set:
+    words = set(content_words(dictation))
+    for w in re.findall(r"[A-Za-z]+", dictation or ""):
+        if w.lower() in ABBREV:
+            words |= content_words(ABBREV[w.lower()])
+    return words
+
+
+def _locate(body: str, clauses: List[str]) -> List[Optional[Tuple[int, int]]]:
+    out, cur = [], 0
+    for t in clauses:
+        k = body.find(t, cur)
+        if k < 0:
+            k = body.find(t)
+        if k < 0:
+            out.append(None)
+            continue
+        out.append((k, k + len(t)))
+        cur = k + len(t)
+    return out
+
+
+def _negated_only(body: str, s: int, runs: List[Tuple[int, int]]) -> bool:
+    """Every added run follows a negator earlier in the same clause: a negative bolted onto a dictated finding."""
+    return bool(runs) and all(_NEGATOR.search(body[s:a]) for a, _ in runs)
+
+
+def tier_of(p: Optional[float], q_type: Optional[str], is_rec: bool, negated_only: bool) -> str:
+    """Spec §4.2. Display only: provenance is the gate's (p)."""
+    if p is None:
+        return "unknown"
+    if p >= GATE_MIN:
+        return "dictated"
+    if q_type == "normal":
+        return "quiet"
+    if is_rec:
+        return "rec"
+    if q_type in ("abnormal", "mixed") and negated_only:
+        return "quiet"
+    return "synth"
+
+
+def classify(inp: ReviewInput, body: str, al: Alignment, jp) -> List[GateClause]:
+    """One GateClause per Jev-pass clause, in order. Pure code over the gate answers already in `jp`."""
+    from .provenance import _proposed_runs, is_recommendation     # provenance imports jev_pass, which imports us
+    words = dictated_words(inp.artifacts.dictated_findings)
+    out: List[GateClause] = []
+    for i, (t, at) in enumerate(zip(jp.clauses, _locate(body, jp.clauses))):
+        q = jp.clause_type(i)
+        p = p_all_stated(jp.gate.get(f"g{i}"))
+        s, e = at if at else (None, None)
+        ac = next((c for c in al.clauses if s is not None and c.start <= s < c.end), None) if at else None
+        section = ac.section if ac else None
+        runs = _proposed_runs(body, s, e, words) if at else []
+        rec = is_recommendation(t, q, section)
+        out.append(GateClause(i=i, text=t, start=s, end=e, section=section, p=p, q_type=q,
+                              tier=tier_of(p, q, rec, _negated_only(body, s, runs) if at else False),
+                              runs=runs, aclause=ac))
+    return out

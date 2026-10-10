@@ -96,3 +96,61 @@ async def test_a_failed_gate_request_sets_gate_error(monkeypatch):
     jp = await jev_pass.run(inp(R, D), R)
     assert jp.gate_error and "TimeoutError" in jp.gate_error
     assert jp.contra_error is None            # the other requests are unaffected
+
+
+from rapid_reports_ai.review_engine.alignment import align
+from rapid_reports_ai.review_engine.jev_pass import JevPass
+
+
+def _jp(clauses, p, types):
+    """A JevPass with gate answers p[i] and statement types types[i] for clauses[i]."""
+    jp = JevPass(clauses=clauses)
+    jp.gate = {f"g{i}": {"probabilities": {"all_stated": v, "some_details_added": 1 - v, "not_stated": 0.0}}
+               for i, v in enumerate(p) if v is not None}
+    jp.types = {c: t for c, t in zip(clauses, types) if t}
+    return jp
+
+
+def _classify(report, dictation, clauses, p, types):
+    i = inp(report, dictation)
+    al = align(report, dictation, "", i.artifacts.sections)
+    return dg.classify(i, report, al, _jp(clauses, p, types))
+
+
+RPT = ("FINDINGS:\nAn 11 mm crescentic subdural haematoma over the left convexity. The liver is normal. "
+       "Left ovary normal with no contralateral adnexal mass.\n"
+       "IMPRESSION:\nAcute subdural haematoma. Repeat CT head in 6 hours is recommended.\n")
+DIC = "- 11 mm left convexity subdural haematoma\n- Left ovary normal"
+CL = ["An 11 mm crescentic subdural haematoma over the left convexity.", "The liver is normal.",
+      "Left ovary normal with no contralateral adnexal mass.", "Acute subdural haematoma.",
+      "Repeat CT head in 6 hours is recommended."]
+
+
+def test_tiers():
+    g = _classify(RPT, DIC, CL, [0.3, 0.1, 0.4, 0.75, 0.0],
+                  ["abnormal", "normal", "mixed", "abnormal", "not_a_finding"])
+    assert [x.tier for x in g] == ["synth", "quiet", "quiet", "dictated", "rec"]
+    assert all(x.start is not None and RPT[x.start:x.end] == x.text for x in g)
+    assert [x.section for x in g][:1] == ["FINDINGS"] and g[4].section == "IMPRESSION"
+
+
+def test_synth_runs_are_the_added_words():
+    g = _classify(RPT, DIC, CL, [0.3, 0.9, 0.9, 0.9, 0.9], ["abnormal"] * 5)
+    assert [RPT[s:e] for s, e in g[0].runs] == ["crescentic"]
+
+
+def test_unreadable_answer_is_unknown_and_threshold_is_inclusive():
+    g = _classify(RPT, DIC, CL, [None, 0.7, 0.69, 0.9, 0.9], ["abnormal", "normal", "normal", "abnormal", None])
+    assert [x.tier for x in g][:3] == ["unknown", "dictated", "quiet"]
+
+
+def test_a_negated_recommendation_is_review_not_quiet():
+    r = "IMPRESSION:\nFunctional cyst; no urgent surgical referral is indicated.\n"
+    c = ["no urgent surgical referral is indicated."]
+    g = _classify(r, "- Right ovarian simple cyst 28 mm", c, [0.1], ["not_a_finding"])
+    assert g[0].tier == "rec"
+
+
+def test_a_clause_not_found_in_the_report_is_unplaced():
+    g = _classify(RPT, DIC, ["Not in this report."], [0.1], ["abnormal"])
+    assert g[0].start is None and g[0].tier == "synth"
