@@ -220,7 +220,7 @@ async def test_the_link_state_is_the_previous_sentence_then_the_units_sentence()
     fake = _jev_says(None)
     await ba.anchor(rep, {"negatives": [{"text": "No calculus in the common bile duct", "action": "keep"}]},
                     jev=fake)
-    assert sorted(st for st, _ in fake.calls) == [
+    assert sorted(st for st, qs in fake.calls if any("LAST sentence" in q["instructions"] for q in qs.values())) == [
         "No calculus.",                                         # first of its section: no context
         "The common bile duct is dilated to 12 mm.\nThe duct shows no calculus."]
 
@@ -562,3 +562,52 @@ def test_brief_rules_cards_a_negative_with_a_joined_finding():
     r = ba.brief_rules(rep, [omit], {"No effusion with mild atelectasis.": 0.95}, flagged=[], review_contra=[],
                        sentence_type={"No effusion with mild atelectasis.": "mixed"})   # Jev's statement type
     assert r["would_remove"] == [] and r["conflicts"][0]["reason"] == "brief_omitted"
+
+
+# ---- either-gate: a literal term proposal is also confirmed by the no-context question (S1 >= 0.90) ----
+
+def _two_q(s1, c1, calls=None):
+    """Fake rc._jev: the no-context question (S1) scores `s1`, the context question (C1) scores `c1`."""
+    async def fake(state, qs):
+        if calls is not None:
+            calls.append((state, qs))
+        return {k: {"noul": s1 if "Read only this sentence" in q["instructions"] else c1} for k, q in qs.items()}
+    return fake
+
+
+async def test_a_term_hit_anchors_on_s1_when_c1_is_low(monkeypatch):
+    monkeypatch.setattr(ba, "LINK_MIN", 0.80)
+    rep = "FINDINGS:\nThe great vessels are patent. No contralateral pleural effusion or pleural thickening.\n"
+    calls = []
+    [a] = await ba.anchor(rep, {"negatives": [{"text": "No contralateral pleural effusion", "action": "keep"}]},
+                          jev=_two_q(0.95, 0.6, calls))
+    assert a.how == "term+jev" and a.span_text == "contralateral pleural effusion"
+    s1_states = {st for st, qs in calls for q in qs.values() if "Read only this sentence" in q["instructions"]}
+    assert s1_states == {"No contralateral pleural effusion or pleural thickening."}     # the unit alone
+
+
+async def test_without_a_term_hit_s1_alone_never_anchors(monkeypatch):
+    monkeypatch.setattr(ba, "LINK_MIN", 0.80)
+    rep = "FINDINGS:\nThe liver is normal in size. No paratracheal or subcarinal lymphadenopathy.\n"
+    calls = []
+    [a] = await ba.anchor(rep, {"negatives": [{"text": "No mediastinal lymphadenopathy", "action": "keep"}]},
+                          jev=_two_q(0.95, 0.6, calls))
+    assert a.how == "none"
+    assert not any("Read only this sentence" in q["instructions"] for _, qs in calls for q in qs.values())
+
+
+async def test_a_term_hit_on_two_units_both_passing_stays_unanchored(monkeypatch):
+    monkeypatch.setattr(ba, "LINK_MIN", 0.80)
+    rep = "FINDINGS:\nNo ascites.\n\nIMPRESSION:\nNo ascites.\n"
+    [a] = await ba.anchor(rep, {"negatives": [{"text": "No ascites", "action": "keep"}]}, jev=_two_q(0.95, 0.6))
+    assert a.how == "none"
+
+
+async def test_an_unanswered_s1_question_leaves_a_term_hit_unanchored(monkeypatch):
+    monkeypatch.setattr(ba, "LINK_MIN", 0.80)
+    rep = "FINDINGS:\nThe liver is normal. No ascites.\n"
+
+    async def half(state, qs):
+        return {k: {"noul": 0.95} for k, q in qs.items() if "Read only this sentence" not in q["instructions"]}
+    [a] = await ba.anchor(rep, {"negatives": [{"text": "No ascites", "action": "keep"}]}, jev=half)
+    assert a.how == "none"

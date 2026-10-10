@@ -130,8 +130,10 @@ async def test_place_stripped_hit_on_another_organ_is_not_anchored():
     fake = _jev_says([])
     [a] = await ba.anchor(report, {"negatives": [neg(CBD, "keep")]}, jev=fake)
     assert a.how == "none" and not a.span
-    assert [s for s, _ in fake.calls] == [                     # asked of that sentence only, with its context
-        "The common bile duct is dilated to 12 mm.\nBoth kidneys are normal with no calculus."]
+    c1 = [st for st, qs in fake.calls if any("LAST sentence" in q["instructions"] for q in qs.values())]
+    s1 = [st for st, qs in fake.calls if any("Read only this sentence" in q["instructions"] for q in qs.values())]
+    assert c1 == ["The common bile duct is dilated to 12 mm.\nBoth kidneys are normal with no calculus."]
+    assert s1 == ["Both kidneys are normal with no calculus."]   # the literal hit, also asked of the unit alone
 
 
 async def test_place_stripped_hit_confirmed_by_jev_anchors_as_term_jev():

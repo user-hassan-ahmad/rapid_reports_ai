@@ -276,6 +276,10 @@ def match_terms(report: str, labels: List[Label], us: List[Unit]) -> Tuple[Dict[
 # context case (tails, "within the duct", "within it") linked. S1 at 0.85 recalled 109 / 138 with 0 wrong links but
 # its nearest wrong link scored 0.82 (t21) against Jev's run-to-run drift of up to 0.06: no margin (as in Task 4).
 LINK_MIN = 0.80
+# Either-gate for a literal term hit: the no-context question (S1, the unit alone) also confirms at >= 0.90. Labs:
+# S1@0.90 had 0 wrong links in every run (Task 4 and 2026-10-10), highest gold-false score 0.83 (t21). It recovers
+# verbatim matches C1 under-scores (a grouped "The spleen, kidneys and adrenal glands are unremarkable").
+LINK_MIN_TERM_S1 = 0.90
 LINK_TIMEOUT_S = 4.0
 LINK_WORDING_S1 = 'Read only this sentence. It says, in any wording: "{t}".'     # lab comparison only
 LINK_WORDING = ('Read the LAST sentence below; any earlier sentence only shows what it refers to. '
@@ -284,7 +288,7 @@ _CRITERIA = {"true": "the sentence says it", "false": "the sentence does not say
 
 
 def q_says(lab: Label) -> dict:
-    """The no-context question (S1): the lab's baseline, not used to anchor."""
+    """The no-context question (S1), asked of the unit alone: confirms a literal term hit (LINK_MIN_TERM_S1)."""
     return {"type": "noul", "instructions": LINK_WORDING_S1.format(t=lab.text.strip().rstrip(".")),
             "criteria": _CRITERIA}
 
@@ -334,20 +338,26 @@ def candidates(report: str, labels: List[Label], us: List[Unit], got: Dict[str, 
 
 
 async def link(labels: List[Label], us: List[Unit], cands: Dict[str, List[Cand]], jev=None) -> Dict[str, Anchor]:
-    """Jev confirms → {ref: Anchor} for the labels that anchor. One request per sentence (the state is the previous
-    sentence and the unit's sentence: `link_state`), asking each label that has a candidate unit in it. A label
-    anchors when Jev scores exactly one sentence at P >= LINK_MIN, on the one candidate unit there (its term span when
-    it has one: "term+jev", else the whole unit: "jev"); two candidate units of that sentence with no single term
-    hit are ambiguous. Any unanswered candidate (failure, timeout, unreadable) leaves the label unanchored."""
+    """Jev confirms → {ref: Anchor} for the labels that anchor. One request per state, in parallel: the context
+    question (C1) per sentence (the previous sentence and the unit's sentence: `link_state`), and for a candidate unit
+    where the label's term literally occurs, the no-context question (S1) on the unit alone. A candidate passes on
+    C1 >= LINK_MIN, or (term hit) S1 >= LINK_MIN_TERM_S1. A label anchors when exactly one sentence has a passing
+    candidate, on the one candidate there (its term span when it has one: "term+jev", else the whole unit: "jev");
+    two passing candidate units of that sentence with no single term span are ambiguous. Any unanswered question on
+    a candidate (failure, timeout, unreadable) leaves the label unanchored."""
     jev = jev or rc._jev
     by_lab = {lab.ref: (k, lab) for k, lab in enumerate(labels)}
     asks: Dict[str, Dict[str, dict]] = {}
+    literal: set = set()        # (ref, unit index): the label's term occurs in that unit
     for ref, cs in cands.items():
         if ref not in by_lab:
             continue
         k, lab = by_lab[ref]
-        for n, _ in cs:
+        for n, sp in cs:
             asks.setdefault(link_state(us[n]), {})[f"l{k}"] = q_link(lab)
+            if sp or ln.term_span(us[n].text, lab.term) is not None:
+                literal.add((ref, n))
+                asks.setdefault(us[n].text, {})[f"s{k}"] = q_says(lab)
     if not asks:
         return {}
 
@@ -370,10 +380,15 @@ async def link(labels: List[Label], us: List[Unit], cands: Dict[str, List[Cand]]
         if ref not in by_lab or not cs:
             continue
         k, lab = by_lab[ref]
-        ps = [(answers.get((link_state(us[n]), f"l{k}")), n, sp) for n, sp in cs]
-        if any(p is None for p, _, _ in ps):
+        ps = []
+        for n, sp in cs:
+            c1 = answers.get((link_state(us[n]), f"l{k}"))
+            s1 = answers.get((us[n].text, f"s{k}")) if (ref, n) in literal else 0.0
+            ps.append((None if c1 is None or s1 is None else
+                       (c1 if c1 >= LINK_MIN or s1 < LINK_MIN_TERM_S1 else s1), c1, s1, n, sp))
+        if any(p is None for p, *_ in ps):
             continue                                   # an unanswered candidate: "only this one" can't be trusted
-        win = [(p, n, sp) for p, n, sp in ps if p >= LINK_MIN]
+        win = [(p, n, sp) for p, c1, s1, n, sp in ps if c1 >= LINK_MIN or s1 >= LINK_MIN_TERM_S1]
         if len({us[n].sstart for _, n, _ in win}) != 1:
             continue                                   # none, or several sentences: ambiguous
         termed = [w for w in win if w[2]]
