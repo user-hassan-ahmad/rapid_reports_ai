@@ -688,6 +688,19 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
             prov, _ = live.dedupe(prov, bridge)
     except Exception as e:  # noqa: BLE001 - never fails the run
         errors["provenance"] = f"{type(e).__name__}: {str(e)[:200]}"
+    try:                                 # one Jev request: undictated recommendations and suppressed synthesis
+        before = {id(it) for it in prov}
+        prov, syn_log = await provenance.confirm(inp, run_id, al, jp, items, prov, neg_items + brief_items)
+        for it in prov:
+            if id(it) not in before:
+                it.engine_version = ENGINE_VERSION
+        if bridge:
+            prov, _ = live.dedupe(prov, bridge)
+        prov_log = {**(prov_log or {}), **syn_log}
+        if syn_log.get("error"):
+            errors["synthesis"] = syn_log["error"]
+    except Exception as e:  # noqa: BLE001 - never fails the run; build_items' items stand
+        errors["synthesis"] = f"{type(e).__name__}: {str(e)[:200]}"
     for it in surface_gate(inp, items + neg_items + brief_items + prov):
         plans.pop(it.id, None)
     report, pre_log = _would_preapply(inp, items, plans, neg_log, neg_items)
