@@ -8,25 +8,32 @@ from pydantic import BaseModel, Field
 from ..spoken_format import heading_only
 
 _SPLIT = re.compile(r"(?<=[.?!])\s+(?=\S)|\n+")
+_LIST_NUMBER = re.compile(r"^\d{1,2}\.$")
+
+
+def _joins_next(frag: str, nxt: str) -> bool:
+    """A list number ("1.") always joins the next fragment; a short single-token fragment ending in "."
+    ("e.g.", "approx.") joins only when the next one starts lowercase or numeric (a real sentence
+    start is capitalised)."""
+    if _LIST_NUMBER.match(frag):
+        return True
+    return (len(frag) <= 8 and frag.endswith(".") and not any(c.isspace() for c in frag)
+            and (nxt[0].islower() or nxt[0].isdigit()))
 
 
 def sentences(text: str) -> list[str]:
-    """Break at . ? ! followed by whitespace (decimals stay whole) and at line breaks.
-    A short single-token fragment ending in "." ("e.g.", "Dr.", "1.") is joined onto the sentence
-    after it; a trailing one with nothing after it stays as is."""
+    """Break at . ? ! followed by whitespace (decimals stay whole) and at line breaks, then join
+    abbreviation and list-number fragments onto the sentence after them (see `_joins_next`)."""
+    frags = [s.strip() for s in _SPLIT.split(text or "") if s.strip()]
     out: list[str] = []
-    carry = ""
-    for s in (p.strip() for p in _SPLIT.split(text or "")):
-        if not s:
-            continue
-        s = f"{carry} {s}" if carry else s
-        carry = ""
-        if len(s) <= 6 and s.endswith(".") and not any(c.isspace() for c in s):
-            carry = s
-        else:
-            out.append(s)
-    if carry:
-        out.append(carry)
+    i = 0
+    while i < len(frags):
+        cur = frags[i]
+        while i + 1 < len(frags) and _joins_next(cur, frags[i + 1]):
+            i += 1
+            cur = f"{cur} {frags[i]}"
+        out.append(cur)
+        i += 1
     return out
 
 

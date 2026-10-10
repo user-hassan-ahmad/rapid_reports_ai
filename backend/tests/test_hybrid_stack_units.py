@@ -36,10 +36,13 @@ import pytest
 
 @pytest.mark.parametrize("text,expected", [
     ("e.g. lungs clear.", ["e.g. lungs clear."]),
-    ("Dr. Smith noted.", ["Dr. Smith noted."]),
     ("vs. prior study.", ["vs. prior study."]),
-    ("approx. 3 cm.", ["approx.", "3 cm."]),  # 7 chars: over the 6-char limit, documented limitation
+    ("approx. 3 cm.", ["approx. 3 cm."]),
+    ("i.e. normal.", ["i.e. normal."]),
     ("1. Liver normal. 2. Spleen ok.", ["1. Liver normal.", "2. Spleen ok."]),
+    ("Clear. Liver normal.", ["Clear.", "Liver normal."]),
+    ("None. Spleen normal.", ["None.", "Spleen normal."]),
+    ("Dr. Smith noted.", ["Dr.", "Smith noted."]),  # accepted: a capital follows
     ("Measures 3.2 cm. Stable.", ["Measures 3.2 cm.", "Stable."]),
     ("Disc bulge at L4/5. Mild stenosis.", ["Disc bulge at L4/5.", "Mild stenosis."]),
 ])
