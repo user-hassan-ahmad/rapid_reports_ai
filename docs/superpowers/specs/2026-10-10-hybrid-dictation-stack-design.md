@@ -25,6 +25,8 @@ Coverage pills then need a second call per update (`section_coverage.py`, one Je
 
 ## 2. Rule
 
+**Scope: the dictation machinery is preserved.** Audio capture, Deepgram streaming, two-pass ASR, the v2 write path (fast-append, lean span polish, Jev band router) and the verbatim scratchpad text are unchanged. This design adds an intelligent grouping layer on top of that text and a view that shows it.
+
 **The words never change; only labels are decided.**
 
 - One text: the verbatim scratchpad, as v2 writes it today. Nothing in this design rewrites it.
@@ -113,23 +115,25 @@ At confidence ≥ 0.6 Jev decides (summary → Conclusion; images → leaves Con
 - Lab: derived pills agree with prod's Jev coverage on 96% of region decisions (215/223 dev, 113/118 held-out); in the disagreements derived was right about as often as Jev.
 - This retires `/sections` for dictation and the per-update Jev coverage call, after the shadow comparison in §5.
 
-## 4. What is retired
+## 4. What moves to shadow, then is archived
 
-| Today | Replaced by | When |
+Nothing is deleted at launch. The old grouping and pill machinery keeps running in shadow — not shown, logged for comparison, and the instant fallback — until live testing says it can be retired or archived.
+
+| Today | Active at launch | Old path after launch |
 |---|---|---|
-| Structured tab, `CANVAS_PROCESS_SYSTEM_PROMPT` structured mode, `structuredView.ts` | the one grouped view | Phase 3 |
-| `/sections` for the dictation checklist (quick) | schema library + reconciler | Phase 3 |
-| `/sections-from-template` for grammar templates | the sheet's paragraphs | Phase 3 |
-| Jev coverage call per update | pills from `covers` | after Phase 2 shadow agrees |
+| Structured tab (`CANVAS_PROCESS_SYSTEM_PROMPT` structured mode, `structuredView.ts`) | the one grouped view | shadow: still built in the background for comparison; reachable via the kill switch |
+| `/sections` checklist (quick) | schema library + reconciler | shadow: still called; its list logged beside the schema |
+| `/sections-from-template` (grammar templates) | the sheet's paragraphs | shadow, as above |
+| Jev coverage call per update | pills from `covers` | shadow: still called; its pills logged beside the derived pills |
 
-The v2 write path (fast-append, lean polish, Jev band router, two-pass ASR) and IntelliPrompts are unchanged.
+Retire or archive each row once the live comparison supports it (§5). Unchanged and outside this design: the dictation machinery (§2) and IntelliPrompts.
 
 ## 5. Rollout
 
-- **Phase 0 — backend, dark.** `/canvas/group` (grouper + invariants + conclusion gate), `/canvas/schema` (family choice, reconciler, cache, template regions). Schema library and families as data. Kill switch `RR_HYBRID_STACK`. Unit tests on the invariants; the lab's fixtures become regression tests (dev 20, held-out 12, template 14, conclusion boundary 65).
-- **Phase 1 — prototype.** Dev route behind `requireDevRoute` from the first commit, replaying lab sessions and live dictation into the one view. Hand read with Hassan.
-- **Phase 2 — shadow in prod.** For v2 sessions, run grouper + derived pills alongside today's tabs and Jev pills; log placements, pill disagreements, latency, reconciler outputs. Nothing user-visible. Gate: derived-vs-Jev pill agreement holds on real dictation; placement spot-checks by peer read.
-- **Phase 3 — user-facing behind a flag** (`rr_hybrid_stack`, localStorage opt-out as for v2), then retire §4.
+- **Phase 0 — build, dark.** `/canvas/group` (grouper + invariants + conclusion gate), `/canvas/schema` (family choice, reconciler, cache, template regions). Schema library and families as data. Unit tests on the invariants; the lab's fixtures become regression tests (dev 20, held-out 12, template 14, conclusion boundary 65). Dev route behind `requireDevRoute` from the first commit for a hand read before deploy.
+- **Phase 1 — deploy with the new layout active.** The grouped view and derived pills are the default for everyone on the dictation package. The old Structured build, `/sections` and Jev pills run in shadow (§4). Switches: server kill switch `RR_HYBRID_STACK=0` restores the old tabs and pills for everyone; per-user opt-out `localStorage rr_hybrid_stack=0`, as for v2.
+- **Phase 2 — live testing.** Log per session: placements and manual moves (a drag is a correction signal), derived-vs-Jev pill disagreements, derived schema vs `/sections` list, grouper and gate latency, reconciler outputs awaiting approval. Peer-read a sample of sessions. Gate for retirement: pill agreement holds on real dictation, manual moves are rare, no fidelity or latency regressions.
+- **Phase 3 — retire or archive.** Per §4 row, once its gate is met: stop the shadow call, then archive the code path (structured prompt mode, `structuredView.ts`, `/sections` dictation use, coverage call).
 
 ## 6. Evidence (lab, synthetic TTS dictation → Deepgram → v2-like write path)
 
