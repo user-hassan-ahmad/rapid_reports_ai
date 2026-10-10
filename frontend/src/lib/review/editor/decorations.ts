@@ -126,9 +126,10 @@ export const LEGEND: { key: LegendKey; icon: string; label: string; title: strin
 
 /** The AI layer's categories, as the legend's breakdown shows them (swatch = the tint in the editor). Normals
  * show only in the All mode. */
-export const AI_BREAKDOWN: { form: AiForm; label: string; title: string }[] = [
+export const AI_BREAKDOWN: { form: AiForm | 'recommendation'; label: string; title: string }[] = [
 	{ form: 'negative', label: 'Pertinent negatives', title: 'Negatives the AI added because they bear on a dictated finding: worth a glance' },
 	{ form: 'synthesis', label: 'AI synthesis', title: "Conclusions or details the AI added that aren't in your dictation: check them" },
+	{ form: 'recommendation', label: 'Recommendations', title: 'Recommendations the AI added: untick in the recommendations list to remove' },
 	{ form: 'normal', label: 'Normals', title: 'Normal findings you did not dictate, stated by the AI' }
 ];
 

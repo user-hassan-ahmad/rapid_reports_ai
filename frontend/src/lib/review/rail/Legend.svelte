@@ -35,8 +35,8 @@
 
 	const ENTRIES = $derived(LEGEND.filter((e) => e.key !== 'removed' || showRemoved));
 	const SHOWN: Record<AiMode, string[]> = {
-		key: ['negative', 'synthesis'],
-		all: ['negative', 'synthesis', 'normal'],
+		key: ['negative', 'synthesis', 'recommendation'],
+		all: ['negative', 'synthesis', 'recommendation', 'normal'],
 		off: []
 	};
 	const BREAKDOWN = $derived(AI_BREAKDOWN.filter((b) => SHOWN[mode].includes(b.form)));
@@ -49,6 +49,7 @@
 	const SWATCH: Record<string, string> = {
 		negative: 'var(--lg-amber)',
 		synthesis: 'var(--lg-violet)',
+		recommendation: 'var(--lg-teal)',
 		normal: 'var(--lg-green)'
 	};
 	const MODE_LABEL: Record<AiMode, string> = { key: 'Key', all: 'All', off: 'Off' };
@@ -154,6 +155,7 @@
 		--lg-red: #ff7a7a;
 		--lg-blue: #7ea6f0;
 		--lg-violet: #b3a1f5;
+		--lg-teal: #4fd1c5;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;

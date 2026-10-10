@@ -33,7 +33,7 @@ export interface ReviewExtensionOptions {
 	density?: Density;
 	/** The store item for an id: the popover's label, reason, source line and edit come from it. */
 	getItem?: (id: string) => ReviewItem | undefined;
-	/** The legend filters on at mount (legend keys); change them later with the `setEmphasis` effect. */
+	/** The emphasis keys on at mount (the AI highlights mode, editor/aiMode.ts); change them later with the `setEmphasis` effect. */
 	emphasis?: readonly string[];
 	/** The inline control's "›" (flagged issues): show the item's card in the rail. */
 	onReveal?: (id: string) => void;

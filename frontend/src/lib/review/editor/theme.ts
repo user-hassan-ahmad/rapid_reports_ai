@@ -7,8 +7,9 @@
  * markers carry an icon.
  *
  * The AI-generated layer is a very light background tint by category (`rv-form-*`, field.formOf): normals green,
- * negatives bearing on a finding amber, synthesis violet; no underline, no actions. It is ON by default (the legend's
- * "AI-generated" toggle, `data-rv-emph~="ai"`); off, it is plain text, except amber, which is always shown. Recommendations (teal), flagged issues (red),
+ * negatives bearing on a finding amber, synthesis violet; no underline, no actions. The legend's three-way control
+ * (Key `ai`, All `ai normals`, Off none; `data-rv-emph`) scopes it: amber, violet and the recommendation underline
+ * need `ai`, green needs `normals`; Off is plain text. Recommendations (teal), flagged issues (red),
  * minor items (amber) and pre-applied changes (blue) keep their dotted underline; hovering one (or its open inline
  * control, `rv-active`) lights it. Density (`data-density`, Quiet by default) is a dev-page capability.
  */
@@ -38,7 +39,7 @@ export function densityExtension(density: Density = DEFAULT_DENSITY): Extension 
  * recommendation underline), All `['ai', 'normals']` (plus green normals), Off `[]` (no AI tints at all). */
 export const setEmphasis = StateEffect.define<readonly string[]>();
 
-/** Key mode: the default (editor/decorations.ts DEFAULT_LEGEND). */
+/** Key mode: the default (editor/aiMode.ts). */
 export const DEFAULT_EMPHASIS: readonly string[] = ['ai'];
 
 export const emphasisField = StateField.define<readonly string[]>({

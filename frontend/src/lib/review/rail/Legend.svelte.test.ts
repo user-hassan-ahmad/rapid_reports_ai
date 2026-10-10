@@ -22,7 +22,7 @@ describe('Legend', () => {
 		render(Legend, {});
 		await expect.element(page.getByText('AI highlights')).toBeInTheDocument();
 		expect(labels()).toEqual(['AI highlights']);
-		for (const gone of ['Dictated', 'Removed by you', 'Recommendations', 'Removed (contradicts'])
+		for (const gone of ['Dictated', 'Removed by you', 'Removed (contradicts'])
 			expect(legend().textContent).not.toContain(gone);
 	});
 
@@ -50,14 +50,15 @@ describe('Legend', () => {
 		render(Legend, {});
 		await expect.element(page.getByRole('radio', { name: 'Key' })).toBeInTheDocument();
 		const items = [...legend().querySelectorAll<HTMLElement>('[data-rv-breakdown] [data-rv-form]')];
-		expect(items.map((i) => i.textContent?.trim())).toEqual(['Pertinent negatives', 'AI synthesis']);
+		expect(items.map((i) => i.textContent?.trim())).toEqual(['Pertinent negatives', 'AI synthesis', 'Recommendations']);
 		expect(items.map((i) => i.title)).toEqual([
 			'Negatives the AI added because they bear on a dictated finding: worth a glance',
-			"Conclusions or details the AI added that aren't in your dictation: check them"
+			"Conclusions or details the AI added that aren't in your dictation: check them",
+			'Recommendations the AI added: untick in the recommendations list to remove'
 		]);
-		expect(new Set(items.map((i) => getComputedStyle(i.querySelector('.rv-swatch')!).backgroundColor)).size).toBe(2);
+		expect(new Set(items.map((i) => getComputedStyle(i.querySelector('.rv-swatch')!).backgroundColor)).size).toBe(3);
 		await page.getByRole('radio', { name: 'All' }).click();
-		expect(swatches()).toEqual(['negative', 'synthesis', 'normal']);
+		expect(swatches()).toEqual(['negative', 'synthesis', 'recommendation', 'normal']);
 		const normal = legend().querySelector<HTMLElement>('[data-rv-form="normal"]')!;
 		expect(normal.textContent?.trim()).toBe('Normals');
 		expect(normal.title).toBe('Normal findings you did not dictate, stated by the AI');

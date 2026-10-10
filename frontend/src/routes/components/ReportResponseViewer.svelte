@@ -903,8 +903,10 @@
 				getItem: (itemId) => get(store).items.find((i) => i.id === itemId)
 			}),
 			EditorView.updateListener.of((u) => {
-				const removed = reviewCounts(reviewItems(u.state)).removed > 0;
-				if (removed !== hasRemoved) hasRemoved = removed;
+				if (u.docChanged || u.transactions.some((t) => t.effects.length)) {
+					const removed = reviewCounts(reviewItems(u.state)).removed > 0;
+					if (removed !== hasRemoved) hasRemoved = removed;
+				}
 				if (!u.docChanged) return;
 				refreshHash();
 				// a reload onto the same text (a save) is not an edit for the probe loop

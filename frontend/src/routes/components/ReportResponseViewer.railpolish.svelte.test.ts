@@ -299,7 +299,6 @@ describe('legend', () => {
 		await expect.element(page.getByRole('radio', { name: 'Off' })).toHaveAttribute('aria-checked', 'true');
 		await page.getByRole('radio', { name: 'Key' }).click();
 		expect(editor().getAttribute('data-rv-emph')).toBe('ai');
-		expect(document.querySelector('[data-testid="review-legend"]')!.textContent).not.toContain('Recommendations');
 		localStorage.removeItem('rv_ai_mode');
 	});
 

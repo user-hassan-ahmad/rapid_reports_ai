@@ -276,6 +276,16 @@ describe('addressed and new items', () => {
 		expect(ids).toContain('other');
 	});
 
+	it('keeps a new item with no edit even when an open no-edit item has the same anchor text', async () => {
+		const span = { start: 5, end: 25, text: 'The liver is normal.', text_hash: null };
+		store.upsert([item({ anchor: span })]);
+		const fresh = item({ id: 'fresh', kind: 'contradicted', anchor: span });
+		probeApi.mockImplementation(async (_r, text) => probeRes(text, { new_items: [fresh] }));
+		loop.trigger();
+		await flush();
+		expect(get(store).items.map((i) => i.id)).toContain('fresh');
+	});
+
 	it('manual fix → addressed → Cmd-Z → the next probe re-opens the item (backend `reopened`)', async () => {
 		const a = item({ anchor: { start: 14, end: 25, text: 'No ascites.', text_hash: null } });
 		store.upsert([a]);
