@@ -319,7 +319,7 @@ async def run(inp: ReviewInput, report: str, gate_texts: Optional[List[str]] = N
     async def ask(state: str, qs: dict):
         return await asyncio.wait_for(rc._jev(state, qs), JEV_TIMEOUT_S) if qs else {}
 
-    gate_batches = dictated_gate.questions(gate_texts) if gate_texts and dictated_gate.mode() != "off" else []
+    gate_batches = dictated_gate.questions(gate_texts, findings) if gate_texts and dictated_gate.mode() != "off" else []
     gate_sem = asyncio.Semaphore(8)        # spec §4.1: at most 8 gate requests in flight
     gate_state = dictated_gate.state(inp)
     async def ask_gated(sem: asyncio.Semaphore, state: str, qs: dict):

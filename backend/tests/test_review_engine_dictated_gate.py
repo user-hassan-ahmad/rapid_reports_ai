@@ -80,10 +80,13 @@ async def test_shadow_asks_every_clause_in_batches_with_the_gate_state(monkeypat
     jp = await jev_pass.run(inp(R, D), R, gate_texts=texts)
     gate_calls = [(s, qs) for s, qs in calls if any(k.startswith("g") for k in qs)]
     want = sorted([f"g{i}" for i in range(5)] + [f"t{i}" for i in range(5)])
-    assert sorted(k for _, qs in gate_calls for k in qs) == want
-    assert all(len(qs) <= 8 for _, qs in gate_calls)
+    asked = [k for _, qs in gate_calls for k in qs]
+    assert sorted(k for k in asked if k[0] in "gt") == want
+    # log-only r{i}: clauses sharing any dictated content word ("normal" counts: a cost filter, not a decision)
+    assert sorted(k for k in asked if k[0] == "r") == ["r0", "r1", "r2", "r3", "r4"]
+    assert all(len(qs) <= 12 for _, qs in gate_calls)                  # CHUNK 4 clauses × up to 3 questions
     assert all(s.endswith("DICTATED FINDINGS:\n" + D) for s, _ in gate_calls)
-    assert set(jp.gate) == set(want) and jp.gate_texts == texts
+    assert {k for k in jp.gate if k[0] in "gt"} == set(want) and jp.gate_texts == texts
 
 
 @pytest.mark.asyncio
@@ -316,3 +319,31 @@ def test_state_with_no_dictated_findings_is_not_none():
     i = inp("FINDINGS:\nX.", "")
     i.artifacts.dictated_findings = None
     assert dg.state(i).endswith("DICTATED FINDINGS:\n")
+
+
+# ── reworded dictated negatives: log-only (lab gate_a/reworded_neg, 2026-10-10) ──────────────────────────────────
+
+def test_reworded_question_only_for_clauses_sharing_a_dictated_word():
+    batches = dg.questions(["No rim-enhancing periappendiceal collection.", "The spleen is unremarkable."],
+                           "- No organised collection")
+    keys = {k for b in batches for k in b}
+    assert "r0" in keys and "r1" not in keys
+    assert set(dg.q_reworded("x")["criteria"]) == {"restates_with_change", "adds_separate_items", "same_meaning"}
+    assert not any(k.startswith("r") for b in dg.questions(["No collection."]) for k in b)   # no dictation given
+
+
+def test_reworded_score_is_logged_and_never_changes_the_tier():
+    r = "FINDINGS:\nNo rim-enhancing periappendiceal collection. The spleen is unremarkable.\n"
+    d = "- No organised collection"
+    i = inp(r, d)
+    al = align(r, d, "", i.artifacts.sections)
+    texts = [r[s:e] for s, e, _ in dg.units(al)]
+    jp = JevPass(gate_texts=texts)
+    for k, _ in enumerate(texts):
+        jp.gate[f"g{k}"] = {"probabilities": {"all_stated": 0.1, "some_details_added": 0.9, "not_stated": 0.0}}
+        jp.gate[f"t{k}"] = {"probabilities": {"abnormal": 0.0, "normal": 1.0, "mixed": 0.0, "not_a_finding": 0.0}}
+    jp.gate["r0"] = {"probabilities": {"restates_with_change": 0.9, "adds_separate_items": 0.05, "same_meaning": 0.05}}
+    g = dg.classify(i, r, al, jp)
+    assert [x.tier for x in g] == ["quiet", "quiet"]
+    assert g[0].reworded == 0.9 and g[1].reworded is None
+    assert dg.shadow_log(g, [])["clauses"][0]["reworded"] == 0.9
