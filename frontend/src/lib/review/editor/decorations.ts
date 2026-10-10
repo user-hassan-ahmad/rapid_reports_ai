@@ -39,6 +39,7 @@ import { chipActions, chipType, type ChipAction, type ChipTarget } from './chip'
 import {
 	AI_LAYER_MARKS,
 	checkReason,
+	flashInserted,
 	type AiForm,
 	reviewField,
 	reviewItems,
@@ -126,11 +127,12 @@ export const LEGEND: { key: LegendKey; icon: string; label: string; title: strin
 
 /** The AI layer's categories, as the legend's breakdown shows them (swatch = the tint in the editor). Normals
  * show only in the All mode. */
-export const AI_BREAKDOWN: { form: AiForm | 'recommendation'; label: string; title: string }[] = [
+export const AI_BREAKDOWN: { form: AiForm | 'recommendation' | 'inserted'; label: string; title: string }[] = [
 	{ form: 'negative', label: 'Pertinent negatives', title: 'Negatives the AI added because they bear on a dictated finding: worth a glance' },
 	{ form: 'synthesis', label: 'AI synthesis', title: "Conclusions or details the AI added that aren't in your dictation: check them" },
 	{ form: 'recommendation', label: 'Recommendations', title: 'Recommendations the AI added: untick in the recommendations list to remove' },
-	{ form: 'normal', label: 'Normals', title: 'Normal findings you did not dictate, stated by the AI' }
+	{ form: 'normal', label: 'Normals', title: 'Normal findings you did not dictate, stated by the AI' },
+	{ form: 'inserted', label: 'Added from suggestions', title: 'Text you added by ticking a suggestion' }
 ];
 
 const MARK_MEANING: Record<MarkClass, Meaning> = {
@@ -271,6 +273,9 @@ const reviewDecorations = EditorView.decorations.compute([reviewField], (state):
 			}).range(m.from, m.to)
 		);
 	}
+	for (const s of items.inserted ?? [])
+		if (s.to > s.from)
+			ranges.push(Decoration.mark({ class: 'rv-inserted', attributes: { 'data-rv-inserted': s.id } }).range(s.from, s.to));
 	for (const w of items.widgets)
 		if (w.kind !== 'option') ranges.push(Decoration.widget({ widget: new ItemWidget(w), side: 1 }).range(w.pos));
 	return Decoration.set(ranges, true);
@@ -570,6 +575,33 @@ const flashField = StateField.define<DecorationSet>({
 		return set;
 	},
 	provide: (f) => EditorView.decorations.from(f)
+});
+
+/** A ticked suggestion's text flashes for ~1.2 s (a static highlight under prefers-reduced-motion: theme.ts). */
+export const INSERTED_FLASH_MS = 1200;
+const insertedFlashMark = Decoration.mark({ class: 'rv-inserted-flash' });
+const insertedFlashField = StateField.define<DecorationSet>({
+	create: () => Decoration.none,
+	update(set, tr) {
+		set = set.map(tr.changes);
+		for (const e of tr.effects)
+			if (e.is(flashInserted))
+				set = e.value && e.value.to > e.value.from ? Decoration.set([insertedFlashMark.range(e.value.from, e.value.to)]) : Decoration.none;
+		return set;
+	},
+	provide: (f) => EditorView.decorations.from(f)
+});
+const flashTimers = new WeakMap<EditorView, ReturnType<typeof setTimeout>>();
+const insertedFlashClear = EditorView.updateListener.of((u) => {
+	if (!u.transactions.some((t) => t.effects.some((e) => e.is(flashInserted) && e.value))) return;
+	const view = u.view;
+	clearTimeout(flashTimers.get(view));
+	flashTimers.set(
+		view,
+		setTimeout(() => {
+			if (view.dom.isConnected) view.dispatch({ effects: flashInserted.of(null) });
+		}, INSERTED_FLASH_MS)
+	);
 });
 
 function act(view: EditorView, a: ChipAnchor, action: ChipAction): void {
@@ -875,6 +907,8 @@ export function reviewDisplay(): Extension[] {
 		previewField,
 		previewDecos,
 		flashField,
+		insertedFlashField,
+		insertedFlashClear,
 		popoverField,
 		controlDecos,
 		popoverHandlers,

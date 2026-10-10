@@ -104,6 +104,23 @@ describe('Legend', () => {
 		expect(onFilter).toHaveBeenLastCalledWith(['ai', 'normals']);
 	});
 
+	it('showInserted adds "Added from suggestions" to the breakdown (Key and All, not Off)', async () => {
+		render(Legend, { showInserted: true });
+		const row = () => legend().querySelector<HTMLElement>('[data-rv-form="inserted"]');
+		await expect.element(page.getByText('Added from suggestions')).toBeInTheDocument();
+		expect(row()!.title).toBe('Text you added by ticking a suggestion');
+		await page.getByRole('radio', { name: 'All' }).click();
+		expect(row()).not.toBeNull();
+		await page.getByRole('radio', { name: 'Off' }).click();
+		expect(row()).toBeNull();
+	});
+
+	it('the suggestions swatch is absent while no suggestion is applied', async () => {
+		render(Legend, {});
+		await expect.element(page.getByRole('radio', { name: 'Key' })).toBeInTheDocument();
+		expect(legend().textContent).not.toContain('Added from suggestions');
+	});
+
 	it('arrow keys follow the Off · Key · All order and wrap', async () => {
 		render(Legend, {});
 		const press = (name: string, key: string) =>

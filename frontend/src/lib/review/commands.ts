@@ -188,6 +188,27 @@ function findApplied(doc: string, d: Record<string, unknown>, withContext = fals
 	return null;
 }
 
+/** Where a suggestion's applied text sits now, without the separating whitespace the insert carried: from its
+ * apply event (recorded position and context), else the text itself when it occurs once. Null: not there verbatim. */
+export function appliedSpan(doc: string, item: ReviewItem): { from: number; to: number } | null {
+	const d = lastApplied(item);
+	if (d) {
+		const at = findApplied(doc, d);
+		const insert = String(d.insert ?? '');
+		const text = insert.trim();
+		if (at != null && text) {
+			const from = at + (insert.length - insert.trimStart().length);
+			return { from, to: from + text.length };
+		}
+	}
+	const text = item.edit?.replace?.trim();
+	if (text && count(doc, text) === 1) {
+		const from = doc.indexOf(text);
+		return { from, to: from + text.length };
+	}
+	return null;
+}
+
 /** Where a recommendation's sentence sits now, or null. Besides the text verbatim (unique), the forms a neighbour's
  * removal leaves (edits.removeSpan's seam tidy): the first letter capitalised (the sentence now starts there) and a
  * trailing "," / ";" closed to "." (it now ends the line). */
