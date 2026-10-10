@@ -47,3 +47,52 @@ def test_questions_are_batched_four_per_request():
 ])
 def test_p_all_stated(ans, want):
     assert dg.p_all_stated(ans) == want
+
+
+from rapid_reports_ai import report_reconcile as rc
+from rapid_reports_ai.review_engine import jev_pass
+
+from tests.review_engine_fakes import jev
+
+R = ("FINDINGS:\nThere is a 2 cm mass in the right kidney. The liver is normal. The spleen is normal.\n"
+     "IMPRESSION:\nRight renal mass.\n")
+D = "- 2 cm right renal mass\n- Liver normal"
+
+
+@pytest.mark.asyncio
+async def test_off_asks_no_gate_questions(monkeypatch):
+    monkeypatch.delenv("RR_DICTATED_GATE", raising=False)
+    calls = []
+    monkeypatch.setattr(rc, "_jev", jev(calls=calls))
+    jp = await jev_pass.run(inp(R, D), R)
+    assert not any(k.startswith("g") for _, qs in calls for k in qs)
+    assert jp.gate == {} and jp.gate_error is None
+
+
+@pytest.mark.asyncio
+async def test_shadow_asks_every_clause_in_batches_with_the_gate_state(monkeypatch):
+    monkeypatch.setenv("RR_DICTATED_GATE", "shadow")
+    calls = []
+    monkeypatch.setattr(rc, "_jev", jev({"g*": {"choice": "all_stated"}}, calls=calls))
+    jp = await jev_pass.run(inp(R, D), R)
+    gate_calls = [(s, qs) for s, qs in calls if any(k.startswith("g") for k in qs)]
+    assert all(set(qs) <= {f"g{i}" for i in range(len(jp.clauses))} for _, qs in gate_calls)
+    assert sorted(k for _, qs in gate_calls for k in qs) == sorted(f"g{i}" for i in range(len(jp.clauses)))
+    assert all(len(qs) <= 4 for _, qs in gate_calls)
+    assert all(s.endswith("DICTATED FINDINGS:\n" + D) for s, _ in gate_calls)
+    assert set(jp.gate) == {f"g{i}" for i in range(len(jp.clauses))}
+
+
+@pytest.mark.asyncio
+async def test_a_failed_gate_request_sets_gate_error(monkeypatch):
+    monkeypatch.setenv("RR_DICTATED_GATE", "shadow")
+    base = jev()
+
+    async def flaky(state, qs):
+        if any(k.startswith("g") for k in qs):
+            raise TimeoutError("slow")
+        return await base(state, qs)
+    monkeypatch.setattr(rc, "_jev", flaky)
+    jp = await jev_pass.run(inp(R, D), R)
+    assert jp.gate_error and "TimeoutError" in jp.gate_error
+    assert jp.contra_error is None            # the other requests are unaffected

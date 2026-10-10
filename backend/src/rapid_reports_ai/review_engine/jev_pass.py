@@ -22,6 +22,7 @@ from .. import report_reconcile as rc
 from ..report_review import (JEV_TIMEOUT_S, Q_CONTRA, checked_clauses_in_context, dictated_items, q_dictated,
                              q_omission, q_restated, q_select_choice, q_select_noul, restate, without)
 from .alignment import section_models
+from . import dictated_gate
 from .checks import hedge_tag
 from .items import ReviewInput
 
@@ -267,6 +268,8 @@ class JevPass(BaseModel):
     contra_error: Optional[str] = None
     omit_error: Optional[str] = None
     support_error: Optional[str] = None
+    gate: Dict[str, Any] = {}              # g{i} (dictated gate, spec 2026-10-10), i indexes `clauses`
+    gate_error: Optional[str] = None
 
     def clause_type(self, i: int) -> Optional[str]:
         return self.types.get(self.clauses[i])
@@ -315,11 +318,20 @@ async def run(inp: ReviewInput, report: str) -> JevPass:
     async def ask(state: str, qs: dict):
         return await asyncio.wait_for(rc._jev(state, qs), JEV_TIMEOUT_S) if qs else {}
 
-    contra, omit, support = await asyncio.gather(
+    gate_batches = dictated_gate.questions(cls) if dictated_gate.mode() != "off" else []
+    gate_state = dictated_gate.state(inp)
+    contra, omit, support, *gate = await asyncio.gather(
         ask(f"SCAN TYPE: {inp.scan_type}\nDICTATED FINDINGS:\n{findings}", contra_qs),
         ask(f"REPORT:\n{without(report, hidden, sections)}", omit_qs),
-        ask(support_state(inp), support_qs), return_exceptions=True)
+        ask(support_state(inp), support_qs),
+        *(ask(gate_state, qs) for qs in gate_batches), return_exceptions=True)
     out = JevPass(clauses=cls, before=before, items=items, heads=heads)
+    for res in gate:                       # any failed batch fails the gate: the engine falls back as a whole
+        if isinstance(res, BaseException):
+            out.gate_error = f"{type(res).__name__}: {str(res)[:200]}"
+            logger.warning("review engine: Jev gate request failed (%s)", type(res).__name__)
+        else:
+            out.gate.update(res or {})
     for name, res in (("contra", contra), ("omit", omit), ("support", support)):
         if isinstance(res, BaseException):
             setattr(out, f"{name}_error", f"{type(res).__name__}: {str(res)[:200]}")
