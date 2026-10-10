@@ -37,6 +37,10 @@
 	import { joinRecovered, planRevision, type Revision } from '$lib/dictation-lab/revisions';
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
+	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
+	import { postClose, postGroup, postLog } from '$lib/hybrid-stack/api';
+	import { moveUnit, sentenceOffset } from '$lib/hybrid-stack/stackState';
+	import type { Region, StackOrder, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
 	import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
@@ -73,6 +77,14 @@
 	export let onDecision: (record: DecisionRecord, display: string) => void = () => {};
 	/** Dictation Lab only, front door 'decision': undo / edit / re-dictation against a decision id. */
 	export let onOutcome: (event: OutcomeEvent) => void = () => {};
+	// Hybrid dictation stack (rr_hybrid_stack, spec 2026-10-10): one grouped view of the verbatim text.
+	// The old Verbatim/Structured tabs run in shadow: the Structured text is built once per sampled session.
+	export let hybridStack = false;
+	export let stackRegions: Region[] = [];
+	export let stackGroups: string[] = [];
+	export let stackSchemaMeta: { key: string; source: string; provisional: boolean } | null = null;
+	export let onStackPills: (pills: string[]) => void = () => {};
+	export let stackShadowRate = 0.25; // share of sessions that build the old Structured text once, at session end
 
 	// CM6 highlight decoration for IntelliPrompt source linking
 	const setHighlight = StateEffect.define<{ from: number; to: number } | null>();
@@ -220,6 +232,29 @@
 	let writingStructured = false;
 	let structuredNotice = '';
 	let verbatimNow = '';
+	const GROUP_DEBOUNCE_MS = 600;
+	const CLOSE_IDLE_MS = 1500;
+	let stackOrder: StackOrder = 'anatomy';
+	let stackUnits: StackUnit[] = [];
+	let stackTimer: ReturnType<typeof setTimeout> | null = null;
+	let closeTimer: ReturnType<typeof setTimeout> | null = null;
+	let stackBusy = false;
+	let stackSessionId = crypto.randomUUID();
+	let stackManualMoves = 0;
+	let stackLatency: Record<string, number> = {};
+	let lastJevCovered: string[] = []; // shadow: today's coverage pills, for the log
+	// Shadow Structured build: once per sampled session, after recording stops — never per settle, so it
+	// never queues the live polish behind it on the shared Cerebras limits.
+	let stackShadowSampled = Math.random() < stackShadowRate;
+	let lastRegionsKey = '';
+	$: {
+		const k = stackRegions.map((r) => r.name).join('|');
+		if (k !== lastRegionsKey) {
+			lastRegionsKey = k;
+			stackUnits = [];
+			scheduleGroup(0);
+		}
+	}
 	const STRUCTURE_DEBOUNCE_MS = 1500;
 	$: structuredStale = polishMode === 'structured' && !!verbatimNow.trim() && !isCurrent(structured, verbatimNow);
 	// The parent can set the mode too (a draft restored in Structured view): build for it.
@@ -1281,6 +1316,97 @@
 			void buildStructured();
 		}, delay);
 	}
+	function scheduleGroup(delay = GROUP_DEBOUNCE_MS): void {
+		if (!hybridStack || !stackRegions.length) return;
+		if (stackTimer) clearTimeout(stackTimer);
+		stackTimer = setTimeout(() => {
+			stackTimer = null;
+			void runGroup();
+		}, delay);
+	}
+	async function runGroup(): Promise<void> {
+		if (!verbatimNow.trim()) return;
+		if (stackBusy || structureBusy()) {
+			scheduleGroup(); // as the Structured build: wait for pending (faded) text to settle
+			return;
+		}
+		const text = verbatimNow;
+		stackBusy = true;
+		try {
+			const res = await postGroup($token, { scan_type: scanType, text, regions: stackRegions, previous: stackUnits });
+			if (verbatimNow === text) {
+				stackUnits = res.units;
+				onStackPills(res.pills);
+				for (const [k, v] of Object.entries(res.timings_ms)) stackLatency[k] = Math.max(stackLatency[k] ?? 0, v);
+			} else scheduleGroup(0);
+		} catch {
+			// fail open: the verbatim text is on screen; the next settle retries
+		} finally {
+			stackBusy = false;
+		}
+	}
+	function stackMove(id: number, group: string): void {
+		stackUnits = moveUnit(stackUnits, id, group);
+		stackManualMoves += 1;
+	}
+	function stackSelect(id: number): void {
+		const at = sentenceOffset(verbatimNow, stackUnits, id);
+		stackOrder = 'dictated';
+		if (at >= 0 && editor) {
+			const unit = stackUnits.find((u) => u.id === id);
+			editor.dispatch({ selection: { anchor: at, head: at + (unit?.text.length ?? 0) }, scrollIntoView: true });
+			editor.focus();
+		}
+	}
+	function scheduleClose(): void {
+		if (!hybridStack) return;
+		if (closeTimer) clearTimeout(closeTimer);
+		closeTimer = setTimeout(async () => {
+			closeTimer = null;
+			if (isRecording || !stackUnits.length) return;
+			try {
+				const res = await postClose($token, { units: stackUnits, regions: stackRegions });
+				stackUnits = res.units;
+				onStackPills(res.pills);
+			} catch {
+				/* fail open */
+			}
+			if (stackShadowSampled && !isRecording) {
+				structuredWanted = true;
+				try {
+					await buildStructured();
+				} catch {
+					/* shadow only */
+				}
+				structuredWanted = false;
+			}
+			void sendStackLog();
+		}, CLOSE_IDLE_MS);
+	}
+	async function sendStackLog(): Promise<void> {
+		if (!hybridStack || !stackUnits.length) return;
+		try {
+			await postLog($token, {
+				session_id: stackSessionId, scan_type: scanType, schema_key: stackSchemaMeta?.key ?? null,
+				schema_source: stackSchemaMeta?.source ?? null, provisional: stackSchemaMeta?.provisional ?? false,
+				units: stackUnits, pills_derived: [...new Set(stackUnits.flatMap((u) => u.covers))],
+				pills_jev: lastJevCovered, sections: checklistSections, structured_text: structured.text ?? '',
+				manual_moves: stackManualMoves, latency_ms: stackLatency
+			});
+		} catch {
+			/* logging never affects dictation */
+		}
+	}
+	/** A cleared scratchpad ends the stack session: log it, then start a new one. */
+	function resetStack(): void {
+		void sendStackLog();
+		stackUnits = [];
+		onStackPills([]);
+		stackSessionId = crypto.randomUUID();
+		stackManualMoves = 0;
+		stackLatency = {};
+		stackShadowSampled = Math.random() < stackShadowRate;
+	}
 	/** Derive the structured text from the verbatim text: /process in structured mode, the
 	 *  verbatim text as the transcript, an empty scratchpad. Never while a final is faded or a
 	 *  polish is pending (it would structure half a statement); the next settle retries. */
@@ -1358,6 +1484,7 @@
 		// sub-second) never wait for the IntelliPrompts call.
 		const coverage = review('coverage').then((data) => {
 			if (data.covered_sections && Array.isArray(data.covered_sections)) {
+				lastJevCovered = data.covered_sections;
 				onCoveredSectionsChange(data.covered_sections);
 			}
 			onCoverageScoresChange(data.coverage_scores ?? null);
@@ -1501,6 +1628,7 @@
 		isRecording = false;
 		showGhost(''); // words never finalised must not linger as ghost text
 		onRecordingChange(false);
+		scheduleClose();
 		isConnecting = false;
 		if (workletNode) {
 			workletNode.disconnect();
@@ -1591,7 +1719,11 @@
 					if (!content.trim()) {
 						structured = emptyStructured();
 						showStructured('');
-					} else scheduleStructure();
+						if (stackUnits.length) resetStack();
+					} else {
+						scheduleStructure();
+						scheduleGroup();
+					}
 					if (!isRecording && !isQwenWriting) {
 					let hasWordChange = false;
 					let charsDeleted = 0;
@@ -1655,6 +1787,9 @@
 
 	onDestroy(() => {
 		if (typingDebounceTimer) clearTimeout(typingDebounceTimer);
+		if (stackTimer) clearTimeout(stackTimer);
+		if (closeTimer) clearTimeout(closeTimer);
+		void sendStackLog();
 		if (editor) {
 			editor.destroy();
 			editor = null;
@@ -1690,6 +1825,22 @@
 
 	<!-- Floating dictate button — centered, overlaps the top edge of the editor+margin row -->
 	<div class="flex flex-col items-center gap-1.5 relative z-10">
+		{#if hybridStack}
+		<div class="inline-flex bg-white/[0.03] border border-white/10 rounded-lg p-0.5 gap-0.5" role="group" aria-label="Stack order">
+			<button type="button" onclick={() => (stackOrder = 'anatomy')} aria-pressed={stackOrder === 'anatomy'}
+				class={stackOrder === 'anatomy'
+					? 'px-2.5 py-1 text-xs rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+					: 'px-2.5 py-1 text-xs rounded-md text-gray-400 hover:text-gray-300'}>
+				By anatomy
+			</button>
+			<button type="button" onclick={() => (stackOrder = 'dictated')} aria-pressed={stackOrder === 'dictated'}
+				class={stackOrder === 'dictated'
+					? 'px-2.5 py-1 text-xs rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+					: 'px-2.5 py-1 text-xs rounded-md text-gray-400 hover:text-gray-300'}>
+				As dictated
+			</button>
+		</div>
+		{:else}
 		<div class="inline-flex bg-white/[0.03] border border-white/10 rounded-lg p-0.5 gap-0.5" role="group" aria-label="Polish mode">
 			<button type="button" onclick={() => setMode('clean')}
 				class={polishMode === 'clean'
@@ -1704,6 +1855,7 @@
 				Structured
 			</button>
 		</div>
+		{/if}
 		<button
 			type="button"
 			onclick={toggleRecording}
@@ -1823,8 +1975,11 @@
 							{structuredNotice || (structured.text === null ? 'Structuring…' : 'Updating structured view…')}
 						</div>
 					{/if}
-					<div bind:this={editorContainer} class="min-h-full" class:hidden={polishMode === 'structured'}></div>
-					<div bind:this={structuredContainer} class="min-h-full" class:hidden={polishMode !== 'structured'}></div>
+					<div bind:this={editorContainer} class="min-h-full" class:hidden={hybridStack ? stackOrder === 'anatomy' : polishMode === 'structured'}></div>
+					<div bind:this={structuredContainer} class="min-h-full" class:hidden={hybridStack || polishMode !== 'structured'}></div>
+					{#if hybridStack && stackOrder === 'anatomy'}
+						<HybridStackView units={stackUnits} groups={stackGroups} onSelect={stackSelect} onMove={stackMove} />
+					{/if}
 				</div>
 
 				<!-- Margin column — width animates open/closed; stops click bubbling to editor focus handler -->
