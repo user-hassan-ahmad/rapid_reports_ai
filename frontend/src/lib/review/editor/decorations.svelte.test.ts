@@ -221,7 +221,7 @@ describe('review decorations', () => {
 		expect(view.dom.dataset.density).toBe('full');
 	});
 
-	it('the AI-generated layer is on by default: faint tints by category, no underline; toggled off it is plain text', () => {
+	it('Key (the default): amber and violet are tinted lightly with no underline, green normals are not', () => {
 		const { view } = mount();
 		noTransitions();
 		const cs = (id: string) => getComputedStyle(markEl(view, id));
@@ -229,8 +229,10 @@ describe('review decorations', () => {
 		expect(markEl(view, 'g1').classList.contains('rv-form-normal')).toBe(true);
 		expect(markEl(view, 'c1').classList.contains('rv-form-negative')).toBe(true);
 		expect(markEl(view, 's1').classList.contains('rv-form-synthesis')).toBe(true);
+		expect(cs('g1').backgroundColor).toBe(NONE);
+		expect(cs('g1').textDecorationLine).toBe('none');
 		const tints = new Set<string>();
-		for (const id of ['g1', 'c1', 's1']) {
+		for (const id of ['c1', 's1']) {
 			expect(cs(id).textDecorationLine, id).toBe('none');
 			const bg = cs(id).backgroundColor;
 			expect(bg, id).not.toBe(NONE);
@@ -238,18 +240,44 @@ describe('review decorations', () => {
 			expect(alpha, `${id} ${bg}`).toBeLessThanOrEqual(0.2); // very light
 			tints.add(bg);
 		}
+		expect(tints.size).toBe(2); // amber, violet
+	});
+
+	it('All: green normals are tinted too, alongside amber and violet', () => {
+		const { view } = mount({ emphasis: ['ai', 'normals'] });
+		noTransitions();
+		const cs = (id: string) => getComputedStyle(markEl(view, id));
+		const tints = new Set<string>();
+		for (const id of ['g1', 'c1', 's1']) {
+			expect(cs(id).textDecorationLine, id).toBe('none');
+			const bg = cs(id).backgroundColor;
+			expect(bg, id).not.toBe(NONE);
+			const alpha = Number(/rgba\([^)]*,\s*([\d.]+)\)/.exec(bg)?.[1] ?? 1);
+			expect(alpha, `${id} ${bg}`).toBeLessThanOrEqual(0.2);
+			tints.add(bg);
+		}
 		expect(tints.size).toBe(3); // green, amber, violet
 		view.dispatch({ effects: setEmphasis.of([]) });
-		for (const id of ['g1']) {
+		for (const id of ['g1', 'c1', 's1']) expect(cs(id).backgroundColor, id).toBe(NONE);
+	});
+
+	it('Off: no AI tints at all, amber and violet included, and no recommendation underline', () => {
+		const { view } = mount({ emphasis: [] });
+		noTransitions();
+		const cs = (id: string) => getComputedStyle(markEl(view, id));
+		expect(view.dom.hasAttribute('data-rv-emph')).toBe(false);
+		for (const id of ['g1', 'c1', 's1']) {
 			expect(cs(id).backgroundColor, id).toBe(NONE);
 			expect(cs(id).textDecorationLine, id).toBe('none');
 		}
-		// amber (negative) and violet (synthesis) ignore the toggle: always shown
-		expect(cs('c1').backgroundColor).not.toBe(NONE);
-		expect(cs('s1').backgroundColor).not.toBe(NONE);
+		expect(cs('rec1').textDecorationLine).toBe('none');
+		expect(cs('rec1').backgroundColor).toBe(NONE);
+		// the marks themselves are still there: actions and checkboxes are not part of the tint layer
+		expect(markEl(view, 'a1').classList.contains('rv-action')).toBe(true);
+		expect(cs('a1').textDecorationLine).toContain('underline');
 	});
 
-	it('with the AI-generated toggle off, an amber statement is still tinted and a green normal is not', () => {
+	it('with the AI highlights off, neither an amber statement nor a green normal is tinted', () => {
 		const D = 'No hilar lymphadenopathy. The liver is normal.';
 		const at = (t: string) => span(t, D);
 		const items = [
@@ -266,10 +294,10 @@ describe('review decorations', () => {
 		const { view } = mount({ emphasis: [] }, items, D);
 		noTransitions();
 		expect(view.dom.hasAttribute('data-rv-emph')).toBe(false);
-		expect(getComputedStyle(markEl(view, 'am')).backgroundColor).not.toBe(NONE);
+		expect(getComputedStyle(markEl(view, 'am')).backgroundColor).toBe(NONE);
 		expect(getComputedStyle(markEl(view, 'gr')).backgroundColor).toBe(NONE);
 		expect(markEl(view, 'am').getAttribute('aria-label')).toBe(
-			'Bears on your finding · “right hilar nodes 14 mm” (AI-generated)'
+			'Pertinent negatives · “right hilar nodes 14 mm” (AI-generated)'
 		);
 	});
 
@@ -354,14 +382,16 @@ describe('review decorations', () => {
 		expect(control(view)).toBeNull();
 	});
 
-	it('a recommendation keeps its own dotted underline, whatever the AI-generated toggle', () => {
+	it('a recommendation has its own dotted underline in Key and All, none in Off', () => {
 		const { view } = mount();
 		noTransitions();
 		const cs = () => getComputedStyle(markEl(view, 'rec1'));
 		expect(cs().textDecorationLine).toContain('underline');
 		expect(cs().textDecorationStyle).toBe('dotted');
-		view.dispatch({ effects: setEmphasis.of([]) });
+		view.dispatch({ effects: setEmphasis.of(['ai', 'normals']) });
 		expect(cs().textDecorationLine).toContain('underline');
+		view.dispatch({ effects: setEmphasis.of([]) });
+		expect(cs().textDecorationLine).toBe('none');
 	});
 
 	it('hovering a flagged action item expands ✓ / ✕ / › at the END of the highlight, inside the text flow', async () => {
@@ -841,7 +871,7 @@ describe('amber AI-layer label', () => {
 			id: 'x', kind: 'assumed_normal', cls: 'info', lane: 'accuracy', mark: 'rv-normal',
 			form: 'negative', pointer: 'right hilar nodes 14 mm', from: 0, to: 5, text: 'No X.'
 		} as const;
-		expect(markLabel(m as never)).toBe('Bears on your finding · “right hilar nodes 14 mm” (AI-generated)');
+		expect(markLabel(m as never)).toBe('Pertinent negatives · “right hilar nodes 14 mm” (AI-generated)');
 	});
 	it('leaves a green normal unchanged', () => {
 		const m = { id: 'y', kind: 'assumed_normal', cls: 'info', lane: 'accuracy', mark: 'rv-normal',

@@ -1,91 +1,124 @@
 <script lang="ts">
-	// The review legend, directly under the "Report Editor" title (ReportResponseViewer); not part of the rail.
-	// "Dictated · Removed by you | AI-generated ▾ · Removed (contradicts dictation)". Only "AI-generated" is a toggle
-	// (editor/theme.ts `setEmphasis`: the AI-generated layer's tints, ON by default; off = plain text); its breakdown
-	// (Normals green, Bears on your finding amber, Added by the AI violet) expands inline. The other entries are static labels
-	// for what the editor draws. It wraps onto new lines when narrow (never scrolls sideways). The density toggle is a
-	// dev-page capability only (`showDensity`): the app's density is fixed to Quiet.
-	import { AI_BREAKDOWN, DEFAULT_LEGEND, LEGEND, type LegendKey } from '../editor/decorations';
+	// The review legend, directly under the "Report Editor" title (ReportResponseViewer; not part of the rail).
+	// "AI highlights [Key | All | Off] ‹ · Removed (contradicts dictation)". The AI highlights control is a three-way
+	// segmented radiogroup (editor/aiMode.ts, remembered in localStorage): Key = amber negatives, violet synthesis and
+	// the recommendation underline; All = Key plus green normals; Off = no AI tints. `onFilter` gets the emphasis keys
+	// (editor/theme.ts `setEmphasis`). Its breakdown swatches expand inline and show only the categories the mode
+	// draws. The removed label shows only while the report has such a removal (`showRemoved`). It wraps onto new
+	// lines when narrow (never scrolls sideways). The density toggle is a dev-page capability only (`showDensity`):
+	// the app's density is fixed to Quiet.
+	import { AI_BREAKDOWN, LEGEND } from '../editor/decorations';
+	import { AI_MODE_KEYS, AI_MODES, readAiMode, writeAiMode, type AiMode } from '../editor/aiMode';
 	import type { Density } from '../editor/theme';
 
 	let {
 		density = $bindable('quiet'),
 		onDensity,
 		showDensity = false,
-		active = $bindable<LegendKey[]>([...DEFAULT_LEGEND]),
+		mode = $bindable<AiMode>(readAiMode()),
 		onFilter,
+		showRemoved = false,
 		expanded = $bindable(true)
 	}: {
 		density?: Density;
 		onDensity?: (d: Density) => void;
 		showDensity?: boolean;
-		/** The pressed filters, in legend order. */
-		active?: LegendKey[];
-		onFilter?: (keys: LegendKey[]) => void;
-		/** The AI-generated breakdown is shown. */
+		/** The AI highlights mode. */
+		mode?: AiMode;
+		/** Called with the emphasis keys of the chosen mode (Key ['ai'], All ['ai','normals'], Off []). */
+		onFilter?: (keys: string[]) => void;
+		/** The report currently has a removal that contradicts the dictation: show its legend label. */
+		showRemoved?: boolean;
+		/** The AI breakdown is shown. */
 		expanded?: boolean;
 	} = $props();
 
-	const OWN = LEGEND.filter((e) => !e.ai);
-	const AI = LEGEND.filter((e) => e.ai);
+	const ENTRIES = $derived(LEGEND.filter((e) => e.key !== 'removed' || showRemoved));
+	const SHOWN: Record<AiMode, string[]> = {
+		key: ['negative', 'synthesis', 'recommendation'],
+		all: ['negative', 'synthesis', 'recommendation', 'normal'],
+		off: []
+	};
+	const BREAKDOWN = $derived(AI_BREAKDOWN.filter((b) => SHOWN[mode].includes(b.form)));
 
 	const CHOICES: { value: Density; label: string }[] = [
 		{ value: 'full', label: 'Full' },
 		{ value: 'quiet', label: 'Quiet' },
 		{ value: 'hidden', label: 'Hidden' }
 	];
+	const SWATCH: Record<string, string> = {
+		negative: 'var(--lg-amber)',
+		synthesis: 'var(--lg-violet)',
+		recommendation: 'var(--lg-teal)',
+		normal: 'var(--lg-green)'
+	};
+	const MODE_LABEL: Record<AiMode, string> = { key: 'Key', all: 'All', off: 'Off' };
 
 	function choose(d: Density) {
 		density = d;
 		onDensity?.(d);
 	}
 
-	function toggle(key: LegendKey) {
-		const on = new Set(active);
-		if (on.has(key)) on.delete(key);
-		else on.add(key);
-		active = LEGEND.map((e) => e.key).filter((k) => on.has(k));
-		onFilter?.(active);
+	function pick(m: AiMode) {
+		mode = m;
+		writeAiMode(m);
+		onFilter?.([...AI_MODE_KEYS[m]]);
+	}
+
+	/** Arrow keys move the choice (and focus) around the radiogroup, as native radios do. */
+	function onKey(e: KeyboardEvent) {
+		const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+		if (!step) return;
+		e.preventDefault();
+		const next = AI_MODES[(AI_MODES.indexOf(mode) + step + AI_MODES.length) % AI_MODES.length];
+		pick(next);
+		const group = (e.currentTarget as HTMLElement).closest('[role="radiogroup"]');
+		queueMicrotask(() => group?.querySelector<HTMLElement>(`[data-rv-mode="${next}"]`)?.focus());
 	}
 </script>
 
 {#snippet entry(e: (typeof LEGEND)[number])}
 	{#if e.toggle}
 		<span class="rv-ai-group">
-			<button
-				type="button"
-				class="rv-pill rv-legend-{e.key}"
+			<span class="rv-legend-label" title={e.title}>{e.label}</span>
+			<span
+				class="rv-seg"
+				role="radiogroup"
 				data-rv-filter={e.key}
-				aria-pressed={active.includes(e.key)}
+				aria-label="AI highlights: Key · All · Off"
 				title={e.title}
-				onclick={() => toggle(e.key)}
-				><span class="rv-swatches" aria-hidden="true"
-					><i class="rv-sw-normal"></i><i class="rv-sw-negative"></i><i class="rv-sw-synthesis"></i></span
-				><span class="rv-legend-label">{e.label}</span></button
-			><button
-				type="button"
-				class="rv-disclose"
-				aria-expanded={expanded}
-				aria-controls="rv-ai-breakdown"
-				aria-label={expanded ? 'Hide AI-generated breakdown' : 'Show AI-generated breakdown'}
-				title={expanded ? 'Hide breakdown' : 'Show breakdown'}
-				onclick={() => (expanded = !expanded)}><span aria-hidden="true">{expanded ? '‹' : '›'}</span></button
 			>
-			{#if expanded}
-				<span
-					class="rv-breakdown"
-					id="rv-ai-breakdown"
-					data-rv-breakdown
-					data-off={!active.includes(e.key) || undefined}
-					role="list"
-					aria-label="AI-generated breakdown"
+				{#each AI_MODES as m (m)}
+					<button
+						type="button"
+						role="radio"
+						data-rv-mode={m}
+						aria-checked={mode === m}
+						tabindex={mode === m ? 0 : -1}
+						onclick={() => pick(m)}
+						onkeydown={onKey}>{MODE_LABEL[m]}</button
+					>
+				{/each}
+			</span>
+			{#if mode !== 'off'}
+				<button
+					type="button"
+					class="rv-disclose"
+					aria-expanded={expanded}
+					aria-controls="rv-ai-breakdown"
+					aria-label={expanded ? 'Hide AI highlights breakdown' : 'Show AI highlights breakdown'}
+					title={expanded ? 'Hide breakdown' : 'Show breakdown'}
+					onclick={() => (expanded = !expanded)}><span aria-hidden="true">{expanded ? '‹' : '›'}</span></button
 				>
-					{#each AI_BREAKDOWN as b (b.form)}
-						<span class="rv-break" role="listitem" data-rv-form={b.form} title={b.title}
-							><i class="rv-swatch rv-sw-{b.form}" aria-hidden="true"></i>{b.label}</span
-						>
-					{/each}
-				</span>
+				{#if expanded}
+					<span class="rv-breakdown" id="rv-ai-breakdown" data-rv-breakdown role="list" aria-label="AI highlights breakdown">
+						{#each BREAKDOWN as b (b.form)}
+							<span class="rv-break" role="listitem" data-rv-form={b.form} title={b.title}
+								><i class="rv-swatch" style:background-color={SWATCH[b.form]} aria-hidden="true"></i>{b.label}</span
+							>
+						{/each}
+					</span>
+				{/if}
 			{/if}
 		</span>
 	{:else}
@@ -99,9 +132,7 @@
 
 <div class="rv-legend-bar" data-testid="review-legend">
 	<div class="rv-legend" data-rv-legend role="group" aria-label="Legend">
-		{#each OWN as e (e.key)}{@render entry(e)}{/each}
-		<span class="rv-legend-sep" aria-hidden="true"></span>
-		{#each AI as e (e.key)}{@render entry(e)}{/each}
+		{#each ENTRIES as e (e.key)}{@render entry(e)}{/each}
 	</div>
 	{#if showDensity}
 		<div class="rv-density" role="group" aria-label="Density">
@@ -123,8 +154,8 @@
 		--lg-amber: #e3a94a;
 		--lg-red: #ff7a7a;
 		--lg-blue: #7ea6f0;
-		--lg-grey: #8f969f;
 		--lg-violet: #b3a1f5;
+		--lg-teal: #4fd1c5;
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
@@ -145,61 +176,37 @@
 		min-width: 0;
 		max-width: 100%;
 	}
-	.rv-pill {
-		font: inherit;
+	/* the segmented control: one pill, the chosen segment filled (the app's purple, as the density toggle) */
+	.rv-seg {
 		display: inline-flex;
-		gap: 4px;
 		align-items: center;
-		padding: 1px 7px 1px 3px;
+		background: rgba(31, 41, 55, 0.6);
 		border-radius: 9999px;
-		background: rgba(255, 255, 255, 0.03);
-		border: 1px solid rgba(255, 255, 255, 0.08);
-		color: var(--lg-muted);
-		white-space: nowrap;
+		padding: 2px;
+	}
+	.rv-seg button {
+		font: inherit;
+		background: none;
+		border: 0;
+		border-radius: 9999px;
+		padding: 0 8px;
+		color: #d1d5db;
 		cursor: pointer;
 		transition:
 			background-color 120ms ease,
-			border-color 120ms ease,
 			color 120ms ease;
 	}
-	.rv-pill:hover {
-		color: var(--lg-text);
-		border-color: rgba(255, 255, 255, 0.18);
+	.rv-seg button:hover {
+		color: #fff;
 	}
-	.rv-pill[aria-pressed='true'] {
-		color: var(--lg-text);
-		background: rgba(147, 51, 234, 0.18);
-		border-color: rgba(168, 85, 247, 0.55);
+	.rv-seg button[aria-checked='true'] {
+		background: #9333ea;
+		color: #fff;
+		font-weight: 500;
 	}
-	.rv-pill:focus-visible {
+	.rv-seg button:focus-visible {
 		outline: 2px solid #a855f7;
 		outline-offset: 1px;
-	}
-	.rv-legend-sep {
-		width: 1px;
-		height: 12px;
-		margin: 0 3px;
-		background: rgba(255, 255, 255, 0.15);
-	}
-	.rv-swatches {
-		display: inline-flex;
-		gap: 2px;
-		padding-left: 3px;
-	}
-	.rv-swatches i {
-		width: 7px;
-		height: 7px;
-		border-radius: 9999px;
-	}
-	/* the editor's tints, stronger so the key reads at 11px */
-	.rv-sw-normal {
-		background: var(--lg-green);
-	}
-	.rv-sw-negative {
-		background: var(--lg-amber);
-	}
-	.rv-sw-synthesis {
-		background: var(--lg-violet);
 	}
 	.rv-ai-group {
 		display: inline-flex;
@@ -237,9 +244,6 @@
 		gap: 2px 8px;
 		min-width: 0;
 		transition: opacity 120ms ease;
-	}
-	.rv-breakdown[data-off] {
-		opacity: 0.45;
 	}
 	.rv-break {
 		display: inline-flex;
@@ -279,10 +283,6 @@
 	.rv-legend-removed .rv-legend-icon {
 		color: var(--lg-red);
 		background: rgba(255, 122, 122, 0.12);
-	}
-	.rv-legend-excluded .rv-legend-icon {
-		color: var(--lg-grey);
-		background: rgba(143, 150, 159, 0.14);
 	}
 	.rv-density {
 		display: inline-flex;

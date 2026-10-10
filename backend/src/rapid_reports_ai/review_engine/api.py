@@ -114,10 +114,14 @@ def _claimed_texts(items: List[ReviewItem]) -> List[str]:
     out = []
     for it in items:
         removal = it.kind in verifier.REMOVAL_KINDS
-        if it.status not in ("open", "pre_applied", "stale") and not (removal and it.status == "dismissed"):
+        if it.status not in ("open", "pre_applied", "stale") and not (
+                (removal or (it.edit and it.edit.mode == "remove")) and it.status == "dismissed"):
             continue
         restored = any(isinstance(h, dict) and h.get("event") == "restore" for h in it.history or [])
-        if not removal and not restored:
+        # a non-applied removal card (open, stale or dismissed) still speaks for its clause: Apply then Undo
+        # re-opens it, and the undo probe must not add a second card for the re-inserted text
+        removal_edit = bool(it.edit and it.edit.mode == "remove")
+        if not removal and not restored and not removal_edit:
             continue
         ev = it.evidence or {}
         for t in (ev.get("removed_text"), ev.get("clause"), it.anchor.text if it.anchor else None,

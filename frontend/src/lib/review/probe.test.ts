@@ -262,6 +262,30 @@ describe('addressed and new items', () => {
 		expect(postEvent).not.toHaveBeenCalled(); // engine statuses are never posted as user commands
 	});
 
+	it('drops a new item whose anchor text and edit mode match an existing open item', async () => {
+		const span = { start: 5, end: 25, text: 'The liver is normal.', text_hash: null };
+		const card = item({ kind: 'check', anchor: span, edit: { mode: 'remove', find: span.text } as ReviewItem['edit'] });
+		store.upsert([card]);
+		const dup = item({ id: 'dup', kind: 'contradicted', anchor: span, edit: { mode: 'remove', find: span.text } as ReviewItem['edit'] });
+		const other = item({ id: 'other', kind: 'contradicted', anchor: { ...span, text: 'Another.' } });
+		probeApi.mockImplementation(async (_r, text) => probeRes(text, { new_items: [dup, other] }));
+		loop.trigger();
+		await flush();
+		const ids = get(store).items.map((i) => i.id);
+		expect(ids).not.toContain('dup');
+		expect(ids).toContain('other');
+	});
+
+	it('keeps a new item with no edit even when an open no-edit item has the same anchor text', async () => {
+		const span = { start: 5, end: 25, text: 'The liver is normal.', text_hash: null };
+		store.upsert([item({ anchor: span })]);
+		const fresh = item({ id: 'fresh', kind: 'contradicted', anchor: span });
+		probeApi.mockImplementation(async (_r, text) => probeRes(text, { new_items: [fresh] }));
+		loop.trigger();
+		await flush();
+		expect(get(store).items.map((i) => i.id)).toContain('fresh');
+	});
+
 	it('manual fix → addressed → Cmd-Z → the next probe re-opens the item (backend `reopened`)', async () => {
 		const a = item({ anchor: { start: 14, end: 25, text: 'No ascites.', text_hash: null } });
 		store.upsert([a]);

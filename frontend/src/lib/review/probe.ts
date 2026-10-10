@@ -158,7 +158,16 @@ export function createProbeLoop(opts: ProbeLoopOptions): ProbeLoop {
 				.filter((i) => back.has(i.id) && i.status === 'addressed')
 				.map((i) => mark(i, 'open', 'reopened'))
 		];
-		const upserts = [...marked, ...newItems];
+		// a new item on the same text and edit mode as an open item is a duplicate (e.g. the undo probe re-flagging a
+		// re-opened removal card): the existing card stands
+		const dup = (n: ReviewItem) =>
+			n.edit?.mode === 'remove' &&
+			!!n.anchor?.text &&
+			items.some(
+				(i) =>
+					i.status === 'open' && i.id !== n.id && i.anchor?.text === n.anchor?.text && i.edit?.mode === n.edit?.mode
+			);
+		const upserts = [...marked, ...newItems.filter((n) => !dup(n))];
 		if (upserts.length) store.upsert(upserts);
 	}
 

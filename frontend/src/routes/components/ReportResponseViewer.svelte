@@ -23,11 +23,13 @@
 	import { loadEnhancement } from '$lib/guidelines/enhance';
 	import { createReviewStore, type ReviewStore } from '$lib/review/store';
 	import { runCommand, type CommandName, type ItemEvent } from '$lib/review/commands';
-	import { DEFAULT_LEGEND, openPopover, reviewExtensions, setEmphasis, type Density, type LegendKey } from '$lib/review/editor';
+	import { AI_MODE_KEYS, openPopover, readAiMode, reviewExtensions, setEmphasis, type Density } from '$lib/review/editor';
 	import {
 		commandTransaction,
 		replaceDoc,
 		reviewCommand,
+		reviewCounts,
+		reviewItems,
 		syncItems,
 		widgetPosOf,
 		type ReviewHistoryEvent
@@ -744,9 +746,12 @@
 	 * directly: setupReview sets it from inside another reactive statement.) */
 	$: railSlotPending =
 		(reviewPending || (!!reportId && reportId !== reviewReportId)) && $reviewRailExpected !== false && !railOn;
-	/** The legend's pressed filters (editor/theme.ts setEmphasis), kept across report switches. */
-	let legendEmphasis: LegendKey[] = [...DEFAULT_LEGEND];
-	function applyEmphasis(keys: LegendKey[]): void {
+	/** The legend's AI highlights mode as emphasis keys (editor/theme.ts setEmphasis; remembered in localStorage by the
+	 * Legend, restored here), kept across report switches. */
+	let legendEmphasis: string[] = [...AI_MODE_KEYS[readAiMode()]];
+	/** The editor currently draws a removal that contradicts the dictation (the legend shows its label only then). */
+	let hasRemoved = false;
+	function applyEmphasis(keys: string[]): void {
 		legendEmphasis = keys;
 		const view = reportEditorRef?.getView();
 		if (view && railOn) view.dispatch({ effects: setEmphasis.of(keys) });
@@ -898,6 +903,10 @@
 				getItem: (itemId) => get(store).items.find((i) => i.id === itemId)
 			}),
 			EditorView.updateListener.of((u) => {
+				if (u.docChanged || u.transactions.some((t) => t.effects.length)) {
+					const removed = reviewCounts(reviewItems(u.state)).removed > 0;
+					if (removed !== hasRemoved) hasRemoved = removed;
+				}
 				if (!u.docChanged) return;
 				refreshHash();
 				// a reload onto the same text (a save) is not an edit for the probe loop
@@ -1269,7 +1278,7 @@
 			<div class="flex flex-col gap-1.5 min-w-0 sm:flex-1">
 				<h2 class="text-base sm:text-lg font-semibold text-white">Report Editor</h2>
 				{#if (railOn || railSlotPending || (reviewPending && $reviewRailExpected !== false)) && response && !error}
-					<Legend active={legendEmphasis} onFilter={applyEmphasis} />
+					<Legend onFilter={applyEmphasis} showRemoved={hasRemoved} />
 				{/if}
 			</div>
 			

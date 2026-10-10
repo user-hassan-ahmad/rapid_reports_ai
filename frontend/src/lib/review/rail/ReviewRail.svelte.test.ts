@@ -243,7 +243,7 @@ describe('ReviewRail', () => {
 		expect(rail()!.textContent).not.toContain('Spleen 12 cm');
 	});
 
-	it('a conflict check (cls action) is a rail card with Apply (its Remove) and Dismiss; minor checks are not', async () => {
+	it('a conflict check (cls action) is a rail card with Remove (its apply command) and Dismiss; minor checks are not', async () => {
 		const conflict = item({
 			id: 'k1',
 			kind: 'check',
@@ -260,8 +260,10 @@ describe('ReviewRail', () => {
 		const k1 = rail()!.querySelector<HTMLElement>('[data-rv-item="k1"]')!;
 		expect(k1.getAttribute('data-rv-variant')).toBe('card');
 		for (const id of ['c1', 'c2']) expect(rail()!.querySelector(`[data-rv-item="${id}"]`), id).toBeNull();
-		await page.getByRole('button', { name: 'Apply: Conflicts with your dictation' }).click();
+		await page.getByRole('button', { name: 'Remove: Conflicts with your dictation' }).click();
 		expect(onCommand).toHaveBeenCalledWith('apply', 'k1');
+		expect(k1.querySelector('[aria-label="Apply: Conflicts with your dictation"]')).toBeNull();
+		expect(k1.textContent).toContain('Remove');
 		await page.getByRole('button', { name: 'Dismiss: Conflicts with your dictation' }).click();
 		expect(onCommand).toHaveBeenCalledWith('dismiss', 'k1');
 	});
@@ -354,7 +356,7 @@ describe('ReviewRail', () => {
 		await expect
 			.element(page.getByRole('button', { name: 'Full' }))
 			.toHaveAttribute('aria-pressed', 'true');
-		expect(rail()!.querySelector('[data-rv-legend]')!.textContent).toContain('AI-generated');
+		expect(rail()!.querySelector('[data-rv-legend]')!.textContent).toContain('AI highlights');
 	});
 
 	it('pending: a fixed-width skeleton before the store answers, the same width once items arrive (no shift)', async () => {
