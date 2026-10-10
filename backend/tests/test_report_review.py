@@ -498,7 +498,7 @@ async def test_an_l47_removal_needs_a_normal_sentence(monkeypatch, answer):
                                                    types={"mild atelectasis": answer}))
     report, _, tel = await rr.run_quality_check(MIXED, "Pleural effusion. Mild atelectasis", "CT chest", [])
     assert report == MIXED
-    assert tel["removal_blocked"] == [{"clause": "No pleural effusion with mild atelectasis.", "why": "sentence_type"}]
+    assert tel["removal_blocked"] == [{"clause": "No pleural effusion with mild atelectasis.", "why": "sentence_type" if answer else "sentence_unread"}]
     (card,) = tel["brief_conflicts"]
     assert card["reason"] == "removal_blocked" and card["clause"] == "No pleural effusion with mild atelectasis."
     assert "anchors" not in tel
@@ -531,7 +531,7 @@ def test_safe_to_remove_invariant():
     # one splitter: a bullet the sentence splitter does not separate is not a whole sentence, so never removed
     assert ok("No pneumothorax", "normal", []) == "not_whole"
     assert ok("No ascites.", "mixed", []) == "sentence_type"
-    assert ok("No ascites.", None, []) == "sentence_type"
+    assert ok("No ascites.", None, []) == "sentence_unread"
     i = rep.index("ascites")
     keep = ba.Anchor("neg:0", "keep", "sheet", "", "term+jev", [i, i + 7], "ascites", "No ascites.")
     assert ok("No ascites.", "normal", [keep]) == "brief_anchor"

@@ -839,6 +839,8 @@ def _safe_to_remove(report: str, clause: str, sentence_type: Optional[str], anch
     cands = _removal_targets(report, clause, sections, protected)
     if not cands:
         return None, "not_whole"
+    if sentence_type is None:
+        return None, "sentence_unread"          # Jev did not read the sentence
     if sentence_type != "normal":
         return None, "sentence_type"
     live = [x for x in anchors if getattr(x, "span", None) and brief_anchor.anchored(x)]
@@ -918,8 +920,8 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
     omission check, the rest stays visible there. All default to the quick behaviour. The template path works
     on the report with CRLF normalised to LF and returns it with LF line endings; protected text is an invariant: if a repair ever
     changes it, the repairs are reverted. `brief_decisions` (quick): the brief's labels are anchored on the report
-    (`brief_anchor`); a brief-kept clause is never removed (a conflict card instead) and an OMIT clause is removed on
-    two signals."""
+    (`brief_anchor`); a brief-kept clause is never removed (a conflict card instead). The brief never removes an OMIT
+    clause unless RR_BRIEF_REMOVE=1; otherwise it logs would_remove_by_brief and shows a card."""
     if not enabled():
         return report, options, {"enabled": False}
     t0 = time.time()

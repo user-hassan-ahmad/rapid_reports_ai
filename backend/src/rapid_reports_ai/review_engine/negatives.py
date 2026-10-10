@@ -129,7 +129,7 @@ def ai_layer(cls: Optional[str], pointer: str = "", finding: str = "", clause: s
     if cls == "implicated":
         return AMBER, check_text("uncertain", pointer)[1], "negative"
     if finding:
-        return AMBER, f"A pertinent negative for {finding}, added by the AI. Keep it or remove it.", "negative"
+        return AMBER, f"Added by the AI because it bears on your finding: {finding}. Keep it or remove it.", "negative"
     if cls in ("default", "keep"):
         return "Assumed normal", "", "normal"
     return "Assumed normal", "", statement_form(clause)

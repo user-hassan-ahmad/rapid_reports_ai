@@ -2,6 +2,8 @@
 assumed_normal (info, amber: evidence.form "negative"); anchors on the atom's term in the FINAL report, unanchored when not found or ambiguous; dedupe against the
 negatives classifier (brief wins on default / implicated; a classifier conflict / number / removal outranks).
 Synthetic cases only, no live model calls."""
+import pytest
+
 from rapid_reports_ai import brief_anchor
 from rapid_reports_ai.review_engine import brief_normals as bn
 from rapid_reports_ai.review_engine import engine, negatives
@@ -391,3 +393,17 @@ def test_finding_linked_and_dictated_sheet_negatives_stay_owned():
     assert {"contralateral pleural effusion", "pericardial effusion"} <= texts
     items = {it.evidence.get("ref"): it for it in bn.build_items(i, RUN)}
     assert items["neg:1"].evidence["form"] == "negative" and "neg:3" not in items
+
+
+@pytest.mark.parametrize("why,text", [
+    ("sentence_type", "the sentence also states other content"),
+    ("sentence_unread", "could not be checked safely for automatic removal"),
+    ("brief_anchor", "but the brief kept it"),
+    ("semicolon", "the sentence couldn't be edited automatically"),
+    ("not_whole", "the sentence couldn't be edited automatically"),
+])
+def test_removal_blocked_card_text_follows_the_block_reason(why, text):
+    label, reason = bn._conflict_text({"reason": "removal_blocked", "why": why})
+    assert reason.startswith("Contradicts your dictation") and text in reason
+    assert reason.endswith("Remove it, or dismiss to keep it.")
+    assert "pertinent" not in reason

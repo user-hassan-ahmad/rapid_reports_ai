@@ -282,6 +282,7 @@ LINK_MIN = 0.80
 # verbatim matches C1 under-scores (a grouped "The spleen, kidneys and adrenal glands are unremarkable").
 LINK_MIN_TERM_S1 = 0.90
 LINK_TIMEOUT_S = 4.0
+JEV_CONCURRENCY = 8          # most Jev requests in flight at once in `link`
 LINK_WORDING_S1 = 'Read only this sentence. It says, in any wording: "{t}".'     # lab comparison only
 LINK_WORDING = ('Read the LAST sentence below; any earlier sentence only shows what it refers to. '
                 'It says, in any wording: "{t}".')
@@ -363,8 +364,11 @@ async def link(labels: List[Label], us: List[Unit], cands: Dict[str, List[Cand]]
     if not asks:
         return {}
 
+    sem = asyncio.Semaphore(JEV_CONCURRENCY)
+
     async def one(state: str):
-        return await asyncio.wait_for(jev(state, asks[state]), LINK_TIMEOUT_S)
+        async with sem:
+            return await asyncio.wait_for(jev(state, asks[state]), LINK_TIMEOUT_S)
     states = list(asks)
     results = await asyncio.gather(*(one(st) for st in states), return_exceptions=True)
     answers: Dict[Tuple[str, str], Optional[float]] = {}

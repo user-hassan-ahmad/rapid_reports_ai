@@ -637,3 +637,22 @@ def test_cut_units_drop_the_sentence_stop_like_tails():
     us = ba.units(rep)
     assert [u.text for u in us] == ["The kidney is normal", "the adrenals are normal"]
     assert all(rep[u.start:u.end] == u.text for u in us)
+
+
+async def test_jev_requests_in_flight_are_capped():
+    import asyncio
+    assert ba.JEV_CONCURRENCY == 8
+    n = 30
+    rep = "FINDINGS:\n" + " ".join(f"No finding{i} seen." for i in range(n)) + "\n"
+    labs = [ba.Label(f"x:{i}", f"No finding{i}", f"finding{i}", "implicated", "atom") for i in range(n)]
+    us = ba.units(rep)
+    state = {"now": 0, "peak": 0}
+
+    async def fake(st, qs):
+        state["now"] += 1
+        state["peak"] = max(state["peak"], state["now"])
+        await asyncio.sleep(0.01)
+        state["now"] -= 1
+        return {k: {"noul": 0.95} for k in qs}
+    await ba.link(labs, us, ba.candidates(rep, labs, us, {}), fake)
+    assert 1 < state["peak"] <= ba.JEV_CONCURRENCY

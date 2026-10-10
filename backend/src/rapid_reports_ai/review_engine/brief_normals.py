@@ -169,7 +169,7 @@ def _conflict_text(c: dict) -> Tuple[str, str]:
     finding = src.split(":", 1)[1] if src.startswith("finding:") else ""
     reason = c.get("reason")
     if reason == "brief_kept":
-        what = f"Kept as a pertinent negative for {finding}" if finding else "Stated by the AI as normal"
+        what = f"Added by the AI because it bears on your finding: {finding}" if finding else "Stated by the AI as normal"
         return ("Check: may conflict with your dictation",
                 f"{what}, but a check found it may contradict your dictation. Remove it, or dismiss to keep it.")
     if reason == "brief_split":
@@ -177,9 +177,17 @@ def _conflict_text(c: dict) -> Tuple[str, str]:
                 "The brief kept part of this and advised against part, and a check found it may contradict your "
                 "dictation. Remove it, or dismiss to keep it.")
     if reason == "removal_blocked":
-        return ("Check: conflicts with your dictation",
-                "Contradicts your dictation, but the sentence also states other content, so it was not removed "
-                "automatically. Remove it, or dismiss to keep it.")
+        why = c.get("why")
+        if why == "sentence_unread":
+            body = "Contradicts your dictation; it could not be checked safely for automatic removal."
+        elif why == "brief_anchor":
+            body = "Contradicts your dictation, but the brief kept it."
+        elif why in ("semicolon", "not_whole"):
+            body = "Contradicts your dictation; the sentence couldn't be edited automatically."
+        else:
+            body = ("Contradicts your dictation, but the sentence also states other content, so it was not "
+                    "removed automatically.")
+        return ("Check: conflicts with your dictation", f"{body} Remove it, or dismiss to keep it.")
     p = negatives.pointer_text(c.get("pointer"))
     return ("Check: advised against stating this",
             (f"Your dictation reports “{p}”, so this was not meant to be stated. Remove it, or dismiss to keep it."
