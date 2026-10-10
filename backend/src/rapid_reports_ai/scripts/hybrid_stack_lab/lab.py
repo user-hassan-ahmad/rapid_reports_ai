@@ -148,6 +148,8 @@ GROUPER_SYSTEM_SCHEMA = GROUPER_SYSTEM.replace(
     """- new_group: normally empty. Only when the sentence is about a specific structure or space and no group in GROUPS is anatomically close, give a short uppercase name for a new group (the structure's usual report heading) and put the same name in group. Check NEW groups created earlier in PLACED before making another.""",
     """- structure: the specific structure the sentence is about, in a few words (for example the organ, vessel, level or space); empty for Technique, General and Conclusion.
 
+- covers: the regions (names from GROUPS, never Technique, General or Conclusion) about which the sentence makes a definitive claim — a finding, a measurement, a qualifier or an explicit normality statement. Count a region when the claim is direct (its structure is the subject, the location, or the modifier of the claim) or collective (a definitive claim over a recognisable anatomical group, such as several named organs or a named organ system, that the region's structures genuinely belong to). Do not count: a bare mention with nothing asserted; a structure only touched or affected by a finding about another structure; a vague statement with no anatomical scope ("no other abnormality", "otherwise normal"); a group the region does not clearly belong to. Usually the sentence's own region; several for a collective; empty when nothing qualifies. Fill covers for every sentence, including Conclusion sentences.
+
 GROUPS are broad regions of a fixed schema; each lists what it includes. Match the structure to the region whose list covers it, or the anatomically closest region; use the "Other findings" region only when no region is close.""").replace(
     "A statement about one named structure or space never goes to General: use its anatomical group, the closest one, or a new group.",
     "A statement about one named structure or space never goes to General: use its region.")
@@ -174,6 +176,7 @@ class Placement(BaseModel):
     id: int
     group: str
     structure: str | None = None
+    covers: list[str] = Field(default_factory=list)
     new_group: str | None = None
     attach_to: int | None = None
     parts: list[Part] = Field(default_factory=list)
@@ -361,7 +364,9 @@ def apply_placements(units: list[dict], placements: list[Placement], new_ids: li
             else:
                 problems.append(f"[{i}] rejected parts {[x.text for x in p.parts]}")
         u.update(group=by_id[att]["group"] if att is not None else g, attach_to=att, parts=parts,
-                 model_group=g, structure=p.structure)
+                 model_group=g, structure=p.structure,
+                 covers=[c for c in (_norm_group(x, groups) for x in p.covers)
+                         if c and c not in ("Technique", "General", "Conclusion")])
     return problems
 
 
@@ -468,6 +473,22 @@ async def run_case(c: httpx.AsyncClient, case: dict, keyterms: list[str]) -> dic
     disagree = [{"id": a["id"], "text": a["text"], "sticky": a["group"], "fresh": b["group"]}
                 for a, b in zip(units, fresh) if a["group"] != b["group"]]
 
+    # Coverage pills: derived from the grouping (union of covers) vs prod's Jev coverage on the same regions.
+    coverage = None
+    if includes:
+        # "Other findings" is a catch-all, not a checklist item: no pill.
+        regions = [g for g in base_groups if g not in ("Technique", "General", "Conclusion", "Other findings")]
+        derived = sorted({c for u in units for c in (u.get("covers") or [])})
+        try:
+            from rapid_reports_ai.section_coverage import get_jev_coverage
+            d = await get_jev_coverage().classify(text, regions, case["scan_type"])
+            jev = sorted(d.covered)
+            coverage = {"regions": regions, "derived": derived, "jev": jev, "scores": d.scores,
+                        "only_derived": [r for r in derived if r not in jev],
+                        "only_jev": [r for r in jev if r not in derived]}
+        except Exception as e:
+            coverage = {"error": f"{type(e).__name__}: {e}", "derived": derived}
+
     # Fidelity by construction: the units rebuild the text exactly (splits are checked by valid_parts).
     fidelity_ok = " ".join(u["text"] for u in units) == " ".join(text.split())
 
@@ -489,7 +510,7 @@ async def run_case(c: httpx.AsyncClient, case: dict, keyterms: list[str]) -> dic
         checks.append({**e, "got_group": grp, "attached": hit.get("attach_to"),
                        "result": "ok" if ok_group and ok_attach else ("wrong group" if not ok_group else "not attached")})
     return {"id": case["id"], "scan_type": case["scan_type"], "groups": groups, "family": family,
-            "family_expected": case.get("family"), "text": text, "units": units,
+            "family_expected": case.get("family"), "coverage": coverage, "text": text, "units": units,
             "steps": steps, "view": sticky_view, "fresh_view": render(fresh, fresh_groups), "new_groups": new_groups, "fresh_new_groups": fresh_new, "fresh_gate": fresh_gate, "fresh_error": err,
             "fresh_problems": fresh_problems, "fresh_disagree": disagree, "fidelity_ok": fidelity_ok,
             "checks": checks}
@@ -504,6 +525,11 @@ def report(results: list[dict]) -> str:
     lines += [f"- Expectations met: **{ok}/{tot}**",
               (f"- Family (Jev): {sum(1 for r in results if r['family'] and r['family'][0] == r['family_expected'])}"
                f"/{len(results)} as expected" if results[0]["family"] else "- Groups: /sections call"),
+              (lambda cov: f"- Coverage pills, derived vs Jev: agree on "
+               f"{sum(len(c['regions']) - len(c['only_derived']) - len(c['only_jev']) for c in cov)}"
+               f"/{sum(len(c['regions']) for c in cov)} region decisions "
+               f"(only derived {sum(len(c['only_derived']) for c in cov)}, only Jev {sum(len(c['only_jev']) for c in cov)})")(
+                  [r["coverage"] for r in results if r.get("coverage") and "regions" in r["coverage"]]),
               f"- Fidelity by construction held: {sum(r['fidelity_ok'] for r in results)}/{len(results)} cases",
               f"- Sticky vs fresh disagreements: {sum(len(r['fresh_disagree']) for r in results)}/{nunits} sentences",
               f"- Attached: {sum(1 for r in results for u in r['units'] if u.get('attach_to') is not None)}, "
