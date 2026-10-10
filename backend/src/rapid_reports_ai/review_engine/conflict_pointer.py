@@ -62,6 +62,9 @@ def _parse(ans: Optional[dict], n: int):
     return best, p_top, p_none
 
 
+BRIEF_NEUTRAL = ("Added by the AI, but a check found it may contradict your dictation. Remove it, or dismiss to "
+                 "keep it.")
+
 async def annotate(inp: ReviewInput, items: List[ReviewItem], timeout: float = JEV_TIMEOUT_S) -> dict:
     log = {"asked": 0, "quoted": 0, "weak": 0, "error": None}
     try:
@@ -100,6 +103,10 @@ async def annotate(inp: ReviewInput, items: List[ReviewItem], timeout: float = J
                             it.label, it.reason = check_text(ev["check_reason"], lines[j])
                         else:                        # brief / contradicted cards: generic text, quote shown apart
                             ev["dictated_quote"] = lines[j]
+                            if existing and existing in (it.reason or ""):
+                                # a brief card's reason names the finding it was added for (the old pointer):
+                                # beside Jev's quote that reads as two findings, so say it neutrally
+                                it.reason = BRIEF_NEUTRAL
             it.evidence = ev
     except Exception as e:  # noqa: BLE001
         log["error"] = f"{type(e).__name__}: {str(e)[:200]}"
