@@ -208,3 +208,15 @@ def test_mixed_recommendation_sentence_that_cannot_be_isolated_gets_no_remove_ed
     r = next(i for i in items if i.kind == "recommendation")
     assert r.anchor.text == "Urgent surgical review recommended"
     assert r.edit is None and r.verified["code"] is False
+
+
+def test_the_signature_block_after_the_impression_is_never_ai_generated():
+    """Live audit 1: the user's signature appended after the impression's paragraph break is not report content."""
+    report = ("FINDINGS:\nThe appendix is dilated to 11 mm with periappendiceal fat stranding.\n\n"
+              "IMPRESSION:\nAcute appendicitis.\n\nDr Jane Example\nFRCR, Radiology ST4\n")
+    items, _ = _run(report, MIXED_DICT)
+    marked = " ".join(i.anchor.text for i in items)
+    assert "Jane Example" not in marked and "FRCR" not in marked
+    assert "Acute appendicitis." in _texts(items, "ai_generated")   # the impression itself is still read
+    al = align(report, MIXED_DICT, "", inp(report, MIXED_DICT).artifacts.sections)
+    assert not any("Example" in c.text or "FRCR" in c.text for c in al.clauses)

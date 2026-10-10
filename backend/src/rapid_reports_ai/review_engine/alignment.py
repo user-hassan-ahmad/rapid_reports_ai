@@ -510,7 +510,8 @@ def report_clauses(report: str, sections: List[str]) -> List[ReportClause]:
     text) sets subheading_side = side_of(heading), so 'Both knees:' gives bilateral and 'Other findings:'
     resets it to None; the heading is not clause text. A header line without a colon naming a side and a
     body part ('MRI knee left', 'RIGHT KNEE') does the same and is not a clause; sides reset at each section.
-    Signature lines are skipped. List markers ('1.', '2)') are dropped. Each line is split into sentences
+    Signature lines are skipped, and an impression ends at its paragraph break (the signature block follows it, as in
+    `report_review.report_sections`). List markers ('1.', '2)') are dropped. Each line is split into sentences
     (also before a sentence starting with a digit), and a negative list into one clause per item."""
     spans = section_spans(report, section_models(sections)) if sections else []
     if not spans:
@@ -519,6 +520,11 @@ def report_clauses(report: str, sections: List[str]) -> List[ReportClause]:
     for sec, a, b in spans:
         if sec.role in _SKIP_ROLES:
             continue
+        if sec.role == "impression":              # it ends at its paragraph break (report_review.report_sections):
+            body = re.search(r"\S", report[a:b])  # what follows is the user's signature block
+            brk = re.search(r"\n[ \t]*\r?\n", report[a + body.start():b]) if body else None
+            if brk:
+                b = a + body.start() + brk.start()
         sub: Optional[Side] = None
         block: List[str] = []
         prev_end = a
