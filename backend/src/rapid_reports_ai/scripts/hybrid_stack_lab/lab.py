@@ -480,8 +480,11 @@ async def run_case(c: httpx.AsyncClient, case: dict, keyterms: list[str]) -> dic
         grp = hit["group"]
         if hit.get("parts"):
             grp = next((p["group"] for p in hit["parts"] if e["phrase"].lower() in p["text"].lower()), grp)
-        hay = (grp + " " + (includes or {}).get(grp, "")).lower()
-        ok_group = any(s in hay for s in e["group"])
+        if "region" in e:  # strict (held-out): exact region names only
+            ok_group = grp.lower() in {x.lower() for x in e["region"]}
+        else:
+            hay = (grp + " " + (includes or {}).get(grp, "")).lower()
+            ok_group = any(s in hay for s in e["group"])
         ok_attach = (hit.get("attach_to") is not None) if e.get("attach") else True
         checks.append({**e, "got_group": grp, "attached": hit.get("attach_to"),
                        "result": "ok" if ok_group and ok_attach else ("wrong group" if not ok_group else "not attached")})
@@ -519,7 +522,7 @@ def report(results: list[dict]) -> str:
                   "```", r["view"].rstrip(), "```", ""]
         bad = [x for x in r["checks"] if x["result"] != "ok"]
         lines.append(f"Checks {len(r['checks']) - len(bad)}/{len(r['checks'])}" + (":" if bad else ""))
-        lines += [f"- `{x['phrase']}` → {x['result']} (got {x.get('got_group')}, want {'/'.join(x['group'])})" for x in bad]
+        lines += [f"- `{x['phrase']}` → {x['result']} (got {x.get('got_group')}, want {'/'.join(x.get('region') or x['group'])})" for x in bad]
         if r["new_groups"]:
             lines.append("New groups: " + "; ".join(r["new_groups"]))
         if r["fresh_disagree"]:
@@ -534,7 +537,7 @@ def report(results: list[dict]) -> str:
 
 
 async def main(argv: list[str]) -> None:
-    cases = json.loads((HERE / "cases.json").read_text())["cases"]
+    cases = json.loads(Path(os.environ.get("LAB_CASES", HERE / "cases.json")).read_text())["cases"]
     if argv:
         cases = [c for c in cases if c["id"] in argv]
     OUT.mkdir(parents=True, exist_ok=True)

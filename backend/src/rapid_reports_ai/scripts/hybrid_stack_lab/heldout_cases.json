@@ -1,0 +1,925 @@
+{
+  "cases": [
+    {
+      "id": "h01_ct_ap_pancreatitis_collection",
+      "scan_type": "CT abdomen and pelvis with contrast",
+      "clinical_history": "Known gallstone pancreatitis three weeks ago, persistent epigastric pain and rising inflammatory markers.",
+      "voice": "Daniel",
+      "utterances": [
+        "Comparison is made with the CT from 19 days ago.",
+        "The pancreas is oedematous with loss of enhancement in the neck and proximal body, in keeping with necrosis involving approximately 30 percent of the gland.",
+        "There is a peripancreatic collection in the lesser sac which now has a partially defined wall. It measures 92 by 64 millimetres, previously 70 by 50.",
+        "No gas within it to suggest infection.",
+        "Um, the splenic vein is not opacified along its course behind the pancreas, sorry, the splenic vein is thin but patent, it's the superior mesenteric vein that has a short segment of non-occlusive thrombus.",
+        "Liver, spleen and both kidneys are unremarkable, adrenals normal.",
+        "The gallbladder contains several small calculi with no wall thickening, and the common bile duct measures 6 millimetres.",
+        "Small volume free fluid in the pelvis and both paracolic gutters.",
+        "Going back to the pancreas, the main duct is not dilated in the tail.",
+        "Incidental 7 millimetre solid nodule in the right lower lobe at the lung bases.",
+        "Impression: evolving necrotising pancreatitis with an enlarging, maturing lesser sac collection and a new partial SMV thrombus. Suggest discussion with the hepatobiliary team regarding anticoagulation."
+      ],
+      "family": "abdomen_pelvis",
+      "expect": [
+        {
+          "phrase": "comparison is made with the ct",
+          "region": [
+            "Technique"
+          ]
+        },
+        {
+          "phrase": "loss of enhancement in the neck",
+          "region": [
+            "Pancreas"
+          ]
+        },
+        {
+          "phrase": "now has a partially defined wall",
+          "region": [
+            "Peritoneum and mesentery",
+            "Pancreas"
+          ]
+        },
+        {
+          "phrase": "no gas within it",
+          "region": [
+            "Peritoneum and mesentery",
+            "Pancreas"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "short segment of non-occlusive thrombus",
+          "region": [
+            "Vessels"
+          ]
+        },
+        {
+          "phrase": "adrenals normal",
+          "region": [
+            "General"
+          ]
+        },
+        {
+          "phrase": "main duct is not dilated",
+          "region": [
+            "Pancreas"
+          ]
+        },
+        {
+          "phrase": "solid nodule in the right lower lobe",
+          "region": [
+            "Lung bases"
+          ]
+        },
+        {
+          "phrase": "suggest discussion with the",
+          "region": [
+            "Conclusion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "h02_mri_brain_ms_followup",
+      "scan_type": "MRI brain with contrast",
+      "clinical_history": "Relapsing remitting multiple sclerosis on disease modifying therapy, new left leg weakness.",
+      "voice": "Moira",
+      "utterances": [
+        "Compared with the previous MRI from March last year.",
+        "There are multiple periventricular and juxtacortical T2 hyperintense lesions with an ovoid configuration perpendicular to the ventricles, uh, the majority are unchanged.",
+        "There is one new lesion in the right corona radiata. It measures 9 millimetres and shows incomplete ring enhancement.",
+        "A second new lesion is in the left middle cerebellar peduncle, this one does not enhance.",
+        "Infratentorially, actually scratch that, I've already said the cerebellar peduncle. The pons and medulla are otherwise clear.",
+        "Corpus callosum shows a few callosal-septal lesions, stable.",
+        "No restricted diffusion. Ventricles and sulci are appropriate for age, no hydrocephalus.",
+        "The upper cervical cord included on the sagittal images shows a short segment lesion at C2 which was present before.",
+        "Incidental mucosal thickening in the left maxillary sinus.",
+        "Conclusion: two new lesions since the prior study, one of which is enhancing, indicating active disease. Findings should be discussed at the neuroinflammatory MDT."
+      ],
+      "family": "head",
+      "expect": [
+        {
+          "phrase": "compared with the previous mri",
+          "region": [
+            "Technique"
+          ]
+        },
+        {
+          "phrase": "ovoid configuration",
+          "region": [
+            "Brain parenchyma"
+          ]
+        },
+        {
+          "phrase": "shows incomplete ring enhancement",
+          "region": [
+            "Brain parenchyma"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "left middle cerebellar peduncle",
+          "region": [
+            "Posterior fossa"
+          ]
+        },
+        {
+          "phrase": "pons and medulla are otherwise clear",
+          "region": [
+            "Posterior fossa"
+          ]
+        },
+        {
+          "phrase": "ventricles and sulci",
+          "region": [
+            "Ventricles and mass effect"
+          ]
+        },
+        {
+          "phrase": "upper cervical cord",
+          "region": [
+            "Other findings"
+          ]
+        },
+        {
+          "phrase": "left maxillary sinus",
+          "region": [
+            "Orbits, sinuses and mastoids"
+          ]
+        },
+        {
+          "phrase": "indicating active disease",
+          "region": [
+            "Conclusion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "h03_ct_chest_fibrosis",
+      "scan_type": "High resolution CT chest",
+      "clinical_history": "Progressive breathlessness, bibasal crackles, ex-smoker.",
+      "voice": "Rishi",
+      "utterances": [
+        "Prone and supine images obtained, comparison with the HRCT from 2024.",
+        "There is subpleural, basal predominant reticulation with traction bronchiectasis and honeycombing in both lower lobes.",
+        "It has progressed since the prior study, particularly in the right lower lobe and lingula.",
+        "No significant ground glass and no mosaic attenuation on the expiratory images, which argues against hypersensitivity pneumonitis.",
+        "Mild centrilobular emphysema in the upper lobes.",
+        "Mediastinal nodes are enlarged, the largest subcarinal at 13 millimetres short axis, likely reactive. The main pulmonary artery measures 34 millimetres, the heart is normal in size, and there's no pericardial effusion.",
+        "Oesophagus mildly patulous.",
+        "In the upper abdomen there's a 2 centimetre left adrenal nodule. It measures minus 4 Hounsfield units, consistent with a lipid rich adenoma, no follow up required.",
+        "Back to the lungs, no suspicious nodule or mass.",
+        "Overall, a definite UIP pattern with interval progression, and a dilated pulmonary artery raising the possibility of pulmonary hypertension. Recommend echocardiography."
+      ],
+      "family": "chest",
+      "expect": [
+        {
+          "phrase": "prone and supine images",
+          "region": [
+            "Technique"
+          ]
+        },
+        {
+          "phrase": "honeycombing in both lower lobes",
+          "region": [
+            "Lungs and airways"
+          ]
+        },
+        {
+          "phrase": "progressed since the prior study",
+          "region": [
+            "Lungs and airways"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "argues against",
+          "region": [
+            "Lungs and airways"
+          ]
+        },
+        {
+          "phrase": "likely reactive",
+          "region": [
+            "Thoracic lymph nodes"
+          ]
+        },
+        {
+          "phrase": "main pulmonary artery measures",
+          "region": [
+            "Pulmonary arteries",
+            "Heart and pericardium"
+          ]
+        },
+        {
+          "phrase": "oesophagus mildly patulous",
+          "region": [
+            "Mediastinum"
+          ]
+        },
+        {
+          "phrase": "left adrenal nodule",
+          "region": [
+            "Upper abdomen"
+          ]
+        },
+        {
+          "phrase": "interval progression",
+          "region": [
+            "Conclusion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "h04_mri_lumbar_conclusion_first",
+      "scan_type": "MRI lumbar spine",
+      "clinical_history": "Acute left sciatica with foot drop for 5 days.",
+      "voice": "Reed (English (UK))",
+      "utterances": [
+        "In summary, there's a large left paracentral L4/5 disc extrusion compressing the descending left L5 nerve root, in keeping with the clinical picture. I'll go through the rest.",
+        "Normal lumbar lordosis, five lumbar type vertebrae, vertebral body heights maintained.",
+        "Conus terminates at L1 with normal signal.",
+        "L3/4 is unremarkable.",
+        "At L4/5 the extruded fragment migrates caudally behind the L5 body. It measures 11 millimetres in craniocaudal extent.",
+        "There's also mild facet hypertrophy and the right lateral recess is patent.",
+        "L5/S1 shows disc desiccation with a small central annular fissure, no neural compromise. Um, the exiting L5 roots in the foramina are clear on both sides.",
+        "Going back to L4/5, the central canal is moderately narrowed by the fragment.",
+        "Incidental bilateral simple renal cysts, the larger on the left at 3 centimetres.",
+        "Urgent spinal surgical review is advised given the motor deficit."
+      ],
+      "family": "lumbar_spine",
+      "expect": [
+        {
+          "phrase": "i'll go through the rest",
+          "region": [
+            "Conclusion"
+          ]
+        },
+        {
+          "phrase": "conus terminates",
+          "region": [
+            "Cord and conus"
+          ]
+        },
+        {
+          "phrase": "is unremarkable",
+          "region": [
+            "L3/4"
+          ]
+        },
+        {
+          "phrase": "migrates caudally",
+          "region": [
+            "L4/5"
+          ]
+        },
+        {
+          "phrase": "mild facet hypertrophy",
+          "region": [
+            "L4/5"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "no neural compromise",
+          "region": [
+            "L5/S1"
+          ]
+        },
+        {
+          "phrase": "central canal is moderately narrowed",
+          "region": [
+            "L4/5"
+          ]
+        },
+        {
+          "phrase": "simple renal cysts",
+          "region": [
+            "Paraspinal and other soft tissues"
+          ]
+        },
+        {
+          "phrase": "urgent spinal surgical review",
+          "region": [
+            "Conclusion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "h05_mri_knee_bucket_handle",
+      "scan_type": "MRI right knee",
+      "clinical_history": "Twisting injury playing football, locking and unable to fully extend.",
+      "voice": "Karen",
+      "utterances": [
+        "There is a displaced bucket handle tear of the lateral meniscus, sorry, the medial meniscus, with the fragment flipped into the intercondylar notch giving a double PCL sign.",
+        "The anterior cruciate ligament is not seen in continuity, with a wavy, oedematous femoral attachment, consistent with a complete tear.",
+        "Bone bruising in the lateral femoral condyle and the posterolateral tibial plateau. The lateral meniscus is intact.",
+        "PCL is intact and buckled.",
+        "Medial collateral ligament shows a grade one sprain proximally. Lateral collateral, biceps femoris and popliteus are intact.",
+        "Moderate joint effusion. It's a lipohaemarthrosis with a fat fluid level, uh, but no fracture line is seen.",
+        "Patellofemoral cartilage preserved, extensor mechanism intact.",
+        "Small Baker's cyst.",
+        "Displaced medial meniscal bucket handle tear, complete ACL rupture and pivot shift bone bruising pattern. Orthopaedic referral for consideration of early arthroscopy."
+      ],
+      "family": "knee",
+      "expect": [
+        {
+          "phrase": "flipped into the",
+          "region": [
+            "Menisci"
+          ]
+        },
+        {
+          "phrase": "not seen in continuity",
+          "region": [
+            "Cruciate ligaments"
+          ]
+        },
+        {
+          "phrase": "tibial plateau",
+          "region": [
+            "Bones and marrow"
+          ]
+        },
+        {
+          "phrase": "lateral meniscus is intact",
+          "region": [
+            "Menisci"
+          ]
+        },
+        {
+          "phrase": "intact and buckled",
+          "region": [
+            "Cruciate ligaments"
+          ]
+        },
+        {
+          "phrase": "grade one sprain",
+          "region": [
+            "Collateral ligaments and corners"
+          ]
+        },
+        {
+          "phrase": "fat fluid level",
+          "region": [
+            "Joint and synovium"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "small baker",
+          "region": [
+            "Soft tissues"
+          ]
+        },
+        {
+          "phrase": "consideration of early",
+          "region": [
+            "Conclusion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "h06_ct_neck_nodal_mass",
+      "scan_type": "CT neck with contrast",
+      "clinical_history": "Painless left neck lump for 6 weeks, smoker, hoarse voice.",
+      "voice": "Eddy (English (UK))",
+      "utterances": [
+        "There is a necrotic left level two lymph node. It measures 32 millimetres with irregular margins and loss of the fat plane with the internal jugular vein.",
+        "Further enlarged nodes at left level three, the largest 14 millimetres short axis. The right neck is clear.",
+        "Asymmetric soft tissue thickening of the left aryepiglottic fold extending to the left pyriform sinus, um, measuring approximately 22 millimetres.",
+        "The paraglottic fat on the left is effaced but the thyroid cartilage looks intact.",
+        "The nasopharynx, oropharynx and tongue base are symmetrical, and the parotid and submandibular glands are normal.",
+        "Thyroid contains a 12 millimetre hypodense nodule in the right lobe.",
+        "The included lung apices show centrilobular emphysema. Actually, there is also a 6 millimetre nodule in the right apex.",
+        "Going back to the larynx, the vocal cords are symmetrical and the subglottis is clear.",
+        "Impression: left supraglottic and pyriform sinus mass with necrotic left nodal disease, highly suspicious for squamous cell carcinoma.",
+        "Recommend endoscopy and biopsy, and a staging CT chest which will also characterise the apical nodule. The thyroid nodule can be assessed with ultrasound."
+      ],
+      "family": "neck",
+      "expect": [
+        {
+          "phrase": "necrotic left level two",
+          "region": [
+            "Lymph nodes"
+          ]
+        },
+        {
+          "phrase": "loss of the fat plane",
+          "region": [
+            "Lymph nodes"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "the right neck is clear",
+          "region": [
+            "Lymph nodes"
+          ]
+        },
+        {
+          "phrase": "soft tissue thickening",
+          "region": [
+            "Larynx and hypopharynx"
+          ]
+        },
+        {
+          "phrase": "tongue base are symmetrical",
+          "region": [
+            "General"
+          ]
+        },
+        {
+          "phrase": "hypodense nodule in the right lobe",
+          "region": [
+            "Thyroid"
+          ]
+        },
+        {
+          "phrase": "nodule in the right apex",
+          "region": [
+            "Lung apices and upper mediastinum"
+          ]
+        },
+        {
+          "phrase": "vocal cords are symmetrical",
+          "region": [
+            "Larynx and hypopharynx"
+          ]
+        },
+        {
+          "phrase": "characterise the apical nodule",
+          "region": [
+            "Conclusion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "h07_mr_liver_cirrhosis_observation",
+      "scan_type": "MRI liver with hepatobiliary contrast",
+      "clinical_history": "Alcohol related cirrhosis, surveillance ultrasound showed a new 2 centimetre segment 8 lesion.",
+      "voice": "Flo (English (UK))",
+      "utterances": [
+        "The liver has a nodular contour with caudate hypertrophy in keeping with cirrhosis.",
+        "In segment 8 there is a 21 millimetre observation with non-rim arterial phase hyperenhancement.",
+        "On the portal venous phase it shows washout with an enhancing capsule. It's hypointense on the hepatobiliary phase and mildly restricts.",
+        "A second, 8 millimetre arterially enhancing focus in segment 6 has no washout, uh, likely a perfusion alteration.",
+        "Portal vein is patent with no tumour thrombus. Hepatic veins patent.",
+        "Spleen is enlarged at 15 centimetres, with oesophageal and splenorenal varices, and a small amount of perihepatic ascites.",
+        "Gallbladder, pancreas and both kidneys unremarkable.",
+        "Back to the segment 8 lesion, it abuts but does not invade the right hepatic vein.",
+        "Segment 8 observation is LI-RADS 5, consistent with hepatocellular carcinoma. Segment 6 focus LI-RADS 3.",
+        "Please refer to the HCC multidisciplinary meeting."
+      ],
+      "family": "abdomen_pelvis",
+      "expect": [
+        {
+          "phrase": "nodular contour",
+          "region": [
+            "Liver"
+          ]
+        },
+        {
+          "phrase": "observation with",
+          "region": [
+            "Liver"
+          ]
+        },
+        {
+          "phrase": "shows washout with",
+          "region": [
+            "Liver"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "perfusion alteration",
+          "region": [
+            "Liver"
+          ]
+        },
+        {
+          "phrase": "portal vein is patent",
+          "region": [
+            "Vessels"
+          ]
+        },
+        {
+          "phrase": "spleen is enlarged",
+          "region": [
+            "Spleen"
+          ]
+        },
+        {
+          "phrase": "pancreas and both kidneys unremarkable",
+          "region": [
+            "General"
+          ]
+        },
+        {
+          "phrase": "abuts but does not invade",
+          "region": [
+            "Liver"
+          ]
+        },
+        {
+          "phrase": "please refer to the",
+          "region": [
+            "Conclusion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "h08_ct_urogram_haematuria",
+      "scan_type": "CT urogram",
+      "clinical_history": "Visible haematuria, 68 year old ex-smoker.",
+      "voice": "Daniel",
+      "utterances": [
+        "Unenhanced, nephrographic and excretory phases obtained.",
+        "Both kidneys are normal in size. No calculi on the unenhanced images.",
+        "There is a 15 millimetre enhancing soft tissue filling defect in the right renal pelvis. On the excretory phase it causes a filling defect with mild hydrocalycosis of the upper pole calyces.",
+        "The left collecting system and ureter opacify normally.",
+        "The right ureter is normal calibre. No further filling defects.",
+        "In the bladder there is a 2 centimetre sessile mass on the left posterolateral wall near the left ureteric orifice, sorry, near the dome, well away from the ureteric orifice.",
+        "No perivesical fat stranding. Prostate is mildly enlarged.",
+        "No retroperitoneal or pelvic lymphadenopathy. The liver, adrenals and bones are unremarkable.",
+        "Incidental note of a 4 centimetre infrarenal abdominal aortic aneurysm.",
+        "Conclusion: synchronous right renal pelvis and bladder lesions, suspicious for multifocal urothelial carcinoma. Urgent urology referral. The aneurysm should be entered into vascular surveillance."
+      ],
+      "family": "abdomen_pelvis",
+      "expect": [
+        {
+          "phrase": "excretory phases obtained",
+          "region": [
+            "Technique"
+          ]
+        },
+        {
+          "phrase": "enhancing soft tissue",
+          "region": [
+            "Kidneys, ureters and adrenals"
+          ]
+        },
+        {
+          "phrase": "upper pole calyces",
+          "region": [
+            "Kidneys, ureters and adrenals"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "sessile mass",
+          "region": [
+            "Bladder"
+          ]
+        },
+        {
+          "phrase": "prostate is mildly enlarged",
+          "region": [
+            "Pelvic organs"
+          ]
+        },
+        {
+          "phrase": "retroperitoneal or pelvic",
+          "region": [
+            "Abdominal and pelvic lymph nodes"
+          ]
+        },
+        {
+          "phrase": "adrenals and bones are unremarkable",
+          "region": [
+            "General"
+          ]
+        },
+        {
+          "phrase": "incidental note of",
+          "region": [
+            "Vessels"
+          ]
+        },
+        {
+          "phrase": "urgent urology referral",
+          "region": [
+            "Conclusion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "h09_mri_hip_avn",
+      "scan_type": "MRI both hips",
+      "clinical_history": "Right groin pain, on long term steroids for asthma.",
+      "voice": "Moira",
+      "utterances": [
+        "There is a geographic subchondral area in the right femoral head with a serpiginous low signal margin and a double line sign on T2, consistent with avascular necrosis.",
+        "It involves approximately 40 percent of the weight bearing surface. There's a thin subchondral fracture line, uh, but no articular collapse.",
+        "Marrow oedema extends into the femoral neck, and there is a moderate joint effusion.",
+        "The left femoral head shows a smaller similar lesion. It measures 12 millimetres, no oedema, no fracture.",
+        "Acetabular cartilage is preserved bilaterally. The labrum appears intact on the right.",
+        "Gluteal tendons and hamstring origins are normal, no trochanteric bursitis.",
+        "Sacroiliac joints and pubic symphysis are normal.",
+        "Incidentally, the uterus is bulky with a 5 centimetre intramural fibroid.",
+        "Back to the right side, the iliopsoas bursa is not distended.",
+        "Bilateral femoral head avascular necrosis, right Ficat stage 3 with subchondral fracture but no collapse, left stage 2. Orthopaedic referral recommended."
+      ],
+      "family": "pelvis_mr",
+      "uncovered": true,
+      "expect": [
+        {
+          "phrase": "geographic subchondral area",
+          "region": [
+            "Bones and soft tissues"
+          ]
+        },
+        {
+          "phrase": "weight bearing surface",
+          "region": [
+            "Bones and soft tissues"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "marrow oedema extends",
+          "region": [
+            "Bones and soft tissues"
+          ]
+        },
+        {
+          "phrase": "smaller similar lesion",
+          "region": [
+            "Bones and soft tissues"
+          ]
+        },
+        {
+          "phrase": "gluteal tendons",
+          "region": [
+            "Bones and soft tissues"
+          ]
+        },
+        {
+          "phrase": "sacroiliac joints and pubic",
+          "region": [
+            "Bones and soft tissues"
+          ]
+        },
+        {
+          "phrase": "intramural fibroid",
+          "region": [
+            "Pelvic organs"
+          ]
+        },
+        {
+          "phrase": "back to the right side",
+          "region": [
+            "Bones and soft tissues"
+          ]
+        },
+        {
+          "phrase": "orthopaedic referral recommended",
+          "region": [
+            "Conclusion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "h10_mri_prostate_pirads",
+      "scan_type": "Multiparametric MRI prostate",
+      "clinical_history": "PSA 8.4, rising from 5.9 a year ago, normal DRE.",
+      "voice": "Rishi",
+      "utterances": [
+        "The prostate measures 48 millilitres, giving a PSA density of 0.18.",
+        "In the left peripheral zone at the mid gland posterolaterally there is a 13 millimetre focal lesion.",
+        "It's markedly hypointense on the ADC map and hyperintense on high b value, with early enhancement.",
+        "It abuts the capsule over about 9 millimetres with a bulge, but no frank extracapsular extension. Um, the left neurovascular bundle is preserved.",
+        "The transition zone shows benign prostatic hyperplasia nodules without suspicious features.",
+        "Seminal vesicles are normal, sorry, the left seminal vesicle has slightly low T2 signal but normal diffusion, likely haemorrhage.",
+        "No pelvic lymphadenopathy, and the bones are unremarkable.",
+        "The bladder wall is trabeculated, and there's a left inguinal hernia containing fat.",
+        "Overall, a PI-RADS 5 lesion in the left peripheral zone. Recommend targeted biopsy."
+      ],
+      "family": "pelvis_mr",
+      "expect": [
+        {
+          "phrase": "the prostate measures",
+          "region": [
+            "Pelvic organs"
+          ]
+        },
+        {
+          "phrase": "at the mid gland",
+          "region": [
+            "Pelvic organs"
+          ]
+        },
+        {
+          "phrase": "markedly hypointense",
+          "region": [
+            "Pelvic organs"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "abuts the capsule",
+          "region": [
+            "Pelvic organs"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "transition zone",
+          "region": [
+            "Pelvic organs"
+          ]
+        },
+        {
+          "phrase": "seminal vesicle has",
+          "region": [
+            "Pelvic organs"
+          ]
+        },
+        {
+          "phrase": "no pelvic lymphadenopathy",
+          "region": [
+            "Lymph nodes",
+            "General"
+          ]
+        },
+        {
+          "phrase": "bladder wall is trabeculated",
+          "region": [
+            "Bladder"
+          ]
+        },
+        {
+          "phrase": "recommend targeted biopsy",
+          "region": [
+            "Conclusion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "h11_mri_thoracic_spine_mscc",
+      "scan_type": "MRI whole spine with focus on thoracic spine",
+      "clinical_history": "Known breast cancer, new mid back pain and bilateral leg numbness. Query metastatic cord compression.",
+      "voice": "Karen",
+      "utterances": [
+        "There is metastatic infiltration of T7 with pathological collapse and retropulsion of the posterior wall.",
+        "Epidural tumour extends circumferentially at that level and compresses the cord, which shows high T2 signal. Bilsky grade 3.",
+        "Further deposits at T2, T10 and T11 without collapse or epidural disease. Actually, T10 has a small amount of left sided epidural tumour, but no cord contact.",
+        "The cervical spine is clear. L3 and the sacrum, uh, contain small deposits.",
+        "Conus is normal. No cauda equina compression.",
+        "A small right pleural effusion and several pulmonary nodules are partially imaged. Liver appears to contain a 3 centimetre lesion in segment 7.",
+        "The T7 posterior elements are involved bilaterally. It extends into the left pedicle and costovertebral junction.",
+        "Impression: metastatic spinal cord compression at T7 with cord signal change, and widespread spinal metastases.",
+        "This was phoned to the acute oncology team at the time of reporting. Urgent spinal surgical and clinical oncology opinion."
+      ],
+      "family": "lumbar_spine",
+      "uncovered": true,
+      "expect": [
+        {
+          "phrase": "metastatic infiltration",
+          "region": [
+            "Alignment and vertebrae"
+          ]
+        },
+        {
+          "phrase": "compresses the cord",
+          "region": [
+            "Cord and conus",
+            "Alignment and vertebrae"
+          ]
+        },
+        {
+          "phrase": "further deposits at",
+          "region": [
+            "Alignment and vertebrae"
+          ]
+        },
+        {
+          "phrase": "conus is normal",
+          "region": [
+            "Cord and conus"
+          ]
+        },
+        {
+          "phrase": "small right pleural effusion",
+          "region": [
+            "Paraspinal and other soft tissues",
+            "Other findings"
+          ]
+        },
+        {
+          "phrase": "posterior elements are involved",
+          "region": [
+            "Alignment and vertebrae"
+          ]
+        },
+        {
+          "phrase": "extends into the left pedicle",
+          "region": [
+            "Alignment and vertebrae"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "widespread spinal metastases",
+          "region": [
+            "Conclusion"
+          ]
+        },
+        {
+          "phrase": "phoned to the acute oncology",
+          "region": [
+            "Conclusion"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "h12_cardiac_mri_myocarditis",
+      "scan_type": "Cardiac MRI with gadolinium",
+      "clinical_history": "Chest pain after a viral illness, raised troponin, unobstructed coronaries on angiography.",
+      "voice": "Reed (English (UK))",
+      "utterances": [
+        "The left ventricle is normal in size, end diastolic volume 158 millilitres. Ejection fraction is mildly reduced at 49 percent, with hypokinesia of the basal inferolateral wall.",
+        "Right ventricle normal in size and function.",
+        "On T2 mapping there is elevated signal in the basal and mid inferolateral segments. Native T1 is also raised regionally.",
+        "On late gadolinium enhancement there's subepicardial and mid wall enhancement in the same segments. It spares the subendocardium, so not an infarct pattern.",
+        "Atria are normal. Aortic and mitral valves are, um, structurally normal with trivial mitral regurgitation.",
+        "Small pericardial effusion measuring 6 millimetres, with mild pericardial enhancement adjacent to the lateral wall.",
+        "Going back to the left ventricle, wall thickness is normal at 9 millimetres, no hypertrophy.",
+        "Outside the heart, a 3 centimetre hiatus hernia and a simple cyst in the liver.",
+        "Findings meet the updated Lake Louise criteria for acute myocarditis with myopericardial involvement. Suggest repeat cardiac MRI in 6 months to assess for scar."
+      ],
+      "family": "chest",
+      "uncovered": true,
+      "expect": [
+        {
+          "phrase": "ejection fraction is mildly reduced",
+          "region": [
+            "Heart and pericardium"
+          ]
+        },
+        {
+          "phrase": "right ventricle normal",
+          "region": [
+            "Heart and pericardium"
+          ]
+        },
+        {
+          "phrase": "is also raised regionally",
+          "region": [
+            "Heart and pericardium"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "not an infarct pattern",
+          "region": [
+            "Heart and pericardium"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "trivial mitral",
+          "region": [
+            "Heart and pericardium"
+          ]
+        },
+        {
+          "phrase": "pericardial enhancement",
+          "region": [
+            "Heart and pericardium"
+          ]
+        },
+        {
+          "phrase": "wall thickness is normal",
+          "region": [
+            "Heart and pericardium"
+          ]
+        },
+        {
+          "phrase": "outside the heart",
+          "region": [
+            "Mediastinum",
+            "Upper abdomen"
+          ]
+        },
+        {
+          "phrase": "assess for scar",
+          "region": [
+            "Conclusion"
+          ]
+        }
+      ]
+    }
+  ]
+}
