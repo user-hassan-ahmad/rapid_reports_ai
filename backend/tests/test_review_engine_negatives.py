@@ -428,3 +428,31 @@ async def test_a_findings_owned_impression_classified_pair_follows_the_classifie
     monkeypatch.setattr(neg, "_run_agent_with_model", model(["1 | dictated | No ascites | no"]))
     items, _ = await neg.classify_negatives(inp(report, "2 cm renal cyst. No ascites."), "r", owned=owned)
     assert items == []
+
+
+# ── live audit 1: a recommendation sentence with other parts (L3 shape) ─────
+
+MIXED_REC = """FINDINGS:
+The appendix is dilated to 11 mm with periappendiceal fat stranding.
+
+IMPRESSION:
+Acute appendicitis. No perforation or pelvic abscess identified; urgent surgical review recommended.
+"""
+
+
+def test_a_recommendation_part_does_not_hide_the_negative_beside_it():
+    got = [c["clause"] for c in neg.candidates(MIXED_REC)]
+    assert "No perforation or pelvic abscess identified" in got
+    assert not any("recommended" in c for c in got)
+    assert neg.candidate_spans(MIXED_REC)            # located by span on the original report
+
+
+def test_a_mixed_recommendation_sentence_typed_abnormal_still_gives_its_negative_part():
+    sentence = "No perforation or pelvic abscess identified; urgent surgical review recommended."
+    got = [c["clause"] for c in neg.candidates(MIXED_REC, {sentence: "mixed"})]
+    assert "No perforation or pelvic abscess identified" in got
+
+
+def test_a_pure_recommendation_sentence_is_still_never_a_candidate():
+    rep = MIXED_REC.replace("No perforation or pelvic abscess identified; urgent", "Urgent")
+    assert not any("recommended" in c["clause"] for c in neg.candidates(rep))

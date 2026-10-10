@@ -67,6 +67,22 @@ def recommendation(clause: str) -> bool:
     return bool(_RECOMMENDATION.search(clause))
 
 
+def recommendation_parts(sentence: str, is_rec=recommendation) -> Optional[List[Tuple[int, int, bool]]]:
+    """A sentence holding a recommendation part AND other parts ("No X identified; referral recommended."), split
+    at ';' (the clause boundary `split_tails` uses): [(start, end, is_rec)] in order, offsets in `sentence`, each
+    part without its surrounding spaces or closing '.'. None when the sentence is not mixed. Pure mechanics."""
+    out: List[Tuple[int, int, bool]] = []
+    pos = 0
+    for raw in (sentence or "").split(";"):
+        s = pos + len(raw) - len(raw.lstrip())
+        t = raw.strip().rstrip(".").rstrip()
+        if t:
+            out.append((s, s + len(t), bool(is_rec(t))))
+        pos += len(raw) + 1
+    recs = [r for _, _, r in out]
+    return out if any(recs) and not all(recs) else None
+
+
 def normal_statement(clause: str) -> bool:
     """A plain normal statement with no number: generated normals are owned by the negatives classifier (default-
     negatives policy), so the Accuracy lane never asks W1n / C1n of them."""

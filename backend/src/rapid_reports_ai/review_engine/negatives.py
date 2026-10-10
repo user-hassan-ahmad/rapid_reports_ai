@@ -69,7 +69,7 @@ from .. import report_reconcile as rc
 from ..enhancement_utils import _run_agent_with_model
 from ..report_review import checked_clauses_in_context, remove_negative_clause, restate
 from . import checks, claims, verifier
-from .jev_pass import normal_statement, recommendation, split_tails, statement_form
+from .jev_pass import normal_statement, recommendation, recommendation_parts, split_tails, statement_form
 from .items import Edit, ReviewInput, ReviewItem, Span, item_key, text_hash
 
 logger = logging.getLogger(__name__)
@@ -159,7 +159,8 @@ def is_normal_or_negative(clause: str) -> bool:
 
 def candidates(report: str, types: Optional[Dict[str, str]] = None) -> List[dict]:
     """Every normal/negative clause the check reads (FINDINGS + IMPRESSION), with the sentence before it.
-    Recommendation sentences are never candidates ("CT spine without contrast" is not a negative).
+    Recommendation sentences are never candidates ("CT spine without contrast" is not a negative); a sentence holding
+    a recommendation part and other parts at ';' (`jev_pass.recommendation_parts`) contributes its other parts.
 
     `types` (clause text → the Jev statement type, `jev_pass`): a normal clause is a candidate whole; an abnormal or
     mixed clause contributes only the negative / normal tails code can split off and locate (`split_tails`), else
@@ -168,19 +169,29 @@ def candidates(report: str, types: Optional[Dict[str, str]] = None) -> List[dict
     out: List[dict] = []
     for c, b in checked_clauses_in_context(report, None).items():
         if recommendation(c):
+            # a recommendation beside other parts ("No X identified; referral recommended."): the other parts are
+            # still statements, read on their own when code can locate them
+            for s, e, rec in recommendation_parts(c) or []:
+                part = c[s:e]
+                if not rec and _locate(report, part, []) is not None:
+                    out.extend(_clause_candidates(report, part, b, types))
             continue
-        t = (types or {}).get(c)
-        if t is None or restate(c) is not None:
-            if is_normal_or_negative(c):
-                out.append({"clause": c, "before": b})
-        elif t == "normal":
-            out.append({"clause": c, "before": b})
-        elif t in ("abnormal", "mixed"):
-            sp = split_tails(c)
-            for tail in (sp[1] if sp else []):
-                if not recommendation(tail) and _locate(report, tail, []) is not None:
-                    out.append({"clause": tail, "before": b})
+        out.extend(_clause_candidates(report, c, b, types))
     return out
+
+
+def _clause_candidates(report: str, c: str, b: str, types: Optional[Dict[str, str]]) -> List[dict]:
+    """One non-recommendation clause's candidates (see `candidates`)."""
+    t = (types or {}).get(c)
+    if t is None or restate(c) is not None:
+        return [{"clause": c, "before": b}] if is_normal_or_negative(c) else []
+    if t == "normal":
+        return [{"clause": c, "before": b}]
+    if t in ("abnormal", "mixed"):
+        sp = split_tails(c)
+        return [{"clause": tail, "before": b} for tail in (sp[1] if sp else [])
+                if not recommendation(tail) and _locate(report, tail, []) is not None]
+    return []
 
 
 def candidate_spans(report: str, types: Optional[Dict[str, str]] = None) -> List[Tuple[int, int]]:
