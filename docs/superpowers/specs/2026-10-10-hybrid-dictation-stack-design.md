@@ -1,6 +1,6 @@
 # Hybrid dictation stack: one tab, the radiologist's words, grouped
 
-**Date:** 2026-10-10 · **Status:** design agreed, plan not written · **Path:** quick and template
+**Date:** 2026-10-10 · **Status:** design agreed, plan written (`docs/superpowers/plans/2026-10-10-hybrid-dictation-stack.md`) · **Path:** quick and template
 **Lab:** branch `lab/hybrid-dictation-stack`, `backend/src/rapid_reports_ai/scripts/hybrid_stack_lab/` (commits eee940f … a3703e8)
 
 ## 1. Problem
@@ -71,7 +71,8 @@ One engine, two sources. Either way the grouper receives an ordered list of regi
 - A **region library** (~60 broad regions, each one visual zone) with an includes list per region: e.g. *Peritoneum and mesentery — free fluid, ascites, free gas, collections, omentum, mesentery, peritoneal deposits, pouch of Douglas*; *Pelvic organs — uterus, endometrium, cervix, ovaries, adnexa, prostate, seminal vesicles* (neutral about sex by construction).
 - **Families** compose regions in report order: abdomen-pelvis, chest (incl. CTPA), chest-abdomen-pelvis, head, neck, cervical spine, lumbar spine (levels expanded), knee, shoulder, pelvis MR, trauma. Every family ends with **Other findings**.
 - **Choosing the family:** Jev choice over the family descriptions plus an explicit **none** option (instant first guess). Confidence alone does not detect a missing family (cardiac MRI → chest at 1.0).
-- **Reconciler, once per scan type ever:** Qwen (reasoning medium, plain JSON, Title Case requested, uppercased in code) sees the families and the library. It either keeps a family as-is, or composes one from library regions plus new regions for gaps. Code validates (keys exist, names unique, ≤ 8 new regions, no Technique/General/Conclusion/Other/Incidental duplicates) and caches it by normalised scan type. Generated families are provisional until approved into the library.
+- **Reconciler, once per scan type ever:** Qwen (reasoning medium, plain JSON, Title Case requested, uppercased in code) sees the families and the library. It either keeps a family as-is, or composes one from library regions plus new regions for gaps. Code validates (keys exist, names unique, ≤ 8 new regions, no Technique/General/Conclusion/Other/Incidental duplicates) and caches it by normalised scan type.
+- **Provisional families (decided 2026-10-10).** A generated family is used immediately and marked provisional (logged, not shown to users). It goes on a review list; Hassan approves, edits or rejects it. Approved families join the library; an edited or rejected one replaces the cached entry, so later scans pick up the fix.
 - Until the reconciler result exists, the Jev choice (or a generic head / neck / chest / abdomen / pelvis / spine / limbs family) is used; sentences placed under it are re-placed once when the cached family arrives.
 
 **Template path — the radiologist's own structure.**
@@ -107,6 +108,8 @@ For each new sentence after a Conclusion sentence exists (cue-only sentences exc
 - **images** — returns to describing the images with something not already given.
 
 At confidence ≥ 0.6 Jev decides (summary → Conclusion; images → leaves Conclusion); below, the grouper's placement stands. On a fixture of 65 labelled sentences: 63/65, late findings 23/23, both misses < 0.6. It replaced a code rule that buried a finding dictated after a mid-read summary.
+
+**Uncued closing line (decided 2026-10-10).** When the dictation has no Conclusion yet, the last sentence is also asked the same question once dictation stops (the session's final settle, or the generate action): it moves to Conclusion only when Jev says *summary* at ≥ 0.6 — it summarises or labels findings already given (a diagnosis, grade or recommendation, e.g. "Segment 8 observation is LI-RADS 5, consistent with hepatocellular carcinoma"). A sentence that adds something new ("There is a 4 mm left renal calculus") stays a finding. The radiologist can drag it either way.
 
 ### 3.7 Pills derived from the grouping
 
@@ -154,8 +157,8 @@ Caveats: synthetic speech and synthetic cases; the dev schema's includes were wr
 
 1. **Lost full stop between utterances.** A final without terminal punctuation runs into the next ("Small Baker's cyst Displaced medial meniscal…"). Either the write path closes a sentence at a final boundary, or the grouper splits it (the prompt allows it; it did not always).
 2. **Fragment splits.** The grouper occasionally splits one observation ("… disc osteophyte complex | with moderate foraminal narrowing"). Candidate: a Jev yes/no "does this part read as a complete statement" on split parts only.
-3. **Uncued closing line** ("Segment 8 observation is LI-RADS 5, consistent with HCC" at the end, no cue): finding or conclusion? Needs a policy decision.
-4. **Reconciler governance:** who approves generated families into the library, and how a provisional family is shown.
+3. ~~Uncued closing line~~ — decided, §3.6.
+4. ~~Reconciler governance~~ — decided, §3.3 (provisional families).
 5. **Template paragraphs to body regions** (for a future visual map): one cached mapping per template version; not needed for grouping.
 6. **Prod templates in grammar form** are few today; the template path falls back to the quick schema until sheets are parsed.
 7. **Latency under load:** the grouper p50 rose to ~2 s with 10 concurrent sessions in the lab (Cerebras queueing); measure in Phase 2.
