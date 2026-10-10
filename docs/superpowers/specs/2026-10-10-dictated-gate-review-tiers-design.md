@@ -69,7 +69,7 @@ For each clause the gate calls added:
 
 1. `q_type == "normal"` → **quiet**.
 2. Else, if `q_type` is `abnormal` or `mixed` and every content word new to the dictation follows a negator (no / without / nor / not) in the clause → **quiet**. This is a bolted-on negative on a dictated finding. The type condition keeps negated recommendations ("no urgent referral is indicated", typed `not_a_finding`) out of this rule.
-3. Else, if `provenance.is_recommendation(clause, q_type, section)` → **review: recommendation item** (marker plus rail item, §5).
+3. Else, if `provenance.is_recommendation(clause, q_type, section)` → **review: recommendation item** (inline marker plus section checkbox, unchanged, §5).
 4. Else → **review: synthesis item** (`ai_generated`, form `synthesis`) on the added words (§4.3).
 
 Rules 2–4 are code over the gate's verdict and the validated `q_type`. They decide display, never provenance, so their failures misplace a tint rather than hide AI text. The exception is rule 2 sending a review item to quiet; in the lab it lost none (v1 vs v2 recall equal).
@@ -108,7 +108,7 @@ Amber precision itself (about half, by a strict reader; Hassan's boundary counts
 ## 5. Frontend
 
 - **Synthesis (violet) becomes always visible**, like amber: move `.rv-form-synthesis` out of the `[data-rv-emph~="ai"]` scope in `theme.ts`. The AI toggle then shows only the quiet tier (green).
-- **Recommendations:** keep the teal underline marker. Remove `recommendation` from `EDITOR_ONLY` in `ReviewRail.svelte` so each one is also a rail item with its checkbox.
+- **Recommendations:** no change. They keep the teal underline in the text plus a checkbox in the section's "Recommendations & suggestions" block (`decorations.ts`, `commands.ts`). The gate only changes which recommendations get an item. They stay in `EDITOR_ONLY` so the rail does not duplicate them.
 - **`also_anchors`:** paint every anchor of an item, not just the primary one (`field.ts` mark builder).
 - **Legend copy** (`decorations.ts` `AI_BREAKDOWN`):
   - violet "Added by the AI: check it";
