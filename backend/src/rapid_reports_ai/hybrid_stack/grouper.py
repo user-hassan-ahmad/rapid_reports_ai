@@ -38,11 +38,13 @@ def valid_parts(sentence: str, parts: list[Part]) -> bool:
     whitespace between them): nothing the radiologist said can fall between two parts."""
     pos = 0
     for p in parts:
-        if not p.text.strip():
+        if not any(c.isalnum() for c in p.text):
             return False
         i = sentence.find(p.text, pos)
         if i < 0 or sentence[pos:i].strip():
             return False
+        if pos and i == pos and sentence[pos - 1].isalnum() and sentence[i].isalnum():
+            return False  # a boundary inside a word
         pos = i + len(p.text)
     return len(parts) >= 2 and not sentence[pos:].strip()
 
@@ -55,7 +57,10 @@ def apply_placements(units: list[StackUnit], placements: list[Placement], new_id
     by_id = {u.id: u for u in units}
     wanted = {p.id: p for p in placements if p.id in new_ids}
     non_regions = {TECHNIQUE, GENERAL, CONCLUSION}
-    for i in new_ids:
+    for i in sorted(new_ids):
+        if i not in by_id:
+            problems.append(f"[{i}] unknown unit")
+            continue
         u, p = by_id[i], wanted.get(i)
         if u.pinned:
             continue
@@ -71,14 +76,27 @@ def apply_placements(units: list[StackUnit], placements: list[Placement], new_id
         if p.attach_to is not None and att is None:
             problems.append(f"[{i}] bad attach_to {p.attach_to}")
         parts = None
-        if p.parts:
+        if p.parts and att is not None:
+            problems.append(f"[{i}] parts on attached sentence")
+        elif p.parts:
             part_groups = [_norm(x.group, groups) or GENERAL for x in p.parts]
             if valid_parts(u.text, p.parts) and len(set(part_groups)) > 1:
                 parts = [PartOut(text=x.text, group=pg) for x, pg in zip(p.parts, part_groups)]
             else:
                 problems.append(f"[{i}] rejected parts")
         covers = [c for c in (_norm(x, groups) for x in p.covers) if c and c not in non_regions]
-        u.group = by_id[att].group if att is not None else g
+        if att is not None:
+            parent_group = by_id[att].group
+            if parent_group is None:
+                problems.append(f"[{i}] parent {att} unplaced")
+                parent_group = g
+            u.group = parent_group
+        elif parts:
+            u.group = parts[0].group
+            if u.group != g:
+                problems.append(f"[{i}] group {g!r} replaced by first part's {u.group!r}")
+        else:
+            u.group = g
         u.attach_to, u.parts, u.structure, u.covers = att, parts, (p.structure or None), list(dict.fromkeys(covers))
     return problems
 
@@ -153,6 +171,9 @@ async def place(scan_type: str, regions: list[Region], units: list[StackUnit], n
                     "name": "placements", "schema": GrouperOut.model_json_schema()}}}, TIMEOUT_S, transport)
             r.raise_for_status()
             out = GrouperOut.model_validate_json(r.json()["choices"][0]["message"]["content"])
+            if new_ids and not out.placements:
+                err = f"{model}: empty placements"
+                continue
             return out.placements, model, None
         except Exception as e:  # next endpoint; the caller fails open (sentences stay unplaced)
             err = f"{model}: {type(e).__name__}: {e}"
