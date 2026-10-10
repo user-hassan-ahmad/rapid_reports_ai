@@ -578,7 +578,7 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
             t = time.monotonic()
             try:
                 jp = await jev_pass.run(inp, body, gate_texts=(
-                    [c.text for c in sorted(al.clauses, key=lambda c: c.start)] if dictated_gate.mode() != "off" else None))
+                    [body[s:e] for s, e, _ in dictated_gate.units(al)] if dictated_gate.mode() != "off" else None))
             except Exception as e:  # noqa: BLE001 - lanes then run on code checks only
                 errors["jev"] = f"{type(e).__name__}: {str(e)[:200]}"
             timings["jev_ms"] = int((time.monotonic() - t) * 1000)

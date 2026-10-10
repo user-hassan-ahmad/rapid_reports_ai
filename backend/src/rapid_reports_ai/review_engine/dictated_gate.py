@@ -15,6 +15,7 @@ RR_DICTATED_GATE = off (default) | shadow (ask and log, display unchanged) | liv
 provenance's; today's path is the fallback on any gate failure)."""
 from __future__ import annotations
 
+import logging
 import os
 import re
 from dataclasses import dataclass, field
@@ -23,6 +24,8 @@ from typing import Any, Dict, List, Optional, Tuple
 from .alignment import Alignment, ReportClause
 from .claims import content_words
 from .items import ReviewInput
+
+logger = logging.getLogger(__name__)
 
 GATE_MIN = 0.7          # P(all_stated) >= this → dictated (lab Q3s: lowest firm-gold dictated clause 0.74-0.80)
 CHUNK = 4               # clauses per Jev request (the lab's batch size)
@@ -155,27 +158,43 @@ def tier_of(p: Optional[float], q_type: Optional[str], is_rec: bool, negated_onl
     return "synth"
 
 
+def units(al: Alignment) -> List[Tuple[int, int, ReportClause]]:
+    """The gate's units: the distinct (start, end) spans of the alignment's clauses, sorted by start, each with the
+    first clause holding that span (section, sentence offsets, recommendation placement). The unit text is the REAL
+    report text report[start:end]: split-out list items and "No but ..." tails are synthetic clause texts that share
+    their sentence's span, so they collapse into one unit. Nested different spans stay (should not happen; logged)."""
+    seen: Dict[Tuple[int, int], ReportClause] = {}
+    for c in sorted(al.clauses, key=lambda c: (c.start, c.end)):
+        seen.setdefault((c.start, c.end), c)
+    out = [(s, e, c) for (s, e), c in sorted(seen.items())]
+    for k, (s, e, _) in enumerate(out):
+        if any(s2 <= s and e <= e2 for s2, e2, _ in out[:k] + out[k + 1:]):
+            logger.info("dictated gate: nested unit span (%d, %d)", s, e)
+    return out
+
+
 def classify(inp: ReviewInput, body: str, al: Alignment, jp) -> List[GateClause]:
     """One GateClause per alignment report clause (sorted by start), in the order the gate was asked. Pure code over
     the answers already in `jp`; ValueError when `jp` was asked about other clauses (the engine falls back)."""
     from .jev_pass import clause_type_of
     from .provenance import _proposed_runs, is_recommendation     # provenance imports jev_pass, which imports us
-    clauses = sorted(al.clauses, key=lambda c: c.start)
-    if [c.text for c in clauses] != list(jp.gate_texts):
+    clauses = units(al)
+    if [body[s:e] for s, e, _ in clauses] != list(jp.gate_texts):
         raise ValueError("gate was asked about different clauses than the alignment holds")
     words = dictated_words(inp.artifacts.dictated_findings)
     out: List[GateClause] = []
-    for i, c in enumerate(clauses):
+    for i, (us, ue, c) in enumerate(clauses):
         q = clause_type_of(jp.gate.get(f"t{i}"))
         p = p_all_stated(jp.gate.get(f"g{i}"))
-        runs = _proposed_runs(body, c.start, c.end, words)
-        rec = is_recommendation(c.text, q, c.section)
-        ns = _negator_start(body, c.start, max(c.end, c.sentence_end), runs)
+        text = body[us:ue]
+        runs = _proposed_runs(body, us, ue, words)
+        rec = is_recommendation(text, q, c.section)
+        ns = _negator_start(body, us, max(ue, c.sentence_end), runs)
         tier = tier_of(p, q, rec, ns is not None)
         # quiet because of a bolted-on negative (not a normal statement): the finding is dictated, so only the
         # negation ("without cavitation") is quiet, never the whole clause
         span = (ns, runs[-1][1]) if tier == "quiet" and q != "normal" and ns is not None else None
-        out.append(GateClause(i=i, text=c.text, start=c.start, end=c.end, section=c.section, p=p, q_type=q,
+        out.append(GateClause(i=i, text=text, start=us, end=ue, section=c.section, p=p, q_type=q,
                               tier=tier, runs=runs, aclause=c, quiet_span=span))
     return out
 

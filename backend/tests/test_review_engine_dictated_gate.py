@@ -139,18 +139,29 @@ def _classify(report, dictation, clauses, p, types):
     return dg.classify(i, report, al, _jp(clauses, p, types))
 
 
-def test_negative_list_and_repeated_sentence_each_get_a_placed_clause():
+def _unit_texts(r, d):
+    i = inp(r, d)
+    al = align(r, d, "", i.artifacts.sections)
+    return i, al, [r[s:e] for s, e, _ in dg.units(al)]
+
+
+def test_negative_list_is_one_unit_and_a_repeated_sentence_gets_two():
     r = ("FINDINGS:\nThere is no pleural effusion, pneumothorax or consolidation. The liver is normal.\n"
          "IMPRESSION:\nThe liver is normal.\n")
-    i = inp(r, "- Liver normal")
-    al = align(r, "- Liver normal", "", i.artifacts.sections)
-    texts = [c.text for c in sorted(al.clauses, key=lambda c: c.start)]
-    assert texts == ["No pleural effusion", "No pneumothorax", "No consolidation", "The liver is normal.",
+    i, al, texts = _unit_texts(r, "- Liver normal")
+    assert texts == ["There is no pleural effusion, pneumothorax or consolidation.", "The liver is normal.",
                      "The liver is normal."]
-    g = dg.classify(i, r, al, _jp(texts, [0.1, 0.1, 0.1, 0.9, 0.1], ["normal"] * 5))
-    assert all(x.start is not None for x in g)
-    assert [x.section for x in g] == ["FINDINGS"] * 4 + ["IMPRESSION"]
-    assert [x.tier for x in g] == ["quiet", "quiet", "quiet", "dictated", "quiet"]
+    g = dg.classify(i, r, al, _jp(texts, [0.1, 0.9, 0.1], ["normal"] * 3))
+    assert [x.text for x in g] == texts and all(r[x.start:x.end] == x.text for x in g)
+    assert [x.section for x in g] == ["FINDINGS", "FINDINGS", "IMPRESSION"]
+    assert [x.tier for x in g] == ["quiet", "dictated", "quiet"]
+
+
+def test_units_hold_only_real_report_text():
+    r = "FINDINGS:\nNo interval change in the liver lesion, but there is a new nodule.\n"
+    i, al, texts = _unit_texts(r, "- Liver lesion")
+    assert all(t in r for t in texts) and not any(t.startswith("No but") for t in texts)
+    assert texts[-1] == "No interval change in the liver lesion, but there is a new nodule."
 
 
 def test_classify_refuses_a_jev_pass_asked_about_other_clauses():
@@ -203,7 +214,7 @@ def test_a_negator_followed_by_a_contrast_or_new_sentence_is_not_a_bolted_on_neg
     r = f"FINDINGS:\n{clause}\n"
     i = inp(r, dictation)
     al = align(r, dictation, "", i.artifacts.sections)
-    texts = [c.text for c in sorted(al.clauses, key=lambda c: c.start)]
+    texts = [r[s:e] for s, e, _ in dg.units(al)]
     g = dg.classify(i, r, al, _jp(texts, [0.1] * len(texts), ["abnormal"] * len(texts)))
     assert [x.tier for x in g if x.runs][0] == "synth"
 
