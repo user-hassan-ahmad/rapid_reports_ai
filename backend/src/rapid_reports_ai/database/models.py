@@ -867,3 +867,37 @@ class ReportQualityScore(Base):
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 
+
+
+class StackSchemaFamily(Base):
+    """A hybrid-stack region list cached per normalised scan type (spec §3.3). status: provisional (a
+    reconciler composition awaiting review) | approved | rejected (use the Jev family instead)."""
+    __tablename__ = "stack_schema_families"
+    key = Column(Text, primary_key=True)
+    scan_type = Column(Text, nullable=False)
+    regions = Column(JSONBType(), nullable=False)  # [{"name", "includes"}], "Other findings" last
+    source = Column(String(64), nullable=False)    # reconciler:family:<key> | reconciler:composed | admin
+    status = Column(String(16), nullable=False, default="provisional")
+    created_at = Column(DateTime, default=_now, nullable=False)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+
+class DictationStackLog(Base):
+    """One row per dictation session: the hybrid stack beside its shadow (spec §5, live testing)."""
+    __tablename__ = "dictation_stack_logs"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    session_id = Column(String(64), nullable=False, index=True)
+    scan_type = Column(Text, nullable=True)
+    schema_key = Column(Text, nullable=True)
+    schema_source = Column(String(32), nullable=True)
+    provisional = Column(Boolean, nullable=False, default=False)
+    units = Column(JSONBType(), nullable=True)
+    pills_derived = Column(JSONBType(), nullable=True)
+    pills_jev = Column(JSONBType(), nullable=True)       # shadow: today's Jev coverage
+    sections = Column(JSONBType(), nullable=True)        # shadow: today's /sections list
+    structured_text = Column(Text, nullable=True)        # shadow: today's Structured build (sampled)
+    manual_moves = Column(Integer, nullable=False, default=0)
+    latency_ms = Column(JSONBType(), nullable=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
