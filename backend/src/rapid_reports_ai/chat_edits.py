@@ -46,8 +46,15 @@ def parse_edits_json(raw: Any) -> List[dict]:
         data = data.get("edits")
     if not isinstance(data, list):
         return []
-    return [{"section": _s(e.get("section")), "find": _s(e.get("find")), "replace": _s(e.get("replace"))}
-            for e in data if isinstance(e, dict)]
+    out = []
+    for e in data:
+        if not isinstance(e, dict):
+            continue
+        find, new = _s(e.get("find")), _s(e.get("replace"))
+        if "\n" in new and "\n" not in find:      # a line break the span never had fails the structure guard
+            new = re.sub(r"[ \t]*\n+[ \t]*", " ", new).strip()   # (live 29de06f3): keep it in the same paragraph
+        out.append({"section": _s(e.get("section")), "find": find, "replace": new})
+    return out
 
 
 MAX_DIFF_EDITS = 8         # more changed sentences than this is a restructure, not surgery: no edits offered
@@ -118,6 +125,23 @@ def diff_edits(current: str, proposal: str) -> List[dict]:
 PROPOSAL_REPLY = "I've drafted the changes for you. Please review and apply them below."
 NO_EDIT_REPLY = ("I couldn't turn that into an edit that applies safely to the report. Tell me which sentence to "
                  "change and how, and I'll draft it as a single edit.")
+
+
+APPLY_BELOW = "Each is below as an edit you can apply."
+CANNOT_PLACE = ("I couldn't place these as safe one-click edits. Tell me which sentence to change and I'll draft it "
+                "as a single edit.")
+
+
+def reply_from_actions(actions: List[dict], verified: List[dict]) -> str:
+    """The reply when the model went straight to its edit tool with no prose (live 29de06f3): its own actions,
+    title and rationale, read as the discussion, then what to do with the edits below. "" without actions."""
+    rows = [(_s(a.get("title")).strip(), _s(a.get("details")).strip()) for a in actions or [] if isinstance(a, dict)]
+    rows = [(t, d) for t, d in rows if t or d]
+    if not rows:
+        return ""
+    body = "\n".join(f"{k}. **{t}**: {d}" if t and d else f"{k}. {t or d}" for k, (t, d) in enumerate(rows, 1))
+    tail = APPLY_BELOW if any(e.get("verified") for e in verified) else CANNOT_PLACE
+    return f"Here's what I'd suggest:\n\n{body}\n\n{tail}"
 
 
 def edits_for_reply(raw_edits: List[dict], current: str, proposal: Optional[str]) -> List[dict]:
