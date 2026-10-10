@@ -79,6 +79,18 @@ def test_brief_card_with_a_disagreeing_pointer_shows_jevs_line(monkeypatch):
     assert it.reason == "Stated by the AI as normal, but a check ..." and log["quoted"] == 1
 
 
+def test_brief_card_reason_naming_the_old_finding_is_made_neutral(monkeypatch):
+    # the reason said why it was added (the old pointer); with Jev's quote beside it, it read as two findings
+    reason = ("Added by the AI because it bears on your finding: No pulmonary emboli, but a check found it may "
+              "contradict your dictation. Remove it, or dismiss to keep it.")
+    it = _card(pointer="No pulmonary emboli", source="brief", reason=reason)
+    _run(monkeypatch, _ans("d0", 0.97), [it])
+    assert "pulmonary emboli" not in it.reason
+    assert it.reason == ("Added by the AI, but a check found it may contradict your dictation. Remove it, or "
+                         "dismiss to keep it.")
+    assert it.evidence["dictated_quote"] == "Small right pleural effusion"
+
+
 def test_negatives_card_with_a_disagreeing_pointer_is_rebuilt_on_jevs_line(monkeypatch):
     label, reason = negatives.check_text("conflict", "No pulmonary emboli")
     it = _card(pointer="No pulmonary emboli", reason=reason)
