@@ -4622,9 +4622,7 @@ async def chat_about_report(
                             # Replace the prose-rewrite that was about to be shown
                             # to the clinician with a brief acknowledgement; the
                             # structured edit panel surfaces the actual change.
-                            response_text = (
-                                "I've drafted these edits as structured actions — please review and apply below."
-                            )
+                            response_text = _chat_edits.PROPOSAL_REPLY
                             break
                         except json.JSONDecodeError as se:
                             print(f"🛟 SALVAGE: ❌ JSON decode error on second-pass args: {se}")
@@ -4709,7 +4707,7 @@ async def chat_about_report(
                 response_text = stripped_refs
 
         if not response_text and edit_proposal:
-            response_text = "I've drafted the changes for you. Please review and apply them below."
+            response_text = _chat_edits.PROPOSAL_REPLY
             print(f"  └─ Set default response text (edit_proposal exists but no response_text)")
         
         print(f"\n📤 Returning response:")
@@ -4753,7 +4751,9 @@ async def chat_about_report(
             if actions_applied else actions_applied
         )
 
+        raw_edits = _chat_edits.edits_for_reply(raw_edits, current_text, edit_proposal)
         verified_edits = _chat_verified_edits(report, current_text, raw_edits)
+        response_text = _chat_edits.reply_text(response_text, verified_edits)
         # Spec §10.2/§12.6: the turn persists so History restores the thread; fails open (the reply still returns).
         user_message_id = message_id = None
         try:

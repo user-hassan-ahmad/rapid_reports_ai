@@ -132,7 +132,7 @@ export const AI_BREAKDOWN: { form: AiForm | 'recommendation' | 'inserted'; label
 	{ form: 'synthesis', label: 'AI synthesis', title: "Conclusions or details the AI added that aren't in your dictation: check them" },
 	{ form: 'recommendation', label: 'Recommendations', title: 'Recommendations the AI added: untick in the recommendations list to remove' },
 	{ form: 'normal', label: 'Normals', title: 'Normal findings you did not dictate, stated by the AI' },
-	{ form: 'inserted', label: 'Added from suggestions', title: 'Text you added by ticking a suggestion' }
+	{ form: 'inserted', label: 'Added by you', title: 'Text you added by ticking a suggestion or applying a chat edit' }
 ];
 
 const MARK_MEANING: Record<MarkClass, Meaning> = {

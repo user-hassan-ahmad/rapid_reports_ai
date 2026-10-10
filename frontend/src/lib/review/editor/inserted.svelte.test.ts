@@ -5,6 +5,7 @@ import type { ReviewItem } from '../types';
 import { runCommand } from '../commands';
 import { commandTransaction, fromItems, reviewItems } from './field';
 import { reviewExtensions, setEmphasis } from './index';
+import { chatItem } from '../chat';
 
 // SYNTHETIC report with one suggestion (an option item) per test.
 const DOC = 'FINDINGS:\nThe pancreas has a mass. No ascites.\n\nIMPRESSION:\nPancreatic mass.';
@@ -66,6 +67,15 @@ function tickIt(view: EditorView, item: ReviewItem): ReviewItem {
 const tinted = (view: EditorView) => [...view.dom.querySelectorAll('.rv-inserted')].map((e) => e.textContent).join('|');
 
 describe('inserted suggestion text', () => {
+	it('an applied chat edit tints its new text and flashes it, like a ticked suggestion', () => {
+		const chat = { ...chatItem('r', 'm1', 0, { section: 'FINDINGS', find: 'No ascites.', replace: 'No ascites or free fluid.' }), status: 'open' as const };
+		const view = mount(DOC, [chat]);
+		tickIt(view, chat);
+		expect(view.state.doc.toString()).toContain('No ascites or free fluid.');
+		expect(tinted(view)).toBe('No ascites or free fluid.');
+		expect(view.dom.querySelector('.rv-inserted-flash')?.textContent).toBe('No ascites or free fluid.');
+	});
+
 	it('ticking tints exactly the inserted text; unticking removes text and tint', () => {
 		const open = sugg();
 		const view = mount(DOC, [open]);
