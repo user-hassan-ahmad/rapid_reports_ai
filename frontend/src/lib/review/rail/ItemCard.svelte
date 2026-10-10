@@ -3,7 +3,7 @@
 	// own replacement) and Ask in chat live here only; the editor's hover chip carries the quick actions.
 	import { ICONS, LABELS } from '../editor/decorations';
 	import type { ReviewItem } from '../types';
-	import { statusNote, type RailCommand } from './ItemRow.svelte';
+	import { isRemoval, statusNote, type RailCommand } from './ItemRow.svelte';
 
 	let {
 		item,
@@ -14,6 +14,7 @@
 	const label = $derived(item.label || item.kind);
 	const open = $derived(item.status === 'open' || item.status === 'stale');
 	const note = $derived(statusNote(item));
+	const verb = $derived(isRemoval(item) ? 'Remove' : 'Apply');
 
 	let editing = $state(false);
 	let draft = $state('');
@@ -100,8 +101,8 @@
 				<button
 					type="button"
 					class="rv-btn rv-primary"
-					aria-label={`Apply: ${label}`}
-					onclick={() => onCommand('apply', item.id)}>Apply</button
+					aria-label={`${verb}: ${label}`}
+					onclick={() => onCommand('apply', item.id)}>{verb}</button
 				>
 				{#if item.anchor && !editing}
 					<button
