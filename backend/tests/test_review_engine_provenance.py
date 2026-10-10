@@ -317,17 +317,46 @@ def test_dictated_lexicon_free_recommendation_gives_no_item():
     assert [i for i in items if i.kind == "recommendation"] == []
 
 
-def test_reworded_dictated_communication_is_not_a_removable_recommendation():
+async def _confirmed(monkeypatch, report, dictation, jp, answers, calls=None):
+    monkeypatch.setattr(rc, "_jev", answers if callable(answers) else jev(answers, calls))
+    i = inp(report, dictation)
+    al = align(report, dictation, "", i.artifacts.sections)
+    prov, _ = provenance.build_items(i, RUN, al, jp, [])
+    return al, await provenance.confirm(i, RUN, al, jp, [], prov, [])
+
+
+async def test_reworded_dictated_communication_is_not_a_removable_recommendation(monkeypatch):
     report = "FINDINGS:\nA pancreatic mass.\nIMPRESSION:\nPancreatic mass.\nDiscussed with the referring team."
     talk = "Discussed with the referring team."
     dictation = "- Pancreatic mass\n- Result discussed by phone with Dr Jones, surgical registrar, 14:00 hours, read-back confirmed"
-    i = inp(report, dictation)
-    al = align(report, dictation, "", i.artifacts.sections)
+    jp = JevPass(clauses=["Pancreatic mass.", talk], types={"Pancreatic mass.": "abnormal", talk: "not_a_finding"})
+    calls = []
+    al, (items, log) = await _confirmed(monkeypatch, report, dictation, jp, {"rec*": STATED_Q3}, calls)
     c = next(c for c in al.clauses if c.text == talk)
     assert not any(p.clause_id == c.id and provenance.confident(p) for p in al.pairs)    # no confident pair
-    jp = JevPass(clauses=["Pancreatic mass.", talk], types={"Pancreatic mass.": "abnormal", talk: "not_a_finding"})
-    items, _ = provenance.build_items(i, RUN, al, jp, [])
-    assert [it for it in items if it.kind == "recommendation"] == []
+    assert [it for it in items if it.kind == "recommendation"] == [] and log["rec_dictated_jev"] == 1
+    q = next(v for k, v in calls[0][1].items() if k.startswith("rec"))
+    assert q["type"] == "choice" and f'"{talk}"' in q["instructions"]
+
+
+async def test_undictated_repeat_ct_head_is_not_hidden_by_an_unrelated_ct_head_line(monkeypatch):
+    rep = "Short-interval repeat CT head within 24 hours to assess for interval change."
+    report = ("FINDINGS:\nAn 11 mm left subdural haematoma.\n\n"
+              f"IMPRESSION:\nAcute left subdural haematoma.\n{rep}\n")
+    dictation = "- Left subdural haematoma 11 mm\n- CT head: scalp haematoma over the left parietal bone"
+    jp = JevPass(clauses=["Acute left subdural haematoma.", rep],
+                 types={"Acute left subdural haematoma.": "abnormal", rep: "not_a_finding"})
+    _, (items, _) = await _confirmed(monkeypatch, report, dictation, jp, {"rec*": NOT_STATED_Q3})
+    assert [it.anchor.text for it in items if it.kind == "recommendation"] == [rep]
+
+
+async def test_unreadable_or_failed_jev_keeps_the_recommendation(monkeypatch):
+    async def boom(state, qs):
+        raise RuntimeError("down")
+    for answers in ({"rec*": {"noul": 0.9}}, boom):
+        _, (items, _) = await _confirmed(monkeypatch, REPEAT_REPORT, MIXED_DICT,
+                                         JevPass(clauses=[REPEAT], types={REPEAT: "not_a_finding"}), answers)
+        assert [it.anchor.text for it in items if it.kind == "recommendation"] == [REPEAT]
 
 
 # ── live audit 2, 1a: synthesis inside a dictation-paired clause, its unsupported item suppressed (L7 shape) ──
@@ -337,6 +366,8 @@ CYST_DICT = "- Left renal cyst 15 mm\n- Liver normal"
 CYST_REPORT = ("FINDINGS:\nLeft renal cyst 15 mm. The liver is normal.\n\n"
                "IMPRESSION:\nLeft renal cyst 15 mm, in keeping with a simple Bosniak I cyst.\n")
 CYST_CLAUSE = "Left renal cyst 15 mm, in keeping with a simple Bosniak I cyst."
+STATED_Q3 = {"choice": "stated", "probabilities": {"stated": 0.8, "synonym_or_equivalent": 0.15, "not_stated": 0.05}}
+NOT_STATED_Q3 = {"choice": "not_stated", "probabilities": {"stated": 0.05, "synonym_or_equivalent": 0.1, "not_stated": 0.85}}
 NOT_DICTATED = {"syn*": {"choice": "not_stated", "probabilities": {"stated": 0.05, "synonym_or_equivalent": 0.1, "not_stated": 0.85}}}
 DICTATED = {"syn*": {"choice": "stated", "probabilities": {"stated": 0.6, "synonym_or_equivalent": 0.3, "not_stated": 0.1}}}
 SYNONYM = {"syn*": {"choice": "synonym_or_equivalent", "probabilities": {"stated": 0.1, "synonym_or_equivalent": 0.7, "not_stated": 0.2}}}
@@ -490,7 +521,7 @@ async def test_run_review_keeps_provenance_when_synthesis_fails(monkeypatch):
 
     async def boom(*a, **k):
         raise RuntimeError("x")
-    monkeypatch.setattr(provenance, "synthesis_items", boom)
+    monkeypatch.setattr(provenance, "confirm", boom)
     res = await engine.run_review(inp(REPORT, DICT), RUN)
     assert "recommendation" in [i.kind for i in res.items] and "synthesis" in res.run["errors"]
 
@@ -516,3 +547,12 @@ def test_choice_answer_parsing():
     assert p({"choice": "not_stated"}) == 0.0 and p({"choice": "synonym_or_equivalent"}) == 1.0
     for bad in (None, {}, {"noul": 0.1}, {"choice": "maybe"}, {"probabilities": {"stated": "x"}}):
         assert p(bad) is None
+
+
+async def test_dictated_excluded_between_added_runs_is_never_painted(monkeypatch):
+    dictation = "- Left renal cyst 15 mm, malignancy excluded\n- Liver normal"
+    clause = "Left renal cyst 15 mm, benign septated excluded Bosniak category."
+    report = f"FINDINGS:\nLeft renal cyst 15 mm. The liver is normal.\n\nIMPRESSION:\n{clause}\n"
+    items, _ = await _synthesis(monkeypatch, report, dictation, [_unsupported(report, clause)])
+    marked = _texts(items, "ai_generated")
+    assert marked and not any("excluded" in m for m in marked)

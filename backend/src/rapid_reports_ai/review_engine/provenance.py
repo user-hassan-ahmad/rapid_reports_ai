@@ -102,15 +102,14 @@ def _paired(al: Alignment, c: ReportClause) -> bool:
 
 
 def _rec_dictated(al: Alignment, c: ReportClause) -> bool:
-    """A confident pair, or a dictated line sharing a content word beyond the recommending words: a recommendation
-    line, or a lexicon-free line ("Result discussed by phone with Dr Jones") that no report clause confidently pairs
-    with (a finding line pairs with its finding, so "Repeat CT head" is never matched to "CT head: ... haematoma")."""
+    """A confident pair, or a dictated recommendation line sharing a content word beyond the recommending words. A
+    rewording without either ("Discussed with the referring team." for "Result discussed by phone with Dr Jones") is
+    left to the Jev question in `confirm`, never to word overlap with any dictated line."""
     if _paired(al, c):
         return True
     words = {w for w in content_words(c.text) if not _REC_WORDS.fullmatch(w)}
-    used = {p.line_id for p in al.pairs if confident(p)}
-    return any((recommendation(l.text) or l.id not in used)
-               and words & {w for w in content_words(l.text) if not _REC_WORDS.fullmatch(w)} for l in al.lines)
+    return any(recommendation(l.text) and words & {w for w in content_words(l.text) if not _REC_WORDS.fullmatch(w)}
+               for l in al.lines)
 
 
 def _supported(jp: Optional[JevPass], i: Optional[int]) -> Optional[float]:
@@ -282,7 +281,9 @@ def build_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPa
 
 _TOKEN = re.compile(r"[A-Za-z]+|\d+(?:\.\d+)?")
 # never painted, and never bridged when merging two runs: a dictated negation or hedge belongs to the dictation
-_GUARD = re.compile(r"^(?:no|not|without|nil|likely|possible|possibly|probable|probably|consistent|suggest\w*)$", re.I)
+_GUARD = re.compile(r"^(?:no|not|without|nil|none|absent|negative|free|excluded|exclude|cannot|likely|possible|possibly|"
+                    r"probable|probably|consistent|compatible|keeping|suggest\w*|suspicious|suspected|query|may|might|"
+                    r"could|favour\w*|favor\w*)$", re.I)
 # Lab P4 (scratchpad labs/audit_jev/lab4.py, arm Q3, 2 runs): 0 dictated items flagged at any threshold <= 0.71
 # (the noul wording Q1 scored a dictated "No ICH" phrase 0.15), 16/17 added phrases caught in both runs.
 SYNTH_DICTATED = 0.5         # P(stated) + P(synonym_or_equivalent) below this → not dictated → marked
@@ -338,23 +339,29 @@ def _proposed_runs(report: str, s: int, e: int, dictated: set) -> List[Tuple[int
     return [(toks[i][0], toks[j][1]) for i, j in runs]
 
 
-async def synthesis_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPass],
-                          lane_items: List[ReviewItem], existing: List[ReviewItem], owned: List[ReviewItem]
-                          ) -> Tuple[List[ReviewItem], dict]:
-    """(items, log): violet marks for synthesis inside a dictation-paired clause whose accuracy `unsupported` item
-    (Jev W1n, `jev.supported`) the adjudicator suppressed. A suppression is NOT proof the content is undictated (the
-    adjudicator also suppresses "present in other words"), so code only proposes and Jev decides:
-    - proposal: each anchor (and `also_anchors` copy) that lies on report clauses (never technique / comparison /
-      history), has a confident pair, and is not Jev-typed normal / not_a_finding; its runs of content words absent
-      from the whole dictation (`_proposed_runs`), minus spans provenance already marked or owned items anchor;
-    - decision: one batched Jev request per report, dictation as state, the lab P4 Q3 choice per run (`q_synthesis`);
-      a run is marked only when P(stated) + P(synonym_or_equivalent) < SYNTH_DICTATED. A failed request or unreadable answer marks nothing.
-    The suppressed item stays as it is."""
+async def confirm(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPass], lane_items: List[ReviewItem],
+                  prov: List[ReviewItem], owned: List[ReviewItem]) -> Tuple[List[ReviewItem], dict]:
+    """(provenance items, log): `build_items`' items after one batched Jev request (dictation as state, the lab P4 Q3
+    choice, `q_synthesis`) that decides two things:
+    - recommendations: a `recommendation` item whose sentence no dictated line pairs with or restates as a
+      recommendation (`_rec_dictated`) is asked about its anchored recommendation text; dictated (P(stated) +
+      P(synonym_or_equivalent) >= SYNTH_DICTATED) drops the item. A failed or unreadable answer keeps it: a removable
+      item is the safe direction.
+    - synthesis: violet marks for synthesis inside a dictation-paired clause whose accuracy `unsupported` item
+      (Jev W1n, `jev.supported`) the adjudicator suppressed. A suppression is NOT proof the content is undictated
+      (the adjudicator also suppresses "present in other words"), so code only proposes: each anchor (and
+      `also_anchors` copy) that lies on report clauses (never technique / comparison / history), has a confident
+      pair, and is not Jev-typed normal / not_a_finding; its runs of content words absent from the whole dictation
+      (`_proposed_runs`), minus spans provenance already marked or owned items anchor. A run is marked only when
+      P(stated) + P(synonym_or_equivalent) < SYNTH_DICTATED; a failed request or unreadable answer marks nothing.
+      The suppressed item stays as it is."""
     report = inp.artifacts.report or ""
-    taken = [(it.anchor.start, it.anchor.end) for it in list(existing) + list(owned) if it.anchor is not None]
+    taken = [(it.anchor.start, it.anchor.end) for it in list(prov) + list(owned) if it.anchor is not None]
     dictated = set().union(*(content_words(l.text) for l in al.lines)) if al.lines else set()
     props: List[Tuple[int, int, str, str, str]] = []           # (start, end, clause text, section, item key)
-    log = {"suppressed_unsupported": 0, "proposed": 0, "synthesis": 0, "error": None}
+    recs = [it for it in prov if it.kind == KIND_REC and it.anchor is not None]
+    log = {"suppressed_unsupported": 0, "proposed": 0, "synthesis": 0, "rec_asked": len(recs), "rec_dictated_jev": 0,
+           "error": None}
     for it in lane_items:
         if (it.kind != "unsupported" or it.cls != "suppress" or "jev.supported" not in (it.detectors or [])
                 or it.anchor is None):
@@ -377,24 +384,40 @@ async def synthesis_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Opti
                 taken.append((a, b))
                 props.append((a, b, text, clauses[0].section, it.key))
     log["proposed"] = len(props)
-    if not props:
-        return [], log
+    if not props and not recs:
+        return list(prov), log
     qs = {f"syn{k}": q_synthesis(clause, report[a:b]) for k, (a, b, clause, _, _) in enumerate(props)}
+    qs.update({f"rec{k}": q_synthesis((it.evidence or {}).get("sentence") or it.anchor.text, it.anchor.text)
+               for k, it in enumerate(recs)})
     try:
-        ans = await rc._jev(synthesis_state(inp), qs)
-    except Exception as e:  # noqa: BLE001 - no answer, no mark
+        ans = await rc._jev(synthesis_state(inp), qs) or {}
+    except Exception as e:  # noqa: BLE001 - no answer: recommendations stay, nothing is marked
         log["error"] = f"{type(e).__name__}: {str(e)[:200]}"
-        return [], log
-    out: List[ReviewItem] = []
+        return list(prov), log
+    drop = set()
+    for k, it in enumerate(recs):
+        p = p_dictated(ans.get(f"rec{k}"))
+        if p is not None and p >= SYNTH_DICTATED:
+            drop.add(id(it))
+    log["rec_dictated_jev"] = len(drop)
+    out = [it for it in prov if id(it) not in drop]
     for k, (a, b, _, section, key) in enumerate(props):
-        p = p_dictated((ans or {}).get(f"syn{k}"))
+        p = p_dictated(ans.get(f"syn{k}"))
         if p is None or p >= SYNTH_DICTATED:
             continue
         out.append(_ai_item(inp, run_id, section, a, b, {"form": "synthesis", "from": "unsupported_suppressed",
                                                          "item_key": key, "dictated": p}))
-    log["synthesis"] = len(out)
+        log["synthesis"] += 1
     return out, log
 
 
+async def synthesis_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPass],
+                          lane_items: List[ReviewItem], existing: List[ReviewItem], owned: List[ReviewItem]
+                          ) -> Tuple[List[ReviewItem], dict]:
+    """The synthesis marks `confirm` adds (see there), alone."""
+    out, log = await confirm(inp, run_id, al, jp, lane_items, existing, owned)
+    return [it for it in out if (it.evidence or {}).get("from") == "unsupported_suppressed"], log
+
+
 __all__ = ["KIND_AI", "KIND_REC", "PROVENANCE_KINDS", "DETECTOR_AI", "DETECTOR_REC", "is_recommendation",
-           "build_items", "synthesis_items"]
+           "build_items", "confirm", "synthesis_items"]
