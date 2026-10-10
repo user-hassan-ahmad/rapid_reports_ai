@@ -256,3 +256,21 @@ def test_the_candidate_record_carries_the_signature_into_the_artifacts():
     rec = {"content": SIGNED, "sections": ["FINDINGS", "IMPRESSION"], "signature": SIG_BLOCK}
     assert GenerationArtifacts.from_candidate(rec, "x").signature == SIG_BLOCK
     assert GenerationArtifacts.from_candidate({"content": SIGNED}, "x").signature is None   # older record
+
+
+def test_the_finding_part_of_a_mixed_recommendation_sentence_is_ai_generated():
+    """Review fix 2: shrinking the recommendation item must not leave the sentence's undictated finding untinted."""
+    report = ("FINDINGS:\nThe appendix is dilated to 11 mm with periappendiceal fat stranding.\n\n"
+              "IMPRESSION:\nFindings are suspicious for perforation; urgent surgical review recommended.\n")
+    items, _ = _run(report, MIXED_DICT)
+    assert _texts(items, "ai_generated") == ["Findings are suspicious for perforation"]
+    assert _texts(items, "recommendation") == ["urgent surgical review recommended"]
+
+
+def test_a_supported_finding_part_gets_no_ai_generated_item():
+    report = ("FINDINGS:\nThe appendix is dilated to 11 mm with periappendiceal fat stranding.\n\n"
+              "IMPRESSION:\nFindings are suspicious for perforation; urgent surgical review recommended.\n")
+    part = "Findings are suspicious for perforation"
+    jp = JevPass(clauses=[part], types={part: "abnormal"}, support={"sup0": {"noul": 0.9}})
+    items, _ = _run(report, MIXED_DICT, jp=jp)
+    assert _texts(items, "ai_generated") == []

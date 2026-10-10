@@ -12,7 +12,8 @@
   (`jev_pass.recommendation`, minus interpretive "suggests" / "suggestive") that no dictated line states, with a
   code-built whole-sentence removal (`Edit(mode="remove")`) checked with `verifier.apply_edit`; never pre-applied.
   A sentence that also holds other parts ("No X identified; referral recommended.") is anchored and removed on its
-  recommendation part only (`_rec_target`), or gets no edit when that part cannot be isolated safely.
+  recommendation part only (`_rec_target`), or gets no edit when that part cannot be isolated safely; its other
+  parts are judged for `ai_generated` like any clause (paired / W1n-supported / normal / owned give no item).
 
 Never marked: technique / comparison / history sections and signature lines (the alignment's clause splitter skips
 them); Jev `not_a_finding` statements; normal / negative statements (the negatives classifier's and the brief's: their
@@ -161,10 +162,34 @@ def build_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPa
             if c.sentence_start in rec_seen:
                 continue
             rec_seen.add(c.sentence_start)
+            sentence = report[c.sentence_start:c.sentence_end]
             if _rec_dictated(al, c):
                 skipped["rec_dictated"] += 1
             else:
-                recs.append((c, report[c.sentence_start:c.sentence_end]))
+                recs.append((c, sentence))
+            # its other parts ("Findings suspicious for X; MDT recommended.") are judged like any clause
+            for ps, pe, rec in recommendation_parts(sentence, is_recommendation) or []:
+                a, b = c.sentence_start + ps, c.sentence_start + pe
+                if rec or not (c.start <= a and b <= c.end):
+                    continue
+                part = report[a:b]
+                pi = _jev_index(jp, part)
+                pt = _jev_type(jp, pi)
+                if pt in ("normal", "not_a_finding") or hedge_tag(part) == "negated" or (
+                        pt is None and is_normal_or_negative(part)):
+                    skipped["normal"] += 1
+                    continue
+                if _paired(al, c):
+                    skipped["paired"] += 1
+                    continue
+                sup = _supported(jp, pi)
+                if sup is not None and sup >= SUPPORTED_DICTATED:
+                    skipped["supported"] += 1
+                    continue
+                if _overlaps((a, b), owned_spans):
+                    skipped["owned"] += 1
+                    continue
+                marked.append((c, a, b, {"clauses": [c.id], "jev_type": pt, "supported": sup, "form": "synthesis"}))
             continue
         if t == "not_a_finding":
             skipped["not_a_finding"] += 1
