@@ -11,6 +11,7 @@ from ..database.models import StackSchemaFamily
 from ..template_sheet_structure import SheetStructure
 from .family import choose_family
 from .gate import closing_check, conclusion_gate
+from .jev_stack import STATED_MIN, ask_stated
 from .grouper import apply_placements, place
 from .pills import derived_pills
 from .reconciler import reconcile
@@ -41,6 +42,7 @@ class GroupResult(BaseModel):
     timings_ms: dict[str, int] = Field(default_factory=dict)
     model: str | None = None  # the grouper endpoint that answered (None: no call, or all failed)
     error: str | None = None
+    chips_stated: list[str] = Field(default_factory=list)  # visible chips the dictation now states (v2 §4)
 
 
 def _result(regions: list[Region], source: str, key: str, family: str | None = None,
@@ -88,14 +90,25 @@ async def resolve_schema(scan_type: str, history: str, structure: SheetStructure
     return _result(rec.regions, "reconciled", key, family=rec.family, provisional=True)
 
 
+async def _stated(text: str, chips: list[str]) -> list[str]:
+    """Visible chips the dictation now states (Jev, STATED_MIN). Fails open: none."""
+    try:
+        return [c for c, p in zip(chips, await ask_stated(text, chips)) if p >= STATED_MIN]
+    except Exception as e:
+        logger.warning("[stack.chips.stated] %s: %s", type(e).__name__, str(e)[:200])
+        return []
+
+
 async def group_update(scan_type: str, text: str, regions: list[Region],
-                       previous: list[StackUnit]) -> GroupResult:
+                       previous: list[StackUnit], chips: list[str] | None = None) -> GroupResult:
     units, new_ids = match_units(text, previous)
     timings: dict[str, int] = {}
     problems: list[str] = []
     gate_log: list[dict] = []
+    stated: list[str] = []
     error, model = None, None
     if new_ids:
+        stated_task = asyncio.create_task(_stated(text, chips)) if chips else None
         t0 = time.perf_counter()
         placements, model, error = await place(scan_type, regions, units, new_ids)
         timings["grouper"] = int((time.perf_counter() - t0) * 1000)
@@ -104,8 +117,10 @@ async def group_update(scan_type: str, text: str, regions: list[Region],
             t1 = time.perf_counter()
             gate_log = await conclusion_gate(units, new_ids)
             timings["gate"] = int((time.perf_counter() - t1) * 1000)
+        if stated_task is not None:
+            stated = await stated_task
     return GroupResult(units=units, new_ids=new_ids, pills=derived_pills(units, regions), gate=gate_log,
-                       problems=problems, timings_ms=timings, model=model, error=error)
+                       problems=problems, timings_ms=timings, model=model, error=error, chips_stated=stated)
 
 
 async def close_update(units: list[StackUnit], regions: list[Region]) -> GroupResult:

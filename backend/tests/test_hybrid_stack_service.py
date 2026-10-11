@@ -94,3 +94,20 @@ async def test_group_update_with_nothing_new_makes_no_call(monkeypatch):
     prev = [StackUnit(id=0, text="Liver normal.", group="Liver", covers=["Liver"])]
     res = await S.group_update("CT", "Liver normal.", regions, prev)
     assert res.new_ids == [] and res.pills == ["Liver"]
+
+
+async def test_group_update_reasks_visible_chips_when_new_sentences(monkeypatch):
+    from rapid_reports_ai.hybrid_stack.grouper import Placement
+    regions = [Region(name="Peritoneum", includes="free gas")]
+
+    async def place(scan_type, regions, units, new_ids):
+        return [Placement(id=i, group="Peritoneum") for i in new_ids], "m", None
+
+    async def stated(text, chips):
+        return [0.9, 0.2]
+    monkeypatch.setattr(S, "place", place)
+    monkeypatch.setattr(S, "ask_stated", stated)
+    res = await S.group_update("CT", "No free gas.", regions, [], ["No free gas.", "No ascites."])
+    assert res.chips_stated == ["No free gas."]
+    res = await S.group_update("CT", "No free gas.", regions, res.units, ["No ascites."])
+    assert res.chips_stated == []  # nothing new: not asked

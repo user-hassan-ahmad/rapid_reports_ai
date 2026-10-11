@@ -16,6 +16,8 @@ from ..database.models import DictationStackLog, StackSchemaFamily, Template, Us
 from ..dictation_v2 import v2_allowed
 from ..template_sheet_structure import fresh
 from .schemas import Region
+from .chips import ChipsResult, suggest
+from .draft import DraftResult, draft_conclusion
 from .service import GroupResult, SchemaResult, close_update, group_update, resolve_schema
 from .units import StackUnit
 
@@ -50,6 +52,21 @@ class GroupRequest(BaseModel):
     text: str = ""
     regions: list[Region]
     previous: list[StackUnit] = Field(default_factory=list)
+    chips: list[str] = Field(default_factory=list)  # visible chips, re-asked against the dictation (v2 §4)
+
+
+class ChipsRequest(BaseModel):
+    scan_type: str = ""
+    clinical_history: str = ""
+    region: str
+    sentences: list[str]
+    dictation: str = ""
+
+
+class DraftRequest(BaseModel):
+    scan_type: str = ""
+    clinical_history: str = ""
+    findings: str
 
 
 class CloseRequest(BaseModel):
@@ -70,6 +87,8 @@ class LogRequest(BaseModel):
     structured_text: str = ""
     manual_moves: int = 0
     latency_ms: dict = Field(default_factory=dict)
+    gate: dict | None = None      # v2 §5: the confirmed record (None: not confirmed)
+    report_id: str | None = None  # v2: set once Generate returns
 
 
 class FamilyUpdate(BaseModel):
@@ -90,7 +109,19 @@ async def stack_schema(req: SchemaRequest, user: User = Depends(get_current_user
 @router.post("/group", response_model=GroupResult)
 async def stack_group(req: GroupRequest, user: User = Depends(get_current_user)):
     _require()
-    return await group_update(req.scan_type, req.text, req.regions, req.previous)
+    return await group_update(req.scan_type, req.text, req.regions, req.previous, req.chips)
+
+
+@router.post("/chips", response_model=ChipsResult)
+async def stack_chips(req: ChipsRequest, user: User = Depends(get_current_user)):
+    _require()
+    return await suggest(req.scan_type, req.clinical_history, req.region, req.sentences[:12], req.dictation)
+
+
+@router.post("/draft", response_model=DraftResult)
+async def stack_draft(req: DraftRequest, user: User = Depends(get_current_user)):
+    _require()
+    return await draft_conclusion(req.scan_type, req.clinical_history, req.findings)
 
 
 @router.post("/close", response_model=GroupResult)
@@ -107,8 +138,9 @@ async def stack_log(req: LogRequest, user: User = Depends(get_current_user), db:
         row = DictationStackLog(user_id=user.id, session_id=req.session_id)
         db.add(row)
     for k, v in req.model_dump().items():
-        if k != "session_id":
-            setattr(row, k, v)
+        if k == "session_id" or (k in ("gate", "report_id") and v is None):
+            continue  # a later log without a gate or report id never erases one already recorded
+        setattr(row, k, v)
     db.commit()
     return {"ok": True}
 

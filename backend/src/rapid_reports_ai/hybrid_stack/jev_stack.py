@@ -101,3 +101,19 @@ async def ask_stated(dictation: str, chips: list[str], transport=None) -> list[f
     r.raise_for_status()
     ans = r.json().get("answers") or {}
     return [float((ans.get(chip_key(i)) or {}).get("noul") or 0.0) for i in range(len(chips))]
+
+
+COMMAND_DELETE_MIN = 0.6  # lab 2026-10-11: no dictation read as delete; a named delete only selects
+STATED_MIN = 0.8  # lab 2026-10-11 (64 pairs): 0 false "stated", recall 24/30
+
+
+def decide_command(parsed: dict) -> dict:
+    """The action of a final (spec v2 §7.3, lab §10.1). Accept: Jev names a visible chip and does not read
+    the final as dictation. Delete: at COMMAND_DELETE_MIN, with the named region if any. Everything else,
+    correct included, is dictation (today's write path already handles corrections)."""
+    cmd, conf = parsed.get("command"), float(parsed.get("confidence") or 0.0)
+    if parsed.get("chip") and cmd not in (None, "dictate"):
+        return {"action": "accept", "region": None, "chip": parsed["chip"]}
+    if cmd == "delete" and conf >= COMMAND_DELETE_MIN:
+        return {"action": "delete", "region": parsed.get("region"), "chip": None}
+    return {"action": "dictate", "region": None, "chip": None}

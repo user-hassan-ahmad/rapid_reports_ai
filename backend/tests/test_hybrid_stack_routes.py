@@ -40,7 +40,8 @@ def test_off_without_dictation_package(authed, monkeypatch):
 
 
 def test_group_route(authed, monkeypatch):
-    async def fake(scan_type, text, regions, previous):
+    async def fake(scan_type, text, regions, previous, chips):
+        assert chips == []
         return S.GroupResult(units=[], new_ids=[], pills=["Liver"])
     monkeypatch.setattr(R, "group_update", fake)
     d = authed.post("/api/canvas/stack/group", json={"scan_type": "CT", "text": "x",
@@ -88,3 +89,28 @@ def test_settings_status_carries_the_flags(authed, monkeypatch):
     monkeypatch.setenv("RR_STACK_SHADOW_RATE", "0.5")
     d = authed.get("/api/settings/status").json()
     assert d["hybrid_stack"] is True and d["hybrid_stack_shadow_rate"] == 0.5
+
+
+def test_log_keeps_gate_and_report_id(authed, db_session):
+    body = {"session_id": "s2", "units": [], "gate": {"conclusion_text": "Diverticulitis."}}
+    assert authed.post("/api/canvas/stack/log", json=body).json() == {"ok": True}
+    assert authed.post("/api/canvas/stack/log", json={"session_id": "s2", "report_id": "r1"}).json() == {"ok": True}
+    row = db_session.query(DictationStackLog).filter_by(session_id="s2").one()
+    db_session.refresh(row)
+    assert row.gate == {"conclusion_text": "Diverticulitis."} and row.report_id == "r1"
+
+
+def test_chips_and_draft_routes(authed, monkeypatch):
+    from rapid_reports_ai.hybrid_stack.chips import ChipsResult
+    from rapid_reports_ai.hybrid_stack.draft import DraftResult
+
+    async def chips(scan_type, history, region, sentences, dictation):
+        assert region == "Bowel" and sentences == ["Diverticulitis."]
+        return ChipsResult(chips=["No abscess."])
+
+    async def draft(scan_type, history, findings):
+        return DraftResult(text="Acute diverticulitis.")
+    monkeypatch.setattr(R, "suggest", chips)
+    monkeypatch.setattr(R, "draft_conclusion", draft)
+    assert authed.post("/api/canvas/stack/chips", json={"region": "Bowel", "sentences": ["Diverticulitis."]}).json()["chips"] == ["No abscess."]
+    assert authed.post("/api/canvas/stack/draft", json={"findings": "x"}).json()["text"] == "Acute diverticulitis."

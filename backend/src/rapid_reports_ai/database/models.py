@@ -899,5 +899,7 @@ class DictationStackLog(Base):
     structured_text = Column(Text, nullable=True)        # shadow: today's Structured build (sampled)
     manual_moves = Column(Integer, nullable=False, default=0)
     latency_ms = Column(JSONBType(), nullable=True)
+    gate = Column(JSONBType(), nullable=True)            # v2: what the radiologist confirmed before Generate
+    report_id = Column(String(64), nullable=True)        # v2: the report generated from this session
     created_at = Column(DateTime, default=_now, nullable=False)
     updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
