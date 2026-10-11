@@ -6,9 +6,26 @@ export const QUIET_MAX = 3;
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\.$/, '').replace(/\s+/g, ' ');
 
-/** The answer button: short, beside the sentences it adds (shown inline in the row; its title lists them). */
-export function answerLabel(sentences: string[]): string {
-	return sentences.length === 1 ? '✓ Normal' : '✓ Both normal';
+/** The answer button: always "✓ Normal" beside the normal wordings it adds (its title lists them). */
+export function answerLabel(_sentences: string[]): string {
+	return '✓ Normal';
+}
+
+/** Where a finding check sits: under the region of the dictated sentence that set it off (its source_text), so a row
+ *  always sits next to the sentence it is about, whichever model placed what (hand read 2026-10-12). Falls back to
+ *  the writer's region. */
+export function anchorRegion(item: StackItem, units: StackUnit[]): string {
+	const src = norm(item.source_text ?? '');
+	if (item.kind !== 'finding' || !src) return item.region;
+	for (const u of units) {
+		if (u.heading || u.group === null) continue;
+		if (u.parts && u.parts.length > 1) {
+			const part = u.parts.find((p) => norm(p.text).includes(src));
+			if (part) return part.group;
+			if (norm(u.text).includes(src)) return u.parts[0].group;
+		} else if (norm(u.text).includes(src)) return u.group;
+	}
+	return item.region;
 }
 
 /** The sentences a tap will add: the row's own, minus any the radiologist removed with ×. */

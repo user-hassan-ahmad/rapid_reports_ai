@@ -89,6 +89,7 @@ class Referral(BaseModel):
 class Item(BaseModel):
     id: str
     kind: str              # finding | referral
+    source_text: str = ""  # the dictated phrase that set a finding check off: the row sits under that sentence's region
     region: str
     question: str
     why: str = ""
@@ -182,6 +183,7 @@ def _rows(raw: RawOutput, referrals: list[Referral] | None = None) -> list[Item]
     out = [Item(id=_id("referral", region, q), kind="referral", region=region.strip(), question=q.strip(), why=why,
                 sentences=_clean(sentences)) for q, region, sentences, why in refs[:MAX_REFERRALS] if q.strip()]
     out += [Item(id=_id("finding", f.region, f.question), kind="finding", region=f.region.strip(),
+                 source_text=f.source_text.strip(),
                  question=f.question.strip(), why=f.rationale.strip(), sentences=_clean(f.answers))
             for f in raw.finding_checks if f.question.strip()]
     return out

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abnormalAll, answerLabel, assumedFrom, openCount, quietLine, rowSentences, unansweredChecks } from './items';
+import { abnormalAll, anchorRegion, answerLabel, assumedFrom, openCount, quietLine, rowSentences, unansweredChecks } from './items';
 import type { StackItem, StackUnit } from './types';
 
 const item = (id: string, sentences: string[], extra: Partial<StackItem> = {}): StackItem => ({
@@ -7,9 +7,17 @@ const item = (id: string, sentences: string[], extra: Partial<StackItem> = {}): 
 });
 
 describe('checklist rows', () => {
-	it('labels the answer briefly; the sentences sit beside it', () => {
+	it('labels the answer "✓ Normal" however many wordings sit beside it', () => {
 		expect(answerLabel(['No features of torsion.'])).toBe('✓ Normal');
-		expect(answerLabel(['No torsion.', 'No rupture.'])).toBe('✓ Both normal');
+		expect(answerLabel(['No torsion.', 'No rupture.', 'No haemorrhage.'])).toBe('✓ Normal');
+	});
+	it('anchors a finding check under the region of the sentence that set it off', () => {
+		const unit = (id: number, text: string, group: string): StackUnit => ({
+			id, text, group, structure: null, attach_to: null, parts: null, covers: [], abnormal: true, pinned: false, heading: false
+		});
+		const units = [unit(0, 'A 3 cm hypoenhancing mass in the pancreatic head.', 'Pancreas'), unit(1, 'It abuts the SMV.', 'Vessels')];
+		expect(anchorRegion(item('a', ['x.'], { region: 'Pancreas', source_text: 'abuts the SMV' }), units)).toBe('Vessels');
+		expect(anchorRegion(item('b', ['x.'], { region: 'Liver', source_text: 'not dictated' }), units)).toBe('Liver');
 	});
 	it('a row lists only the sentences the radiologist has not removed', () => {
 		expect(rowSentences(item('a', ['No torsion.', 'No rupture.']), ['no rupture'])).toEqual(['No torsion.']);

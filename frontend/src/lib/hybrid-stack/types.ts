@@ -49,6 +49,7 @@ export interface StackItem {
 	id: string;
 	kind: 'finding' | 'referral';
 	region: string;
+	source_text?: string; // the dictated phrase that set a finding check off
 	question: string;
 	why: string;
 	sentences: string[]; // still to be answered (at most 2)

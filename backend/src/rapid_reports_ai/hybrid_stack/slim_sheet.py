@@ -20,7 +20,7 @@ from .schemas import OTHER, Region
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "slim-3"   # slim-2: no sex-specific organs in region normals; slim-3: Report Flow (house prose flow)
+PROMPT_VERSION = "slim-4"   # slim-2: no sex-specific organs in region normals; slim-3: Report Flow (house prose flow); slim-4: condensed region normals
 URL = "https://api.cerebras.ai/v1/chat/completions"
 TIMEOUT_S = 120.0   # cached per family: the first case of a new scan type waits, nobody after
 
@@ -56,7 +56,7 @@ How a consultant's findings read as prose in this kind of report, whatever order
 - **Joining:** how normal statements are joined (for example several normal structures named in one sentence in sweep order). The flow places statements; it never adds one: a region with nothing reported is simply absent.
 
 ## Region Normals
-One bullet per region in REGIONS, using the region name exactly: - **<Region>:** then 1-6 quoted sentences, each the statement a consultant writes when that structure is normal on this scan. One structure or feature per sentence; final report form; British English; no measurements or numbers; nothing this scan cannot show; never a statement about a disease or the clinical question. Never a sentence about an organ only one sex has (the uterus, ovaries, adnexa, cervix, prostate, seminal vesicles, testes): the sheet is shared by every patient, so those reach the report only when dictated. A region with nothing left gets no bullet.
+One bullet per region in REGIONS, using the region name exactly: - **<Region>:** then 1-2 quoted sentences, each at most 12 words: how a consultant states in one line that this region is normal on this scan (for example naming the region's main structures together), never a list of every branch, vessel or segment. One finding per sentence; final report form; British English; no measurements or numbers; nothing this scan cannot show; never a statement about a disease or the clinical question. Never a sentence about an organ only one sex has (the uterus, ovaries, adnexa, cervix, prostate, seminal vesicles, testes): the sheet is shared by every patient, so those reach the report only when dictated. A region with nothing left gets no bullet.
 
 ## Style Exemplars
 2-4 bullets, each - **<finding type>:** "<one example abnormal sentence in house style>".

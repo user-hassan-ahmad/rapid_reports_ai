@@ -256,7 +256,7 @@
 	let foldedRows: string[] = []; // answered rows already folded away: never shown again
 	let removedSentences: string[] = []; // never stated; sent to Generate as DO NOT ASSERT
 	// Rows skipped (finding checks) or marked not assessed (referral rows): folded, nothing stated, logged.
-	let skippedRows: Record<string, { item: StackItem; how: 'skip' | 'not_assessed' }> = {};
+	let skippedRows: Record<string, { item: StackItem; how: 'skip' | 'not_assessed' | 'abnormal' }> = {};
 	// The end-of-dictation review (hand read 2026-10-12): finding checks are written once dictation stops, over the
 	// whole dictation, and replace the previous set; nothing accumulates. The text the last review covered:
 	let reviewedFor = '';
@@ -1571,6 +1571,14 @@
 			if (seq === itemsSeq) reviewing = false;
 		}
 	}
+	/** "Abnormal…" in a row: the finding is added to the dictation as said (the grouper places it, the review re-runs)
+	 *  and the row folds as answered by the radiologist's own words. */
+	function abnormalRow(id: string, text: string): void {
+		const it = stackItems.find((x) => x.id === id);
+		if (!it) return;
+		skippedRows = { ...skippedRows, [id]: { item: it, how: 'abnormal' } };
+		stackAppend(text);
+	}
 	/** Skip a finding check, or mark a referral question not assessed: folded, nothing stated, logged. */
 	function skipRow(id: string): void {
 		const it = stackItems.find((x) => x.id === id);
@@ -1745,7 +1753,8 @@
 				...Object.values(dictatedRows).filter((r) => !tappedRows[r.id])
 					.map((r): GateItem => ({ id: r.id, kind: r.kind, region: r.region, question: r.question, sentences: r.sentences, answered_by: 'dictation' })),
 				...Object.values(skippedRows).filter(({ item }) => !tappedRows[item.id])
-					.map(({ item, how }): GateItem => ({ id: item.id, kind: item.kind, region: item.region, question: item.question, sentences: [], answered_by: how }))
+					.map(({ item, how }): GateItem => ({ id: item.id, kind: item.kind, region: item.region, question: item.question, sentences: [],
+						answered_by: how === 'abnormal' ? 'dictation' : how }))
 			],
 			assumed: confirmedAssumed,
 			removed: removedSentences,
@@ -2400,7 +2409,7 @@
 							ghost={ghostNow} items={viewItems} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
 							conclusion={conclusionView} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
-							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} onSkip={skipRow}
+							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} onSkip={skipRow} onAbnormal={abnormalRow}
 							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
 							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
 							syncing={assumedBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />

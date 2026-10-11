@@ -36,14 +36,14 @@ describe('HybridStackView v2', () => {
 		expect(props.onAnswer).toHaveBeenCalledWith('a');
 	});
 
-	it('the referral row leads; two sentences give "Both normal"; × removes one; a tapped row turns green', async () => {
+	it('the referral row leads; one "✓ Normal" adds what is listed; × removes one; a tapped row turns green', async () => {
 		const props = { ...base(), onAnswer: vi.fn(), onRemoveSentence: vi.fn() };
 		const ref = row('r', ['The appendix is normal.'], { kind: 'referral', region: 'Appendix', question: 'Appendix normal or inflamed?' });
 		const two = row('b', ['No torsion.', 'No rupture.'], { region: 'Liver' });
 		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })];
 		const r = render(HybridStackView, { ...props, units, items: [ref, two] });
 		await expect.element(page.getByText('Referral', { exact: true })).toBeInTheDocument();
-		await expect.element(page.getByRole('button', { name: '✓ Both normal' })).toBeInTheDocument();
+		await expect.element(page.getByTitle('Add: No torsion. No rupture.')).toBeInTheDocument();
 		await page.getByLabelText('Remove No rupture.').click();
 		expect(props.onRemoveSentence).toHaveBeenCalledWith('No rupture.');
 		r.rerender({ ...props, units, items: [ref, two], removed: ['No rupture.'] });
@@ -190,5 +190,15 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByTestId('review-skeleton')).toBeInTheDocument();
 		r.rerender({ ...props, reviewing: false });
 		await expect.element(page.getByTestId('review-skeleton')).not.toBeInTheDocument();
+	});
+
+	it('"Abnormal…" opens a box in the row; Enter adds the finding and folds the row', async () => {
+		const onAbnormal = vi.fn();
+		render(HybridStackView, { ...base(), onAbnormal, units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })],
+			items: [row('a', ['No biliary dilatation.'])] });
+		await page.getByRole('button', { name: 'Abnormal…' }).click();
+		await page.getByLabelText('Abnormal finding').fill('Mild intrahepatic biliary dilatation.');
+		await userEvent.keyboard('{Enter}');
+		expect(onAbnormal).toHaveBeenCalledWith('a', 'Mild intrahepatic biliary dilatation.');
 	});
 });

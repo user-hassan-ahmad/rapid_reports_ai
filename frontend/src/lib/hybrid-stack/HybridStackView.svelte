@@ -7,7 +7,7 @@
 	import { flip } from 'svelte/animate';
 	import { buildView } from './stackState';
 	import { CONCLUSION, GENERAL, OTHER, TECHNIQUE, regionStates, showsGroup } from './regionState';
-	import { answerLabel, openCount, quietLine, rowSentences, unansweredChecks } from './items';
+	import { anchorRegion, answerLabel, openCount, quietLine, rowSentences, unansweredChecks } from './items';
 	import type { StackItem, StackUnit, ViewRow } from './types';
 
 	export type ConclusionState =
@@ -43,6 +43,7 @@
 		onRemoveSentence = () => {},
 		onDictateInto = () => {},
 		onSkip = () => {},
+		onAbnormal = () => {},
 		onDraftEdit = () => {},
 		onDraftRefresh = () => {},
 		onConfirm,
@@ -93,6 +94,8 @@
 		onDictateInto?: (region: string) => void;
 		/** Skip a finding check, or mark a referral question not assessed: folded, nothing stated. */
 		onSkip?: (id: string) => void;
+		/** "Abnormal…" in a row: the finding typed or dictated into it is added as said, and the row folds. */
+		onAbnormal?: (id: string, text: string) => void;
 		onDraftEdit?: (text: string) => void;
 		onDraftRefresh?: () => void;
 		onConfirm: () => void;
@@ -137,11 +140,11 @@
 	const referrals = $derived(items.filter((i) => i.kind === 'referral'));
 	const shownNames = $derived(new Set(shown.map((g) => g.name)));
 	const covered = $derived(new Set(shown.flatMap((g) => g.members)));
-	const rowsFor = (region: string) => items.filter((i) => i.kind === 'finding' && i.region === region);
+	const rowsFor = (region: string) => items.filter((i) => i.kind === 'finding' && anchorRegion(i, units) === region);
 	// A joined card holds the rows and normals of the regions it spans, unless a region has its own card.
 	const ownMembers = (g: { name: string; members: string[] }) => g.members.filter((m) => m === g.name || !shownNames.has(m));
 	// A finding row whose region has no card (the writer named a region outside the scratchpad) shows up top.
-	const looseRows = $derived(items.filter((i) => i.kind === 'finding' && !covered.has(i.region)));
+	const looseRows = $derived(items.filter((i) => i.kind === 'finding' && !covered.has(anchorRegion(i, units))));
 	const openRows = $derived(openCount(items, tapped, removed, skipped));
 	const unanswered = $derived(unansweredChecks(items, tapped, removed, skipped));
 	const keptAssumed = (region: string) => {
@@ -155,6 +158,10 @@
 			states.abnormal.reduce((n, r) => n + keptAssumed(r).length, 0)
 	);
 	let expanded: string[] = $state([]);
+	let abnormalFor: string | null = $state(null);
+	let abnormalText = $state('');
+	let abnormalField: HTMLInputElement | null = $state(null);
+	let abnormalFocused = $state(false);
 	let openPill: string | null = $state(null);
 
 	// ── editing: one field at a time (a line, or the draft) ─────────────────────────────────────────
@@ -212,15 +219,31 @@
 	$effect(() => {
 		if (!incoming || incoming.seq === lastSeq) return;
 		lastSeq = incoming.seq;
-		const el = editing ? field : draftFocused ? draftField : newFocused ? newField : null;
+		const el = editing ? field : abnormalFocused ? abnormalField : draftFocused ? draftField : newFocused ? newField : null;
 		if (!el) return;
-		const cur = editing ? editValue : newFocused ? newLine : conclusion.kind === 'draft' ? conclusion.text : '';
+		const cur = editing ? editValue : abnormalFocused ? abnormalText : newFocused ? newLine : conclusion.kind === 'draft' ? conclusion.text : '';
 		const r = insertInto(el, cur, incoming.text);
 		if (editing) editValue = r.value;
+		else if (abnormalFocused) abnormalText = r.value;
 		else if (newFocused) newLine = r.value;
 		else onDraftEdit(r.value);
 		queueMicrotask(() => el.setSelectionRange(r.caret, r.caret));
 	});
+	/** The live strip grows and shrinks smoothly as lines wrap (hand read 2026-10-12: it jumped). */
+	function smoothHeight(node: HTMLElement) {
+		const inner = node.firstElementChild as HTMLElement | null;
+		if (!inner || typeof ResizeObserver === 'undefined') return {};
+		node.style.overflow = 'hidden';
+		node.style.boxSizing = 'border-box';
+		if (!reduced) node.style.transition = 'height 220ms ease';
+		const pad = () => parseFloat(getComputedStyle(node).paddingTop) + parseFloat(getComputedStyle(node).paddingBottom)
+			+ parseFloat(getComputedStyle(node).borderTopWidth) + parseFloat(getComputedStyle(node).borderBottomWidth);
+		const set = () => (node.style.height = `${inner.offsetHeight + pad()}px`);
+		const ro = new ResizeObserver(set);
+		ro.observe(inner);
+		set();
+		return { destroy: () => ro.disconnect() };
+	}
 	function focusOnMount(el: HTMLInputElement) {
 		el.focus();
 	}
@@ -250,11 +273,25 @@
 			<span class="text-emerald-200">✓ {it.question}</span><span class="text-xs text-emerald-300/70">answered in your dictation</span>
 		</div>
 	{:else if listed.length}
-		<div class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border-l-2 border-amber-400/80 bg-amber-500/[0.07] px-2 py-1.5" data-row="open" transition:fade={{ duration: ms }}>
-			{#if label}<span class="text-[10px] font-semibold uppercase tracking-wide text-amber-300/90">{label}</span>{/if}
-			<span class="text-sm font-medium text-amber-100">{it.question}</span>
-			{#if it.why}<span class="cursor-help text-xs text-gray-500" title={it.why} aria-label="Why: {it.why}">ⓘ</span>{/if}
-			<span class="flex min-w-0 flex-wrap items-center gap-1.5">
+		<!-- Compact (hand read 2026-10-12): the question, then the normal wordings with "✓ Normal" in line; "Abnormal…"
+		     opens a box in the row to type or dictate the finding; Skip. -->
+		<div class="space-y-1 rounded-md border-l-2 border-amber-400/80 bg-amber-500/[0.07] px-2 py-1.5" data-row="open" transition:fade={{ duration: ms }}>
+			<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+				{#if label}<span class="text-[10px] font-semibold uppercase tracking-wide text-amber-300/90">{label}</span>{/if}
+				<span class="text-sm font-medium text-amber-100">{it.question}</span>
+				{#if it.why}<span class="cursor-help text-xs text-gray-500" title={it.why} aria-label="Why: {it.why}">ⓘ</span>{/if}
+				<span class="ml-auto flex gap-1">
+					<button type="button" class="rounded-md border border-white/10 px-2 py-0.5 text-xs text-gray-300 hover:bg-white/[0.06]"
+						onclick={() => {
+							abnormalFor = abnormalFor === it.id ? null : it.id;
+							abnormalText = '';
+						}}>Abnormal…</button>
+					<button type="button" class="rounded-md px-2 py-0.5 text-xs text-gray-500 hover:text-gray-300"
+						title={it.kind === 'referral' ? 'The scan cannot answer it: nothing is stated' : 'Not relevant: nothing is stated'}
+						onclick={() => onSkip(it.id)}>{it.kind === 'referral' ? 'Not assessed' : 'Skip'}</button>
+				</span>
+			</div>
+			<div class="flex flex-wrap items-center gap-1.5">
 				{#each listed as s (s)}
 					<span class="inline-flex items-center gap-0.5 rounded bg-white/[0.04] px-1.5 py-0.5 text-xs text-gray-200">
 						{s}
@@ -262,19 +299,35 @@
 							aria-label="Remove {s}" onclick={() => onRemoveSentence(s)}>×</button>
 					</span>
 				{/each}
-			</span>
-			<span class="ml-auto flex gap-1.5">
 				<button type="button" class="rounded-md border border-amber-300/40 bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-100 hover:bg-amber-400/25"
 					title="Add: {listed.join(' ')}" onclick={() => onAnswer(it.id)}>{answerLabel(listed)}</button>
-				<button type="button" class="rounded-md border border-white/10 px-2 py-0.5 text-xs text-gray-400 hover:bg-white/[0.06]"
-					onclick={() => {
-						newField?.focus();
-						onDictateInto(it.region);
-					}}>Dictate</button>
-				<button type="button" class="rounded-md px-2 py-0.5 text-xs text-gray-500 hover:text-gray-300"
-					title={it.kind === 'referral' ? 'The scan cannot answer it: nothing is stated' : 'Not relevant: nothing is stated'}
-					onclick={() => onSkip(it.id)}>{it.kind === 'referral' ? 'Not assessed' : 'Skip'}</button>
-			</span>
+			</div>
+			{#if abnormalFor === it.id}
+				<input
+					bind:this={abnormalField}
+					bind:value={abnormalText}
+					use:focusOnMount
+					class="w-full rounded bg-white/[0.06] px-2 py-1 text-sm text-gray-100 outline outline-1 outline-amber-400/40 placeholder:text-gray-500"
+					placeholder="Type or dictate the finding, then Enter"
+					aria-label="Abnormal finding"
+					onfocus={() => {
+						abnormalFocused = true;
+						onEditing(true);
+					}}
+					onblur={() => {
+						abnormalFocused = false;
+						onEditing(editing !== null || draftFocused || newFocused);
+					}}
+					onkeydown={(e) => {
+						if (e.key === 'Enter' && abnormalText.trim()) {
+							e.preventDefault();
+							onAbnormal(it.id, abnormalText.trim());
+							abnormalFor = null;
+							abnormalText = '';
+						} else if (e.key === 'Escape') abnormalFor = null;
+					}}
+				/>
+			{/if}
 		</div>
 	{/if}
 {/snippet}
@@ -339,7 +392,7 @@
 <div class="space-y-3" data-testid="hybrid-stack">
 	<!-- Live strip: the words being spoken and sentences not placed yet -->
 	{#if view.unplaced.length || pending.length || ghost}
-		<section aria-label="Just dictated" class="rounded border border-white/5 bg-white/[0.02] px-2 py-1">
+		<section aria-label="Just dictated" class="rounded border border-white/5 bg-white/[0.02] px-2 py-1" use:smoothHeight>
 			<ul>
 				{#each view.unplaced as r (r.text)}<li class="text-sm leading-6 text-gray-300">{r.text}</li>{/each}
 				{#each pending as text (text)}<li class="text-sm leading-6 text-gray-300">{text}</li>{/each}
@@ -446,10 +499,13 @@
 			{#if said.length}
 				<div class="space-y-1">
 					<p class="text-[10px] uppercase tracking-wide text-gray-500">Normal, as you said</p>
-					{#each said as r (r)}
-						<div class="flex items-baseline gap-2 text-xs">
-							<span class="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-200" data-state="dictated">{r}</span>
-							<span class="min-w-0 truncate text-gray-400" title={dictatedNormalWords.get(r)?.join(' ')}>“{dictatedNormalWords.get(r)?.join(' ')}”</span>
+					<!-- Regions that share the same dictated words share one line. -->
+					{#each [...new Set(said.map((r) => dictatedNormalWords.get(r)?.join(' ') ?? ''))] as words (words)}
+						<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
+							{#each said.filter((r) => (dictatedNormalWords.get(r)?.join(' ') ?? '') === words) as r (r)}
+								<span class="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-200" data-state="dictated">{r}</span>
+							{/each}
+							<span class="min-w-0 truncate text-gray-400" title={words}>“{words}”</span>
 						</div>
 					{/each}
 				</div>
