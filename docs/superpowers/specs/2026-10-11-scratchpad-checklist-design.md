@@ -245,8 +245,20 @@ Conditional Suppression Rules, Interpretive Clause Rules.
 
 ### 8.2 Keying, model, timing
 
-- Depends on the **scan type and the family's region list only.** It is cached across cases and users in a new
-  table `stack_slim_sheets` (scan key, family, prompt version, markdown, region normals as JSON).
+- Keyed by **(scan-type family, contrast facet)**, decided 2026-10-11:
+  - the family is the one the stack already resolves (Jev pick plus reconciler, reviewer-approved);
+  - the contrast facet is a Jev choice from a fixed list at setup: none, arterial, portal venous, multiphase,
+    delayed, unknown;
+  - context words in the scan type ("trauma", "?appendicitis", "staging") do not change the key. They reach the
+    writer and the referral row. Add a context facet only if hand reads show normals reading wrong (for example
+    trauma's "intact").
+- Stored in a new table `stack_slim_sheets` (family, contrast, prompt version, status, markdown, region normals as
+  JSON, not_assessable).
+- **Review, decided 2026-10-11:**
+  - a new sheet is `provisional` and **used immediately**: the radiologist still confirms every assumed sentence;
+  - reviewers (`RR_STACK_REVIEWERS`) approve, edit a sentence, or discard and rebuild, on the existing review page;
+  - a sheet sentence removed with × in ≥ 30% of ≥ 5 confirmed sessions is flagged to the top of the review page
+    (from the gate log's `removed`).
 - Generated at workspace setup when no cached sheet exists, in parallel with today's analyser.
 - Model: `MODEL_CONFIG["STACK_SLIM_SHEET"]`, defaulting to Qwen on Cerebras at medium reasoning. Since it is cached,
   a slower, stronger model can replace it with no workflow cost.
