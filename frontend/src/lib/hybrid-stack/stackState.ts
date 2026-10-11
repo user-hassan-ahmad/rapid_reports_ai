@@ -6,8 +6,13 @@ const row = (u: StackUnit, text = u.text, partOf: number | null = null): ViewRow
 
 /** The grouped view: groups in schema order, sentences in dictated order, attached sentences nested
  *  under their parent, heading-only sentences hidden, unplaced sentences kept apart ("just dictated"). */
+export const JOIN = ' · ';
+
+/** A sentence that spans regions is never cut up (hand read 2026-10-12): it stays whole, as dictated, under one
+ *  heading joining its regions ("Pleura · Lungs and airways"), placed where its first region sits. */
 export function buildView(units: StackUnit[], groups: string[]): StackView {
 	const rows = new Map<string, ViewRow[]>(groups.map((g) => [g, []]));
+	const members = new Map<string, string[]>(groups.map((g) => [g, [g]]));
 	const byId = new Map<number, ViewRow>();
 	const unplaced: ViewRow[] = [];
 	const add = (g: string, r: ViewRow) => {
@@ -25,19 +30,26 @@ export function buildView(units: StackUnit[], groups: string[]): StackView {
 			continue;
 		}
 		if (u.parts && u.parts.length > 1) {
-			u.parts.forEach((p, k) => {
-				const r = row(u, p.text, u.id);
-				if (k === 0) byId.set(u.id, r);
-				add(p.group, r);
-			});
+			const spans = [...new Set(u.parts.map((p) => p.group))];
+			const ordered = [...groups.filter((g) => spans.includes(g)), ...spans.filter((g) => !groups.includes(g))];
+			const name = ordered.length > 1 ? ordered.join(JOIN) : ordered[0];
+			const r = row(u);
+			byId.set(u.id, r);
+			add(name, r);
+			members.set(name, ordered);
 			continue;
 		}
 		const r = row(u);
 		byId.set(u.id, r);
 		add(u.group, r);
 	}
+	const at = (name: string) => {
+		const k = groups.indexOf((members.get(name) ?? [name])[0]);
+		return k < 0 ? groups.length : k;
+	};
 	const out: ViewGroup[] = [];
-	for (const [name, rs] of rows) if (rs.length) out.push({ name, rows: rs });
+	for (const [name, rs] of rows) if (rs.length) out.push({ name, rows: rs, members: members.get(name) ?? [name] });
+	out.sort((a, b) => at(a.name) - at(b.name) || (a.members.length - b.members.length));
 	return { groups: out, unplaced };
 }
 

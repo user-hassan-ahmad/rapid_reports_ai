@@ -34,7 +34,7 @@ export interface GroupResult {
 }
 export type StackOrder = 'anatomy' | 'dictated';
 export interface ViewRow { unitId: number; text: string; structure: string | null; partOf: number | null; pinned: boolean; children: ViewRow[] }
-export interface ViewGroup { name: string; rows: ViewRow[] }
+export interface ViewGroup { name: string; rows: ViewRow[]; members: string[] } // members: the regions a joined heading spans
 export interface StackView { groups: ViewGroup[]; unplaced: ViewRow[] }
 
 /** Scratchpad v2 (spec 2026-10-11). */

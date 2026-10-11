@@ -25,14 +25,14 @@ describe('buildView', () => {
 		expect(v.unplaced.map((r) => r.text)).toEqual(['Just said.']);
 	});
 
-	it('shows split parts in their own groups', () => {
+	it('keeps a sentence spanning regions whole, under one heading joining them, where its first region sits', () => {
 		const units = [u(0, 'Kidneys normal, and a liver cyst.', 'Kidneys', {
 			parts: [{ text: 'Kidneys normal,', group: 'Kidneys' }, { text: 'and a liver cyst.', group: 'Liver' }]
-		})];
+		}), u(1, 'A renal cyst.', 'Kidneys')];
 		const v = buildView(units, GROUPS);
-		expect(v.groups.map((g) => [g.name, g.rows[0].text, g.rows[0].partOf])).toEqual([
-			['Liver', 'and a liver cyst.', 0],
-			['Kidneys', 'Kidneys normal,', 0]
+		expect(v.groups.map((g) => [g.name, g.members, g.rows.map((r) => [r.text, r.partOf])])).toEqual([
+			['Liver · Kidneys', ['Liver', 'Kidneys'], [['Kidneys normal, and a liver cyst.', null]]],
+			['Kidneys', ['Kidneys'], [['A renal cyst.', null]]]
 		]);
 	});
 });

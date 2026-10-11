@@ -161,4 +161,17 @@ describe('HybridStackView v2', () => {
 		render(HybridStackView, { ...base(), units: [u(0, 'A liver cyst.', 'Liver', { abnormal: true })], reviewFailed: true });
 		await expect.element(page.getByText('checks unavailable: review the scan as usual')).toBeInTheDocument();
 	});
+
+	it('a sentence spanning regions stays whole under one joined heading', async () => {
+		render(HybridStackView, {
+			...base(), groups: ['Technique', 'Lungs', 'Pleura', 'Other findings', 'General', 'Conclusion'], pillRegions: ['Lungs', 'Pleura'],
+			units: [u(0, 'A small left pneumothorax and minor basal contusion.', 'Pleura', {
+				abnormal: true, parts: [{ text: 'A small left pneumothorax', group: 'Pleura', abnormal: true },
+					{ text: 'and minor basal contusion.', group: 'Lungs', abnormal: true }]
+			})]
+		});
+		await expect.element(page.getByRole('heading', { name: 'Lungs · Pleura' })).toBeInTheDocument();
+		await expect.element(page.getByText('A small left pneumothorax and minor basal contusion.')).toBeInTheDocument();
+		await expect.element(page.getByRole('heading', { name: 'Pleura', exact: true })).not.toBeInTheDocument();
+	});
 });

@@ -68,7 +68,11 @@ export function findingsHash(units: StackUnit[]): string {
 /** The regions' own sentences (and the free groups), as the grouped findings text. `extra`: labelled lines appended
  *  to a region's line (answered rows, assumed normals); a region with only extra lines still gets its line. */
 export function findingsText(units: StackUnit[], groups: string[], extra: Map<string, string[]> = new Map()): string {
-	const items = effectiveItems(units);
+	// A sentence spanning regions goes to the generator whole, once, as dictated, under its joined label (hand read
+	// 2026-10-12: fragments under each region lost the sentence); its regions still count as reported.
+	const spanning = units.filter((u) => !u.heading && u.group !== null && u.parts && u.parts.length > 1);
+	const spanIds = new Set(spanning.map((u) => u.id));
+	const items = effectiveItems(units).filter((i) => !spanIds.has(i.unitId));
 	const lines: string[] = [];
 	const tech = items.filter((i) => i.group === TECHNIQUE).map((i) => i.text);
 	if (tech.length) lines.push(tech.join(' '), '');
@@ -80,6 +84,11 @@ export function findingsText(units: StackUnit[], groups: string[], extra: Map<st
 	}
 	for (const g of new Set(items.map((i) => i.group))) {
 		if (!groups.includes(g) && !FIXED.has(g)) lines.push(`${g}: ${items.filter((i) => i.group === g).map((i) => i.text).join(' ')}`);
+	}
+	for (const u of spanning) {
+		const spans = [...new Set((u.parts ?? []).map((p) => p.group))];
+		const ordered = [...groups.filter((g) => spans.includes(g)), ...spans.filter((g) => !groups.includes(g))];
+		lines.push(`${ordered.join(' · ')}: ${u.text}`);
 	}
 	for (const i of items) if (i.group === GENERAL) lines.push(i.text);
 	// Fail open: a sentence the grouper never placed still reaches the report, as said.

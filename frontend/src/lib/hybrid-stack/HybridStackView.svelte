@@ -109,7 +109,7 @@
 	const shown = $derived(
 		view.groups.filter(
 			(g) =>
-				states.abnormal.includes(g.name) ||
+				g.members.some((m) => states.abnormal.includes(m)) ||
 				(g.name === GENERAL && showsGroup(units, GENERAL)) ||
 				(g.name === OTHER && showsGroup(units, OTHER))
 		)
@@ -123,9 +123,12 @@
 	const hasConclusion = $derived(conclusionRows.length > 0 || (conclusion.kind === 'draft' && conclusion.text.trim().length > 0));
 	const referrals = $derived(items.filter((i) => i.kind === 'referral'));
 	const shownNames = $derived(new Set(shown.map((g) => g.name)));
+	const covered = $derived(new Set(shown.flatMap((g) => g.members)));
 	const rowsFor = (region: string) => items.filter((i) => i.kind === 'finding' && i.region === region);
+	// A joined card holds the rows and normals of the regions it spans, unless a region has its own card.
+	const ownMembers = (g: { name: string; members: string[] }) => g.members.filter((m) => m === g.name || !shownNames.has(m));
 	// A finding row whose region has no card (the writer named a region outside the scratchpad) shows up top.
-	const looseRows = $derived(items.filter((i) => i.kind === 'finding' && !shownNames.has(i.region)));
+	const looseRows = $derived(items.filter((i) => i.kind === 'finding' && !covered.has(i.region)));
 	const openRows = $derived(openCount(items, tapped, removed, skipped));
 	const unanswered = $derived(unansweredChecks(items, tapped, removed, skipped));
 	const keptAssumed = (region: string) => {
@@ -367,8 +370,8 @@
 
 	<!-- Scratchpad: abnormal regions only -->
 	{#each shown as g (g.name)}
-		{@const mine = rowsFor(g.name)}
-		{@const normals = keptAssumed(g.name)}
+		{@const mine = ownMembers(g).flatMap((m) => rowsFor(m))}
+		{@const normals = ownMembers(g).flatMap((m) => keptAssumed(m))}
 		<section
 			animate:flip={{ duration: ms }}
 			transition:slide={{ duration: ms }}
@@ -378,7 +381,7 @@
 				dragOver = g.name;
 			}}
 			ondragleave={() => (dragOver = null)}
-			ondrop={(e) => drop(e, g.name)}
+			ondrop={(e) => drop(e, g.members[0])}
 			aria-label={g.name}
 		>
 			<h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{g.name}</h3>

@@ -84,4 +84,11 @@ describe('findings block', () => {
 		expect(findingsHash([...units, u(8, 'Recommend follow-up.', 'Conclusion')])).toBe(h);
 		expect(findingsHash(units.map((x) => (x.id === 3 ? { ...x, text: 'Small free gas.' } : x)))).not.toBe(h);
 	});
+	it('sends a sentence spanning regions whole, once, under its joined label', () => {
+		const spanning = [u(0, 'Left rib fractures with a small left pneumothorax.', 'Chest wall', {
+			abnormal: true, parts: [{ text: 'Left rib fractures', group: 'Chest wall', abnormal: true },
+				{ text: 'with a small left pneumothorax.', group: 'Pleura', abnormal: true }]
+		})];
+		expect(findingsText(spanning, ['Pleura', 'Chest wall'])).toBe('Pleura · Chest wall: Left rib fractures with a small left pneumothorax.');
+	});
 });
