@@ -20,15 +20,17 @@ describe('HybridStackView v2', () => {
 				u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true, covers: ['Liver'], structure: 'liver' }),
 				u(1, 'The kidneys are normal.', 'Kidneys', { covers: ['Kidneys'] })
 			],
-			chips: [{ region: 'Liver', text: 'No biliary dilatation.' }]
+			chips: [{ region: 'Liver', text: 'No biliary dilatation.', state: 'included' }, { region: 'Liver', text: 'No portal vein thrombus.', state: 'optional' }],
+			onChipRemove: vi.fn()
 		});
 		await expect.element(page.getByRole('heading', { name: 'Liver' })).toBeInTheDocument();
 		await expect.element(page.getByRole('heading', { name: 'Kidneys' })).not.toBeInTheDocument();
 		await expect.element(page.getByText('Remainder of liver: assumed normal')).toBeInTheDocument();
 		await expect.element(page.getByText('Kidneys', { exact: true })).toHaveAttribute('data-state', 'dictated');
 		await expect.element(page.getByText('Spleen', { exact: true })).toHaveAttribute('data-state', 'assumed');
-		await page.getByText('+ No biliary dilatation.').click();
-		expect(props.onChipAccept).toHaveBeenCalledWith('No biliary dilatation.');
+		await expect.element(page.getByText(/stated, not dictated: No biliary dilatation\./)).toBeInTheDocument();
+		await page.getByText('+ No portal vein thrombus.').click();
+		expect(props.onChipAccept).toHaveBeenCalledWith('No portal vein thrombus.');
 	});
 
 	it('shows the live strip and lets a line be edited and committed with Enter', async () => {
@@ -67,6 +69,16 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByText(/normal, not dictated: Kidneys, Spleen, remainder of liver/)).toBeInTheDocument();
 		await page.getByRole('button', { name: 'Confirm' }).click();
 		expect(props.onConfirm).toHaveBeenCalled();
+	});
+
+	it('Confirm waits for a conclusion; with none, the field asks for one and offers a draft', async () => {
+		const onDraftRefresh = vi.fn();
+		render(HybridStackView, { ...base(), onDraftRefresh, units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })], conclusion: { kind: 'none', failed: true } });
+		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+		await expect.element(page.getByPlaceholder('Type or dictate a conclusion')).toBeInTheDocument();
+		await expect.element(page.getByText(/could not be made/)).toBeInTheDocument();
+		await page.getByText('Draft one').click();
+		expect(onDraftRefresh).toHaveBeenCalled();
 	});
 
 	it('shows an editable AI draft and the refresh prompt when findings changed', async () => {

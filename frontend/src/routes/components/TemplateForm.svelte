@@ -9,9 +9,9 @@
 	import { API_URL } from '$lib/config';
 	import { hasUnsavedWork as unsavedWork } from '$lib/utils/confirmGate';
 	import { sectionList } from '$lib/review/savedReport';
-	import { fetchSchema } from '$lib/hybrid-stack/api';
+	import { fetchSchema, postReportId } from '$lib/hybrid-stack/api';
 	import { hybridStackOn } from '$lib/hybrid-stack/flag';
-	import type { StackSchema } from '$lib/hybrid-stack/types';
+	import type { GateRecord, StackSchema } from '$lib/hybrid-stack/types';
 
 	// ── Feedback capture ──────────────────────────────────────────────
 	let feedbackId: string | null = null;
@@ -399,12 +399,21 @@
 		});
 	}
 
+	// Scratchpad v2 gate (spec 2026-10-11 §5-6): Generate waits for the Confirm, then sends the findings block.
+	let stackGate: GateRecord | null = null;
+	let stackFindings = '';
+	let stackSessionId = '';
+	$: stackGated = hybridStack && !!stackSchema;
+
 	async function handleGenerateReport() {
 		if (!scratchpadRef || !selectedTemplate) return;
 
 		const findingsContent = scratchpadToFindings(scratchpadRef.getContent());
-		// Merge FINDINGS from scratchpad into variableValues for the API call
-		variableValues = { ...variableValues, FINDINGS: findingsContent };
+		const useStack = stackGated && stackGate !== null;
+		const declined = useStack && stackGate ? stackGate.declined_chips : [];
+		const session = stackSessionId;
+		// Merge FINDINGS from scratchpad into variableValues for the API call (v2: the confirmed findings block)
+		variableValues = { ...variableValues, FINDINGS: useStack ? stackFindings : findingsContent };
 
 		// Validate FINDINGS
 		if (!findingsContent.trim()) {
@@ -428,7 +437,8 @@
 				headers,
 				body: JSON.stringify({
 					user_inputs: variableValues,
-					model: selectedModel
+					model: selectedModel,
+					...(useStack ? { stack_declined: declined } : {})
 				})
 			});
 			const data = await res.json();
@@ -446,6 +456,7 @@
 				responseModel = data.model;
 				reviewSections = sectionList(data.artifacts?.sections);
 				reportId = data.report_id ?? null;
+				if (useStack && reportId && session) void postReportId($token, session, reportId).catch(() => {});
 			hasResponseEver = true;
 			findingsAtReportGeneration = findingsContent;
 				dispatch('reportGenerated', { reportId: data.report_id });
@@ -818,8 +829,8 @@
 					<p class="text-sm text-gray-400">Case details changed — regenerate workspace to continue</p>
 				</div>
 			{/if}
-			<!-- Coverage chip strip -->
-			<div class="flex flex-wrap gap-1.5 transition-opacity duration-300 {isReviewing ? 'opacity-50' : ''}">
+			<!-- Coverage chip strip (the scratchpad v2 tray replaces it in stack mode) -->
+			<div class:hidden={stackGated} class="flex flex-wrap gap-1.5 transition-opacity duration-300 {isReviewing ? 'opacity-50' : ''}">
 					{#each allChecklistSections as section}
 						{@const covered = hybridStack && stackSchema ? stackPills.includes(section) : coveredSections.has(section)}
 						<span class="px-2.5 py-1 rounded-full text-[11px] font-medium transition-all duration-300
@@ -851,6 +862,8 @@
 					stackSchemaMeta={stackSchema ? { key: stackSchema.key, source: stackSchema.source, provisional: stackSchema.provisional } : null}
 					onStackPills={(p) => { stackPills = p; }}
 					stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
+					onStackGate={(g, f) => { stackGate = g; stackFindings = f; }}
+					onStackSession={(id) => { stackSessionId = id; }}
 				/>
 			</div>
 
@@ -858,12 +871,14 @@
 				<button
 					type="button"
 					onclick={() => handleGenerateReport()}
-					disabled={isRecording || loading || !scratchpadContent.trim() || sectionsDirty}
+					disabled={isRecording || loading || !scratchpadContent.trim() || sectionsDirty || (stackGated && !stackGate)}
 					class="btn-primary-subtle w-full px-6 py-3 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
 				>
 					{#if loading}
 						<div class="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
 						<span>Generating...</span>
+					{:else if stackGated && !stackGate && scratchpadContent.trim()}
+						<span>Confirm the scratchpad to generate</span>
 					{:else}
 						<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />

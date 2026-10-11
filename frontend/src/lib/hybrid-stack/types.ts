@@ -45,16 +45,19 @@ export interface RegionStates {
 	assumedNormal: string[]; // dashed pills
 	remainder: string[]; // abnormal regions with nothing dictated normal: "Remainder of X: assumed normal"
 }
-export interface ChipsResult { chips: string[]; cached: boolean; ms: number; error: string | null }
+export type ChipState = 'included' | 'optional';
+export interface Chip { text: string; state: ChipState }
+export interface ChipsResult { chips: Chip[]; cached: boolean; ms: number; error: string | null }
 export interface DraftResult { text: string; ms: number; error: string | null }
 export interface GateRecord {
 	confirmed_at: string;
 	conclusion_text: string;
-	conclusion_source: 'dictated' | 'draft' | 'draft_edited';
+	conclusion_source: 'dictated' | 'draft' | 'draft_edited' | 'typed';
 	assumed_normal: string[];
 	remainder_normal: string[];
 	dictated_normal: { region: string; words: string[] }[];
-	accepted_chips: string[];
+	included_chips: { region: string; text: string }[]; // not dictated; confirmed in the report
+	declined_chips: string[]; // removed by the radiologist: never stated
 	units_hash: string;
 }
 export interface StackCommand { action: 'dictate' | 'delete' | 'accept'; region: string | null; chip: string | null; command: string | null; confidence: number | null }

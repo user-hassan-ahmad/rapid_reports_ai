@@ -11,9 +11,9 @@
 
 	export type ConclusionState =
 		| { kind: 'dictated' }
-		| { kind: 'none' }
+		| { kind: 'none'; failed?: boolean }
 		| { kind: 'loading' }
-		| { kind: 'draft'; text: string; stale: boolean; edited: boolean };
+		| { kind: 'draft'; text: string; stale: boolean; edited: boolean; typed?: boolean };
 
 	let {
 		units,
@@ -30,6 +30,7 @@
 		onEditLine,
 		onEditing = () => {},
 		onChipAccept,
+		onChipRemove = () => {},
 		onDraftEdit = () => {},
 		onDraftRefresh = () => {},
 		onConfirm,
@@ -52,7 +53,10 @@
 		onEditLine: (unitId: number, part: number | null, text: string) => void;
 		/** Whether a line or the draft is open for editing (dictation then goes there). */
 		onEditing?: (active: boolean) => void;
+		/** An optional chip opted in (click +). */
 		onChipAccept: (text: string) => void;
+		/** An included chip removed (click ×): never stated. */
+		onChipRemove?: (text: string) => void;
 		onDraftEdit?: (text: string) => void;
 		onDraftRefresh?: () => void;
 		onConfirm: () => void;
@@ -77,6 +81,10 @@
 	const conclusionRows = $derived(view.groups.find((g) => g.name === CONCLUSION)?.rows ?? []);
 	const dictatedNormalWords = $derived(new Map(states.dictatedNormal.map((d) => [d.region, d.words])));
 	const trayRegions = $derived(pillRegions.filter((r) => !states.abnormal.includes(r)));
+	// The gate never unlocks an impression nobody has seen (spec §5): a conclusion must exist (dictated,
+	// drafted or typed). A failed draft never blocks: the radiologist types one or asks again.
+	const hasConclusion = $derived(conclusionRows.length > 0 || (conclusion.kind === 'draft' && conclusion.text.trim().length > 0));
+	const includedList = $derived(chips.filter((c) => c.state === 'included').map((c) => c.text));
 	const assumedList = $derived([...states.assumedNormal, ...states.remainder.map((r) => `remainder of ${r.toLowerCase()}`)]);
 
 	// ── editing: one field at a time (a line, or the draft) ─────────────────────────────────────────
@@ -233,13 +241,23 @@
 				</div>
 			{/if}
 			{#if mine.length}
-				<div class="mt-1 flex flex-wrap gap-1.5 px-1" aria-label="Suggestions for {g.name}">
-					{#each mine as c (c.text)}
+				<ul class="mt-0.5 px-1" aria-label="Suggestions for {g.name}">
+					{#each mine.filter((c) => c.state === 'included') as c (c.text)}
+						<li class="flex items-center gap-1 text-sm italic leading-6 text-gray-400" transition:fade={{ duration: ms }} data-chip="included">
+							<span>{c.text}</span>
+							<button type="button" class="rounded px-1 text-xs not-italic text-gray-500 hover:text-rose-300" title="Remove: not stated in the report"
+								aria-label="Remove {c.text}" onclick={() => onChipRemove(c.text)}>×</button>
+						</li>
+					{/each}
+				</ul>
+				<div class="mt-1 flex flex-wrap gap-1.5 px-1">
+					{#each mine.filter((c) => c.state === 'optional') as c (c.text)}
 						<button
 							type="button"
 							transition:fade={{ duration: ms }}
-							class="rounded-full border border-white/15 bg-white/[0.04] px-2 py-0.5 text-xs text-gray-300 hover:border-emerald-400/50 hover:text-emerald-200"
-							title="Add to the dictation"
+							data-chip="optional"
+							class="rounded-full border border-dashed border-white/20 px-2 py-0.5 text-xs text-gray-400 hover:border-emerald-400/50 hover:text-emerald-200"
+							title="Add to the report"
 							onclick={() => onChipAccept(c.text)}>+ {c.text}</button>
 					{/each}
 				</div>
@@ -272,14 +290,19 @@
 		<h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{CONCLUSION}</h3>
 		{#if conclusionRows.length}
 			<ul>{#each conclusionRows as r (r.unitId + ':' + r.text)}{@render line(r, false)}{/each}</ul>
-		{:else if conclusion.kind === 'draft'}
-			<p class="text-[10px] uppercase tracking-wide text-amber-300/80">AI draft{conclusion.edited ? ' · edited' : ''}</p>
+		{:else if conclusion.kind === 'draft' || conclusion.kind === 'none'}
+			{#if conclusion.kind === 'draft'}
+				<p class="text-[10px] uppercase tracking-wide {conclusion.typed ? 'text-gray-500' : 'text-amber-300/80'}">{conclusion.typed ? 'Typed' : `AI draft${conclusion.edited ? ' · edited' : ''}`}</p>
+			{:else if conclusion.failed}
+				<p class="text-[10px] text-amber-300/80">The draft could not be made: type or dictate one, or try again.</p>
+			{/if}
 			<textarea
 				bind:this={draftField}
 				class="mt-0.5 w-full resize-y rounded bg-white/[0.04] px-1 text-sm leading-6 text-gray-100"
 				rows="3"
 				aria-label="Conclusion draft"
-				value={conclusion.text}
+				value={conclusion.kind === 'draft' ? conclusion.text : ''}
+				placeholder="Type or dictate a conclusion"
 				oninput={(e) => onDraftEdit((e.target as HTMLTextAreaElement).value)}
 				onfocus={() => {
 					draftFocused = true;
@@ -290,13 +313,13 @@
 					onEditing(editing !== null);
 				}}
 			></textarea>
-			{#if conclusion.stale}
+			{#if conclusion.kind === 'draft' && conclusion.stale && !conclusion.typed}
 				<button type="button" class="text-xs text-amber-300 hover:text-amber-200" onclick={onDraftRefresh}>Findings changed — refresh?</button>
+			{:else if conclusion.kind === 'none'}
+				<button type="button" class="text-xs text-gray-400 hover:text-gray-200" onclick={onDraftRefresh}>Draft one</button>
 			{/if}
-		{:else if conclusion.kind === 'loading'}
-			<p class="px-1 text-sm italic text-gray-500">Drafting a conclusion…</p>
 		{:else}
-			<p class="px-1 text-sm italic text-gray-500">Dictate a conclusion, or stop dictating for an AI draft.</p>
+			<p class="px-1 text-sm italic text-gray-500">Drafting a conclusion…</p>
 		{/if}
 	</section>
 
@@ -304,7 +327,8 @@
 	<section aria-label="Confirm" class="rounded border border-white/10 bg-white/[0.02] p-2 text-xs text-gray-300">
 		<p class="mb-1 text-gray-400">Before generating, confirm:</p>
 		<ul class="list-disc space-y-0.5 pl-4">
-			<li>{conclusionRows.length || conclusion.kind === 'draft' ? 'the conclusion above' : 'no conclusion: the impression is written from the findings'}</li>
+			<li>the conclusion above{#if !hasConclusion}<span class="text-amber-300/80"> (none yet)</span>{/if}</li>
+			{#if includedList.length}<li>stated, not dictated: {includedList.join(' ')}</li>{/if}
 			<li>normal, not dictated: {#if assumedList.length}{assumedList.join(', ')}{:else}<span class="text-gray-500">none</span>{/if}</li>
 			{#if states.dictatedNormal.length}
 				<li>
@@ -320,7 +344,7 @@
 		<button
 			type="button"
 			class="mt-2 rounded px-3 py-1 text-xs font-medium {gateConfirmed ? 'bg-emerald-500/20 text-emerald-200' : 'bg-white/10 text-gray-100 hover:bg-white/15'}"
-			disabled={gateConfirmed || conclusion.kind === 'loading'}
+			disabled={gateConfirmed || !hasConclusion}
 			onclick={onConfirm}>{gateConfirmed ? 'Confirmed ✓' : 'Confirm'}</button>
 	</section>
 </div>

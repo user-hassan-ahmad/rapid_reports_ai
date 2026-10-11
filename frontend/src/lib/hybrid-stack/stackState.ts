@@ -91,3 +91,34 @@ export function liveTail(verbatim: string, units: StackUnit[]): string[] {
 		return true;
 	});
 }
+
+/** The change to the verbatim text that sets one line (a sentence, or one part of a split sentence) to
+ *  `text`. Empty `text` removes the line and one space or line break beside it. Null: the line is not found. */
+export function lineChange(
+	verbatim: string, units: StackUnit[], id: number, part: number | null, text: string
+): { from: number; to: number; insert: string } | null {
+	const at = sentenceOffset(verbatim, units, id);
+	const unit = units.find((u) => u.id === id);
+	if (at < 0 || !unit) return null;
+	let from = at;
+	let to = at + unit.text.length;
+	if (part !== null) {
+		const p = unit.parts?.[part];
+		const k = p ? unit.text.indexOf(p.text) : -1;
+		if (!p || k < 0) return null;
+		from = at + k;
+		to = from + p.text.length;
+	}
+	if (text.trim()) return { from, to, insert: text.trim() };
+	if (/[ \t]/.test(verbatim[to] ?? '')) to += 1;
+	else if (from > 0 && /\s/.test(verbatim[from - 1])) from -= 1;
+	return { from, to, insert: '' };
+}
+
+/** A sentence added to the end of the solid text as if dictated (a chip accepted): one space, or nothing
+ *  after a line break, before it. */
+export function appendSentence(solid: string, sentence: string): string {
+	const s = sentence.trim();
+	if (!solid) return s;
+	return (/\s$/.test(solid) ? '' : ' ') + s;
+}

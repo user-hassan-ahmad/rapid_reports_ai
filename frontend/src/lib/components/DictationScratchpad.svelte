@@ -38,9 +38,11 @@
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
-	import { postClose, postGroup, postLog } from '$lib/hybrid-stack/api';
-	import { liveTail, moveUnit, sentenceOffset } from '$lib/hybrid-stack/stackState';
-	import type { Region, StackOrder, StackUnit } from '$lib/hybrid-stack/types';
+	import { postChips, postClose, postDraft, postGroup, postLog } from '$lib/hybrid-stack/api';
+	import { lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
+	import { abnormalSentences, includedChips, sentencesKey, visibleChips, withState, withoutChips } from '$lib/hybrid-stack/chips';
+	import { OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates } from '$lib/hybrid-stack/regionState';
+	import type { Chip, GateRecord, Region, StackCommand, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
 	import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
@@ -85,6 +87,11 @@
 	export let stackSchemaMeta: { key: string; source: string; provisional: boolean } | null = null;
 	export let onStackPills: (pills: string[]) => void = () => {};
 	export let stackShadowRate = 0.25; // share of sessions that build the old Structured text once, at session end
+	/** Scratchpad v2 gate (spec 2026-10-11 §5): the confirmed record and the findings block Generate sends,
+	 *  or (null, '') whenever it re-arms. */
+	export let onStackGate: (gate: GateRecord | null, findings: string) => void = () => {};
+	/** The stack session id, so the parent can link the generated report to it. */
+	export let onStackSession: (sessionId: string) => void = () => {};
 
 	// CM6 highlight decoration for IntelliPrompt source linking
 	const setHighlight = StateEffect.define<{ from: number; to: number } | null>();
@@ -234,7 +241,42 @@
 	let verbatimNow = '';
 	const GROUP_DEBOUNCE_MS = 600;
 	const CLOSE_IDLE_MS = 1500;
-	let stackOrder: StackOrder = 'anatomy';
+	// Scratchpad v2 (spec 2026-10-11): chips, conclusion draft, gate, inline edits, voice commands.
+	const CHIP_DEBOUNCE_MS = 400;
+	let chipsByRegion: Record<string, Chip[]> = {};
+	let chipKeys: Record<string, string> = {};
+	let capturedChips: string[] = []; // removed, stated or contradicted: never offered again this session
+	let declinedChips: string[] = []; // removed by the radiologist: never stated (sent to Generate)
+	let optedIn: string[] = []; // optional chips the radiologist added: stay included across refreshes
+	let chipTimer: ReturnType<typeof setTimeout> | null = null;
+	let draft: { text: string; hash: string; edited: boolean; typed: boolean } | null = null;
+	let draftLoading = false;
+	let draftFailed = false;
+	let stackGate: GateRecord | null = null;
+	let stackEditing = false;
+	let stackIncoming: { seq: number; text: string } | null = null;
+	let incomingSeq = 0;
+	let deleteRegion: string | null = null;
+	$: pillRegions = stackRegions.map((r) => r.name).filter((n) => n !== OTHER);
+	$: regionView = regionStates(stackUnits, pillRegions);
+	$: shownChips = visibleChips(chipsByRegion, regionView.abnormal);
+	$: stackIncluded = includedChips(chipsByRegion, regionView.abnormal);
+	$: dictatedConclusion = conclusionText(stackUnits);
+	$: conclusionView = dictatedConclusion
+		? ({ kind: 'dictated' } as const)
+		: draft
+			? ({ kind: 'draft', text: draft.text, stale: draft.hash !== findingsHash(stackUnits), edited: draft.edited, typed: draft.typed } as const)
+			: draftLoading
+				? ({ kind: 'loading' } as const)
+				: ({ kind: 'none', failed: draftFailed } as const);
+	// The gate re-arms on any change to what it confirms (spec §5).
+	$: gateKey = [findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
+		regionView.remainder.join('|'), stackIncluded.map((c) => c.text).join('|')].join('\u0003');
+	$: if (stackGate && stackGate.units_hash !== gateKey) {
+		stackGate = null;
+		onStackGate(null, '');
+	}
+	$: onStackSession(stackSessionId);
 	let ghostNow = '';
 	let stackUnits: StackUnit[] = [];
 	let stackTimer: ReturnType<typeof setTimeout> | null = null;
@@ -501,6 +543,10 @@
 	): void {
 		currentInterim = '';
 		showGhost('');
+		if (hybridStack && stackEditing) {
+			void dictateIntoEdit(transcript, asr);
+			return;
+		}
 
 		// Accumulate into session transcript
 		const appended = sessionTranscript ? `${sessionTranscript} ${transcript}` : transcript;
@@ -812,6 +858,9 @@
 					open_line: openStatement(solid),
 					latest_utterance: chunk,
 					checklist: checklistSections,
+					...(hybridStack && stackRegions.length
+						? { stack_regions: stackRegions.map((r) => r.name), stack_chips: shownChips.map((c) => c.text) }
+						: {}),
 					...(asr ?? {})
 				})
 			});
@@ -987,6 +1036,26 @@
 			// under it would be overwritten or duplicated. Join the polish instead.
 			route = 'polish';
 			reason = 'polish_in_flight';
+		}
+
+		// Scratchpad v2 voice commands (spec §7.3): accept a named chip, or select a named region's lines for
+		// a Delete click. The command's own words are never written.
+		const cmd = (data?.stack_command ?? null) as StackCommand | null;
+		if (hybridStack && !heldNow && pend && pendingText === chunk.trim() && cmd &&
+			(cmd.action === 'accept' || (cmd.action === 'delete' && cmd.region))) {
+			isQwenWriting = true;
+			editor.dispatch(replaceAndClear({ from: pend.from, to: pend.to, insert: '' }));
+			isQwenWriting = false;
+			if (cmd.action === 'accept' && cmd.chip) acceptChip(cmd.chip);
+			else deleteRegion = cmd.region;
+			emitDecision({ ...({} as DecisionRecord), id: data?.decision_id ?? `local-${++localDecisionSeq}`, seq: ++decisionSeq,
+				at: Date.now(), route: 'skip', reason: `stack_${cmd.action}`, qset: data?.qset ?? null, action: data?.action ?? null,
+				confidence: cmd.confidence, probabilities: null, is_correction: null, standalone: null, latency_ms: data?.latency_ms ?? null,
+				roundtrip_ms: roundtrip, polish_called: false, polish_ms: null, utterance_len: chunk.length, utterance_hash: hash8(chunk),
+				applied_len: 0, closes_line: false, line_closed_by: null, error: null, asr_fix_count: 0, asr_flag_count: 0,
+				repair_ms: null, asr_conf: asr?.asr_conf ?? null, asr_min_conf: asr?.asr_min_conf ?? null,
+				asr_word_confs: asr?.asr_word_confs ?? null, wait_ms: waitMs, final_to_solid_ms: Date.now() - arrivedAt }, chunk);
+			return;
 		}
 
 		// Polish (now or later) is given the cleaned text, not the raw final: the code-side
@@ -1335,10 +1404,13 @@
 		const text = verbatimNow;
 		stackBusy = true;
 		try {
-			const res = await postGroup($token, { scan_type: scanType, text, regions: stackRegions, previous: stackUnits });
+			const res = await postGroup($token, { scan_type: scanType, text, regions: stackRegions, previous: stackUnits,
+				chips: shownChips.map((c) => c.text) });
+			if (res.chips_stated?.length) captureChips(res.chips_stated);
 			if (verbatimNow === text) {
 				stackUnits = res.units;
 				onStackPills(res.pills);
+				scheduleChips();
 				for (const [k, v] of Object.entries(res.timings_ms)) stackLatency[k] = Math.max(stackLatency[k] ?? 0, v);
 			} else scheduleGroup(0);
 		} catch {
@@ -1351,14 +1423,121 @@
 		stackUnits = moveUnit(stackUnits, id, group);
 		stackManualMoves += 1;
 	}
-	function stackSelect(id: number): void {
-		const at = sentenceOffset(verbatimNow, stackUnits, id);
-		stackOrder = 'dictated';
-		if (at >= 0 && editor) {
-			const unit = stackUnits.find((u) => u.id === id);
-			editor.dispatch({ selection: { anchor: at, head: at + (unit?.text.length ?? 0) }, scrollIntoView: true });
-			editor.focus();
+	// ── Scratchpad v2 ────────────────────────────────────────────────────────────────────────────
+	function captureChips(gone: string[]): void {
+		capturedChips = [...capturedChips, ...gone];
+		chipsByRegion = withoutChips(chipsByRegion, gone);
+	}
+	function scheduleChips(): void {
+		if (chipTimer) clearTimeout(chipTimer);
+		chipTimer = setTimeout(() => {
+			chipTimer = null;
+			void refreshChips();
+		}, CHIP_DEBOUNCE_MS);
+	}
+	/** Ask for a region's chips when it first rises or its abnormal sentences change (spec §4). */
+	async function refreshChips(): Promise<void> {
+		const abnormal = regionView.abnormal;
+		for (const r of Object.keys(chipsByRegion)) {
+			if (!abnormal.includes(r)) {
+				const { [r]: _gone, ...rest } = chipsByRegion;
+				chipsByRegion = rest;
+				delete chipKeys[r];
+			}
 		}
+		await Promise.all(abnormal.map(async (region) => {
+			const sentences = abnormalSentences(stackUnits, region);
+			const key = sentencesKey(sentences);
+			if (!sentences.length || chipKeys[region] === key) return;
+			chipKeys[region] = key;
+			try {
+				const res = await postChips($token, { scan_type: scanType, clinical_history: clinicalHistory, region, sentences,
+					dictation: verbatimNow });
+				if (chipKeys[region] !== key) return; // superseded while in flight
+				const fresh = res.chips.map((c) => (optedIn.includes(c.text.trim().toLowerCase()) ? { ...c, state: 'included' as const } : c));
+				chipsByRegion = { ...chipsByRegion, ...withoutChips({ [region]: fresh }, capturedChips) };
+				stackLatency.chips = Math.max(stackLatency.chips ?? 0, res.ms);
+			} catch {
+				/* fail open: no chips for this region */
+			}
+		}));
+	}
+	/** An optional chip opted in (click + or voice "accept …"): stated in the report, confirmed at the gate. */
+	function acceptChip(text: string): void {
+		optedIn = [...optedIn, text.trim().toLowerCase()];
+		chipsByRegion = withState(chipsByRegion, text, 'included');
+	}
+	/** An included chip removed (×): never stated, never offered again, and the brief may not assert it. */
+	function removeChip(text: string): void {
+		declinedChips = [...declinedChips, text];
+		captureChips([text]);
+	}
+	/** A line edited in the view: exactly that sentence (or part) changes in the verbatim text. */
+	function stackEditLine(id: number, part: number | null, text: string): void {
+		if (!editor) return;
+		const c = lineChange(editor.state.doc.toString(), stackUnits, id, part, text);
+		if (c) editor.dispatch({ changes: c });
+	}
+	/** A final while a line or the draft is open: written there as said (the bundle's cleaned text), never
+	 *  polished; a voice accept still accepts. */
+	async function dictateIntoEdit(chunk: string, asr: AsrFields | null): Promise<void> {
+		const solid = editor ? editor.state.doc.toString() : '';
+		const { data } = await askBundle(chunk, solid, asr);
+		const cmd = (data?.stack_command ?? null) as StackCommand | null;
+		if (cmd?.action === 'accept' && cmd.chip) return acceptChip(cmd.chip);
+		if (cmd?.action === 'delete') return; // in an open line, the keyboard deletes
+		const text = (data?.clean_text || data?.text || chunk).trim();
+		if (text) stackIncoming = { seq: ++incomingSeq, text };
+	}
+	function stackDeleteRegion(region: string, confirmed: boolean): void {
+		deleteRegion = null;
+		if (!confirmed || !editor) return;
+		// Remove from the last line back, so earlier offsets stay valid.
+		const ids = stackUnits.filter((u) => u.group === region && !u.heading).map((u) => u.id).reverse();
+		for (const id of ids) {
+			const c = lineChange(editor.state.doc.toString(), stackUnits, id, null, '');
+			if (c) editor.dispatch({ changes: c });
+		}
+	}
+	async function requestDraft(): Promise<void> {
+		const findings = findingsText(stackUnits, stackGroups);
+		if (!findings.trim() || draftLoading) return;
+		draftLoading = true;
+		draftFailed = false;
+		try {
+			const res = await postDraft($token, { scan_type: scanType, clinical_history: clinicalHistory, findings });
+			if (res.text) draft = { text: res.text, hash: findingsHash(stackUnits), edited: false, typed: false };
+			else draftFailed = true;
+			stackLatency.draft = Math.max(stackLatency.draft ?? 0, res.ms);
+		} catch {
+			draftFailed = true; // fail open: the radiologist types or dictates one, or asks again
+		} finally {
+			draftLoading = false;
+		}
+	}
+	function stackDraftEdit(text: string): void {
+		draft = text || draft ? { text, hash: draft?.hash ?? findingsHash(stackUnits), edited: true, typed: draft?.typed ?? true } : null;
+	}
+	function stackDraftRefresh(): void {
+		if (draft?.edited && typeof confirm === 'function' && !confirm('Replace your edited draft with a new one?')) return;
+		draft = null;
+		void requestDraft();
+	}
+	function stackConfirm(): void {
+		const gate: GateRecord = {
+			confirmed_at: new Date().toISOString(),
+			conclusion_text: dictatedConclusion || draft?.text || '',
+			conclusion_source: dictatedConclusion ? 'dictated' : draft?.typed ? 'typed' : draft?.edited ? 'draft_edited' : 'draft',
+			assumed_normal: regionView.assumedNormal,
+			remainder_normal: regionView.remainder,
+			dictated_normal: regionView.dictatedNormal,
+			included_chips: stackIncluded,
+			declined_chips: declinedChips,
+			units_hash: gateKey
+		};
+		stackGate = gate;
+		onStackGate(gate, buildFindingsBlock(stackUnits, stackGroups, gate));
+		void sendStackLog();
 	}
 	function scheduleClose(): void {
 		if (!hybridStack) return;
@@ -1373,6 +1552,7 @@
 			} catch {
 				/* fail open */
 			}
+			if (!isRecording && !conclusionText(stackUnits) && !draft) void requestDraft();
 			if (stackShadowSampled && !isRecording) {
 				structuredWanted = true;
 				try {
@@ -1393,7 +1573,7 @@
 				schema_source: stackSchemaMeta?.source ?? null, provisional: stackSchemaMeta?.provisional ?? false,
 				units: stackUnits, pills_derived: [...new Set(stackUnits.flatMap((u) => u.covers))],
 				pills_jev: lastJevCovered, sections: checklistSections, structured_text: structured.text ?? '',
-				manual_moves: stackManualMoves, latency_ms: stackLatency
+				manual_moves: stackManualMoves, latency_ms: stackLatency, gate: stackGate
 			});
 		} catch {
 			/* logging never affects dictation */
@@ -1408,6 +1588,18 @@
 		stackManualMoves = 0;
 		stackLatency = {};
 		stackShadowSampled = Math.random() < stackShadowRate;
+		chipsByRegion = {};
+		chipKeys = {};
+		capturedChips = [];
+		declinedChips = [];
+		optedIn = [];
+		draft = null;
+		draftFailed = false;
+		deleteRegion = null;
+		if (stackGate) {
+			stackGate = null;
+			onStackGate(null, '');
+		}
 	}
 	/** Derive the structured text from the verbatim text: /process in structured mode, the
 	 *  verbatim text as the transcript, an empty scratchpad. Never while a final is faded or a
@@ -1492,7 +1684,8 @@
 			onCoverageScoresChange(data.coverage_scores ?? null);
 			if (data.coverage) onCoverageTrace(data.coverage as CoverageTrace);
 		});
-		const prompts = review('prompts').then((data) => {
+		// Scratchpad v2: check chips replace IntelliPrompts (their margin anchors to the hidden editor).
+		const prompts = hybridStack ? Promise.resolve() : review('prompts').then((data) => {
 			// Backend now owns the full merge — replace activePrompts with the final merged list
 			if (data.prompts && Array.isArray(data.prompts)) {
 				onPromptsChange(data.prompts);
@@ -1791,6 +1984,7 @@
 		if (typingDebounceTimer) clearTimeout(typingDebounceTimer);
 		if (stackTimer) clearTimeout(stackTimer);
 		if (closeTimer) clearTimeout(closeTimer);
+		if (chipTimer) clearTimeout(chipTimer);
 		void sendStackLog();
 		if (editor) {
 			editor.destroy();
@@ -1827,22 +2021,7 @@
 
 	<!-- Floating dictate button — centered, overlaps the top edge of the editor+margin row -->
 	<div class="flex flex-col items-center gap-1.5 relative z-10">
-		{#if hybridStack}
-		<div class="inline-flex bg-white/[0.03] border border-white/10 rounded-lg p-0.5 gap-0.5" role="group" aria-label="Stack order">
-			<button type="button" onclick={() => (stackOrder = 'anatomy')} aria-pressed={stackOrder === 'anatomy'}
-				class={stackOrder === 'anatomy'
-					? 'px-2.5 py-1 text-xs rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-					: 'px-2.5 py-1 text-xs rounded-md text-gray-400 hover:text-gray-300'}>
-				By anatomy
-			</button>
-			<button type="button" onclick={() => (stackOrder = 'dictated')} aria-pressed={stackOrder === 'dictated'}
-				class={stackOrder === 'dictated'
-					? 'px-2.5 py-1 text-xs rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-					: 'px-2.5 py-1 text-xs rounded-md text-gray-400 hover:text-gray-300'}>
-				As dictated
-			</button>
-		</div>
-		{:else}
+		{#if !hybridStack}
 		<div class="inline-flex bg-white/[0.03] border border-white/10 rounded-lg p-0.5 gap-0.5" role="group" aria-label="Polish mode">
 			<button type="button" onclick={() => setMode('clean')}
 				class={polishMode === 'clean'
@@ -1977,17 +2156,21 @@
 							{structuredNotice || (structured.text === null ? 'Structuring…' : 'Updating structured view…')}
 						</div>
 					{/if}
-					<div bind:this={editorContainer} class="min-h-full" class:hidden={hybridStack ? stackOrder === 'anatomy' : polishMode === 'structured'}></div>
+					<div bind:this={editorContainer} class="min-h-full" class:hidden={hybridStack || polishMode === 'structured'}></div>
 					<div bind:this={structuredContainer} class="min-h-full" class:hidden={hybridStack || polishMode !== 'structured'}></div>
-					{#if hybridStack && stackOrder === 'anatomy'}
-						<HybridStackView units={stackUnits} groups={stackGroups} pending={liveTail(verbatimNow, stackUnits)} ghost={ghostNow} onSelect={stackSelect} onMove={stackMove} />
+					{#if hybridStack}
+						<HybridStackView units={stackUnits} groups={stackGroups} {pillRegions} pending={liveTail(verbatimNow, stackUnits)}
+							ghost={ghostNow} chips={shownChips} conclusion={conclusionView} gateConfirmed={stackGate !== null} {deleteRegion}
+							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
+							onChipAccept={acceptChip} onChipRemove={removeChip} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
+							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} />
 					{/if}
 				</div>
 
 				<!-- Margin column — width animates open/closed; stops click bubbling to editor focus handler -->
 				<div
 					class="shrink-0 overflow-hidden"
-					style="width: {activePrompts.length > 0 ? '240px' : '0px'}; transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1)"
+					style="width: {activePrompts.length > 0 && !hybridStack ? '240px' : '0px'}; transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1)"
 					onclick={(e) => e.stopPropagation()}
 				>
 					<IntelliPromptsMargin

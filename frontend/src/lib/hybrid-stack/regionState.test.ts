@@ -61,10 +61,11 @@ describe('findings block', () => {
 	it('adds the confirmed normals and conclusion', () => {
 		const gate: GateRecord = {
 			confirmed_at: 't', conclusion_text: 'Acute diverticulitis.', conclusion_source: 'dictated', assumed_normal: ['Pelvis'],
-			remainder_normal: ['Bowel'], dictated_normal: [], accepted_chips: [], units_hash: 'h'
+			remainder_normal: ['Bowel'], dictated_normal: [], included_chips: [{ region: 'Bowel', text: 'No abscess.' }], declined_chips: [], units_hash: 'h'
 		};
 		const block = buildFindingsBlock(units, GROUPS, gate);
 		expect(block).toContain('Confirmed normal (not dictated; confirmed by the radiologist): Pelvis; remainder of Bowel.');
+		expect(block).toContain('Bowel: Sigmoid diverticulitis. It is 10 cm long. No free gas. Confirmed by the radiologist (not dictated): No abscess.');
 		expect(block.endsWith('Conclusion (confirmed by the radiologist): Acute diverticulitis.')).toBe(true);
 	});
 	it('the findings hash ignores the conclusion and changes with the findings', () => {

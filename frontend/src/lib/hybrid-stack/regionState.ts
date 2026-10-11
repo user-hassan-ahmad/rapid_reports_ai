@@ -65,7 +65,7 @@ export function findingsHash(units: StackUnit[]): string {
 }
 
 /** The regions' own sentences (and the free groups), as the grouped findings text: no gate lines. */
-export function findingsText(units: StackUnit[], groups: string[]): string {
+export function findingsText(units: StackUnit[], groups: string[], confirmed: Map<string, string[]> = new Map()): string {
 	const items = effectiveItems(units);
 	const lines: string[] = [];
 	const tech = items.filter((i) => i.group === TECHNIQUE).map((i) => i.text);
@@ -73,7 +73,9 @@ export function findingsText(units: StackUnit[], groups: string[]): string {
 	for (const g of groups) {
 		if (FIXED.has(g)) continue;
 		const own = items.filter((i) => i.group === g).map((i) => i.text);
-		if (own.length) lines.push(`${g}: ${own.join(' ')}`);
+		const extra = confirmed.get(g) ?? [];
+		if (own.length || extra.length)
+			lines.push(`${g}: ${[...own, ...(extra.length ? [`Confirmed by the radiologist (not dictated): ${extra.join(' ')}`] : [])].join(' ')}`);
 	}
 	for (const g of new Set(items.map((i) => i.group))) {
 		if (!groups.includes(g) && !FIXED.has(g)) lines.push(`${g}: ${items.filter((i) => i.group === g).map((i) => i.text).join(' ')}`);
@@ -87,7 +89,9 @@ export function findingsText(units: StackUnit[], groups: string[]): string {
 /** What Generate receives in a stack session (spec §6): the grouped findings, the confirmed normals and the
  *  confirmed conclusion. The generator phrases; it does not get anything the radiologist did not say or confirm. */
 export function buildFindingsBlock(units: StackUnit[], groups: string[], gate: GateRecord): string {
-	const parts = [findingsText(units, groups)];
+	const confirmed = new Map<string, string[]>();
+	for (const c of gate.included_chips) confirmed.set(c.region, [...(confirmed.get(c.region) ?? []), c.text]);
+	const parts = [findingsText(units, groups, confirmed)];
 	const normals = [...gate.assumed_normal, ...gate.remainder_normal.map((r) => `remainder of ${r}`)];
 	if (normals.length) parts.push(`Confirmed normal (not dictated; confirmed by the radiologist): ${normals.join('; ')}.`);
 	if (gate.conclusion_text.trim()) parts.push(`Conclusion (confirmed by the radiologist): ${gate.conclusion_text.trim()}`);

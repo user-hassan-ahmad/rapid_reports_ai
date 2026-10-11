@@ -53,6 +53,9 @@
 	<p class="text-xs text-slate-500">{status}</p>
 	{#if schema}
 		<p class="text-xs">Pills: {pills.join(' · ') || '—'}</p>
-		<HybridStackView {units} groups={schema.groups} onSelect={() => {}} onMove={(id, g) => (units = moveUnit(units, id, g))} />
+		<div class="rounded bg-slate-900 p-3">
+			<HybridStackView {units} groups={schema.groups} pillRegions={schema.pills} onMove={(id, g) => (units = moveUnit(units, id, g))}
+				onEditLine={() => {}} onChipAccept={() => {}} onConfirm={() => {}} />
+		</div>
 	{/if}
 </div>
