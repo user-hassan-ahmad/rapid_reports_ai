@@ -263,7 +263,7 @@
 	let reviewing = false;
 	let reviewFailed = false; // the last review failed: shown at the gate and logged, never silent
 	let reviewTimer: ReturnType<typeof setTimeout> | null = null;
-	const REVIEW_IDLE_MS = 1500;
+	const REVIEW_IDLE_MS = 800;
 	// The last /assumed answer and the state it was computed for (review 2026-10-12): a region assumes only what was
 	// checked for its current state, and Confirm waits while the answer is behind the dictation.
 	let assumedSnap: AssumedSnap | null = null;
@@ -1442,9 +1442,23 @@
 			void runGroup();
 		}, delay);
 	}
-	/** What the grouper gets: while recording, the sentence still being spoken is held back (it stays in the live
-	 *  strip until the next sentence starts); after recording, everything. */
-	const groupable = (v: string) => (isRecording ? closedText(v) : v);
+	/** What the grouper gets: while words are still coming, the sentence being spoken is held back (it can still grow
+	 *  or be re-punctuated); a pause (PAUSE_MS with no new words) or stopping releases it. The pause rule is the
+	 *  dictation flow's own idea of a finished statement (hand read 2026-10-12: holding until the next sentence left
+	 *  the last one waiting through every pause). */
+	const PAUSE_MS = 1200;
+	let lastWordsAt = 0;
+	let pauseTimer: ReturnType<typeof setTimeout> | null = null;
+	const groupable = (v: string) => (isRecording && Date.now() - lastWordsAt < PAUSE_MS ? closedText(v) : v);
+	function noteWords(): void {
+		if (!isRecording) return;
+		lastWordsAt = Date.now();
+		if (pauseTimer) clearTimeout(pauseTimer);
+		pauseTimer = setTimeout(() => {
+			pauseTimer = null;
+			scheduleGroup(0); // the pause releases the held sentence
+		}, PAUSE_MS + 50);
+	}
 	async function runGroup(): Promise<void> {
 		if (!groupable(verbatimNow).trim()) return;
 		if (stackBusy || structureBusy()) {
@@ -2039,6 +2053,8 @@
 		isRecording = false;
 		showGhost(''); // words never finalised must not linger as ghost text
 		onRecordingChange(false);
+		lastWordsAt = 0;
+		groupFailures = 0; // retries resume once dictation stops, so nothing is left stuck in the live strip
 		scheduleGroup(0); // the held-back last sentence now joins its region
 		scheduleClose();
 		isConnecting = false;
@@ -2127,6 +2143,7 @@
 				if (update.docChanged) {
 					const content = update.state.doc.toString();
 					verbatimNow = content;
+					noteWords();
 					if (polishMode === 'clean') onContentChange(content);
 					if (!content.trim()) {
 						structured = emptyStructured();
@@ -2204,6 +2221,7 @@
 		if (itemsTimer) clearTimeout(itemsTimer);
 		if (assumedTimer) clearTimeout(assumedTimer);
 		if (reviewTimer) clearTimeout(reviewTimer);
+		if (pauseTimer) clearTimeout(pauseTimer);
 		void sendStackLog();
 		if (editor) {
 			editor.destroy();
@@ -2382,7 +2400,7 @@
 							ghost={ghostNow} items={viewItems} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
 							conclusion={conclusionView} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
-							skipped={Object.keys(skippedRows)} reviewing={reviewing} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} onSkip={skipRow}
+							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} onSkip={skipRow}
 							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
 							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
 							syncing={assumedBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />

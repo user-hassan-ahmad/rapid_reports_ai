@@ -3,7 +3,7 @@
 	// regions with their amber rows and the normals that will be reported, the tray, the conclusion and the gate
 	// bar. Every line is the radiologist's own sentence from the verbatim text; a click opens it for editing.
 	// Rows are asked, never assumed: a tap adds only the sentences listed above its button.
-	import { crossfade, fade, slide } from 'svelte/transition';
+	import { fade } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { buildView } from './stackState';
 	import { CONCLUSION, GENERAL, OTHER, TECHNIQUE, regionStates, showsGroup } from './regionState';
@@ -105,7 +105,17 @@
 
 	const reduced = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 	const ms = reduced ? 0 : 280;
-	const [send, receive] = crossfade({ duration: ms, fallback: (node) => fade(node, { duration: ms }) });
+	// Sentences newly placed in a region: highlighted briefly, then the highlight fades (no motion between places).
+	let fresh: number[] = $state([]);
+	let seenIds = new Set<number>();
+	$effect(() => {
+		const placed = units.filter((x) => x.group !== null && !x.heading).map((x) => x.id);
+		const added = placed.filter((id) => !seenIds.has(id));
+		seenIds = new Set(placed);
+		if (!added.length) return;
+		fresh = [...fresh, ...added];
+		setTimeout(() => (fresh = fresh.filter((id) => !added.includes(id))), 1200);
+	});
 
 	const view = $derived(buildView(units, groups));
 	const states = $derived(regionStates(units, pillRegions));
@@ -284,7 +294,9 @@
 {/snippet}
 
 {#snippet line(r: ViewRow, nested: boolean)}
-	<li class="group/line flex items-start gap-1" in:receive={{ key: r.text }} out:send={{ key: r.text }}>
+	<!-- No sentence travels across the screen (hand read 2026-10-12: the slide back and forth read as a bug): a placed
+	     sentence fades in where it belongs with a soft highlight that fades out. -->
+	<li class="group/line flex items-start gap-1 rounded transition-colors duration-1000 {fresh.includes(r.unitId) ? 'bg-purple-500/15' : ''}" in:fade={{ duration: ms }}>
 		<span
 			class="mt-1 cursor-grab select-none text-[10px] text-gray-600 opacity-0 group-hover/line:opacity-100"
 			draggable="true"
@@ -329,8 +341,8 @@
 	{#if view.unplaced.length || pending.length || ghost}
 		<section aria-label="Just dictated" class="rounded border border-white/5 bg-white/[0.02] px-2 py-1">
 			<ul>
-				{#each view.unplaced as r (r.text)}<li class="text-sm leading-6 text-gray-300" out:send={{ key: r.text }}>{r.text}</li>{/each}
-				{#each pending as text (text)}<li class="text-sm leading-6 text-gray-300" out:send={{ key: text }}>{text}</li>{/each}
+				{#each view.unplaced as r (r.text)}<li class="text-sm leading-6 text-gray-300">{r.text}</li>{/each}
+				{#each pending as text (text)}<li class="text-sm leading-6 text-gray-300">{text}</li>{/each}
 				{#if ghost}<li class="text-sm italic leading-6 text-gray-400">{ghost}</li>{/if}
 			</ul>
 		</section>
@@ -378,7 +390,7 @@
 		{@const normals = ownMembers(g).flatMap((m) => keptAssumed(m))}
 		<section
 			animate:flip={{ duration: ms }}
-			transition:slide={{ duration: ms }}
+			in:fade={{ duration: ms }}
 			class="rounded {dragOver === g.name ? 'bg-emerald-500/10' : ''} {deleteRegion === g.name ? 'outline outline-1 outline-rose-500/60' : ''}"
 			ondragover={(e) => {
 				e.preventDefault();
@@ -407,6 +419,21 @@
 			{/if}
 		</section>
 	{/each}
+
+	<!-- While the end-of-dictation review runs: placeholder rows where the checks will appear, so they never arrive as a
+	     shock (hand read 2026-10-12). -->
+	{#if reviewing}
+		<section aria-label="Checking the findings" class="space-y-1.5" data-testid="review-skeleton">
+			<p class="text-[10px] uppercase tracking-wide text-amber-300/70">Checking the findings…</p>
+			{#each [0, 1] as k (k)}
+				<div class="flex animate-pulse items-center gap-3 rounded-md border-l-2 border-amber-400/30 bg-amber-500/[0.04] px-2 py-2">
+					<span class="h-3 w-40 rounded bg-white/10"></span>
+					<span class="h-3 w-56 rounded bg-white/[0.06]"></span>
+					<span class="ml-auto h-4 w-16 rounded bg-white/[0.06]"></span>
+				</div>
+			{/each}
+		</section>
+	{/if}
 
 	<!-- Normal regions (hand read 2026-10-12): what the radiologist said is normal, with their words beside it (a bare
 	     pill read as missed); then the assumed regions together, tap one to see what will be reported. -->

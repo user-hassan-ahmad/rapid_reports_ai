@@ -183,4 +183,12 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByText('Kidneys', { exact: true })).not.toBeInTheDocument();
 		await expect.element(page.getByText('Spleen', { exact: true })).toBeInTheDocument();
 	});
+
+	it('shows placeholder rows while the end-of-dictation review runs', async () => {
+		const props = { ...base(), units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })] };
+		const r = render(HybridStackView, { ...props, reviewing: true });
+		await expect.element(page.getByTestId('review-skeleton')).toBeInTheDocument();
+		r.rerender({ ...props, reviewing: false });
+		await expect.element(page.getByTestId('review-skeleton')).not.toBeInTheDocument();
+	});
 });
