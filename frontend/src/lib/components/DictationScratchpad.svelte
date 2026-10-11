@@ -1568,12 +1568,19 @@
 	$: if (Object.keys(stackRegionNormals).length) void refreshAssumed();
 	// Confirm waits while the answer is behind the dictation; this keeps it from waiting on a grouping that failed.
 	let assumedTimer: ReturnType<typeof setTimeout> | null = null;
-	$: if (assumedBehind && hybridStack) {
+	function armAssumed(): void {
 		if (assumedTimer) clearTimeout(assumedTimer);
 		assumedTimer = setTimeout(() => {
 			assumedTimer = null;
-			void refreshAssumed();
+			if (assumedBehind) void refreshAssumed();
 		}, 1200);
+	}
+	// Re-armed on every text change and every answer while behind (review 2026-10-12: a boolean that stays true
+	// re-runs nothing in Svelte 4, so the timer must depend on what changes).
+	$: if (hybridStack && assumedBehind) {
+		void verbatimNow;
+		void assumedSnap;
+		armAssumed();
 	}
 	function isOpenRow(id: string): boolean {
 		const it = stackItems.find((x) => x.id === id);
