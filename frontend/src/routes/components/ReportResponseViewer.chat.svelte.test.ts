@@ -169,7 +169,7 @@ describe('rail chat in the report viewer', () => {
 		await page.getByRole('button', { name: 'Apply chat edit: Small volume ascites.' }).click();
 		await pause(300);
 		expect(view.state.doc.toString()).toContain('9 cm. Small volume ascites.');
-		await expect.element(page.getByText('Applied')).toBeInTheDocument();
+		await expect.element(page.getByText('✓ Applied')).toBeInTheDocument();
 		await expect.element(page.getByTestId('unsaved-status')).toBeInTheDocument();
 		expect(postEvent).not.toHaveBeenCalled();
 		await expect.poll(() => probe.mock.calls.length, { timeout: 3000 }).toBeGreaterThan(0);
@@ -270,7 +270,7 @@ describe('chat persistence (spec §10.2, §12.6)', () => {
 		} as Parameters<typeof render<typeof ReportResponseViewer>>[1]);
 		await pause(400);
 		await page.getByRole('button', { name: 'Chat', exact: true }).click();
-		await expect.element(page.getByText('Applied')).toBeInTheDocument();
+		await expect.element(page.getByText('✓ Applied')).toBeInTheDocument();
 		expect(page.getByRole('button', { name: /^Apply chat edit/ }).elements()).toHaveLength(0);
 		await page.getByRole('button', { name: 'Undo' }).click();
 		await pause(200);
