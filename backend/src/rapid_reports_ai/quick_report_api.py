@@ -149,6 +149,7 @@ class GenerateRequest(BaseModel):
     # never states, what was not dictated or confirmed, and never asserts the chips the radiologist removed.
     stack: bool = False
     stack_declined: List[str] = []
+    stack_conclusion: str = ""   # the conclusion the radiologist confirmed (the impression phrases it)
 
 
 class FinaliseRequest(BaseModel):
@@ -313,6 +314,7 @@ async def _run_one_generator(
     user_signature: str | None = None,
     stack: bool = False,
     declined: List[str] | None = None,
+    conclusion: str = "",
 ) -> dict:
     """Run a single generator and return a candidate-record dict.
 
@@ -331,6 +333,7 @@ async def _run_one_generator(
             model_override=model_name,
             stack=stack,
             declined=declined or [],
+            conclusion=conclusion,
         )
         latency_ms = int((time.time() - t0) * 1000)
         result["latency_ms"] = latency_ms
@@ -486,6 +489,7 @@ async def generate(
                 user_signature=user_signature,
                 stack=request.stack,
                 declined=request.stack_declined,
+                conclusion=request.stack_conclusion,
             )
 
             logger.info(

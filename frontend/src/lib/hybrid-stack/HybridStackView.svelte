@@ -2,7 +2,7 @@
 	// Scratchpad v2 (spec 2026-10-11 §2): live strip, abnormal regions with their check chips, the
 	// assumed-normal tray, the conclusion and the gate. Every line is the radiologist's own sentence from the
 	// verbatim text; a click opens it for editing (typing, or dictation at the caret / over the selection).
-	import { crossfade, fade } from 'svelte/transition';
+	import { crossfade, fade, slide } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { buildView } from './stackState';
 	import { CONCLUSION, GENERAL, OTHER, TECHNIQUE, regionStates, showsGroup } from './regionState';
@@ -34,7 +34,8 @@
 		onDraftEdit = () => {},
 		onDraftRefresh = () => {},
 		onConfirm,
-		onDeleteRegion = () => {}
+		onDeleteRegion = () => {},
+		onAppend = () => {}
 	}: {
 		units: StackUnit[];
 		groups: string[];
@@ -61,6 +62,8 @@
 		onDraftRefresh?: () => void;
 		onConfirm: () => void;
 		onDeleteRegion?: (region: string, confirmed: boolean) => void;
+		/** A finding typed into the new-line field (Enter): appended to the dictation as said. */
+		onAppend?: (text: string) => void;
 	} = $props();
 
 	const reduced = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -93,6 +96,14 @@
 	let field: HTMLInputElement | null = $state(null);
 	let draftField: HTMLTextAreaElement | null = $state(null);
 	let draftFocused = $state(false);
+	let newLine = $state('');
+	let newField: HTMLInputElement | null = $state(null);
+	let newFocused = $state(false);
+	function appendNew() {
+		const t = newLine.trim();
+		if (t) onAppend(t);
+		newLine = '';
+	}
 	let lastSeq = -1;
 
 	function partIndex(r: ViewRow): number | null {
@@ -116,7 +127,7 @@
 		if (!editing) return;
 		const e = editing;
 		editing = null;
-		onEditing(draftFocused);
+		onEditing(draftFocused || newFocused);
 		if (editValue.trim() !== rowText(e.unitId, e.part).trim()) onEditLine(e.unitId, e.part, editValue.trim());
 	}
 	const isEditing = (r: ViewRow) => editing !== null && editing.unitId === r.unitId && editing.part === partIndex(r);
@@ -134,11 +145,12 @@
 	$effect(() => {
 		if (!incoming || incoming.seq === lastSeq) return;
 		lastSeq = incoming.seq;
-		const el = editing ? field : draftFocused ? draftField : null;
+		const el = editing ? field : draftFocused ? draftField : newFocused ? newField : null;
 		if (!el) return;
-		const cur = editing ? editValue : conclusion.kind === 'draft' ? conclusion.text : '';
+		const cur = editing ? editValue : newFocused ? newLine : conclusion.kind === 'draft' ? conclusion.text : '';
 		const r = insertInto(el, cur, incoming.text);
 		if (editing) editValue = r.value;
+		else if (newFocused) newLine = r.value;
 		else onDraftEdit(r.value);
 		queueMicrotask(() => el.setSelectionRange(r.caret, r.caret));
 	});
@@ -207,6 +219,28 @@
 		</section>
 	{/if}
 
+	<input
+		bind:this={newField}
+		bind:value={newLine}
+		class="w-full rounded border border-white/5 bg-transparent px-2 py-1 text-sm text-gray-200 placeholder:text-gray-600 focus:border-emerald-500/40 focus:outline-none"
+		placeholder="Type a finding… (Enter adds it)"
+		aria-label="New line"
+		onfocus={() => {
+			newFocused = true;
+			onEditing(true);
+		}}
+		onblur={() => {
+			newFocused = false;
+			onEditing(editing !== null || draftFocused);
+		}}
+		onkeydown={(e) => {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				appendNew();
+			}
+		}}
+	/>
+
 	{#if technique}
 		<section aria-label={TECHNIQUE} class="text-gray-400">
 			<ul>{#each technique.rows as r (r.unitId + ':' + r.text)}{@render line(r, false)}{/each}</ul>
@@ -218,8 +252,7 @@
 		{@const mine = chips.filter((c) => c.region === g.name)}
 		<section
 			animate:flip={{ duration: ms }}
-			in:receive={{ key: 'region:' + g.name }}
-			out:send={{ key: 'region:' + g.name }}
+			transition:slide={{ duration: ms }}
 			class="rounded {dragOver === g.name ? 'bg-emerald-500/10' : ''} {deleteRegion === g.name ? 'outline outline-1 outline-rose-500/60' : ''}"
 			ondragover={(e) => {
 				e.preventDefault();
@@ -271,10 +304,9 @@
 			<div class="flex flex-wrap gap-1.5">
 				{#each trayRegions as r (r)}
 					{@const words = dictatedNormalWords.get(r)}
+					<!-- No transition on pills: a fade-out with flip left removed pills in the DOM (hand read 2026-10-11);
+					     the region sliding into the scratchpad carries the motion. -->
 					<span
-						animate:flip={{ duration: ms }}
-						in:receive={{ key: 'region:' + r }}
-						out:send={{ key: 'region:' + r }}
 						class="rounded-full px-2 py-0.5 text-xs {words
 							? 'border border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
 							: 'border border-dashed border-white/20 text-gray-400'}"
@@ -310,7 +342,7 @@
 				}}
 				onblur={() => {
 					draftFocused = false;
-					onEditing(editing !== null);
+					onEditing(editing !== null || newFocused);
 				}}
 			></textarea>
 			{#if conclusion.kind === 'draft' && conclusion.stale && !conclusion.typed}

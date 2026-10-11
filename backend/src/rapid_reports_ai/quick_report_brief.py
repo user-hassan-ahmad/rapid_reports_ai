@@ -255,11 +255,12 @@ def distinct_keys(cands: List[FindingNegative]) -> List[str]:
 # ── compile ──────────────────────────────────────────────────────────────────
 
 async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_history: str = "",
-                        stack: bool = False, declined: Sequence[str] = ()) -> Brief:
+                        stack: bool = False, declined: Sequence[str] = (), conclusion: str = "") -> Brief:
     """stack: a scratchpad v2 session (spec 2026-10-11 §6). The findings are the confirmed findings block, so
-    nothing the radiologist did not dictate or confirm is stated: a finding-linked negative the brief would
-    state and an implicated sheet negative are offered instead; `declined` (chips the radiologist removed)
-    are never asserted nor offered."""
+    nothing the radiologist did not dictate or confirm is stated: a sheet or finding-linked negative that is not
+    dictated (confirmed chips arrive as dictation) is offered instead; `declined` (chips the radiologist removed)
+    are never asserted nor offered; `conclusion` (confirmed) replaces the impression plan, exemplars and
+    recommendation selection — the generator phrases it, adding nothing."""
     t0 = time.time()
     secs = parse_sheet(sheet)
     lane, struct = _section(secs, "Clinical Lane"), _section(secs, "Structural Pattern")
@@ -385,8 +386,8 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             neg_lines.append(f'  - DO NOT ASSERT: "{text}" — expected consequence of: {d.dictated_finding}')
         elif action == "dictated":
             neg_lines.append(f'  - DICTATED: "{text}" — state it as the dictation does')
-        elif action == "implicated" and d.dictated_finding and stack:
-            stack_offers.append((text, d.dictated_finding))
+        elif stack:   # not dictated, not confirmed: offered (the region's chips were the place to confirm it)
+            stack_offers.append((text, (d.dictated_finding if d else "") or target or ""))
             decisions["negatives"].append({"text": text, "action": "offered", "dictated_finding": d.dictated_finding,
                                            "source": "sheet"})
             continue
@@ -559,13 +560,20 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         # Everything else is removed silently — naming a referral quoted a duplicate's staging
         # words into the brief, and naming unmet-condition tests suppressed legitimate variants
         # (follow-up imaging for an unresolved opacity).
-        rb.lines = [rb.lines[0]] + kept
+        rb.lines = [rb.lines[0]] + ([] if stack and conclusion else kept)   # v2: the conclusion holds any recommendation
         if barred:
             rb.lines.append("- **Do not recommend (this study has answered it, or it falls to the receiving team):** "
                             + " ".join(f'"{t}"' for t in barred))
 
-    # Impression plan: what the impression must carry, and what stays in FINDINGS.
-    if plan and items:
+    # Impression plan: what the impression must carry, and what stays in FINDINGS. A stack session has the
+    # radiologist's confirmed conclusion instead: the impression phrases exactly that.
+    if stack and conclusion.strip():
+        decisions["impression_plan"] = {"confirmed": conclusion.strip()}
+        secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", [
+            "- **Confirmed conclusion (the radiologist's own; write the impression from it in report style, keeping "
+            "every finding it names and adding nothing it does not contain — no grade, negative or recommendation):** "
+            f'"{conclusion.strip()}"'])]))
+    elif plan and items:
         pick = lambda idx: [items[i] for i in dict.fromkeys(idx) if 0 <= i < len(items)]
         carry, only = pick(plan.impression), pick(plan.findings_only)
         # Optional findings are left unlisted: the generator places them as it would without a
@@ -605,8 +613,12 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
                 decisions["finding_negatives"].append({"finding": items[it.index], "text": neg, "tag": "fallback",
                                                        "qwen": "n/a", "present": None, "outcome": "offered"})
 
-    # Impression exemplars: only the variant matching this case's shape.
-    if variants and imp:
+    # Impression exemplars: only the variant matching this case's shape. A stack session keeps none of the
+    # impression guidance (its content would prime words the radiologist did not confirm), only a recommendation bar.
+    if stack and conclusion.strip() and imp:
+        bar = [b for b in imp.bullets if b.label == "Recommendation scope"]
+        imp.bullets = bar if bar and len(bar[0].lines) > 1 else []
+    elif variants and imp:
         chosen = int(jev["imp"]["choice"][1:]) if "imp" in jev else 0
         decisions["impression_variant"] = variants[chosen].label
         imp.bullets = [b for b in imp.bullets if b not in variants or b is variants[chosen]]

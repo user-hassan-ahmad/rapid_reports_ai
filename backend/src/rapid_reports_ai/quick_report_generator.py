@@ -108,6 +108,7 @@ async def generate_quick_report(
     use_brief: bool = True,
     stack: bool = False,
     declined: Sequence[str] = (),
+    conclusion: str = "",
 ) -> dict:
     """Write one quick report from a compiled brief (the sheet reconciled with this dictation),
     or from the raw sheet with the full prompts if the brief cannot be compiled. Falls back
@@ -116,7 +117,8 @@ async def generate_quick_report(
     brief = None
     if use_brief:
         try:
-            brief = await compile_brief(skill_sheet, scan_type, findings, clinical_history, stack=stack, declined=declined)
+            brief = await compile_brief(skill_sheet, scan_type, findings, clinical_history, stack=stack, declined=declined,
+                                         conclusion=conclusion)
         except Exception as e:
             logger.warning("quick-report brief failed (%s: %s); generating from the raw sheet", type(e).__name__, str(e)[:200])
     # A linked Normal-study path (by format) is reduced to its prose when the raw sheet is used; strip_links

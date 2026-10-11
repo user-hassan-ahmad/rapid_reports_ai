@@ -81,8 +81,8 @@ async def test_quick_generator_passes_stack_mode_to_the_brief(monkeypatch):
     from rapid_reports_ai import quick_report_generator as G
     seen = {}
 
-    async def brief(sheet, scan_type, findings, history, stack=False, declined=()):
-        seen.update(stack=stack, declined=list(declined))
+    async def brief(sheet, scan_type, findings, history, stack=False, declined=(), conclusion=""):
+        seen.update(stack=stack, declined=list(declined), conclusion=conclusion)
         raise RuntimeError("stop here")
     monkeypatch.setattr(G, "compile_brief", brief)
 
@@ -91,10 +91,10 @@ async def test_quick_generator_passes_stack_mode_to_the_brief(monkeypatch):
     monkeypatch.setattr(G, "_run_agent_with_model", run, raising=False)
     try:
         await G.generate_quick_report(skill_sheet="x", scan_type="CT", findings="f", clinical_history="",
-                                      stack=True, declined=["No free gas."])
+                                      stack=True, declined=["No free gas."], conclusion="Diverticulitis.")
     except Exception:
         pass
-    assert seen == {"stack": True, "declined": ["No free gas."]}
+    assert seen == {"stack": True, "declined": ["No free gas."], "conclusion": "Diverticulitis."}
 
 
 def test_chip_state_bands():

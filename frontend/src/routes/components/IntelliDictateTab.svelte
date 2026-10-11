@@ -477,6 +477,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			if (useStack) {
 				body.stack = true;
 				body.stack_declined = declined;
+				body.stack_conclusion = stackGate?.conclusion_text ?? '';
 			}
 			if (bestAvailable) {
 				body.sheet_id = bestAvailable;

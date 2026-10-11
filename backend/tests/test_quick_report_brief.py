@@ -631,10 +631,24 @@ async def test_stack_session_offers_what_the_radiologist_did_not_confirm(monkeyp
     _stub_f(monkeypatch, 0.95, [("implicated", "10 mm subdural"), ("keep", ""), ("dictated", "no uncal herniation")])
     b = await qb.compile_brief(SHEET_F, "CT head", "10 mm right acute subdural. No uncal herniation.",
                                stack=True, declined=["No midline shift."])
-    assert 'KEEP: "No skull fracture"' not in b.text and 'KEEP: "No midline shift"' not in b.text
+    assert 'KEEP:' not in b.text   # nothing undictated is stated
     assert '  - DICTATED: "No uncal herniation" — state it as the dictation does' in b.text
     assert '  - DO NOT ASSERT: "No midline shift." — removed by the radiologist' in b.text
     offered = {o["text"] for o in b.decisions["options"] if o["kind"] == "finding_negative"}
     assert offered == {"No skull fracture"}   # the removed chip is not offered either
     routes = {c["text"]: c["outcome"] for c in b.decisions["finding_negatives"]}
     assert routes["No midline shift"] == "declined"
+
+
+
+@pytest.mark.asyncio
+async def test_stack_session_states_the_confirmed_conclusion_not_the_plan(monkeypatch):
+    monkeypatch.setenv("RR_BRIEF_FULL_LABELS", "1")
+    _stub_f(monkeypatch, 0.95, [("keep", ""), ("keep", ""), ("keep", "")])
+    b = await qb.compile_brief(SHEET_F, "CT head", "10 mm right acute subdural.", stack=True,
+                               conclusion="Acute right subdural haematoma.")
+    assert '"Acute right subdural haematoma."' in b.text and "Confirmed conclusion" in b.text
+    assert "Abnormal exemplar" not in b.text and "Acute subdural." not in b.text
+    assert 'KEEP: "No skull fracture"' not in b.text   # a default sheet negative is offered in a stack session
+    assert "No skull fracture" in {o["text"] for o in b.decisions["options"]}
+    assert b.decisions["impression_plan"] == {"confirmed": "Acute right subdural haematoma."}

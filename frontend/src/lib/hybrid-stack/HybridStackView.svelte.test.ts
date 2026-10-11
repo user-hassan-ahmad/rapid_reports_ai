@@ -59,6 +59,50 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByLabelText('Edit line')).toHaveValue('A 9 mm liver cyst.');
 	});
 
+	it('a region that turns abnormal leaves the tray', async () => {
+		const props = base();
+		const r = render(HybridStackView, { ...props, units: [u(0, 'The kidneys are normal.', 'Kidneys', { covers: ['Kidneys'] })] });
+		await expect.element(page.getByText('Kidneys', { exact: true })).toHaveAttribute('data-state', 'dictated');
+		r.rerender({ ...props, units: [u(0, 'A 4 mm left renal calculus.', 'Kidneys', { abnormal: true })] });
+		await expect.element(page.getByRole('heading', { name: 'Kidneys' })).toBeInTheDocument();
+		await new Promise((res) => setTimeout(res, 600));
+		expect(document.querySelectorAll('[data-state]').length).toBe(2); // Liver, Spleen
+	});
+
+	it('× removes an included chip', async () => {
+		const onChipRemove = vi.fn();
+		render(HybridStackView, {
+			...base(), onChipRemove,
+			units: [u(0, 'A 4 mm left renal calculus.', 'Kidneys', { abnormal: true })],
+			chips: [{ region: 'Kidneys', text: 'No hydronephrosis.', state: 'included' }]
+		});
+		await page.getByLabelText('Remove No hydronephrosis.').click();
+		expect(onChipRemove).toHaveBeenCalledWith('No hydronephrosis.');
+	});
+
+	it('a removed chip leaves the DOM after its region has slid in', async () => {
+		const props = base();
+		const units0 = [u(0, 'The kidneys are normal.', 'Kidneys', { covers: ['Kidneys'] })];
+		const units1 = [u(0, 'A 4 mm left renal calculus.', 'Kidneys', { abnormal: true })];
+		const chip = { region: 'Kidneys', text: 'No hydronephrosis.', state: 'included' as const };
+		const r = render(HybridStackView, { ...props, units: units0, chips: [] });
+		await r.rerender({ ...props, units: units1, chips: [chip] });
+		await expect.element(page.getByLabelText('Remove No hydronephrosis.')).toBeInTheDocument();
+		await new Promise((res) => setTimeout(res, 600));
+		await r.rerender({ ...props, units: units1, chips: [] });
+		await new Promise((res) => setTimeout(res, 600));
+		const left = [...document.querySelectorAll('[data-chip]')].map((e) => `${e.textContent?.trim()}|${(e as HTMLElement).style.cssText}|${e.isConnected}`);
+		expect(left).toEqual([]);
+	});
+
+	it('a typed finding is appended on Enter', async () => {
+		const onAppend = vi.fn();
+		render(HybridStackView, { ...base(), onAppend, units: [] });
+		await page.getByLabelText('New line').fill('The spleen is enlarged at 15 cm.');
+		await userEvent.keyboard('{Enter}');
+		expect(onAppend).toHaveBeenCalledWith('The spleen is enlarged at 15 cm.');
+	});
+
 	it('the gate lists the assumed normals and confirms with a click', async () => {
 		const props = base();
 		render(HybridStackView, {

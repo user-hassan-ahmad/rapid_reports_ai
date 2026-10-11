@@ -17,6 +17,10 @@ logger = logging.getLogger(__name__)
 MAX_PER_REGION = 3
 _CACHE: "OrderedDict[tuple, list[Chip]]" = OrderedDict()
 _CACHE_MAX = 256
+# Chips are stated by default (spec v2 §4), so each must be one short report sentence. Added to the request
+# only: the shared fallback instruction (the brief's) is unchanged.
+CHIP_FORM = ("Write each negative as one short report sentence that names one absent finding and nothing else: "
+             "no reason or purpose clause, no 'or', no list.")
 
 
 class Chip(BaseModel):
@@ -45,7 +49,8 @@ async def suggest(scan_type: str, history: str, region: str, sentences: list[str
     if key in _CACHE:
         _CACHE.move_to_end(key)
         return ChipsResult(chips=[c.model_copy() for c in _CACHE[key]], cached=True)
-    state = f"SCAN TYPE: {scan_type}\nCLINICAL HISTORY: {history or 'none given'}\nDICTATED FINDINGS:\n{dictation}"
+    state = (f"SCAN TYPE: {scan_type}\nCLINICAL HISTORY: {history or 'none given'}\nDICTATED FINDINGS:\n{dictation}"
+             f"\n\n{CHIP_FORM}")
     try:
         out = await _fallback(state, [s.strip() for s in sentences if s.strip()], [])
     except Exception as e:  # fail open: no chips

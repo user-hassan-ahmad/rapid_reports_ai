@@ -39,7 +39,7 @@
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
 	import { postChips, postClose, postDraft, postGroup, postLog } from '$lib/hybrid-stack/api';
-	import { lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
+	import { appendSentence, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
 	import { abnormalSentences, includedChips, sentencesKey, visibleChips, withState, withoutChips } from '$lib/hybrid-stack/chips';
 	import { OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates } from '$lib/hybrid-stack/regionState';
 	import type { Chip, GateRecord, Region, StackCommand, StackUnit } from '$lib/hybrid-stack/types';
@@ -1464,13 +1464,19 @@
 	}
 	/** An optional chip opted in (click + or voice "accept …"): stated in the report, confirmed at the gate. */
 	function acceptChip(text: string): void {
+		if (!hasChip(text)) return;
 		optedIn = [...optedIn, text.trim().toLowerCase()];
 		chipsByRegion = withState(chipsByRegion, text, 'included');
 	}
 	/** An included chip removed (×): never stated, never offered again, and the brief may not assert it. */
 	function removeChip(text: string): void {
+		if (!hasChip(text)) return; // a chip still fading out (outros wait while the tab is hidden)
 		declinedChips = [...declinedChips, text];
 		captureChips([text]);
+	}
+	function hasChip(text: string): boolean {
+		const t = text.trim().toLowerCase();
+		return Object.values(chipsByRegion).some((cs) => cs.some((c) => c.text.trim().toLowerCase() === t));
 	}
 	/** A line edited in the view: exactly that sentence (or part) changes in the verbatim text. */
 	function stackEditLine(id: number, part: number | null, text: string): void {
@@ -1488,6 +1494,13 @@
 		if (cmd?.action === 'delete') return; // in an open line, the keyboard deletes
 		const text = (data?.clean_text || data?.text || chunk).trim();
 		if (text) stackIncoming = { seq: ++incomingSeq, text };
+	}
+	/** A finding typed into the view's new-line field: appended to the verbatim text as said. */
+	function stackAppend(text: string): void {
+		if (!editor) return;
+		const pend = firstPendingRange();
+		const at = pend ? pend.from : editor.state.doc.length;
+		editor.dispatch({ changes: { from: at, insert: appendSentence(editor.state.doc.sliceString(0, at), text) } });
 	}
 	function stackDeleteRegion(region: string, confirmed: boolean): void {
 		deleteRegion = null;
@@ -2163,7 +2176,7 @@
 							ghost={ghostNow} chips={shownChips} conclusion={conclusionView} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							onChipAccept={acceptChip} onChipRemove={removeChip} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
-							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} />
+							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend} />
 					{/if}
 				</div>
 
