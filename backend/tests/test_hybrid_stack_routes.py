@@ -125,3 +125,34 @@ def test_items_assumed_and_draft_routes(authed, monkeypatch):
     d = authed.post("/api/canvas/stack/assumed", json={"region_normals": {"Liver": ["The liver is normal."]}}).json()
     assert d["assumed"] == {"Liver": ["The liver is normal."]}
     assert authed.post("/api/canvas/stack/draft", json={"findings": "x"}).json()["text"] == "Acute diverticulitis."
+
+
+def test_slim_sheet_route_and_review(authed, monkeypatch, db_session, user):
+    from rapid_reports_ai.database.models import DictationStackLog, StackSlimSheet
+    row = StackSlimSheet(family="abdomen_pelvis", contrast="portal_venous", prompt_version="slim-1", status="provisional",
+                         markdown="x", region_normals={"Liver": ["The liver is normal."]}, not_assessable="Doppler flow")
+    db_session.add(row)
+    db_session.commit()
+
+    async def gom(db, scan_type, family, regions):
+        assert family == "abdomen_pelvis" and regions[0].name == "Liver"
+        return row
+    monkeypatch.setattr(R, "slim_get_or_make", gom)
+    d = authed.post("/api/canvas/stack/slim-sheet", json={"scan_type": "CT AP", "family_key": "abdomen_pelvis",
+                                                          "regions": [{"name": "Liver", "includes": "l"}]}).json()
+    assert d["ready"] and d["region_normals"] == {"Liver": ["The liver is normal."]} and d["not_assessable"] == "Doppler flow"
+    assert authed.post("/api/canvas/stack/slim-sheet", json={"scan_type": "CT AP"}).json()["ready"] is False
+
+    # review: forbidden without the reviewer list; flag after 5 sessions with >= 30% removing a sentence
+    assert authed.get("/api/canvas/stack/slim-sheets").status_code == 403
+    import uuid
+    for k in range(5):
+        db_session.add(DictationStackLog(user_id=uuid.uuid4(), session_id=f"s{k}", schema_key="abdomen_pelvis",
+                                         gate={"removed": ["the liver is normal"] if k < 2 else []}))
+    db_session.commit()
+    monkeypatch.setenv("RR_STACK_REVIEWERS", user.email)
+    [s] = authed.get("/api/canvas/stack/slim-sheets").json()
+    assert s["flagged"] == 1 and s["removal"]["The liver is normal."] == {"sessions": 5, "removed": 2, "flag": True}
+    assert authed.post(f"/api/canvas/stack/slim-sheets/{s['id']}", json={"status": "discarded"}).json() == {"ok": True}
+    db_session.refresh(row)
+    assert row.status == "discarded"

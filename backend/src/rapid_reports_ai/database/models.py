@@ -882,6 +882,26 @@ class StackSchemaFamily(Base):
     updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
 
 
+class StackSlimSheet(Base):
+    """Checklist slim sheet (spec 2026-10-11-scratchpad-checklist §8): structure, style and each region's normal
+    sentences for one scan-type family and contrast facet, shared by every user. status: provisional (used at
+    once; awaiting review) | approved | discarded (rebuilt on next use)."""
+    __tablename__ = "stack_slim_sheets"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    family = Column(Text, nullable=False)
+    contrast = Column(String(32), nullable=False)
+    prompt_version = Column(String(32), nullable=False)
+    status = Column(String(16), nullable=False, default="provisional")
+    model = Column(String(64), nullable=True)
+    scan_type = Column(Text, nullable=True)            # the scan type that first built it (for review)
+    markdown = Column(Text, nullable=False)
+    region_normals = Column(JSONBType(), nullable=False)  # {region: [sentence, ...]}
+    not_assessable = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime, default=_now, nullable=False)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+    __table_args__ = (Index("ix_stack_slim_sheets_key", "family", "contrast", "prompt_version"),)
+
+
 class DictationStackLog(Base):
     """One row per dictation session: the hybrid stack beside its shadow (spec §5, live testing)."""
     __tablename__ = "dictation_stack_logs"

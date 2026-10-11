@@ -12,12 +12,14 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..database.models import DictationStackLog, StackSchemaFamily, Template, User
+from ..database.models import DictationStackLog, StackSchemaFamily, StackSlimSheet, Template, User
 from ..dictation_v2 import v2_allowed
 from ..template_sheet_structure import fresh
 from .schemas import Region
 from .items import ItemsResult, update as items_update
 from .normals import AssumedResult, assumed as assumed_normals
+from .slim_sheet import get_or_make as slim_get_or_make
+from .template import template_region_normals
 from .draft import DraftResult, draft_conclusion
 from .service import GroupResult, SchemaResult, close_update, group_update, resolve_schema
 from .units import StackUnit
@@ -99,6 +101,26 @@ class LogRequest(BaseModel):
     latency_ms: dict = Field(default_factory=dict)
     gate: dict | None = None      # v2 §5: the confirmed record (None: not confirmed)
     report_id: str | None = None  # v2: set once Generate returns
+
+
+class SlimRequest(BaseModel):
+    scan_type: str = ""
+    family_key: str = ""          # the resolved schema's key (family, or the composed key)
+    regions: list[Region] = Field(default_factory=list)
+    template_id: str | None = None
+
+
+class SlimResult(BaseModel):
+    id: str | None = None
+    region_normals: dict[str, list[str]] = Field(default_factory=dict)
+    not_assessable: str = ""
+    status: str = ""              # provisional | approved | template | "" (not ready)
+    ready: bool = False
+
+
+class SlimUpdate(BaseModel):
+    status: Literal["approved", "provisional", "discarded"] | None = None
+    region_normals: dict[str, list[str]] | None = None
 
 
 class FamilyUpdate(BaseModel):
@@ -192,5 +214,80 @@ async def update_family(key: str, upd: FamilyUpdate, user: User = Depends(get_cu
     if upd.regions is not None:
         row.regions = [r.model_dump() for r in upd.regions]
         row.source = "admin"
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/slim-sheet", response_model=SlimResult)
+async def stack_slim_sheet(req: SlimRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The region normals and the "not assessable" list for this session (checklist spec §8). Template sessions
+    read their own structure; quick sessions get the shared slim sheet (made on first use). Never errors: not
+    ready means no quiet lines yet."""
+    _require()
+    if req.template_id:
+        t = db.query(Template).filter(Template.id == req.template_id, Template.user_id == user.id).first()
+        st = fresh(t.template_config or {}) if t is not None else None
+        if st is None:
+            return SlimResult()
+        return SlimResult(region_normals=template_region_normals(st), status="template", ready=True)
+    if not req.family_key or not req.regions:
+        return SlimResult()
+    row = await slim_get_or_make(db, req.scan_type, req.family_key, req.regions)
+    if row is None:
+        return SlimResult()
+    return SlimResult(id=str(row.id), region_normals=row.region_normals or {}, not_assessable=row.not_assessable or "",
+                      status=row.status, ready=True)
+
+
+def _removal_rates(db: Session, family: str, normals: dict[str, list[str]]) -> dict[str, dict]:
+    """Per sheet sentence: confirmed sessions of this family, and how many removed it (the review flag)."""
+    gates = [r.gate for r in db.query(DictationStackLog).filter(DictationStackLog.schema_key == family,
+                                                               DictationStackLog.gate.isnot(None)).all()]
+    norm = lambda x: " ".join(str(x).lower().strip().rstrip(".").split())
+    removed = [{norm(x) for x in (g or {}).get("removed", [])} for g in gates]
+    out = {}
+    for sentences in normals.values():
+        for sen in sentences:
+            n = sum(1 for rs in removed if norm(sen) in rs)
+            out[sen] = {"sessions": len(gates), "removed": n,
+                        "flag": len(gates) >= 5 and n / max(1, len(gates)) >= 0.3}
+    return out
+
+
+@router.get("/slim-sheets")
+async def list_slim_sheets(status: str | None = None, user: User = Depends(get_current_user),
+                           db: Session = Depends(get_db)):
+    _reviewer(user)
+    q = db.query(StackSlimSheet)
+    if status:
+        q = q.filter(StackSlimSheet.status == status)
+    rows = q.order_by(StackSlimSheet.updated_at.desc()).all()
+    out = []
+    for r in rows:
+        rates = _removal_rates(db, r.family, r.region_normals or {})
+        out.append({"id": str(r.id), "family": r.family, "contrast": r.contrast, "status": r.status,
+                    "scan_type": r.scan_type, "model": r.model, "prompt_version": r.prompt_version,
+                    "region_normals": r.region_normals, "not_assessable": r.not_assessable, "markdown": r.markdown,
+                    "removal": rates, "flagged": sum(1 for v in rates.values() if v["flag"]),
+                    "updated_at": r.updated_at.isoformat() if r.updated_at else None})
+    return sorted(out, key=lambda x: -x["flagged"])
+
+
+@router.post("/slim-sheets/{sheet_id}")
+async def update_slim_sheet(sheet_id: str, upd: SlimUpdate, user: User = Depends(get_current_user),
+                            db: Session = Depends(get_db)):
+    """Approve, edit sentences, or discard (the next session of that family rebuilds it)."""
+    _reviewer(user)
+    import uuid
+    try:
+        row = db.get(StackSlimSheet, uuid.UUID(sheet_id))
+    except ValueError:
+        row = None
+    if row is None:
+        raise HTTPException(status_code=404, detail="Unknown sheet")
+    if upd.status:
+        row.status = upd.status
+    if upd.region_normals is not None:
+        row.region_normals = {k: [s.strip() for s in v if s.strip()] for k, v in upd.region_normals.items()}
     db.commit()
     return {"ok": True}
