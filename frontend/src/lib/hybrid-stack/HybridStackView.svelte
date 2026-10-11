@@ -11,10 +11,13 @@
 	import type { StackItem, StackUnit, ViewRow } from './types';
 
 	export type ConclusionState =
+		| { kind: 'waiting' }
 		| { kind: 'dictated' }
 		| { kind: 'none'; failed?: boolean }
 		| { kind: 'loading' }
-		| { kind: 'draft'; text: string; stale: boolean; edited: boolean; typed?: boolean };
+		| { kind: 'draft'; text: string; edited: boolean; typed?: boolean };
+	/** Findings changed under a conclusion the radiologist owns, and Jev says it no longer reflects them. */
+	export type ConclusionNote = { added: string[]; suggestion: string | null; loading: boolean };
 
 	let {
 		units,
@@ -37,6 +40,7 @@
 		recording = false,
 		onToggleMic = () => {},
 		conclusion = { kind: 'none' },
+		conclusionNote = null,
 		gateConfirmed = false,
 		deleteRegion = null,
 		incoming = null,
@@ -51,6 +55,9 @@
 		onEditAssumed = () => {},
 		onDraftEdit = () => {},
 		onDraftRefresh = () => {},
+		onNoteSuggest = () => {},
+		onNoteAccept = () => {},
+		onNoteDismiss = () => {},
 		onConfirm,
 		onDeleteRegion = () => {},
 		onAppend = () => {},
@@ -90,6 +97,7 @@
 		recording?: boolean;
 		onToggleMic?: () => void;
 		conclusion?: ConclusionState;
+		conclusionNote?: ConclusionNote | null;
 		gateConfirmed?: boolean;
 		/** A voice "delete the X line": the region whose lines wait for a Delete click (null: none). */
 		deleteRegion?: string | null;
@@ -114,6 +122,10 @@
 		onEditAssumed?: (original: string, text: string) => void;
 		onDraftEdit?: (text: string) => void;
 		onDraftRefresh?: () => void;
+		/** The conclusion note: ask for a suggested redraft, use it, or keep the radiologist's own. */
+		onNoteSuggest?: () => void;
+		onNoteAccept?: () => void;
+		onNoteDismiss?: () => void;
 		onConfirm: () => void;
 		onDeleteRegion?: (region: string, confirmed: boolean) => void;
 		/** A finding typed into the new-line field (Enter): appended to the dictation as said. */
@@ -683,7 +695,7 @@
 
 	<!-- While the end-of-dictation review runs: placeholder rows where the checks will appear, so they never arrive as a
 	     shock (hand read 2026-10-12). -->
-	{#if reviewing}
+	{#if reviewing && !items.some((i) => !i.answered)}
 		<section aria-label="Checking the findings" class="space-y-1.5" data-testid="review-skeleton">
 			<p class="text-[10px] uppercase tracking-wide text-amber-300/70">Checking the findings…</p>
 			{#each [0, 1] as k (k)}
@@ -777,42 +789,71 @@
 		</section>
 	{/if}
 
-	<!-- Conclusion -->
+	<!-- Conclusion (2026-10-12): greyed until the first findings land; then the AI draft, or a field to type or dictate
+	     with a button to draft it. A conclusion the radiologist owns is never overwritten: a quiet note when the
+	     findings changed under it. -->
 	<section aria-label={CONCLUSION} class="border-t border-white/5 pt-2">
-		<h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{CONCLUSION}</h3>
+		<h3 class="text-xs font-semibold uppercase tracking-wide {conclusion.kind === 'waiting' && !conclusionRows.length ? 'text-gray-600' : 'text-gray-400'}">{CONCLUSION}</h3>
 		{#if conclusionRows.length}
 			<ul>{#each conclusionRows as r (r.unitId + ':' + r.text)}{@render line(r, false)}{/each}</ul>
+		{:else if conclusion.kind === 'waiting'}
+			<div class="mt-0.5 min-h-[3rem] rounded border border-dashed border-white/5 px-2 py-2 text-xs italic text-gray-600" data-testid="conclusion-waiting">
+				The conclusion appears once the findings are in.
+			</div>
 		{:else if conclusion.kind === 'draft' || conclusion.kind === 'none'}
-			{#if conclusion.kind === 'draft'}
+			{#if conclusion.kind === 'draft' && conclusion.text.trim()}
 				<p class="text-[10px] uppercase tracking-wide {conclusion.typed ? 'text-gray-500' : 'text-amber-300/80'}">{conclusion.typed ? 'Typed' : `AI draft${conclusion.edited ? ' · edited' : ''}`}</p>
-			{:else if conclusion.failed}
-				<p class="text-[10px] text-amber-300/80">The draft could not be made: type or dictate one, or try again.</p>
+			{:else if conclusion.kind === 'none' && conclusion.failed}
+				<p class="text-[10px] text-amber-300/80">The draft could not be made: type or dictate one, or draft it again.</p>
 			{/if}
-			<textarea
-				bind:this={draftField}
-				use:autosize={conclusion.kind === 'draft' ? conclusion.text : ''}
-				class="mt-0.5 block min-h-[4.5rem] w-full resize-none overflow-hidden rounded border border-white/5 bg-white/[0.04] px-1 text-sm leading-6 text-gray-100 focus:border-white/20 focus:outline-none focus:ring-0"
-				rows="3"
-				aria-label="Conclusion draft"
-				value={conclusion.kind === 'draft' ? conclusion.text : ''}
-				placeholder="Type or dictate a conclusion"
-				oninput={(e) => onDraftEdit((e.target as HTMLTextAreaElement).value)}
-				onfocus={() => {
-					draftFocused = true;
-					onEditing(true);
-				}}
-				onblur={() => {
-					draftFocused = false;
-					onEditing(editing !== null || newFocused);
-				}}
-			></textarea>
-			{#if conclusion.kind === 'draft' && conclusion.stale && !conclusion.typed}
-				<button type="button" class="text-xs text-amber-300 hover:text-amber-200" onclick={onDraftRefresh}>Findings changed — refresh?</button>
-			{:else if conclusion.kind === 'none'}
-				<button type="button" class="text-xs text-gray-400 hover:text-gray-200" onclick={onDraftRefresh}>Draft one</button>
-			{/if}
+			<div class="relative mt-0.5">
+				<textarea
+					bind:this={draftField}
+					use:autosize={conclusion.kind === 'draft' ? conclusion.text : ''}
+					class="block min-h-[4.5rem] w-full resize-none overflow-hidden rounded border border-white/5 bg-white/[0.04] px-1 pr-8 text-sm leading-6 text-gray-100 focus:border-white/20 focus:outline-none focus:ring-0"
+					rows="3"
+					aria-label="Conclusion draft"
+					value={conclusion.kind === 'draft' ? conclusion.text : ''}
+					placeholder="Type or dictate a conclusion"
+					oninput={(e) => onDraftEdit((e.target as HTMLTextAreaElement).value)}
+					onfocus={() => {
+						draftFocused = true;
+						onEditing(true);
+					}}
+					onblur={() => {
+						draftFocused = false;
+						onEditing(editing !== null || newFocused);
+					}}
+				></textarea>
+				{#if conclusion.kind === 'none' || !conclusion.text.trim()}
+					<button type="button" class="absolute right-1.5 top-1.5 rounded p-1 text-gray-400 hover:bg-white/5 hover:text-amber-200"
+						title="Draft with AI" aria-label="Draft with AI" onmousedown={(e) => e.preventDefault()} onclick={onDraftRefresh}>
+						<svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>
+					</button>
+				{/if}
+			</div>
+			{@render micControls('type or dictate')}
 		{:else}
 			<p class="px-1 text-sm italic text-gray-500">Drafting a conclusion…</p>
+		{/if}
+		{#if conclusionNote && (conclusionRows.length || conclusion.kind === 'draft')}
+			<div class="mt-1 rounded border-l-2 border-amber-400/50 bg-amber-500/[0.04] px-2 py-1 text-xs text-amber-200/90" data-testid="conclusion-note">
+				{#if conclusionNote.suggestion}
+					<p class="text-[10px] uppercase tracking-wide text-amber-300/70">Suggested conclusion</p>
+					<p class="text-gray-200">{conclusionNote.suggestion}</p>
+					<span class="mt-1 flex gap-3">
+						<button type="button" class="text-amber-200 hover:text-amber-100" onclick={onNoteAccept}>Use this</button>
+						<button type="button" class="text-gray-400 hover:text-gray-200" onclick={onNoteDismiss}>Keep mine</button>
+					</span>
+				{:else}
+					<span class="flex items-start gap-2">
+						<button type="button" class="text-left hover:text-amber-100" onclick={onNoteSuggest} disabled={conclusionNote.loading}>
+							Findings changed: this conclusion may not cover {conclusionNote.added.length ? conclusionNote.added.join(' ') : 'them'}{conclusionNote.loading ? ' · suggesting…' : ' · suggest an update'}
+						</button>
+						<button type="button" class="ml-auto text-gray-500 hover:text-gray-300" aria-label="Dismiss" onclick={onNoteDismiss}>×</button>
+					</span>
+				{/if}
+			</div>
 		{/if}
 	</section>
 

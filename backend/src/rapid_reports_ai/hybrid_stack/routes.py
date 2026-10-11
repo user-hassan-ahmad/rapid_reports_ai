@@ -16,7 +16,8 @@ from ..database.models import DictationStackLog, StackSchemaFamily, StackSlimShe
 from ..dictation_v2 import v2_allowed
 from ..template_sheet_structure import fresh
 from .schemas import Region
-from .items import ItemsResult, Referral, update as items_update
+from .items import Item, ItemsResult, Referral, recheck as items_recheck, update as items_update
+from .jev_stack import MATERIAL_MIN, STALE_MIN, ask_material, ask_stale
 from .normals import AssumedResult, assumed as assumed_normals
 from .slim_sheet import clean_sentences, get_or_make as slim_get_or_make
 from .template import template_region_normals
@@ -70,6 +71,23 @@ class ItemsRequest(BaseModel):
     tapped: list[str] = Field(default_factory=list)     # sentences answered with a tap: re-checked for contradiction
     referrals: list[Referral] | None = None              # the session's fixed referral rows (None: first call)
     review: bool = False                                 # the end-of-dictation review (reasoning low)
+
+
+class RecheckRequest(BaseModel):
+    dictation: str = ""
+    rows: list[Item] = Field(default_factory=list)
+    removed: list[str] = Field(default_factory=list)
+    tapped: list[str] = Field(default_factory=list)
+
+
+class ChangedRequest(BaseModel):
+    before: list[str] = Field(default_factory=list)
+    after: list[str] = Field(default_factory=list)
+
+
+class StaleRequest(BaseModel):
+    conclusion: str = ""
+    findings: list[str] = Field(default_factory=list)
 
 
 class AssumedRequest(BaseModel):
@@ -158,6 +176,41 @@ async def stack_items(req: ItemsRequest, user: User = Depends(get_current_user))
     return await items_update(req.scan_type, req.clinical_history, req.regions[:40], req.dictation,
                               req.abnormal[:40], req.not_assessable[:2000], req.removed[:50], req.tapped[:20],
                               req.referrals[:2] if req.referrals is not None else None, req.review)
+
+
+@router.post("/recheck", response_model=ItemsResult)
+async def stack_recheck(req: RecheckRequest, user: User = Depends(get_current_user)):
+    _require()
+    return await items_recheck(req.dictation, req.rows[:12], req.removed[:50], req.tapped[:20])
+
+
+@router.post("/changed")
+async def stack_changed(req: ChangedRequest, user: User = Depends(get_current_user)):
+    """Whether the abnormal findings changed materially since the last review (Jev; fails to material, so a failure
+    re-runs the review rather than skipping it)."""
+    _require()
+    if [" ".join(b.split()) for b in req.before] == [" ".join(a.split()) for a in req.after]:
+        return {"material": False, "score": 0.0}
+    try:
+        score = await ask_material(req.before[:40], req.after[:40])
+    except Exception as e:
+        logger.warning("[stack.changed] %s: %s", type(e).__name__, str(e)[:200])
+        return {"material": True, "score": None}
+    return {"material": score >= MATERIAL_MIN, "score": round(score, 3)}
+
+
+@router.post("/conclusion-check")
+async def stack_conclusion_check(req: StaleRequest, user: User = Depends(get_current_user)):
+    """Whether a radiologist's own conclusion no longer reflects the findings (Jev). Fails quiet: no note."""
+    _require()
+    if not req.conclusion.strip() or not req.findings:
+        return {"stale": False, "score": 0.0}
+    try:
+        score = await ask_stale(req.conclusion[:2000], req.findings[:60])
+    except Exception as e:
+        logger.warning("[stack.conclusion-check] %s: %s", type(e).__name__, str(e)[:200])
+        return {"stale": False, "score": None}
+    return {"stale": score >= STALE_MIN, "score": round(score, 3)}
 
 
 @router.post("/assumed", response_model=AssumedResult)

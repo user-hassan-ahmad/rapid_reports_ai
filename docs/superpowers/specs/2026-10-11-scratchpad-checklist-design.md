@@ -318,6 +318,27 @@ Two wordings per question, asked in one call alongside stated and contradicted (
 - **multiple findings:** wording A never fired (all ≤ 0.21). Wording B tracked conjunctions, not claims (at 0.5:
   16/20 caught, 7/20 false). Dropped. The production splitter owns the judgement instead (§4.2).
 
+### 10.2b Review gating and the conclusion (2026-10-12)
+
+After the first end-of-dictation review, a change re-runs the full review only when the abnormal findings changed
+materially; everything else (rewording, an inline edit, a typed normal, a polish pass) gets the quiet re-check:
+Jev on the rows on screen and the tapped answers (`/recheck`), no writer call, no skeleton. There is no manual
+re-check button. The full review keeps the existing rows on screen; the skeleton shows only when there are none.
+
+- **Material change** (`/changed`, `jev_stack.ask_material`, ≥ 0.6, fails to material). The question counts "a
+  different size or measurement" as material and only "the same measurement in another format or unit" as a reword
+  (an earlier wording said "correcting ... numbers" counted as a reword, which a size correction could hit). Lab, 40
+  hand-written pairs incl. 5 size or unit corrections and 3 same-size format edits: material 21/21 at ≥ 0.95,
+  rewordings all ≤ 0.57.
+- **The conclusion** is greyed until the first findings land, then the AI draft appears; without one, the field
+  takes typing or dictation and offers ✨ Draft with AI. On a material change an unedited AI draft is redrawn. A
+  conclusion the radiologist owns (edited, typed or dictated) is never overwritten: `/conclusion-check`
+  (`ask_stale`, ≥ 0.7, fails quiet) and, if out of date, a quiet note naming the new findings with a suggested
+  redraft on click ("Use this" / "Keep mine"). The note never blocks Confirm. Lab, 24 pairs: out of date 13/13
+  (lowest 0.74), still current 0/11 (highest 0.66).
+- Fixtures: `tests/fixtures/hybrid_stack/material_change_fixture.json`, `conclusion_check_fixture.json`; script
+  `scripts/scratchpad_v2_labs.py material | conclusion`. Both fixtures were written by us: watch the live logs.
+
 ### 10.3 Before release
 
 Hand reads on the local build:

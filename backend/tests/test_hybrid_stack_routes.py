@@ -168,3 +168,26 @@ def test_debug_route_only_with_the_flag(authed, monkeypatch):
     assert authed.post("/api/canvas/stack/debug", json={"kind": "x"}).status_code == 404
     monkeypatch.setenv("RR_STACK_DEBUG", "1")
     assert authed.post("/api/canvas/stack/debug", json={"kind": "x"}).json() == {"ok": True}
+
+
+
+def test_changed_recheck_and_conclusion_check_routes(authed, monkeypatch):
+    from rapid_reports_ai.hybrid_stack.items import ItemsResult
+
+    async def material(before, after):
+        return 0.97 if "abscess" in after[-1] else 0.1
+    async def stale(conclusion, findings):
+        return 0.9 if "Uncomplicated" in conclusion else 0.2
+    async def recheck(dictation, rows, removed, tapped):
+        assert rows[0].question == "Abscess?"
+        return ItemsResult(items=[], capped=[])
+    monkeypatch.setattr(R, "ask_material", material)
+    monkeypatch.setattr(R, "ask_stale", stale)
+    monkeypatch.setattr(R, "items_recheck", recheck)
+    same = authed.post("/api/canvas/stack/changed", json={"before": ["A."], "after": ["A. "]}).json()
+    assert same == {"material": False, "score": 0.0}                      # identical: Jev not asked
+    assert authed.post("/api/canvas/stack/changed", json={"before": ["Diverticulitis."], "after": ["Diverticulitis with abscess."]}).json()["material"] is True
+    assert authed.post("/api/canvas/stack/changed", json={"before": ["Diverticulitis."], "after": ["Acute diverticulitis."]}).json()["material"] is False
+    assert authed.post("/api/canvas/stack/conclusion-check", json={"conclusion": "Uncomplicated diverticulitis.", "findings": ["x"]}).json()["stale"] is True
+    row = {"id": "a", "kind": "finding", "region": "Bowel", "question": "Abscess?", "sentences": ["No abscess."]}
+    assert authed.post("/api/canvas/stack/recheck", json={"dictation": "x", "rows": [row]}).json()["items"] == []

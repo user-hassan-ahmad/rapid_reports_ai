@@ -263,3 +263,14 @@ async def test_a_failed_review_falls_back_to_gpt_oss_and_setup_does_not(monkeypa
     calls.clear()
     out = await I.update("CT AP", "", ["Pelvic organs"], "", [])          # setup: no fallback, fails open
     assert calls == [(I.QWEN, False)] and out.items == [] and out.error
+
+
+
+async def test_recheck_uses_no_writer_and_folds_answered_rows(monkeypatch):
+    async def no_writer(*a, **k):
+        raise AssertionError("the writer is never called on a recheck")
+    _setup(monkeypatch, no_writer, _checks({"No features of torsion.": (0.9, 0.0, 0.0)}))
+    rows = [I.Item(id="a", kind="finding", region="Pelvic organs", question="Torsion?", sentences=["No features of torsion."]),
+            I.Item(id="b", kind="finding", region="Peritoneum", question="Free gas?", sentences=["No free gas."])]
+    out = await I.recheck("A cyst. No features of torsion.", rows)
+    assert [(i.id, i.answered) for i in out.items] == [("a", True), ("b", False)]

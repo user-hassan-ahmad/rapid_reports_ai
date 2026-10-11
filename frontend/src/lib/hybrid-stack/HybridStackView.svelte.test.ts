@@ -139,22 +139,38 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeDisabled();
 		await expect.element(page.getByPlaceholder('Type or dictate a conclusion')).toBeInTheDocument();
 		await expect.element(page.getByText(/could not be made/)).toBeInTheDocument();
-		await page.getByText('Draft one').click();
+		await page.getByRole('button', { name: 'Draft with AI' }).click();
 		expect(onDraftRefresh).toHaveBeenCalled();
+		await expect.element(page.getByRole('button', { name: 'Start dictating' }).first()).toBeInTheDocument();
 	});
 
-	it('shows an editable AI draft and the refresh prompt when findings changed', async () => {
-		const onDraftRefresh = vi.fn();
-		render(HybridStackView, {
-			...base(),
-			onDraftRefresh,
+	it('the conclusion is greyed until the findings are in', async () => {
+		render(HybridStackView, { ...base(), units: [], conclusion: { kind: 'waiting' } });
+		await expect.element(page.getByTestId('conclusion-waiting')).toBeInTheDocument();
+		await expect.element(page.getByLabelText('Conclusion draft')).not.toBeInTheDocument();
+	});
+
+	it('a conclusion the radiologist owns gets a quiet note when the findings changed, with a suggestion to accept', async () => {
+		const props = { ...base(), onNoteSuggest: vi.fn(), onNoteAccept: vi.fn(), onNoteDismiss: vi.fn(),
 			units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })],
-			conclusion: { kind: 'draft', text: 'Simple hepatic cyst.', stale: true, edited: false }
-		});
-		await expect.element(page.getByText('AI draft')).toBeInTheDocument();
+			conclusion: { kind: 'draft', text: 'Simple hepatic cyst.', edited: true } as const };
+		const r = render(HybridStackView, { ...props, conclusionNote: { added: ['A 3 cm left renal mass.'], suggestion: null, loading: false } });
+		await expect.element(page.getByText('AI draft · edited')).toBeInTheDocument();
 		await expect.element(page.getByLabelText('Conclusion draft')).toHaveValue('Simple hepatic cyst.');
-		await page.getByText('Findings changed — refresh?').click();
-		expect(onDraftRefresh).toHaveBeenCalled();
+		await expect.element(page.getByRole('button', { name: 'Draft with AI' })).not.toBeInTheDocument();
+		await page.getByText(/may not cover A 3 cm left renal mass/).click();
+		expect(props.onNoteSuggest).toHaveBeenCalled();
+		r.rerender({ ...props, conclusionNote: { added: [], suggestion: 'Hepatic cyst. Left renal mass.', loading: false } });
+		await page.getByRole('button', { name: 'Use this' }).click();
+		expect(props.onNoteAccept).toHaveBeenCalled();
+		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeEnabled();   // the note never blocks
+	});
+
+	it('the full review keeps the rows on screen instead of the skeleton', async () => {
+		render(HybridStackView, { ...base(), units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })], reviewing: true,
+			items: [row('a', ['No biliary dilatation.'])] });
+		await expect.element(page.getByText('Biliary dilatation?')).toBeInTheDocument();
+		await expect.element(page.getByTestId('review-skeleton')).not.toBeInTheDocument();
 	});
 
 	it('a review that failed on both models is shown at the gate, never silent', async () => {

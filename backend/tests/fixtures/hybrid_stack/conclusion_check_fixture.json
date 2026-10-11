@@ -1,0 +1,203 @@
+[
+ {
+  "conclusion": "Pancreatic head mass with double duct dilatation, abutting the SMV.",
+  "findings": [
+   "A 3 cm hypoenhancing mass in the pancreatic head with double duct dilatation.",
+   "The lesion abuts the superior mesenteric vein."
+  ],
+  "gold": false,
+  "kind": "covers"
+ },
+ {
+  "conclusion": "Pancreatic head mass with double duct dilatation, abutting the SMV.",
+  "findings": [
+   "A 3 cm hypoenhancing mass in the pancreatic head with double duct dilatation.",
+   "The lesion abuts the superior mesenteric vein.",
+   "Multiple liver metastases."
+  ],
+  "gold": true,
+  "kind": "omits new finding"
+ },
+ {
+  "conclusion": "Pancreatic head mass abutting the SMV. No metastases.",
+  "findings": [
+   "A 3 cm hypoenhancing mass in the pancreatic head with double duct dilatation.",
+   "The lesion abuts the superior mesenteric vein.",
+   "Multiple liver metastases."
+  ],
+  "gold": true,
+  "kind": "contradicts"
+ },
+ {
+  "conclusion": "4 mm obstructing left VUJ calculus with moderate hydronephrosis.",
+  "findings": [
+   "A 4 mm obstructing calculus at the left VUJ with moderate hydronephrosis."
+  ],
+  "gold": false,
+  "kind": "covers"
+ },
+ {
+  "conclusion": "4 mm obstructing left VUJ calculus with moderate hydronephrosis.",
+  "findings": [
+   "A 4 mm obstructing calculus at the left VUJ with moderate hydronephrosis and forniceal rupture."
+  ],
+  "gold": true,
+  "kind": "omits complication"
+ },
+ {
+  "conclusion": "Uncomplicated sigmoid diverticulitis.",
+  "findings": [
+   "Sigmoid diverticulitis with a 3 cm pericolic abscess."
+  ],
+  "gold": true,
+  "kind": "contradicts"
+ },
+ {
+  "conclusion": "Sigmoid diverticulitis with a pericolic abscess.",
+  "findings": [
+   "Sigmoid diverticulitis with a 3 cm pericolic abscess."
+  ],
+  "gold": false,
+  "kind": "covers"
+ },
+ {
+  "conclusion": "Acute left subdural haematoma.",
+  "findings": [
+   "An 8 mm acute left subdural haematoma."
+  ],
+  "gold": false,
+  "kind": "covers"
+ },
+ {
+  "conclusion": "Acute left subdural haematoma.",
+  "findings": [
+   "An 8 mm acute left subdural haematoma with 5 mm midline shift."
+  ],
+  "gold": true,
+  "kind": "omits mass effect"
+ },
+ {
+  "conclusion": "Small left pleural effusion.",
+  "findings": [
+   "Small right pleural effusion."
+  ],
+  "gold": true,
+  "kind": "wrong side"
+ },
+ {
+  "conclusion": "Segmental right lower lobe pulmonary emboli.",
+  "findings": [
+   "Filling defects in the right lower lobe segmental arteries."
+  ],
+  "gold": false,
+  "kind": "covers"
+ },
+ {
+  "conclusion": "Segmental right lower lobe pulmonary emboli.",
+  "findings": [
+   "Filling defects in the right and left main pulmonary arteries."
+  ],
+  "gold": true,
+  "kind": "extent changed"
+ },
+ {
+  "conclusion": "Splenic laceration with haemoperitoneum.",
+  "findings": [
+   "A splenic laceration with perisplenic haematoma and moderate haemoperitoneum."
+  ],
+  "gold": false,
+  "kind": "covers"
+ },
+ {
+  "conclusion": "Splenic laceration with haemoperitoneum.",
+  "findings": [
+   "A splenic laceration with perisplenic haematoma, moderate haemoperitoneum and active contrast extravasation."
+  ],
+  "gold": true,
+  "kind": "omits active bleeding"
+ },
+ {
+  "conclusion": "Adhesional small bowel obstruction.",
+  "findings": [
+   "Dilated small bowel loops to 4 cm with a transition point, likely adhesional."
+  ],
+  "gold": false,
+  "kind": "covers"
+ },
+ {
+  "conclusion": "Adhesional small bowel obstruction.",
+  "findings": [
+   "Dilated small bowel loops to 4 cm with a transition point and reduced wall enhancement."
+  ],
+  "gold": true,
+  "kind": "omits ischaemia"
+ },
+ {
+  "conclusion": "Simple right ovarian cyst. Normal appendix.",
+  "findings": [
+   "A 5 cm simple right ovarian cyst.",
+   "The appendix is normal."
+  ],
+  "gold": false,
+  "kind": "covers"
+ },
+ {
+  "conclusion": "Simple right ovarian cyst. Normal appendix.",
+  "findings": [
+   "A 5 cm complex right ovarian cyst with solid components.",
+   "The appendix is normal."
+  ],
+  "gold": true,
+  "kind": "character changed"
+ },
+ {
+  "conclusion": "Complex posterior horn medial meniscal tear.",
+  "findings": [
+   "A complex tear of the posterior horn of the medial meniscus.",
+   "Moderate joint effusion."
+  ],
+  "gold": false,
+  "kind": "covers (minor omitted)"
+ },
+ {
+  "conclusion": "Complex posterior horn medial meniscal tear.",
+  "findings": [
+   "A complex tear of the posterior horn of the medial meniscus.",
+   "Complete tear of the anterior cruciate ligament."
+  ],
+  "gold": true,
+  "kind": "omits major finding"
+ },
+ {
+  "conclusion": "3.2 cm right upper lobe mass, suspicious for primary lung cancer.",
+  "findings": [
+   "A 3.2 cm spiculated mass in the right upper lobe."
+  ],
+  "gold": false,
+  "kind": "covers"
+ },
+ {
+  "conclusion": "3.2 cm right upper lobe mass, suspicious for primary lung cancer.",
+  "findings": [
+   "A 3.2 cm spiculated mass in the right upper lobe invading the chest wall."
+  ],
+  "gold": true,
+  "kind": "omits invasion"
+ },
+ {
+  "conclusion": "Cholelithiasis with acute cholecystitis.",
+  "findings": [
+   "Multiple gallstones with gallbladder wall thickening and pericholecystic fluid."
+  ],
+  "gold": false,
+  "kind": "covers"
+ },
+ {
+  "conclusion": "Cholelithiasis. No cholecystitis.",
+  "findings": [
+   "Multiple gallstones with gallbladder wall thickening and pericholecystic fluid."
+  ],
+  "gold": true,
+  "kind": "contradicts"
+ }
+]

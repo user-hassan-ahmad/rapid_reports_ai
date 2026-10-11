@@ -294,3 +294,16 @@ async def update(scan_type: str, history: str, regions: list[str], dictation: st
     items, capped = _limit(rows)
     return ItemsResult(items=items, capped=capped, contradicted=contradicted, cached=cached,
                        ms=int((time.perf_counter() - t0) * 1000))
+
+
+async def recheck(dictation: str, rows: list[Item], removed: list[str] | None = None,
+                  tapped: list[str] | None = None) -> ItemsResult:
+    """The quiet re-check after an edit that does not change the abnormal findings materially: no writer call; the rows
+    on screen are checked against the current dictation (answered or contradicted rows fold, tapped answers the
+    dictation now contradicts are returned) and the caps applied."""
+    t0 = time.perf_counter()
+    removed = [r for r in (removed or []) if r.strip()]
+    work = [r.model_copy(deep=True) for r in rows if not r.answered]
+    contradicted = await _check(work, dictation, removed, [t for t in (tapped or []) if t.strip()])
+    items, capped = _limit(work)
+    return ItemsResult(items=items, capped=capped, contradicted=contradicted, ms=int((time.perf_counter() - t0) * 1000))

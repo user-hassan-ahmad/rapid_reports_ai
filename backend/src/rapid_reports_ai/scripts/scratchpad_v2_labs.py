@@ -139,9 +139,79 @@ async def rows_lab() -> None:
                   f"  {it['sentence']!r}" + (f" vs {it['removed']}" if "removed" in it else ""))
 
 
+# Material change (checklist: when an edit re-runs the review): does AFTER change an abnormal finding in a way that
+# changes what should be checked, beyond wording? Two wordings, one call each pair.
+MATERIAL_WORDINGS = {
+    "material_a": ("Compared with BEFORE, the AFTER findings add, remove or change an abnormal finding (a new finding, a "
+                   "finding gone, a different size, side, extent, character, relationship or complication), rather than "
+                   "only rewording, reordering or correcting spelling or numbers of the same findings."),
+    "material_c": ("Compared with BEFORE, the AFTER findings add, remove or change an abnormal finding (a new finding, a "
+                   "finding gone, a different size or measurement, side, extent, character, relationship or complication), "
+                   "rather than only rewording, reordering, correcting spelling, or writing the same measurement in another "
+                   "format or unit."),
+}
+
+
+async def _material_one(before: list[str], after: list[str]) -> dict:
+    from rapid_reports_ai.jev_client import JEV_MODEL, jev_post
+    import os
+    state = "BEFORE:\n" + "\n".join(f"- {b}" for b in before) + "\n\nAFTER:\n" + "\n".join(f"- {a}" for a in after)
+    qs = {k: {"type": "noul", "instructions": w} for k, w in MATERIAL_WORDINGS.items()}
+    r = await jev_post({"model": JEV_MODEL, "state": state, "questions": qs}, os.environ.get("OPENROUTER_API_KEY", ""), 6.0, None)
+    r.raise_for_status()
+    a = r.json().get("answers") or {}
+    return {k: float((a.get(k) or {}).get("noul") or 0.0) for k in qs}
+
+
+async def material_lab() -> None:
+    items = json.loads((FIX / "material_change_fixture.json").read_text())
+    res = await _gather(lambda it: _material_one(it["before"], it["after"]), items)
+    rows = [(it, r) for it, r in zip(items, res) if "error" not in r]
+    print(f"material: {len(rows)}/{len(items)} answered")
+    for k in MATERIAL_WORDINGS:
+        for t in (0.3, 0.4, 0.5, 0.6, 0.7):
+            tp = sum(1 for it, r in rows if it["gold"] and r[k] >= t)
+            fp = sum(1 for it, r in rows if not it["gold"] and r[k] >= t)
+            print(f"  {k} t={t:.1f}: material caught {tp}/{sum(it['gold'] for it, _ in rows)}  rewording flagged {fp}")
+    for it, r in sorted(rows, key=lambda x: (not x[0]["gold"], -x[1]["material_a"])):
+        print(f"   gold={it['gold']!s:<5} a={r['material_a']:.2f} c={r['material_c']:.2f} {it['kind']:<18} {it['after'][-1][:70]!r}")
+
+
+CONCLUSION_WORDINGS = {
+    "stale_a": ("The CONCLUSION omits or contradicts an abnormal finding in the FINDINGS that matters for the patient's "
+                "management (a finding, its side, its extent or a complication), so it no longer summarises them."),
+    "stale_b": "The CONCLUSION needs updating because the FINDINGS now report something important it does not reflect.",
+}
+
+
+async def _conclusion_one(conclusion: str, findings: list[str]) -> dict:
+    from rapid_reports_ai.jev_client import JEV_MODEL, jev_post
+    import os
+    state = "FINDINGS:\n" + "\n".join(f"- {f}" for f in findings) + f"\n\nCONCLUSION:\n{conclusion}"
+    qs = {k: {"type": "noul", "instructions": w} for k, w in CONCLUSION_WORDINGS.items()}
+    r = await jev_post({"model": JEV_MODEL, "state": state, "questions": qs}, os.environ.get("OPENROUTER_API_KEY", ""), 6.0, None)
+    r.raise_for_status()
+    a = r.json().get("answers") or {}
+    return {k: float((a.get(k) or {}).get("noul") or 0.0) for k in qs}
+
+
+async def conclusion_lab() -> None:
+    items = json.loads((FIX / "conclusion_check_fixture.json").read_text())
+    res = await _gather(lambda it: _conclusion_one(it["conclusion"], it["findings"]), items)
+    rows = [(it, r) for it, r in zip(items, res) if "error" not in r]
+    print(f"conclusion: {len(rows)}/{len(items)} answered")
+    for k in CONCLUSION_WORDINGS:
+        for t in (0.3, 0.5, 0.6, 0.7, 0.8):
+            tp = sum(1 for it, r in rows if it["gold"] and r[k] >= t)
+            fp = sum(1 for it, r in rows if not it["gold"] and r[k] >= t)
+            print(f"  {k} t={t:.1f}: stale caught {tp}/{sum(it['gold'] for it, _ in rows)}  current flagged {fp}")
+    for it, r in sorted(rows, key=lambda x: (not x[0]["gold"], -x[1]["stale_a"])):
+        print(f"   gold={it['gold']!s:<5} a={r['stale_a']:.2f} b={r['stale_b']:.2f} {it['kind']}")
+
+
 async def main(argv: list[str]) -> None:
     for name in argv or ["command", "chip"]:
-        await {"command": command_lab, "chip": chip_lab, "contra": contra_lab, "rows": rows_lab}[name]()
+        await {"command": command_lab, "chip": chip_lab, "contra": contra_lab, "rows": rows_lab, "material": material_lab, "conclusion": conclusion_lab}[name]()
 
 
 if __name__ == "__main__":

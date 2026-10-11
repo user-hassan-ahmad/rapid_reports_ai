@@ -38,11 +38,11 @@
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
-	import { postAssumed, postClose, postDebug, postDraft, postGroup, postItems, postLog, postSlimSheet } from '$lib/hybrid-stack/api';
+	import { postAssumed, postChanged, postClose, postConclusionCheck, postDebug, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, closedText, lineChange, liveTail, moveUnit, similar } from '$lib/hybrid-stack/stackState';
 	import { abnormalAll, assumedFrom, openCount, rowSentences, type AssumedSnap } from '$lib/hybrid-stack/items';
-	import { OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates } from '$lib/hybrid-stack/regionState';
-	import type { GateItem, GateRecord, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
+	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates } from '$lib/hybrid-stack/regionState';
+	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
 	import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
@@ -264,6 +264,15 @@
 	let reviewFailed = false; // the last review failed: shown at the gate and logged, never silent
 	let reviewTimer: ReturnType<typeof setTimeout> | null = null;
 	const REVIEW_IDLE_MS = 800;
+	// The review is gated (2026-10-12, material-change lab 16/16, 0 false): after the first review, a change re-runs
+	// the full review only when Jev says the abnormal findings changed materially; anything else (rewording, an
+	// inline edit, a typed normal) gets the quiet re-check of the rows on screen. The abnormal findings the last full
+	// review covered (null until the first one):
+	let reviewedAbnormal: string[] | null = null;
+	// A conclusion the radiologist owns (edited, typed or dictated) is never overwritten: a material change that it no
+	// longer reflects (Jev, conclusion lab 13/13, 0 false) shows a quiet note, keyed to the conclusion text it was
+	// computed for, with a suggested redraft on request.
+	let conclusionNote: { for: string; added: string[]; suggestion: string | null; loading: boolean } | null = null;
 	// The last /assumed answer and the state it was computed for (review 2026-10-12): a region assumes only what was
 	// checked for its current state, and Confirm waits while the answer is behind the dictation.
 	let assumedSnap: AssumedSnap | null = null;
@@ -319,13 +328,18 @@
 	// with no sentence left assumes nothing. An abnormal region's remainder is never named (review 2026-10-12).
 	$: namedNormals = Object.keys(stackRegionNormals).length === 0;
 	$: dictatedConclusion = conclusionText(stackUnits);
+	// The conclusion follows the findings: greyed until the first findings land, then the AI draft (or, without one,
+	// a field to type or dictate with a button to draft it).
+	$: findingsLanded = findingsText(stackUnits, stackGroups).trim().length > 0;
 	$: conclusionView = dictatedConclusion
 		? ({ kind: 'dictated' } as const)
 		: draft
-			? ({ kind: 'draft', text: draft.text, stale: draft.hash !== findingsHash(stackUnits), edited: draft.edited, typed: draft.typed } as const)
+			? ({ kind: 'draft', text: draft.text, edited: draft.edited, typed: draft.typed } as const)
 			: draftLoading
 				? ({ kind: 'loading' } as const)
-				: ({ kind: 'none', failed: draftFailed } as const);
+				: !findingsLanded
+					? ({ kind: 'waiting' } as const)
+					: ({ kind: 'none', failed: draftFailed } as const);
 	// The gate re-arms on any change to what it confirms (spec §5).
 	$: gateKey = [verbatimNow, findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
 		regionView.remainder.join('|'), String(rowsOpen), Object.keys(tappedRows).join('|'), Object.keys(skippedRows).join('|'), removedSentences.join('|'),
@@ -1541,9 +1555,88 @@
 		if (reviewTimer) clearTimeout(reviewTimer);
 		reviewTimer = setTimeout(() => {
 			reviewTimer = null;
-			if (!isRecording && verbatimNow === text && reviewedFor !== text) void refreshItems(true);
+			if (!isRecording && verbatimNow === text && reviewedFor !== text) void gateReview(text);
 		}, REVIEW_IDLE_MS);
 	}
+	/** The first review always runs; after it, a material change runs the full review (and the conclusion reacts),
+	 *  anything else the quiet re-check. */
+	async function gateReview(text: string): Promise<void> {
+		const before = reviewedAbnormal;
+		const after = abnormalAll(stackUnits);
+		if (before === null) return refreshItems(true);
+		let material = true; // fails to material: a failure re-runs the review rather than skipping it
+		if (before.map(normS).join('\u0003') === after.map(normS).join('\u0003')) material = false;
+		else {
+			try {
+				material = (await postChanged($token, { before, after })).material;
+			} catch {
+				/* material */
+			}
+		}
+		if (isRecording || verbatimNow !== text || reviewedFor === text) return; // superseded
+		if (!material) return recheckRows(text);
+		void refreshItems(true);
+		void reactConclusion(before, after);
+	}
+	/** The quiet re-check: the rows on screen against the current dictation; no writer call, no skeleton. */
+	async function recheckRows(text: string): Promise<void> {
+		const seq = ++itemsSeq;
+		const tapped = Object.values(tappedRows).flatMap((r) => r.sentences);
+		const open = stackItems.filter((i) => !i.answered);
+		if (!open.length && !tapped.length) {
+			reviewedFor = text;
+			return;
+		}
+		try {
+			const res = await postRecheck($token, { dictation: text, rows: open, removed: removedSentences, tapped });
+			if (seq !== itemsSeq) return;
+			reviewedFor = text;
+			applyRows(res, true);
+		} catch {
+			if (seq === itemsSeq) reviewedFor = text; // fail open: the rows on screen stay as they are
+		}
+	}
+	/** A material change: an unedited AI draft is redrawn; a conclusion the radiologist owns is checked and, if it no
+	 *  longer reflects the findings, gets the quiet note (never overwritten, Confirm never blocked). */
+	async function reactConclusion(before: string[], after: string[]): Promise<void> {
+		if (!dictatedConclusion && draft && !draft.edited && !draft.typed) {
+			draft = null;
+			conclusionNote = null;
+			return requestDraft();
+		}
+		const text = dictatedConclusion || draft?.text || '';
+		if (!text.trim() || !after.length) return;
+		try {
+			const res = await postConclusionCheck($token, { conclusion: text, findings: after });
+			if (!res.stale || (dictatedConclusion || draft?.text || '') !== text) return;
+			const added = after.filter((a) => !before.some((b) => normS(b) === normS(a)));
+			const prev = conclusionNote?.for === text ? conclusionNote.added : [];
+			conclusionNote = { for: text, added: [...new Set([...prev, ...added])], suggestion: null, loading: false };
+		} catch {
+			/* fails quiet: no note */
+		}
+	}
+	async function suggestConclusion(): Promise<void> {
+		if (!conclusionNote || conclusionNote.loading) return;
+		const note = conclusionNote;
+		conclusionNote = { ...note, loading: true };
+		try {
+			const res = await postDraft($token, { scan_type: scanType, clinical_history: clinicalHistory, findings: findingsText(stackUnits, stackGroups) });
+			if (conclusionNote?.for === note.for) conclusionNote = { ...note, suggestion: res.text || null, loading: false };
+		} catch {
+			if (conclusionNote?.for === note.for) conclusionNote = { ...note, loading: false };
+		}
+	}
+	/** The suggestion accepted: it replaces the conclusion as an AI draft (a dictated conclusion's lines are removed). */
+	function acceptConclusion(): void {
+		const text = conclusionNote?.suggestion;
+		if (!text) return;
+		if (dictatedConclusion) stackDeleteRegion(CONCLUSION, true);
+		draft = { text, hash: findingsHash(stackUnits), edited: false, typed: false };
+		conclusionNote = null;
+	}
+	// The note belongs to the conclusion it was computed for: any edit to the conclusion retires it.
+	$: if (conclusionNote && conclusionNote.for !== (dictatedConclusion || draft?.text || '')) conclusionNote = null;
 	/** The rows for this dictation (spec §4.2). A row the dictation answers shows green, then folds away. */
 	const normS = (x: string) => x.trim().toLowerCase().replace(/\.$/, '').replace(/\s+/g, ' ');
 	/** The rows for this dictation (spec §4.2). A row the dictation answers shows green, then folds away. A failed or
@@ -1552,10 +1645,11 @@
 	async function refreshItems(review: boolean): Promise<void> {
 		const seq = ++itemsSeq;
 		const text = review ? verbatimNow : '';
+		const abnormal = abnormalAll(stackUnits);
 		if (review) reviewing = true;
 		try {
 			const res = await postItems($token, { scan_type: scanType, clinical_history: clinicalHistory, regions: pillRegions,
-				dictation: text, abnormal: abnormalAll(stackUnits), not_assessable: stackNotAssessable, removed: removedSentences,
+				dictation: text, abnormal, not_assessable: stackNotAssessable, removed: removedSentences,
 				tapped: Object.values(tappedRows).flatMap((r) => r.sentences), referrals: fixedReferrals, review });
 			if (seq !== itemsSeq) return; // superseded while in flight
 			if (review) {
@@ -1563,30 +1657,10 @@
 				reviewFailed = !!res.error;
 			}
 			if (res.error) return; // the writer failed: what is on screen stays
+			if (review) reviewedAbnormal = abnormal;
 			if (fixedReferrals === null)
 				fixedReferrals = res.items.filter((i) => i.kind === 'referral').map((i) => ({ question: i.question, region: i.region, sentences: i.sentences }));
-			// Tapped answers the dictation now contradicts are dropped; a row left with none is asked again.
-			if (res.contradicted.length) {
-				const bad = new Set(res.contradicted.map(normS));
-				tappedRows = Object.fromEntries(Object.entries(tappedRows)
-					.map(([k, r]) => [k, { ...r, sentences: r.sentences.filter((x) => !bad.has(normS(x))) }] as const)
-					.filter(([, r]) => r.sentences.length > 0));
-			}
-			for (const it of res.items) {
-				if (!it.answered || dictatedRows[it.id] || tappedRows[it.id]) continue;
-				const was = stackItems.find((x) => x.id === it.id);
-				dictatedRows = { ...dictatedRows, [it.id]: { ...it, sentences: was?.sentences ?? it.sentences } };
-				setTimeout(() => {
-					foldedRows = [...foldedRows, it.id];
-					stackItems = stackItems.filter((x) => x.id !== it.id);
-				}, FOLD_MS);
-			}
-			// Each reply replaces the set on screen (tapped answers are kept separately): nothing accumulates.
-			stackItems = res.items.filter((it) => !foldedRows.includes(it.id));
-			stackCapped = res.capped;
-			shownSentences = [...new Set([...shownSentences, ...stackItems.flatMap((i) => i.sentences), ...res.capped.flatMap((i) => i.sentences)])];
-			stackLatency.items = Math.max(stackLatency.items ?? 0, res.ms);
-			void refreshAssumed(); // a row owns its check: the normals saying the same step aside
+			applyRows(res, false);
 		} catch {
 			if (seq === itemsSeq && review) {
 				reviewedFor = text; // fail open: nothing new is asked; Confirm is not held, but the gate says so
@@ -1595,6 +1669,33 @@
 		} finally {
 			if (seq === itemsSeq) reviewing = false;
 		}
+	}
+	/** A reply applied: contradicted taps dropped, answered rows shown green then folded, the set replaced. A quiet
+	 *  re-check saw only the open rows, so rows already answered and the capped list stay. */
+	function applyRows(res: ItemsResult, recheck: boolean): void {
+		// Tapped answers the dictation now contradicts are dropped; a row left with none is asked again.
+		if (res.contradicted.length) {
+			const bad = new Set(res.contradicted.map(normS));
+			tappedRows = Object.fromEntries(Object.entries(tappedRows)
+				.map(([k, r]) => [k, { ...r, sentences: r.sentences.filter((x) => !bad.has(normS(x))) }] as const)
+				.filter(([, r]) => r.sentences.length > 0));
+		}
+		for (const it of res.items) {
+			if (!it.answered || dictatedRows[it.id] || tappedRows[it.id]) continue;
+			const was = stackItems.find((x) => x.id === it.id);
+			dictatedRows = { ...dictatedRows, [it.id]: { ...it, sentences: was?.sentences ?? it.sentences } };
+			setTimeout(() => {
+				foldedRows = [...foldedRows, it.id];
+				stackItems = stackItems.filter((x) => x.id !== it.id);
+			}, FOLD_MS);
+		}
+		// Each reply replaces the set on screen (tapped answers are kept separately): nothing accumulates.
+		const kept = recheck ? stackItems.filter((x) => x.answered && !res.items.some((r) => r.id === x.id)) : [];
+		stackItems = [...kept, ...res.items].filter((it) => !foldedRows.includes(it.id));
+		if (!recheck) stackCapped = res.capped;
+		shownSentences = [...new Set([...shownSentences, ...stackItems.flatMap((i) => i.sentences), ...res.capped.flatMap((i) => i.sentences)])];
+		stackLatency.items = Math.max(stackLatency.items ?? 0, res.ms);
+		void refreshAssumed(); // a row owns its check: the normals saying the same step aside
 	}
 	/** "Abnormal…" in a row: the finding is added to the dictation as said (the grouper places it, the review re-runs)
 	 *  and the row folds as answered by the radiologist's own words. */
@@ -1763,11 +1864,11 @@
 		}
 	}
 	function stackDraftEdit(text: string): void {
+		if (draft === null && !text.trim()) return;
 		draft = text || draft ? { text, hash: draft?.hash ?? findingsHash(stackUnits), edited: true, typed: draft?.typed ?? true } : null;
 	}
 	function stackDraftRefresh(): void {
-		if (draft?.edited && typeof confirm === 'function' && !confirm('Replace your edited draft with a new one?')) return;
-		draft = null;
+		draft = null; // offered only when the field is empty (the ✨ button): nothing of the radiologist's is replaced
 		void requestDraft();
 	}
 	function stackConfirm(): void {
@@ -1859,6 +1960,8 @@
 		fixedReferrals = null;
 		skippedRows = {};
 		reviewedFor = '';
+		reviewedAbnormal = null;
+		conclusionNote = null;
 		reviewFailed = false;
 		removedSentences = [];
 		assumedSnap = null;
@@ -2438,9 +2541,9 @@
 					{#if stackView}
 						<HybridStackView units={stackUnits} groups={stackGroups} {pillRegions} pending={stripNow}
 							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
-							conclusion={conclusionView} gateConfirmed={stackGate !== null} {deleteRegion}
+							conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
-							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && reviewedFor === verbatimNow} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
+							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
 							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
 							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
 							syncing={assumedBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />

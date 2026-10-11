@@ -218,3 +218,36 @@ def normal_assumed(c: RowCheck) -> bool:
     """A region normal of an abnormal region is assumed only when the dictation neither covers, hedges nor
     contradicts it and the radiologist has not removed it."""
     return c.stated < HEDGED_MIN and c.contra < HEDGED_MIN and c.removed < REMOVED_MIN
+
+
+# ── Review gates (labs 2026-10-12, scripts/scratchpad_v2_labs.py material | conclusion) ──────────────────────────
+MATERIAL_MIN = 0.6  # 40 pairs: material 21/21 at >= 0.95 (5 size/unit corrections included), rewordings all <= 0.57
+STALE_MIN = 0.7     # 24 pairs: out of date 13/13 (lowest 0.74), still current 0/11 (highest 0.66)
+
+MATERIAL_QUESTION = (
+    "Compared with BEFORE, the AFTER findings add, remove or change an abnormal finding (a new finding, a finding gone, "
+    "a different size or measurement, side, extent, character, relationship or complication), rather than only "
+    "rewording, reordering, correcting spelling, or writing the same measurement in another format or unit.")
+STALE_QUESTION = ("The CONCLUSION needs updating because the FINDINGS now report something important it does not "
+                  "reflect.")
+
+
+async def _noul(state: str, instructions: str, transport=None) -> float:
+    r = await jev_post({"model": JEV_MODEL, "state": state,
+                        "questions": {"q": {"type": "noul", "instructions": instructions}}},
+                       os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
+    r.raise_for_status()
+    return float(((r.json().get("answers") or {}).get("q") or {}).get("noul") or 0.0)
+
+
+async def ask_material(before: list[str], after: list[str], transport=None) -> float:
+    """P(the abnormal findings changed in a way that changes what should be checked), not just their wording."""
+    state = ("BEFORE:\n" + ("\n".join(f"- {b}" for b in before) or "(none)") + "\n\nAFTER:\n"
+             + ("\n".join(f"- {a}" for a in after) or "(none)"))
+    return await _noul(state, MATERIAL_QUESTION, transport)
+
+
+async def ask_stale(conclusion: str, findings: list[str], transport=None) -> float:
+    """P(the conclusion no longer reflects something important in the findings)."""
+    state = "FINDINGS:\n" + "\n".join(f"- {f}" for f in findings) + f"\n\nCONCLUSION:\n{conclusion}"
+    return await _noul(state, STALE_QUESTION, transport)

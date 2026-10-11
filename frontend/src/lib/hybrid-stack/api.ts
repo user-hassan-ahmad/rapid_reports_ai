@@ -1,5 +1,5 @@
 import { API_URL } from '$lib/config.js';
-import type { AssumedResult, DraftResult, GateRecord, GroupResult, ItemsResult, Region, SlimSheet, StackSchema, StackUnit } from './types';
+import type { AssumedResult, DraftResult, GateRecord, GroupResult, ItemsResult, Region, SlimSheet, StackItem, StackSchema, StackUnit } from './types';
 
 async function post<T>(token: string | null, path: string, body: unknown, keepalive = false): Promise<T> {
 	const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -34,6 +34,19 @@ export const postItems = (token: string | null, body: {
 export const postAssumed = (token: string | null, body: {
 	dictation: string; region_normals: Record<string, string[]>; abnormal: string[]; dictated_normal: string[]; removed?: string[]; owned?: string[]; touched?: string[];
 }) => post<AssumedResult>(token, 'assumed', body);
+
+/** The quiet re-check after an edit that leaves the abnormal findings unchanged: the rows on screen against the
+ *  current dictation, no writer call. */
+export const postRecheck = (token: string | null, body: { dictation: string; rows: StackItem[]; removed?: string[]; tapped?: string[] }) =>
+	post<ItemsResult>(token, 'recheck', body);
+
+/** Whether the abnormal findings changed materially since the last full review (fails to material). */
+export const postChanged = (token: string | null, body: { before: string[]; after: string[] }) =>
+	post<{ material: boolean; score: number | null }>(token, 'changed', body);
+
+/** Whether the radiologist's own conclusion no longer reflects the findings (fails quiet). */
+export const postConclusionCheck = (token: string | null, body: { conclusion: string; findings: string[] }) =>
+	post<{ stale: boolean; score: number | null }>(token, 'conclusion-check', body);
 
 export const postSlimSheet = (token: string | null, body: { scan_type: string; clinical_history: string; template_id?: string | null }) =>
 	post<SlimSheet>(token, 'slim-sheet', body);
