@@ -201,4 +201,24 @@ describe('HybridStackView v2', () => {
 		await userEvent.keyboard('{Enter}');
 		expect(onAbnormal).toHaveBeenCalledWith('a', 'Mild intrahepatic biliary dilatation.');
 	});
+
+	it('a dictated normal is edited in place, like any line', async () => {
+		const props = base();
+		render(HybridStackView, { ...props, units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true }),
+			u(1, 'The kidneys are normal.', 'Kidneys', { covers: ['Kidneys'] })] });
+		await page.getByTitle('Click to edit: The kidneys are normal.').click();
+		await page.getByLabelText('Edit line').fill('The kidneys are normal in size.');
+		await userEvent.keyboard('{Enter}');
+		expect(props.onEditLine).toHaveBeenCalledWith(1, null, 'The kidneys are normal in size.');
+	});
+
+	it('an edited pre-written normal becomes the radiologist\'s own words', async () => {
+		const onEditAssumed = vi.fn();
+		render(HybridStackView, { ...base(), onEditAssumed, units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })],
+			assumed: { Liver: ['No biliary dilatation.'] } });
+		await page.getByText('No biliary dilatation.').click();
+		await page.getByLabelText('Edit normal').fill('No intrahepatic biliary dilatation.');
+		await userEvent.keyboard('{Enter}');
+		expect(onEditAssumed).toHaveBeenCalledWith('No biliary dilatation.', 'No intrahepatic biliary dilatation.');
+	});
 });

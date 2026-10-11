@@ -44,6 +44,7 @@
 		onDictateInto = () => {},
 		onSkip = () => {},
 		onAbnormal = () => {},
+		onEditAssumed = () => {},
 		onDraftEdit = () => {},
 		onDraftRefresh = () => {},
 		onConfirm,
@@ -96,6 +97,9 @@
 		onSkip?: (id: string) => void;
 		/** "Abnormal…" in a row: the finding typed or dictated into it is added as said, and the row folds. */
 		onAbnormal?: (id: string, text: string) => void;
+		/** A pre-written normal edited: the original is never stated; the edited text is added as the radiologist's own
+		 *  words (empty: removed). */
+		onEditAssumed?: (original: string, text: string) => void;
 		onDraftEdit?: (text: string) => void;
 		onDraftRefresh?: () => void;
 		onConfirm: () => void;
@@ -162,6 +166,33 @@
 	let abnormalText = $state('');
 	let abnormalField: HTMLInputElement | null = $state(null);
 	let abnormalFocused = $state(false);
+	let assumedEditing: string | null = $state(null);
+	let assumedText = $state('');
+	let assumedField: HTMLInputElement | null = $state(null);
+	let assumedFocused = $state(false);
+	function openAssumed(s: string) {
+		commit();
+		assumedEditing = s;
+		assumedText = s;
+	}
+	function commitAssumed() {
+		if (assumedEditing === null) return;
+		const original = assumedEditing;
+		assumedEditing = null;
+		assumedFocused = false;
+		onEditing(editing !== null || draftFocused || newFocused);
+		if (assumedText.trim() !== original.trim()) onEditAssumed(original, assumedText.trim());
+	}
+	/** The unit (or part of a split unit) holding a dictated sentence, so a normal quoted from the dictation edits in place. */
+	function sourceOf(text: string): { unitId: number; part: number | null } | null {
+		for (const x of units) {
+			if (x.heading) continue;
+			if (x.text === text) return { unitId: x.id, part: null };
+			const k = x.parts?.findIndex((p) => p.text === text) ?? -1;
+			if (k >= 0 && x.parts && x.parts.length > 1) return { unitId: x.id, part: k };
+		}
+		return null;
+	}
 	let openPill: string | null = $state(null);
 
 	// ── editing: one field at a time (a line, or the draft) ─────────────────────────────────────────
@@ -219,12 +250,13 @@
 	$effect(() => {
 		if (!incoming || incoming.seq === lastSeq) return;
 		lastSeq = incoming.seq;
-		const el = editing ? field : abnormalFocused ? abnormalField : draftFocused ? draftField : newFocused ? newField : null;
+		const el = editing ? field : abnormalFocused ? abnormalField : assumedFocused ? assumedField : draftFocused ? draftField : newFocused ? newField : null;
 		if (!el) return;
-		const cur = editing ? editValue : abnormalFocused ? abnormalText : newFocused ? newLine : conclusion.kind === 'draft' ? conclusion.text : '';
+		const cur = editing ? editValue : abnormalFocused ? abnormalText : assumedFocused ? assumedText : newFocused ? newLine : conclusion.kind === 'draft' ? conclusion.text : '';
 		const r = insertInto(el, cur, incoming.text);
 		if (editing) editValue = r.value;
 		else if (abnormalFocused) abnormalText = r.value;
+		else if (assumedFocused) assumedText = r.value;
 		else if (newFocused) newLine = r.value;
 		else onDraftEdit(r.value);
 		queueMicrotask(() => el.setSelectionRange(r.caret, r.caret));
@@ -335,11 +367,36 @@
 {#snippet sentences(list: string[], key: string)}
 	{@const q = expanded.includes(key) ? { shown: list, more: 0 } : quietLine(list)}
 	{#each q.shown as s (s)}
-		<span class="inline-flex items-center gap-0.5">
-			<span class="text-gray-300/80 underline decoration-emerald-500/40 decoration-dashed underline-offset-4">{s}</span>
-			<button type="button" class="rounded px-0.5 text-gray-600 hover:text-rose-300" title="Remove: never stated"
-				aria-label="Remove {s}" onclick={() => onRemoveSentence(s)}>×</button>
-		</span>
+		{#if assumedEditing === s}
+			<input
+				bind:this={assumedField}
+				bind:value={assumedText}
+				use:focusOnMount
+				class="min-w-[18rem] flex-1 rounded bg-white/[0.06] px-1 text-xs leading-6 text-gray-100 outline outline-1 outline-emerald-500/50"
+				aria-label="Edit normal"
+				onfocus={() => {
+					assumedFocused = true;
+					onEditing(true);
+				}}
+				onblur={commitAssumed}
+				onkeydown={(e) => {
+					if (e.key === 'Enter') {
+						e.preventDefault();
+						commitAssumed();
+					} else if (e.key === 'Escape') {
+						assumedEditing = null;
+					}
+				}}
+			/>
+		{:else}
+			<span class="inline-flex items-center gap-0.5">
+				<!-- Click to edit (hand read 2026-10-12): an edited normal becomes the radiologist's own words. -->
+				<button type="button" class="cursor-text rounded text-left text-gray-300/80 underline decoration-emerald-500/40 decoration-dashed underline-offset-4 hover:bg-white/[0.04] hover:text-gray-200"
+					title="Click to edit" onclick={() => openAssumed(s)}>{s}</button>
+				<button type="button" class="rounded px-0.5 text-gray-600 hover:text-rose-300" title="Remove: never stated"
+					aria-label="Remove {s}" onclick={() => onRemoveSentence(s)}>×</button>
+			</span>
+		{/if}
 	{/each}
 	{#if q.more}
 		<button type="button" class="text-gray-500 hover:text-gray-300" onclick={() => (expanded = [...expanded, key])}>+{q.more} more</button>
@@ -505,7 +562,36 @@
 							{#each said.filter((r) => (dictatedNormalWords.get(r)?.join(' ') ?? '') === words) as r (r)}
 								<span class="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-200" data-state="dictated">{r}</span>
 							{/each}
-							<span class="min-w-0 truncate text-gray-400" title={words}>“{words}”</span>
+							{#each (said.find((r) => (dictatedNormalWords.get(r)?.join(' ') ?? '') === words) ? dictatedNormalWords.get(said.find((r) => (dictatedNormalWords.get(r)?.join(' ') ?? '') === words) ?? '') ?? [] : []) as w (w)}
+								{@const src = sourceOf(w)}
+								{#if src && editing && editing.unitId === src.unitId && editing.part === src.part}
+									<input
+										bind:this={field}
+										bind:value={editValue}
+										use:focusOnMount
+										class="min-w-[18rem] flex-1 rounded bg-white/[0.06] px-1 text-xs leading-6 text-gray-100 outline outline-1 outline-emerald-500/50"
+										aria-label="Edit line"
+										onblur={commit}
+										onkeydown={(e) => {
+											if (e.key === 'Enter' || e.key === 'Escape') {
+												e.preventDefault();
+												commit();
+											}
+										}}
+									/>
+								{:else}
+									<!-- The radiologist's own normal sentence: click to edit it in the dictation, as any line. -->
+									<button type="button" class="min-w-0 cursor-text truncate rounded text-left text-gray-400 hover:bg-white/[0.04] hover:text-gray-200"
+										title="Click to edit: {w}" disabled={!src}
+										onclick={() => {
+											if (!src) return;
+											commit();
+											editing = { unitId: src.unitId, part: src.part };
+											editValue = w;
+											onEditing(true);
+										}}>“{w}”</button>
+								{/if}
+							{/each}
 						</div>
 					{/each}
 				</div>

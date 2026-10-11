@@ -1579,6 +1579,12 @@
 		skippedRows = { ...skippedRows, [id]: { item: it, how: 'abnormal' } };
 		stackAppend(text);
 	}
+	/** A pre-written normal edited: the original is never stated, and the edited text joins the dictation as the
+	 *  radiologist's own words (the region then reads as dictated normal). Empty: the same as ×. */
+	function editAssumed(original: string, text: string): void {
+		removeSentence(original);
+		if (text.trim()) stackAppend(text.trim());
+	}
 	/** Skip a finding check, or mark a referral question not assessed: folded, nothing stated, logged. */
 	function skipRow(id: string): void {
 		const it = stackItems.find((x) => x.id === id);
@@ -2409,7 +2415,7 @@
 							ghost={ghostNow} items={viewItems} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
 							conclusion={conclusionView} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
-							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} onSkip={skipRow} onAbnormal={abnormalRow}
+							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
 							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
 							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
 							syncing={assumedBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
