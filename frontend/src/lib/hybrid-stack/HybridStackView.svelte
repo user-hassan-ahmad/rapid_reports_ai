@@ -229,7 +229,10 @@
 				<button type="button" class="rounded-md border border-amber-300/40 bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-100 hover:bg-amber-400/25"
 					onclick={() => onAnswer(it.id)}>{answerLabel(listed)}</button>
 				<button type="button" class="rounded-md border border-white/10 px-2 py-0.5 text-xs text-gray-300 hover:bg-white/[0.06]"
-					onclick={() => onDictateInto(it.region)}>Dictate</button>
+					onclick={() => {
+						newField?.focus();
+						onDictateInto(it.region);
+					}}>Dictate</button>
 			</div>
 		</div>
 	{/if}

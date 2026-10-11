@@ -410,7 +410,7 @@
 
 		const findingsContent = scratchpadToFindings(scratchpadRef.getContent());
 		const useStack = stackGated && stackGate !== null;
-		const declined = useStack && stackGate ? stackGate.declined_chips : [];
+		const declined = useStack && stackGate ? stackGate.removed : [];
 		const session = stackSessionId;
 		// Merge FINDINGS from scratchpad into variableValues for the API call (v2: the confirmed findings block)
 		variableValues = { ...variableValues, FINDINGS: useStack ? stackFindings : findingsContent };

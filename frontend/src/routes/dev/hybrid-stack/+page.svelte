@@ -3,9 +3,10 @@
 	// stack endpoints and show the grouped view, for the hand read (plan Task 20).
 	import { token } from '$lib/stores/auth';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
-	import { fetchSchema, postClose, postGroup } from '$lib/hybrid-stack/api';
+	import { fetchSchema, postClose, postGroup, postItems } from '$lib/hybrid-stack/api';
+	import { abnormalAll } from '$lib/hybrid-stack/items';
 	import { moveUnit } from '$lib/hybrid-stack/stackState';
-	import type { StackSchema, StackUnit } from '$lib/hybrid-stack/types';
+	import type { StackItem, StackSchema, StackUnit } from '$lib/hybrid-stack/types';
 
 	let scanType = $state('CT abdomen and pelvis with contrast');
 	let history = $state('');
@@ -15,6 +16,9 @@
 	let units: StackUnit[] = $state([]);
 	let pills: string[] = $state([]);
 	let status = $state('');
+	let items: StackItem[] = $state([]);
+	let tapped: string[] = $state([]);
+	let removed: string[] = $state([]);
 
 	async function run() {
 		try {
@@ -34,6 +38,9 @@
 			const closed = await postClose($token, { units, regions: s.regions });
 			units = closed.units;
 			pills = closed.pills;
+			status = 'rows…';
+			items = (await postItems($token, { scan_type: scanType, clinical_history: history, regions: s.pills, dictation: text,
+				abnormal: abnormalAll(units), removed })).items;
 			status = `done · ${s.source}${s.provisional ? ' (provisional)' : ''} · ${s.key}`;
 		} catch (e) {
 			status = `error: ${e instanceof Error ? e.message : String(e)}`;
@@ -55,7 +62,8 @@
 		<p class="text-xs">Pills: {pills.join(' · ') || '—'}</p>
 		<div class="rounded bg-slate-900 p-3">
 			<HybridStackView {units} groups={schema.groups} pillRegions={schema.pills} onMove={(id, g) => (units = moveUnit(units, id, g))}
-				onEditLine={() => {}} onChipAccept={() => {}} onConfirm={() => {}} />
+				onEditLine={() => {}} onConfirm={() => {}} {items} {tapped} {removed}
+				onAnswer={(id) => (tapped = [...tapped, id])} onRemoveSentence={(t) => (removed = [...removed, t])} />
 		</div>
 	{/if}
 </div>

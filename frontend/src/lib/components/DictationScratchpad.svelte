@@ -38,11 +38,11 @@
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
-	import { postChips, postClose, postDraft, postGroup, postLog } from '$lib/hybrid-stack/api';
+	import { postAssumed, postClose, postDraft, postGroup, postItems, postLog } from '$lib/hybrid-stack/api';
 	import { appendSentence, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
-	import { abnormalSentences, includedChips, sentencesKey, visibleChips, withState, withoutChips } from '$lib/hybrid-stack/chips';
+	import { abnormalAll, openCount, rowSentences } from '$lib/hybrid-stack/items';
 	import { OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates } from '$lib/hybrid-stack/regionState';
-	import type { Chip, GateRecord, Region, StackCommand, StackUnit } from '$lib/hybrid-stack/types';
+	import type { GateItem, GateRecord, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
 	import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
@@ -87,6 +87,10 @@
 	export let stackSchemaMeta: { key: string; source: string; provisional: boolean } | null = null;
 	export let onStackPills: (pills: string[]) => void = () => {};
 	export let stackShadowRate = 0.25; // share of sessions that build the old Structured text once, at session end
+	/** Checklist (spec 2026-10-11-scratchpad-checklist §8): each region's normal sentences (the slim sheet or the
+	 *  template's structure) and what this scan cannot show. Empty until the sheet is ready. */
+	export let stackRegionNormals: Record<string, string[]> = {};
+	export let stackNotAssessable = '';
 	/** Scratchpad v2 gate (spec 2026-10-11 §5): the confirmed record and the findings block Generate sends,
 	 *  or (null, '') whenever it re-arms. */
 	export let onStackGate: (gate: GateRecord | null, findings: string) => void = () => {};
@@ -241,14 +245,20 @@
 	let verbatimNow = '';
 	const GROUP_DEBOUNCE_MS = 600;
 	const CLOSE_IDLE_MS = 1500;
-	// Scratchpad v2 (spec 2026-10-11): chips, conclusion draft, gate, inline edits, voice commands.
-	const CHIP_DEBOUNCE_MS = 400;
-	let chipsByRegion: Record<string, Chip[]> = {};
-	let chipKeys: Record<string, string> = {};
-	let capturedChips: string[] = []; // removed, stated or contradicted: never offered again this session
-	let declinedChips: string[] = []; // removed by the radiologist: never stated (sent to Generate)
-	let optedIn: string[] = []; // optional chips the radiologist added: stay included across refreshes
-	let chipTimer: ReturnType<typeof setTimeout> | null = null;
+	// Scratchpad checklist (spec 2026-10-11-scratchpad-checklist): rows asked, never assumed; region normals
+	// assumed unless removed; conclusion draft, gate, inline edits, voice commands (v2).
+	const ITEMS_DEBOUNCE_MS = 500;
+	const FOLD_MS = 1200;
+	let stackItems: StackItem[] = []; // the open and folding rows from /items
+	let stackCapped: StackItem[] = [];
+	let tappedRows: Record<string, StackItem> = {}; // answered with a tap: the sentences listed at the tap
+	let dictatedRows: Record<string, StackItem> = {}; // answered by the dictation (for the gate record)
+	let foldedRows: string[] = []; // answered rows already folded away: never shown again
+	let removedSentences: string[] = []; // never stated; sent to Generate as DO NOT ASSERT
+	let assumedByRegion: Record<string, string[]> = {};
+	let itemsTimer: ReturnType<typeof setTimeout> | null = null;
+	let itemsSeq = 0;
+	let assumedSeq = 0;
 	let draft: { text: string; hash: string; edited: boolean; typed: boolean } | null = null;
 	let draftLoading = false;
 	let draftFailed = false;
@@ -261,8 +271,12 @@
 	// The v2 view takes over only once a schema exists: a failed schema fetch leaves today's editor in place.
 	$: stackView = hybridStack && stackRegions.length > 0;
 	$: regionView = regionStates(stackUnits, pillRegions);
-	$: shownChips = visibleChips(chipsByRegion, regionView.abnormal);
-	$: stackIncluded = includedChips(chipsByRegion, regionView.abnormal);
+	// Tapped rows stay on screen as the radiologist's answers even after the writer stops returning them.
+	$: viewItems = [...stackItems, ...Object.values(tappedRows).filter((t) => !stackItems.some((i) => i.id === t.id))];
+	$: rowsOpen = openCount(viewItems, Object.keys(tappedRows), removedSentences);
+	// What Confirm takes ownership of: the region normals still shown (abnormal regions' checked sentences,
+	// untouched regions' sheet sentences), minus anything removed.
+	$: confirmedAssumed = assumedNow(assumedByRegion, stackRegionNormals, regionView.abnormal, regionView.assumedNormal, removedSentences);
 	$: dictatedConclusion = conclusionText(stackUnits);
 	$: conclusionView = dictatedConclusion
 		? ({ kind: 'dictated' } as const)
@@ -273,7 +287,8 @@
 				: ({ kind: 'none', failed: draftFailed } as const);
 	// The gate re-arms on any change to what it confirms (spec §5).
 	$: gateKey = [verbatimNow, findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
-		regionView.remainder.join('|'), stackIncluded.map((c) => c.text).join('|')].join('\u0003');
+		regionView.remainder.join('|'), String(rowsOpen), Object.keys(tappedRows).join('|'), removedSentences.join('|'),
+		JSON.stringify(confirmedAssumed)].join('\u0003');
 	$: if (stackGate && stackGate.units_hash !== gateKey) {
 		stackGate = null;
 		onStackGate(null, '');
@@ -300,6 +315,7 @@
 			lastRegionsKey = k;
 			stackUnits = [];
 			scheduleGroup(0);
+			scheduleItems(0); // the referral row appears before anything is dictated
 		}
 	}
 	const STRUCTURE_DEBOUNCE_MS = 1500;
@@ -863,7 +879,7 @@
 					latest_utterance: chunk,
 					checklist: checklistSections,
 					...(hybridStack && stackRegions.length
-						? { stack_regions: stackRegions.map((r) => r.name), stack_chips: shownChips.map((c) => c.text) }
+						? { stack_regions: stackRegions.map((r) => r.name), stack_items: openItemsForVoice() }
 						: {}),
 					...(asr ?? {})
 				})
@@ -1042,15 +1058,15 @@
 			reason = 'polish_in_flight';
 		}
 
-		// Scratchpad v2 voice commands (spec §7.3): accept a named chip, or select a named region's lines for
-		// a Delete click. The command's own words are never written.
+		// Voice commands (v2 §7.3, checklist §9): answer a named row, or select a named region's lines for a Delete
+		// click. The command's own words are never written.
 		const cmd = (data?.stack_command ?? null) as StackCommand | null;
 		if (hybridStack && !heldNow && pend && pendingText === chunk.trim() && cmd &&
-			((cmd.action === 'accept' && !!cmd.chip && hasChip(cmd.chip)) || (cmd.action === 'delete' && cmd.region))) {
+			((cmd.action === 'answer' && !!cmd.item && isOpenRow(cmd.item)) || (cmd.action === 'delete' && cmd.region))) {
 			isQwenWriting = true;
 			editor.dispatch(replaceAndClear({ from: pend.from, to: pend.to, insert: '' }));
 			isQwenWriting = false;
-			if (cmd.action === 'accept' && cmd.chip) acceptChip(cmd.chip);
+			if (cmd.action === 'answer' && cmd.item) answerRow(cmd.item);
 			else deleteRegion = cmd.region;
 			emitDecision({ ...({} as DecisionRecord), id: data?.decision_id ?? `local-${++localDecisionSeq}`, seq: ++decisionSeq,
 				at: Date.now(), route: 'skip', reason: `stack_${cmd.action}`, qset: data?.qset ?? null, action: data?.action ?? null,
@@ -1408,13 +1424,11 @@
 		const text = verbatimNow;
 		stackBusy = true;
 		try {
-			const res = await postGroup($token, { scan_type: scanType, text, regions: stackRegions, previous: stackUnits,
-				chips: shownChips.map((c) => c.text) });
-			if (res.chips_stated?.length) captureChips(res.chips_stated);
+			const res = await postGroup($token, { scan_type: scanType, text, regions: stackRegions, previous: stackUnits });
 			if (verbatimNow === text) {
 				stackUnits = res.units;
 				onStackPills(res.pills);
-				scheduleChips();
+				scheduleItems();
 				// The grouper failed or left sentences unplaced (they are kept, as said): retry a few times.
 				if ((res.error || res.units.some((u) => u.group === null && !u.heading)) && groupFailures < GROUP_RETRIES) {
 					groupFailures += 1;
@@ -1442,60 +1456,80 @@
 		stackUnits = moveUnit(stackUnits, id, group);
 		stackManualMoves += 1;
 	}
-	// ── Scratchpad v2 ────────────────────────────────────────────────────────────────────────────
-	function captureChips(gone: string[]): void {
-		capturedChips = [...capturedChips, ...gone];
-		chipsByRegion = withoutChips(chipsByRegion, gone);
+	// ── Scratchpad checklist ─────────────────────────────────────────────────────────────────────
+	function scheduleItems(delay = ITEMS_DEBOUNCE_MS): void {
+		if (!hybridStack || !stackRegions.length) return;
+		if (itemsTimer) clearTimeout(itemsTimer);
+		itemsTimer = setTimeout(() => {
+			itemsTimer = null;
+			void refreshItems();
+			void refreshAssumed();
+		}, delay);
 	}
-	function scheduleChips(): void {
-		if (chipTimer) clearTimeout(chipTimer);
-		chipTimer = setTimeout(() => {
-			chipTimer = null;
-			void refreshChips();
-		}, CHIP_DEBOUNCE_MS);
-	}
-	/** Ask for a region's chips when it first rises or its abnormal sentences change (spec §4). */
-	async function refreshChips(): Promise<void> {
-		const abnormal = regionView.abnormal;
-		for (const r of Object.keys(chipsByRegion)) {
-			if (!abnormal.includes(r)) {
-				const { [r]: _gone, ...rest } = chipsByRegion;
-				chipsByRegion = rest;
-				delete chipKeys[r];
+	/** The rows for this dictation (spec §4.2). A row the dictation answers shows green, then folds away. */
+	async function refreshItems(): Promise<void> {
+		const seq = ++itemsSeq;
+		try {
+			const res = await postItems($token, { scan_type: scanType, clinical_history: clinicalHistory, regions: pillRegions,
+				dictation: verbatimNow, abnormal: abnormalAll(stackUnits), not_assessable: stackNotAssessable, removed: removedSentences });
+			if (seq !== itemsSeq) return; // superseded while in flight
+			for (const it of res.items) {
+				if (!it.answered || dictatedRows[it.id] || tappedRows[it.id]) continue;
+				const was = stackItems.find((x) => x.id === it.id);
+				dictatedRows = { ...dictatedRows, [it.id]: { ...it, sentences: was?.sentences ?? it.sentences } };
+				setTimeout(() => {
+					foldedRows = [...foldedRows, it.id];
+					stackItems = stackItems.filter((x) => x.id !== it.id);
+				}, FOLD_MS);
 			}
+			stackItems = res.items.filter((it) => !foldedRows.includes(it.id));
+			stackCapped = res.capped;
+			stackLatency.items = Math.max(stackLatency.items ?? 0, res.ms);
+		} catch {
+			/* fail open: no rows */
 		}
-		await Promise.all(abnormal.map(async (region) => {
-			const sentences = abnormalSentences(stackUnits, region);
-			const key = sentencesKey(sentences);
-			if (!sentences.length || chipKeys[region] === key) return;
-			chipKeys[region] = key;
-			try {
-				const res = await postChips($token, { scan_type: scanType, clinical_history: clinicalHistory, region, sentences,
-					dictation: verbatimNow, declined: declinedChips });
-				if (chipKeys[region] !== key) return; // superseded while in flight
-				const fresh = res.chips.map((c) => (optedIn.includes(c.text.trim().toLowerCase()) ? { ...c, state: 'included' as const } : c));
-				chipsByRegion = { ...chipsByRegion, ...withoutChips({ [region]: fresh }, capturedChips) };
-				stackLatency.chips = Math.max(stackLatency.chips ?? 0, res.ms);
-			} catch {
-				/* fail open: no chips for this region */
-			}
-		}));
 	}
-	/** An optional chip opted in (click + or voice "accept …"): stated in the report, confirmed at the gate. */
-	function acceptChip(text: string): void {
-		if (!hasChip(text)) return;
-		optedIn = [...optedIn, text.trim().toLowerCase()];
-		chipsByRegion = withState(chipsByRegion, text, 'included');
+	/** Which region normals stay assumed, given the dictation (spec §5). */
+	async function refreshAssumed(): Promise<void> {
+		if (!Object.keys(stackRegionNormals).length) return;
+		const seq = ++assumedSeq;
+		try {
+			const res = await postAssumed($token, { dictation: verbatimNow, region_normals: stackRegionNormals, abnormal: regionView.abnormal,
+				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences });
+			if (seq === assumedSeq) assumedByRegion = res.assumed;
+		} catch {
+			/* fail open: abnormal regions show no quiet line */
+		}
 	}
-	/** An included chip removed (×): never stated, never offered again, and the brief may not assert it. */
-	function removeChip(text: string): void {
-		if (!hasChip(text)) return; // a chip still fading out (outros wait while the tab is hidden)
-		declinedChips = [...declinedChips, text];
-		captureChips([text]);
+	$: if (Object.keys(stackRegionNormals).length) void refreshAssumed();
+	function assumedNow(checked: Record<string, string[]>, normals: Record<string, string[]>, abnormal: string[],
+		untouched: string[], removed: string[]): Record<string, string[]> {
+		const gone = new Set(removed.map((r) => r.trim().toLowerCase().replace(/\.$/, '')));
+		const keep = (xs: string[]) => xs.filter((x) => !gone.has(x.trim().toLowerCase().replace(/\.$/, '')));
+		const out: Record<string, string[]> = {};
+		for (const r of abnormal) if (keep(checked[r] ?? []).length) out[r] = keep(checked[r] ?? []);
+		for (const r of untouched) if (keep(checked[r] ?? normals[r] ?? []).length) out[r] = keep(checked[r] ?? normals[r] ?? []);
+		return out;
 	}
-	function hasChip(text: string): boolean {
-		const t = text.trim().toLowerCase();
-		return Object.values(chipsByRegion).some((cs) => cs.some((c) => c.text.trim().toLowerCase() === t));
+	function isOpenRow(id: string): boolean {
+		const it = stackItems.find((x) => x.id === id);
+		return !!it && !it.answered && !tappedRows[id] && rowSentences(it, removedSentences).length > 0;
+	}
+	/** A tap (or voice "answer …"): the row's listed sentences become the radiologist's answer. */
+	function answerRow(id: string): void {
+		const it = stackItems.find((x) => x.id === id);
+		if (!it || !isOpenRow(id)) return;
+		tappedRows = { ...tappedRows, [id]: { ...it, sentences: rowSentences(it, removedSentences) } };
+	}
+	/** × on a row sentence or an assumed normal: never stated, never offered again. */
+	function removeSentence(sentence: string): void {
+		const t = sentence.trim();
+		if (!t || removedSentences.some((r) => r.toLowerCase() === t.toLowerCase())) return;
+		removedSentences = [...removedSentences, t];
+		scheduleItems(0);
+	}
+	function openItemsForVoice(): { id: string; question: string }[] {
+		return stackItems.filter((i) => isOpenRow(i.id)).map((i) => ({ id: i.id, question: i.question }));
 	}
 	/** A line edited in the view: exactly that sentence (or part) changes in the verbatim text. */
 	function stackEditLine(id: number, part: number | null, text: string): void {
@@ -1509,7 +1543,7 @@
 		const solid = editor ? editor.state.doc.toString() : '';
 		const { data } = await askBundle(chunk, solid, asr);
 		const cmd = (data?.stack_command ?? null) as StackCommand | null;
-		if (cmd?.action === 'accept' && cmd.chip && hasChip(cmd.chip)) return acceptChip(cmd.chip);
+		if (cmd?.action === 'answer' && cmd.item && isOpenRow(cmd.item)) return answerRow(cmd.item);
 		if (cmd?.action === 'delete') return; // in an open line, the keyboard deletes
 		const text = (data?.clean_text || data?.text || chunk).trim();
 		if (!text) return;
@@ -1574,8 +1608,14 @@
 			assumed_normal: regionView.assumedNormal,
 			remainder_normal: regionView.remainder,
 			dictated_normal: regionView.dictatedNormal,
-			included_chips: stackIncluded,
-			declined_chips: declinedChips,
+			items: [
+				...Object.values(tappedRows).map((r): GateItem => ({ id: r.id, kind: r.kind, region: r.region, question: r.question, sentences: r.sentences, answered_by: 'tap' })),
+				...Object.values(dictatedRows).filter((r) => !tappedRows[r.id])
+					.map((r): GateItem => ({ id: r.id, kind: r.kind, region: r.region, question: r.question, sentences: r.sentences, answered_by: 'dictation' }))
+			],
+			assumed: confirmedAssumed,
+			removed: removedSentences,
+			capped: stackCapped.map((c) => ({ region: c.region, question: c.question })),
 			units_hash: gateKey
 		};
 		stackGate = gate;
@@ -1635,11 +1675,14 @@
 		stackManualMoves = 0;
 		stackLatency = {};
 		stackShadowSampled = Math.random() < stackShadowRate;
-		chipsByRegion = {};
-		chipKeys = {};
-		capturedChips = [];
-		declinedChips = [];
-		optedIn = [];
+		stackItems = [];
+		stackCapped = [];
+		tappedRows = {};
+		dictatedRows = {};
+		foldedRows = [];
+		removedSentences = [];
+		assumedByRegion = {};
+		scheduleItems(0);
 		draft = null;
 		draftFailed = false;
 		deleteRegion = null;
@@ -1731,7 +1774,7 @@
 			onCoverageScoresChange(data.coverage_scores ?? null);
 			if (data.coverage) onCoverageTrace(data.coverage as CoverageTrace);
 		});
-		// Scratchpad v2: check chips replace IntelliPrompts (their margin anchors to the hidden editor).
+		// Scratchpad: checklist rows replace IntelliPrompts (their margin anchors to the hidden editor).
 		const prompts = stackView ? Promise.resolve() : review('prompts').then((data) => {
 			// Backend now owns the full merge — replace activePrompts with the final merged list
 			if (data.prompts && Array.isArray(data.prompts)) {
@@ -2031,7 +2074,7 @@
 		if (typingDebounceTimer) clearTimeout(typingDebounceTimer);
 		if (stackTimer) clearTimeout(stackTimer);
 		if (closeTimer) clearTimeout(closeTimer);
-		if (chipTimer) clearTimeout(chipTimer);
+		if (itemsTimer) clearTimeout(itemsTimer);
 		void sendStackLog();
 		if (editor) {
 			editor.destroy();
@@ -2207,9 +2250,10 @@
 					<div bind:this={structuredContainer} class="min-h-full" class:hidden={stackView || polishMode !== 'structured'}></div>
 					{#if stackView}
 						<HybridStackView units={stackUnits} groups={stackGroups} {pillRegions} pending={liveTail(verbatimNow, stackUnits)}
-							ghost={ghostNow} chips={shownChips} conclusion={conclusionView} gateConfirmed={stackGate !== null} {deleteRegion}
+							ghost={ghostNow} items={viewItems} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
+							conclusion={conclusionView} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
-							onChipAccept={acceptChip} onChipRemove={removeChip} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
+							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
 							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
 							syncing={groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0)} />
 					{/if}

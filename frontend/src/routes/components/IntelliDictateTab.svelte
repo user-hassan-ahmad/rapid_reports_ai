@@ -453,7 +453,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		const dictated = scratchpadToFindings(scratchpadRef.getContent());
 		const useStack = stackGated && stackGate !== null;
 		const content = useStack ? stackFindings : dictated;
-		const declined = useStack && stackGate ? stackGate.declined_chips : [];
+		const declined = useStack && stackGate ? stackGate.removed : [];
 		const session = stackSessionId;
 		const gen = ++generationToken;
 		loading = true;
