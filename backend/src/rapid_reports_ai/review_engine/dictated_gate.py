@@ -169,8 +169,12 @@ def _negator_start(body: str, s: int, e: int, runs: List[Tuple[int, int]]) -> Op
     return first
 
 
-def tier_of(p: Optional[float], q_type: Optional[str], is_rec: bool, negated_only: bool) -> str:
-    """Spec §4.2. Display only: provenance is the gate's (p)."""
+def tier_of(p: Optional[float], q_type: Optional[str], is_rec: bool, negated_only: bool,
+            has_new_words: bool = True) -> str:
+    """Spec §4.2. Display only: provenance is the gate's (p). A would-be synthesis clause with no content word the
+    dictation lacks has nothing to highlight (live 7d24e445: dictation + "is visualised" at 0.67 went violet whole):
+    it is the radiologist's own sentence. A meaning change built only from dictated words (side, negation) is the
+    contradiction checks' job, not a violet tint."""
     if p is None:
         return "unknown"
     if p >= GATE_MIN:
@@ -181,7 +185,7 @@ def tier_of(p: Optional[float], q_type: Optional[str], is_rec: bool, negated_onl
         return "rec"
     if q_type in ("abnormal", "mixed") and negated_only:
         return "quiet"
-    return "synth"
+    return "synth" if has_new_words else "dictated"
 
 
 def units(al: Alignment) -> List[Tuple[int, int, ReportClause]]:
@@ -220,7 +224,7 @@ def classify(inp: ReviewInput, body: str, al: Alignment, jp) -> List[GateClause]
         runs = _proposed_runs(body, us, ue, words)
         rec = is_recommendation(text, q, c.section)
         ns = _negator_start(body, us, max(ue, c.sentence_end), runs)
-        tier = tier_of(p, q, rec, ns is not None)
+        tier = tier_of(p, q, rec, ns is not None, has_new_words=bool(runs))
         # quiet because of a bolted-on negative (not a normal statement): the finding is dictated, so only the
         # negation ("without cavitation") is quiet, never the whole clause
         span = (ns, runs[-1][1]) if tier == "quiet" and q != "normal" and ns is not None else None
