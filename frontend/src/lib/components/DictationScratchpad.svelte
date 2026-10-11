@@ -1488,6 +1488,7 @@
 				}, FOLD_MS);
 			}
 			stackItems = res.items.filter((it) => !foldedRows.includes(it.id));
+			void refreshAssumed(); // a row owns its check: the normals saying the same step aside
 			stackCapped = res.capped;
 			stackLatency.items = Math.max(stackLatency.items ?? 0, res.ms);
 		} catch {
@@ -1519,7 +1520,8 @@
 		const seq = ++assumedSeq;
 		try {
 			const res = await postAssumed($token, { dictation: verbatimNow, region_normals: stackRegionNormals, abnormal: regionView.abnormal,
-				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences });
+				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences,
+				owned: viewItems.flatMap((i) => i.sentences) });
 			if (seq === assumedSeq) assumedByRegion = res.assumed;
 		} catch {
 			/* fail open: abnormal regions show no quiet line */

@@ -25,9 +25,12 @@ def _norm(s: str) -> str:
 
 
 async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal: list[str],
-                  dictated_normal: list[str], removed: list[str]) -> AssumedResult:
+                  dictated_normal: list[str], removed: list[str], owned: list[str] | None = None) -> AssumedResult:
+    """owned: the checklist rows' sentences. A row owns its check, so a region normal saying the same is never
+    assumed (hand read 2026-10-12: the sheet's "The appendix is normal" answered a ?appendicitis referral
+    silently)."""
     t0 = time.perf_counter()
-    removed = [r for r in removed if r.strip()]
+    removed = [r for r in [*removed, *(owned or [])] if r.strip()]
     ab, said = set(abnormal), set(dictated_normal)
     asked: list[tuple[str, str]] = []           # (region, sentence) sent to Jev
     out: dict[str, list[str]] = {}

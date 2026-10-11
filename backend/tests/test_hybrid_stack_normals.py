@@ -36,3 +36,11 @@ async def test_failure_hides_abnormal_regions_and_filters_removed_exactly(monkey
     monkeypatch.setattr(N, "ask_rows", boom)
     out = await N.assumed("x", NORMALS, ["Pelvic organs"], [], ["the liver is normal"])
     assert out.assumed == {"Kidneys": ["The kidneys are normal."]} and "RuntimeError" in out.error
+
+
+async def test_a_row_owns_its_check(monkeypatch):
+    seen = []
+    normals = {"Bowel": ["The appendix is normal in calibre.", "No diverticula."]}
+    monkeypatch.setattr(N, "ask_rows", _checks({"The appendix is normal in calibre.": (0.0, 0.0, 0.9)}, seen))
+    out = await N.assumed("A cyst.", normals, [], [], [], owned=["The appendix is normal."])
+    assert out.assumed == {"Bowel": ["No diverticula."]}
