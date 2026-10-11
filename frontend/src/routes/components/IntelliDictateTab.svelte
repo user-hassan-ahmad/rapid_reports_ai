@@ -144,6 +144,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	let stackGate: GateRecord | null = null;
 	let stackFindings = '';
 	let stackSessionId = '';
+	let stackSheetId: string | null = null;
 	$: stackGated = hybridStack && !!stackSchema;
 	let stackPills: string[] = [];
 	let stackSchemaFor = ''; // the scan type + history the schema was requested for
@@ -476,7 +477,8 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			const body: Record<string, unknown> = { findings: content };
 			if (useStack) {
 				body.stack = true;
-				body.stack_declined = declined;
+				body.stack_removed = declined;
+				if (stackSheetId) body.stack_sheet_id = stackSheetId;
 				body.stack_conclusion = stackGate?.conclusion_text ?? '';
 			}
 			if (bestAvailable) {
@@ -1049,6 +1051,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
 			onStackGate={(g, f) => { stackGate = g; stackFindings = f; }}
 			onStackSession={(id) => { stackSessionId = id; }}
+			onStackSheet={(id) => { stackSheetId = id; }}
 		/>
 	</div>
 

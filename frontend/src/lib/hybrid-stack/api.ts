@@ -1,5 +1,5 @@
 import { API_URL } from '$lib/config.js';
-import type { AssumedResult, DraftResult, GateRecord, GroupResult, ItemsResult, Region, StackSchema, StackUnit } from './types';
+import type { AssumedResult, DraftResult, GateRecord, GroupResult, ItemsResult, Region, SlimSheet, StackSchema, StackUnit } from './types';
 
 async function post<T>(token: string | null, path: string, body: unknown, keepalive = false): Promise<T> {
 	const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -32,6 +32,9 @@ export const postItems = (token: string | null, body: {
 export const postAssumed = (token: string | null, body: {
 	dictation: string; region_normals: Record<string, string[]>; abnormal: string[]; dictated_normal: string[]; removed?: string[];
 }) => post<AssumedResult>(token, 'assumed', body);
+
+export const postSlimSheet = (token: string | null, body: { scan_type: string; family_key: string; regions: Region[]; template_id?: string | null }) =>
+	post<SlimSheet>(token, 'slim-sheet', body);
 
 export const postDraft = (token: string | null, body: { scan_type: string; clinical_history: string; findings: string }) =>
 	post<DraftResult>(token, 'draft', body);

@@ -864,6 +864,7 @@
 					stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
 					onStackGate={(g, f) => { stackGate = g; stackFindings = f; }}
 					onStackSession={(id) => { stackSessionId = id; }}
+					stackTemplateId={selectedTemplate?.id ?? null}
 				/>
 			</div>
 

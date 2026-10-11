@@ -38,7 +38,7 @@
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
-	import { postAssumed, postClose, postDraft, postGroup, postItems, postLog } from '$lib/hybrid-stack/api';
+	import { postAssumed, postClose, postDraft, postGroup, postItems, postLog, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
 	import { abnormalAll, openCount, rowSentences } from '$lib/hybrid-stack/items';
 	import { OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates } from '$lib/hybrid-stack/regionState';
@@ -87,10 +87,10 @@
 	export let stackSchemaMeta: { key: string; source: string; provisional: boolean } | null = null;
 	export let onStackPills: (pills: string[]) => void = () => {};
 	export let stackShadowRate = 0.25; // share of sessions that build the old Structured text once, at session end
-	/** Checklist (spec 2026-10-11-scratchpad-checklist §8): each region's normal sentences (the slim sheet or the
-	 *  template's structure) and what this scan cannot show. Empty until the sheet is ready. */
-	export let stackRegionNormals: Record<string, string[]> = {};
-	export let stackNotAssessable = '';
+	/** Template sessions: the template whose structure gives the region normals (checklist spec §8.3). */
+	export let stackTemplateId: string | null = null;
+	/** The slim sheet the session uses (null: none yet), so Generate builds from it. */
+	export let onStackSheet: (sheetId: string | null) => void = () => {};
 	/** Scratchpad v2 gate (spec 2026-10-11 §5): the confirmed record and the findings block Generate sends,
 	 *  or (null, '') whenever it re-arms. */
 	export let onStackGate: (gate: GateRecord | null, findings: string) => void = () => {};
@@ -257,6 +257,10 @@
 	let removedSentences: string[] = []; // never stated; sent to Generate as DO NOT ASSERT
 	let assumedByRegion: Record<string, string[]> = {};
 	let itemsTimer: ReturnType<typeof setTimeout> | null = null;
+	// Each region's normal sentences (the slim sheet, or the template's structure) and what this scan cannot show.
+	let stackRegionNormals: Record<string, string[]> = {};
+	let stackNotAssessable = '';
+	let slimSeq = 0;
 	let itemsSeq = 0;
 	let assumedSeq = 0;
 	let draft: { text: string; hash: string; edited: boolean; typed: boolean } | null = null;
@@ -316,6 +320,7 @@
 			stackUnits = [];
 			scheduleGroup(0);
 			scheduleItems(0); // the referral row appears before anything is dictated
+			void loadSlimSheet();
 		}
 	}
 	const STRUCTURE_DEBOUNCE_MS = 1500;
@@ -1487,6 +1492,25 @@
 			stackLatency.items = Math.max(stackLatency.items ?? 0, res.ms);
 		} catch {
 			/* fail open: no rows */
+		}
+	}
+	/** The region normals for this session (spec §8): made once per scan-type family and shared; the first case of
+	 *  a new family may wait for it, and the scratchpad works without it meanwhile. */
+	async function loadSlimSheet(): Promise<void> {
+		const seq = ++slimSeq;
+		stackRegionNormals = {};
+		stackNotAssessable = '';
+		onStackSheet(null);
+		if (!hybridStack || !stackRegions.length) return;
+		try {
+			const res = await postSlimSheet($token, { scan_type: scanType, family_key: stackSchemaMeta?.key ?? '', regions: stackRegions,
+				template_id: stackTemplateId });
+			if (seq !== slimSeq || !res.ready) return;
+			stackRegionNormals = res.region_normals;
+			stackNotAssessable = res.not_assessable;
+			onStackSheet(res.id);
+		} catch {
+			/* fail open: no quiet lines */
 		}
 	}
 	/** Which region normals stay assumed, given the dictation (spec §5). */
