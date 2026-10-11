@@ -174,4 +174,13 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByText('A small left pneumothorax and minor basal contusion.')).toBeInTheDocument();
 		await expect.element(page.getByRole('heading', { name: 'Pleura', exact: true })).not.toBeInTheDocument();
 	});
+
+	it('a region with nothing left to assume leaves the normal section once the check has answered', async () => {
+		const props = { ...base(), units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })], assumed: { Spleen: ['The spleen is normal.'] } };
+		const r = render(HybridStackView, props);
+		await expect.element(page.getByText('Kidneys', { exact: true })).toBeInTheDocument();   // not answered yet: kept
+		r.rerender({ ...props, assumedReady: true });
+		await expect.element(page.getByText('Kidneys', { exact: true })).not.toBeInTheDocument();
+		await expect.element(page.getByText('Spleen', { exact: true })).toBeInTheDocument();
+	});
 });

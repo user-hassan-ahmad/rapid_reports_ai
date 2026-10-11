@@ -31,6 +31,7 @@
 		reviewing = false,
 		reviewWaiting = false,
 		reviewFailed = false,
+		assumedReady = false,
 		conclusion = { kind: 'none' },
 		gateConfirmed = false,
 		deleteRegion = null,
@@ -72,6 +73,8 @@
 		reviewWaiting?: boolean;
 		/** The review failed: no finding checks this time, and the radiologist is told. */
 		reviewFailed?: boolean;
+		/** The assumed check has answered: a region with nothing left to assume leaves the normal section. */
+		assumedReady?: boolean;
 		conclusion?: ConclusionState;
 		gateConfirmed?: boolean;
 		/** A voice "delete the X line": the region whose lines wait for a Delete click (null: none). */
@@ -409,7 +412,9 @@
 	     pill read as missed); then the assumed regions together, tap one to see what will be reported. -->
 	{#if trayRegions.length}
 		{@const said = trayRegions.filter((r) => dictatedNormalWords.has(r))}
-		{@const rest = trayRegions.filter((r) => !dictatedNormalWords.has(r))}
+		<!-- A region the dictation touches with nothing left to assume is not normal: it leaves the section (hand read
+		     2026-10-12), once the assumed check has answered (until then nothing is hidden, so the tray never flickers). -->
+		{@const rest = trayRegions.filter((r) => !dictatedNormalWords.has(r) && (namedNormals || !assumedReady || keptAssumed(r).length > 0))}
 		<section aria-label="Normal regions" class="space-y-2 border-t border-white/5 pt-2">
 			{#if said.length}
 				<div class="space-y-1">
