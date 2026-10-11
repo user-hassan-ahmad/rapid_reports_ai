@@ -3,6 +3,7 @@
 **Date:** 2026-10-11 · **Status:** design agreed (handover §4), open questions settled here · **Path:** quick and template
 **Builds on:** `2026-10-10-hybrid-dictation-stack-design.md` (v1: grouper, schemas, reconciler, conclusion gate, derived pills). Everything in v1 §2–§3 still holds unless this spec says otherwise.
 **Handover:** `docs/superpowers/handover/2026-10-11-scratchpad-v2-handover.md` (decision framework §3, agreed decisions §4).
+**Superseded in part by:** `2026-10-11-scratchpad-checklist-design.md` (the checklist model replaces §4 check chips and the chip parts of §5–§6).
 
 > **Revision 2026-10-11 (after Hassan's review, supersedes the sections it names):**
 > - **§4 Chips are assumed statements.** An untouched chip carries no information, so chips work like the tray: an *included* chip is in the report unless removed (×) and is listed at the gate; an *optional* chip (the dictation hedges or half-covers it) is opt-in (+). Jev asks "already stated?" and "contradicted?" in one call: gone at stated ≥ 0.8 or contradicted ≥ 0.7; optional at either ≥ 0.3; included otherwise (lab: contradicted 4/4 at 0.7 with no others; 1/10 weaker chips still included, visible at the gate). Chips are re-checked against each new dictation, so a chip the radiologist later contradicts leaves. If the check fails, chips are optional (never included unchecked). Accepting no longer writes into the dictation; included chips reach Generate in the findings block ("Confirmed by the radiologist (not dictated): …" on their region's line).
