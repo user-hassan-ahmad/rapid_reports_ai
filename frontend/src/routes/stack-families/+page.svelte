@@ -48,7 +48,7 @@
 	let sheets: Slim[] = $state([]);
 	let slimEdits: Record<string, string> = $state({});
 	async function loadSheets() {
-		const res = await fetch(`${API_URL}/api/canvas/stack/slim-sheets?status=provisional`, { headers: headers() });
+		const res = await fetch(`${API_URL}/api/canvas/stack/slim-sheets`, { headers: headers() });
 		if (!res.ok) return;
 		sheets = await res.json();
 		slimEdits = Object.fromEntries(sheets.map((x) => [x.id, JSON.stringify(x.region_normals, null, 1)]));
@@ -87,10 +87,10 @@
 		{#if !error}<p class="text-sm text-slate-500">Nothing to review.</p>{/if}
 	{/each}
 
-	<h1 class="pt-4 text-lg font-semibold">Slim sheets in use, awaiting review</h1>
+	<h1 class="pt-4 text-lg font-semibold">Slim sheets in use (flagged first)</h1>
 	{#each sheets as x (x.id)}
 		<section class="rounded border p-3 space-y-2">
-			<h2 class="font-medium">{x.family} · {x.contrast} <span class="text-xs text-slate-500">(first built for “{x.scan_type ?? ''}”)</span></h2>
+			<h2 class="font-medium">{x.family} · {x.contrast} · {x.status} <span class="text-xs text-slate-500">(first built for “{x.scan_type ?? ''}”)</span></h2>
 			{#if x.flagged}
 				<ul class="text-xs text-red-700">
 					{#each Object.entries(x.removal).filter(([, v]) => v.flag) as [sentence, v] (sentence)}

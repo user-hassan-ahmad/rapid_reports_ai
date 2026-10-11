@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from ..enhancement_utils import _run_agent_with_model
 from ..report_reconcile import QWEN, _MEASUREMENT, _split_bundled
-from .jev_stack import ask_rows, row_fate
+from .jev_stack import CONTRA_MIN, ask_rows, row_fate
 from .schemas import scan_key
 
 logger = logging.getLogger(__name__)
@@ -83,6 +83,7 @@ class Item(BaseModel):
 class ItemsResult(BaseModel):
     items: list[Item]
     capped: list[Item] = []
+    contradicted: list[str] = []   # tapped sentences the dictation now contradicts: the radiologist re-answers
     cached: bool = False
     ms: int = 0
     error: str | None = None
@@ -130,17 +131,17 @@ def _id(kind: str, region: str, question: str) -> str:
 
 
 def _rows(raw: list[RawItem], dictation: str = "") -> list[Item]:
-    """A referral item is one whose trigger is not in the dictation: the writer sometimes fills source_text from the
-    history ("?appendicitis") instead of leaving it empty (hand read 2026-10-12). A wording check, not a judgement."""
+    """One referral row at most. An item the writer marks kind "referral" wins; failing that, the first item whose
+    trigger is not in the dictation (the writer sometimes fills source_text from the history instead of leaving it
+    empty). Any other candidate stays a finding row: nothing is dropped (review 2026-10-12). A wording check, not a
+    judgement."""
     said = _norm(dictation)
-    out, referral = [], False
-    for it in raw:
-        trigger = _norm(it.source_text)
-        kind = "referral" if it.kind.strip().lower() == "referral" or not trigger or trigger not in said else "finding"
-        if kind == "referral":
-            if referral:
-                continue
-            referral = True
+    explicit = [k for k, it in enumerate(raw) if it.kind.strip().lower() == "referral"]
+    heuristic = [k for k, it in enumerate(raw) if not _norm(it.source_text) or _norm(it.source_text) not in said]
+    ref = explicit[0] if explicit else (heuristic[0] if heuristic else None)
+    out = []
+    for k, it in enumerate(raw):
+        kind = "referral" if k == ref else "finding"
         out.append(Item(id=_id(kind, it.region, it.question), kind=kind, region=it.region.strip(),
                         question=it.question.strip(), why=it.rationale.strip(),
                         # A row only ever carries normal statements: a number nobody measured is never offered
@@ -178,10 +179,15 @@ def _dedupe(rows: list[Item]) -> list[Item]:
     return out
 
 
-async def _check(rows: list[Item], dictation: str, removed: list[str]) -> None:
+async def _check(rows: list[Item], dictation: str, removed: list[str], tapped: list[str]) -> list[str]:
+    """Row sentences: drop what the dictation says or contradicts and what was removed. Tapped sentences (already the
+    radiologist's answers) are asked in the same call: those the dictation now contradicts are returned."""
     flat = [s for r in rows for s in r.sentences]
+    contradicted: list[str] = []
     try:
-        fates = [row_fate(c) for c in await ask_rows(dictation, flat, removed)]
+        checks = await ask_rows(dictation, flat + tapped, removed)
+        fates = [row_fate(c) for c in checks[:len(flat)]]
+        contradicted = [t for t, c in zip(tapped, checks[len(flat):]) if c.contra >= CONTRA_MIN]
     except Exception as e:  # rows as written; removed by exact match only
         logger.warning("[stack.items.checks] %s: %s", type(e).__name__, str(e)[:200])
         gone = {_norm(r) for r in removed}
@@ -194,6 +200,7 @@ async def _check(rows: list[Item], dictation: str, removed: list[str]) -> None:
         r.sentences = [s for s, f in zip(r.sentences, mine) if f == "keep"]
         if n and not r.sentences and "answered" in mine:
             r.answered = True
+    return contradicted
 
 
 def _limit(rows: list[Item]) -> tuple[list[Item], list[Item]]:
@@ -217,7 +224,8 @@ def _limit(rows: list[Item]) -> tuple[list[Item], list[Item]]:
 
 
 async def update(scan_type: str, history: str, regions: list[str], dictation: str, abnormal: list[str],
-                 not_assessable: str = "", removed: list[str] | None = None) -> ItemsResult:
+                 not_assessable: str = "", removed: list[str] | None = None,
+                 tapped: list[str] | None = None) -> ItemsResult:
     """The open rows for this dictation. The writer's rows are cached per (scan, history, abnormal sentences,
     regions); the splitter and the checks always run on the current dictation and removed sentences."""
     t0 = time.perf_counter()
@@ -239,6 +247,7 @@ async def update(scan_type: str, history: str, regions: list[str], dictation: st
     rows = _rows(raw, dictation)
     await _split(rows)
     rows = _dedupe(rows)
-    await _check(rows, dictation, removed)
+    contradicted = await _check(rows, dictation, removed, [t for t in (tapped or []) if t.strip()])
     items, capped = _limit(rows)
-    return ItemsResult(items=items, capped=capped, cached=cached, ms=int((time.perf_counter() - t0) * 1000))
+    return ItemsResult(items=items, capped=capped, contradicted=contradicted, cached=cached,
+                       ms=int((time.perf_counter() - t0) * 1000))

@@ -275,10 +275,11 @@ def stack_fallback(sheet: str, conclusion: str, declined: Sequence[str] = ()) ->
             s.bullets = [b for b in s.bullets if b.label not in DROP_TOP_BULLETS and not b.label.startswith("Normal-study path")]
     except Exception:  # the sheet itself may be what failed: structure from the findings block alone
         secs = []
+    # Always (review 2026-10-12): the sweep order and style rules must never fill a step with normals of their own.
     guard = [f'  - DO NOT ASSERT: "{t}" — removed by the radiologist' for t in declined]
-    if guard:
-        secs.append(Section("Companion Matrix", bullets=[Bullet("Mandatory negatives", [
-            "- **Mandatory negatives:** (scratchpad: state only what the findings state)"] + guard)]))
+    secs.append(Section("Companion Matrix", bullets=[Bullet("Mandatory negatives", [
+        "- **Mandatory negatives:** (scratchpad: state only what the findings state — never a normal or negative "
+        "statement the findings do not contain, even for a region in the sweep order)"] + guard)]))
     if conclusion.strip():
         secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", [
             "- **Confirmed conclusion (the radiologist's own; write the impression from it in report style, keeping "

@@ -105,7 +105,7 @@ def test_items_assumed_and_draft_routes(authed, monkeypatch):
     from rapid_reports_ai.hybrid_stack.items import Item, ItemsResult
     from rapid_reports_ai.hybrid_stack.normals import AssumedResult
 
-    async def items(scan_type, history, regions, dictation, abnormal, not_assessable, removed):
+    async def items(scan_type, history, regions, dictation, abnormal, not_assessable, removed, tapped):
         assert regions == ["Bowel"] and abnormal == ["Diverticulitis."] and removed == ["No fistula."]
         return ItemsResult(items=[Item(id="a", kind="finding", region="Bowel", question="Abscess?",
                                        sentences=["No pericolic abscess."])])
@@ -135,13 +135,18 @@ def test_slim_sheet_route_and_review(authed, monkeypatch, db_session, user):
     db_session.commit()
 
     async def gom(db, scan_type, family, regions):
-        assert family == "abdomen_pelvis" and regions[0].name == "Liver"
+        assert family == "abdomen_pelvis" and regions[0].name == "Liver"   # resolved on the server
         return row
+
+    async def resolve(scan_type, history, structure, db):
+        return S.SchemaResult(regions=[Region(name="Liver", includes="l")], groups=[], pills=[], source="approved",
+                              family=None, key="abdomen_pelvis", provisional=False)
     monkeypatch.setattr(R, "slim_get_or_make", gom)
-    d = authed.post("/api/canvas/stack/slim-sheet", json={"scan_type": "CT AP", "family_key": "abdomen_pelvis",
-                                                          "regions": [{"name": "Liver", "includes": "l"}]}).json()
+    monkeypatch.setattr(R, "resolve_schema", resolve)
+    d = authed.post("/api/canvas/stack/slim-sheet", json={"scan_type": "CT AP", "family_key": "ignored",
+                                                          "regions": [{"name": "Injected", "includes": "x"}]}).json()
     assert d["ready"] and d["region_normals"] == {"Liver": ["The liver is normal."]} and d["not_assessable"] == "Doppler flow"
-    assert authed.post("/api/canvas/stack/slim-sheet", json={"scan_type": "CT AP"}).json()["ready"] is False
+    assert authed.post("/api/canvas/stack/slim-sheet", json={"scan_type": ""}).json()["ready"] is False
 
     # review: forbidden without the reviewer list; flag after 5 sessions with >= 30% removing a sentence
     assert authed.get("/api/canvas/stack/slim-sheets").status_code == 403

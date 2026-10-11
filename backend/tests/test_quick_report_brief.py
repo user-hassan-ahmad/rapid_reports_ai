@@ -640,3 +640,8 @@ def test_stack_brief_on_a_slim_sheet_drops_region_normals():
 def test_stack_fallback_never_raises():
     b = qb.stack_fallback(None, "C.", [])   # an unreadable sheet: conclusion only
     assert '"C."' in b.text
+
+
+def test_stack_brief_always_guards_against_unconfirmed_normals():
+    b = qb.stack_fallback("## Structural Pattern\n- **Sections:** FINDINGS\n", "", [])
+    assert "state only what the findings state" in b.text and "even for a region in the sweep order" in b.text

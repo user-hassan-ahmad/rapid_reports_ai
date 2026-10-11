@@ -67,7 +67,9 @@ One bullet per region in REGIONS, using the region name exactly: - **<Region>:**
 ## Recommendation Scope
 - **<kind>:** when a recommendation of that kind is in scope, one per bullet."""
 
-SLIM_USER = """SCAN TYPE (as one radiologist typed it; write for the whole family): {scan_type}
+# The radiologist's typed scan type never enters this prompt: the sheet is shared, so it is written from the
+# server-resolved family and regions and the contrast facet only (review 2026-10-12).
+SLIM_USER = """SCAN FAMILY: {family}
 CONTRAST: {contrast}
 REGIONS:
 {regions}"""
@@ -84,6 +86,17 @@ def _section(md: str, title: str) -> str:
     return m.group(1) if m else ""
 
 
+def clean_sentences(sentences: list[str]) -> list[str]:
+    """The rules every shared normal obeys, written by the model or edited by a reviewer: no measurement, no
+    sex-specific organ, one sentence each."""
+    out = []
+    for s in sentences:
+        s = " ".join(str(s).split()).strip()
+        if s and not _MEASUREMENT.search(s) and not _SEX_SPECIFIC.search(s):
+            out.append(s if s.endswith(".") else s + ".")
+    return out
+
+
 def parse_slim(md: str, region_names: list[str]) -> tuple[dict[str, list[str]], str]:
     """(region normals for known regions, the "not assessable" list). Sentences with a measurement are dropped:
     a number nobody measured is never assumed."""
@@ -94,8 +107,7 @@ def parse_slim(md: str, region_names: list[str]) -> tuple[dict[str, list[str]], 
         if not m or m.group(1).strip().lower() not in known:
             continue
         sentences = [s.strip() for s in re.findall(r'"([^"]+)"', m.group(2))]
-        keep = [s if s.endswith(".") else s + "." for s in sentences
-                if s and not _MEASUREMENT.search(s) and not _SEX_SPECIFIC.search(s)]
+        keep = clean_sentences(sentences)
         if keep:
             normals[known[m.group(1).strip().lower()]] = keep
     na = ""
@@ -131,7 +143,7 @@ async def generate(scan_type: str, family: str, contrast: str, regions: list[Reg
     listed = "\n".join(f"- {r.name}: {r.includes}" for r in regions if r.name != OTHER)
     body = {"model": model_name(), "temperature": 0.2, "max_tokens": 8000, "reasoning_effort": "medium",
             "messages": [{"role": "system", "content": SLIM_SYS},
-                         {"role": "user", "content": SLIM_USER.format(scan_type=scan_type, contrast=CONTRAST[contrast],
+                         {"role": "user", "content": SLIM_USER.format(family=family, contrast=CONTRAST[contrast],
                                                                      regions=listed)}]}
     r = await post_json(URL, os.environ.get("CEREBRAS_API_KEY", ""), body, TIMEOUT_S, transport)
     r.raise_for_status()

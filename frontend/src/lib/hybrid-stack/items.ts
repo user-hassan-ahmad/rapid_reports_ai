@@ -30,3 +30,16 @@ export function quietLine(sentences: string[], max = QUIET_MAX): { shown: string
 export function abnormalAll(units: StackUnit[]): string[] {
 	return effectiveItems(units).filter((i) => i.abnormal).map((i) => i.text);
 }
+
+/** What the gate confirms as assumed: only the sentences /assumed answered for each region, minus removed ones.
+ *  Never the raw sheet (review 2026-10-12: a region missing from the reply fell back to the sheet and undid the
+ *  owned and removed checks). Until /assumed answers, nothing is assumed. */
+export function assumedFrom(checked: Record<string, string[]>, abnormal: string[], untouched: string[], removed: string[]): Record<string, string[]> {
+	const gone = new Set(removed.map(norm));
+	const out: Record<string, string[]> = {};
+	for (const r of [...abnormal, ...untouched]) {
+		const kept = (checked[r] ?? []).filter((x) => !gone.has(norm(x)));
+		if (kept.length) out[r] = kept;
+	}
+	return out;
+}

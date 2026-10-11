@@ -26,14 +26,14 @@ export interface StackLog {
 export const postLog = (token: string | null, body: StackLog) => post<{ ok: boolean }>(token, 'log', body, true);
 
 export const postItems = (token: string | null, body: {
-	scan_type: string; clinical_history: string; regions: string[]; dictation: string; abnormal: string[]; not_assessable?: string; removed?: string[];
+	scan_type: string; clinical_history: string; regions: string[]; dictation: string; abnormal: string[]; not_assessable?: string; removed?: string[]; tapped?: string[];
 }) => post<ItemsResult>(token, 'items', body);
 
 export const postAssumed = (token: string | null, body: {
 	dictation: string; region_normals: Record<string, string[]>; abnormal: string[]; dictated_normal: string[]; removed?: string[]; owned?: string[];
 }) => post<AssumedResult>(token, 'assumed', body);
 
-export const postSlimSheet = (token: string | null, body: { scan_type: string; family_key: string; regions: Region[]; template_id?: string | null }) =>
+export const postSlimSheet = (token: string | null, body: { scan_type: string; clinical_history: string; template_id?: string | null }) =>
 	post<SlimSheet>(token, 'slim-sheet', body);
 
 export const postDraft = (token: string | null, body: { scan_type: string; clinical_history: string; findings: string }) =>

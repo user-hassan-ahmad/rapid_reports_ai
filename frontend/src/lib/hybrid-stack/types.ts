@@ -54,7 +54,7 @@ export interface StackItem {
 	sentences: string[]; // still to be answered (at most 2)
 	answered: boolean; // the dictation answered every sentence: the row folds
 }
-export interface ItemsResult { items: StackItem[]; capped: StackItem[]; cached: boolean; ms: number; error: string | null }
+export interface ItemsResult { items: StackItem[]; capped: StackItem[]; contradicted: string[]; cached: boolean; ms: number; error: string | null }
 export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean }
 export interface AssumedResult { assumed: Record<string, string[]>; ms: number; error: string | null }
 export interface GateItem { id: string; kind: StackItem['kind']; region: string; question: string; sentences: string[]; answered_by: 'dictation' | 'tap' }

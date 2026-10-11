@@ -177,3 +177,17 @@ async def test_an_explicit_referral_kind_wins_even_with_a_dictated_trigger(monke
     _setup(monkeypatch, _raw(CYST, {**REF, "kind": "referral", "source_text": "right ovarian cyst"}))
     out = await I.update("CT AP", "?appendicitis", ["Pelvic organs"], "A right ovarian cyst.", ["A right ovarian cyst."])
     assert out.items[0].kind == "referral" and out.items[0].question == "Appendix normal or inflamed?"
+
+
+async def test_an_explicit_referral_beats_a_paraphrased_finding_which_stays_a_row(monkeypatch):
+    para = {**CYST, "source_text": "an ovarian cyst on the right", "question": "Torsion?"}
+    _setup(monkeypatch, _raw(para, {**REF, "kind": "referral"}))
+    out = await I.update("CT AP", "?appendicitis", ["Pelvic organs"], "A right ovarian cyst.", ["A right ovarian cyst."])
+    assert [(i.kind, i.question) for i in out.items] == [("referral", "Appendix normal or inflamed?"), ("finding", "Torsion?")]
+
+
+async def test_tapped_sentences_the_dictation_now_contradicts_are_returned(monkeypatch):
+    _setup(monkeypatch, _raw(CYST), _checks({"No perinephric stranding.": (0.0, 0.9, 0.0)}))
+    out = await I.update("CT KUB", "", ["Pelvic organs"], "A right ovarian cyst. Mild perinephric stranding.",
+                         ["A right ovarian cyst."], tapped=["No perinephric stranding.", "No hydronephrosis."])
+    assert out.contradicted == ["No perinephric stranding."]

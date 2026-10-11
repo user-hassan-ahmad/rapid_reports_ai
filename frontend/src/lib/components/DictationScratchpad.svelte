@@ -40,7 +40,7 @@
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
 	import { postAssumed, postClose, postDraft, postGroup, postItems, postLog, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
-	import { abnormalAll, openCount, rowSentences } from '$lib/hybrid-stack/items';
+	import { abnormalAll, assumedFrom, openCount, rowSentences } from '$lib/hybrid-stack/items';
 	import { OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates } from '$lib/hybrid-stack/regionState';
 	import type { GateItem, GateRecord, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
@@ -261,6 +261,7 @@
 	let stackRegionNormals: Record<string, string[]> = {};
 	let stackNotAssessable = '';
 	let slimSeq = 0;
+	let shownSentences: string[] = []; // every row sentence shown this session (a row owns its check)
 	let itemsSeq = 0;
 	let assumedSeq = 0;
 	let draft: { text: string; hash: string; edited: boolean; typed: boolean } | null = null;
@@ -280,7 +281,10 @@
 	$: rowsOpen = openCount(viewItems, Object.keys(tappedRows), removedSentences);
 	// What Confirm takes ownership of: the region normals still shown (abnormal regions' checked sentences,
 	// untouched regions' sheet sentences), minus anything removed.
-	$: confirmedAssumed = assumedNow(assumedByRegion, stackRegionNormals, regionView.abnormal, regionView.assumedNormal, removedSentences);
+	$: confirmedAssumed = assumedFrom(assumedByRegion, regionView.abnormal, regionView.assumedNormal, removedSentences);
+	// Regions are confirmed by name only when no sheet exists for this session (v2 behaviour); with a sheet, a region
+	// with no sentence left assumes nothing. An abnormal region's remainder is never named (review 2026-10-12).
+	$: namedNormals = Object.keys(stackRegionNormals).length === 0;
 	$: dictatedConclusion = conclusionText(stackUnits);
 	$: conclusionView = dictatedConclusion
 		? ({ kind: 'dictated' } as const)
@@ -1472,12 +1476,25 @@
 		}, delay);
 	}
 	/** The rows for this dictation (spec §4.2). A row the dictation answers shows green, then folds away. */
+	const normS = (x: string) => x.trim().toLowerCase().replace(/\.$/, '').replace(/\s+/g, ' ');
+	/** The rows for this dictation (spec §4.2). A row the dictation answers shows green, then folds away. A failed or
+	 *  shorter writer reply never clears a row still waiting for the radiologist (review 2026-10-12): it stays until
+	 *  answered, tapped or removed, so the gate cannot unlock by omission. */
 	async function refreshItems(): Promise<void> {
 		const seq = ++itemsSeq;
 		try {
 			const res = await postItems($token, { scan_type: scanType, clinical_history: clinicalHistory, regions: pillRegions,
-				dictation: verbatimNow, abnormal: abnormalAll(stackUnits), not_assessable: stackNotAssessable, removed: removedSentences });
+				dictation: verbatimNow, abnormal: abnormalAll(stackUnits), not_assessable: stackNotAssessable, removed: removedSentences,
+				tapped: Object.values(tappedRows).flatMap((r) => r.sentences) });
 			if (seq !== itemsSeq) return; // superseded while in flight
+			if (res.error) return; // the writer failed: what is on screen stays
+			// Tapped answers the dictation now contradicts are dropped; a row left with none is asked again.
+			if (res.contradicted.length) {
+				const bad = new Set(res.contradicted.map(normS));
+				tappedRows = Object.fromEntries(Object.entries(tappedRows)
+					.map(([k, r]) => [k, { ...r, sentences: r.sentences.filter((x) => !bad.has(normS(x))) }] as const)
+					.filter(([, r]) => r.sentences.length > 0));
+			}
 			for (const it of res.items) {
 				if (!it.answered || dictatedRows[it.id] || tappedRows[it.id]) continue;
 				const was = stackItems.find((x) => x.id === it.id);
@@ -1487,13 +1504,21 @@
 					stackItems = stackItems.filter((x) => x.id !== it.id);
 				}, FOLD_MS);
 			}
-			stackItems = res.items.filter((it) => !foldedRows.includes(it.id));
-			void refreshAssumed(); // a row owns its check: the normals saying the same step aside
+			const fresh = res.items.filter((it) => !foldedRows.includes(it.id));
+			const waiting = stackItems.filter((x) => !x.answered && !tappedRows[x.id] && !foldedRows.includes(x.id)
+				&& !fresh.some((f) => f.id === x.id) && rowSentences(x, removedSentences).length > 0);
+			stackItems = [...fresh, ...waiting];
 			stackCapped = res.capped;
+			shownSentences = [...new Set([...shownSentences, ...stackItems.flatMap((i) => i.sentences), ...res.capped.flatMap((i) => i.sentences)])];
 			stackLatency.items = Math.max(stackLatency.items ?? 0, res.ms);
+			void refreshAssumed(); // a row owns its check: the normals saying the same step aside
 		} catch {
-			/* fail open: no rows */
+			/* fail open: what is on screen stays */
 		}
+	}
+	/** Every row sentence ever shown, capped ones included: a region normal saying the same is never assumed. */
+	function ownedNow(): string[] {
+		return [...new Set([...shownSentences, ...Object.values(tappedRows).flatMap((r) => r.sentences)])];
 	}
 	/** The region normals for this session (spec §8): made once per scan-type family and shared; the first case of
 	 *  a new family may wait for it, and the scratchpad works without it meanwhile. */
@@ -1504,8 +1529,7 @@
 		onStackSheet(null);
 		if (!hybridStack || !stackRegions.length) return;
 		try {
-			const res = await postSlimSheet($token, { scan_type: scanType, family_key: stackSchemaMeta?.key ?? '', regions: stackRegions,
-				template_id: stackTemplateId });
+			const res = await postSlimSheet($token, { scan_type: scanType, clinical_history: clinicalHistory, template_id: stackTemplateId });
 			if (seq !== slimSeq || !res.ready) return;
 			stackRegionNormals = res.region_normals;
 			stackNotAssessable = res.not_assessable;
@@ -1520,23 +1544,13 @@
 		const seq = ++assumedSeq;
 		try {
 			const res = await postAssumed($token, { dictation: verbatimNow, region_normals: stackRegionNormals, abnormal: regionView.abnormal,
-				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences,
-				owned: viewItems.flatMap((i) => i.sentences) });
+				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences, owned: ownedNow() });
 			if (seq === assumedSeq) assumedByRegion = res.assumed;
 		} catch {
 			/* fail open: abnormal regions show no quiet line */
 		}
 	}
 	$: if (Object.keys(stackRegionNormals).length) void refreshAssumed();
-	function assumedNow(checked: Record<string, string[]>, normals: Record<string, string[]>, abnormal: string[],
-		untouched: string[], removed: string[]): Record<string, string[]> {
-		const gone = new Set(removed.map((r) => r.trim().toLowerCase().replace(/\.$/, '')));
-		const keep = (xs: string[]) => xs.filter((x) => !gone.has(x.trim().toLowerCase().replace(/\.$/, '')));
-		const out: Record<string, string[]> = {};
-		for (const r of abnormal) if (keep(checked[r] ?? []).length) out[r] = keep(checked[r] ?? []);
-		for (const r of untouched) if (keep(checked[r] ?? normals[r] ?? []).length) out[r] = keep(checked[r] ?? normals[r] ?? []);
-		return out;
-	}
 	function isOpenRow(id: string): boolean {
 		const it = stackItems.find((x) => x.id === id);
 		return !!it && !it.answered && !tappedRows[id] && rowSentences(it, removedSentences).length > 0;
@@ -1633,11 +1647,12 @@
 			confirmed_at: new Date().toISOString(),
 			conclusion_text: dictatedConclusion || draft?.text || '',
 			conclusion_source: dictatedConclusion ? 'dictated' : draft?.typed ? 'typed' : draft?.edited ? 'draft_edited' : 'draft',
-			assumed_normal: regionView.assumedNormal,
-			remainder_normal: regionView.remainder,
+			assumed_normal: namedNormals ? regionView.assumedNormal : [],
+			remainder_normal: [],
 			dictated_normal: regionView.dictatedNormal,
 			items: [
-				...Object.values(tappedRows).map((r): GateItem => ({ id: r.id, kind: r.kind, region: r.region, question: r.question, sentences: r.sentences, answered_by: 'tap' })),
+				...Object.values(tappedRows).map((r): GateItem => ({ id: r.id, kind: r.kind, region: r.region, question: r.question,
+					sentences: r.sentences.filter((x) => !removedSentences.some((g) => normS(g) === normS(x))), answered_by: 'tap' })),
 				...Object.values(dictatedRows).filter((r) => !tappedRows[r.id])
 					.map((r): GateItem => ({ id: r.id, kind: r.kind, region: r.region, question: r.question, sentences: r.sentences, answered_by: 'dictation' }))
 			],
@@ -1708,6 +1723,7 @@
 		tappedRows = {};
 		dictatedRows = {};
 		foldedRows = [];
+		shownSentences = [];
 		removedSentences = [];
 		assumedByRegion = {};
 		scheduleItems(0);
@@ -2278,7 +2294,7 @@
 					<div bind:this={structuredContainer} class="min-h-full" class:hidden={stackView || polishMode !== 'structured'}></div>
 					{#if stackView}
 						<HybridStackView units={stackUnits} groups={stackGroups} {pillRegions} pending={liveTail(verbatimNow, stackUnits)}
-							ghost={ghostNow} items={viewItems} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
+							ghost={ghostNow} items={viewItems} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
 							conclusion={conclusionView} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}

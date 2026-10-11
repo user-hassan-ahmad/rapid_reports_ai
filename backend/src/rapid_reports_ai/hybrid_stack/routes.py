@@ -18,7 +18,7 @@ from ..template_sheet_structure import fresh
 from .schemas import Region
 from .items import ItemsResult, update as items_update
 from .normals import AssumedResult, assumed as assumed_normals
-from .slim_sheet import get_or_make as slim_get_or_make
+from .slim_sheet import clean_sentences, get_or_make as slim_get_or_make
 from .template import template_region_normals
 from .draft import DraftResult, draft_conclusion
 from .service import GroupResult, SchemaResult, close_update, group_update, resolve_schema
@@ -65,6 +65,7 @@ class ItemsRequest(BaseModel):
     abnormal: list[str] = Field(default_factory=list)   # the abnormal sentences: the writer's cache key
     not_assessable: str = ""
     removed: list[str] = Field(default_factory=list)    # sentences the radiologist removed: never offered again
+    tapped: list[str] = Field(default_factory=list)     # sentences answered with a tap: re-checked for contradiction
 
 
 class AssumedRequest(BaseModel):
@@ -106,9 +107,10 @@ class LogRequest(BaseModel):
 
 class SlimRequest(BaseModel):
     scan_type: str = ""
-    family_key: str = ""          # the resolved schema's key (family, or the composed key)
-    regions: list[Region] = Field(default_factory=list)
+    clinical_history: str = ""
     template_id: str | None = None
+    # The family and regions are resolved on the server (review 2026-10-12): a shared sheet is never keyed or
+    # shaped by what a client sends.
 
 
 class SlimResult(BaseModel):
@@ -149,7 +151,7 @@ async def stack_group(req: GroupRequest, user: User = Depends(get_current_user))
 async def stack_items(req: ItemsRequest, user: User = Depends(get_current_user)):
     _require()
     return await items_update(req.scan_type, req.clinical_history, req.regions[:40], req.dictation,
-                              req.abnormal[:40], req.not_assessable[:2000], req.removed[:50])
+                              req.abnormal[:40], req.not_assessable[:2000], req.removed[:50], req.tapped[:20])
 
 
 @router.post("/assumed", response_model=AssumedResult)
@@ -232,9 +234,12 @@ async def stack_slim_sheet(req: SlimRequest, user: User = Depends(get_current_us
         if st is None:
             return SlimResult()
         return SlimResult(region_normals=template_region_normals(st), status="template", ready=True)
-    if not req.family_key or not req.regions:
+    if not req.scan_type.strip():
         return SlimResult()
-    row = await slim_get_or_make(db, req.scan_type, req.family_key, req.regions)
+    schema = await resolve_schema(req.scan_type[:300], req.clinical_history[:2000], None, db)
+    if not schema.regions:
+        return SlimResult()
+    row = await slim_get_or_make(db, req.scan_type[:300], schema.key, schema.regions)
     if row is None:
         return SlimResult()
     return SlimResult(id=str(row.id), region_normals=row.region_normals or {}, not_assessable=row.not_assessable or "",
@@ -260,7 +265,7 @@ def _removal_rates(db: Session, family: str, normals: dict[str, list[str]]) -> d
 async def list_slim_sheets(status: str | None = None, user: User = Depends(get_current_user),
                            db: Session = Depends(get_db)):
     _reviewer(user)
-    q = db.query(StackSlimSheet)
+    q = db.query(StackSlimSheet).filter(StackSlimSheet.status != "discarded")
     if status:
         q = q.filter(StackSlimSheet.status == status)
     rows = q.order_by(StackSlimSheet.updated_at.desc()).all()
@@ -290,6 +295,6 @@ async def update_slim_sheet(sheet_id: str, upd: SlimUpdate, user: User = Depends
     if upd.status:
         row.status = upd.status
     if upd.region_normals is not None:
-        row.region_normals = {k: [s.strip() for s in v if s.strip()] for k, v in upd.region_normals.items()}
+        row.region_normals = {k: kept for k, v in upd.region_normals.items() if (kept := clean_sentences(v))}
     db.commit()
     return {"ok": True}

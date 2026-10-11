@@ -26,6 +26,7 @@
 		tapped = [],
 		removed = [],
 		assumed = {},
+		namedNormals = false,
 		conclusion = { kind: 'none' },
 		gateConfirmed = false,
 		deleteRegion = null,
@@ -57,6 +58,8 @@
 		removed?: string[];
 		/** Region normals that will be reported unless removed (the slim sheet, checked against the dictation). */
 		assumed?: Record<string, string[]>;
+		/** No sheet this session: untouched regions are confirmed by name (v2). With a sheet, only sentences are. */
+		namedNormals?: boolean;
 		conclusion?: ConclusionState;
 		gateConfirmed?: boolean;
 		/** A voice "delete the X line": the region whose lines wait for a Delete click (null: none). */
@@ -117,7 +120,7 @@
 	// Every statement that will be reported without being dictated: region normals, and regions confirmed by
 	// name where no sentences exist yet.
 	const assumedCount = $derived(
-		trayRegions.filter((r) => !dictatedNormalWords.has(r)).reduce((n, r) => n + Math.max(1, keptAssumed(r).length), 0) +
+		trayRegions.filter((r) => !dictatedNormalWords.has(r)).reduce((n, r) => n + (namedNormals ? 1 : keptAssumed(r).length), 0) +
 			states.abnormal.reduce((n, r) => n + keptAssumed(r).length, 0)
 	);
 	let expanded: string[] = $state([]);
@@ -372,8 +375,6 @@
 					<span class="text-[10px] uppercase tracking-wide text-emerald-400/70">Will also be reported</span>
 					{@render sentences(normals, g.name)}
 				</p>
-			{:else if states.remainder.includes(g.name)}
-				<p class="px-1 text-xs italic text-gray-500">Remainder of {g.name.toLowerCase()}: assumed normal</p>
 			{/if}
 		</section>
 	{/each}

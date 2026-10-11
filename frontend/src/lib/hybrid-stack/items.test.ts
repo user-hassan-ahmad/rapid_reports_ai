@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abnormalAll, answerLabel, openCount, quietLine, rowSentences } from './items';
+import { abnormalAll, answerLabel, assumedFrom, openCount, quietLine, rowSentences } from './items';
 import type { StackItem, StackUnit } from './types';
 
 const item = (id: string, sentences: string[], extra: Partial<StackItem> = {}): StackItem => ({
@@ -29,5 +29,10 @@ describe('checklist rows', () => {
 		expect(abnormalAll([u(0, 'A cyst.', { abnormal: true }), u(1, 'Kidneys normal.', { group: 'Kidneys' }),
 			u(2, 'Spleen normal and a gallstone.', { parts: [{ text: 'Spleen normal', group: 'Spleen' }, { text: 'and a gallstone.', group: 'Gallbladder', abnormal: true }] })]))
 			.toEqual(['A cyst.', 'and a gallstone.']);
+	});
+	it('assumes only what /assumed answered: an emptied or missing region assumes nothing, removed sentences never', () => {
+		const checked = { Liver: ['The liver is normal.'], Bowel: [], Spleen: ['The spleen is normal.', 'No splenic lesion.'] };
+		expect(assumedFrom(checked, ['Spleen'], ['Liver', 'Bowel', 'Appendix'], ['no splenic lesion']))
+			.toEqual({ Spleen: ['The spleen is normal.'], Liver: ['The liver is normal.'] });
 	});
 });

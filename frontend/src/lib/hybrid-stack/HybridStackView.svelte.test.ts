@@ -27,7 +27,7 @@ describe('HybridStackView v2', () => {
 		});
 		await expect.element(page.getByRole('heading', { name: 'Liver' })).toBeInTheDocument();
 		await expect.element(page.getByRole('heading', { name: 'Kidneys' })).not.toBeInTheDocument();
-		await expect.element(page.getByText('Remainder of liver: assumed normal')).toBeInTheDocument();
+		await expect.element(page.getByText('Remainder of liver: assumed normal')).not.toBeInTheDocument();   // never named
 		await expect.element(page.getByText('Kidneys', { exact: true })).toHaveAttribute('data-state', 'dictated');
 		await expect.element(page.getByText('Spleen', { exact: true })).toHaveAttribute('data-state', 'assumed');
 		await expect.element(page.getByText('Biliary dilatation?')).toBeInTheDocument();
@@ -117,11 +117,11 @@ describe('HybridStackView v2', () => {
 	it('the gate bar counts open questions and assumed normals; Confirm waits for every question', async () => {
 		const props = base();
 		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true }), u(1, 'Simple cyst.', 'Conclusion')];
-		const r = render(HybridStackView, { ...props, units, conclusion: { kind: 'dictated' }, items: [row('a', ['No biliary dilatation.'])] });
+		const r = render(HybridStackView, { ...props, units, conclusion: { kind: 'dictated' }, items: [row('a', ['No biliary dilatation.'])], namedNormals: true });
 		await expect.element(page.getByText('1 question open')).toBeInTheDocument();
-		await expect.element(page.getByText('2 assumed normal')).toBeInTheDocument();   // Kidneys, Spleen (no sentences yet)
+		await expect.element(page.getByText('2 assumed normal')).toBeInTheDocument();   // Kidneys, Spleen by name (no sheet)
 		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeDisabled();
-		r.rerender({ ...props, units, conclusion: { kind: 'dictated' }, items: [row('a', ['No biliary dilatation.'])], tapped: ['a'] });
+		r.rerender({ ...props, units, conclusion: { kind: 'dictated' }, items: [row('a', ['No biliary dilatation.'])], tapped: ['a'], namedNormals: true });
 		await expect.element(page.getByText('0 questions open')).toBeInTheDocument();
 		await page.getByRole('button', { name: 'Confirm' }).click();
 		expect(props.onConfirm).toHaveBeenCalled();
