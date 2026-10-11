@@ -38,8 +38,8 @@
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
-	import { postAssumed, postClose, postDraft, postGroup, postItems, postLog, postSlimSheet } from '$lib/hybrid-stack/api';
-	import { appendSentence, closedText, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
+	import { postAssumed, postClose, postDebug, postDraft, postGroup, postItems, postLog, postSlimSheet } from '$lib/hybrid-stack/api';
+	import { appendSentence, closedText, lineChange, liveTail, moveUnit, similar } from '$lib/hybrid-stack/stackState';
 	import { abnormalAll, assumedFrom, openCount, rowSentences, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates } from '$lib/hybrid-stack/regionState';
 	import type { GateItem, GateRecord, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
@@ -291,6 +291,22 @@
 	$: regionView = regionStates(stackUnits, pillRegions);
 	// Tapped rows stay on screen as the radiologist's answers even after the writer stops returning them.
 	$: viewItems = [...stackItems, ...Object.values(tappedRows).filter((t) => !stackItems.some((i) => i.id === t.id))];
+	// Debug trace (local only): a sentence already placed this session showing in the live strip again.
+	let placedTexts = new Set<string>();
+	let lastDebugKey = '';
+	$: stripNow = stackView ? liveTail(verbatimNow, stackUnits) : [];
+	$: {
+		for (const u of stackUnits) if (u.group !== null && !u.heading) placedTexts.add(u.text);
+		const back = stripNow.filter((t) => [...placedTexts].some((p) => p === t || similar(p, t)));
+		const key = back.join('|');
+		if (back.length && key !== lastDebugKey) {
+			lastDebugKey = key;
+			void postDebug($token, { kind: 'strip_returned', at: new Date().toISOString(), returned: back, strip: stripNow,
+				verbatim: verbatimNow, units: stackUnits.map((u) => ({ id: u.id, group: u.group, text: u.text })),
+				recording: isRecording, busy: stackBusy, timer: stackTimer !== null, pendingPolish: structureBusy(),
+				groupFailures, placed: [...placedTexts].slice(-40) });
+		}
+	}
 	$: rowsOpen = openCount(viewItems, Object.keys(tappedRows), removedSentences, Object.keys(skippedRows));
 	// Confirm waits for the review of what is on screen; a failed review counts as done (nothing new is asked).
 	$: reviewBehind = stackView && !!verbatimNow.trim() && reviewedFor !== verbatimNow;
@@ -2411,7 +2427,7 @@
 					<div bind:this={editorContainer} class="min-h-full" class:hidden={stackView || polishMode === 'structured'}></div>
 					<div bind:this={structuredContainer} class="min-h-full" class:hidden={stackView || polishMode !== 'structured'}></div>
 					{#if stackView}
-						<HybridStackView units={stackUnits} groups={stackGroups} {pillRegions} pending={liveTail(verbatimNow, stackUnits)}
+						<HybridStackView units={stackUnits} groups={stackGroups} {pillRegions} pending={stripNow}
 							ghost={ghostNow} items={viewItems} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
 							conclusion={conclusionView} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}

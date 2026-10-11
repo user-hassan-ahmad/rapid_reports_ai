@@ -24,6 +24,8 @@ from .draft import DraftResult, draft_conclusion
 from .service import GroupResult, SchemaResult, close_update, group_update, resolve_schema
 from .units import StackUnit
 
+import logging
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/canvas/stack", tags=["hybrid-stack"])
 
 
@@ -177,6 +179,17 @@ async def stack_draft(req: DraftRequest, user: User = Depends(get_current_user))
 async def stack_close(req: CloseRequest, user: User = Depends(get_current_user)):
     _require()
     return await close_update(req.units, req.regions)
+
+
+@router.post("/debug")
+async def stack_debug(payload: dict, user: User = Depends(get_current_user)):
+    """Local debugging only (RR_STACK_DEBUG=1): a frontend snapshot written to the server log, never stored."""
+    _require()
+    if os.environ.get("RR_STACK_DEBUG") != "1":
+        raise HTTPException(status_code=404, detail="Not Found")
+    import json
+    logger.warning("[stack.debug] %s", json.dumps(payload, ensure_ascii=False)[:12000])
+    return {"ok": True}
 
 
 @router.post("/log")

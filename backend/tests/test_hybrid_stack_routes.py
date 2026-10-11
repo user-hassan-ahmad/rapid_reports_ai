@@ -161,3 +161,10 @@ def test_slim_sheet_route_and_review(authed, monkeypatch, db_session, user):
     assert authed.post(f"/api/canvas/stack/slim-sheets/{s['id']}", json={"status": "discarded"}).json() == {"ok": True}
     db_session.refresh(row)
     assert row.status == "discarded"
+
+
+def test_debug_route_only_with_the_flag(authed, monkeypatch):
+    monkeypatch.delenv("RR_STACK_DEBUG", raising=False)
+    assert authed.post("/api/canvas/stack/debug", json={"kind": "x"}).status_code == 404
+    monkeypatch.setenv("RR_STACK_DEBUG", "1")
+    assert authed.post("/api/canvas/stack/debug", json={"kind": "x"}).json() == {"ok": True}

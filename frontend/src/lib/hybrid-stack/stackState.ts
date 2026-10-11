@@ -121,7 +121,7 @@ export function closedText(verbatim: string): string {
 
 const words = (t: string) => new Set(t.toLowerCase().match(/[a-z0-9]+/g) ?? []);
 /** A placed sentence the polish lightly reworded (a word, a full stop) is still the same sentence. */
-function similar(a: string, b: string): boolean {
+export function similar(a: string, b: string): boolean {
 	const x = words(a), y = words(b);
 	if (!x.size || !y.size) return false;
 	let common = 0;

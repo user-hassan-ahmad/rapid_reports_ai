@@ -285,20 +285,11 @@
 		else onDraftEdit(r.value);
 		queueMicrotask(() => el.setSelectionRange(r.caret, r.caret));
 	});
-	/** The live strip grows and shrinks smoothly as lines wrap (hand read 2026-10-12: it jumped). */
-	function smoothHeight(node: HTMLElement) {
-		const inner = node.firstElementChild as HTMLElement | null;
-		if (!inner || typeof ResizeObserver === 'undefined') return {};
-		node.style.overflow = 'hidden';
-		node.style.boxSizing = 'border-box';
-		if (!reduced) node.style.transition = 'height 220ms ease';
-		const pad = () => parseFloat(getComputedStyle(node).paddingTop) + parseFloat(getComputedStyle(node).paddingBottom)
-			+ parseFloat(getComputedStyle(node).borderTopWidth) + parseFloat(getComputedStyle(node).borderBottomWidth);
-		const set = () => (node.style.height = `${inner.offsetHeight + pad()}px`);
-		const ro = new ResizeObserver(set);
-		ro.observe(inner);
-		set();
-		return { destroy: () => ro.disconnect() };
+	/** Keeps the scratchpad box scrolled to its latest line. */
+	function pinBottom(node: HTMLElement, _key?: string) {
+		const pin = () => (node.scrollTop = node.scrollHeight);
+		queueMicrotask(pin);
+		return { update: () => queueMicrotask(pin) };
 	}
 	/** A textarea that is exactly as tall as its text (an inline edit keeps the sentence's shape). */
 	function autosize(el: HTMLTextAreaElement, _value?: string) {
@@ -515,17 +506,47 @@
 {/snippet}
 
 <div class="space-y-3" data-testid="hybrid-stack">
-	<!-- Live strip: the words being spoken and sentences not placed yet -->
-	{#if view.unplaced.length || pending.length || ghost}
-		<section aria-label="Just dictated" class="rounded border border-white/5 bg-white/[0.02] px-2 py-1" use:smoothHeight>
-			<ul>
-				<!-- A sentence fades out of the strip as it fades into its section, so the hand-over reads as one motion. -->
-				{#each view.unplaced as r (r.text)}<li class="text-sm leading-6 text-gray-300" in:fade={{ duration: ms }} out:fade={{ duration: ms }}>{r.text}</li>{/each}
-				{#each pending as text (text)}<li class="text-sm leading-6 text-gray-300" in:fade={{ duration: ms }} out:fade={{ duration: ms }}>{text}</li>{/each}
-				{#if ghost}<li class="text-sm italic leading-6 text-gray-400">{ghost}</li>{/if}
+	<!-- The scratchpad box (hand read 2026-10-12): one permanent, fixed-size box for what is being said now and a line
+	     to type into. It never changes size, so nothing below it jumps; longer text scrolls inside it, pinned to the
+	     latest line. -->
+	<section aria-label="Scratchpad" class="overflow-hidden rounded-lg border border-white/10 bg-white/[0.025]">
+		<div class="h-24 overflow-y-auto px-3 py-2" use:pinBottom={`${pending.join('|')}|${ghost}|${view.unplaced.length}`}>
+			{#if !view.unplaced.length && !pending.length && !ghost}
+				<p class="text-sm leading-6 text-gray-600">{recording ? 'Listening…' : 'Dictate or type a finding…'}</p>
+			{/if}
+			<ul aria-label="Just dictated">
+				<!-- A sentence fades out of the box as it fades into its section, so the hand-over reads as one motion. -->
+				{#each view.unplaced as r (r.text)}<li class="text-sm leading-6 text-gray-200" in:fade={{ duration: ms }} out:fade={{ duration: ms }}>{r.text}</li>{/each}
+				{#each pending as text (text)}<li class="text-sm leading-6 text-gray-200" in:fade={{ duration: ms }} out:fade={{ duration: ms }}>{text}</li>{/each}
+				{#if ghost}<li class="text-sm italic leading-6 text-gray-500">{ghost}</li>{/if}
 			</ul>
-		</section>
-	{/if}
+		</div>
+		<div class="flex items-center gap-2 border-t border-white/5 px-3 py-1.5">
+			<input
+				bind:this={newField}
+				bind:value={newLine}
+				class="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-200 placeholder:text-gray-600 focus:outline-none focus:ring-0"
+				placeholder="Type a finding (Enter adds it)"
+				aria-label="New line"
+				onfocus={() => {
+					newFocused = true;
+					onEditing(true);
+				}}
+				onblur={() => {
+					newFocused = false;
+					appendNew(); // words typed or dictated into the field are never lost on blur
+					onEditing(editing !== null || draftFocused);
+				}}
+				onkeydown={(e) => {
+					if (e.key === 'Enter') {
+						e.preventDefault();
+						appendNew();
+					}
+				}}
+			/>
+			{#if recording}<span class="flex shrink-0 items-center gap-1 text-[10px] text-rose-300"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-400"></span>listening</span>{/if}
+		</div>
+	</section>
 
 	{#if referrals.length}
 		<section aria-label="Referral question" class="space-y-1">{#each referrals as it (it.id)}{@render row(it, 'Referral')}{/each}</section>
@@ -534,28 +555,7 @@
 		<section aria-label="Checks" class="space-y-1">{#each looseRows as it (it.id)}{@render row(it, it.region || null)}{/each}</section>
 	{/if}
 
-	<input
-		bind:this={newField}
-		bind:value={newLine}
-		class="w-full rounded border border-white/5 bg-transparent px-2 py-1 text-sm text-gray-200 placeholder:text-gray-600 focus:border-white/20 focus:outline-none focus:ring-0"
-		placeholder="Type a finding… (Enter adds it)"
-		aria-label="New line"
-		onfocus={() => {
-			newFocused = true;
-			onEditing(true);
-		}}
-		onblur={() => {
-			newFocused = false;
-			appendNew(); // words typed or dictated into the field are never lost on blur
-			onEditing(editing !== null || draftFocused);
-		}}
-		onkeydown={(e) => {
-			if (e.key === 'Enter') {
-				e.preventDefault();
-				appendNew();
-			}
-		}}
-	/>
+
 
 	{#if technique}
 		<section aria-label={TECHNIQUE} class="text-gray-400">
@@ -707,7 +707,8 @@
 			{/if}
 			<textarea
 				bind:this={draftField}
-				class="mt-0.5 w-full resize-y rounded border border-white/5 bg-white/[0.04] px-1 text-sm leading-6 text-gray-100 focus:border-white/20 focus:outline-none focus:ring-0"
+				use:autosize={conclusion.kind === 'draft' ? conclusion.text : ''}
+				class="mt-0.5 block min-h-[4.5rem] w-full resize-none overflow-hidden rounded border border-white/5 bg-white/[0.04] px-1 text-sm leading-6 text-gray-100 focus:border-white/20 focus:outline-none focus:ring-0"
 				rows="3"
 				aria-label="Conclusion draft"
 				value={conclusion.kind === 'draft' ? conclusion.text : ''}
