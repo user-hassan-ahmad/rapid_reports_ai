@@ -8,7 +8,7 @@ from rapid_reports_ai.hybrid_stack import jev_stack as J
 
 def _raw(*items):
     """Test items in the old flat shape: kind "referral" (or empty source_text) goes to referral_questions."""
-    async def fake(scan_type, history, regions, dictation, not_assessable, removed, referrals):
+    async def fake(scan_type, history, regions, dictation, not_assessable, removed, referrals, review=False):
         refs, finds = [], []
         for it in items:
             if it.get("kind") == "referral" or not it.get("source_text"):
@@ -72,7 +72,7 @@ async def test_split_parts_stay_in_their_row_and_rows_keep_two_sentences(monkeyp
         return [["No torsion", "No rupture"] if n == "No torsion or rupture." else [n] for n in negs]
     _setup(monkeypatch, _raw(item), split=split)
     out = await I.update("CT AP", "", ["Pelvic organs"], "A cyst.", ["A cyst."])
-    assert out.items[0].sentences == ["No torsion.", "No rupture."]
+    assert out.items[0].sentences == ["No torsion.", "No rupture.", "No free fluid."]
 
 
 async def test_caps_apply_after_the_checks(monkeypatch):
@@ -180,7 +180,7 @@ async def test_a_sentence_with_a_measurement_is_never_offered(monkeypatch):
 async def test_fixed_referrals_replace_the_reply_and_are_still_checked(monkeypatch):
     seen = {}
 
-    async def raw(scan_type, history, regions, dictation, not_assessable, removed, referrals):
+    async def raw(scan_type, history, regions, dictation, not_assessable, removed, referrals, review=False):
         seen["referrals"] = referrals
         return I.RawOutput(referral_questions=[I.RawReferral(question="A drifted question?", answers=["No drift."])],
                            finding_checks=[I.RawFinding(source_text="right ovarian cyst", region="Pelvic organs",
@@ -224,3 +224,42 @@ async def test_one_referral_row_per_question_the_history_asks(monkeypatch):
     out = await I.update("CT trauma", "rule out active haemorrhage and solid organ injury", ["Liver", "Spleen"], "", [])
     assert [(i.kind, i.sentences) for i in out.items] == [("referral", ["No active contrast extravasation."]),
                                                           ("referral", ["No solid organ injury."])]
+
+
+async def test_a_row_the_dictation_contradicts_folds_as_answered(monkeypatch):
+    item = {**CYST, "question": "Free fluid?", "negatives": ["No free intraperitoneal fluid."]}
+    _setup(monkeypatch, _raw(item), _checks({"No free intraperitoneal fluid.": (0.0, 0.9, 0.0)}))
+    out = await I.update("CT AP", "", ["Pelvic organs"], "A right ovarian cyst. Moderate haemoperitoneum.", ["x"])
+    assert [(i.question, i.answered, i.sentences) for i in out.items] == [("Free fluid?", True, [])]
+
+
+async def test_review_mode_reaches_the_writer(monkeypatch):
+    seen = {}
+
+    async def raw(*a):
+        seen["review"] = a[-1]
+        return I.RawOutput()
+    _setup(monkeypatch, raw)
+    await I.update("CT", "", [], "x", ["x"], review=True)
+    assert seen["review"] is True
+
+
+async def test_a_failed_review_falls_back_to_gpt_oss_and_setup_does_not(monkeypatch):
+    calls = []
+
+    async def call(model, prompt, review, timeout):
+        calls.append((model, review))
+        if model == I.QWEN:
+            raise RuntimeError("parser_error")
+        return I.RawOutput(finding_checks=[I.RawFinding(source_text="right ovarian cyst", region="Pelvic organs",
+                                                        question="Ovarian torsion?", answers=["No features of torsion."])])
+    I.clear_cache()
+    monkeypatch.setattr(I, "_call", call)
+    monkeypatch.setattr(I, "ask_rows", _checks())
+    monkeypatch.setattr(I, "_split_bundled", _no_split)
+    out = await I.update("CT AP", "", ["Pelvic organs"], "A right ovarian cyst.", ["A right ovarian cyst."], review=True)
+    assert calls == [(I.QWEN, True), (I.MODEL_CONFIG["STACK_REVIEW_FALLBACK"], True)]
+    assert out.items[0].question == "Ovarian torsion?" and out.error is None
+    calls.clear()
+    out = await I.update("CT AP", "", ["Pelvic organs"], "", [])          # setup: no fallback, fails open
+    assert calls == [(I.QWEN, False)] and out.items == [] and out.error

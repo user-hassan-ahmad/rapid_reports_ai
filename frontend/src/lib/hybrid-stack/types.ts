@@ -57,7 +57,7 @@ export interface StackItem {
 export interface ItemsResult { items: StackItem[]; capped: StackItem[]; contradicted: string[]; cached: boolean; ms: number; error: string | null }
 export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean }
 export interface AssumedResult { assumed: Record<string, string[]>; ms: number; error: string | null }
-export interface GateItem { id: string; kind: StackItem['kind']; region: string; question: string; sentences: string[]; answered_by: 'dictation' | 'tap' }
+export interface GateItem { id: string; kind: StackItem['kind']; region: string; question: string; sentences: string[]; answered_by: 'dictation' | 'tap' | 'skip' | 'not_assessed' }
 export interface DraftResult { text: string; ms: number; error: string | null }
 export interface GateRecord {
 	confirmed_at: string;
@@ -70,6 +70,7 @@ export interface GateRecord {
 	assumed: Record<string, string[]>; // region normals confirmed (not dictated)
 	removed: string[]; // sentences the radiologist removed: never stated
 	capped: { region: string; question: string }[];
+	review_failed?: boolean; // the end-of-dictation review failed: no finding checks were offered
 	units_hash: string;
 }
 export interface StackCommand { action: 'dictate' | 'delete' | 'answer'; region: string | null; item: string | null; command: string | null; confidence: number | null }

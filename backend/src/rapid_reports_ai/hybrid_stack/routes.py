@@ -67,6 +67,7 @@ class ItemsRequest(BaseModel):
     removed: list[str] = Field(default_factory=list)    # sentences the radiologist removed: never offered again
     tapped: list[str] = Field(default_factory=list)     # sentences answered with a tap: re-checked for contradiction
     referrals: list[Referral] | None = None              # the session's fixed referral rows (None: first call)
+    review: bool = False                                 # the end-of-dictation review (reasoning low)
 
 
 class AssumedRequest(BaseModel):
@@ -154,7 +155,7 @@ async def stack_items(req: ItemsRequest, user: User = Depends(get_current_user))
     _require()
     return await items_update(req.scan_type, req.clinical_history, req.regions[:40], req.dictation,
                               req.abnormal[:40], req.not_assessable[:2000], req.removed[:50], req.tapped[:20],
-                              req.referrals[:2] if req.referrals is not None else None)
+                              req.referrals[:2] if req.referrals is not None else None, req.review)
 
 
 @router.post("/assumed", response_model=AssumedResult)

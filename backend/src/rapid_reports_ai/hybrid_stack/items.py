@@ -14,18 +14,19 @@ from collections import OrderedDict
 
 from pydantic import BaseModel
 
-from ..enhancement_utils import _run_agent_with_model
+from ..enhancement_utils import MODEL_CONFIG, _run_agent_with_model
 from ..report_reconcile import QWEN, _MEASUREMENT, _split_bundled
 from .jev_stack import CONTRA_MIN, ask_rows, row_fate
 from .schemas import scan_key
 
 logger = logging.getLogger(__name__)
 
-MAX_SENTENCES = 2          # per row: each is read before a tap asserts it (spec §3.3)
+MAX_SENTENCES = 3          # per row: each is shown as a chip with × beside the button, read before a tap asserts it
 MAX_ROWS_PER_REGION = 2    # open finding rows
 MAX_ROWS = 4               # open rows per case, referral rows included
 MAX_REFERRALS = 2          # one per question the history asks ("rule out haemorrhage and solid organ injury")
 WRITER_TIMEOUT_S = 8.0
+REVIEW_TIMEOUT_S = 25.0    # the end-of-dictation review thinks briefly (reasoning low); it runs once per stop
 _CACHE: "OrderedDict[tuple, RawOutput]" = OrderedDict()   # the writer's rows only: checks run per dictation
 _CACHE_MAX = 256
 
@@ -44,13 +45,13 @@ THRESHOLD: write a check only when all apply:
 - a dictated finding implies a related structure, extension, spread or complication that this scan shows;
 - its presence or absence changes the diagnosis, urgency, stage or next management step;
 - the dictation has not already assessed it (a structure named with a qualifier, a measurement or a "no X" is assessed).
-ONE CHECK PER ROOT FINDING: all checks stemming from one finding form one item; separate findings get separate items. Findings that together imply one check, in the same or different regions, form one item.
+ONE CHECK PER ROOT FINDING: all checks stemming from one finding form one item; separate findings get separate items. Findings that together imply one check, in the same or different regions, form one item. Never split one check into a question per vessel, duct or structure. Never ask whether a dictated finding is present: it is; ask only what it implies that the dictation has not assessed. When the dictation states the remainder of a system or of several organs is normal, those organs are assessed.
 Order by clinical urgency, most critical first. Return no checks when nothing meets the threshold. Each:
 - source_text: the shortest verbatim phrase of the triggering finding (3-6 words, an exact substring of the dictation)
 - region: the region of that finding, from REGIONS
 - question: at most 12 words, the check directed at the images, ending with "?"
 - rationale: 1-2 sentences: why this check matters for this finding on this scan
-- answers: 1-3 pertinent negatives, the most decisive first.
+- answers: the 2-3 pertinent negatives a consultant states for that finding, the most decisive first (for example, for an inflammatory process: its abscess, its perforation and its obstruction; for a mass: its spread to the nearest structures and to the liver), each a separate check.
 
 BOTH SECTIONS:
 - MODALITY: only what this exact scan type and protocol can show; never an enhancement, phase or sequence the scan lacks.
@@ -130,12 +131,31 @@ def user_prompt(scan_type: str, history: str, regions: list[str], dictation: str
     return s
 
 
-async def _write(scan_type, history, regions, dictation, not_assessable, removed, referrals) -> RawOutput:
+FALLBACK_TIMEOUT_S = 20.0
+
+
+async def _call(model: str, prompt: str, review: bool, timeout: float) -> RawOutput:
     r = await asyncio.wait_for(_run_agent_with_model(
-        model_name=QWEN, output_type=RawOutput, system_prompt=WRITER_SYS,
-        user_prompt=user_prompt(scan_type, history, regions, dictation, not_assessable, removed, referrals), api_key="",
-        model_settings={"temperature": 0, "max_tokens": 3000, "reasoning_effort": "none"}), WRITER_TIMEOUT_S)
+        model_name=model, output_type=RawOutput, system_prompt=WRITER_SYS, user_prompt=prompt, api_key="",
+        model_settings={"temperature": 0, "max_tokens": 6000 if review else 3000,
+                        "reasoning_effort": "low" if review else "none"}), timeout)
     return r.output
+
+
+async def _write(scan_type, history, regions, dictation, not_assessable, removed, referrals,
+                 review: bool = False) -> RawOutput:
+    """review: the end-of-dictation call over the whole dictation, with brief reasoning (ranking checks and seeing
+    what the dictation already implies); the setup call (no dictation) stays fast. A failed review is retried once on
+    gpt-oss-120b (Groq, reasoning low): a different provider, so the radiologist still gets checks."""
+    prompt = user_prompt(scan_type, history, regions, dictation, not_assessable, removed, referrals)
+    try:
+        return await _call(QWEN, prompt, review, REVIEW_TIMEOUT_S if review else WRITER_TIMEOUT_S)
+    except Exception as e:
+        if not review:
+            raise
+        logger.warning("[stack.items.review] %s: %s; fallback %s", type(e).__name__, str(e)[:200],
+                       MODEL_CONFIG["STACK_REVIEW_FALLBACK"])
+        return await _call(MODEL_CONFIG["STACK_REVIEW_FALLBACK"], prompt, True, FALLBACK_TIMEOUT_S)
 
 
 def _key(scan_type, history, regions, abnormal, referrals) -> tuple:
@@ -215,7 +235,9 @@ async def _check(rows: list[Item], dictation: str, removed: list[str], tapped: l
         mine = fates[k:k + n]
         k += n
         r.sentences = [s for s, f in zip(r.sentences, mine) if f == "keep"]
-        if n and not r.sentences and "answered" in mine:
+        # The dictation answered the row, either way: stated, or reported the opposite (a dictated finding answers
+        # "no X?"). The row folds; it never silently vanishes (hand read 2026-10-12).
+        if n and not r.sentences and ("answered" in mine or "contradicted" in mine):
             r.answered = True
     return contradicted
 
@@ -242,20 +264,21 @@ def _limit(rows: list[Item]) -> tuple[list[Item], list[Item]]:
 
 async def update(scan_type: str, history: str, regions: list[str], dictation: str, abnormal: list[str],
                  not_assessable: str = "", removed: list[str] | None = None,
-                 tapped: list[str] | None = None, referrals: list[Referral] | None = None) -> ItemsResult:
+                 tapped: list[str] | None = None, referrals: list[Referral] | None = None,
+                 review: bool = False) -> ItemsResult:
     """The open rows for this dictation. referrals: the session's fixed referral rows (None on the first call, whose
     referral_questions then become them). The writer's reply is cached per (scan, history, abnormal sentences,
     regions, referral questions); the splitter and the checks always run on the current dictation and removals."""
     t0 = time.perf_counter()
     removed = [r for r in (removed or []) if r.strip()]
-    key = _key(scan_type, history, regions, abnormal, referrals)
+    key = (*_key(scan_type, history, regions, abnormal, referrals), review)
     cached = key in _CACHE
     if cached:
         _CACHE.move_to_end(key)
         raw = _CACHE[key]
     else:
         try:
-            raw = await _write(scan_type, history, regions, dictation, not_assessable, removed, referrals)
+            raw = await _write(scan_type, history, regions, dictation, not_assessable, removed, referrals, review)
         except Exception as e:  # fail open: no rows
             logger.warning("[stack.items] %s: %s", type(e).__name__, str(e)[:200])
             return ItemsResult(items=[], ms=int((time.perf_counter() - t0) * 1000), error=f"{type(e).__name__}: {e}")

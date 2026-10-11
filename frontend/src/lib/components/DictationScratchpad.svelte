@@ -255,6 +255,15 @@
 	let dictatedRows: Record<string, StackItem> = {}; // answered by the dictation (for the gate record)
 	let foldedRows: string[] = []; // answered rows already folded away: never shown again
 	let removedSentences: string[] = []; // never stated; sent to Generate as DO NOT ASSERT
+	// Rows skipped (finding checks) or marked not assessed (referral rows): folded, nothing stated, logged.
+	let skippedRows: Record<string, { item: StackItem; how: 'skip' | 'not_assessed' }> = {};
+	// The end-of-dictation review (hand read 2026-10-12): finding checks are written once dictation stops, over the
+	// whole dictation, and replace the previous set; nothing accumulates. The text the last review covered:
+	let reviewedFor = '';
+	let reviewing = false;
+	let reviewFailed = false; // the last review failed: shown at the gate and logged, never silent
+	let reviewTimer: ReturnType<typeof setTimeout> | null = null;
+	const REVIEW_IDLE_MS = 1500;
 	// The last /assumed answer and the state it was computed for (review 2026-10-12): a region assumes only what was
 	// checked for its current state, and Confirm waits while the answer is behind the dictation.
 	let assumedSnap: AssumedSnap | null = null;
@@ -282,7 +291,10 @@
 	$: regionView = regionStates(stackUnits, pillRegions);
 	// Tapped rows stay on screen as the radiologist's answers even after the writer stops returning them.
 	$: viewItems = [...stackItems, ...Object.values(tappedRows).filter((t) => !stackItems.some((i) => i.id === t.id))];
-	$: rowsOpen = openCount(viewItems, Object.keys(tappedRows), removedSentences);
+	$: rowsOpen = openCount(viewItems, Object.keys(tappedRows), removedSentences, Object.keys(skippedRows));
+	// Confirm waits for the review of what is on screen; a failed review counts as done (nothing new is asked).
+	$: reviewBehind = stackView && !!verbatimNow.trim() && reviewedFor !== verbatimNow;
+	$: if (stackView && !isRecording && reviewBehind) scheduleReview(verbatimNow);
 	// What Confirm takes ownership of: the region normals still shown (abnormal regions' checked sentences,
 	// untouched regions' sheet sentences), minus anything removed.
 	$: confirmedAssumed = assumedFrom(assumedSnap, regionView.abnormal, regionView.assumedNormal, removedSentences);
@@ -300,7 +312,7 @@
 				: ({ kind: 'none', failed: draftFailed } as const);
 	// The gate re-arms on any change to what it confirms (spec §5).
 	$: gateKey = [verbatimNow, findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
-		regionView.remainder.join('|'), String(rowsOpen), Object.keys(tappedRows).join('|'), removedSentences.join('|'),
+		regionView.remainder.join('|'), String(rowsOpen), Object.keys(tappedRows).join('|'), Object.keys(skippedRows).join('|'), removedSentences.join('|'),
 		JSON.stringify(confirmedAssumed)].join('\u0003');
 	$: if (stackGate && stackGate.units_hash !== gateKey) {
 		stackGate = null;
@@ -1443,7 +1455,7 @@
 			if (verbatimNow === text) {
 				stackUnits = res.units;
 				onStackPills(res.pills);
-				scheduleItems();
+				void refreshAssumed(); // the checks wait for the end of dictation; the assumed normals follow the text
 				// The grouper failed or left sentences unplaced (they are kept, as said): retry a few times.
 				if ((res.error || res.units.some((u) => u.group === null && !u.heading)) && groupFailures < GROUP_RETRIES) {
 					groupFailures += 1;
@@ -1472,27 +1484,42 @@
 		stackManualMoves += 1;
 	}
 	// ── Scratchpad checklist ─────────────────────────────────────────────────────────────────────
+	/** The setup call: the referral rows, from the history alone, before anything is dictated. */
 	function scheduleItems(delay = ITEMS_DEBOUNCE_MS): void {
 		if (!hybridStack || !stackRegions.length) return;
 		if (itemsTimer) clearTimeout(itemsTimer);
 		itemsTimer = setTimeout(() => {
 			itemsTimer = null;
-			void refreshItems();
+			void refreshItems(false);
 			void refreshAssumed();
 		}, delay);
+	}
+	/** The end-of-dictation review: once the text has been still for a moment and the mic is off. */
+	function scheduleReview(text: string): void {
+		if (reviewTimer) clearTimeout(reviewTimer);
+		reviewTimer = setTimeout(() => {
+			reviewTimer = null;
+			if (!isRecording && verbatimNow === text && reviewedFor !== text) void refreshItems(true);
+		}, REVIEW_IDLE_MS);
 	}
 	/** The rows for this dictation (spec §4.2). A row the dictation answers shows green, then folds away. */
 	const normS = (x: string) => x.trim().toLowerCase().replace(/\.$/, '').replace(/\s+/g, ' ');
 	/** The rows for this dictation (spec §4.2). A row the dictation answers shows green, then folds away. A failed or
 	 *  shorter writer reply never clears a row still waiting for the radiologist (review 2026-10-12): it stays until
 	 *  answered, tapped or removed, so the gate cannot unlock by omission. */
-	async function refreshItems(): Promise<void> {
+	async function refreshItems(review: boolean): Promise<void> {
 		const seq = ++itemsSeq;
+		const text = review ? verbatimNow : '';
+		if (review) reviewing = true;
 		try {
 			const res = await postItems($token, { scan_type: scanType, clinical_history: clinicalHistory, regions: pillRegions,
-				dictation: verbatimNow, abnormal: abnormalAll(stackUnits), not_assessable: stackNotAssessable, removed: removedSentences,
-				tapped: Object.values(tappedRows).flatMap((r) => r.sentences), referrals: fixedReferrals });
+				dictation: text, abnormal: abnormalAll(stackUnits), not_assessable: stackNotAssessable, removed: removedSentences,
+				tapped: Object.values(tappedRows).flatMap((r) => r.sentences), referrals: fixedReferrals, review });
 			if (seq !== itemsSeq) return; // superseded while in flight
+			if (review) {
+				reviewedFor = text;
+				reviewFailed = !!res.error;
+			}
 			if (res.error) return; // the writer failed: what is on screen stays
 			if (fixedReferrals === null)
 				fixedReferrals = res.items.filter((i) => i.kind === 'referral').map((i) => ({ question: i.question, region: i.region, sentences: i.sentences }));
@@ -1512,17 +1539,26 @@
 					stackItems = stackItems.filter((x) => x.id !== it.id);
 				}, FOLD_MS);
 			}
-			const fresh = res.items.filter((it) => !foldedRows.includes(it.id));
-			const waiting = stackItems.filter((x) => !x.answered && !tappedRows[x.id] && !foldedRows.includes(x.id)
-				&& !fresh.some((f) => f.id === x.id) && rowSentences(x, removedSentences).length > 0);
-			stackItems = [...fresh, ...waiting];
+			// Each reply replaces the set on screen (tapped answers are kept separately): nothing accumulates.
+			stackItems = res.items.filter((it) => !foldedRows.includes(it.id));
 			stackCapped = res.capped;
 			shownSentences = [...new Set([...shownSentences, ...stackItems.flatMap((i) => i.sentences), ...res.capped.flatMap((i) => i.sentences)])];
 			stackLatency.items = Math.max(stackLatency.items ?? 0, res.ms);
 			void refreshAssumed(); // a row owns its check: the normals saying the same step aside
 		} catch {
-			/* fail open: what is on screen stays */
+			if (seq === itemsSeq && review) {
+				reviewedFor = text; // fail open: nothing new is asked; Confirm is not held, but the gate says so
+				reviewFailed = true;
+			}
+		} finally {
+			if (seq === itemsSeq) reviewing = false;
 		}
+	}
+	/** Skip a finding check, or mark a referral question not assessed: folded, nothing stated, logged. */
+	function skipRow(id: string): void {
+		const it = stackItems.find((x) => x.id === id);
+		if (!it || tappedRows[id]) return;
+		skippedRows = { ...skippedRows, [id]: { item: it, how: it.kind === 'referral' ? 'not_assessed' : 'skip' } };
 	}
 	/** Every row sentence ever shown, capped ones included: a region normal saying the same is never assumed. The
 	 *  current rows and the tapped answers go first (the server keeps the first 100). */
@@ -1589,7 +1625,7 @@
 	}
 	function isOpenRow(id: string): boolean {
 		const it = stackItems.find((x) => x.id === id);
-		return !!it && !it.answered && !tappedRows[id] && rowSentences(it, removedSentences).length > 0;
+		return !!it && !it.answered && !tappedRows[id] && !skippedRows[id] && rowSentences(it, removedSentences).length > 0;
 	}
 	/** A tap (or voice "answer …"): the row's listed sentences become the radiologist's answer. */
 	function answerRow(id: string): void {
@@ -1602,7 +1638,7 @@
 		const t = sentence.trim();
 		if (!t || removedSentences.some((r) => r.toLowerCase() === t.toLowerCase())) return;
 		removedSentences = [...removedSentences, t];
-		scheduleItems(0);
+		void refreshAssumed(); // rows filter removed sentences on screen; no new writer call
 	}
 	/** The open rows as the voice command sees them: the question and the sentences "accept" would add. */
 	function openItemsForVoice(): { id: string; text: string }[] {
@@ -1690,11 +1726,14 @@
 				...Object.values(tappedRows).map((r): GateItem => ({ id: r.id, kind: r.kind, region: r.region, question: r.question,
 					sentences: r.sentences.filter((x) => !removedSentences.some((g) => normS(g) === normS(x))), answered_by: 'tap' })),
 				...Object.values(dictatedRows).filter((r) => !tappedRows[r.id])
-					.map((r): GateItem => ({ id: r.id, kind: r.kind, region: r.region, question: r.question, sentences: r.sentences, answered_by: 'dictation' }))
+					.map((r): GateItem => ({ id: r.id, kind: r.kind, region: r.region, question: r.question, sentences: r.sentences, answered_by: 'dictation' })),
+				...Object.values(skippedRows).filter(({ item }) => !tappedRows[item.id])
+					.map(({ item, how }): GateItem => ({ id: item.id, kind: item.kind, region: item.region, question: item.question, sentences: [], answered_by: how }))
 			],
 			assumed: confirmedAssumed,
 			removed: removedSentences,
 			capped: stackCapped.map((c) => ({ region: c.region, question: c.question })),
+			review_failed: reviewFailed,
 			units_hash: gateKey
 		};
 		stackGate = gate;
@@ -1761,6 +1800,9 @@
 		foldedRows = [];
 		shownSentences = [];
 		fixedReferrals = null;
+		skippedRows = {};
+		reviewedFor = '';
+		reviewFailed = false;
 		removedSentences = [];
 		assumedSnap = null;
 		scheduleItems(0);
@@ -2157,6 +2199,7 @@
 		if (closeTimer) clearTimeout(closeTimer);
 		if (itemsTimer) clearTimeout(itemsTimer);
 		if (assumedTimer) clearTimeout(assumedTimer);
+		if (reviewTimer) clearTimeout(reviewTimer);
 		void sendStackLog();
 		if (editor) {
 			editor.destroy();
@@ -2335,9 +2378,10 @@
 							ghost={ghostNow} items={viewItems} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
 							conclusion={conclusionView} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
+							skipped={Object.keys(skippedRows)} reviewing={reviewing} reviewWaiting={reviewBehind && isRecording} {reviewFailed} onSkip={skipRow}
 							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
 							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
-							syncing={assumedBehind || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
+							syncing={assumedBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
 					{/if}
 				</div>
 

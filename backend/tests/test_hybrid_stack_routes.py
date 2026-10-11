@@ -105,7 +105,7 @@ def test_items_assumed_and_draft_routes(authed, monkeypatch):
     from rapid_reports_ai.hybrid_stack.items import Item, ItemsResult
     from rapid_reports_ai.hybrid_stack.normals import AssumedResult
 
-    async def items(scan_type, history, regions, dictation, abnormal, not_assessable, removed, tapped, referrals):
+    async def items(scan_type, history, regions, dictation, abnormal, not_assessable, removed, tapped, referrals, review):
         assert regions == ["Bowel"] and abnormal == ["Diverticulitis."] and removed == ["No fistula."]
         return ItemsResult(items=[Item(id="a", kind="finding", region="Bowel", question="Abscess?",
                                        sentences=["No pericolic abscess."])])

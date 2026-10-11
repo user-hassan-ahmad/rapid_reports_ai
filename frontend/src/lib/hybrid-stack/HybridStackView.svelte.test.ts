@@ -115,15 +115,20 @@ describe('HybridStackView v2', () => {
 		expect(onAppend).toHaveBeenCalledWith('The spleen is enlarged at 15 cm.');
 	});
 
-	it('the gate bar counts open questions and assumed normals; Confirm waits for every question', async () => {
-		const props = base();
+	it('the gate bar: referral questions block Confirm; finding checks never do, and Skip folds one', async () => {
+		const props = { ...base(), onSkip: vi.fn() };
 		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true }), u(1, 'Simple cyst.', 'Conclusion')];
-		const r = render(HybridStackView, { ...props, units, conclusion: { kind: 'dictated' }, items: [row('a', ['No biliary dilatation.'])], namedNormals: true });
-		await expect.element(page.getByText('1 question open')).toBeInTheDocument();
+		const ref = row('r', ['The appendix is normal.'], { kind: 'referral', region: '', question: 'Appendix normal?' });
+		const check = row('a', ['No biliary dilatation.']);
+		const r = render(HybridStackView, { ...props, units, conclusion: { kind: 'dictated' }, items: [ref, check], namedNormals: true });
+		await expect.element(page.getByText('1 referral question open')).toBeInTheDocument();
+		await expect.element(page.getByText('1 check unanswered (not stated)')).toBeInTheDocument();
 		await expect.element(page.getByText('2 regions assumed normal (no sheet yet)')).toBeInTheDocument();   // by name (no sheet)
 		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeDisabled();
-		r.rerender({ ...props, units, conclusion: { kind: 'dictated' }, items: [row('a', ['No biliary dilatation.'])], tapped: ['a'], namedNormals: true });
-		await expect.element(page.getByText('0 questions open')).toBeInTheDocument();
+		await page.getByRole('button', { name: 'Skip' }).click();
+		expect(props.onSkip).toHaveBeenCalledWith('a');
+		r.rerender({ ...props, units, conclusion: { kind: 'dictated' }, items: [ref, check], skipped: ['r'], namedNormals: true });
+		await expect.element(page.getByText('0 referral questions open')).toBeInTheDocument();   // "Not assessed"
 		await page.getByRole('button', { name: 'Confirm' }).click();
 		expect(props.onConfirm).toHaveBeenCalled();
 	});
@@ -150,5 +155,10 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByLabelText('Conclusion draft')).toHaveValue('Simple hepatic cyst.');
 		await page.getByText('Findings changed — refresh?').click();
 		expect(onDraftRefresh).toHaveBeenCalled();
+	});
+
+	it('a review that failed on both models is shown at the gate, never silent', async () => {
+		render(HybridStackView, { ...base(), units: [u(0, 'A liver cyst.', 'Liver', { abnormal: true })], reviewFailed: true });
+		await expect.element(page.getByText('checks unavailable: review the scan as usual')).toBeInTheDocument();
 	});
 });

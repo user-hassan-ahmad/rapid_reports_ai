@@ -20,7 +20,7 @@ DRAFT_SYSTEM = """You draft the conclusion of a radiology report from the radiol
 - Answer the clinical question when the history asks one.
 - Use only what the findings state. Never add a finding, measurement, grade or certainty the findings do not give; keep their hedges.
 - Do not list absent findings or normal structures. At most one negative, only when it answers the clinical question.
-- A recommendation only if the findings warrant one, as one short sentence (further imaging, specialist referral or tissue sampling).
+- No recommendation, urgency or management advice ("warranting urgent intervention", "surgical review advised") unless the findings themselves state one: the radiologist adds it.
 - British English, report style, no heading, no bullet points, no preamble."""
 
 DRAFT_USER = """Scan type: {scan_type}

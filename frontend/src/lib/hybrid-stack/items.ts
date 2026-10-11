@@ -17,9 +17,18 @@ export function rowSentences(item: StackItem, removed: string[]): string[] {
 	return item.sentences.filter((s) => !gone.has(norm(s)));
 }
 
-/** Rows still waiting for the radiologist: the gate stays locked while any is open. */
-export function openCount(items: StackItem[], tapped: string[], removed: string[]): number {
-	return items.filter((i) => !i.answered && !tapped.includes(i.id) && rowSentences(i, removed).length > 0).length;
+const waiting = (i: StackItem, tapped: string[], removed: string[], skipped: string[]) =>
+	!i.answered && !tapped.includes(i.id) && !skipped.includes(i.id) && rowSentences(i, removed).length > 0;
+
+/** Referral rows still waiting: the gate stays locked while any is open (the clinical question is always answered:
+ *  ✓, dictated, or "Not assessed"). */
+export function openCount(items: StackItem[], tapped: string[], removed: string[], skipped: string[] = []): number {
+	return items.filter((i) => i.kind === 'referral' && waiting(i, tapped, removed, skipped)).length;
+}
+
+/** Finding checks left unanswered: they never block; nothing is stated for them. */
+export function unansweredChecks(items: StackItem[], tapped: string[], removed: string[], skipped: string[] = []): number {
+	return items.filter((i) => i.kind === 'finding' && waiting(i, tapped, removed, skipped)).length;
 }
 
 export function quietLine(sentences: string[], max = QUIET_MAX): { shown: string[]; more: number } {

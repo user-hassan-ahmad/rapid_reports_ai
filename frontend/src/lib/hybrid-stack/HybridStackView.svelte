@@ -7,7 +7,7 @@
 	import { flip } from 'svelte/animate';
 	import { buildView } from './stackState';
 	import { CONCLUSION, GENERAL, OTHER, TECHNIQUE, regionStates, showsGroup } from './regionState';
-	import { answerLabel, openCount, quietLine, rowSentences } from './items';
+	import { answerLabel, openCount, quietLine, rowSentences, unansweredChecks } from './items';
 	import type { StackItem, StackUnit, ViewRow } from './types';
 
 	export type ConclusionState =
@@ -27,6 +27,10 @@
 		removed = [],
 		assumed = {},
 		namedNormals = false,
+		skipped = [],
+		reviewing = false,
+		reviewWaiting = false,
+		reviewFailed = false,
 		conclusion = { kind: 'none' },
 		gateConfirmed = false,
 		deleteRegion = null,
@@ -37,6 +41,7 @@
 		onAnswer = () => {},
 		onRemoveSentence = () => {},
 		onDictateInto = () => {},
+		onSkip = () => {},
 		onDraftEdit = () => {},
 		onDraftRefresh = () => {},
 		onConfirm,
@@ -60,6 +65,13 @@
 		assumed?: Record<string, string[]>;
 		/** No sheet this session: untouched regions are confirmed by name (v2). With a sheet, only sentences are. */
 		namedNormals?: boolean;
+		/** Rows skipped (finding checks) or marked not assessed (referral rows): folded, nothing stated. */
+		skipped?: string[];
+		/** The end-of-dictation review is running / will run when dictation stops. */
+		reviewing?: boolean;
+		reviewWaiting?: boolean;
+		/** The review failed: no finding checks this time, and the radiologist is told. */
+		reviewFailed?: boolean;
 		conclusion?: ConclusionState;
 		gateConfirmed?: boolean;
 		/** A voice "delete the X line": the region whose lines wait for a Delete click (null: none). */
@@ -76,6 +88,8 @@
 		onRemoveSentence?: (sentence: string) => void;
 		/** "Dictate" on a row: the next words go under that region. */
 		onDictateInto?: (region: string) => void;
+		/** Skip a finding check, or mark a referral question not assessed: folded, nothing stated. */
+		onSkip?: (id: string) => void;
 		onDraftEdit?: (text: string) => void;
 		onDraftRefresh?: () => void;
 		onConfirm: () => void;
@@ -112,7 +126,8 @@
 	const rowsFor = (region: string) => items.filter((i) => i.kind === 'finding' && i.region === region);
 	// A finding row whose region has no card (the writer named a region outside the scratchpad) shows up top.
 	const looseRows = $derived(items.filter((i) => i.kind === 'finding' && !shownNames.has(i.region)));
-	const openRows = $derived(openCount(items, tapped, removed));
+	const openRows = $derived(openCount(items, tapped, removed, skipped));
+	const unanswered = $derived(unansweredChecks(items, tapped, removed, skipped));
 	const keptAssumed = (region: string) => {
 		const gone = new Set(removed.map((r) => r.trim().toLowerCase().replace(/\.$/, '')));
 		return (assumed[region] ?? []).filter((s) => !gone.has(s.trim().toLowerCase().replace(/\.$/, '')));
@@ -207,7 +222,9 @@
 	<!-- One compact line (hand read 2026-10-12): tag, question, its sentences inline with ×, then the answer. The
 	     reason sits behind ⓘ. A tap adds exactly the sentences shown. -->
 	{@const listed = rowSentences(it, removed)}
-	{#if tapped.includes(it.id)}
+	{#if skipped.includes(it.id)}
+		<!-- skipped or not assessed: folded, nothing stated -->
+	{:else if tapped.includes(it.id)}
 		<div class="flex flex-wrap items-baseline gap-x-2 rounded-md border-l-2 border-emerald-500/60 bg-emerald-500/[0.06] px-2 py-1 text-sm" data-row="tapped">
 			{#if label}<span class="text-[10px] uppercase tracking-wide text-emerald-300/70">{label}</span>{/if}
 			<span class="text-emerald-200">✓ {listed.join(' ')}</span>
@@ -238,6 +255,9 @@
 						newField?.focus();
 						onDictateInto(it.region);
 					}}>Dictate</button>
+				<button type="button" class="rounded-md px-2 py-0.5 text-xs text-gray-500 hover:text-gray-300"
+					title={it.kind === 'referral' ? 'The scan cannot answer it: nothing is stated' : 'Not relevant: nothing is stated'}
+					onclick={() => onSkip(it.id)}>{it.kind === 'referral' ? 'Not assessed' : 'Skip'}</button>
 			</span>
 		</div>
 	{/if}
@@ -456,7 +476,11 @@
 	<!-- Gate bar: the open questions and what will be assumed; Confirm takes ownership of both -->
 	<section aria-label="Confirm" class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-2.5 py-2">
 		<p class="flex flex-wrap gap-2 text-xs">
-			<span class="rounded px-1.5 py-0.5 {openRows ? 'bg-amber-500/15 text-amber-200' : 'bg-white/5 text-gray-500'}">{openRows} {openRows === 1 ? 'question' : 'questions'} open</span>
+			<span class="rounded px-1.5 py-0.5 {openRows ? 'bg-amber-500/15 text-amber-200' : 'bg-white/5 text-gray-500'}">{openRows} referral {openRows === 1 ? 'question' : 'questions'} open</span>
+			{#if reviewing}<span class="rounded bg-white/5 px-1.5 py-0.5 text-gray-400">checking the findings…</span>
+			{:else if reviewFailed}<span class="rounded bg-rose-500/15 px-1.5 py-0.5 text-rose-200" data-review="failed">checks unavailable: review the scan as usual</span>
+			{:else if reviewWaiting}<span class="rounded bg-white/5 px-1.5 py-0.5 text-gray-500">checks appear when you stop dictating</span>
+			{:else if unanswered}<span class="rounded bg-white/5 px-1.5 py-0.5 text-gray-400">{unanswered} {unanswered === 1 ? 'check' : 'checks'} unanswered (not stated)</span>{/if}
 			<span class="rounded bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300/90"
 				>{gateConfirmed ? 'assumptions confirmed' : namedNormals ? `${assumedCount} regions assumed normal (no sheet yet)` : `${assumedCount} assumed normal`}</span>
 			{#if !hasConclusion}<span class="rounded bg-white/5 px-1.5 py-0.5 text-gray-400">no conclusion yet</span>{/if}

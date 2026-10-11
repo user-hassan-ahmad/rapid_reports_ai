@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abnormalAll, answerLabel, assumedFrom, openCount, quietLine, rowSentences } from './items';
+import { abnormalAll, answerLabel, assumedFrom, openCount, quietLine, rowSentences, unansweredChecks } from './items';
 import type { StackItem, StackUnit } from './types';
 
 const item = (id: string, sentences: string[], extra: Partial<StackItem> = {}): StackItem => ({
@@ -14,9 +14,12 @@ describe('checklist rows', () => {
 	it('a row lists only the sentences the radiologist has not removed', () => {
 		expect(rowSentences(item('a', ['No torsion.', 'No rupture.']), ['no rupture'])).toEqual(['No torsion.']);
 	});
-	it('counts open rows: not answered by the dictation, not tapped, with sentences left', () => {
-		const items = [item('a', ['x.']), item('b', [], { answered: true }), item('c', ['y.']), item('d', ['z.'])];
-		expect(openCount(items, ['c'], ['z.'])).toBe(1);
+	it('only referral rows block; finding checks left unanswered are counted, never blocking', () => {
+		const ref = (id: string, s: string[], x: Partial<StackItem> = {}) => item(id, s, { kind: 'referral', ...x });
+		const items = [ref('a', ['x.']), ref('b', [], { answered: true }), ref('c', ['y.']), ref('d', ['z.']), ref('e', ['w.']),
+			item('f', ['v.']), item('g', ['u.'])];
+		expect(openCount(items, ['c'], ['z.'], ['e'])).toBe(1);
+		expect(unansweredChecks(items, [], [], ['g'])).toBe(1);
 	});
 	it('caps the quiet line at three with a count of the rest', () => {
 		expect(quietLine(['a', 'b', 'c', 'd', 'e'])).toEqual({ shown: ['a', 'b', 'c'], more: 2 });

@@ -383,10 +383,13 @@ async def arm_p2(c):
     fixed = [IT.Referral(question=i.question, region=i.region, sentences=i.sentences)
              for i in first.items if i.kind == "referral"]
     abnormal = [x for xs in c["regions"].values() for x in xs]
-    res = await IT.update(c["scan_type"], c["history"], list(c["regions"]), c["dictation"], abnormal, referrals=fixed)
+    t1 = time.perf_counter()
+    res = await IT.update(c["scan_type"], c["history"], list(c["regions"]), c["dictation"], abnormal, referrals=fixed,
+                          review=os.environ.get("LAB_REVIEW") == "1")
+    review_ms = int((time.perf_counter() - t1) * 1000)
     rows = [{"region": i.region, "question": i.question, "src": i.kind, "answers": i.sentences, "why": i.why}
             for i in res.items if not i.answered]
-    return {"P2": {"assumed": [], "open": rows, "dropped": [], "answered": [],
+    return {"P2": {"review_ms": review_ms, "folded": [i.question for i in res.items if i.answered],"assumed": [], "open": rows, "dropped": [], "answered": [],
                    "capped": [{"question": i.question, "answers": i.sentences} for i in res.capped],
                    "ms": int((time.perf_counter() - t0) * 1000), "error": res.error or first.error,
                    "referrals": [f.model_dump() for f in fixed]}}
