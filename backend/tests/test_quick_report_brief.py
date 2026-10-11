@@ -645,3 +645,11 @@ def test_stack_fallback_never_raises():
 def test_stack_brief_always_guards_against_unconfirmed_normals():
     b = qb.stack_fallback("## Structural Pattern\n- **Sections:** FINDINGS\n", "", [])
     assert "state only what the findings state" in b.text and "even for a region in the sweep order" in b.text
+
+
+def test_stack_brief_keeps_the_report_flow_and_says_labels_are_for_tracing():
+    slim = ("## Structural Pattern\n- **Sections:** FINDINGS, IMPRESSION\n\n## Report Flow\n"
+            "- **Paragraphs:** Paragraph 1: Liver, Gallbladder and bile ducts\n")
+    b = qb.stack_fallback(slim, "", [])
+    assert "Paragraph 1: Liver, Gallbladder and bile ducts" in b.text
+    assert "labelled by region only so each can be traced" in b.text and "never in the input's order" in b.text

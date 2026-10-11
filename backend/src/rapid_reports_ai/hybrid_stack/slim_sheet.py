@@ -20,7 +20,7 @@ from .schemas import OTHER, Region
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "slim-2"   # slim-2: no sex-specific organs in region normals (hand read 2026-10-12)
+PROMPT_VERSION = "slim-3"   # slim-2: no sex-specific organs in region normals; slim-3: Report Flow (house prose flow)
 URL = "https://api.cerebras.ai/v1/chat/completions"
 TIMEOUT_S = 120.0   # cached per family: the first case of a new scan type waits, nobody after
 
@@ -47,6 +47,13 @@ Write Markdown with exactly these sections, in this order:
 - **Sections:** the report sections in order
 - **Sweep order:** the order regions are reported in
 - **Macro-structure:** FLAT or HEADED
+
+## Report Flow
+How a consultant's findings read as prose in this kind of report, whatever order the radiologist dictated in. It is about flow, never a clinical statement. The REGIONS are only the scratchpad's sorting: never one paragraph per region.
+- **Macro-structure:** FLAT (continuous prose paragraphs, no region headings) or HEADED (name the headings), as this kind of report is usually written in UK practice.
+- **Lead paragraph:** the abnormal findings come first, in one paragraph opening the findings, the finding that answers the clinical question first, each with its related statements; other abnormal findings follow in the next paragraph.
+- **Normal paragraphs:** after the abnormal findings, the remaining regions grouped into 2-4 paragraphs as a consultant groups them (by system), one bullet per paragraph listing the REGIONS it covers in order: "Paragraph: <Region>, <Region>, ...".
+- **Joining:** how normal statements are joined (for example several normal structures named in one sentence in sweep order).
 
 ## Region Normals
 One bullet per region in REGIONS, using the region name exactly: - **<Region>:** then 1-6 quoted sentences, each the statement a consultant writes when that structure is normal on this scan. One structure or feature per sentence; final report form; British English; no measurements or numbers; nothing this scan cannot show; never a statement about a disease or the clinical question. Never a sentence about an organ only one sex has (the uterus, ovaries, adnexa, cervix, prostate, seminal vesicles, testes): the sheet is shared by every patient, so those reach the report only when dictated. A region with nothing left gets no bullet.

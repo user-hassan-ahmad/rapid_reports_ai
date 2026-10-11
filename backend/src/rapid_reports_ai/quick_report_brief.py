@@ -280,6 +280,14 @@ def stack_fallback(sheet: str, conclusion: str, declined: Sequence[str] = ()) ->
     secs.append(Section("Companion Matrix", bullets=[Bullet("Mandatory negatives", [
         "- **Mandatory negatives:** (scratchpad: state only what the findings state — never a normal or negative "
         "statement the findings do not contain, even for a region in the sweep order)"] + guard)]))
+    # The findings block is grouped by scratchpad region so every statement can be traced; the report's order and
+    # paragraphs are the house flow, not that grouping (hand read 2026-10-12: reports mirrored the scratchpad).
+    secs.append(Section("Scratchpad Session", bullets=[Bullet("Content and flow", [
+        "- **Content and flow:** the FINDINGS input is the radiologist's confirmed statements, labelled by region "
+        "only so each can be traced. Write FINDINGS in the paragraphs, order and joining that the Report Flow and "
+        "Structural Pattern set (an abnormal finding leads its paragraph), never in the input's order or under its "
+        "labels unless the Report Flow uses those headings. Every statement in the input appears, with its meaning "
+        "unchanged; statements about the same structure may be joined into one sentence; nothing is added."])]))
     if conclusion.strip():
         secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", [
             "- **Confirmed conclusion (the radiologist's own; write the impression from it in report style, keeping "
