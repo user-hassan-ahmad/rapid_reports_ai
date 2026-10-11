@@ -4,6 +4,7 @@ target region or chip), and whether the dictation already states a chip. Thresho
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 from typing import Any
 
 from ..jev_client import JEV_MODEL, jev_post
@@ -155,3 +156,65 @@ def decide_command(parsed: dict) -> dict:
     if cmd == "delete" and conf >= COMMAND_DELETE_MIN:
         return {"action": "delete", "region": parsed.get("region"), "chip": None}
     return {"action": "dictate", "region": None, "chip": None}
+
+
+# ── Checklist rows (checklist spec §5, wording lab §10.2) ─────────────────────
+REMOVED_MIN = 0.6  # lab 2026-10-11 (40 pairs): 17/20 rewordings caught, 0/20 false
+HEDGED_MIN = 0.3   # a region normal the dictation even half-covers or hedges is never assumed
+
+
+@dataclass(frozen=True)
+class RowCheck:
+    stated: float
+    contra: float
+    removed: float
+
+
+def removed_key(i: int) -> str:
+    return f"removed_{i}"
+
+
+def removed_question(sentence: str) -> dict[str, Any]:
+    return {"type": "noul", "instructions": (
+        "The STATEMENT says the same thing as one of the REMOVED statements: the same check on the same structure, "
+        f"in any wording. STATEMENT: {sentence}")}
+
+
+async def ask_rows(dictation: str, sentences: list[str], removed: list[str], transport=None) -> list[RowCheck]:
+    """Stated, contradicted and (when the radiologist removed anything) the same as a removed sentence, per
+    sentence, in one Jev call."""
+    if not sentences:
+        return []
+    qs: dict[str, dict[str, Any]] = {}
+    for i, s in enumerate(sentences):
+        qs[f"stated_{i}"] = stated_question(s)
+        qs[contra_key(i)] = contra_question(s)
+        if removed:
+            qs[removed_key(i)] = removed_question(s)
+    state = f"DICTATION:\n{dictation}"
+    if removed:
+        state += "\n\nREMOVED BY THE RADIOLOGIST:\n" + "\n".join(f"- {r}" for r in removed)
+    r = await jev_post({"model": JEV_MODEL, "state": state, "questions": qs},
+                       os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
+    r.raise_for_status()
+    ans = r.json().get("answers") or {}
+    score = lambda k: float((ans.get(k) or {}).get("noul") or 0.0)
+    return [RowCheck(score(f"stated_{i}"), score(contra_key(i)), score(removed_key(i))) for i in range(len(sentences))]
+
+
+def row_fate(c: RowCheck) -> str:
+    """A row sentence: 'answered' (the dictation says it), 'contradicted', 'removed' or 'keep' (stays in the row,
+    where the radiologist answers it)."""
+    if c.removed >= REMOVED_MIN:
+        return "removed"
+    if c.stated >= STATED_MIN:
+        return "answered"
+    if c.contra >= CONTRA_MIN:
+        return "contradicted"
+    return "keep"
+
+
+def normal_assumed(c: RowCheck) -> bool:
+    """A region normal of an abnormal region is assumed only when the dictation neither covers, hedges nor
+    contradicts it and the radiologist has not removed it."""
+    return c.stated < HEDGED_MIN and c.contra < HEDGED_MIN and c.removed < REMOVED_MIN
