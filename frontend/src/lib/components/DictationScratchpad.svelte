@@ -1528,8 +1528,10 @@
 		removedSentences = [...removedSentences, t];
 		scheduleItems(0);
 	}
-	function openItemsForVoice(): { id: string; question: string }[] {
-		return stackItems.filter((i) => isOpenRow(i.id)).map((i) => ({ id: i.id, question: i.question }));
+	/** The open rows as the voice command sees them: the question and the sentences "accept" would add. */
+	function openItemsForVoice(): { id: string; text: string }[] {
+		return stackItems.filter((i) => isOpenRow(i.id))
+			.map((i) => ({ id: i.id, text: `${i.question} ${rowSentences(i, removedSentences).join(' ')}` }));
 	}
 	/** A line edited in the view: exactly that sentence (or part) changes in the verbatim text. */
 	function stackEditLine(id: number, part: number | null, text: string): void {

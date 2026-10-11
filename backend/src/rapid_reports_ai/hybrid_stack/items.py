@@ -118,9 +118,9 @@ async def _write(scan_type, history, regions, dictation, not_assessable, removed
     return r.output.items
 
 
-def _key(scan_type, history, regions, abnormal, removed) -> tuple:
-    return (scan_key(scan_type), _norm(history), tuple(_norm(a) for a in abnormal if a.strip()),
-            tuple(regions), tuple(sorted(_norm(r) for r in removed)))
+def _key(scan_type, history, regions, abnormal) -> tuple:
+    """Removed sentences are not in the key: Jev filters them on every update, so a × costs no new writer call."""
+    return scan_key(scan_type), _norm(history), tuple(_norm(a) for a in abnormal if a.strip()), tuple(regions)
 
 
 def _id(kind: str, region: str, question: str) -> str:
@@ -211,10 +211,10 @@ def _limit(rows: list[Item]) -> tuple[list[Item], list[Item]]:
 async def update(scan_type: str, history: str, regions: list[str], dictation: str, abnormal: list[str],
                  not_assessable: str = "", removed: list[str] | None = None) -> ItemsResult:
     """The open rows for this dictation. The writer's rows are cached per (scan, history, abnormal sentences,
-    regions, removed); the splitter and the checks always run on the current dictation."""
+    regions); the splitter and the checks always run on the current dictation and removed sentences."""
     t0 = time.perf_counter()
     removed = [r for r in (removed or []) if r.strip()]
-    key = _key(scan_type, history, regions, abnormal, removed)
+    key = _key(scan_type, history, regions, abnormal)
     cached = key in _CACHE
     if cached:
         _CACHE.move_to_end(key)

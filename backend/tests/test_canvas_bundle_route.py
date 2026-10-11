@@ -233,8 +233,9 @@ def test_stack_command_is_asked_beside_the_bundle(authed_client, lab, monkeypatc
         seen.update(scratchpad=scratchpad, regions=regions, chips=chips)
         return {"command": "accept_suggestion", "confidence": 0.7, "region": None, "chip": "No free gas."}
     monkeypatch.setattr(cr, "ask_command", ask)
-    d = authed_client.post("/api/canvas/bundle", json={**BODY, "stack_regions": ["Lungs"], "stack_chips": ["No free gas."]}).json()
-    assert d["stack_command"] == {"action": "accept", "region": None, "chip": "No free gas.",
+    d = authed_client.post("/api/canvas/bundle", json={**BODY, "stack_regions": ["Lungs"],
+                                                       "stack_items": [{"id": "r1", "text": "No free gas."}]}).json()
+    assert d["stack_command"] == {"action": "answer", "region": None, "item": "r1",
                                   "command": "accept_suggestion", "confidence": 0.7}
     assert seen == {"scratchpad": BODY["active"], "regions": ["Lungs"], "chips": ["No free gas."]}
 

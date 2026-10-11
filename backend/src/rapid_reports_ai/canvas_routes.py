@@ -1073,10 +1073,11 @@ class BundleRequest(BaseModel):
     asr_conf: Optional[float] = None
     asr_min_conf: Optional[float] = None
     asr_word_confs: Optional[list[float]] = None
-    # Scratchpad v2 (hybrid stack): the session's region names and the visible check chips. With regions,
-    # the voice command is asked beside the bundle (hybrid_stack.jev_stack; spec 2026-10-11 §7.3).
+    # Scratchpad (hybrid stack): the session's region names and the open checklist rows ({id, text}: the question
+    # and the sentences a tap adds). With regions, the voice command is asked beside the bundle
+    # (hybrid_stack.jev_stack; v2 spec §7.3, checklist spec §9: "accept" answers a named row).
     stack_regions: list[str] = []
-    stack_chips: list[str] = []
+    stack_items: list[dict] = []
 
 
 class BundleLineClose(BaseModel):
@@ -1115,13 +1116,19 @@ class BundleRouteResponse(BaseModel):
 
 async def _stack_command(request: "BundleRequest") -> Optional[dict]:
     """The voice command of this final (v2 §7.3), asked beside the bundle. Fails open: None (dictation)."""
+    rows = [(str(r.get("id", "")), str(r.get("text", ""))) for r in request.stack_items if r.get("id") and r.get("text")]
+    texts = [t for _, t in rows]
     try:
         parsed = await ask_command("\n".join(x for x in (request.active, request.open_line) if x),
-                                   request.latest_utterance, request.stack_regions, request.stack_chips)
+                                   request.latest_utterance, request.stack_regions, texts)
     except Exception as e:
         logger.warning("[canvas.bundle.command] %s: %s", type(e).__name__, e)
         return None
-    return {**decide_command(parsed), "command": parsed.get("command"), "confidence": parsed.get("confidence")}
+    d = decide_command(parsed)
+    item = rows[texts.index(d["chip"])][0] if d["action"] == "accept" and d["chip"] in texts else None
+    action = "answer" if item else ("dictate" if d["action"] == "accept" else d["action"])
+    return {"action": action, "region": d["region"], "item": item,
+            "command": parsed.get("command"), "confidence": parsed.get("confidence")}
 
 
 @canvas_router.post("/bundle", response_model=BundleRouteResponse)
