@@ -38,13 +38,13 @@
 		<button
 			type="button"
 			draggable="true"
-			class="w-full text-left text-sm leading-6 hover:bg-slate-50 rounded px-1 {nested ? 'pl-5 text-slate-600' : ''}"
+			class="w-full text-left text-sm leading-6 rounded px-1 text-gray-200 hover:bg-white/[0.05] {nested ? 'pl-5 text-gray-300' : ''}"
 			ondragstart={(e) => e.dataTransfer?.setData('text/plain', String(r.unitId))}
 			onclick={() => onSelect(r.unitId)}
 		>
-			{#if nested}<span aria-hidden="true" class="text-slate-400">↳ </span>{/if}{r.text}
-			{#if r.structure}<span class="ml-1 text-xs text-slate-400">· {r.structure}</span>{/if}
-			{#if r.pinned}<span class="ml-1 text-xs text-slate-400" title="Placed by you">•</span>{/if}
+			{#if nested}<span aria-hidden="true" class="text-gray-500">↳ </span>{/if}{r.text}
+			{#if r.structure}<span class="ml-1 text-xs text-gray-500">· {r.structure}</span>{/if}
+			{#if r.pinned}<span class="ml-1 text-xs text-gray-500" title="Placed by you">•</span>{/if}
 		</button>
 		{#if r.children.length}
 			<ul>{#each r.children as c (c.unitId + ':' + c.text)}{@render line(c, true)}{/each}</ul>
@@ -55,23 +55,23 @@
 <div class="space-y-3" data-testid="hybrid-stack">
 	{#each view.groups as g (g.name)}
 		<section
-			class="rounded {dragOver === g.name ? 'bg-sky-50' : ''}"
+			class="rounded {dragOver === g.name ? 'bg-emerald-500/10' : ''}"
 			ondragover={(e) => { e.preventDefault(); dragOver = g.name; }}
 			ondragleave={() => (dragOver = null)}
 			ondrop={(e) => drop(e, g.name)}
 			aria-label={g.name}
 		>
-			<h3 class="text-xs font-semibold uppercase tracking-wide text-slate-500">{g.name}</h3>
+			<h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{g.name}</h3>
 			<ul>{#each g.rows as r (r.unitId + ':' + r.text)}{@render line(r, false)}{/each}</ul>
 		</section>
 	{/each}
 	{#if view.unplaced.length || pending.length || ghost}
 		<section class="opacity-50" aria-label="Just dictated">
-			<h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400">Just dictated</h3>
+			<h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Just dictated</h3>
 			<ul>
 				{#each view.unplaced as r (r.unitId)}{@render line(r, false)}{/each}
-				{#each pending as text, k (k + ':' + text)}<li class="text-sm leading-6 px-1">{text}</li>{/each}
-				{#if ghost}<li class="text-sm leading-6 px-1 italic">{ghost}</li>{/if}
+				{#each pending as text, k (k + ':' + text)}<li class="text-sm leading-6 px-1 text-gray-200">{text}</li>{/each}
+				{#if ghost}<li class="text-sm leading-6 px-1 italic text-gray-300">{ghost}</li>{/if}
 			</ul>
 		</section>
 	{/if}
