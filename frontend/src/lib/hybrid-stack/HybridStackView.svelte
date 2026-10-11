@@ -390,15 +390,17 @@
 			<div class="flex flex-wrap gap-1.5">
 				{#each trayRegions as r (r)}
 					{@const words = dictatedNormalWords.get(r)}
+					{@const none = !words && !namedNormals && keptAssumed(r).length === 0}
 					<!-- No transition on pills: a fade-out with flip left removed pills in the DOM (hand read 2026-10-11);
 					     the region sliding into the scratchpad carries the motion. -->
 					<button
 						type="button"
 						class="rounded-full px-2 py-0.5 text-xs {words
 							? 'border border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
-							: 'border border-dashed border-white/20 text-gray-400 hover:border-emerald-400/40'} {openPill === r ? 'ring-1 ring-emerald-400/40' : ''}"
-						title={words ? `Dictated: ${words.join(' ')}` : keptAssumed(r).length ? `Will be reported: ${keptAssumed(r).join(' ')}` : 'Assumed normal (not dictated)'}
-						data-state={words ? 'dictated' : 'assumed'}
+							: none ? 'border border-white/10 text-gray-600' : 'border border-dashed border-white/20 text-gray-400 hover:border-emerald-400/40'} {openPill === r ? 'ring-1 ring-emerald-400/40' : ''}"
+						title={words ? `Dictated: ${words.join(' ')}` : keptAssumed(r).length ? `Will be reported: ${keptAssumed(r).join(' ')}`
+							: none ? 'Nothing assumed: only what you dictate is reported' : 'Assumed normal (not dictated)'}
+						data-state={words ? 'dictated' : none ? 'none' : 'assumed'}
 						onclick={() => (openPill = openPill === r || words ? null : r)}>{r}</button>
 				{/each}
 			</div>
@@ -453,7 +455,8 @@
 	<section aria-label="Confirm" class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-2.5 py-2">
 		<p class="flex flex-wrap gap-2 text-xs">
 			<span class="rounded px-1.5 py-0.5 {openRows ? 'bg-amber-500/15 text-amber-200' : 'bg-white/5 text-gray-500'}">{openRows} {openRows === 1 ? 'question' : 'questions'} open</span>
-			<span class="rounded bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300/90">{gateConfirmed ? 'assumptions confirmed' : `${assumedCount} assumed normal`}</span>
+			<span class="rounded bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300/90"
+				>{gateConfirmed ? 'assumptions confirmed' : namedNormals ? `${assumedCount} regions assumed normal (no sheet yet)` : `${assumedCount} assumed normal`}</span>
 			{#if !hasConclusion}<span class="rounded bg-white/5 px-1.5 py-0.5 text-gray-400">no conclusion yet</span>{/if}
 		</p>
 		<button

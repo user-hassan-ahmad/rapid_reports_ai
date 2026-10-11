@@ -31,14 +31,20 @@ export function abnormalAll(units: StackUnit[]): string[] {
 	return effectiveItems(units).filter((i) => i.abnormal).map((i) => i.text);
 }
 
-/** What the gate confirms as assumed: only the sentences /assumed answered for each region, minus removed ones.
- *  Never the raw sheet (review 2026-10-12: a region missing from the reply fell back to the sheet and undid the
- *  owned and removed checks). Until /assumed answers, nothing is assumed. */
-export function assumedFrom(checked: Record<string, string[]>, abnormal: string[], untouched: string[], removed: string[]): Record<string, string[]> {
+export interface AssumedSnap { dictation: string; abnormal: string[]; untouched: string[]; assumed: Record<string, string[]> }
+
+/** What the gate confirms as assumed: only the sentences /assumed answered for each region, in the state (abnormal
+ *  or untouched) that region had when they were checked, minus removed ones. Never the raw sheet (review
+ *  2026-10-12: a region missing from the reply fell back to the sheet; an untouched region's normals stayed
+ *  assumed after it turned abnormal). Until /assumed answers, nothing is assumed. */
+export function assumedFrom(snap: AssumedSnap | null, abnormal: string[], untouched: string[], removed: string[]): Record<string, string[]> {
+	if (!snap) return {};
 	const gone = new Set(removed.map(norm));
 	const out: Record<string, string[]> = {};
+	const same = (r: string) => (abnormal.includes(r) ? snap.abnormal.includes(r) : snap.untouched.includes(r));
 	for (const r of [...abnormal, ...untouched]) {
-		const kept = (checked[r] ?? []).filter((x) => !gone.has(norm(x)));
+		if (!same(r)) continue;
+		const kept = (snap.assumed[r] ?? []).filter((x) => !gone.has(norm(x)));
 		if (kept.length) out[r] = kept;
 	}
 	return out;

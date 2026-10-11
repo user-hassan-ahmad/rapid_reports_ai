@@ -46,3 +46,12 @@ async def test_a_row_owns_its_check(monkeypatch):
     out = await N.assumed("A cyst.", normals, [], [], [], owned=["The appendix is normal."])
     assert out.assumed == {"Bowel": ["No diverticula."]}
     assert seen == [["The appendix is normal in calibre."]]
+
+
+async def test_every_sentence_of_a_touched_region_is_asked(monkeypatch):
+    seen = []
+    normals = {"Kidneys": ["The kidneys are unremarkable."], "Liver": ["The liver is normal."]}
+    monkeypatch.setattr(N, "ask_rows", _checks({"The kidneys are unremarkable.": (0.0, 0.0, 0.7)}, seen))
+    out = await N.assumed("x", normals, [], [], ["No hydronephrosis."], touched=["Kidneys"])
+    assert out.assumed == {"Kidneys": [], "Liver": ["The liver is normal."]}
+    assert seen == [["The kidneys are unremarkable."]]

@@ -75,6 +75,7 @@ class AssumedRequest(BaseModel):
     dictated_normal: list[str] = Field(default_factory=list)
     removed: list[str] = Field(default_factory=list)
     owned: list[str] = Field(default_factory=list)       # the rows' sentences: a row owns its check
+    touched: list[str] = Field(default_factory=list)     # regions those rows (and removals) concern
 
 
 class DraftRequest(BaseModel):
@@ -158,8 +159,9 @@ async def stack_items(req: ItemsRequest, user: User = Depends(get_current_user))
 async def stack_assumed(req: AssumedRequest, user: User = Depends(get_current_user)):
     _require()
     normals = {r: s[:8] for r, s in list(req.region_normals.items())[:40]}
+    owned = list(dict.fromkeys(o for o in req.owned if o.strip()))[:100]   # the client sends current rows first
     return await assumed_normals(req.dictation, normals, req.abnormal, req.dictated_normal, req.removed[:50],
-                                 req.owned[:40])
+                                 owned, req.touched[:40])
 
 
 @router.post("/draft", response_model=DraftResult)

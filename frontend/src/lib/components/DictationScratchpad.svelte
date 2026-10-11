@@ -40,7 +40,7 @@
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
 	import { postAssumed, postClose, postDraft, postGroup, postItems, postLog, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
-	import { abnormalAll, assumedFrom, openCount, rowSentences } from '$lib/hybrid-stack/items';
+	import { abnormalAll, assumedFrom, openCount, rowSentences, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates } from '$lib/hybrid-stack/regionState';
 	import type { GateItem, GateRecord, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
@@ -255,7 +255,9 @@
 	let dictatedRows: Record<string, StackItem> = {}; // answered by the dictation (for the gate record)
 	let foldedRows: string[] = []; // answered rows already folded away: never shown again
 	let removedSentences: string[] = []; // never stated; sent to Generate as DO NOT ASSERT
-	let assumedByRegion: Record<string, string[]> = {};
+	// The last /assumed answer and the state it was computed for (review 2026-10-12): a region assumes only what was
+	// checked for its current state, and Confirm waits while the answer is behind the dictation.
+	let assumedSnap: AssumedSnap | null = null;
 	let itemsTimer: ReturnType<typeof setTimeout> | null = null;
 	// Each region's normal sentences (the slim sheet, or the template's structure) and what this scan cannot show.
 	let stackRegionNormals: Record<string, string[]> = {};
@@ -281,7 +283,8 @@
 	$: rowsOpen = openCount(viewItems, Object.keys(tappedRows), removedSentences);
 	// What Confirm takes ownership of: the region normals still shown (abnormal regions' checked sentences,
 	// untouched regions' sheet sentences), minus anything removed.
-	$: confirmedAssumed = assumedFrom(assumedByRegion, regionView.abnormal, regionView.assumedNormal, removedSentences);
+	$: confirmedAssumed = assumedFrom(assumedSnap, regionView.abnormal, regionView.assumedNormal, removedSentences);
+	$: assumedBehind = Object.keys(stackRegionNormals).length > 0 && (assumedSnap === null || assumedSnap.dictation !== verbatimNow);
 	// Regions are confirmed by name only when no sheet exists for this session (v2 behaviour); with a sheet, a region
 	// with no sentence left assumes nothing. An abnormal region's remainder is never named (review 2026-10-12).
 	$: namedNormals = Object.keys(stackRegionNormals).length === 0;
@@ -1516,9 +1519,11 @@
 			/* fail open: what is on screen stays */
 		}
 	}
-	/** Every row sentence ever shown, capped ones included: a region normal saying the same is never assumed. */
+	/** Every row sentence ever shown, capped ones included: a region normal saying the same is never assumed. The
+	 *  current rows and the tapped answers go first (the server keeps the first 100). */
 	function ownedNow(): string[] {
-		return [...new Set([...shownSentences, ...Object.values(tappedRows).flatMap((r) => r.sentences)])];
+		return [...new Set([...stackItems.flatMap((i) => i.sentences), ...stackCapped.flatMap((i) => i.sentences),
+			...Object.values(tappedRows).flatMap((r) => r.sentences), ...shownSentences])];
 	}
 	/** The region normals for this session (spec §8): made once per scan-type family and shared; the first case of
 	 *  a new family may wait for it, and the scratchpad works without it meanwhile. */
@@ -1538,19 +1543,38 @@
 			/* fail open: no quiet lines */
 		}
 	}
-	/** Which region normals stay assumed, given the dictation (spec §5). */
+	/** Which region normals stay assumed, given the dictation (spec §5). The answer is kept with the dictation and
+	 *  region states it was computed for; a failure assumes nothing (and lets Confirm through). */
 	async function refreshAssumed(): Promise<void> {
 		if (!Object.keys(stackRegionNormals).length) return;
 		const seq = ++assumedSeq;
+		const snap = { dictation: verbatimNow, abnormal: [...regionView.abnormal], untouched: [...regionView.assumedNormal] };
 		try {
-			const res = await postAssumed($token, { dictation: verbatimNow, region_normals: stackRegionNormals, abnormal: regionView.abnormal,
-				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences, owned: ownedNow() });
-			if (seq === assumedSeq) assumedByRegion = res.assumed;
+			const res = await postAssumed($token, { dictation: snap.dictation, region_normals: stackRegionNormals, abnormal: snap.abnormal,
+				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences, owned: ownedNow(),
+				touched: touchedRegions() });
+			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed };
 		} catch {
-			/* fail open: abnormal regions show no quiet line */
+			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {} }; // nothing assumed
 		}
 	}
+	/** Regions a row or a removal concerns: every one of their sentences is checked, not only word matches. */
+	function touchedRegions(): string[] {
+		const rows = [...stackItems, ...stackCapped, ...Object.values(tappedRows)].map((r) => r.region);
+		const gone = new Set(removedSentences.map(normS));
+		const fromSheet = Object.entries(stackRegionNormals).filter(([, xs]) => xs.some((x) => gone.has(normS(x)))).map(([r]) => r);
+		return [...new Set([...rows, ...fromSheet])].filter(Boolean);
+	}
 	$: if (Object.keys(stackRegionNormals).length) void refreshAssumed();
+	// Confirm waits while the answer is behind the dictation; this keeps it from waiting on a grouping that failed.
+	let assumedTimer: ReturnType<typeof setTimeout> | null = null;
+	$: if (assumedBehind && hybridStack) {
+		if (assumedTimer) clearTimeout(assumedTimer);
+		assumedTimer = setTimeout(() => {
+			assumedTimer = null;
+			void refreshAssumed();
+		}, 1200);
+	}
 	function isOpenRow(id: string): boolean {
 		const it = stackItems.find((x) => x.id === id);
 		return !!it && !it.answered && !tappedRows[id] && rowSentences(it, removedSentences).length > 0;
@@ -1725,7 +1749,7 @@
 		foldedRows = [];
 		shownSentences = [];
 		removedSentences = [];
-		assumedByRegion = {};
+		assumedSnap = null;
 		scheduleItems(0);
 		draft = null;
 		draftFailed = false;
@@ -2119,6 +2143,7 @@
 		if (stackTimer) clearTimeout(stackTimer);
 		if (closeTimer) clearTimeout(closeTimer);
 		if (itemsTimer) clearTimeout(itemsTimer);
+		if (assumedTimer) clearTimeout(assumedTimer);
 		void sendStackLog();
 		if (editor) {
 			editor.destroy();
@@ -2299,7 +2324,7 @@
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
 							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
-							syncing={groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0)} />
+							syncing={assumedBehind || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
 					{/if}
 				</div>
 

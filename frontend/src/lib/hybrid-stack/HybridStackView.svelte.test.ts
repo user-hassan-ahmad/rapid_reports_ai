@@ -23,7 +23,8 @@ describe('HybridStackView v2', () => {
 				u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true, covers: ['Liver'], structure: 'liver' }),
 				u(1, 'The kidneys are normal.', 'Kidneys', { covers: ['Kidneys'] })
 			],
-			items: [row('a', ['No biliary dilatation.'])]
+			items: [row('a', ['No biliary dilatation.'])],
+			namedNormals: true
 		});
 		await expect.element(page.getByRole('heading', { name: 'Liver' })).toBeInTheDocument();
 		await expect.element(page.getByRole('heading', { name: 'Kidneys' })).not.toBeInTheDocument();
@@ -119,7 +120,7 @@ describe('HybridStackView v2', () => {
 		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true }), u(1, 'Simple cyst.', 'Conclusion')];
 		const r = render(HybridStackView, { ...props, units, conclusion: { kind: 'dictated' }, items: [row('a', ['No biliary dilatation.'])], namedNormals: true });
 		await expect.element(page.getByText('1 question open')).toBeInTheDocument();
-		await expect.element(page.getByText('2 assumed normal')).toBeInTheDocument();   // Kidneys, Spleen by name (no sheet)
+		await expect.element(page.getByText('2 regions assumed normal (no sheet yet)')).toBeInTheDocument();   // by name (no sheet)
 		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeDisabled();
 		r.rerender({ ...props, units, conclusion: { kind: 'dictated' }, items: [row('a', ['No biliary dilatation.'])], tapped: ['a'], namedNormals: true });
 		await expect.element(page.getByText('0 questions open')).toBeInTheDocument();

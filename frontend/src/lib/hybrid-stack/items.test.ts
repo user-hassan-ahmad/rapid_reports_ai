@@ -30,9 +30,13 @@ describe('checklist rows', () => {
 			u(2, 'Spleen normal and a gallstone.', { parts: [{ text: 'Spleen normal', group: 'Spleen' }, { text: 'and a gallstone.', group: 'Gallbladder', abnormal: true }] })]))
 			.toEqual(['A cyst.', 'and a gallstone.']);
 	});
-	it('assumes only what /assumed answered: an emptied or missing region assumes nothing, removed sentences never', () => {
-		const checked = { Liver: ['The liver is normal.'], Bowel: [], Spleen: ['The spleen is normal.', 'No splenic lesion.'] };
-		expect(assumedFrom(checked, ['Spleen'], ['Liver', 'Bowel', 'Appendix'], ['no splenic lesion']))
+	it('assumes only what /assumed answered for the region as it is now; removed sentences never', () => {
+		const snap = { dictation: 'x', abnormal: ['Spleen'], untouched: ['Liver', 'Bowel'],
+			assumed: { Liver: ['The liver is normal.'], Bowel: [], Spleen: ['The spleen is normal.', 'No splenic lesion.'] } };
+		expect(assumedFrom(snap, ['Spleen'], ['Liver', 'Bowel', 'Appendix'], ['no splenic lesion']))
 			.toEqual({ Spleen: ['The spleen is normal.'], Liver: ['The liver is normal.'] });
+		// Liver turned abnormal since the answer: its untouched normals are no longer assumed
+		expect(assumedFrom(snap, ['Spleen', 'Liver'], ['Bowel'], [])).toEqual({ Spleen: ['The spleen is normal.', 'No splenic lesion.'] });
+		expect(assumedFrom(null, ['Spleen'], [], [])).toEqual({});
 	});
 });

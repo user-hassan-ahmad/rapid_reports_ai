@@ -38,7 +38,8 @@ def _content(s: str) -> set[str]:
 
 
 async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal: list[str],
-                  dictated_normal: list[str], removed: list[str], owned: list[str] | None = None) -> AssumedResult:
+                  dictated_normal: list[str], removed: list[str], owned: list[str] | None = None,
+                  touched: list[str] | None = None) -> AssumedResult:
     """Every region of the sheet is answered (an empty list: nothing assumed), so the caller never falls back to
     the raw sheet. owned: the checklist rows' sentences. A row owns its check, so a region normal saying the same
     is never assumed (hand read 2026-10-12). On a Jev failure nothing that might be owned, removed or affected is
@@ -46,6 +47,12 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     t0 = time.perf_counter()
     gone = [r for r in [*removed, *(owned or [])] if r.strip()]
     gone_words = [_content(g) for g in gone]
+    # touched: regions a row or a removal concerns. All their sentences are asked (a paraphrase shares no word:
+    # "No hydronephrosis" / "The kidneys are unremarkable"); elsewhere the word overlap picks candidates.
+    near = set(touched or [])
+    for region, sentences in region_normals.items():
+        if any(_norm(x) == _norm(g) for x in sentences for g in gone):
+            near.add(region)
     candidate = lambda s: bool(_content(s)) and any(_content(s) & g for g in gone_words)
     ab, said = set(abnormal), set(dictated_normal)
     asked: list[tuple[str, str]] = []           # (region, sentence) sent to Jev
@@ -54,7 +61,7 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
         if region in said:
             continue
         for s in sentences:
-            if region in ab or candidate(s):
+            if region in ab or (gone and region in near) or candidate(s):
                 asked.append((region, s))
             else:
                 out[region].append(s)

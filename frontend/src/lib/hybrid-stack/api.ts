@@ -30,7 +30,7 @@ export const postItems = (token: string | null, body: {
 }) => post<ItemsResult>(token, 'items', body);
 
 export const postAssumed = (token: string | null, body: {
-	dictation: string; region_normals: Record<string, string[]>; abnormal: string[]; dictated_normal: string[]; removed?: string[]; owned?: string[];
+	dictation: string; region_normals: Record<string, string[]>; abnormal: string[]; dictated_normal: string[]; removed?: string[]; owned?: string[]; touched?: string[];
 }) => post<AssumedResult>(token, 'assumed', body);
 
 export const postSlimSheet = (token: string | null, body: { scan_type: string; clinical_history: string; template_id?: string | null }) =>

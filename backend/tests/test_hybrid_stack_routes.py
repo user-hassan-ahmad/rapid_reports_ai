@@ -110,7 +110,7 @@ def test_items_assumed_and_draft_routes(authed, monkeypatch):
         return ItemsResult(items=[Item(id="a", kind="finding", region="Bowel", question="Abscess?",
                                        sentences=["No pericolic abscess."])])
 
-    async def assumed(dictation, normals, abnormal, dictated_normal, removed, owned):
+    async def assumed(dictation, normals, abnormal, dictated_normal, removed, owned, touched):
         assert normals == {"Liver": ["The liver is normal."]}
         return AssumedResult(assumed=normals)
 
