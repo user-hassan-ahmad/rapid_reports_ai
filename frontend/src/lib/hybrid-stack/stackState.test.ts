@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildView, moveUnit, sentenceOffset } from './stackState';
+import { buildView, liveTail, moveUnit, sentenceOffset } from './stackState';
 import type { StackUnit } from './types';
 
 const u = (id: number, text: string, group: string | null, extra: Partial<StackUnit> = {}): StackUnit => ({
@@ -49,5 +49,18 @@ describe('moveUnit', () => {
 describe('sentenceOffset', () => {
 	it('finds the nth occurrence of a sentence', () => {
 		expect(sentenceOffset('A. B. A.', [u(0, 'A.', 'x'), u(1, 'B.', 'x'), u(2, 'A.', 'x')], 2)).toBe(6);
+	});
+});
+
+describe('liveTail', () => {
+	it('returns the sentences of the verbatim text that no unit holds yet, in order', () => {
+		const units = [u(0, 'Liver normal.', 'Liver'), u(1, 'Spleen normal.', null)];
+		expect(liveTail('Liver normal. Spleen normal. Kidneys normal. Pancreas', units)).toEqual(['Kidneys normal.', 'Pancreas']);
+	});
+	it('counts repeated sentences', () => {
+		expect(liveTail('No change. No change.', [u(0, 'No change.', 'General')])).toEqual(['No change.']);
+	});
+	it('keeps decimals whole', () => {
+		expect(liveTail('A 3.2 cm cyst.', [])).toEqual(['A 3.2 cm cyst.']);
 	});
 });

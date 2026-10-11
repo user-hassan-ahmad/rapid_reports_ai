@@ -24,3 +24,19 @@ describe('HybridStackView', () => {
 		expect(onSelect).toHaveBeenCalledWith(0);
 	});
 });
+
+describe('HybridStackView live text', () => {
+	it('shows unplaced sentences and the words being spoken under Just dictated at once', async () => {
+		render(HybridStackView, {
+			units: [u(0, 'A liver cyst.', 'Liver')],
+			groups: ['Technique', 'Liver', 'General', 'Conclusion'],
+			pending: ['The spleen is normal.'],
+			ghost: 'kidneys are',
+			onSelect: vi.fn(),
+			onMove: vi.fn()
+		});
+		await expect.element(page.getByText('Just dictated')).toBeInTheDocument();
+		await expect.element(page.getByText('The spleen is normal.')).toBeInTheDocument();
+		await expect.element(page.getByText('kidneys are')).toBeInTheDocument();
+	});
+});

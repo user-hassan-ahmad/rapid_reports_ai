@@ -39,7 +39,7 @@
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
 	import { postClose, postGroup, postLog } from '$lib/hybrid-stack/api';
-	import { moveUnit, sentenceOffset } from '$lib/hybrid-stack/stackState';
+	import { liveTail, moveUnit, sentenceOffset } from '$lib/hybrid-stack/stackState';
 	import type { Region, StackOrder, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
@@ -235,6 +235,7 @@
 	const GROUP_DEBOUNCE_MS = 600;
 	const CLOSE_IDLE_MS = 1500;
 	let stackOrder: StackOrder = 'anatomy';
+	let ghostNow = '';
 	let stackUnits: StackUnit[] = [];
 	let stackTimer: ReturnType<typeof setTimeout> | null = null;
 	let closeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -265,6 +266,7 @@
 	// Lab: Deepgram's interim words drawn in grey at the end of the verbatim text (ghostText);
 	// production keeps the caption under the editor.
 	function showGhost(text: string): void {
+		ghostNow = text; // the grouped view shows the words being spoken too
 		if (labConfig && editor) editor.dispatch({ effects: setGhost.of(text) });
 	}
 	function visibleEditor(): EditorView | null {
@@ -1978,7 +1980,7 @@
 					<div bind:this={editorContainer} class="min-h-full" class:hidden={hybridStack ? stackOrder === 'anatomy' : polishMode === 'structured'}></div>
 					<div bind:this={structuredContainer} class="min-h-full" class:hidden={hybridStack || polishMode !== 'structured'}></div>
 					{#if hybridStack && stackOrder === 'anatomy'}
-						<HybridStackView units={stackUnits} groups={stackGroups} onSelect={stackSelect} onMove={stackMove} />
+						<HybridStackView units={stackUnits} groups={stackGroups} pending={liveTail(verbatimNow, stackUnits)} ghost={ghostNow} onSelect={stackSelect} onMove={stackMove} />
 					{/if}
 				</div>
 

@@ -7,11 +7,17 @@
 	let {
 		units,
 		groups,
+		pending = [],
+		ghost = '',
 		onSelect,
 		onMove
 	}: {
 		units: StackUnit[];
 		groups: string[];
+		/** Sentences written but not yet held by a unit (shown at once, faded). */
+		pending?: string[];
+		/** Words being spoken, not yet final. */
+		ghost?: string;
 		onSelect: (id: number) => void;
 		onMove: (id: number, group: string) => void;
 	} = $props();
@@ -59,10 +65,14 @@
 			<ul>{#each g.rows as r (r.unitId + ':' + r.text)}{@render line(r, false)}{/each}</ul>
 		</section>
 	{/each}
-	{#if view.unplaced.length}
+	{#if view.unplaced.length || pending.length || ghost}
 		<section class="opacity-50" aria-label="Just dictated">
 			<h3 class="text-xs font-semibold uppercase tracking-wide text-slate-400">Just dictated</h3>
-			<ul>{#each view.unplaced as r (r.unitId)}{@render line(r, false)}{/each}</ul>
+			<ul>
+				{#each view.unplaced as r (r.unitId)}{@render line(r, false)}{/each}
+				{#each pending as text, k (k + ':' + text)}<li class="text-sm leading-6 px-1">{text}</li>{/each}
+				{#if ghost}<li class="text-sm leading-6 px-1 italic">{ghost}</li>{/if}
+			</ul>
 		</section>
 	{/if}
 </div>
