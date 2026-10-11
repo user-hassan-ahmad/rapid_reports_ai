@@ -286,8 +286,11 @@ def stack_fallback(sheet: str, conclusion: str, declined: Sequence[str] = ()) ->
         "- **Content and flow:** the FINDINGS input is the radiologist's confirmed statements, labelled by region "
         "only so each can be traced. Write FINDINGS in the paragraphs, order and joining that the Report Flow and "
         "Structural Pattern set (an abnormal finding leads its paragraph), never in the input's order or under its "
-        "labels unless the Report Flow uses those headings. Every statement in the input appears, with its meaning "
-        "unchanged; statements about the same structure may be joined into one sentence; nothing is added."])]))
+        "labels unless the Report Flow uses those headings. The Report Flow only decides WHERE the input's statements "
+        "go: a region or structure it lists that the input does not mention is left out entirely, never filled with a "
+        "normal statement (no 'not dilated', 'normal' or 'no lymphadenopathy' the input does not contain). Every "
+        "statement in the input appears, with its meaning unchanged; statements about the same structure may be joined "
+        "into one sentence, naming only the structures the input names; nothing is added."])]))
     if conclusion.strip():
         secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", [
             "- **Confirmed conclusion (the radiologist's own; write the impression from it in report style, keeping "

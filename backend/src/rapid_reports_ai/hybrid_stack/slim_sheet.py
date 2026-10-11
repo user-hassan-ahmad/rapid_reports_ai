@@ -53,7 +53,7 @@ How a consultant's findings read as prose in this kind of report, whatever order
 - **Macro-structure:** FLAT (continuous prose paragraphs, no region headings) or HEADED (name the headings), as this kind of report is usually written in UK practice.
 - **Lead paragraph:** the abnormal findings come first, in one paragraph opening the findings, the finding that answers the clinical question first, each with its related statements; other abnormal findings follow in the next paragraph.
 - **Normal paragraphs:** after the abnormal findings, the remaining regions grouped into 2-4 paragraphs as a consultant groups them (by system), one bullet per paragraph listing the REGIONS it covers in order: "Paragraph: <Region>, <Region>, ...".
-- **Joining:** how normal statements are joined (for example several normal structures named in one sentence in sweep order).
+- **Joining:** how normal statements are joined (for example several normal structures named in one sentence in sweep order). The flow places statements; it never adds one: a region with nothing reported is simply absent.
 
 ## Region Normals
 One bullet per region in REGIONS, using the region name exactly: - **<Region>:** then 1-6 quoted sentences, each the statement a consultant writes when that structure is normal on this scan. One structure or feature per sentence; final report form; British English; no measurements or numbers; nothing this scan cannot show; never a statement about a disease or the clinical question. Never a sentence about an organ only one sex has (the uterus, ovaries, adnexa, cervix, prostate, seminal vesicles, testes): the sheet is shared by every patient, so those reach the report only when dictated. A region with nothing left gets no bullet.
