@@ -22,6 +22,7 @@
 		pillRegions,
 		pending = [],
 		ghost = '',
+		editGhost = '',
 		items = [],
 		tapped = [],
 		removed = [],
@@ -61,6 +62,8 @@
 		pillRegions: string[];
 		pending?: string[];
 		ghost?: string;
+		/** Words being spoken into an open inline edit: shown faded at that edit, never in the scratchpad box. */
+		editGhost?: string;
 		/** Checklist rows: referral and finding (answered ones fold away; the parent drops them). */
 		items?: StackItem[];
 		/** Rows the radiologist answered with a tap: their listed sentences are stated. */
@@ -176,6 +179,62 @@
 	let abnormalText = $state('');
 	let abnormalField: HTMLInputElement | null = $state(null);
 	let abnormalFocused = $state(false);
+	// The dictation hotkey (hand read 2026-10-12): set in the settings popover, saved per browser, used in the box and in
+	// every inline edit. Default ⌥Space.
+	type Hotkey = { alt: boolean; ctrl: boolean; meta: boolean; shift: boolean; code: string };
+	const HOTKEY_KEY = 'rr_dictation_hotkey';
+	const DEFAULT_HOTKEY: Hotkey = { alt: true, ctrl: false, meta: false, shift: false, code: 'Space' };
+	function loadHotkey(): Hotkey {
+		try {
+			const v = JSON.parse(localStorage.getItem(HOTKEY_KEY) ?? 'null');
+			return v && typeof v.code === 'string' ? v : DEFAULT_HOTKEY;
+		} catch {
+			return DEFAULT_HOTKEY;
+		}
+	}
+	let hotkey: Hotkey = $state(typeof localStorage !== 'undefined' ? loadHotkey() : DEFAULT_HOTKEY);
+	let settingsOpen = $state(false);
+	let capturing = $state(false);
+	const keyName = (code: string) => code.replace(/^Key/, '').replace(/^Digit/, '').replace('Space', 'Space');
+	const hotkeyLabel = $derived(`${hotkey.ctrl ? '⌃' : ''}${hotkey.alt ? '⌥' : ''}${hotkey.shift ? '⇧' : ''}${hotkey.meta ? '⌘' : ''}${keyName(hotkey.code)}`);
+	const isHotkey = (e: KeyboardEvent) =>
+		e.code === hotkey.code && e.altKey === hotkey.alt && e.ctrlKey === hotkey.ctrl && e.metaKey === hotkey.meta && e.shiftKey === hotkey.shift;
+	function captureHotkey(e: KeyboardEvent) {
+		if (!capturing) return;
+		e.preventDefault();
+		e.stopPropagation();
+		if (e.key === 'Escape') {
+			capturing = false;
+			return;
+		}
+		if (['Alt', 'Control', 'Meta', 'Shift'].includes(e.key)) return; // wait for the main key
+		if (!e.altKey && !e.ctrlKey && !e.metaKey && !/^F\d+$/.test(e.code)) return; // needs a modifier (or a function key)
+		hotkey = { alt: e.altKey, ctrl: e.ctrlKey, meta: e.metaKey, shift: e.shiftKey, code: e.code };
+		capturing = false;
+		try {
+			localStorage.setItem(HOTKEY_KEY, JSON.stringify(hotkey));
+		} catch {
+			/* kept for this session */
+		}
+	}
+	function resetHotkey() {
+		hotkey = DEFAULT_HOTKEY;
+		try {
+			localStorage.removeItem(HOTKEY_KEY);
+		} catch {
+			/* ignore */
+		}
+	}
+	// Global: the hotkey starts and stops dictation anywhere in the scratchpad (inline edits handle it themselves).
+	$effect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (capturing || !isHotkey(e)) return;
+			e.preventDefault();
+			onToggleMic();
+		};
+		window.addEventListener('keydown', onKey);
+		return () => window.removeEventListener('keydown', onKey);
+	});
 	// "Dictate finding": opening it starts the mic (the radiologist asked to dictate); closing stops it if it started it.
 	let micByField = false;
 	function openAbnormal(id: string) {
@@ -368,7 +427,7 @@
 			{#if abnormalFor === it.id}
 				<div class="flex items-center gap-2 rounded bg-white/[0.05] px-2 py-1 ring-1 ring-amber-400/30">
 					<button type="button" class="shrink-0 rounded-full p-1 {recording ? 'bg-rose-500/20 text-rose-300' : 'text-gray-400 hover:text-gray-200'}"
-						title={recording ? 'Stop dictating (⌥Space)' : 'Start dictating (⌥Space)'} aria-label={recording ? 'Stop dictating' : 'Start dictating'}
+						title={recording ? `Stop dictating (${hotkeyLabel})` : `Start dictating (${hotkeyLabel})`} aria-label={recording ? 'Stop dictating' : 'Start dictating'}
 						onmousedown={(e) => e.preventDefault()} onclick={onToggleMic}>
 						<svg viewBox="0 0 24 24" class="h-3.5 w-3.5 {recording ? 'animate-pulse' : ''}" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
 					</button>
@@ -388,17 +447,14 @@
 							onEditing(editing !== null || draftFocused || newFocused);
 						}}
 						onkeydown={(e) => {
-							if (e.altKey && e.code === 'Space') {
-								e.preventDefault();
-								onToggleMic();
-							} else if (e.key === 'Enter' && abnormalText.trim()) {
+							if (e.key === 'Enter' && abnormalText.trim()) {
 								e.preventDefault();
 								onAbnormal(it.id, abnormalText.trim());
 								closeAbnormal();
 							} else if (e.key === 'Escape') closeAbnormal();
 						}}
 					/>
-					<span class="hidden shrink-0 text-[10px] text-gray-500 sm:inline">⌥Space {recording ? 'stop' : 'start'} · Enter add · Esc cancel</span>
+					<span class="hidden shrink-0 text-[10px] text-gray-500 sm:inline">{hotkeyLabel} {recording ? 'stop' : 'start'} · Enter add · Esc cancel</span>
 				</div>
 			{/if}
 		</div>
@@ -410,12 +466,13 @@
 	     the hotkeys. -->
 	<span class="flex flex-wrap items-center gap-2 px-1 pt-0.5 text-[10px] text-gray-500">
 		<button type="button" class="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 {recording ? 'bg-rose-500/20 text-rose-300' : 'text-gray-400 hover:text-gray-200'}"
-			title={recording ? 'Stop dictating (⌥Space)' : 'Start dictating (⌥Space)'} aria-label={recording ? 'Stop dictating' : 'Start dictating'}
+			title={recording ? `Stop dictating (${hotkeyLabel})` : `Start dictating (${hotkeyLabel})`} aria-label={recording ? 'Stop dictating' : 'Start dictating'}
 			onmousedown={(e) => e.preventDefault()} onclick={onToggleMic}>
 			<svg viewBox="0 0 24 24" class="h-3 w-3 {recording ? 'animate-pulse' : ''}" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
 			{recording ? 'listening' : 'dictate'}
 		</button>
-		<span>⌥Space {recording ? 'stop' : 'start'} · {hint}</span>
+		<span>{hotkeyLabel} {recording ? 'stop' : 'start'} · {hint}</span>
+		{#if editGhost}<span class="italic text-gray-400" transition:fade={{ duration: ms }}>{editGhost}</span>{/if}
 	</span>
 {/snippet}
 
@@ -437,10 +494,7 @@
 				}}
 				onblur={commitAssumed}
 				onkeydown={(e) => {
-					if (e.altKey && e.code === 'Space') {
-						e.preventDefault();
-						onToggleMic();
-					} else if (e.key === 'Enter') {
+					if (e.key === 'Enter') {
 						e.preventDefault();
 						commitAssumed();
 					} else if (e.key === 'Escape') {
@@ -482,10 +536,7 @@
 					aria-label="Edit line"
 					onblur={commit}
 					onkeydown={(e) => {
-						if (e.altKey && e.code === 'Space') {
-							e.preventDefault();
-							onToggleMic();
-						} else if (e.key === 'Enter' || e.key === 'Escape') {
+						if (e.key === 'Enter' || e.key === 'Escape') {
 							e.preventDefault();
 							commit();
 						}
@@ -511,10 +562,40 @@
 	<!-- The scratchpad box (hand read 2026-10-12): one permanent, fixed-size box for what is being said now and a line
 	     to type into. It never changes size, so nothing below it jumps; longer text scrolls inside it, pinned to the
 	     latest line. -->
-	<section aria-label="Scratchpad" class="overflow-hidden rounded-lg border border-white/10 bg-white/[0.025]">
+	<section aria-label="Scratchpad" class="relative overflow-visible rounded-lg border border-white/10 bg-white/[0.025]">
+		<div class="flex items-center justify-between border-b border-white/5 px-3 py-1">
+			<span class="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+				Live dictation
+				{#if recording}<span class="flex items-center gap-1 font-normal normal-case tracking-normal text-rose-300"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-400"></span>listening</span>{/if}
+			</span>
+			<button type="button" class="rounded p-1 text-gray-500 hover:bg-white/[0.06] hover:text-gray-300" aria-label="Dictation settings"
+				title="Dictation settings" onclick={() => (settingsOpen = !settingsOpen)}>
+				<svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+			</button>
+			{#if settingsOpen}
+				<!-- Dictation settings: the start/stop hotkey, recorded by pressing it; saved in this browser. -->
+				<div class="absolute right-2 top-8 z-20 w-64 space-y-2 rounded-lg border border-white/10 bg-gray-950/95 p-3 text-xs text-gray-300 shadow-xl" role="dialog" aria-label="Dictation settings">
+					<p class="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Dictation hotkey</p>
+					<div class="flex items-center justify-between gap-2">
+						<span class="text-gray-400">Start / stop</span>
+						<button type="button" class="rounded-md border px-2 py-0.5 font-mono {capturing ? 'border-purple-400/60 text-purple-200' : 'border-white/15 text-gray-200 hover:border-white/30'}"
+							onclick={() => (capturing = true)} onkeydown={captureHotkey}>{capturing ? 'Press keys…' : hotkeyLabel}</button>
+					</div>
+					<p class="text-[10px] text-gray-500">{capturing ? 'Press a combination with ⌥, ⌃ or ⌘ (Esc cancels).' : 'Works in the box and in any inline edit.'}</p>
+					<div class="flex justify-between">
+						<button type="button" class="text-[10px] text-gray-500 hover:text-gray-300" onclick={resetHotkey}>Reset to ⌥Space</button>
+						<button type="button" class="text-[10px] text-gray-400 hover:text-gray-200" onclick={() => { settingsOpen = false; capturing = false; }}>Done</button>
+					</div>
+				</div>
+			{/if}
+		</div>
 		<div class="h-24 overflow-y-auto px-3 py-2" use:pinBottom={`${pending.join('|')}|${ghost}|${view.unplaced.length}`}>
 			{#if !view.unplaced.length && !pending.length && !ghost}
-				<p class="text-sm leading-6 text-gray-600">{recording ? 'Listening…' : 'Dictate or type a finding…'}</p>
+				<!-- A hint, not a field: typing happens in the line below (hand read 2026-10-12). -->
+				<p class="flex h-full items-center justify-center gap-1.5 text-xs text-gray-600">
+					<svg viewBox="0 0 24 24" class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+					{recording ? 'Listening…' : `Press ${hotkeyLabel} or the mic to dictate`}
+				</p>
 			{/if}
 			<ul aria-label="Just dictated">
 				<!-- A sentence fades out of the box as it fades into its section, so the hand-over reads as one motion. -->
@@ -546,7 +627,6 @@
 					}
 				}}
 			/>
-			{#if recording}<span class="flex shrink-0 items-center gap-1 text-[10px] text-rose-300"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-400"></span>listening</span>{/if}
 		</div>
 	</section>
 
@@ -646,10 +726,7 @@
 										aria-label="Edit line"
 										onblur={commit}
 										onkeydown={(e) => {
-											if (e.altKey && e.code === 'Space') {
-												e.preventDefault();
-												onToggleMic();
-											} else if (e.key === 'Enter' || e.key === 'Escape') {
+											if (e.key === 'Enter' || e.key === 'Escape') {
 												e.preventDefault();
 												commit();
 											}

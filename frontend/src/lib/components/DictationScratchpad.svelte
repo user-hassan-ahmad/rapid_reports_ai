@@ -372,6 +372,7 @@
 	// production keeps the caption under the editor.
 	function showGhost(text: string): void {
 		ghostNow = text; // the grouped view shows the words being spoken too
+		if (text.trim()) noteWords();
 		if (labConfig && editor) editor.dispatch({ effects: setGhost.of(text) });
 	}
 	function visibleEditor(): EditorView | null {
@@ -1465,9 +1466,17 @@
 	const PAUSE_MS = 1200;
 	let lastWordsAt = 0;
 	let pauseTimer: ReturnType<typeof setTimeout> | null = null;
-	const groupable = (v: string) => (isRecording && Date.now() - lastWordsAt < PAUSE_MS ? closedText(v) : v);
+	// A sentence already placed is never held back again (debug trace 2026-10-12: a polish edit after the pause
+	// restarted the hold-back, the next grouping left the placed last sentence out, and it fell back into the box).
+	const groupable = (v: string) => {
+		if (!isRecording || Date.now() - lastWordsAt >= PAUSE_MS) return v;
+		const held = closedText(v);
+		const last = v.slice(held.length).trim();
+		return last && stackUnits.some((u) => u.text === last || similar(u.text, last)) ? v : held;
+	};
+	/** New speech (a final or interim words) restarts the hold-back; the polish's own edits never do. */
 	function noteWords(): void {
-		if (!isRecording) return;
+		if (!isRecording || isQwenWriting) return;
 		lastWordsAt = Date.now();
 		if (pauseTimer) clearTimeout(pauseTimer);
 		pauseTimer = setTimeout(() => {
@@ -2428,7 +2437,7 @@
 					<div bind:this={structuredContainer} class="min-h-full" class:hidden={stackView || polishMode !== 'structured'}></div>
 					{#if stackView}
 						<HybridStackView units={stackUnits} groups={stackGroups} {pillRegions} pending={stripNow}
-							ghost={ghostNow} items={viewItems} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
+							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
 							conclusion={conclusionView} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && reviewedFor === verbatimNow} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}

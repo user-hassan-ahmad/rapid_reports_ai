@@ -231,4 +231,20 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByRole('button', { name: '✓ Normal' })).not.toBeInTheDocument();
 		await expect.element(page.getByRole('button', { name: 'Not assessed' })).not.toBeInTheDocument();
 	});
+
+	it('the dictation hotkey can be recorded in settings, saved, and toggles the mic', async () => {
+		localStorage.removeItem('rr_dictation_hotkey');
+		const onToggleMic = vi.fn();
+		render(HybridStackView, { ...base(), onToggleMic, units: [] });
+		await expect.element(page.getByText('Press ⌥Space or the mic to dictate')).toBeInTheDocument();
+		await page.getByLabelText('Dictation settings').click();
+		await page.getByRole('button', { name: '⌥Space', exact: true }).click();
+		await userEvent.keyboard('{Control>}{KeyD}{/Control}');
+		await expect.element(page.getByRole('button', { name: '⌃D', exact: true })).toBeInTheDocument();
+		expect(JSON.parse(localStorage.getItem('rr_dictation_hotkey') ?? '{}').code).toBe('KeyD');
+		await page.getByRole('button', { name: 'Done' }).click();
+		await userEvent.keyboard('{Control>}{KeyD}{/Control}');
+		expect(onToggleMic).toHaveBeenCalledTimes(1);
+		localStorage.removeItem('rr_dictation_hotkey');
+	});
 });
