@@ -347,3 +347,22 @@ def test_reworded_score_is_logged_and_never_changes_the_tier():
     assert [x.tier for x in g] == ["quiet", "quiet"]
     assert g[0].reworded == 0.9 and g[1].reworded is None
     assert dg.shadow_log(g, [])["clauses"][0]["reworded"] == 0.9
+
+
+def test_an_added_clause_with_no_new_content_words_is_not_violet():
+    # live 7d24e445: dictation + "is visualised" scored 0.67; no new content word to point at, so the whole
+    # dictated sentence went violet. Nothing to highlight means it is the radiologist's own sentence.
+    r = "FINDINGS:\nThe appendix is visualised, retrocaecal and mildly thickened. A crescentic mass is present.\n"
+    d = "- appendix retrocaecal, mildly thickened\n- mass present"
+    i = inp(r, d)
+    al = align(r, d, "", i.artifacts.sections)
+    texts = [r[s:e] for s, e, _ in dg.units(al)]
+    jp = JevPass(gate_texts=texts)
+    for k, _ in enumerate(texts):
+        jp.gate[f"g{k}"] = {"probabilities": {"all_stated": 0.6, "some_details_added": 0.4, "not_stated": 0.0}}
+        jp.gate[f"t{k}"] = {"probabilities": {"abnormal": 1.0, "normal": 0.0, "mixed": 0.0, "not_a_finding": 0.0}}
+    g = dg.classify(i, r, al, jp)
+    assert [x.tier for x in g] == ["dictated", "synth"]
+    assert [r[a:b] for a, b in g[1].runs] == ["crescentic"]
+    assert dg.tier_of(0.6, "abnormal", False, False, has_new_words=False) == "dictated"
+    assert dg.tier_of(0.6, "not_a_finding", True, False, has_new_words=False) == "rec"   # recs keep their item
