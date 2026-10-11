@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appendSentence, buildView, lineChange, liveTail, moveUnit, sentenceOffset } from './stackState';
+import { appendSentence, buildView, closedText, lineChange, liveTail, moveUnit, sentenceOffset } from './stackState';
 import type { StackUnit } from './types';
 
 const u = (id: number, text: string, group: string | null, extra: Partial<StackUnit> = {}): StackUnit => ({
@@ -98,4 +98,12 @@ describe('sentenceOffset boundaries', () => {
 		const units = [u(0, 'Pancreas: Unremarkable.', 'Pancreas'), u(1, 'Unremarkable.', 'Spleen')];
 		expect(sentenceOffset(text, units, 1)).toBe(24);
 	});
+
+describe('closedText', () => {
+	it('holds back the sentence still being spoken', () => {
+		expect(closedText('A liver cyst. The kidneys are')).toBe('A liver cyst.');
+		expect(closedText('A liver cyst. The kidneys are normal.')).toBe('A liver cyst.');
+		expect(closedText('A liver cyst.')).toBe('');
+	});
+});
 });

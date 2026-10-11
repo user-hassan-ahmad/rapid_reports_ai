@@ -307,9 +307,10 @@
 				/>
 				<span class="text-[10px] text-emerald-400">Listening to edit · Enter to finish</span>
 			{:else}
-				<button type="button" class="w-full rounded px-1 text-left text-sm leading-6 text-gray-200 hover:bg-white/[0.05]" onclick={() => open(r)}>
+				<!-- The grouper's structure label is a tooltip, not text: it repeated the sentence (hand read 2026-10-12). -->
+				<button type="button" class="w-full rounded px-1 text-left text-sm leading-6 text-gray-200 hover:bg-white/[0.05]" onclick={() => open(r)}
+					title={r.structure ? `Placed as: ${r.structure}` : undefined}>
 					{#if nested}<span aria-hidden="true" class="text-gray-500">↳ </span>{/if}{r.text}
-					{#if r.structure}<span class="ml-1 text-xs text-gray-500">· {r.structure}</span>{/if}
 					{#if r.pinned}<span class="ml-1 text-xs text-gray-500" title="Placed by you">•</span>{/if}
 				</button>
 			{/if}
@@ -404,31 +405,41 @@
 		</section>
 	{/each}
 
-	<!-- Normal regions: solid when the radiologist said so, dashed when assumed (tap to see what will be reported) -->
+	<!-- Normal regions (hand read 2026-10-12): what the radiologist said is normal, with their words beside it (a bare
+	     pill read as missed); then the assumed regions together, tap one to see what will be reported. -->
 	{#if trayRegions.length}
-		<section aria-label="Normal regions" class="space-y-1.5 border-t border-white/5 pt-2">
-			<p class="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-gray-500">
-				Normal regions
-				<span class="rounded-full border border-emerald-500/40 px-1.5 normal-case tracking-normal text-emerald-300/80">you said it</span>
-				<span class="rounded-full border border-dashed border-white/20 px-1.5 normal-case tracking-normal text-gray-400">assumed</span>
-			</p>
-			<div class="flex flex-wrap gap-1.5">
-				{#each trayRegions as r (r)}
-					{@const words = dictatedNormalWords.get(r)}
-					{@const none = !words && !namedNormals && keptAssumed(r).length === 0}
-					<!-- No transition on pills: a fade-out with flip left removed pills in the DOM (hand read 2026-10-11);
-					     the region sliding into the scratchpad carries the motion. -->
-					<button
-						type="button"
-						class="rounded-full px-2 py-0.5 text-xs {words
-							? 'border border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
-							: none ? 'border border-white/10 text-gray-600' : 'border border-dashed border-white/20 text-gray-400 hover:border-emerald-400/40'} {openPill === r ? 'ring-1 ring-emerald-400/40' : ''}"
-						title={words ? `Dictated: ${words.join(' ')}` : keptAssumed(r).length ? `Will be reported: ${keptAssumed(r).join(' ')}`
-							: none ? 'Nothing assumed: only what you dictate is reported' : 'Assumed normal (not dictated)'}
-						data-state={words ? 'dictated' : none ? 'none' : 'assumed'}
-						onclick={() => (openPill = openPill === r || words ? null : r)}>{r}</button>
-				{/each}
-			</div>
+		{@const said = trayRegions.filter((r) => dictatedNormalWords.has(r))}
+		{@const rest = trayRegions.filter((r) => !dictatedNormalWords.has(r))}
+		<section aria-label="Normal regions" class="space-y-2 border-t border-white/5 pt-2">
+			{#if said.length}
+				<div class="space-y-1">
+					<p class="text-[10px] uppercase tracking-wide text-gray-500">Normal, as you said</p>
+					{#each said as r (r)}
+						<div class="flex items-baseline gap-2 text-xs">
+							<span class="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-200" data-state="dictated">{r}</span>
+							<span class="min-w-0 truncate text-gray-400" title={dictatedNormalWords.get(r)?.join(' ')}>“{dictatedNormalWords.get(r)?.join(' ')}”</span>
+						</div>
+					{/each}
+				</div>
+			{/if}
+			{#if rest.length}
+				<div class="space-y-1.5">
+					<p class="text-[10px] uppercase tracking-wide text-gray-500">{namedNormals ? 'Assumed normal (no sheet yet)' : 'Assumed normal: tap to see what will be reported'}</p>
+					<div class="flex flex-wrap gap-1.5">
+						{#each rest as r (r)}
+							{@const none = !namedNormals && keptAssumed(r).length === 0}
+							<!-- No transition on pills: a fade-out with flip left removed pills in the DOM (hand read 2026-10-11). -->
+							<button
+								type="button"
+								class="rounded-full px-2 py-0.5 text-xs {none ? 'border border-white/10 text-gray-600'
+									: 'border border-dashed border-white/20 text-gray-400 hover:border-emerald-400/40'} {openPill === r ? 'ring-1 ring-emerald-400/40' : ''}"
+								title={keptAssumed(r).length ? `Will be reported: ${keptAssumed(r).join(' ')}` : none ? 'Nothing assumed: only what you dictate is reported' : 'Assumed normal (not dictated)'}
+								data-state={none ? 'none' : 'assumed'}
+								onclick={() => (openPill = openPill === r ? null : r)}>{r}</button>
+						{/each}
+					</div>
+				</div>
+			{/if}
 			{#if openPill && keptAssumed(openPill).length}
 				<p class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs" data-quiet={openPill}>
 					<span class="text-[10px] uppercase tracking-wide text-emerald-400/70">{openPill} · will be reported</span>

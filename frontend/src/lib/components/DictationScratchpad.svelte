@@ -39,7 +39,7 @@
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
 	import { postAssumed, postClose, postDraft, postGroup, postItems, postLog, postSlimSheet } from '$lib/hybrid-stack/api';
-	import { appendSentence, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
+	import { appendSentence, closedText, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
 	import { abnormalAll, assumedFrom, openCount, rowSentences, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates } from '$lib/hybrid-stack/regionState';
 	import type { GateItem, GateRecord, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
@@ -1442,17 +1442,20 @@
 			void runGroup();
 		}, delay);
 	}
+	/** What the grouper gets: while recording, the sentence still being spoken is held back (it stays in the live
+	 *  strip until the next sentence starts); after recording, everything. */
+	const groupable = (v: string) => (isRecording ? closedText(v) : v);
 	async function runGroup(): Promise<void> {
-		if (!verbatimNow.trim()) return;
+		if (!groupable(verbatimNow).trim()) return;
 		if (stackBusy || structureBusy()) {
 			scheduleGroup(); // as the Structured build: wait for pending (faded) text to settle
 			return;
 		}
-		const text = verbatimNow;
+		const text = groupable(verbatimNow);
 		stackBusy = true;
 		try {
 			const res = await postGroup($token, { scan_type: scanType, text, regions: stackRegions, previous: stackUnits });
-			if (verbatimNow === text) {
+			if (groupable(verbatimNow) === text) {
 				stackUnits = res.units;
 				onStackPills(res.pills);
 				void refreshAssumed(); // the checks wait for the end of dictation; the assumed normals follow the text
@@ -2036,6 +2039,7 @@
 		isRecording = false;
 		showGhost(''); // words never finalised must not linger as ghost text
 		onRecordingChange(false);
+		scheduleGroup(0); // the held-back last sentence now joins its region
 		scheduleClose();
 		isConnecting = false;
 		if (workletNode) {

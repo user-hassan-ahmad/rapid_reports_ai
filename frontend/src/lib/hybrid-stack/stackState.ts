@@ -108,6 +108,17 @@ export function sentences(text: string): string[] {
 
 /** Sentences of the verbatim text that no unit holds yet: shown at once under "Just dictated" while the
  *  grouper places them (no round trip before the radiologist sees their words). */
+/** The text with its last sentence held back (hand read 2026-10-12): while recording, the sentence being spoken
+ *  can still grow or be re-punctuated by the next utterance, so it stays in the live strip and is grouped only
+ *  once the next sentence starts or recording stops. Each sentence then moves into its region once. */
+export function closedText(verbatim: string): string {
+	const all = sentences(verbatim);
+	if (all.length < 2) return '';
+	const last = all[all.length - 1];
+	const at = verbatim.lastIndexOf(last);
+	return at > 0 ? verbatim.slice(0, at).trimEnd() : '';
+}
+
 export function liveTail(verbatim: string, units: StackUnit[]): string[] {
 	const held = new Map<string, number>();
 	for (const u of units) held.set(u.text, (held.get(u.text) ?? 0) + 1);
