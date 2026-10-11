@@ -192,11 +192,13 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByTestId('review-skeleton')).not.toBeInTheDocument();
 	});
 
-	it('"Abnormal…" opens a box in the row; Enter adds the finding and folds the row', async () => {
+	it('"Dictate finding" opens a box in the row and starts the mic; Enter adds the finding and folds the row', async () => {
 		const onAbnormal = vi.fn();
-		render(HybridStackView, { ...base(), onAbnormal, units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })],
+		const onToggleMic = vi.fn();
+		render(HybridStackView, { ...base(), onAbnormal, onToggleMic, units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })],
 			items: [row('a', ['No biliary dilatation.'])] });
-		await page.getByRole('button', { name: 'Abnormal…' }).click();
+		await page.getByRole('button', { name: 'Dictate finding' }).click();
+		expect(onToggleMic).toHaveBeenCalledTimes(1);
 		await page.getByLabelText('Abnormal finding').fill('Mild intrahepatic biliary dilatation.');
 		await userEvent.keyboard('{Enter}');
 		expect(onAbnormal).toHaveBeenCalledWith('a', 'Mild intrahepatic biliary dilatation.');
@@ -220,5 +222,13 @@ describe('HybridStackView v2', () => {
 		await page.getByLabelText('Edit normal').fill('No intrahepatic biliary dilatation.');
 		await userEvent.keyboard('{Enter}');
 		expect(onEditAssumed).toHaveBeenCalledWith('No biliary dilatation.', 'No intrahepatic biliary dilatation.');
+	});
+
+	it('before the review, a referral row is a reminder only: no answers, no buttons', async () => {
+		const ref = row('r', ['The appendix is normal.'], { kind: 'referral', region: '', question: 'Appendix normal?' });
+		render(HybridStackView, { ...base(), units: [], items: [ref], actionsReady: false });
+		await expect.element(page.getByText('answer it in your dictation')).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: '✓ Normal' })).not.toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Not assessed' })).not.toBeInTheDocument();
 	});
 });

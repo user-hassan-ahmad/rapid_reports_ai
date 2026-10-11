@@ -2415,7 +2415,7 @@
 							ghost={ghostNow} items={viewItems} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
 							conclusion={conclusionView} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
-							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
+							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && reviewedFor === verbatimNow} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
 							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
 							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
 							syncing={assumedBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />

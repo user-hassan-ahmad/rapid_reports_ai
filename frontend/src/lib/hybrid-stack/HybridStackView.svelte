@@ -32,6 +32,9 @@
 		reviewWaiting = false,
 		reviewFailed = false,
 		assumedReady = false,
+		actionsReady = true,
+		recording = false,
+		onToggleMic = () => {},
 		conclusion = { kind: 'none' },
 		gateConfirmed = false,
 		deleteRegion = null,
@@ -77,6 +80,12 @@
 		reviewFailed?: boolean;
 		/** The assumed check has answered: a region with nothing left to assume leaves the normal section. */
 		assumedReady?: boolean;
+		/** The review of the current dictation has run: rows offer their answers. Before that a referral row is only
+		 *  a reminder (hand read 2026-10-12: buttons at setup invited fiddling instead of dictating). */
+		actionsReady?: boolean;
+		/** The mic, for the inline "Dictate finding" field. */
+		recording?: boolean;
+		onToggleMic?: () => void;
 		conclusion?: ConclusionState;
 		gateConfirmed?: boolean;
 		/** A voice "delete the X line": the region whose lines wait for a Delete click (null: none). */
@@ -166,6 +175,20 @@
 	let abnormalText = $state('');
 	let abnormalField: HTMLInputElement | null = $state(null);
 	let abnormalFocused = $state(false);
+	// "Dictate finding": opening it starts the mic (the radiologist asked to dictate); closing stops it if it started it.
+	let micByField = false;
+	function openAbnormal(id: string) {
+		abnormalFor = id;
+		abnormalText = '';
+		micByField = !recording;
+		if (!recording) onToggleMic();
+	}
+	function closeAbnormal() {
+		abnormalFor = null;
+		abnormalText = '';
+		if (micByField && recording) onToggleMic();
+		micByField = false;
+	}
 	let assumedEditing: string | null = $state(null);
 	let assumedText = $state('');
 	let assumedField: HTMLInputElement | null = $state(null);
@@ -304,6 +327,13 @@
 		<div class="flex flex-wrap items-baseline gap-x-2 rounded-md border-l-2 border-emerald-500/60 bg-emerald-500/[0.06] px-2 py-1 text-sm" data-row="answered" transition:fade={{ duration: ms }}>
 			<span class="text-emerald-200">✓ {it.question}</span><span class="text-xs text-emerald-300/70">answered in your dictation</span>
 		</div>
+	{:else if listed.length && !actionsReady}
+		<!-- Before the review: a reminder of the question only, no buttons. -->
+		<div class="flex flex-wrap items-center gap-x-2 rounded-md border-l-2 border-amber-400/50 bg-amber-500/[0.05] px-2 py-1" data-row="waiting">
+			{#if label}<span class="text-[10px] font-semibold uppercase tracking-wide text-amber-300/80">{label}</span>{/if}
+			<span class="text-sm text-amber-100/90">{it.question}</span>
+			<span class="text-xs text-gray-500">answer it in your dictation</span>
+		</div>
 	{:else if listed.length}
 		<!-- Compact (hand read 2026-10-12): the question, then the normal wordings with "✓ Normal" in line; "Abnormal…"
 		     opens a box in the row to type or dictate the finding; Skip. -->
@@ -313,11 +343,10 @@
 				<span class="text-sm font-medium text-amber-100">{it.question}</span>
 				{#if it.why}<span class="cursor-help text-xs text-gray-500" title={it.why} aria-label="Why: {it.why}">ⓘ</span>{/if}
 				<span class="ml-auto flex gap-1">
-					<button type="button" class="rounded-md border border-white/10 px-2 py-0.5 text-xs text-gray-300 hover:bg-white/[0.06]"
-						onclick={() => {
-							abnormalFor = abnormalFor === it.id ? null : it.id;
-							abnormalText = '';
-						}}>Abnormal…</button>
+					<button type="button" class="inline-flex items-center gap-1 rounded-md border border-white/10 px-2 py-0.5 text-xs text-gray-300 hover:bg-white/[0.06]"
+						onclick={() => (abnormalFor === it.id ? closeAbnormal() : openAbnormal(it.id))}>
+						<svg viewBox="0 0 24 24" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+						Dictate finding</button>
 					<button type="button" class="rounded-md px-2 py-0.5 text-xs text-gray-500 hover:text-gray-300"
 						title={it.kind === 'referral' ? 'The scan cannot answer it: nothing is stated' : 'Not relevant: nothing is stated'}
 						onclick={() => onSkip(it.id)}>{it.kind === 'referral' ? 'Not assessed' : 'Skip'}</button>
@@ -335,30 +364,40 @@
 					title="Add: {listed.join(' ')}" onclick={() => onAnswer(it.id)}>{answerLabel(listed)}</button>
 			</div>
 			{#if abnormalFor === it.id}
-				<input
-					bind:this={abnormalField}
-					bind:value={abnormalText}
-					use:focusOnMount
-					class="w-full rounded bg-white/[0.06] px-2 py-1 text-sm text-gray-100 outline outline-1 outline-amber-400/40 placeholder:text-gray-500"
-					placeholder="Type or dictate the finding, then Enter"
-					aria-label="Abnormal finding"
-					onfocus={() => {
-						abnormalFocused = true;
-						onEditing(true);
-					}}
-					onblur={() => {
-						abnormalFocused = false;
-						onEditing(editing !== null || draftFocused || newFocused);
-					}}
-					onkeydown={(e) => {
-						if (e.key === 'Enter' && abnormalText.trim()) {
-							e.preventDefault();
-							onAbnormal(it.id, abnormalText.trim());
-							abnormalFor = null;
-							abnormalText = '';
-						} else if (e.key === 'Escape') abnormalFor = null;
-					}}
-				/>
+				<div class="flex items-center gap-2 rounded bg-white/[0.05] px-2 py-1 ring-1 ring-amber-400/30">
+					<button type="button" class="shrink-0 rounded-full p-1 {recording ? 'bg-rose-500/20 text-rose-300' : 'text-gray-400 hover:text-gray-200'}"
+						title={recording ? 'Stop dictating (⌥Space)' : 'Start dictating (⌥Space)'} aria-label={recording ? 'Stop dictating' : 'Start dictating'}
+						onmousedown={(e) => e.preventDefault()} onclick={onToggleMic}>
+						<svg viewBox="0 0 24 24" class="h-3.5 w-3.5 {recording ? 'animate-pulse' : ''}" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+					</button>
+					<input
+						bind:this={abnormalField}
+						bind:value={abnormalText}
+						use:focusOnMount
+						class="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none focus:ring-0"
+						placeholder={recording ? 'Listening… speak the finding' : 'Type or dictate the finding'}
+						aria-label="Abnormal finding"
+						onfocus={() => {
+							abnormalFocused = true;
+							onEditing(true);
+						}}
+						onblur={() => {
+							abnormalFocused = false;
+							onEditing(editing !== null || draftFocused || newFocused);
+						}}
+						onkeydown={(e) => {
+							if (e.altKey && e.code === 'Space') {
+								e.preventDefault();
+								onToggleMic();
+							} else if (e.key === 'Enter' && abnormalText.trim()) {
+								e.preventDefault();
+								onAbnormal(it.id, abnormalText.trim());
+								closeAbnormal();
+							} else if (e.key === 'Escape') closeAbnormal();
+						}}
+					/>
+					<span class="hidden shrink-0 text-[10px] text-gray-500 sm:inline">⌥Space {recording ? 'stop' : 'start'} · Enter add · Esc cancel</span>
+				</div>
 			{/if}
 		</div>
 	{/if}
@@ -372,7 +411,7 @@
 				bind:this={assumedField}
 				bind:value={assumedText}
 				use:focusOnMount
-				class="min-w-[18rem] flex-1 rounded bg-white/[0.06] px-1 text-xs leading-6 text-gray-100 outline outline-1 outline-emerald-500/50"
+				class="min-w-[18rem] flex-1 rounded border-0 bg-white/[0.06] px-1 text-xs leading-6 text-gray-100 outline outline-1 outline-emerald-500/40 focus:ring-0"
 				aria-label="Edit normal"
 				onfocus={() => {
 					assumedFocused = true;
@@ -420,7 +459,7 @@
 					bind:this={field}
 					bind:value={editValue}
 					use:focusOnMount
-					class="w-full rounded bg-white/[0.06] px-1 text-sm leading-6 text-gray-100 outline outline-1 outline-emerald-500/50"
+					class="w-full rounded border-0 bg-white/[0.06] px-1 text-sm leading-6 text-gray-100 outline outline-1 outline-emerald-500/40 focus:ring-0"
 					aria-label="Edit line"
 					onblur={commit}
 					onkeydown={(e) => {
@@ -468,7 +507,7 @@
 	<input
 		bind:this={newField}
 		bind:value={newLine}
-		class="w-full rounded border border-white/5 bg-transparent px-2 py-1 text-sm text-gray-200 placeholder:text-gray-600 focus:border-emerald-500/40 focus:outline-none"
+		class="w-full rounded border border-white/5 bg-transparent px-2 py-1 text-sm text-gray-200 placeholder:text-gray-600 focus:border-white/20 focus:outline-none focus:ring-0"
 		placeholder="Type a finding… (Enter adds it)"
 		aria-label="New line"
 		onfocus={() => {
@@ -569,7 +608,7 @@
 										bind:this={field}
 										bind:value={editValue}
 										use:focusOnMount
-										class="min-w-[18rem] flex-1 rounded bg-white/[0.06] px-1 text-xs leading-6 text-gray-100 outline outline-1 outline-emerald-500/50"
+										class="min-w-[18rem] flex-1 rounded border-0 bg-white/[0.06] px-1 text-xs leading-6 text-gray-100 outline outline-1 outline-emerald-500/40 focus:ring-0"
 										aria-label="Edit line"
 										onblur={commit}
 										onkeydown={(e) => {
@@ -636,7 +675,7 @@
 			{/if}
 			<textarea
 				bind:this={draftField}
-				class="mt-0.5 w-full resize-y rounded bg-white/[0.04] px-1 text-sm leading-6 text-gray-100"
+				class="mt-0.5 w-full resize-y rounded border border-white/5 bg-white/[0.04] px-1 text-sm leading-6 text-gray-100 focus:border-white/20 focus:outline-none focus:ring-0"
 				rows="3"
 				aria-label="Conclusion draft"
 				value={conclusion.kind === 'draft' ? conclusion.text : ''}
