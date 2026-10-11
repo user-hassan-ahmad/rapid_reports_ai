@@ -171,3 +171,9 @@ async def test_a_trigger_not_in_the_dictation_is_the_referral_row(monkeypatch):
     _setup(monkeypatch, _raw(CYST, {**REF, "source_text": "?appendicitis"}))
     out = await I.update("CT AP", "?appendicitis", ["Pelvic organs"], "A right ovarian cyst.", ["A right ovarian cyst."])
     assert [(i.kind, i.question) for i in out.items] == [("referral", "Appendix normal or inflamed?"), ("finding", "Ovarian torsion?")]
+
+
+async def test_an_explicit_referral_kind_wins_even_with_a_dictated_trigger(monkeypatch):
+    _setup(monkeypatch, _raw(CYST, {**REF, "kind": "referral", "source_text": "right ovarian cyst"}))
+    out = await I.update("CT AP", "?appendicitis", ["Pelvic organs"], "A right ovarian cyst.", ["A right ovarian cyst."])
+    assert out.items[0].kind == "referral" and out.items[0].question == "Appendix normal or inflamed?"

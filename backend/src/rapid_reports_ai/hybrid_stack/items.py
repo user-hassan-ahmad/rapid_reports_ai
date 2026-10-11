@@ -45,18 +45,20 @@ Order items by clinical urgency, most critical first. Return no items when nothi
 NEVER deny anything dictated, its expected consequence, or a feature of a dictated diagnosis (its typical signs, or its expected effect on neighbouring structures): those are already implied.
 
 Each item:
+- kind: "referral" for the referral question item (below), otherwise "finding"
 - source_text: the shortest verbatim phrase of the triggering finding (3-6 words, an exact substring of the dictation)
 - region: the region of that finding, from REGIONS
 - question: at most 12 words, the check directed at the images, ending with "?"
 - rationale: 1-2 sentences: why this check matters for this finding on this scan
 - negatives: 1-3 pertinent negatives, the most decisive first; each one short report sentence in British English that names one absent finding and nothing else: no reason clause (never "to suggest", "in keeping with" or "which"), never the word "or", no list.
 
-REFERRAL QUESTION: the clinical history may ask about a diagnosis the dictated findings do not answer. When the dictation does not address it, add one separate item for it (never merged into a finding's item) even though no dictated finding implies it: source_text empty, region the region it belongs to (it may be outside REGIONS), negatives the statements that answer it when normal. Only the diagnosis asked about and its complications that change management; never an alternative diagnosis the history does not raise.
+REFERRAL QUESTION: the clinical history may ask about a diagnosis the dictated findings do not answer. When the dictation does not address it, add one separate item for it (never merged into a finding's item) even though no dictated finding implies it: kind "referral", source_text empty, region the region it belongs to (it may be outside REGIONS), negatives the statements that answer it when normal. Only the diagnosis asked about and its complications that change management; never an alternative diagnosis the history does not raise.
 
 REMOVED BY THE RADIOLOGIST: never propose a statement listed there, or an equivalent."""
 
 
 class RawItem(BaseModel):
+    kind: str = "finding"     # finding | referral: explicit, as the empty source_text convention proved unreliable
     source_text: str = ""
     region: str = ""
     question: str = ""
@@ -134,7 +136,7 @@ def _rows(raw: list[RawItem], dictation: str = "") -> list[Item]:
     out, referral = [], False
     for it in raw:
         trigger = _norm(it.source_text)
-        kind = "referral" if not trigger or trigger not in said else "finding"
+        kind = "referral" if it.kind.strip().lower() == "referral" or not trigger or trigger not in said else "finding"
         if kind == "referral":
             if referral:
                 continue
