@@ -623,44 +623,18 @@ def test_full_labels_default_on_and_zero_turns_it_off(monkeypatch):
     assert qb.full_labels() is False
 
 
-@pytest.mark.asyncio
-async def test_stack_session_offers_what_the_radiologist_did_not_confirm(monkeypatch):
-    # Scratchpad v2 (spec 2026-10-11 §6): a finding-linked negative the brief would state, and an implicated
-    # sheet negative, are offered instead; a chip the radiologist removed is never asserted; dictated stays.
-    monkeypatch.setenv("RR_BRIEF_FULL_LABELS", "1")
-    _stub_f(monkeypatch, 0.95, [("implicated", "10 mm subdural"), ("keep", ""), ("dictated", "no uncal herniation")])
-    b = await qb.compile_brief(SHEET_F, "CT head", "10 mm right acute subdural. No uncal herniation.",
-                               stack=True, declined=["No midline shift."])
-    assert 'KEEP:' not in b.text   # nothing undictated is stated
-    assert '  - DICTATED: "No uncal herniation" — state it as the dictation does' in b.text
-    assert '  - DO NOT ASSERT: "No midline shift." — removed by the radiologist' in b.text
-    offered = {o["text"] for o in b.decisions["options"] if o["kind"] == "finding_negative"}
-    assert offered == {"No skull fracture"}   # the removed chip is not offered either
-    routes = {c["text"]: c["outcome"] for c in b.decisions["finding_negatives"]}
-    assert routes["No midline shift"] == "declined"
-
-
-
-@pytest.mark.asyncio
-async def test_stack_session_states_the_confirmed_conclusion_not_the_plan(monkeypatch):
-    monkeypatch.setenv("RR_BRIEF_FULL_LABELS", "1")
-    _stub_f(monkeypatch, 0.95, [("keep", ""), ("keep", ""), ("keep", "")])
-    b = await qb.compile_brief(SHEET_F, "CT head", "10 mm right acute subdural.", stack=True,
-                               conclusion="Acute right subdural haematoma.")
-    assert '"Acute right subdural haematoma."' in b.text and "Confirmed conclusion" in b.text
-    assert "Abnormal exemplar" not in b.text and "Acute subdural." not in b.text
-    assert 'KEEP: "No skull fracture"' not in b.text   # a default sheet negative is offered in a stack session
-    assert "No skull fracture" in {o["text"] for o in b.decisions["options"]}
-    assert b.decisions["impression_plan"] == {"confirmed": "Acute right subdural haematoma."}
-
-
-
 def test_stack_fallback_keeps_structure_and_drops_content_sections():
     b = qb.stack_fallback(SHEET_F, "Acute subdural.", ["No midline shift."])
     assert "The orbits are clear." not in b.text   # unchecked normals never pass: the findings block carries them
     assert "No skull fracture" not in b.text and "If present" not in b.text and "Abnormal exemplar" not in b.text
     assert '- DO NOT ASSERT: "No midline shift." — removed by the radiologist' in b.text
     assert '"Acute subdural."' in b.text and b.decisions["stack_fallback"] is True
+
+
+def test_stack_brief_on_a_slim_sheet_drops_region_normals():
+    slim = "## Structural Pattern\n- **Sections:** FINDINGS, IMPRESSION\n\n## Region Normals\n- **Liver:** \"The liver is normal.\"\n"
+    b = qb.stack_fallback(slim, "C.", [])
+    assert "Sections:" in b.text and "The liver is normal." not in b.text
 
 
 def test_stack_fallback_never_raises():

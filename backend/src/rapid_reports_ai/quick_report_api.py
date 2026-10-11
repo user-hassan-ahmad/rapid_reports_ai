@@ -145,11 +145,14 @@ class GenerateRequest(BaseModel):
     sheet_id: Optional[str] = None
     scan_type: Optional[str] = None
     clinical_history: Optional[str] = None
-    # Scratchpad v2 (spec 2026-10-11 §6): `findings` is the confirmed findings block; the brief then offers,
-    # never states, what was not dictated or confirmed, and never asserts the chips the radiologist removed.
+    # Scratchpad (checklist spec §7): `findings` is the confirmed findings block (answers only). The brief is the
+    # slim sheet's structure and style with the confirmed conclusion; it has no negatives stage, and never asserts
+    # what the radiologist removed.
     stack: bool = False
-    stack_declined: List[str] = []
+    stack_removed: List[str] = []
+    stack_declined: List[str] = []   # the v2 name of stack_removed, still accepted
     stack_conclusion: str = ""   # the conclusion the radiologist confirmed (the impression phrases it)
+    stack_sheet_id: Optional[str] = None   # the slim sheet the session used
 
 
 class FinaliseRequest(BaseModel):
@@ -303,6 +306,20 @@ async def analyse(
     return EventSourceResponse(event_stream())
 
 
+def _slim_markdown(db: Session, sheet_id: Optional[str]) -> str:
+    """The session's slim sheet (checklist spec §8), or "" (the generator then uses today's sheet, stripped)."""
+    if not sheet_id:
+        return ""
+    try:
+        import uuid
+        from .database.models import StackSlimSheet
+        row = db.get(StackSlimSheet, uuid.UUID(sheet_id))
+        return row.markdown if row is not None and row.status != "discarded" else ""
+    except Exception as e:  # never blocks the report
+        logger.warning("slim sheet %s not loaded (%s: %s)", sheet_id, type(e).__name__, e)
+        return ""
+
+
 async def _run_one_generator(
     *,
     skill_sheet_markdown: str,
@@ -315,6 +332,7 @@ async def _run_one_generator(
     stack: bool = False,
     declined: List[str] | None = None,
     conclusion: str = "",
+    stack_sheet: str = "",
 ) -> dict:
     """Run a single generator and return a candidate-record dict.
 
@@ -334,6 +352,7 @@ async def _run_one_generator(
             stack=stack,
             declined=declined or [],
             conclusion=conclusion,
+            stack_sheet=stack_sheet,
         )
         latency_ms = int((time.time() - t0) * 1000)
         result["latency_ms"] = latency_ms
@@ -488,8 +507,9 @@ async def generate(
                 clinical_history=clinical_history,
                 user_signature=user_signature,
                 stack=request.stack,
-                declined=request.stack_declined,
+                declined=[*request.stack_removed, *request.stack_declined],
                 conclusion=request.stack_conclusion,
+                stack_sheet=_slim_markdown(db, request.stack_sheet_id) if request.stack else "",
             )
 
             logger.info(

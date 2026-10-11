@@ -109,22 +109,23 @@ async def generate_quick_report(
     stack: bool = False,
     declined: Sequence[str] = (),
     conclusion: str = "",
+    stack_sheet: str = "",
 ) -> dict:
     """Write one quick report from a compiled brief (the sheet reconciled with this dictation),
     or from the raw sheet with the full prompts if the brief cannot be compiled. Falls back
     once to QUICK_REPORT_GENERATOR_FALLBACK when the configured primary raises; an override
     naming a different model is an explicit comparison and does not fall back."""
     brief = None
-    if use_brief:
+    if stack:
+        # A scratchpad session (checklist spec §7): the findings are the radiologist's answers, so the brief carries
+        # structure and style only (the slim sheet, else today's sheet stripped of its content sections), the
+        # confirmed conclusion and the removed sentences. No negatives stage; never the raw sheet.
+        brief = stack_fallback(stack_sheet or skill_sheet, conclusion, declined)
+    elif use_brief:
         try:
-            brief = await compile_brief(skill_sheet, scan_type, findings, clinical_history, stack=stack, declined=declined,
-                                         conclusion=conclusion)
+            brief = await compile_brief(skill_sheet, scan_type, findings, clinical_history)
         except Exception as e:
-            if stack:   # never the raw sheet in a stack session: it would state what the radiologist did not confirm
-                logger.warning("quick-report brief failed in a stack session (%s: %s); stack fallback", type(e).__name__, str(e)[:200])
-                brief = stack_fallback(skill_sheet, conclusion, declined)
-            else:
-                logger.warning("quick-report brief failed (%s: %s); generating from the raw sheet", type(e).__name__, str(e)[:200])
+            logger.warning("quick-report brief failed (%s: %s); generating from the raw sheet", type(e).__name__, str(e)[:200])
     # A linked Normal-study path (by format) is reduced to its prose when the raw sheet is used; strip_links
     # returns any other sheet unchanged.
     sheet_for_generator = brief.text if brief else strip_links(skill_sheet)
