@@ -40,7 +40,7 @@ REF = {"source_text": "", "region": "Appendix", "question": "Appendix normal or 
 
 async def test_referral_detected_and_only_one_kept(monkeypatch):
     _setup(monkeypatch, _raw(CYST, REF, {**REF, "question": "Periappendiceal collection?"}))
-    out = await I.update("CT AP", "?appendicitis", ["Pelvic organs"], "A cyst.", ["A cyst."])
+    out = await I.update("CT AP", "?appendicitis", ["Pelvic organs"], "A right ovarian cyst.", ["A right ovarian cyst."])
     kinds = [(i.kind, i.question) for i in out.items]
     assert kinds == [("referral", "Appendix normal or inflamed?"), ("finding", "Ovarian torsion?")]
     assert out.error is None and not out.cached
@@ -72,7 +72,7 @@ async def test_caps_apply_after_the_checks(monkeypatch):
     rows.append({**CYST, "region": "Kidneys", "question": "K1?", "negatives": ["No kidney thing."]})
     # Q0 is answered by the dictation, so it frees a slot in its region
     _setup(monkeypatch, _raw(*rows), _checks({"No thing 0.": (0.95, 0.0, 0.0)}))
-    out = await I.update("CT AP", "", ["Pelvic organs", "Liver", "Kidneys"], "x", ["x"])
+    out = await I.update("CT AP", "", ["Pelvic organs", "Liver", "Kidneys"], "A right ovarian cyst.", ["x"])
     open_rows = [i.question for i in out.items if not i.answered]
     assert open_rows == ["Q1?", "Q2?", "L1?", "K1?"]          # 2 per region, 4 per case
     assert [i.question for i in out.items if i.answered] == ["Q0?"]
@@ -165,3 +165,9 @@ async def test_a_sentence_with_a_measurement_is_never_offered(monkeypatch):
     _setup(monkeypatch, _raw({**CYST, "negatives": ["A 5 mm intrauterine gestational sac is seen.", "No free fluid."]}))
     out = await I.update("US pelvis", "?ectopic", ["Uterus"], "A fibroid.", ["A fibroid."])
     assert out.items[0].sentences == ["No free fluid."]
+
+
+async def test_a_trigger_not_in_the_dictation_is_the_referral_row(monkeypatch):
+    _setup(monkeypatch, _raw(CYST, {**REF, "source_text": "?appendicitis"}))
+    out = await I.update("CT AP", "?appendicitis", ["Pelvic organs"], "A right ovarian cyst.", ["A right ovarian cyst."])
+    assert [(i.kind, i.question) for i in out.items] == [("referral", "Appendix normal or inflamed?"), ("finding", "Ovarian torsion?")]

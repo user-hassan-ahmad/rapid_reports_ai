@@ -49,7 +49,7 @@ Each item:
 - region: the region of that finding, from REGIONS
 - question: at most 12 words, the check directed at the images, ending with "?"
 - rationale: 1-2 sentences: why this check matters for this finding on this scan
-- negatives: 1-3 pertinent negatives, the most decisive first; each one short report sentence that names one absent finding and nothing else: no reason clause, never the word "or", no list.
+- negatives: 1-3 pertinent negatives, the most decisive first; each one short report sentence in British English that names one absent finding and nothing else: no reason clause (never "to suggest", "in keeping with" or "which"), never the word "or", no list.
 
 REFERRAL QUESTION: the clinical history may ask about a diagnosis the dictated findings do not answer. When the dictation does not address it, add one separate item for it (never merged into a finding's item) even though no dictated finding implies it: source_text empty, region the region it belongs to (it may be outside REGIONS), negatives the statements that answer it when normal. Only the diagnosis asked about and its complications that change management; never an alternative diagnosis the history does not raise.
 
@@ -127,10 +127,14 @@ def _id(kind: str, region: str, question: str) -> str:
     return hashlib.sha1(f"{kind}|{region}|{_norm(question)}".encode()).hexdigest()[:12]
 
 
-def _rows(raw: list[RawItem]) -> list[Item]:
+def _rows(raw: list[RawItem], dictation: str = "") -> list[Item]:
+    """A referral item is one whose trigger is not in the dictation: the writer sometimes fills source_text from the
+    history ("?appendicitis") instead of leaving it empty (hand read 2026-10-12). A wording check, not a judgement."""
+    said = _norm(dictation)
     out, referral = [], False
     for it in raw:
-        kind = "referral" if not it.source_text.strip() else "finding"
+        trigger = _norm(it.source_text)
+        kind = "referral" if not trigger or trigger not in said else "finding"
         if kind == "referral":
             if referral:
                 continue
@@ -230,7 +234,7 @@ async def update(scan_type: str, history: str, regions: list[str], dictation: st
         _CACHE[key] = list(raw)
         while len(_CACHE) > _CACHE_MAX:
             _CACHE.popitem(last=False)
-    rows = _rows(raw)
+    rows = _rows(raw, dictation)
     await _split(rows)
     rows = _dedupe(rows)
     await _check(rows, dictation, removed)
