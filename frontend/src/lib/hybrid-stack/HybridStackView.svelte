@@ -107,7 +107,7 @@
 	// The gate never unlocks an impression nobody has seen (spec §5): a conclusion must exist (dictated,
 	// drafted or typed). A failed draft never blocks: the radiologist types one or asks again.
 	const hasConclusion = $derived(conclusionRows.length > 0 || (conclusion.kind === 'draft' && conclusion.text.trim().length > 0));
-	const referral = $derived(items.find((i) => i.kind === 'referral') ?? null);
+	const referrals = $derived(items.filter((i) => i.kind === 'referral'));
 	const shownNames = $derived(new Set(shown.map((g) => g.name)));
 	const rowsFor = (region: string) => items.filter((i) => i.kind === 'finding' && i.region === region);
 	// A finding row whose region has no card (the writer named a region outside the scratchpad) shows up top.
@@ -204,39 +204,41 @@
 </script>
 
 {#snippet row(it: StackItem, label: string | null)}
+	<!-- One compact line (hand read 2026-10-12): tag, question, its sentences inline with ×, then the answer. The
+	     reason sits behind ⓘ. A tap adds exactly the sentences shown. -->
 	{@const listed = rowSentences(it, removed)}
 	{#if tapped.includes(it.id)}
-		<div class="rounded-md border border-emerald-500/25 bg-emerald-500/[0.07] px-2 py-1 text-sm text-emerald-200" data-row="tapped">
-			{#if label}<p class="text-[10px] uppercase tracking-wide text-emerald-300/70">{label} · answered</p>{/if}
-			✓ {listed.join(' ')}
+		<div class="flex flex-wrap items-baseline gap-x-2 rounded-md border-l-2 border-emerald-500/60 bg-emerald-500/[0.06] px-2 py-1 text-sm" data-row="tapped">
+			{#if label}<span class="text-[10px] uppercase tracking-wide text-emerald-300/70">{label}</span>{/if}
+			<span class="text-emerald-200">✓ {listed.join(' ')}</span>
 		</div>
 	{:else if it.answered}
-		<div class="rounded-md border border-emerald-500/25 bg-emerald-500/[0.07] px-2 py-1 text-sm text-emerald-200" data-row="answered" transition:fade={{ duration: ms }}>
-			✓ {it.question} <span class="text-xs text-emerald-300/70">Answered in your dictation.</span>
+		<div class="flex flex-wrap items-baseline gap-x-2 rounded-md border-l-2 border-emerald-500/60 bg-emerald-500/[0.06] px-2 py-1 text-sm" data-row="answered" transition:fade={{ duration: ms }}>
+			<span class="text-emerald-200">✓ {it.question}</span><span class="text-xs text-emerald-300/70">answered in your dictation</span>
 		</div>
 	{:else if listed.length}
-		<div class="space-y-1 rounded-md border border-amber-400/40 bg-amber-500/[0.08] px-2 py-1.5" data-row="open" transition:fade={{ duration: ms }}>
-			{#if label}<p class="text-[10px] uppercase tracking-wide text-amber-300/80">{label}</p>{/if}
-			<p class="text-sm font-medium text-amber-100">{it.question}</p>
-			{#if it.why}<p class="text-xs text-gray-400">{it.why}</p>{/if}
-			<ul class="space-y-0.5">
+		<div class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border-l-2 border-amber-400/80 bg-amber-500/[0.07] px-2 py-1.5" data-row="open" transition:fade={{ duration: ms }}>
+			{#if label}<span class="text-[10px] font-semibold uppercase tracking-wide text-amber-300/90">{label}</span>{/if}
+			<span class="text-sm font-medium text-amber-100">{it.question}</span>
+			{#if it.why}<span class="cursor-help text-xs text-gray-500" title={it.why} aria-label="Why: {it.why}">ⓘ</span>{/if}
+			<span class="flex min-w-0 flex-wrap items-center gap-1.5">
 				{#each listed as s (s)}
-					<li class="flex items-center gap-1 text-sm text-gray-200">
-						<span>{s}</span>
-						<button type="button" class="rounded px-1 text-xs text-gray-500 hover:text-rose-300" title="Remove: never stated"
+					<span class="inline-flex items-center gap-0.5 rounded bg-white/[0.04] px-1.5 py-0.5 text-xs text-gray-200">
+						{s}
+						<button type="button" class="px-0.5 text-gray-500 hover:text-rose-300" title="Remove: never stated"
 							aria-label="Remove {s}" onclick={() => onRemoveSentence(s)}>×</button>
-					</li>
+					</span>
 				{/each}
-			</ul>
-			<div class="flex flex-wrap gap-1.5 pt-0.5">
+			</span>
+			<span class="ml-auto flex gap-1.5">
 				<button type="button" class="rounded-md border border-amber-300/40 bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-100 hover:bg-amber-400/25"
-					onclick={() => onAnswer(it.id)}>{answerLabel(listed)}</button>
-				<button type="button" class="rounded-md border border-white/10 px-2 py-0.5 text-xs text-gray-300 hover:bg-white/[0.06]"
+					title="Add: {listed.join(' ')}" onclick={() => onAnswer(it.id)}>{answerLabel(listed)}</button>
+				<button type="button" class="rounded-md border border-white/10 px-2 py-0.5 text-xs text-gray-400 hover:bg-white/[0.06]"
 					onclick={() => {
 						newField?.focus();
 						onDictateInto(it.region);
 					}}>Dictate</button>
-			</div>
+			</span>
 		</div>
 	{/if}
 {/snippet}
@@ -307,8 +309,8 @@
 		</section>
 	{/if}
 
-	{#if referral}
-		<section aria-label="Referral question">{@render row(referral, 'Asked in the referral')}</section>
+	{#if referrals.length}
+		<section aria-label="Referral question" class="space-y-1">{#each referrals as it (it.id)}{@render row(it, 'Referral')}{/each}</section>
 	{/if}
 	{#if looseRows.length}
 		<section aria-label="Checks" class="space-y-1">{#each looseRows as it (it.id)}{@render row(it, it.region || null)}{/each}</section>

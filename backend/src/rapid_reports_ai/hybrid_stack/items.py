@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 MAX_SENTENCES = 2          # per row: each is read before a tap asserts it (spec §3.3)
 MAX_ROWS_PER_REGION = 2    # open finding rows
-MAX_ROWS = 4               # open rows per case, the referral row included
+MAX_ROWS = 4               # open rows per case, referral rows included
+MAX_REFERRALS = 2          # one per question the history asks ("rule out haemorrhage and solid organ injury")
 WRITER_TIMEOUT_S = 8.0
 _CACHE: "OrderedDict[tuple, list[RawItem]]" = OrderedDict()   # the writer's rows only: checks run per dictation
 _CACHE_MAX = 256
@@ -52,7 +53,7 @@ Each item:
 - rationale: 1-2 sentences: why this check matters for this finding on this scan
 - negatives: 1-3 pertinent negatives, the most decisive first; each one short report sentence in British English that names one absent finding and nothing else: no reason clause (never "to suggest", "in keeping with" or "which"), never the word "or", no list.
 
-REFERRAL QUESTION: the clinical history may ask about a diagnosis the dictated findings do not answer. When the dictation does not address it, add one separate item for it (never merged into a finding's item) even though no dictated finding implies it: kind "referral", source_text empty, region the region it belongs to (it may be outside REGIONS), negatives the statements that answer it when normal. Only the diagnosis asked about and its complications that change management; never an alternative diagnosis the history does not raise.
+REFERRAL QUESTIONS: the clinical history may ask one or more questions the dictated findings do not answer. For each question the dictation does not address, add one separate item (never merged into a finding's item) even though no dictated finding implies it: kind "referral", source_text empty, region the region it belongs to ("" when it spans regions), negatives: first the one statement that answers the question as the history asks it (for example a history asking to exclude injury to several organs is answered by one statement about that injury, not one per organ), then at most one more only when it adds a separate check. Only the diagnoses asked about and their complications that change management; never an alternative diagnosis the history does not raise.
 
 REMOVED BY THE RADIOLOGIST: never propose a statement listed there, or an equivalent."""
 
@@ -131,23 +132,23 @@ def _id(kind: str, region: str, question: str) -> str:
 
 
 def _rows(raw: list[RawItem], dictation: str = "") -> list[Item]:
-    """One referral row at most. An item the writer marks kind "referral" wins; failing that, the first item whose
-    trigger is not in the dictation (the writer sometimes fills source_text from the history instead of leaving it
-    empty). Any other candidate stays a finding row: nothing is dropped (review 2026-10-12). A wording check, not a
-    judgement."""
+    """Referral rows: one per question the history asks, at most MAX_REFERRALS. Items the writer marks kind
+    "referral" win; failing any, the first item whose trigger is not in the dictation (the writer sometimes fills
+    source_text from the history). Any other candidate stays a finding row: nothing is dropped. A wording check,
+    not a judgement."""
     said = _norm(dictation)
     explicit = [k for k, it in enumerate(raw) if it.kind.strip().lower() == "referral"]
     heuristic = [k for k, it in enumerate(raw) if not _norm(it.source_text) or _norm(it.source_text) not in said]
-    ref = explicit[0] if explicit else (heuristic[0] if heuristic else None)
+    refs = set(explicit[:MAX_REFERRALS] if explicit else heuristic[:1])
     out = []
     for k, it in enumerate(raw):
-        kind = "referral" if k == ref else "finding"
+        kind = "referral" if k in refs else "finding"
         out.append(Item(id=_id(kind, it.region, it.question), kind=kind, region=it.region.strip(),
                         question=it.question.strip(), why=it.rationale.strip(),
                         # A row only ever carries normal statements: a number nobody measured is never offered
                         # (lab p1: a writer slip offered "A 5 mm intrauterine gestational sac is seen").
                         sentences=[_sentence(n) for n in it.negatives if n.strip() and not _MEASUREMENT.search(n)]))
-    return sorted(out, key=lambda i: i.kind != "referral")   # the referral row leads; finding order kept
+    return sorted(out, key=lambda i: i.kind != "referral")   # referral rows lead; finding order kept
 
 
 async def _split(rows: list[Item]) -> None:

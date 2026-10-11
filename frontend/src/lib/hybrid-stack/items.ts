@@ -6,9 +6,9 @@ export const QUIET_MAX = 3;
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\.$/, '').replace(/\s+/g, ' ');
 
-/** The answer button: the one sentence it adds, or "Both normal" with both sentences in view above it. */
+/** The answer button: short, beside the sentences it adds (shown inline in the row; its title lists them). */
 export function answerLabel(sentences: string[]): string {
-	return sentences.length === 1 ? sentences[0].trim().replace(/\.$/, '') : 'Both normal';
+	return sentences.length === 1 ? '✓ Normal' : '✓ Both normal';
 }
 
 /** The sentences a tap will add: the row's own, minus any the radiologist removed with ×. */

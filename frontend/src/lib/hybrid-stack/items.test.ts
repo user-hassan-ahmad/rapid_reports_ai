@@ -7,9 +7,9 @@ const item = (id: string, sentences: string[], extra: Partial<StackItem> = {}): 
 });
 
 describe('checklist rows', () => {
-	it('labels the answer by its sentence, or "Both normal" for two', () => {
-		expect(answerLabel(['No features of torsion.'])).toBe('No features of torsion');
-		expect(answerLabel(['No torsion.', 'No rupture.'])).toBe('Both normal');
+	it('labels the answer briefly; the sentences sit beside it', () => {
+		expect(answerLabel(['No features of torsion.'])).toBe('✓ Normal');
+		expect(answerLabel(['No torsion.', 'No rupture.'])).toBe('✓ Both normal');
 	});
 	it('a row lists only the sentences the radiologist has not removed', () => {
 		expect(rowSentences(item('a', ['No torsion.', 'No rupture.']), ['no rupture'])).toEqual(['No torsion.']);

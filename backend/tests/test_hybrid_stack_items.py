@@ -38,10 +38,11 @@ REF = {"source_text": "", "region": "Appendix", "question": "Appendix normal or 
        "rationale": "The history asks it.", "negatives": ["The appendix is normal."]}
 
 
-async def test_referral_detected_and_only_one_kept(monkeypatch):
+async def test_referral_detected_and_only_one_heuristic_kept(monkeypatch):
     _setup(monkeypatch, _raw(CYST, REF, {**REF, "question": "Periappendiceal collection?"}))
     out = await I.update("CT AP", "?appendicitis", ["Pelvic organs"], "A right ovarian cyst.", ["A right ovarian cyst."])
     kinds = [(i.kind, i.question) for i in out.items]
+    # the second heuristic candidate stays a finding row; here it repeats the referral's sentence, so it drops
     assert kinds == [("referral", "Appendix normal or inflamed?"), ("finding", "Ovarian torsion?")]
     assert out.error is None and not out.cached
 
@@ -191,3 +192,14 @@ async def test_tapped_sentences_the_dictation_now_contradicts_are_returned(monke
     out = await I.update("CT KUB", "", ["Pelvic organs"], "A right ovarian cyst. Mild perinephric stranding.",
                          ["A right ovarian cyst."], tapped=["No perinephric stranding.", "No hydronephrosis."])
     assert out.contradicted == ["No perinephric stranding."]
+
+
+async def test_one_referral_row_per_question_the_history_asks(monkeypatch):
+    bleed = {"kind": "referral", "source_text": "", "region": "", "question": "Active haemorrhage?",
+             "rationale": "", "negatives": ["No active contrast extravasation."]}
+    organ = {"kind": "referral", "source_text": "", "region": "", "question": "Solid organ injury?",
+             "rationale": "", "negatives": ["No solid organ injury."]}
+    _setup(monkeypatch, _raw(bleed, organ))
+    out = await I.update("CT trauma", "rule out active haemorrhage and solid organ injury", ["Liver", "Spleen"], "", [])
+    assert [(i.kind, i.sentences) for i in out.items] == [("referral", ["No active contrast extravasation."]),
+                                                          ("referral", ["No solid organ injury."])]

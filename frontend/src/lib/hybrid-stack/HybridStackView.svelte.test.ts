@@ -32,7 +32,7 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByText('Kidneys', { exact: true })).toHaveAttribute('data-state', 'dictated');
 		await expect.element(page.getByText('Spleen', { exact: true })).toHaveAttribute('data-state', 'assumed');
 		await expect.element(page.getByText('Biliary dilatation?')).toBeInTheDocument();
-		await page.getByRole('button', { name: 'No biliary dilatation', exact: true }).click();
+		await page.getByRole('button', { name: '✓ Normal' }).click();
 		expect(props.onAnswer).toHaveBeenCalledWith('a');
 	});
 
@@ -42,12 +42,12 @@ describe('HybridStackView v2', () => {
 		const two = row('b', ['No torsion.', 'No rupture.'], { region: 'Liver' });
 		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })];
 		const r = render(HybridStackView, { ...props, units, items: [ref, two] });
-		await expect.element(page.getByText('Asked in the referral')).toBeInTheDocument();
-		await expect.element(page.getByRole('button', { name: 'Both normal' })).toBeInTheDocument();
+		await expect.element(page.getByText('Referral', { exact: true })).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: '✓ Both normal' })).toBeInTheDocument();
 		await page.getByLabelText('Remove No rupture.').click();
 		expect(props.onRemoveSentence).toHaveBeenCalledWith('No rupture.');
 		r.rerender({ ...props, units, items: [ref, two], removed: ['No rupture.'] });
-		await expect.element(page.getByRole('button', { name: 'No torsion', exact: true })).toBeInTheDocument();
+		await expect.element(page.getByTitle('Add: No torsion.')).toBeInTheDocument();   // adds only what is left
 		r.rerender({ ...props, units, items: [ref, two], tapped: ['r'] });
 		await expect.element(page.getByText(/✓ The appendix is normal\./)).toBeInTheDocument();
 	});
