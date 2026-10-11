@@ -40,8 +40,7 @@ def test_off_without_dictation_package(authed, monkeypatch):
 
 
 def test_group_route(authed, monkeypatch):
-    async def fake(scan_type, text, regions, previous, chips):
-        assert chips == []
+    async def fake(scan_type, text, regions, previous):
         return S.GroupResult(units=[], new_ids=[], pills=["Liver"])
     monkeypatch.setattr(R, "group_update", fake)
     d = authed.post("/api/canvas/stack/group", json={"scan_type": "CT", "text": "x",
@@ -101,17 +100,28 @@ def test_log_keeps_gate_and_report_id(authed, db_session):
     assert row.units == [{"id": 0}] and row.manual_moves == 3
 
 
-def test_chips_and_draft_routes(authed, monkeypatch):
-    from rapid_reports_ai.hybrid_stack.chips import ChipsResult
+def test_items_assumed_and_draft_routes(authed, monkeypatch):
     from rapid_reports_ai.hybrid_stack.draft import DraftResult
+    from rapid_reports_ai.hybrid_stack.items import Item, ItemsResult
+    from rapid_reports_ai.hybrid_stack.normals import AssumedResult
 
-    async def chips(scan_type, history, region, sentences, dictation, declined):
-        assert region == "Bowel" and sentences == ["Diverticulitis."]
-        return ChipsResult(chips=[{"text": "No abscess.", "state": "included"}])
+    async def items(scan_type, history, regions, dictation, abnormal, not_assessable, removed):
+        assert regions == ["Bowel"] and abnormal == ["Diverticulitis."] and removed == ["No fistula."]
+        return ItemsResult(items=[Item(id="a", kind="finding", region="Bowel", question="Abscess?",
+                                       sentences=["No pericolic abscess."])])
+
+    async def assumed(dictation, normals, abnormal, dictated_normal, removed):
+        assert normals == {"Liver": ["The liver is normal."]}
+        return AssumedResult(assumed=normals)
 
     async def draft(scan_type, history, findings):
         return DraftResult(text="Acute diverticulitis.")
-    monkeypatch.setattr(R, "suggest", chips)
+    monkeypatch.setattr(R, "items_update", items)
+    monkeypatch.setattr(R, "assumed_normals", assumed)
     monkeypatch.setattr(R, "draft_conclusion", draft)
-    assert authed.post("/api/canvas/stack/chips", json={"region": "Bowel", "sentences": ["Diverticulitis."]}).json()["chips"] == [{"text": "No abscess.", "state": "included"}]
+    d = authed.post("/api/canvas/stack/items", json={"regions": ["Bowel"], "dictation": "Diverticulitis.",
+                                                     "abnormal": ["Diverticulitis."], "removed": ["No fistula."]}).json()
+    assert d["items"][0]["sentences"] == ["No pericolic abscess."] and d["items"][0]["answered"] is False
+    d = authed.post("/api/canvas/stack/assumed", json={"region_normals": {"Liver": ["The liver is normal."]}}).json()
+    assert d["assumed"] == {"Liver": ["The liver is normal."]}
     assert authed.post("/api/canvas/stack/draft", json={"findings": "x"}).json()["text"] == "Acute diverticulitis."

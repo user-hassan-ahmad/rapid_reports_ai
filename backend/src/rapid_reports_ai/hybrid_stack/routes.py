@@ -16,7 +16,8 @@ from ..database.models import DictationStackLog, StackSchemaFamily, Template, Us
 from ..dictation_v2 import v2_allowed
 from ..template_sheet_structure import fresh
 from .schemas import Region
-from .chips import ChipsResult, suggest
+from .items import ItemsResult, update as items_update
+from .normals import AssumedResult, assumed as assumed_normals
 from .draft import DraftResult, draft_conclusion
 from .service import GroupResult, SchemaResult, close_update, group_update, resolve_schema
 from .units import StackUnit
@@ -52,16 +53,24 @@ class GroupRequest(BaseModel):
     text: str = ""
     regions: list[Region]
     previous: list[StackUnit] = Field(default_factory=list)
-    chips: list[str] = Field(default_factory=list)  # visible chips, re-asked against the dictation (v2 §4)
 
 
-class ChipsRequest(BaseModel):
+class ItemsRequest(BaseModel):
     scan_type: str = ""
     clinical_history: str = ""
-    region: str
-    sentences: list[str]
+    regions: list[str] = Field(default_factory=list)
     dictation: str = ""
-    declined: list[str] = Field(default_factory=list)  # chips the radiologist removed: never offered again
+    abnormal: list[str] = Field(default_factory=list)   # the abnormal sentences: the writer's cache key
+    not_assessable: str = ""
+    removed: list[str] = Field(default_factory=list)    # sentences the radiologist removed: never offered again
+
+
+class AssumedRequest(BaseModel):
+    dictation: str = ""
+    region_normals: dict[str, list[str]] = Field(default_factory=dict)
+    abnormal: list[str] = Field(default_factory=list)
+    dictated_normal: list[str] = Field(default_factory=list)
+    removed: list[str] = Field(default_factory=list)
 
 
 class DraftRequest(BaseModel):
@@ -110,14 +119,21 @@ async def stack_schema(req: SchemaRequest, user: User = Depends(get_current_user
 @router.post("/group", response_model=GroupResult)
 async def stack_group(req: GroupRequest, user: User = Depends(get_current_user)):
     _require()
-    return await group_update(req.scan_type, req.text, req.regions, req.previous, req.chips)
+    return await group_update(req.scan_type, req.text, req.regions, req.previous)
 
 
-@router.post("/chips", response_model=ChipsResult)
-async def stack_chips(req: ChipsRequest, user: User = Depends(get_current_user)):
+@router.post("/items", response_model=ItemsResult)
+async def stack_items(req: ItemsRequest, user: User = Depends(get_current_user)):
     _require()
-    return await suggest(req.scan_type, req.clinical_history, req.region, req.sentences[:12], req.dictation,
-                         req.declined[:50])
+    return await items_update(req.scan_type, req.clinical_history, req.regions[:40], req.dictation,
+                              req.abnormal[:40], req.not_assessable[:2000], req.removed[:50])
+
+
+@router.post("/assumed", response_model=AssumedResult)
+async def stack_assumed(req: AssumedRequest, user: User = Depends(get_current_user)):
+    _require()
+    normals = {r: s[:8] for r, s in list(req.region_normals.items())[:40]}
+    return await assumed_normals(req.dictation, normals, req.abnormal, req.dictated_normal, req.removed[:50])
 
 
 @router.post("/draft", response_model=DraftResult)
