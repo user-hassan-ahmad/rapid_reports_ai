@@ -2,35 +2,66 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page, userEvent } from '@vitest/browser/context';
 import HybridStackView from './HybridStackView.svelte';
-import type { StackUnit } from './types';
+import type { StackItem, StackUnit } from './types';
 
 const u = (id: number, text: string, group: string | null, extra: Partial<StackUnit> = {}): StackUnit => ({
 	id, text, group, structure: null, attach_to: null, parts: null, covers: [], abnormal: false, pinned: false, heading: false, ...extra
 });
 const GROUPS = ['Technique', 'Liver', 'Kidneys', 'Spleen', 'Other findings', 'General', 'Conclusion'];
 const PILLS = ['Liver', 'Kidneys', 'Spleen'];
-const base = () => ({ groups: GROUPS, pillRegions: PILLS, onMove: vi.fn(), onEditLine: vi.fn(), onChipAccept: vi.fn(), onConfirm: vi.fn() });
+const base = () => ({ groups: GROUPS, pillRegions: PILLS, onMove: vi.fn(), onEditLine: vi.fn(), onConfirm: vi.fn() });
+const row = (id: string, sentences: string[], extra: Partial<StackItem> = {}): StackItem => ({
+	id, kind: 'finding', region: 'Liver', question: 'Biliary dilatation?', why: 'A cyst can obstruct.', sentences, answered: false, ...extra
+});
 
 describe('HybridStackView v2', () => {
-	it('abnormal regions in the scratchpad, normals in the tray (solid when dictated, dashed when assumed)', async () => {
-		const props = base();
+	it('abnormal regions in the scratchpad, normals in the tray, rows asked with the sentence on the button', async () => {
+		const props = { ...base(), onAnswer: vi.fn() };
 		render(HybridStackView, {
 			...props,
 			units: [
 				u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true, covers: ['Liver'], structure: 'liver' }),
 				u(1, 'The kidneys are normal.', 'Kidneys', { covers: ['Kidneys'] })
 			],
-			chips: [{ region: 'Liver', text: 'No biliary dilatation.', state: 'included' }, { region: 'Liver', text: 'No portal vein thrombus.', state: 'optional' }],
-			onChipRemove: vi.fn()
+			items: [row('a', ['No biliary dilatation.'])]
 		});
 		await expect.element(page.getByRole('heading', { name: 'Liver' })).toBeInTheDocument();
 		await expect.element(page.getByRole('heading', { name: 'Kidneys' })).not.toBeInTheDocument();
 		await expect.element(page.getByText('Remainder of liver: assumed normal')).toBeInTheDocument();
 		await expect.element(page.getByText('Kidneys', { exact: true })).toHaveAttribute('data-state', 'dictated');
 		await expect.element(page.getByText('Spleen', { exact: true })).toHaveAttribute('data-state', 'assumed');
-		await expect.element(page.getByText(/stated, not dictated: No biliary dilatation\./)).toBeInTheDocument();
-		await page.getByText('+ No portal vein thrombus.').click();
-		expect(props.onChipAccept).toHaveBeenCalledWith('No portal vein thrombus.');
+		await expect.element(page.getByText('Biliary dilatation?')).toBeInTheDocument();
+		await page.getByRole('button', { name: 'No biliary dilatation', exact: true }).click();
+		expect(props.onAnswer).toHaveBeenCalledWith('a');
+	});
+
+	it('the referral row leads; two sentences give "Both normal"; × removes one; a tapped row turns green', async () => {
+		const props = { ...base(), onAnswer: vi.fn(), onRemoveSentence: vi.fn() };
+		const ref = row('r', ['The appendix is normal.'], { kind: 'referral', region: 'Appendix', question: 'Appendix normal or inflamed?' });
+		const two = row('b', ['No torsion.', 'No rupture.'], { region: 'Liver' });
+		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })];
+		const r = render(HybridStackView, { ...props, units, items: [ref, two] });
+		await expect.element(page.getByText('Asked in the referral')).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Both normal' })).toBeInTheDocument();
+		await page.getByLabelText('Remove No rupture.').click();
+		expect(props.onRemoveSentence).toHaveBeenCalledWith('No rupture.');
+		r.rerender({ ...props, units, items: [ref, two], removed: ['No rupture.'] });
+		await expect.element(page.getByRole('button', { name: 'No torsion', exact: true })).toBeInTheDocument();
+		r.rerender({ ...props, units, items: [ref, two], tapped: ['r'] });
+		await expect.element(page.getByText(/✓ The appendix is normal\./)).toBeInTheDocument();
+	});
+
+	it('the quiet line shows what will be reported, three at a time', async () => {
+		render(HybridStackView, {
+			...base(), onRemoveSentence: vi.fn(),
+			units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })],
+			assumed: { Liver: ['No biliary dilatation.', 'The portal vein is patent.', 'No other lesion.', 'The gallbladder is normal.', 'No ascites.'] }
+		});
+		await expect.element(page.getByText('Will also be reported')).toBeInTheDocument();
+		await expect.element(page.getByText('The portal vein is patent.')).toBeInTheDocument();
+		await expect.element(page.getByText('No ascites.')).not.toBeInTheDocument();
+		await page.getByText('+2 more').click();
+		await expect.element(page.getByText('No ascites.')).toBeInTheDocument();
 	});
 
 	it('shows the live strip and lets a line be edited and committed with Enter', async () => {
@@ -69,30 +100,10 @@ describe('HybridStackView v2', () => {
 		expect(document.querySelectorAll('[data-state]').length).toBe(2); // Liver, Spleen
 	});
 
-	it('× removes an included chip', async () => {
-		const onChipRemove = vi.fn();
-		render(HybridStackView, {
-			...base(), onChipRemove,
-			units: [u(0, 'A 4 mm left renal calculus.', 'Kidneys', { abnormal: true })],
-			chips: [{ region: 'Kidneys', text: 'No hydronephrosis.', state: 'included' }]
-		});
-		await page.getByLabelText('Remove No hydronephrosis.').click();
-		expect(onChipRemove).toHaveBeenCalledWith('No hydronephrosis.');
-	});
-
-	it('a removed chip leaves the DOM after its region has slid in', async () => {
-		const props = base();
-		const units0 = [u(0, 'The kidneys are normal.', 'Kidneys', { covers: ['Kidneys'] })];
-		const units1 = [u(0, 'A 4 mm left renal calculus.', 'Kidneys', { abnormal: true })];
-		const chip = { region: 'Kidneys', text: 'No hydronephrosis.', state: 'included' as const };
-		const r = render(HybridStackView, { ...props, units: units0, chips: [] });
-		await r.rerender({ ...props, units: units1, chips: [chip] });
-		await expect.element(page.getByLabelText('Remove No hydronephrosis.')).toBeInTheDocument();
-		await new Promise((res) => setTimeout(res, 600));
-		await r.rerender({ ...props, units: units1, chips: [] });
-		await new Promise((res) => setTimeout(res, 600));
-		const left = [...document.querySelectorAll('[data-chip]')].map((e) => `${e.textContent?.trim()}|${(e as HTMLElement).style.cssText}|${e.isConnected}`);
-		expect(left).toEqual([]);
+	it('a dashed tray pill shows the sentences it will report', async () => {
+		render(HybridStackView, { ...base(), units: [], assumed: { Spleen: ['The spleen is normal in size.'] } });
+		await page.getByText('Spleen', { exact: true }).click();
+		await expect.element(page.getByText('The spleen is normal in size.')).toBeInTheDocument();
 	});
 
 	it('a typed finding is appended on Enter', async () => {
@@ -103,14 +114,15 @@ describe('HybridStackView v2', () => {
 		expect(onAppend).toHaveBeenCalledWith('The spleen is enlarged at 15 cm.');
 	});
 
-	it('the gate lists the assumed normals and confirms with a click', async () => {
+	it('the gate bar counts open questions and assumed normals; Confirm waits for every question', async () => {
 		const props = base();
-		render(HybridStackView, {
-			...props,
-			units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true }), u(1, 'Simple cyst.', 'Conclusion')],
-			conclusion: { kind: 'dictated' }
-		});
-		await expect.element(page.getByText(/normal, not dictated: Kidneys, Spleen, remainder of liver/)).toBeInTheDocument();
+		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true }), u(1, 'Simple cyst.', 'Conclusion')];
+		const r = render(HybridStackView, { ...props, units, conclusion: { kind: 'dictated' }, items: [row('a', ['No biliary dilatation.'])] });
+		await expect.element(page.getByText('1 question open')).toBeInTheDocument();
+		await expect.element(page.getByText('2 assumed normal')).toBeInTheDocument();   // Kidneys, Spleen (no sentences yet)
+		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+		r.rerender({ ...props, units, conclusion: { kind: 'dictated' }, items: [row('a', ['No biliary dilatation.'])], tapped: ['a'] });
+		await expect.element(page.getByText('0 questions open')).toBeInTheDocument();
 		await page.getByRole('button', { name: 'Confirm' }).click();
 		expect(props.onConfirm).toHaveBeenCalled();
 	});

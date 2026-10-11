@@ -31,7 +31,6 @@ export interface GroupResult {
 	timings_ms: Record<string, number>;
 	model: string | null;
 	error: string | null;
-	chips_stated?: string[];
 }
 export type StackOrder = 'anatomy' | 'dictated';
 export interface ViewRow { unitId: number; text: string; structure: string | null; partOf: number | null; pinned: boolean; children: ViewRow[] }
@@ -45,9 +44,19 @@ export interface RegionStates {
 	assumedNormal: string[]; // dashed pills
 	remainder: string[]; // abnormal regions with nothing dictated normal: "Remainder of X: assumed normal"
 }
-export type ChipState = 'included' | 'optional';
-export interface Chip { text: string; state: ChipState }
-export interface ChipsResult { chips: Chip[]; cached: boolean; ms: number; error: string | null }
+/** Checklist rows (spec 2026-10-11-scratchpad-checklist §2–§4): asked, never assumed. */
+export interface StackItem {
+	id: string;
+	kind: 'finding' | 'referral';
+	region: string;
+	question: string;
+	why: string;
+	sentences: string[]; // still to be answered (at most 2)
+	answered: boolean; // the dictation answered every sentence: the row folds
+}
+export interface ItemsResult { items: StackItem[]; capped: StackItem[]; cached: boolean; ms: number; error: string | null }
+export interface AssumedResult { assumed: Record<string, string[]>; ms: number; error: string | null }
+export interface GateItem { id: string; kind: StackItem['kind']; region: string; question: string; sentences: string[]; answered_by: 'dictation' | 'tap' }
 export interface DraftResult { text: string; ms: number; error: string | null }
 export interface GateRecord {
 	confirmed_at: string;
@@ -56,8 +65,10 @@ export interface GateRecord {
 	assumed_normal: string[];
 	remainder_normal: string[];
 	dictated_normal: { region: string; words: string[] }[];
-	included_chips: { region: string; text: string }[]; // not dictated; confirmed in the report
-	declined_chips: string[]; // removed by the radiologist: never stated
+	items: GateItem[]; // rows answered by dictation or by a tap (tapped sentences are stated)
+	assumed: Record<string, string[]>; // region normals confirmed (not dictated)
+	removed: string[]; // sentences the radiologist removed: never stated
+	capped: { region: string; question: string }[];
 	units_hash: string;
 }
-export interface StackCommand { action: 'dictate' | 'delete' | 'accept'; region: string | null; chip: string | null; command: string | null; confidence: number | null }
+export interface StackCommand { action: 'dictate' | 'delete' | 'answer'; region: string | null; item: string | null; command: string | null; confidence: number | null }

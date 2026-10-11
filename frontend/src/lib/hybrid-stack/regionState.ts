@@ -65,8 +65,9 @@ export function findingsHash(units: StackUnit[]): string {
 	return `${s.length}:${(h >>> 0).toString(16)}`;
 }
 
-/** The regions' own sentences (and the free groups), as the grouped findings text: no gate lines. */
-export function findingsText(units: StackUnit[], groups: string[], confirmed: Map<string, string[]> = new Map()): string {
+/** The regions' own sentences (and the free groups), as the grouped findings text. `extra`: labelled lines appended
+ *  to a region's line (answered rows, assumed normals); a region with only extra lines still gets its line. */
+export function findingsText(units: StackUnit[], groups: string[], extra: Map<string, string[]> = new Map()): string {
 	const items = effectiveItems(units);
 	const lines: string[] = [];
 	const tech = items.filter((i) => i.group === TECHNIQUE).map((i) => i.text);
@@ -74,9 +75,8 @@ export function findingsText(units: StackUnit[], groups: string[], confirmed: Ma
 	for (const g of groups) {
 		if (FIXED.has(g)) continue;
 		const own = items.filter((i) => i.group === g).map((i) => i.text);
-		const extra = confirmed.get(g) ?? [];
-		if (own.length || extra.length)
-			lines.push(`${g}: ${[...own, ...(extra.length ? [`Confirmed by the radiologist (not dictated): ${extra.join(' ')}`] : [])].join(' ')}`);
+		const more = extra.get(g) ?? [];
+		if (own.length || more.length) lines.push(`${g}: ${[...own, ...more].join(' ')}`);
 	}
 	for (const g of new Set(items.map((i) => i.group))) {
 		if (!groups.includes(g) && !FIXED.has(g)) lines.push(`${g}: ${items.filter((i) => i.group === g).map((i) => i.text).join(' ')}`);
@@ -87,14 +87,36 @@ export function findingsText(units: StackUnit[], groups: string[], confirmed: Ma
 	return lines.join('\n').trim();
 }
 
-/** What Generate receives in a stack session (spec §6): the grouped findings, the confirmed normals and the
- *  confirmed conclusion. The generator phrases; it does not get anything the radiologist did not say or confirm. */
+const ANSWERED = 'Answered by the radiologist:';
+const ASSUMED = 'Assumed normal (confirmed by the radiologist):';
+
+/** What Generate receives in a stack session (checklist spec §7): answers only. The radiologist's sentences, the
+ *  rows they answered with a tap, the region normals they confirmed, the confirmed conclusion, and what they
+ *  removed (never to be asserted). */
 export function buildFindingsBlock(units: StackUnit[], groups: string[], gate: GateRecord): string {
-	const confirmed = new Map<string, string[]>();
-	for (const c of gate.included_chips) confirmed.set(c.region, [...(confirmed.get(c.region) ?? []), c.text]);
-	const parts = [findingsText(units, groups, confirmed)];
-	const normals = [...gate.assumed_normal, ...gate.remainder_normal.map((r) => `remainder of ${r}`)];
-	if (normals.length) parts.push(`Confirmed normal (not dictated; confirmed by the radiologist): ${normals.join('; ')}.`);
+	const items = effectiveItems(units);
+	const dictatedRegion = (r: string) => items.some((i) => i.group === r);
+	const extra = new Map<string, string[]>();
+	const add = (r: string, line: string) => extra.set(r, [...(extra.get(r) ?? []), line]);
+	const standalone: string[] = [];
+	for (const it of gate.items) {
+		if (it.answered_by !== 'tap' || !it.sentences.length) continue;
+		if (groups.includes(it.region) && (dictatedRegion(it.region) || it.kind === 'finding')) add(it.region, `${ANSWERED} ${it.sentences.join(' ')}`);
+		else standalone.push(`${it.region || 'Referral question'} (answered by the radiologist): ${it.sentences.join(' ')}`);
+	}
+	const tray: string[] = [];
+	for (const [r, sentences] of Object.entries(gate.assumed)) {
+		if (!sentences.length) continue;
+		if (dictatedRegion(r)) add(r, `${ASSUMED} ${sentences.join(' ')}`);
+		else tray.push(`${r}: ${sentences.join(' ')}`);
+	}
+	const parts = [findingsText(units, groups, extra), standalone.join('\n')];
+	if (tray.length) parts.push(`${ASSUMED} ${tray.join(' ')}`);
+	// Regions with no sentences to confirm (no slim sheet yet): confirmed by name, as v2 did.
+	const named = [...gate.assumed_normal.filter((r) => !gate.assumed[r]?.length),
+		...gate.remainder_normal.filter((r) => !gate.assumed[r]?.length).map((r) => `remainder of ${r}`)];
+	if (named.length) parts.push(`Confirmed normal (not dictated; confirmed by the radiologist): ${named.join('; ')}.`);
 	if (gate.conclusion_text.trim()) parts.push(`Conclusion (confirmed by the radiologist): ${gate.conclusion_text.trim()}`);
+	if (gate.removed.length) parts.push(`DO NOT ASSERT (removed by the radiologist): ${gate.removed.join(' ')}`);
 	return parts.filter(Boolean).join('\n\n');
 }

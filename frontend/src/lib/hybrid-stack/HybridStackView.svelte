@@ -1,13 +1,14 @@
 <script lang="ts">
-	// Scratchpad v2 (spec 2026-10-11 §2): live strip, abnormal regions with their check chips, the
-	// assumed-normal tray, the conclusion and the gate. Every line is the radiologist's own sentence from the
-	// verbatim text; a click opens it for editing (typing, or dictation at the caret / over the selection).
+	// Scratchpad checklist (spec 2026-10-11-scratchpad-checklist §3): live strip, the referral row, abnormal
+	// regions with their amber rows and the normals that will be reported, the tray, the conclusion and the gate
+	// bar. Every line is the radiologist's own sentence from the verbatim text; a click opens it for editing.
+	// Rows are asked, never assumed: a tap adds only the sentences listed above its button.
 	import { crossfade, fade, slide } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { buildView } from './stackState';
 	import { CONCLUSION, GENERAL, OTHER, TECHNIQUE, regionStates, showsGroup } from './regionState';
-	import type { VisibleChip } from './chips';
-	import type { StackUnit, ViewRow } from './types';
+	import { answerLabel, openCount, quietLine, rowSentences } from './items';
+	import type { StackItem, StackUnit, ViewRow } from './types';
 
 	export type ConclusionState =
 		| { kind: 'dictated' }
@@ -21,7 +22,10 @@
 		pillRegions,
 		pending = [],
 		ghost = '',
-		chips = [],
+		items = [],
+		tapped = [],
+		removed = [],
+		assumed = {},
 		conclusion = { kind: 'none' },
 		gateConfirmed = false,
 		deleteRegion = null,
@@ -29,8 +33,9 @@
 		onMove,
 		onEditLine,
 		onEditing = () => {},
-		onChipAccept,
-		onChipRemove = () => {},
+		onAnswer = () => {},
+		onRemoveSentence = () => {},
+		onDictateInto = () => {},
 		onDraftEdit = () => {},
 		onDraftRefresh = () => {},
 		onConfirm,
@@ -44,7 +49,14 @@
 		pillRegions: string[];
 		pending?: string[];
 		ghost?: string;
-		chips?: VisibleChip[];
+		/** Checklist rows: referral and finding (answered ones fold away; the parent drops them). */
+		items?: StackItem[];
+		/** Rows the radiologist answered with a tap: their listed sentences are stated. */
+		tapped?: string[];
+		/** Sentences the radiologist removed (×): never stated. */
+		removed?: string[];
+		/** Region normals that will be reported unless removed (the slim sheet, checked against the dictation). */
+		assumed?: Record<string, string[]>;
 		conclusion?: ConclusionState;
 		gateConfirmed?: boolean;
 		/** A voice "delete the X line": the region whose lines wait for a Delete click (null: none). */
@@ -55,10 +67,12 @@
 		onEditLine: (unitId: number, part: number | null, text: string) => void;
 		/** Whether a line or the draft is open for editing (dictation then goes there). */
 		onEditing?: (active: boolean) => void;
-		/** An optional chip opted in (click +). */
-		onChipAccept: (text: string) => void;
-		/** An included chip removed (click ×): never stated. */
-		onChipRemove?: (text: string) => void;
+		/** A row answered with a tap: its listed sentences are added as the radiologist's answer. */
+		onAnswer?: (id: string) => void;
+		/** A row sentence or an assumed normal removed (×): never stated. */
+		onRemoveSentence?: (sentence: string) => void;
+		/** "Dictate" on a row: the next words go under that region. */
+		onDictateInto?: (region: string) => void;
 		onDraftEdit?: (text: string) => void;
 		onDraftRefresh?: () => void;
 		onConfirm: () => void;
@@ -90,8 +104,24 @@
 	// The gate never unlocks an impression nobody has seen (spec §5): a conclusion must exist (dictated,
 	// drafted or typed). A failed draft never blocks: the radiologist types one or asks again.
 	const hasConclusion = $derived(conclusionRows.length > 0 || (conclusion.kind === 'draft' && conclusion.text.trim().length > 0));
-	const includedList = $derived(chips.filter((c) => c.state === 'included').map((c) => c.text));
-	const assumedList = $derived([...states.assumedNormal, ...states.remainder.map((r) => `remainder of ${r.toLowerCase()}`)]);
+	const referral = $derived(items.find((i) => i.kind === 'referral') ?? null);
+	const shownNames = $derived(new Set(shown.map((g) => g.name)));
+	const rowsFor = (region: string) => items.filter((i) => i.kind === 'finding' && i.region === region);
+	// A finding row whose region has no card (the writer named a region outside the scratchpad) shows up top.
+	const looseRows = $derived(items.filter((i) => i.kind === 'finding' && !shownNames.has(i.region)));
+	const openRows = $derived(openCount(items, tapped, removed));
+	const keptAssumed = (region: string) => {
+		const gone = new Set(removed.map((r) => r.trim().toLowerCase().replace(/\.$/, '')));
+		return (assumed[region] ?? []).filter((s) => !gone.has(s.trim().toLowerCase().replace(/\.$/, '')));
+	};
+	// Every statement that will be reported without being dictated: region normals, and regions confirmed by
+	// name where no sentences exist yet.
+	const assumedCount = $derived(
+		trayRegions.filter((r) => !dictatedNormalWords.has(r)).reduce((n, r) => n + Math.max(1, keptAssumed(r).length), 0) +
+			states.abnormal.reduce((n, r) => n + keptAssumed(r).length, 0)
+	);
+	let expanded: string[] = $state([]);
+	let openPill: string | null = $state(null);
 
 	// ── editing: one field at a time (a line, or the draft) ─────────────────────────────────────────
 	let editing: { unitId: number; part: number | null } | null = $state(null);
@@ -170,6 +200,55 @@
 	}
 </script>
 
+{#snippet row(it: StackItem, label: string | null)}
+	{@const listed = rowSentences(it, removed)}
+	{#if tapped.includes(it.id)}
+		<div class="rounded-md border border-emerald-500/25 bg-emerald-500/[0.07] px-2 py-1 text-sm text-emerald-200" data-row="tapped">
+			{#if label}<p class="text-[10px] uppercase tracking-wide text-emerald-300/70">{label} · answered</p>{/if}
+			✓ {listed.join(' ')}
+		</div>
+	{:else if it.answered}
+		<div class="rounded-md border border-emerald-500/25 bg-emerald-500/[0.07] px-2 py-1 text-sm text-emerald-200" data-row="answered" transition:fade={{ duration: ms }}>
+			✓ {it.question} <span class="text-xs text-emerald-300/70">Answered in your dictation.</span>
+		</div>
+	{:else if listed.length}
+		<div class="space-y-1 rounded-md border border-amber-400/40 bg-amber-500/[0.08] px-2 py-1.5" data-row="open" transition:fade={{ duration: ms }}>
+			{#if label}<p class="text-[10px] uppercase tracking-wide text-amber-300/80">{label}</p>{/if}
+			<p class="text-sm font-medium text-amber-100">{it.question}</p>
+			{#if it.why}<p class="text-xs text-gray-400">{it.why}</p>{/if}
+			<ul class="space-y-0.5">
+				{#each listed as s (s)}
+					<li class="flex items-center gap-1 text-sm text-gray-200">
+						<span>{s}</span>
+						<button type="button" class="rounded px-1 text-xs text-gray-500 hover:text-rose-300" title="Remove: never stated"
+							aria-label="Remove {s}" onclick={() => onRemoveSentence(s)}>×</button>
+					</li>
+				{/each}
+			</ul>
+			<div class="flex flex-wrap gap-1.5 pt-0.5">
+				<button type="button" class="rounded-md border border-amber-300/40 bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-100 hover:bg-amber-400/25"
+					onclick={() => onAnswer(it.id)}>{answerLabel(listed)}</button>
+				<button type="button" class="rounded-md border border-white/10 px-2 py-0.5 text-xs text-gray-300 hover:bg-white/[0.06]"
+					onclick={() => onDictateInto(it.region)}>Dictate</button>
+			</div>
+		</div>
+	{/if}
+{/snippet}
+
+{#snippet sentences(list: string[], key: string)}
+	{@const q = expanded.includes(key) ? { shown: list, more: 0 } : quietLine(list)}
+	{#each q.shown as s (s)}
+		<span class="inline-flex items-center gap-0.5">
+			<span class="text-gray-300/80 underline decoration-emerald-500/40 decoration-dashed underline-offset-4">{s}</span>
+			<button type="button" class="rounded px-0.5 text-gray-600 hover:text-rose-300" title="Remove: never stated"
+				aria-label="Remove {s}" onclick={() => onRemoveSentence(s)}>×</button>
+		</span>
+	{/each}
+	{#if q.more}
+		<button type="button" class="text-gray-500 hover:text-gray-300" onclick={() => (expanded = [...expanded, key])}>+{q.more} more</button>
+	{/if}
+{/snippet}
+
 {#snippet line(r: ViewRow, nested: boolean)}
 	<li class="group/line flex items-start gap-1" in:receive={{ key: r.text }} out:send={{ key: r.text }}>
 		<span
@@ -222,6 +301,13 @@
 		</section>
 	{/if}
 
+	{#if referral}
+		<section aria-label="Referral question">{@render row(referral, 'Asked in the referral')}</section>
+	{/if}
+	{#if looseRows.length}
+		<section aria-label="Checks" class="space-y-1">{#each looseRows as it (it.id)}{@render row(it, it.region || null)}{/each}</section>
+	{/if}
+
 	<input
 		bind:this={newField}
 		bind:value={newLine}
@@ -253,7 +339,8 @@
 
 	<!-- Scratchpad: abnormal regions only -->
 	{#each shown as g (g.name)}
-		{@const mine = chips.filter((c) => c.region === g.name)}
+		{@const mine = rowsFor(g.name)}
+		{@const normals = keptAssumed(g.name)}
 		<section
 			animate:flip={{ duration: ms }}
 			transition:slide={{ duration: ms }}
@@ -268,9 +355,6 @@
 		>
 			<h3 class="text-xs font-semibold uppercase tracking-wide text-gray-400">{g.name}</h3>
 			<ul>{#each g.rows as r (r.unitId + ':' + r.text)}{@render line(r, false)}{/each}</ul>
-			{#if states.remainder.includes(g.name)}
-				<p class="px-1 text-xs italic text-gray-500">Remainder of {g.name.toLowerCase()}: assumed normal</p>
-			{/if}
 			{#if deleteRegion === g.name}
 				<div class="mt-1 flex gap-2 px-1 text-xs">
 					<button type="button" class="rounded bg-rose-500/20 px-2 py-0.5 text-rose-200" onclick={() => onDeleteRegion(g.name, true)}>Delete these lines</button>
@@ -278,46 +362,48 @@
 				</div>
 			{/if}
 			{#if mine.length}
-				<ul class="mt-0.5 px-1" aria-label="Suggestions for {g.name}">
-					{#each mine.filter((c) => c.state === 'included') as c (c.text)}
-						<li class="flex items-center gap-1 text-sm italic leading-6 text-gray-400" transition:fade={{ duration: ms }} data-chip="included">
-							<span>{c.text}</span>
-							<button type="button" class="rounded px-1 text-xs not-italic text-gray-500 hover:text-rose-300" title="Remove: not stated in the report"
-								aria-label="Remove {c.text}" onclick={() => onChipRemove(c.text)}>×</button>
-						</li>
-					{/each}
-				</ul>
-				<div class="mt-1 flex flex-wrap gap-1.5 px-1">
-					{#each mine.filter((c) => c.state === 'optional') as c (c.text)}
-						<button
-							type="button"
-							transition:fade={{ duration: ms }}
-							data-chip="optional"
-							class="rounded-full border border-dashed border-white/20 px-2 py-0.5 text-xs text-gray-400 hover:border-emerald-400/50 hover:text-emerald-200"
-							title="Add to the report"
-							onclick={() => onChipAccept(c.text)}>+ {c.text}</button>
-					{/each}
-				</div>
+				<div class="mt-1 space-y-1 px-1" aria-label="Questions for {g.name}">{#each mine as it (it.id)}{@render row(it, null)}{/each}</div>
+			{/if}
+			{#if normals.length}
+				<p class="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-1 text-xs" data-quiet={g.name}>
+					<span class="text-[10px] uppercase tracking-wide text-emerald-400/70">Will also be reported</span>
+					{@render sentences(normals, g.name)}
+				</p>
+			{:else if states.remainder.includes(g.name)}
+				<p class="px-1 text-xs italic text-gray-500">Remainder of {g.name.toLowerCase()}: assumed normal</p>
 			{/if}
 		</section>
 	{/each}
 
-	<!-- Assumed-normal tray -->
+	<!-- Normal regions: solid when the radiologist said so, dashed when assumed (tap to see what will be reported) -->
 	{#if trayRegions.length}
-		<section aria-label="Normal regions" class="border-t border-white/5 pt-2">
+		<section aria-label="Normal regions" class="space-y-1.5 border-t border-white/5 pt-2">
+			<p class="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-gray-500">
+				Normal regions
+				<span class="rounded-full border border-emerald-500/40 px-1.5 normal-case tracking-normal text-emerald-300/80">you said it</span>
+				<span class="rounded-full border border-dashed border-white/20 px-1.5 normal-case tracking-normal text-gray-400">assumed</span>
+			</p>
 			<div class="flex flex-wrap gap-1.5">
 				{#each trayRegions as r (r)}
 					{@const words = dictatedNormalWords.get(r)}
 					<!-- No transition on pills: a fade-out with flip left removed pills in the DOM (hand read 2026-10-11);
 					     the region sliding into the scratchpad carries the motion. -->
-					<span
+					<button
+						type="button"
 						class="rounded-full px-2 py-0.5 text-xs {words
 							? 'border border-emerald-500/40 bg-emerald-500/10 text-emerald-200'
-							: 'border border-dashed border-white/20 text-gray-400'}"
-						title={words ? `Dictated: ${words.join(' ')}` : 'Assumed normal (not dictated)'}
-						data-state={words ? 'dictated' : 'assumed'}>{r}</span>
+							: 'border border-dashed border-white/20 text-gray-400 hover:border-emerald-400/40'} {openPill === r ? 'ring-1 ring-emerald-400/40' : ''}"
+						title={words ? `Dictated: ${words.join(' ')}` : keptAssumed(r).length ? `Will be reported: ${keptAssumed(r).join(' ')}` : 'Assumed normal (not dictated)'}
+						data-state={words ? 'dictated' : 'assumed'}
+						onclick={() => (openPill = openPill === r || words ? null : r)}>{r}</button>
 				{/each}
 			</div>
+			{#if openPill && keptAssumed(openPill).length}
+				<p class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs" data-quiet={openPill}>
+					<span class="text-[10px] uppercase tracking-wide text-emerald-400/70">{openPill} · will be reported</span>
+					{@render sentences(keptAssumed(openPill), `tray:${openPill}`)}
+				</p>
+			{/if}
 		</section>
 	{/if}
 
@@ -359,28 +445,19 @@
 		{/if}
 	</section>
 
-	<!-- Gate: one click confirms the conclusion and the normals nobody dictated -->
-	<section aria-label="Confirm" class="rounded border border-white/10 bg-white/[0.02] p-2 text-xs text-gray-300">
-		<p class="mb-1 text-gray-400">Before generating, confirm:</p>
-		<ul class="list-disc space-y-0.5 pl-4">
-			<li>the conclusion above{#if !hasConclusion}<span class="text-amber-300/80"> (none yet)</span>{/if}</li>
-			{#if includedList.length}<li>stated, not dictated: {includedList.join(' ')}</li>{/if}
-			<li>normal, not dictated: {#if assumedList.length}{assumedList.join(', ')}{:else}<span class="text-gray-500">none</span>{/if}</li>
-			{#if states.dictatedNormal.length}
-				<li>
-					<details>
-						<summary class="cursor-pointer">normal as dictated: {states.dictatedNormal.map((d) => d.region).join(', ')}</summary>
-						<ul class="mt-1 space-y-0.5 text-gray-400">
-							{#each states.dictatedNormal as d (d.region)}<li>{d.region}: “{d.words.join(' ')}”</li>{/each}
-						</ul>
-					</details>
-				</li>
-			{/if}
-		</ul>
+	<!-- Gate bar: the open questions and what will be assumed; Confirm takes ownership of both -->
+	<section aria-label="Confirm" class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-2.5 py-2">
+		<p class="flex flex-wrap gap-2 text-xs">
+			<span class="rounded px-1.5 py-0.5 {openRows ? 'bg-amber-500/15 text-amber-200' : 'bg-white/5 text-gray-500'}">{openRows} {openRows === 1 ? 'question' : 'questions'} open</span>
+			<span class="rounded bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300/90">{gateConfirmed ? 'assumptions confirmed' : `${assumedCount} assumed normal`}</span>
+			{#if !hasConclusion}<span class="rounded bg-white/5 px-1.5 py-0.5 text-gray-400">no conclusion yet</span>{/if}
+		</p>
 		<button
 			type="button"
-			class="mt-2 rounded px-3 py-1 text-xs font-medium {gateConfirmed ? 'bg-emerald-500/20 text-emerald-200' : 'bg-white/10 text-gray-100 hover:bg-white/15'}"
-			disabled={gateConfirmed || !hasConclusion || syncing || newLine.trim().length > 0 || editing !== null}
+			class="rounded-lg px-4 py-1.5 text-xs font-medium transition-colors {gateConfirmed
+				? 'bg-emerald-500/20 text-emerald-200'
+				: 'bg-purple-700 text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-40'}"
+			disabled={gateConfirmed || openRows > 0 || !hasConclusion || syncing || newLine.trim().length > 0 || editing !== null}
 			onclick={onConfirm}>{gateConfirmed ? 'Confirmed ✓' : syncing ? 'Updating…' : 'Confirm'}</button>
 	</section>
 </div>

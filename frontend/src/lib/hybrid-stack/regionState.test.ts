@@ -58,15 +58,26 @@ describe('findings block', () => {
 		expect(showsGroup(units, 'General')).toBe(false);
 		expect(conclusionText(units)).toBe('Acute diverticulitis.');
 	});
-	it('adds the confirmed normals and conclusion', () => {
+	it('answers only: tapped rows, confirmed normals, the conclusion and what was removed', () => {
 		const gate: GateRecord = {
-			confirmed_at: 't', conclusion_text: 'Acute diverticulitis.', conclusion_source: 'dictated', assumed_normal: ['Pelvis'],
-			remainder_normal: ['Bowel'], dictated_normal: [], included_chips: [{ region: 'Bowel', text: 'No abscess.' }], declined_chips: [], units_hash: 'h'
+			confirmed_at: 't', conclusion_text: 'Acute diverticulitis.', conclusion_source: 'dictated', assumed_normal: ['Pelvis', 'Liver'],
+			remainder_normal: ['Bowel'], dictated_normal: [], units_hash: 'h',
+			items: [
+				{ id: 'a', kind: 'finding', region: 'Bowel', question: 'Abscess?', sentences: ['No pericolic abscess.'], answered_by: 'tap' },
+				{ id: 'b', kind: 'finding', region: 'Bowel', question: 'Gas?', sentences: ['No free gas.'], answered_by: 'dictation' },
+				{ id: 'c', kind: 'referral', region: 'Appendix', question: 'Appendix?', sentences: ['The appendix is normal.'], answered_by: 'tap' }
+			],
+			assumed: { Bowel: ['No colonic dilatation.'], Liver: ['The liver is normal.'] },
+			removed: ['No fistula.'], capped: []
 		};
 		const block = buildFindingsBlock(units, GROUPS, gate);
-		expect(block).toContain('Confirmed normal (not dictated; confirmed by the radiologist): Pelvis; remainder of Bowel.');
-		expect(block).toContain('Bowel: Sigmoid diverticulitis. It is 10 cm long. No free gas. Confirmed by the radiologist (not dictated): No abscess.');
-		expect(block.endsWith('Conclusion (confirmed by the radiologist): Acute diverticulitis.')).toBe(true);
+		expect(block).toContain('Bowel: Sigmoid diverticulitis. It is 10 cm long. No free gas. Answered by the radiologist: No pericolic abscess. Assumed normal (confirmed by the radiologist): No colonic dilatation.');
+		expect(block).toContain('Appendix (answered by the radiologist): The appendix is normal.');
+		expect(block).toContain('Assumed normal (confirmed by the radiologist): Liver: The liver is normal.');
+		expect(block).toContain('Confirmed normal (not dictated; confirmed by the radiologist): Pelvis.');   // no sentences yet
+		expect(block).not.toContain('remainder of Bowel');                                                   // its sentences were confirmed
+		expect(block).toContain('Conclusion (confirmed by the radiologist): Acute diverticulitis.');
+		expect(block.endsWith('DO NOT ASSERT (removed by the radiologist): No fistula.')).toBe(true);
 	});
 	it('the findings hash ignores the conclusion and changes with the findings', () => {
 		const h = findingsHash(units);

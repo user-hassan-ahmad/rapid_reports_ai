@@ -1,5 +1,5 @@
 import { API_URL } from '$lib/config.js';
-import type { ChipsResult, DraftResult, GateRecord, GroupResult, Region, StackSchema, StackUnit } from './types';
+import type { AssumedResult, DraftResult, GateRecord, GroupResult, ItemsResult, Region, StackSchema, StackUnit } from './types';
 
 async function post<T>(token: string | null, path: string, body: unknown, keepalive = false): Promise<T> {
 	const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -12,7 +12,7 @@ async function post<T>(token: string | null, path: string, body: unknown, keepal
 export const fetchSchema = (token: string | null, body: { scan_type: string; clinical_history: string; template_id?: string | null }) =>
 	post<StackSchema>(token, 'schema', body);
 
-export const postGroup = (token: string | null, body: { scan_type: string; text: string; regions: Region[]; previous: StackUnit[]; chips?: string[] }) =>
+export const postGroup = (token: string | null, body: { scan_type: string; text: string; regions: Region[]; previous: StackUnit[] }) =>
 	post<GroupResult>(token, 'group', body);
 
 export const postClose = (token: string | null, body: { units: StackUnit[]; regions: Region[] }) =>
@@ -25,8 +25,13 @@ export interface StackLog {
 }
 export const postLog = (token: string | null, body: StackLog) => post<{ ok: boolean }>(token, 'log', body, true);
 
-export const postChips = (token: string | null, body: { scan_type: string; clinical_history: string; region: string; sentences: string[]; dictation: string; declined?: string[] }) =>
-	post<ChipsResult>(token, 'chips', body);
+export const postItems = (token: string | null, body: {
+	scan_type: string; clinical_history: string; regions: string[]; dictation: string; abnormal: string[]; not_assessable?: string; removed?: string[];
+}) => post<ItemsResult>(token, 'items', body);
+
+export const postAssumed = (token: string | null, body: {
+	dictation: string; region_normals: Record<string, string[]>; abnormal: string[]; dictated_normal: string[]; removed?: string[];
+}) => post<AssumedResult>(token, 'assumed', body);
 
 export const postDraft = (token: string | null, body: { scan_type: string; clinical_history: string; findings: string }) =>
 	post<DraftResult>(token, 'draft', body);
