@@ -5,9 +5,11 @@ import httpx
 from rapid_reports_ai.hybrid_stack import jev_stack as J
 
 
-def test_decide_accept_needs_a_named_chip_and_a_non_dictate_command():
-    assert J.decide_command({"command": "correct", "confidence": 0.3, "region": None, "chip": "No free gas."}) == {
+def test_decide_accept_needs_a_named_chip_and_an_accept_command():
+    assert J.decide_command({"command": "accept_suggestion", "confidence": 0.3, "region": None, "chip": "No free gas."}) == {
         "action": "accept", "region": None, "chip": "No free gas."}
+    # a correction that names a chip is dictation: the radiologist's words are never replaced
+    assert J.decide_command({"command": "correct", "confidence": 0.9, "region": None, "chip": "No free gas."})["action"] == "dictate"
     assert J.decide_command({"command": "dictate", "confidence": 0.9, "region": None, "chip": "No free gas."})["action"] == "dictate"
     assert J.decide_command({"command": "accept_suggestion", "confidence": 0.9, "region": None, "chip": None})["action"] == "dictate"
 

@@ -652,3 +652,12 @@ async def test_stack_session_states_the_confirmed_conclusion_not_the_plan(monkey
     assert 'KEEP: "No skull fracture"' not in b.text   # a default sheet negative is offered in a stack session
     assert "No skull fracture" in {o["text"] for o in b.decisions["options"]}
     assert b.decisions["impression_plan"] == {"confirmed": "Acute right subdural haematoma."}
+
+
+
+def test_stack_fallback_keeps_structure_and_drops_content_sections():
+    b = qb.stack_fallback(SHEET_F, "Acute subdural.", ["No midline shift."])
+    assert "The orbits are clear." in b.text   # normal wording stays
+    assert "No skull fracture" not in b.text and "If present" not in b.text and "Abnormal exemplar" not in b.text
+    assert '- DO NOT ASSERT: "No midline shift." — removed by the radiologist' in b.text
+    assert '"Acute subdural."' in b.text and b.decisions["stack_fallback"] is True

@@ -35,7 +35,8 @@
 		onDraftRefresh = () => {},
 		onConfirm,
 		onDeleteRegion = () => {},
-		onAppend = () => {}
+		onAppend = () => {},
+		syncing = false
 	}: {
 		units: StackUnit[];
 		groups: string[];
@@ -64,6 +65,8 @@
 		onDeleteRegion?: (region: string, confirmed: boolean) => void;
 		/** A finding typed into the new-line field (Enter): appended to the dictation as said. */
 		onAppend?: (text: string) => void;
+		/** The grouping has not caught up with the text yet: Confirm waits (the block must match what is shown). */
+		syncing?: boolean;
 	} = $props();
 
 	const reduced = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -231,6 +234,7 @@
 		}}
 		onblur={() => {
 			newFocused = false;
+			appendNew(); // words typed or dictated into the field are never lost on blur
 			onEditing(editing !== null || draftFocused);
 		}}
 		onkeydown={(e) => {
@@ -376,7 +380,7 @@
 		<button
 			type="button"
 			class="mt-2 rounded px-3 py-1 text-xs font-medium {gateConfirmed ? 'bg-emerald-500/20 text-emerald-200' : 'bg-white/10 text-gray-100 hover:bg-white/15'}"
-			disabled={gateConfirmed || !hasConclusion}
-			onclick={onConfirm}>{gateConfirmed ? 'Confirmed ✓' : 'Confirm'}</button>
+			disabled={gateConfirmed || !hasConclusion || syncing || newLine.trim().length > 0 || editing !== null}
+			onclick={onConfirm}>{gateConfirmed ? 'Confirmed ✓' : syncing ? 'Updating…' : 'Confirm'}</button>
 	</section>
 </div>

@@ -102,3 +102,39 @@ def test_chip_state_bands():
     assert chip_state(0.85, 0.0) == "gone" and chip_state(0.1, 0.75) == "gone"
     assert chip_state(0.45, 0.1) == "optional" and chip_state(0.1, 0.35) == "optional"
     assert chip_state(0.2, 0.2) == "included"
+
+
+async def test_cached_texts_are_rechecked_against_this_dictation_and_declined(monkeypatch):
+    C.clear_cache()
+    monkeypatch.setattr(C, "_fallback", _fb(["No biliary dilatation.", "No portal vein thrombus."]))
+    monkeypatch.setattr(C, "ask_checks", _stated_none)
+    a = await C.suggest("CT AP", "", "Pancreas", ["Pancreatic head mass."], "Pancreatic head mass.")
+    assert [c.state for c in a.chips] == ["included", "included"]
+
+    async def contra(dictation, chips):
+        return [(0.0, 0.9) if "biliary" in c else (0.0, 0.0) for c in chips]
+    monkeypatch.setattr(C, "ask_checks", contra)
+    b = await C.suggest("CT AP", "", "Pancreas", ["Pancreatic head mass."], "CBD dilated to 12 mm. Pancreatic head mass.",
+                        declined=["no portal vein thrombus is seen"])
+    assert b.cached and _texts(b) == []   # contradicted here; the other removed earlier (reworded)
+
+
+
+async def test_stack_generation_never_falls_back_to_the_raw_sheet(monkeypatch):
+    from rapid_reports_ai import quick_report_generator as G
+    seen = {}
+
+    async def brief(*a, **k):
+        raise RuntimeError("brief down")
+
+    def prompts(sheet, scan_type, findings, history, provider, brief=False):
+        seen.update(sheet=sheet, brief=brief)
+        raise RuntimeError("stop")
+    monkeypatch.setattr(G, "compile_brief", brief)
+    monkeypatch.setattr(G, "build_prompts", prompts)
+    try:
+        await G.generate_quick_report(skill_sheet="## Companion Matrix\n- **Mandatory negatives:**\n  - \"No x\"\n",
+                                      scan_type="CT", findings="f", clinical_history="", stack=True, conclusion="C.")
+    except Exception:
+        pass
+    assert seen["brief"] is True and "No x" not in seen["sheet"] and '"C."' in seen["sheet"]

@@ -91,3 +91,11 @@ describe('lineChange / appendSentence', () => {
 		expect(appendSentence('', 'No free gas.')).toBe('No free gas.');
 	});
 });
+
+describe('sentenceOffset boundaries', () => {
+	it('never matches a sentence inside a longer one', () => {
+		const text = 'Pancreas: Unremarkable. Unremarkable.';
+		const units = [u(0, 'Pancreas: Unremarkable.', 'Pancreas'), u(1, 'Unremarkable.', 'Spleen')];
+		expect(sentenceOffset(text, units, 1)).toBe(24);
+	});
+});

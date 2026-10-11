@@ -20,7 +20,7 @@ from .enhancement_utils import (
     _get_model_provider,
     _run_agent_with_model,
 )
-from .quick_report_brief import compile_brief
+from .quick_report_brief import compile_brief, stack_fallback
 from .linked_normals import strip_links
 from .quick_report_quality import run_quality_check
 from .report_reconcile import write_options
@@ -120,7 +120,11 @@ async def generate_quick_report(
             brief = await compile_brief(skill_sheet, scan_type, findings, clinical_history, stack=stack, declined=declined,
                                          conclusion=conclusion)
         except Exception as e:
-            logger.warning("quick-report brief failed (%s: %s); generating from the raw sheet", type(e).__name__, str(e)[:200])
+            if stack:   # never the raw sheet in a stack session: it would state what the radiologist did not confirm
+                logger.warning("quick-report brief failed in a stack session (%s: %s); stack fallback", type(e).__name__, str(e)[:200])
+                brief = stack_fallback(skill_sheet, conclusion, declined)
+            else:
+                logger.warning("quick-report brief failed (%s: %s); generating from the raw sheet", type(e).__name__, str(e)[:200])
     # A linked Normal-study path (by format) is reduced to its prose when the raw sheet is used; strip_links
     # returns any other sheet unchanged.
     sheet_for_generator = brief.text if brief else strip_links(skill_sheet)

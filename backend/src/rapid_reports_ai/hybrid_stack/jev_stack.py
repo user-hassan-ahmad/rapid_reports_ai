@@ -146,11 +146,11 @@ def chip_state(stated: float, contra: float) -> str:
 
 
 def decide_command(parsed: dict) -> dict:
-    """The action of a final (spec v2 §7.3, lab §10.1). Accept: Jev names a visible chip and does not read
-    the final as dictation. Delete: at COMMAND_DELETE_MIN, with the named region if any. Everything else,
+    """The action of a final (spec v2 §7.3, lab §10.1). Accept: Jev reads an accept command and names a visible
+    chip (a correction naming a chip is dictation: its words must never be replaced). Delete: at COMMAND_DELETE_MIN, with the named region if any. Everything else,
     correct included, is dictation (today's write path already handles corrections)."""
     cmd, conf = parsed.get("command"), float(parsed.get("confidence") or 0.0)
-    if parsed.get("chip") and cmd not in (None, "dictate"):
+    if parsed.get("chip") and cmd == "accept_suggestion":
         return {"action": "accept", "region": None, "chip": parsed["chip"]}
     if cmd == "delete" and conf >= COMMAND_DELETE_MIN:
         return {"action": "delete", "region": parsed.get("region"), "chip": None}

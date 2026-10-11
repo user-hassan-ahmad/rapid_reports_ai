@@ -105,7 +105,7 @@ def test_chips_and_draft_routes(authed, monkeypatch):
     from rapid_reports_ai.hybrid_stack.chips import ChipsResult
     from rapid_reports_ai.hybrid_stack.draft import DraftResult
 
-    async def chips(scan_type, history, region, sentences, dictation):
+    async def chips(scan_type, history, region, sentences, dictation, declined):
         assert region == "Bowel" and sentences == ["Diverticulitis."]
         return ChipsResult(chips=[{"text": "No abscess.", "state": "included"}])
 

@@ -61,6 +61,7 @@ class ChipsRequest(BaseModel):
     region: str
     sentences: list[str]
     dictation: str = ""
+    declined: list[str] = Field(default_factory=list)  # chips the radiologist removed: never offered again
 
 
 class DraftRequest(BaseModel):
@@ -115,7 +116,8 @@ async def stack_group(req: GroupRequest, user: User = Depends(get_current_user))
 @router.post("/chips", response_model=ChipsResult)
 async def stack_chips(req: ChipsRequest, user: User = Depends(get_current_user)):
     _require()
-    return await suggest(req.scan_type, req.clinical_history, req.region, req.sentences[:12], req.dictation)
+    return await suggest(req.scan_type, req.clinical_history, req.region, req.sentences[:12], req.dictation,
+                         req.declined[:50])
 
 
 @router.post("/draft", response_model=DraftResult)

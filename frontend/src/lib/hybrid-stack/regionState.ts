@@ -58,7 +58,8 @@ export function conclusionText(units: StackUnit[]): string {
 /** Changes whenever the findings change (text or placement), the conclusion excluded. */
 export function findingsHash(units: StackUnit[]): string {
 	const s = units.filter((u) => u.group !== CONCLUSION && !u.heading)
-		.map((u) => `${u.text}\u0001${u.group ?? ''}\u0001${u.abnormal ? 1 : 0}`).join('\u0002');
+		.map((u) => `${u.text}\u0001${u.group ?? ''}\u0001${u.abnormal ? 1 : 0}\u0001${(u.parts ?? []).map((p) => `${p.group}:${p.abnormal ? 1 : 0}`).join(',')}`)
+		.join('\u0002');
 	let h = 0;
 	for (let i = 0; i < s.length; i++) h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
 	return `${s.length}:${(h >>> 0).toString(16)}`;

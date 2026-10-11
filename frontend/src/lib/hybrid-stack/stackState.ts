@@ -46,17 +46,34 @@ export function moveUnit(units: StackUnit[], id: number, group: string): StackUn
 	return units.map((u) => (u.id === id ? { ...u, group, pinned: true, attach_to: null, parts: null } : u));
 }
 
-/** Character offset of unit `id` in the verbatim text (the nth occurrence of its sentence). */
+/** Where the server's split starts a sentence (units.py): the start of the text, after a line break, or after
+ *  whitespace that follows . ? ! */
+function startsSentence(text: string, pos: number): boolean {
+	if (pos === 0) return true;
+	let k = pos - 1;
+	if (!/\s/.test(text[k])) return false;
+	while (k >= 0 && /\s/.test(text[k])) {
+		if (text[k] === '\n') return true;
+		k -= 1;
+	}
+	return k < 0 || /[.?!]/.test(text[k]);
+}
+
+/** Character offset of unit `id` in the verbatim text (the nth occurrence of its text where a sentence starts),
+ *  so "Unremarkable." never matches inside "Pancreas: Unremarkable.". */
 export function sentenceOffset(text: string, units: StackUnit[], id: number): number {
 	const target = units.find((u) => u.id === id);
 	if (!target) return -1;
 	const nth = units.filter((u) => u.id < id && u.text === target.text).length;
-	let pos = -1;
-	for (let k = 0; k <= nth; k++) {
-		pos = text.indexOf(target.text, pos + 1);
-		if (pos < 0) return -1;
+	let seen = 0;
+	for (let pos = text.indexOf(target.text); pos >= 0; pos = text.indexOf(target.text, pos + 1)) {
+		const end = pos + target.text.length;
+		if (startsSentence(text, pos) && (end === text.length || /\s/.test(text[end]))) {
+			if (seen === nth) return pos;
+			seen += 1;
+		}
 	}
-	return pos;
+	return -1;
 }
 
 const SPLIT = /(?<=[.?!])\s+(?=\S)|\n+/;

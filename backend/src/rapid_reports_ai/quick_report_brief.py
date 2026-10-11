@@ -254,6 +254,31 @@ def distinct_keys(cands: List[FindingNegative]) -> List[str]:
 
 # ── compile ──────────────────────────────────────────────────────────────────
 
+# Sections a stack-session fallback never passes to the generator: they decide content (negatives, differentials,
+# impression shape) that the radiologist already confirmed in the scratchpad.
+STACK_FALLBACK_DROP = {"Companion Matrix", "Clinical Lane", "Impression Exemplars", "Impression Plan",
+                       "Conditional Suppression Rules"}
+
+
+def stack_fallback(sheet: str, conclusion: str, declined: Sequence[str] = ()) -> Brief:
+    """A stack session whose brief could not be compiled (spec v2 §6): never the raw sheet, which would state its own
+    negatives and impression. Structure, normal wording and style stay; content comes from the findings block,
+    the confirmed conclusion and the removed chips. Pure code."""
+    secs = [s for s in parse_sheet(sheet) if s.heading not in STACK_FALLBACK_DROP]
+    for s in secs:
+        s.bullets = [b for b in s.bullets if b.label not in DROP_TOP_BULLETS]
+    guard = [f'  - DO NOT ASSERT: "{t}" — removed by the radiologist' for t in declined]
+    if guard:
+        secs.append(Section("Companion Matrix", bullets=[Bullet("Mandatory negatives", [
+            "- **Mandatory negatives:** (scratchpad: state only what the findings state)"] + guard)]))
+    if conclusion.strip():
+        secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", [
+            "- **Confirmed conclusion (the radiologist's own; write the impression from it in report style, keeping "
+            "every finding it names and adding nothing it does not contain — no grade, negative or recommendation):** "
+            f'"{conclusion.strip()}"'])]))
+    return Brief(text=render(secs), decisions={"stack_fallback": True, "options": []}, reconcile_ms=0)
+
+
 async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_history: str = "",
                         stack: bool = False, declined: Sequence[str] = (), conclusion: str = "") -> Brief:
     """stack: a scratchpad v2 session (spec 2026-10-11 §6). The findings are the confirmed findings block, so

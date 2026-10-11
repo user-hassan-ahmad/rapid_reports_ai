@@ -25,7 +25,7 @@ export interface StackLog {
 }
 export const postLog = (token: string | null, body: StackLog) => post<{ ok: boolean }>(token, 'log', body, true);
 
-export const postChips = (token: string | null, body: { scan_type: string; clinical_history: string; region: string; sentences: string[]; dictation: string }) =>
+export const postChips = (token: string | null, body: { scan_type: string; clinical_history: string; region: string; sentences: string[]; dictation: string; declined?: string[] }) =>
 	post<ChipsResult>(token, 'chips', body);
 
 export const postDraft = (token: string | null, body: { scan_type: string; clinical_history: string; findings: string }) =>

@@ -258,6 +258,8 @@
 	let incomingSeq = 0;
 	let deleteRegion: string | null = null;
 	$: pillRegions = stackRegions.map((r) => r.name).filter((n) => n !== OTHER);
+	// The v2 view takes over only once a schema exists: a failed schema fetch leaves today's editor in place.
+	$: stackView = hybridStack && stackRegions.length > 0;
 	$: regionView = regionStates(stackUnits, pillRegions);
 	$: shownChips = visibleChips(chipsByRegion, regionView.abnormal);
 	$: stackIncluded = includedChips(chipsByRegion, regionView.abnormal);
@@ -270,7 +272,7 @@
 				? ({ kind: 'loading' } as const)
 				: ({ kind: 'none', failed: draftFailed } as const);
 	// The gate re-arms on any change to what it confirms (spec §5).
-	$: gateKey = [findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
+	$: gateKey = [verbatimNow, findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
 		regionView.remainder.join('|'), stackIncluded.map((c) => c.text).join('|')].join('\u0003');
 	$: if (stackGate && stackGate.units_hash !== gateKey) {
 		stackGate = null;
@@ -1042,7 +1044,7 @@
 		// a Delete click. The command's own words are never written.
 		const cmd = (data?.stack_command ?? null) as StackCommand | null;
 		if (hybridStack && !heldNow && pend && pendingText === chunk.trim() && cmd &&
-			(cmd.action === 'accept' || (cmd.action === 'delete' && cmd.region))) {
+			((cmd.action === 'accept' && !!cmd.chip && hasChip(cmd.chip)) || (cmd.action === 'delete' && cmd.region))) {
 			isQwenWriting = true;
 			editor.dispatch(replaceAndClear({ from: pend.from, to: pend.to, insert: '' }));
 			isQwenWriting = false;
@@ -1414,7 +1416,10 @@
 				for (const [k, v] of Object.entries(res.timings_ms)) stackLatency[k] = Math.max(stackLatency[k] ?? 0, v);
 			} else scheduleGroup(0);
 		} catch {
-			// fail open: the verbatim text is on screen; the next settle retries
+			// fail open: the verbatim text is on screen; retry (the gate waits until the grouping matches the text)
+			stackBusy = false;
+			scheduleGroup(2000);
+			return;
 		} finally {
 			stackBusy = false;
 		}
@@ -1452,7 +1457,7 @@
 			chipKeys[region] = key;
 			try {
 				const res = await postChips($token, { scan_type: scanType, clinical_history: clinicalHistory, region, sentences,
-					dictation: verbatimNow });
+					dictation: verbatimNow, declined: declinedChips });
 				if (chipKeys[region] !== key) return; // superseded while in flight
 				const fresh = res.chips.map((c) => (optedIn.includes(c.text.trim().toLowerCase()) ? { ...c, state: 'included' as const } : c));
 				chipsByRegion = { ...chipsByRegion, ...withoutChips({ [region]: fresh }, capturedChips) };
@@ -1490,10 +1495,12 @@
 		const solid = editor ? editor.state.doc.toString() : '';
 		const { data } = await askBundle(chunk, solid, asr);
 		const cmd = (data?.stack_command ?? null) as StackCommand | null;
-		if (cmd?.action === 'accept' && cmd.chip) return acceptChip(cmd.chip);
+		if (cmd?.action === 'accept' && cmd.chip && hasChip(cmd.chip)) return acceptChip(cmd.chip);
 		if (cmd?.action === 'delete') return; // in an open line, the keyboard deletes
 		const text = (data?.clean_text || data?.text || chunk).trim();
-		if (text) stackIncoming = { seq: ++incomingSeq, text };
+		if (!text) return;
+		if (stackEditing) stackIncoming = { seq: ++incomingSeq, text };
+		else stackAppend(text); // the field closed while the words were being cleaned: never drop them
 	}
 	/** A finding typed into the view's new-line field: appended to the verbatim text as said. */
 	function stackAppend(text: string): void {
@@ -1505,11 +1512,20 @@
 	function stackDeleteRegion(region: string, confirmed: boolean): void {
 		deleteRegion = null;
 		if (!confirmed || !editor) return;
-		// Remove from the last line back, so earlier offsets stay valid.
-		const ids = stackUnits.filter((u) => u.group === region && !u.heading).map((u) => u.id).reverse();
-		for (const id of ids) {
-			const c = lineChange(editor.state.doc.toString(), stackUnits, id, null, '');
-			if (c) editor.dispatch({ changes: c });
+		// Remove from the last line back, so earlier offsets stay valid. A split sentence loses only its parts
+		// in this region (one change per sentence: the parts kept, rejoined).
+		const units = [...stackUnits].filter((u) => !u.heading).reverse();
+		for (const u of units) {
+			const doc = editor.state.doc.toString();
+			if (u.parts && u.parts.length > 1) {
+				if (!u.parts.some((p) => p.group === region)) continue;
+				const kept = u.parts.filter((p) => p.group !== region).map((p) => p.text).join(' ');
+				const c = lineChange(doc, stackUnits, u.id, null, kept);
+				if (c) editor.dispatch({ changes: c });
+			} else if (u.group === region) {
+				const c = lineChange(doc, stackUnits, u.id, null, '');
+				if (c) editor.dispatch({ changes: c });
+			}
 		}
 	}
 	async function requestDraft(): Promise<void> {
@@ -1698,7 +1714,7 @@
 			if (data.coverage) onCoverageTrace(data.coverage as CoverageTrace);
 		});
 		// Scratchpad v2: check chips replace IntelliPrompts (their margin anchors to the hidden editor).
-		const prompts = hybridStack ? Promise.resolve() : review('prompts').then((data) => {
+		const prompts = stackView ? Promise.resolve() : review('prompts').then((data) => {
 			// Backend now owns the full merge — replace activePrompts with the final merged list
 			if (data.prompts && Array.isArray(data.prompts)) {
 				onPromptsChange(data.prompts);
@@ -2034,7 +2050,7 @@
 
 	<!-- Floating dictate button — centered, overlaps the top edge of the editor+margin row -->
 	<div class="flex flex-col items-center gap-1.5 relative z-10">
-		{#if !hybridStack}
+		{#if !stackView}
 		<div class="inline-flex bg-white/[0.03] border border-white/10 rounded-lg p-0.5 gap-0.5" role="group" aria-label="Polish mode">
 			<button type="button" onclick={() => setMode('clean')}
 				class={polishMode === 'clean'
@@ -2169,21 +2185,22 @@
 							{structuredNotice || (structured.text === null ? 'Structuring…' : 'Updating structured view…')}
 						</div>
 					{/if}
-					<div bind:this={editorContainer} class="min-h-full" class:hidden={hybridStack || polishMode === 'structured'}></div>
-					<div bind:this={structuredContainer} class="min-h-full" class:hidden={hybridStack || polishMode !== 'structured'}></div>
-					{#if hybridStack}
+					<div bind:this={editorContainer} class="min-h-full" class:hidden={stackView || polishMode === 'structured'}></div>
+					<div bind:this={structuredContainer} class="min-h-full" class:hidden={stackView || polishMode !== 'structured'}></div>
+					{#if stackView}
 						<HybridStackView units={stackUnits} groups={stackGroups} {pillRegions} pending={liveTail(verbatimNow, stackUnits)}
 							ghost={ghostNow} chips={shownChips} conclusion={conclusionView} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							onChipAccept={acceptChip} onChipRemove={removeChip} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
-							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend} />
+							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
+							syncing={stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0 || stackUnits.some((u) => u.group === null)} />
 					{/if}
 				</div>
 
 				<!-- Margin column — width animates open/closed; stops click bubbling to editor focus handler -->
 				<div
 					class="shrink-0 overflow-hidden"
-					style="width: {activePrompts.length > 0 && !hybridStack ? '240px' : '0px'}; transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1)"
+					style="width: {activePrompts.length > 0 && !stackView ? '240px' : '0px'}; transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1)"
 					onclick={(e) => e.stopPropagation()}
 				>
 					<IntelliPromptsMargin
