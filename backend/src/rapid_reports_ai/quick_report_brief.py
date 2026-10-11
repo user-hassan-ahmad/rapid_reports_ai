@@ -32,7 +32,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 from .report_reconcile import (  # noqa: F401 — re-exported; tests patch these names on this module
     JEV_MODEL, JEV_TIMEOUT_S, JEV_URL, MAX_FINDING_OPTIONS, MAX_OPTIONS, PLAN_SYS, PLAN_TIMEOUT_S,
@@ -254,7 +254,12 @@ def distinct_keys(cands: List[FindingNegative]) -> List[str]:
 
 # ── compile ──────────────────────────────────────────────────────────────────
 
-async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_history: str = "") -> Brief:
+async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_history: str = "",
+                        stack: bool = False, declined: Sequence[str] = ()) -> Brief:
+    """stack: a scratchpad v2 session (spec 2026-10-11 §6). The findings are the confirmed findings block, so
+    nothing the radiologist did not dictate or confirm is stated: a finding-linked negative the brief would
+    state and an implicated sheet negative are offered instead; `declined` (chips the radiologist removed)
+    are never asserted nor offered."""
     t0 = time.time()
     secs = parse_sheet(sheet)
     lane, struct = _section(secs, "Clinical Lane"), _section(secs, "Structural Pattern")
@@ -369,6 +374,7 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
     # Mandatory negatives: one line each, with its action and the dictated finding.
     qneg = {d.index: d for d in qw.negatives}
     neg_lines = [neg_bullet.lines[0].split("**Mandatory negatives:**")[0] + "**Mandatory negatives:** (reconciled with this dictation; one finding each)"] if neg_bullet else []
+    stack_offers: list = []   # stack sessions: implicated sheet negatives, offered after the finding-linked ones
     for k, (text, target) in enumerate(negs):
         d = qneg.get(k)
         action = d.action if d else "keep"
@@ -379,6 +385,11 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             neg_lines.append(f'  - DO NOT ASSERT: "{text}" — expected consequence of: {d.dictated_finding}')
         elif action == "dictated":
             neg_lines.append(f'  - DICTATED: "{text}" — state it as the dictation does')
+        elif action == "implicated" and d.dictated_finding and stack:
+            stack_offers.append((text, d.dictated_finding))
+            decisions["negatives"].append({"text": text, "action": "offered", "dictated_finding": d.dictated_finding,
+                                           "source": "sheet"})
+            continue
         elif action == "implicated" and d.dictated_finding:
             neg_lines.append(f'  - KEEP: "{text}"{why} (implicated by: {d.dictated_finding})')
         else:
@@ -399,6 +410,10 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
         label = d.action if d else "keep"
         p = finding_presence(jev[f"f{keys.index(c.key)}"])
         outcome = route_finding(label, p, c.tag)
+        if stack and outcome == "stated" and label != "dictated":
+            outcome = "offered"   # not dictated, not confirmed: offered (v2 §6)
+        if stack and duplicates_negative(c.text, list(declined)):
+            outcome = "declined"
         record = {"finding": c.key, "text": c.text, "tag": c.tag, "qwen": label, "present": round(p, 3), "outcome": outcome}
         decisions["finding_negatives"].append(record)
         if outcome == "offered":   # decided once every stated negative is known
@@ -428,6 +443,15 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
             decisions["options"].append({"kind": "finding_negative", "section": "FINDINGS", "text": c.text,
                                          "finding": c.key,
                                          "reason": "contextual" if p >= PRESENT_HIGH else f"finding borderline (p={p:.2f})"})
+    for text, finding in stack_offers:
+        if duplicates_negative(text, list(declined)) or duplicates_negative(text, said) or n_offered >= MAX_FINDING_OPTIONS:
+            continue
+        n_offered += 1
+        said.append(text)
+        decisions["options"].append({"kind": "finding_negative", "section": "FINDINGS", "text": text, "finding": finding,
+                                     "reason": "implicated (scratchpad: offered, not stated)"})
+    for text in declined if stack else ():
+        neg_lines.append(f'  - DO NOT ASSERT: "{text}" — removed by the radiologist')
     if neg_bullet:
         neg_bullet.lines = neg_lines
     elif matrix and neg_lines:
@@ -568,9 +592,10 @@ async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_hist
                 neg = neg.strip().rstrip(".")
                 if not neg or neg in seen or n_offered >= MAX_FINDING_OPTIONS:
                     continue
-                if duplicates_negative(neg, said):
+                if duplicates_negative(neg, said) or (stack and duplicates_negative(neg, list(declined))):
                     decisions["finding_negatives"].append({"finding": items[it.index], "text": neg, "tag": "fallback",
-                                                           "qwen": "n/a", "present": None, "outcome": "duplicate"})
+                                                           "qwen": "n/a", "present": None,
+                                                           "outcome": "duplicate" if duplicates_negative(neg, said) else "declined"})
                     continue
                 seen.add(neg)
                 said.append(neg)

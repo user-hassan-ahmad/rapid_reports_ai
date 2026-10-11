@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv(".env")
 
-from rapid_reports_ai.hybrid_stack.jev_stack import ask_command, ask_stated  # noqa: E402
+from rapid_reports_ai.hybrid_stack.jev_stack import ask_checks, ask_command, ask_stated  # noqa: E402
 
 FIX = Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "hybrid_stack"
 
@@ -79,9 +79,23 @@ async def chip_lab() -> None:
         print(f"  {p:.2f} {it['kind']:<19} gold={it['gold_stated']!s:<5} {it['chip']!r}")
 
 
+async def contra_lab() -> None:
+    """Both questions in one call, as chips.suggest asks them: stated bands and the contradiction guard."""
+    items = json.loads((FIX / "chip_fixture.json").read_text())
+    res = await _gather(lambda it: ask_checks(it["dictation"], [it["chip"]]), items)
+    rows = [(it, r[0]) for it, r in zip(items, res) if isinstance(r, list)]
+    print(f"checks: {len(rows)}/{len(items)} answered")
+    for t in (0.3, 0.5, 0.7, 0.8):
+        hit = [it["kind"] for it, (_, c) in rows if c >= t]
+        print(f"  contra t={t:.1f}: flagged {dict(Counter(hit))} (contradicted items: "
+              f"{sum(it['kind'] == 'contradicted' for it, _ in rows)})")
+    for it, (st, c) in sorted(rows, key=lambda x: -x[1][1]):
+        print(f"  stated {st:.2f} contra {c:.2f} {it['kind']:<19} {it['chip']!r}")
+
+
 async def main(argv: list[str]) -> None:
     for name in argv or ["command", "chip"]:
-        await {"command": command_lab, "chip": chip_lab}[name]()
+        await {"command": command_lab, "chip": chip_lab, "contra": contra_lab}[name]()
 
 
 if __name__ == "__main__":

@@ -621,3 +621,20 @@ def test_full_labels_default_on_and_zero_turns_it_off(monkeypatch):
     assert qb.full_labels() is True
     monkeypatch.setenv("RR_BRIEF_FULL_LABELS", "0")
     assert qb.full_labels() is False
+
+
+@pytest.mark.asyncio
+async def test_stack_session_offers_what_the_radiologist_did_not_confirm(monkeypatch):
+    # Scratchpad v2 (spec 2026-10-11 §6): a finding-linked negative the brief would state, and an implicated
+    # sheet negative, are offered instead; a chip the radiologist removed is never asserted; dictated stays.
+    monkeypatch.setenv("RR_BRIEF_FULL_LABELS", "1")
+    _stub_f(monkeypatch, 0.95, [("implicated", "10 mm subdural"), ("keep", ""), ("dictated", "no uncal herniation")])
+    b = await qb.compile_brief(SHEET_F, "CT head", "10 mm right acute subdural. No uncal herniation.",
+                               stack=True, declined=["No midline shift."])
+    assert 'KEEP: "No skull fracture"' not in b.text and 'KEEP: "No midline shift"' not in b.text
+    assert '  - DICTATED: "No uncal herniation" — state it as the dictation does' in b.text
+    assert '  - DO NOT ASSERT: "No midline shift." — removed by the radiologist' in b.text
+    offered = {o["text"] for o in b.decisions["options"] if o["kind"] == "finding_negative"}
+    assert offered == {"No skull fracture"}   # the removed chip is not offered either
+    routes = {c["text"]: c["outcome"] for c in b.decisions["finding_negatives"]}
+    assert routes["No midline shift"] == "declined"

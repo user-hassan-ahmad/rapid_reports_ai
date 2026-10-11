@@ -91,6 +91,32 @@ async def ask_command(scratchpad: str, utterance: str, regions: list[str], chips
     return parse_command(r.json().get("answers") or {}, chips)
 
 
+def contra_key(i: int) -> str:
+    return f"contra_{i}"
+
+
+def contra_question(chip: str) -> dict[str, Any]:
+    return {"type": "noul", "instructions": (
+        "The DICTATION reports, or strongly suggests, the opposite of this statement for the same structure, so "
+        f"stating it would contradict the dictation: {chip}")}
+
+
+async def ask_checks(dictation: str, chips: list[str], transport=None) -> list[tuple[float, float]]:
+    """(P already stated, P contradicted) per chip, in one Jev call."""
+    if not chips:
+        return []
+    qs: dict[str, dict[str, Any]] = {}
+    for i, c in enumerate(chips):
+        qs[chip_key(i)] = stated_question(c)
+        qs[contra_key(i)] = contra_question(c)
+    r = await jev_post({"model": JEV_MODEL, "state": f"DICTATION:\n{dictation}", "questions": qs},
+                       os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
+    r.raise_for_status()
+    ans = r.json().get("answers") or {}
+    return [(float((ans.get(chip_key(i)) or {}).get("noul") or 0.0), float((ans.get(contra_key(i)) or {}).get("noul") or 0.0))
+            for i in range(len(chips))]
+
+
 async def ask_stated(dictation: str, chips: list[str], transport=None) -> list[float]:
     """P(already stated) per chip, in order."""
     if not chips:
@@ -105,6 +131,18 @@ async def ask_stated(dictation: str, chips: list[str], transport=None) -> list[f
 
 COMMAND_DELETE_MIN = 0.6  # lab 2026-10-11: no dictation read as delete; a named delete only selects
 STATED_MIN = 0.8  # lab 2026-10-11 (64 pairs): 0 false "stated", recall 24/30
+CONTRA_MIN = 0.7  # lab 2026-10-11: 4/4 contradicted, 0 others (asked with STATED in one call)
+OPTIONAL_MIN = 0.3  # stated or contra at/above this, below the removal bars: hedged or partial -> opt-in
+
+
+def chip_state(stated: float, contra: float) -> str:
+    """'gone' (already stated or contradicted), 'optional' (the dictation hedges or half-covers it: the
+    radiologist opts in) or 'included' (in the report unless removed; confirmed at the gate). Spec v2 §4."""
+    if stated >= STATED_MIN or contra >= CONTRA_MIN:
+        return "gone"
+    if stated >= OPTIONAL_MIN or contra >= OPTIONAL_MIN:
+        return "optional"
+    return "included"
 
 
 def decide_command(parsed: dict) -> dict:

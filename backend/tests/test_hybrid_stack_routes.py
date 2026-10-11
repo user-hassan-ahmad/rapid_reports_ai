@@ -92,12 +92,13 @@ def test_settings_status_carries_the_flags(authed, monkeypatch):
 
 
 def test_log_keeps_gate_and_report_id(authed, db_session):
-    body = {"session_id": "s2", "units": [], "gate": {"conclusion_text": "Diverticulitis."}}
+    body = {"session_id": "s2", "units": [{"id": 0}], "manual_moves": 3, "gate": {"conclusion_text": "Diverticulitis."}}
     assert authed.post("/api/canvas/stack/log", json=body).json() == {"ok": True}
     assert authed.post("/api/canvas/stack/log", json={"session_id": "s2", "report_id": "r1"}).json() == {"ok": True}
     row = db_session.query(DictationStackLog).filter_by(session_id="s2").one()
     db_session.refresh(row)
     assert row.gate == {"conclusion_text": "Diverticulitis."} and row.report_id == "r1"
+    assert row.units == [{"id": 0}] and row.manual_moves == 3
 
 
 def test_chips_and_draft_routes(authed, monkeypatch):
@@ -106,11 +107,11 @@ def test_chips_and_draft_routes(authed, monkeypatch):
 
     async def chips(scan_type, history, region, sentences, dictation):
         assert region == "Bowel" and sentences == ["Diverticulitis."]
-        return ChipsResult(chips=["No abscess."])
+        return ChipsResult(chips=[{"text": "No abscess.", "state": "included"}])
 
     async def draft(scan_type, history, findings):
         return DraftResult(text="Acute diverticulitis.")
     monkeypatch.setattr(R, "suggest", chips)
     monkeypatch.setattr(R, "draft_conclusion", draft)
-    assert authed.post("/api/canvas/stack/chips", json={"region": "Bowel", "sentences": ["Diverticulitis."]}).json()["chips"] == ["No abscess."]
+    assert authed.post("/api/canvas/stack/chips", json={"region": "Bowel", "sentences": ["Diverticulitis."]}).json()["chips"] == [{"text": "No abscess.", "state": "included"}]
     assert authed.post("/api/canvas/stack/draft", json={"findings": "x"}).json()["text"] == "Acute diverticulitis."

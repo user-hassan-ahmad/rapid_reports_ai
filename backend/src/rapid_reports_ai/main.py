@@ -671,6 +671,7 @@ class TemplateGenerateRequest(BaseModel):
     variables: Optional[Dict[str, str]] = None
     model: str = MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
     pipeline: Optional[str] = None  # "mirror" / "current": honoured for allowlisted users only
+    stack_declined: Optional[List[str]] = None  # scratchpad v2: chips the radiologist removed (never offered back)
 
 
 class TemplatePrepareRequest(BaseModel):
@@ -1870,7 +1871,7 @@ async def generate_report_from_template(
                         _db.close()
                 mirror_result = await tl.generate_template_report_lean(
                     sheet=_sheet, scan_type=_scan, findings=_findings, history=_history, case=_resolve_case,
-                    signature=current_user.signature)
+                    signature=current_user.signature, declined=request.stack_declined or [])
                 options_job = mirror_result.get("options_job")
                 mirror_candidate = tp.candidate_record(mirror_result, int((time.perf_counter() - _tpl_gen_t0) * 1000))
                 mirror_candidate["phase1_source"] = _p1["source"]   # "pending" until the options job resolves it

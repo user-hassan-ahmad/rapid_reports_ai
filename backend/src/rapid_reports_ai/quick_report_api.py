@@ -145,6 +145,10 @@ class GenerateRequest(BaseModel):
     sheet_id: Optional[str] = None
     scan_type: Optional[str] = None
     clinical_history: Optional[str] = None
+    # Scratchpad v2 (spec 2026-10-11 §6): `findings` is the confirmed findings block; the brief then offers,
+    # never states, what was not dictated or confirmed, and never asserts the chips the radiologist removed.
+    stack: bool = False
+    stack_declined: List[str] = []
 
 
 class FinaliseRequest(BaseModel):
@@ -307,6 +311,8 @@ async def _run_one_generator(
     scan_type: str,
     clinical_history: str,
     user_signature: str | None = None,
+    stack: bool = False,
+    declined: List[str] | None = None,
 ) -> dict:
     """Run a single generator and return a candidate-record dict.
 
@@ -323,6 +329,8 @@ async def _run_one_generator(
             clinical_history=clinical_history,
             user_signature=user_signature,
             model_override=model_name,
+            stack=stack,
+            declined=declined or [],
         )
         latency_ms = int((time.time() - t0) * 1000)
         result["latency_ms"] = latency_ms
@@ -476,6 +484,8 @@ async def generate(
                 scan_type=scan_type,
                 clinical_history=clinical_history,
                 user_signature=user_signature,
+                stack=request.stack,
+                declined=request.stack_declined,
             )
 
             logger.info(

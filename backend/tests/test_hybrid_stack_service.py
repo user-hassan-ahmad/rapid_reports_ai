@@ -103,11 +103,11 @@ async def test_group_update_reasks_visible_chips_when_new_sentences(monkeypatch)
     async def place(scan_type, regions, units, new_ids):
         return [Placement(id=i, group="Peritoneum") for i in new_ids], "m", None
 
-    async def stated(text, chips):
-        return [0.9, 0.2]
+    async def checks(text, chips):
+        return [(0.9, 0.0), (0.1, 0.8), (0.2, 0.1)]
     monkeypatch.setattr(S, "place", place)
-    monkeypatch.setattr(S, "ask_stated", stated)
-    res = await S.group_update("CT", "No free gas.", regions, [], ["No free gas.", "No ascites."])
-    assert res.chips_stated == ["No free gas."]
-    res = await S.group_update("CT", "No free gas.", regions, res.units, ["No ascites."])
+    monkeypatch.setattr(S, "ask_checks", checks)
+    res = await S.group_update("CT", "No free gas. Small ascites.", regions, [], ["No free gas.", "No ascites.", "No abscess."])
+    assert res.chips_stated == ["No free gas.", "No ascites."]  # stated, and now contradicted
+    res = await S.group_update("CT", "No free gas. Small ascites.", regions, res.units, ["No abscess."])
     assert res.chips_stated == []  # nothing new: not asked

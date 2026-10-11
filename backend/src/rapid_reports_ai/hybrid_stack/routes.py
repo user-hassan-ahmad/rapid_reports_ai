@@ -137,9 +137,9 @@ async def stack_log(req: LogRequest, user: User = Depends(get_current_user), db:
     if row is None:
         row = DictationStackLog(user_id=user.id, session_id=req.session_id)
         db.add(row)
-    for k, v in req.model_dump().items():
+    for k, v in req.model_dump(exclude_unset=True).items():
         if k == "session_id" or (k in ("gate", "report_id") and v is None):
-            continue  # a later log without a gate or report id never erases one already recorded
+            continue  # a partial log (the report id alone) changes only what it sends; a gate is never erased
         setattr(row, k, v)
     db.commit()
     return {"ok": True}

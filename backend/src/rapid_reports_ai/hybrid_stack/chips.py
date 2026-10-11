@@ -10,17 +10,22 @@ from collections import OrderedDict
 from pydantic import BaseModel
 
 from ..report_reconcile import _fallback, dictated_negatives, duplicates_negative, split_findings
-from .jev_stack import STATED_MIN, ask_stated
+from .jev_stack import ask_checks, chip_state
 from .schemas import scan_key
 
 logger = logging.getLogger(__name__)
 MAX_PER_REGION = 3
-_CACHE: "OrderedDict[tuple, list[str]]" = OrderedDict()
+_CACHE: "OrderedDict[tuple, list[Chip]]" = OrderedDict()
 _CACHE_MAX = 256
 
 
+class Chip(BaseModel):
+    text: str
+    state: str  # included (in the report unless removed) | optional (opt-in)
+
+
 class ChipsResult(BaseModel):
-    chips: list[str]
+    chips: list[Chip]
     cached: bool = False
     ms: int = 0
     error: str | None = None
@@ -39,7 +44,7 @@ async def suggest(scan_type: str, history: str, region: str, sentences: list[str
     key = _key(scan_type, region, sentences)
     if key in _CACHE:
         _CACHE.move_to_end(key)
-        return ChipsResult(chips=list(_CACHE[key]), cached=True)
+        return ChipsResult(chips=[c.model_copy() for c in _CACHE[key]], cached=True)
     state = f"SCAN TYPE: {scan_type}\nCLINICAL HISTORY: {history or 'none given'}\nDICTATED FINDINGS:\n{dictation}"
     try:
         out = await _fallback(state, [s.strip() for s in sentences if s.strip()], [])
@@ -47,19 +52,19 @@ async def suggest(scan_type: str, history: str, region: str, sentences: list[str
         logger.warning("[stack.chips] %s: %s", type(e).__name__, str(e)[:200])
         return ChipsResult(chips=[], ms=int((time.perf_counter() - t0) * 1000), error=f"{type(e).__name__}: {e}")
     said = dictated_negatives(split_findings(dictation))
-    chips: list[str] = []
+    texts: list[str] = []
     for it in sorted(out.items, key=lambda x: x.index):
         for neg in it.negatives:
             neg = neg.strip()
-            if neg and not duplicates_negative(neg, said + chips):
-                chips.append(neg)
+            if neg and not duplicates_negative(neg, said + texts):
+                texts.append(neg)
     try:
-        scores = await ask_stated(dictation, chips)
-        chips = [c for c, p in zip(chips, scores) if p < STATED_MIN]
-    except Exception as e:  # fail open: keep the chips; dictation re-asks later
-        logger.warning("[stack.chips.stated] %s: %s", type(e).__name__, str(e)[:200])
-    chips = chips[:MAX_PER_REGION]
+        states = [chip_state(st, co) for st, co in await ask_checks(dictation, texts)]
+    except Exception as e:  # fail open, but never include unchecked: every chip is opt-in
+        logger.warning("[stack.chips.checks] %s: %s", type(e).__name__, str(e)[:200])
+        states = ["optional"] * len(texts)
+    chips = [Chip(text=t, state=s) for t, s in zip(texts, states) if s != "gone"][:MAX_PER_REGION]
     _CACHE[key] = chips
     while len(_CACHE) > _CACHE_MAX:
         _CACHE.popitem(last=False)
-    return ChipsResult(chips=list(chips), ms=int((time.perf_counter() - t0) * 1000))
+    return ChipsResult(chips=[c.model_copy() for c in chips], ms=int((time.perf_counter() - t0) * 1000))

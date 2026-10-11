@@ -11,7 +11,7 @@ from ..database.models import StackSchemaFamily
 from ..template_sheet_structure import SheetStructure
 from .family import choose_family
 from .gate import closing_check, conclusion_gate
-from .jev_stack import STATED_MIN, ask_stated
+from .jev_stack import ask_checks, chip_state
 from .grouper import apply_placements, place
 from .pills import derived_pills
 from .reconciler import reconcile
@@ -42,7 +42,7 @@ class GroupResult(BaseModel):
     timings_ms: dict[str, int] = Field(default_factory=dict)
     model: str | None = None  # the grouper endpoint that answered (None: no call, or all failed)
     error: str | None = None
-    chips_stated: list[str] = Field(default_factory=list)  # visible chips the dictation now states (v2 §4)
+    chips_stated: list[str] = Field(default_factory=list)  # visible chips the dictation now states or contradicts (v2 §4)
 
 
 def _result(regions: list[Region], source: str, key: str, family: str | None = None,
@@ -91,9 +91,10 @@ async def resolve_schema(scan_type: str, history: str, structure: SheetStructure
 
 
 async def _stated(text: str, chips: list[str]) -> list[str]:
-    """Visible chips the dictation now states (Jev, STATED_MIN). Fails open: none."""
+    """Visible chips the dictation now states, or now contradicts (a chip included by default must leave
+    when the radiologist dictates the opposite). Fails open: none."""
     try:
-        return [c for c, p in zip(chips, await ask_stated(text, chips)) if p >= STATED_MIN]
+        return [c for c, (st, co) in zip(chips, await ask_checks(text, chips)) if chip_state(st, co) == "gone"]
     except Exception as e:
         logger.warning("[stack.chips.stated] %s: %s", type(e).__name__, str(e)[:200])
         return []
