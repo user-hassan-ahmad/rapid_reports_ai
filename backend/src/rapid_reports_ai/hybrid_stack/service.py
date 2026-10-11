@@ -78,15 +78,14 @@ async def resolve_schema(scan_type: str, history: str, structure: SheetStructure
         logger.warning("[stack.reconcile] %s: %s; Jev family", type(e).__name__, e)
         fam = await _jev_family(scan_type, history)
         return _result(family_regions(fam), "family" if fam != GENERIC_FAMILY else "generic", key, family=fam)
-    status = "approved" if rec.family else "provisional"
+    status = "provisional"  # every reconciler result is reviewed, a kept family included (spec §3.3)
     if db is not None:
         db.merge(StackSchemaFamily(key=key, scan_type=scan_type, regions=[r.model_dump() for r in rec.regions],
                                    source=f"reconciler:family:{rec.family}" if rec.family else "reconciler:composed",
                                    status=status))
         db.commit()
     logger.info("[stack.reconcile] key=%r status=%s log=%s", key, status, rec.log)
-    return _result(rec.regions, "approved" if rec.family else "reconciled", key, family=rec.family,
-                   provisional=status == "provisional")
+    return _result(rec.regions, "reconciled", key, family=rec.family, provisional=True)
 
 
 async def group_update(scan_type: str, text: str, regions: list[Region],

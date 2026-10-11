@@ -38,13 +38,15 @@ async def test_first_time_reconciles_caches_provisional_then_reads_cache(db_sess
     assert db_session.get(StackSchemaFamily, "mri ankle").status == "provisional"
 
 
-async def test_reconciler_keeping_a_family_is_approved(db_session, monkeypatch, fakes):
+async def test_reconciler_keeping_a_family_is_also_provisional(db_session, monkeypatch, fakes):
+    # Picking an existing family is a model decision too: it is used at once but goes to review.
     async def keep(scan_type, history, transport=None):
         return Reconciled(regions=family_regions("knee"), family="knee", log={"family": "knee"})
     monkeypatch.setattr(S, "reconcile", keep)
     r = await S.resolve_schema("MRI knee", "", None, db_session)
-    assert r.family == "knee" and not r.provisional
-    assert db_session.get(StackSchemaFamily, "mri knee").status == "approved"
+    assert r.family == "knee" and r.provisional and r.source == "reconciled"
+    row = db_session.get(StackSchemaFamily, "mri knee")
+    assert row.status == "provisional" and row.source == "reconciler:family:knee"
 
 
 async def test_reconciler_failure_uses_jev_family_and_caches_nothing(db_session, monkeypatch, fakes):
