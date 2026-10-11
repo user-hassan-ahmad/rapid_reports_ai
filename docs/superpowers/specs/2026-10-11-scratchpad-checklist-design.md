@@ -65,13 +65,13 @@ as the tray already does.
 Top to bottom (as in the playback mock-up):
 
 1. **Live strip:** the words being spoken.
-2. **Referral row:** label "Asked in the referral · {question in the history}", the question, and answer-shaped
-   buttons. For one answer the button is that sentence ("Appendix normal"); for several it is "All normal" with
-   the sentences listed under the question. Plus **Dictate**. When answered: green and compact, "✓ Appendix normal".
+2. **Referral row:** label "Asked in the referral · {question in the history}", the question, its sentences (each
+   on its own line with ×), and buttons. For one sentence the button is that sentence ("Appendix normal"); for two
+   it is "Both normal". Plus **Dictate**. When answered: green and compact, "✓ Appendix normal".
 3. **Abnormal region cards** (v2, unchanged), each holding:
    - the radiologist's lines;
-   - **amber finding rows** (at most 2 per region): question, one-line reason, then the same answer-shaped buttons
-     and **Dictate**;
+   - **amber finding rows** (at most 2 per region): question, one-line reason, the row's sentences (at most 2, each
+     on its own line with ×), then the same buttons and **Dictate**;
    - **quiet line:** "Will also be reported:" then the region's assumed normals in report form, at most 3, then
      "+n more". Each sentence has × to remove it.
 4. **Type a finding…** (v2, unchanged).
@@ -83,7 +83,9 @@ Top to bottom (as in the playback mock-up):
 ### 3.1 Wording rules
 
 - Assumptions are shown as the sentences the report will contain. Never as labels ("normal expected: free gas").
-- Answer buttons carry the sentence they add, or "All normal" with the sentences in view.
+- Answer buttons carry the sentence they add, or "Both normal" with both sentences in view directly above. A tap
+  adds only the sentences still listed: × removes a sentence from the row first (it is then never stated and is
+  sent as DO NOT ASSERT).
 - Two state words only, in copy the radiologist sees: "assumed" and "question open".
 - Items the dictation already answers are not shown.
 
@@ -99,13 +101,28 @@ Top to bottom (as in the playback mock-up):
 - **Dictate:** puts the caret in "Type a finding…" under that region (v2 §7 rules).
 - **Remove an assumed sentence:** ×. It is never stated, and goes to the generator as DO NOT ASSERT.
 
-### 3.3 Friction budget
+### 3.3 Why every row sentence has its own ×
+
+The lab's wrong sentences have not gone away; they now sit inside rows. In arm D, 18 of 89 row sentences (20%) were
+graded wrong, and 10 of 20 cases held at least one. Many of these are fine to *ask* (whether an aneurysm extends
+into the iliacs is a real check) and wrong only when stated unchecked. Others are wrong to ask at all: they
+contradict the dictation, deny a typical sign of the dictated diagnosis, or ask for something this scan can't show.
+
+So a tap must assert only what the radiologist has seen in front of them:
+- at most 2 sentences per row (the most decisive first);
+- each sentence visible above the button, with ×;
+- no collapsed "All normal" that hides its sentences.
+
+The re-run lab (plan V2) grades row sentences as "fine to ask" or "wrong to ask". Target: at most 1 row in 10 holds
+a wrong-to-ask sentence. Hand reads record the same.
+
+### 3.4 Friction budget
 
 Amber rows are the only interruption. Expected: about 2 per case including the referral row. Cap: 2 finding rows
 per region, plus the referral row. Measured in the hand reads (§10.2); if real cases run higher, lower the cap
 before release.
 
-### 3.4 Skin
+### 3.5 Skin
 
 The RadFlow theme as in the current view:
 - dark panels, white at low opacity;
@@ -132,7 +149,7 @@ The layout and wording follow the mock-up.
 - Input: scan type, history, region list, dictation, and the slim sheet's "Not assessable on this scan" list when
   available.
 - Output per item: `source_text`, `region`, `question` (≤ 12 words, ends "?"), `rationale` (one line, shown as the
-  reason), `negatives` (1–3 report sentences, one absent finding each).
+  reason), `negatives` (1–3 report sentences, one absent finding each; code keeps the first 2).
   - An item with empty `source_text` is the referral item.
 - Code, in order:
   1. drop sentences containing " or " or a comma list;

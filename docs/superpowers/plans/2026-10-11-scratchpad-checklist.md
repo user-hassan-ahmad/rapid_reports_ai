@@ -30,7 +30,7 @@ Rules for every task:
      the referral item;
   2. drop bundled sentences (`\bor\b` or a comma);
   3. dedupe; drop sentences duplicating dictated negatives or `removed`;
-  4. drop empty items;
+  4. keep the first 2 sentences per item; drop empty items;
   5. `kind="referral"` when `source_text` is empty; keep the first referral item only;
   6. cap at 2 finding items per region, the rest into `capped`;
   7. ids are stable: hash of (kind, region, question).
@@ -137,7 +137,8 @@ Rules for every task:
 - `chips.ts` is removed; `items.ts` is new (pure):
   - `openRows(items, answered)`;
   - `rowsByRegion`;
-  - `answerLabel(item)`: the single sentence, shortened to a button label, or "All normal";
+  - `answerLabel(item)`: the single sentence, shortened to a button label, or "Both normal";
+  - `rowSentences(item, removed)`: the sentences still listed;
   - `quietLine(sentences, max=3)`.
 - Vitest.
 
@@ -156,13 +157,14 @@ Vitest, including a region with no slim sheet and a template region list.
 Layout, wording and skin per spec §3:
 - live strip;
 - **referral row**;
-- region cards: lines, **amber finding rows**, **quiet line** with ×, "+n more";
+- region cards: lines, **amber finding rows** (each sentence on its own line with ×, the button directly
+  below), **quiet line** with ×, "+n more";
 - type-a-finding;
 - tray with keys and pill sentences;
 - conclusion;
 - **gate bar** with counts and Confirm (`btn-primary-subtle`).
 
-Props: `items`, `assumed`, `removed`, `onAnswer(id)`, `onDictateInto(region)`, `onRemoveAssumed(region, sentence)`,
+Props: `items`, `assumed`, `removed`, `onAnswer(id)`, `onRemoveSentence(id, sentence)`, `onDictateInto(region)`, `onRemoveAssumed(region, sentence)`,
 plus v2's existing props. Chip props removed.
 
 Animations:
@@ -172,7 +174,8 @@ Animations:
 
 Component tests (vitest-browser-svelte):
 - referral row shows, and tapping calls `onAnswer`;
-- an amber row's single-sentence label versus "All normal" with sentences listed;
+- an amber row's single-sentence label versus "Both normal" with both sentences listed;
+- × on a row sentence calls `onRemoveSentence`, and the tap then adds only the remaining one;
 - quiet line capped at 3 with "+2 more";
 - × calls `onRemoveAssumed`;
 - the gate bar counts, and Confirm disabled while a question is open;
@@ -193,7 +196,8 @@ On grouped units changing (debounced 500 ms):
 
 Then:
 - an item returned `answered` and visible → mark it "answered in your dictation", fold after 1.2 s.
-- Tap answer → add the id to `answered`; the gate re-arms.
+- Tap answer → add the id to `answered` (its listed sentences only); the gate re-arms.
+- × on a row sentence → add it to `removed` (never stated; DO NOT ASSERT).
 - Dictate → focus "Type a finding…" with that region as the placement hint (v2's `stackAppend` path).
 - Remove assumed → add to `removed`, refresh the assumed list.
 - Voice "answer" → `onAnswer(item)`.
@@ -221,12 +225,16 @@ backend. The page is still gated by `requireDevRoute`.
 ### V2 Lab re-run
 `checklist_lab` arm D through the production `items.write` + `check` path on the 20 cases. Confirms:
 - recall unchanged (surfaced ≈ 35/46);
-- amber rows per case (median ≤ 2, max ≤ 4) from the real cap and Jev checks.
+- amber rows per case (median ≤ 2, max ≤ 4) from the real cap and Jev checks;
+- row sentences graded "fine to ask" or "wrong to ask" (new rubric: wrong to ask means it contradicts the
+  dictation, denies a typical sign of a dictated diagnosis, or can't be shown on this scan). Target: at most 1 row
+  in 10 holds a wrong-to-ask sentence.
 
 ### V3 Hand reads (local, Chrome)
 - **Quick:** the diverticulitis case, the "?appendicitis" + ovarian cyst case, and one staging case.
 - **Template:** one case.
-- Record for each: amber rows, taps, the findings block, the generated report.
+- Record for each: amber rows, taps, row sentences removed with × and why, the findings block, the generated
+  report.
 - **Gate:** no statement in the report that was not dictated, tapped or confirmed.
 
 ### V4 Independent review
