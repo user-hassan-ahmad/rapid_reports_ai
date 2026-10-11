@@ -16,7 +16,7 @@ from ..database.models import DictationStackLog, StackSchemaFamily, StackSlimShe
 from ..dictation_v2 import v2_allowed
 from ..template_sheet_structure import fresh
 from .schemas import Region
-from .items import ItemsResult, update as items_update
+from .items import ItemsResult, Referral, update as items_update
 from .normals import AssumedResult, assumed as assumed_normals
 from .slim_sheet import clean_sentences, get_or_make as slim_get_or_make
 from .template import template_region_normals
@@ -66,6 +66,7 @@ class ItemsRequest(BaseModel):
     not_assessable: str = ""
     removed: list[str] = Field(default_factory=list)    # sentences the radiologist removed: never offered again
     tapped: list[str] = Field(default_factory=list)     # sentences answered with a tap: re-checked for contradiction
+    referrals: list[Referral] | None = None              # the session's fixed referral rows (None: first call)
 
 
 class AssumedRequest(BaseModel):
@@ -152,7 +153,8 @@ async def stack_group(req: GroupRequest, user: User = Depends(get_current_user))
 async def stack_items(req: ItemsRequest, user: User = Depends(get_current_user)):
     _require()
     return await items_update(req.scan_type, req.clinical_history, req.regions[:40], req.dictation,
-                              req.abnormal[:40], req.not_assessable[:2000], req.removed[:50], req.tapped[:20])
+                              req.abnormal[:40], req.not_assessable[:2000], req.removed[:50], req.tapped[:20],
+                              req.referrals[:2] if req.referrals is not None else None)
 
 
 @router.post("/assumed", response_model=AssumedResult)

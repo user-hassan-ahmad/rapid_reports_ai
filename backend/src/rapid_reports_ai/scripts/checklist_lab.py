@@ -373,6 +373,25 @@ async def arm_p(c):
                   "ms": int((time.perf_counter() - t0) * 1000), "error": res.error}}
 
 
+async def arm_p2(c):
+    """Production, as the scratchpad runs it: the setup call (no dictation) fixes the referral rows, then the
+    dictation call gets them back."""
+    from rapid_reports_ai.hybrid_stack import items as IT
+    IT.clear_cache()
+    t0 = time.perf_counter()
+    first = await IT.update(c["scan_type"], c["history"], list(c["regions"]), "", [])
+    fixed = [IT.Referral(question=i.question, region=i.region, sentences=i.sentences)
+             for i in first.items if i.kind == "referral"]
+    abnormal = [x for xs in c["regions"].values() for x in xs]
+    res = await IT.update(c["scan_type"], c["history"], list(c["regions"]), c["dictation"], abnormal, referrals=fixed)
+    rows = [{"region": i.region, "question": i.question, "src": i.kind, "answers": i.sentences, "why": i.why}
+            for i in res.items if not i.answered]
+    return {"P2": {"assumed": [], "open": rows, "dropped": [], "answered": [],
+                   "capped": [{"question": i.question, "answers": i.sentences} for i in res.capped],
+                   "ms": int((time.perf_counter() - t0) * 1000), "error": res.error or first.error,
+                   "referrals": [f.model_dump() for f in fixed]}}
+
+
 async def arm_s(c):
     """Today's production path: the analyser's sheet for this case, compiled by the brief (non-stack)."""
     from rapid_reports_ai.quick_report_analyser import generate_ephemeral_skill_sheet
@@ -534,16 +553,27 @@ def report(cases, verbose: bool):
         print(f"  {k:<9} must {t['dflt']:>2}→{t['surf']:>2}/{t['m']}  leaks {t['leak']}  caught {t['caught']}  "
               f"low {t['low']}  assumed {t['assumed']}  open/case median {statistics.median(o)} max {max(o)}  "
               f"writer p50 {int(statistics.median(t['ms'] or [0]))} ms")
-    if "P" in arms:
-        rows = [(cid, it) for cid, ar in runs.items() if "P" in ar for it in ar["P"]["open"]]
-        bad = [(cid, it) for cid, it in rows if any((labels[cid].get(s) or ["?"])[0] == "wrong_to_ask" for s in it["answers"])]
-        per = sorted(len(ar["P"]["open"]) for ar in runs.values() if "P" in ar)
-        must = sum(len({(labels[cid].get(s) or ["?"])[0] for it in ar["P"]["open"] for s in it["answers"]} & {f"M{i+1}" for i in range(len(byid[cid]["must"]))})
-                   for cid, ar in runs.items() if "P" in ar)
-        print(f"\n== production rows: {len(rows)} rows, {len(bad)} with a wrong-to-ask sentence ({len(bad)/max(1,len(rows)):.0%}); "
-              f"rows/case median {statistics.median(per)} max {max(per)}; must surfaced {must}/{sum(len(c['must']) for c in cases)}")
-        for cid, it in bad:
-            print(f"   {cid}: {it['question']} — " + "; ".join(f"[{(labels[cid].get(s) or ['?'])[0]}] {s} ({(labels[cid].get(s) or ['',''])[1]})" for s in it["answers"]))
+    for pk in [k for k in arms if k.startswith("P")]:
+        rows = [(cid, it) for cid, ar in runs.items() if pk in ar for it in ar[pk]["open"]]
+        bad = [(cid, it) for cid, it in rows if any((labels[cid].get(x) or ["?"])[0] == "wrong_to_ask" for x in it["answers"])]
+        per = sorted(len(ar[pk]["open"]) for ar in runs.values() if pk in ar) or [0]
+        must = sum(len({(labels[cid].get(x) or ["?"])[0] for it in ar[pk]["open"] for x in it["answers"]}
+                       & {f"M{i+1}" for i in range(len(byid[cid]["must"]))}) for cid, ar in runs.items() if pk in ar)
+        q = [cid for cid in runs if byid[cid].get("qcase")]
+        ref_hit = sum(1 for cid in q if any(it["src"] == "referral" and (labels[cid].get(x) or ["?"])[0] == "M1"
+                                             for it in runs[cid][pk]["open"] for x in it["answers"]))
+        any_hit = sum(1 for cid in q if any((labels[cid].get(x) or ["?"])[0] == "M1"
+                                             for it in runs[cid][pk]["open"] for x in it["answers"]))
+        refs = sum(1 for cid, it in rows if it["src"] == "referral")
+        print(f"\n== {pk}: {len(rows)} rows ({refs} referral), {len(bad)} with a wrong-to-ask sentence "
+              f"({len(bad)/max(1,len(rows)):.0%}); rows/case median {statistics.median(per)} max {max(per)}; "
+              f"must surfaced {must}/{sum(len(byid[c]['must']) for c in runs)}; referral question (M1) on the 5 "
+              f"referral-led cases: in a referral row {ref_hit}/{len(q)}, anywhere {any_hit}/{len(q)}")
+        if verbose:
+            for cid, it in bad:
+                print(f"   {cid}: {it['question']} — " + "; ".join(f"[{(labels[cid].get(x) or ['?'])[0]}] {x}" for x in it["answers"]))
+            for cid in q:
+                print(f"   {cid} referral rows: " + " | ".join(f"{it['question']} -> {it['answers']}" for it in runs[cid][pk]["open"] if it["src"] == "referral"))
     print("\n== leaks (assumed and graded wrong)")
     for k, cid, s, why in leaks:
         print(f"  {k:<9} {cid}: {s} — {why}")

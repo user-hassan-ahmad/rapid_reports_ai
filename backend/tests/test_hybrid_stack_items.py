@@ -7,8 +7,16 @@ from rapid_reports_ai.hybrid_stack import jev_stack as J
 
 
 def _raw(*items):
-    async def fake(scan_type, history, regions, dictation, not_assessable, removed):
-        return [I.RawItem(**it) for it in items]
+    """Test items in the old flat shape: kind "referral" (or empty source_text) goes to referral_questions."""
+    async def fake(scan_type, history, regions, dictation, not_assessable, removed, referrals):
+        refs, finds = [], []
+        for it in items:
+            if it.get("kind") == "referral" or not it.get("source_text"):
+                refs.append(I.RawReferral(question=it["question"], region=it.get("region", ""), answers=it["negatives"]))
+            else:
+                finds.append(I.RawFinding(source_text=it["source_text"], region=it["region"], question=it["question"],
+                                          rationale=it.get("rationale", ""), answers=it["negatives"]))
+        return I.RawOutput(referral_questions=refs, finding_checks=finds)
     return fake
 
 
@@ -95,7 +103,8 @@ async def test_cache_reruns_the_checks_on_the_new_dictation(monkeypatch):
 
     async def raw(*a):
         calls.append(1)
-        return [I.RawItem(**CYST)]
+        return I.RawOutput(finding_checks=[I.RawFinding(source_text=CYST["source_text"], region=CYST["region"],
+                                                        question=CYST["question"], answers=CYST["negatives"])])
     _setup(monkeypatch, raw)
     a = await I.update("CT AP", "", ["Pelvic organs"], "A cyst.", ["A cyst."])
     monkeypatch.setattr(I, "ask_rows", _checks({"No features of torsion.": (0.9, 0.0, 0.0)}))
@@ -168,10 +177,22 @@ async def test_a_sentence_with_a_measurement_is_never_offered(monkeypatch):
     assert out.items[0].sentences == ["No free fluid."]
 
 
-async def test_a_trigger_not_in_the_dictation_is_the_referral_row(monkeypatch):
-    _setup(monkeypatch, _raw(CYST, {**REF, "source_text": "?appendicitis"}))
-    out = await I.update("CT AP", "?appendicitis", ["Pelvic organs"], "A right ovarian cyst.", ["A right ovarian cyst."])
-    assert [(i.kind, i.question) for i in out.items] == [("referral", "Appendix normal or inflamed?"), ("finding", "Ovarian torsion?")]
+async def test_fixed_referrals_replace_the_reply_and_are_still_checked(monkeypatch):
+    seen = {}
+
+    async def raw(scan_type, history, regions, dictation, not_assessable, removed, referrals):
+        seen["referrals"] = referrals
+        return I.RawOutput(referral_questions=[I.RawReferral(question="A drifted question?", answers=["No drift."])],
+                           finding_checks=[I.RawFinding(source_text="right ovarian cyst", region="Pelvic organs",
+                                                        question="Ovarian torsion?", answers=["No features of torsion."])])
+    _setup(monkeypatch, raw, _checks({"The appendix is normal.": (0.9, 0.0, 0.0)}))
+    fixed = [I.Referral(question="Appendix normal or inflamed?", region="", sentences=["The appendix is normal."])]
+    out = await I.update("CT AP", "?appendicitis", ["Pelvic organs"], "A right ovarian cyst. The appendix is normal.",
+                         ["A right ovarian cyst."], referrals=fixed)
+    assert seen["referrals"] == fixed
+    assert [(i.kind, i.question, i.answered) for i in out.items] == [
+        ("referral", "Appendix normal or inflamed?", True), ("finding", "Ovarian torsion?", False)]
+    assert "REFERRAL QUESTIONS (already asked" in I.user_prompt("CT", "", [], "", "", [], fixed)
 
 
 async def test_an_explicit_referral_kind_wins_even_with_a_dictated_trigger(monkeypatch):

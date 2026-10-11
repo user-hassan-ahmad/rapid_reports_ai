@@ -264,6 +264,8 @@
 	let stackNotAssessable = '';
 	let slimSeq = 0;
 	let shownSentences: string[] = []; // every row sentence shown this session (a row owns its check)
+	// The session's referral rows: the first /items reply's, fixed so they never drift (null until it answers).
+	let fixedReferrals: { question: string; region: string; sentences: string[] }[] | null = null;
 	let itemsSeq = 0;
 	let assumedSeq = 0;
 	let draft: { text: string; hash: string; edited: boolean; typed: boolean } | null = null;
@@ -325,6 +327,7 @@
 		if (k !== lastRegionsKey) {
 			lastRegionsKey = k;
 			stackUnits = [];
+			fixedReferrals = null; // a new case asks its own questions
 			scheduleGroup(0);
 			scheduleItems(0); // the referral row appears before anything is dictated
 			void loadSlimSheet();
@@ -1488,9 +1491,11 @@
 		try {
 			const res = await postItems($token, { scan_type: scanType, clinical_history: clinicalHistory, regions: pillRegions,
 				dictation: verbatimNow, abnormal: abnormalAll(stackUnits), not_assessable: stackNotAssessable, removed: removedSentences,
-				tapped: Object.values(tappedRows).flatMap((r) => r.sentences) });
+				tapped: Object.values(tappedRows).flatMap((r) => r.sentences), referrals: fixedReferrals });
 			if (seq !== itemsSeq) return; // superseded while in flight
 			if (res.error) return; // the writer failed: what is on screen stays
+			if (fixedReferrals === null)
+				fixedReferrals = res.items.filter((i) => i.kind === 'referral').map((i) => ({ question: i.question, region: i.region, sentences: i.sentences }));
 			// Tapped answers the dictation now contradicts are dropped; a row left with none is asked again.
 			if (res.contradicted.length) {
 				const bad = new Set(res.contradicted.map(normS));
@@ -1755,6 +1760,7 @@
 		dictatedRows = {};
 		foldedRows = [];
 		shownSentences = [];
+		fixedReferrals = null;
 		removedSentences = [];
 		assumedSnap = null;
 		scheduleItems(0);
