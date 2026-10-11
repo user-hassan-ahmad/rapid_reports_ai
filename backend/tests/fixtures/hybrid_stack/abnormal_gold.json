@@ -1,0 +1,4146 @@
+[
+ {
+  "set": "d",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 1,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 5,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 8,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 12,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 13,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c02_ct_chest_staging",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c02_ct_chest_staging",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c02_ct_chest_staging",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c02_ct_chest_staging",
+  "i": 3,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c02_ct_chest_staging",
+  "i": 4,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c02_ct_chest_staging",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c02_ct_chest_staging",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c02_ct_chest_staging",
+  "i": 7,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c02_ct_chest_staging",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c02_ct_chest_staging",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c03_mr_brain_mass",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c03_mr_brain_mass",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c03_mr_brain_mass",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c03_mr_brain_mass",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c03_mr_brain_mass",
+  "i": 4,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c03_mr_brain_mass",
+  "i": 5,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c03_mr_brain_mass",
+  "i": 6,
+  "abnormal": false,
+  "note": "negative attribute of the lesion (no restriction); called false"
+ },
+ {
+  "set": "d",
+  "case": "c03_mr_brain_mass",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c03_mr_brain_mass",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c03_mr_brain_mass",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c03_mr_brain_mass",
+  "i": 10,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c04_ct_head_trauma",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c04_ct_head_trauma",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c04_ct_head_trauma",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c04_ct_head_trauma",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c04_ct_head_trauma",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c04_ct_head_trauma",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c04_ct_head_trauma",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c04_ct_head_trauma",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c05_mr_lumbar_spine",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c05_mr_lumbar_spine",
+  "i": 1,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c05_mr_lumbar_spine",
+  "i": 2,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c05_mr_lumbar_spine",
+  "i": 3,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c05_mr_lumbar_spine",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c05_mr_lumbar_spine",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c05_mr_lumbar_spine",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c05_mr_lumbar_spine",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c05_mr_lumbar_spine",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c05_mr_lumbar_spine",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c05_mr_lumbar_spine",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c06_ctpa_pe",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c06_ctpa_pe",
+  "i": 1,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c06_ctpa_pe",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c06_ctpa_pe",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c06_ctpa_pe",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c06_ctpa_pe",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c06_ctpa_pe",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c06_ctpa_pe",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c06_ctpa_pe",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c06_ctpa_pe",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c06_ctpa_pe",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c07_mr_liver_cirrhosis",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c07_mr_liver_cirrhosis",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c07_mr_liver_cirrhosis",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c07_mr_liver_cirrhosis",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c07_mr_liver_cirrhosis",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c07_mr_liver_cirrhosis",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c07_mr_liver_cirrhosis",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c07_mr_liver_cirrhosis",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c07_mr_liver_cirrhosis",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c07_mr_liver_cirrhosis",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c08_ct_kub_stone",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c08_ct_kub_stone",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c08_ct_kub_stone",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c08_ct_kub_stone",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c08_ct_kub_stone",
+  "i": 4,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c08_ct_kub_stone",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c08_ct_kub_stone",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c08_ct_kub_stone",
+  "i": 7,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c08_ct_kub_stone",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c09_mr_knee",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c09_mr_knee",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c09_mr_knee",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c09_mr_knee",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c09_mr_knee",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c09_mr_knee",
+  "i": 5,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c09_mr_knee",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c09_mr_knee",
+  "i": 7,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c09_mr_knee",
+  "i": 8,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c09_mr_knee",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c09_mr_knee",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 1,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 5,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 8,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 10,
+  "abnormal": true,
+  "note": "garbled \"Hinchey 1b\" grade + recommendation; grade of finding called true"
+ },
+ {
+  "set": "d",
+  "case": "c11_ct_ap_ovarian_conclusion_first",
+  "i": 0,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c11_ct_ap_ovarian_conclusion_first",
+  "i": 1,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c11_ct_ap_ovarian_conclusion_first",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c11_ct_ap_ovarian_conclusion_first",
+  "i": 3,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c11_ct_ap_ovarian_conclusion_first",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c11_ct_ap_ovarian_conclusion_first",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c11_ct_ap_ovarian_conclusion_first",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c11_ct_ap_ovarian_conclusion_first",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c11_ct_ap_ovarian_conclusion_first",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c11_ct_ap_ovarian_conclusion_first",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c12_ct_chest_pingpong",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c12_ct_chest_pingpong",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c12_ct_chest_pingpong",
+  "i": 2,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c12_ct_chest_pingpong",
+  "i": 3,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c12_ct_chest_pingpong",
+  "i": 4,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c12_ct_chest_pingpong",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c12_ct_chest_pingpong",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c12_ct_chest_pingpong",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c12_ct_chest_pingpong",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c12_ct_chest_pingpong",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c12_ct_chest_pingpong",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c12_ct_chest_pingpong",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c12_ct_chest_pingpong",
+  "i": 12,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c12_ct_chest_pingpong",
+  "i": 13,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c12_ct_chest_pingpong",
+  "i": 14,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c13_mr_cervical_spine_levels",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c13_mr_cervical_spine_levels",
+  "i": 1,
+  "abnormal": true,
+  "note": "straightening of lordosis, nonspecific; called true"
+ },
+ {
+  "set": "d",
+  "case": "c13_mr_cervical_spine_levels",
+  "i": 2,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c13_mr_cervical_spine_levels",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c13_mr_cervical_spine_levels",
+  "i": 4,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c13_mr_cervical_spine_levels",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c13_mr_cervical_spine_levels",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c13_mr_cervical_spine_levels",
+  "i": 7,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c13_mr_cervical_spine_levels",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c13_mr_cervical_spine_levels",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c13_mr_cervical_spine_levels",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c14_ct_neck_nodes",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c14_ct_neck_nodes",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c14_ct_neck_nodes",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c14_ct_neck_nodes",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c14_ct_neck_nodes",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c14_ct_neck_nodes",
+  "i": 5,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c14_ct_neck_nodes",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c14_ct_neck_nodes",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c14_ct_neck_nodes",
+  "i": 8,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c14_ct_neck_nodes",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c15_mr_rectum_corrections",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c15_mr_rectum_corrections",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c15_mr_rectum_corrections",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c15_mr_rectum_corrections",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c15_mr_rectum_corrections",
+  "i": 4,
+  "abnormal": true,
+  "note": "MRF clear by 6 mm: tumour attribute (CRM distance) though reassuring; called true"
+ },
+ {
+  "set": "d",
+  "case": "c15_mr_rectum_corrections",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c15_mr_rectum_corrections",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c15_mr_rectum_corrections",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c15_mr_rectum_corrections",
+  "i": 8,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c15_mr_rectum_corrections",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c15_mr_rectum_corrections",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c16_ct_trauma_runon",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c16_ct_trauma_runon",
+  "i": 1,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c16_ct_trauma_runon",
+  "i": 2,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c16_ct_trauma_runon",
+  "i": 3,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c16_ct_trauma_runon",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c16_ct_trauma_runon",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c16_ct_trauma_runon",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c16_ct_trauma_runon",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c16_ct_trauma_runon",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c16_ct_trauma_runon",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c16_ct_trauma_runon",
+  "i": 10,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c16_ct_trauma_runon",
+  "i": 11,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c16_ct_trauma_runon",
+  "i": 12,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c16_ct_trauma_runon",
+  "i": 13,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c16_ct_trauma_runon",
+  "i": 14,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c16_ct_trauma_runon",
+  "i": 15,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c17_mr_shoulder_fragments",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c17_mr_shoulder_fragments",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c17_mr_shoulder_fragments",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c17_mr_shoulder_fragments",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c17_mr_shoulder_fragments",
+  "i": 4,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c17_mr_shoulder_fragments",
+  "i": 5,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c17_mr_shoulder_fragments",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c17_mr_shoulder_fragments",
+  "i": 7,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c17_mr_shoulder_fragments",
+  "i": 8,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c17_mr_shoulder_fragments",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c17_mr_shoulder_fragments",
+  "i": 10,
+  "abnormal": true,
+  "note": "type 2 acromion, variant; called true"
+ },
+ {
+  "set": "d",
+  "case": "c17_mr_shoulder_fragments",
+  "i": 11,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c17_mr_shoulder_fragments",
+  "i": 12,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c17_mr_shoulder_fragments",
+  "i": 13,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c17_mr_shoulder_fragments",
+  "i": 14,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c18_ct_aorta_measurements",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c18_ct_aorta_measurements",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c18_ct_aorta_measurements",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c18_ct_aorta_measurements",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c18_ct_aorta_measurements",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c18_ct_aorta_measurements",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c18_ct_aorta_measurements",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c18_ct_aorta_measurements",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c18_ct_aorta_measurements",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c18_ct_aorta_measurements",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c18_ct_aorta_measurements",
+  "i": 10,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c19_mr_pelvis_female_nosex",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c19_mr_pelvis_female_nosex",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c19_mr_pelvis_female_nosex",
+  "i": 2,
+  "abnormal": false,
+  "note": "endometrium 9 mm, measurement without abnormality; called false"
+ },
+ {
+  "set": "d",
+  "case": "c19_mr_pelvis_female_nosex",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c19_mr_pelvis_female_nosex",
+  "i": 4,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c19_mr_pelvis_female_nosex",
+  "i": 5,
+  "abnormal": true,
+  "note": "small POD free fluid (possibly physiological) + bladder normal; called true"
+ },
+ {
+  "set": "d",
+  "case": "c19_mr_pelvis_female_nosex",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c19_mr_pelvis_female_nosex",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c19_mr_pelvis_female_nosex",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c20_ct_cap_lymphoma_followup",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c20_ct_cap_lymphoma_followup",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c20_ct_cap_lymphoma_followup",
+  "i": 2,
+  "abnormal": false,
+  "note": "resolved prior finding; called false"
+ },
+ {
+  "set": "d",
+  "case": "c20_ct_cap_lymphoma_followup",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c20_ct_cap_lymphoma_followup",
+  "i": 4,
+  "abnormal": false,
+  "note": "resolved prior finding; called false"
+ },
+ {
+  "set": "d",
+  "case": "c20_ct_cap_lymphoma_followup",
+  "i": 5,
+  "abnormal": false,
+  "note": "normal spleen size after resolution; called false"
+ },
+ {
+  "set": "d",
+  "case": "c20_ct_cap_lymphoma_followup",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c20_ct_cap_lymphoma_followup",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c20_ct_cap_lymphoma_followup",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c20_ct_cap_lymphoma_followup",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "d",
+  "case": "c20_ct_cap_lymphoma_followup",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 4,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 5,
+  "abnormal": true,
+  "note": "splenic vein thin but patent; narrowing called true"
+ },
+ {
+  "set": "h",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 8,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 12,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 13,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 14,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 15,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h02_mri_brain_ms_followup",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h02_mri_brain_ms_followup",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h02_mri_brain_ms_followup",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h02_mri_brain_ms_followup",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h02_mri_brain_ms_followup",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h02_mri_brain_ms_followup",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h02_mri_brain_ms_followup",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h02_mri_brain_ms_followup",
+  "i": 7,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h02_mri_brain_ms_followup",
+  "i": 8,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h02_mri_brain_ms_followup",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h02_mri_brain_ms_followup",
+  "i": 10,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h02_mri_brain_ms_followup",
+  "i": 11,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h02_mri_brain_ms_followup",
+  "i": 12,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h02_mri_brain_ms_followup",
+  "i": 13,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h02_mri_brain_ms_followup",
+  "i": 14,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 3,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 12,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 13,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 14,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 15,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 0,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 1,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 2,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 3,
+  "abnormal": false,
+  "note": "normal vertebral count; called false"
+ },
+ {
+  "set": "h",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 4,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 5,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 7,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 12,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 13,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 14,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 15,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 0,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 3,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 4,
+  "abnormal": true,
+  "note": "PCL intact but buckled (secondary sign); called true"
+ },
+ {
+  "set": "h",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 7,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h06_ct_neck_nodal_mass",
+  "i": 0,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h06_ct_neck_nodal_mass",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h06_ct_neck_nodal_mass",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h06_ct_neck_nodal_mass",
+  "i": 3,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h06_ct_neck_nodal_mass",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h06_ct_neck_nodal_mass",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h06_ct_neck_nodal_mass",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h06_ct_neck_nodal_mass",
+  "i": 7,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h06_ct_neck_nodal_mass",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h06_ct_neck_nodal_mass",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h06_ct_neck_nodal_mass",
+  "i": 10,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h06_ct_neck_nodal_mass",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h06_ct_neck_nodal_mass",
+  "i": 12,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h06_ct_neck_nodal_mass",
+  "i": 13,
+  "abnormal": false,
+  "note": "recommendation that mentions the apical nodule; called false"
+ },
+ {
+  "set": "h",
+  "case": "h06_ct_neck_nodal_mass",
+  "i": 14,
+  "abnormal": false,
+  "note": "recommendation naming thyroid nodule; called false"
+ },
+ {
+  "set": "h",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 0,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 10,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 11,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 12,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 13,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 1,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 2,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 5,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 12,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 13,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 14,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 15,
+  "abnormal": false,
+  "note": "recommendation naming aneurysm; called false"
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 0,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 8,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 10,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 12,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 13,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 14,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 15,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 16,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h09_mri_hip_avn",
+  "i": 17,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h10_mri_prostate_pirads",
+  "i": 0,
+  "abnormal": true,
+  "note": "48 ml gland, PSA density 0.18 (elevated); called true"
+ },
+ {
+  "set": "h",
+  "case": "h10_mri_prostate_pirads",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h10_mri_prostate_pirads",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h10_mri_prostate_pirads",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h10_mri_prostate_pirads",
+  "i": 4,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h10_mri_prostate_pirads",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h10_mri_prostate_pirads",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h10_mri_prostate_pirads",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h10_mri_prostate_pirads",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h10_mri_prostate_pirads",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h10_mri_prostate_pirads",
+  "i": 10,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h11_mri_thoracic_spine_mscc",
+  "i": 0,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h11_mri_thoracic_spine_mscc",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h11_mri_thoracic_spine_mscc",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h11_mri_thoracic_spine_mscc",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h11_mri_thoracic_spine_mscc",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h11_mri_thoracic_spine_mscc",
+  "i": 5,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h11_mri_thoracic_spine_mscc",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h11_mri_thoracic_spine_mscc",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h11_mri_thoracic_spine_mscc",
+  "i": 8,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h11_mri_thoracic_spine_mscc",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h11_mri_thoracic_spine_mscc",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h11_mri_thoracic_spine_mscc",
+  "i": 11,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h11_mri_thoracic_spine_mscc",
+  "i": 12,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h11_mri_thoracic_spine_mscc",
+  "i": 13,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h11_mri_thoracic_spine_mscc",
+  "i": 14,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h11_mri_thoracic_spine_mscc",
+  "i": 15,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 2,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 8,
+  "abnormal": false,
+  "note": "valves normal with trivial MR (physiological); called false"
+ },
+ {
+  "set": "h",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 10,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 12,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 13,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "h",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 14,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 1,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 5,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 8,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 12,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c01_ct_ap_appendicitis",
+  "i": 13,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c05_mr_lumbar_spine",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c05_mr_lumbar_spine",
+  "i": 1,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c05_mr_lumbar_spine",
+  "i": 2,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c05_mr_lumbar_spine",
+  "i": 3,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c05_mr_lumbar_spine",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c05_mr_lumbar_spine",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c05_mr_lumbar_spine",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c05_mr_lumbar_spine",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c05_mr_lumbar_spine",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c05_mr_lumbar_spine",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c05_mr_lumbar_spine",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c06_ctpa_pe",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c06_ctpa_pe",
+  "i": 1,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c06_ctpa_pe",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c06_ctpa_pe",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c06_ctpa_pe",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c06_ctpa_pe",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c06_ctpa_pe",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c06_ctpa_pe",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c06_ctpa_pe",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c06_ctpa_pe",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c06_ctpa_pe",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c08_ct_kub_stone",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c08_ct_kub_stone",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c08_ct_kub_stone",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c08_ct_kub_stone",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c08_ct_kub_stone",
+  "i": 4,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c08_ct_kub_stone",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c08_ct_kub_stone",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c08_ct_kub_stone",
+  "i": 7,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c08_ct_kub_stone",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c09_mr_knee",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c09_mr_knee",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c09_mr_knee",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c09_mr_knee",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c09_mr_knee",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c09_mr_knee",
+  "i": 5,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c09_mr_knee",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c09_mr_knee",
+  "i": 7,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c09_mr_knee",
+  "i": 8,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c09_mr_knee",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c09_mr_knee",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 1,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 5,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 8,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c10_ct_ap_diverticulitis_runon",
+  "i": 10,
+  "abnormal": true,
+  "note": "garbled \"Hinchey 1b\" grade + recommendation; grade of finding called true"
+ },
+ {
+  "set": "t",
+  "case": "c12_ct_chest_pingpong",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c12_ct_chest_pingpong",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c12_ct_chest_pingpong",
+  "i": 2,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c12_ct_chest_pingpong",
+  "i": 3,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c12_ct_chest_pingpong",
+  "i": 4,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c12_ct_chest_pingpong",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c12_ct_chest_pingpong",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c12_ct_chest_pingpong",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c12_ct_chest_pingpong",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c12_ct_chest_pingpong",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c12_ct_chest_pingpong",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c12_ct_chest_pingpong",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c12_ct_chest_pingpong",
+  "i": 12,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c12_ct_chest_pingpong",
+  "i": 13,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "c12_ct_chest_pingpong",
+  "i": 14,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 4,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 5,
+  "abnormal": true,
+  "note": "splenic vein thin but patent; narrowing called true"
+ },
+ {
+  "set": "t",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 8,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 12,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 13,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 14,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h01_ct_ap_pancreatitis_collection",
+  "i": 15,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 3,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 12,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 13,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 14,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h03_ct_chest_fibrosis",
+  "i": 15,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 0,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 1,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 2,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 3,
+  "abnormal": false,
+  "note": "normal vertebral count; called false"
+ },
+ {
+  "set": "t",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 4,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 5,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 7,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 12,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 13,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 14,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h04_mri_lumbar_conclusion_first",
+  "i": 15,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 0,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 3,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 4,
+  "abnormal": true,
+  "note": "PCL intact but buckled (secondary sign); called true"
+ },
+ {
+  "set": "t",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 7,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h05_mri_knee_bucket_handle",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 0,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 2,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 10,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 11,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 12,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h07_mr_liver_cirrhosis_observation",
+  "i": 13,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 1,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 2,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 5,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 6,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 8,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 9,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 10,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 12,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 13,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 14,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h08_ct_urogram_haematuria",
+  "i": 15,
+  "abnormal": false,
+  "note": "recommendation naming aneurysm; called false"
+ },
+ {
+  "set": "t",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 0,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 1,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 2,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 3,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 4,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 5,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 6,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 7,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 8,
+  "abnormal": false,
+  "note": "valves normal with trivial MR (physiological); called false"
+ },
+ {
+  "set": "t",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 9,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 10,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 11,
+  "abnormal": false,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 12,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 13,
+  "abnormal": true,
+  "note": ""
+ },
+ {
+  "set": "t",
+  "case": "h12_cardiac_mri_myocarditis",
+  "i": 14,
+  "abnormal": false,
+  "note": ""
+ }
+]

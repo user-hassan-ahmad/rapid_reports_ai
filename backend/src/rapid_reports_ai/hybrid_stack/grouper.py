@@ -1,6 +1,7 @@
 """The grouper: one Qwen call returns labels for new sentences; code applies them (spec §3.4, §3.5)."""
 from __future__ import annotations
 
+import logging
 import os
 
 from pydantic import BaseModel, Field
@@ -9,10 +10,13 @@ from .http import post_json
 from .schemas import CONCLUSION, GENERAL, TECHNIQUE, Region
 from .units import PartOut, StackUnit
 
+logger = logging.getLogger(__name__)
+
 
 class Part(BaseModel):
     text: str
     group: str
+    abnormal: bool = False
 
 
 class Placement(BaseModel):
@@ -22,6 +26,7 @@ class Placement(BaseModel):
     group: str
     structure: str | None = None
     covers: list[str] = Field(default_factory=list)
+    abnormal: bool = False
     attach_to: int | None = None
     parts: list[Part] = Field(default_factory=list)
 
@@ -67,7 +72,7 @@ def apply_placements(units: list[StackUnit], placements: list[Placement], new_id
         if u.pinned:
             continue
         if p is None:
-            u.group, u.attach_to, u.parts = GENERAL, None, None
+            u.group, u.attach_to, u.parts, u.abnormal = GENERAL, None, None, False
             problems.append(f"[{i}] no placement")
             continue
         g = _norm(p.group, groups)
@@ -83,7 +88,7 @@ def apply_placements(units: list[StackUnit], placements: list[Placement], new_id
         elif p.parts:
             part_groups = [_norm(x.group, groups) or GENERAL for x in p.parts]
             if valid_parts(u.text, p.parts) and len(set(part_groups)) > 1:
-                parts = [PartOut(text=x.text, group=pg) for x, pg in zip(p.parts, part_groups)]
+                parts = [PartOut(text=x.text, group=pg, abnormal=x.abnormal) for x, pg in zip(p.parts, part_groups)]
             else:
                 problems.append(f"[{i}] rejected parts")
         covers = [c for c in (_norm(x, groups) for x in p.covers) if c and c not in non_regions]
@@ -100,6 +105,7 @@ def apply_placements(units: list[StackUnit], placements: list[Placement], new_id
         else:
             u.group = g
         u.attach_to, u.parts, u.structure, u.covers = att, parts, (p.structure or None), list(dict.fromkeys(covers))
+        u.abnormal = p.abnormal or any(x.abnormal for x in parts or [])
     return problems
 
 
@@ -115,6 +121,7 @@ For each NEW sentence return:
 - structure: the specific structure the sentence is about, in a few words (for example the organ, vessel, level or space); empty for Technique, General and Conclusion.
 
 - covers: the regions (names from GROUPS, never Technique, General or Conclusion) about which the sentence makes a definitive claim — a finding, a measurement, a qualifier or an explicit normality statement. Count a region when the claim is direct (its structure is the subject, the location, or the modifier of the claim) or collective (a definitive claim over a recognisable anatomical group, such as several named organs or a named organ system, that the region's structures genuinely belong to). Do not count: a bare mention with nothing asserted; a structure only touched or affected by a finding about another structure; a vague statement with no anatomical scope ("no other abnormality", "otherwise normal"); a group the region does not clearly belong to. Usually the sentence's own region; several for a collective; empty when nothing qualifies. Fill covers for every sentence, including Conclusion sentences.
+- abnormal: true when the sentence reports something that departs from normal: any finding, lesion, variant worth reporting, post-procedural change, a measurement given as abnormal, or a hedged or possible finding ("possible", "cannot exclude", "query"). A statement that something is unchanged or stable is abnormal when what is stable is a finding, and a sentence that only adds an attribute of an abnormal finding is abnormal too. False for normality statements, absent findings (negatives), technique, comparison wording with no finding, headings and sweeping statements ("no other abnormality"). Give it for every sentence; for parts, give it for each part.
 
 GROUPS are broad regions of a fixed schema; each lists what it includes. Match the structure to the region whose list covers it, or the anatomically closest region; use the "Other findings" region only when no region is close.
 - parts: only when one sentence joins independent clauses about structures that belong to different groups, each clause with its own subject and its own predicate (two statements run together in one breath). Give each part as an exact, unaltered, contiguous piece of the sentence, in order, each with its own group. The parts together must cover the whole sentence: keep joining words and punctuation on the neighbouring part. Every part must read as a complete statement on its own. Two statements run together because a full stop is missing count as two clauses. Never split structures that share one predicate (a list of structures followed by a single "are normal" / "are intact" / "are clear"): that sentence stays whole, in General when its structures span two or more regions (list each of them in covers), otherwise in their region. A single observation that involves several structures (a finding extending into, invading or compressing a neighbour) is one claim: never split it. Leave parts empty otherwise.
@@ -179,12 +186,12 @@ async def place(scan_type: str, regions: list[Region], units: list[StackUnit], n
             choice = r.json()["choices"][0]
             if choice.get("finish_reason") == "length":
                 err = f"{model}: runaway reply (finish_reason length)"
-                continue
-            out = GrouperOut.model_validate_json(choice["message"]["content"])
-            if new_ids and not out.placements:
+            else:
+                out = GrouperOut.model_validate_json(choice["message"]["content"])
+                if not (new_ids and not out.placements):
+                    return out.placements, model, None
                 err = f"{model}: empty placements"
-                continue
-            return out.placements, model, None
         except Exception as e:  # next endpoint; the caller fails open (sentences stay unplaced)
             err = f"{model}: {type(e).__name__}: {e}"
+        logger.warning("[stack.grouper] %s", err)
     return [], None, err or "no grouper endpoint configured"

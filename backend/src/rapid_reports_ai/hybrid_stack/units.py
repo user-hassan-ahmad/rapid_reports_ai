@@ -40,6 +40,7 @@ def sentences(text: str) -> list[str]:
 class PartOut(BaseModel):
     text: str
     group: str
+    abnormal: bool = False
 
 
 class StackUnit(BaseModel):
@@ -50,6 +51,7 @@ class StackUnit(BaseModel):
     attach_to: int | None = None
     parts: list[PartOut] | None = None
     covers: list[str] = Field(default_factory=list)
+    abnormal: bool = False  # reports something that departs from normal (spec v2 §3)
     pinned: bool = False  # moved by the radiologist: never changed by the server
     heading: bool = False  # only a heading cue ("Conclusion."): hidden in the view
 

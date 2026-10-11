@@ -119,7 +119,7 @@ In stack mode the bundle gains one choice question, **command**, asked with ever
 | `dictate` (default) | report content | today's write path (or §7.2 when a target is set) |
 | `correct` | revises something just said ("actually, make that 9 mm") | today's polish (the lean polish applies it) |
 | `delete` | "scratch that", "delete the liver line" | previous utterance: today's code delete; a named line: the view **selects** the target region's lines and asks for Delete (a model never removes the radiologist's words on its own) |
-| `send_to_region` | "for the liver, …" | the sentences from this final are pinned to the named region |
+| ~~`send_to_region`~~ | "for the liver, …" | dropped after the lab (§10.1): the grouper places it |
 | `accept_suggestion` | "accept free gas" | the named visible chip is accepted (as a click); the utterance is not written |
 
 Two further choices are added only when needed: **target_region** (options = the session's regions + none) when regions exist, and **target_chip** (options = visible chips + none) when chips are visible. A command acts only at confidence ≥ its lab threshold; otherwise the final is treated as `dictate`. "Confirm conclusion" is not a command.
@@ -145,6 +145,12 @@ Svelte `crossfade` keyed by unit id between the live strip, regions and the tray
 | Command classifier | ~90 finals written blind: dictation (incl. look-alikes: "no free gas", "for completeness the liver…", "delete" as a clinical word), and each command with phrasing variants; gold labels written with the set | per-command threshold where wrong-command actions = 0 on the set; dictate recall ≥ 98% at that threshold |
 | Chip "already stated?" | ~60 (dictation, chip) pairs: stated verbatim, paraphrased, stronger, weaker/hedged, different structure, contradicted | threshold with 0 false "stated" on different-structure/weaker pairs; stated recall ≥ 85% |
 | Conclusion draft | hand read on the dev cases | no content not in the dictation; impression style |
+
+### 10.1 Lab results (2026-10-11)
+
+- **Abnormal flag** (592 sentences, gold labelled blind before the run; `tests/fixtures/hybrid_stack/abnormal_gold.json`): recall dev 118/121, held-out 98/103, template 96/100; precision 118/118, 98/101, 96/99; one region would be hidden (a measurement with no "enlarged": "main pulmonary artery measures 34 mm"). Below the 98% recall target on held-out; most misses are borderline gold calls. Shipped because a miss changes display only: every dictated sentence still reaches Generate (§6), and a region shown as dictated-normal appears in the gate list with its words (§5). Placements unchanged (dev 131/133, template 106/109 scorable, all Cerebras, no runaways); held-out placement varies with Jev's family choice in the eval path (production asks the reconciler first).
+- **Commands** (96 blind finals, `command_fixture.json`): `send_to_region` is **dropped** — Jev reads routed content as dictation (2/13 recognised), and the grouper already places sentences that name their region; the target-region choice (19/19) is kept for named deletes. Shipped rule: `delete` at ≥ 0.6 (a named region only selects its lines for a keyboard Delete; otherwise today's previous-utterance delete); `accept` when Jev names a visible chip and the command is not `dictate`; `correct` is today's path. 90/96 right, 3 harmless (dictated text equal to the chip), 2 accept phrasings missed, 1 paraphrase replaced by the chip's wording. Asked as a parallel Jev call beside the bundle (same latency), not inside it.
+- **Already stated?** (64 pairs, `chip_fixture.json`): at 0.8, 0 false "stated", recall 24/30 (below the 85% target; precision chosen: a hedged dictation never removes a chip; a missed one only lingers).
 
 ## 11. Open questions settled (handover §6)
 

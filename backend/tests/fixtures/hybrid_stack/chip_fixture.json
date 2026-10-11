@@ -1,0 +1,514 @@
+[
+  {
+    "id": "chip_001",
+    "scan_type": "CT abdomen and pelvis",
+    "dictation": "Acute appendicitis with an 11 mm appendix. Periappendiceal fat stranding. No free intraperitoneal gas. Liver normal.",
+    "chip": "No free intraperitoneal gas.",
+    "kind": "verbatim",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_002",
+    "scan_type": "CT chest",
+    "dictation": "7 mm right lower lobe nodule. No pleural effusion. Mediastinum normal.",
+    "chip": "No pleural effusion.",
+    "kind": "verbatim",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_003",
+    "scan_type": "MR brain",
+    "dictation": "Acute left corona radiata infarct. No haemorrhagic transformation. Ventricles normal.",
+    "chip": "No haemorrhagic transformation.",
+    "kind": "verbatim",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_004",
+    "scan_type": "MR lumbar spine",
+    "dictation": "L4/5 right paracentral protrusion. No spinal canal stenosis. Conus normal at L1.",
+    "chip": "No spinal canal stenosis.",
+    "kind": "verbatim",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_005",
+    "scan_type": "MR knee",
+    "dictation": "Medial meniscal posterior horn tear. No displaced meniscal fragment. ACL intact.",
+    "chip": "No displaced meniscal fragment.",
+    "kind": "verbatim",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_006",
+    "scan_type": "US abdomen",
+    "dictation": "Cholelithiasis. The common bile duct is not dilated. Liver normal. Kidneys normal.",
+    "chip": "Common bile duct is not dilated.",
+    "kind": "verbatim",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_007",
+    "scan_type": "MR pelvis",
+    "dictation": "T3 rectal tumour. No extramural venous invasion. MRF clear. No pelvic lymphadenopathy.",
+    "chip": "No extramural venous invasion.",
+    "kind": "verbatim",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_008",
+    "scan_type": "CT head",
+    "dictation": "Left subdural haematoma 6 mm. No midline shift. No skull fracture.",
+    "chip": "No midline shift.",
+    "kind": "verbatim",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_009",
+    "scan_type": "CT pulmonary angiogram",
+    "dictation": "Bilateral segmental pulmonary emboli. No right heart strain. Lungs clear.",
+    "chip": "No right heart strain.",
+    "kind": "verbatim",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_010",
+    "scan_type": "MR shoulder",
+    "dictation": "Full thickness supraspinatus tear retracted 15 mm. No muscle atrophy. Biceps normal.",
+    "chip": "No muscle atrophy.",
+    "kind": "verbatim",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_011",
+    "scan_type": "CT abdomen and pelvis",
+    "dictation": "Perforated duodenal ulcer is not seen. No pneumoperitoneum. Gallbladder normal. Pancreas normal.",
+    "chip": "No free intraperitoneal gas.",
+    "kind": "paraphrase",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_012",
+    "scan_type": "CT abdomen and pelvis",
+    "dictation": "Obstructing 5 mm left VUJ calculus. The collecting systems are not dilated. Bladder normal.",
+    "chip": "No hydronephrosis.",
+    "kind": "paraphrase",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_013",
+    "scan_type": "CT chest",
+    "dictation": "Right upper lobe mass 3 cm. Pleural spaces are clear. No enlarged mediastinal nodes.",
+    "chip": "No mediastinal lymphadenopathy.",
+    "kind": "paraphrase",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_014",
+    "scan_type": "CT chest",
+    "dictation": "Left lower lobe consolidation. The pleural spaces are dry. Heart size normal.",
+    "chip": "No pleural effusion.",
+    "kind": "paraphrase",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_015",
+    "scan_type": "MR brain",
+    "dictation": "Right frontal glioma. No hydrocephalus. Ventricular system normal in calibre.",
+    "chip": "Ventricles are normal in size.",
+    "kind": "paraphrase",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_016",
+    "scan_type": "CT head",
+    "dictation": "Right temporal contusion. Calvarium intact. Scalp swelling over the right temple.",
+    "chip": "No skull fracture.",
+    "kind": "paraphrase",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_017",
+    "scan_type": "MR lumbar spine",
+    "dictation": "L5/S1 disc extrusion. The thecal sac is capacious throughout. Foramina patent.",
+    "chip": "No spinal canal stenosis.",
+    "kind": "paraphrase",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_018",
+    "scan_type": "MR knee",
+    "dictation": "Bucket handle tear of the medial meniscus. Both cruciates are intact. Small effusion.",
+    "chip": "Cruciate ligaments are intact.",
+    "kind": "paraphrase",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_019",
+    "scan_type": "US abdomen",
+    "dictation": "Fatty liver. No focal hepatic abnormality is seen. Spleen 11 cm.",
+    "chip": "No focal liver lesion.",
+    "kind": "paraphrase",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_020",
+    "scan_type": "MR pelvis",
+    "dictation": "Endometrioma of the left ovary 4 cm. The pouch of Douglas is dry. Uterus normal.",
+    "chip": "No pelvic free fluid.",
+    "kind": "paraphrase",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_021",
+    "scan_type": "CT angiogram neck",
+    "dictation": "Left ICA 50 percent stenosis. The right ICA is widely patent without narrowing. Vertebrals normal.",
+    "chip": "No right ICA stenosis.",
+    "kind": "paraphrase",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_022",
+    "scan_type": "US lower limb venous Doppler",
+    "dictation": "Calf vein thrombus in the peroneal veins. The common femoral vein compresses fully. Popliteal vein normal.",
+    "chip": "Common femoral vein is compressible.",
+    "kind": "paraphrase",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_023",
+    "scan_type": "CT abdomen and pelvis",
+    "dictation": "Acute cholecystitis. No intra-abdominal collection or free fluid anywhere. Liver normal.",
+    "chip": "No pelvic free fluid.",
+    "kind": "stronger",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_024",
+    "scan_type": "CT abdomen and pelvis",
+    "dictation": "Pancreatic head mass 3 cm. No lymphadenopathy in the abdomen or pelvis. No liver lesions.",
+    "chip": "No para-aortic lymphadenopathy.",
+    "kind": "stronger",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_025",
+    "scan_type": "CT chest",
+    "dictation": "Lung cancer staging. No lymphadenopathy in the chest. No pleural effusion. No bone lesions.",
+    "chip": "No mediastinal lymphadenopathy.",
+    "kind": "stronger",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_026",
+    "scan_type": "MR brain",
+    "dictation": "Multiple sclerosis follow-up. No new or enhancing lesions anywhere in the brain. Stable T2 burden.",
+    "chip": "No enhancing lesions.",
+    "kind": "stronger",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_027",
+    "scan_type": "MR lumbar spine",
+    "dictation": "Multilevel degenerative change. No canal or foraminal stenosis at any level. Conus normal.",
+    "chip": "No spinal canal stenosis at L4/5.",
+    "kind": "stronger",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_028",
+    "scan_type": "MR knee",
+    "dictation": "Patellar dislocation. All ligaments, menisci and tendons are intact. Bone bruise medial patella.",
+    "chip": "Collateral ligaments are intact.",
+    "kind": "stronger",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_029",
+    "scan_type": "US abdomen",
+    "dictation": "Gallstones. Liver, spleen, pancreas and kidneys are all normal. No hydronephrosis bilaterally.",
+    "chip": "No left hydronephrosis.",
+    "kind": "stronger",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_030",
+    "scan_type": "CT pulmonary angiogram",
+    "dictation": "Small subsegmental emboli. No pleural effusions or pneumothorax. Heart normal.",
+    "chip": "No right pleural effusion.",
+    "kind": "stronger",
+    "gold_stated": true
+  },
+  {
+    "id": "chip_031",
+    "scan_type": "CT abdomen and pelvis",
+    "dictation": "Ileus. Probably no free gas, though assessment is limited by motion. Liver normal.",
+    "chip": "No free intraperitoneal gas.",
+    "kind": "weaker",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_032",
+    "scan_type": "CT abdomen and pelvis",
+    "dictation": "Right renal calculus 8 mm. No right hydronephrosis. Left kidney partly imaged.",
+    "chip": "No hydronephrosis.",
+    "kind": "weaker",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_033",
+    "scan_type": "CT chest",
+    "dictation": "Left lower lobe consolidation. Possibly no effusion, but a trace cannot be excluded. Heart normal.",
+    "chip": "No pleural effusion.",
+    "kind": "weaker",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_034",
+    "scan_type": "MR brain",
+    "dictation": "Acute infarct. Haemorrhagic transformation is not obviously present on these sequences, SWI pending.",
+    "chip": "No haemorrhagic transformation.",
+    "kind": "weaker",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_035",
+    "scan_type": "CT head",
+    "dictation": "Frontal contusion. No obvious fracture on the soft tissue window, bone windows not yet reviewed.",
+    "chip": "No skull fracture.",
+    "kind": "weaker",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_036",
+    "scan_type": "MR lumbar spine",
+    "dictation": "L4/5 disc bulge. The canal looks largely adequate. Conus normal.",
+    "chip": "No spinal canal stenosis.",
+    "kind": "weaker",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_037",
+    "scan_type": "MR knee",
+    "dictation": "Lateral meniscal tear. ACL appears intact. PCL not well assessed due to motion.",
+    "chip": "Cruciate ligaments are intact.",
+    "kind": "weaker",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_038",
+    "scan_type": "US abdomen",
+    "dictation": "Gallstones. CBD measures 6 mm, upper limit for age, distal duct obscured.",
+    "chip": "Common bile duct is not dilated.",
+    "kind": "weaker",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_039",
+    "scan_type": "MR pelvis",
+    "dictation": "Ovarian cyst. Likely no pelvic lymphadenopathy, small nodes of uncertain significance.",
+    "chip": "No pelvic lymphadenopathy.",
+    "kind": "weaker",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_040",
+    "scan_type": "US lower limb venous Doppler",
+    "dictation": "Thrombus in the posterior tibial vein. Popliteal vein compresses. Common femoral vein not assessed due to dressing.",
+    "chip": "Common femoral vein is compressible.",
+    "kind": "weaker",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_041",
+    "scan_type": "CT abdomen and pelvis",
+    "dictation": "Left renal calculus. No left hydronephrosis. Liver normal.",
+    "chip": "No right hydronephrosis.",
+    "kind": "different_structure",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_042",
+    "scan_type": "CT abdomen and pelvis",
+    "dictation": "Small bowel obstruction. No free fluid in the upper abdomen. Liver normal.",
+    "chip": "No pelvic free fluid.",
+    "kind": "different_structure",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_043",
+    "scan_type": "CT chest",
+    "dictation": "Right lung mass. No right pleural effusion. Left lung clear of nodules.",
+    "chip": "No left pleural effusion.",
+    "kind": "different_structure",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_044",
+    "scan_type": "CT chest",
+    "dictation": "No hilar lymphadenopathy. Lungs clear. Heart normal.",
+    "chip": "No supraclavicular lymphadenopathy.",
+    "kind": "different_structure",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_045",
+    "scan_type": "MR brain",
+    "dictation": "No restricted diffusion. Few white matter foci. Ventricles normal.",
+    "chip": "No enhancing lesions.",
+    "kind": "different_structure",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_046",
+    "scan_type": "CT head",
+    "dictation": "No subdural collection. Small vessel disease. Ventricles normal.",
+    "chip": "No intraparenchymal haemorrhage.",
+    "kind": "different_structure",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_047",
+    "scan_type": "MR lumbar spine",
+    "dictation": "No canal stenosis at L4/5. Disc bulge at L3/4. Conus normal.",
+    "chip": "No spinal canal stenosis at L3/4.",
+    "kind": "different_structure",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_048",
+    "scan_type": "MR knee",
+    "dictation": "Medial collateral ligament intact. ACL tear. Small effusion.",
+    "chip": "Lateral collateral ligament is intact.",
+    "kind": "different_structure",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_049",
+    "scan_type": "MR shoulder",
+    "dictation": "Supraspinatus tear. No subscapularis tear. Labrum normal.",
+    "chip": "No infraspinatus tear.",
+    "kind": "different_structure",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_050",
+    "scan_type": "US abdomen",
+    "dictation": "Gallbladder normal. Intrahepatic ducts not dilated. Liver normal.",
+    "chip": "Common bile duct is not dilated.",
+    "kind": "different_structure",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_051",
+    "scan_type": "CT angiogram neck",
+    "dictation": "Left ICA stenosis 70 percent. No left vertebral stenosis. Circle of Willis normal.",
+    "chip": "No right ICA stenosis.",
+    "kind": "different_structure",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_052",
+    "scan_type": "US lower limb venous Doppler",
+    "dictation": "Popliteal vein compressible. Calf veins not well seen. Soft tissue oedema.",
+    "chip": "Common femoral vein is compressible.",
+    "kind": "different_structure",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_053",
+    "scan_type": "CT abdomen and pelvis",
+    "dictation": "Acute diverticulitis of the sigmoid colon. Liver normal. Kidneys normal.",
+    "chip": "No intra-abdominal collection.",
+    "kind": "absent",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_054",
+    "scan_type": "CT chest",
+    "dictation": "Right upper lobe spiculated mass 3 cm. Emphysema. Heart normal.",
+    "chip": "No bone metastases.",
+    "kind": "absent",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_055",
+    "scan_type": "MR brain",
+    "dictation": "Meningioma over the right convexity 12 mm. Ventricles normal.",
+    "chip": "No mass effect.",
+    "kind": "absent",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_056",
+    "scan_type": "MR lumbar spine",
+    "dictation": "L5/S1 disc extrusion compressing the left S1 root. Alignment normal.",
+    "chip": "Conus is normal.",
+    "kind": "absent",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_057",
+    "scan_type": "MR knee",
+    "dictation": "ACL rupture. Bone bruising of the lateral femoral condyle and tibial plateau.",
+    "chip": "No displaced meniscal fragment.",
+    "kind": "absent",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_058",
+    "scan_type": "MR pelvis",
+    "dictation": "Rectal tumour 6 to 10 cm from the anal verge, T3b. MRF clear.",
+    "chip": "No pelvic lymphadenopathy.",
+    "kind": "absent",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_059",
+    "scan_type": "CT pulmonary angiogram",
+    "dictation": "Saddle pulmonary embolus. RV to LV ratio 1.3. Lungs clear.",
+    "chip": "No pleural effusion.",
+    "kind": "absent",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_060",
+    "scan_type": "MR shoulder",
+    "dictation": "Acromioclavicular joint osteoarthritis. Supraspinatus tendinosis.",
+    "chip": "Biceps tendon is normally located.",
+    "kind": "absent",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_061",
+    "scan_type": "CT abdomen and pelvis",
+    "dictation": "Perforated sigmoid diverticulitis. Small volume free gas adjacent to the sigmoid. Liver normal.",
+    "chip": "No free intraperitoneal gas.",
+    "kind": "contradicted",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_062",
+    "scan_type": "CT chest",
+    "dictation": "Left lower lobe pneumonia. Moderate left pleural effusion. Heart normal.",
+    "chip": "No pleural effusion.",
+    "kind": "contradicted",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_063",
+    "scan_type": "MR brain",
+    "dictation": "Large right MCA infarct with 4 mm midline shift. No haemorrhage.",
+    "chip": "No mass effect.",
+    "kind": "contradicted",
+    "gold_stated": false
+  },
+  {
+    "id": "chip_064",
+    "scan_type": "US abdomen",
+    "dictation": "Gallstones. CBD dilated to 10 mm. Intrahepatic ducts mildly dilated.",
+    "chip": "Common bile duct is not dilated.",
+    "kind": "contradicted",
+    "gold_stated": false
+  }
+]

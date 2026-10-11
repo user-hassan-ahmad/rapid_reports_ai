@@ -185,7 +185,7 @@ async def test_no_keys_reports_unconfigured(monkeypatch):
 def test_placement_field_order_keeps_covers_before_attach_and_parts():
     # Cerebras Qwen decodes fields in schema order; with attach_to/parts before covers every reply ran
     # away to the length limit (6/6 on a lab case) and the grouper silently fell back to Groq.
-    assert list(G.Placement.model_fields) == ["id", "group", "structure", "covers", "attach_to", "parts"]
+    assert list(G.Placement.model_fields) == ["id", "group", "structure", "covers", "abnormal", "attach_to", "parts"]
 
 
 async def test_place_reports_a_runaway_reply(monkeypatch):
@@ -197,3 +197,23 @@ async def test_place_reports_a_runaway_reply(monkeypatch):
     placements, model, err = await G.place("CT", REGIONS, [StackUnit(id=0, text="A.")], [0],
                                            transport=httpx.MockTransport(handler))
     assert placements == [] and "length" in err
+
+
+def test_abnormal_is_written_to_units_and_parts():
+    units = _units("A 2 cm liver lesion.", "It enhances.", "Kidneys are normal, and there is a 3 cm liver cyst.")
+    apply_placements(units, [
+        Placement(id=0, group="Liver", abnormal=True),
+        Placement(id=1, group="Liver", attach_to=0, abnormal=True),
+        Placement(id=2, group="Kidneys", abnormal=True, parts=[
+            Part(text="Kidneys are normal,", group="Kidneys", abnormal=False),
+            Part(text="and there is a 3 cm liver cyst.", group="Liver", abnormal=True)]),
+    ], [0, 1, 2], GROUPS)
+    assert units[0].abnormal and units[1].abnormal
+    assert [p.abnormal for p in units[2].parts] == [False, True]
+    assert units[2].abnormal  # any part abnormal
+
+
+def test_abnormal_defaults_false_and_missing_placement_is_not_abnormal():
+    units = _units("The liver is normal.", "Two.")
+    apply_placements(units, [Placement(id=0, group="Liver")], [0, 1], GROUPS)
+    assert units[0].abnormal is False and units[1].abnormal is False
