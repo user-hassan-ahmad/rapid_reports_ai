@@ -1,345 +1,300 @@
 # Scratchpad v2 addendum: the report as the answer to a checklist
 
-Date: 2026-10-11 · Branch: `feat/hybrid-stack` (PR #31, unmerged) · Status: agreed in conversation, spec for review
+Date: 2026-10-11 (revised after the checklist lab) · Branch: `feat/hybrid-stack` (PR #31, unmerged) · Status: agreed
 
 Supersedes in `2026-10-11-scratchpad-v2-design.md`: §4 (check chips) and §4.1, the chip parts of §5 (gate) and §6
 (Generate), and the revision block's "chips as assumed statements". Everything else in v2 stands: the one view,
 the grouper and its `abnormal` field, the tray, the conclusion and its draft, editing and voice commands, rollout.
 
-Mock-ups (agreed UI and wording):
+Mock-ups (agreed UI and wording; the build uses the app's RadFlow skin):
 - method walk-through: https://claude.ai/artifact/8HNp8zrFzE9rBL1hn5kYnY
 - scratchpad playback: https://claude.ai/artifact/JNyR6MTAy3SFgRVmMsvzoK
 
 ## 1. Why
 
-Default-include turned every chip into a statement the radiologist had not checked. Labs on 16 blind cases
-(§10.1) showed two failures with one cause:
+Default-include made every chip a statement nobody had checked. Two labs (§10) found one failure:
 
-- **Leaks:** a wrong included chip is stated in the report.
-  - Most of these deny something the dictated finding implies (no sonographic Murphy sign in cholecystitis; the
-    thecal sac not compressed beside a disc extrusion; no pleural invasion when the mass "abuts" the pleura).
-  - Nothing downstream catches them, because the findings block marks them as confirmed.
-- **Gaps:** chips only follow abnormal findings. When the referral asks about a region with no finding
-  ("?appendicitis" with an ovarian cyst), the report can stay silent on the question asked.
+- **Nearly every wrong statement decides something about the finding the radiologist just dictated:**
+  - "No perinephric stranding" beside an obstructing stone;
+  - "No extension into the iliac arteries" for an aneurysm;
+  - "No lobar clot" for segmental emboli;
+  - "No phlegmon" in appendicitis.
+- **No separate judge catches these reliably.** We tried Jev, the production negatives classifier, a dedicated type
+  question, and the writer tagging its own sentences. Each either missed them or flagged nearly everything. The one
+  that worked made the writer terse and cut recall by a third.
+- **Today's skill-sheet path is no better.** Run against the same dictations, it found as many must-have negatives
+  as the live writer (33 vs 35 of 46). It made as many mistakes, and it added about 6 extra statements per report,
+  a fifth of them low value.
 
-The skill sheet cannot fix either: it is written before dictation, so it guesses findings.
+So **negatives triggered by a finding are asked, never assumed.** Generic normals for untouched regions are assumed,
+as the tray already does.
 
 ## 2. The model
 
-> The report is the answer to a checklist. The machine writes the questions, one judge decides the expected
-> answer, the radiologist gives the answers, the generator writes the words.
+> The report is the answer to a checklist. The machine writes the questions, the radiologist gives the answers,
+> the generator writes the words.
 
 ### 2.1 Items
 
-Every item is a question about the scan. It carries the sentence that answers it when normal.
-
-| Source | Written when | From | Example |
+| Kind | Written when | From | Default |
 |---|---|---|---|
-| **Referral** | Setup, before dictation | Scan type and clinical history | "Appendix: normal or inflamed?" → "The appendix is normal." |
-| **Finding** | Live, after each abnormal finding | The dictation (whole case) | "Ovarian torsion?" → "No features of torsion." |
-| **Survey** | Setup | The region schema, and the slim sheet's normal sentences | Region "Peritoneum" → "No free fluid." |
-
-Timing decides the source: whatever is knowable from scan type and history is prepared before dictation; whatever
-a finding sets off is written live. Neither side guesses at what the other knows.
+| **Referral** | At setup, then refreshed with the dictation | The live writer's referral line (§4.1) | **Question open** until answered |
+| **Finding** | Live, after abnormal findings | The live writer (§4.1) | **Question open** until answered |
+| **Region normal** | When the slim sheet is ready | The slim sheet's region normals (§8) | **Assumed**, unless the dictation covers or contradicts it (§5) |
 
 ### 2.2 States
 
-Exactly one per item, recomputed whenever the dictation changes:
-
 | State | Meaning | Shown as | Reaches the report |
 |---|---|---|---|
-| **Answered** | The dictation covers it, either way | Not shown separately: the radiologist's own words are on the pad | The dictated words |
-| **Assumed normal** | Routine check; nothing in the dictation suggests otherwise | The answering sentence, in the region's quiet line or as a dashed tray pill | The sentence, once confirmed at the gate |
-| **Question open** | The finding implies it or leaves it open, or it is a referral item | An amber row with answer-shaped buttons | Only the radiologist's answer |
+| **Answered** | The dictation covers it, or the radiologist tapped the answer | Not shown separately (their words are on the pad), or a green row that folds away | The dictated words, or the tapped sentences |
+| **Assumed normal** | A generic normal for a region, not contradicted | The region's quiet line, or a dashed tray pill | The sentence, once confirmed at the gate |
+| **Question open** | A finding row or a referral row not yet answered | An amber row | Nothing until answered |
 
-Rule by source: **referral items are always "question open" unless answered.** That rule is not a judgement.
-
-### 2.3 Ownership (one owner per judgement)
+### 2.3 Ownership
 
 | Step | Owner |
 |---|---|
-| Referral items | One small call at setup (§4.1) |
-| Finding items | One whole-case Qwen call, live (§4.2) |
-| Survey items and their sentences | The region schema plus the slim sheet (§8) |
-| Expected answer per item | One judge (§5) |
-| Answers | The radiologist |
+| Referral and finding items | One whole-case Qwen call (§4.1) |
+| Region normals | The slim sheet (§8) |
+| Covered or contradicted (per sentence) | Jev, the existing stated/contradicted pair (§5) |
+| Answers | The radiologist (dictation or tap) |
 | Words | The generator |
 
 ## 3. The scratchpad
 
-Order, top to bottom (as in the playback mock-up):
+Top to bottom (as in the playback mock-up):
 
 1. **Live strip:** the words being spoken.
-2. **Referral row:** label "Asked in the referral · {question from the history}". The amber question has
-   answer-shaped buttons, for example **Appendix normal** and **Dictate**. When answered it turns green and
-   compact: "✓ Appendix normal".
-3. **Abnormal region cards** (v2 §2, unchanged), each with:
+2. **Referral row:** label "Asked in the referral · {question in the history}", the question, and answer-shaped
+   buttons. For one answer the button is that sentence ("Appendix normal"); for several it is "All normal" with
+   the sentences listed under the question. Plus **Dictate**. When answered: green and compact, "✓ Appendix normal".
+3. **Abnormal region cards** (v2, unchanged), each holding:
    - the radiologist's lines;
-   - amber rows for that region's open questions: question, a one-line reason, and buttons **{answering
-     sentence}** and **Dictate**;
-   - one quiet line: "Will also be reported:" followed by the assumed sentences, in report form.
+   - **amber finding rows** (at most 2 per region): question, one-line reason, then the same answer-shaped buttons
+     and **Dictate**;
+   - **quiet line:** "Will also be reported:" then the region's assumed normals in report form, at most 3, then
+     "+n more". Each sentence has × to remove it.
 4. **Type a finding…** (v2, unchanged).
-5. **Tray:** "Normal regions", with two keys: "you said it" (solid) and "assumed" (dashed).
-6. **Conclusion** (v2 §5, unchanged).
-7. **Gate bar:** "{n} questions open · {m} assumed normal" and **Confirm**.
+5. **Tray:** "Normal regions", with two keys, "you said it" (solid) and "assumed" (dashed). Hovering or tapping a
+   dashed pill shows its assumed sentences, each with ×.
+6. **Conclusion** (v2, unchanged).
+7. **Gate bar:** "{n} questions open · {m} assumed normal", and **Confirm**.
 
 ### 3.1 Wording rules
 
-- Show assumptions as the sentences the report will contain. Never as labels ("normal expected: free gas").
-- An answer button carries the exact sentence a tap adds.
+- Assumptions are shown as the sentences the report will contain. Never as labels ("normal expected: free gas").
+- Answer buttons carry the sentence they add, or "All normal" with the sentences in view.
 - Two state words only, in copy the radiologist sees: "assumed" and "question open".
-- Items already answered by the dictation are not shown. The radiologist's words already say it.
-- A quiet line shows at most 3 sentences, then "+n more" (expands in place).
+- Items the dictation already answers are not shown.
 
 ### 3.2 Interactions
 
-- **Answering by voice:** dictation that answers an open question resolves it. The row turns green ("Answered in
-  your dictation") and folds away. No tap.
-- **Answering by tap:** the answer button adds its sentence as an answered item, attributed to the radiologist
-  (gate record `answered_by: "tap"`).
-- **Removing an assumed sentence:** × on a quiet-line sentence (or tap a dashed pill, then ×). It is never stated
-  and goes to the generator as DO NOT ASSERT (today's declined-chip path).
+- **Answer by voice:**
+  - When Jev reads every sentence of a row as stated, the row resolves ("Answered in your dictation") and folds
+    away.
+  - A row whose sentences the dictation contradicts also folds away. The radiologist has described the opposite,
+    in their own words.
+- **Answer by tap:** the button adds that row's sentences as answered, attributed to the radiologist
+  (`answered_by: "tap"`).
 - **Dictate:** puts the caret in "Type a finding…" under that region (v2 §7 rules).
+- **Remove an assumed sentence:** ×. It is never stated, and goes to the generator as DO NOT ASSERT.
 
 ### 3.3 Friction budget
 
-Amber rows are the only interruption. Target: median ≤ 2 open questions per case including the referral row,
-max ≤ 4. The judge enforces this (§5.2). If it can't, the design fails the lab (§10).
+Amber rows are the only interruption. Expected: about 2 per case including the referral row. Cap: 2 finding rows
+per region, plus the referral row. Measured in the hand reads (§10.2); if real cases run higher, lower the cap
+before release.
+
+### 3.4 Skin
+
+The RadFlow theme as in the current view:
+- dark panels, white at low opacity;
+- amber for open questions, emerald for answered and assumed, rose for abnormal regions;
+- the purple primary button (`btn-primary-subtle`) for Confirm;
+- IBM Plex Sans / DM Sans.
+
+The layout and wording follow the mock-up.
 
 ## 4. Writing items
 
-### 4.1 Referral items (setup)
+### 4.1 The live writer (arm D)
 
-- One call when the workspace is set up, beside today's analyser call: input scan type and clinical history;
-  output 0–3 items.
-- Each item: `region`, `question`, `answer_if_normal`, `why`.
-- Scope: the diagnosis the history asks about, and any complication of it that changes management. An
-  alternative diagnosis only when the history itself raises it. Nothing this scan type cannot show.
-- No question in the history (for example "staging", "follow-up") → no referral items.
-- Cached by (scan key, normalised history). Qwen on Cerebras, reasoning low (it runs off the critical path).
-- **Lab question:** this call against D's referral line (§10, arm D-ref). If D's line matches on recall,
-  referral items come from the live call and this call is dropped.
-
-### 4.2 Finding items (live): arm D
-
-- One Qwen call over the whole scratchpad, debounced on placed abnormal units (replaces per-region `/chips`).
-- Input: scan type, history, region list, the dictation, the referral items, and the slim sheet's
-  "Not assessable on this scan" list (§8).
-- Prompt: the IntelliPrompts framing (what does this finding make a consultant check on this scan), trimmed to
-  structural rules:
-  - the threshold;
+- One Qwen call (Cerebras, reasoning off) over the whole scratchpad.
+  - Called once at setup with no dictation, which yields the referral item only.
+  - Called again, debounced, whenever the abnormal sentences change.
+- Prompt: arm D from the lab, the IntelliPrompts framing trimmed to structural rules:
+  - the threshold (implied structure, management-changing, not already assessed);
   - one item per root finding;
   - the modality rule;
+  - never deny anything dictated, its expected consequence or a typical sign of a dictated diagnosis;
   - urgency order;
-  - plus D's referral line, if §10 keeps it.
-- Output per item, in decoding order (the order makes the model write what it must not deny first):
+  - the referral line: one separate item for a referral question the dictation does not answer.
+- Input: scan type, history, region list, dictation, and the slim sheet's "Not assessable on this scan" list when
+  available.
+- Output per item: `source_text`, `region`, `question` (≤ 12 words, ends "?"), `rationale` (one line, shown as the
+  reason), `negatives` (1–3 report sentences, one absent finding each).
+  - An item with empty `source_text` is the referral item.
+- Code, in order:
+  1. drop sentences containing " or " or a comma list;
+  2. drop duplicates, and sentences duplicating a dictated negative (`duplicates_negative`);
+  3. drop an item left with no sentences;
+  4. keep the first 2 finding items per region (urgency order). The rest are kept in the gate record as `capped`.
+- Cache: the writer's items by (scan key, history, abnormal sentences, region list). The Jev check always runs on
+  the current dictation.
+- Fail open: no items. The scratchpad works as v2 without chips. The referral row is absent.
 
-```
-source_text   verbatim trigger, 3–6 words ("" for a referral-gap item)
-region        from REGIONS
-implied       what the finding already implies or leaves open: its signs, its effect on neighbours, any extent the
-              radiologist hedged ("abuts")
-question      ≤ 12 words, ends with "?"
-why           one line, shown under an amber row
-answers       1–3 sentences, final report form, one absent finding each; never denies anything in `implied`
-```
+### 4.2 Removed sentences
 
-- Schema rules: `answers` has at least one entry; code splits any "or" bundle with the existing splitter, or
-  drops the bundle.
-- Cache: Qwen's items by (scan key, history, abnormal sentences); the judge always runs against the current
-  dictation (as chips today).
+Sentences the radiologist removed with × are sent with each call and filtered out (`duplicates_negative`).
 
-### 4.3 Survey items
+## 5. Covered or contradicted (Jev)
 
-- Regions come from the schema library and the family reconciler, as now.
-- Each region's assumed sentences come from the slim sheet (§8.1), keyed by region name.
-- A region the radiologist dictated is answered; otherwise it is assumed normal.
-- An abnormal region's quiet line lists:
-  - its finding items in the assumed state;
-  - then the region's remaining normal sentences that the dictation does not cover (judged the same way, §5).
+The existing `ask_checks` pair, run on:
+- every sentence of every finding and referral row;
+- the assumed normals of abnormal regions.
 
-## 5. The expected-answer judgement
+| Jev result | Finding or referral sentence | Region normal |
+|---|---|---|
+| stated ≥ 0.8 | answered (drops from the row; a row with none left resolves) | answered (hidden) |
+| contradicted ≥ 0.7 | drops (the dictation says otherwise) | hidden, never assumed |
+| hedged (either ≥ 0.3) | stays in the row (the radiologist answers it) | hidden, never assumed |
+| otherwise | stays in the row | assumed |
 
-### 5.1 Question
+Region normals of untouched regions (tray pills) are not checked: nothing was dictated about them.
 
-Per item: given the dictation, is it answered, normal to assume, or open? This one judgement replaces the chip
-states (`gone` / `optional` / `included`) and the brief's negatives classifier for stack sessions.
-
-Candidate owners, decided by the lab (§10):
-
-| Candidate | How |
-|---|---|
-| **J1** Jev (today's pair) | stated ≥ 0.8 → answered. Contradicted ≥ 0.7 → **open**: the dictation says otherwise, so the radiologist words it. Else assumed. |
-| **J2** The production negatives classifier | `QWEN_SYS_FULL`, run on the item sentences: `dictated` → answered; `contradicted`, `expected` or `implicated` → open; `keep` or `default` → assumed. |
-| **J3** J1 plus the writer's `implied` field | An answer the writer itself flags against `implied` → open. |
-
-The memory rule applies: Jev detects and verifies, Qwen judges and writes. J2 is the existing Qwen judge with the
-label that targets the leak type; J1 is cheap. J3 tests whether constraining the writer is enough on its own.
-
-### 5.2 Fail-safe rules (code)
-
-- An item whose judgement fails or times out is **not assumed**: it becomes open if it is the region's most
-  urgent item, otherwise it is dropped (not stated).
-- **Friction cap:** at most 2 open finding questions per region, chosen by the writer's urgency order. Any other
-  item judged open is dropped (not stated), never assumed. A dropped item shows in the Optional additions panel
-  after Generate.
-- Referral items are exempt from the cap.
+If the check fails, every region normal of an abnormal region is hidden. Rows stay as written.
 
 ## 6. The gate
 
 - Confirm needs: no open questions, a conclusion (v2 §5), nothing syncing, no field being edited.
 - The gate record (`dictation_stack_logs.gate`) gains:
-  - `items`: id, source, region, question, state, answer, `answered_by` (`dictation` | `tap`);
-  - `assumed`: the confirmed assumed sentences;
-  - `removed`: assumed sentences removed with ×;
-  - `dropped`: items judged open but capped.
+  - `items`: id, kind, region, question, sentences, state, `answered_by` (`dictation` | `tap`);
+  - `assumed`: per region, the confirmed sentences;
+  - `removed`;
+  - `capped`.
 
   It replaces `included_chips` and `declined_chips`.
 
 ## 7. What Generate receives
 
-The findings block (v2 §6 shape), answers only:
+Answers only:
 
 ```
-Pelvic organs: A 5 cm simple-appearing right ovarian cyst. No features of torsion. Both ovaries enhance symmetrically.
-  Assumed normal (confirmed by the radiologist): Left ovary and uterus normal.
+Pelvic organs: A 5 cm simple-appearing right ovarian cyst. No features of torsion.
+  Answered by the radiologist: No features of torsion.          (a tapped row; dictated answers are already above)
+  Assumed normal (confirmed by the radiologist): The uterus is normal. The left ovary is normal.
 Peritoneum: Small volume of free fluid in the pelvis.
-  Assumed normal (confirmed by the radiologist): No free gas. No pelvic collection.
 Appendix (answered by the radiologist): The appendix is normal.
-Assumed normal (confirmed by the radiologist): pancreas, spleen, bowel, vessels and nodes, bones.
+Assumed normal (confirmed by the radiologist): Liver: … Spleen: … (the tray regions' sentences)
 Conclusion (confirmed by the radiologist): …
 DO NOT ASSERT: <removed sentences>
 ```
 
-- Tapped answers are written as answered by the radiologist.
-- The generator prompts are unchanged: fluent phrasing, no new claims (v2 decision).
-- In stack sessions the brief runs on the slim sheet (§8): structure, style, measurements, terminology, the
-  confirmed conclusion. **It no longer has a negatives stage:**
-  - no mandatory negatives;
-  - no If-present negatives;
-  - no `_fallback`;
-  - no finding-linked or implicated options.
-
-  The checklist is the negatives stage.
-- The post-generation check runs unchanged against the findings block.
+- **Quick path:** the brief runs in stack mode on the **slim sheet**. It renders structure, style, terminology,
+  measurement and impression conventions, and the confirmed conclusion. It has **no negatives stage** (no mandatory
+  or If-present negatives, no `_fallback`, no finding-linked or implicated options).
+  - If the slim sheet is missing, use v2's `stack_fallback` on today's sheet.
+- **Template path:** the lean path, unchanged, with removed sentences passed as `declined`.
+- The generator prompts are unchanged. The post-generation check runs unchanged against the findings block.
 
 ## 8. The slim skill sheet
 
-A new, separate analyser output for stack sessions. Today's analyser and its sheet stay for the non-stack path and
-the shadow comparison, untouched (memory: today's prompt exists twice; neither copy changes).
+A new analyser output for stack sessions. Today's analyser stays for the non-stack path and the shadow comparison,
+untouched. Memory: its prompt exists twice; neither copy changes.
 
 ### 8.1 Content
 
-Structure and style only. No clinical knowledge about findings. Built from today's sections:
-
-| Section | Kept, changed or new | Used by |
+| Section | Source | Used by |
 |---|---|---|
-| **Scan Context** | Kept: modality, imaged volume, contrast, phase. Its "Modality non-assessables" becomes **Not assessable on this scan**. | Finding-item writer (modality rule); generator |
-| **Structural Pattern** | Kept: sections, sweep order, macro-structure | Generator |
-| **Region normals** | **New.** For each region in the scan family's schema (names passed in): 1–6 assumed sentences in final report form, one structure each, no measurements. Replaces the Normal-study path prose for stack sessions. | Survey items, quiet lines, tray, generator |
-| **Style Exemplars** | Kept; normal-study exemplars dropped (the region normals cover them) | Generator |
-| **Terminology Rules** | Kept | Generator |
-| **Measurement Conventions** | Kept | Generator |
-| **Impression conventions** | Kept: opening convention, descriptor propagation. Dropped: exemplars carrying negative lists. | Generator (phrasing the confirmed conclusion) |
-| **Recommendation scope** | Kept | Options after Generate |
-| Clinical Lane, Companion Matrix (in-scope companions, mandatory negatives, If present, out-of-scope suppressed), Conditional Suppression Rules, Interpretive Clause Rules | **Removed** | Replaced by referral items, finding items and the judge |
+| **Scan Context**: modality, imaged volume, contrast, phase, **Not assessable on this scan** | Today's section | Writer (modality rule), generator |
+| **Structural Pattern**: sections, sweep order, macro-structure | Today's section | Generator |
+| **Region normals** (new): for each region of the scan family's schema (names passed in), 1–6 normal sentences in final report form, one structure each, no measurements | New | Quiet lines, tray, gate, generator |
+| **Style Exemplars** (abnormal exemplars only) | Today's section | Generator |
+| **Terminology Rules** | Today's section | Generator |
+| **Measurement Conventions** | Today's section | Generator |
+| **Impression conventions**: opening convention, descriptor propagation | Today's section (exemplars with negative lists dropped) | Generator |
+| **Recommendation scope** | Today's section | Options after Generate |
 
-### 8.2 Keying, cost, timing
+Removed: Clinical Lane, the Companion Matrix (companions, mandatory negatives, If-present, suppressed),
+Conditional Suppression Rules, Interpretive Clause Rules.
 
-- The slim sheet depends on the **scan type only** (and the family's region list). Clinical history moves to the
-  referral items (§4.1).
-- Cached by scan key across cases and users, so speed doesn't matter: a slower, stronger model is acceptable (the
-  goal from the v2 session). The first case of a new scan type waits on it; the scratchpad still works meanwhile:
-  - quiet lines fall back to finding-item sentences only;
-  - the tray works without sentences;
-  - Generate falls back to v2's `stack_fallback` on today's sheet.
-- Versioned like today's analyser (`analyser_prompt_version`) and stored in the ephemeral sheet table with a
-  `variant` marking it slim.
+### 8.2 Keying, model, timing
+
+- Depends on the **scan type and the family's region list only.** It is cached across cases and users in a new
+  table `stack_slim_sheets` (scan key, family, prompt version, markdown, region normals as JSON).
+- Generated at workspace setup when no cached sheet exists, in parallel with today's analyser.
+- Model: `MODEL_CONFIG["STACK_SLIM_SHEET"]`, defaulting to Qwen on Cerebras at medium reasoning. Since it is cached,
+  a slower, stronger model can replace it with no workflow cost.
+- Until it is ready:
+  - abnormal regions show no quiet line;
+  - tray pills have no sentences;
+  - Generate uses `stack_fallback`.
 
 ### 8.3 Template path
 
-Template sheets are already structural: paragraph grammar with per-paragraph NEGATIVE lines.
+No slim sheet. Region normals come from the template's stored sheet structure (`template_sheet_structure`):
+- each paragraph is a region;
+- its `Normal` and unconditioned `Negative` statements are the region normals;
+- conditioned negatives are not used in this release.
 
-- Regions are the template's paragraphs (v2, unchanged).
-- Region normals are the paragraph's NEGATIVE and normal lines, parsed with `template_sheet_structure`.
-  - A line with a condition on a finding ("if X reported") is a finding-linked sentence. It becomes a candidate
-    item for the judge, never assumed by default.
-- Referral and finding items: same calls as quick.
-- No new sheet is generated for templates. The slim-sheet work is quick-path only.
+## 9. Retirements (stack sessions only)
 
-## 9. Retirements (stack sessions only; the non-stack path is unchanged)
+- `hybrid_stack/chips.py`, `POST /api/hybrid-stack/chips`, `CHIP_FORM`, the chip states and the chip UI.
+- Voice "accept suggestion" becomes "answer the question": the same Jev command, with `target_item` naming a row;
+  accepting taps that row's answer.
+- The brief's stack-mode negatives handling (`stack_offers`, finding-linked offering) and the `_fallback` reuse.
 
-- `hybrid_stack/chips.py`, `/api/hybrid-stack/chips`, `CHIP_FORM`, chip states.
-  - The Jev `ask_checks` pair survives only if J1 or J3 wins.
-- Voice "accept suggestion" becomes "answer the question" (same Jev command, target_chip → target_item).
-- The brief's stack-mode negatives handling (`stack_offers`, finding-linked offering) and `_fallback` use.
-- The generic chip prompt reuse of `report_reconcile._fallback`.
+## 10. Labs
 
-## 10. Labs (before building)
+### 10.1 Results (2026-10-11)
 
-All on the chip-lab harness (move `chiplab/` into `scripts/hybrid_stack_eval/checklist_lab.py`, fixtures into
-`tests/fixtures/hybrid_stack/checklist_cases.json`). Blind gold, Sonnet 5.5 judge plus a hand read of every leak.
+Harness: `scripts/checklist_lab.py`. Fixtures: `tests/fixtures/hybrid_stack/checklist_cases.json`, 20 blind cases
+(5 where the referral question points away from the finding, 2 where the finding implies things, 2 with no
+question). Graded by Sonnet 5.5.
 
-**Cases:** the 16 existing, plus 4 new: 2 more where the finding implies something (the leak type), 2 with no
-question in the history (staging, follow-up). One run per arm (eval economy); a second only for a close call.
-
-| Arm | What |
-|---|---|
-| **D** | Baseline, as run in §10.1 |
-| **D1** | D with the `implied` field and `answers` (§4.2 schema) |
-| **D1+J1 / D1+J2 / D1+J3** | The judge candidates (§5.1) applied to D1's items |
-| **D1-ref** | D1 without the referral line, plus the setup referral call (§4.1) |
-| **S** | Today's production path: generate today's sheet for each case, compile the brief, take what it states and offers. This is the direct sheet comparison. |
-
-**Metrics:**
-- **Recall:** must-haves present as assumed or open items.
-- **Leaks:** wrong assumed sentences (the judge's "wrong", hand-checked). This is the number that matters most.
-- **Friction:** open questions per case (median and max).
-- **Speed:** finding-item latency (p50); referral-call latency.
-
-**Gates to build:**
-- recall ≥ S on must-haves;
-- leaks ≤ 1 across all cases;
-- friction median ≤ 2, max ≤ 4;
-- finding items p50 ≤ 1.5 s.
-
-If S beats every D arm on recall, the slim sheet keeps a referral checklist section written by the analyser, and
-§4.1's call is not built.
-
-### 10.1 Results so far (chip lab, 2026-10-11)
-
-16 cases (5 where the referral question points away from the finding), 37 must-haves, Sonnet judge:
-
-| Arm | Must-haves | Wrong | Low value |
+| Arm | Must-haves in report by default → surfaced (of 46) | Wrong statements in report by default | Notes |
 |---|---|---|---|
-| A: shipped chips | 22 (59%) | 2 | 5 |
-| B: whole case | 23 (62%) | 3 | 3 |
-| C: B + question card | 22 (59%) | 3 | 10 |
-| D: B + referral line | 29 (78%) | 8 | 2 |
+| S: today's skill-sheet path | 33 → 33 | 9–13 | 132 statements, 25 low value |
+| D: live writer | 27 → 35 | 9–17 | |
+| D + Jev or production classifier | 13–24 → 25–26 | 9–28 | |
+| D + a separate type judgement (Qwen or Jev) | 30–35 → 34–35 | 14–20 | |
+| D + `implied` field (D1) | worse recall, more bundles | | dropped |
+| D with the writer tagging its own sentences (D2) | 15–18 → 22–23 | 0–2 | writer turns terse |
+| **D, finding rows asked (this design)** | n/a → 35 | **0 by construction** | ≈ 2 amber rows per case (estimate) |
 
-D's wrong chips:
-- 4 deny or limit what the finding implies;
-- 1 is not assessable on the scan;
-- 2 extend a dictated finding into areas nobody commented on;
-- 1 is redundant.
+The grading itself varies: the same sentences graded twice gave D 12 and then 17 wrong. Small differences are noise.
 
-Under this model, the first and third types become open questions or are dropped. The second is the modality rule.
+### 10.2 Before release
+
+Hand reads on the local build:
+- one quick case of each kind in the fixture set;
+- one template case.
+
+Record amber rows per case, taps, and the generated report. The release gates:
+- median amber rows ≤ 2, max ≤ 4;
+- no statement in a report that the radiologist did not dictate, tap or confirm.
 
 ## 11. Rollout
 
-- Unchanged from v2: default-on for stack sessions, kill switch `RR_HYBRID_STACK=0`, opt-out
-  `localStorage rr_hybrid_stack=0`, the old path in shadow.
-- The slim sheet is generated alongside today's analyser at setup, so the shadow comparison keeps both.
+Unchanged from v2:
+- default-on for stack sessions;
+- kill switch `RR_HYBRID_STACK=0`;
+- opt-out `localStorage rr_hybrid_stack=0`;
+- the old path in shadow.
+
+The slim sheet is generated alongside today's analyser, so the shadow comparison keeps both.
 
 ## 12. Decisions
 
 Settled in conversation:
-- The checklist model, the three states, referral items always open unless answered.
-- The UI order and wording in §3 (playback mock-up v2).
-- A new slim sheet for this flow (§8).
+- The checklist model.
+- **Finding-triggered negatives are asked, never assumed. Region normals are assumed.**
+- Referral rows stay open until answered.
+- UI order and wording per §3, in the RadFlow skin.
+- A new slim sheet for this flow, quick path only.
 
 Defaults taken here (say if any is wrong):
-1. Friction cap of 2 open finding questions per region; anything else judged open is dropped, never assumed (§5.2).
-2. The slim sheet is quick-path only; templates reuse their own structural sheets (§8.3).
-3. A slower, stronger model for the slim sheet, since it is cached by scan type (model chosen in the lab).
-4. Tapped answers are attributed to the radiologist in the findings block and gate record.
+1. At most 2 finding rows per region.
+2. The slim sheet defaults to Qwen at medium reasoning (cached, so it can be swapped for a stronger model).
+3. Tapped answers are attributed to the radiologist.
+4. Template conditioned negatives are not used in this release.

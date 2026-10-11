@@ -1,0 +1,465 @@
+[
+ {
+  "id": "c01_divert",
+  "scan_type": "CT abdomen and pelvis with contrast",
+  "history": "Left iliac fossa pain, raised CRP. ?diverticulitis",
+  "dictation": "Sigmoid diverticulosis with a 6 cm segment of sigmoid wall thickening and surrounding pericolic fat stranding, in keeping with acute diverticulitis. No free fluid. The liver, spleen, pancreas and kidneys are normal.",
+  "regions": {
+   "Bowel": [
+    "Sigmoid diverticulosis with a 6 cm segment of sigmoid wall thickening and surrounding pericolic fat stranding, in keeping with acute diverticulitis."
+   ]
+  },
+  "must": [
+   "no pericolic abscess or collection",
+   "no extraluminal gas / perforation",
+   "no bowel obstruction / proximal dilatation"
+  ],
+  "nice": [
+   "no fistula (e.g. colovesical, bladder gas)",
+   "no lymphadenopathy"
+  ],
+  "dictated": [
+   "no free fluid"
+  ]
+ },
+ {
+  "id": "c02_pancreas",
+  "scan_type": "CT abdomen pancreatic protocol",
+  "history": "Painless jaundice and weight loss",
+  "dictation": "A 3 cm hypoenhancing mass in the pancreatic head with upstream dilatation of the pancreatic duct to 6 mm and the common bile duct to 14 mm. The kidneys and spleen are normal.",
+  "regions": {
+   "Pancreas": [
+    "A 3 cm hypoenhancing mass in the pancreatic head with upstream dilatation of the pancreatic duct to 6 mm and the common bile duct to 14 mm."
+   ]
+  },
+  "must": [
+   "no SMA / coeliac arterial involvement",
+   "no SMV / portal vein involvement",
+   "no liver metastases",
+   "no ascites / peritoneal disease"
+  ],
+  "nice": [
+   "no regional lymphadenopathy",
+   "no duodenal invasion"
+  ],
+  "dictated": []
+ },
+ {
+  "id": "c03_ctpa",
+  "scan_type": "CT pulmonary angiogram",
+  "history": "Acute breathlessness, tachycardia, D-dimer raised",
+  "dictation": "Filling defects in the right lower lobe segmental and subsegmental pulmonary arteries, in keeping with acute pulmonary emboli. Lungs otherwise clear. No pleural effusion.",
+  "regions": {
+   "Pulmonary arteries": [
+    "Filling defects in the right lower lobe segmental and subsegmental pulmonary arteries, in keeping with acute pulmonary emboli."
+   ]
+  },
+  "must": [
+   "no right heart strain (RV:LV, septal bowing, contrast reflux)",
+   "no central / saddle embolus"
+  ],
+  "nice": [
+   "no pulmonary infarction"
+  ],
+  "dictated": [
+   "no pleural effusion"
+  ]
+ },
+ {
+  "id": "c04_sdh",
+  "scan_type": "CT head non-contrast",
+  "history": "Fall on apixaban, GCS 14",
+  "dictation": "An acute left frontoparietal subdural haematoma measuring 8 mm in maximal depth.",
+  "regions": {
+   "Extra-axial spaces": [
+    "An acute left frontoparietal subdural haematoma measuring 8 mm in maximal depth."
+   ]
+  },
+  "must": [
+   "no midline shift",
+   "no other intracranial haemorrhage (SAH, contusion, EDH)",
+   "no skull fracture"
+  ],
+  "nice": [
+   "no hydrocephalus / basal cistern effacement",
+   "no herniation"
+  ],
+  "dictated": []
+ },
+ {
+  "id": "c05_knee",
+  "scan_type": "MRI right knee",
+  "history": "Twisting injury playing football, locking",
+  "dictation": "Complex tear of the posterior horn of the medial meniscus. Moderate joint effusion. The lateral meniscus is intact.",
+  "regions": {
+   "Menisci": [
+    "Complex tear of the posterior horn of the medial meniscus."
+   ]
+  },
+  "must": [
+   "no displaced meniscal fragment / bucket handle",
+   "ACL intact / no ACL tear"
+  ],
+  "nice": [
+   "no bone bruise / osteochondral injury",
+   "collateral ligaments intact"
+  ],
+  "dictated": [
+   "lateral meniscus intact"
+  ]
+ },
+ {
+  "id": "c06_gb_us",
+  "scan_type": "Ultrasound abdomen",
+  "history": "RUQ pain and fever",
+  "dictation": "Multiple gallstones with gallbladder wall thickening to 5 mm and a small volume of pericholecystic fluid, consistent with acute calculous cholecystitis. The liver and right kidney are normal.",
+  "regions": {
+   "Gallbladder": [
+    "Multiple gallstones with gallbladder wall thickening to 5 mm and a small volume of pericholecystic fluid, consistent with acute calculous cholecystitis."
+   ]
+  },
+  "must": [
+   "no CBD dilatation",
+   "no gallbladder perforation / pericholecystic abscess"
+  ],
+  "nice": [
+   "no intrahepatic duct dilatation",
+   "no choledocholithiasis visible"
+  ],
+  "dictated": []
+ },
+ {
+  "id": "c07_lung",
+  "scan_type": "CT chest abdomen pelvis with contrast",
+  "history": "Haemoptysis, 40 pack-year smoker",
+  "dictation": "A 3.2 cm spiculated mass in the right upper lobe abutting the mediastinal pleura. The abdomen and pelvis are unremarkable.",
+  "regions": {
+   "Lungs": [
+    "A 3.2 cm spiculated mass in the right upper lobe abutting the mediastinal pleura."
+   ]
+  },
+  "must": [
+   "no mediastinal / hilar lymphadenopathy",
+   "no pleural effusion",
+   "no mediastinal invasion"
+  ],
+  "nice": [
+   "no contralateral / other pulmonary nodules",
+   "no bone metastases",
+   "no adrenal metastases"
+  ],
+  "dictated": []
+ },
+ {
+  "id": "c08_ctkub",
+  "scan_type": "CT KUB",
+  "history": "Left loin to groin pain, haematuria",
+  "dictation": "A 6 mm calculus at the left vesicoureteric junction with mild left hydroureteronephrosis. Small non-obstructing calculus in the lower pole of the right kidney.",
+  "regions": {
+   "Left kidney and ureter": [
+    "A 6 mm calculus at the left vesicoureteric junction with mild left hydroureteronephrosis."
+   ],
+   "Right kidney and ureter": [
+    "Small non-obstructing calculus in the lower pole of the right kidney."
+   ]
+  },
+  "must": [
+   "no right hydronephrosis",
+   "no perinephric fluid / forniceal rupture"
+  ],
+  "nice": [
+   "no other left ureteric calculi"
+  ],
+  "dictated": [],
+  "forbidden": [
+   "no left hydronephrosis",
+   "no renal calculi"
+  ]
+ },
+ {
+  "id": "c09_brainmet",
+  "scan_type": "MRI brain with contrast",
+  "history": "New seizure, known lung adenocarcinoma",
+  "dictation": "A 2.5 cm ring-enhancing lesion in the right parietal lobe with extensive surrounding vasogenic oedema, in keeping with a metastasis.",
+  "regions": {
+   "Brain parenchyma": [
+    "A 2.5 cm ring-enhancing lesion in the right parietal lobe with extensive surrounding vasogenic oedema, in keeping with a metastasis."
+   ]
+  },
+  "must": [
+   "no other enhancing lesions",
+   "no midline shift / herniation",
+   "no hydrocephalus"
+  ],
+  "nice": [
+   "no leptomeningeal enhancement",
+   "no haemorrhage within the lesion"
+  ],
+  "dictated": []
+ },
+ {
+  "id": "c10_spleen",
+  "scan_type": "CT trauma (chest, abdomen and pelvis)",
+  "history": "High-speed RTC, left upper quadrant pain, haemodynamically stable",
+  "dictation": "A splenic laceration extending to the hilum with perisplenic haematoma and moderate haemoperitoneum. The liver and kidneys are intact. No pneumothorax.",
+  "regions": {
+   "Spleen": [
+    "A splenic laceration extending to the hilum with perisplenic haematoma and moderate haemoperitoneum."
+   ]
+  },
+  "must": [
+   "no active contrast extravasation",
+   "no splenic vascular injury (pseudoaneurysm)",
+   "no pneumoperitoneum / hollow viscus injury"
+  ],
+  "nice": [
+   "no rib / other fractures",
+   "no left renal or pancreatic tail injury"
+  ],
+  "dictated": [
+   "liver and kidneys intact",
+   "no pneumothorax"
+  ]
+ },
+ {
+  "id": "c11_lumbar",
+  "scan_type": "MRI lumbar spine",
+  "history": "Left leg sciatica for 6 weeks, no red flags",
+  "dictation": "At L4/5 a left paracentral disc extrusion compresses the traversing left L5 nerve root. The conus terminates normally at L1.",
+  "regions": {
+   "Discs and canal": [
+    "At L4/5 a left paracentral disc extrusion compresses the traversing left L5 nerve root."
+   ]
+  },
+  "must": [
+   "no cauda equina compression / severe canal stenosis",
+   "no nerve root compression at other levels"
+  ],
+  "nice": [
+   "no sequestered fragment",
+   "no foraminal stenosis at L4/5"
+  ],
+  "dictated": [
+   "conus normal"
+  ]
+ },
+ {
+  "id": "c12_rif_ovary",
+  "scan_type": "CT abdomen and pelvis with contrast",
+  "history": "Right iliac fossa pain, raised WCC. ?appendicitis",
+  "dictation": "A 5 cm simple-appearing right ovarian cyst. Small volume of free fluid in the pelvis. The liver, gallbladder and kidneys are normal.",
+  "regions": {
+   "Pelvic organs": [
+    "A 5 cm simple-appearing right ovarian cyst."
+   ],
+   "Peritoneum": [
+    "Small volume of free fluid in the pelvis."
+   ]
+  },
+  "must": [
+   "normal appendix / no appendicitis",
+   "no features of ovarian torsion"
+  ],
+  "nice": [
+   "no pelvic collection",
+   "no free gas"
+  ],
+  "dictated": [],
+  "qcase": true
+ },
+ {
+  "id": "c13_sah",
+  "qcase": true,
+  "scan_type": "CT head non-contrast",
+  "history": "Sudden onset worst-ever headache 4 hours ago. ?subarachnoid haemorrhage",
+  "dictation": "A small established infarct in the left corona radiata. Mild generalised cerebral volume loss.",
+  "regions": {
+   "Brain parenchyma": [
+    "A small established infarct in the left corona radiata."
+   ]
+  },
+  "must": [
+   "no subarachnoid haemorrhage",
+   "no hydrocephalus"
+  ],
+  "nice": [
+   "no other intracranial haemorrhage",
+   "no acute infarct / no mass effect"
+  ],
+  "dictated": [],
+  "forbidden": [
+   "no aneurysm (not assessable on non-contrast CT)"
+  ]
+ },
+ {
+  "id": "c14_pe_nodule",
+  "qcase": true,
+  "scan_type": "CT pulmonary angiogram",
+  "history": "Pleuritic chest pain, tachycardia. ?pulmonary embolism",
+  "dictation": "A 15 mm solid nodule in the left lower lobe. Small left pleural effusion. The heart is normal in size.",
+  "regions": {
+   "Lungs": [
+    "A 15 mm solid nodule in the left lower lobe."
+   ],
+   "Pleura": [
+    "Small left pleural effusion."
+   ]
+  },
+  "must": [
+   "no pulmonary embolus / no filling defect"
+  ],
+  "nice": [
+   "no right heart strain",
+   "no mediastinal / hilar lymphadenopathy",
+   "no pulmonary infarction"
+  ],
+  "dictated": [
+   "heart normal size"
+  ]
+ },
+ {
+  "id": "c15_sbo_aaa",
+  "qcase": true,
+  "scan_type": "CT abdomen and pelvis with contrast",
+  "history": "78-year-old, abdominal distension and vomiting. ?bowel obstruction",
+  "dictation": "A 4.2 cm infrarenal abdominal aortic aneurysm without periaortic stranding. Cholelithiasis without gallbladder wall thickening.",
+  "regions": {
+   "Vessels": [
+    "A 4.2 cm infrarenal abdominal aortic aneurysm without periaortic stranding."
+   ]
+  },
+  "must": [
+   "no bowel obstruction / no small or large bowel dilatation"
+  ],
+  "nice": [
+   "no free intraperitoneal gas",
+   "no retroperitoneal haematoma / aneurysm rupture",
+   "no bowel wall ischaemia / pneumatosis"
+  ],
+  "dictated": [
+   "no periaortic stranding",
+   "no gallbladder wall thickening"
+  ]
+ },
+ {
+  "id": "c16_ectopic",
+  "qcase": true,
+  "scan_type": "Ultrasound pelvis (transabdominal and transvaginal)",
+  "history": "Pelvic pain, positive pregnancy test, no prior scan. ?ectopic",
+  "dictation": "A 3 cm intramural fibroid in the posterior uterine wall. A 2 cm corpus luteum in the right ovary.",
+  "regions": {
+   "Uterus": [
+    "A 3 cm intramural fibroid in the posterior uterine wall."
+   ],
+   "Ovaries": [
+    "A 2 cm corpus luteum in the right ovary."
+   ]
+  },
+  "must": [
+   "no extra-ovarian adnexal mass",
+   "no free fluid / haemoperitoneum"
+  ],
+  "nice": [
+   "intrauterine gestational sac status stated",
+   "no left adnexal abnormality"
+  ],
+  "dictated": []
+ },
+ {
+  "id": "c17_appendicitis",
+  "kind": "implied",
+  "scan_type": "CT abdomen and pelvis with contrast",
+  "history": "Right iliac fossa pain, fever. ?appendicitis",
+  "dictation": "The appendix is dilated to 11 mm with an obstructing appendicolith at its base and periappendiceal fat stranding, in keeping with acute appendicitis.",
+  "regions": {
+   "Bowel": [
+    "The appendix is dilated to 11 mm with an obstructing appendicolith at its base and periappendiceal fat stranding, in keeping with acute appendicitis."
+   ]
+  },
+  "must": [
+   "no periappendiceal abscess / collection",
+   "no extraluminal gas / perforation"
+  ],
+  "nice": [
+   "no free fluid",
+   "no small bowel obstruction"
+  ],
+  "dictated": [],
+  "forbidden": [
+   "no periappendiceal fat stranding / no inflammatory change (dictated)",
+   "no appendiceal wall enhancement (expected)"
+  ]
+ },
+ {
+  "id": "c18_sbo",
+  "kind": "implied",
+  "scan_type": "CT abdomen and pelvis with contrast",
+  "history": "Vomiting and distension, previous laparotomy",
+  "dictation": "Dilated small bowel loops up to 4 cm with a transition point in the right lower quadrant, likely due to an adhesion. The colon is collapsed.",
+  "regions": {
+   "Bowel": [
+    "Dilated small bowel loops up to 4 cm with a transition point in the right lower quadrant, likely due to an adhesion."
+   ]
+  },
+  "must": [
+   "no closed-loop obstruction",
+   "no features of bowel ischaemia (reduced wall enhancement, pneumatosis, mesenteric oedema)",
+   "no free gas / perforation"
+  ],
+  "nice": [
+   "no hernia at the transition point",
+   "no free fluid"
+  ],
+  "dictated": [
+   "colon collapsed"
+  ],
+  "forbidden": [
+   "no air-fluid levels (expected)",
+   "no small bowel faeces sign (expected)",
+   "no collapsed distal bowel (contradicts)"
+  ]
+ },
+ {
+  "id": "c19_staging",
+  "kind": "no_question",
+  "scan_type": "CT chest abdomen pelvis with contrast",
+  "history": "Staging of newly diagnosed sigmoid adenocarcinoma",
+  "dictation": "A 5 cm circumferential tumour in the sigmoid colon with irregular serosal margin and pericolic fat stranding. Two pericolic lymph nodes up to 8 mm.",
+  "regions": {
+   "Bowel": [
+    "A 5 cm circumferential tumour in the sigmoid colon with irregular serosal margin and pericolic fat stranding."
+   ],
+   "Lymph nodes": [
+    "Two pericolic lymph nodes up to 8 mm."
+   ]
+  },
+  "must": [
+   "no liver metastases",
+   "no lung metastases",
+   "no peritoneal disease"
+  ],
+  "nice": [
+   "no bowel obstruction",
+   "no distant lymphadenopathy",
+   "no invasion of adjacent organs"
+  ],
+  "dictated": []
+ },
+ {
+  "id": "c20_followup",
+  "kind": "no_question",
+  "scan_type": "MRI liver with contrast",
+  "history": "Follow-up of known hepatic haemangioma",
+  "dictation": "The 2.1 cm segment 6 haemangioma is unchanged in size and enhancement pattern.",
+  "regions": {
+   "Liver": [
+    "The 2.1 cm segment 6 haemangioma is unchanged in size and enhancement pattern."
+   ]
+  },
+  "must": [
+   "no new focal liver lesion"
+  ],
+  "nice": [],
+  "dictated": []
+ }
+]
