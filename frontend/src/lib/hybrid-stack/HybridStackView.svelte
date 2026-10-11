@@ -122,15 +122,16 @@
 	const reduced = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 	const ms = reduced ? 0 : 280;
 	// Sentences newly placed in a region: highlighted briefly, then the highlight fades (no motion between places).
-	let fresh: number[] = $state([]);
-	let seenIds = new Set<number>();
+	// Keyed by sentence and text, so a sentence placed again after a rewording also glows (hand read 2026-10-12).
+	let fresh: string[] = $state([]);
+	let seenKeys = new Set<string>();
 	$effect(() => {
-		const placed = units.filter((x) => x.group !== null && !x.heading).map((x) => x.id);
-		const added = placed.filter((id) => !seenIds.has(id));
-		seenIds = new Set(placed);
+		const placed = units.filter((x) => x.group !== null && !x.heading).map((x) => `${x.id}|${x.text}`);
+		const added = placed.filter((k) => !seenKeys.has(k));
+		seenKeys = new Set(placed);
 		if (!added.length) return;
 		fresh = [...fresh, ...added];
-		setTimeout(() => (fresh = fresh.filter((id) => !added.includes(id))), 1200);
+		setTimeout(() => (fresh = fresh.filter((k) => !added.includes(k))), 1400);
 	});
 
 	const view = $derived(buildView(units, groups));
@@ -191,7 +192,7 @@
 	}
 	let assumedEditing: string | null = $state(null);
 	let assumedText = $state('');
-	let assumedField: HTMLInputElement | null = $state(null);
+	let assumedField: HTMLTextAreaElement | null = $state(null);
 	let assumedFocused = $state(false);
 	function openAssumed(s: string) {
 		commit();
@@ -221,7 +222,7 @@
 	// ── editing: one field at a time (a line, or the draft) ─────────────────────────────────────────
 	let editing: { unitId: number; part: number | null } | null = $state(null);
 	let editValue = $state('');
-	let field: HTMLInputElement | null = $state(null);
+	let field: HTMLInputElement | HTMLTextAreaElement | null = $state(null);
 	let draftField: HTMLTextAreaElement | null = $state(null);
 	let draftFocused = $state(false);
 	let newLine = $state('');
@@ -299,7 +300,17 @@
 		set();
 		return { destroy: () => ro.disconnect() };
 	}
-	function focusOnMount(el: HTMLInputElement) {
+	/** A textarea that is exactly as tall as its text (an inline edit keeps the sentence's shape). */
+	function autosize(el: HTMLTextAreaElement, _value?: string) {
+		const fit = () => {
+			el.style.height = 'auto';
+			el.style.height = `${el.scrollHeight}px`;
+		};
+		queueMicrotask(fit);
+		el.addEventListener('input', fit);
+		return { update: () => queueMicrotask(fit), destroy: () => el.removeEventListener('input', fit) };
+	}
+	function focusOnMount(el: HTMLInputElement | HTMLTextAreaElement) {
 		el.focus();
 	}
 
@@ -407,11 +418,13 @@
 	{@const q = expanded.includes(key) ? { shown: list, more: 0 } : quietLine(list)}
 	{#each q.shown as s (s)}
 		{#if assumedEditing === s}
-			<input
+			<textarea
 				bind:this={assumedField}
 				bind:value={assumedText}
 				use:focusOnMount
-				class="min-w-[18rem] flex-1 rounded border-0 bg-white/[0.06] px-1 text-xs leading-6 text-gray-100 outline outline-1 outline-emerald-500/40 focus:ring-0"
+				use:autosize={assumedText}
+				rows="1"
+				class="block w-full resize-none overflow-hidden rounded border-0 bg-white/[0.05] px-0.5 py-0 text-xs leading-6 text-gray-100 outline outline-1 outline-emerald-500/30 focus:ring-0"
 				aria-label="Edit normal"
 				onfocus={() => {
 					assumedFocused = true;
@@ -426,7 +439,7 @@
 						assumedEditing = null;
 					}
 				}}
-			/>
+			></textarea>
 		{:else}
 			<span class="inline-flex items-center gap-0.5">
 				<!-- Click to edit (hand read 2026-10-12): an edited normal becomes the radiologist's own words. -->
@@ -445,31 +458,47 @@
 {#snippet line(r: ViewRow, nested: boolean)}
 	<!-- No sentence travels across the screen (hand read 2026-10-12: the slide back and forth read as a bug): a placed
 	     sentence fades in where it belongs with a soft highlight that fades out. -->
-	<li class="group/line flex items-start gap-1 rounded transition-colors duration-1000 {fresh.includes(r.unitId) ? 'bg-purple-500/15' : ''}" in:fade={{ duration: ms }}>
-		<span
-			class="mt-1 cursor-grab select-none text-[10px] text-gray-600 opacity-0 group-hover/line:opacity-100"
-			draggable="true"
-			role="button"
-			tabindex="-1"
-			aria-label="Move line"
-			ondragstart={(e) => e.dataTransfer?.setData('text/plain', String(r.unitId))}>⋮⋮</span>
+	<li class="flex items-start gap-1 rounded transition-colors duration-1000 {fresh.includes(`${r.unitId}|${r.text}`) ? 'bg-purple-500/15' : ''}" in:fade={{ duration: ms }}>
 		<div class="min-w-0 flex-1 {nested ? 'pl-4' : ''}">
 			{#if isEditing(r)}
-				<input
+				<!-- True inline edit (hand read 2026-10-12): same font, line height and padding as the sentence; it wraps and
+				     grows instead of scrolling sideways. -->
+				<textarea
 					bind:this={field}
 					bind:value={editValue}
 					use:focusOnMount
-					class="w-full rounded border-0 bg-white/[0.06] px-1 text-sm leading-6 text-gray-100 outline outline-1 outline-emerald-500/40 focus:ring-0"
+					use:autosize={editValue}
+					rows="1"
+					class="block w-full resize-none overflow-hidden rounded border-0 bg-white/[0.05] px-1 py-0 text-sm leading-6 text-gray-100 outline outline-1 outline-emerald-500/30 focus:ring-0"
 					aria-label="Edit line"
-					onblur={commit}
+					onblur={(e) => {
+						if ((e.relatedTarget as HTMLElement | null)?.dataset?.move) return; // moving it: keep the edit open
+						commit();
+					}}
 					onkeydown={(e) => {
 						if (e.key === 'Enter' || e.key === 'Escape') {
 							e.preventDefault();
 							commit();
 						}
 					}}
-				/>
-				<span class="text-[10px] text-emerald-400">Listening to edit · Enter to finish</span>
+				></textarea>
+				<span class="flex flex-wrap items-center gap-2 px-1 text-[10px] text-emerald-400">
+					Listening to edit · Enter to finish
+					<!-- Moving a misplaced sentence (replaces the old drag handle, which had nowhere to drop). -->
+					<label class="flex items-center gap-1 text-gray-500">Move to
+						<select data-move="1" class="rounded border border-white/10 bg-transparent px-1 py-0 text-[10px] text-gray-300 focus:outline-none focus:ring-0"
+							value={units.find((x) => x.id === r.unitId)?.group ?? ''}
+							onchange={(e) => {
+								const g = (e.target as HTMLSelectElement).value;
+								editing = null;
+								onEditing(draftFocused || newFocused);
+								if (g) onMove(r.unitId, g);
+							}}
+							onblur={commit}>
+							{#each groups.filter((g) => g !== TECHNIQUE && g !== CONCLUSION) as g (g)}<option value={g}>{g}</option>{/each}
+						</select>
+					</label>
+				</span>
 			{:else}
 				<!-- The grouper's structure label is a tooltip, not text: it repeated the sentence (hand read 2026-10-12). -->
 				<button type="button" class="w-full rounded px-1 text-left text-sm leading-6 text-gray-200 hover:bg-white/[0.05]" onclick={() => open(r)}
@@ -490,8 +519,9 @@
 	{#if view.unplaced.length || pending.length || ghost}
 		<section aria-label="Just dictated" class="rounded border border-white/5 bg-white/[0.02] px-2 py-1" use:smoothHeight>
 			<ul>
-				{#each view.unplaced as r (r.text)}<li class="text-sm leading-6 text-gray-300">{r.text}</li>{/each}
-				{#each pending as text (text)}<li class="text-sm leading-6 text-gray-300">{text}</li>{/each}
+				<!-- A sentence fades out of the strip as it fades into its section, so the hand-over reads as one motion. -->
+				{#each view.unplaced as r (r.text)}<li class="text-sm leading-6 text-gray-300" in:fade={{ duration: ms }} out:fade={{ duration: ms }}>{r.text}</li>{/each}
+				{#each pending as text (text)}<li class="text-sm leading-6 text-gray-300" in:fade={{ duration: ms }} out:fade={{ duration: ms }}>{text}</li>{/each}
 				{#if ghost}<li class="text-sm italic leading-6 text-gray-400">{ghost}</li>{/if}
 			</ul>
 		</section>
@@ -604,11 +634,13 @@
 							{#each (said.find((r) => (dictatedNormalWords.get(r)?.join(' ') ?? '') === words) ? dictatedNormalWords.get(said.find((r) => (dictatedNormalWords.get(r)?.join(' ') ?? '') === words) ?? '') ?? [] : []) as w (w)}
 								{@const src = sourceOf(w)}
 								{#if src && editing && editing.unitId === src.unitId && editing.part === src.part}
-									<input
+									<textarea
 										bind:this={field}
 										bind:value={editValue}
 										use:focusOnMount
-										class="min-w-[18rem] flex-1 rounded border-0 bg-white/[0.06] px-1 text-xs leading-6 text-gray-100 outline outline-1 outline-emerald-500/40 focus:ring-0"
+										use:autosize={editValue}
+										rows="1"
+										class="block min-w-0 flex-1 resize-none overflow-hidden rounded border-0 bg-white/[0.05] px-0.5 py-0 text-xs leading-6 text-gray-100 outline outline-1 outline-emerald-500/30 focus:ring-0"
 										aria-label="Edit line"
 										onblur={commit}
 										onkeydown={(e) => {
@@ -617,7 +649,7 @@
 												commit();
 											}
 										}}
-									/>
+									></textarea>
 								{:else}
 									<!-- The radiologist's own normal sentence: click to edit it in the dictation, as any line. -->
 									<button type="button" class="min-w-0 cursor-text truncate rounded text-left text-gray-400 hover:bg-white/[0.04] hover:text-gray-200"

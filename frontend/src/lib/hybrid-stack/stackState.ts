@@ -119,17 +119,31 @@ export function closedText(verbatim: string): string {
 	return at > 0 ? verbatim.slice(0, at).trimEnd() : '';
 }
 
+const words = (t: string) => new Set(t.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+/** A placed sentence the polish lightly reworded (a word, a full stop) is still the same sentence. */
+function similar(a: string, b: string): boolean {
+	const x = words(a), y = words(b);
+	if (!x.size || !y.size) return false;
+	let common = 0;
+	for (const w of x) if (y.has(w)) common += 1;
+	return common / Math.max(x.size, y.size) >= 0.7;
+}
+
+/** What the live strip shows: the tail of the dictation after the last sentence the scratchpad holds (hand read
+ *  2026-10-12: a placed sentence the polish reworded came back into the strip). A sentence matching a unit exactly,
+ *  or nearly, counts as held; held sentences earlier in the text are never shown again. */
 export function liveTail(verbatim: string, units: StackUnit[]): string[] {
-	const held = new Map<string, number>();
-	for (const u of units) held.set(u.text, (held.get(u.text) ?? 0) + 1);
-	return sentences(verbatim).filter((s) => {
-		const n = held.get(s) ?? 0;
-		if (n > 0) {
-			held.set(s, n - 1);
-			return false;
-		}
+	const all = sentences(verbatim);
+	const pool = units.map((u) => u.text);
+	const held = all.map((s) => {
+		let k = pool.indexOf(s);
+		if (k < 0) k = pool.findIndex((t) => similar(t, s));
+		if (k < 0) return false;
+		pool.splice(k, 1);
 		return true;
 	});
+	const last = held.lastIndexOf(true);
+	return all.slice(last + 1);
 }
 
 /** The change to the verbatim text that sets one line (a sentence, or one part of a split sentence) to

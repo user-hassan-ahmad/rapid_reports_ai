@@ -63,6 +63,10 @@ describe('liveTail', () => {
 	it('keeps decimals whole', () => {
 		expect(liveTail('A 3.2 cm cyst.', [])).toEqual(['A 3.2 cm cyst.']);
 	});
+	it('never brings back a placed sentence the polish reworded', () => {
+		const units = [u(0, 'There is a 3 cm mass in the pancreatic head', 'Pancreas'), u(1, 'The liver is normal.', 'Liver')];
+		expect(liveTail('There is a 3 cm mass in the pancreatic head. The liver is normal. The spleen', units)).toEqual(['The spleen']);
+	});
 });
 
 describe('lineChange / appendSentence', () => {
