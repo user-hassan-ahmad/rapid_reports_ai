@@ -88,3 +88,8 @@ def test_template_region_normals_from_the_stored_structure():
     names = {r.name for r in template_regions(st)}
     assert normals and set(normals) <= names
     assert all(s.strip() for ss in normals.values() for s in ss)
+
+
+def test_sex_specific_sentences_never_become_shared_normals():
+    md = "## Region Normals\n- **Pelvic organs:** \"The bladder is normal.\" \"The prostate is normal in size.\" \"The uterus is unremarkable.\" \"The ovaries are normal.\"\n"
+    assert SL.parse_slim(md, ["Pelvic organs"])[0] == {"Pelvic organs": ["The bladder is normal."]}

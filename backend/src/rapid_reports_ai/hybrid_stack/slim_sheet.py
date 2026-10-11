@@ -20,7 +20,7 @@ from .schemas import OTHER, Region
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "slim-1"
+PROMPT_VERSION = "slim-2"   # slim-2: no sex-specific organs in region normals (hand read 2026-10-12)
 URL = "https://api.cerebras.ai/v1/chat/completions"
 TIMEOUT_S = 120.0   # cached per family: the first case of a new scan type waits, nobody after
 
@@ -49,7 +49,7 @@ Write Markdown with exactly these sections, in this order:
 - **Macro-structure:** FLAT or HEADED
 
 ## Region Normals
-One bullet per region in REGIONS, using the region name exactly: - **<Region>:** then 1-6 quoted sentences, each the statement a consultant writes when that structure is normal on this scan. One structure or feature per sentence; final report form; British English; no measurements or numbers; nothing this scan cannot show; never a statement about a disease or the clinical question.
+One bullet per region in REGIONS, using the region name exactly: - **<Region>:** then 1-6 quoted sentences, each the statement a consultant writes when that structure is normal on this scan. One structure or feature per sentence; final report form; British English; no measurements or numbers; nothing this scan cannot show; never a statement about a disease or the clinical question. Never a sentence about an organ only one sex has (the uterus, ovaries, adnexa, cervix, prostate, seminal vesicles, testes): the sheet is shared by every patient, so those reach the report only when dictated. A region with nothing left gets no bullet.
 
 ## Style Exemplars
 2-4 bullets, each - **<finding type>:** "<one example abnormal sentence in house style>".
@@ -73,6 +73,9 @@ REGIONS:
 {regions}"""
 
 _LOCKS: dict[tuple, asyncio.Lock] = {}
+# Backstop for the prompt rule above: a shared sentence about a sex-specific organ would be assumed for every
+# patient (hand read 2026-10-12: "The prostate is normal" offered beside an ovarian cyst).
+_SEX_SPECIFIC = re.compile(r"(?i)\b(?:prostat\w*|seminal|uter\w*|endometri\w*|ovar\w*|adnex\w*|cervi\w*|testi\w*|testes|scrot\w*|vagin\w*|fallopian|myometri\w*)\b")
 _REGION_LINE = re.compile(r"^\s*-\s+\*\*(.+?):\*\*\s*(.*)$")
 
 
@@ -91,7 +94,8 @@ def parse_slim(md: str, region_names: list[str]) -> tuple[dict[str, list[str]], 
         if not m or m.group(1).strip().lower() not in known:
             continue
         sentences = [s.strip() for s in re.findall(r'"([^"]+)"', m.group(2))]
-        keep = [s if s.endswith(".") else s + "." for s in sentences if s and not _MEASUREMENT.search(s)]
+        keep = [s if s.endswith(".") else s + "." for s in sentences
+                if s and not _MEASUREMENT.search(s) and not _SEX_SPECIFIC.search(s)]
         if keep:
             normals[known[m.group(1).strip().lower()]] = keep
     na = ""
