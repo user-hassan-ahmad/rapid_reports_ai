@@ -93,9 +93,55 @@ async def contra_lab() -> None:
         print(f"  stated {st:.2f} contra {c:.2f} {it['kind']:<19} {it['chip']!r}")
 
 
+# Row checks (checklist spec §10.2): two wordings each for "removed" and "multiple findings", asked in one call
+# with stated and contradicted, as production will ask them.
+ROW_WORDINGS = {
+    "removed_a": ("The STATEMENT says the same thing as one of the REMOVED statements: the same check on the same "
+                  "structure, in any wording. STATEMENT: {s}"),
+    "removed_b": "One of the REMOVED statements already makes this claim, in other words: {s}",
+    "multi_a": ("This statement states the absence of more than one distinct finding (two different abnormalities, "
+                "or the same abnormality in two different structures), so it should be split: {s}"),
+    "multi_b": ("This statement can be split into two statements that each make a separate claim a radiologist could "
+                "accept or reject on its own: {s}"),
+}
+
+
+async def _rows_one(sentence: str, removed: list[str]) -> dict:
+    from rapid_reports_ai.hybrid_stack.jev_stack import contra_question, stated_question
+    from rapid_reports_ai.jev_client import JEV_MODEL, jev_post
+    import os
+    qs = {"stated": stated_question(sentence), "contra": contra_question(sentence)}
+    qs.update({k: {"type": "noul", "instructions": w.format(s=sentence)} for k, w in ROW_WORDINGS.items()})
+    state = ("DICTATION:\nThe study was reviewed.\n\nREMOVED BY THE RADIOLOGIST:\n"
+             + ("\n".join(f"- {r}" for r in removed) or "(none)"))
+    r = await jev_post({"model": JEV_MODEL, "state": state, "questions": qs},
+                       os.environ.get("OPENROUTER_API_KEY", ""), 6.0, None)
+    r.raise_for_status()
+    a = r.json().get("answers") or {}
+    return {k: float((a.get(k) or {}).get("noul") or 0.0) for k in qs}
+
+
+async def rows_lab() -> None:
+    fx = json.loads((FIX / "jev_rows_fixture.json").read_text())
+    rem = await _gather(lambda it: _rows_one(it["sentence"], it["removed"]), fx["removed"])
+    mul = await _gather(lambda it: _rows_one(it["sentence"], []), fx["multi"])
+    for name, items, res, keys in (("removed", fx["removed"], rem, ("removed_a", "removed_b")),
+                                   ("multi", fx["multi"], mul, ("multi_a", "multi_b"))):
+        rows = [(it, r) for it, r in zip(items, res) if "error" not in r]
+        print(f"{name}: {len(rows)}/{len(items)} answered")
+        for k in keys:
+            for t in (0.3, 0.5, 0.6, 0.7, 0.8):
+                tp = sum(1 for it, r in rows if it["gold"] and r[k] >= t)
+                fp = sum(1 for it, r in rows if not it["gold"] and r[k] >= t)
+                print(f"  {k} t={t:.1f}: hit {tp}/{sum(it['gold'] for it, _ in rows)}  false {fp}")
+        for it, r in sorted(rows, key=lambda x: (not x[0]["gold"], -x[1][keys[0]])):
+            print(f"   gold={it['gold']!s:<5} " + " ".join(f"{k}={r[k]:.2f}" for k in keys) +
+                  f"  {it['sentence']!r}" + (f" vs {it['removed']}" if "removed" in it else ""))
+
+
 async def main(argv: list[str]) -> None:
     for name in argv or ["command", "chip"]:
-        await {"command": command_lab, "chip": chip_lab, "contra": contra_lab}[name]()
+        await {"command": command_lab, "chip": chip_lab, "contra": contra_lab, "rows": rows_lab}[name]()
 
 
 if __name__ == "__main__":

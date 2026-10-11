@@ -1,0 +1,528 @@
+{
+ "removed": [
+  {
+   "id": "r00",
+   "sentence": "No extraluminal gas is seen.",
+   "removed": [
+    "No free intraperitoneal air."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r01",
+   "sentence": "No pneumoperitoneum.",
+   "removed": [
+    "No free gas is identified."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r02",
+   "sentence": "The common bile duct is not dilated.",
+   "removed": [
+    "No CBD dilatation."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r03",
+   "sentence": "No pericolic abscess.",
+   "removed": [
+    "No pericolic fluid collection is seen."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r04",
+   "sentence": "No right heart strain.",
+   "removed": [
+    "The right ventricle is not dilated."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r05",
+   "sentence": "No midline shift.",
+   "removed": [
+    "No subfalcine herniation."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r06",
+   "sentence": "No hepatic metastases.",
+   "removed": [
+    "No focal liver lesion to suggest metastatic disease."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r07",
+   "sentence": "No mediastinal lymphadenopathy.",
+   "removed": [
+    "No hilar lymphadenopathy."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r08",
+   "sentence": "No skull fracture.",
+   "removed": [
+    "No calvarial fracture is identified."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r09",
+   "sentence": "The anterior cruciate ligament is intact.",
+   "removed": [
+    "No ACL tear."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r10",
+   "sentence": "The anterior cruciate ligament is intact.",
+   "removed": [
+    "The posterior cruciate ligament is intact."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r11",
+   "sentence": "No ovarian torsion.",
+   "removed": [
+    "No features of ovarian torsion."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r12",
+   "sentence": "No ovarian torsion.",
+   "removed": [
+    "No free fluid in the pelvis."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r13",
+   "sentence": "No perinephric fluid.",
+   "removed": [
+    "No perinephric stranding."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r14",
+   "sentence": "No hydronephrosis on the right.",
+   "removed": [
+    "No right-sided hydronephrosis is seen."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r15",
+   "sentence": "No hydronephrosis on the right.",
+   "removed": [
+    "No left hydronephrosis."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r16",
+   "sentence": "No active contrast extravasation.",
+   "removed": [
+    "No active bleeding is seen."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r17",
+   "sentence": "No splenic pseudoaneurysm.",
+   "removed": [
+    "No active contrast extravasation."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r18",
+   "sentence": "No pleural effusion.",
+   "removed": [
+    "No pleural thickening.",
+    "No pneumothorax."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r19",
+   "sentence": "No pleural effusion.",
+   "removed": [
+    "No pneumothorax.",
+    "No effusion in either pleural space."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r20",
+   "sentence": "No cauda equina compression.",
+   "removed": [
+    "The cauda equina is not compressed."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r21",
+   "sentence": "No cauda equina compression.",
+   "removed": [
+    "No canal stenosis at L5/S1."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r22",
+   "sentence": "No intraparenchymal haemorrhage.",
+   "removed": [
+    "No intracerebral haemorrhage."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r23",
+   "sentence": "No subarachnoid haemorrhage.",
+   "removed": [
+    "No intraparenchymal haemorrhage."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r24",
+   "sentence": "No portal vein thrombosis.",
+   "removed": [
+    "The portal vein is patent."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r25",
+   "sentence": "No portal vein thrombosis.",
+   "removed": [
+    "The hepatic veins are patent."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r26",
+   "sentence": "No bowel obstruction.",
+   "removed": [
+    "No small bowel dilatation."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r27",
+   "sentence": "No closed-loop obstruction.",
+   "removed": [
+    "No features of a closed loop."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r28",
+   "sentence": "No peritoneal deposits.",
+   "removed": [
+    "No omental caking."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r29",
+   "sentence": "No peritoneal deposits.",
+   "removed": [
+    "No peritoneal nodularity to suggest metastatic disease."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r30",
+   "sentence": "No displaced meniscal fragment.",
+   "removed": [
+    "No bucket-handle fragment in the notch."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r31",
+   "sentence": "No bone marrow oedema.",
+   "removed": [
+    "No displaced meniscal fragment."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r32",
+   "sentence": "The appendix is normal.",
+   "removed": [
+    "Normal appendix."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r33",
+   "sentence": "The appendix is normal.",
+   "removed": [
+    "No appendicolith."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r34",
+   "sentence": "No adrenal metastasis.",
+   "removed": [
+    "The adrenal glands are normal."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r35",
+   "sentence": "No liver lesion.",
+   "removed": [
+    "No hepatic metastases."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r36",
+   "sentence": "No intrauterine gestational sac.",
+   "removed": [
+    "No adnexal mass."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r37",
+   "sentence": "No other enhancing lesions.",
+   "removed": [
+    "No further enhancing intracranial lesions."
+   ],
+   "gold": true
+  },
+  {
+   "id": "r38",
+   "sentence": "No leptomeningeal enhancement.",
+   "removed": [
+    "No other enhancing lesions."
+   ],
+   "gold": false
+  },
+  {
+   "id": "r39",
+   "sentence": "No gallbladder perforation.",
+   "removed": [
+    "No pericholecystic abscess."
+   ],
+   "gold": false
+  }
+ ],
+ "multi": [
+  {
+   "id": "m00",
+   "sentence": "No pericolic or pelvic fluid collection is seen.",
+   "gold": false
+  },
+  {
+   "id": "m01",
+   "sentence": "No torsion or rupture of the ovary.",
+   "gold": true
+  },
+  {
+   "id": "m02",
+   "sentence": "No encasement of the superior mesenteric artery or vein.",
+   "gold": true
+  },
+  {
+   "id": "m03",
+   "sentence": "The liver and spleen are normal.",
+   "gold": true
+  },
+  {
+   "id": "m04",
+   "sentence": "No free fluid or free gas.",
+   "gold": true
+  },
+  {
+   "id": "m05",
+   "sentence": "No pleural effusion.",
+   "gold": false
+  },
+  {
+   "id": "m06",
+   "sentence": "No mediastinal or hilar lymphadenopathy.",
+   "gold": true
+  },
+  {
+   "id": "m07",
+   "sentence": "No bowel wall thickening or pneumatosis.",
+   "gold": true
+  },
+  {
+   "id": "m08",
+   "sentence": "No midline shift.",
+   "gold": false
+  },
+  {
+   "id": "m09",
+   "sentence": "No hydronephrosis or hydroureter on the right.",
+   "gold": true
+  },
+  {
+   "id": "m10",
+   "sentence": "No intra- or extrahepatic biliary dilatation.",
+   "gold": false
+  },
+  {
+   "id": "m11",
+   "sentence": "The cruciate ligaments are intact.",
+   "gold": true
+  },
+  {
+   "id": "m12",
+   "sentence": "No acute intracranial haemorrhage.",
+   "gold": false
+  },
+  {
+   "id": "m13",
+   "sentence": "No subdural or extradural collection.",
+   "gold": true
+  },
+  {
+   "id": "m14",
+   "sentence": "No active contrast extravasation from the spleen.",
+   "gold": false
+  },
+  {
+   "id": "m15",
+   "sentence": "The common bile duct is normal in calibre without a stone.",
+   "gold": true
+  },
+  {
+   "id": "m16",
+   "sentence": "No focal liver lesion.",
+   "gold": false
+  },
+  {
+   "id": "m17",
+   "sentence": "No peritoneal thickening or nodularity.",
+   "gold": true
+  },
+  {
+   "id": "m18",
+   "sentence": "No fracture or dislocation.",
+   "gold": true
+  },
+  {
+   "id": "m19",
+   "sentence": "No periappendiceal abscess.",
+   "gold": false
+  },
+  {
+   "id": "m20",
+   "sentence": "Both kidneys are normal.",
+   "gold": false
+  },
+  {
+   "id": "m21",
+   "sentence": "No pericardial effusion.",
+   "gold": false
+  },
+  {
+   "id": "m22",
+   "sentence": "No mesenteric fat stranding or free fluid.",
+   "gold": true
+  },
+  {
+   "id": "m23",
+   "sentence": "No retroperitoneal or mediastinal lymphadenopathy.",
+   "gold": true
+  },
+  {
+   "id": "m24",
+   "sentence": "The pancreas is normal in size and enhancement.",
+   "gold": false
+  },
+  {
+   "id": "m25",
+   "sentence": "No filling defect in the main pulmonary arteries.",
+   "gold": false
+  },
+  {
+   "id": "m26",
+   "sentence": "No right ventricular dilatation or septal bowing.",
+   "gold": true
+  },
+  {
+   "id": "m27",
+   "sentence": "No extraluminal gas or contrast.",
+   "gold": true
+  },
+  {
+   "id": "m28",
+   "sentence": "The appendix is normal in calibre and wall thickness.",
+   "gold": false
+  },
+  {
+   "id": "m29",
+   "sentence": "No pneumothorax.",
+   "gold": false
+  },
+  {
+   "id": "m30",
+   "sentence": "No evidence of ovarian torsion.",
+   "gold": false
+  },
+  {
+   "id": "m31",
+   "sentence": "No hepatic or peritoneal metastases.",
+   "gold": true
+  },
+  {
+   "id": "m32",
+   "sentence": "No small or large bowel dilatation.",
+   "gold": false
+  },
+  {
+   "id": "m33",
+   "sentence": "No bone marrow oedema in the femur or tibia.",
+   "gold": false
+  },
+  {
+   "id": "m34",
+   "sentence": "No nerve root compression at other levels.",
+   "gold": false
+  },
+  {
+   "id": "m35",
+   "sentence": "No haemorrhage or mass effect.",
+   "gold": true
+  },
+  {
+   "id": "m36",
+   "sentence": "No dilatation of the pancreatic duct.",
+   "gold": false
+  },
+  {
+   "id": "m37",
+   "sentence": "No adrenal or bone metastases.",
+   "gold": true
+  },
+  {
+   "id": "m38",
+   "sentence": "The uterus and left ovary are normal.",
+   "gold": true
+  },
+  {
+   "id": "m39",
+   "sentence": "No pelvic collection.",
+   "gold": false
+  }
+ ]
+}

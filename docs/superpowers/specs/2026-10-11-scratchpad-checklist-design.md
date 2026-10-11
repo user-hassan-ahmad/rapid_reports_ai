@@ -160,10 +160,11 @@ The layout and wording follow the mock-up.
 ### 4.2 The chain on every update
 
 1. **Qwen writes the rows** (§4.1).
-2. **One Jev call checks every row sentence** (§5): already dictated, contradicted, the same as a removed
-   sentence, or more than one finding.
-3. **Qwen splits multi-finding sentences** with the existing splitter (`report_reconcile._split_bundled`, its
-   `_split_keeps_claims` guard included). It runs only on sentences Jev flagged; parts inherit the row.
+2. **Qwen splits multi-claim sentences** with the production splitter (`report_reconcile._split_bundled`, as the
+   brief uses it today: Qwen decides how many claims a sentence holds, and `_split_keeps_claims` keeps the
+   original wording). Parts inherit the row. The Jev wording for this failed its lab (§10.2).
+3. **One Jev call checks every row sentence** (§5): already dictated, contradicted, or the same as a removed
+   sentence.
 4. **Code applies the limits:** exact repeats removed, the first 2 sentences per row, the first 2 finding rows per
    region, at most 4 rows per case including the referral row. All in the writer's urgency order. Rows beyond the
    caps are kept in the gate record as `capped` and offered in the Optional additions panel after Generate.
@@ -179,8 +180,7 @@ One Jev call per update, over every row sentence (and the assumed normals of abn
 |---|---|---|---|
 | **stated** | today's `stated_question` | ≥ 0.8 → drops (answered); a row with none left resolves | ≥ 0.8 → hidden (answered) |
 | **contradicted** | today's `contra_question` | ≥ 0.7 → drops (the dictation says otherwise) | ≥ 0.3 → hidden, never assumed |
-| **removed** | new; wording lab (§10.2) | ≥ threshold → drops | ≥ threshold → hidden |
-| **multiple findings** | new; wording lab (§10.2) | ≥ threshold → sent to the splitter | not asked (sheet normals are written one structure each) |
+| **removed** | new (§10.2): "The STATEMENT says the same thing as one of the REMOVED statements: the same check on the same structure, in any wording." | ≥ 0.6 → drops | ≥ 0.6 → hidden |
 
 A region normal with stated or contradicted between 0.3 and the removal bars is hidden, never assumed (hedged).
 
@@ -298,8 +298,13 @@ About 40 sentence pairs per question, written blind, with gold labels:
   "No SMA or SMV encasement" (two), "Liver and spleen normal" (two), plain single sentences (one).
 
 Two wordings per question, asked in one call alongside stated and contradicted (as production asks them).
-Threshold chosen for **no false "removed"** (it would hide a valid row) and **no missed multiple finding that the
-splitter would have fixed**, preferring precision.
+
+**Result (2026-10-11):**
+- **removed:** wording A at 0.6 → 17/20 rewordings caught, 0 of 20 false. Adopted. The misses are near-synonyms
+  ("pericolic abscess" against "pericolic fluid collection"); they stay in the row, where the radiologist can ×
+  them again.
+- **multiple findings:** wording A never fired (all ≤ 0.21). Wording B tracked conjunctions, not claims (at 0.5:
+  16/20 caught, 7/20 false). Dropped. The production splitter owns the judgement instead (§4.2).
 
 ### 10.3 Before release
 

@@ -36,10 +36,10 @@ Rules for every task:
   1. writer: Qwen (Cerebras, reasoning off, temperature 0, timeout 8 s); empty dictation still runs, which yields
      the referral item; `kind="referral"` when `source_text` is empty (first one only); ids are a hash of
      (kind, region, question);
-  2. `jev_stack.ask_rows(dictation, sentences, removed)`: one call, four questions per sentence; drop stated,
-     contradicted and removed sentences; mark a row with none left `answered`;
-  3. `report_reconcile._split_bundled` on the flagged sentences only, then `_split_keeps_claims`; on failure keep
-     the sentence;
+  2. `report_reconcile._split_bundled` on the row sentences (it pre-selects candidates and guards with
+     `_split_keeps_claims`, as in the brief); on failure keep the sentences;
+  3. `jev_stack.ask_rows(dictation, sentences, removed)`: one call, three questions per sentence (stated,
+     contradicted, removed ≥ 0.6); drop those sentences; mark a row with none left `answered`;
   4. limits: exact repeats; 2 sentences per row; 2 finding rows per region; 4 rows per case including the
      referral row; the rest into `capped`.
 - Cache: the writer's raw items, LRU 256, keyed by (scan key, normalised history, abnormal sentences, regions,
@@ -51,7 +51,7 @@ Rules for every task:
 - Tests (`tests/test_hybrid_stack_items.py`, Qwen and Jev mocked):
   - referral detection, and only one;
   - stated, contradicted and removed drops; a row folding to answered;
-  - only flagged sentences reach the splitter, and its parts stay in the row;
+  - split parts stay in their row;
   - limits order (caps applied after the checks), `capped`;
   - stable ids;
   - cache hit re-runs the checks on the new dictation;
