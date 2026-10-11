@@ -118,8 +118,8 @@ a wrong-to-ask sentence. Hand reads record the same.
 
 ### 3.4 Friction budget
 
-Amber rows are the only interruption. Expected: about 2 per case including the referral row. Cap: 2 finding rows
-per region, plus the referral row. Measured in the hand reads (§10.2); if real cases run higher, lower the cap
+Amber rows are the only interruption. Expected: about 2 per case including the referral row. Caps: 2 finding rows
+per region, 4 rows per case including the referral row. Measured in the hand reads (§10.2); if real cases run higher, lower the cap
 before release.
 
 ### 3.5 Skin
@@ -151,35 +151,43 @@ The layout and wording follow the mock-up.
 - Output per item: `source_text`, `region`, `question` (≤ 12 words, ends "?"), `rationale` (one line, shown as the
   reason), `negatives` (1–3 report sentences, one absent finding each; code keeps the first 2).
   - An item with empty `source_text` is the referral item.
-- Code, in order:
-  1. drop sentences containing " or " or a comma list;
-  2. drop duplicates, and sentences duplicating a dictated negative (`duplicates_negative`);
-  3. drop an item left with no sentences;
-  4. keep the first 2 finding items per region (urgency order). The rest are kept in the gate record as `capped`.
-- Cache: the writer's items by (scan key, history, abnormal sentences, region list). The Jev check always runs on
-  the current dictation.
+- The radiologist's removed sentences are in the user prompt ("REMOVED BY THE RADIOLOGIST: never propose these or
+  an equivalent").
+- Cache: the writer's items by (scan key, history, abnormal sentences, region list, removed). The checks (§5)
+  always run on the current dictation.
 - Fail open: no items. The scratchpad works as v2 without chips. The referral row is absent.
 
-### 4.2 Removed sentences
+### 4.2 The chain on every update
 
-Sentences the radiologist removed with × are sent with each call and filtered out (`duplicates_negative`).
+1. **Qwen writes the rows** (§4.1).
+2. **One Jev call checks every row sentence** (§5): already dictated, contradicted, the same as a removed
+   sentence, or more than one finding.
+3. **Qwen splits multi-finding sentences** with the existing splitter (`report_reconcile._split_bundled`, its
+   `_split_keeps_claims` guard included). It runs only on sentences Jev flagged; parts inherit the row.
+4. **Code applies the limits:** exact repeats removed, the first 2 sentences per row, the first 2 finding rows per
+   region, at most 4 rows per case including the referral row. All in the writer's urgency order. Rows beyond the
+   caps are kept in the gate record as `capped` and offered in the Optional additions panel after Generate.
 
-## 5. Covered or contradicted (Jev)
+Code makes no judgement about meaning. Every judgement about wording against the dictation or the radiologist's
+choices is a validated Jev question; every judgement needing clinical knowledge is Qwen's.
 
-The existing `ask_checks` pair, run on:
-- every sentence of every finding and referral row;
-- the assumed normals of abnormal regions.
+## 5. The checks (Jev)
 
-| Jev result | Finding or referral sentence | Region normal |
-|---|---|---|
-| stated ≥ 0.8 | answered (drops from the row; a row with none left resolves) | answered (hidden) |
-| contradicted ≥ 0.7 | drops (the dictation says otherwise) | hidden, never assumed |
-| hedged (either ≥ 0.3) | stays in the row (the radiologist answers it) | hidden, never assumed |
-| otherwise | stays in the row | assumed |
+One Jev call per update, over every row sentence (and the assumed normals of abnormal regions):
 
-Region normals of untouched regions (tray pills) are not checked: nothing was dictated about them.
+| Question | Wording | Row sentence | Region normal |
+|---|---|---|---|
+| **stated** | today's `stated_question` | ≥ 0.8 → drops (answered); a row with none left resolves | ≥ 0.8 → hidden (answered) |
+| **contradicted** | today's `contra_question` | ≥ 0.7 → drops (the dictation says otherwise) | ≥ 0.3 → hidden, never assumed |
+| **removed** | new; wording lab (§10.2) | ≥ threshold → drops | ≥ threshold → hidden |
+| **multiple findings** | new; wording lab (§10.2) | ≥ threshold → sent to the splitter | not asked (sheet normals are written one structure each) |
 
-If the check fails, every region normal of an abnormal region is hidden. Rows stay as written.
+A region normal with stated or contradicted between 0.3 and the removal bars is hidden, never assumed (hedged).
+
+Region normals of untouched regions (tray pills) are checked only against removed sentences.
+
+If the call fails, every region normal of an abnormal region is hidden. Rows stay as written, and removed sentences
+are filtered by exact match only.
 
 ## 6. The gate
 
@@ -281,7 +289,19 @@ question). Graded by Sonnet 5.5.
 
 The grading itself varies: the same sentences graded twice gave D 12 and then 17 wrong. Small differences are noise.
 
-### 10.2 Before release
+### 10.2 Jev wording lab (before building on the two new questions)
+
+About 40 sentence pairs per question, written blind, with gold labels:
+- **removed:** a candidate sentence against a list of removed sentences. Same check reworded (gold yes), a
+  different check about the same structure (gold no), an unrelated sentence (gold no).
+- **multiple findings:** "No pericolic or pelvic collection" (one check), "No torsion or rupture" (two),
+  "No SMA or SMV encasement" (two), "Liver and spleen normal" (two), plain single sentences (one).
+
+Two wordings per question, asked in one call alongside stated and contradicted (as production asks them).
+Threshold chosen for **no false "removed"** (it would hide a valid row) and **no missed multiple finding that the
+splitter would have fixed**, preferring precision.
+
+### 10.3 Before release
 
 Hand reads on the local build:
 - one quick case of each kind in the fixture set;
@@ -311,7 +331,7 @@ Settled in conversation:
 - A new slim sheet for this flow, quick path only.
 
 Defaults taken here (say if any is wrong):
-1. At most 2 finding rows per region.
+1. At most 2 finding rows per region and 4 rows per case.
 2. The slim sheet defaults to Qwen at medium reasoning (cached, so it can be swapped for a stronger model).
 3. Tapped answers are attributed to the radiologist.
 4. Template conditioned negatives are not used in this release.

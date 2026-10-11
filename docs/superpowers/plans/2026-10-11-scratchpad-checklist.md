@@ -19,39 +19,51 @@ Rules for every task:
 - Keep arms D and S. Remove the D1, J3 and D2 arms. Spec §10 records them.
 - No tests (script).
 
-### B2 Items writer: `hybrid_stack/items.py` (replaces `chips.py`)
-- `WRITER_SYS`: the lab's arm D prompt (`_CORE + D_FIELDS + REFERRAL_LINE`), plus an optional
-  "NOT ASSESSABLE ON THIS SCAN" block in the user prompt.
+### B1b Jev wording lab: removed and multiple findings
+- `tests/fixtures/hybrid_stack/jev_rows_fixture.json`: about 40 blind pairs per question (spec §10.2).
+- `scripts/scratchpad_v2_labs.py` gains `rows`: two wordings per question, asked in one call with stated and
+  contradicted. Print scores by gold class and the threshold table.
+- Record the chosen wording and thresholds in spec §10.2 and as constants in `jev_stack.py`.
+
+### B2 Items writer and chain: `hybrid_stack/items.py` (replaces `chips.py`)
+- `WRITER_SYS`: the lab's arm D prompt (`_CORE + D_FIELDS + REFERRAL_LINE`). The user prompt adds
+  "NOT ASSESSABLE ON THIS SCAN" when known and "REMOVED BY THE RADIOLOGIST" when any.
 - Models:
-  - `Item{id, kind: "finding"|"referral", region, question, why, sentences: list[str]}`;
+  - `Item{id, kind: "finding"|"referral", region, question, why, sentences: list[str], answered: bool}`;
   - `ItemsResult{items, capped, cached, ms, error}`.
-- `async write(scan_type, history, regions, dictation, not_assessable="", removed=()) -> ItemsResult`:
-  1. Qwen call (Cerebras, reasoning off, temperature 0, timeout 8 s); empty dictation still runs, which yields
-     the referral item;
-  2. drop bundled sentences (`\bor\b` or a comma);
-  3. dedupe; drop sentences duplicating dictated negatives or `removed`;
-  4. keep the first 2 sentences per item; drop empty items;
-  5. `kind="referral"` when `source_text` is empty; keep the first referral item only;
-  6. cap at 2 finding items per region, the rest into `capped`;
-  7. ids are stable: hash of (kind, region, question).
-- Cache: Qwen's raw items, LRU 256, keyed by (scan key, normalised history, abnormal sentences, regions).
-- `async check(dictation, items) -> list[Item]`: `ask_checks` on every sentence (spec §5):
-  - stated ≥ 0.8 → drop the sentence (answered);
-  - contradicted ≥ 0.7 → drop;
-  - an item left with no sentences → `answered: true` (kept so the UI can fold it);
-  - check failure → items unchanged.
+- `async update(scan_type, history, regions, dictation, not_assessable="", removed=()) -> ItemsResult`, the spec
+  §4.2 chain:
+  1. writer: Qwen (Cerebras, reasoning off, temperature 0, timeout 8 s); empty dictation still runs, which yields
+     the referral item; `kind="referral"` when `source_text` is empty (first one only); ids are a hash of
+     (kind, region, question);
+  2. `jev_stack.ask_rows(dictation, sentences, removed)`: one call, four questions per sentence; drop stated,
+     contradicted and removed sentences; mark a row with none left `answered`;
+  3. `report_reconcile._split_bundled` on the flagged sentences only, then `_split_keeps_claims`; on failure keep
+     the sentence;
+  4. limits: exact repeats; 2 sentences per row; 2 finding rows per region; 4 rows per case including the
+     referral row; the rest into `capped`.
+- Cache: the writer's raw items, LRU 256, keyed by (scan key, normalised history, abnormal sentences, regions,
+  removed).
+- Failure rules:
+  - writer failure → no items plus error;
+  - Jev failure → rows as written, removed filtered by exact match;
+  - splitter failure → the sentence kept.
 - Tests (`tests/test_hybrid_stack_items.py`, Qwen and Jev mocked):
-  - bundle drop; dedupe; dictated duplicate; removed filter;
-  - referral detection, and only one referral item;
-  - region cap and `capped`; stable ids;
-  - cache hit re-checks against the new dictation;
-  - writer failure → no items plus error; check failure → unchanged.
+  - referral detection, and only one;
+  - stated, contradicted and removed drops; a row folding to answered;
+  - only flagged sentences reach the splitter, and its parts stay in the row;
+  - limits order (caps applied after the checks), `capped`;
+  - stable ids;
+  - cache hit re-runs the checks on the new dictation;
+  - each failure path.
 
 ### B3 Region normals check: `hybrid_stack/normals.py`
 - `async assumed(dictation, region_normals: dict[str, list[str]], abnormal: list[str], dictated_normal: list[str]) -> dict[str, list[str]]`:
   - untouched regions: all sentences, unchecked;
   - dictated-normal regions: none (their words stand);
-  - abnormal regions: `ask_checks`, keeping only sentences with stated < 0.3 and contradicted < 0.3 (spec §5);
+  - abnormal regions: `ask_rows`, keeping only sentences with stated < 0.3, contradicted < 0.3 and not removed
+    (spec §5);
+  - untouched regions: checked against removed only;
   - check failure → abnormal regions empty.
 - Tests: the four cases plus failure.
 
@@ -251,7 +263,7 @@ Update the description:
 Merge only on Hassan's go-ahead.
 
 ## Order
-1. B1–B4, then F1–F4 against the dev page. This gives a usable checklist without the slim sheet: rows only, no
+1. B1, B1b, B2–B4, then F1–F4 against the dev page. This gives a usable checklist without the slim sheet: rows only, no
    quiet lines.
 2. B5–B7 and F5: the slim sheet and Generate.
 3. B8 and B9.
