@@ -159,3 +159,9 @@ async def test_ask_rows_without_removed_asks_two_questions(monkeypatch):
     out = await J.ask_rows("x", ["No ascites."], [], transport=httpx.MockTransport(handler))
     assert out == [J.RowCheck(0.0, 0.0, 0.0)]
     assert await J.ask_rows("x", [], ["y"]) == []
+
+
+async def test_a_sentence_with_a_measurement_is_never_offered(monkeypatch):
+    _setup(monkeypatch, _raw({**CYST, "negatives": ["A 5 mm intrauterine gestational sac is seen.", "No free fluid."]}))
+    out = await I.update("US pelvis", "?ectopic", ["Uterus"], "A fibroid.", ["A fibroid."])
+    assert out.items[0].sentences == ["No free fluid."]

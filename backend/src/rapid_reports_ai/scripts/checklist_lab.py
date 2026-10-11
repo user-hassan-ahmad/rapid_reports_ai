@@ -359,6 +359,20 @@ async def arm_d2(c):
     return res
 
 
+async def arm_p(c):
+    """Production: hybrid_stack.items.update (writer, splitter, Jev checks, caps) on the case's dictation."""
+    from rapid_reports_ai.hybrid_stack import items as IT
+    IT.clear_cache()
+    t0 = time.perf_counter()
+    abnormal = [x for xs in c["regions"].values() for x in xs]
+    res = await IT.update(c["scan_type"], c["history"], list(c["regions"]), c["dictation"], abnormal)
+    rows = [{"region": i.region, "question": i.question, "src": i.kind, "answers": i.sentences, "why": i.why}
+            for i in res.items if not i.answered]
+    return {"P": {"assumed": [], "open": rows, "dropped": [], "answered": [],
+                  "capped": [{"question": i.question, "answers": i.sentences} for i in res.capped],
+                  "ms": int((time.perf_counter() - t0) * 1000), "error": res.error}}
+
+
 async def arm_s(c):
     """Today's production path: the analyser's sheet for this case, compiled by the brief (non-stack)."""
     from rapid_reports_ai.quick_report_analyser import generate_ephemeral_skill_sheet
@@ -419,6 +433,16 @@ Label every statement with exactly one of:
 Give a very short reason for each "wrong"."""
 
 
+JUDGE_SYS_ASK = """You are a consultant radiologist grading questions a reporting assistant asks the radiologist while they report. Each question comes with statements; the radiologist reads them and taps to add them to the report only after checking the images. You get the case, a gold list of negatives (M = must, N = nice to have) and numbered statements.
+
+Label every statement with exactly one of:
+- a gold id (M1, N2, ...) when it states that gold negative (same structure and same finding; narrower or broader wording of the same check counts);
+- "fine_to_ask": a sensible check for this case that is not in the gold, even if it is about the dictated finding's own extent or relationship (the radiologist will look before answering);
+- "low_value": a routine or not pertinent check that wastes the radiologist's attention;
+- "wrong_to_ask": asking it is itself an error: it contradicts the dictation, denies a typical sign or expected consequence of a dictated diagnosis, repeats what the dictation already says, or asks for something this scan type cannot show.
+Give a very short reason for each "wrong_to_ask"."""
+
+
 class Label(BaseModel):
     id: str
     label: str
@@ -443,7 +467,8 @@ async def grade_case(c, arms):
     gold = "\n".join([f"M{i+1}. {g}" for i, g in enumerate(c["must"])] + [f"N{i+1}. {g}" for i, g in enumerate(c["nice"])])
     user = (f"SCAN TYPE: {c['scan_type']}\nHISTORY: {c['history']}\nDICTATION: {c['dictation']}\n\nGOLD:\n{gold or '(none)'}\n\n"
             "STATEMENTS:\n" + "\n".join(f"s{i}: {t}" for i, t in enumerate(uniq)) + "\n\nReturn one label per statement id.")
-    r = await _run_agent_with_model(model_name="claude-sonnet-5-5", output_type=Labels, system_prompt=JUDGE_SYS,
+    sys_p = JUDGE_SYS_ASK if os.environ.get("LAB_RUBRIC") == "ask" else JUDGE_SYS
+    r = await _run_agent_with_model(model_name="claude-sonnet-5-5", output_type=Labels, system_prompt=sys_p,
                                     user_prompt=user, api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
                                     model_settings={"temperature": 0, "max_tokens": 6000})
     lab = {}
@@ -509,6 +534,16 @@ def report(cases, verbose: bool):
         print(f"  {k:<9} must {t['dflt']:>2}→{t['surf']:>2}/{t['m']}  leaks {t['leak']}  caught {t['caught']}  "
               f"low {t['low']}  assumed {t['assumed']}  open/case median {statistics.median(o)} max {max(o)}  "
               f"writer p50 {int(statistics.median(t['ms'] or [0]))} ms")
+    if "P" in arms:
+        rows = [(cid, it) for cid, ar in runs.items() if "P" in ar for it in ar["P"]["open"]]
+        bad = [(cid, it) for cid, it in rows if any((labels[cid].get(s) or ["?"])[0] == "wrong_to_ask" for s in it["answers"])]
+        per = sorted(len(ar["P"]["open"]) for ar in runs.values() if "P" in ar)
+        must = sum(len({(labels[cid].get(s) or ["?"])[0] for it in ar["P"]["open"] for s in it["answers"]} & {f"M{i+1}" for i in range(len(byid[cid]["must"]))})
+                   for cid, ar in runs.items() if "P" in ar)
+        print(f"\n== production rows: {len(rows)} rows, {len(bad)} with a wrong-to-ask sentence ({len(bad)/max(1,len(rows)):.0%}); "
+              f"rows/case median {statistics.median(per)} max {max(per)}; must surfaced {must}/{sum(len(c['must']) for c in cases)}")
+        for cid, it in bad:
+            print(f"   {cid}: {it['question']} — " + "; ".join(f"[{(labels[cid].get(s) or ['?'])[0]}] {s} ({(labels[cid].get(s) or ['',''])[1]})" for s in it["answers"]))
     print("\n== leaks (assumed and graded wrong)")
     for k, cid, s, why in leaks:
         print(f"  {k:<9} {cid}: {s} — {why}")

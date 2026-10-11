@@ -15,7 +15,7 @@ from collections import OrderedDict
 from pydantic import BaseModel
 
 from ..enhancement_utils import _run_agent_with_model
-from ..report_reconcile import QWEN, _split_bundled
+from ..report_reconcile import QWEN, _MEASUREMENT, _split_bundled
 from .jev_stack import ask_rows, row_fate
 from .schemas import scan_key
 
@@ -137,7 +137,9 @@ def _rows(raw: list[RawItem]) -> list[Item]:
             referral = True
         out.append(Item(id=_id(kind, it.region, it.question), kind=kind, region=it.region.strip(),
                         question=it.question.strip(), why=it.rationale.strip(),
-                        sentences=[_sentence(n) for n in it.negatives if n.strip()]))
+                        # A row only ever carries normal statements: a number nobody measured is never offered
+                        # (lab p1: a writer slip offered "A 5 mm intrauterine gestational sac is seen").
+                        sentences=[_sentence(n) for n in it.negatives if n.strip() and not _MEASUREMENT.search(n)]))
     return sorted(out, key=lambda i: i.kind != "referral")   # the referral row leads; finding order kept
 
 
