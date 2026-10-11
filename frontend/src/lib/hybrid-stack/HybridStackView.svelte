@@ -405,6 +405,20 @@
 	{/if}
 {/snippet}
 
+{#snippet micControls(hint: string)}
+	<!-- Dictation controls in any inline edit (hand read 2026-10-12): a mic toggle that keeps the cursor in place, and
+	     the hotkeys. -->
+	<span class="flex flex-wrap items-center gap-2 px-1 pt-0.5 text-[10px] text-gray-500">
+		<button type="button" class="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 {recording ? 'bg-rose-500/20 text-rose-300' : 'text-gray-400 hover:text-gray-200'}"
+			title={recording ? 'Stop dictating (⌥Space)' : 'Start dictating (⌥Space)'} aria-label={recording ? 'Stop dictating' : 'Start dictating'}
+			onmousedown={(e) => e.preventDefault()} onclick={onToggleMic}>
+			<svg viewBox="0 0 24 24" class="h-3 w-3 {recording ? 'animate-pulse' : ''}" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+			{recording ? 'listening' : 'dictate'}
+		</button>
+		<span>⌥Space {recording ? 'stop' : 'start'} · {hint}</span>
+	</span>
+{/snippet}
+
 {#snippet sentences(list: string[], key: string)}
 	{@const q = expanded.includes(key) ? { shown: list, more: 0 } : quietLine(list)}
 	{#each q.shown as s (s)}
@@ -423,7 +437,10 @@
 				}}
 				onblur={commitAssumed}
 				onkeydown={(e) => {
-					if (e.key === 'Enter') {
+					if (e.altKey && e.code === 'Space') {
+						e.preventDefault();
+						onToggleMic();
+					} else if (e.key === 'Enter') {
 						e.preventDefault();
 						commitAssumed();
 					} else if (e.key === 'Escape') {
@@ -431,6 +448,7 @@
 					}
 				}}
 			></textarea>
+			{@render micControls('Enter save · Esc cancel')}
 		{:else}
 			<span class="inline-flex items-center gap-0.5">
 				<!-- Click to edit (hand read 2026-10-12): an edited normal becomes the radiologist's own words. -->
@@ -462,34 +480,18 @@
 					rows="1"
 					class="block w-full resize-none overflow-hidden rounded border-0 bg-white/[0.05] px-1 py-0 text-sm leading-6 text-gray-100 outline outline-1 outline-emerald-500/30 focus:ring-0"
 					aria-label="Edit line"
-					onblur={(e) => {
-						if ((e.relatedTarget as HTMLElement | null)?.dataset?.move) return; // moving it: keep the edit open
-						commit();
-					}}
+					onblur={commit}
 					onkeydown={(e) => {
-						if (e.key === 'Enter' || e.key === 'Escape') {
+						if (e.altKey && e.code === 'Space') {
+							e.preventDefault();
+							onToggleMic();
+						} else if (e.key === 'Enter' || e.key === 'Escape') {
 							e.preventDefault();
 							commit();
 						}
 					}}
 				></textarea>
-				<span class="flex flex-wrap items-center gap-2 px-1 text-[10px] text-emerald-400">
-					Listening to edit · Enter to finish
-					<!-- Moving a misplaced sentence (replaces the old drag handle, which had nowhere to drop). -->
-					<label class="flex items-center gap-1 text-gray-500">Move to
-						<select data-move="1" class="rounded border border-white/10 bg-transparent px-1 py-0 text-[10px] text-gray-300 focus:outline-none focus:ring-0"
-							value={units.find((x) => x.id === r.unitId)?.group ?? ''}
-							onchange={(e) => {
-								const g = (e.target as HTMLSelectElement).value;
-								editing = null;
-								onEditing(draftFocused || newFocused);
-								if (g) onMove(r.unitId, g);
-							}}
-							onblur={commit}>
-							{#each groups.filter((g) => g !== TECHNIQUE && g !== CONCLUSION) as g (g)}<option value={g}>{g}</option>{/each}
-						</select>
-					</label>
-				</span>
+				{@render micControls('Enter save · Esc cancel')}
 			{:else}
 				<!-- The grouper's structure label is a tooltip, not text: it repeated the sentence (hand read 2026-10-12). -->
 				<button type="button" class="w-full rounded px-1 text-left text-sm leading-6 text-gray-200 hover:bg-white/[0.05]" onclick={() => open(r)}
@@ -644,12 +646,16 @@
 										aria-label="Edit line"
 										onblur={commit}
 										onkeydown={(e) => {
-											if (e.key === 'Enter' || e.key === 'Escape') {
+											if (e.altKey && e.code === 'Space') {
+												e.preventDefault();
+												onToggleMic();
+											} else if (e.key === 'Enter' || e.key === 'Escape') {
 												e.preventDefault();
 												commit();
 											}
 										}}
 									></textarea>
+									{@render micControls('Enter save · Esc cancel')}
 								{:else}
 									<!-- The radiologist's own normal sentence: click to edit it in the dictation, as any line. -->
 									<button type="button" class="min-w-0 cursor-text truncate rounded text-left text-gray-400 hover:bg-white/[0.04] hover:text-gray-200"
