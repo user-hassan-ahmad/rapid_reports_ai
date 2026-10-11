@@ -262,11 +262,15 @@ STACK_FALLBACK_DROP = {"Companion Matrix", "Clinical Lane", "Impression Exemplar
 
 def stack_fallback(sheet: str, conclusion: str, declined: Sequence[str] = ()) -> Brief:
     """A stack session whose brief could not be compiled (spec v2 §6): never the raw sheet, which would state its own
-    negatives and impression. Structure, normal wording and style stay; content comes from the findings block,
-    the confirmed conclusion and the removed chips. Pure code."""
-    secs = [s for s in parse_sheet(sheet) if s.heading not in STACK_FALLBACK_DROP]
-    for s in secs:
-        s.bullets = [b for b in s.bullets if b.label not in DROP_TOP_BULLETS]
+    negatives and impression. Structure and style stay; content comes from the findings block (which carries the
+    confirmed normals), the confirmed conclusion and the removed chips. The Normal-study path is dropped: unchecked,
+    it would state undictated negatives about the abnormal region. Pure code; never raises."""
+    try:
+        secs = [s for s in parse_sheet(_ln.strip_links(sheet)) if s.heading not in STACK_FALLBACK_DROP]
+        for s in secs:
+            s.bullets = [b for b in s.bullets if b.label not in DROP_TOP_BULLETS and not b.label.startswith("Normal-study path")]
+    except Exception:  # the sheet itself may be what failed: structure from the findings block alone
+        secs = []
     guard = [f'  - DO NOT ASSERT: "{t}" — removed by the radiologist' for t in declined]
     if guard:
         secs.append(Section("Companion Matrix", bullets=[Bullet("Mandatory negatives", [

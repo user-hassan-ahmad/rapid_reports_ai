@@ -284,6 +284,8 @@
 	let stackTimer: ReturnType<typeof setTimeout> | null = null;
 	let closeTimer: ReturnType<typeof setTimeout> | null = null;
 	let stackBusy = false;
+	let groupFailures = 0; // consecutive /group failures (or unplaced replies); capped retries, then fail open
+	const GROUP_RETRIES = 3;
 	let stackSessionId = crypto.randomUUID();
 	let stackManualMoves = 0;
 	let stackLatency: Record<string, number> = {};
@@ -1413,12 +1415,24 @@
 				stackUnits = res.units;
 				onStackPills(res.pills);
 				scheduleChips();
+				// The grouper failed or left sentences unplaced (they are kept, as said): retry a few times.
+				if ((res.error || res.units.some((u) => u.group === null && !u.heading)) && groupFailures < GROUP_RETRIES) {
+					groupFailures += 1;
+					stackBusy = false;
+					scheduleGroup(2000);
+					return;
+				}
+				groupFailures = 0;
 				for (const [k, v] of Object.entries(res.timings_ms)) stackLatency[k] = Math.max(stackLatency[k] ?? 0, v);
 			} else scheduleGroup(0);
 		} catch {
-			// fail open: the verbatim text is on screen; retry (the gate waits until the grouping matches the text)
+			// fail open: the verbatim text is on screen; a few retries, then the gate lets Confirm through and the
+			// ungrouped text goes into the findings block as said
 			stackBusy = false;
-			scheduleGroup(2000);
+			if (groupFailures < GROUP_RETRIES) {
+				groupFailures += 1;
+				scheduleGroup(2000);
+			}
 			return;
 		} finally {
 			stackBusy = false;
@@ -1565,7 +1579,11 @@
 			units_hash: gateKey
 		};
 		stackGate = gate;
-		onStackGate(gate, buildFindingsBlock(stackUnits, stackGroups, gate));
+		// Sentences the grouping never received (after failed retries) still reach the report, as said.
+		const tail = liveTail(verbatimNow, stackUnits).map((text, k): StackUnit => ({
+			id: 100000 + k, text, group: null, structure: null, attach_to: null, parts: null, covers: [], pinned: false, heading: false
+		}));
+		onStackGate(gate, buildFindingsBlock([...stackUnits, ...tail], stackGroups, gate));
 		void sendStackLog();
 	}
 	function scheduleClose(): void {
@@ -2193,7 +2211,7 @@
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							onChipAccept={acceptChip} onChipRemove={removeChip} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
 							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
-							syncing={stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0 || stackUnits.some((u) => u.group === null)} />
+							syncing={groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0)} />
 					{/if}
 				</div>
 

@@ -657,7 +657,12 @@ async def test_stack_session_states_the_confirmed_conclusion_not_the_plan(monkey
 
 def test_stack_fallback_keeps_structure_and_drops_content_sections():
     b = qb.stack_fallback(SHEET_F, "Acute subdural.", ["No midline shift."])
-    assert "The orbits are clear." in b.text   # normal wording stays
+    assert "The orbits are clear." not in b.text   # unchecked normals never pass: the findings block carries them
     assert "No skull fracture" not in b.text and "If present" not in b.text and "Abnormal exemplar" not in b.text
     assert '- DO NOT ASSERT: "No midline shift." — removed by the radiologist' in b.text
     assert '"Acute subdural."' in b.text and b.decisions["stack_fallback"] is True
+
+
+def test_stack_fallback_never_raises():
+    b = qb.stack_fallback(None, "C.", [])   # an unreadable sheet: conclusion only
+    assert '"C."' in b.text
