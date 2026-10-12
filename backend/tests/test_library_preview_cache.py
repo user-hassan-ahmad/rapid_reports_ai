@@ -54,3 +54,58 @@ async def test_the_cache_is_bounded(monkeypatch):
         await PC.start(("k", n), _maker(calls, Preview()))
     await PC.start(("k", 0), _maker(calls, Preview()))          # evicted: computed again
     assert len(calls) == 4
+
+
+async def test_a_hung_preview_times_out_and_leaves_the_running_set(monkeypatch):
+    monkeypatch.setattr(PC, "TASK_TIMEOUT_S", 0.01)
+
+    async def hang():
+        await asyncio.sleep(60)
+    t = PC.start(("hang",), hang)
+    with pytest.raises(asyncio.TimeoutError):
+        await t
+    await asyncio.sleep(0)
+    assert t not in PC._RUNNING
+
+
+async def test_prewarm_is_capped_and_open_still_computes(monkeypatch):
+    monkeypatch.setattr(PC, "PREWARM_MAX", 2)
+    gate = asyncio.Event()
+    calls = []
+
+    def make(n):
+        async def go():
+            calls.append(n)
+            await gate.wait()
+            return Preview(missing=[str(n)])
+        return go
+    a, b = PC.start(("w", 1), make(1), prewarm=True), PC.start(("w", 2), make(2), prewarm=True)
+    assert a is not None and b is not None and PC.start(("w", 3), make(3), prewarm=True) is None   # over the cap
+    c = PC.start(("w", 3), make(3))                              # /open: never capped
+    gate.set()
+    assert (await c).missing == ["3"] and sorted(calls) == [1, 2, 3]
+    await asyncio.gather(a, b)
+    await asyncio.sleep(0)
+    assert PC.start(("w", 4), make(4), prewarm=True) is not None    # done prewarms free their slots
+
+
+async def test_a_failed_preview_logs_its_type_never_its_text(caplog):
+    async def make():
+        raise RuntimeError("7 mm nodule in Mrs Smith")
+    t = PC.start(("x",), make)
+    with pytest.raises(RuntimeError):
+        await t
+    await asyncio.sleep(0)
+    assert "RuntimeError" in caplog.text and "Smith" not in caplog.text
+
+
+async def test_clear_forgets_every_entry_and_running_task():
+    gate = asyncio.Event()
+
+    async def make():
+        await gate.wait()
+        return Preview()
+    PC.start(("c",), make, prewarm=True)
+    PC.clear()
+    assert not PC._C and not PC._RUNNING and not PC._PREWARMING
+    gate.set()

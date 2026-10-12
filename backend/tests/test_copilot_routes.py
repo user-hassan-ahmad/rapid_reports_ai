@@ -636,3 +636,49 @@ def test_a_failed_pack_preview_applies_when_the_pack_has_no_eligibility(authed, 
     monkeypatch.setattr(CR, "preview_pack", boom)
     d = authed.post("/api/canvas/stack/guidelines/open", json={"card": PACK_CARD, "findings": "x"}).json()
     assert d["preview"]["state"] == "applies" and d["preview"]["degraded"] is True
+
+
+async def test_match_fails_open_when_the_library_cannot_be_read(db_session, user, monkeypatch):
+    card = Card(key="toy-nodule@1.0", name="Toy 2020", version="2020", finding_id="u1", branch="Pack")
+
+    async def fake_match(db, scan, history, findings):
+        return [card]
+
+    def broken():
+        raise RuntimeError("bundle unreadable")
+    monkeypatch.setattr(CR, "match", fake_match)
+    monkeypatch.setattr(L, "get", broken)
+    out = await CR.copilot_match(CR.MatchRequest(scan_type="CT", findings=[CR.FindingIn(id="u1", text="7 mm.")]),
+                                 user=user, db=db_session)
+    assert [c.key for c in out.cards] == ["toy-nodule@1.0"]
+
+
+def test_prewarm_skips_over_the_cap(monkeypatch, toy):
+    from rapid_reports_ai.hybrid_stack.copilot.library import preview_cache as PC
+    lib = L.Library({"version": "v1", "entries": {"toy-nodule@1.0": {"entry": toy, "sources": TOY_SOURCES}}})
+    monkeypatch.setattr(L, "get", lambda: lib)
+    monkeypatch.setattr(PC, "PREWARM_MAX", 1)
+
+    async def go():
+        async def slow(*a, **k):
+            await asyncio.sleep(0.05)
+            return Preview()
+        monkeypatch.setattr(CR, "preview_pack", slow)
+        cards = [Card(key="toy-nodule@1.0", name="Toy 2020", version="2020", finding_id=f"u{n}", branch="Pack")
+                 for n in range(3)]
+        req = CR.MatchRequest(findings=[CR.FindingIn(id=f"u{n}", text=f"{n + 5} mm nodule.") for n in range(3)])
+        n = CR._prewarm(req, cards)
+        await asyncio.gather(*list(PC._RUNNING))
+        return n
+    assert asyncio.run(go()) == 1
+
+
+def test_a_pack_preview_timeout_says_degraded(authed, toy_lib, monkeypatch):
+    monkeypatch.setattr(CR, "PREVIEW_TIMEOUT_S", 0.01)
+
+    async def slow(*a, **k):
+        await asyncio.sleep(1)
+        return Preview()
+    monkeypatch.setattr(CR, "preview_pack", slow)
+    d = authed.post("/api/canvas/stack/guidelines/open", json={"card": PACK_CARD, "findings": "x"}).json()
+    assert d["preview"]["degraded"] is True and d["preview"]["state"] == "applies"

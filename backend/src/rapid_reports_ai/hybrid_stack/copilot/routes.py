@@ -333,23 +333,24 @@ async def _pack_result(pack, req: OpenRequest, t0: float) -> OpenResult:
 
 def _prewarm(req: MatchRequest, cards: list[Card]) -> int:
     """Start each pack card's preview now, keyed as /open will key it before any answer. Fail open."""
-    lib = L.get()
     texts = {f.id: f.text for f in req.findings}
     dictation = (req.dictation or "\n".join(f.text for f in req.findings))[:6000]
     history = req.clinical_history[:2000]
     n = 0
     for c in cards:
-        e = lib.lookup(c.key)
-        finding = c.finding or texts.get(c.finding_id, "")
-        if e is None or e.tier != 1 or not finding:
-            continue
         try:
-            PC.start(PC.key(e.key, finding, dictation, history, {}, req.patient),
-                     lambda e=e, finding=finding: preview_pack(e, dictation, history, {}, lib.sources(e.key),
-                                                               finding=finding, patient=req.patient))
-            n += 1
+            lib = L.get()
+            e = lib.lookup(c.key)
+            finding = c.finding or texts.get(c.finding_id, "")
+            if e is None or e.tier != 1 or not finding:
+                continue
+            t = PC.start(PC.key(e.key, finding, dictation, history, {}, req.patient),
+                         lambda e=e, lib=lib, finding=finding: preview_pack(
+                             e, dictation, history, {}, lib.sources(e.key), finding=finding, patient=req.patient),
+                         prewarm=True)
+            n += t is not None
         except Exception as ex:
-            logger.warning("[copilot.routes] prewarm %s: %s", type(ex).__name__, str(ex)[:200])
+            logger.warning("[copilot.routes] prewarm %s", type(ex).__name__)
     return n
 
 

@@ -15,8 +15,11 @@ from ..types import Preview
 logger = logging.getLogger(__name__)
 
 MAX_ENTRIES = 256
+TASK_TIMEOUT_S = 25.0                      # a hung preview ends here and leaves _RUNNING (as the route's own bound)
+PREWARM_MAX = 8                            # concurrent prewarm tasks; over it /match skips and /open computes on demand
 _C: "OrderedDict[tuple, asyncio.Task]" = OrderedDict()
 _RUNNING: set[asyncio.Task] = set()        # strong refs, so an evicted task still finishes
+_PREWARMING: set[asyncio.Task] = set()     # the running tasks /match started
 
 
 def _t(s: str) -> str:
@@ -43,20 +46,25 @@ def _good(t: asyncio.Task, loop: asyncio.AbstractEventLoop) -> bool:
 
 def _done(t: asyncio.Task) -> None:
     _RUNNING.discard(t)
-    if not t.cancelled() and t.exception() is not None:
-        ex = t.exception()
-        logger.warning("[library.cache] preview %s: %s", type(ex).__name__, str(ex)[:200])
+    _PREWARMING.discard(t)
+    if not t.cancelled() and t.exception() is not None:   # the type only: a message may quote the dictation
+        logger.warning("[library.cache] preview %s", type(t.exception()).__name__)
 
 
-def start(k: tuple, make: Callable[[], Coroutine[Any, Any, Preview]]) -> asyncio.Task:
-    """The cached task for this key while it is good (running, or done with a full preview), else a new one."""
+def start(k: tuple, make: Callable[[], Coroutine[Any, Any, Preview]], prewarm: bool = False) -> asyncio.Task | None:
+    """The cached task for this key while it is good (running, or done with a full preview), else a new one, bounded
+    by TASK_TIMEOUT_S. A prewarm over PREWARM_MAX running prewarms starts nothing (None): /open computes it."""
     loop = asyncio.get_running_loop()
     t = _C.get(k)
     if t is not None and _good(t, loop):
         _C.move_to_end(k)
         return t
-    t = loop.create_task(make())
+    if prewarm and len(_PREWARMING) >= PREWARM_MAX:
+        return None
+    t = loop.create_task(asyncio.wait_for(make(), TASK_TIMEOUT_S))
     _RUNNING.add(t)
+    if prewarm:
+        _PREWARMING.add(t)
     t.add_done_callback(_done)
     _C[k] = t
     _C.move_to_end(k)
@@ -66,4 +74,7 @@ def start(k: tuple, make: Callable[[], Coroutine[Any, Any, Preview]]) -> asyncio
 
 
 def clear() -> None:
+    """Forget every entry and running task (tests; the tasks themselves are left to finish or be collected)."""
     _C.clear()
+    _RUNNING.clear()
+    _PREWARMING.clear()
