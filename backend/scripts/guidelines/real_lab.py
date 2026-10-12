@@ -42,6 +42,7 @@ from rapid_reports_ai.hybrid_stack.copilot.library.pack_preview import (  # noqa
 from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry, InputValue  # noqa: E402
 
 MAX_FILL = 10
+GUIDELINES = Path(__file__).resolve().parents[3] / "guidelines"      # absolute: the labeller is another agent
 SQL = """select id::text as id,
   coalesce(input_data->'variables'->>'SCAN_TYPE', input_data->>'extracted_scan_type', '') as scan_type,
   coalesce(input_data->'variables'->>'CLINICAL_HISTORY', '') as clinical_history,
@@ -247,8 +248,8 @@ def write_brief(lib, cards: list[dict], cards_path: Path, labels_path: Path) -> 
              "SCHEMA:\n" + json.dumps(LabelFile.model_json_schema(), indent=1)]
     for k in packs:
         e = lib.lookup(k)
-        parts.append(f"{pack_text(e)}\nENTRY: guidelines/{e.id}/entry.json\nMANIFEST: guidelines/{e.id}/manifest.json\n"
-                     f"SOURCES: guidelines/{e.id}/sources/")
+        parts.append(f"{pack_text(e)}\nENTRY: {GUIDELINES}/{e.id}/entry.json\nMANIFEST: {GUIDELINES}/{e.id}/manifest.json\n"
+                     f"SOURCES: {GUIDELINES}/{e.id}/sources/")
     return "\n\n".join(parts)
 
 
@@ -415,17 +416,22 @@ def _draft_outcome(p):
 async def run(cards_path: Path, out_dir: Path) -> Path:
     cards, lib, out = json.loads(cards_path.read_text()), _lib(), []
     for c in cards:
-        e = lib.lookup(c["pack"])
-        t0 = time.perf_counter()
-        s = await settle_pack(e, c["findings"], c["clinical_history"], c["finding"])      # cold: no cache
-        ms = round((time.perf_counter() - t0) * 1000)
-        p = finish(e, s, {})
-        do = _draft_outcome(p)
-        out.append({"card": c["id"], "ms": ms, "degraded": bool(getattr(s, "failed", False)),
-                    "missing": p.missing, "draft_outcome": do.model_dump(mode="json") if do is not None else None,
-                    "draft_outcome_id": (p.trace or {}).get("outcome"),
-                    "drafts": {k: {"value": v.model_dump(mode="json"), "quote": q, "tier": t}
-                               for k, (v, q, t) in drafts(s).items()}})
+        try:
+            e = lib.lookup(c["pack"])
+            t0 = time.perf_counter()
+            s = await settle_pack(e, c["findings"], c["clinical_history"], c["finding"])      # cold: no cache
+            ms = round((time.perf_counter() - t0) * 1000)
+            p = finish(e, s, {})
+            do = _draft_outcome(p)
+            out.append({"card": c["id"], "ms": ms, "degraded": bool(getattr(s, "failed", False)),
+                        "missing": p.missing,
+                        "draft_outcome": do.model_dump(mode="json") if do is not None else None,
+                        "draft_outcome_id": (p.trace or {}).get("outcome"),
+                        "drafts": {k: {"value": v.model_dump(mode="json"), "quote": q, "tier": t}
+                                   for k, (v, q, t) in drafts(s).items()}})
+        except Exception as ex:                       # one bad card must not lose the run; type only, no text
+            print(f"card {c['id']} errored: {type(ex).__name__}", file=sys.stderr)
+            out.append({"card": c["id"], "error": type(ex).__name__})
     path = _pid(out_dir, "settler", "json")
     path.write_text(json.dumps(out, indent=1))
     print(f"{len(out)} cards settled -> {path}")
@@ -440,18 +446,26 @@ def _settlement(rec: dict) -> Settlement:
     return Settlement(values=vals, failed=rec["degraded"])
 
 
-def _apply_overrides(labels: dict[str, dict], sheet: Path | None) -> int:
-    n = 0
+def _apply_overrides(lib, cards: list[dict], labels: dict[str, dict], sheet: Path | None) -> tuple[int, list[str]]:
+    """Hassan's corrections, validated against the card's pack as parse_label does: one the pack cannot take is
+    reported and skipped, never applied."""
+    n, problems = 0, []
     if sheet is None:
-        return n
+        return n, problems
+    pack = {c["id"]: c["pack"] for c in cards}
     for r in csv.DictReader(sheet.open()):
         v = (r.get("hassan_value") or "").strip()
         lab = labels.get(r["case"], {}).get("inputs", {}).get(r["input"])
-        if v and lab is not None:
-            gone = v.lower() in ("none", "not stated")
-            lab["value"], lab["stated"], lab["boundary"] = (None if gone else v), not gone, False
-            n += 1
-    return n
+        if not v or lab is None:
+            continue
+        gone = v.lower() in ("none", "not stated")
+        e = lib.lookup(pack[r["case"]])
+        if not gone and _answer(e, e.input(r["input"]), v) is None:
+            problems.append(f"override {r['case']}:{r['input']} {v!r} is not a value of the pack; skipped")
+            continue
+        lab["value"], lab["stated"], lab["boundary"] = (None if gone else v), not gone, False
+        n += 1
+    return n, problems
 
 
 def _load(cards_p: Path, labels_p: Path, settler_p: Path):
@@ -466,7 +480,7 @@ def sheet(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path) -> Path
     lib, cards, labels, st = _load(cards_p, labels_p, settler_p)
     rows = []
     for c in cards:
-        if c["id"] in labels and c["id"] in st:
+        if c["id"] in labels and c["id"] in st and "error" not in st[c["id"]]:
             rows += spot_rows(lib.lookup(c["pack"]), c, _settlement(st[c["id"]]), labels[c["id"]])
         elif c["id"] not in labels:
             rows.append({"case": c["id"], "pack": c["pack"], "input": "", "label_note": "not labelled",
@@ -484,10 +498,13 @@ def sheet(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path) -> Path
 
 def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdicts_csv: Path | None = None) -> Path:
     lib, cards, labels, st = _load(cards_p, labels_p, settler_p)
-    overrides = _apply_overrides(labels, verdicts_csv)
-    rows, ms = [], []
+    overrides, op = _apply_overrides(lib, cards, labels, verdicts_csv)
+    if op:
+        print("\n".join(op), file=sys.stderr)
+    rows, ms, skipped = [], [], []
     for c in cards:
-        if c["id"] not in labels or c["id"] not in st:
+        if c["id"] not in labels or c["id"] not in st or "error" in st[c["id"]]:
+            skipped.append(c["id"])
             continue
         e, s, lab = lib.lookup(c["pack"]), _settlement(st[c["id"]]), labels[c["id"]]
         n, outcome = taps(e, s, lab, {})
@@ -496,11 +513,15 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
                      "tiers": {k: t for k, (_, _, t) in d.items()}, "degraded": st[c["id"]]["degraded"],
                      "outcome": outcome, "draft_outcome": st[c["id"]].get("draft_outcome_id")})
         ms.append(st[c["id"]]["ms"])
+    errored = [k for k, r in st.items() if "error" in r]
+    if skipped:
+        print(f"skipped {len(skipped)} unlabelled, unsettled or errored cards: {', '.join(skipped)}", file=sys.stderr)
     cats = Counter(c["pack"] for c in cards if (labels.get(c["id"]) or {}).get("category"))
     q = statistics.quantiles(ms, n=20) if len(ms) > 1 else ms * 2
     result = {**metrics(rows), "outcome_agreement": outcome_agreement(rows),
               "wrong_prefill_total": wrong_prefill_total(rows), "category_dictated_by_pack": dict(cats),
-              "hassan_overrides": overrides, "latency_ms": {"p50": statistics.median(ms) if ms else None,
+              "hassan_overrides": overrides, "override_problems": op, "skipped_cards": skipped,
+              "errored_cards": errored, "latency_ms": {"p50": statistics.median(ms) if ms else None,
                                                             "p95": q[-1] if q else None},
               "time_to_first_paint": "not measured offline", "checker": "n/a", "lesions": "n/a"}
     path = _pid(out_dir, "score", "json")
@@ -512,6 +533,7 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
     print(f"| taps distribution | {result['taps_distribution']} | |")
     print(f"| wrong pre-filled values | {result['wrong_prefill_total']} | |")
     print(f"| outcome agreement | {result['outcome_agreement']} | |")
+    print(f"| errored / skipped cards | {len(errored)} / {len(skipped)} | |")
     print(f"| degraded cards | {len(result['degraded'])} | |")
     print(f"| latency p50 / p95 ms | {result['latency_ms']['p50']} / {result['latency_ms']['p95']} | |")
     print("| time to first paint | not measured offline | |\n| checker, lesions | n/a | |")

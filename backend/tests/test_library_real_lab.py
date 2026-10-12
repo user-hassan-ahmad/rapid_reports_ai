@@ -130,3 +130,33 @@ def test_wrong_prefill_total_counts_wrong_prefilled_values_only():
     rows = [{"card": "c1", "verdicts": {"a": "wrong", "b": "wrong", "c": "ok"},
              "tiers": {"a": "prefilled", "b": "read", "c": "prefilled"}}]
     assert RL.wrong_prefill_total(rows) == 1
+
+
+def test_the_brief_paths_are_absolute(toy_entry, tmp_path):
+    b = RL.write_brief(_lib_with(toy_entry), CARDS, tmp_path / "c.json", tmp_path / "l.json")
+    for name in ("entry.json", "manifest.json", "sources/"):
+        assert f"{RL.GUIDELINES}/toy-nodule/{name}" in b
+    assert RL.GUIDELINES.is_absolute()
+
+
+def test_overrides_are_validated_against_the_pack_and_bad_ones_skipped(toy_entry, tmp_path):
+    labels = {"c1": RL.parse_label(toy_entry, ONE, "x")}
+    sheet = tmp_path / "s.csv"
+    sheet.write_text("case,input,hassan_value\nc1,kind,subsolid\nc1,kind,cystic\nc1,size,none\n")
+    n, problems = RL._apply_overrides(_lib_with(toy_entry), CARDS, labels, sheet)
+    assert n == 2 and labels["c1"]["inputs"]["kind"]["value"] == "subsolid"     # the bad 'cystic' was not applied
+    assert len(problems) == 1 and "cystic" in problems[0]
+
+
+def test_run_records_a_failing_card_by_type_and_carries_on(toy_entry, tmp_path, monkeypatch):
+    import asyncio
+    import json
+
+    async def boom(*a, **k):
+        raise RuntimeError("clinical text must not leak")
+    monkeypatch.setattr(RL, "_lib", lambda: _lib_with(toy_entry))
+    monkeypatch.setattr(RL, "settle_pack", boom)
+    cp = tmp_path / "cards.json"
+    cp.write_text(json.dumps(CARDS))
+    out = asyncio.run(RL.run(cp, tmp_path))
+    assert json.loads(out.read_text()) == [{"card": "c1", "error": "RuntimeError"}]
