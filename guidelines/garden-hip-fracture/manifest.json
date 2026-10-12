@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "Low-angle fixation in fractures of the femoral neck (Garden RS. J Bone Joint Surg Br 1961;43-B(4):647-663)",
+      "issuer": "Garden RS, Orthopaedic Department, Preston Royal Infirmary",
+      "edition": "1961",
+      "url": "https://doi.org/10.1302/0301-620x.43b4.647",
+      "sha256": "a298c248a99e64de21a952d1f7d5b64fc37c273d4348e51411693355caeaed19",
+      "file": "sources/a298c248a99e64de21a952d1f7d5b64fc37c273d4348e51411693355caeaed19.pdf",
+      "text_file": "sources/a298c248a99e64de21a952d1f7d5b64fc37c273d4348e51411693355caeaed19.txt",
+      "retrieved": "2026-10-13"
+    }
+  ]
+}

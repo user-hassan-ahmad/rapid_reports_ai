@@ -1,0 +1,230 @@
+{
+  "id": "garden-hip-fracture",
+  "version": "1961.1",
+  "topic": "femoral-neck-fracture-classification",
+  "issuer": "Garden RS (Preston Royal Infirmary)",
+  "system": "Garden four-stage radiographic classification of subcapital (intracapsular) femoral neck fractures by displacement",
+  "display": "Garden 1961",
+  "edition": "1961",
+  "tier": 2,
+  "status": "current",
+  "applies_to": {
+    "region": [
+      "hip"
+    ],
+    "modality": [
+      "XR"
+    ],
+    "finding_type": [
+      "subcapital femoral neck fracture"
+    ],
+    "context": []
+  },
+  "aliases": [
+    "Garden classification",
+    "Garden stage",
+    "Garden type",
+    "Garden grade",
+    "Garden I",
+    "Garden II",
+    "Garden III",
+    "Garden IV",
+    "Garden 1-4",
+    "Garden hip fracture classification"
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "Garden described four stages of subcapital femoral neck fracture by how far the fragments are displaced before reduction: incomplete (I), complete without displacement (II), complete with partial displacement (III) and complete with full displacement (IV).",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Classification"
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "He argued that subcapital fractures share one basic pattern and that their differing radiographic appearance is mainly the degree of displacement. He said intermediary types may sometimes be recognised between the stages.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Classification; Summary and Conclusions p.17"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "The stages are told apart by the position of the capital fragment and the direction of the medial weight-bearing trabeculae: distal against capital fragment in Stage I, the tilted head in Stage III, and alignment with the pelvis in Stage IV (Figs 6 to 9).",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "Figs 6-9 captions (PDF pp.5-6)"
+        }
+      },
+      {
+        "id": "sum.4",
+        "text": "The paper is a 1961 report of low-angle nail fixation in 80 subcapital fractures. It proposes the classification 'in the hope that it may prove to be of additional value'. It gives no management recommendation and no outcome or prognosis data per stage.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Classification; Summary and Conclusions pp.16-17"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.s1",
+        "text": "Stage I, incomplete subcapital fracture: the abducted or impacted injury. The inferior cortical buttress has a greenstick break and slight lateral rotation of the distal fragment gives the look of impaction. The medial trabeculae of the distal fragment lie in abduction relative to those of the adducted capital fragment. Left unprotected it may become complete.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "Figure 6 caption"
+        }
+      },
+      {
+        "id": "def.s2",
+        "text": "Stage II, complete subcapital fracture without displacement: the inferior cortical buttress is broken but the capital fragment has not tilted. The closely opposed fragments may still displace under lateral rotation forces.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "Figure 7 caption"
+        }
+      },
+      {
+        "id": "def.s3",
+        "text": "Stage III, complete subcapital fracture with partial displacement: the fragments keep their posterior retinacular attachment and the posterior cervical cortex is not yet crushed. Lateral rotation of the distal fragment tilts the capital fragment into abduction and medial rotation, shown by the direction of the medial trabeculae in the head.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "Figure 8 caption"
+        }
+      },
+      {
+        "id": "def.s4",
+        "text": "Stage IV, complete subcapital fracture with full displacement: the retinacular hinge is detached from the back of the neck and the posterior cortical shell has collapsed. The fragments are separated and the capital fragment returns to a more normal position in the acetabulum, its medial trabeculae in line with those of the pelvis.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "Figure 9 caption"
+        }
+      },
+      {
+        "id": "def.inter",
+        "text": "Intermediary types between the stages may sometimes be recognised. The paper does not describe them or say how to name them.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Classification"
+        }
+      },
+      {
+        "id": "def.basis",
+        "text": "The stage describes the radiographic appearance before reduction. The paper uses 'Stage I to IV' and does not itself call them Garden grades or types.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Classification"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "tbl.stages",
+        "title": "Four stages of subcapital femoral neck fracture",
+        "columns": [
+          "Stage",
+          "Fracture",
+          "Displacement",
+          "Radiographic features stated in the paper"
+        ],
+        "rows": [
+          [
+            "I",
+            "Incomplete",
+            "None; slight lateral rotation of the distal fragment gives an impacted look",
+            "Abducted or impacted injury; greenstick break of the inferior cortical buttress; medial trabeculae of the distal fragment in abduction relative to the adducted capital fragment."
+          ],
+          [
+            "II",
+            "Complete",
+            "None",
+            "Inferior cortical buttress broken; no tilting of the capital fragment."
+          ],
+          [
+            "III",
+            "Complete",
+            "Partial",
+            "Posterior retinacular attachment kept and posterior cervical cortex not yet crushed; capital fragment tilted into abduction and medial rotation, seen in the direction of the medial trabeculae in the head."
+          ],
+          [
+            "IV",
+            "Complete",
+            "Full",
+            "Retinacular hinge detached and posterior cortical shell collapsed; fragments separated; capital fragment back in a more normal position with its medial trabeculae in line with those of the pelvis."
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Classification p.654; Figs 6-9 captions PDF pp.5-6"
+        }
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.scope",
+        "text": "The paper defines the stages only for subcapital fractures of the femoral neck. It does not apply them to extracapsular (intertrochanteric or pertrochanteric), mid-cervical or basal fractures.",
+        "locator": {
+          "source": "S1",
+          "page": 7,
+          "section": "Classification pp.653-654"
+        }
+      },
+      {
+        "id": "pit.nomgmt",
+        "text": "The paper gives no management recommendation and no outcome or prognosis data per stage. Its remarks on reduction at each stage (for example, reduction at Stage III is easy and stable, and Stage IV often defies closed and open reduction) are the author's operative comments for low-angle nailing in 1961, not recommendations to report.",
+        "locator": {
+          "source": "S1",
+          "page": 9,
+          "section": "Reduction (stage-by-stage remarks), PDF pp.9-10"
+        }
+      },
+      {
+        "id": "pit.groups",
+        "text": "The paper does not group stages into undisplaced (I and II) and displaced (III and IV) and does not give numeric limits for partial or full displacement. Any such grouping is later usage, not part of this card.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Classification"
+        }
+      },
+      {
+        "id": "pit.evidence",
+        "text": "The classification was proposed on the author's own series, and the paper reports no observer agreement for the stages. His caveat that publication was premature concerns the low-angle fixation results, not the classification itself.",
+        "locator": {
+          "source": "S1",
+          "page": 17,
+          "section": "Summary and Conclusions"
+        }
+      },
+      {
+        "id": "pit.avn",
+        "text": "The alignment index (about 160 degrees in the frontal and 180 degrees in the lateral view) and the avascular-necrosis and union data in the paper concern the quality of reduction in his series, not the Garden stage. Do not read them as a prognosis per stage.",
+        "locator": {
+          "source": "S1",
+          "page": 16,
+          "section": "Avascular necrosis p.662; Reduction p.654; Summary p.17"
+        }
+      },
+      {
+        "id": "pit.s4pos",
+        "text": "At Stage IV the capital fragment can sit in a near-normal position with its trabeculae aligned with the pelvis, so a well-aligned head alone does not mean the fracture is undisplaced.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "Figure 9 caption"
+        }
+      }
+    ]
+  }
+}
