@@ -2668,6 +2668,7 @@
 	:global(.cm-integrity-laterality_conflict) { --integrity: 167, 139, 250; }
 	:global(.cm-integrity-measurement_mismatch),
 	:global(.cm-integrity-unit_anomaly) { --integrity: 56, 189, 248; }
+	:global(.cm-integrity-garbled_phrase) { --integrity: 251, 191, 36; }
 	:global(.cm-integrity-related) {
 		text-decoration-style: dotted !important;
 		background: transparent !important;

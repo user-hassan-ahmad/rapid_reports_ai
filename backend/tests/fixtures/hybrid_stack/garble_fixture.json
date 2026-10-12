@@ -1,0 +1,127 @@
+[
+ {
+  "dictation": "A tiny non-2 mm calculus is noted in the lower pole calyx of the right kidney with no associated hydronephrosis. The bladder is unremarkable.",
+  "garble": "non-2 mm",
+  "kind": "prefix on a number"
+ },
+ {
+  "dictation": "There is a 3 cm hypoenhancing mass in the pancreatic head with upstream dilatation of the pancreatic duck. The liver is normal.",
+  "garble": "pancreatic duck",
+  "kind": "sound-alike"
+ },
+ {
+  "dictation": "Small left pleural infusion with adjacent basal atelectasis. No pneumothorax.",
+  "garble": "pleural infusion",
+  "kind": "sound-alike"
+ },
+ {
+  "dictation": "The appendix is dilated to 11 mm with an obstructing appendix collie at its base and periappendiceal fat stranding.",
+  "garble": "appendix collie",
+  "kind": "split term"
+ },
+ {
+  "dictation": "Acute left subdural haematoma measuring 8 mm with 4 mm midline sift. The basal cisterns are patent.",
+  "garble": "midline sift",
+  "kind": "sound-alike"
+ },
+ {
+  "dictation": "Patchy consolidation in the right lower lobe in keeping with new monia. No pleural effusion.",
+  "garble": "new monia",
+  "kind": "split term"
+ },
+ {
+  "dictation": "The common bile duct is dilated to 9 mm with a distal storm. No intrahepatic duct dilatation.",
+  "garble": "distal storm",
+  "kind": "sound-alike"
+ },
+ {
+  "dictation": "At L4/5 there is a broad based disc pull trusion narrowing the left lateral recess.",
+  "garble": "disc pull trusion",
+  "kind": "split term"
+ },
+ {
+  "dictation": "Infrarenal abdominal aortic aneurysm measuring 5.5 cm with a mural trombone. No retroperitoneal haematoma.",
+  "garble": "mural trombone",
+  "kind": "sound-alike"
+ },
+ {
+  "dictation": "The liver is small with a nodular contour in keeping with sorosis. Moderate ascites.",
+  "garble": "sorosis",
+  "kind": "sound-alike"
+ },
+ {
+  "dictation": "Post-2 cm surgical clips in the gallbladder fossa. The common bile duct is of normal calibre.",
+  "garble": "Post-2 cm",
+  "kind": "prefix on a number"
+ },
+ {
+  "dictation": "No acute intracranial haemorrhage. The ventricles are normal in size. The basal cisterns are patient.",
+  "garble": "cisterns are patient",
+  "kind": "sound-alike"
+ },
+ {
+  "dictation": "A 4 mm obstructing calculus at the left VUJ with moderate proximal hydro you rita nephrosis.",
+  "garble": "hydro you rita nephrosis",
+  "kind": "split term"
+ },
+ {
+  "dictation": "A sub-5 mm nodule in the right upper lobe. No follow-up required.",
+  "garble": "",
+  "kind": "valid prefix"
+ },
+ {
+  "dictation": "Non-obstructing 3 mm calculus in the left lower pole. No hydronephrosis.",
+  "garble": "",
+  "kind": "valid prefix"
+ },
+ {
+  "dictation": "Post-operative changes in the right hemithorax with stable pleural thickening.",
+  "garble": "",
+  "kind": "valid prefix"
+ },
+ {
+  "dictation": "A 3 cm hypoenhancing mass in the pancreatic head with a double duct sign.",
+  "garble": "",
+  "kind": "named sign"
+ },
+ {
+  "dictation": "The basal cisterns are patent. No midline shift.",
+  "garble": "",
+  "kind": "plain"
+ },
+ {
+  "dictation": "A Bosniak IIF cyst in the left kidney measuring 2.5 cm.",
+  "garble": "",
+  "kind": "classification"
+ },
+ {
+  "dictation": "Tree-in-bud nodularity in the right lower lobe. No consolidation.",
+  "garble": "",
+  "kind": "named sign"
+ },
+ {
+  "dictation": "Nutmeg enhancement of the liver with dilated hepatic veins and IVC.",
+  "garble": "",
+  "kind": "named sign"
+ },
+ {
+  "dictation": "Pancreas divisum. No peripancreatic fluid or collection.",
+  "garble": "",
+  "kind": "variant"
+ },
+ {
+  "dictation": "Coffee bean sign in the left abdomen in keeping with sigmoid volvulus.",
+  "garble": "",
+  "kind": "named sign"
+ },
+ {
+  "dictation": "Target sign in the right lower quadrant suggesting ileocolic intussusception.",
+  "garble": "",
+  "kind": "named sign"
+ },
+ {
+  "dictation": "Moderate proximal hydroureteronephrosis to a 4 mm left VUJ calculus. Unremarkable bladder.",
+  "garble": "",
+  "kind": "plain"
+ }
+]

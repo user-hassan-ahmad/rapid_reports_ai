@@ -60,6 +60,7 @@ export function checkLabel(kind: string): string {
 		case 'laterality_conflict': return 'Sides as intended?';
 		case 'measurement_mismatch': return 'Measurement as intended?';
 		case 'unit_anomaly': return 'Unit as intended?';
+		case 'garbled_phrase': return 'Words as intended?';
 		default: return 'As intended?';
 	}
 }

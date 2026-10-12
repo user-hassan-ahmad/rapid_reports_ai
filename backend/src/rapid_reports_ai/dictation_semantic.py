@@ -6,6 +6,11 @@ generation. This module handles what regex cannot see — laterality
 contradictions, measurements that disagree with their descriptor, statements
 that contradict each other — which needs a model.
 
+garbled_phrase (2026-10-12, live "A tiny non-2 mm calculus": the ASR dropped "obstructing"): lab of 13
+garbled and 12 valid-but-unusual dictations, 2 runs: caught 11/13 and 10/13 (baseline prompt 1/13), 0/12
+false. Misses were sound-alikes whose meaning stays obvious ("pleural infusion"); every lost-meaning
+garble (a prefix on a number) was caught.
+
 Two deliberate constraints follow from using a model:
 
 1. **Advisory, never gating.** Tier 1 is deterministic, so a flag is a fact and
@@ -38,6 +43,7 @@ SemanticKind = Literal[
     "measurement_mismatch",
     "internal_contradiction",
     "unit_anomaly",
+    "garbled_phrase",
 ]
 
 
@@ -76,10 +82,18 @@ SEMANTIC_SYSTEM_PROMPT = (
     "different wording for the same thing, and may be separated by several "
     "lines, so compare what each statement means rather than how it is "
     "phrased.\n"
+    "- garbled_phrase: words that read as a speech-to-text error and change or "
+    "obscure what a finding says: a word that makes no sense in its position, a "
+    "term broken into sound-alike words, a sound-alike word that is not a real "
+    "finding or structure here, or a prefix or negation left attached to the "
+    "wrong word (for example to a number). Quote only the garbled words. Not "
+    "unusual but valid terminology, named signs, classifications, abbreviations "
+    "or a deliberate fragment.\n"
     "- unit_anomaly: a value whose unit or magnitude is implausible for the "
     "structure described.\n"
     "\n"
-    "Do NOT report: incomplete or truncated sentences (handled elsewhere), "
+    "Do NOT report: spelling or wording slips that leave the meaning clear, "
+    "incomplete or truncated sentences (handled elsewhere), "
     "missing findings, terminology preferences, brevity, absent normals, or "
     "anything you merely think could have been phrased better. Silence is the "
     "correct answer for a clean dictation, and the overwhelming majority of "
