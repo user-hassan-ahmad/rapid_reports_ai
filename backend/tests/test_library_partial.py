@@ -112,3 +112,13 @@ def test_unbounded_decides_between_is_every_possible_outcome():
     assert t.bounded is False and "nodule_type" in t.needed
     assert all(t.decides[k] == t.possible for k in t.needed)
     assert {"subsolid", "ct_3m"} <= set(t.decides["nodule_type"])
+
+
+def test_a_blocked_formula_state_is_monotone():
+    """Only not_applicable (final: a prerequisite is definitively false) outranks unknown; not_assessable and absent
+    wait for the unknowns, since a later answer could still change which state wins."""
+    U, NA = E.UNKNOWN, E.V(state="not_applicable")
+    assert E._blocked(["a", "b"], {"a": NA, "b": U}).state == "not_applicable"
+    assert E._blocked(["a", "b"], {"a": E.V(state="not_assessable"), "b": U}).state == "unknown"
+    assert E._blocked(["a", "b"], {"a": E.V(state="absent"), "b": U}).state == "unknown"
+    assert E._blocked(["a", "b"], {"a": E.V(state="absent"), "b": E.V(state="not_assessable")}).state == "not_assessable"

@@ -17,8 +17,9 @@ from .schema import (AdjustStep, All, AnyOf, BandStep, Cond, DeriveStep, Entry, 
 PH = re.compile(r"\{([A-Za-z0-9_]+)\}")
 MAX_COMBOS = 50_000
 OVER_MAX = 4_000          # unbounded over-approximation: beyond this many combinations, every outcome (≈0.2 s)
-_ORDER = ("not_assessable", "not_applicable", "absent", "unknown")   # the state a blocked step takes, first wins:
-# a definitive state beats unknown (a formula with a not-applicable input can never compute, whatever the unknowns)
+_ORDER = ("not_applicable", "unknown", "not_assessable", "absent")   # the state a blocked step takes, first wins:
+# not_applicable is final (no later answer undoes a false prerequisite), so it beats unknown; the other states wait for
+# the unknowns, which keeps the result monotone as answers arrive
 
 
 class EvaluationError(Exception):
