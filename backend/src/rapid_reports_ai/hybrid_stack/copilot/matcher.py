@@ -244,12 +244,14 @@ async def _branch(finding: str, row_key: str, name: str, skeleton: list[str], mo
 
 
 async def pick_branch(finding: str, entry, history: str = "") -> str | None:
-    """The entry's branch this finding falls into, chosen by Jev with no model branch to start from (ask's no-card
-    path: the route names a guideline, not a branch). None on "none" or a Jev failure; successes are cached."""
-    names = [b.name for b in entry.content.branches]
+    """The entry's checked branch this finding falls into, chosen by Jev with no model branch to start from (ask's
+    no-card path, a branchless open: the route names a guideline, not a branch). Only checked branches are offered:
+    a pending or not_available one has nothing to preview. None on "none", no checked branch or a Jev failure;
+    successes are cached."""
+    names = [b.name for b in entry.content.checked()]
     if not names:
         return None
-    k = (R.norm(finding), entry.key, "", R.norm(history))
+    k = (R.norm(finding), entry.key, "", R.norm(history), tuple(names))   # a branch checked later re-asks
     hit, v = _get(_BRANCH, k)
     if hit:
         return v

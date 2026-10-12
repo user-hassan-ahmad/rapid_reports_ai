@@ -55,11 +55,17 @@ _CASEY_WORDS = {"left", "right", "bilateral", "male", "female", "man", "woman", 
 NAME_MAX_WORDS = 8
 
 
+def _scrub(text: str) -> list[str]:
+    """The words of `text` with measurement tokens and side/demographic words dropped; other digits (a year, a
+    version) stay."""
+    cleaned = _MEASURE.sub(" ", text or "")
+    return [w for w in cleaned.split() if w.lower().strip(".,;:()") not in _CASEY_WORDS]
+
+
 def safe_identity(name: str, version: str) -> tuple[str, str]:
     """(name, version) safe to search: measurement tokens and side/demographic words dropped from the name, the
     name capped at NAME_MAX_WORDS words, the version kept intact. Every query builder goes through this."""
-    cleaned = _MEASURE.sub(" ", name or "")
-    words = [w for w in cleaned.split() if w.lower().strip(".,;:()") not in _CASEY_WORDS]
+    words = _scrub(name)
     out = " ".join(words[:NAME_MAX_WORDS])
     if out != " ".join((name or "").split()):
         logger.info("[copilot.search] identity scrubbed for search (%d -> %d words)", len((name or "").split()),
@@ -70,7 +76,8 @@ def safe_identity(name: str, version: str) -> tuple[str, str]:
 def first_pass_queries(name: str, version: str, pub: Publication, branch: str) -> list[str]:
     name, version = safe_identity(name, version)
     ident = _clean(f"{name} {version}")
-    title = pub.title.replace('"', "")
+    # The title comes from the same model that read the case: scrubbed like the name, but not capped (titles run long).
+    title = " ".join(_scrub(pub.title.replace('"', "")))
     q1 = f'"{title}" {pub.year}'.strip() if title else f"{ident} classification"
     q2 = _clean(f"{ident} {branch} criteria recommendations")
     return [q1, q2]

@@ -2,7 +2,7 @@ import pytest
 
 from rapid_reports_ai.hybrid_stack.copilot import matcher as M
 from rapid_reports_ai.hybrid_stack.copilot import registry as R
-from rapid_reports_ai.hybrid_stack.copilot.types import Branch, GuidelineContent, Publication
+from rapid_reports_ai.hybrid_stack.copilot.types import Branch, Entry, GuidelineContent, Publication
 
 U = [M.Finding(id="u1", text="8 mm part-solid nodule right upper lobe."), M.Finding(id="u2", text="Simple renal cyst.")]
 
@@ -431,9 +431,28 @@ async def test_card_for_tnm_without_gate_skips_jev_but_keeps_closed_list(db_sess
     assert await M.card_for(db_session, "TNM", "9", "q", "x", site="Lungs", gate=False) is None
 
 
+def _checked_entry(checked, other=()):
+    return Entry(key="fleischner@2017", name="Fleischner", version="2017", content=GuidelineContent(
+        branches=[Branch(name=b, state="checked") for b in checked] + [Branch(name=b, state=st) for b, st in other]))
+
+
+async def test_pick_branch_offers_checked_branches_only(monkeypatch):
+    seen = []
+
+    async def post(payload, key, timeout, transport=None):
+        seen.append(payload)
+        return _Resp({"answers": {"branch": {"choice": "br_0", "confidence": 0.9}}})
+    monkeypatch.setattr(M, "jev_post", post)
+    entry = _checked_entry(["Subsolid"], [("Solid", "pending"), ("Mass", "not_available")])
+    assert await M.pick_branch("part-solid nodule.", entry) == "Subsolid"
+    crit = seen[0]["questions"]["branch"]["criteria"]
+    assert set(crit) == {"br_0", "none"} and crit["br_0"] == "Subsolid"
+    nothing = _checked_entry([], [("Solid", "pending")])
+    assert await M.pick_branch("part-solid nodule.", nothing) is None and len(seen) == 1   # no Jev call
+
+
 async def test_pick_branch_asks_jev_without_a_model_branch_and_caches(db_session, monkeypatch):
-    row = _put(db_session, "fleischner@2017", "Fleischner", "2017", branches=["Solid", "Subsolid"])
-    entry = R.entry(row)
+    entry = _checked_entry(["Solid", "Subsolid"])
     seen = []
 
     async def post(payload, key, timeout, transport=None):
@@ -447,7 +466,7 @@ async def test_pick_branch_asks_jev_without_a_model_branch_and_caches(db_session
 
 
 async def test_pick_branch_failure_is_none_and_not_cached(db_session, monkeypatch):
-    entry = R.entry(_put(db_session, "fleischner@2017", "Fleischner", "2017", branches=["Solid"]))
+    entry = _checked_entry(["Solid"])
     n = {"calls": 0}
 
     async def post(payload, key, timeout, transport=None):

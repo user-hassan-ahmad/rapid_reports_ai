@@ -477,3 +477,12 @@ def test_query_builders_go_through_safe_identity():
     for q in S.first_pass_queries("Management of 2 cm left adrenal nodule", "", Publication(), "Adenoma") + \
             [S.branch_query("Management of 2 cm left adrenal nodule", "", "Adenoma")]:
         assert "2 cm" not in q and "left" not in q.split() and "adrenal nodule" in q
+
+
+def test_first_pass_scrubs_the_publication_title_keeps_year_and_version_digits():
+    pub = Publication(title="Management of 2 cm left adrenal nodule in a 45 year-old female: 2017 white paper v2",
+                      year="2017")
+    q = S.first_pass_queries("ACR", "2017", pub, "")[0]
+    assert q == '"Management of adrenal nodule in a 2017 white paper v2" 2017'
+    long_title = Publication(title="One two three four five six seven eight nine ten eleven 2019", year="2019")
+    assert S.first_pass_queries("X", "", long_title, "")[0] == f'"{long_title.title}" 2019'   # no word cap on a title
