@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 PACK_BRANCH = "Pack"
 TIMEOUT_S = 10.0
-_NUM = re.compile(r"\d+(?:\.\d+)?")
+_NUM_UNIT = re.compile(r"(\d+(?:\.\d+)?)\s*(cms?\b|centimet\w*|mm\b|millimet\w*)?", re.I)
 _STATE_LABEL = {"absent": "Absent", "not_assessable": "Not assessable"}
 
 SETTLE_SYS = """You settle the inputs of one published radiology classification system from a radiologist's dictation. INPUTS lists each input's id, type and allowed values: use nothing else.
@@ -102,9 +102,14 @@ def _value(i: InputDef, item: RawItem) -> InputValue | None:
         x = float(item.value)
     except (TypeError, ValueError):
         return None
-    nums = [float(n) for n in _NUM.findall(item.quote)]
-    cm = i.unit == "mm" and re.search(r"\bcm\b", item.quote, re.I) is not None
-    ok = any(abs(x - n) < 1e-9 or (cm and abs(x - n * 10) < 1e-6) for n in nums)
+    ok = False
+    for m in _NUM_UNIT.finditer(item.quote):
+        n, u = float(m.group(1)), (m.group(2) or "").lower()
+        if u.startswith("c"):
+            cands = [n * 10] if i.unit == "mm" else [n]
+        else:
+            cands = [n]
+        ok = ok or any(abs(x - c) < 1e-6 for c in cands)
     return InputValue(value=x) if ok else None
 
 
@@ -148,6 +153,8 @@ async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str
     except Exception as ex:
         logger.warning("[library.preview] settle %s: %s", type(ex).__name__, str(ex)[:200])
     confirmed = await P.confirm_quotes({k: s for k, (_, s) in model.items()}, findings, history) if model else set()
+    # a number is never confirmed by Jev alone: its quote must be verbatim in the dictation
+    confirmed = {k for k in confirmed if e.input(k).type != "number" or P._verbatim(model[k][1].quote, findings, history)}
     given.update({k: v for k, (v, _) in model.items() if k in confirmed})
     try:
         t = engine.evaluate(e, given)

@@ -58,7 +58,8 @@ async def test_missing_input_shows_possible_outcomes(toy_entry, monkeypatch, jev
     assert out.possible == ["solid nodule 6-8 mm, … risk"] * 2      # ct12 and ct6 render alike while risk is unknown
 
 
-@pytest.mark.parametrize("value,quote,ok", [(12, "1.2 cm", True), (120, "12 mm", False), (9, "7 mm", False)])
+@pytest.mark.parametrize("value,quote,ok", [(12, "1.2 cm", True), (120, "12 mm", False), (9, "7 mm", False), (1.2, "1.2 cm", False),
+                                           (12, "1.2cm", True), (1.2, "1.2cm", False), (8, "8mm", True)])
 async def test_number_must_come_from_its_quote(toy_entry, monkeypatch, jev, value, quote, ok):
     _model(monkeypatch, KIND, {"input": "size", "value": value, "quote": quote})
     out = await PP.preview_pack(toy_entry, f"{quote} solid nodule.", "", {})
@@ -119,3 +120,9 @@ def test_as_entry_shows_inputs_as_choices(toy_entry):
     opts = {i.id: i.options for i in b.inputs}
     assert opts["size"] == ["<6 mm", "6-8 mm", ">8 mm"] and opts["margin"] == ["smooth", "spiculated", "Not assessable"]
     assert e.sources[0].url == "https://example.org/toy"
+
+
+async def test_number_quote_not_verbatim_is_asked_even_if_jev_agrees(toy_entry, monkeypatch, jev):
+    _model(monkeypatch, KIND, {"input": "size", "value": 7, "quote": "seven millimetres"})
+    out = await PP.preview_pack(toy_entry, FINDINGS, "", {})
+    assert "size" in out.missing
