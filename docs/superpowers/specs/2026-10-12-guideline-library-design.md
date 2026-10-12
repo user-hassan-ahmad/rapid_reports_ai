@@ -354,24 +354,41 @@ What we accept:
 
 ## 12. First slice
 
-1. **Schema proof.** Four systems, each with golden cases:
-   - **Fleischner 2017** (a `table`);
-   - **Bosniak 2019** (`rules`);
-   - **BTS 2015** (`derive` → `score` → `band` → `rules`);
-   - **TNM re-expressed in the schema.** It must reproduce all 6,479 verified combinations from
-     `tnm_9th_clean.json` v2.2.
+Status (2026-10-12): items 1 and 2 done, item 3 **failed** its gate, item 4 not started.
 
-   **Gate:** if all four fit with no special-case attributes, the schema is sound. Fleischner and BTS are also the
-   first sibling pair (§7.1).
-2. **Coverage lab** on prod stack dictations, run alongside the **catalogue research task**. Together they set the
-   authoring order.
-   - **Gate:** N entries cover about 90% of correctly named systems.
-   - **Gate:** negative controls yield no card that can be Applied.
-3. **Rewire the preview to the engine.** The model settles inputs, code evaluates, and the output-index step is
-   removed. **Gate:** zero wrong proposals on the preview lab; inputs settled and missing correctly; under 2 s.
+1. **Schema proof. DONE, PASSED.** Four systems, each with golden cases: Fleischner 2017 (`table`), Bosniak 2019
+   (`rules`), BTS 2015 (`derive` → `score` → `band` → `rules`), and TNM re-expressed in the schema (all 6,479 verified
+   combinations from `tnm_9th_clean.json` v2.2). All four fit with no special-case attributes. Two general changes
+   were needed (see "Changes the build made" below). Fleischner and BTS are the first sibling pair (§7.1). Result:
+   `docs/superpowers/handover/2026-10-12-copilot-evidence/schema_proof.md`.
+2. **Coverage lab. DONE, one gate mitigated.** Ran on prod `reports` dictations (the hybrid stack is not deployed, so
+   no stack logs exist): 333 of 393 reports (60 rate-limited). Precision 55.8%, recall about 60%.
+   - **Coverage gate: met.** N at 90% is 22 raw, 27 de-duplicated, of 47 systems seen. Only 3 of the top 25 have
+     packs; 10 of the top 25 are missing from the catalogue.
+   - **Negative-control gate: initially FAILED.** 9 Apply-able false cards in 100 wrong namings (17 across all 240).
+     Mitigated by a Jev applicability gate for pack cards (§5): offline, 0/15 false passes and recall 25/33.
+     Fleischner recall of 3/9 is weak. Not yet re-run end to end.
+   - Result and authoring order: `docs/guidelines/coverage-lab-2026-10.md`.
+3. **Rewire the preview to the engine. BUILT, GATE FAILED.** The model settles inputs, code evaluates, and the
+   output-index step is removed. Preview lab run 2: **1 wrong proposal** (BTS: size, upper lobe and benign features
+   were settled from a different lesion in the same dictation, a calcified granuloma; every quote was verbatim, so
+   nothing caught it), 29/30 outcomes, **p95 3568 ms against the 2 s target**. Result:
+   `docs/superpowers/handover/2026-10-12-copilot-evidence/preview_lab.md`.
+   - **Proposed fix (not built):** give each input a scope (lesion or patient). Lesion-scoped quotes must come from
+     the card's own finding unit, not the whole dictation. Latency needs a smaller settle prompt or a faster model.
+   - **Frontend must not start Apply until this passes** a re-run of the preview lab.
 4. **Frontend Tasks 14–19.** Apply appears only on pack and TNM cards. The Task 14 mock-up needs Hassan's approval
-   first. Task 20, the review page, is dropped.
-5. **Then:** the tier 2 parser lab, further packs in demand order, the monthly routine, and retiring prefetch (§10).
+   first. Task 20, the review page, is dropped. Blocked on item 3.
+5. **Then:** the tier 2 parser lab, further packs in coverage-lab order, the monthly routine, and retiring prefetch
+   (§10).
+
+**Changes the build made to §3, §4 and §5:**
+- **§3 inputs:** numeric inputs may declare `min_value` / `max_value` ranges. The engine rejects out-of-range values,
+  domains sample inside the ranges, and `verify` checks `derive` steps over them (fixes ln(0) and 0÷0 in BTS).
+- **§4 partial evaluation:** when the set of possible outcomes has exactly one member, the outcome is settled even if
+  inputs are unknown. No proposal is built with an unfilled placeholder.
+- **§5 pack applicability gate:** pack cards pass a Jev yes/no check built from the pack's `applies_to`, threshold
+  `PACK_GATE_MIN`, fail closed. Explicit asks that name a system bypass the gate, as TNM does.
 
 **Separately:** make the repo private (§11).
 

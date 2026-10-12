@@ -95,7 +95,7 @@ N to reach 90% of correct mentions: 27 of 47 de-duplicated (cumulative 89.95% at
 - Across all 240 wrong namings: 17 Apply-able false cards (Bosniak 2019 x8, Fleischner 2017 x6, TNM x2, BTS 2015 nodule x1).
 - Typical causes: Bosniak named for hepatic cysts; Fleischner named for metastases in a cancer patient, tree-in-bud and a calcified granuloma; TNM named for an indeterminate tonsil and a bone lesion on follow-up.
 - Mitigation in progress: a Jev applicability gate for pack cards.
-- Mitigation result: pending
+- Mitigation result: a Jev applicability gate for pack cards was built (one yes/no per pack candidate, threshold `PACK_GATE_MIN` 0.7, fail closed), mirroring the TNM gate. Scored offline against the 17 false cards and the correct pack mentions: 0/15 false passes, and recall kept at 25/33 (Bosniak 20/21, BTS 2/3, Fleischner 3/9). Fleischner recall of 3/9 is weak (some negatives score up to 0.64), and clinical history was not tested in the lab. Explicit asks that name a system bypass the gate, as the TNM explicit-staging rule does; the background matcher keeps it. Cost: one extra Jev call per uncached pack candidate. The gate has not been re-run end to end on the full negative-control sample.
 
 ## 4. Authoring order
 

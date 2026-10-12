@@ -2,7 +2,15 @@
 
 > **Update (2026-10-12, later):** Hassan adopted the packs. The design is the curated guideline library. Its spec is
 > `docs/superpowers/specs/2026-10-12-guideline-library-design.md`, and its §12 "First slice" replaces §6 below.
-> Next: write the plan for that slice.
+> **First slice closed (2026-10-12).** Schema proof passed; coverage lab ran (negative-control gate mitigated by a
+> pack applicability gate); preview lab **failed** (1 wrong proposal from a different lesion, p95 3568 ms vs 2 s).
+> See spec §12. Next, in order:
+> 1. Fix preview lesion scoping (input scope lesion/patient; lesion-scoped quotes from the card's own finding unit)
+>    and latency (smaller settle prompt or faster model), then re-run the preview lab. Frontend must not start Apply
+>    until it passes.
+> 2. Frontend Tasks 14–19 from `docs/superpowers/plans/2026-10-12-scratchpad-copilot.md`, Apply only on pack and TNM
+>    cards. Task 14 (the mock-up) needs Hassan's approval first.
+> 3. Next packs in coverage-lab order (`docs/guidelines/coverage-lab-2026-10.md`).
 
 **Start here next session.** The backend has been built and reviewed. A step-back review then found that its runtime
 web-retrieval half cannot deliver what Apply needs. **The open decision for Hassan is whether to pivot to curated
