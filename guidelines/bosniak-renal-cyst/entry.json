@@ -36,7 +36,7 @@
         "yes_homogeneous_low_attenuation",
         "yes_other"
       ],
-      "how_stated": "'too small to characterise' (eg, section thickness over half the diameter); say whether it is well-defined, homogeneous and of low attenuation",
+      "how_stated": "yes when dictated as 'too small to characterise' (eg, section thickness over half the diameter), and then whether it is well-defined, homogeneous and of low attenuation; no when the mass is described by its features (wall, septa, contents or attenuation) rather than called too small",
       "locator": {
         "source": "S1",
         "page": null,

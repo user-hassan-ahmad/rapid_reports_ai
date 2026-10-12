@@ -144,3 +144,23 @@ def test_an_out_of_range_number_is_dropped_so_the_input_is_asked(toy):
     assert PP._value(i, PP.RawItem(input="size", value=0, quote="0 mm")) is None
     assert PP._value(i, PP.RawItem(input="size", value=7, quote="7 mm")).value == 7
     assert PP._answer(e, i, "0") is None and PP._answer(e, i, "7").value == 7
+
+
+def test_settled_list_returned_as_json_text_is_parsed():
+    raw = PP.RawSettle.model_validate({"settled": '[{"input": "kind", "value": "solid", "quote": "solid"}]'})
+    assert [(r.input, r.value) for r in raw.settled] == [("kind", "solid")]
+
+
+@pytest.mark.parametrize("unit,value,quote,ok", [
+    ("nodules", 1, "Solitary nodule", True), ("nodules", 2, "two nodules", True), ("nodules", 1, "No other nodules", True),
+    ("nodules", 3, "two nodules", False), ("mm", 7, "seven millimetres", False), ("mm", 1, "single nodule", False)])
+def test_a_count_may_be_dictated_in_words_but_a_measurement_may_not(unit, value, quote, ok):
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import InputDef
+    i = InputDef(id="n", label="N", type="number", unit=unit, min_value=0, min_inclusive=False)
+    assert (PP._value(i, PP.RawItem(input="n", value=value, quote=quote)) is not None) is ok
+
+
+def test_bosniak_says_a_described_mass_is_not_too_small():
+    from rapid_reports_ai.hybrid_stack.copilot.library.bundle import compile_bundle, Library
+    e = Library(compile_bundle()).lookup("bosniak-renal-cyst")
+    assert "no when the mass is described by its features" in e.input("too_small").how_stated

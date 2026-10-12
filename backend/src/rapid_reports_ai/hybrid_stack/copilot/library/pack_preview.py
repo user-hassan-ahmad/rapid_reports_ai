@@ -5,10 +5,11 @@ from the entry: no model-written line, no output index."""
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ....enhancement_utils import _run_agent_with_model
 from ....report_reconcile import QWEN
@@ -24,6 +25,11 @@ PACK_BRANCH = "Pack"
 TIMEOUT_S = 10.0
 _NUM_UNIT = re.compile(r"(\d+(?:\.\d+)?)\s*(cms?\b|centimet\w*|mm\b|millimet\w*)?", re.I)
 _STATE_LABEL = {"absent": "Absent", "not_assessable": "Not assessable"}
+# a count of things may be dictated in words ("solitary nodule", "two nodules"); never a measurement ("seven mm")
+_COUNT_WORDS = {"single": 1, "solitary": 1, "sole": 1, "one": 1, "no other": 1, "no further": 1, "two": 2, "three": 3,
+                "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+_COUNT_RE = re.compile(r"\b(" + "|".join(sorted(_COUNT_WORDS, key=len, reverse=True)) + r")\b", re.I)
+_MEASURE_UNITS = {"", "mm", "cm", "mm3", "hu", "days", "weeks", "months", "years", "%"}
 
 SETTLE_SYS = """You settle the inputs of one published radiology classification system from a radiologist's dictation. INPUTS lists each input's id, type and allowed values: use nothing else.
 For each input the FINDINGS or CLINICAL HISTORY state, return one item:
@@ -43,6 +49,17 @@ class RawItem(BaseModel):
 
 class RawSettle(BaseModel):
     settled: list[RawItem] = Field(default_factory=list)
+
+    @field_validator("settled", mode="before")
+    @classmethod
+    def _json_text(cls, v):
+        """Qwen sometimes returns the list as JSON text when it is long (BTS, 14 inputs): parse it, not retry."""
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except ValueError:
+                return v
+        return v
 
 
 def _bands_for(e: Entry, i: InputDef) -> list:
@@ -113,6 +130,8 @@ def _value(i: InputDef, item: RawItem) -> InputValue | None:
         else:
             cands = [n]
         ok = ok or any(abs(x - c) < 1e-6 for c in cands)
+    if not ok and (i.unit or "").lower() not in _MEASURE_UNITS:
+        ok = any(abs(x - _COUNT_WORDS[m.group(1).lower()]) < 1e-6 for m in _COUNT_RE.finditer(item.quote))
     return InputValue(value=x) if ok else None
 
 
