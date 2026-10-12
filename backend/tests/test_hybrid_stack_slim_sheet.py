@@ -118,3 +118,24 @@ def test_template_structure_is_none_for_a_sheet_that_is_not_clean_grammar():
     assert not parse_sheet(broken["skill_sheet"]).structure.usable
     assert template_structure(broken) is None
     assert template_structure({**_lean_cfg(), "generation_mode": "auto"}) is None
+
+
+from rapid_reports_ai.template_sheet_grammar import parse_sheet
+from rapid_reports_ai.hybrid_stack.template import template_region_normals
+
+_SUBJECTLESS = """## Report Structure
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION CONCLUSION | header: "Conclusion:" | role: impression
+
+## Paragraph: Liver (FINDINGS)
+COVERS ["liver"]
+Opening: "The liver is normal."
+NORMAL [liver] "Unremarkable."
+NORMAL [spleen] "The spleen is normal in size."
+"""
+
+
+def test_a_normal_without_its_structure_is_named_by_its_label():
+    st = parse_sheet(_SUBJECTLESS, mode="template").structure
+    assert st.usable
+    assert template_region_normals(st)["Liver"] == ["Liver: unremarkable.", "The spleen is normal in size."]

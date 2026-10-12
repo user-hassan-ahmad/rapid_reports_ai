@@ -2,6 +2,7 @@
 paragraphs of a fresh grammar structure in template order, each paragraph's COVERS as includes."""
 from __future__ import annotations
 
+import re
 from typing import Optional
 
 from ..template_sheet_grammar import is_grammar_sheet, parse_sheet
@@ -44,6 +45,21 @@ def template_regions(st: SheetStructure) -> list[Region]:
     return out
 
 
+_WORD = re.compile(r"[a-z]+")
+
+
+def _named(text: str, structure: str) -> str:
+    """A Normal whose own text does not name its structure ("Unremarkable." under NORMAL [liver]) is offered as
+    "Liver: unremarkable.", so the check and the writer know what it is about (conversion lab 2026-10-12: Jev never
+    kept a subject-less normal)."""
+    words = set(_WORD.findall(text.lower()))
+    label = (structure or "").strip()
+    if not label or words & set(_WORD.findall(label.lower())):
+        return text
+    body = text.strip()
+    return f"{label[:1].upper()}{label[1:]}: {body[:1].lower()}{body[1:]}"
+
+
 def template_region_normals(st: SheetStructure) -> dict[str, list[str]]:
     """Each paragraph-region's normal sentences (checklist spec §8.3): its Normal statements and unconditioned
     Negative statements, as the template wrote them. Named as template_regions names them; a sentence with a
@@ -57,7 +73,7 @@ def template_region_normals(st: SheetStructure) -> dict[str, list[str]]:
     for p in paras:
         name = p.name if p.name.lower() not in seen else f"{p.name} ({p.section.title()})"
         seen.add(name.lower())
-        texts = [n.text for n in st.normals if n.paragraph == p.id]
+        texts = [_named(n.text, n.structure) for n in st.normals if n.paragraph == p.id]
         texts += [n.text for n in st.negatives if n.paragraph == p.id and n.condition is None]
         keep: list[str] = []
         for t in texts:

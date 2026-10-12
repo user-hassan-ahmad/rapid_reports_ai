@@ -29,6 +29,8 @@ import logging
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/canvas/stack", tags=["hybrid-stack"])
 
+MAX_NORMALS_PER_REGION = 16   # conversion lab 2026-10-12: 8 silently cut mandatory negatives in long paragraphs
+
 
 def stack_allowed(env: Mapping[str, str] = os.environ) -> bool:
     return env.get("RR_HYBRID_STACK", "1") != "0" and v2_allowed(env)
@@ -243,7 +245,7 @@ async def stack_unfinished(req: UnfinishedRequest, user: User = Depends(get_curr
 @router.post("/assumed", response_model=AssumedResult)
 async def stack_assumed(req: AssumedRequest, user: User = Depends(get_current_user)):
     _require()
-    normals = {r: s[:8] for r, s in list(req.region_normals.items())[:40]}
+    normals = {r: s[:MAX_NORMALS_PER_REGION] for r, s in list(req.region_normals.items())[:40]}
     owned = list(dict.fromkeys(o for o in req.owned if o.strip()))[:100]   # the client sends current rows first
     return await assumed_normals(req.dictation, normals, req.abnormal, req.dictated_normal, req.removed[:50],
                                  owned, req.touched[:40])

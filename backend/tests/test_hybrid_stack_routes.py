@@ -243,3 +243,18 @@ def test_slim_sheet_for_a_template_without_a_usable_structure_says_so(authed, db
     db_session.commit()
     d = authed.post("/api/canvas/stack/slim-sheet", json={"scan_type": "CT", "template_id": str(t.id)}).json()
     assert d["status"] == "template_unusable" and not d["ready"] and d["region_normals"] == {}
+
+
+def test_assumed_checks_up_to_sixteen_normals_per_region(authed, monkeypatch):
+    seen = {}
+
+    async def fake_assumed(dictation, normals, *a, **k):
+        seen.update(normals)
+        from rapid_reports_ai.hybrid_stack.normals import AssumedResult
+        return AssumedResult(assumed={r: [] for r in normals})
+
+    monkeypatch.setattr(R, "assumed_normals", fake_assumed)
+    sentences = [f"Normal {i}." for i in range(20)]
+    r = authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"A": sentences}})
+    assert r.status_code == 200
+    assert len(seen["A"]) == 16
