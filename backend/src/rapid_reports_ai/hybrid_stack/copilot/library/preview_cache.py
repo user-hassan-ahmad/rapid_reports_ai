@@ -1,8 +1,10 @@
-"""Pack previews computed before the card is opened (library spec §12 next slice, item 3). /match starts the preview
-of every pack card it returns; /open and /preview await the same task, so opening a card is a cache hit and the
-settle latency is hidden. Process-local, bounded (LRU, MAX_ENTRIES), never persisted; the key holds clinical text
-(finding, dictation, history) and is never logged. Fail open: a failed or degraded preview reaches the caller once
-and is never served again, unless it is degraded only for want of a finding unit (deterministic)."""
+"""Pack settlements computed before the card is opened (library spec §12 next slice, item 3). /match starts the
+settlement of every pack card it returns; /open and /preview await the same task, so opening a card is a cache hit
+and the settle latency is hidden. The key holds no answer: the dictation is read once per (pack, finding, dictation,
+history), and each answer re-runs only the engine over the cached settlement (pack_preview.finish), never the model
+or Jev, so settled values cannot change between answers. Process-local, bounded (LRU, MAX_ENTRIES), never persisted;
+the key holds clinical text and is never logged. Fail open: a failed settlement (or an error) reaches the caller once
+and is never served again; one with no finding unit is deterministic and is."""
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +12,6 @@ import logging
 from collections import OrderedDict
 from typing import Any, Callable, Coroutine
 
-from ..types import Preview
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +27,9 @@ def _t(s: str) -> str:
     return " ".join((s or "").split())
 
 
-def key(pack_key: str, finding: str, findings: str, history: str, answered: dict[str, str],
-        patient: dict[str, str]) -> tuple:
-    """Everything the preview reads. An empty finding stays empty: preview_pack then asks every lesion input."""
-    return (pack_key, _t(finding), _t(findings), _t(history), tuple(sorted(answered.items())),
-            tuple(sorted(patient.items())))
+def key(pack_key: str, finding: str, findings: str, history: str) -> tuple:
+    """Everything the settlement reads; never an answer. An empty finding stays empty: every lesion input is asked."""
+    return (pack_key, _t(finding), _t(findings), _t(history))
 
 
 def _good(t: asyncio.Task, loop: asyncio.AbstractEventLoop) -> bool:
@@ -40,8 +39,7 @@ def _good(t: asyncio.Task, loop: asyncio.AbstractEventLoop) -> bool:
         return True
     if t.exception() is not None:
         return False
-    r = t.result()
-    return isinstance(r, Preview) and (not r.degraded or r._cacheable)
+    return getattr(t.result(), "failed", None) is False
 
 
 def _done(t: asyncio.Task) -> None:
@@ -51,8 +49,8 @@ def _done(t: asyncio.Task) -> None:
         logger.warning("[library.cache] preview %s", type(t.exception()).__name__)
 
 
-def start(k: tuple, make: Callable[[], Coroutine[Any, Any, Preview]], prewarm: bool = False) -> asyncio.Task | None:
-    """The cached task for this key while it is good (running, or done with a full preview), else a new one, bounded
+def start(k: tuple, make: Callable[[], Coroutine[Any, Any, Any]], prewarm: bool = False) -> asyncio.Task | None:
+    """The cached task for this key while it is good (running, or done and not failed), else a new one, bounded
     by TASK_TIMEOUT_S. A prewarm over PREWARM_MAX running prewarms starts nothing (None): /open computes it."""
     loop = asyncio.get_running_loop()
     t = _C.get(k)

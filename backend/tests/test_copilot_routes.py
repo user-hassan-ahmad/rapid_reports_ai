@@ -543,10 +543,10 @@ def test_open_settles_lesion_inputs_from_the_cards_own_finding(authed, toy_lib, 
 def test_open_passes_the_patient_map_and_rejects_unknown_facts(authed, toy_lib, monkeypatch):
     seen = {}
 
-    async def fake(e, findings, history, answered, sources=None, finding="", patient=None):
+    def fake_finish(e, s, answered, patient=None, sources=None):
         seen["patient"] = patient
         return Preview()
-    monkeypatch.setattr(CR, "preview_pack", fake)
+    monkeypatch.setattr(CR, "finish", fake_finish)
     ok = authed.post("/api/canvas/stack/guidelines/open", json={
         "card": PACK_CARD, "findings": "x", "patient": {"age_years": "60"}})
     assert ok.status_code == 200 and seen["patient"] == {"age_years": "60"}
@@ -565,11 +565,12 @@ async def test_match_starts_pack_previews_and_open_reuses_them(db_session, user,
         return [card]
     calls = []
 
-    async def fake_preview(e, findings, history, answered, sources=None, finding="", patient=None):
-        calls.append((finding, findings, patient))
-        return Preview(missing=["risk"])
+    async def fake_settle(e, findings, history, finding=""):
+        calls.append((finding, findings))
+        return PP.Settlement(values={"kind": (PP.InputValue(value="solid"), "solid"),
+                                     "size": (PP.InputValue(value=7.0), "7 mm")})
     monkeypatch.setattr(CR, "match", fake_match)
-    monkeypatch.setattr(CR, "preview_pack", fake_preview)
+    monkeypatch.setattr(CR, "settle_pack", fake_settle)
     dictation = "7 mm solid nodule. Liver normal."
     await CR.copilot_match(CR.MatchRequest(scan_type="CT", findings=[CR.FindingIn(id="u1", text="7 mm solid nodule.")],
                                            dictation=dictation, patient={"age_years": "60"}),
@@ -578,11 +579,13 @@ async def test_match_starts_pack_previews_and_open_reuses_them(db_session, user,
     out = await CR.copilot_open(CR.OpenRequest(card=CR.CardIn(**PACK_CARD), finding="7 mm solid nodule.",
                                                findings=dictation, patient={"age_years": "60"}), user=user)
     assert out.preview.missing == ["risk"]
-    assert calls == [("7 mm solid nodule.", dictation, {"age_years": "60"})]      # computed once, at match time
-    again = await CR.copilot_open(CR.OpenRequest(card=CR.CardIn(**PACK_CARD), finding="7 mm solid nodule.",
-                                                 findings=dictation, answered={"risk": "low"},
-                                                 patient={"age_years": "60"}), user=user)
-    assert again.preview.missing == ["risk"] and len(calls) == 2                 # an answer is a new key
+    assert calls == [("7 mm solid nodule.", dictation)]                         # computed once, at match time
+    again = await CR.copilot_preview(CR.OpenRequest(card=CR.CardIn(**PACK_CARD), finding="7 mm solid nodule.",
+                                                    findings=dictation, answered={"risk": "low"},
+                                                    patient={"age_years": "60"}), user=user, db=db_session)
+    assert again.preview.missing == [] and again.preview.proposal.recommendation == "CT at 12 months"
+    assert len(calls) == 1                                                       # an answer re-runs the engine only
+    assert [(x.input, x.value) for x in again.preview.settled][:2] == [("kind", "solid"), ("size", "7 mm")]
 
 
 def test_a_reference_card_opens_read_only_and_is_never_fetched(authed, monkeypatch, toy_reference):
@@ -625,7 +628,7 @@ def test_a_failed_pack_preview_is_check_first_when_the_pack_has_eligibility(auth
 
     async def boom(*a, **k):
         raise RuntimeError("boom")
-    monkeypatch.setattr(CR, "preview_pack", boom)
+    monkeypatch.setattr(CR, "settle_pack", boom)
     d = authed.post("/api/canvas/stack/guidelines/open", json={"card": PACK_CARD, "findings": "x"}).json()
     assert d["preview"]["state"] == "check_first" and d["preview"]["degraded"] is True
 
@@ -633,7 +636,7 @@ def test_a_failed_pack_preview_is_check_first_when_the_pack_has_eligibility(auth
 def test_a_failed_pack_preview_applies_when_the_pack_has_no_eligibility(authed, toy_lib, monkeypatch):
     async def boom(*a, **k):
         raise RuntimeError("boom")
-    monkeypatch.setattr(CR, "preview_pack", boom)
+    monkeypatch.setattr(CR, "settle_pack", boom)
     d = authed.post("/api/canvas/stack/guidelines/open", json={"card": PACK_CARD, "findings": "x"}).json()
     assert d["preview"]["state"] == "applies" and d["preview"]["degraded"] is True
 
@@ -662,8 +665,8 @@ def test_prewarm_skips_over_the_cap(monkeypatch, toy):
     async def go():
         async def slow(*a, **k):
             await asyncio.sleep(0.05)
-            return Preview()
-        monkeypatch.setattr(CR, "preview_pack", slow)
+            return PP.Settlement()
+        monkeypatch.setattr(CR, "settle_pack", slow)
         cards = [Card(key="toy-nodule@1.0", name="Toy 2020", version="2020", finding_id=f"u{n}", branch="Pack")
                  for n in range(3)]
         req = CR.MatchRequest(findings=[CR.FindingIn(id=f"u{n}", text=f"{n + 5} mm nodule.") for n in range(3)])
@@ -678,7 +681,23 @@ def test_a_pack_preview_timeout_says_degraded(authed, toy_lib, monkeypatch):
 
     async def slow(*a, **k):
         await asyncio.sleep(1)
-        return Preview()
-    monkeypatch.setattr(CR, "preview_pack", slow)
+        return PP.Settlement()
+    monkeypatch.setattr(CR, "settle_pack", slow)
     d = authed.post("/api/canvas/stack/guidelines/open", json={"card": PACK_CARD, "findings": "x"}).json()
     assert d["preview"]["degraded"] is True and d["preview"]["state"] == "applies"
+
+
+async def test_an_answer_after_open_calls_neither_the_model_nor_jev(db_session, user, toy_lib, monkeypatch):
+    """Lab fix round item 5: /open reads the dictation once; /preview with answers re-runs only the engine."""
+    body = {"card": CR.CardIn(**PACK_CARD), "finding": "7 mm solid nodule.", "findings": "7 mm solid nodule.",
+            "clinical_history": "Smoker."}
+    first = (await CR.copilot_open(CR.OpenRequest(**body), user=user)).preview
+
+    async def no_call(*a, **k):
+        raise AssertionError("an answer never calls the model or Jev")
+    monkeypatch.setattr(PP, "_call", no_call)
+    monkeypatch.setattr(P, "jev_post", no_call)
+    for answered in ({"risk": "low"}, {"risk": "high"}):
+        d = (await CR.copilot_preview(CR.OpenRequest(**body, answered=answered), user=user, db=db_session)).preview
+        assert d.degraded is False and d.proposal is not None
+        assert [x for x in d.settled if x.input != "risk"] == first.settled

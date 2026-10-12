@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field
 
 BranchState = Literal["checked", "not_available", "pending"]
 CardState = Literal["applies", "check_first", "does_not_apply"]
@@ -136,6 +136,4 @@ class Preview(BaseModel):
     # definition, options, the outcomes it decides between with their citations, and the citations of its steps)
     trace: dict[str, Any] | None = None                 # library packs: the engine trace behind the proposal
     degraded: bool = False        # library packs: the settle model or a Jev check failed, so inputs it could have
-                                  # settled are asked; never served from the preview cache again
-    _cacheable: bool = PrivateAttr(default=False)   # degraded only for want of a finding unit: deterministic, so the
-                                                    # preview cache may serve it again (never sent to the client)
+                                  # settled are asked, or there was no finding unit

@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -454,47 +455,60 @@ def failed(e: Entry) -> Preview:
                    state="check_first" if any(i.role == "eligibility" for i in e.inputs) else "applies")
 
 
-async def _none() -> tuple[None, bool]:
-    return None, False
+@dataclass
+class Settlement:
+    """What the dictation settles for one card, read once per (dictation, finding, history) and never again: the
+    preview cache holds it, and each answer re-runs only the engine over it (`finish`), so a settled value cannot
+    change between answers."""
+    values: dict[str, tuple[InputValue, str]] = field(default_factory=dict)   # input -> (value, quote)
+    failed: bool = False       # the model or a Jev check failed: inputs it could have settled are asked; never cached
+    no_unit: bool = False      # no finding unit: every lesion input is asked (deterministic, so cached)
 
 
-async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str, str],
-                       sources: list[dict] | None = None, finding: str = "",
-                       patient: dict[str, str] | None = None) -> Preview:
-    sources = sources or []
+async def settle_pack(e: Entry, findings: str, history: str, finding: str = "") -> Settlement:
+    """Every input the dictation settles, whatever the radiologist has answered (answers win in `finish`)."""
     finding = finding.strip()
-    given = _given(e, answered, patient)
     # no finding unit: lesion inputs are never read from the whole dictation (another lesion's values); they are asked
-    no_unit = not finding and any(i.scope == "lesion" and i.id not in given for i in e.inputs)
+    no_unit = not finding and any(i.scope == "lesion" for i in e.inputs)
     if no_unit:
         logger.info("[library.preview] %s: no finding unit; lesion inputs asked", e.key)
-    prior_open = NO_PRIOR_INPUT not in given
     (model, degraded), (no_prior, prior_failed) = await asyncio.gather(
-        _settle(e, given, finding, findings, history),
-        _no_prior(e, findings, history) if prior_open else _none())
+        _settle(e, {}, finding, findings, history), _no_prior(e, findings, history))
     if NO_PRIOR_INPUT in model and model[NO_PRIOR_INPUT][0].value is not True:
         del model[NO_PRIOR_INPUT]            # "No" (or a state) never from the model: only from the whole dictation
     # every number (read by code from the quote) is put to Jev as stated for its scope: this catches a number of the
     # wrong time point or role ("was 5 mm, now 9 mm"; swapped volumes); every enum or boolean, as stated by its quote
     pending = {k: (v, st.quote) for k, (v, st) in model.items()}
     confirmed, jev_failed = await _confirm(e, pending, finding, findings, history) if pending else (set(), False)
-    keep = [k for k in model if k in confirmed]
-    if no_prior is not None and NO_PRIOR_INPUT in keep:
-        keep.remove(NO_PRIOR_INPUT)          # the finding says yes, the dictation no: asked
-        no_prior = None
-    given.update({k: model[k][0] for k in keep})
-    quotes = {k: model[k][1].quote for k in keep}
-    if no_prior is not None and NO_PRIOR_INPUT not in model:
-        given[NO_PRIOR_INPUT], quotes[NO_PRIOR_INPUT] = InputValue(value=False), no_prior
-    jev_failed = jev_failed or prior_failed
+    values = {k: pending[k] for k in model if k in confirmed}
+    if no_prior is not None and NO_PRIOR_INPUT in values:
+        del values[NO_PRIOR_INPUT]           # the finding says yes, the dictation no: asked
+    elif no_prior is not None and NO_PRIOR_INPUT not in model:
+        values[NO_PRIOR_INPUT] = (InputValue(value=False), no_prior)
+    return Settlement(values=values, failed=degraded or jev_failed or prior_failed, no_unit=no_unit)
+
+
+def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str, str] | None = None,
+           sources: list[dict] | None = None) -> Preview:
+    """The card from a settlement and the radiologist's answers, by the engine alone: no model, no Jev. An answer
+    (the card's own, then the shared patient one) overrides the settled value for that input."""
+    given = _given(e, answered, patient)
+    quotes = {}
+    for k, (v, q) in s.values.items():
+        if k not in given:
+            given[k], quotes[k] = v, q
     try:
         t = engine.evaluate(e, given)
     except (engine.EvaluationError, ValueError) as ex:
         logger.error("[library.preview] %s cannot be evaluated: %s", e.key, ex)
         return failed(e)
-    out = _build(e, t, given, quotes, sources, degraded or jev_failed or no_unit)
-    out._cacheable = no_unit and not (degraded or jev_failed)     # deterministic: the key holds the empty finding
-    return out
+    return _build(e, t, given, quotes, sources or [], s.failed or s.no_unit)
+
+
+async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str, str],
+                       sources: list[dict] | None = None, finding: str = "",
+                       patient: dict[str, str] | None = None) -> Preview:
+    return finish(e, await settle_pack(e, findings, history, finding), answered, patient, sources)
 
 
 def as_entry(e: Entry, sources: list[dict]) -> CardEntry:

@@ -35,7 +35,7 @@ from .fetch import OVERVIEW, resolve_guideline
 from .library import bundle as L
 from .library import describe as D
 from .library import preview_cache as PC
-from .library.pack_preview import PACK_BRANCH, REFERENCE_BRANCH, as_entry, failed, preview_pack
+from .library.pack_preview import PACK_BRANCH, REFERENCE_BRANCH, as_entry, failed, finish, settle_pack
 from .library.schema import FACTS
 from .matcher import Finding, match
 from .preview import preview
@@ -313,17 +313,17 @@ def _reference_result(ref, t0: float) -> OpenResult:
 
 
 async def _pack_result(pack, req: OpenRequest, t0: float) -> OpenResult:
-    """Offline and engine-decided: never a fetch. The preview comes from the cache (started by /match) or starts now.
-    Fail open, bounded, as _branch_and_preview."""
+    """Offline and engine-decided: never a fetch. The settlement comes from the cache (started by /match) or starts
+    now; the answers then re-run only the engine over it. Fail open, bounded, as _branch_and_preview."""
     e, view = pack
     sources = L.get().sources(e.key)
     findings, history = req.findings[:6000], req.clinical_history[:2000]
     finding = req.finding or req.card.finding     # the unit sent with the request, else the one /match gave the card
-    k = PC.key(e.key, finding, findings, history, req.answered, req.patient)
+    k = PC.key(e.key, finding, findings, history)
     try:
-        task = PC.start(k, lambda: preview_pack(e, findings, history, req.answered, sources, finding=finding,
-                                                patient=req.patient))
-        prev = await asyncio.wait_for(asyncio.shield(task), PREVIEW_TIMEOUT_S)
+        task = PC.start(k, lambda: settle_pack(e, findings, history, finding=finding))
+        settled = await asyncio.wait_for(asyncio.shield(task), PREVIEW_TIMEOUT_S)
+        prev = finish(e, settled, req.answered, req.patient, sources)
     except Exception as ex:   # TimeoutError included
         logger.warning("[copilot.routes] pack preview %s", type(ex).__name__)   # no message: it may hold dictation
         prev = failed(e)
@@ -332,7 +332,7 @@ async def _pack_result(pack, req: OpenRequest, t0: float) -> OpenResult:
 
 
 def _prewarm(req: MatchRequest, cards: list[Card]) -> int:
-    """Start each pack card's preview now, keyed as /open will key it before any answer. Fail open."""
+    """Start each pack card's settlement now, keyed as /open will key it. Fail open."""
     texts = {f.id: f.text for f in req.findings}
     dictation = (req.dictation or "\n".join(f.text for f in req.findings))[:6000]
     history = req.clinical_history[:2000]
@@ -344,9 +344,8 @@ def _prewarm(req: MatchRequest, cards: list[Card]) -> int:
             finding = c.finding or texts.get(c.finding_id, "")
             if e is None or e.tier != 1 or not finding:
                 continue
-            t = PC.start(PC.key(e.key, finding, dictation, history, {}, req.patient),
-                         lambda e=e, lib=lib, finding=finding: preview_pack(
-                             e, dictation, history, {}, lib.sources(e.key), finding=finding, patient=req.patient),
+            t = PC.start(PC.key(e.key, finding, dictation, history),
+                         lambda e=e, finding=finding: settle_pack(e, dictation, history, finding=finding),
                          prewarm=True)
             n += t is not None
         except Exception as ex:

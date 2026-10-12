@@ -380,12 +380,11 @@ async def test_the_number_is_read_from_its_quote_never_taken_from_the_model(toy_
     assert {s.input: s.value for s in out.settled}.get("size") == want
 
 
-async def test_the_settle_prompt_is_the_finding_alone_when_no_patient_input_is_open(toy_entry, monkeypatch, jev):
+async def test_the_settle_prompts_finding_is_the_finding_alone(toy_entry, monkeypatch, jev):
     prompts = []
     _model(monkeypatch, KIND, SIZE, prompts=prompts)
     await PP.preview_pack(toy_entry, TWO, "Smoker.", {"risk": "low"}, finding=FINDING)
-    assert prompts[0].endswith(f"FINDING:\n{FINDING}")
-    assert "granuloma" not in prompts[0] and "Smoker" not in prompts[0] and "- risk" not in prompts[0]
+    assert prompts[0].endswith(f"FINDING:\n{FINDING}") and "granuloma" not in prompts[0].split("FINDING:")[-1]
 
 
 async def test_the_settle_prompt_offers_the_history_and_dictation_for_patient_inputs(toy_entry, monkeypatch, jev):
@@ -396,13 +395,14 @@ async def test_the_settle_prompt_offers_the_history_and_dictation_for_patient_in
     assert "CLINICAL HISTORY: Smoker." in prompts[0] and f"DICTATION:\n{TWO}" in prompts[0]
 
 
-async def test_nothing_open_calls_no_model(toy_entry, monkeypatch, jev):
-    async def boom(system, prompt):
-        raise AssertionError("no open input: no settle call")
-    monkeypatch.setattr(PP, "_call", boom)
-    out = await PP.preview_pack(toy_entry, FINDING, "", {"kind": "solid", "size": "7", "risk": "low",
-                                                         "margin": "smooth"}, finding=FINDING)
-    assert out.proposal.recommendation == "CT at 12 months" and out.degraded is False
+async def test_answers_override_settled_values_and_never_skip_the_one_read(toy_entry, monkeypatch, jev):
+    """The dictation is read once whatever is answered (the settlement is cached without answers); answers win."""
+    prompts = []
+    _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"}, prompts=prompts)
+    out = await PP.preview_pack(toy_entry, FINDING, "Smoker.", {"kind": "solid", "size": "7", "risk": "low",
+                                                                "margin": "smooth"}, finding=FINDING)
+    assert out.proposal.recommendation == "CT at 12 months" and out.degraded is False and len(prompts) == 1
+    assert {s.input: s.quote for s in out.settled}["risk"] == ""                # the answer, not the quote
 
 
 def test_a_typed_answer_is_read_like_a_quote(toy_entry):
@@ -542,16 +542,16 @@ def test_a_patient_number_is_not_held_to_one_measurement():
                      ["Aged 65 years, smoker for 40 years."]).value == 65
 
 
-async def test_only_a_missing_finding_makes_a_degraded_preview_cacheable(toy_entry, monkeypatch, jev):
+async def test_only_a_failure_fails_the_settlement(toy_entry, monkeypatch, jev):
     _model(monkeypatch, {"input": "risk", "value": "high", "quote": "smoker"})
-    out = await PP.preview_pack(toy_entry, TWO, "Smoker.", {})
-    assert out.degraded is True and out._cacheable is True
+    s = await PP.settle_pack(toy_entry, TWO, "Smoker.")
+    assert s.no_unit is True and s.failed is False
+    assert PP.finish(toy_entry, s, {}).degraded is True                     # no unit: still said on the card
     jev["fail"] = True
-    out = await PP.preview_pack(toy_entry, TWO, "Smoker.", {})
-    assert out.degraded is True and out._cacheable is False
+    assert (await PP.settle_pack(toy_entry, TWO, "Smoker.")).failed is True
     jev["fail"] = False
-    out = await PP.preview_pack(toy_entry, FINDING, "Smoker.", {}, finding=FINDING)
-    assert out._cacheable is False
+    s = await PP.settle_pack(toy_entry, FINDING, "Smoker.", finding=FINDING)
+    assert s.failed is False and s.no_unit is False
 
 
 async def test_bts_with_eligibility_unknown_is_check_first_with_only_eligibility_asked(monkeypatch, jev):
@@ -780,13 +780,13 @@ async def test_the_finding_saying_yes_and_the_dictation_no_asks(monkeypatch, jev
     assert "prior_study" in out.missing
 
 
-async def test_an_answered_prior_study_runs_no_prior_check(monkeypatch, jev):
+async def test_an_answered_prior_study_overrides_the_dictation(monkeypatch, jev):
     from tests.test_library_partial import _bts
+    _prior_jev(jev)
     _model(monkeypatch)
-    await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging.", "", {"prior_study": "Yes"},
-                          finding=PRIOR_FINDING)
-    claims = [q["instructions"] for p in jev["payloads"] for q in p["questions"].values()]
-    assert not any(NO_PRIOR in c for c in claims)
+    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging.", "", {"prior_study": "Yes"},
+                                finding=PRIOR_FINDING)
+    assert next(x for x in out.settled if x.input == "prior_study").value == "Yes"
 
 
 # lab fix round item 4: an attenuation is blocked only by another attenuation; one measured after contrast is asked
@@ -810,3 +810,71 @@ async def test_a_size_in_another_family_no_longer_asks_the_attenuation(monkeypat
     assert {x.input: x.value for x in out.settled}.get("hu") == "10 HU"
     claims = [q["instructions"] for p in jev["payloads"] for q in p["questions"].values()]
     assert "The FINDING states that 10 HU was measured on a contrast-enhanced (post-contrast) phase" in claims
+
+
+
+# lab fix round item 5: read once; an answer re-runs only the engine over the settlement
+async def _settled_bts(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    e = _bts()
+    finding = "Solitary 9 mm solid nodule in the right upper lobe with a spiculated margin."
+    _prior_jev(jev)
+    _model(monkeypatch, {"input": "nodule_type", "value": "solid", "quote": "solid"},
+           {"input": "diameter_mm", "value": 9, "quote": "9 mm"},
+           {"input": "upper_lobe", "value": True, "quote": "right upper lobe"},
+           {"input": "spiculation", "value": True, "quote": "spiculated"},
+           {"input": "age", "value": 68, "quote": "68 years"})
+    s = await PP.settle_pack(e, f"{finding} No previous imaging.", "Aged 68 years.", finding=finding)
+    return e, s
+
+
+def _no_model_no_jev(monkeypatch, calls):
+    async def call(system, prompt):
+        calls.append("model")
+        raise AssertionError("an answer never calls the model")
+
+    async def post(*a, **k):
+        calls.append("jev")
+        raise AssertionError("an answer never calls Jev")
+    monkeypatch.setattr(PP, "_call", call)
+    monkeypatch.setattr(P, "jev_post", post)
+
+
+async def test_answering_an_input_makes_no_model_or_jev_call(monkeypatch, jev):
+    e, s = await _settled_bts(monkeypatch, jev)
+    calls = []
+    _no_model_no_jev(monkeypatch, calls)
+    for answered in ({"sex": "female"}, {"sex": "female", "family_history": "No"},
+                     {"sex": "female", "family_history": "No", "emphysema": "Yes"}):
+        PP.finish(e, s, answered)
+    assert calls == []
+
+
+async def test_settled_values_stay_identical_across_answers(monkeypatch, jev):
+    e, s = await _settled_bts(monkeypatch, jev)
+    calls = []
+    _no_model_no_jev(monkeypatch, calls)
+    first = {x.input: (x.value, x.quote) for x in PP.finish(e, s, {}).settled}
+    assert {"nodule_type", "diameter_mm", "upper_lobe", "spiculation", "age", "prior_study"} <= set(first)
+    for answered in ({"sex": "female"}, {"sex": "female", "family_history": "Yes", "emphysema": "No"}):
+        later = {x.input: (x.value, x.quote) for x in PP.finish(e, s, answered).settled}
+        assert {k: later[k] for k in first} == first
+
+
+async def test_an_answer_overrides_the_settled_value_for_that_input(monkeypatch, jev):
+    e, s = await _settled_bts(monkeypatch, jev)
+    out = PP.finish(e, s, {"upper_lobe": "No"})
+    assert {x.input: (x.value, x.quote) for x in out.settled}["upper_lobe"] == ("No", "")
+
+
+async def test_the_answer_path_is_under_50_ms(monkeypatch, jev):
+    import time
+    e, s = await _settled_bts(monkeypatch, jev)
+    answers = [{"sex": "female"}, {"sex": "female", "family_history": "No"},
+               {"sex": "female", "family_history": "No", "emphysema": "Yes", "nodule_count": "1"}]
+    worst = 0.0
+    for answered in answers * 5:
+        t0 = time.perf_counter()
+        PP.finish(e, s, answered, sources=[])
+        worst = max(worst, time.perf_counter() - t0)
+    assert worst < 0.05
