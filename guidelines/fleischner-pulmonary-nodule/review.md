@@ -40,23 +40,31 @@ they do not match the issue pagination 284:228–243.
 Every outcome carries the exclusion caveat: p3 Table note (screening, immunosuppression, known primary cancer) plus
 p2 (not for patients under 35). ✓
 
-Golden cases: 26 (1 source, 25 ours); every outcome reached; edges 5.4/5.5 and 8.4/8.5 tested on solid and subsolid
-rows; 4 cases assert `needed`. The only worked example usable as a case is Figure 14 (p11: multiple subsolid nodules
+Golden cases: 27 (1 source, 26 ours); every outcome reached; edges 5.4/5.5 and 8.4/8.5 tested on solid and subsolid
+rows; 4 cases assert `needed`; 1 case pins For Hassan 7 (solid single 12 mm, risk not stated → `solid_single_gt8`). The only worked example usable as a case is Figure 14 (p11: multiple subsolid nodules
 incl. a 10-mm ground-glass nodule, "initial follow-up would be appropriate in 3–6 months"). Figures 1, 2 and 5 state
 "no follow-up" for benign or perifissural nodules, which sit outside the table (carried as pitfalls). Figures 9, 10,
 12 illustrate follow-up course, not a table lookup.
 
-## Jev `check` items (16 of 85 below 0.5)
+## Integration minors (review of Task 8)
+
+- Minor 1: `def.subsolid` locator page 11 → 10 (p10 carries the mediastinal-window definition). Done.
+- Minor 3: gate 5 re-run on the shipped text; evidence.md is current (15 of 85 below 0.5; `def.highrisk_factors` and
+  `def.subsolid` now pass, `management.row5` newly flagged and resolved below).
+- Minor 6: golden case "solid single 12 mm, risk not stated → solid_single_gt8" added.
+- Minors 2, 4, 5 and 7 were not in the integration scope and are left open.
+
+## Jev `check` items (15 of 85 below 0.5, re-run at integration)
 
 | field | resolution |
 |---|---|
 | reference.def.size | ✓ p4–5: average of long and short axes on the same image showing the greatest dimensions; nearest whole millimetre; <6 mm = rounded 5 mm or less. Text spans the p4/p5 column break. |
 | reference.pit.volume | ✓ p5: 100 and 250 mm³ used for volumetry instead of 6 and 8 mm. "Not supported here" is our product note. |
-| management.row4 | ✓ p3 part A, single, low risk, >8 mm. Low score is table layout in pdftotext. |
+| management.row4, row5 | ✓ p3 part A, single, low and high risk, >8 mm (one shared recommendation). Low score is table layout in pdftotext. |
 | management.row14, 16, 17, 21, 22, 23 | ✓ p3 part B, checked on the page image. Jev cannot see that "≥6 mm" covers both our `6to8` and `gt8` bands, nor that the "Multiple" subsolid row is shared by ground-glass and part-solid. |
 | outcome.subsolid_multiple_lt6 | ✓ p3 part B, Multiple, <6 mm, verbatim in substance. |
-| reference.def.highrisk_factors | ✓ p12 (high-risk factors; 30 pack-years and quitting within 15 years as the NLST threshold, "indicative of high-risk status in patients with solid nodules"). Wording tightened after the Jev run to follow the source ("quitting within the past 15 years"); evidence.md shows the earlier wording. |
-| reference.def.subsolid | ✓ p10–11: components still visible on mediastinal (soft-tissue) window with a sharp filter are solid. |
+| reference.def.highrisk_factors | ✓ p12 (high-risk factors; 30 pack-years and quitting within 15 years as the NLST threshold, "indicative of high-risk status in patients with solid nodules"). Wording tightened after the first Jev run to follow the source ("quitting within the past 15 years"); evidence.md re-run at integration on the shipped text, now 0.53 (no longer flagged). |
+| reference.def.subsolid | ✓ p10: components still visible on mediastinal (soft-tissue) window with a sharp filter are solid. Locator corrected 11 → 10 at integration (review minor 1); re-run score 0.50 (no longer flagged). |
 | reference.pit.mixed | Boundary: the table has no mixed row; p7 says a larger or more suspicious nodule should guide management. Our sentence states only that. See For Hassan. |
 | reference.pit.benign | ✓ p4 Figures 1–2 (hamartoma, calcified granuloma: no further CT follow-up); recommendations are for noncalcified nodules (p5, p7). |
 | reference.pit.thick | ✓ p4: after a thick-section first scan, consider a short-term thin-section follow-up as the baseline. |
@@ -80,7 +88,8 @@ incl. a 10-mm ground-glass nodule, "initial follow-up would be appropriate in 3�
 6. **Rounding half up:** 5.5 mm falls in 6–8 mm and 8.5 mm in >8 mm. The source says only "nearest millimetre".
 7. **Engine behaviour seen:** a solid single >8 mm nodule with risk unknown returns no outcome (`possible` =
    [solid_single_gt8], `needed` = []), because a table step waits for every key. The host should treat a single
-   possible outcome as settled, or the engine could. Not changed here.
+   possible outcome as settled, or the engine could. **Resolved:** the engine now settles a single possible outcome
+   (ebd514a); a golden case pins it (review minor 6).
 8. **Source copy:** the RSNA publisher PDF from a third-party mirror, and it is the online-ahead-of-print version
    (pages 1–16), not the issue-paginated 284:228–243. Substance should be identical; worth swapping for the issue PDF
    if you have institutional access.

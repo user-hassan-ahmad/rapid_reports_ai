@@ -98,6 +98,19 @@
       }
     },
     {
+      "name": "solid single 12 mm, risk not stated (only one possible outcome, so settled)",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 12
+      },
+      "outcome": "solid_single_gt8",
+      "steps": {
+        "size_band": "gt8"
+      }
+    },
+    {
       "name": "solid multiple 3 mm low risk",
       "origin": "ours",
       "inputs": {

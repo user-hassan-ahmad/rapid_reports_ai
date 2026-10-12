@@ -256,6 +256,23 @@
       "outcome": "unclassifiable"
     },
     {
+      "name": "RMP, few thin septa, mass contents enhance",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "few_thin",
+        "protrusion": "none",
+        "calcification": "none",
+        "contents": "uniform",
+        "contents_enhancement": "present",
+        "hu": 30
+      },
+      "outcome": "unclassifiable"
+    },
+    {
       "name": "nodule on portal venous only",
       "origin": "ours",
       "inputs": {

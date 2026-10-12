@@ -153,7 +153,7 @@
         "nodule",
         "not_enhancing"
       ],
-      "how_stated": "none (smooth); irregular thickening (enhancing, obtuse margins, 3 mm or less); nodule (enhancing, acute margins of any size, or obtuse margins and 4 mm or more); or a protrusion that does not enhance or cannot be assessed. Measure perpendicular to its wall or septum, adding protrusions on both sides and excluding the septum. Give a nodule over irregular thickening.",
+      "how_stated": "none (smooth); irregular thickening (enhancing, obtuse margins, 3 mm or less); nodule (enhancing, acute margins of any size, or obtuse margins and 4 mm or more); or a protrusion that does not enhance or cannot be assessed. Measure perpendicular to its wall or septum, adding protrusions on both sides and excluding the septum. Code the most suspicious protrusion: an enhancing one over a non-enhancing one, and a nodule over irregular thickening.",
       "prerequisites": [
         {
           "ref": "too_small",
@@ -213,13 +213,13 @@
     },
     {
       "id": "contents_enhancement",
-      "label": "Mass (contents) enhancement",
+      "label": "Mass contents enhancement (not wall or septa)",
       "type": "enum",
       "options": [
         "present",
         "absent"
       ],
-      "how_stated": "whether the mass itself enhances (non-enhancing mass), comparing unenhanced and enhanced series",
+      "how_stated": "whether the mass contents themselves enhance (not the wall or septa, which are coded on their own inputs), comparing unenhanced and enhanced series; absent means a non-enhancing mass",
       "prerequisites": [
         {
           "ref": "too_small",
@@ -727,6 +727,14 @@
               {
                 "ref": "septa",
                 "eq": "few_thin"
+              },
+              {
+                "none": [
+                  {
+                    "ref": "contents_enhancement",
+                    "eq": "present"
+                  }
+                ]
               }
             ]
           },
@@ -736,6 +744,69 @@
             "page": null,
             "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
             "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "too_small",
+                "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "any": [
+                      {
+                        "ref": "protrusion",
+                        "in": [
+                          "irregular_thickening",
+                          "nodule",
+                          "not_enhancing"
+                        ]
+                      },
+                      {
+                        "none": [
+                          {
+                            "ref": "wall",
+                            "eq": "thin"
+                          }
+                        ]
+                      },
+                      {
+                        "none": [
+                          {
+                            "ref": "septa",
+                            "in": [
+                              "none",
+                              "few_thin"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "ref": "margin",
+                "eq": "well_defined"
+              },
+              {
+                "ref": "septa",
+                "eq": "few_thin"
+              },
+              {
+                "ref": "contents_enhancement",
+                "eq": "present"
+              }
+            ]
+          },
+          "result": "unclassifiable",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "General Points"
           }
         },
         {
@@ -1439,7 +1510,7 @@
       "recommendation": "No follow-up needed.",
       "caveats": [
         "Call it a cyst only if confirmed as one; otherwise a likely benign mass.",
-        "Abundant thick or nodular calcification, heterogeneous contents, or a homogeneous hyperattenuating non-enhancing mass over 3 cm may be better assessed by MRI before classing.",
+        "Abundant thick or nodular calcification, heterogeneous contents (including non-enhancing septa 3 mm or thicker), or a homogeneous hyperattenuating non-enhancing mass over 3 cm may be better assessed by MRI first.",
         "Not for patients with a renal cell carcinoma syndrome; patient factors still shape management."
       ],
       "locator": {

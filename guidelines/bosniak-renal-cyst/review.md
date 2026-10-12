@@ -34,6 +34,14 @@ Enhancing features count only on renal mass protocol CT. Table 3 defines enhance
 
 Gate 2 enumerates 184,320 combinations. MAX_VERIFY is unchanged.
 
+## Revision 3: integration minors (N-1 to N-3)
+
+- **N-1:** II type 1 (few thin septa) gained the guard `none: contents_enhancement = present`, the same guard every other class II path has, and a new rules case 8 sends the excluded combination to unclassifiable (gate 3 needs every combination covered). On RMP a few-thin-septa mass whose contents enhance is now unclassifiable, not II. New golden case.
+- **N-2:** `contents_enhancement` is relabelled "Mass contents enhancement (not wall or septa)"; how_stated says the wall and septa are coded on their own inputs. A simple cyst with an enhancing thin wall is no longer at risk of being coded `present`.
+- **N-3:** the protrusion how_stated now says to code the most suspicious protrusion, an enhancing one over a non-enhancing one, and a nodule over irregular thickening (footnote *: the highest class is assigned).
+- **Class II caveat:** "heterogeneous contents" now names non-enhancing septa 3 mm or thicker, per footnote †.
+- **Gate 5** re-run on the revised text: 28 of 55 below 0.5. The only new item is the new rules case 8 (Table 2 lives in an image; checked as checklist row 8), resolved below.
+
 ## Checklist: band, rules cases, outcomes
 
 **Band `hu_band`.** Sources: Table 2 CT column, Table 3 "simple fluid", and the Bosniak II text.
@@ -55,14 +63,15 @@ Gate 2 enumerates 184,320 combinations. MAX_VERIFY is unchanged.
 | 4 | IIF | RMP, no III or IV feature, and one of: a 3 mm enhancing wall, a 3 mm enhancing septum, many thin enhancing septa. | ✓ Text: "walls or septa of a Bosniak IIF cystic mass must enhance" |
 | 5 | unclassifiable | Complex structure (any protrusion, a wall that is not thin, or septa beyond few thin) with no qualifying enhancing feature. This includes non-enhancing features and single-phase CT. | ✓ Footnote † sends these to MRI |
 | 6 | unclassifiable | Simple structure but ill-defined. | ✓ I and II require well-defined |
-| 7 | II | Few (1–3) thin septa. Calcification, contents and HU are free. | ✓ II type 1 |
-| 8 | I | No septa; uniform contents; no calcification; −9 to 20 HU; the mass does not enhance when on RMP. Technique is RMP, portal venous or other contrast-enhanced. | ✓ Table 3: simple fluid holds at noncontrast or contrast-enhanced CT |
-| 9 | II | The same, on unenhanced-only CT. | ✓ II type 4 |
-| 10 | II | Simple fluid with calcification and no septa. | Not in Table 2. From the Bosniak II text: "calcifications of any morphology now are considered a Bosniak II feature" |
-| 11 | II | ≥70 HU on unenhanced-only CT. On RMP, ≥70 HU is covered by case 12. | ✓ II type 2 |
-| 12 | II | >20 HU, uniform, the mass does not enhance, RMP, calcification of any type. A thin enhancing wall no longer blocks this (I-1). | ✓ II type 3 |
-| 13 | II | 21–30 HU on a single portal venous phase. | ✓ II type 5 |
-| 14 | unclassifiable | The no-septa simple-structure remainder: heterogeneous contents; HU and technique outside every type; or the mass enhances on RMP (a cystic mass is <25% enhancing tissue, and II type 3 requires a non-enhancing mass). | ✓ |
+| 7 | II | Few (1–3) thin septa, and the mass contents do not enhance when on RMP. Calcification, contents and HU are free. | ✓ II type 1 (contents guard added in revision 3, N-1) |
+| 8 | unclassifiable | Few (1–3) thin septa, well-defined, simple structure, and the mass contents enhance on RMP. | ✓ Not a cystic mass per General Points ("less than approximately 25% … enhancing tissue"); added in revision 3 (N-1) so the guard on case 7 is exhaustive |
+| 9 | I | No septa; uniform contents; no calcification; −9 to 20 HU; the mass does not enhance when on RMP. Technique is RMP, portal venous or other contrast-enhanced. | ✓ Table 3: simple fluid holds at noncontrast or contrast-enhanced CT |
+| 10 | II | The same, on unenhanced-only CT. | ✓ II type 4 |
+| 11 | II | Simple fluid with calcification and no septa. | Not in Table 2. From the Bosniak II text: "calcifications of any morphology now are considered a Bosniak II feature" |
+| 12 | II | ≥70 HU on unenhanced-only CT. On RMP, ≥70 HU is covered by case 13. | ✓ II type 2 |
+| 13 | II | >20 HU, uniform, the mass does not enhance, RMP, calcification of any type. A thin enhancing wall no longer blocks this (I-1). | ✓ II type 3 |
+| 14 | II | 21–30 HU on a single portal venous phase. | ✓ II type 5 |
+| 15 | unclassifiable | The no-septa simple-structure remainder: heterogeneous contents; HU and technique outside every type; or the mass enhances on RMP (a cystic mass is <25% enhancing tissue, and II type 3 requires a non-enhancing mass). | ✓ |
 
 **Outcomes.** Sources: Table 4 phrases, the "Bosniak III" and "Bosniak IV" sections, and the closing management paragraph.
 
@@ -78,7 +87,7 @@ Gate 2 enumerates 184,320 combinations. MAX_VERIFY is unchanged.
   - the recommendation is now "dedicated renal mass protocol CT or MRI" (review M-5), from footnote †;
   - the caveats are footnote * (such a mass may warrant IIF) and the Table 3 definitions of enhancement and of a cystic mass.
 
-## Golden cases (43)
+## Golden cases (44)
 
 - **Source cases (8):** the text example (few thick enhancing septa is III) and Figs 1–3.
 - **Fig 4:** this is an MRI example, so it is now an "ours" case with CT inputs (M-3).
@@ -94,13 +103,14 @@ Gate 2 enumerates 184,320 combinations. MAX_VERIFY is unchanged.
   - nodule on portal venous only → unclassifiable;
   - 3 mm wall on unenhanced only → unclassifiable.
 - **Added for M-1:** other contrast-only CT gives I at 15 HU and unclassifiable at 25 HU, so II type 5 is not reached.
+- **Added for N-1 (revision 3):** RMP, few thin septa, mass contents enhance → unclassifiable (it was II).
 - **"Needed" cases:** HU, mass enhancement, and septa.
 
 ## Jev `check` items (gate 5)
 
-Jev scored 27 of 54 facts below 0.5. Because the locators are page-less, the script feeds the whole text file. The Jev client then keeps only 6 of 10 windows, and the early windows are mostly PMC navigation. Each item was resolved by reading the source:
+Jev scored 28 of 55 facts below 0.5 (re-run in revision 3). Because the locators are page-less, the script feeds the whole text file. The Jev client then keeps only 6 of 10 windows, and the early windows are mostly PMC navigation. Each item was resolved by reading the source:
 
-- **hu_band and class.case0–14:** the class definitions exist only in the Table 2 and 3 images; checked against them as above ✓.
+- **hu_band and class.case0–15:** the class definitions exist only in the Table 2 and 3 images; checked against them as above ✓.
 - **outcome.class_ii and class_ii.caveat0:** Table 4 and its footnotes, plus the General Points text ✓.
 - **outcome.class_iif, class_iii and class_iv:** Table 4, plus the Bosniak III section (~50%) and the Bosniak IV section (~90%) ✓.
 - **outcome.unclassifiable:** footnotes * and † ✓.
@@ -117,7 +127,11 @@ Jev scored 27 of 54 facts below 0.5. Because the locators are page-less, the scr
 | M-4 | Done: how_stated now says which septum or protrusion to give, and how to measure (perpendicular, summed on both sides, excluding the septum). |
 | M-5 | Done. |
 | M-6 | Not possible in the schema; the images are listed here instead. |
-| Bundle rebuild and drift test | For the controller; the bundle was not rebuilt, per instruction. |
+| Bundle rebuild and drift test | Done at integration (revision 3). |
+| N-1 (re-review) | Done: II type 1 now excludes `contents_enhancement = present`, so an enhancing mass on RMP is unclassifiable on every path (For Hassan 7). Golden case added. |
+| N-2 (re-review) | Done: `contents_enhancement` label and how_stated now say it is the mass contents, not the wall or septa. |
+| N-3 (re-review) | Done: protrusion how_stated now says to code the most suspicious protrusion, an enhancing one over a non-enhancing one (footnote *: the highest class is assigned). |
+| Re-review item 6 nuance | Done: the class II MRI caveat now names non-enhancing septa 3 mm or thicker (footnote †). |
 
 ## For Hassan
 
@@ -126,8 +140,8 @@ Jev scored 27 of 54 facts below 0.5. Because the locators are page-less, the scr
 3. **Class I versus II type 4:** II type 4 is taken to mean unenhanced-only CT. Class I is given on RMP, portal venous or other contrast-enhanced CT.
 4. **Calcification without septa is class II,** following the text: calcification of any type is a II feature. II types 2, 4 and 5 therefore allow calcification; class I does not.
 5. **"Not enhancing" and "not assessable" are merged** in the wall, septa and protrusion options, to stay under the gate cap. Both lead to unclassifiable with MRI advised.
-6. **One septa value per mass,** taken from the highest-class enhancing septum. A mix such as a non-enhancing thick septum alongside enhancing thin septa is reported by the enhancing one.
-7. **On RMP, a mass that itself enhances is unclassifiable,** because the source does not count it as a cystic mass. This holds even at ≥70 HU. On unenhanced-only CT, ≥70 HU stays II type 2 as the source says.
+6. **One septa value per mass,** taken from the highest-class enhancing septum. A mix such as a non-enhancing thick septum alongside enhancing thin septa is reported by the enhancing one; the class II caveat then points to MRI for non-enhancing septa 3 mm or thicker (footnote †).
+7. **On RMP, a mass that itself enhances is unclassifiable,** because the source does not count it as a cystic mass. This holds on every path, including II type 1 (few thin septa), and even at ≥70 HU. On unenhanced-only CT, ≥70 HU stays II type 2 as the source says.
 8. **These undefined combinations go to unclassifiable:**
    - too small to characterise, but not homogeneous low attenuation;
    - complex structure without an enhancing feature on RMP, or on any single-phase CT;
@@ -140,5 +154,5 @@ Jev scored 27 of 54 facts below 0.5. Because the locators are page-less, the scr
    - an enhancing mass on RMP.
 
    The source's "may warrant IIF" is kept as a caveat only, not mapped to IIF.
-9. **II type 1 (few thin septa) leaves attenuation and contents free,** as the source does.
+9. **II type 1 (few thin septa) leaves attenuation and contents free,** as the source does, except that the mass contents must not enhance on RMP (item 7).
 10. **Issuer** is "Society of Abdominal Radiology (Silverman et al.)", the society the source names as endorsing the update.
