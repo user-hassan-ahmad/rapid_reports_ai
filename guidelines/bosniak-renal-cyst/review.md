@@ -171,3 +171,36 @@ Jev scored 28 of 55 facts below 0.5 (re-run in revision 3). Because the locators
 - **B8.** Undefined combinations stay unclassifiable, decided by Hassan.
 - Gate 5 re-run (evidence.md): class.case2 and outcome.not_cystic score low (0.08; the definition sits in General
   Points, page-less HTML), the caveat 0.64. Checked by hand against the 25% definition.
+
+## Next slice (2026-10-13): eligibility input (spec §3.6)
+
+Scope clause read in the source: S1 Table 2 footnote (section "Proposed Update to the Bosniak Classification of Cystic
+Renal Masses"): the classification "is intended for cystic renal masses after infectious, inflammatory, or vascular
+etiologies and necrotic solid masses are excluded". The "Cystic Mass" text adds that it should be applied to cystic
+masses, "not hemorrhagic or necrotic solid masses".
+
+| Item | Check |
+|---|---|
+| input `mimic` (eligibility, lesion scope, boolean): infectious, inflammatory or vascular lesion, or necrotic solid mass; locator = `pit.scope`'s (S1, Table 2) | ✓ wording follows the footnote's list |
+| `class` case 0 (new): `mimic` true → does_not_apply, same locator | ✓ |
+| `class` earlier cases: each now also requires `mimic` false | ✓ |
+| outcome `does_not_apply` (new): "Bosniak 2019 does not apply: an infectious, inflammatory or vascular lesion, or a necrotic solid mass, is outside the classification" → "Manage per the clinical context." | ✓ |
+| `MAX_VERIFY` 200,000 → 400,000 (the boolean doubles gate 2's enumeration) | ✓ |
+
+Golden cases: every earlier case now states `mimic: false`; two new cases: mimic true → does_not_apply; mimic not
+stated → needed [mimic]. Gates 1-4 pass.
+
+Gate 5 re-run (evidence.md): class.case0 0.62; outcome.does_not_apply 0.47 (`check`), confirmed by reading the
+Table 2 footnote (page-less HTML, capped windows). Newly flagged: class.case16 (0.14, an unclassifiable
+pass-through), outcome.class_i.caveat0 0.47, class_iii.caveat1 0.49, class_iv.caveat0 0.48: unchanged facts near the
+threshold (Jev variance), checked by hand as before. class.case0 cleared.
+
+**For Hassan (eligibility)**
+- DECISION: `mimic` is lesion-scoped (settled from the card's own finding only), so an abscess elsewhere in the
+  dictation does not exclude this cyst.
+- The input follows the Table 2 footnote list; the "Cystic Mass" text's "hemorrhagic … solid masses" is not added
+  (enhancing contents on a renal mass protocol already route to not_cystic).
+- A cyst dictated without saying it is a simple or cystic renal mass may leave `mimic` unknown, and the card opens as
+  check_first until answered.
+
+Independent clinical read (skill step 8): PENDING, dispatched by the controller.

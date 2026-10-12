@@ -161,3 +161,36 @@ as an image).
   resolved, and needed lists. Gates 1-4 pass.
 - Gate 5 re-run (evidence.md): the new Figure 2 facts score low as before (image-only); volumetry_advised 0.43 and
   case 0.57; resolved items low (a library addition, labelled). Each checked by hand against Figure 2 and p8/p26.
+
+## Next slice (2026-10-13): eligibility input (spec §3.6)
+
+Scope clause read in the source: S1 p13, "Groups not covered": "A. Children (younger than 18) with pulmonary nodules"
+(and "Groups covered": "A. Adults (≥18 years)").
+
+| Item | Check |
+|---|---|
+| input `age` now eligibility (patient scope, fact `age_years`); `min_value` 18 → 0; max 110 kept; locator moved from S2 Table 2 (Brock age) to S1 p13 "Groups not covered" | ✓ (see For Hassan) |
+| input `sex`: fact `sex` (options female, male) | ✓ |
+| band `age_band`: `lt18` under 18 (max 18, exclusive), `ge18` 18 or over (min 18, inclusive): "younger than 18" / "≥18 years" | ✓ |
+| `pathway` case 0 (new): `age_band` lt18 → does_not_apply, S1 p13 | ✓ |
+| `pathway` earlier cases: each now also requires `age_band` ge18 | ✓ |
+| outcome `does_not_apply` (new): "BTS 2015 does not apply: the guidelines do not cover patients under 18" → "Manage per the clinical context.", S1 p13 | ✓ |
+
+Golden cases: earlier cases that gave no age now state `age: 65` (those giving an age, or asking for it, are
+unchanged); three new cases: age 17 → does_not_apply; age 18 → discharge_benign; age not stated → needed [age]. Gates
+1-4 pass.
+
+Gate 5 re-run (evidence.md): age_band 0.60, pathway.case0 0.57, outcome.does_not_apply 0.53 (none flagged; confirmed
+by reading p13). Newly flagged: pathway.case5, pathway.case19, reference.sum.4, all unchanged facts (Jev variance; six
+earlier flags cleared the same way), checked by hand as before. age_term 0.05 as before (the coefficient sits in the
+S2 table image).
+
+**For Hassan (eligibility)**
+- DECISION: the `age` minimum drops from 18 to 0, so an under-18 age is accepted and excludes the card (it was
+  refused and asked before).
+- The `age` input now cites the scope clause; the Brock age coefficient stays cited by the `age_term` step (S2).
+- "Groups not covered" B (a nodule already proven to be lung cancer or a metastasis) stays a pitfall, and
+  previous-or-active cancer stays a caveat and pitfall (decision T2): the guideline covers adults with current or
+  previous malignancy (Groups covered C and D).
+
+Independent clinical read (skill step 8): PENDING, dispatched by the controller.

@@ -30,16 +30,34 @@
   ],
   "inputs": [
     {
+      "id": "age",
+      "label": "Age",
+      "type": "number",
+      "unit": "years",
+      "scope": "patient",
+      "role": "eligibility",
+      "fact": "age_years",
+      "how_stated": "patient age in years, usually from the clinical history or request",
+      "min_value": 0,
+      "max_value": 110,
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system"
+      }
+    },
+    {
       "id": "exclusion",
-      "label": "Any Fleischner exclusion (lung cancer screening, age under 35, immunocompromised, known primary cancer)",
+      "label": "Lung cancer screening, immunocompromise or known primary cancer",
       "type": "boolean",
-      "how_stated": "patient-level, usually from the clinical history or request: true when the scan is a lung cancer screening CT, the patient is under 35, is immunocompromised (e.g. transplant, chemotherapy, HIV) or has a known primary cancer; false when the history states an adult aged 35 or over with none of these. Leave it unset when the history does not say.",
+      "how_stated": "patient-level, usually from the clinical history or request: true when the scan is a lung cancer screening CT, the patient is immunocompromised (e.g. transplant, chemotherapy, HIV) or has a known primary cancer; false when the history states none of these. Leave it unset when the history does not say.",
       "locator": {
         "source": "S1",
         "page": 2,
         "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system"
       },
-      "scope": "patient"
+      "scope": "patient",
+      "role": "eligibility"
     },
     {
       "id": "nodule_type",
@@ -112,6 +130,28 @@
     }
   ],
   "logic": [
+    {
+      "step": "band",
+      "id": "age_band",
+      "ref": "age",
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system"
+      },
+      "bands": [
+        {
+          "id": "lt35",
+          "label": "Under 35 years",
+          "max": 35
+        },
+        {
+          "id": "ge35",
+          "label": "35 years or over",
+          "min": 35
+        }
+      ]
+    },
     {
       "step": "band",
       "id": "size_band",
@@ -383,8 +423,16 @@
       "cases": [
         {
           "when": {
-            "ref": "exclusion",
-            "eq": true
+            "any": [
+              {
+                "ref": "exclusion",
+                "eq": true
+              },
+              {
+                "ref": "age_band",
+                "eq": "lt35"
+              }
+            ]
           },
           "result": "does_not_apply",
           "locator": {
@@ -397,12 +445,20 @@
           "when": {
             "all": [
               {
-                "ref": "exclusion",
-                "eq": false
+                "ref": "age_band",
+                "eq": "ge35"
               },
               {
-                "ref": "management",
-                "eq": "solid_single_lt6_low"
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_single_lt6_low"
+                  }
+                ]
               }
             ]
           },
@@ -417,12 +473,20 @@
           "when": {
             "all": [
               {
-                "ref": "exclusion",
-                "eq": false
+                "ref": "age_band",
+                "eq": "ge35"
               },
               {
-                "ref": "management",
-                "eq": "solid_single_lt6_high"
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_single_lt6_high"
+                  }
+                ]
               }
             ]
           },
@@ -437,12 +501,20 @@
           "when": {
             "all": [
               {
-                "ref": "exclusion",
-                "eq": false
+                "ref": "age_band",
+                "eq": "ge35"
               },
               {
-                "ref": "management",
-                "eq": "solid_single_6to8_low"
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_single_6to8_low"
+                  }
+                ]
               }
             ]
           },
@@ -457,12 +529,20 @@
           "when": {
             "all": [
               {
-                "ref": "exclusion",
-                "eq": false
+                "ref": "age_band",
+                "eq": "ge35"
               },
               {
-                "ref": "management",
-                "eq": "solid_single_6to8_high"
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_single_6to8_high"
+                  }
+                ]
               }
             ]
           },
@@ -477,12 +557,20 @@
           "when": {
             "all": [
               {
-                "ref": "exclusion",
-                "eq": false
+                "ref": "age_band",
+                "eq": "ge35"
               },
               {
-                "ref": "management",
-                "eq": "solid_single_gt8"
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_single_gt8"
+                  }
+                ]
               }
             ]
           },
@@ -497,12 +585,20 @@
           "when": {
             "all": [
               {
-                "ref": "exclusion",
-                "eq": false
+                "ref": "age_band",
+                "eq": "ge35"
               },
               {
-                "ref": "management",
-                "eq": "solid_multiple_lt6_low"
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_multiple_lt6_low"
+                  }
+                ]
               }
             ]
           },
@@ -517,12 +613,20 @@
           "when": {
             "all": [
               {
-                "ref": "exclusion",
-                "eq": false
+                "ref": "age_band",
+                "eq": "ge35"
               },
               {
-                "ref": "management",
-                "eq": "solid_multiple_lt6_high"
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_multiple_lt6_high"
+                  }
+                ]
               }
             ]
           },
@@ -537,12 +641,20 @@
           "when": {
             "all": [
               {
-                "ref": "exclusion",
-                "eq": false
+                "ref": "age_band",
+                "eq": "ge35"
               },
               {
-                "ref": "management",
-                "eq": "solid_multiple_ge6_low"
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_multiple_ge6_low"
+                  }
+                ]
               }
             ]
           },
@@ -557,12 +669,20 @@
           "when": {
             "all": [
               {
-                "ref": "exclusion",
-                "eq": false
+                "ref": "age_band",
+                "eq": "ge35"
               },
               {
-                "ref": "management",
-                "eq": "solid_multiple_ge6_high"
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_multiple_ge6_high"
+                  }
+                ]
               }
             ]
           },
@@ -577,12 +697,20 @@
           "when": {
             "all": [
               {
-                "ref": "exclusion",
-                "eq": false
+                "ref": "age_band",
+                "eq": "ge35"
               },
               {
-                "ref": "management",
-                "eq": "ggn_single_lt6"
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "ggn_single_lt6"
+                  }
+                ]
               }
             ]
           },
@@ -597,12 +725,20 @@
           "when": {
             "all": [
               {
-                "ref": "exclusion",
-                "eq": false
+                "ref": "age_band",
+                "eq": "ge35"
               },
               {
-                "ref": "management",
-                "eq": "ggn_single_ge6"
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "ggn_single_ge6"
+                  }
+                ]
               }
             ]
           },
@@ -617,12 +753,20 @@
           "when": {
             "all": [
               {
-                "ref": "exclusion",
-                "eq": false
+                "ref": "age_band",
+                "eq": "ge35"
               },
               {
-                "ref": "management",
-                "eq": "subsolid_multiple_lt6"
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "subsolid_multiple_lt6"
+                  }
+                ]
               }
             ]
           },
@@ -637,12 +781,20 @@
           "when": {
             "all": [
               {
-                "ref": "exclusion",
-                "eq": false
+                "ref": "age_band",
+                "eq": "ge35"
               },
               {
-                "ref": "management",
-                "eq": "subsolid_multiple_ge6"
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "subsolid_multiple_ge6"
+                  }
+                ]
               }
             ]
           },
@@ -657,12 +809,20 @@
           "when": {
             "all": [
               {
-                "ref": "exclusion",
-                "eq": false
+                "ref": "age_band",
+                "eq": "ge35"
               },
               {
-                "ref": "management",
-                "eq": "psn_single_lt6"
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "psn_single_lt6"
+                  }
+                ]
               }
             ]
           },
@@ -677,12 +837,20 @@
           "when": {
             "all": [
               {
-                "ref": "exclusion",
-                "eq": false
+                "ref": "age_band",
+                "eq": "ge35"
               },
               {
-                "ref": "management",
-                "eq": "psn_single_ge6"
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "psn_single_ge6"
+                  }
+                ]
               }
             ]
           },

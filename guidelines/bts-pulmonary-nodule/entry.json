@@ -80,12 +80,15 @@
    "unit": "years",
    "how_stated": "patient age in years, usually from the request details",
    "locator": {
-    "source": "S2",
-    "table": "Table 2, model 2b: age"
+    "source": "S1",
+    "page": 13,
+    "section": "Groups not covered"
    },
-   "min_value": 18,
+   "min_value": 0,
    "max_value": 110,
-   "scope": "patient"
+   "scope": "patient",
+   "role": "eligibility",
+   "fact": "age_years"
   },
   {
    "id": "sex",
@@ -100,7 +103,8 @@
     "source": "S2",
     "table": "Table 2, model 2b: sex"
    },
-   "scope": "patient"
+   "scope": "patient",
+   "fact": "sex"
   },
   {
    "id": "family_history",
@@ -302,6 +306,28 @@
   }
  ],
  "logic": [
+  {
+   "step": "band",
+   "id": "age_band",
+   "ref": "age",
+   "locator": {
+    "source": "S1",
+    "page": 13,
+    "section": "Groups not covered"
+   },
+   "bands": [
+    {
+     "id": "lt18",
+     "label": "Under 18 years",
+     "max": 18
+    },
+    {
+     "id": "ge18",
+     "label": "18 years or over",
+     "min": 18
+    }
+   ]
+  },
   {
    "step": "derive",
    "id": "size_term",
@@ -667,18 +693,38 @@
    "cases": [
     {
      "when": {
+      "ref": "age_band",
+      "eq": "lt18"
+     },
+     "result": "does_not_apply",
+     "locator": {
+      "source": "S1",
+      "page": 13,
+      "section": "Groups not covered"
+     }
+    },
+    {
+     "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
+         },
+         {
+          "ref": "benign_features",
           "eq": true
          }
         ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": true
        }
       ]
      },
@@ -693,22 +739,30 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
-          "eq": true
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
+         },
+         {
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "in": [
+           "part_solid",
+           "nonsolid"
+          ]
          }
-        ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "in": [
-         "part_solid",
-         "nonsolid"
         ]
        }
       ]
@@ -724,24 +778,32 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
-          "eq": true
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
+         },
+         {
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
+          "eq": "lt5"
          }
         ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "eq": "lt5"
        }
       ]
      },
@@ -756,37 +818,45 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
-          "eq": true
-         }
-        ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "eq": "5to6"
-       },
-       {
-        "ref": "vdt_band",
-        "state": "not_applicable"
-       },
-       {
-        "none": [
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
+         },
          {
-          "ref": "growth",
-          "in": [
-           "diameter_stable",
-           "diameter_clear_growth",
-           "diameter_indeterminate"
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
+          "eq": "5to6"
+         },
+         {
+          "ref": "vdt_band",
+          "state": "not_applicable"
+         },
+         {
+          "none": [
+           {
+            "ref": "growth",
+            "in": [
+             "diameter_stable",
+             "diameter_clear_growth",
+             "diameter_indeterminate"
+            ]
+           }
           ]
          }
         ]
@@ -804,37 +874,45 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
-          "eq": true
-         }
-        ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "eq": "6to8"
-       },
-       {
-        "ref": "vdt_band",
-        "state": "not_applicable"
-       },
-       {
-        "none": [
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
+         },
          {
-          "ref": "growth",
-          "in": [
-           "diameter_stable",
-           "diameter_clear_growth",
-           "diameter_indeterminate"
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
+          "eq": "6to8"
+         },
+         {
+          "ref": "vdt_band",
+          "state": "not_applicable"
+         },
+         {
+          "none": [
+           {
+            "ref": "growth",
+            "in": [
+             "diameter_stable",
+             "diameter_clear_growth",
+             "diameter_indeterminate"
+            ]
+           }
           ]
          }
         ]
@@ -852,41 +930,49 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
-          "eq": true
-         }
-        ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "eq": "ge8"
-       },
-       {
-        "ref": "vdt_band",
-        "state": "not_applicable"
-       },
-       {
-        "ref": "brock_band",
-        "eq": "lt10"
-       },
-       {
-        "none": [
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
+         },
          {
-          "ref": "growth",
-          "in": [
-           "diameter_stable",
-           "diameter_clear_growth",
-           "diameter_indeterminate"
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
+          "eq": "ge8"
+         },
+         {
+          "ref": "vdt_band",
+          "state": "not_applicable"
+         },
+         {
+          "ref": "brock_band",
+          "eq": "lt10"
+         },
+         {
+          "none": [
+           {
+            "ref": "growth",
+            "in": [
+             "diameter_stable",
+             "diameter_clear_growth",
+             "diameter_indeterminate"
+            ]
+           }
           ]
          }
         ]
@@ -904,41 +990,49 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
-          "eq": true
-         }
-        ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "eq": "ge8"
-       },
-       {
-        "ref": "vdt_band",
-        "state": "not_applicable"
-       },
-       {
-        "ref": "brock_band",
-        "eq": "ge10"
-       },
-       {
-        "none": [
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
+         },
          {
-          "ref": "growth",
-          "in": [
-           "diameter_stable",
-           "diameter_clear_growth",
-           "diameter_indeterminate"
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
+          "eq": "ge8"
+         },
+         {
+          "ref": "vdt_band",
+          "state": "not_applicable"
+         },
+         {
+          "ref": "brock_band",
+          "eq": "ge10"
+         },
+         {
+          "none": [
+           {
+            "ref": "growth",
+            "in": [
+             "diameter_stable",
+             "diameter_clear_growth",
+             "diameter_indeterminate"
+            ]
+           }
           ]
          }
         ]
@@ -956,44 +1050,52 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
-          "eq": true
-         }
-        ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "in": [
-         "5to6",
-         "6to8",
-         "ge8"
-        ]
-       },
-       {
-        "none": [
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
+         },
+         {
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
+          "in": [
+           "5to6",
+           "6to8",
+           "ge8"
+          ]
+         },
+         {
+          "none": [
+           {
+            "ref": "vdt_band",
+            "state": "not_applicable"
+           }
+          ]
+         },
          {
           "ref": "vdt_band",
-          "state": "not_applicable"
+          "eq": "le400"
+         },
+         {
+          "ref": "change_band",
+          "eq": "ge25"
          }
         ]
-       },
-       {
-        "ref": "vdt_band",
-        "eq": "le400"
-       },
-       {
-        "ref": "change_band",
-        "eq": "ge25"
        }
       ]
      },
@@ -1008,73 +1110,81 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
-          "eq": true
-         }
-        ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "in": [
-         "5to6",
-         "6to8",
-         "ge8"
-        ]
-       },
-       {
-        "none": [
-         {
-          "ref": "vdt_band",
-          "state": "not_applicable"
-         }
-        ]
-       },
-       {
-        "none": [
-         {
-          "all": [
+          "none": [
            {
-            "ref": "vdt_band",
-            "eq": "le400"
-           },
-           {
-            "ref": "change_band",
-            "eq": "ge25"
+            "ref": "resolved",
+            "eq": true
            }
           ]
-         }
-        ]
-       },
-       {
-        "none": [
+         },
          {
-          "ref": "interval_band",
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
           "in": [
-           "1to2y",
-           "ge2y"
+           "5to6",
+           "6to8",
+           "ge8"
+          ]
+         },
+         {
+          "none": [
+           {
+            "ref": "vdt_band",
+            "state": "not_applicable"
+           }
+          ]
+         },
+         {
+          "none": [
+           {
+            "all": [
+             {
+              "ref": "vdt_band",
+              "eq": "le400"
+             },
+             {
+              "ref": "change_band",
+              "eq": "ge25"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "none": [
+           {
+            "ref": "interval_band",
+            "in": [
+             "1to2y",
+             "ge2y"
+            ]
+           }
+          ]
+         },
+         {
+          "ref": "change_band",
+          "eq": "ge25"
+         },
+         {
+          "ref": "vdt_band",
+          "in": [
+           "400to600",
+           "gt600"
           ]
          }
-        ]
-       },
-       {
-        "ref": "change_band",
-        "eq": "ge25"
-       },
-       {
-        "ref": "vdt_band",
-        "in": [
-         "400to600",
-         "gt600"
         ]
        }
       ]
@@ -1090,77 +1200,85 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
-          "eq": true
-         }
-        ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "in": [
-         "5to6",
-         "6to8",
-         "ge8"
-        ]
-       },
-       {
-        "none": [
-         {
-          "ref": "vdt_band",
-          "state": "not_applicable"
-         }
-        ]
-       },
-       {
-        "none": [
-         {
-          "all": [
+          "none": [
            {
-            "ref": "vdt_band",
-            "eq": "le400"
-           },
-           {
-            "ref": "change_band",
-            "eq": "ge25"
+            "ref": "resolved",
+            "eq": true
            }
           ]
-         }
-        ]
-       },
-       {
-        "none": [
+         },
          {
-          "ref": "interval_band",
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
           "in": [
-           "1to2y",
-           "ge2y"
+           "5to6",
+           "6to8",
+           "ge8"
           ]
-         }
-        ]
-       },
-       {
-        "none": [
+         },
          {
-          "all": [
-           {
-            "ref": "change_band",
-            "eq": "ge25"
-           },
+          "none": [
            {
             "ref": "vdt_band",
+            "state": "not_applicable"
+           }
+          ]
+         },
+         {
+          "none": [
+           {
+            "all": [
+             {
+              "ref": "vdt_band",
+              "eq": "le400"
+             },
+             {
+              "ref": "change_band",
+              "eq": "ge25"
+             }
+            ]
+           }
+          ]
+         },
+         {
+          "none": [
+           {
+            "ref": "interval_band",
             "in": [
-             "400to600",
-             "gt600"
+             "1to2y",
+             "ge2y"
+            ]
+           }
+          ]
+         },
+         {
+          "none": [
+           {
+            "all": [
+             {
+              "ref": "change_band",
+              "eq": "ge25"
+             },
+             {
+              "ref": "vdt_band",
+              "in": [
+               "400to600",
+               "gt600"
+              ]
+             }
             ]
            }
           ]
@@ -1180,51 +1298,59 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
-          "eq": true
-         }
-        ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "in": [
-         "5to6",
-         "6to8",
-         "ge8"
-        ]
-       },
-       {
-        "none": [
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
+         },
+         {
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
+          "in": [
+           "5to6",
+           "6to8",
+           "ge8"
+          ]
+         },
+         {
+          "none": [
+           {
+            "ref": "vdt_band",
+            "state": "not_applicable"
+           }
+          ]
+         },
+         {
+          "ref": "interval_band",
+          "in": [
+           "1to2y",
+           "ge2y"
+          ]
+         },
+         {
+          "ref": "change_band",
+          "eq": "ge25"
+         },
          {
           "ref": "vdt_band",
-          "state": "not_applicable"
+          "eq": "400to600"
          }
         ]
-       },
-       {
-        "ref": "interval_band",
-        "in": [
-         "1to2y",
-         "ge2y"
-        ]
-       },
-       {
-        "ref": "change_band",
-        "eq": "ge25"
-       },
-       {
-        "ref": "vdt_band",
-        "eq": "400to600"
        }
       ]
      },
@@ -1239,51 +1365,59 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
-          "eq": true
-         }
-        ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "in": [
-         "5to6",
-         "6to8",
-         "ge8"
-        ]
-       },
-       {
-        "none": [
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
+         },
+         {
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
+          "in": [
+           "5to6",
+           "6to8",
+           "ge8"
+          ]
+         },
+         {
+          "none": [
+           {
+            "ref": "vdt_band",
+            "state": "not_applicable"
+           }
+          ]
+         },
+         {
+          "ref": "interval_band",
+          "in": [
+           "1to2y",
+           "ge2y"
+          ]
+         },
+         {
+          "ref": "change_band",
+          "eq": "ge25"
+         },
          {
           "ref": "vdt_band",
-          "state": "not_applicable"
+          "eq": "gt600"
          }
         ]
-       },
-       {
-        "ref": "interval_band",
-        "in": [
-         "1to2y",
-         "ge2y"
-        ]
-       },
-       {
-        "ref": "change_band",
-        "eq": "ge25"
-       },
-       {
-        "ref": "vdt_band",
-        "eq": "gt600"
        }
       ]
      },
@@ -1298,53 +1432,61 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
-          "eq": true
-         }
-        ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "in": [
-         "5to6",
-         "6to8",
-         "ge8"
-        ]
-       },
-       {
-        "none": [
-         {
-          "ref": "vdt_band",
-          "state": "not_applicable"
-         }
-        ]
-       },
-       {
-        "ref": "interval_band",
-        "in": [
-         "1to2y",
-         "ge2y"
-        ]
-       },
-       {
-        "none": [
-         {
-          "ref": "change_band",
-          "eq": "ge25"
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
          },
          {
-          "ref": "vdt_band",
-          "eq": "neg"
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
+          "in": [
+           "5to6",
+           "6to8",
+           "ge8"
+          ]
+         },
+         {
+          "none": [
+           {
+            "ref": "vdt_band",
+            "state": "not_applicable"
+           }
+          ]
+         },
+         {
+          "ref": "interval_band",
+          "in": [
+           "1to2y",
+           "ge2y"
+          ]
+         },
+         {
+          "none": [
+           {
+            "ref": "change_band",
+            "eq": "ge25"
+           },
+           {
+            "ref": "vdt_band",
+            "eq": "neg"
+           }
+          ]
          }
         ]
        }
@@ -1361,47 +1503,55 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
-          "eq": true
-         }
-        ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "in": [
-         "5to6",
-         "6to8",
-         "ge8"
-        ]
-       },
-       {
-        "none": [
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
+         },
+         {
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
+          "in": [
+           "5to6",
+           "6to8",
+           "ge8"
+          ]
+         },
+         {
+          "none": [
+           {
+            "ref": "vdt_band",
+            "state": "not_applicable"
+           }
+          ]
+         },
+         {
+          "ref": "interval_band",
+          "in": [
+           "1to2y",
+           "ge2y"
+          ]
+         },
          {
           "ref": "vdt_band",
-          "state": "not_applicable"
+          "eq": "neg"
          }
         ]
-       },
-       {
-        "ref": "interval_band",
-        "in": [
-         "1to2y",
-         "ge2y"
-        ]
-       },
-       {
-        "ref": "vdt_band",
-        "eq": "neg"
        }
       ]
      },
@@ -1414,8 +1564,16 @@
     },
     {
      "when": {
-      "ref": "resolved",
-      "eq": true
+      "all": [
+       {
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "ref": "resolved",
+        "eq": true
+       }
+      ]
      },
      "result": "resolved",
      "locator": {
@@ -1428,40 +1586,48 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
+         },
+         {
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
+          "in": [
+           "5to6",
+           "6to8",
+           "ge8"
+          ]
+         },
+         {
+          "ref": "prior_study",
           "eq": true
+         },
+         {
+          "ref": "vdt_band",
+          "state": "not_applicable"
+         },
+         {
+          "ref": "growth",
+          "eq": "diameter_clear_growth"
          }
         ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "in": [
-         "5to6",
-         "6to8",
-         "ge8"
-        ]
-       },
-       {
-        "ref": "prior_study",
-        "eq": true
-       },
-       {
-        "ref": "vdt_band",
-        "state": "not_applicable"
-       },
-       {
-        "ref": "growth",
-        "eq": "diameter_clear_growth"
        }
       ]
      },
@@ -1476,48 +1642,56 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
-          "eq": true
-         }
-        ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "in": [
-         "5to6",
-         "6to8",
-         "ge8"
-        ]
-       },
-       {
-        "ref": "prior_study",
-        "eq": true
-       },
-       {
-        "ref": "vdt_band",
-        "state": "not_applicable"
-       },
-       {
-        "ref": "growth",
-        "eq": "diameter_stable"
-       },
-       {
-        "none": [
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
+         },
          {
-          "ref": "interval_band",
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
           "in": [
-           "1to2y",
-           "ge2y"
+           "5to6",
+           "6to8",
+           "ge8"
+          ]
+         },
+         {
+          "ref": "prior_study",
+          "eq": true
+         },
+         {
+          "ref": "vdt_band",
+          "state": "not_applicable"
+         },
+         {
+          "ref": "growth",
+          "eq": "diameter_stable"
+         },
+         {
+          "none": [
+           {
+            "ref": "interval_band",
+            "in": [
+             "1to2y",
+             "ge2y"
+            ]
+           }
           ]
          }
         ]
@@ -1535,44 +1709,52 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
+         },
+         {
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
+          "in": [
+           "5to6",
+           "6to8",
+           "ge8"
+          ]
+         },
+         {
+          "ref": "prior_study",
           "eq": true
+         },
+         {
+          "ref": "vdt_band",
+          "state": "not_applicable"
+         },
+         {
+          "ref": "growth",
+          "eq": "diameter_stable"
+         },
+         {
+          "ref": "interval_band",
+          "eq": "1to2y"
          }
         ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "in": [
-         "5to6",
-         "6to8",
-         "ge8"
-        ]
-       },
-       {
-        "ref": "prior_study",
-        "eq": true
-       },
-       {
-        "ref": "vdt_band",
-        "state": "not_applicable"
-       },
-       {
-        "ref": "growth",
-        "eq": "diameter_stable"
-       },
-       {
-        "ref": "interval_band",
-        "eq": "1to2y"
        }
       ]
      },
@@ -1587,44 +1769,52 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
+         },
+         {
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
+          "in": [
+           "5to6",
+           "6to8",
+           "ge8"
+          ]
+         },
+         {
+          "ref": "prior_study",
           "eq": true
+         },
+         {
+          "ref": "vdt_band",
+          "state": "not_applicable"
+         },
+         {
+          "ref": "growth",
+          "eq": "diameter_stable"
+         },
+         {
+          "ref": "interval_band",
+          "eq": "ge2y"
          }
         ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "in": [
-         "5to6",
-         "6to8",
-         "ge8"
-        ]
-       },
-       {
-        "ref": "prior_study",
-        "eq": true
-       },
-       {
-        "ref": "vdt_band",
-        "state": "not_applicable"
-       },
-       {
-        "ref": "growth",
-        "eq": "diameter_stable"
-       },
-       {
-        "ref": "interval_band",
-        "eq": "ge2y"
        }
       ]
      },
@@ -1639,40 +1829,48 @@
      "when": {
       "all": [
        {
-        "none": [
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "all": [
          {
-          "ref": "resolved",
+          "none": [
+           {
+            "ref": "resolved",
+            "eq": true
+           }
+          ]
+         },
+         {
+          "ref": "benign_features",
+          "eq": false
+         },
+         {
+          "ref": "nodule_type",
+          "eq": "solid"
+         },
+         {
+          "ref": "diameter_band",
+          "in": [
+           "5to6",
+           "6to8",
+           "ge8"
+          ]
+         },
+         {
+          "ref": "prior_study",
           "eq": true
+         },
+         {
+          "ref": "vdt_band",
+          "state": "not_applicable"
+         },
+         {
+          "ref": "growth",
+          "eq": "diameter_indeterminate"
          }
         ]
-       },
-       {
-        "ref": "benign_features",
-        "eq": false
-       },
-       {
-        "ref": "nodule_type",
-        "eq": "solid"
-       },
-       {
-        "ref": "diameter_band",
-        "in": [
-         "5to6",
-         "6to8",
-         "ge8"
-        ]
-       },
-       {
-        "ref": "prior_study",
-        "eq": true
-       },
-       {
-        "ref": "vdt_band",
-        "state": "not_applicable"
-       },
-       {
-        "ref": "growth",
-        "eq": "diameter_indeterminate"
        }
       ]
      },
@@ -1940,6 +2138,16 @@
     "source": "S1",
     "page": 8,
     "section": "Summary of recommendations: imaging follow-up (assess growth using interval CT with automated volumetric analysis)"
+   }
+  },
+  {
+   "id": "does_not_apply",
+   "classification": "BTS 2015 does not apply: the guidelines do not cover patients under 18",
+   "recommendation": "Manage per the clinical context.",
+   "locator": {
+    "source": "S1",
+    "page": 13,
+    "section": "Groups not covered"
    }
   }
  ],

@@ -113,3 +113,39 @@ incl. a 10-mm ground-glass nodule, "initial follow-up would be appropriate in 3�
   exclusion with a full solid description → does_not_apply; exclusion not stated → needed [exclusion]). Gates 1-4 pass.
 - Gate 5 re-run (evidence.md): applies.case0 0.81, outcome.does_not_apply 0.84; the pass-through cases restate table
   rows (checked by hand against the table, p3). 13 items below 0.5, all earlier items or pass-through restatements.
+
+## Next slice (2026-10-13): eligibility inputs (spec §3.6)
+
+Scope clauses read in the source: S1 p2, "Implications for Patient Care" ("These guidelines do not apply to patients
+younger than 35 years, immunocompromised patients, or patients with cancer"; the body text on the same page: lung
+cancer is rare "in children and adults younger than 35 years", so the guidelines "are not appropriate for such
+patients"); S1 p3, the table note (not for lung cancer screening, immunosuppression or known primary cancer).
+
+| Item | Check |
+|---|---|
+| input `age` (eligibility, patient scope, fact `age_years`, number in years, 0-110), locator S1 p2 | ✓ |
+| input `exclusion` now eligibility, patient scope; label and `how_stated` narrowed to screening, immunocompromise or known primary cancer (age moved to `age`); locator S1 p2 unchanged | ✓ |
+| band `age_band`: `lt35` under 35 (max 35, exclusive), `ge35` 35 or over (min 35, inclusive): "younger than 35 years" | ✓ |
+| `applies` case 0: `exclusion` true or `age_band` lt35 → does_not_apply (locator S1 p3 table note, unchanged) | ✓ (see For Hassan) |
+| `applies` cases 1-15: each now also requires `age_band` ge35 | ✓ |
+| outcome `does_not_apply`: unchanged (it already names age under 35) | ✓ |
+
+Golden cases: every earlier case now states `age: 60`; four new cases: age 34 → does_not_apply; age 35 →
+solid_single_6to8_low; age not stated → needed [age]; exclusion true with age not stated → does_not_apply. Gates 1-4
+pass.
+
+Gate 5 re-run (evidence.md): age_band 0.85, applies.case0 0.86, outcome.does_not_apply 0.83. Newly flagged:
+applies.case12 and management.row20, both unchanged table restatements that passed last run (Jev run-to-run variance),
+checked by hand against the table, p3. reference.pit.volume cleared.
+
+**For Hassan (eligibility)**
+- DECISION: age is split out of the combined exclusion into its own `age` input (shared fact `age_years`), so one age
+  answer serves the Fleischner and BTS cards; `exclusion` now covers screening, immunocompromise and known primary
+  cancer only.
+- The single does_not_apply case (exclusion or under 35) cites the p3 table note, which does not name age; age's own
+  clause (p2) is cited by the `age` input and `age_band`. One case keeps "excluded whatever the other input says"
+  working; separate citations would need two cases, and a lone exclusion would then wait for the age.
+- Age 35 exactly is in scope ("younger than 35" is excluded).
+- Most dictations state neither age nor exclusions, so most Fleischner cards open as check_first until answered.
+
+Independent clinical read (skill step 8): PENDING, dispatched by the controller.

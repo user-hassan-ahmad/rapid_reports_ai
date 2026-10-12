@@ -1085,7 +1085,8 @@
    "origin": "ours",
    "inputs": {
     "prior_study": true,
-    "resolved": true
+    "resolved": true,
+    "age": 65
    },
    "outcome": "resolved"
   },
@@ -1131,6 +1132,62 @@
    "needed": [
     "prior_volume_mm3",
     "current_volume_mm3"
+   ]
+  },
+  {
+   "name": "age 17 is under 18: does not apply",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": true,
+    "nodule_type": "solid",
+    "age": 17,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 12
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "age 18 is in scope",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": true,
+    "nodule_type": "solid",
+    "age": 18,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 12
+   },
+   "outcome": "discharge_benign"
+  },
+  {
+   "name": "age not stated",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": true,
+    "nodule_type": "solid",
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 12
+   },
+   "outcome": null,
+   "needed": [
+    "age"
    ]
   }
  ]

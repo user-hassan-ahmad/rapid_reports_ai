@@ -137,5 +137,6 @@ def test_an_input_behind_an_unknown_prerequisite_is_not_used_until_the_prerequis
     t = E.evaluate(e, {"too_small": "no", "contents_enhancement": "present"})
     assert t.outcome is None and "technique" in t.needed
     assert t.inputs["contents_enhancement"].state == "unknown"
-    t = E.evaluate(e, {"too_small": "no", "technique": "renal_mass_protocol", "contents_enhancement": "present"})
+    t = E.evaluate(e, {"mimic": False, "too_small": "no", "technique": "renal_mass_protocol",
+                       "contents_enhancement": "present"})
     assert t.outcome == "not_cystic"

@@ -13,7 +13,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "class_iii"
     },
@@ -30,7 +31,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "class_ii"
     },
@@ -47,7 +49,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "class_iif"
     },
@@ -64,7 +67,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "class_i"
     },
@@ -81,7 +85,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "class_iif"
     },
@@ -98,7 +103,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "class_iii"
     },
@@ -115,7 +121,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "class_iii"
     },
@@ -132,7 +139,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "class_iv"
     },
@@ -149,7 +157,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "unclassifiable"
     },
@@ -166,7 +175,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "unclassifiable"
     },
@@ -183,7 +193,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "unclassifiable"
     },
@@ -200,7 +211,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "unclassifiable"
     },
@@ -217,7 +229,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 45
+        "hu": 45,
+        "mimic": false
       },
       "outcome": "class_ii"
     },
@@ -234,7 +247,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "present",
-        "hu": 45
+        "hu": 45,
+        "mimic": false
       },
       "outcome": "not_cystic"
     },
@@ -251,7 +265,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "present",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "not_cystic"
     },
@@ -268,7 +283,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "present",
-        "hu": 30
+        "hu": 30,
+        "mimic": false
       },
       "outcome": "not_cystic"
     },
@@ -284,7 +300,8 @@
         "protrusion": "nodule",
         "calcification": "none",
         "contents": "uniform",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "unclassifiable"
     },
@@ -300,7 +317,8 @@
         "protrusion": "none",
         "calcification": "none",
         "contents": "uniform",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "unclassifiable"
     },
@@ -317,7 +335,8 @@
         "calcification": "present",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "class_ii"
     },
@@ -325,7 +344,8 @@
       "name": "II.6 too small, homogeneous low attenuation",
       "origin": "ours",
       "inputs": {
-        "too_small": "yes_homogeneous_low_attenuation"
+        "too_small": "yes_homogeneous_low_attenuation",
+        "mimic": false
       },
       "outcome": "class_ii"
     },
@@ -333,7 +353,8 @@
       "name": "too small, other",
       "origin": "ours",
       "inputs": {
-        "too_small": "yes_other"
+        "too_small": "yes_other",
+        "mimic": false
       },
       "outcome": "unclassifiable"
     },
@@ -349,7 +370,8 @@
         "protrusion": "none",
         "calcification": "none",
         "contents": "uniform",
-        "hu": 70
+        "hu": 70,
+        "mimic": false
       },
       "outcome": "class_ii",
       "steps": {
@@ -368,7 +390,8 @@
         "protrusion": "none",
         "calcification": "none",
         "contents": "uniform",
-        "hu": 69.9
+        "hu": 69.9,
+        "mimic": false
       },
       "outcome": "unclassifiable",
       "steps": {
@@ -388,7 +411,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 30.1
+        "hu": 30.1,
+        "mimic": false
       },
       "outcome": "class_ii",
       "steps": {
@@ -408,7 +432,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 20.1
+        "hu": 20.1,
+        "mimic": false
       },
       "outcome": "class_ii",
       "steps": {
@@ -428,7 +453,8 @@
         "calcification": "present",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 80
+        "hu": 80,
+        "mimic": false
       },
       "outcome": "class_ii"
     },
@@ -444,7 +470,8 @@
         "protrusion": "none",
         "calcification": "none",
         "contents": "uniform",
-        "hu": 20
+        "hu": 20,
+        "mimic": false
       },
       "outcome": "class_ii",
       "steps": {
@@ -463,7 +490,8 @@
         "protrusion": "none",
         "calcification": "none",
         "contents": "uniform",
-        "hu": -9
+        "hu": -9,
+        "mimic": false
       },
       "outcome": "class_ii",
       "steps": {
@@ -482,7 +510,8 @@
         "protrusion": "none",
         "calcification": "none",
         "contents": "uniform",
-        "hu": -9.1
+        "hu": -9.1,
+        "mimic": false
       },
       "outcome": "unclassifiable",
       "steps": {
@@ -501,7 +530,8 @@
         "protrusion": "none",
         "calcification": "none",
         "contents": "uniform",
-        "hu": 20.1
+        "hu": 20.1,
+        "mimic": false
       },
       "outcome": "class_ii",
       "steps": {
@@ -520,7 +550,8 @@
         "protrusion": "none",
         "calcification": "none",
         "contents": "uniform",
-        "hu": 30
+        "hu": 30,
+        "mimic": false
       },
       "outcome": "class_ii",
       "steps": {
@@ -539,7 +570,8 @@
         "protrusion": "none",
         "calcification": "none",
         "contents": "uniform",
-        "hu": 30.1
+        "hu": 30.1,
+        "mimic": false
       },
       "outcome": "unclassifiable",
       "steps": {
@@ -558,7 +590,8 @@
         "protrusion": "none",
         "calcification": "none",
         "contents": "uniform",
-        "hu": 20
+        "hu": 20,
+        "mimic": false
       },
       "outcome": "class_i",
       "steps": {
@@ -577,7 +610,8 @@
         "protrusion": "none",
         "calcification": "none",
         "contents": "uniform",
-        "hu": 15
+        "hu": 15,
+        "mimic": false
       },
       "outcome": "class_i"
     },
@@ -593,7 +627,8 @@
         "protrusion": "none",
         "calcification": "none",
         "contents": "uniform",
-        "hu": 25
+        "hu": 25,
+        "mimic": false
       },
       "outcome": "unclassifiable"
     },
@@ -610,7 +645,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": -9
+        "hu": -9,
+        "mimic": false
       },
       "outcome": "class_i",
       "steps": {
@@ -630,7 +666,8 @@
         "calcification": "present",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "class_ii"
     },
@@ -647,7 +684,8 @@
         "calcification": "none",
         "contents": "heterogeneous",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "unclassifiable"
     },
@@ -664,7 +702,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "unclassifiable"
     },
@@ -681,7 +720,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "class_iv"
     },
@@ -698,7 +738,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "class_iif"
     },
@@ -714,7 +755,8 @@
         "protrusion": "none",
         "calcification": "none",
         "contents": "uniform",
-        "contents_enhancement": "absent"
+        "contents_enhancement": "absent",
+        "mimic": false
       },
       "outcome": null,
       "needed": [
@@ -733,7 +775,8 @@
         "protrusion": "none",
         "calcification": "none",
         "contents": "uniform",
-        "hu": 45
+        "hu": 45,
+        "mimic": false
       },
       "outcome": null,
       "needed": [
@@ -752,7 +795,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "absent",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": null,
       "needed": [
@@ -772,7 +816,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "present",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "not_cystic",
       "steps": {}
@@ -790,7 +835,8 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "present",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "not_cystic",
       "steps": {}
@@ -808,10 +854,39 @@
         "calcification": "none",
         "contents": "uniform",
         "contents_enhancement": "present",
-        "hu": 10
+        "hu": 10,
+        "mimic": false
       },
       "outcome": "not_cystic",
       "steps": {}
+    },
+    {
+      "name": "abscess: does not apply",
+      "origin": "ours",
+      "inputs": {
+        "mimic": true
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "mimic not stated",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "thick_enhancing",
+        "protrusion": "none",
+        "calcification": "none",
+        "contents": "uniform",
+        "contents_enhancement": "absent",
+        "hu": 10
+      },
+      "outcome": null,
+      "needed": [
+        "mimic"
+      ]
     }
   ]
 }

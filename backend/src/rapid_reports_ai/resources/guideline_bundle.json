@@ -26,6 +26,25 @@
     "id": "bosniak-renal-cyst",
     "inputs": [
      {
+      "how_stated": "true when the finding is called an abscess, an infected or inflamed collection, a vascular lesion or a necrotic solid mass rather than a cystic renal mass; false when it is described as a renal cyst or cystic renal mass",
+      "id": "mimic",
+      "label": "Infectious, inflammatory or vascular lesion, or necrotic solid mass",
+      "locator": {
+       "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+       "source": "S1",
+       "table": "2"
+      },
+      "max_inclusive": true,
+      "min_inclusive": true,
+      "options": [],
+      "prerequisites": [],
+      "role": "eligibility",
+      "scope": "lesion",
+      "states": [],
+      "type": "boolean",
+      "unit": ""
+     },
+     {
       "how_stated": "yes when dictated as 'too small to characterise' (eg, section thickness over half the diameter), and then whether it is well-defined, homogeneous and of low attenuation; no when the mass is described by its features (wall, septa, contents or attenuation) rather than called too small",
       "id": "too_small",
       "label": "Too small to characterise",
@@ -366,10 +385,30 @@
          "source": "S1",
          "table": "2"
         },
+        "result": "does_not_apply",
+        "when": {
+         "eq": true,
+         "ref": "mimic"
+        }
+       },
+       {
+        "locator": {
+         "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+         "source": "S1",
+         "table": "2"
+        },
         "result": "class_ii",
         "when": {
-         "eq": "yes_homogeneous_low_attenuation",
-         "ref": "too_small"
+         "all": [
+          {
+           "eq": false,
+           "ref": "mimic"
+          },
+          {
+           "eq": "yes_homogeneous_low_attenuation",
+           "ref": "too_small"
+          }
+         ]
         }
        },
        {
@@ -380,8 +419,16 @@
         },
         "result": "unclassifiable",
         "when": {
-         "eq": "yes_other",
-         "ref": "too_small"
+         "all": [
+          {
+           "eq": false,
+           "ref": "mimic"
+          },
+          {
+           "eq": "yes_other",
+           "ref": "too_small"
+          }
+         ]
         }
        },
        {
@@ -394,12 +441,20 @@
         "when": {
          "all": [
           {
-           "eq": "no",
-           "ref": "too_small"
+           "eq": false,
+           "ref": "mimic"
           },
           {
-           "eq": "present",
-           "ref": "contents_enhancement"
+           "all": [
+            {
+             "eq": "no",
+             "ref": "too_small"
+            },
+            {
+             "eq": "present",
+             "ref": "contents_enhancement"
+            }
+           ]
           }
          ]
         }
@@ -414,26 +469,34 @@
         "when": {
          "all": [
           {
-           "eq": "no",
-           "ref": "too_small"
-          },
-          {
-           "none": [
-            {
-             "eq": "present",
-             "ref": "contents_enhancement"
-            }
-           ]
+           "eq": false,
+           "ref": "mimic"
           },
           {
            "all": [
             {
-             "eq": "renal_mass_protocol",
-             "ref": "technique"
+             "eq": "no",
+             "ref": "too_small"
             },
             {
-             "eq": "nodule",
-             "ref": "protrusion"
+             "none": [
+              {
+               "eq": "present",
+               "ref": "contents_enhancement"
+              }
+             ]
+            },
+            {
+             "all": [
+              {
+               "eq": "renal_mass_protocol",
+               "ref": "technique"
+              },
+              {
+               "eq": "nodule",
+               "ref": "protrusion"
+              }
+             ]
             }
            ]
           }
@@ -450,19 +513,39 @@
         "when": {
          "all": [
           {
-           "eq": "no",
-           "ref": "too_small"
+           "eq": false,
+           "ref": "mimic"
           },
           {
-           "none": [
+           "all": [
             {
-             "eq": "present",
-             "ref": "contents_enhancement"
-            }
-           ]
-          },
-          {
-           "none": [
+             "eq": "no",
+             "ref": "too_small"
+            },
+            {
+             "none": [
+              {
+               "eq": "present",
+               "ref": "contents_enhancement"
+              }
+             ]
+            },
+            {
+             "none": [
+              {
+               "all": [
+                {
+                 "eq": "renal_mass_protocol",
+                 "ref": "technique"
+                },
+                {
+                 "eq": "nodule",
+                 "ref": "protrusion"
+                }
+               ]
+              }
+             ]
+            },
             {
              "all": [
               {
@@ -470,32 +553,20 @@
                "ref": "technique"
               },
               {
-               "eq": "nodule",
-               "ref": "protrusion"
-              }
-             ]
-            }
-           ]
-          },
-          {
-           "all": [
-            {
-             "eq": "renal_mass_protocol",
-             "ref": "technique"
-            },
-            {
-             "any": [
-              {
-               "eq": "irregular_thickening",
-               "ref": "protrusion"
-              },
-              {
-               "eq": "thick_enhancing",
-               "ref": "wall"
-              },
-              {
-               "eq": "thick_enhancing",
-               "ref": "septa"
+               "any": [
+                {
+                 "eq": "irregular_thickening",
+                 "ref": "protrusion"
+                },
+                {
+                 "eq": "thick_enhancing",
+                 "ref": "wall"
+                },
+                {
+                 "eq": "thick_enhancing",
+                 "ref": "septa"
+                }
+               ]
               }
              ]
             }
@@ -514,154 +585,67 @@
         "when": {
          "all": [
           {
-           "eq": "no",
-           "ref": "too_small"
-          },
-          {
-           "none": [
-            {
-             "eq": "present",
-             "ref": "contents_enhancement"
-            }
-           ]
-          },
-          {
-           "none": [
-            {
-             "all": [
-              {
-               "eq": "renal_mass_protocol",
-               "ref": "technique"
-              },
-              {
-               "eq": "nodule",
-               "ref": "protrusion"
-              }
-             ]
-            }
-           ]
-          },
-          {
-           "none": [
-            {
-             "all": [
-              {
-               "eq": "renal_mass_protocol",
-               "ref": "technique"
-              },
-              {
-               "any": [
-                {
-                 "eq": "irregular_thickening",
-                 "ref": "protrusion"
-                },
-                {
-                 "eq": "thick_enhancing",
-                 "ref": "wall"
-                },
-                {
-                 "eq": "thick_enhancing",
-                 "ref": "septa"
-                }
-               ]
-              }
-             ]
-            }
-           ]
+           "eq": false,
+           "ref": "mimic"
           },
           {
            "all": [
             {
-             "eq": "renal_mass_protocol",
-             "ref": "technique"
+             "eq": "no",
+             "ref": "too_small"
             },
             {
-             "any": [
+             "none": [
               {
-               "eq": "minimally_thickened_enhancing",
-               "ref": "wall"
-              },
-              {
-               "in": [
-                "minimally_thickened_enhancing",
-                "many_thin_enhancing"
-               ],
-               "ref": "septa"
+               "eq": "present",
+               "ref": "contents_enhancement"
               }
              ]
-            }
-           ]
-          }
-         ]
-        }
-       },
-       {
-        "locator": {
-         "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
-         "source": "S1",
-         "table": "2"
-        },
-        "result": "unclassifiable",
-        "when": {
-         "all": [
-          {
-           "eq": "no",
-           "ref": "too_small"
-          },
-          {
-           "none": [
+            },
             {
-             "eq": "present",
-             "ref": "contents_enhancement"
-            }
-           ]
-          },
-          {
-           "none": [
-            {
-             "all": [
+             "none": [
               {
-               "eq": "renal_mass_protocol",
-               "ref": "technique"
-              },
-              {
-               "eq": "nodule",
-               "ref": "protrusion"
-              }
-             ]
-            }
-           ]
-          },
-          {
-           "none": [
-            {
-             "all": [
-              {
-               "eq": "renal_mass_protocol",
-               "ref": "technique"
-              },
-              {
-               "any": [
+               "all": [
                 {
-                 "eq": "irregular_thickening",
+                 "eq": "renal_mass_protocol",
+                 "ref": "technique"
+                },
+                {
+                 "eq": "nodule",
                  "ref": "protrusion"
-                },
-                {
-                 "eq": "thick_enhancing",
-                 "ref": "wall"
-                },
-                {
-                 "eq": "thick_enhancing",
-                 "ref": "septa"
                 }
                ]
               }
              ]
-            }
-           ]
-          },
-          {
-           "none": [
+            },
+            {
+             "none": [
+              {
+               "all": [
+                {
+                 "eq": "renal_mass_protocol",
+                 "ref": "technique"
+                },
+                {
+                 "any": [
+                  {
+                   "eq": "irregular_thickening",
+                   "ref": "protrusion"
+                  },
+                  {
+                   "eq": "thick_enhancing",
+                   "ref": "wall"
+                  },
+                  {
+                   "eq": "thick_enhancing",
+                   "ref": "septa"
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            },
             {
              "all": [
               {
@@ -686,33 +670,136 @@
              ]
             }
            ]
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+         "source": "S1",
+         "table": "2"
+        },
+        "result": "unclassifiable",
+        "when": {
+         "all": [
+          {
+           "eq": false,
+           "ref": "mimic"
           },
           {
-           "any": [
+           "all": [
             {
-             "in": [
-              "irregular_thickening",
-              "nodule",
-              "not_enhancing"
-             ],
-             "ref": "protrusion"
+             "eq": "no",
+             "ref": "too_small"
             },
             {
              "none": [
               {
-               "eq": "thin",
-               "ref": "wall"
+               "eq": "present",
+               "ref": "contents_enhancement"
               }
              ]
             },
             {
              "none": [
               {
+               "all": [
+                {
+                 "eq": "renal_mass_protocol",
+                 "ref": "technique"
+                },
+                {
+                 "eq": "nodule",
+                 "ref": "protrusion"
+                }
+               ]
+              }
+             ]
+            },
+            {
+             "none": [
+              {
+               "all": [
+                {
+                 "eq": "renal_mass_protocol",
+                 "ref": "technique"
+                },
+                {
+                 "any": [
+                  {
+                   "eq": "irregular_thickening",
+                   "ref": "protrusion"
+                  },
+                  {
+                   "eq": "thick_enhancing",
+                   "ref": "wall"
+                  },
+                  {
+                   "eq": "thick_enhancing",
+                   "ref": "septa"
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            },
+            {
+             "none": [
+              {
+               "all": [
+                {
+                 "eq": "renal_mass_protocol",
+                 "ref": "technique"
+                },
+                {
+                 "any": [
+                  {
+                   "eq": "minimally_thickened_enhancing",
+                   "ref": "wall"
+                  },
+                  {
+                   "in": [
+                    "minimally_thickened_enhancing",
+                    "many_thin_enhancing"
+                   ],
+                   "ref": "septa"
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            },
+            {
+             "any": [
+              {
                "in": [
-                "none",
-                "few_thin"
+                "irregular_thickening",
+                "nodule",
+                "not_enhancing"
                ],
-               "ref": "septa"
+               "ref": "protrusion"
+              },
+              {
+               "none": [
+                {
+                 "eq": "thin",
+                 "ref": "wall"
+                }
+               ]
+              },
+              {
+               "none": [
+                {
+                 "in": [
+                  "none",
+                  "few_thin"
+                 ],
+                 "ref": "septa"
+                }
+               ]
               }
              ]
             }
@@ -731,55 +818,63 @@
         "when": {
          "all": [
           {
-           "eq": "no",
-           "ref": "too_small"
+           "eq": false,
+           "ref": "mimic"
           },
           {
-           "none": [
+           "all": [
             {
-             "eq": "present",
-             "ref": "contents_enhancement"
-            }
-           ]
-          },
-          {
-           "none": [
+             "eq": "no",
+             "ref": "too_small"
+            },
             {
-             "any": [
+             "none": [
               {
-               "in": [
-                "irregular_thickening",
-                "nodule",
-                "not_enhancing"
-               ],
-               "ref": "protrusion"
-              },
+               "eq": "present",
+               "ref": "contents_enhancement"
+              }
+             ]
+            },
+            {
+             "none": [
               {
-               "none": [
-                {
-                 "eq": "thin",
-                 "ref": "wall"
-                }
-               ]
-              },
-              {
-               "none": [
+               "any": [
                 {
                  "in": [
-                  "none",
-                  "few_thin"
+                  "irregular_thickening",
+                  "nodule",
+                  "not_enhancing"
                  ],
-                 "ref": "septa"
+                 "ref": "protrusion"
+                },
+                {
+                 "none": [
+                  {
+                   "eq": "thin",
+                   "ref": "wall"
+                  }
+                 ]
+                },
+                {
+                 "none": [
+                  {
+                   "in": [
+                    "none",
+                    "few_thin"
+                   ],
+                   "ref": "septa"
+                  }
+                 ]
                 }
                ]
               }
              ]
+            },
+            {
+             "eq": "ill_defined",
+             "ref": "margin"
             }
            ]
-          },
-          {
-           "eq": "ill_defined",
-           "ref": "margin"
           }
          ]
         }
@@ -794,65 +889,73 @@
         "when": {
          "all": [
           {
-           "eq": "no",
-           "ref": "too_small"
+           "eq": false,
+           "ref": "mimic"
           },
           {
-           "none": [
+           "all": [
             {
-             "eq": "present",
-             "ref": "contents_enhancement"
-            }
-           ]
-          },
-          {
-           "none": [
+             "eq": "no",
+             "ref": "too_small"
+            },
             {
-             "any": [
+             "none": [
               {
-               "in": [
-                "irregular_thickening",
-                "nodule",
-                "not_enhancing"
-               ],
-               "ref": "protrusion"
-              },
+               "eq": "present",
+               "ref": "contents_enhancement"
+              }
+             ]
+            },
+            {
+             "none": [
               {
-               "none": [
-                {
-                 "eq": "thin",
-                 "ref": "wall"
-                }
-               ]
-              },
-              {
-               "none": [
+               "any": [
                 {
                  "in": [
-                  "none",
-                  "few_thin"
+                  "irregular_thickening",
+                  "nodule",
+                  "not_enhancing"
                  ],
-                 "ref": "septa"
+                 "ref": "protrusion"
+                },
+                {
+                 "none": [
+                  {
+                   "eq": "thin",
+                   "ref": "wall"
+                  }
+                 ]
+                },
+                {
+                 "none": [
+                  {
+                   "in": [
+                    "none",
+                    "few_thin"
+                   ],
+                   "ref": "septa"
+                  }
+                 ]
                 }
                ]
               }
              ]
-            }
-           ]
-          },
-          {
-           "eq": "well_defined",
-           "ref": "margin"
-          },
-          {
-           "eq": "few_thin",
-           "ref": "septa"
-          },
-          {
-           "none": [
+            },
             {
-             "eq": "present",
-             "ref": "contents_enhancement"
+             "eq": "well_defined",
+             "ref": "margin"
+            },
+            {
+             "eq": "few_thin",
+             "ref": "septa"
+            },
+            {
+             "none": [
+              {
+               "eq": "present",
+               "ref": "contents_enhancement"
+              }
+             ]
             }
            ]
           }
@@ -869,66 +972,15 @@
         "when": {
          "all": [
           {
-           "eq": "no",
-           "ref": "too_small"
-          },
-          {
-           "none": [
-            {
-             "eq": "present",
-             "ref": "contents_enhancement"
-            }
-           ]
-          },
-          {
-           "none": [
-            {
-             "any": [
-              {
-               "in": [
-                "irregular_thickening",
-                "nodule",
-                "not_enhancing"
-               ],
-               "ref": "protrusion"
-              },
-              {
-               "none": [
-                {
-                 "eq": "thin",
-                 "ref": "wall"
-                }
-               ]
-              },
-              {
-               "none": [
-                {
-                 "in": [
-                  "none",
-                  "few_thin"
-                 ],
-                 "ref": "septa"
-                }
-               ]
-              }
-             ]
-            }
-           ]
-          },
-          {
-           "eq": "well_defined",
-           "ref": "margin"
-          },
-          {
-           "eq": "none",
-           "ref": "septa"
-          },
-          {
-           "eq": "uniform",
-           "ref": "contents"
+           "eq": false,
+           "ref": "mimic"
           },
           {
            "all": [
+            {
+             "eq": "no",
+             "ref": "too_small"
+            },
             {
              "none": [
               {
@@ -938,20 +990,79 @@
              ]
             },
             {
+             "none": [
+              {
+               "any": [
+                {
+                 "in": [
+                  "irregular_thickening",
+                  "nodule",
+                  "not_enhancing"
+                 ],
+                 "ref": "protrusion"
+                },
+                {
+                 "none": [
+                  {
+                   "eq": "thin",
+                   "ref": "wall"
+                  }
+                 ]
+                },
+                {
+                 "none": [
+                  {
+                   "in": [
+                    "none",
+                    "few_thin"
+                   ],
+                   "ref": "septa"
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            },
+            {
+             "eq": "well_defined",
+             "ref": "margin"
+            },
+            {
              "eq": "none",
-             "ref": "calcification"
+             "ref": "septa"
             },
             {
-             "eq": "m9_20",
-             "ref": "hu_band"
+             "eq": "uniform",
+             "ref": "contents"
             },
             {
-             "in": [
-              "renal_mass_protocol",
-              "portal_venous_only",
-              "other_contrast_only"
-             ],
-             "ref": "technique"
+             "all": [
+              {
+               "none": [
+                {
+                 "eq": "present",
+                 "ref": "contents_enhancement"
+                }
+               ]
+              },
+              {
+               "eq": "none",
+               "ref": "calcification"
+              },
+              {
+               "eq": "m9_20",
+               "ref": "hu_band"
+              },
+              {
+               "in": [
+                "renal_mass_protocol",
+                "portal_venous_only",
+                "other_contrast_only"
+               ],
+               "ref": "technique"
+              }
+             ]
             }
            ]
           }
@@ -968,77 +1079,85 @@
         "when": {
          "all": [
           {
-           "eq": "no",
-           "ref": "too_small"
-          },
-          {
-           "none": [
-            {
-             "eq": "present",
-             "ref": "contents_enhancement"
-            }
-           ]
-          },
-          {
-           "none": [
-            {
-             "any": [
-              {
-               "in": [
-                "irregular_thickening",
-                "nodule",
-                "not_enhancing"
-               ],
-               "ref": "protrusion"
-              },
-              {
-               "none": [
-                {
-                 "eq": "thin",
-                 "ref": "wall"
-                }
-               ]
-              },
-              {
-               "none": [
-                {
-                 "in": [
-                  "none",
-                  "few_thin"
-                 ],
-                 "ref": "septa"
-                }
-               ]
-              }
-             ]
-            }
-           ]
-          },
-          {
-           "eq": "well_defined",
-           "ref": "margin"
-          },
-          {
-           "eq": "none",
-           "ref": "septa"
-          },
-          {
-           "eq": "uniform",
-           "ref": "contents"
+           "eq": false,
+           "ref": "mimic"
           },
           {
            "all": [
             {
+             "eq": "no",
+             "ref": "too_small"
+            },
+            {
+             "none": [
+              {
+               "eq": "present",
+               "ref": "contents_enhancement"
+              }
+             ]
+            },
+            {
+             "none": [
+              {
+               "any": [
+                {
+                 "in": [
+                  "irregular_thickening",
+                  "nodule",
+                  "not_enhancing"
+                 ],
+                 "ref": "protrusion"
+                },
+                {
+                 "none": [
+                  {
+                   "eq": "thin",
+                   "ref": "wall"
+                  }
+                 ]
+                },
+                {
+                 "none": [
+                  {
+                   "in": [
+                    "none",
+                    "few_thin"
+                   ],
+                   "ref": "septa"
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            },
+            {
+             "eq": "well_defined",
+             "ref": "margin"
+            },
+            {
              "eq": "none",
-             "ref": "calcification"
+             "ref": "septa"
             },
             {
-             "eq": "m9_20",
-             "ref": "hu_band"
+             "eq": "uniform",
+             "ref": "contents"
             },
             {
-             "eq": "unenhanced_only",
-             "ref": "technique"
+             "all": [
+              {
+               "eq": "none",
+               "ref": "calcification"
+              },
+              {
+               "eq": "m9_20",
+               "ref": "hu_band"
+              },
+              {
+               "eq": "unenhanced_only",
+               "ref": "technique"
+              }
+             ]
             }
            ]
           }
@@ -1055,66 +1174,15 @@
         "when": {
          "all": [
           {
-           "eq": "no",
-           "ref": "too_small"
-          },
-          {
-           "none": [
-            {
-             "eq": "present",
-             "ref": "contents_enhancement"
-            }
-           ]
-          },
-          {
-           "none": [
-            {
-             "any": [
-              {
-               "in": [
-                "irregular_thickening",
-                "nodule",
-                "not_enhancing"
-               ],
-               "ref": "protrusion"
-              },
-              {
-               "none": [
-                {
-                 "eq": "thin",
-                 "ref": "wall"
-                }
-               ]
-              },
-              {
-               "none": [
-                {
-                 "in": [
-                  "none",
-                  "few_thin"
-                 ],
-                 "ref": "septa"
-                }
-               ]
-              }
-             ]
-            }
-           ]
-          },
-          {
-           "eq": "well_defined",
-           "ref": "margin"
-          },
-          {
-           "eq": "none",
-           "ref": "septa"
-          },
-          {
-           "eq": "uniform",
-           "ref": "contents"
+           "eq": false,
+           "ref": "mimic"
           },
           {
            "all": [
+            {
+             "eq": "no",
+             "ref": "too_small"
+            },
             {
              "none": [
               {
@@ -1124,12 +1192,71 @@
              ]
             },
             {
-             "eq": "present",
-             "ref": "calcification"
+             "none": [
+              {
+               "any": [
+                {
+                 "in": [
+                  "irregular_thickening",
+                  "nodule",
+                  "not_enhancing"
+                 ],
+                 "ref": "protrusion"
+                },
+                {
+                 "none": [
+                  {
+                   "eq": "thin",
+                   "ref": "wall"
+                  }
+                 ]
+                },
+                {
+                 "none": [
+                  {
+                   "in": [
+                    "none",
+                    "few_thin"
+                   ],
+                   "ref": "septa"
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
             },
             {
-             "eq": "m9_20",
-             "ref": "hu_band"
+             "eq": "well_defined",
+             "ref": "margin"
+            },
+            {
+             "eq": "none",
+             "ref": "septa"
+            },
+            {
+             "eq": "uniform",
+             "ref": "contents"
+            },
+            {
+             "all": [
+              {
+               "none": [
+                {
+                 "eq": "present",
+                 "ref": "contents_enhancement"
+                }
+               ]
+              },
+              {
+               "eq": "present",
+               "ref": "calcification"
+              },
+              {
+               "eq": "m9_20",
+               "ref": "hu_band"
+              }
+             ]
             }
            ]
           }
@@ -1146,73 +1273,81 @@
         "when": {
          "all": [
           {
-           "eq": "no",
-           "ref": "too_small"
-          },
-          {
-           "none": [
-            {
-             "eq": "present",
-             "ref": "contents_enhancement"
-            }
-           ]
-          },
-          {
-           "none": [
-            {
-             "any": [
-              {
-               "in": [
-                "irregular_thickening",
-                "nodule",
-                "not_enhancing"
-               ],
-               "ref": "protrusion"
-              },
-              {
-               "none": [
-                {
-                 "eq": "thin",
-                 "ref": "wall"
-                }
-               ]
-              },
-              {
-               "none": [
-                {
-                 "in": [
-                  "none",
-                  "few_thin"
-                 ],
-                 "ref": "septa"
-                }
-               ]
-              }
-             ]
-            }
-           ]
-          },
-          {
-           "eq": "well_defined",
-           "ref": "margin"
-          },
-          {
-           "eq": "none",
-           "ref": "septa"
-          },
-          {
-           "eq": "uniform",
-           "ref": "contents"
+           "eq": false,
+           "ref": "mimic"
           },
           {
            "all": [
             {
-             "eq": "ge70",
-             "ref": "hu_band"
+             "eq": "no",
+             "ref": "too_small"
             },
             {
-             "eq": "unenhanced_only",
-             "ref": "technique"
+             "none": [
+              {
+               "eq": "present",
+               "ref": "contents_enhancement"
+              }
+             ]
+            },
+            {
+             "none": [
+              {
+               "any": [
+                {
+                 "in": [
+                  "irregular_thickening",
+                  "nodule",
+                  "not_enhancing"
+                 ],
+                 "ref": "protrusion"
+                },
+                {
+                 "none": [
+                  {
+                   "eq": "thin",
+                   "ref": "wall"
+                  }
+                 ]
+                },
+                {
+                 "none": [
+                  {
+                   "in": [
+                    "none",
+                    "few_thin"
+                   ],
+                   "ref": "septa"
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            },
+            {
+             "eq": "well_defined",
+             "ref": "margin"
+            },
+            {
+             "eq": "none",
+             "ref": "septa"
+            },
+            {
+             "eq": "uniform",
+             "ref": "contents"
+            },
+            {
+             "all": [
+              {
+               "eq": "ge70",
+               "ref": "hu_band"
+              },
+              {
+               "eq": "unenhanced_only",
+               "ref": "technique"
+              }
+             ]
             }
            ]
           }
@@ -1229,81 +1364,89 @@
         "when": {
          "all": [
           {
-           "eq": "no",
-           "ref": "too_small"
-          },
-          {
-           "none": [
-            {
-             "eq": "present",
-             "ref": "contents_enhancement"
-            }
-           ]
-          },
-          {
-           "none": [
-            {
-             "any": [
-              {
-               "in": [
-                "irregular_thickening",
-                "nodule",
-                "not_enhancing"
-               ],
-               "ref": "protrusion"
-              },
-              {
-               "none": [
-                {
-                 "eq": "thin",
-                 "ref": "wall"
-                }
-               ]
-              },
-              {
-               "none": [
-                {
-                 "in": [
-                  "none",
-                  "few_thin"
-                 ],
-                 "ref": "septa"
-                }
-               ]
-              }
-             ]
-            }
-           ]
-          },
-          {
-           "eq": "well_defined",
-           "ref": "margin"
-          },
-          {
-           "eq": "none",
-           "ref": "septa"
-          },
-          {
-           "eq": "uniform",
-           "ref": "contents"
+           "eq": false,
+           "ref": "mimic"
           },
           {
            "all": [
             {
-             "in": [
-              "21_30",
-              "31_69",
-              "ge70"
-             ],
-             "ref": "hu_band"
+             "eq": "no",
+             "ref": "too_small"
             },
             {
-             "eq": "renal_mass_protocol",
-             "ref": "technique"
+             "none": [
+              {
+               "eq": "present",
+               "ref": "contents_enhancement"
+              }
+             ]
             },
             {
-             "eq": "absent",
-             "ref": "contents_enhancement"
+             "none": [
+              {
+               "any": [
+                {
+                 "in": [
+                  "irregular_thickening",
+                  "nodule",
+                  "not_enhancing"
+                 ],
+                 "ref": "protrusion"
+                },
+                {
+                 "none": [
+                  {
+                   "eq": "thin",
+                   "ref": "wall"
+                  }
+                 ]
+                },
+                {
+                 "none": [
+                  {
+                   "in": [
+                    "none",
+                    "few_thin"
+                   ],
+                   "ref": "septa"
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            },
+            {
+             "eq": "well_defined",
+             "ref": "margin"
+            },
+            {
+             "eq": "none",
+             "ref": "septa"
+            },
+            {
+             "eq": "uniform",
+             "ref": "contents"
+            },
+            {
+             "all": [
+              {
+               "in": [
+                "21_30",
+                "31_69",
+                "ge70"
+               ],
+               "ref": "hu_band"
+              },
+              {
+               "eq": "renal_mass_protocol",
+               "ref": "technique"
+              },
+              {
+               "eq": "absent",
+               "ref": "contents_enhancement"
+              }
+             ]
             }
            ]
           }
@@ -1320,73 +1463,81 @@
         "when": {
          "all": [
           {
-           "eq": "no",
-           "ref": "too_small"
-          },
-          {
-           "none": [
-            {
-             "eq": "present",
-             "ref": "contents_enhancement"
-            }
-           ]
-          },
-          {
-           "none": [
-            {
-             "any": [
-              {
-               "in": [
-                "irregular_thickening",
-                "nodule",
-                "not_enhancing"
-               ],
-               "ref": "protrusion"
-              },
-              {
-               "none": [
-                {
-                 "eq": "thin",
-                 "ref": "wall"
-                }
-               ]
-              },
-              {
-               "none": [
-                {
-                 "in": [
-                  "none",
-                  "few_thin"
-                 ],
-                 "ref": "septa"
-                }
-               ]
-              }
-             ]
-            }
-           ]
-          },
-          {
-           "eq": "well_defined",
-           "ref": "margin"
-          },
-          {
-           "eq": "none",
-           "ref": "septa"
-          },
-          {
-           "eq": "uniform",
-           "ref": "contents"
+           "eq": false,
+           "ref": "mimic"
           },
           {
            "all": [
             {
-             "eq": "21_30",
-             "ref": "hu_band"
+             "eq": "no",
+             "ref": "too_small"
             },
             {
-             "eq": "portal_venous_only",
-             "ref": "technique"
+             "none": [
+              {
+               "eq": "present",
+               "ref": "contents_enhancement"
+              }
+             ]
+            },
+            {
+             "none": [
+              {
+               "any": [
+                {
+                 "in": [
+                  "irregular_thickening",
+                  "nodule",
+                  "not_enhancing"
+                 ],
+                 "ref": "protrusion"
+                },
+                {
+                 "none": [
+                  {
+                   "eq": "thin",
+                   "ref": "wall"
+                  }
+                 ]
+                },
+                {
+                 "none": [
+                  {
+                   "in": [
+                    "none",
+                    "few_thin"
+                   ],
+                   "ref": "septa"
+                  }
+                 ]
+                }
+               ]
+              }
+             ]
+            },
+            {
+             "eq": "well_defined",
+             "ref": "margin"
+            },
+            {
+             "eq": "none",
+             "ref": "septa"
+            },
+            {
+             "eq": "uniform",
+             "ref": "contents"
+            },
+            {
+             "all": [
+              {
+               "eq": "21_30",
+               "ref": "hu_band"
+              },
+              {
+               "eq": "portal_venous_only",
+               "ref": "technique"
+              }
+             ]
             }
            ]
           }
@@ -1403,175 +1554,183 @@
         "when": {
          "all": [
           {
-           "eq": "no",
-           "ref": "too_small"
+           "eq": false,
+           "ref": "mimic"
           },
           {
-           "none": [
+           "all": [
             {
-             "eq": "present",
-             "ref": "contents_enhancement"
-            }
-           ]
-          },
-          {
-           "none": [
+             "eq": "no",
+             "ref": "too_small"
+            },
             {
-             "any": [
+             "none": [
               {
-               "in": [
-                "irregular_thickening",
-                "nodule",
-                "not_enhancing"
-               ],
-               "ref": "protrusion"
-              },
+               "eq": "present",
+               "ref": "contents_enhancement"
+              }
+             ]
+            },
+            {
+             "none": [
               {
-               "none": [
-                {
-                 "eq": "thin",
-                 "ref": "wall"
-                }
-               ]
-              },
-              {
-               "none": [
+               "any": [
                 {
                  "in": [
-                  "none",
-                  "few_thin"
+                  "irregular_thickening",
+                  "nodule",
+                  "not_enhancing"
                  ],
-                 "ref": "septa"
+                 "ref": "protrusion"
+                },
+                {
+                 "none": [
+                  {
+                   "eq": "thin",
+                   "ref": "wall"
+                  }
+                 ]
+                },
+                {
+                 "none": [
+                  {
+                   "in": [
+                    "none",
+                    "few_thin"
+                   ],
+                   "ref": "septa"
+                  }
+                 ]
                 }
                ]
               }
              ]
-            }
-           ]
-          },
-          {
-           "eq": "well_defined",
-           "ref": "margin"
-          },
-          {
-           "eq": "none",
-           "ref": "septa"
-          },
-          {
-           "none": [
+            },
             {
-             "all": [
+             "eq": "well_defined",
+             "ref": "margin"
+            },
+            {
+             "eq": "none",
+             "ref": "septa"
+            },
+            {
+             "none": [
               {
-               "eq": "uniform",
-               "ref": "contents"
-              },
-              {
-               "any": [
+               "all": [
                 {
-                 "all": [
+                 "eq": "uniform",
+                 "ref": "contents"
+                },
+                {
+                 "any": [
                   {
-                   "none": [
+                   "all": [
+                    {
+                     "none": [
+                      {
+                       "eq": "present",
+                       "ref": "contents_enhancement"
+                      }
+                     ]
+                    },
+                    {
+                     "eq": "none",
+                     "ref": "calcification"
+                    },
+                    {
+                     "eq": "m9_20",
+                     "ref": "hu_band"
+                    },
+                    {
+                     "in": [
+                      "renal_mass_protocol",
+                      "portal_venous_only",
+                      "other_contrast_only"
+                     ],
+                     "ref": "technique"
+                    }
+                   ]
+                  },
+                  {
+                   "all": [
+                    {
+                     "eq": "none",
+                     "ref": "calcification"
+                    },
+                    {
+                     "eq": "m9_20",
+                     "ref": "hu_band"
+                    },
+                    {
+                     "eq": "unenhanced_only",
+                     "ref": "technique"
+                    }
+                   ]
+                  },
+                  {
+                   "all": [
+                    {
+                     "none": [
+                      {
+                       "eq": "present",
+                       "ref": "contents_enhancement"
+                      }
+                     ]
+                    },
                     {
                      "eq": "present",
+                     "ref": "calcification"
+                    },
+                    {
+                     "eq": "m9_20",
+                     "ref": "hu_band"
+                    }
+                   ]
+                  },
+                  {
+                   "all": [
+                    {
+                     "eq": "ge70",
+                     "ref": "hu_band"
+                    },
+                    {
+                     "eq": "unenhanced_only",
+                     "ref": "technique"
+                    }
+                   ]
+                  },
+                  {
+                   "all": [
+                    {
+                     "in": [
+                      "21_30",
+                      "31_69",
+                      "ge70"
+                     ],
+                     "ref": "hu_band"
+                    },
+                    {
+                     "eq": "renal_mass_protocol",
+                     "ref": "technique"
+                    },
+                    {
+                     "eq": "absent",
                      "ref": "contents_enhancement"
                     }
                    ]
                   },
                   {
-                   "eq": "none",
-                   "ref": "calcification"
-                  },
-                  {
-                   "eq": "m9_20",
-                   "ref": "hu_band"
-                  },
-                  {
-                   "in": [
-                    "renal_mass_protocol",
-                    "portal_venous_only",
-                    "other_contrast_only"
-                   ],
-                   "ref": "technique"
-                  }
-                 ]
-                },
-                {
-                 "all": [
-                  {
-                   "eq": "none",
-                   "ref": "calcification"
-                  },
-                  {
-                   "eq": "m9_20",
-                   "ref": "hu_band"
-                  },
-                  {
-                   "eq": "unenhanced_only",
-                   "ref": "technique"
-                  }
-                 ]
-                },
-                {
-                 "all": [
-                  {
-                   "none": [
+                   "all": [
                     {
-                     "eq": "present",
-                     "ref": "contents_enhancement"
+                     "eq": "21_30",
+                     "ref": "hu_band"
+                    },
+                    {
+                     "eq": "portal_venous_only",
+                     "ref": "technique"
                     }
                    ]
-                  },
-                  {
-                   "eq": "present",
-                   "ref": "calcification"
-                  },
-                  {
-                   "eq": "m9_20",
-                   "ref": "hu_band"
-                  }
-                 ]
-                },
-                {
-                 "all": [
-                  {
-                   "eq": "ge70",
-                   "ref": "hu_band"
-                  },
-                  {
-                   "eq": "unenhanced_only",
-                   "ref": "technique"
-                  }
-                 ]
-                },
-                {
-                 "all": [
-                  {
-                   "in": [
-                    "21_30",
-                    "31_69",
-                    "ge70"
-                   ],
-                   "ref": "hu_band"
-                  },
-                  {
-                   "eq": "renal_mass_protocol",
-                   "ref": "technique"
-                  },
-                  {
-                   "eq": "absent",
-                   "ref": "contents_enhancement"
-                  }
-                 ]
-                },
-                {
-                 "all": [
-                  {
-                   "eq": "21_30",
-                   "ref": "hu_band"
-                  },
-                  {
-                   "eq": "portal_venous_only",
-                   "ref": "technique"
                   }
                  ]
                 }
@@ -1684,6 +1843,17 @@
        "table": ""
       },
       "recommendation": "Manage as a solid renal mass."
+     },
+     {
+      "caveats": [],
+      "classification": "Bosniak 2019 does not apply: an infectious, inflammatory or vascular lesion, or a necrotic solid mass, is outside the classification",
+      "id": "does_not_apply",
+      "locator": {
+       "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+       "source": "S1",
+       "table": "2"
+      },
+      "recommendation": "Manage per the clinical context."
      }
     ],
     "reference": {
@@ -2003,27 +2173,30 @@
       "unit": "mm"
      },
      {
+      "fact": "age_years",
       "how_stated": "patient age in years, usually from the request details",
       "id": "age",
       "label": "Age",
       "locator": {
-       "section": "",
-       "source": "S2",
-       "table": "Table 2, model 2b: age"
+       "page": 13,
+       "section": "Groups not covered",
+       "source": "S1",
+       "table": ""
       },
       "max_inclusive": true,
       "max_value": 110.0,
       "min_inclusive": true,
-      "min_value": 18.0,
+      "min_value": 0.0,
       "options": [],
       "prerequisites": [],
-      "role": "clinical",
+      "role": "eligibility",
       "scope": "patient",
       "states": [],
       "type": "number",
       "unit": "years"
      },
      {
+      "fact": "sex",
       "how_stated": "patient sex, usually from the request details",
       "id": "sex",
       "label": "Sex",
@@ -2321,6 +2494,33 @@
     ],
     "issuer": "British Thoracic Society",
     "logic": [
+     {
+      "bands": [
+       {
+        "id": "lt18",
+        "label": "Under 18 years",
+        "max": 18.0,
+        "max_inclusive": false,
+        "min_inclusive": true
+       },
+       {
+        "id": "ge18",
+        "label": "18 years or over",
+        "max_inclusive": false,
+        "min": 18.0,
+        "min_inclusive": true
+       }
+      ],
+      "id": "age_band",
+      "locator": {
+       "page": 13,
+       "section": "Groups not covered",
+       "source": "S1",
+       "table": ""
+      },
+      "ref": "age",
+      "step": "band"
+     },
      {
       "expr": {
        "args": [
@@ -2737,6 +2937,19 @@
       "cases": [
        {
         "locator": {
+         "page": 13,
+         "section": "Groups not covered",
+         "source": "S1",
+         "table": ""
+        },
+        "result": "does_not_apply",
+        "when": {
+         "eq": "lt18",
+         "ref": "age_band"
+        }
+       },
+       {
+        "locator": {
          "page": 8,
          "section": "",
          "source": "S1",
@@ -2746,16 +2959,24 @@
         "when": {
          "all": [
           {
-           "none": [
-            {
-             "eq": true,
-             "ref": "resolved"
-            }
-           ]
+           "eq": "ge18",
+           "ref": "age_band"
           },
           {
-           "eq": true,
-           "ref": "benign_features"
+           "all": [
+            {
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
+            },
+            {
+             "eq": true,
+             "ref": "benign_features"
+            }
+           ]
           }
          ]
         }
@@ -2771,23 +2992,31 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
             {
-             "eq": true,
-             "ref": "resolved"
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
+            },
+            {
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "in": [
+              "part_solid",
+              "nonsolid"
+             ],
+             "ref": "nodule_type"
             }
            ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "in": [
-            "part_solid",
-            "nonsolid"
-           ],
-           "ref": "nodule_type"
           }
          ]
         }
@@ -2803,24 +3032,32 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
             {
-             "eq": true,
-             "ref": "resolved"
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
+            },
+            {
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
+            {
+             "eq": "lt5",
+             "ref": "diameter_band"
             }
            ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "eq": "lt5",
-           "ref": "diameter_band"
           }
          ]
         }
@@ -2836,38 +3073,46 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
             {
-             "eq": true,
-             "ref": "resolved"
-            }
-           ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "eq": "5to6",
-           "ref": "diameter_band"
-          },
-          {
-           "ref": "vdt_band",
-           "state": "not_applicable"
-          },
-          {
-           "none": [
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
+            },
             {
-             "in": [
-              "diameter_stable",
-              "diameter_clear_growth",
-              "diameter_indeterminate"
-             ],
-             "ref": "growth"
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
+            {
+             "eq": "5to6",
+             "ref": "diameter_band"
+            },
+            {
+             "ref": "vdt_band",
+             "state": "not_applicable"
+            },
+            {
+             "none": [
+              {
+               "in": [
+                "diameter_stable",
+                "diameter_clear_growth",
+                "diameter_indeterminate"
+               ],
+               "ref": "growth"
+              }
+             ]
             }
            ]
           }
@@ -2885,38 +3130,46 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
             {
-             "eq": true,
-             "ref": "resolved"
-            }
-           ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "eq": "6to8",
-           "ref": "diameter_band"
-          },
-          {
-           "ref": "vdt_band",
-           "state": "not_applicable"
-          },
-          {
-           "none": [
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
+            },
             {
-             "in": [
-              "diameter_stable",
-              "diameter_clear_growth",
-              "diameter_indeterminate"
-             ],
-             "ref": "growth"
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
+            {
+             "eq": "6to8",
+             "ref": "diameter_band"
+            },
+            {
+             "ref": "vdt_band",
+             "state": "not_applicable"
+            },
+            {
+             "none": [
+              {
+               "in": [
+                "diameter_stable",
+                "diameter_clear_growth",
+                "diameter_indeterminate"
+               ],
+               "ref": "growth"
+              }
+             ]
             }
            ]
           }
@@ -2934,42 +3187,50 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
             {
-             "eq": true,
-             "ref": "resolved"
-            }
-           ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "eq": "ge8",
-           "ref": "diameter_band"
-          },
-          {
-           "ref": "vdt_band",
-           "state": "not_applicable"
-          },
-          {
-           "eq": "lt10",
-           "ref": "brock_band"
-          },
-          {
-           "none": [
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
+            },
             {
-             "in": [
-              "diameter_stable",
-              "diameter_clear_growth",
-              "diameter_indeterminate"
-             ],
-             "ref": "growth"
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
+            {
+             "eq": "ge8",
+             "ref": "diameter_band"
+            },
+            {
+             "ref": "vdt_band",
+             "state": "not_applicable"
+            },
+            {
+             "eq": "lt10",
+             "ref": "brock_band"
+            },
+            {
+             "none": [
+              {
+               "in": [
+                "diameter_stable",
+                "diameter_clear_growth",
+                "diameter_indeterminate"
+               ],
+               "ref": "growth"
+              }
+             ]
             }
            ]
           }
@@ -2987,42 +3248,50 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
             {
-             "eq": true,
-             "ref": "resolved"
-            }
-           ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "eq": "ge8",
-           "ref": "diameter_band"
-          },
-          {
-           "ref": "vdt_band",
-           "state": "not_applicable"
-          },
-          {
-           "eq": "ge10",
-           "ref": "brock_band"
-          },
-          {
-           "none": [
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
+            },
             {
-             "in": [
-              "diameter_stable",
-              "diameter_clear_growth",
-              "diameter_indeterminate"
-             ],
-             "ref": "growth"
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
+            {
+             "eq": "ge8",
+             "ref": "diameter_band"
+            },
+            {
+             "ref": "vdt_band",
+             "state": "not_applicable"
+            },
+            {
+             "eq": "ge10",
+             "ref": "brock_band"
+            },
+            {
+             "none": [
+              {
+               "in": [
+                "diameter_stable",
+                "diameter_clear_growth",
+                "diameter_indeterminate"
+               ],
+               "ref": "growth"
+              }
+             ]
             }
            ]
           }
@@ -3040,44 +3309,52 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
             {
-             "eq": true,
-             "ref": "resolved"
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
+            },
+            {
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
+            {
+             "in": [
+              "5to6",
+              "6to8",
+              "ge8"
+             ],
+             "ref": "diameter_band"
+            },
+            {
+             "none": [
+              {
+               "ref": "vdt_band",
+               "state": "not_applicable"
+              }
+             ]
+            },
+            {
+             "eq": "le400",
+             "ref": "vdt_band"
+            },
+            {
+             "eq": "ge25",
+             "ref": "change_band"
             }
            ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "in": [
-            "5to6",
-            "6to8",
-            "ge8"
-           ],
-           "ref": "diameter_band"
-          },
-          {
-           "none": [
-            {
-             "ref": "vdt_band",
-             "state": "not_applicable"
-            }
-           ]
-          },
-          {
-           "eq": "le400",
-           "ref": "vdt_band"
-          },
-          {
-           "eq": "ge25",
-           "ref": "change_band"
           }
          ]
         }
@@ -3093,74 +3370,82 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
             {
-             "eq": true,
-             "ref": "resolved"
-            }
-           ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "in": [
-            "5to6",
-            "6to8",
-            "ge8"
-           ],
-           "ref": "diameter_band"
-          },
-          {
-           "none": [
-            {
-             "ref": "vdt_band",
-             "state": "not_applicable"
-            }
-           ]
-          },
-          {
-           "none": [
-            {
-             "all": [
+             "none": [
               {
-               "eq": "le400",
-               "ref": "vdt_band"
-              },
-              {
-               "eq": "ge25",
-               "ref": "change_band"
+               "eq": true,
+               "ref": "resolved"
               }
              ]
-            }
-           ]
-          },
-          {
-           "none": [
+            },
+            {
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
             {
              "in": [
-              "1to2y",
-              "ge2y"
+              "5to6",
+              "6to8",
+              "ge8"
              ],
-             "ref": "interval_band"
+             "ref": "diameter_band"
+            },
+            {
+             "none": [
+              {
+               "ref": "vdt_band",
+               "state": "not_applicable"
+              }
+             ]
+            },
+            {
+             "none": [
+              {
+               "all": [
+                {
+                 "eq": "le400",
+                 "ref": "vdt_band"
+                },
+                {
+                 "eq": "ge25",
+                 "ref": "change_band"
+                }
+               ]
+              }
+             ]
+            },
+            {
+             "none": [
+              {
+               "in": [
+                "1to2y",
+                "ge2y"
+               ],
+               "ref": "interval_band"
+              }
+             ]
+            },
+            {
+             "eq": "ge25",
+             "ref": "change_band"
+            },
+            {
+             "in": [
+              "400to600",
+              "gt600"
+             ],
+             "ref": "vdt_band"
             }
            ]
-          },
-          {
-           "eq": "ge25",
-           "ref": "change_band"
-          },
-          {
-           "in": [
-            "400to600",
-            "gt600"
-           ],
-           "ref": "vdt_band"
           }
          ]
         }
@@ -3176,78 +3461,86 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
             {
-             "eq": true,
-             "ref": "resolved"
-            }
-           ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "in": [
-            "5to6",
-            "6to8",
-            "ge8"
-           ],
-           "ref": "diameter_band"
-          },
-          {
-           "none": [
-            {
-             "ref": "vdt_band",
-             "state": "not_applicable"
-            }
-           ]
-          },
-          {
-           "none": [
-            {
-             "all": [
+             "none": [
               {
-               "eq": "le400",
-               "ref": "vdt_band"
-              },
-              {
-               "eq": "ge25",
-               "ref": "change_band"
+               "eq": true,
+               "ref": "resolved"
               }
              ]
-            }
-           ]
-          },
-          {
-           "none": [
+            },
+            {
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
             {
              "in": [
-              "1to2y",
-              "ge2y"
+              "5to6",
+              "6to8",
+              "ge8"
              ],
-             "ref": "interval_band"
-            }
-           ]
-          },
-          {
-           "none": [
+             "ref": "diameter_band"
+            },
             {
-             "all": [
+             "none": [
               {
-               "eq": "ge25",
-               "ref": "change_band"
-              },
+               "ref": "vdt_band",
+               "state": "not_applicable"
+              }
+             ]
+            },
+            {
+             "none": [
+              {
+               "all": [
+                {
+                 "eq": "le400",
+                 "ref": "vdt_band"
+                },
+                {
+                 "eq": "ge25",
+                 "ref": "change_band"
+                }
+               ]
+              }
+             ]
+            },
+            {
+             "none": [
               {
                "in": [
-                "400to600",
-                "gt600"
+                "1to2y",
+                "ge2y"
                ],
-               "ref": "vdt_band"
+               "ref": "interval_band"
+              }
+             ]
+            },
+            {
+             "none": [
+              {
+               "all": [
+                {
+                 "eq": "ge25",
+                 "ref": "change_band"
+                },
+                {
+                 "in": [
+                  "400to600",
+                  "gt600"
+                 ],
+                 "ref": "vdt_band"
+                }
+               ]
               }
              ]
             }
@@ -3267,51 +3560,59 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
             {
-             "eq": true,
-             "ref": "resolved"
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
+            },
+            {
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
+            {
+             "in": [
+              "5to6",
+              "6to8",
+              "ge8"
+             ],
+             "ref": "diameter_band"
+            },
+            {
+             "none": [
+              {
+               "ref": "vdt_band",
+               "state": "not_applicable"
+              }
+             ]
+            },
+            {
+             "in": [
+              "1to2y",
+              "ge2y"
+             ],
+             "ref": "interval_band"
+            },
+            {
+             "eq": "ge25",
+             "ref": "change_band"
+            },
+            {
+             "eq": "400to600",
+             "ref": "vdt_band"
             }
            ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "in": [
-            "5to6",
-            "6to8",
-            "ge8"
-           ],
-           "ref": "diameter_band"
-          },
-          {
-           "none": [
-            {
-             "ref": "vdt_band",
-             "state": "not_applicable"
-            }
-           ]
-          },
-          {
-           "in": [
-            "1to2y",
-            "ge2y"
-           ],
-           "ref": "interval_band"
-          },
-          {
-           "eq": "ge25",
-           "ref": "change_band"
-          },
-          {
-           "eq": "400to600",
-           "ref": "vdt_band"
           }
          ]
         }
@@ -3327,51 +3628,59 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
             {
-             "eq": true,
-             "ref": "resolved"
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
+            },
+            {
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
+            {
+             "in": [
+              "5to6",
+              "6to8",
+              "ge8"
+             ],
+             "ref": "diameter_band"
+            },
+            {
+             "none": [
+              {
+               "ref": "vdt_band",
+               "state": "not_applicable"
+              }
+             ]
+            },
+            {
+             "in": [
+              "1to2y",
+              "ge2y"
+             ],
+             "ref": "interval_band"
+            },
+            {
+             "eq": "ge25",
+             "ref": "change_band"
+            },
+            {
+             "eq": "gt600",
+             "ref": "vdt_band"
             }
            ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "in": [
-            "5to6",
-            "6to8",
-            "ge8"
-           ],
-           "ref": "diameter_band"
-          },
-          {
-           "none": [
-            {
-             "ref": "vdt_band",
-             "state": "not_applicable"
-            }
-           ]
-          },
-          {
-           "in": [
-            "1to2y",
-            "ge2y"
-           ],
-           "ref": "interval_band"
-          },
-          {
-           "eq": "ge25",
-           "ref": "change_band"
-          },
-          {
-           "eq": "gt600",
-           "ref": "vdt_band"
           }
          ]
         }
@@ -3387,53 +3696,61 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
             {
-             "eq": true,
-             "ref": "resolved"
-            }
-           ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "in": [
-            "5to6",
-            "6to8",
-            "ge8"
-           ],
-           "ref": "diameter_band"
-          },
-          {
-           "none": [
-            {
-             "ref": "vdt_band",
-             "state": "not_applicable"
-            }
-           ]
-          },
-          {
-           "in": [
-            "1to2y",
-            "ge2y"
-           ],
-           "ref": "interval_band"
-          },
-          {
-           "none": [
-            {
-             "eq": "ge25",
-             "ref": "change_band"
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
             },
             {
-             "eq": "neg",
-             "ref": "vdt_band"
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
+            {
+             "in": [
+              "5to6",
+              "6to8",
+              "ge8"
+             ],
+             "ref": "diameter_band"
+            },
+            {
+             "none": [
+              {
+               "ref": "vdt_band",
+               "state": "not_applicable"
+              }
+             ]
+            },
+            {
+             "in": [
+              "1to2y",
+              "ge2y"
+             ],
+             "ref": "interval_band"
+            },
+            {
+             "none": [
+              {
+               "eq": "ge25",
+               "ref": "change_band"
+              },
+              {
+               "eq": "neg",
+               "ref": "vdt_band"
+              }
+             ]
             }
            ]
           }
@@ -3451,47 +3768,55 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
             {
-             "eq": true,
-             "ref": "resolved"
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
+            },
+            {
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
+            {
+             "in": [
+              "5to6",
+              "6to8",
+              "ge8"
+             ],
+             "ref": "diameter_band"
+            },
+            {
+             "none": [
+              {
+               "ref": "vdt_band",
+               "state": "not_applicable"
+              }
+             ]
+            },
+            {
+             "in": [
+              "1to2y",
+              "ge2y"
+             ],
+             "ref": "interval_band"
+            },
+            {
+             "eq": "neg",
+             "ref": "vdt_band"
             }
            ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "in": [
-            "5to6",
-            "6to8",
-            "ge8"
-           ],
-           "ref": "diameter_band"
-          },
-          {
-           "none": [
-            {
-             "ref": "vdt_band",
-             "state": "not_applicable"
-            }
-           ]
-          },
-          {
-           "in": [
-            "1to2y",
-            "ge2y"
-           ],
-           "ref": "interval_band"
-          },
-          {
-           "eq": "neg",
-           "ref": "vdt_band"
           }
          ]
         }
@@ -3505,8 +3830,16 @@
         },
         "result": "resolved",
         "when": {
-         "eq": true,
-         "ref": "resolved"
+         "all": [
+          {
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "eq": true,
+           "ref": "resolved"
+          }
+         ]
         }
        },
        {
@@ -3520,40 +3853,48 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
+            {
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
+            },
+            {
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
+            {
+             "in": [
+              "5to6",
+              "6to8",
+              "ge8"
+             ],
+             "ref": "diameter_band"
+            },
             {
              "eq": true,
-             "ref": "resolved"
+             "ref": "prior_study"
+            },
+            {
+             "ref": "vdt_band",
+             "state": "not_applicable"
+            },
+            {
+             "eq": "diameter_clear_growth",
+             "ref": "growth"
             }
            ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "in": [
-            "5to6",
-            "6to8",
-            "ge8"
-           ],
-           "ref": "diameter_band"
-          },
-          {
-           "eq": true,
-           "ref": "prior_study"
-          },
-          {
-           "ref": "vdt_band",
-           "state": "not_applicable"
-          },
-          {
-           "eq": "diameter_clear_growth",
-           "ref": "growth"
           }
          ]
         }
@@ -3569,49 +3910,57 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
             {
-             "eq": true,
-             "ref": "resolved"
-            }
-           ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "in": [
-            "5to6",
-            "6to8",
-            "ge8"
-           ],
-           "ref": "diameter_band"
-          },
-          {
-           "eq": true,
-           "ref": "prior_study"
-          },
-          {
-           "ref": "vdt_band",
-           "state": "not_applicable"
-          },
-          {
-           "eq": "diameter_stable",
-           "ref": "growth"
-          },
-          {
-           "none": [
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
+            },
+            {
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
             {
              "in": [
-              "1to2y",
-              "ge2y"
+              "5to6",
+              "6to8",
+              "ge8"
              ],
-             "ref": "interval_band"
+             "ref": "diameter_band"
+            },
+            {
+             "eq": true,
+             "ref": "prior_study"
+            },
+            {
+             "ref": "vdt_band",
+             "state": "not_applicable"
+            },
+            {
+             "eq": "diameter_stable",
+             "ref": "growth"
+            },
+            {
+             "none": [
+              {
+               "in": [
+                "1to2y",
+                "ge2y"
+               ],
+               "ref": "interval_band"
+              }
+             ]
             }
            ]
           }
@@ -3629,44 +3978,52 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
+            {
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
+            },
+            {
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
+            {
+             "in": [
+              "5to6",
+              "6to8",
+              "ge8"
+             ],
+             "ref": "diameter_band"
+            },
             {
              "eq": true,
-             "ref": "resolved"
+             "ref": "prior_study"
+            },
+            {
+             "ref": "vdt_band",
+             "state": "not_applicable"
+            },
+            {
+             "eq": "diameter_stable",
+             "ref": "growth"
+            },
+            {
+             "eq": "1to2y",
+             "ref": "interval_band"
             }
            ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "in": [
-            "5to6",
-            "6to8",
-            "ge8"
-           ],
-           "ref": "diameter_band"
-          },
-          {
-           "eq": true,
-           "ref": "prior_study"
-          },
-          {
-           "ref": "vdt_band",
-           "state": "not_applicable"
-          },
-          {
-           "eq": "diameter_stable",
-           "ref": "growth"
-          },
-          {
-           "eq": "1to2y",
-           "ref": "interval_band"
           }
          ]
         }
@@ -3682,44 +4039,52 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
+            {
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
+            },
+            {
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
+            {
+             "in": [
+              "5to6",
+              "6to8",
+              "ge8"
+             ],
+             "ref": "diameter_band"
+            },
             {
              "eq": true,
-             "ref": "resolved"
+             "ref": "prior_study"
+            },
+            {
+             "ref": "vdt_band",
+             "state": "not_applicable"
+            },
+            {
+             "eq": "diameter_stable",
+             "ref": "growth"
+            },
+            {
+             "eq": "ge2y",
+             "ref": "interval_band"
             }
            ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "in": [
-            "5to6",
-            "6to8",
-            "ge8"
-           ],
-           "ref": "diameter_band"
-          },
-          {
-           "eq": true,
-           "ref": "prior_study"
-          },
-          {
-           "ref": "vdt_band",
-           "state": "not_applicable"
-          },
-          {
-           "eq": "diameter_stable",
-           "ref": "growth"
-          },
-          {
-           "eq": "ge2y",
-           "ref": "interval_band"
           }
          ]
         }
@@ -3735,40 +4100,48 @@
         "when": {
          "all": [
           {
-           "none": [
+           "eq": "ge18",
+           "ref": "age_band"
+          },
+          {
+           "all": [
+            {
+             "none": [
+              {
+               "eq": true,
+               "ref": "resolved"
+              }
+             ]
+            },
+            {
+             "eq": false,
+             "ref": "benign_features"
+            },
+            {
+             "eq": "solid",
+             "ref": "nodule_type"
+            },
+            {
+             "in": [
+              "5to6",
+              "6to8",
+              "ge8"
+             ],
+             "ref": "diameter_band"
+            },
             {
              "eq": true,
-             "ref": "resolved"
+             "ref": "prior_study"
+            },
+            {
+             "ref": "vdt_band",
+             "state": "not_applicable"
+            },
+            {
+             "eq": "diameter_indeterminate",
+             "ref": "growth"
             }
            ]
-          },
-          {
-           "eq": false,
-           "ref": "benign_features"
-          },
-          {
-           "eq": "solid",
-           "ref": "nodule_type"
-          },
-          {
-           "in": [
-            "5to6",
-            "6to8",
-            "ge8"
-           ],
-           "ref": "diameter_band"
-          },
-          {
-           "eq": true,
-           "ref": "prior_study"
-          },
-          {
-           "ref": "vdt_band",
-           "state": "not_applicable"
-          },
-          {
-           "eq": "diameter_indeterminate",
-           "ref": "growth"
           }
          ]
         }
@@ -4051,6 +4424,18 @@
        "table": ""
       },
       "recommendation": "Assess growth by volumetry (volume doubling time) where available."
+     },
+     {
+      "caveats": [],
+      "classification": "BTS 2015 does not apply: the guidelines do not cover patients under 18",
+      "id": "does_not_apply",
+      "locator": {
+       "page": 13,
+       "section": "Groups not covered",
+       "source": "S1",
+       "table": ""
+      },
+      "recommendation": "Manage per the clinical context."
      }
     ],
     "reference": {
@@ -4312,9 +4697,32 @@
     "id": "fleischner-pulmonary-nodule",
     "inputs": [
      {
-      "how_stated": "patient-level, usually from the clinical history or request: true when the scan is a lung cancer screening CT, the patient is under 35, is immunocompromised (e.g. transplant, chemotherapy, HIV) or has a known primary cancer; false when the history states an adult aged 35 or over with none of these. Leave it unset when the history does not say.",
+      "fact": "age_years",
+      "how_stated": "patient age in years, usually from the clinical history or request",
+      "id": "age",
+      "label": "Age",
+      "locator": {
+       "page": 2,
+       "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system",
+       "source": "S1",
+       "table": ""
+      },
+      "max_inclusive": true,
+      "max_value": 110.0,
+      "min_inclusive": true,
+      "min_value": 0.0,
+      "options": [],
+      "prerequisites": [],
+      "role": "eligibility",
+      "scope": "patient",
+      "states": [],
+      "type": "number",
+      "unit": "years"
+     },
+     {
+      "how_stated": "patient-level, usually from the clinical history or request: true when the scan is a lung cancer screening CT, the patient is immunocompromised (e.g. transplant, chemotherapy, HIV) or has a known primary cancer; false when the history states none of these. Leave it unset when the history does not say.",
       "id": "exclusion",
-      "label": "Any Fleischner exclusion (lung cancer screening, age under 35, immunocompromised, known primary cancer)",
+      "label": "Lung cancer screening, immunocompromise or known primary cancer",
       "locator": {
        "page": 2,
        "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system",
@@ -4325,7 +4733,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
-      "role": "clinical",
+      "role": "eligibility",
       "scope": "patient",
       "states": [],
       "type": "boolean",
@@ -4430,6 +4838,33 @@
     ],
     "issuer": "Fleischner Society",
     "logic": [
+     {
+      "bands": [
+       {
+        "id": "lt35",
+        "label": "Under 35 years",
+        "max": 35.0,
+        "max_inclusive": false,
+        "min_inclusive": true
+       },
+       {
+        "id": "ge35",
+        "label": "35 years or over",
+        "max_inclusive": false,
+        "min": 35.0,
+        "min_inclusive": true
+       }
+      ],
+      "id": "age_band",
+      "locator": {
+       "page": 2,
+       "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system",
+       "source": "S1",
+       "table": ""
+      },
+      "ref": "age",
+      "step": "band"
+     },
      {
       "bands": [
        {
@@ -4710,8 +5145,16 @@
         },
         "result": "does_not_apply",
         "when": {
-         "eq": true,
-         "ref": "exclusion"
+         "any": [
+          {
+           "eq": true,
+           "ref": "exclusion"
+          },
+          {
+           "eq": "lt35",
+           "ref": "age_band"
+          }
+         ]
         }
        },
        {
@@ -4725,12 +5168,20 @@
         "when": {
          "all": [
           {
-           "eq": false,
-           "ref": "exclusion"
+           "eq": "ge35",
+           "ref": "age_band"
           },
           {
-           "eq": "solid_single_lt6_low",
-           "ref": "management"
+           "all": [
+            {
+             "eq": false,
+             "ref": "exclusion"
+            },
+            {
+             "eq": "solid_single_lt6_low",
+             "ref": "management"
+            }
+           ]
           }
          ]
         }
@@ -4746,12 +5197,20 @@
         "when": {
          "all": [
           {
-           "eq": false,
-           "ref": "exclusion"
+           "eq": "ge35",
+           "ref": "age_band"
           },
           {
-           "eq": "solid_single_lt6_high",
-           "ref": "management"
+           "all": [
+            {
+             "eq": false,
+             "ref": "exclusion"
+            },
+            {
+             "eq": "solid_single_lt6_high",
+             "ref": "management"
+            }
+           ]
           }
          ]
         }
@@ -4767,12 +5226,20 @@
         "when": {
          "all": [
           {
-           "eq": false,
-           "ref": "exclusion"
+           "eq": "ge35",
+           "ref": "age_band"
           },
           {
-           "eq": "solid_single_6to8_low",
-           "ref": "management"
+           "all": [
+            {
+             "eq": false,
+             "ref": "exclusion"
+            },
+            {
+             "eq": "solid_single_6to8_low",
+             "ref": "management"
+            }
+           ]
           }
          ]
         }
@@ -4788,12 +5255,20 @@
         "when": {
          "all": [
           {
-           "eq": false,
-           "ref": "exclusion"
+           "eq": "ge35",
+           "ref": "age_band"
           },
           {
-           "eq": "solid_single_6to8_high",
-           "ref": "management"
+           "all": [
+            {
+             "eq": false,
+             "ref": "exclusion"
+            },
+            {
+             "eq": "solid_single_6to8_high",
+             "ref": "management"
+            }
+           ]
           }
          ]
         }
@@ -4809,12 +5284,20 @@
         "when": {
          "all": [
           {
-           "eq": false,
-           "ref": "exclusion"
+           "eq": "ge35",
+           "ref": "age_band"
           },
           {
-           "eq": "solid_single_gt8",
-           "ref": "management"
+           "all": [
+            {
+             "eq": false,
+             "ref": "exclusion"
+            },
+            {
+             "eq": "solid_single_gt8",
+             "ref": "management"
+            }
+           ]
           }
          ]
         }
@@ -4830,12 +5313,20 @@
         "when": {
          "all": [
           {
-           "eq": false,
-           "ref": "exclusion"
+           "eq": "ge35",
+           "ref": "age_band"
           },
           {
-           "eq": "solid_multiple_lt6_low",
-           "ref": "management"
+           "all": [
+            {
+             "eq": false,
+             "ref": "exclusion"
+            },
+            {
+             "eq": "solid_multiple_lt6_low",
+             "ref": "management"
+            }
+           ]
           }
          ]
         }
@@ -4851,12 +5342,20 @@
         "when": {
          "all": [
           {
-           "eq": false,
-           "ref": "exclusion"
+           "eq": "ge35",
+           "ref": "age_band"
           },
           {
-           "eq": "solid_multiple_lt6_high",
-           "ref": "management"
+           "all": [
+            {
+             "eq": false,
+             "ref": "exclusion"
+            },
+            {
+             "eq": "solid_multiple_lt6_high",
+             "ref": "management"
+            }
+           ]
           }
          ]
         }
@@ -4872,12 +5371,20 @@
         "when": {
          "all": [
           {
-           "eq": false,
-           "ref": "exclusion"
+           "eq": "ge35",
+           "ref": "age_band"
           },
           {
-           "eq": "solid_multiple_ge6_low",
-           "ref": "management"
+           "all": [
+            {
+             "eq": false,
+             "ref": "exclusion"
+            },
+            {
+             "eq": "solid_multiple_ge6_low",
+             "ref": "management"
+            }
+           ]
           }
          ]
         }
@@ -4893,12 +5400,20 @@
         "when": {
          "all": [
           {
-           "eq": false,
-           "ref": "exclusion"
+           "eq": "ge35",
+           "ref": "age_band"
           },
           {
-           "eq": "solid_multiple_ge6_high",
-           "ref": "management"
+           "all": [
+            {
+             "eq": false,
+             "ref": "exclusion"
+            },
+            {
+             "eq": "solid_multiple_ge6_high",
+             "ref": "management"
+            }
+           ]
           }
          ]
         }
@@ -4914,12 +5429,20 @@
         "when": {
          "all": [
           {
-           "eq": false,
-           "ref": "exclusion"
+           "eq": "ge35",
+           "ref": "age_band"
           },
           {
-           "eq": "ggn_single_lt6",
-           "ref": "management"
+           "all": [
+            {
+             "eq": false,
+             "ref": "exclusion"
+            },
+            {
+             "eq": "ggn_single_lt6",
+             "ref": "management"
+            }
+           ]
           }
          ]
         }
@@ -4935,12 +5458,20 @@
         "when": {
          "all": [
           {
-           "eq": false,
-           "ref": "exclusion"
+           "eq": "ge35",
+           "ref": "age_band"
           },
           {
-           "eq": "ggn_single_ge6",
-           "ref": "management"
+           "all": [
+            {
+             "eq": false,
+             "ref": "exclusion"
+            },
+            {
+             "eq": "ggn_single_ge6",
+             "ref": "management"
+            }
+           ]
           }
          ]
         }
@@ -4956,12 +5487,20 @@
         "when": {
          "all": [
           {
-           "eq": false,
-           "ref": "exclusion"
+           "eq": "ge35",
+           "ref": "age_band"
           },
           {
-           "eq": "subsolid_multiple_lt6",
-           "ref": "management"
+           "all": [
+            {
+             "eq": false,
+             "ref": "exclusion"
+            },
+            {
+             "eq": "subsolid_multiple_lt6",
+             "ref": "management"
+            }
+           ]
           }
          ]
         }
@@ -4977,12 +5516,20 @@
         "when": {
          "all": [
           {
-           "eq": false,
-           "ref": "exclusion"
+           "eq": "ge35",
+           "ref": "age_band"
           },
           {
-           "eq": "subsolid_multiple_ge6",
-           "ref": "management"
+           "all": [
+            {
+             "eq": false,
+             "ref": "exclusion"
+            },
+            {
+             "eq": "subsolid_multiple_ge6",
+             "ref": "management"
+            }
+           ]
           }
          ]
         }
@@ -4998,12 +5545,20 @@
         "when": {
          "all": [
           {
-           "eq": false,
-           "ref": "exclusion"
+           "eq": "ge35",
+           "ref": "age_band"
           },
           {
-           "eq": "psn_single_lt6",
-           "ref": "management"
+           "all": [
+            {
+             "eq": false,
+             "ref": "exclusion"
+            },
+            {
+             "eq": "psn_single_lt6",
+             "ref": "management"
+            }
+           ]
           }
          ]
         }
@@ -5019,12 +5574,20 @@
         "when": {
          "all": [
           {
-           "eq": false,
-           "ref": "exclusion"
+           "eq": "ge35",
+           "ref": "age_band"
           },
           {
-           "eq": "psn_single_ge6",
-           "ref": "management"
+           "all": [
+            {
+             "eq": false,
+             "ref": "exclusion"
+            },
+            {
+             "eq": "psn_single_ge6",
+             "ref": "management"
+            }
+           ]
           }
          ]
         }
@@ -5461,5 +6024,5 @@
    ]
   }
  },
- "version": "e57439a7e54c"
+ "version": "2d14ef7ef055"
 }

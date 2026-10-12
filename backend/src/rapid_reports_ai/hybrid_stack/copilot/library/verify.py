@@ -9,7 +9,7 @@ from .engine import PH, EvaluationError, Trace, V, _inputs, _iv, _num, domain, e
 from .schema import (DOES_NOT_APPLY, FACT_ROLES, AdjustStep, BandStep, Cases, DeriveStep, Entry, Manifest, RulesStep,
                      ScoreStep, TableStep, conds)
 
-MAX_VERIFY = 200_000
+MAX_VERIFY = 400_000   # Bosniak with its eligibility input enumerates 368,640 (ruling: up to 1,000,000)
 NUMERIC = {"number", "derive", "score"}
 TOL = 1e-3
 MAX_ELIGIBILITY = 3

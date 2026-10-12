@@ -28,6 +28,20 @@
   ],
   "inputs": [
     {
+      "id": "mimic",
+      "label": "Infectious, inflammatory or vascular lesion, or necrotic solid mass",
+      "type": "boolean",
+      "scope": "lesion",
+      "role": "eligibility",
+      "how_stated": "true when the finding is called an abscess, an infected or inflamed collection, a vascular lesion or a necrotic solid mass rather than a cystic renal mass; false when it is described as a renal cyst or cystic renal mass",
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+        "table": "2"
+      }
+    },
+    {
       "id": "too_small",
       "label": "Too small to characterise",
       "type": "enum",
@@ -319,8 +333,29 @@
       "cases": [
         {
           "when": {
-            "ref": "too_small",
-            "eq": "yes_homogeneous_low_attenuation"
+            "ref": "mimic",
+            "eq": true
+          },
+          "result": "does_not_apply",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "mimic",
+                "eq": false
+              },
+              {
+                "ref": "too_small",
+                "eq": "yes_homogeneous_low_attenuation"
+              }
+            ]
           },
           "result": "class_ii",
           "locator": {
@@ -332,8 +367,16 @@
         },
         {
           "when": {
-            "ref": "too_small",
-            "eq": "yes_other"
+            "all": [
+              {
+                "ref": "mimic",
+                "eq": false
+              },
+              {
+                "ref": "too_small",
+                "eq": "yes_other"
+              }
+            ]
           },
           "result": "unclassifiable",
           "locator": {
@@ -347,12 +390,20 @@
           "when": {
             "all": [
               {
-                "ref": "too_small",
-                "eq": "no"
+                "ref": "mimic",
+                "eq": false
               },
               {
-                "ref": "contents_enhancement",
-                "eq": "present"
+                "all": [
+                  {
+                    "ref": "too_small",
+                    "eq": "no"
+                  },
+                  {
+                    "ref": "contents_enhancement",
+                    "eq": "present"
+                  }
+                ]
               }
             ]
           },
@@ -368,26 +419,34 @@
           "when": {
             "all": [
               {
-                "ref": "too_small",
-                "eq": "no"
-              },
-              {
-                "none": [
-                  {
-                    "ref": "contents_enhancement",
-                    "eq": "present"
-                  }
-                ]
+                "ref": "mimic",
+                "eq": false
               },
               {
                 "all": [
                   {
-                    "ref": "technique",
-                    "eq": "renal_mass_protocol"
+                    "ref": "too_small",
+                    "eq": "no"
                   },
                   {
-                    "ref": "protrusion",
-                    "eq": "nodule"
+                    "none": [
+                      {
+                        "ref": "contents_enhancement",
+                        "eq": "present"
+                      }
+                    ]
+                  },
+                  {
+                    "all": [
+                      {
+                        "ref": "technique",
+                        "eq": "renal_mass_protocol"
+                      },
+                      {
+                        "ref": "protrusion",
+                        "eq": "nodule"
+                      }
+                    ]
                   }
                 ]
               }
@@ -405,19 +464,39 @@
           "when": {
             "all": [
               {
-                "ref": "too_small",
-                "eq": "no"
+                "ref": "mimic",
+                "eq": false
               },
               {
-                "none": [
+                "all": [
                   {
-                    "ref": "contents_enhancement",
-                    "eq": "present"
-                  }
-                ]
-              },
-              {
-                "none": [
+                    "ref": "too_small",
+                    "eq": "no"
+                  },
+                  {
+                    "none": [
+                      {
+                        "ref": "contents_enhancement",
+                        "eq": "present"
+                      }
+                    ]
+                  },
+                  {
+                    "none": [
+                      {
+                        "all": [
+                          {
+                            "ref": "technique",
+                            "eq": "renal_mass_protocol"
+                          },
+                          {
+                            "ref": "protrusion",
+                            "eq": "nodule"
+                          }
+                        ]
+                      }
+                    ]
+                  },
                   {
                     "all": [
                       {
@@ -425,32 +504,20 @@
                         "eq": "renal_mass_protocol"
                       },
                       {
-                        "ref": "protrusion",
-                        "eq": "nodule"
-                      }
-                    ]
-                  }
-                ]
-              },
-              {
-                "all": [
-                  {
-                    "ref": "technique",
-                    "eq": "renal_mass_protocol"
-                  },
-                  {
-                    "any": [
-                      {
-                        "ref": "protrusion",
-                        "eq": "irregular_thickening"
-                      },
-                      {
-                        "ref": "wall",
-                        "eq": "thick_enhancing"
-                      },
-                      {
-                        "ref": "septa",
-                        "eq": "thick_enhancing"
+                        "any": [
+                          {
+                            "ref": "protrusion",
+                            "eq": "irregular_thickening"
+                          },
+                          {
+                            "ref": "wall",
+                            "eq": "thick_enhancing"
+                          },
+                          {
+                            "ref": "septa",
+                            "eq": "thick_enhancing"
+                          }
+                        ]
                       }
                     ]
                   }
@@ -470,155 +537,67 @@
           "when": {
             "all": [
               {
-                "ref": "too_small",
-                "eq": "no"
-              },
-              {
-                "none": [
-                  {
-                    "ref": "contents_enhancement",
-                    "eq": "present"
-                  }
-                ]
-              },
-              {
-                "none": [
-                  {
-                    "all": [
-                      {
-                        "ref": "technique",
-                        "eq": "renal_mass_protocol"
-                      },
-                      {
-                        "ref": "protrusion",
-                        "eq": "nodule"
-                      }
-                    ]
-                  }
-                ]
-              },
-              {
-                "none": [
-                  {
-                    "all": [
-                      {
-                        "ref": "technique",
-                        "eq": "renal_mass_protocol"
-                      },
-                      {
-                        "any": [
-                          {
-                            "ref": "protrusion",
-                            "eq": "irregular_thickening"
-                          },
-                          {
-                            "ref": "wall",
-                            "eq": "thick_enhancing"
-                          },
-                          {
-                            "ref": "septa",
-                            "eq": "thick_enhancing"
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                ]
+                "ref": "mimic",
+                "eq": false
               },
               {
                 "all": [
                   {
-                    "ref": "technique",
-                    "eq": "renal_mass_protocol"
+                    "ref": "too_small",
+                    "eq": "no"
                   },
                   {
-                    "any": [
+                    "none": [
                       {
-                        "ref": "wall",
-                        "eq": "minimally_thickened_enhancing"
-                      },
-                      {
-                        "ref": "septa",
-                        "in": [
-                          "minimally_thickened_enhancing",
-                          "many_thin_enhancing"
-                        ]
+                        "ref": "contents_enhancement",
+                        "eq": "present"
                       }
                     ]
-                  }
-                ]
-              }
-            ]
-          },
-          "result": "class_iif",
-          "locator": {
-            "source": "S1",
-            "page": null,
-            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
-            "table": "2"
-          }
-        },
-        {
-          "when": {
-            "all": [
-              {
-                "ref": "too_small",
-                "eq": "no"
-              },
-              {
-                "none": [
+                  },
                   {
-                    "ref": "contents_enhancement",
-                    "eq": "present"
-                  }
-                ]
-              },
-              {
-                "none": [
-                  {
-                    "all": [
+                    "none": [
                       {
-                        "ref": "technique",
-                        "eq": "renal_mass_protocol"
-                      },
-                      {
-                        "ref": "protrusion",
-                        "eq": "nodule"
-                      }
-                    ]
-                  }
-                ]
-              },
-              {
-                "none": [
-                  {
-                    "all": [
-                      {
-                        "ref": "technique",
-                        "eq": "renal_mass_protocol"
-                      },
-                      {
-                        "any": [
+                        "all": [
+                          {
+                            "ref": "technique",
+                            "eq": "renal_mass_protocol"
+                          },
                           {
                             "ref": "protrusion",
-                            "eq": "irregular_thickening"
-                          },
-                          {
-                            "ref": "wall",
-                            "eq": "thick_enhancing"
-                          },
-                          {
-                            "ref": "septa",
-                            "eq": "thick_enhancing"
+                            "eq": "nodule"
                           }
                         ]
                       }
                     ]
-                  }
-                ]
-              },
-              {
-                "none": [
+                  },
+                  {
+                    "none": [
+                      {
+                        "all": [
+                          {
+                            "ref": "technique",
+                            "eq": "renal_mass_protocol"
+                          },
+                          {
+                            "any": [
+                              {
+                                "ref": "protrusion",
+                                "eq": "irregular_thickening"
+                              },
+                              {
+                                "ref": "wall",
+                                "eq": "thick_enhancing"
+                              },
+                              {
+                                "ref": "septa",
+                                "eq": "thick_enhancing"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
                   {
                     "all": [
                       {
@@ -643,41 +622,10 @@
                     ]
                   }
                 ]
-              },
-              {
-                "any": [
-                  {
-                    "ref": "protrusion",
-                    "in": [
-                      "irregular_thickening",
-                      "nodule",
-                      "not_enhancing"
-                    ]
-                  },
-                  {
-                    "none": [
-                      {
-                        "ref": "wall",
-                        "eq": "thin"
-                      }
-                    ]
-                  },
-                  {
-                    "none": [
-                      {
-                        "ref": "septa",
-                        "in": [
-                          "none",
-                          "few_thin"
-                        ]
-                      }
-                    ]
-                  }
-                ]
               }
             ]
           },
-          "result": "unclassifiable",
+          "result": "class_iif",
           "locator": {
             "source": "S1",
             "page": null,
@@ -689,19 +637,94 @@
           "when": {
             "all": [
               {
-                "ref": "too_small",
-                "eq": "no"
+                "ref": "mimic",
+                "eq": false
               },
               {
-                "none": [
+                "all": [
                   {
-                    "ref": "contents_enhancement",
-                    "eq": "present"
-                  }
-                ]
-              },
-              {
-                "none": [
+                    "ref": "too_small",
+                    "eq": "no"
+                  },
+                  {
+                    "none": [
+                      {
+                        "ref": "contents_enhancement",
+                        "eq": "present"
+                      }
+                    ]
+                  },
+                  {
+                    "none": [
+                      {
+                        "all": [
+                          {
+                            "ref": "technique",
+                            "eq": "renal_mass_protocol"
+                          },
+                          {
+                            "ref": "protrusion",
+                            "eq": "nodule"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "none": [
+                      {
+                        "all": [
+                          {
+                            "ref": "technique",
+                            "eq": "renal_mass_protocol"
+                          },
+                          {
+                            "any": [
+                              {
+                                "ref": "protrusion",
+                                "eq": "irregular_thickening"
+                              },
+                              {
+                                "ref": "wall",
+                                "eq": "thick_enhancing"
+                              },
+                              {
+                                "ref": "septa",
+                                "eq": "thick_enhancing"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "none": [
+                      {
+                        "all": [
+                          {
+                            "ref": "technique",
+                            "eq": "renal_mass_protocol"
+                          },
+                          {
+                            "any": [
+                              {
+                                "ref": "wall",
+                                "eq": "minimally_thickened_enhancing"
+                              },
+                              {
+                                "ref": "septa",
+                                "in": [
+                                  "minimally_thickened_enhancing",
+                                  "many_thin_enhancing"
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
                   {
                     "any": [
                       {
@@ -734,10 +757,6 @@
                     ]
                   }
                 ]
-              },
-              {
-                "ref": "margin",
-                "eq": "ill_defined"
               }
             ]
           },
@@ -753,65 +772,145 @@
           "when": {
             "all": [
               {
-                "ref": "too_small",
-                "eq": "no"
+                "ref": "mimic",
+                "eq": false
               },
               {
-                "none": [
+                "all": [
                   {
-                    "ref": "contents_enhancement",
-                    "eq": "present"
-                  }
-                ]
-              },
-              {
-                "none": [
+                    "ref": "too_small",
+                    "eq": "no"
+                  },
                   {
-                    "any": [
+                    "none": [
                       {
-                        "ref": "protrusion",
-                        "in": [
-                          "irregular_thickening",
-                          "nodule",
-                          "not_enhancing"
-                        ]
-                      },
+                        "ref": "contents_enhancement",
+                        "eq": "present"
+                      }
+                    ]
+                  },
+                  {
+                    "none": [
                       {
-                        "none": [
+                        "any": [
                           {
-                            "ref": "wall",
-                            "eq": "thin"
-                          }
-                        ]
-                      },
-                      {
-                        "none": [
-                          {
-                            "ref": "septa",
+                            "ref": "protrusion",
                             "in": [
-                              "none",
-                              "few_thin"
+                              "irregular_thickening",
+                              "nodule",
+                              "not_enhancing"
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "wall",
+                                "eq": "thin"
+                              }
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "septa",
+                                "in": [
+                                  "none",
+                                  "few_thin"
+                                ]
+                              }
                             ]
                           }
                         ]
                       }
                     ]
+                  },
+                  {
+                    "ref": "margin",
+                    "eq": "ill_defined"
                   }
                 ]
+              }
+            ]
+          },
+          "result": "unclassifiable",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "mimic",
+                "eq": false
               },
               {
-                "ref": "margin",
-                "eq": "well_defined"
-              },
-              {
-                "ref": "septa",
-                "eq": "few_thin"
-              },
-              {
-                "none": [
+                "all": [
                   {
-                    "ref": "contents_enhancement",
-                    "eq": "present"
+                    "ref": "too_small",
+                    "eq": "no"
+                  },
+                  {
+                    "none": [
+                      {
+                        "ref": "contents_enhancement",
+                        "eq": "present"
+                      }
+                    ]
+                  },
+                  {
+                    "none": [
+                      {
+                        "any": [
+                          {
+                            "ref": "protrusion",
+                            "in": [
+                              "irregular_thickening",
+                              "nodule",
+                              "not_enhancing"
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "wall",
+                                "eq": "thin"
+                              }
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "septa",
+                                "in": [
+                                  "none",
+                                  "few_thin"
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "margin",
+                    "eq": "well_defined"
+                  },
+                  {
+                    "ref": "septa",
+                    "eq": "few_thin"
+                  },
+                  {
+                    "none": [
+                      {
+                        "ref": "contents_enhancement",
+                        "eq": "present"
+                      }
+                    ]
                   }
                 ]
               }
@@ -829,66 +928,15 @@
           "when": {
             "all": [
               {
-                "ref": "too_small",
-                "eq": "no"
-              },
-              {
-                "none": [
-                  {
-                    "ref": "contents_enhancement",
-                    "eq": "present"
-                  }
-                ]
-              },
-              {
-                "none": [
-                  {
-                    "any": [
-                      {
-                        "ref": "protrusion",
-                        "in": [
-                          "irregular_thickening",
-                          "nodule",
-                          "not_enhancing"
-                        ]
-                      },
-                      {
-                        "none": [
-                          {
-                            "ref": "wall",
-                            "eq": "thin"
-                          }
-                        ]
-                      },
-                      {
-                        "none": [
-                          {
-                            "ref": "septa",
-                            "in": [
-                              "none",
-                              "few_thin"
-                            ]
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              },
-              {
-                "ref": "margin",
-                "eq": "well_defined"
-              },
-              {
-                "ref": "septa",
-                "eq": "none"
-              },
-              {
-                "ref": "contents",
-                "eq": "uniform"
+                "ref": "mimic",
+                "eq": false
               },
               {
                 "all": [
+                  {
+                    "ref": "too_small",
+                    "eq": "no"
+                  },
                   {
                     "none": [
                       {
@@ -898,19 +946,78 @@
                     ]
                   },
                   {
-                    "ref": "calcification",
+                    "none": [
+                      {
+                        "any": [
+                          {
+                            "ref": "protrusion",
+                            "in": [
+                              "irregular_thickening",
+                              "nodule",
+                              "not_enhancing"
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "wall",
+                                "eq": "thin"
+                              }
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "septa",
+                                "in": [
+                                  "none",
+                                  "few_thin"
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "margin",
+                    "eq": "well_defined"
+                  },
+                  {
+                    "ref": "septa",
                     "eq": "none"
                   },
                   {
-                    "ref": "hu_band",
-                    "eq": "m9_20"
+                    "ref": "contents",
+                    "eq": "uniform"
                   },
                   {
-                    "ref": "technique",
-                    "in": [
-                      "renal_mass_protocol",
-                      "portal_venous_only",
-                      "other_contrast_only"
+                    "all": [
+                      {
+                        "none": [
+                          {
+                            "ref": "contents_enhancement",
+                            "eq": "present"
+                          }
+                        ]
+                      },
+                      {
+                        "ref": "calcification",
+                        "eq": "none"
+                      },
+                      {
+                        "ref": "hu_band",
+                        "eq": "m9_20"
+                      },
+                      {
+                        "ref": "technique",
+                        "in": [
+                          "renal_mass_protocol",
+                          "portal_venous_only",
+                          "other_contrast_only"
+                        ]
+                      }
                     ]
                   }
                 ]
@@ -929,77 +1036,85 @@
           "when": {
             "all": [
               {
-                "ref": "too_small",
-                "eq": "no"
+                "ref": "mimic",
+                "eq": false
               },
               {
-                "none": [
+                "all": [
                   {
-                    "ref": "contents_enhancement",
-                    "eq": "present"
-                  }
-                ]
-              },
-              {
-                "none": [
+                    "ref": "too_small",
+                    "eq": "no"
+                  },
                   {
-                    "any": [
+                    "none": [
                       {
-                        "ref": "protrusion",
-                        "in": [
-                          "irregular_thickening",
-                          "nodule",
-                          "not_enhancing"
-                        ]
-                      },
+                        "ref": "contents_enhancement",
+                        "eq": "present"
+                      }
+                    ]
+                  },
+                  {
+                    "none": [
                       {
-                        "none": [
+                        "any": [
                           {
-                            "ref": "wall",
-                            "eq": "thin"
-                          }
-                        ]
-                      },
-                      {
-                        "none": [
-                          {
-                            "ref": "septa",
+                            "ref": "protrusion",
                             "in": [
-                              "none",
-                              "few_thin"
+                              "irregular_thickening",
+                              "nodule",
+                              "not_enhancing"
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "wall",
+                                "eq": "thin"
+                              }
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "septa",
+                                "in": [
+                                  "none",
+                                  "few_thin"
+                                ]
+                              }
                             ]
                           }
                         ]
                       }
                     ]
-                  }
-                ]
-              },
-              {
-                "ref": "margin",
-                "eq": "well_defined"
-              },
-              {
-                "ref": "septa",
-                "eq": "none"
-              },
-              {
-                "ref": "contents",
-                "eq": "uniform"
-              },
-              {
-                "all": [
+                  },
                   {
-                    "ref": "calcification",
+                    "ref": "margin",
+                    "eq": "well_defined"
+                  },
+                  {
+                    "ref": "septa",
                     "eq": "none"
                   },
                   {
-                    "ref": "hu_band",
-                    "eq": "m9_20"
+                    "ref": "contents",
+                    "eq": "uniform"
                   },
                   {
-                    "ref": "technique",
-                    "eq": "unenhanced_only"
+                    "all": [
+                      {
+                        "ref": "calcification",
+                        "eq": "none"
+                      },
+                      {
+                        "ref": "hu_band",
+                        "eq": "m9_20"
+                      },
+                      {
+                        "ref": "technique",
+                        "eq": "unenhanced_only"
+                      }
+                    ]
                   }
                 ]
               }
@@ -1017,66 +1132,15 @@
           "when": {
             "all": [
               {
-                "ref": "too_small",
-                "eq": "no"
-              },
-              {
-                "none": [
-                  {
-                    "ref": "contents_enhancement",
-                    "eq": "present"
-                  }
-                ]
-              },
-              {
-                "none": [
-                  {
-                    "any": [
-                      {
-                        "ref": "protrusion",
-                        "in": [
-                          "irregular_thickening",
-                          "nodule",
-                          "not_enhancing"
-                        ]
-                      },
-                      {
-                        "none": [
-                          {
-                            "ref": "wall",
-                            "eq": "thin"
-                          }
-                        ]
-                      },
-                      {
-                        "none": [
-                          {
-                            "ref": "septa",
-                            "in": [
-                              "none",
-                              "few_thin"
-                            ]
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              },
-              {
-                "ref": "margin",
-                "eq": "well_defined"
-              },
-              {
-                "ref": "septa",
-                "eq": "none"
-              },
-              {
-                "ref": "contents",
-                "eq": "uniform"
+                "ref": "mimic",
+                "eq": false
               },
               {
                 "all": [
+                  {
+                    "ref": "too_small",
+                    "eq": "no"
+                  },
                   {
                     "none": [
                       {
@@ -1086,12 +1150,71 @@
                     ]
                   },
                   {
-                    "ref": "calcification",
-                    "eq": "present"
+                    "none": [
+                      {
+                        "any": [
+                          {
+                            "ref": "protrusion",
+                            "in": [
+                              "irregular_thickening",
+                              "nodule",
+                              "not_enhancing"
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "wall",
+                                "eq": "thin"
+                              }
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "septa",
+                                "in": [
+                                  "none",
+                                  "few_thin"
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
                   },
                   {
-                    "ref": "hu_band",
-                    "eq": "m9_20"
+                    "ref": "margin",
+                    "eq": "well_defined"
+                  },
+                  {
+                    "ref": "septa",
+                    "eq": "none"
+                  },
+                  {
+                    "ref": "contents",
+                    "eq": "uniform"
+                  },
+                  {
+                    "all": [
+                      {
+                        "none": [
+                          {
+                            "ref": "contents_enhancement",
+                            "eq": "present"
+                          }
+                        ]
+                      },
+                      {
+                        "ref": "calcification",
+                        "eq": "present"
+                      },
+                      {
+                        "ref": "hu_band",
+                        "eq": "m9_20"
+                      }
+                    ]
                   }
                 ]
               }
@@ -1109,435 +1232,467 @@
           "when": {
             "all": [
               {
-                "ref": "too_small",
-                "eq": "no"
-              },
-              {
-                "none": [
-                  {
-                    "ref": "contents_enhancement",
-                    "eq": "present"
-                  }
-                ]
-              },
-              {
-                "none": [
-                  {
-                    "any": [
-                      {
-                        "ref": "protrusion",
-                        "in": [
-                          "irregular_thickening",
-                          "nodule",
-                          "not_enhancing"
-                        ]
-                      },
-                      {
-                        "none": [
-                          {
-                            "ref": "wall",
-                            "eq": "thin"
-                          }
-                        ]
-                      },
-                      {
-                        "none": [
-                          {
-                            "ref": "septa",
-                            "in": [
-                              "none",
-                              "few_thin"
-                            ]
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              },
-              {
-                "ref": "margin",
-                "eq": "well_defined"
-              },
-              {
-                "ref": "septa",
-                "eq": "none"
-              },
-              {
-                "ref": "contents",
-                "eq": "uniform"
+                "ref": "mimic",
+                "eq": false
               },
               {
                 "all": [
                   {
-                    "ref": "hu_band",
-                    "eq": "ge70"
+                    "ref": "too_small",
+                    "eq": "no"
                   },
                   {
-                    "ref": "technique",
-                    "eq": "unenhanced_only"
-                  }
-                ]
-              }
-            ]
-          },
-          "result": "class_ii",
-          "locator": {
-            "source": "S1",
-            "page": null,
-            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
-            "table": "2"
-          }
-        },
-        {
-          "when": {
-            "all": [
-              {
-                "ref": "too_small",
-                "eq": "no"
-              },
-              {
-                "none": [
-                  {
-                    "ref": "contents_enhancement",
-                    "eq": "present"
-                  }
-                ]
-              },
-              {
-                "none": [
-                  {
-                    "any": [
+                    "none": [
                       {
-                        "ref": "protrusion",
-                        "in": [
-                          "irregular_thickening",
-                          "nodule",
-                          "not_enhancing"
-                        ]
-                      },
-                      {
-                        "none": [
-                          {
-                            "ref": "wall",
-                            "eq": "thin"
-                          }
-                        ]
-                      },
-                      {
-                        "none": [
-                          {
-                            "ref": "septa",
-                            "in": [
-                              "none",
-                              "few_thin"
-                            ]
-                          }
-                        ]
+                        "ref": "contents_enhancement",
+                        "eq": "present"
                       }
                     ]
-                  }
-                ]
-              },
-              {
-                "ref": "margin",
-                "eq": "well_defined"
-              },
-              {
-                "ref": "septa",
-                "eq": "none"
-              },
-              {
-                "ref": "contents",
-                "eq": "uniform"
-              },
-              {
-                "all": [
-                  {
-                    "ref": "hu_band",
-                    "in": [
-                      "21_30",
-                      "31_69",
-                      "ge70"
-                    ]
                   },
                   {
-                    "ref": "technique",
-                    "eq": "renal_mass_protocol"
-                  },
-                  {
-                    "ref": "contents_enhancement",
-                    "eq": "absent"
-                  }
-                ]
-              }
-            ]
-          },
-          "result": "class_ii",
-          "locator": {
-            "source": "S1",
-            "page": null,
-            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
-            "table": "2"
-          }
-        },
-        {
-          "when": {
-            "all": [
-              {
-                "ref": "too_small",
-                "eq": "no"
-              },
-              {
-                "none": [
-                  {
-                    "ref": "contents_enhancement",
-                    "eq": "present"
-                  }
-                ]
-              },
-              {
-                "none": [
-                  {
-                    "any": [
-                      {
-                        "ref": "protrusion",
-                        "in": [
-                          "irregular_thickening",
-                          "nodule",
-                          "not_enhancing"
-                        ]
-                      },
-                      {
-                        "none": [
-                          {
-                            "ref": "wall",
-                            "eq": "thin"
-                          }
-                        ]
-                      },
-                      {
-                        "none": [
-                          {
-                            "ref": "septa",
-                            "in": [
-                              "none",
-                              "few_thin"
-                            ]
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              },
-              {
-                "ref": "margin",
-                "eq": "well_defined"
-              },
-              {
-                "ref": "septa",
-                "eq": "none"
-              },
-              {
-                "ref": "contents",
-                "eq": "uniform"
-              },
-              {
-                "all": [
-                  {
-                    "ref": "hu_band",
-                    "eq": "21_30"
-                  },
-                  {
-                    "ref": "technique",
-                    "eq": "portal_venous_only"
-                  }
-                ]
-              }
-            ]
-          },
-          "result": "class_ii",
-          "locator": {
-            "source": "S1",
-            "page": null,
-            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
-            "table": "2"
-          }
-        },
-        {
-          "when": {
-            "all": [
-              {
-                "ref": "too_small",
-                "eq": "no"
-              },
-              {
-                "none": [
-                  {
-                    "ref": "contents_enhancement",
-                    "eq": "present"
-                  }
-                ]
-              },
-              {
-                "none": [
-                  {
-                    "any": [
-                      {
-                        "ref": "protrusion",
-                        "in": [
-                          "irregular_thickening",
-                          "nodule",
-                          "not_enhancing"
-                        ]
-                      },
-                      {
-                        "none": [
-                          {
-                            "ref": "wall",
-                            "eq": "thin"
-                          }
-                        ]
-                      },
-                      {
-                        "none": [
-                          {
-                            "ref": "septa",
-                            "in": [
-                              "none",
-                              "few_thin"
-                            ]
-                          }
-                        ]
-                      }
-                    ]
-                  }
-                ]
-              },
-              {
-                "ref": "margin",
-                "eq": "well_defined"
-              },
-              {
-                "ref": "septa",
-                "eq": "none"
-              },
-              {
-                "none": [
-                  {
-                    "all": [
-                      {
-                        "ref": "contents",
-                        "eq": "uniform"
-                      },
+                    "none": [
                       {
                         "any": [
                           {
-                            "all": [
+                            "ref": "protrusion",
+                            "in": [
+                              "irregular_thickening",
+                              "nodule",
+                              "not_enhancing"
+                            ]
+                          },
+                          {
+                            "none": [
                               {
-                                "none": [
+                                "ref": "wall",
+                                "eq": "thin"
+                              }
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "septa",
+                                "in": [
+                                  "none",
+                                  "few_thin"
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "margin",
+                    "eq": "well_defined"
+                  },
+                  {
+                    "ref": "septa",
+                    "eq": "none"
+                  },
+                  {
+                    "ref": "contents",
+                    "eq": "uniform"
+                  },
+                  {
+                    "all": [
+                      {
+                        "ref": "hu_band",
+                        "eq": "ge70"
+                      },
+                      {
+                        "ref": "technique",
+                        "eq": "unenhanced_only"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "class_ii",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "mimic",
+                "eq": false
+              },
+              {
+                "all": [
+                  {
+                    "ref": "too_small",
+                    "eq": "no"
+                  },
+                  {
+                    "none": [
+                      {
+                        "ref": "contents_enhancement",
+                        "eq": "present"
+                      }
+                    ]
+                  },
+                  {
+                    "none": [
+                      {
+                        "any": [
+                          {
+                            "ref": "protrusion",
+                            "in": [
+                              "irregular_thickening",
+                              "nodule",
+                              "not_enhancing"
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "wall",
+                                "eq": "thin"
+                              }
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "septa",
+                                "in": [
+                                  "none",
+                                  "few_thin"
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "margin",
+                    "eq": "well_defined"
+                  },
+                  {
+                    "ref": "septa",
+                    "eq": "none"
+                  },
+                  {
+                    "ref": "contents",
+                    "eq": "uniform"
+                  },
+                  {
+                    "all": [
+                      {
+                        "ref": "hu_band",
+                        "in": [
+                          "21_30",
+                          "31_69",
+                          "ge70"
+                        ]
+                      },
+                      {
+                        "ref": "technique",
+                        "eq": "renal_mass_protocol"
+                      },
+                      {
+                        "ref": "contents_enhancement",
+                        "eq": "absent"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "class_ii",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "mimic",
+                "eq": false
+              },
+              {
+                "all": [
+                  {
+                    "ref": "too_small",
+                    "eq": "no"
+                  },
+                  {
+                    "none": [
+                      {
+                        "ref": "contents_enhancement",
+                        "eq": "present"
+                      }
+                    ]
+                  },
+                  {
+                    "none": [
+                      {
+                        "any": [
+                          {
+                            "ref": "protrusion",
+                            "in": [
+                              "irregular_thickening",
+                              "nodule",
+                              "not_enhancing"
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "wall",
+                                "eq": "thin"
+                              }
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "septa",
+                                "in": [
+                                  "none",
+                                  "few_thin"
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "margin",
+                    "eq": "well_defined"
+                  },
+                  {
+                    "ref": "septa",
+                    "eq": "none"
+                  },
+                  {
+                    "ref": "contents",
+                    "eq": "uniform"
+                  },
+                  {
+                    "all": [
+                      {
+                        "ref": "hu_band",
+                        "eq": "21_30"
+                      },
+                      {
+                        "ref": "technique",
+                        "eq": "portal_venous_only"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "class_ii",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "mimic",
+                "eq": false
+              },
+              {
+                "all": [
+                  {
+                    "ref": "too_small",
+                    "eq": "no"
+                  },
+                  {
+                    "none": [
+                      {
+                        "ref": "contents_enhancement",
+                        "eq": "present"
+                      }
+                    ]
+                  },
+                  {
+                    "none": [
+                      {
+                        "any": [
+                          {
+                            "ref": "protrusion",
+                            "in": [
+                              "irregular_thickening",
+                              "nodule",
+                              "not_enhancing"
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "wall",
+                                "eq": "thin"
+                              }
+                            ]
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "septa",
+                                "in": [
+                                  "none",
+                                  "few_thin"
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "margin",
+                    "eq": "well_defined"
+                  },
+                  {
+                    "ref": "septa",
+                    "eq": "none"
+                  },
+                  {
+                    "none": [
+                      {
+                        "all": [
+                          {
+                            "ref": "contents",
+                            "eq": "uniform"
+                          },
+                          {
+                            "any": [
+                              {
+                                "all": [
                                   {
-                                    "ref": "contents_enhancement",
-                                    "eq": "present"
+                                    "none": [
+                                      {
+                                        "ref": "contents_enhancement",
+                                        "eq": "present"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "ref": "calcification",
+                                    "eq": "none"
+                                  },
+                                  {
+                                    "ref": "hu_band",
+                                    "eq": "m9_20"
+                                  },
+                                  {
+                                    "ref": "technique",
+                                    "in": [
+                                      "renal_mass_protocol",
+                                      "portal_venous_only",
+                                      "other_contrast_only"
+                                    ]
                                   }
                                 ]
                               },
                               {
-                                "ref": "calcification",
-                                "eq": "none"
-                              },
-                              {
-                                "ref": "hu_band",
-                                "eq": "m9_20"
-                              },
-                              {
-                                "ref": "technique",
-                                "in": [
-                                  "renal_mass_protocol",
-                                  "portal_venous_only",
-                                  "other_contrast_only"
-                                ]
-                              }
-                            ]
-                          },
-                          {
-                            "all": [
-                              {
-                                "ref": "calcification",
-                                "eq": "none"
-                              },
-                              {
-                                "ref": "hu_band",
-                                "eq": "m9_20"
-                              },
-                              {
-                                "ref": "technique",
-                                "eq": "unenhanced_only"
-                              }
-                            ]
-                          },
-                          {
-                            "all": [
-                              {
-                                "none": [
+                                "all": [
                                   {
-                                    "ref": "contents_enhancement",
-                                    "eq": "present"
+                                    "ref": "calcification",
+                                    "eq": "none"
+                                  },
+                                  {
+                                    "ref": "hu_band",
+                                    "eq": "m9_20"
+                                  },
+                                  {
+                                    "ref": "technique",
+                                    "eq": "unenhanced_only"
                                   }
                                 ]
                               },
                               {
-                                "ref": "calcification",
-                                "eq": "present"
-                              },
-                              {
-                                "ref": "hu_band",
-                                "eq": "m9_20"
-                              }
-                            ]
-                          },
-                          {
-                            "all": [
-                              {
-                                "ref": "hu_band",
-                                "eq": "ge70"
-                              },
-                              {
-                                "ref": "technique",
-                                "eq": "unenhanced_only"
-                              }
-                            ]
-                          },
-                          {
-                            "all": [
-                              {
-                                "ref": "hu_band",
-                                "in": [
-                                  "21_30",
-                                  "31_69",
-                                  "ge70"
+                                "all": [
+                                  {
+                                    "none": [
+                                      {
+                                        "ref": "contents_enhancement",
+                                        "eq": "present"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "ref": "calcification",
+                                    "eq": "present"
+                                  },
+                                  {
+                                    "ref": "hu_band",
+                                    "eq": "m9_20"
+                                  }
                                 ]
                               },
                               {
-                                "ref": "technique",
-                                "eq": "renal_mass_protocol"
+                                "all": [
+                                  {
+                                    "ref": "hu_band",
+                                    "eq": "ge70"
+                                  },
+                                  {
+                                    "ref": "technique",
+                                    "eq": "unenhanced_only"
+                                  }
+                                ]
                               },
                               {
-                                "ref": "contents_enhancement",
-                                "eq": "absent"
-                              }
-                            ]
-                          },
-                          {
-                            "all": [
-                              {
-                                "ref": "hu_band",
-                                "eq": "21_30"
+                                "all": [
+                                  {
+                                    "ref": "hu_band",
+                                    "in": [
+                                      "21_30",
+                                      "31_69",
+                                      "ge70"
+                                    ]
+                                  },
+                                  {
+                                    "ref": "technique",
+                                    "eq": "renal_mass_protocol"
+                                  },
+                                  {
+                                    "ref": "contents_enhancement",
+                                    "eq": "absent"
+                                  }
+                                ]
                               },
                               {
-                                "ref": "technique",
-                                "eq": "portal_venous_only"
+                                "all": [
+                                  {
+                                    "ref": "hu_band",
+                                    "eq": "21_30"
+                                  },
+                                  {
+                                    "ref": "technique",
+                                    "eq": "portal_venous_only"
+                                  }
+                                ]
                               }
                             ]
                           }
@@ -1662,6 +1817,17 @@
         "page": null,
         "section": "Bosniak Classification, Version 2019: a cystic renal mass is one in which less than approximately 25% of the mass is composed of enhancing tissue",
         "table": ""
+      }
+    },
+    {
+      "id": "does_not_apply",
+      "classification": "Bosniak 2019 does not apply: an infectious, inflammatory or vascular lesion, or a necrotic solid mass, is outside the classification",
+      "recommendation": "Manage per the clinical context.",
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+        "table": "2"
       }
     }
   ],

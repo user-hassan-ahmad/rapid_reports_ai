@@ -7,7 +7,8 @@
         "nodule_type": "ground-glass",
         "count": "multiple",
         "diameter_mm": 10,
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "subsolid_multiple_ge6",
       "steps": {
@@ -22,7 +23,8 @@
         "count": "single",
         "diameter_mm": 4,
         "risk": "low",
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "solid_single_lt6_low",
       "steps": {
@@ -37,7 +39,8 @@
         "count": "single",
         "diameter_mm": 5.4,
         "risk": "high",
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "solid_single_lt6_high",
       "steps": {
@@ -52,7 +55,8 @@
         "count": "single",
         "diameter_mm": 5.5,
         "risk": "low",
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "solid_single_6to8_low",
       "steps": {
@@ -67,7 +71,8 @@
         "count": "single",
         "diameter_mm": 8.4,
         "risk": "high",
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "solid_single_6to8_high",
       "steps": {
@@ -82,7 +87,8 @@
         "count": "single",
         "diameter_mm": 8.5,
         "risk": "low",
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "solid_single_gt8",
       "steps": {
@@ -97,7 +103,8 @@
         "count": "single",
         "diameter_mm": 12,
         "risk": "high",
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "solid_single_gt8",
       "steps": {
@@ -111,7 +118,8 @@
         "nodule_type": "solid",
         "count": "single",
         "diameter_mm": 12,
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "solid_single_gt8",
       "steps": {
@@ -126,7 +134,8 @@
         "count": "multiple",
         "diameter_mm": 3,
         "risk": "low",
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "solid_multiple_lt6_low",
       "steps": {
@@ -141,7 +150,8 @@
         "count": "multiple",
         "diameter_mm": 5,
         "risk": "high",
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "solid_multiple_lt6_high",
       "steps": {
@@ -156,7 +166,8 @@
         "count": "multiple",
         "diameter_mm": 7,
         "risk": "low",
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "solid_multiple_ge6_low",
       "steps": {
@@ -171,7 +182,8 @@
         "count": "multiple",
         "diameter_mm": 15,
         "risk": "low",
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "solid_multiple_ge6_low",
       "steps": {
@@ -186,7 +198,8 @@
         "count": "multiple",
         "diameter_mm": 6,
         "risk": "high",
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "solid_multiple_ge6_high",
       "steps": {
@@ -201,7 +214,8 @@
         "count": "multiple",
         "diameter_mm": 8.5,
         "risk": "high",
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "solid_multiple_ge6_high",
       "steps": {
@@ -215,7 +229,8 @@
         "nodule_type": "ground-glass",
         "count": "single",
         "diameter_mm": 5.4,
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "ggn_single_lt6",
       "steps": {
@@ -229,7 +244,8 @@
         "nodule_type": "ground-glass",
         "count": "single",
         "diameter_mm": 5.5,
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "ggn_single_ge6",
       "steps": {
@@ -244,7 +260,8 @@
         "count": "single",
         "diameter_mm": 8.5,
         "risk": "high",
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "ggn_single_ge6",
       "steps": {
@@ -258,7 +275,8 @@
         "nodule_type": "part-solid",
         "count": "single",
         "diameter_mm": 4,
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "psn_single_lt6",
       "steps": {
@@ -272,7 +290,8 @@
         "nodule_type": "part-solid",
         "count": "single",
         "diameter_mm": 9,
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "psn_single_ge6",
       "steps": {
@@ -286,7 +305,8 @@
         "nodule_type": "part-solid",
         "count": "single",
         "diameter_mm": 8.4,
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "psn_single_ge6",
       "steps": {
@@ -300,7 +320,8 @@
         "nodule_type": "part-solid",
         "count": "multiple",
         "diameter_mm": 5.4,
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "subsolid_multiple_lt6",
       "steps": {
@@ -314,7 +335,8 @@
         "nodule_type": "ground-glass",
         "count": "multiple",
         "diameter_mm": 2,
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "subsolid_multiple_lt6",
       "steps": {
@@ -328,7 +350,8 @@
         "nodule_type": "part-solid",
         "count": "multiple",
         "diameter_mm": 6,
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": "subsolid_multiple_ge6",
       "steps": {
@@ -342,7 +365,8 @@
         "nodule_type": "solid",
         "count": "single",
         "diameter_mm": 7,
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": null,
       "needed": [
@@ -355,7 +379,8 @@
       "inputs": {
         "nodule_type": "ground-glass",
         "count": "single",
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": null,
       "needed": [
@@ -369,7 +394,8 @@
         "nodule_type": "solid",
         "diameter_mm": 4,
         "risk": "low",
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": null,
       "needed": [
@@ -382,7 +408,8 @@
       "inputs": {
         "count": "single",
         "diameter_mm": 7,
-        "exclusion": false
+        "exclusion": false,
+        "age": 60
       },
       "outcome": null,
       "needed": [
@@ -394,7 +421,8 @@
       "name": "exclusion stated (known primary cancer), nodule details not stated",
       "origin": "ours",
       "inputs": {
-        "exclusion": true
+        "exclusion": true,
+        "age": 60
       },
       "outcome": "does_not_apply"
     },
@@ -406,7 +434,8 @@
         "nodule_type": "solid",
         "count": "single",
         "diameter_mm": 9,
-        "risk": "high"
+        "risk": "high",
+        "age": 60
       },
       "outcome": "does_not_apply",
       "steps": {
@@ -420,12 +449,62 @@
         "nodule_type": "solid",
         "count": "single",
         "diameter_mm": 4,
-        "risk": "low"
+        "risk": "low",
+        "age": 60
       },
       "outcome": null,
       "needed": [
         "exclusion"
       ]
+    },
+    {
+      "name": "age 34 is under 35: does not apply",
+      "origin": "ours",
+      "inputs": {
+        "exclusion": false,
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 7,
+        "risk": "low",
+        "age": 34
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "age 35 is in scope",
+      "origin": "ours",
+      "inputs": {
+        "exclusion": false,
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 7,
+        "risk": "low",
+        "age": 35
+      },
+      "outcome": "solid_single_6to8_low"
+    },
+    {
+      "name": "age not stated",
+      "origin": "ours",
+      "inputs": {
+        "exclusion": false,
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 7,
+        "risk": "low"
+      },
+      "outcome": null,
+      "needed": [
+        "age"
+      ]
+    },
+    {
+      "name": "excluded, age not stated",
+      "origin": "ours",
+      "inputs": {
+        "exclusion": true
+      },
+      "outcome": "does_not_apply"
     }
   ]
 }
