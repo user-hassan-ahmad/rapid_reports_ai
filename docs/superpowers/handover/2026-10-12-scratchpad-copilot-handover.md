@@ -1,5 +1,9 @@
 # Scratchpad Copilot: handover (2026-10-12)
 
+> **Update (2026-10-12, later):** Hassan adopted the packs. The design is the curated guideline library. Its spec is
+> `docs/superpowers/specs/2026-10-12-guideline-library-design.md`, and its §12 "First slice" replaces §6 below.
+> Next: write the plan for that slice.
+
 **Start here next session.** The backend has been built and reviewed. A step-back review then found that its runtime
 web-retrieval half cannot deliver what Apply needs. **The open decision for Hassan is whether to pivot to curated
 offline packs.** Building is paused until he decides.

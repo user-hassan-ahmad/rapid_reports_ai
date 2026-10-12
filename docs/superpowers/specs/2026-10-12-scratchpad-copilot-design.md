@@ -3,6 +3,12 @@
 Date: 2026-10-12. Branch `feat/scratchpad-copilot`, cut from `feat/hybrid-stack` (PR #31). It ships as part of the new
 scratchpad layout.
 
+> **Superseded in part (2026-10-12): see `2026-10-12-guideline-library-design.md`.** The curated guideline library
+> replaces runtime web retrieval. Superseded: decisions 2–5 and 17–21, the parts of 15 that concern the registry,
+> §5.1 (registry), §5.3 (`resolve_guideline`), the gap search in §5.5, the review page, and lab 2 in §8. The
+> library spec (§4) also changes §5.4: the model settles inputs, code evaluates, and the output index is removed.
+> Everything else stands.
+
 ## 1. Why
 
 Guideline and classification help comes after Generate today:
@@ -18,6 +24,8 @@ Generate (the checklist model). The Copilot brings guideline knowledge into that
 Nothing reaches the report unless the radiologist presses Apply or ticks it.
 
 ## 2. Decisions (agreed with Hassan, 2026-10-12)
+
+Decisions 2–5 and 17–21 are superseded by the guideline library spec. They are kept below for the record.
 
 1. **The core output is guideline cards**, not a free chat. The chat lives inside the card model (§4.3).
 2. **Two layers of knowledge.**
@@ -188,7 +196,7 @@ with amber (checklist), violet (rail tint) or rose (the radiologist's additions)
 
 All routes sit under `/api/canvas/stack/guidelines/`, in a new package `hybrid_stack/copilot/`.
 
-### 5.1 Registry
+### 5.1 Registry (superseded by the guideline library spec)
 
 Table `guideline_registry`, with an alembic migration:
 
@@ -265,7 +273,7 @@ Table `guideline_registry`, with an alembic migration:
 - The match, edition-pick, branch-pick and TNM-gate caches key on normalised text and include the history where
   the answer depends on it; they hold successes only.
 
-### 5.3 `resolve_guideline(card)`: the targeted fetch
+### 5.3 `resolve_guideline(card)`: the targeted fetch (superseded; kept as the authoring tool, library spec §9.2)
 
 Shared by card open and by ask. The steps:
 
