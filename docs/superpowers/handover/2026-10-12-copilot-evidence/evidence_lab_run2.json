@@ -1,0 +1,194 @@
+[
+ {
+  "id": "F1",
+  "kind": "exact",
+  "truth": 1,
+  "A_current": 0.89,
+  "B_strict": 0.76,
+  "claim": "In Fleischner 2017, for solid nodules: when 6–8 mm, one follow-up CT at 6–12 months, with a second scan at 18–24 months for selected cases."
+ },
+ {
+  "id": "F2",
+  "kind": "exact",
+  "truth": 1,
+  "A_current": 0.91,
+  "B_strict": 0.89,
+  "claim": "In Fleischner 2017, for subsolid nodules: follow-up at 6–12 months and then periodic surveillance for up to 5 years."
+ },
+ {
+  "id": "F3",
+  "kind": "exact",
+  "truth": 1,
+  "A_current": 0.93,
+  "B_strict": 0.9,
+  "claim": "In Fleischner 2017, for solid or subsolid nodules: when smaller than 6 mm in a low-risk patient, no follow-up is generally recommended."
+ },
+ {
+  "id": "F4",
+  "kind": "reworded",
+  "truth": 1,
+  "A_current": 0.92,
+  "B_strict": 0.88,
+  "claim": "In Fleischner 2017, for solid nodules: when larger than 8 mm, consider CT at 3 months, PET-CT or tissue sampling."
+ },
+ {
+  "id": "F5",
+  "kind": "reworded",
+  "truth": 1,
+  "A_current": 0.88,
+  "B_strict": 0.83,
+  "claim": "In Fleischner 2017, for nodules under 6 mm in a high-risk patient: an optional CT at 12 months."
+ },
+ {
+  "id": "F6",
+  "kind": "reworded",
+  "truth": 1,
+  "A_current": 0.95,
+  "B_strict": 0.94,
+  "claim": "In Fleischner 2017, for transient subsolid nodules: the follow-up CT interval is 12 months rather than 3 months."
+ },
+ {
+  "id": "F7",
+  "kind": "wrong_number",
+  "truth": 0,
+  "A_current": 0.13,
+  "B_strict": 0.04,
+  "claim": "In Fleischner 2017, for solid nodules: when 6–8 mm, one follow-up CT at 3–6 months."
+ },
+ {
+  "id": "F8",
+  "kind": "wrong_number",
+  "truth": 0,
+  "A_current": 0.11,
+  "B_strict": 0.04,
+  "claim": "In Fleischner 2017, for subsolid nodules: periodic surveillance for up to 2 years."
+ },
+ {
+  "id": "F9",
+  "kind": "wrong_branch",
+  "truth": 0,
+  "A_current": 0.21,
+  "B_strict": 0.07,
+  "claim": "In Fleischner 2017, for subsolid nodules: when 6–8 mm, one follow-up CT at 6–12 months, with a second scan at 18–24 months for selected cases."
+ },
+ {
+  "id": "F10",
+  "kind": "wrong_branch",
+  "truth": 0,
+  "A_current": 0.14,
+  "B_strict": 0.07,
+  "claim": "In Fleischner 2017, for solid nodules: follow-up at 6–12 months and then periodic surveillance for up to 5 years."
+ },
+ {
+  "id": "F11",
+  "kind": "wrong_guideline",
+  "truth": 0,
+  "A_current": 0.12,
+  "B_strict": 0.03,
+  "claim": "In Bosniak 2019, for solid nodules: when 6–8 mm, one follow-up CT at 6–12 months."
+ },
+ {
+  "id": "F12",
+  "kind": "not_stated",
+  "truth": 0,
+  "A_current": 0.07,
+  "B_strict": 0.03,
+  "claim": "In Fleischner 2017, for perifissural nodules larger than 10 mm: CT at 3 months."
+ },
+ {
+  "id": "F13",
+  "kind": "wrong_branch",
+  "truth": 0,
+  "A_current": 0.12,
+  "B_strict": 0.05,
+  "claim": "In Fleischner 2017, for nodules under 6 mm in a low-risk patient: an optional CT at 12 months."
+ },
+ {
+  "id": "E1",
+  "kind": "exact",
+  "truth": 1,
+  "A_current": 0.92,
+  "B_strict": 0.9,
+  "claim": "In ESE adrenal incidentaloma 2023, for imaging assessment: homogeneous lesions with ≤10 HU on unenhanced CT are benign and do not require any additional imaging, independent of size."
+ },
+ {
+  "id": "E2",
+  "kind": "reworded",
+  "truth": 1,
+  "A_current": 0.88,
+  "B_strict": 0.9,
+  "claim": "In ESE adrenal incidentaloma 2023, for homogeneous tumours under 4 cm with 11 to 20 HU: immediate additional imaging is recommended."
+ },
+ {
+  "id": "E3",
+  "kind": "reworded",
+  "truth": 1,
+  "A_current": 0.93,
+  "B_strict": 0.9,
+  "claim": "In ESE adrenal incidentaloma 2023, for lesions over 4 cm that are inhomogeneous or have HU above 20: surgery is usually the management of choice."
+ },
+ {
+  "id": "E4",
+  "kind": "wrong_number",
+  "truth": 0,
+  "A_current": 0.08,
+  "B_strict": 0.05,
+  "claim": "In ESE adrenal incidentaloma 2023, for imaging assessment: homogeneous lesions with ≤20 HU on unenhanced CT are benign and need no further imaging."
+ },
+ {
+  "id": "E5",
+  "kind": "wrong_guideline",
+  "truth": 0,
+  "A_current": 0.08,
+  "B_strict": 0.04,
+  "claim": "In ESE adrenal incidentaloma 2023, follow-up at 3 to 6 months after the initial imaging, continuing for 1 to 2 years regardless of imaging features."
+ },
+ {
+  "id": "E6",
+  "kind": "wrong_edition",
+  "truth": 0,
+  "A_current": 0.03,
+  "B_strict": 0.02,
+  "claim": "In ESE adrenal incidentaloma 2023, for indeterminate lesions: interval imaging at 6 to 12 months is preferred over immediate additional imaging."
+ },
+ {
+  "id": "B1",
+  "kind": "not_stated",
+  "truth": 0,
+  "A_current": 0.28,
+  "B_strict": 0.16,
+  "claim": "In Bosniak 2019, for class IIF: follow-up imaging at 6 months, 12 months, then annually for 5 years."
+ },
+ {
+  "id": "B2",
+  "kind": "reworded",
+  "truth": 1,
+  "A_current": 0.96,
+  "B_strict": 0.93,
+  "claim": "In Bosniak 2019: the update incorporates MRI and establishes definitions for previously vague imaging terms."
+ },
+ {
+  "id": "R1",
+  "kind": "rule_true",
+  "truth": 1,
+  "A_current": 0.9,
+  "B_strict": 0.8,
+  "claim": "In Fleischner 2017, rule for solid nodules: under 6 mm in low-risk patients no routine follow-up; 6–8 mm CT at 6–12 months then 18–24 months in selected cases; over 8 mm CT at 3 months, PET-CT or tissue sampling."
+ },
+ {
+  "id": "R2",
+  "kind": "rule_wrong_number",
+  "truth": 0,
+  "A_current": 0.15,
+  "B_strict": 0.09,
+  "claim": "In Fleischner 2017, rule for solid nodules: under 6 mm in low-risk patients no routine follow-up; 6–8 mm CT at 3–6 months; over 8 mm CT at 3 months, PET-CT or tissue sampling."
+ },
+ {
+  "id": "R3",
+  "kind": "rule_wrong_branch",
+  "truth": 0,
+  "A_current": 0.28,
+  "B_strict": 0.08,
+  "claim": "In Fleischner 2017, rule for subsolid nodules: under 6 mm no follow-up; 6–8 mm one CT at 6–12 months and a second at 18–24 months; over 8 mm CT at 3 months, PET-CT or tissue sampling."
+ }
+]

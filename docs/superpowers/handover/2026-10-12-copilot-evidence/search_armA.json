@@ -1,0 +1,403 @@
+[
+ {
+  "seed": "Fleischner",
+  "candidates": [
+   {
+    "url": "https://pubmed.ncbi.nlm.nih.gov/36049538",
+    "tier": 2,
+    "score": 0.7,
+    "picked": true,
+    "extracted_chars": 2644,
+    "search_chars": 493
+   },
+   {
+    "url": "https://www.professionalradiology.com/media/user/resources/Fleischner%202017.pdf",
+    "tier": 3,
+    "score": 0.85,
+    "picked": true,
+    "extracted_chars": 3678,
+    "search_chars": 1387
+   },
+   {
+    "url": "https://scholars.duke.edu/publication/1232183",
+    "tier": 3,
+    "score": 0.84,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1470
+   },
+   {
+    "url": "https://www.mdcalc.com/calc/10062/fleischner-society-guidelines-incidental-pulmonary-nodules",
+    "tier": 3,
+    "score": 0.82,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 756
+   },
+   {
+    "url": "https://www.sts.org/follow-lung-nodules",
+    "tier": 3,
+    "score": 0.8,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 368
+   },
+   {
+    "url": "https://radiology-universe.org/2017_Fleischner_Society_Pulmonary_Nodule_Follow-Up_New_Guidelines_Recommendations",
+    "tier": 3,
+    "score": 0.8,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1064
+   }
+  ],
+  "coverage": {
+   "Fleischner 2017: Solid nodule, single": 0.88,
+   "Fleischner 2017: Solid nodules, multiple": 0.42,
+   "Fleischner 2017: Subsolid nodule, pure ground-glass": 0.45,
+   "Fleischner 2017: Subsolid nodule, part-solid": 0.81,
+   "Fleischner 2017: Subsolid nodules, multiple": 0.26
+  }
+ },
+ {
+  "seed": "Bosniak",
+  "candidates": [
+   {
+    "url": "https://epos.myesr.org/poster/esr/ecr2022/C-17408",
+    "tier": 1,
+    "score": 0.87,
+    "picked": true,
+    "extracted_chars": 3390,
+    "search_chars": 1506
+   },
+   {
+    "url": "https://pubmed.ncbi.nlm.nih.gov/31210616",
+    "tier": 2,
+    "score": 0.86,
+    "picked": true,
+    "extracted_chars": 2150,
+    "search_chars": 1466
+   },
+   {
+    "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6677285",
+    "tier": 2,
+    "score": 0.83,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1469
+   },
+   {
+    "url": "https://radiogyan.com/bosniak-calculator",
+    "tier": 3,
+    "score": 0.93,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1421
+   },
+   {
+    "url": "https://radiologyassistant.nl/abdomen/kidney/bozniak-2019",
+    "tier": 3,
+    "score": 0.89,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1352
+   },
+   {
+    "url": "https://www.cua.org/system/files/Guideline-Files/CUA_guideline_on_the_management_of_cystic_renal_lesions.pdf",
+    "tier": 3,
+    "score": 0.79,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1152
+   }
+  ],
+  "coverage": {
+   "Bosniak 2019: Class I and II": 0.76,
+   "Bosniak 2019: Class IIF": 0.71,
+   "Bosniak 2019: Class III": 0.18,
+   "Bosniak 2019: Class IV": 0.47
+  }
+ },
+ {
+  "seed": "ESE adrenal incidentaloma",
+  "candidates": [
+   {
+    "url": "https://epos.myesr.org/poster/esr/ecr2026/C-22039/findings%20and%20procedure%20details",
+    "tier": 1,
+    "score": 0.72,
+    "picked": true,
+    "extracted_chars": 2777,
+    "search_chars": 1490
+   },
+   {
+    "url": "https://pubmed.ncbi.nlm.nih.gov/37318239",
+    "tier": 2,
+    "score": 0.9,
+    "picked": true,
+    "extracted_chars": 2875,
+    "search_chars": 1488
+   },
+   {
+    "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12204974",
+    "tier": 2,
+    "score": 0.79,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1041
+   },
+   {
+    "url": "https://emedicine.medscape.com/article/116587-guidelines",
+    "tier": 3,
+    "score": 0.94,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1255
+   },
+   {
+    "url": "https://www.ese-hormones.org/publications/directory/ese-clinical-practice-guideline-on-the-management-of-adrenal-incidentalomas-in-collaboration-with-the-european-network-for-the-study-of-adrenal-tumors",
+    "tier": 3,
+    "score": 0.9,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1475
+   },
+   {
+    "url": "https://www.iatrox.com/knowledge-centre/adrenal-incidentaloma",
+    "tier": 3,
+    "score": 0.88,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 864
+   }
+  ],
+  "coverage": {
+   "ESE adrenal incidentaloma 2023: Unenhanced CT attenuation 10 HU or less": 0.85,
+   "ESE adrenal incidentaloma 2023: Attenuation 11 to 20 HU": 0.76,
+   "ESE adrenal incidentaloma 2023: Indeterminate lesions above 20 HU or inhomogeneous": 0.77
+  }
+ },
+ {
+  "seed": "BTA U classification",
+  "candidates": [
+   {
+    "url": "https://www.nice.org.uk/guidance/ng230/chapter/Recommendations",
+    "tier": 1,
+    "score": 0.65,
+    "picked": true,
+    "extracted_chars": 3459,
+    "search_chars": 1406
+   },
+   {
+    "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6987506",
+    "tier": 2,
+    "score": 0.77,
+    "picked": true,
+    "extracted_chars": 2729,
+    "search_chars": 190
+   },
+   {
+    "url": "https://radiopaedia.org/articles/bta-ultrasound-u-classification-of-thyroid-nodules?lang=us",
+    "tier": 3,
+    "score": 0.77,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1106
+   },
+   {
+    "url": "https://thyca.org/wp-content/uploads/wells-et-al-2015-revised-american-thyroid-association-guidelines-for-the-management-of-medullary-thyroid-carcinoma.pdf",
+    "tier": 3,
+    "score": 0.73,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1336
+   },
+   {
+    "url": "https://emedicine.medscape.com/article/282276-guidelines",
+    "tier": 3,
+    "score": 0.7,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1332
+   },
+   {
+    "url": "https://british-thyroid-association.org/professionals",
+    "tier": 3,
+    "score": 0.68,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1403
+   }
+  ],
+  "coverage": {
+   "BTA U classification 2014: U1 and U2 benign": 0.84,
+   "BTA U classification 2014: U3 indeterminate": 0.88,
+   "BTA U classification 2014: U4 and U5 suspicious or malignant": 0.86
+  }
+ },
+ {
+  "seed": "O-RADS US",
+  "candidates": [
+   {
+    "url": "https://www.acr.org/Clinical-Resources/Clinical-Tools-and-Reference/Reporting-and-Data-Systems/O-RADS/Ultrasound",
+    "tier": 1,
+    "score": 0.68,
+    "picked": true,
+    "extracted_chars": 3427,
+    "search_chars": 1234
+   },
+   {
+    "url": "https://pubmed.ncbi.nlm.nih.gov/37698472",
+    "tier": 2,
+    "score": 0.84,
+    "picked": true,
+    "extracted_chars": 2063,
+    "search_chars": 1501
+   },
+   {
+    "url": "https://pubmed.ncbi.nlm.nih.gov/31687921",
+    "tier": 2,
+    "score": 0.77,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1411
+   },
+   {
+    "url": "https://x-ray.ca/wp-content/uploads/2026/02/O-RADS.pdf",
+    "tier": 3,
+    "score": 0.91,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1495
+   },
+   {
+    "url": "https://radathand.com/radiology-calculators/women-imaging/orads-calculator",
+    "tier": 3,
+    "score": 0.79,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1289
+   }
+  ],
+  "coverage": {
+   "O-RADS US 2022: O-RADS 2 almost certainly benign": 0.39,
+   "O-RADS US 2022: O-RADS 3 low risk": 0.72,
+   "O-RADS US 2022: O-RADS 4 intermediate risk": 0.54,
+   "O-RADS US 2022: O-RADS 5 high risk": 0.31
+  }
+ },
+ {
+  "seed": "LI-RADS CT/MRI",
+  "candidates": [
+   {
+    "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC6677371",
+    "tier": 2,
+    "score": 0.87,
+    "picked": true,
+    "extracted_chars": 1090,
+    "search_chars": 681
+   },
+   {
+    "url": "https://www.itnonline.com/content/acr-li-rads-steering-committee-releases-new-version-ctmri-li-rads",
+    "tier": 3,
+    "score": 0.88,
+    "picked": true,
+    "extracted_chars": 3176,
+    "search_chars": 1320
+   },
+   {
+    "url": "https://www.satmed-health.com/explore-the-2026-evolution-of-li-rads-and-hcc-diagnostic-paradigms-discover-advancements-in-multi-modal-imaging-ai-detection-and-precision-contrast-delivery",
+    "tier": 3,
+    "score": 0.87,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1339
+   },
+   {
+    "url": "https://cco.amegroups.org/article/view/44048/html",
+    "tier": 3,
+    "score": 0.86,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1502
+   },
+   {
+    "url": "https://radiopaedia.org/articles/ctmri-li-rads?lang=us",
+    "tier": 3,
+    "score": 0.85,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 819
+   },
+   {
+    "url": "https://radiologyassistant.nl/abdomen/liver/li-rads",
+    "tier": 3,
+    "score": 0.72,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1161
+   }
+  ],
+  "coverage": {
+   "LI-RADS CT/MRI 2018: LR-3 intermediate": 0.11,
+   "LI-RADS CT/MRI 2018: LR-4 probably HCC": 0.15,
+   "LI-RADS CT/MRI 2018: LR-5 definitely HCC": 0.6,
+   "LI-RADS CT/MRI 2018: LR-M": 0.12
+  }
+ },
+ {
+  "seed": "Kellgren-Lawrence",
+  "candidates": [
+   {
+    "url": "https://pubmed.ncbi.nlm.nih.gov/13498604",
+    "tier": 2,
+    "score": 0.92,
+    "picked": true,
+    "extracted_chars": 0,
+    "search_chars": 187
+   },
+   {
+    "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC1006995",
+    "tier": 2,
+    "score": 0.8,
+    "picked": true,
+    "extracted_chars": 15727,
+    "search_chars": 198
+   },
+   {
+    "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4925407",
+    "tier": 2,
+    "score": 0.68,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 191
+   },
+   {
+    "url": "https://radiopaedia.org/articles/kellgren-and-lawrence-system-for-classification-of-osteoarthritis?lang=us",
+    "tier": 3,
+    "score": 0.81,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1143
+   },
+   {
+    "url": "https://www.sciencedirect.com/science/article/pii/S0003496724493102",
+    "tier": 3,
+    "score": 0.79,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 170
+   },
+   {
+    "url": "https://www.jeffreypengmd.com/post/kellgren-lawrence-grading-system-understanding-x-ray-stages-of-knee-arthritis",
+    "tier": 3,
+    "score": 0.75,
+    "picked": false,
+    "extracted_chars": 0,
+    "search_chars": 1340
+   }
+  ],
+  "coverage": {
+   "Kellgren-Lawrence : Grades 0 to 4": 0.52
+  }
+ }
+]
