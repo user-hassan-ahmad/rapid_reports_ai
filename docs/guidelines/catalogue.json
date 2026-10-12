@@ -671,7 +671,7 @@
    "id": "rcog-gtg-postmenopausal",
    "issuer": "Royal College of Obstetricians and Gynaecologists",
    "system": "Green-top Guideline No. 34: Ovarian cysts in postmenopausal women",
-   "edition": "2016 (Green-top Guideline No. 34; page lists it, last reviewed Dec 2025)",
+   "edition": "July 2016, minor update December 2025 (Green-top Guideline No. 34); PDF fetched",
    "year": 2016,
    "url": "https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/ovarian-cysts-in-postmenopausal-women-green-top-guideline-no-34/",
    "uk_body": true,
@@ -686,7 +686,7 @@
    "licence_notes": "RCOG; free to view; reuse terms not stated",
    "frequency": "high",
    "frequency_basis": "Cited, not checked: Simple ovarian cysts in 15-18 percent of postmenopausal women on US (RCOG GTG 34)",
-   "verified": false
+   "verified": true
   },
   {
    "id": "nice-ng224-paed-uti",
@@ -735,6 +735,51 @@
    "frequency": "high",
    "frequency_basis": "Cited, not checked: About 1.7 million women screened per year in England (NHS Digital)",
    "verified": true
+  },
+  {
+   "id": "bgcs-uterine-pmb-endometrial-thickness",
+   "issuer": "British Gynaecological Cancer Society",
+   "system": "BGCS uterine cancer guidelines: recommendations for practice (postmenopausal bleeding, endometrial thickness cut-off)",
+   "edition": "2022 (Morrison et al., Eur J Obstet Gynecol Reprod Biol 270:50-89; guideline dated 2021)",
+   "year": 2022,
+   "url": "https://doi.org/10.1016/j.ejogrb.2021.11.423",
+   "uk_body": true,
+   "topic": "Postmenopausal bleeding: transvaginal ultrasound endometrial thickness threshold (4 mm) for further investigation. Checked: NICE NG12 gives referral criteria but no thickness threshold; RCOG GTG 67 covers hyperplasia management, not a PMB thickness cut-off. No RCOG or NICE source states the threshold; BGCS is the UK source (4 mm figure seen via GIRFT/BMS summaries, BGCS text itself not read in this task)",
+   "finding_types": [
+    "endometrial thickness",
+    "postmenopausal bleeding",
+    "endometrial thickening"
+   ],
+   "modalities": [
+    "Ultrasound"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article (EJOGRB); reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: postmenopausal pelvic ultrasound is a routine request; thickness is reported on most",
+   "verified": true
+  },
+  {
+   "id": "bms-unscheduled-bleeding-hrt",
+   "issuer": "British Menopause Society",
+   "system": "Management of unscheduled bleeding on hormone replacement therapy (endometrial thickness 4 mm continuous combined / 7 mm sequential HRT)",
+   "edition": "BMS guideline FAQ, September 2026 (as on thebms.org.uk); GIRFT summary guide June 2024 cites BGCS 2021",
+   "year": 2026,
+   "url": "https://thebms.org.uk/wp-content/uploads/2026/09/02-NEW-BMS-GUIDELINE-FAQs-Management-of-unscheduled-bleeding-HRT-SEPT2026-A.pdf",
+   "uk_body": true,
+   "topic": "Endometrial thickness thresholds for women on HRT with unscheduled bleeding or asymptomatic with risk factors",
+   "finding_types": [
+    "endometrial thickness",
+    "HRT bleeding"
+   ],
+   "modalities": [
+    "Ultrasound"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "Society PDF; reuse terms not stated",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: HRT users are a minority of postmenopausal scans",
+   "verified": false
   },
   {
    "id": "fleischner-2017",
@@ -1507,9 +1552,9 @@
    "id": "ao-ota-2018",
    "issuer": "AO Foundation",
    "system": "AO/OTA Fracture and Dislocation Classification",
-   "edition": "2018 compendium; not confirmed",
+   "edition": "2018 (Meinberg et al., J Orthop Trauma 32 Suppl 1:S1-S170); AO PDF fetched",
    "year": 2018,
-   "url": "",
+   "url": "https://doi.org/10.1097/BOT.0000000000001063",
    "uk_body": false,
    "topic": "Alphanumeric fracture coding for long bones and spine",
    "finding_types": [
@@ -1523,7 +1568,7 @@
    "licence_notes": "URL not yet located (earlier page returned 404). Developed with the Orthopaedic Trauma Association",
    "frequency": "high",
    "frequency_basis": "Estimate: Fractures are very high volume; used selectively in reports",
-   "verified": false
+   "verified": true
   },
   {
    "id": "salter-harris",
@@ -2373,6 +2418,140 @@
    "licence_notes": "Journal article; reuse per publisher terms (not checked); ACR Incidental Findings Committee II",
    "frequency": "medium",
    "frequency_basis": "Estimate: gallbladder and biliary incidentals are frequent on abdominal CT",
+   "verified": true
+  },
+  {
+   "id": "esgar-gallbladder-polyps-2022",
+   "issuer": "ESGAR, EAES, EFISDS and ESGE (joint)",
+   "system": "Management and follow-up of gallbladder polyps: updated joint guidelines",
+   "edition": "2022 (Foley et al., Eur Radiol 32:3358-3368; published online Dec 2021)",
+   "year": 2022,
+   "url": "https://doi.org/10.1007/s00330-021-08384-w",
+   "uk_body": false,
+   "topic": "Gallbladder polyp size-based follow-up and cholecystectomy thresholds on ultrasound (replaces the 2017 joint guideline)",
+   "finding_types": [
+    "gallbladder polyp"
+   ],
+   "modalities": [
+    "Ultrasound"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: gallbladder polyps are a common incidental ultrasound finding",
+   "verified": true
+  },
+  {
+   "id": "esur-testicular-microlithiasis-2015",
+   "issuer": "European Society of Urogenital Radiology (scrotal imaging subcommittee)",
+   "system": "Testicular microlithiasis imaging and follow-up: ESUR scrotal imaging subcommittee guidelines",
+   "edition": "2015 (Richenberg et al., Eur Radiol 25:323-330). No NICE/RCR/BAUS guidance found; UK practice follows ESUR",
+   "year": 2015,
+   "url": "https://doi.org/10.1007/s00330-014-3437-x",
+   "uk_body": false,
+   "topic": "Testicular microlithiasis: classic vs limited, no follow-up in isolation, risk factors that prompt surveillance",
+   "finding_types": [
+    "testicular microlithiasis"
+   ],
+   "modalities": [
+    "Ultrasound"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: seen in a few percent of scrotal ultrasounds",
+   "verified": true
+  },
+  {
+   "id": "aospine-thoracolumbar-2013",
+   "issuer": "AO Spine",
+   "system": "AOSpine Thoracolumbar Spine Injury Classification System",
+   "edition": "2013 (Vaccaro et al., Spine 38:2028-2037)",
+   "year": 2013,
+   "url": "https://doi.org/10.1097/BRS.0b013e3182a8a381",
+   "uk_body": false,
+   "topic": "Thoracolumbar fracture morphology types A/B/C with neurological and modifier subscores",
+   "finding_types": [
+    "vertebral fracture",
+    "burst fracture",
+    "thoracolumbar injury"
+   ],
+   "modalities": [
+    "CT",
+    "MRI",
+    "X-ray"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: trauma spinal CT volume",
+   "verified": true
+  },
+  {
+   "id": "sins-2010",
+   "issuer": "Spine Oncology Study Group",
+   "system": "Spinal Instability Neoplastic Score (SINS)",
+   "edition": "2010 (Fisher et al., Spine 35:E1221-E1229)",
+   "year": 2010,
+   "url": "https://doi.org/10.1097/BRS.0b013e3181e16ae2",
+   "uk_body": false,
+   "topic": "Six-component score (location, pain, bone lesion quality, alignment, collapse, posterolateral involvement) for metastatic spinal instability",
+   "finding_types": [
+    "spinal metastasis",
+    "pathological vertebral fracture"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: spinal metastases are a common oncology imaging finding",
+   "verified": true
+  },
+  {
+   "id": "stoller-meniscal",
+   "issuer": "Stoller et al.",
+   "system": "Stoller MRI grading of meniscal signal (grades 0-3)",
+   "edition": "1987 (Stoller et al., Radiology 163:731-735)",
+   "year": 1987,
+   "url": "https://doi.org/10.1148/radiology.163.3.3575724",
+   "uk_body": false,
+   "topic": "Meniscal signal grades 1-3 correlated with pathology; grade 3 reaches the articular surface",
+   "finding_types": [
+    "meniscal tear",
+    "meniscal degeneration"
+   ],
+   "modalities": [
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: knee MRI volume",
+   "verified": true
+  },
+  {
+   "id": "iota-simple-rules-2008",
+   "issuer": "International Ovarian Tumor Analysis group",
+   "system": "IOTA simple ultrasound-based rules for adnexal masses",
+   "edition": "2008 (Timmerman et al., Ultrasound Obstet Gynecol 31:681-690); adopted by RCOG GTG 62 and GTG 34",
+   "year": 2008,
+   "url": "https://doi.org/10.1002/uog.5365",
+   "uk_body": false,
+   "topic": "Ten ultrasound features (five benign B-rules, five malignant M-rules) classify adnexal masses as benign, malignant or inconclusive",
+   "finding_types": [
+    "adnexal mass",
+    "ovarian cyst"
+   ],
+   "modalities": [
+    "Ultrasound"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; paywalled, primary PDF not obtained (Wiley bot wall)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: adnexal masses are common on pelvic ultrasound",
    "verified": true
   }
  ]
