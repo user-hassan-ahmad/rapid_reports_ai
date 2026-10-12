@@ -2329,7 +2329,7 @@
       "options": [],
       "prerequisites": [],
       "role": "clinical",
-      "scope": "patient",
+      "scope": "lesion",
       "states": [],
       "type": "boolean",
       "unit": ""
@@ -2486,7 +2486,7 @@
        }
       ],
       "role": "clinical",
-      "scope": "patient",
+      "scope": "lesion",
       "states": [],
       "type": "number",
       "unit": "days"
@@ -6024,5 +6024,5 @@
    ]
   }
  },
- "version": "2d14ef7ef055"
+ "version": "30acb1f747a0"
 }

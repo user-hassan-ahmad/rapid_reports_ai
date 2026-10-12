@@ -192,5 +192,8 @@ S2 table image).
 - "Groups not covered" B (a nodule already proven to be lung cancer or a metastasis) stays a pitfall, and
   previous-or-active cancer stays a caveat and pitfall (decision T2): the guideline covers adults with current or
   previous malignancy (Groups covered C and D).
+- DECISION (fix round 1): `prior_study` and `interval_days` are lesion-scoped (per nodule), so they are asked unless
+  the nodule's own finding states the earlier CT and its interval; a comparison stated for another lesion never
+  settles them.
 
 Independent clinical read (skill step 8): PENDING, dispatched by the controller.

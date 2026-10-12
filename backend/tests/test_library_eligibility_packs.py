@@ -41,3 +41,9 @@ def test_an_excluding_answer_settles_without_the_other_eligibility_input():
 def test_a_bosniak_mimic_does_not_apply():
     k = _lib().lookup("bosniak-renal-cyst")
     assert E.evaluate(k, {"mimic": True}).outcome == DOES_NOT_APPLY
+
+
+def test_bts_comparison_inputs_are_per_nodule():
+    """An earlier CT and its interval belong to this nodule: another lesion's comparison never settles them."""
+    b = _lib().lookup("bts-pulmonary-nodule")
+    assert b.input("prior_study").scope == b.input("interval_days").scope == "lesion"

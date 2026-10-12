@@ -173,7 +173,7 @@
     "page": 8,
     "table": "Figure 1 Initial approach to solid pulmonary nodules: previous imaging"
    },
-   "scope": "patient"
+   "scope": "lesion"
   },
   {
    "id": "resolved",
@@ -302,7 +302,7 @@
    },
    "min_value": 0,
    "min_inclusive": false,
-   "scope": "patient"
+   "scope": "lesion"
   }
  ],
  "logic": [
