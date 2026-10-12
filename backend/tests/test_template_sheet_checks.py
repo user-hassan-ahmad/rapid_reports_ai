@@ -60,7 +60,7 @@ async def test_placeholder_units_are_not_sent_to_jev(monkeypatch):
     assert "LVEF {value}%." not in seen and len(seen) == 3
 
 
-async def test_jev_scores_chunks_large_sheets(monkeypatch):
+async def test_jev_scores_chunks_large_sheets(monkeypatch, keyed):
     calls = []
 
     class R:
@@ -74,7 +74,7 @@ async def test_jev_scores_chunks_large_sheets(monkeypatch):
             return {"answers": {f"{p}{i}": {"noul": 0.7} for i in range(self.n) for p in "nm"}}
 
     async def fake_post(body, key, timeout):
-        n = len(body["questions"]) // 2
+        n = sum(k.startswith("n") for k in body["questions"])
         calls.append(n)
         return R(n)
 
@@ -86,7 +86,7 @@ async def test_jev_scores_chunks_large_sheets(monkeypatch):
 
     out = await C._jev_scores([U(f"Unit {i}.") for i in range(85)])
     assert calls == [40, 40, 5]
-    assert len(out) == 85 and out["Unit 84."] == (0.7, 0.7)
+    assert len(out) == 85 and out["Unit 84."] == (0.7, 0.0)
 
 
 async def test_jev_error_raises(monkeypatch):
@@ -96,3 +96,113 @@ async def test_jev_error_raises(monkeypatch):
     monkeypatch.setattr(C, "_jev_scores", boom)
     with pytest.raises(RuntimeError):
         await C.check_units(_structure())
+
+
+class _Resp:
+    def __init__(self, payload, fail=False):
+        self.payload, self.fail = payload, fail
+
+    def raise_for_status(self):
+        if self.fail:
+            raise RuntimeError("http 500")
+
+    def json(self):
+        return self.payload
+
+
+class _U:
+    def __init__(self, t):
+        self.text = t
+
+
+@pytest.fixture
+def keyed(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    monkeypatch.delenv("RR_JEV_ROUTE", raising=False)
+
+
+def _post_returning(resp, bodies=None):
+    async def fake_post(body, key, timeout):
+        if bodies is not None:
+            bodies.append(body)
+        return resp
+
+    return fake_post
+
+
+async def test_no_answers_raises(monkeypatch, keyed):
+    monkeypatch.setattr(C, "jev_post", _post_returning(_Resp({})))
+    with pytest.raises(ValueError, match="incomplete answers"):
+        await C._jev_scores([_U("A."), _U("B.")])
+
+
+async def test_partial_answers_raise(monkeypatch, keyed):
+    monkeypatch.setattr(C, "jev_post", _post_returning(_Resp({"answers": {"n0": {"noul": 0.9}}})))
+    with pytest.raises(ValueError, match="incomplete answers"):
+        await C._jev_scores([_U("A."), _U("B.")])
+
+
+async def test_non_numeric_answer_raises(monkeypatch, keyed):
+    payload = {"answers": {"n0": {"noul": "yes"}}}
+    monkeypatch.setattr(C, "jev_post", _post_returning(_Resp(payload)))
+    with pytest.raises(ValueError, match="incomplete answers"):
+        await C._jev_scores([_U("A.")])
+
+
+async def test_http_error_raises(monkeypatch, keyed):
+    monkeypatch.setattr(C, "jev_post", _post_returning(_Resp({}, fail=True)))
+    with pytest.raises(RuntimeError, match="http 500"):
+        await C._jev_scores([_U("A.")])
+
+
+async def test_no_multi_questions_sent_while_off(monkeypatch, keyed):
+    bodies = []
+    payload = {"answers": {"n0": {"noul": 0.9}, "n1": {"noul": 0.8}}}
+    monkeypatch.setattr(C, "jev_post", _post_returning(_Resp(payload), bodies))
+    out = await C._jev_scores([_U("A."), _U("B.")])
+    assert sorted(bodies[0]["questions"]) == ["n0", "n1"]
+    assert out == {"A.": (0.9, 0.0), "B.": (0.8, 0.0)}
+
+
+async def test_missing_api_key_raises(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("RR_JEV_ROUTE", raising=False)
+    called = []
+    monkeypatch.setattr(C, "jev_post", _post_returning(_Resp({}), called))
+    with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY unset"):
+        await C._jev_scores([_U("A.")])
+    assert called == []
+
+
+async def test_direct_route_needs_no_openrouter_key(monkeypatch):
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("RR_JEV_ROUTE", "direct")
+    monkeypatch.setenv("JEV_API_KEY", "d")
+    monkeypatch.setattr(C, "jev_post", _post_returning(_Resp({"answers": {"n0": {"noul": 0.9}}})))
+    assert await C._jev_scores([_U("A.")]) == {"A.": (0.9, 0.0)}
+
+
+async def test_line_is_zero_without_sheet_text(monkeypatch):
+    async def fake(units):
+        return {u.text: (0.95, 0.1) for u in units}
+
+    monkeypatch.setattr(C, "_jev_scores", fake)
+    fails = await C.check_units(_structure())
+    assert [(f.line, f.reason) for f in fails] == [(0, C.PLACEHOLDER)]
+
+
+async def test_repeated_source_lines_map_to_successive_lines(monkeypatch):
+    dup = 'NORMAL [ligaments] "LVEF {value}%."'
+    sheet = SHEET.replace("## Paragraph: Knee (FINDINGS)",
+                          "## Paragraph: Heart (FINDINGS)\nCOVERS [\"ligaments\"]\n" + dup + "\n\n## Paragraph: Knee (FINDINGS)")
+    res = parse_sheet(sheet, mode="template")
+    assert res.structure.usable, res.errors
+
+    async def fake(units):
+        return {u.text: (0.95, 0.1) for u in units}
+
+    monkeypatch.setattr(C, "_jev_scores", fake)
+    fails = [f for f in await C.check_units(res.structure, sheet) if f.reason == C.PLACEHOLDER]
+    lines = sheet.splitlines()
+    assert len(fails) == 2 and len({f.line for f in fails}) == 2
+    assert all(lines[f.line - 1] == dup for f in fails)
