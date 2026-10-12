@@ -162,7 +162,7 @@ def _proposal(raw: RawPreview, e: Entry, b: Branch, findings: str) -> Proposal |
     if not line or not line_numbers_ok(line, e, b, findings):
         logger.info("[copilot.preview] model line %s; code-built line used (%s)",
                     "empty" if not line else "failed the numeric guard", e.key)
-        line = f"{classification}."
+        line = f"{ident}: {o.classification}." if o.classification else f"{ident} applies."   # report style, no middle dot
     return Proposal(classification=classification, line=line, recommendation=o.recommendation)
 
 

@@ -128,14 +128,14 @@ async def test_invalid_output_index_has_no_proposal(monkeypatch, jev, idx):
 async def test_foreign_number_in_line_uses_a_code_built_line(monkeypatch, jev):
     monkeypatch.setattr(P, "_call", _model(GOOD.model_copy(update={"line": "Fleischner 2017; follow up in 3 months."})))
     out = await P.preview(ENTRY, "Solid", "7 mm solid nodule, smoker.", "", {})
-    assert out.proposal.line == "Fleischner 2017 · High risk." and out.settled[0].value == "High risk"
+    assert out.proposal.line == "Fleischner 2017: High risk." and out.settled[0].value == "High risk"
     assert out.proposal.recommendation == "CT at 6-12 months, then CT at 18-24 months"
 
 
 async def test_empty_line_uses_a_code_built_line(monkeypatch, jev):
     monkeypatch.setattr(P, "_call", _model(GOOD.model_copy(update={"line": "  "})))
     out = await P.preview(ENTRY, "Solid", "7 mm solid nodule, smoker.", "", {})
-    assert out.proposal.line == "Fleischner 2017 · High risk."
+    assert out.proposal.line == "Fleischner 2017: High risk."
 
 
 async def test_malformed_settled_answer_is_a_failure_not_a_low_score(monkeypatch):
@@ -283,3 +283,12 @@ async def test_empty_quote_is_missing_and_not_sent(monkeypatch, jev):
                                                                                          quote="  ")]})))
     out = await P.preview(ENTRY, "Solid", "7 mm solid nodule, smoker.", "", {})
     assert out.missing == ["risk"] and out.proposal is None and jev["payloads"] == []
+
+
+async def test_code_built_line_without_a_classification_says_it_applies(monkeypatch, jev):
+    raw = GOOD.model_copy(update={"settled": [Settled(input="risk", value="Low risk", quote="non-smoker")],
+                                  "output": 1, "line": ""})
+    monkeypatch.setattr(P, "_call", _model(raw))
+    out = await P.preview(ENTRY, "Solid", "7 mm solid nodule, non-smoker.", "", {})
+    assert out.proposal.line == "Fleischner 2017 applies." and "·" not in out.proposal.line
+    assert out.proposal.recommendation == "CT at 6-12 months"

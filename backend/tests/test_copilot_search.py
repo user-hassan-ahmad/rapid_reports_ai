@@ -448,3 +448,18 @@ async def test_refill_takes_a_replacement_longer_than_the_short_page(monkeypatch
     chunks, _ = await S.gather(["q"], branch="")
     urls = [c.url for c in chunks]
     assert "https://bir.org.uk/e" in urls and "https://esur.org/c" not in urls
+
+
+async def test_gather_top_limits_the_pages_read(monkeypatch):
+    calls = []
+
+    async def fake_search(q):
+        return [{"url": f"https://acr.org/{i}", "title": "T", "score": 0.9 - i / 10, "content": "s"} for i in range(5)]
+
+    async def fake_extract(urls, timeout=S.EXTRACT_TIMEOUT_S):
+        calls.append(urls)
+        return {u: "x" * S.MIN_EXTRACT_CHARS for u in urls}
+    monkeypatch.setattr(S, "_search", fake_search)
+    monkeypatch.setattr(S, "_extract", fake_extract)
+    chunks, _ = await S.gather(["q"], branch="", top=2)
+    assert calls == [["https://acr.org/0", "https://acr.org/1"]] and len(chunks) == 2

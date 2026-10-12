@@ -26,6 +26,7 @@ STRUCTURE_TIMEOUT_S = 30.0
 OVERVIEW = "Overview"   # the branch a branchless (ask-originated) card resolves into; never a branch named ""
 _OVERVIEW_LABEL = "the guideline as a whole"
 NOT_AVAILABLE_RETRY_DAYS = 7   # a branch no source covered is searched again after this long
+RETRY_URLS = 2                 # the coverage retry reads this many new pages: S.TOP_URLS + RETRY_URLS fit J.WINDOW_CAP
 FILL_CONCURRENCY = 3           # background branch fetches in flight at once, per event loop
 # Locks and the fill semaphore bind to an event loop, so they are kept per loop (a lab calling asyncio.run
 # repeatedly gets fresh ones). Weak keys: a closed loop's entry goes with it, and a reused id() cannot alias it.
@@ -156,7 +157,7 @@ async def _fetch_branch(card: Card, branch: str, queries: list[str]) -> tuple[St
     if cover < J.COVER_MIN:   # one retry on new pages only (review: the same URLs re-extract the same chunks)
         more, more_src = await S.gather([S.branch_query(card.name, card.version, term)], branch, focus=term,
                                         exclude={c.url for c in chunks}, name=card.name,
-                                        version=card.version, title=card.publication.title)
+                                        version=card.version, title=card.publication.title, top=RETRY_URLS)
         chunks, sources = chunks + more, sources + more_src
         if more:
             text = _text(chunks)

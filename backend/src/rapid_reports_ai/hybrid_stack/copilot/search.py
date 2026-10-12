@@ -163,10 +163,11 @@ async def _extract(urls: list[str], timeout: float = EXTRACT_TIMEOUT_S) -> dict[
 
 
 async def gather(queries: list[str], branch: str, focus: str = "", exclude: set[str] | None = None,
-                  name: str = "", version: str = "", title: str = "") -> tuple[list[Chunk], list[Source]]:
+                  name: str = "", version: str = "", title: str = "", top: int | None = None
+                  ) -> tuple[list[Chunk], list[Source]]:
     """Search every query in parallel, dedupe by canonical URL, drop any URL already in the registry (`exclude`),
     keep only results above the relevance floor, rank by source tier with Jev's relevance gate (a result not about
-    `name` `version` (`title`) ranks last; `name=""` skips the gate), extract the top URLs as full pages.
+    `name` `version` (`title`) ranks last; `name=""` skips the gate), extract the top URLs (`top`, default TOP_URLS) as full pages.
 
     A picked page whose extract comes back under MIN_EXTRACT_CHARS (failed/paywalled/landing) is offered, in one
     refill round, the next ranked candidate not yet tried: the replacement is taken only if its extract reaches
@@ -182,7 +183,7 @@ async def gather(queries: list[str], branch: str, focus: str = "", exclude: set[
             found.setdefault(_canon(r["url"]), r)
     cands = _above_floor(list(found.values()))
     ranked = rank(cands, await _relevance(cands, name, version, title))
-    top = ranked[:TOP_URLS]
+    top = ranked[:TOP_URLS if top is None else top]
     if not top:
         return [], []
     first = await _extract([r["url"] for r in top])
