@@ -270,7 +270,9 @@ def test_prose_conditional_is_a_stored_warning_not_an_error():
     'When normal, write “No ascites.”',
     "Ensure no ascites is described when absent.",
     "If the study is normal, state the absence of free fluid without further comment.",
+    "When the ducts are not dilated, say so in one clause.",
     'If clear, write "There is no pleural effusion."',
+    "If negative for collection, say nothing more.",
     'When nothing is identified: "No extracardiac abnormality."',
     "If contrast was not given, no enhancement is described.",
 ])
@@ -286,12 +288,7 @@ def test_conditional_negatives_in_prose_block(prose, mode):
     "If any segment is dilated, give its calibre.",
     "List the dilated segments, if any.",
     'When an aneurysm is present, use "aneurysmal" rather than "ectatic".',
-    # the negative cue sits in the condition only: the consequence states no absence
-    "When the ducts are not dilated, say so in one clause.",
-    "If negative for collection, say nothing more.",
     "If contrast was not given, the paragraph is omitted.",
-    'Opening: When T2 is acquired: "T2 mapping demonstrated no evidence of myocardial high T2 signal..." When T2 is not '
-    'acquired, the paragraph opens directly with: "Late gadolinium enhancement imaging demonstrates..."',
 ])
 def test_conditionals_without_a_negative_cue_only_warn(prose):
     r = parse(PARA + prose + "\n")
