@@ -1,0 +1,932 @@
+{
+  "id": "ese-adrenal-incidentaloma",
+  "version": "2023.1",
+  "topic": "adrenal-incidentaloma",
+  "issuer": "European Society of Endocrinology",
+  "system": "ESE-ENSAT clinical practice guideline on the management of adrenal incidentalomas (2023): imaging work-up",
+  "display": "ESE adrenal incidentaloma 2023",
+  "edition": "2023",
+  "tier": 1,
+  "status": "current",
+  "applies_to": {
+    "region": [
+      "abdomen"
+    ],
+    "modality": [
+      "CT",
+      "MRI"
+    ],
+    "finding_type": [
+      "adrenal mass"
+    ]
+  },
+  "aliases": [
+    "ese adrenal incidentaloma guideline",
+    "ese 2023 adrenal incidentaloma",
+    "ese-ensat adrenal incidentaloma",
+    "european society of endocrinology adrenal incidentaloma",
+    "fassnacht 2023 adrenal incidentaloma"
+  ],
+  "inputs": [
+    {
+      "id": "known_primary_cancer",
+      "label": "History of extra-adrenal malignancy",
+      "type": "boolean",
+      "scope": "patient",
+      "role": "eligibility",
+      "fact": "known_primary_cancer",
+      "how_stated": "true when the clinical details or dictation state a current or previous cancer outside the adrenal (e.g. staging or follow-up CT for lung cancer); false when no cancer history is given and the scan is for another reason",
+      "locator": {
+        "source": "S1",
+        "page": 4,
+        "section": "2.1 Definition: masses found at staging or follow-up of extra-adrenal malignancy do not meet the strict definition; addressed in 5.6.3"
+      }
+    },
+    {
+      "id": "not_incidentaloma",
+      "label": "Imaging for suspected adrenal disease or hereditary-syndrome screening",
+      "type": "boolean",
+      "scope": "patient",
+      "role": "eligibility",
+      "how_stated": "true when the scan was done to investigate suspected adrenal disease (e.g. signs or symptoms of phaeochromocytoma, Cushing's or Conn's syndrome), or as screening in a hereditary syndrome that predisposes to adrenal tumours; false when the mass is incidental on a scan done for something else",
+      "locator": {
+        "source": "S1",
+        "page": 4,
+        "section": "2.1 Definition: imaging not performed for suspected adrenal disease; screening in hereditary syndromes falls outside the definition"
+      }
+    },
+    {
+      "id": "size_cm",
+      "label": "Adrenal mass maximum diameter",
+      "type": "number",
+      "unit": "cm",
+      "dims": "max",
+      "scope": "lesion",
+      "min_value": 0,
+      "min_inclusive": false,
+      "how_stated": "maximum diameter of the adrenal mass in centimetres (millimetres convert), e.g. '2.4 cm left adrenal nodule' or '24 x 18 mm'",
+      "locator": {
+        "source": "S1",
+        "page": 18,
+        "table": "Figure 5: tumor < 4 cm / >= 4 cm; 2.1 p4: work-up threshold 1 cm"
+      }
+    },
+    {
+      "id": "appearance",
+      "label": "Appearance of the mass",
+      "type": "enum",
+      "options": [
+        "homogeneous",
+        "heterogeneous",
+        "clearly_benign"
+      ],
+      "scope": "lesion",
+      "how_stated": "homogeneous: uniform density or signal throughout. heterogeneous: not uniform. clearly_benign: only when the dictation makes a specific benign diagnosis from imaging features other than attenuation, e.g. a myelolipoma with macroscopic fat; 'probable adenoma' is not enough",
+      "locator": {
+        "source": "S1",
+        "page": 19,
+        "table": "Table 4 note a: homogeneous = uniform density or signal intensity throughout; masses with other clear benign characteristics, e.g. myelolipoma"
+      }
+    },
+    {
+      "id": "unenhanced_hu",
+      "label": "Attenuation on unenhanced CT",
+      "type": "number",
+      "unit": "HU",
+      "scope": "lesion",
+      "states": [
+        "not_assessable"
+      ],
+      "how_stated": "mean attenuation of the mass on unenhanced (noncontrast) CT in Hounsfield units, e.g. '8 HU on the unenhanced phase' or 'precontrast density 25 HU'. not_assessable when there is no unenhanced CT (contrast-enhanced phases only, or MRI only); enhanced-phase values do not count",
+      "locator": {
+        "source": "S1",
+        "page": 17,
+        "section": "5.2 R.2.2, R.2.3: noncontrast CT, homogeneous and HU <= 10"
+      }
+    },
+    {
+      "id": "age",
+      "label": "Age",
+      "type": "number",
+      "unit": "years",
+      "scope": "patient",
+      "fact": "age_years",
+      "min_value": 0,
+      "max_value": 110,
+      "how_stated": "patient's age in years from the clinical details or dictation, e.g. '34-year-old'",
+      "locator": {
+        "source": "S1",
+        "page": 30,
+        "section": "5.6.2 R.6.2.1, R.6.2.3: individuals under 40 years"
+      }
+    }
+  ],
+  "logic": [
+    {
+      "step": "band",
+      "id": "size_band",
+      "ref": "size_cm",
+      "locator": {
+        "source": "S1",
+        "page": 18,
+        "table": "Figure 5: tumor < 4 cm, >= 4 cm; 2.1 p4: work-up only in masses >= 1 cm"
+      },
+      "bands": [
+        {
+          "id": "lt1",
+          "label": "under 1 cm",
+          "max": 1
+        },
+        {
+          "id": "1to4",
+          "label": "1 cm to under 4 cm",
+          "min": 1,
+          "max": 4
+        },
+        {
+          "id": "ge4",
+          "label": "4 cm or more",
+          "min": 4
+        }
+      ]
+    },
+    {
+      "step": "band",
+      "id": "hu_band",
+      "ref": "unenhanced_hu",
+      "locator": {
+        "source": "S1",
+        "page": 18,
+        "table": "Figure 5: HU <= 10, HU 11-20, HU > 20; Figure 4: HU > 10"
+      },
+      "bands": [
+        {
+          "id": "le10",
+          "label": "10 HU or less",
+          "max": 10,
+          "max_inclusive": true
+        },
+        {
+          "id": "11to20",
+          "label": "over 10 to 20 HU",
+          "min": 10,
+          "min_inclusive": false,
+          "max": 20,
+          "max_inclusive": true
+        },
+        {
+          "id": "gt20",
+          "label": "over 20 HU",
+          "min": 20,
+          "min_inclusive": false
+        }
+      ]
+    },
+    {
+      "step": "band",
+      "id": "age_band",
+      "ref": "age",
+      "locator": {
+        "source": "S1",
+        "page": 30,
+        "section": "5.6.2 R.6.2.1: individuals < 40 years of age"
+      },
+      "bands": [
+        {
+          "id": "lt40",
+          "label": "under 40 years",
+          "max": 40
+        },
+        {
+          "id": "ge40",
+          "label": "40 years or more",
+          "min": 40
+        }
+      ]
+    },
+    {
+      "step": "rules",
+      "id": "pathway",
+      "cases": [
+        {
+          "when": {
+            "any": [
+              {
+                "ref": "known_primary_cancer",
+                "eq": true
+              },
+              {
+                "ref": "not_incidentaloma",
+                "eq": true
+              }
+            ]
+          },
+          "result": "does_not_apply",
+          "locator": {
+            "source": "S1",
+            "page": 4,
+            "section": "2.1 Definition of adrenal incidentaloma; Figure 4 note 1 p17"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "known_primary_cancer",
+                "eq": false
+              },
+              {
+                "ref": "not_incidentaloma",
+                "eq": false
+              },
+              {
+                "ref": "size_band",
+                "eq": "lt1"
+              }
+            ]
+          },
+          "result": "below_threshold",
+          "locator": {
+            "source": "S1",
+            "page": 4,
+            "section": "2.1: additional diagnostic work-up only in adrenal masses >= 1 cm unless clinical signs of hormone excess"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "known_primary_cancer",
+                "eq": false
+              },
+              {
+                "ref": "not_incidentaloma",
+                "eq": false
+              },
+              {
+                "ref": "size_band",
+                "in": [
+                  "1to4",
+                  "ge4"
+                ]
+              },
+              {
+                "ref": "appearance",
+                "eq": "homogeneous"
+              },
+              {
+                "ref": "hu_band",
+                "eq": "le10"
+              }
+            ]
+          },
+          "result": "benign_attenuation",
+          "locator": {
+            "source": "S1",
+            "page": 18,
+            "table": "Figure 5: any size and homogeneous and HU <= 10; R.2.3 p17"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "known_primary_cancer",
+                "eq": false
+              },
+              {
+                "ref": "not_incidentaloma",
+                "eq": false
+              },
+              {
+                "ref": "size_band",
+                "in": [
+                  "1to4",
+                  "ge4"
+                ]
+              },
+              {
+                "ref": "appearance",
+                "eq": "clearly_benign"
+              }
+            ]
+          },
+          "result": "benign_other",
+          "locator": {
+            "source": "S1",
+            "page": 26,
+            "section": "5.5 R.5.1: no further imaging for a lesion with clear benign features; Table 4 note a p19"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "known_primary_cancer",
+                "eq": false
+              },
+              {
+                "ref": "not_incidentaloma",
+                "eq": false
+              },
+              {
+                "ref": "size_band",
+                "in": [
+                  "1to4",
+                  "ge4"
+                ]
+              },
+              {
+                "ref": "appearance",
+                "eq": "homogeneous"
+              },
+              {
+                "ref": "hu_band",
+                "state": "not_assessable"
+              }
+            ]
+          },
+          "result": "needs_unenhanced_ct",
+          "locator": {
+            "source": "S1",
+            "page": 17,
+            "section": "5.2 R.2.2: noncontrast CT as the first imaging modality if not yet performed"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "known_primary_cancer",
+                "eq": false
+              },
+              {
+                "ref": "not_incidentaloma",
+                "eq": false
+              },
+              {
+                "ref": "age_band",
+                "eq": "lt40"
+              },
+              {
+                "any": [
+                  {
+                    "all": [
+                      {
+                        "ref": "appearance",
+                        "eq": "homogeneous"
+                      },
+                      {
+                        "ref": "hu_band",
+                        "eq": "11to20"
+                      }
+                    ]
+                  },
+                  {
+                    "all": [
+                      {
+                        "ref": "appearance",
+                        "eq": "homogeneous"
+                      },
+                      {
+                        "ref": "hu_band",
+                        "eq": "gt20"
+                      },
+                      {
+                        "ref": "size_band",
+                        "eq": "1to4"
+                      }
+                    ]
+                  },
+                  {
+                    "all": [
+                      {
+                        "ref": "appearance",
+                        "eq": "heterogeneous"
+                      },
+                      {
+                        "ref": "size_band",
+                        "eq": "1to4"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "ref": "size_band",
+                "in": [
+                  "1to4",
+                  "ge4"
+                ]
+              }
+            ]
+          },
+          "result": "young_indeterminate",
+          "locator": {
+            "source": "S1",
+            "page": 30,
+            "section": "5.6.2 R.6.2.1, R.6.2.3: urgent assessment under 40; surgical resection if indeterminate on imaging"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "known_primary_cancer",
+                "eq": false
+              },
+              {
+                "ref": "not_incidentaloma",
+                "eq": false
+              },
+              {
+                "ref": "age_band",
+                "eq": "ge40"
+              },
+              {
+                "ref": "appearance",
+                "eq": "homogeneous"
+              },
+              {
+                "ref": "hu_band",
+                "eq": "11to20"
+              },
+              {
+                "ref": "size_band",
+                "eq": "1to4"
+              }
+            ]
+          },
+          "result": "additional_imaging",
+          "locator": {
+            "source": "S1",
+            "page": 18,
+            "table": "Figure 5: homogenous and HU 11-20 and tumor < 4 cm; R.2.4 p19"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "known_primary_cancer",
+                "eq": false
+              },
+              {
+                "ref": "not_incidentaloma",
+                "eq": false
+              },
+              {
+                "ref": "age_band",
+                "eq": "ge40"
+              },
+              {
+                "any": [
+                  {
+                    "all": [
+                      {
+                        "ref": "appearance",
+                        "eq": "homogeneous"
+                      },
+                      {
+                        "ref": "hu_band",
+                        "eq": "11to20"
+                      },
+                      {
+                        "ref": "size_band",
+                        "eq": "ge4"
+                      }
+                    ]
+                  },
+                  {
+                    "all": [
+                      {
+                        "ref": "appearance",
+                        "eq": "homogeneous"
+                      },
+                      {
+                        "ref": "hu_band",
+                        "eq": "gt20"
+                      },
+                      {
+                        "ref": "size_band",
+                        "eq": "1to4"
+                      }
+                    ]
+                  },
+                  {
+                    "all": [
+                      {
+                        "ref": "appearance",
+                        "eq": "heterogeneous"
+                      },
+                      {
+                        "ref": "size_band",
+                        "eq": "1to4"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "indeterminate_mdt",
+          "locator": {
+            "source": "S1",
+            "page": 18,
+            "table": "Figure 5: HU 11-20 and >= 4 cm, or HU > 20 and < 4 cm, or heterogeneous < 4 cm; R.2.6 p19"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "known_primary_cancer",
+                "eq": false
+              },
+              {
+                "ref": "not_incidentaloma",
+                "eq": false
+              },
+              {
+                "ref": "size_band",
+                "eq": "ge4"
+              },
+              {
+                "any": [
+                  {
+                    "all": [
+                      {
+                        "ref": "appearance",
+                        "eq": "homogeneous"
+                      },
+                      {
+                        "ref": "hu_band",
+                        "eq": "gt20"
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "appearance",
+                    "eq": "heterogeneous"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "high_risk",
+          "locator": {
+            "source": "S1",
+            "page": 19,
+            "section": "5.2 R.2.5: >= 4 cm and heterogeneous or unenhanced HU > 20; Figure 5 p18"
+          }
+        }
+      ]
+    }
+  ],
+  "result": "pathway",
+  "outcomes": [
+    {
+      "id": "below_threshold",
+      "classification": "Adrenal nodule under 1 cm: below ESE's 1 cm threshold for incidentaloma work-up.",
+      "recommendation": "Further adrenal work-up is not routinely needed unless there are clinical signs or symptoms of adrenal hormone excess.",
+      "caveats": [
+        "ESE calls the 1 cm work-up threshold arbitrary; it applies the threshold to further diagnostic work-up in general, imaging and hormonal.",
+        "Routing every sub-centimetre nodule here whatever its appearance or attenuation is the library's reading of section 2.1."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 4,
+        "section": "2.1 Definition, etiology and epidemiology: work-up threshold of 1 cm"
+      }
+    },
+    {
+      "id": "benign_attenuation",
+      "classification": "Homogeneous adrenal mass of 10 HU or less on unenhanced CT: consistent with a benign (lipid-rich) lesion, whatever its size.",
+      "recommendation": "No further imaging required.",
+      "caveats": [
+        "Clinical and hormonal assessment is still recommended: 1 mg overnight dexamethasone suppression test, and aldosterone/renin ratio if there is hypertension or unexplained hypokalaemia.",
+        "Metanephrines are needed only when unenhanced attenuation is over 10 HU.",
+        "Surgery is not recommended for an asymptomatic, non-functioning unilateral mass with obvious benign imaging features.",
+        "In very young patients ESE would consider one follow-up scan at 12 months even for a presumably benign mass.",
+        "Under 40 years (or in pregnancy), ESE recommends urgent assessment of any adrenal mass."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 17,
+        "section": "5.2 R.2.3; Figure 5 p18; R.3.2, R.3.10 p2-3; Figure 4 note 3 p17; R.4.2 p24; 5.6.2 reasoning p30; R.6.2.1 p30"
+      }
+    },
+    {
+      "id": "benign_other",
+      "classification": "Adrenal mass with clear benign imaging features other than attenuation (e.g. myelolipoma).",
+      "recommendation": "No further imaging during follow-up is recommended for a lesion with clear benign imaging features.",
+      "caveats": [
+        "ESE's imaging criteria apply to homogeneous masses or masses with other clear benign characteristics, such as myelolipoma; Figure 4 sends a non-functioning benign lesion (e.g. myelolipoma) to no further investigation. Requiring a firm imaging diagnosis for this route is a library addition.",
+        "Clinical and hormonal assessment is still recommended for every incidentaloma (1 mg overnight dexamethasone suppression test).",
+        "After MDT discussion, surgery may be considered for mass effect, e.g. a large myelolipoma that keeps growing.",
+        "Under 40 years (or in pregnancy), ESE recommends urgent assessment of any adrenal mass."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 26,
+        "section": "5.5 R.5.1; Figure 4 p17; Table 4 note a p19; R.3.1, R.3.2 p2; R.4.2 reasoning p24; R.6.2.1 p30"
+      }
+    },
+    {
+      "id": "needs_unenhanced_ct",
+      "classification": "Homogeneous adrenal mass of 1 cm or more, not characterised: no unenhanced CT attenuation available.",
+      "recommendation": "Unenhanced (noncontrast) CT is recommended to establish whether the mass is homogeneous and lipid-rich, and therefore benign.",
+      "caveats": [
+        "Standard contrast-enhanced CT is usually not helpful to tell benign from malignant adrenal masses.",
+        "MRI rather than CT is suggested in children, adolescents and pregnant women; if chemical-shift MRI has already been done and is unambiguous, an expert MDT may judge it sufficient.",
+        "Clinical and hormonal assessment is recommended for every incidentaloma (1 mg overnight dexamethasone suppression test).",
+        "Under 40 years (or in pregnancy), ESE recommends urgent assessment of any adrenal mass."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 17,
+        "section": "5.2 R.2.2; 2.3 p8; R.6.2.2 p30; R.2.3 reasoning p18; R.6.2.1 p30"
+      }
+    },
+    {
+      "id": "additional_imaging",
+      "classification": "Homogeneous adrenal mass under 4 cm, 11-20 HU on unenhanced CT: indeterminate, low likelihood of malignancy.",
+      "recommendation": "Suggest immediate additional imaging (FDG-PET/CT, chemical-shift MRI or washout CT); alternatively, noncontrast CT or MRI in 12 months.",
+      "caveats": [
+        "Applies when the hormonal work-up shows no significant hormone excess; it includes plasma or urinary metanephrines because attenuation is over 10 HU.",
+        "If the additional imaging suggests a benign lesion, no further imaging is required. Which test depends on local expertise and availability.",
+        "ESE recommends MDT discussion when imaging is not consistent with a benign lesion.",
+        "Pregnancy: ESE recommends urgent assessment, suggests MRI rather than CT, and suggests surgical resection if the mass is indeterminate on imaging."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 19,
+        "section": "5.2 R.2.4 and reasoning; Figure 5 and note 1 p18; R.3.9 p24; R.1.1 p16; R.6.2.1-6.2.3 p30"
+      }
+    },
+    {
+      "id": "indeterminate_mdt",
+      "classification": "Indeterminate adrenal mass: homogeneous 11-20 HU and 4 cm or more, homogeneous over 20 HU and under 4 cm, or heterogeneous and under 4 cm.",
+      "recommendation": "Suggest MDT discussion; immediate additional imaging is usually preferred (or immediate surgery). If still indeterminate and not operated, ESE recommends noncontrast CT or MRI in 6-12 months.",
+      "caveats": [
+        "ESE judges the likelihood of malignancy in this group still low, but higher than in masses under 4 cm of 11-20 HU.",
+        "With bilateral lesions of similar imaging features, biopsy could be considered.",
+        "Exclude phaeochromocytoma with plasma or urinary metanephrines.",
+        "On follow-up, surgical resection is suggested if the mass grows by more than 20% in maximum diameter and by at least 5 mm.",
+        "Pregnancy: ESE recommends urgent assessment, suggests MRI rather than CT, and suggests surgical resection if the mass is indeterminate on imaging."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 19,
+        "section": "5.2 R.2.6 and reasoning; Figure 5 and note 2 p18; R.3.9 p24; R.5.2 p26; R.6.2.1-6.2.3 p30"
+      }
+    },
+    {
+      "id": "high_risk",
+      "classification": "Adrenal mass 4 cm or more that is heterogeneous or over 20 HU on unenhanced CT: relevant risk of malignancy.",
+      "recommendation": "Suggest MDT discussion; usually surgery after complete staging (at least thoracic CT and/or FDG-PET/CT); additional imaging is an option in some patients.",
+      "caveats": [
+        "If surgery is not performed, follow-up imaging (noncontrast CT or MRI) in 6-12 months is recommended.",
+        "When a mass meets both the size and the attenuation or heterogeneity criteria, malignancy may be as likely as 50%.",
+        "Exclude phaeochromocytoma with metanephrines; sex steroids and steroid precursors are suggested when adrenocortical carcinoma is suspected.",
+        "ESE recommends urgent assessment in pregnancy and under 40 years.",
+        "The figure places this group above 4 cm; the recommendation text (4 cm or more) is followed at exactly 4 cm."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 19,
+        "section": "5.2 R.2.5 and reasoning; Figure 5 and note 3 p18; R.3.9 p24; R.2.8 p20; R.6.2.1 p30; Figure 4 note 2 p17"
+      }
+    },
+    {
+      "id": "young_indeterminate",
+      "classification": "Indeterminate adrenal mass in a patient under 40: higher likelihood of malignancy and of clinically significant hormone excess.",
+      "recommendation": "Urgent assessment is recommended; ESE suggests surgical resection if the mass is indeterminate on imaging.",
+      "caveats": [
+        "Time-consuming diagnostic procedures should be avoided, and surgery, if indicated, should not be significantly delayed.",
+        "MRI rather than CT is suggested in children and adolescents if dedicated adrenal imaging is required.",
+        "ESE recommends MDT discussion when imaging is not consistent with a benign lesion; exclude phaeochromocytoma with metanephrines."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 30,
+        "section": "5.6.2 R.6.2.1-6.2.3 and reasoning; R.1.1 p16; R.3.9 p24"
+      }
+    },
+    {
+      "id": "does_not_apply",
+      "classification": "Known extra-adrenal malignancy, imaging for suspected adrenal disease, or hereditary-syndrome screening: outside ESE's incidentaloma pathway (Figure 5); with known malignancy, ESE's Figure 9 pathway applies.",
+      "recommendation": "Manage per the clinical context (library addition).",
+      "caveats": [
+        "Known extra-adrenal malignancy: in principle the same ESE recommendations apply, through its separate pathway (Figure 9); always take life expectancy into account.",
+        "ESE recommends no further specific adrenal imaging follow-up for a lesion characterised as benign on noncontrast CT; with relevant hormone excess, treatment is individualised.",
+        "Strong FDG uptake on PET-CT suggests metastasis; with moderate or no uptake, ESE recommends further work-up with at least unenhanced CT.",
+        "Indeterminate lesion: ESE recommends excluding phaeochromocytoma. If proving malignancy would change management, it suggests FDG-PET/CT, resection or biopsy; otherwise it recommends imaging follow-up at the primary malignancy's interval."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 30,
+        "section": "5.6.3 general remarks and R.6.3.1-6.3.4 pp30-32; Figure 9 and notes 1-2 p31; 2.1 Definition p4"
+      }
+    }
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "Every adrenal incidentaloma needs dedicated imaging to decide whether it is homogeneous and lipid-rich, and therefore benign; noncontrast CT is the first-line test.",
+        "locator": {
+          "source": "S1",
+          "page": 17,
+          "section": "5.2 R.2.2"
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "Homogeneous masses of 10 HU or less on unenhanced CT are benign and need no further imaging, whatever their size. All other masses should be discussed in an expert MDT.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Abstract, selected recommendation 1"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "Every patient needs clinical and hormonal work-up: 1 mg overnight dexamethasone suppression test (cortisol 50 nmol/L or less excludes autonomous secretion), metanephrines when not typical of adenoma, and aldosterone/renin ratio with hypertension or hypokalaemia.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Summary of recommendations R.3.1-3.3, R.3.9, R.3.10"
+        }
+      },
+      {
+        "id": "sum.4",
+        "text": "Indeterminate masses not operated on: one repeat noncontrast CT or MRI in 6-12 months; resection suggested for growth over 20% in maximum diameter and at least 5 mm.",
+        "locator": {
+          "source": "S1",
+          "page": 26,
+          "section": "5.5 R.5.2"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.incidentaloma",
+        "text": "Adrenal incidentaloma: an adrenal mass found on imaging not done for suspected adrenal disease. Masses found on hereditary-syndrome screening or cancer staging fall outside the strict definition; work-up applies from 1 cm.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "2.1 Definition, etiology and epidemiology"
+        }
+      },
+      {
+        "id": "def.homogeneous",
+        "text": "Homogeneous mass: uniform density or signal intensity throughout. The region of interest should cover at least 75% of the lesion without contamination from tissue outside it.",
+        "locator": {
+          "source": "S1",
+          "page": 19,
+          "table": "Table 4 note a"
+        }
+      },
+      {
+        "id": "def.washout",
+        "text": "Relative washout = 100 x (HUmax - HU10/15min) / HUmax; absolute washout = 100 x (HUmax - HU10/15min) / (HUmax - HUunenhanced), from unenhanced, 60-second and 10 or 15 minute delayed phases.",
+        "locator": {
+          "source": "S1",
+          "page": 9,
+          "section": "2.3 Short overview on adrenal imaging"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "tab.4",
+        "title": "Imaging criteria favouring a benign adrenal mass (ESE Table 4)",
+        "columns": [
+          "Method",
+          "Criteria favouring a benign mass",
+          "Strength of evidence"
+        ],
+        "rows": [
+          [
+            "Noncontrast CT",
+            "≤ 10 HU",
+            "⊕⊕⊕○"
+          ],
+          [
+            "FDG-PET/CT",
+            "Absence of FDG uptake or uptake less than the liver",
+            "⊕○○○"
+          ],
+          [
+            "MRI, chemical shift",
+            "Loss of signal intensity on out-of-phase imaging consistent with lipid-rich adenoma",
+            "⊕○○○"
+          ],
+          [
+            "CT with delayed contrast media washout",
+            "Relative washout > 58%",
+            "⊕○○○"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 19,
+          "table": "Table 4"
+        }
+      },
+      {
+        "id": "tab.fig5",
+        "title": "Imaging work-up on unenhanced CT (ESE Figure 5)",
+        "columns": [
+          "Unenhanced CT",
+          "Primary decision",
+          "Follow-up"
+        ],
+        "rows": [
+          [
+            "Any size, homogeneous, HU ≤ 10",
+            "No further imaging required",
+            "None"
+          ],
+          [
+            "Homogeneous, HU 11-20, tumour < 4 cm",
+            "Additional imaging (or interval imaging in 12 months)",
+            "None stated"
+          ],
+          [
+            "Homogeneous HU 11-20 and ≥ 4 cm; or homogeneous HU > 20 and < 4 cm; or heterogeneous and < 4 cm",
+            "Discuss in MDT and consider proceeding swiftly to additional imaging (or immediate surgery)",
+            "If still indeterminate: interval imaging in 6-12 months (noncontrast CT/MRI)"
+          ],
+          [
+            "Homogeneous HU > 20 and > 4 cm; or heterogeneous and > 4 cm",
+            "Discuss in MDT and consider proceeding swiftly to surgery after complete staging (or further imaging, especially FDG-PET/CT)",
+            "If no surgery: interval imaging in 6-12 months (noncontrast CT/MRI)"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 18,
+          "table": "Figure 5"
+        }
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.scope",
+        "text": "Not for adrenal masses found at staging or follow-up of a known extra-adrenal malignancy (ESE's separate pathway, Figure 9), on imaging for suspected adrenal disease, or on hereditary-syndrome screening.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "2.1 Definition"
+        }
+      },
+      {
+        "id": "pit.biopsy",
+        "text": "ESE recommends against adrenal biopsy in the work-up of adrenal masses unless there is a history of extra-adrenal malignancy and its three criteria are met.",
+        "locator": {
+          "source": "S1",
+          "page": 20,
+          "section": "5.2 R.2.7; R.6.3.5 p32"
+        }
+      },
+      {
+        "id": "pit.heterogeneous",
+        "text": "Heterogeneous masses should not go on to MRI or washout CT for characterisation; Table 4 criteria apply only to homogeneous masses or clear benign entities such as myelolipoma.",
+        "locator": {
+          "source": "S1",
+          "page": 19,
+          "table": "Table 4 note a"
+        }
+      },
+      {
+        "id": "pit.washout",
+        "text": "The 58% relative washout cut-off rests on a single study of 253 tumours and should be used with caution; older studies suggest 40%.",
+        "locator": {
+          "source": "S1",
+          "page": 19,
+          "table": "Table 4 note f"
+        }
+      },
+      {
+        "id": "pit.bilateral",
+        "text": "With bilateral or multiple adrenal masses, assess each lesion separately by the same imaging protocol; review the contralateral adrenal, which is often also hyperplastic or nodular.",
+        "locator": {
+          "source": "S1",
+          "page": 27,
+          "section": "5.6.1 R.6.1.1; 5.2 R.2.1 reasoning p17"
+        }
+      },
+      {
+        "id": "pit.fdg",
+        "text": "Some metastases (e.g. from kidney cancer or low-grade lymphoma) may be FDG-negative, and some benign tumours (e.g. functioning adenomas) are FDG-positive.",
+        "locator": {
+          "source": "S1",
+          "page": 19,
+          "table": "Table 4 note d; R.2.5 reasoning p20"
+        }
+      }
+    ]
+  }
+}
