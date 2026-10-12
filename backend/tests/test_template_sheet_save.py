@@ -135,3 +135,62 @@ def test_drop_lines_removes_exactly_the_failing_unit_lines():
     assert 'NORMAL [bone] "No effusion. Bones normal."' in out
     assert 'REPLACE "No effusion."' in out
     assert out.count("\n") == sheet.count("\n") - 1
+
+
+async def test_repair_that_deletes_a_passing_unit_is_refused(monkeypatch):
+    monkeypatch.setattr(S, "check_units", _fails_on("Mild chondral thinning."))
+
+    async def lossy(sheet, errors):
+        return (sheet.replace('NORMAL [menisci] "The menisci are intact."\n', "")
+                .replace("Mild chondral thinning.", "The cartilage is preserved."))
+    monkeypatch.setattr(S, "_repair", lossy)
+    out = await S.vet_sheet(BAD_UNIT, origin="analyser", previous="")
+    assert out.status == "refused" and out.sheet == "" and "safely" in out.message
+
+
+async def test_repair_that_only_fixes_the_failing_unit_is_saved(monkeypatch):
+    monkeypatch.setattr(S, "check_units", _fails_on("Mild chondral thinning."))
+
+    async def fix(sheet, errors):
+        return sheet.replace("Mild chondral thinning.", "The cartilage is preserved.")
+    monkeypatch.setattr(S, "_repair", fix)
+    out = await S.vet_sheet(BAD_UNIT, origin="analyser", previous="")
+    assert out.status == "saved" and "The menisci are intact." in out.sheet and out.message == ""
+
+
+async def test_a_drop_that_leaves_the_failing_unit_is_refused(monkeypatch):
+    monkeypatch.setattr(S, "check_units", _fails_on("Mild chondral thinning."))
+    monkeypatch.setattr(S, "_repair", _no_repair)
+    monkeypatch.setattr(S, "_drop_lines", lambda sheet, texts: sheet)
+    out = await S.vet_sheet(BAD_UNIT, origin="analyser", previous=GOOD)
+    assert out.status == "refused" and out.sheet == GOOD
+
+
+async def test_a_chat_edit_adjusted_by_the_repair_carries_a_notice(monkeypatch):
+    monkeypatch.setattr(S, "check_units", _fails_on("Mild chondral thinning."))
+
+    async def fix(sheet, errors):
+        return sheet.replace("Mild chondral thinning.", "The cartilage is preserved.")
+    monkeypatch.setattr(S, "_repair", fix)
+    out = await S.vet_sheet(BAD_UNIT, origin="chat", previous=GOOD)
+    assert out.status == "saved" and out.message == S.ADJUSTED
+
+
+async def test_a_clean_chat_edit_has_no_notice(no_jev):
+    out = await S.vet_sheet(BAD_UNIT, origin="chat", previous=GOOD)
+    assert out.status == "saved" and out.message == ""
+
+
+async def test_chat_refusal_pairs_each_text_with_its_own_reason(monkeypatch):
+    from rapid_reports_ai.template_sheet_checks import PLACEHOLDER
+    sheet = BAD_UNIT + 'NORMAL [bone] "The bones are {x}."\n'
+
+    async def fails(st, sheet=""):
+        return [UnitFailure(0, "Mild chondral thinning.", NOT_NORMAL),
+                UnitFailure(0, "The bones are {x}.", PLACEHOLDER)]
+    monkeypatch.setattr(S, "check_units", fails)
+    monkeypatch.setattr(S, "_repair", _no_repair)
+    out = await S.vet_sheet(sheet, origin="chat", previous=GOOD)
+    assert out.status == "refused"
+    assert f'"Mild chondral thinning." ({NOT_NORMAL})' in out.message
+    assert f'"The bones are {{x}}." ({PLACEHOLDER})' in out.message
