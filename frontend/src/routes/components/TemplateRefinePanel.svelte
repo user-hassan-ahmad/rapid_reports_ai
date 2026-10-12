@@ -27,6 +27,8 @@
 	let loading = false;
 	let error = '';
 	let saving = false;
+	let saveError = '';
+	let saveNotice = '';
 	let hasChanges = false;
 	let chatScrollEl = null;
 
@@ -90,20 +92,14 @@
 		if (!hasChanges || !template?.id) return;
 		saving = true;
 		error = '';
+		saveError = '';
+		saveNotice = '';
 		try {
 			const headers = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
 
+			// coverage_sections is derived server-side from the parsed sheet
 			const updatedConfig = { ...template.template_config, skill_sheet: skillSheet };
-
-			try {
-				const covData = await postJson('/api/templates/skill-sheet/extract-coverage', {
-					skill_sheet: skillSheet
-				});
-				if (covData.success && covData.sections) {
-					updatedConfig.coverage_sections = covData.sections;
-				}
-			} catch { /* keep existing coverage_sections */ }
 
 			const res = await fetch(`${API_URL}/api/templates/${template.id}`, {
 				method: 'PUT',
@@ -115,13 +111,20 @@
 				})
 			});
 			const data = await res.json();
-			if (data.success) {
-				hasChanges = false;
-				await templatesStore.refreshTemplates();
-				dispatch('saved');
-			} else {
-				throw new Error(data.error || 'Save failed');
+			if (!data.success) {
+				saveError = data.error || 'Save failed';
+				return;
 			}
+			hasChanges = false;
+			// the server may adjust the sheet; continue from what was stored (not reassigning `template` keeps the chat)
+			skillSheet = data.template?.template_config?.skill_sheet ?? skillSheet;
+			await templatesStore.refreshTemplates();
+			if (data.notice) {
+				// keep the panel open so the adjustment notice is seen
+				saveNotice = data.notice;
+				return;
+			}
+			dispatch('saved');
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -178,6 +181,13 @@
 				</button>
 			</div>
 		</div>
+		{#if saveError || saveNotice}
+			<div class="px-5 pt-2 text-right shrink-0">
+				{#if saveError}<p class="text-xs text-amber-400">{saveError}</p>{/if}
+				{#if saveNotice}<p class="text-xs text-gray-400">{saveNotice}</p>{/if}
+			</div>
+		{/if}
+
 
 		<!-- Chat messages -->
 		<div class="flex-1 overflow-y-auto px-5 py-4 space-y-3" bind:this={chatScrollEl}>

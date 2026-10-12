@@ -72,6 +72,7 @@ from . import template_lean as tl
 from . import template_pipeline as tp
 from .generation_artifacts import GenerationArtifacts
 from . import template_sheet_grammar as tsg
+from . import template_sheet_save as tsave
 from .auth import (
     verify_password,
     get_password_hash,
@@ -1658,6 +1659,22 @@ def _carry_structure(new_config: dict, old_config: dict) -> dict:
     return new
 
 
+async def _vet_config(new_cfg: Optional[dict], old_cfg: Optional[dict], origin: str) -> tuple:
+    """Run the one save function (template_sheet_save.vet_sheet) when a guided template's sheet changes.
+    Returns (config to store, refusal message or "", notice or ""). coverage_sections comes from the parse."""
+    if not new_cfg or new_cfg.get("generation_mode") != "skill_sheet_guided":
+        return new_cfg, "", ""
+    sheet, before = new_cfg.get("skill_sheet") or "", (old_cfg or {}).get("skill_sheet") or ""
+    if not sheet or sheet == before:
+        return new_cfg, "", ""
+    out = await tsave.vet_sheet(sheet, origin=origin, previous=before)
+    if out.status == "refused":
+        return None, out.message, ""
+    if out.status == "unchanged":
+        return new_cfg, "", ""
+    return {**new_cfg, "skill_sheet": out.sheet, "coverage_sections": out.coverage_sections}, "", out.message or ""
+
+
 def _queue_structure(template_id: str, config: dict) -> None:
     """Structure a guided template's sheet on save. A sheet in grammar form ("## Report Structure") is
     parsed now by the grammar parser and stored (usable or not: an unusable parse keeps its lint errors)
@@ -1692,6 +1709,9 @@ async def create_template_endpoint(
         if not template_data.template_config:
             return {"success": False, "error": "template_config is required"}
         normalized_config = _carry_structure(_normalize_template_config_styles(template_data.template_config), {})
+        normalized_config, refusal, _ = await _vet_config(normalized_config, {}, "analyser")
+        if refusal:
+            return {"success": False, "error": refusal}
         template = create_template(
             db=db,
             name=template_data.name,
@@ -1721,10 +1741,16 @@ async def update_template_endpoint(
     try:
         # Normalize style_templates before persisting
         template_config = template_data.template_config
+        notice = ""
         if template_config:
             template_config = _normalize_template_config_styles(template_config)
             existing = get_template(db, template_id, user_id=str(current_user.id))
-            template_config = _carry_structure(template_config, existing.template_config if existing else {})
+            if not existing:
+                return {"success": False, "error": "Template not found"}
+            template_config = _carry_structure(template_config, existing.template_config or {})
+            template_config, refusal, notice = await _vet_config(template_config, existing.template_config, "chat")
+            if refusal:
+                return {"success": False, "error": refusal}
         updated_template = update_template(
             db=db,
             template_id=template_id,
@@ -1740,7 +1766,10 @@ async def update_template_endpoint(
             return {"success": False, "error": "Template not found"}
         _queue_structure(template_id, updated_template.template_config)
 
-        return {"success": True, "template": updated_template.to_dict()}
+        out = {"success": True, "template": updated_template.to_dict()}
+        if notice:
+            out["notice"] = notice
+        return out
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -2249,25 +2278,41 @@ async def restore_template_version_endpoint(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Restore a template to a specific version"""
+    """Restore a template to a specific version. A guided template's version goes through the save function;
+    a pre-upgrade (non-grammar) version of a guided template is refused."""
+    not_found = {"success": False, "error": "Template or version not found, or you don't have permission"}
     try:
+        template = get_template(db, template_id, user_id=str(current_user.id))
+        version = get_template_version(db, version_id, user_id=str(current_user.id))
+        if not template or not version or str(version.template_id) != str(template_id):
+            return not_found
+        current_cfg = template.template_config or {}
+        vcfg = version.template_config or {}
+        if vcfg.get("generation_mode") == "skill_sheet_guided" and not tsg.is_grammar_sheet(vcfg.get("skill_sheet") or ""):
+            return {"success": False, "error": "This version is from before the template upgrade and can't be restored."}
+        vetted, refusal, notice = await _vet_config(_carry_structure(vcfg, current_cfg), current_cfg, "restore")
+        if refusal:
+            return {"success": False, "error": refusal}
         restored_template = restore_template_version(
             db=db,
             template_id=template_id,
             version_id=version_id,
             user_id=str(current_user.id),
-            config_transform=_carry_structure,
+            config_transform=lambda _version_cfg, _current_cfg: vetted,
         )
         
         if not restored_template:
-            return {"success": False, "error": "Template or version not found, or you don't have permission"}
+            return not_found
         _queue_structure(template_id, restored_template.template_config)
         
-        return {
+        out = {
             "success": True,
             "template": restored_template.to_dict(),
             "message": "Template restored successfully"
         }
+        if notice:
+            out["notice"] = notice
+        return out
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -2700,20 +2745,14 @@ async def skill_sheet_save_endpoint(
         if not request.skill_sheet.strip():
             return {"success": False, "error": "Skill sheet is required"}
 
-        tm = TemplateManager()
-        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
-        try:
-            coverage_sections = await tm.extract_coverage_sections(request.skill_sheet, api_key)
-        except Exception as cov_err:
-            logger.warning("  coverage_sections extraction failed: %s", cov_err)
-            coverage_sections = []
-        logger.info("  coverage_sections: %s", coverage_sections)
-        template_config = {
+        template_config, refusal, _ = await _vet_config({
             "generation_mode": "skill_sheet_guided",
             "skill_sheet": request.skill_sheet,
             "scan_type": request.scan_type,
-            "coverage_sections": coverage_sections,
-        }
+        }, {}, "analyser")
+        if refusal:
+            return {"success": False, "error": refusal}
+        logger.info("  coverage_sections: %s", template_config.get("coverage_sections"))
         template = create_template(
             db=db,
             name=request.template_name.strip(),
@@ -2729,25 +2768,6 @@ async def skill_sheet_save_endpoint(
         import traceback
         traceback.print_exc()
         return {"success": False, "error": str(e)}
-
-
-class ExtractCoverageRequest(BaseModel):
-    skill_sheet: str
-
-
-@app.post("/api/templates/skill-sheet/extract-coverage")
-async def extract_coverage_endpoint(
-    request: ExtractCoverageRequest,
-    current_user: User = Depends(get_current_user),
-):
-    """Extract anatomical coverage sections from a skill sheet."""
-    try:
-        tm = TemplateManager()
-        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
-        sections = await tm.extract_coverage_sections(request.skill_sheet, api_key)
-        return {"success": True, "sections": sections}
-    except Exception as e:
-        return {"success": True, "sections": []}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -10,6 +10,8 @@
 	let versions = [];
 	let loading = false;
 	let error = null;
+	let restoreError = '';
+	let restoreNotice = '';
 	let showVersionDetail = false;
 	let selectedVersion = null;
 
@@ -47,6 +49,8 @@
 			return;
 		}
 
+		restoreError = '';
+		restoreNotice = '';
 		try {
 			const headers = { 'Content-Type': 'application/json' };
 			if ($token) {
@@ -60,15 +64,17 @@
 			
 			const data = await response.json();
 			if (data.success) {
+				restoreNotice = data.notice || '';
 				// Reload versions to show the new snapshot
 				await loadVersions();
 				// Call the restore callback
 				onRestore();
 			} else {
-				alert('Failed to restore version. Please try again.');
+				// the server's refusal (e.g. a version from before the template upgrade)
+				restoreError = data.error || 'Failed to restore version. Please try again.';
 			}
 		} catch (err) {
-			alert('Failed to restore version');
+			restoreError = 'Failed to restore version';
 		}
 	}
 
@@ -137,6 +143,9 @@
 			</span>
 		{/if}
 	</div>
+
+	{#if restoreError}<p class="text-xs text-amber-400 mb-2">{restoreError}</p>{/if}
+	{#if restoreNotice}<p class="text-xs text-gray-400 mb-2">{restoreNotice}</p>{/if}
 
 	{#if loading}
 		<div class="text-center py-8">

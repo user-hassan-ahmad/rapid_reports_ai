@@ -3234,55 +3234,6 @@ Generate the report now as valid JSON.
                 raise
 
     @staticmethod
-    @staticmethod
-    async def extract_coverage_sections(skill_sheet: str, api_key: str) -> List[str]:
-        """Extract anatomical coverage section names from a skill sheet using an LLM."""
-        from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model
-        from pydantic import BaseModel
-
-        class CoverageSections(BaseModel):
-            sections: List[str]
-
-        system_prompt = (
-            "You are a radiology report structure assistant. Extract the anatomical "
-            "coverage sections a radiologist must address when dictating findings for "
-            "this scan type. Return ONLY the organ-system or anatomical-region level "
-            "sections in dictation order as an uppercase JSON array. Do not include "
-            "IMPRESSION, CLINICAL HISTORY, TECHNIQUE, or organisational labels like "
-            "'Primary Pathology Paragraph'."
-        )
-        user_prompt = f"""Extract the coverage sections from this skill sheet.
-
-Look at:
-- Per-Section Construction Rules → Field ordering bullets
-- Mandatory fields and mandatory negatives (which organs they reference)
-- Normal/abnormal patterns (which structures are described)
-
-Skill sheet:
----
-{skill_sheet}
----
-
-Return a JSON object: {{"sections": ["LIVER", "BILIARY SYSTEM", ...]}}"""
-
-        model_name = MODEL_CONFIG["CANVAS_SECTIONS_FROM_TEMPLATE"]
-
-        result = await _run_agent_with_model(
-            model_name=model_name,
-            output_type=CoverageSections,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            api_key=api_key,
-            # Interactive list extraction: reasoning off (Cerebras defaults to high).
-            model_settings={
-                "temperature": 0.3,
-                "max_tokens": 1024,
-                "reasoning_effort": "none",
-            },
-        )
-        return result.output.sections
-
-    @staticmethod
     def _parse_skill_sheet_json(raw: str, keys: List[str]) -> Dict:
         """
         Extract a JSON object from a GLM string response.
