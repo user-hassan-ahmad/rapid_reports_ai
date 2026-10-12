@@ -1051,6 +1051,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			onStackPills={(p) => { stackPills = p; }}
 			stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
 			onStackGate={(g, f) => { stackGate = g; stackFindings = f; }}
+			onStackGenerate={async () => { await tick(); void handleGenerateReport(); }}
 			onStackSession={(id) => { stackSessionId = id; }}
 			onStackSheet={(id) => { stackSheetId = id; }}
 		/>

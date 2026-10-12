@@ -7,8 +7,8 @@
 	import { flip } from 'svelte/animate';
 	import { buildView } from './stackState';
 	import { CONCLUSION, GENERAL, OTHER, TECHNIQUE, regionStates, showsGroup } from './regionState';
-	import { checkLabel, type CheckAnswer, type CheckFlag } from './checks';
-	import { anchorRegion, answerLabel, openCount, quietLine, rowSentences, unansweredChecks } from './items';
+	import { checkLabel, replaced, segments, type CheckAnswer, type CheckFlag } from './checks';
+	import { anchorRegion, answerLabel, openCount, quietLine, rowSentences, unansweredChecks, waiting } from './items';
 	import type { StackItem, StackUnit, ViewRow } from './types';
 
 	export type ConclusionState =
@@ -45,6 +45,7 @@
 		checks = [],
 		checkAnswers = {},
 		onCheckAnswer = () => {},
+		onConfirmGenerate = null,
 		gateConfirmed = false,
 		deleteRegion = null,
 		incoming = null,
@@ -135,6 +136,8 @@
 		onNoteAccept?: () => void;
 		onNoteDismiss?: () => void;
 		onConfirm: () => void;
+		/** The walkthrough's last step: Confirm, then Generate. Absent: the last step only confirms. */
+		onConfirmGenerate?: (() => void) | null;
 		onDeleteRegion?: (region: string, confirmed: boolean) => void;
 		/** A finding typed into the new-line field (Enter): appended to the dictation as said. */
 		onAppend?: (text: string) => void;
@@ -183,12 +186,20 @@
 	// A finding row whose region has no card (the writer named a region outside the scratchpad) shows up top.
 	const looseRows = $derived(items.filter((i) => i.kind === 'finding' && !covered.has(anchorRegion(i, units))));
 	const openRows = $derived(openCount(items, tapped, removed, skipped));
-	// Checks still asking. An unfinished sentence placed on a line is marked on the line itself; everything else is a row
-	// in the card holding its sentence, or up top when no card does.
-	const liveChecks = $derived(checks.filter((c) => !checkAnswers[c.key]));
+	// Checks still asking: not answered, and their words still in the text (an edit that removes them resolves them).
+	// A check whose words are on a line shown here is an underline with a hover card; any other is a row, in the card
+	// holding its sentence or up top.
+	const inText = (q: string) => units.some((u) => u.text.includes(q) || (u.parts ?? []).some((x) => x.text.includes(q)));
+	const liveChecks = $derived(checks.filter((c) => !checkAnswers[c.key] && (c.unitId === null || inText(c.quote))));
 	const blockingChecks = $derived(liveChecks.filter((c) => c.blocking).length);
-	const lineCheck = (unitId: number) => liveChecks.find((c) => c.blocking && c.unitId === unitId);
-	const rowChecks = $derived(liveChecks.filter((c) => !c.blocking || c.unitId === null));
+	const flatRows = (rows: ViewRow[]): ViewRow[] => rows.flatMap((r) => [r, ...flatRows(r.children)]);
+	// Lines in the order they are shown, for the walkthrough's top-to-bottom order.
+	const shownLines = $derived(flatRows([...(technique?.rows ?? []), ...shown.flatMap((g) => g.rows), ...conclusionRows]));
+	const onLine = (c: CheckFlag, r: ViewRow) => r.text.includes(c.quote) || (!!c.other && r.text.includes(c.other));
+	/** The line a check's card opens on: its quote's line, else the other half's. */
+	const cardLine = (c: CheckFlag) => shownLines.find((r) => r.text.includes(c.quote)) ?? shownLines.find((r) => onLine(c, r)) ?? null;
+	const underlined = $derived(new Set(liveChecks.filter((c) => cardLine(c)).map((c) => c.key)));
+	const rowChecks = $derived(liveChecks.filter((c) => !underlined.has(c.key)));
 	const unitIds = (rows: ViewRow[]): number[] => rows.flatMap((r) => [r.unitId, ...unitIds(r.children)]);
 	const checksIn = (rows: ViewRow[]) => {
 		const ids = new Set(unitIds(rows));
@@ -212,6 +223,77 @@
 		if (!recording) onToggleMic();
 	}
 	const unanswered = $derived(unansweredChecks(items, tapped, removed, skipped));
+
+	// ── dictation checks: hover card and walkthrough ───────────────────────────────────────────────
+	let hoverKey: string | null = $state(null);
+	let pinnedKey: string | null = $state(null);
+	let walking = $state(false);
+	let walkSkipped: string[] = $state([]);
+	let walkTotal = $state(0);
+	// What blocks Confirm, top to bottom: open referral rows, then each blocking check by its line's position.
+	const stops = $derived.by(() => {
+		const rows = referrals.filter((i) => waiting(i, tapped, removed, skipped)).map((i) => `row:${i.id}`);
+		const pos = (c: CheckFlag) => {
+			const r = cardLine(c);
+			return r ? shownLines.indexOf(r) : Number.MAX_SAFE_INTEGER;
+		};
+		const blocking = liveChecks.filter((c) => c.blocking).sort((a, b) => pos(a) - pos(b)).map((c) => `check:${c.key}`);
+		const all = [...rows, ...blocking];
+		return [...all.filter((x) => !walkSkipped.includes(x)), ...all.filter((x) => walkSkipped.includes(x))];
+	});
+	const current = $derived(walking ? (stops[0] ?? null) : null);
+	const currentCheck = $derived(current?.startsWith('check:') ? (liveChecks.find((c) => `check:${c.key}` === current) ?? null) : null);
+	const cardOpen = (c: CheckFlag) => (walking ? currentCheck?.key === c.key : pinnedKey === c.key || hoverKey === c.key);
+	$effect(() => {
+		walkTotal = Math.max(walkTotal, stops.length);
+	});
+	$effect(() => {
+		if (!current || typeof document === 'undefined') return;
+		document.querySelector(`[data-stop="${CSS.escape(current)}"]`)?.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
+	});
+	function startWalk() {
+		if (!stops.length) return;
+		walkSkipped = [];
+		walkTotal = stops.length;
+		hoverKey = pinnedKey = null;
+		walking = true;
+	}
+	function nextStop() {
+		if (current && stops.length > 1) walkSkipped = [...walkSkipped.filter((x) => x !== current), current];
+	}
+	function replaceCheck(c: CheckFlag) {
+		const r = cardLine(c);
+		if (!r || !c.suggestion) return;
+		onEditLine(r.unitId, partIndex(r), replaced(r.text, c));
+		onCheckAnswer(c.key, 'replaced');
+		pinnedKey = hoverKey = null;
+	}
+	function keepCheck(c: CheckFlag) {
+		onCheckAnswer(c.key, c.blocking ? 'as_dictated' : 'skip');
+		pinnedKey = hoverKey = null;
+	}
+	function editCheck(c: CheckFlag) {
+		const r = cardLine(c);
+		if (r) open(r);
+	}
+	function walkKey(e: KeyboardEvent) {
+		if (!walking || editing) return;
+		const t = e.target as HTMLElement | null;
+		if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+		const c = currentCheck;
+		if (e.key === 'Escape') walking = false;
+		else if (e.key === 'Tab') nextStop();
+		else if (c && e.key === 'Enter' && c.suggestion) replaceCheck(c);
+		else if (c && (e.key === 'e' || e.key === 'E')) editCheck(c);
+		else if (c && (e.key === 'k' || e.key === 'K')) keepCheck(c);
+		else return;
+		e.preventDefault();
+	}
+	function finishWalk() {
+		walking = false;
+		if (onConfirmGenerate) onConfirmGenerate();
+		else onConfirm();
+	}
 	const keptAssumed = (region: string) => {
 		const gone = new Set(removed.map((r) => r.trim().toLowerCase().replace(/\.$/, '')));
 		return (assumed[region] ?? []).filter((s) => !gone.has(s.trim().toLowerCase().replace(/\.$/, '')));
@@ -509,10 +591,33 @@
 	{/if}
 {/snippet}
 
+{#snippet checkCard(c: CheckFlag)}
+	<!-- The hover card of an underlined check (2026-10-12, Grammarly-style): what it is, the words, why, the likely
+	     words when one reading is certain, and Replace / Edit / Keep. In the walkthrough it stays open on the current
+	     item and the keys below act on it. -->
+	<div role="dialog" aria-label={checkLabel(c.kind)} data-card={c.key} transition:fade={{ duration: ms }}
+		class="absolute left-1 top-full z-30 mt-1 w-80 max-w-[calc(100vw-2rem)] space-y-2 rounded-lg border border-white/15 bg-gray-950/95 p-3 text-xs leading-5 text-gray-300 shadow-xl">
+		<p class="flex items-center gap-2">
+			<span class="rounded px-1.5 py-px text-[10px] font-semibold {c.blocking ? 'bg-orange-400 text-gray-950' : 'bg-white/10 text-gray-300'}">{c.blocking ? 'Blocks Confirm' : 'Advisory'}</span>
+			<span class="text-sm font-medium text-gray-100">{checkLabel(c.kind)}</span>
+		</p>
+		<p class="text-gray-200">{`“${c.quote}”${c.other ? ` · “${c.other}”` : ''}`}</p>
+		{#if c.message}<p class="text-gray-400">{c.message}</p>{/if}
+		{#if c.suggestion}<p>Likely: <span class="font-semibold text-orange-300">{c.suggestion}</span></p>{/if}
+		<p class="flex flex-wrap gap-1.5">
+			{#if c.suggestion}<button type="button" class="rounded-md bg-orange-400 px-2.5 py-1 font-semibold text-gray-950 hover:bg-orange-300" onclick={() => replaceCheck(c)}>Replace</button>{/if}
+			<button type="button" class="rounded-md border border-white/15 px-2.5 py-1 text-gray-100 hover:bg-white/[0.06]" onclick={() => editCheck(c)}>{c.tier === 1 ? 'Finish it' : 'Edit'}</button>
+			<button type="button" class="rounded-md border border-white/10 px-2.5 py-1 text-gray-400 hover:text-gray-200" onclick={() => keepCheck(c)}>{c.blocking ? 'Keep as dictated' : 'Skip'}</button>
+		</p>
+		{#if walking}<p class="text-[10px] text-gray-500">{c.suggestion ? 'Enter replace · ' : ''}E edit · K keep · Tab next · Esc exit</p>{/if}
+	</div>
+{/snippet}
+
 {#snippet checkRow(c: CheckFlag)}
 	<!-- A dictation check (2026-10-12), in the row language of the checklist: what it asks, the words it is about, and
 	     answer-shaped buttons. The model's explanation sits behind ⓘ. -->
-	<div class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border-l-2 border-amber-400/80 bg-amber-500/[0.07] px-2 py-1.5" data-check={c.kind} transition:fade={{ duration: ms }}>
+	<div class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border-l-2 border-amber-400/80 bg-amber-500/[0.07] px-2 py-1.5 {currentCheck?.key === c.key ? 'ring-2 ring-orange-400/60' : ''}"
+		data-check={c.kind} data-stop={`check:${c.key}`} transition:fade={{ duration: ms }}>
 		<span class="text-sm font-medium text-amber-100">{checkLabel(c.kind)}</span>
 		<span class="min-w-0 text-xs text-gray-300">{`“${c.quote}”${c.other ? ` · “${c.other}”` : ''}`}</span>
 		<span class="cursor-help text-xs text-gray-500" title={c.message} aria-label="Why: {c.message}">ⓘ</span>
@@ -523,6 +628,7 @@
 					Dictate correction
 				</button>
 			{/if}
+			{#if c.suggestion}<button type="button" class="rounded-md bg-orange-400/90 px-2 py-0.5 text-xs font-semibold text-gray-950 hover:bg-orange-300" onclick={() => replaceCheck(c)}>Replace with “{c.suggestion}”</button>{/if}
 			{#if !c.blocking}<button type="button" class="rounded-md px-2 py-0.5 text-xs text-gray-500 hover:text-gray-300" onclick={() => onCheckAnswer(c.key, 'skip')}>Skip</button>{/if}
 			<button type="button" class="rounded-md bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-200 hover:bg-emerald-500/25" onclick={() => onCheckAnswer(c.key, 'as_dictated')}>✓ As dictated</button>
 		</span>
@@ -589,7 +695,8 @@
 {#snippet line(r: ViewRow, nested: boolean)}
 	<!-- No sentence travels across the screen (hand read 2026-10-12: the slide back and forth read as a bug): a placed
 	     sentence fades in where it belongs with a soft highlight that fades out. -->
-	<li class="flex items-start gap-1 rounded transition-colors duration-1000 {fresh.includes(`${r.unitId}|${r.text}`) ? 'bg-purple-500/15' : ''}" in:fade={{ duration: ms }}>
+	<li class="relative flex items-start gap-1 rounded transition-colors duration-1000 {fresh.includes(`${r.unitId}|${r.text}`) ? 'bg-purple-500/15' : ''}" in:fade={{ duration: ms }}
+		onmouseleave={() => { if (!walking) hoverKey = null; }}>
 		<div class="min-w-0 flex-1 {nested ? 'pl-4' : ''}">
 			{#if isEditing(r)}
 				<!-- True inline edit (hand read 2026-10-12): same font, line height and padding as the sentence; it wraps and
@@ -613,19 +720,17 @@
 				{@render micControls('Enter save · Esc cancel')}
 			{:else}
 				<!-- The grouper's structure label is a tooltip, not text: it repeated the sentence (hand read 2026-10-12). -->
-				{@const unfinished = lineCheck(r.unitId)}
+				{@const marks = liveChecks.filter((c) => underlined.has(c.key) && onLine(c, r))}
 				<button type="button" class="w-full rounded px-1 text-left text-sm leading-6 text-gray-200 hover:bg-white/[0.05]" onclick={() => open(r)}
 					title={r.structure ? `Placed as: ${r.structure}` : undefined}>
-					{#if nested}<span aria-hidden="true" class="text-gray-500">↳ </span>{/if}<span class={unfinished ? 'underline decoration-amber-400/70 decoration-dashed underline-offset-4' : ''}>{r.text}</span>
+					{#if nested}<span aria-hidden="true" class="text-gray-500">↳ </span>{/if}{#each segments(r.text, marks) as seg, k (k)}{#if seg.check}{@const c = seg.check}<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions --><span
+						data-stop={`check:${c.key}`} data-check={c.kind}
+						class="rounded-sm underline decoration-orange-400 decoration-2 underline-offset-4 {c.blocking ? '' : 'decoration-dotted'} {currentCheck?.key === c.key ? 'bg-orange-400/15' : ''}"
+						onmouseenter={() => { if (!walking) hoverKey = c.key; }}
+						onclick={(e) => { e.stopPropagation(); if (!walking) pinnedKey = pinnedKey === c.key ? null : c.key; }}>{seg.text}</span>{:else}{seg.text}{/if}{/each}
 					{#if r.pinned}<span class="ml-1 text-xs text-gray-500" title="Placed by you">•</span>{/if}
 				</button>
-				{#if unfinished}
-					<span class="flex flex-wrap items-center gap-2 px-1 text-[11px]" data-check="line">
-						<span class="text-amber-300/90" title={unfinished.message}>{checkLabel(unfinished.kind)}</span>
-						<button type="button" class="text-gray-400 hover:text-gray-200" onclick={() => open(r)}>Finish it</button>
-						<button type="button" class="text-emerald-300/90 hover:text-emerald-200" onclick={() => onCheckAnswer(unfinished.key, 'as_dictated')}>✓ As dictated</button>
-					</span>
-				{/if}
+				{#each marks.filter((c) => cardOpen(c) && cardLine(c) === r) as c (c.key)}{@render checkCard(c)}{/each}
 			{/if}
 			{#if r.children.length}
 				<ul>{#each r.children as c (c.unitId + ':' + c.text)}{@render line(c, true)}{/each}</ul>
@@ -633,6 +738,8 @@
 		</div>
 	</li>
 {/snippet}
+
+<svelte:window onkeydown={walkKey} />
 
 <div class="space-y-3" data-testid="hybrid-stack">
 	<!-- The scratchpad box (hand read 2026-10-12): one permanent, fixed-size box for what is being said now and a line
@@ -707,7 +814,7 @@
 	</section>
 
 	{#if referrals.length}
-		<section aria-label="Referral question" class="space-y-1">{#each referrals as it (it.id)}{@render row(it, 'Referral')}{/each}</section>
+		<section aria-label="Referral question" class="space-y-1">{#each referrals as it (it.id)}<div data-stop={`row:${it.id}`} class="rounded-md {current === `row:${it.id}` ? 'ring-2 ring-orange-400/60' : ''}">{@render row(it, 'Referral')}</div>{/each}</section>
 	{/if}
 	{#if looseRows.length || looseChecks.length}
 		<section aria-label="Checks" class="space-y-1">
@@ -928,11 +1035,35 @@
 		{/if}
 	</section>
 
-	<!-- Gate bar: the open questions and what will be assumed; Confirm takes ownership of both -->
+	<!-- Gate bar: the open questions and what will be assumed; Confirm takes ownership of both. With anything that
+	     blocks Confirm still open, Confirm (or the "to check" chip) starts the walkthrough instead. -->
+	{#if walking}
+		<section aria-label="Walkthrough" data-testid="walkthrough" class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-orange-400/40 bg-orange-400/[0.07] px-2.5 py-2">
+			<p class="flex flex-col text-xs">
+				{#if stops.length}
+					<span class="font-medium text-orange-100">Checking {walkTotal - stops.length + 1} of {walkTotal} · {current?.startsWith('row:') ? 'Referral question' : currentCheck ? checkLabel(currentCheck.kind) : ''}</span>
+					<span class="text-gray-400">Each answer moves to the next item that blocks Confirm. Advisory underlines stay in the text.</span>
+				{:else}
+					<span class="font-medium text-emerald-200">All checked</span>
+					<span class="text-gray-400">Nothing left that blocks Confirm.</span>
+				{/if}
+			</p>
+			<span class="flex gap-1.5">
+				<button type="button" class="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200" onclick={() => (walking = false)}>Exit</button>
+				{#if stops.length > 1}<button type="button" class="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-gray-200 hover:bg-white/[0.06]" onclick={nextStop}>Next ›</button>{/if}
+				{#if !stops.length}
+					<button type="button" class="rounded-lg bg-purple-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-40"
+						disabled={!hasConclusion || syncing || editing !== null} onclick={finishWalk}>{onConfirmGenerate ? 'Confirm & Generate' : 'Confirm'}</button>
+				{/if}
+			</span>
+		</section>
+	{:else}
 	<section aria-label="Confirm" class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-2.5 py-2">
 		<p class="flex flex-wrap gap-2 text-xs">
 			<span class="rounded px-1.5 py-0.5 {openRows ? 'bg-amber-500/15 text-amber-200' : 'bg-white/5 text-gray-500'}">{openRows} referral {openRows === 1 ? 'question' : 'questions'} open</span>
-			{#if blockingChecks}<span class="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-200" data-gate="unfinished">{blockingChecks} unfinished {blockingChecks === 1 ? 'sentence' : 'sentences'}</span>{/if}
+			{#if liveChecks.length}<button type="button" class="rounded border border-orange-400/40 bg-orange-400/15 px-1.5 py-px text-orange-100 hover:bg-orange-400/25" data-gate="checks"
+				onclick={startWalk} disabled={!stops.length} title={stops.length ? 'Go through what blocks Confirm' : 'Advisory only: hover the underlines'}
+				>{liveChecks.length} to check{blockingChecks ? ` · ${blockingChecks} blocking` : ''}</button>{/if}
 			{#if reviewing}<span class="rounded bg-white/5 px-1.5 py-0.5 text-gray-400">checking the findings…</span>
 			{:else if reviewFailed}<span class="rounded bg-rose-500/15 px-1.5 py-0.5 text-rose-200" data-review="failed">checks unavailable: review the scan as usual</span>
 			{:else if reviewWaiting}<span class="rounded bg-white/5 px-1.5 py-0.5 text-gray-500">checks appear when you stop dictating</span>
@@ -946,7 +1077,9 @@
 			class="rounded-lg px-4 py-1.5 text-xs font-medium transition-colors {gateConfirmed
 				? 'bg-emerald-500/20 text-emerald-200'
 				: 'bg-purple-700 text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-40'}"
-			disabled={gateConfirmed || openRows > 0 || blockingChecks > 0 || !hasConclusion || syncing || newLine.trim().length > 0 || editing !== null}
-			onclick={onConfirm}>{gateConfirmed ? 'Confirmed ✓' : syncing ? 'Updating…' : 'Confirm'}</button>
+			disabled={gateConfirmed || !hasConclusion || syncing || newLine.trim().length > 0 || editing !== null}
+			onclick={() => (stops.length ? startWalk() : onConfirm())}
+			>{gateConfirmed ? 'Confirmed ✓' : syncing ? 'Updating…' : stops.length ? `Confirm · ${stops.length} to resolve` : 'Confirm'}</button>
 	</section>
+	{/if}
 </div>

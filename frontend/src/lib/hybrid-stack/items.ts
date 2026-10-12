@@ -34,7 +34,7 @@ export function rowSentences(item: StackItem, removed: string[]): string[] {
 	return item.sentences.filter((s) => !gone.has(norm(s)));
 }
 
-const waiting = (i: StackItem, tapped: string[], removed: string[], skipped: string[]) =>
+export const waiting = (i: StackItem, tapped: string[], removed: string[], skipped: string[]) =>
 	!i.answered && !tapped.includes(i.id) && !skipped.includes(i.id) && rowSentences(i, removed).length > 0;
 
 /** Referral rows still waiting: the gate stays locked while any is open (the clinical question is always answered:

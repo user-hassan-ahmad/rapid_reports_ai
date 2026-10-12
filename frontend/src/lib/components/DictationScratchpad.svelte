@@ -95,6 +95,8 @@
 	/** Scratchpad v2 gate (spec 2026-10-11 §5): the confirmed record and the findings block Generate sends,
 	 *  or (null, '') whenever it re-arms. */
 	export let onStackGate: (gate: GateRecord | null, findings: string) => void = () => {};
+	/** The walkthrough's last step: Confirm, then Generate (the parent's Generate, once the gate has reached it). */
+	export let onStackGenerate: (() => void) | null = null;
 	/** The stack session id, so the parent can link the generated report to it. */
 	export let onStackSession: (sessionId: string) => void = () => {};
 
@@ -1610,8 +1612,8 @@
 			const res = await postDictationCheck($token, { findings: text, include_semantic: semantic, scan_type: scanType, clinical_history: clinicalHistory });
 			if (seq !== checkSeq) return;
 			const all = toChecks(text, res.flags ?? [], stackUnits);
-			const tier1 = all.filter((c) => c.blocking);
-			semanticChecks = semantic && !tier1.length ? all.filter((c) => !c.blocking) : keepSemantic();
+			const tier1 = all.filter((c) => c.tier === 1);
+			semanticChecks = semantic && !tier1.length ? all.filter((c) => c.tier === 2) : keepSemantic();
 			checks = [...tier1, ...semanticChecks];
 		} catch {
 			if (seq !== checkSeq) return;
@@ -1621,7 +1623,7 @@
 		seenChecks = { ...seenChecks, ...Object.fromEntries(checks.map((c) => [c.key, c])) };
 		checkedFor = text;
 	}
-	/** "✓ As dictated" or Skip on a check. */
+	/** Keep as dictated, Skip, or Replace (the line edit itself goes through stackEditLine) on a check. */
 	function answerCheck(key: string, how: CheckAnswer): void {
 		checkAnswers = { ...checkAnswers, [key]: how };
 	}
@@ -2599,7 +2601,7 @@
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
 							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
-							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
+							onConfirm={stackConfirm} onConfirmGenerate={onStackGenerate ? () => { stackConfirm(); onStackGenerate?.(); } : null} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
 							syncing={assumedBehind || checksBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
 					{/if}
 				</div>

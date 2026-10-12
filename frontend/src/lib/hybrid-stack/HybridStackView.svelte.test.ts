@@ -115,7 +115,7 @@ describe('HybridStackView v2', () => {
 		expect(onAppend).toHaveBeenCalledWith('The spleen is enlarged at 15 cm.');
 	});
 
-	it('the gate bar: referral questions block Confirm; finding checks never do, and Skip folds one', async () => {
+	it('the gate bar: an open referral question sends Confirm to it; finding checks never do, and Skip folds one', async () => {
 		const props = { ...base(), onSkip: vi.fn() };
 		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true }), u(1, 'Simple cyst.', 'Conclusion')];
 		const ref = row('r', ['The appendix is normal.'], { kind: 'referral', region: '', question: 'Appendix normal?' });
@@ -124,7 +124,10 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByText('1 referral question open')).toBeInTheDocument();
 		await expect.element(page.getByText('1 check unanswered (not stated)')).toBeInTheDocument();
 		await expect.element(page.getByText('2 regions assumed normal (no sheet yet)')).toBeInTheDocument();   // by name (no sheet)
-		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+		await page.getByRole('button', { name: 'Confirm · 1 to resolve' }).click();
+		expect(props.onConfirm).not.toHaveBeenCalled();
+		await expect.element(page.getByTestId('walkthrough')).toHaveTextContent('Checking 1 of 1 · Referral question');
+		await page.getByRole('button', { name: 'Exit' }).click();
 		await page.getByRole('button', { name: 'Skip' }).click();
 		expect(props.onSkip).toHaveBeenCalledWith('a');
 		r.rerender({ ...props, units, conclusion: { kind: 'dictated' }, items: [ref, check], skipped: ['r'], namedNormals: true });
@@ -264,32 +267,52 @@ describe('HybridStackView v2', () => {
 		localStorage.removeItem('rr_dictation_hotkey');
 	});
 
-	it('an unfinished sentence is marked on its line and holds Confirm until finished or kept as dictated', async () => {
+	it('an unfinished sentence is underlined; Confirm walks to it; Keep as dictated clears it and Confirm returns', async () => {
 		const onCheckAnswer = vi.fn();
 		const units = [u(0, 'An 8 mm liver cyst with', 'Liver', { abnormal: true })];
-		const c = { key: 'truncation|x', kind: 'truncation', blocking: true, message: 'Ends mid-sentence.', quote: 'An 8 mm liver cyst with', other: null, unitId: 0 };
+		const c = { key: 'truncation|x', kind: 'truncation', blocking: true, tier: 1 as const, message: 'Ends mid-sentence.', quote: 'An 8 mm liver cyst with', other: null, suggestion: '', unitId: 0 };
 		const props = { ...base(), units, onCheckAnswer, conclusion: { kind: 'draft', text: 'Liver cyst.', edited: false } as const, namedNormals: true };
 		const r = render(HybridStackView, { ...props, checks: [c] });
-		await expect.element(page.getByText('Unfinished sentence?')).toBeInTheDocument();
-		await expect.element(page.getByText('1 unfinished sentence')).toBeInTheDocument();
-		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeDisabled();
-		await page.getByRole('button', { name: '✓ As dictated' }).click();
+		await expect.element(page.getByRole('button', { name: '1 to check · 1 blocking' })).toBeInTheDocument();
+		await page.getByRole('button', { name: 'Confirm · 1 to resolve' }).click();
+		await expect.element(page.getByTestId('walkthrough')).toHaveTextContent('Checking 1 of 1 · Unfinished sentence');
+		await expect.element(page.getByRole('dialog', { name: 'Unfinished sentence' })).toBeInTheDocument();
+		await page.getByRole('button', { name: 'Keep as dictated' }).click();
 		expect(onCheckAnswer).toHaveBeenCalledWith('truncation|x', 'as_dictated');
 		r.rerender({ ...props, checks: [c], checkAnswers: { 'truncation|x': 'as_dictated' } });
-		await expect.element(page.getByText('Unfinished sentence?')).not.toBeInTheDocument();
-		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeEnabled();
+		await expect.element(page.getByTestId('walkthrough')).toHaveTextContent('All checked');
+		await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+		expect(props.onConfirm).toHaveBeenCalled();
 	});
 
-	it('a side conflict is a row in its card, quoting both statements; it can be skipped and never blocks', async () => {
+	it('a certain garble is a dotted advisory underline; hover shows the card and Replace edits the line', async () => {
 		const onCheckAnswer = vi.fn();
-		const units = [u(0, 'A 4 mm calculus at the left VUJ.', 'Kidneys', { abnormal: true }), u(1, 'Perinephric stranding of the right kidney.', 'Kidneys', { abnormal: true })];
-		const c = { key: 'laterality_conflict|p', kind: 'laterality_conflict', blocking: false, message: 'Sides differ.', quote: units[1].text, other: units[0].text, unitId: 1 };
-		render(HybridStackView, { ...base(), units, onCheckAnswer, checks: [c], conclusion: { kind: 'draft', text: 'Left VUJ calculus.', edited: false } as const, namedNormals: true });
-		const row = page.getByRole('region', { name: 'Kidneys' }).getByText('Sides as intended?');
-		await expect.element(row).toBeInTheDocument();
-		await expect.element(page.getByText('“Perinephric stranding of the right kidney.” · “A 4 mm calculus at the left VUJ.”')).toBeInTheDocument();
-		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeEnabled();
-		await page.getByRole('button', { name: 'Skip' }).click();
-		expect(onCheckAnswer).toHaveBeenCalledWith('laterality_conflict|p', 'skip');
+		const units = [u(0, 'Dilatation of the pancreatic duck.', 'Liver', { abnormal: true })];
+		const c = { key: 'garbled_phrase|duck', kind: 'garbled_phrase', blocking: false, tier: 2 as const, message: 'A misheard word.', quote: 'duck', other: null, suggestion: 'duct', unitId: 0 };
+		const props = { ...base(), units, onCheckAnswer, checks: [c], conclusion: { kind: 'draft', text: 'Duct dilatation.', edited: false } as const, namedNormals: true };
+		render(HybridStackView, props);
+		await expect.element(page.getByRole('button', { name: '1 to check' })).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Confirm', exact: true })).toBeEnabled();   // advisory never blocks
+		await page.getByText('duck', { exact: true }).hover();
+		await expect.element(page.getByRole('dialog', { name: 'Possible dictation error' })).toHaveTextContent('Likely: duct');
+		await page.getByRole('button', { name: 'Replace' }).click();
+		expect(props.onEditLine).toHaveBeenCalledWith(0, null, 'Dilatation of the pancreatic duct.');
+		expect(onCheckAnswer).toHaveBeenCalledWith('garbled_phrase|duck', 'replaced');
+	});
+
+	it('the walkthrough goes top to bottom: the referral row first, then blocking underlines; Next skips one', async () => {
+		const units = [u(0, 'A 2 cm cyst in the left kidney.', 'Kidneys', { abnormal: true }), u(1, 'A tiny non-2 mm calculus.', 'Kidneys', { abnormal: true })];
+		const side = { key: 's', kind: 'laterality_conflict', blocking: true, tier: 2 as const, message: 'Sides differ.', quote: 'left kidney', other: null, suggestion: '', unitId: 0 };
+		const garble = { key: 'g', kind: 'garbled_phrase', blocking: true, tier: 2 as const, message: 'A word looks misheard.', quote: 'non-2 mm', other: null, suggestion: '', unitId: 1 };
+		const ref = row('r', ['No hydronephrosis.'], { kind: 'referral', question: 'Obstruction?' });
+		render(HybridStackView, { ...base(), units, items: [ref], checks: [garble, side], conclusion: { kind: 'draft', text: 'Right renal cyst.', edited: false } as const, namedNormals: true });
+		await page.getByRole('button', { name: 'Confirm · 3 to resolve' }).click();
+		const bar = page.getByTestId('walkthrough');
+		await expect.element(bar).toHaveTextContent('Checking 1 of 3 · Referral question');
+		await page.getByRole('button', { name: 'Next ›' }).click();
+		await expect.element(bar).toHaveTextContent('Checking 1 of 3 · Sides as intended?');
+		await expect.element(page.getByRole('dialog', { name: 'Sides as intended?' })).toBeInTheDocument();
+		await page.getByRole('button', { name: 'Exit' }).click();
+		await expect.element(page.getByTestId('walkthrough')).not.toBeInTheDocument();
 	});
 });
