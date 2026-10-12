@@ -25,6 +25,15 @@ Filed as tier 2, not a lookup pack: the paper gives no management or prognosis f
 - tbl.figs: p.2 "Figs 1-8 show standard examples of Grade 1-4 ... DIP, PIP, MCP, first CMC, wrists, cervical spine, hips, knees". Confirmed. The images were not individually checked against their captions beyond the caption text.
 - pit.criteria (0.50): a statement of absence in the source; confirmed by reading all text, p.1-2.
 
+## Gate 5 flags resolved (second run, 7 flags; each read against the source text)
+- pit.criteria (p.1-2): the only per-grade wording is grade 0 "a definite absence of x-ray changes" and grade 2 "definitely present though of minimal severity"; grades 1, 3, 4 appear only as labels. Confirmed (statement of absence).
+- sum.3 (pp.1, 3): p.1 "the severity in the most affected joint"; p.3 "definite osteo-arthrosis (Grades 2-4)". Grade 1 not counted as definite follows from that range. Confirmed.
+- def.definite (p.3): "although the numbers in which definite osteo-arthrosis (Grades 2-4) is diagnosed are closely similar". Confirmed.
+- sum.4 (pp.8, 1): "estimates of prevalence, however, varied widely because of the cumulative effect of observer bias (+-31 per cent)"; sample "85 persons in the age group 55-64 ... urban population" (Lancashire, p.1), two observers. Confirmed.
+- pit.observer (pp.4, 6, 8): wrist r 0.10, hips 0.40, knees 0.83 (p.4); "one observer may read four times as much definite osteo-arthrosis" (hip), "deviations of +-31 per cent from the average value", intra-observer error "+-5 per cent", and "same observer or preferably two observers in consultation" (p.8); intra-observer r up to 0.88, metacarpophalangeal (p.6); significant correlation "for all joints except the wrist" (p.8). Confirmed.
+- def.g1 (pp.1, 6, 3): p.1 label "Doubtful (1)"; p.6 "graded '1' (minimal or doubtful)"; not definite because definite = grades 2-4 (p.3). Confirmed.
+- tbl.figs (p.2): "Figs 1-8 show standard examples of Grade 1-4 severity for the distal interphalangeal, proximal interphalangeal, metacarpophalangeal, and first carpometacarpal joints of the hands, and for the wrists, cervical spine, hips, and knees"; the independent read also checked four grade panels per figure. Confirmed.
+
 ## Changes after the independent read (clinical-read.md)
 - applies_to: foot dropped; spine regions qualified as apophyseal joints.
 - sum.3 locator now p.3; sum.4 carries the sample caveat; def.g1 says grade 1 is not counted as definite osteo-arthrosis.
