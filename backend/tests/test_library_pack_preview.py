@@ -509,3 +509,12 @@ async def test_only_a_missing_finding_makes_a_degraded_preview_cacheable(toy_ent
     jev["fail"] = False
     out = await PP.preview_pack(toy_entry, FINDING, "Smoker.", {}, finding=FINDING)
     assert out._cacheable is False
+
+
+async def test_bts_with_eligibility_unknown_is_check_first_with_only_eligibility_asked(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    _model(monkeypatch)
+    out = await PP.preview_pack(_bts(), "7 mm solid nodule.", "", {"nodule_type": "solid", "diameter_mm": "7",
+                                                                  "benign_features": "Yes", "prior_study": "No"},
+                                finding="7 mm solid nodule.")
+    assert out.state == "check_first" and out.proposal is None and out.missing == ["age", "proven_malignant"]

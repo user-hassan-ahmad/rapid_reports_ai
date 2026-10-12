@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from .schema import (AdjustStep, All, AnyOf, BandStep, Cond, DeriveStep, Entry, Expr, InputDef, InputValue, Locator,
                      NoneOf, Num, RulesStep, ScoreStep, TableStep, as_value, conds)
+from .schema import DOES_NOT_APPLY
 
 PH = re.compile(r"\{([A-Za-z0-9_]+)\}")
 MAX_COMBOS = 10_000      # partial evaluation (≈0.75 s at the cap); beyond it every reaching unknown is asked
@@ -263,9 +264,10 @@ def _iv(v: V) -> InputValue:
     return InputValue(state=v.state, value=v.value, band=v.band)
 
 
-def _once(entry: Entry, given: dict[str, InputValue]) -> tuple[dict[str, V], list[StepTrace]]:
+def _once(entry: Entry, given: dict[str, InputValue],
+          over: dict[str, V] | None = None) -> tuple[dict[str, V], list[StepTrace]]:
     env = _inputs(entry, given)
-    return env, run(entry, env)
+    return env, run(entry, env, over)
 
 
 def _edges(entry: Entry, input_id: str) -> list[float] | None:
@@ -320,7 +322,8 @@ def reach_states(e: Entry, ref: str) -> set[str]:
 
 
 def _over(entry: Entry, given: dict[str, InputValue], env: dict[str, V], names: list[str],
-          doms: dict[str, list[InputValue] | None], possible: list[str]) -> list[str]:
+          doms: dict[str, list[InputValue] | None], possible: list[str],
+          fixed: dict[str, V] | None = None) -> list[str]:
     """Unbounded: the outcomes still possible, over-approximated. Every band step left unknown (it reads a formula or a
     number that feeds one) is enumerated over its own band ids, with the enumerable unknown inputs; more than
     OVER_MAX combinations gives every outcome. Safe: it may list an outcome no real value reaches, never miss one."""
@@ -334,7 +337,7 @@ def _over(entry: Entry, given: dict[str, InputValue], env: dict[str, V], names: 
         for bc in product(*bdoms):
             e2 = _inputs(entry, {**given, **dict(zip(names, combo))})
             try:
-                run(entry, e2, {s.id: v for s, v in zip(bands, bc)})
+                run(entry, e2, {**(fixed or {}), **{s.id: v for s, v in zip(bands, bc)}})
             except EvaluationError:    # an override no real value produces; gate 2 owns the entry's correctness
                 continue
             r = e2[entry.result]
@@ -343,8 +346,46 @@ def _over(entry: Entry, given: dict[str, InputValue], env: dict[str, V], names: 
     return sorted(out)
 
 
-def _partial(entry: Entry, given: dict[str, InputValue],
-             env: dict[str, V]) -> tuple[list[str], bool, list[str], dict[str, list[str]]]:
+def _non_excluding(entry: Entry, given: dict[str, InputValue],
+                   elig: list[InputDef]) -> tuple[dict[str, InputValue], dict[str, V]]:
+    """For each unknown eligibility input, its one value that cannot lead to does_not_apply, worked out from the entry:
+    the candidate values (a choice or yes/no, or a number's band ids on the band steps that read it) for which every
+    rules case reaching does_not_apply is false. An input with no such single value stays unknown. Returns (input
+    values, band-step overrides): a number is held out through its band, never given a made-up value, so a formula it
+    also feeds stays unknown."""
+    dna = [c.when for s in entry.logic if isinstance(s, RulesStep) for c in s.cases if c.result == DOES_NOT_APPLY]
+    if not dna:
+        return {}, {}
+    slots: list[tuple[str, str, list]] = []          # (kind, id, candidates)
+    for i in elig:
+        if i.type in ("enum", "boolean"):
+            slots.append(("in", i.id, [v for v in domain(entry, i) if v.state == "present"]))
+        else:
+            for b in (s for s in entry.logic if isinstance(s, BandStep) and s.ref == i.id):
+                slots.append(("step", b.id, [V(value=x.id) for x in b.bands]))
+    if not slots or math.prod(len(c) for _, _, c in slots) > MAX_COMBOS:
+        return {}, {}
+    ok: list[tuple] = []
+    for combo in product(*(c for _, _, c in slots)):
+        g = {**given, **{n: v for (k, n, _), v in zip(slots, combo) if k == "in"}}
+        o = {n: v for (k, n, _), v in zip(slots, combo) if k == "step"}
+        env = _inputs(entry, g)
+        try:
+            run(entry, env, o)
+        except EvaluationError:
+            continue
+        if all(truth(w, env) is False for w in dna):
+            ok.append(combo)
+    fill, over = {}, {}
+    for n, (k, name, _) in enumerate(slots):
+        vals = {(v.state, v.value, getattr(v, "band", None)) for v in (c[n] for c in ok)}
+        if len(vals) == 1:
+            (fill if k == "in" else over)[name] = ok[0][n]
+    return fill, over
+
+
+def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V], fixed: dict[str, V] | None = None,
+             hold_out: bool = True) -> tuple[list[str], bool, list[str], dict[str, list[str]]]:
     """(possible outcomes, bounded, needed inputs). An unknown input is needed when changing it alone can change the
     outcome for some value of the other unknown inputs. Unbounded (an unknown number feeds a formula): enumeration
     cannot tell, so every unknown applicable input that reaches the result is needed (safe over-asking). `decides`:
@@ -353,6 +394,24 @@ def _partial(entry: Entry, given: dict[str, InputValue],
     # enumerated prerequisite allows it, so only the prerequisite is asked
     held = {k for k, v in given.items() if v.state != "unknown"}
     unknown = [i for i in entry.inputs if env[i.id].state == "unknown" and i.id not in held]
+    elig = [i for i in unknown if i.role == "eligibility"]
+    if hold_out and elig:
+        # the clinical asks are worked out as for an eligible patient; the unknown eligibility inputs are asked first,
+        # and does_not_apply stays possible (no outcome, so no proposal) until each is settled
+        fill, fix = _non_excluding(entry, given, elig)
+        if fill or fix:
+            g2, f2 = {**given, **fill}, {**(fixed or {}), **fix}
+            env2, _ = _once(entry, g2, f2)
+            r = env2[entry.result]
+            possible, bounded, needed, decides = (([r.value], True, [], {}) if r.state == "present"
+                                                  else _partial(entry, g2, env2, f2, hold_out=False))
+            first = [i.id for i in elig]
+            possible = sorted(set(possible) | ({DOES_NOT_APPLY} if entry.outcome(DOES_NOT_APPLY) else set()))
+            needed = first + [n for n in needed if n not in first]
+            if not bounded:    # as below: enumeration cannot tell what one input moves
+                return possible, bounded, needed, {n: possible for n in needed}
+            return possible, bounded, needed, {n: possible if n in first else decides.get(n) or possible
+                                               for n in needed}
     doms = {i.id: domain(entry, i) for i in unknown}
     names = [k for k, d in doms.items() if d is not None]
     order = [i.id for i in entry.inputs]
@@ -363,7 +422,7 @@ def _partial(entry: Entry, given: dict[str, InputValue],
         return allo, False, every, {k: allo for k in every}
     results = []
     for combo in product(*(doms[n] for n in names)):
-        e2, _ = _once(entry, {**given, **dict(zip(names, combo))})
+        e2, _ = _once(entry, {**given, **dict(zip(names, combo))}, fixed)
         v = e2[entry.result]
         results.append((combo, v.value if v.state == "present" else None))
     possible = sorted({r for _, r in results if r is not None})
@@ -380,7 +439,7 @@ def _partial(entry: Entry, given: dict[str, InputValue],
             decides[n] = sorted(moved)
     if not bounded:
         needed = every
-        possible = _over(entry, given, env, names, doms, possible)
+        possible = _over(entry, given, env, names, doms, possible, fixed)
     needed = sorted(set(needed), key=order.index)
     if not bounded:            # enumeration cannot tell what one input moves: each decides between all still possible
         return possible, bounded, needed, {n: possible for n in needed}

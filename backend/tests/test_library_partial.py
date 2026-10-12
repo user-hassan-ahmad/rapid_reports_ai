@@ -90,15 +90,15 @@ def test_unbounded_asks_every_applicable_input_that_reaches_the_result():
     assert t.outcome is None and t.bounded is False
     assert BTS_BROCK <= set(t.needed)
     assert not {"prior_volume_mm3", "current_volume_mm3", "interval_days", "diameter_mm"} & set(t.needed)
-    assert t.needed == [i.id for i in e.inputs if i.id in t.needed]          # in the entry's input order
+    elig = [i.id for i in e.inputs if i.role == "eligibility" and i.id in t.needed]
+    assert t.needed == elig + [i.id for i in e.inputs if i.id in t.needed and i.id not in elig]   # eligibility first
 
 
 def test_over_approximation_keeps_outcomes_behind_a_not_applicable_band():
     """New-I1: a band unknown now but not applicable under some enumerated value must be enumerated over its states
     too, else the rules gated on that state (the 2D arm) drop out of `possible`."""
     given = {"prior_study": True, "resolved": False, "interval_days": 547.5, "benign_features": False, "sex": "female",
-             "family_history": False, "emphysema": False, "upper_lobe": True, "spiculation": False,
-             "proven_malignant": False}
+             "family_history": False, "emphysema": False, "upper_lobe": True, "spiculation": False}
     t = E.evaluate(_bts(), given)
     assert t.bounded is False and len(t.possible) < len(_bts().outcomes)      # not the over-the-cap fallback
     assert {"growth_workup_2d", "ct_2yr_2d", "volumetry_advised"} <= set(t.possible)
@@ -141,3 +141,41 @@ def test_an_input_behind_an_unknown_prerequisite_is_not_used_until_the_prerequis
     t = E.evaluate(e, {"mimic": False, "too_small": "no", "technique": "renal_mass_protocol",
                        "contents_enhancement": "present"})
     assert t.outcome == "not_cystic"
+
+
+SOLID7 = {"nodule_type": "solid", "diameter_mm": 7}
+ELIGIBLE = {"age": 60, "proven_malignant": False}
+
+
+def test_clinical_asks_are_worked_out_with_eligibility_held_out():
+    """Unknown eligibility inputs are asked first; the clinical asks are those of an eligible patient."""
+    e = _bts()
+    t, ref = E.evaluate(e, SOLID7), E.evaluate(e, {**SOLID7, **ELIGIBLE})
+    assert t.outcome is None and t.needed[:2] == ["age", "proven_malignant"]
+    assert t.needed[2:] == ref.needed and t.bounded == ref.bounded
+    assert "does_not_apply" in t.possible and set(ref.possible) <= set(t.possible)
+
+
+def test_a_settled_clinical_path_asks_only_eligibility():
+    """Benign features settle the clinical path: with age and proven malignancy unknown, only they are asked, and the
+    trace stays bounded (no longer the over-the-cap fallback that asked every reaching input)."""
+    e = _bts()
+    g = {**SOLID7, "benign_features": True, "prior_study": False}
+    ref = E.evaluate(e, {**g, **ELIGIBLE})
+    t = E.evaluate(e, g)
+    assert ref.outcome == "discharge_benign"
+    assert t.outcome is None and t.bounded is True and t.needed == ["age", "proven_malignant"]
+    assert sorted(t.possible) == ["discharge_benign", "does_not_apply"]
+
+
+def test_an_excluding_eligibility_value_still_settles_does_not_apply():
+    assert E.evaluate(_bts(), {**SOLID7, "proven_malignant": True}).outcome == "does_not_apply"
+    assert E.evaluate(_bts(), {**SOLID7, "age": 16}).outcome == "does_not_apply"
+
+
+def test_held_out_values_come_from_the_entry():
+    """The non-excluding values are worked out from the does_not_apply cases, not hard-coded."""
+    e = _bts()
+    fill, over = E._non_excluding(e, {}, [e.input("age"), e.input("proven_malignant")])
+    assert {k: v.value for k, v in fill.items()} == {"proven_malignant": False}
+    assert {k: v.value for k, v in over.items()} == {"age_band": "ge18"}
