@@ -3641,9 +3641,7 @@ Generate a JSON object with exactly two keys:
             model_settings={
                 "temperature": 0.9,
                 "top_p": 0.95,
-                # Reasoning dominates the output budget and grows with the
-                # number of examples; 4096 truncated the JSON on larger sets.
-                "max_tokens": 16384,
+                "max_tokens": 4096,
                 "extra_body": {
                     "disable_reasoning": False,
                     "clear_thinking": False,
