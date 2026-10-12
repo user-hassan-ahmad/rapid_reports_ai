@@ -35,7 +35,7 @@ from .fetch import OVERVIEW, resolve_guideline
 from .library import bundle as L
 from .library import describe as D
 from .library import preview_cache as PC
-from .library.pack_preview import PACK_BRANCH, REFERENCE_BRANCH, as_entry, failed, finish, settle_pack
+from .library.pack_preview import PACK_BRANCH, REFERENCE_BRANCH, Settlement, as_entry, failed, finish, settle_pack
 from .library.schema import FACTS
 from .matcher import Finding, match
 from .preview import preview
@@ -312,7 +312,7 @@ def _reference_result(ref, t0: float) -> OpenResult:
                       reference=D.reference_view(e, L.get().sources(e.key)), ms=_ms(t0))
 
 
-async def _pack_result(pack, req: OpenRequest, t0: float) -> OpenResult:
+async def _pack_result(pack, req: OpenRequest, t0: float, opened: bool) -> OpenResult:
     """Offline and engine-decided: never a fetch. The settlement comes from the cache (started by /match) or starts
     now; the answers then re-run only the engine over it. Fail open, bounded, as _branch_and_preview."""
     e, view = pack
@@ -321,7 +321,9 @@ async def _pack_result(pack, req: OpenRequest, t0: float) -> OpenResult:
     finding = req.finding or req.card.finding     # the unit sent with the request, else the one /match gave the card
     k = PC.key(e.key, finding, findings, history)
     try:
-        task = PC.start(k, lambda: settle_pack(e, findings, history, finding=finding))
+        # an answer (/preview) never settles again, even after a failure; a fresh /open may retry a failed one once
+        task = PC.start(k, lambda: settle_pack(e, findings, history, finding=finding), retry=opened,
+                        fallback=lambda: Settlement(failed=True))
         settled = await asyncio.wait_for(asyncio.shield(task), PREVIEW_TIMEOUT_S)
         prev = finish(e, settled, req.answered, req.patient, sources)
     except Exception as ex:   # TimeoutError included
@@ -346,7 +348,7 @@ def _prewarm(req: MatchRequest, cards: list[Card]) -> int:
                 continue
             t = PC.start(PC.key(e.key, finding, dictation, history),
                          lambda e=e, finding=finding: settle_pack(e, dictation, history, finding=finding),
-                         prewarm=True)
+                         prewarm=True, fallback=lambda: Settlement(failed=True))
             n += t is not None
         except Exception as ex:
             logger.warning("[copilot.routes] prewarm %s", type(ex).__name__)
@@ -372,7 +374,7 @@ async def copilot_open(req: OpenRequest, user: User = Depends(get_current_user))
     card = req.card.card()
     pack = _pack(card.key)
     if pack is not None:
-        return await _pack_result(pack, req, t0)
+        return await _pack_result(pack, req, t0, opened=True)
     ref = _reference(card.key)
     if ref is not None:
         return _reference_result(ref, t0)
@@ -398,7 +400,7 @@ async def copilot_preview(req: OpenRequest, user: User = Depends(get_current_use
     card = req.card.card()
     pack = _pack(card.key)
     if pack is not None:
-        return await _pack_result(pack, req, t0)
+        return await _pack_result(pack, req, t0, opened=False)
     ref = _reference(card.key)
     if ref is not None:
         return _reference_result(ref, t0)

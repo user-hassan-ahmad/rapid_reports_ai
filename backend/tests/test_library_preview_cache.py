@@ -36,16 +36,38 @@ def test_the_key_reads_every_input_the_settlement_reads_and_never_an_answer():
         PC.key("p@1", "f", "d", "h", {"a": "1"}, {})                          # lab fix round item 5
 
 
-@pytest.mark.parametrize("first", [Settlement(failed=True), RuntimeError("boom")])
-async def test_a_failed_settlement_is_never_served_again(first):
+async def test_a_failed_settlement_is_served_to_answers_and_retried_once_by_an_open():
+    """Review I3: an answer never settles again; a fresh /open (retry) may, once, and that result is kept."""
     calls = []
-    t = PC.start(K, _maker(calls, first))
-    try:
-        await t
-    except RuntimeError:
-        pass
+    await PC.start(K, _maker(calls, Settlement(failed=True)))
+    assert (await PC.start(K, _maker(calls, Settlement()))).failed is True and len(calls) == 1     # an answer
+    again = await PC.start(K, _maker(calls, Settlement(failed=True)), retry=True)               # an open retries
+    assert again.failed is True and len(calls) == 2
+    assert (await PC.start(K, _maker(calls, Settlement()), retry=True)).failed is True          # only once
+    assert len(calls) == 2
+
+
+async def test_an_error_with_a_fallback_is_cached_as_a_failed_settlement():
+    calls = []
+    first = await PC.start(K, _maker(calls, RuntimeError("boom")), fallback=lambda: Settlement(failed=True))
+    assert first.failed is True
+    assert (await PC.start(K, _maker(calls, Settlement()))).failed is True and len(calls) == 1
+
+
+async def test_an_error_without_a_fallback_is_never_served_again():
+    calls = []
+    with pytest.raises(RuntimeError):
+        await PC.start(K, _maker(calls, RuntimeError("boom")))
     again = await PC.start(K, _maker(calls, Settlement(values={"fresh": (None, "")})))
     assert "fresh" in again.values and len(calls) == 2
+
+
+async def test_a_timeout_with_a_fallback_is_a_failed_settlement(monkeypatch):
+    monkeypatch.setattr(PC, "TASK_TIMEOUT_S", 0.01)
+
+    async def hang():
+        await asyncio.sleep(60)
+    assert (await PC.start(("slow",), hang, fallback=lambda: Settlement(failed=True))).failed is True
 
 
 async def test_the_cache_is_bounded(monkeypatch):

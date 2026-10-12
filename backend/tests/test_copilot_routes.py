@@ -701,3 +701,37 @@ async def test_an_answer_after_open_calls_neither_the_model_nor_jev(db_session, 
         d = (await CR.copilot_preview(CR.OpenRequest(**body, answered=answered), user=user, db=db_session)).preview
         assert d.degraded is False and d.proposal is not None
         assert [x for x in d.settled if x.input != "risk"] == first.settled
+
+
+@pytest.mark.parametrize("failure", ["model", "jev"])
+async def test_after_a_failed_settle_answers_make_no_model_call(db_session, user, toy_lib, monkeypatch, failure):
+    """Review I3: a failed settlement is cached; answers re-run only the engine over whatever settled. A fresh
+    /open retries it once."""
+    calls = []
+
+    async def call(system, prompt):
+        calls.append("model")
+        if failure == "model":
+            raise TimeoutError("slow")
+        return PP.RawSettle(settled=[PP.RawItem(input="kind", value="solid", quote="solid")])
+
+    async def jev(payload, key, timeout, transport=None):
+        calls.append("jev")
+        raise TimeoutError("jev slow")
+    monkeypatch.setattr(PP, "_call", call)
+    if failure == "jev":
+        monkeypatch.setattr(P, "jev_post", jev)
+    body = {"card": CR.CardIn(**PACK_CARD), "finding": "7 mm solid nodule.", "findings": "7 mm solid nodule."}
+    first = (await CR.copilot_open(CR.OpenRequest(**body), user=user)).preview
+    assert first.degraded is True and calls
+    n = len(calls)
+    for answered in ({"risk": "low"}, {"risk": "high"}, {"risk": "high", "kind": "solid"}):
+        d = (await CR.copilot_preview(CR.OpenRequest(**body, answered=answered), user=user, db=db_session)).preview
+        assert d.degraded is True
+    assert len(calls) == n                                              # no model or Jev call on any answer
+    await CR.copilot_open(CR.OpenRequest(**body), user=user)            # a fresh open retries once
+    m = len(calls)
+    assert m > n
+    await CR.copilot_open(CR.OpenRequest(**body), user=user)
+    await CR.copilot_preview(CR.OpenRequest(**body, answered={"risk": "low"}), user=user, db=db_session)
+    assert len(calls) == m                                              # and then the result is kept
