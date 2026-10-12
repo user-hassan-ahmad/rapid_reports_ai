@@ -14,8 +14,8 @@ async def test_stack_sessions_skip_the_brief_and_use_the_slim_sheet(monkeypatch)
         seen["compiled"] = True
         raise RuntimeError("never in a stack session")
 
-    def prompts(sheet, scan_type, findings, history, provider, brief=False):
-        seen.update(sheet=sheet, brief=brief)
+    def prompts(sheet, scan_type, findings, history, provider, brief=False, stack=False):
+        seen.update(sheet=sheet, brief=brief, stack=stack)
         raise RuntimeError("stop")
     monkeypatch.setattr(G, "compile_brief", brief)
     monkeypatch.setattr(G, "build_prompts", prompts)
@@ -26,7 +26,7 @@ async def test_stack_sessions_skip_the_brief_and_use_the_slim_sheet(monkeypatch)
                                       declined=["No free gas."], conclusion="Diverticulitis.", stack_sheet=slim)
     except Exception:
         pass
-    assert "compiled" not in seen and seen["brief"] is True
+    assert "compiled" not in seen and seen["brief"] is True and seen["stack"] is True
     assert "Sections:" in seen["sheet"] and "The liver is normal." not in seen["sheet"] and "No x" not in seen["sheet"]
     assert 'DO NOT ASSERT: "No free gas."' in seen["sheet"] and '"Diverticulitis."' in seen["sheet"]
 
@@ -38,8 +38,8 @@ async def test_stack_generation_never_falls_back_to_the_raw_sheet(monkeypatch):
     async def brief(*a, **k):
         raise RuntimeError("brief down")
 
-    def prompts(sheet, scan_type, findings, history, provider, brief=False):
-        seen.update(sheet=sheet, brief=brief)
+    def prompts(sheet, scan_type, findings, history, provider, brief=False, stack=False):
+        seen.update(sheet=sheet, brief=brief, stack=stack)
         raise RuntimeError("stop")
     monkeypatch.setattr(G, "compile_brief", brief)
     monkeypatch.setattr(G, "build_prompts", prompts)

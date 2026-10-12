@@ -296,9 +296,11 @@ def stack_fallback(sheet: str, conclusion: str, declined: Sequence[str] = ()) ->
         "statement in the input appears, with its meaning unchanged; statements about the same structure may be joined "
         "into one sentence, naming only the structures the input names; nothing is added."])]))
     secs.append(Section("Scratchpad Recommendations", bullets=[Bullet("Recommendations", [
-        f"- **Recommendations:** when the FINDINGS input has a line starting '{RECS_LINE}', write a RECOMMENDATIONS "
-        "section after the impression containing exactly those items, each in report style, adding none and dropping "
-        "none; never put them in the impression or the findings. With no such line, write no recommendations section."])]))
+        f"- **Recommendations:** when the FINDINGS input has a line starting '{RECS_LINE}', write a section headed "
+        "`RECOMMENDATIONS:` on its own line after the impression (the one exception to the rules that recommendations "
+        "sit in the impression and that no section is added) containing exactly those items, each in report style, "
+        "adding none and dropping none; never put them in the impression or the findings. With no such line, write no "
+        "recommendations section."])]))
     if conclusion.strip():
         secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", [
             "- **Confirmed conclusion (the radiologist's own; write the impression from it in report style, keeping "

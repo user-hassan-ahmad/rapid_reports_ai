@@ -376,3 +376,14 @@ def test_grouped_line_naming_the_group_pairs_each_group_clause():
     rep = "FINDINGS:\nNo upper abdominal visceral abnormality. The pelvic viscera are unremarkable.\n"
     al = _al(rep, "- Unremarkable abdominopelvic viscera and bowel")
     assert [c for _, c in _pairs(al)] == ["No upper abdominal visceral abnormality.", "The pelvic viscera are unremarkable."]
+
+
+def test_recommendations_section_is_a_section_and_never_read():
+    from rapid_reports_ai.report_review import quick_section_names, report_sections
+    from rapid_reports_ai.review_engine.alignment import report_clauses
+    rep = ("FINDINGS:\nA 2 cm cyst in the left kidney.\n\nIMPRESSION:\nComplex renal cyst.\n\n"
+           "RECOMMENDATIONS:\nRenal MRI in 6 months.\n")
+    names = quick_section_names(rep)
+    assert names == ["FINDINGS", "IMPRESSION", "RECOMMENDATIONS"]
+    assert [c.text for c in report_clauses(rep, names)] == ["A 2 cm cyst in the left kidney.", "Complex renal cyst."]
+    assert report_sections(rep)[1] == "Complex renal cyst."

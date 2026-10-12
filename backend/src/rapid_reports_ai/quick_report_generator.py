@@ -31,6 +31,7 @@ from .quick_report_prompts import (
     QR_SHEET_HEADER,
     QR_SHEET_HEADER_BRIEF,
     QR_STYLE_GUIDE,
+    QR_STACK_RECOMMENDATIONS,
     QR_STYLE_GUIDE_BRIEF,
     QR_SYSTEM_PREAMBLE,
     QR_SYSTEM_PREAMBLE_BRIEF,
@@ -55,10 +56,13 @@ _SETTINGS = {"temperature": 0.8, "top_p": 0.95, "max_tokens": 65536}
 
 
 def build_prompts(skill_sheet: str, scan_type: str, findings: str, clinical_history: str,
-                  provider: str, brief: bool = False) -> tuple[str, str]:
+                  provider: str, brief: bool = False, stack: bool = False) -> tuple[str, str]:
     """System and user prompt for one quick report. `skill_sheet` is the analyser's sheet, or
-    the compiled brief when `brief` is set; the hardening preamble is prepended here."""
+    the compiled brief when `brief` is set; the hardening preamble is prepended here. `stack`: a scratchpad
+    session's stack_fallback brief, whose ticked recommendations get their own section (the one exception)."""
     style, hardening = (QR_STYLE_GUIDE_BRIEF, QUICK_REPORT_HARDENING_PREAMBLE_BRIEF) if brief else (QR_STYLE_GUIDE, QUICK_REPORT_HARDENING_PREAMBLE)
+    if stack:
+        style = f"{style}\n\n{QR_STACK_RECOMMENDATIONS}"
     pre, ver = (QR_PRE_WRITING_ANALYSIS_BRIEF, QR_VERIFICATION_CHECKLIST_BRIEF) if brief else (QR_PRE_WRITING_ANALYSIS, QR_VERIFICATION_CHECKLIST)
     preamble, header = (QR_SYSTEM_PREAMBLE_BRIEF, QR_SHEET_HEADER_BRIEF) if brief else (QR_SYSTEM_PREAMBLE, QR_SHEET_HEADER)
     system_prompt = f"{preamble}\n\n{style}\n\n{header}\n\n{hardening}{skill_sheet}"
@@ -135,7 +139,8 @@ async def generate_quick_report(
 
     async def _write(model: str):
         provider = _get_model_provider(model)
-        system_prompt, user_prompt = build_prompts(sheet_for_generator, scan_type, findings, clinical_history, provider, brief=brief is not None)
+        system_prompt, user_prompt = build_prompts(sheet_for_generator, scan_type, findings, clinical_history, provider, brief=brief is not None,
+                                                   stack=stack)
         return await _run_agent_with_model(
             model_name=model, output_type=str, system_prompt=system_prompt, user_prompt=user_prompt,
             api_key=_get_api_key_for_provider(provider), use_thinking=True, model_settings=_SETTINGS,

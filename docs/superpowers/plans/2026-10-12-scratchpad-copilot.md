@@ -3465,6 +3465,11 @@ git add frontend/src/lib/hybrid-stack/copilot.ts frontend/src/lib/hybrid-stack/c
 git commit -m "feat(copilot): pure copilot state; findings block carries applied guidelines and ticked recommendations"
 ```
 
+**Notes from the Task 10/11 review** (apply here and in Task 19):
+- The findings block's recommendations line is one line: `RECS_LINE` followed by the ticked items joined by "; ",
+  with any newline inside an item flattened to a space.
+- The line is appended only to the Generate payload, never to `/draft` (the conclusion draft never sees it).
+
 ---
 
 ### Task 17: `CopilotPanel.svelte`
@@ -4113,6 +4118,16 @@ git add frontend/src/lib/components/DictationScratchpad.svelte frontend/src/lib/
   frontend/src/routes/components/IntelliDictateTab.svelte frontend/src/routes/components/TemplateForm.svelte
 git commit -m "feat(copilot): scratchpad wiring — match, open, apply, ask, recommendations, gate and log"
 ```
+
+**Notes from the Task 10/11 review:**
+- The `/open` fetch timeout is at least 90 s: the backend waits up to `OPEN_TIMEOUT_S` (60 s) for the resolve and
+  up to 25 s more for the branch pick and preview. An `error: "loading"` reply means the fetch is still running in
+  the background: show the retry state; a retry then hits the registry.
+- `/ask` answers within ~45 s plus one general answer. `loading: true` means the guideline is still resolving: show
+  the answer with a "still loading" mark, filed under the card when the reply has a `key`. Send `card` with an ask on
+  a listed card (same `key`) so an unopened card is resolved first.
+- Non-reviewer responses never carry supplements.
+- RECS_LINE items joined by "; ", newlines flattened; appended only to the Generate payload, never to `/draft`.
 
 ---
 

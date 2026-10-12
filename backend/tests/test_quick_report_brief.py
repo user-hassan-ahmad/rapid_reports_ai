@@ -662,3 +662,5 @@ def test_stack_fallback_recommendations_rule():
         b = qb.stack_fallback("", conclusion)
         assert "Scratchpad Recommendations" in b.text and RECS_LINE in b.text
         assert "adding none and dropping none" in b.text and "write no recommendations section" in b.text
+        assert "headed `RECOMMENDATIONS:` on its own line after the impression" in b.text
+        assert "the one exception to the rules that recommendations sit in the impression" in b.text
