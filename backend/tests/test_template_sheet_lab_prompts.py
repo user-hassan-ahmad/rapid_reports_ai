@@ -145,3 +145,21 @@ def test_convert_prompt_exemplars_are_slotted_and_diagnosis_free():
     assert "every specific value, code, grade or time window becomes a {slot}" in t
     assert "any diagnosis is dropped from the quote" in t
     assert "is kept, word for word" not in t
+
+
+def test_labelled_openings_reach_the_analyser_repair_and_convert_prompts():
+    for prompt in (P.ANALYSER_SYSTEM_PROMPT, P.REPAIR_SYSTEM_PROMPT, P.TEMPLATE_SHEET_CONVERT_PROMPT):
+        assert 'Opening (normal): "<opening words>"' in prompt and "LABELLED OPENINGS" in prompt
+        assert 'Never write the variation as a "When ..." or "If ..." prose sentence' in prompt
+        assert "it is a context RULE" in prompt
+    for prompt in (P.ANALYSER_SYSTEM_PROMPT, P.TEMPLATE_SHEET_CONVERT_PROMPT):  # the layout
+        assert 'one labelled line per state instead: Opening (normal): "..."' in prompt
+
+
+def test_the_labelled_opening_shape_in_the_prompt_parses_clean():
+    from rapid_reports_ai import template_sheet_grammar as tsg
+    sheet = ('## Report Structure\nSECTION FINDINGS | header: "Findings:" | role: findings\n'
+             'SECTION IMPRESSION | header: "Impression:" | role: impression\n\n## Paragraph: P (FINDINGS)\n'
+             'COVERS ["<structure>"]\nOpening (normal): "<opening words>"\nOpening (abnormal): "<opening words>"\n')
+    r = tsg.parse_sheet(sheet, mode="template")
+    assert r.errors == [] and r.warnings == [] and r.structure.usable
