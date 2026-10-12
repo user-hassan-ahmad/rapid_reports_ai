@@ -504,7 +504,83 @@ async def test_a_library_pack_hit_becomes_a_pack_card(db_session, monkeypatch, t
     async def call(prompt):
         assert "- toy-nodule@1.0: Toy 2020 [aliases: toy nodule | toy guideline]" in prompt
         return _raw(u1=[_sys("Toy Nodule", "2020")])
+
+    async def pack_gate(finding, pack, history=""):
+        return 0.9
     monkeypatch.setattr(M, "_call", call)
+    monkeypatch.setattr(M, "_pack_gate", pack_gate)
     cards = await M.match(db_session, "CT chest", "", U[:1])
     assert [(c.key, c.branch, c.skeleton, c.status, c.known, c.siblings) for c in cards] == \
         [("toy-nodule@1.0", "Pack", ["Pack"], "verified", True, ["toy-other@1.0"])]
+
+
+def _pack_match(monkeypatch, toy):
+    monkeypatch.setattr(L, "get", lambda: _toy_lib(toy))
+
+    async def call(prompt):
+        return _raw(u1=[_sys("Toy Nodule", "2020")])
+    monkeypatch.setattr(M, "_call", call)
+
+
+async def test_pack_card_needs_the_jev_applicability_gate(db_session, monkeypatch, toy):
+    _pack_match(monkeypatch, toy)
+    gate = {"score": 0.9}
+
+    async def pack_gate(finding, pack, history=""):
+        assert pack.key == "toy-nodule@1.0" and history == "smoker"
+        return gate["score"]
+    monkeypatch.setattr(M, "_pack_gate", pack_gate)
+    assert [c.key for c in await M.match(db_session, "CT", "smoker", U[:1])] == ["toy-nodule@1.0"]
+    M.clear_cache()
+    gate["score"] = M.PACK_GATE_MIN - 0.01
+    assert await M.match(db_session, "CT", "smoker", U[:1]) == []   # no card, and no fall-through to a registry key
+
+
+async def test_pack_gate_jev_failure_is_no_card(db_session, monkeypatch, toy):
+    _pack_match(monkeypatch, toy)
+
+    async def jev(payload, key, timeout, transport=None):
+        raise TimeoutError("jev slow")
+    monkeypatch.setattr(M, "jev_post", jev)
+    assert await M.match(db_session, "CT", "", U[:1]) == []
+    assert len(M._GATE) == 0
+
+
+async def test_pack_gate_success_is_cached_failure_is_not(db_session, monkeypatch, toy):
+    _pack_match(monkeypatch, toy)
+    n = {"calls": 0, "fail": True}
+
+    async def pack_gate(finding, pack, history=""):
+        n["calls"] += 1
+        if n["fail"]:
+            raise TimeoutError("jev slow")
+        return 0.9
+    monkeypatch.setattr(M, "_pack_gate", pack_gate)
+    assert await M.match(db_session, "CT", "", U[:1]) == []          # fails closed
+    n["fail"] = False
+    assert len(await M.match(db_session, "MR", "", U[:1])) == 1      # the failure was not cached
+    assert len(await M.match(db_session, "US", "", U[:1])) == 1      # the success was
+    assert n["calls"] == 2
+
+
+async def test_pack_gate_asks_a_case_agnostic_question_with_history(monkeypatch, toy_entry):
+    seen = {}
+
+    async def jev(payload, key, timeout, transport=None):
+        seen.update(payload)
+        return _Resp({"answers": {"q": {"noul": 0.8}}})
+    monkeypatch.setattr(M, "jev_post", jev)
+    assert await M._pack_gate("nodule", toy_entry, "smoker") == 0.8
+    assert seen["state"] == "CLINICAL HISTORY:\nsmoker\n\nFINDING:\nnodule"
+    assert seen["questions"]["q"] == {"type": "noul", "instructions":
+                                      "The FINDING describes an incidental nodule of the chest that Toy 2020 applies to."}
+
+
+async def test_card_for_pack_without_gate_skips_jev(db_session, monkeypatch, toy):
+    monkeypatch.setattr(L, "get", lambda: _toy_lib(toy))
+
+    async def pack_gate(finding, pack, history=""):
+        raise AssertionError("gate=False skips the pack gate")
+    monkeypatch.setattr(M, "_pack_gate", pack_gate)
+    c = await M.card_for(db_session, "Toy Nodule", "2020", "q", "x", gate=False)
+    assert c.key == "toy-nodule@1.0"

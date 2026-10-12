@@ -29,16 +29,17 @@ from .types import Card, Publication
 logger = logging.getLogger(__name__)
 
 TNM_GATE_MIN = 0.7   # provisional: Jev "a primary malignancy of this site that would be staged"; set by the Task 13 lab
+PACK_GATE_MIN = TNM_GATE_MIN   # Jev "the FINDING is the kind of finding this pack applies to" (pack_question)
 MAX_PER_FINDING = 2
 MAX_PER_CASE = 6
 CANDIDATES_PER_FINDING = 3   # resolved per finding (a candidate may resolve to nothing; the next one fills in)
 TIMEOUT_S = 8.0
-JEV_TIMEOUT_S = 4.0  # the edition pick and the TNM site gate; both fail closed (no pick, no card)
+JEV_TIMEOUT_S = 4.0  # the edition pick and the TNM / pack gates; all fail closed (no pick, no card)
 PICK_MIN = 0.6
 KNOWN_MAX = 200      # registry rows offered to the model, verified first then most recent
 _CACHE_MAX = 512
 _CACHE: "OrderedDict[tuple, list]" = OrderedDict()        # (scan, history, finding) -> the model's systems
-_GATE: "OrderedDict[tuple, float]" = OrderedDict()        # (history, finding, site) -> Jev score (successes only)
+_GATE: "OrderedDict[tuple, float]" = OrderedDict()        # (history, finding, site or pack key) -> Jev score (successes only)
 _PICK: "OrderedDict[tuple, str | None]" = OrderedDict()   # (finding, history, name, row keys) -> picked key (successes only)
 _BRANCH: "OrderedDict[tuple, str | None]" = OrderedDict()  # (finding, row key, model branch) -> registry branch (successes only)
 
@@ -279,18 +280,50 @@ async def _tnm_gate(finding: str, site: str, history: str = "") -> float:
     return J.scores(r.json(), ["q"])["q"]   # malformed raises: the gate fails closed and caches nothing
 
 
-async def _gate(finding: str, site: str, history: str) -> float | None:
-    k = (R.norm(history), R.norm(finding), site)
+async def _cached_gate(k: tuple, ask, label: str) -> float | None:
+    """A Jev gate score through the _GATE cache: successes are cached; a failure is None (the caller fails closed)
+    and caches nothing."""
     hit, v = _get(_GATE, k)
     if hit:
         return v
     try:
-        v = await _tnm_gate(finding, site, history)
+        v = await ask()
     except Exception as e:
-        logger.info("[copilot.match] TNM gate failed closed (%s): %s", site, type(e).__name__)
+        logger.info("[copilot.match] %s gate failed closed: %s", label, type(e).__name__)
         return None
     _put(_GATE, k, v)
     return v
+
+
+async def _gate(finding: str, site: str, history: str) -> float | None:
+    return await _cached_gate((R.norm(history), R.norm(finding), site),
+                              lambda: _tnm_gate(finding, site, history), f"TNM ({site})")
+
+
+def _a(phrase: str) -> str:
+    return ("an " if phrase[:1].lower() in "aeiou" else "a ") + phrase
+
+
+def pack_question(pack) -> str:
+    """The pack gate's yes/no question, built from the pack's own applies_to and display only (case-agnostic)."""
+    a = pack.applies_to
+    kinds = " or ".join(a.finding_type) or pack.topic
+    lead = " ".join([*a.context, kinds]).strip()
+    where = f" of the {' or '.join(a.region)}" if a.region else ""
+    return f"The FINDING describes {_a(lead)}{where} that {pack.display} applies to."
+
+
+async def _pack_gate(finding: str, pack, history: str = "") -> float:
+    q = {"type": "noul", "instructions": pack_question(pack)}
+    r = await jev_post({"model": JEV_MODEL, "state": _state(finding, history), "questions": {"q": q}},
+                       os.environ.get("OPENROUTER_API_KEY", ""), JEV_TIMEOUT_S)
+    r.raise_for_status()
+    return J.scores(r.json(), ["q"])["q"]   # malformed raises: the gate fails closed and caches nothing
+
+
+async def _pgate(finding: str, pack, history: str) -> float | None:
+    return await _cached_gate((R.norm(history), R.norm(finding), pack.key),
+                              lambda: _pack_gate(finding, pack, history), f"pack ({pack.key})")
 
 
 async def _tnm_card(f: Finding, s: RawSystem, history: str, gate: bool = True) -> Card | None:
@@ -340,6 +373,12 @@ async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool 
     lib = L.get()
     pack = lib.find(s.name, s.version) or lib.find(s.name)
     if pack is not None and pack.tier == 1:
+        # A name hit is not applicability: Jev must agree the finding is the kind this pack is for (fails closed: no
+        # card, never a fall-through to the registry). Siblings share topic and applies_to: gated once, on the hit.
+        if gate:
+            score = await _pgate(f.text, pack, history)
+            if score is None or score < PACK_GATE_MIN:
+                return None
         return Card(key=pack.key, name=pack.display, version=pack.edition, finding_id=f.id, why=s.why,
                     branch=PACK_BRANCH, skeleton=[PACK_BRANCH], publication=Publication(body=pack.issuer, year=pack.edition),
                     known=True, status="verified", siblings=[x.key for x in lib.siblings(pack)])
@@ -367,7 +406,8 @@ async def _safe_card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: 
 async def card_for(db: Session, name: str, version: str, finding_id: str, finding_text: str, history: str = "",
                    site: str = "", gate: bool = True) -> Card | None:
     """One named system as a card through the matcher's own normalisation (exact key, alias, Jev edition pick, else a
-    new key; "TNM" via the closed site list and, unless `gate=False`, the Jev gate). For ask's no-card path. Never
+    new key; "TNM" via the closed site list and, unless `gate=False`, the Jev gate; a library pack, unless `gate=False`,
+    via the pack gate). For ask's no-card path. Never
     raises: None on any failure."""
     try:
         rows = _Rows(db)
