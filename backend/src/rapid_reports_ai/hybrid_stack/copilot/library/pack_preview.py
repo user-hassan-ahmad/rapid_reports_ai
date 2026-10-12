@@ -407,7 +407,9 @@ async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding
 NO_PRIOR_INPUT = "prior_study"
 NO_PRIOR_MIN = 0.8
 PRIOR_MENTIONED_MAX = 0.5
-PRIOR_MENTIONED = "The DICTATION mentions any previous imaging that exists or was performed"
+PRIOR_MENTIONED = "The CLINICAL HISTORY or DICTATION mentions any previous imaging that exists or was performed"
+# a history that follows a known finding implies a previous study, whatever the dictation says: asked
+_FOLLOW_UP = re.compile(r"\b(?:known|follow[\s-]?up|surveillance|interval)\b", re.I)
 _ELSEWHERE = re.compile(r"\b(?:requested|awaited|another\s+trust|other\s+hospital|outside|external)\b", re.I)
 _PRIOR_WORD = re.compile(r"\b(?:prior|prev|previous|previously|comparison|compared|earlier|old)\b", re.I)
 _SENTENCE = re.compile(r"[^.;\n]+(?:\.(?=\d)[^.;\n]*)*")
@@ -419,9 +421,10 @@ def _no_prior_claim(e: Entry) -> str:
 
 
 async def _no_prior(e: Entry, findings: str, history: str) -> tuple[str | None, bool]:
-    """(the dictation's sentence that settles "no previous imaging", or None; whether the Jev call failed)."""
+    """(the dictation's sentence that settles "no previous imaging", or None; whether the Jev call failed). Jev sees
+    the clinical history as well: "No" settles only when neither it nor the dictation mentions previous imaging."""
     i = e.input(NO_PRIOR_INPUT)
-    if i is None or i.type != "boolean" or _ELSEWHERE.search(f"{findings}\n{history}"):
+    if i is None or i.type != "boolean" or _ELSEWHERE.search(f"{findings}\n{history}") or _FOLLOW_UP.search(history):
         return None, False
     quote = next((m.group(0).strip() for m in _SENTENCE.finditer(findings or "") if _PRIOR_WORD.search(m.group(0))),
                  None)
@@ -430,6 +433,7 @@ async def _no_prior(e: Entry, findings: str, history: str) -> tuple[str | None, 
     modality = " or ".join(e.applies_to.modality) or "imaging"
     try:
         no, mentioned = await _jev([_no_prior_claim(e), PRIOR_MENTIONED],
+                                   f"CLINICAL HISTORY:\n{history or 'none given'}\n\n"
                                    f"DICTATION (a {modality} report; any previous imaging would be listed here):\n"
                                    f"{findings}")
     except Exception as ex:

@@ -931,3 +931,27 @@ async def test_an_enum_settles_only_when_both_claims_reach_point_eight(toy_entry
     ("solid", "Nodule is solid.", False)])
 def test_the_modifier_guard(quote, text, modified):
     assert PP._modified(quote, [text]) is modified
+
+
+# review I2: the clinical history is in the prior check; a history that implies a previous study asks
+@pytest.mark.parametrize("history", ["Known RUL nodule on CT 2023, for follow-up.", "Surveillance of a lung nodule.",
+                                     "Interval CT."])
+async def test_a_history_implying_a_previous_study_asks_prior_study(monkeypatch, jev, history):
+    from tests.test_library_partial import _bts
+    _prior_jev(jev)                                   # even when Jev reads "no previous imaging" in the dictation
+    _model(monkeypatch)
+    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging available for comparison.", history, {},
+                                finding=PRIOR_FINDING)
+    assert "prior_study" in out.missing
+
+
+async def test_the_prior_check_sees_the_history(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    _prior_jev(jev, mentioned=0.9)
+    _model(monkeypatch)
+    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging.", "Lung nodule on CT 2023.", {},
+                                finding=PRIOR_FINDING)
+    state = next(p["state"] for p in jev["payloads"] if any(NO_PRIOR in q["instructions"]
+                                                              for q in p["questions"].values()))
+    assert state.startswith("CLINICAL HISTORY:\nLung nodule on CT 2023.\n\nDICTATION (a CT report")
+    assert "prior_study" in out.missing
