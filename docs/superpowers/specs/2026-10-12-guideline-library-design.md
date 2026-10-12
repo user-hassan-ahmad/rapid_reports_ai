@@ -453,6 +453,9 @@ Status (2026-10-12): items 1 and 2 done, item 3 **failed** its gate, item 4 not 
 1. **Per-finding settling.** Add `scope` (§3.6) and a `finding` request field. Lesion quotes must be verbatim in the
    card's own unit. Code reads numbers and units from the quote, using one conversion table. One batched Jev check,
    "the FINDING states `<label>`: `<value>`", runs for enum and yes/no inputs.
+   *Result (fix rounds 1 and 3):* a number is read from the whole measurement its quote sits in, and Jev checks
+   numbers too. A lesion number whose finding holds more than one measurement in the input's unit family (for
+   example "8 and 4 mm", or "20 HU …, 45 HU …") is asked, never picked.
 2. **Eligibility triage.** Add `role: eligibility` (§3.6) with shared patient answers, and the three card states and
    the eligibility strip (§7.4). The existing packs' scope clauses become eligibility inputs: Fleischner's exclusion
    input is reclassified, and BTS and Bosniak gain theirs from the source. The gates enforce at most three eligibility

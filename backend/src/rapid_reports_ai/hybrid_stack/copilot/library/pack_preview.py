@@ -133,6 +133,8 @@ def _value(i: InputDef, item: RawItem, texts: list[str] | None = None) -> InputV
     if item.state != "present":
         return None
     if i.type == "number":
+        if texts is not None and i.scope == "lesion" and Q.several(texts[0], i.unit, i.dims):
+            return None              # several measurements in this finding: which one is meant is asked, never guessed
         x = (Q.pick(Q.readings(item.quote, i.unit, i.dims), _num(item.value), i.unit) if texts is None
              else Q.settle(item.quote, texts, i.unit, i.dims, _num(item.value)))
         return InputValue(value=x) if x is not None and i.in_range(x) else None   # out of range: asked

@@ -469,3 +469,31 @@ async def test_a_degraded_settle_leaves_eligibility_asked_first(toy, monkeypatch
     monkeypatch.setattr(PP, "_call", boom)
     out = await PP.preview_pack(_elig(toy), FINDING, "", {}, finding=FINDING)
     assert out.degraded is True and out.state == "check_first" and out.missing[0] == "known_cancer"
+
+
+@pytest.mark.parametrize("finding,quote,unit,dims", [
+    ("Two nodules measuring 8 and 4 mm.", "4 mm", "mm", "mean"), ("Two nodules measuring 8 and 4 mm.", "8 mm", "mm", "mean"),
+    ("8 mm, 4 mm.", "8 mm", "mm", None), ("5 mm nodule; 9 mm nodule.", "9 mm", "mm", "max"),
+    ("Cyst 20 HU on unenhanced, 45 HU post contrast.", "45 HU", "HU", None),
+    ("8 mm (previously 6 mm).", "8 mm", "mm", None)])
+def test_a_lesion_number_in_a_finding_with_several_measurements_is_asked(finding, quote, unit, dims):
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import InputDef
+    i = InputDef(id="n", label="N", type="number", unit=unit, dims=dims)
+    model = float(quote.split()[0])
+    assert PP._value(i, PP.RawItem(input="n", value=model, quote=quote), [finding]) is None
+
+
+@pytest.mark.parametrize("finding,quote,unit,dims,model,want", [
+    ("A solitary 8 mm nodule.", "8 mm", "mm", None, 8, 8.0), ("A 12 x 7 mm nodule.", "12 x 7 mm", "mm", "mean", 9.5, 9.5),
+    ("Attenuation -20 HU.", "-20 HU", "HU", None, -20, -20.0)])
+def test_a_lesion_number_alone_in_its_finding_still_settles(finding, quote, unit, dims, model, want):
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import InputDef
+    i = InputDef(id="n", label="N", type="number", unit=unit, dims=dims)
+    assert PP._value(i, PP.RawItem(input="n", value=model, quote=quote), [finding]).value == want
+
+
+def test_a_patient_number_is_not_held_to_one_measurement():
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import InputDef
+    i = InputDef(id="a", label="Age", type="number", unit="years", scope="patient")
+    assert PP._value(i, PP.RawItem(input="a", value=65, quote="65 years"),
+                     ["Aged 65 years, smoker for 40 years."]).value == 65

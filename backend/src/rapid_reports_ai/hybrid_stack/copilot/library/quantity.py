@@ -147,6 +147,38 @@ def spans(quote: str, text: str) -> list[str]:
     return [_widen(text, m.start(), m.end()) for m in pat.finditer(text)]
 
 
+_LIST_GAP = re.compile(r"\s*(?:,|;|&|\band\b|\bor\b)\s*", re.I)
+
+
+def several(text: str, unit: str, dims: str | None = None) -> bool:
+    """The text holds more than one distinct measurement in the unit's family (every unit that converts to it): a
+    dimension set is one measurement; a bare number listed before one ("8 and 4 mm") shares its unit; the same
+    measurement repeated is one. Counts and unitless numbers have no family."""
+    want = canon(unit)
+    if want in BARE or not text:
+        return False
+    fam = {u for u in set(_CANON.values()) if u == want or (u, want) in CONVERT}
+    exprs: list[list[int]] = []                      # runs of measurement tokens with only spaces between
+    for m in _TOK.finditer(text):
+        if exprs and not text[exprs[-1][1]:m.start()].strip():
+            exprs[-1][1] = m.end()
+        else:
+            exprs.append([m.start(), m.end()])
+    exprs = [x for x in exprs if re.search(r"\d", text[x[0]:x[1]])]
+    units = [{canon(u.group(0)) for u in re.finditer(rf"(?<![a-z])(?:{_UNITS})(?![a-z0-9])", text[a:b], re.I)}
+             for a, b in exprs]
+    member = [bool(u & fam) for u in units]
+    for k in range(len(exprs) - 2, -1, -1):          # "8 and 4 mm", "8, 4 mm": the bare number shares the unit
+        if not member[k] and not units[k] and member[k + 1] and _LIST_GAP.fullmatch(text[exprs[k][1]:exprs[k + 1][0]]):
+            member[k] = True
+    sigs = set()
+    for (a, b), m in zip(exprs, member):
+        if m:
+            w = text[a:b]
+            sigs.add(tuple(readings(w, unit, dims)) or " ".join(w.lower().split()))
+    return len(sigs) > 1
+
+
 def settle(quote: str, texts: list[str], unit: str, dims: str | None = None,
            model: float | None = None) -> float | None:
     """The value a quote settles, read from the whole measurement it sits in. None (asked) when the quote is not in

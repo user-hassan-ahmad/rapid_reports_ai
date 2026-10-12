@@ -132,3 +132,19 @@ def test_settle_reads_the_whole_measurement_and_asks_when_it_is_ambiguous(quote,
 ])
 def test_settle_gives_the_one_reading_of_the_whole_measurement(quote, text, unit, dims, model, want):
     assert Q.settle(quote, [text], unit, dims, model) == want
+
+
+@pytest.mark.parametrize("text,unit", [
+    ("Two nodules measuring 8 and 4 mm.", "mm"), ("8 mm, 4 mm.", "mm"), ("5 mm nodule; 9 mm nodule.", "mm"),
+    ("Cyst 20 HU on unenhanced, 45 HU post contrast.", "HU"), ("8 mm (previously 6 mm).", "mm"),
+    ("Nodule 0.8 cm, previously 6 mm.", "mm")])
+def test_a_finding_with_several_measurements_in_the_unit_family_is_several(text, unit):
+    assert Q.several(text, unit)
+
+
+@pytest.mark.parametrize("text,unit,dims", [
+    ("A solitary 8 mm nodule.", "mm", None), ("A 12 x 7 mm nodule.", "mm", "mean"), ("Attenuation -20 HU.", "HU", None),
+    ("8 mm nodule; the 8 mm nodule is unchanged.", "mm", None), ("8 mm nodule, 2019 CT, 200 mm3.", "mm", None),
+    ("Two nodules, 8 and 4 mm.", "count", None), ("Cyst 20 HU, 3 cm.", "HU", None)])
+def test_one_measurement_in_the_unit_family_is_not_several(text, unit, dims):
+    assert not Q.several(text, unit, dims)
