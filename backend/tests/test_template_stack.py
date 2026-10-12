@@ -77,7 +77,7 @@ def test_stack_prompts_take_out_what_the_scratchpad_confirmed():
     # A sheet-defined CLINICAL HISTORY section is still written as on today's raw path
     assert "If a CLINICAL HISTORY section is defined in the skill sheet" in g.GLOBAL_STYLE_GUIDE_STACK
     assert "supplied separately" not in g.GLOBAL_STYLE_GUIDE_STACK
-    assert "except over its Scratchpad\nSession rules" in g.TEMPLATE_SHEET_HEADER_STACK
+    assert "except over its Scratchpad Session rules" in " ".join(g.TEMPLATE_SHEET_HEADER_STACK.split())
     # Unchanged style rules
     for kept in ("### Terminology Enforcement", "### Data Authority", "### Fixed Blocks and Parametrisation"):
         assert kept in g.GLOBAL_STYLE_GUIDE_STACK
@@ -119,3 +119,17 @@ async def test_no_stack_keeps_the_raw_path(capture):
     gen = next(k for k in capture if k["output_type"] is str)
     assert g.GLOBAL_STYLE_GUIDE in gen["system_prompt"] and "No significant valvular regurgitation" in gen["system_prompt"]
     assert g.PRE_WRITING_ANALYSIS in gen["user_prompt"]
+
+
+def test_session_rules_cover_fixed_lines_and_examples():
+    b = stack_brief("", "C.", [])
+    assert "FIXED line" in b and "written as it stands" in b
+    assert "examples of the radiologist's wording" in b
+    assert "even when the input does not mention its structure" in b
+    assert "style note" in b
+
+
+def test_stack_terminology_applies_only_to_sheet_wording():
+    from rapid_reports_ai.global_style_guide import GLOBAL_STYLE_GUIDE_STACK, TEMPLATE_SHEET_HEADER_STACK
+    assert "a term in the FINDINGS input is kept as the radiologist said it" in GLOBAL_STYLE_GUIDE_STACK
+    assert "suppression rules" not in TEMPLATE_SHEET_HEADER_STACK.split("were taken out")[0]

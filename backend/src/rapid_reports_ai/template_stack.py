@@ -73,7 +73,16 @@ def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = ()) -> st
         "the input names; nothing is added.\n"
         "- **Required statements:** a rule in this sheet that requires a statement (always mention, always state, "
         "always close with) applies only when the FINDINGS input contains that statement, and then only decides "
-        "where it goes; otherwise the rule is skipped and that structure is not mentioned.")
+        "where it goes; otherwise the rule is skipped and that structure is not mentioned.\n"
+        "- **Fixed lines:** a FIXED line is the template's fixed wording (what was performed, standard text): it is "
+        "written as it stands in its place, even when the input does not mention its structure (the two rules above "
+        "do not apply to it), unless a RULE whose condition the input meets suppresses or replaces it. "
+        "A FIXED line with a {slot} is written only when the input gives that value; otherwise it is left out.\n"
+        "- **Examples are wording only:** quoted Opening, Order, Abnormal pattern and Measurement lines are examples "
+        "of the radiologist's wording. Copy their phrasing for what the input states; never their content: no finding, "
+        "descriptor, value, grade, code, time window or interpretation from an example appears unless the input "
+        "states it. The same holds for a style note or logic line that says the report states such content: it "
+        "applies only when the input states it.")
     removed = [t.strip() for t in declined if t.strip()]
     if removed:
         parts.append("## Removed by the Radiologist\n" + "\n".join(f'- DO NOT ASSERT: "{t}"' for t in removed))
