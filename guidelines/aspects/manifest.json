@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "Validity and reliability of a quantitative computed tomography score in predicting outcome of hyperacute stroke before thrombolytic therapy (Barber PA, Demchuk AM, Zhang J, Buchan AM; ASPECTS Study Group. Lancet 2000;355:1670-1674); third-party mirror of the publisher PDF",
+      "issuer": "ASPECTS Study Group (Alberta Stroke Programme)",
+      "edition": "2000",
+      "url": "https://doi.org/10.1016/S0140-6736(00)02237-6",
+      "sha256": "61e2fef84393774f96dcccb635e4e38ae737a663c4e342a7f184c70eacb8805e",
+      "file": "sources/61e2fef84393774f96dcccb635e4e38ae737a663c4e342a7f184c70eacb8805e.pdf",
+      "text_file": "sources/61e2fef84393774f96dcccb635e4e38ae737a663c4e342a7f184c70eacb8805e.txt",
+      "retrieved": "2026-10-12"
+    }
+  ]
+}
