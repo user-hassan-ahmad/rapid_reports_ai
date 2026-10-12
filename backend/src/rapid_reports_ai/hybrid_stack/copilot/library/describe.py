@@ -112,6 +112,9 @@ def _short(loc: Locator | None) -> str:
     return f"{loc.source} {where}".strip()
 
 
+NA, NA_MARK = "@not_applicable", "–"   # a table cell that matches a not-applicable input, and its mark
+
+
 def material(e: Entry, sources: list[dict]) -> str:
     """What Ask grounds an answer on for a library entry: its own located facts (rules, bands, outcomes, caveats,
     reference fields) and the rows of its reference tables. Each source's title is printed once; every fact cites it
@@ -141,15 +144,22 @@ def material(e: Entry, sources: list[dict]) -> str:
             if s.locator is not None and s.rows:
                 lines.append(f"Table {s.id} [{_short(s.locator)}]: "
                              + " | ".join(_name(e, k) for k in s.keys) + " → outcome id")
-                lines += ["  " + " | ".join(_val(e, k, c) for k, c in zip(s.keys, r.match)) + f" → {r.result}"
-                          for r in s.rows]
+                if any(c == NA for r in s.rows for c in r.match):
+                    lines.append(f"  ({NA_MARK} = not applicable)")
+                lines += ["  " + " | ".join(NA_MARK if c == NA else _val(e, k, c) for k, c in zip(s.keys, r.match))
+                          + f" → {r.result}" for r in s.rows]
         elif s.id in by_id:
             claim, loc = by_id[s.id]
             lines.append(f"- {claim} [{_short(loc)}]")
     located_outcomes = [o for o in e.outcomes if o.locator is not None]
     if located_outcomes:
         lines.append("Outcomes (id: classification → recommendation):")
-        lines += [f"- {o.id}: {_result(e, o.id)} [{_short(o.locator)}]" for o in located_outcomes]
+        by_loc: dict[str, list] = {}
+        for o in located_outcomes:
+            by_loc.setdefault(_short(o.locator), []).append(o)
+        for loc, group in by_loc.items():
+            lines.append(f"  [{loc}]")
+            lines += [f"- {o.id}: {_result(e, o.id)}" for o in group]
     caveats: dict[str, tuple[list[str], list[str]]] = {}
     for o in located_outcomes:
         for c in o.caveats:
