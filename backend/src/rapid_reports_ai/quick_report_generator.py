@@ -24,18 +24,27 @@ from .quick_report_brief import compile_brief, stack_fallback
 from .linked_normals import strip_links
 from .quick_report_quality import run_quality_check
 from .report_reconcile import write_options
-from .quick_report_hardening import QUICK_REPORT_HARDENING_PREAMBLE, QUICK_REPORT_HARDENING_PREAMBLE_BRIEF
+from .quick_report_hardening import (
+    QUICK_REPORT_HARDENING_PREAMBLE,
+    QUICK_REPORT_HARDENING_PREAMBLE_BRIEF,
+    QUICK_REPORT_HARDENING_PREAMBLE_STACK,
+)
 from .quick_report_prompts import (
     QR_PRE_WRITING_ANALYSIS,
     QR_PRE_WRITING_ANALYSIS_BRIEF,
+    QR_PRE_WRITING_ANALYSIS_STACK,
     QR_SHEET_HEADER,
     QR_SHEET_HEADER_BRIEF,
+    QR_SHEET_HEADER_STACK,
     QR_STYLE_GUIDE,
     QR_STYLE_GUIDE_BRIEF,
+    QR_STYLE_GUIDE_STACK,
     QR_SYSTEM_PREAMBLE,
     QR_SYSTEM_PREAMBLE_BRIEF,
+    QR_SYSTEM_PREAMBLE_STACK,
     QR_VERIFICATION_CHECKLIST,
     QR_VERIFICATION_CHECKLIST_BRIEF,
+    QR_VERIFICATION_CHECKLIST_STACK,
 )
 
 logger = logging.getLogger(__name__)
@@ -54,13 +63,23 @@ _ANTHROPIC_INSTRUCTION = """Generate the report now. Output the report content O
 _SETTINGS = {"temperature": 0.8, "top_p": 0.95, "max_tokens": 65536}
 
 
+# (preamble, style guide, sheet header, hardening, pre-writing analysis, verification) per sheet kind.
+_STACKS = {
+    "raw": (QR_SYSTEM_PREAMBLE, QR_STYLE_GUIDE, QR_SHEET_HEADER, QUICK_REPORT_HARDENING_PREAMBLE,
+            QR_PRE_WRITING_ANALYSIS, QR_VERIFICATION_CHECKLIST),
+    "brief": (QR_SYSTEM_PREAMBLE_BRIEF, QR_STYLE_GUIDE_BRIEF, QR_SHEET_HEADER_BRIEF, QUICK_REPORT_HARDENING_PREAMBLE_BRIEF,
+              QR_PRE_WRITING_ANALYSIS_BRIEF, QR_VERIFICATION_CHECKLIST_BRIEF),
+    "stack": (QR_SYSTEM_PREAMBLE_STACK, QR_STYLE_GUIDE_STACK, QR_SHEET_HEADER_STACK, QUICK_REPORT_HARDENING_PREAMBLE_STACK,
+              QR_PRE_WRITING_ANALYSIS_STACK, QR_VERIFICATION_CHECKLIST_STACK),
+}
+
+
 def build_prompts(skill_sheet: str, scan_type: str, findings: str, clinical_history: str,
-                  provider: str, brief: bool = False) -> tuple[str, str]:
-    """System and user prompt for one quick report. `skill_sheet` is the analyser's sheet, or
-    the compiled brief when `brief` is set; the hardening preamble is prepended here."""
-    style, hardening = (QR_STYLE_GUIDE_BRIEF, QUICK_REPORT_HARDENING_PREAMBLE_BRIEF) if brief else (QR_STYLE_GUIDE, QUICK_REPORT_HARDENING_PREAMBLE)
-    pre, ver = (QR_PRE_WRITING_ANALYSIS_BRIEF, QR_VERIFICATION_CHECKLIST_BRIEF) if brief else (QR_PRE_WRITING_ANALYSIS, QR_VERIFICATION_CHECKLIST)
-    preamble, header = (QR_SYSTEM_PREAMBLE_BRIEF, QR_SHEET_HEADER_BRIEF) if brief else (QR_SYSTEM_PREAMBLE, QR_SHEET_HEADER)
+                  provider: str, brief: bool = False, stack: bool = False) -> tuple[str, str]:
+    """System and user prompt for one quick report. `skill_sheet` is the analyser's sheet, the
+    compiled brief when `brief` is set, or a scratchpad session's stack brief when `stack` is set;
+    the hardening preamble is prepended here."""
+    preamble, style, header, hardening, pre, ver = _STACKS["stack" if stack else "brief" if brief else "raw"]
     system_prompt = f"{preamble}\n\n{style}\n\n{header}\n\n{hardening}{skill_sheet}"
     inputs = f"## INPUTS\n\nScan Type: {scan_type}\nClinical History: {clinical_history}\nFindings: {findings}"
     if provider == "anthropic":
@@ -135,7 +154,8 @@ async def generate_quick_report(
 
     async def _write(model: str):
         provider = _get_model_provider(model)
-        system_prompt, user_prompt = build_prompts(sheet_for_generator, scan_type, findings, clinical_history, provider, brief=brief is not None)
+        system_prompt, user_prompt = build_prompts(sheet_for_generator, scan_type, findings, clinical_history, provider,
+                                                    brief=brief is not None, stack=stack)
         return await _run_agent_with_model(
             model_name=model, output_type=str, system_prompt=system_prompt, user_prompt=user_prompt,
             api_key=_get_api_key_for_provider(provider), use_thinking=True, model_settings=_SETTINGS,

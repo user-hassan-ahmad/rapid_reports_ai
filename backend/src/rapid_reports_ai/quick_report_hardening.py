@@ -509,3 +509,42 @@ for _old, _new in (
 ):
     _B = _swap(_B, _old, _new)
 QUICK_REPORT_HARDENING_PREAMBLE_BRIEF = _B
+
+
+# Scratchpad (stack) variant, built from the brief one (2026-10-12 audit): the clinical statements, the conclusion
+# and the removed sentences were confirmed in the scratchpad, so the principles that ask the generator to cover the
+# sweep, synthesise or recommend in the impression, or act on reconciliation labels are replaced; voice, anti-
+# fabrication, section, layout and gender rules stay. Production quick reports keep the brief preamble.
+_S = QUICK_REPORT_HARDENING_PREAMBLE_BRIEF
+for _old, _new in (
+    ("This report uses an ephemeral skill sheet generated just-in-time from scan type and clinical history.",
+     "This report uses a shared structure-and-style sheet, and the radiologist confirmed every clinical statement "
+     "in the scratchpad before generation."),
+    (_between(_S, "The impression is where the report does its clinical work.", "The principles below are the structural"),
+     "The impression is where the report does its clinical work: here it phrases the radiologist's confirmed "
+     "conclusion, which already carries the synthesis and any recommendation.\n\n"),
+    ("**1. Exemplars model voice, not content. Impression exemplars additionally do not authorise their structural "
+     "shape. Fabrication is banned under both patterns below.**",
+     "**1. Exemplars model voice, not content. Fabrication is banned under both patterns below.**"),
+    ("The skill sheet's style exemplars and impression exemplars demonstrate", "The skill sheet's style exemplars demonstrate"),
+    (_between(_S, "**Impression exemplars do not authorise their structural shape.**", "Two fabrication patterns are banned:"), ""),
+    (_between(_S, "**The fabrication ban does not extend to warranted clinical synthesis.**", "**2. Causal structure"),
+     "**Synthesis lives in the confirmed conclusion.** The impression phrases it and adds no attribution, "
+     "differential, risk or workup of its own.\n\n"),
+    (_between(_S, "**3. Descriptor propagation", "**4. Sections are mandatory."),
+     "**3. The impression carries only the conclusion's descriptors.** A size, grade or feature reaches the "
+     "impression only when the confirmed conclusion names it.\n\n"),
+    (_between(_S, "- **Secondary visible regions**", "If a section is declared"),
+     "- **Secondary visible regions** are stated only as FINDINGS states them; a region FINDINGS does not mention "
+     "is left out, never given a default-normal line or a non-assessment disclaimer.\n\n"),
+    (_between(_S, "**10. Impression completeness", "**11. Gender-specific"),
+     "**10. The impression is the confirmed conclusion in report style.** Its obligations were met in the "
+     "scratchpad: keep every finding, negative and recommendation it names, and add none.\n\n"),
+    (_between(_S, "**12. This sheet has been reconciled with this dictation.**", "---\n"),
+     "**12. The radiologist confirmed every statement before generation.** FINDINGS holds the dictated sentences, "
+     "the answers given in the scratchpad and the normals the radiologist confirmed; nothing else is stated, for "
+     "any structure or region. **DO NOT ASSERT**: the radiologist removed this statement; it never appears, in "
+     "any wording or section.\n\n"),
+):
+    _S = _swap(_S, _old, _new)
+QUICK_REPORT_HARDENING_PREAMBLE_STACK = _S

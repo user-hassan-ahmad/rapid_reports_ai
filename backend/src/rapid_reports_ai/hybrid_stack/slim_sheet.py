@@ -20,7 +20,7 @@ from .schemas import OTHER, Region
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "slim-4"   # slim-2: no sex-specific organs in region normals; slim-3: Report Flow (house prose flow); slim-4: condensed region normals
+PROMPT_VERSION = "slim-5"   # slim-2: no sex-specific organs in region normals; slim-3: Report Flow (house prose flow); slim-4: condensed region normals; slim-5: never a clinical history section
 URL = "https://api.cerebras.ai/v1/chat/completions"
 TIMEOUT_S = 120.0   # cached per family: the first case of a new scan type waits, nobody after
 
@@ -44,7 +44,7 @@ Write Markdown with exactly these sections, in this order:
 - **Not assessable on this scan:** the features this protocol cannot show (for example enhancement on an unenhanced study, or a phase that is not acquired), separated by semicolons
 
 ## Structural Pattern
-- **Sections:** the report sections in order
+- **Sections:** the report sections in order; never a clinical history or indication section (the history is never written into the report)
 - **Sweep order:** the order regions are reported in
 - **Macro-structure:** FLAT or HEADED
 
