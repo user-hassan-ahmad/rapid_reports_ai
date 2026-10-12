@@ -136,3 +136,12 @@ def test_grammar_asks_one_named_structure_per_normal_and_slotted_examples():
     assert "never contains a {slot}" in P.GRAMMAR
     for prompt in (P.ANALYSER_SYSTEM_PROMPT, P.REPAIR_SYSTEM_PROMPT, P.TEMPLATE_SHEET_CONVERT_PROMPT):
         assert "names its structure in its own words" in prompt
+
+
+def test_convert_prompt_exemplars_are_slotted_and_diagnosis_free():
+    from rapid_reports_ai import template_sheet_lab_prompts as P
+
+    t = P.TEMPLATE_SHEET_CONVERT_PROMPT
+    assert "every specific value, code, grade or time window becomes a {slot}" in t
+    assert "any diagnosis is dropped from the quote" in t
+    assert "is kept, word for word" not in t
