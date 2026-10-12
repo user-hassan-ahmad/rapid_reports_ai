@@ -83,7 +83,7 @@ async def test_output_index_is_copied_verbatim(monkeypatch, jev):
     assert out.proposal.recommendation == "CT at 6-12 months, then CT at 18-24 months"
     assert out.proposal.line == GOOD.line
     q = jev["payloads"][0]["questions"]["s0"]["instructions"]
-    assert q == "The FINDINGS or CLINICAL HISTORY state this: Risk: High risk"
+    assert q == "The FINDINGS or CLINICAL HISTORY state this: smoker"
     assert jev["payloads"][0]["state"] == "CLINICAL HISTORY:\nnone given\n\nFINDINGS:\n7 mm solid nodule, smoker."
 
 
@@ -139,8 +139,9 @@ async def test_tnm_preview_proposal_comes_from_code(monkeypatch, jev):
     async def call(system, prompt):
         seen["system"] = system
         assert "TX" in prompt
-        return P.RawPreview(settled=[Settled(input="T", value="T2b"), Settled(input="N", value="N1"),
-                                     Settled(input="M", value="M0")], output=1, line="model text")
+        return P.RawPreview(settled=[Settled(input="T", value="T2b", quote="4.5 cm right upper lobe mass"),
+                                     Settled(input="N", value="N1", quote="ipsilateral hilar node"),
+                                     Settled(input="M", value="M0", quote="mass")], output=1, line="model text")
     monkeypatch.setattr(P, "_call", call)
     out = await P.preview(e, "Staging", "4.5 cm right upper lobe mass with ipsilateral hilar node.", "", {})
     assert out.proposal.line == "Staging (UICC TNM 9th): cT2b N1 M0, Stage IIB."
@@ -165,11 +166,13 @@ async def test_tnm_undictated_x_is_missing(monkeypatch, jev):
 
     async def post(payload, key, timeout, transport=None):
         qs = payload["questions"]
-        return _Resp({"answers": {k: {"noul": 0.1 if q["instructions"].endswith("NX") else 0.9} for k, q in qs.items()}})
+        return _Resp({"answers": {k: {"noul": 0.1 if q["instructions"].endswith("nodes not assessable") else 0.9}
+                                  for k, q in qs.items()}})
     monkeypatch.setattr(P, "jev_post", post)
-    monkeypatch.setattr(P, "_call", _model(P.RawPreview(settled=[Settled(input="T", value="T2b"),
-                                                                 Settled(input="N", value="NX"),
-                                                                 Settled(input="M", value="M0")])))
+    monkeypatch.setattr(P, "_call", _model(P.RawPreview(settled=[Settled(input="T", value="T2b", quote="4.5 cm"),
+                                                                 Settled(input="N", value="NX",
+                                                                         quote="nodes not assessable"),
+                                                                 Settled(input="M", value="M0", quote="lung mass")])))
     out = await P.preview(e, "Staging", "4.5 cm lung mass.", "", {})
     assert out.missing == ["N"] and out.proposal is None
 
@@ -179,9 +182,9 @@ async def test_tnm_single_option_axis_is_never_missing(monkeypatch, jev):
     when the model never settles it; it is not Jev-checked."""
     e = tnm.entry("Melanoma of Skin")
     assert [i.options for i in e.content.branches[0].inputs if i.id == "T"] == [["TX"]]
-    monkeypatch.setattr(P, "_call", _model(P.RawPreview(settled=[Settled(input="N", value="N0"),
-                                                                 Settled(input="M", value="M0")])))
-    out = await P.preview(e, "Staging", "f", "", {})
+    monkeypatch.setattr(P, "_call", _model(P.RawPreview(settled=[Settled(input="N", value="N0", quote="no nodes"),
+                                                                 Settled(input="M", value="M0", quote="no mets")])))
+    out = await P.preview(e, "Staging", "no nodes, no mets", "", {})
     assert out.missing == [] and {s.input: s.value for s in out.settled}["T"] == "TX"
     assert out.proposal is not None and "cTX N0 M0" in out.proposal.line
     assert len(jev["payloads"][0]["questions"]) == 2
@@ -189,8 +192,9 @@ async def test_tnm_single_option_axis_is_never_missing(monkeypatch, jev):
 
 async def test_tnm_not_needed_cannot_skip_an_axis(monkeypatch, jev):
     e = tnm.entry("Lung")
-    monkeypatch.setattr(P, "_call", _model(P.RawPreview(settled=[Settled(input="T", value="T2b"),
-                                                                 Settled(input="M", value="M0")], not_needed=["N"])))
+    monkeypatch.setattr(P, "_call", _model(P.RawPreview(settled=[Settled(input="T", value="T2b", quote="4.5 cm"),
+                                                                 Settled(input="M", value="M0", quote="mass")],
+                                                        not_needed=["N"])))
     out = await P.preview(e, "Staging", "f", "", {})
     assert out.missing == ["N"] and out.proposal is None
 
@@ -201,3 +205,29 @@ async def test_preview_failure_returns_missing_inputs(monkeypatch):
     monkeypatch.setattr(P, "_call", call)
     out = await P.preview(ENTRY, "Solid", "f", "", {"count": "Single"})
     assert out.proposal is None and out.missing == ["risk"]
+
+
+async def test_stated_quote_is_kept(monkeypatch, jev):
+    monkeypatch.setattr(P, "_call", _model(GOOD))
+    out = await P.preview(ENTRY, "Solid", "7 mm solid nodule, smoker.", "", {})
+    assert [(s.input, s.value, s.quote) for s in out.settled] == [("risk", "High risk", "smoker")]
+
+
+async def test_invented_quote_is_missing(monkeypatch):
+    """Jev scores the quote against the dictation: a span the dictation does not state fails."""
+    async def post(payload, key, timeout, transport=None):
+        state = payload["state"]
+        return _Resp({"answers": {k: {"noul": 0.9 if q["instructions"].rsplit(": ", 1)[1] in state else 0.05}
+                                  for k, q in payload["questions"].items()}})
+    monkeypatch.setattr(P, "jev_post", post)
+    invented = GOOD.model_copy(update={"settled": [Settled(input="risk", value="High risk", quote="heavy smoker")]})
+    monkeypatch.setattr(P, "_call", _model(invented))
+    out = await P.preview(ENTRY, "Solid", "7 mm solid nodule.", "", {})
+    assert out.settled == [] and out.missing == ["risk"] and out.proposal is None
+
+
+async def test_empty_quote_is_missing_and_not_sent(monkeypatch, jev):
+    monkeypatch.setattr(P, "_call", _model(GOOD.model_copy(update={"settled": [Settled(input="risk", value="High risk",
+                                                                                         quote="  ")]})))
+    out = await P.preview(ENTRY, "Solid", "7 mm solid nodule, smoker.", "", {})
+    assert out.missing == ["risk"] and out.proposal is None and jev["payloads"] == []

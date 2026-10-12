@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 TIMEOUT_S = 10.0
 JEV_TIMEOUT_S = 4.0
-SETTLED_MIN = 0.6   # provisional: Jev "the FINDINGS or CLINICAL HISTORY state this input's value"; set by Task 13 lab
+SETTLED_MIN = 0.6   # provisional: Jev "the FINDINGS or CLINICAL HISTORY state this: <the model's quote>"; set by
+                    # the Task 13 lab. Jev verifies the evidence (stated text); the quote -> option mapping stays Qwen's
 _NUM = re.compile(r"\d+(?:\.\d+)?")
 _WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
           "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "twenty-one",
@@ -30,14 +31,14 @@ _WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight"
 _WORD_RE = re.compile(r"\b(" + "|".join(sorted((w for w in _WORDS[1:]), key=len, reverse=True)) + r")\b", re.I)
 
 PREVIEW_SYS = """You apply one branch of a published radiology classification system or guideline to a radiologist's dictated finding. ENTRY gives the branch's inputs, decision rule and numbered outputs: use nothing else for criteria, thresholds or categories.
-1. settled: each ENTRY input whose answer the FINDINGS or CLINICAL HISTORY state, with value = exactly one of that input's options and quote = the shortest verbatim span that states it. Never settle an input from what is usual or likely: an input nothing states stays unsettled. Inputs listed under ANSWERED are settled by the radiologist: use them as given.
+1. settled: each ENTRY input whose answer the FINDINGS or CLINICAL HISTORY state, with value = exactly one of that input's options and quote = the shortest span, copied verbatim from the FINDINGS or CLINICAL HISTORY, that settles it. Every settled value needs such a span: a value with no span that settles it is left unsettled, never settled from what is usual or likely. Inputs listed under ANSWERED are settled by the radiologist: use them as given.
 2. not_needed: the ids of the inputs the decision does not need for this finding, given what is settled.
 3. output: the number of the one OUTPUTS row that applies, only when every input the decision needs is settled; otherwise null.
 4. line: when output is set, one report sentence stating the classification for this finding: name the system and version, and the row's category when it has one; no recommendation and no interval. "" when output is null.
 Never invent an input, option, category, threshold or interval the ENTRY does not contain."""
 
 TNM_NOTE = """
-TNM: an axis the FINDINGS say cannot be assessed on this scan is settled with its X option (TX, NX, MX). An axis the FINDINGS do not mention is left unsettled, never X. The stage is computed elsewhere: leave output null and line ""."""
+TNM: an axis the FINDINGS say cannot be assessed on this scan is settled with its X option (TX, NX, MX), and its quote is the span stating that it cannot be assessed. An axis the FINDINGS do not mention is left unsettled, never X. The stage is computed elsewhere: leave output null and line ""."""
 
 
 class RawPreview(BaseModel):
@@ -86,10 +87,11 @@ def _state(findings: str, history: str) -> str:
     return f"CLINICAL HISTORY:\n{history or 'none given'}\n\nFINDINGS:\n{findings}"
 
 
-async def _jev_settled(findings: str, history: str, checks: list[tuple[str, str]]) -> dict[str, float]:
-    """One batched call: per (question, value), does the dictation state it."""
-    qs = {f"s{n}": {"type": "noul", "instructions": f"The FINDINGS or CLINICAL HISTORY state this: {q}: {v}"}
-          for n, (q, v) in enumerate(checks)}
+async def _jev_settled(findings: str, history: str, quotes: list[str]) -> dict[str, float]:
+    """One batched call: per quoted span, does the dictation state it. Jev checks the evidence (stated text, its
+    strength), not the inference from it to an option (Qwen's judgement, read against the entry's rule)."""
+    qs = {f"s{n}": {"type": "noul", "instructions": f"The FINDINGS or CLINICAL HISTORY state this: {q}"}
+          for n, q in enumerate(quotes)}
     r = await jev_post({"model": JEV_MODEL, "state": _state(findings, history), "questions": qs},
                        os.environ.get("OPENROUTER_API_KEY", ""), JEV_TIMEOUT_S)
     r.raise_for_status()
@@ -98,13 +100,13 @@ async def _jev_settled(findings: str, history: str, checks: list[tuple[str, str]
 
 
 async def _check(model: dict[str, Settled], b: Branch, findings: str, history: str) -> set[str]:
-    """The model-settled inputs Jev confirms. A Jev failure confirms none (ask, never assume)."""
-    if not model:
+    """The model-settled inputs whose quoted evidence Jev confirms. No quote, no confirmation; a Jev failure confirms
+    none (ask, never assume)."""
+    ids = [i for i, s in model.items() if s.quote.strip()]
+    if not ids:
         return set()
-    q = {i.id: i.question for i in b.inputs}
-    ids = list(model)
     try:
-        scores = await _jev_settled(findings, history, [(q[i], model[i].value) for i in ids])
+        scores = await _jev_settled(findings, history, [model[i].quote.strip() for i in ids])
     except Exception as ex:
         logger.info("[copilot.preview] settled check failed (%s): every model value is asked", type(ex).__name__)
         return set()

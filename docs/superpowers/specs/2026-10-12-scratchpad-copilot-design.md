@@ -306,9 +306,12 @@ Shared by card open and by ask. The steps:
 
 - **Code builds the preview** (`{settled, missing, proposal}`):
   - `settled` keeps only real options of real inputs; the radiologist's answers win.
-  - **Jev checks every model-settled value** in one batched call ("The FINDINGS or CLINICAL HISTORY state this:
-    <input question>: <value>"). A value below the bar, or every value when Jev fails, becomes missing: the input is
-    asked, never assumed. Answered inputs are not checked.
+  - **Jev verifies the evidence, the model keeps the judgement.** Every model-settled value must carry its quote, the
+    shortest verbatim span of the findings or referral that settles it (for a TNM X value, the span stating the axis
+    cannot be assessed); an empty quote makes the input missing. Jev checks each quote in one batched call ("The
+    FINDINGS or CLINICAL HISTORY state this: <quote>"); the quote → option mapping stays Qwen's, read against the
+    entry's rule. A quote below the bar, or every value when Jev fails, becomes missing: the input is asked, never
+    assumed. Answered inputs are not checked.
   - `missing` is computed in code: required inputs − settled − `not_needed`. A rejected or unconfirmed value is always
     missing. TNM: required = the site's axes (+ histology where the stage table varies by it), and `not_needed` is
     ignored.
