@@ -1,8 +1,10 @@
 """The preview (spec §5.4): one checked branch applied to this case. Never stored. The model chooses, code copies:
 the model settles inputs from the findings and picks one numbered output; the classification and recommendation are
 copied verbatim from that output, so a threshold or interval the entry does not hold never reaches a card. What is
-missing is computed in code, and every value the model settled is checked by Jev against the dictation (an input it
-cannot confirm is asked, never assumed). The one model-written string, the report line, keeps a numeric guard."""
+missing is computed in code, and every value the model settled has its quote checked against the dictation: code
+confirms a quote that appears verbatim (flattened), Jev checks the rest (an input neither confirms is asked, never
+assumed). The one model-written string, the report line, keeps a numeric guard; a line that fails it (or is empty)
+is replaced by a code-built one, so a proposal copied from the entry is never dropped for its wording."""
 from __future__ import annotations
 
 import asyncio
@@ -15,6 +17,8 @@ from pydantic import BaseModel, Field
 from ...enhancement_utils import _run_agent_with_model
 from ...jev_client import JEV_MODEL, jev_post
 from ...report_reconcile import QWEN
+from . import jev as J
+from . import registry as R
 from . import tnm
 from .types import Branch, Entry, Preview, Proposal, Settled
 
@@ -95,33 +99,46 @@ async def _jev_settled(findings: str, history: str, quotes: list[str]) -> dict[s
     r = await jev_post({"model": JEV_MODEL, "state": _state(findings, history), "questions": qs},
                        os.environ.get("OPENROUTER_API_KEY", ""), JEV_TIMEOUT_S)
     r.raise_for_status()
-    ans = r.json().get("answers") or {}
-    return {k: float((ans.get(k) or {}).get("noul") or 0.0) for k in qs}
+    return J.scores(r.json(), qs)   # malformed raises: an outage, never a low score
+
+
+def _verbatim(quote: str, findings: str, history: str) -> bool:
+    """A deterministic fact, not a judgement: the quote, flattened as jev._flat does (case, whitespace, punctuation
+    runs), appears as whole tokens in the flattened findings or history. No minimum token count (a settling span is
+    often one word); at least 2 characters."""
+    q = J._flat(quote)
+    return len(q) >= 2 and any(f" {q} " in f" {J._flat(t)} " for t in (findings, history) if t)
 
 
 async def _check(model: dict[str, Settled], b: Branch, findings: str, history: str) -> set[str]:
-    """The model-settled inputs whose quoted evidence Jev confirms. No quote, no confirmation; a Jev failure confirms
-    none (ask, never assume)."""
+    """The model-settled inputs whose quoted evidence is confirmed: by code when the quote is verbatim in the
+    dictation, else by Jev. No quote, no confirmation; a Jev failure confirms none of the quotes it was asked about
+    (ask, never assume)."""
     ids = [i for i, s in model.items() if s.quote.strip()]
-    if not ids:
-        return set()
+    confirmed = {i for i in ids if _verbatim(model[i].quote, findings, history)}
+    ask = [i for i in ids if i not in confirmed]
+    if not ask:
+        return confirmed
     try:
-        scores = await _jev_settled(findings, history, [model[i].quote.strip() for i in ids])
+        scores = await _jev_settled(findings, history, [model[i].quote.strip() for i in ask])
     except Exception as ex:
-        logger.info("[copilot.preview] settled check failed (%s): every model value is asked", type(ex).__name__)
-        return set()
-    return {i for n, i in enumerate(ids) if scores.get(f"s{n}", 0.0) >= SETTLED_MIN}
+        logger.info("[copilot.preview] settled check failed (%s): %d unconfirmed model value(s) asked",
+                    type(ex).__name__, len(ask))
+        return confirmed
+    return confirmed | {i for n, i in enumerate(ask) if scores.get(f"s{n}", 0.0) >= SETTLED_MIN}
 
 
 def validate(raw: RawPreview, e: Entry, b: Branch, answered: dict[str, str], confirmed: set[str] | None = None
-             ) -> tuple[Preview, bool]:
+             ) -> tuple[Preview, bool, dict[str, str]]:
     """Settled = the radiologist's answers (and self-settled TNM inputs) + model values that are real options and
-    that Jev confirmed (`confirmed`; None = no check). Missing = required − settled − not_needed; a rejected or
-    unconfirmed model value is always missing. Returns the Preview without a proposal, and whether a model value
-    disagreed with a radiologist's answer."""
+    whose quotes were confirmed (`confirmed`; None = no check). Missing = required − settled − not_needed; a rejected
+    or unconfirmed model value is always missing. Returns the Preview without a proposal, whether a model value
+    (a real option) disagreed with a radiologist's answer, and the given values that survived filtering."""
     opts = {i.id: i.options for i in b.inputs}
     given = {k: v for k, v in {**_self_settled(e, b), **answered}.items() if k in opts and v in opts[k]}
-    disagree = any(s.input in given and s.value != given[s.input] for s in raw.settled)
+    nopts = {k: {R.norm(o) for o in v} for k, v in opts.items()}
+    disagree = any(s.input in given and R.norm(s.value) in nopts[s.input] and R.norm(s.value) != R.norm(given[s.input])
+                   for s in raw.settled)
     model = {s.input: s for s in raw.settled if s.input in opts and s.input not in given and s.value in opts[s.input]}
     forced = {s.input for s in raw.settled if s.input in opts and s.input not in given} - set(model)   # bad values
     if confirmed is not None:
@@ -131,7 +148,7 @@ def validate(raw: RawPreview, e: Entry, b: Branch, answered: dict[str, str], con
     skip = set() if tnm.is_tnm(e.key) else set(raw.not_needed)
     missing = [i for i in _required(e, b) if i not in settled and (i not in skip or i in forced)]
     order = [i.id for i in b.inputs]
-    return Preview(settled=sorted(settled.values(), key=lambda s: order.index(s.input)), missing=missing), disagree
+    return Preview(settled=sorted(settled.values(), key=lambda s: order.index(s.input)), missing=missing), disagree, given
 
 
 def _proposal(raw: RawPreview, e: Entry, b: Branch, findings: str) -> Proposal | None:
@@ -139,15 +156,14 @@ def _proposal(raw: RawPreview, e: Entry, b: Branch, findings: str) -> Proposal |
     if raw.output is None or not 1 <= raw.output <= len(b.outputs):
         return None
     o = b.outputs[raw.output - 1]
-    line = (raw.line or "").strip()
-    if not line:
-        return None
-    if not line_numbers_ok(line, e, b, findings):
-        logger.info("[copilot.preview] line dropped by the numeric guard (%s)", e.key)
-        return None
     ident = f"{e.name} {e.version}".strip()
-    return Proposal(classification=f"{ident} · {o.classification}".strip(" ·") if o.classification else ident,
-                    line=line, recommendation=o.recommendation)
+    classification = f"{ident} · {o.classification}".strip(" ·") if o.classification else ident
+    line = (raw.line or "").strip()
+    if not line or not line_numbers_ok(line, e, b, findings):
+        logger.info("[copilot.preview] model line %s; code-built line used (%s)",
+                    "empty" if not line else "failed the numeric guard", e.key)
+        line = f"{classification}."
+    return Proposal(classification=classification, line=line, recommendation=o.recommendation)
 
 
 async def _call(system: str, prompt: str) -> RawPreview:
@@ -162,6 +178,8 @@ async def preview(e: Entry, branch: str, findings: str, history: str, answered: 
     if b is None or b.state != "checked":
         return Preview()
     is_tnm = tnm.is_tnm(e.key)
+    if not is_tnm and not b.outputs:
+        logger.info("[copilot.preview] checked branch has no outputs (%s/%s)", e.key, branch)
     given = {**_self_settled(e, b), **answered}
     answered_txt = "\n".join(f"- {k}: {v}" for k, v in given.items()) or "(none)"
     prompt = (f"ENTRY:\n{_entry_text(e, b)}\n\nCLINICAL HISTORY: {history or 'none given'}\n\nFINDINGS:\n{findings}"
@@ -171,11 +189,10 @@ async def preview(e: Entry, branch: str, findings: str, history: str, answered: 
     except Exception as ex:
         logger.warning("[copilot.preview] %s: %s", type(ex).__name__, str(ex)[:200])
         return validate(RawPreview(), e, b, answered)[0]
-    unchecked, _ = validate(raw, e, b, answered)
-    given_ids = set(given) & {i.id for i in b.inputs}
-    model = {s.input: s for s in unchecked.settled if s.input not in given_ids}
+    unchecked, _, valid_given = validate(raw, e, b, answered)
+    model = {s.input: s for s in unchecked.settled if s.input not in valid_given}
     confirmed = await _check(model, b, findings, history)
-    out, disagree = validate(raw, e, b, answered, confirmed)
+    out, disagree, _ = validate(raw, e, b, answered, confirmed)
     if out.missing:
         return out
     if is_tnm:   # the model only settles axes; code assembles the proposal (and any stage)
@@ -185,4 +202,6 @@ async def preview(e: Entry, branch: str, findings: str, history: str, answered: 
     if disagree:
         logger.info("[copilot.preview] a model value contradicts the radiologist's answer (%s)", e.key)
         return out
+    if raw.output is None:
+        logger.info("[copilot.preview] nothing missing but the model chose no output (%s)", e.key)
     return out.model_copy(update={"proposal": _proposal(raw, e, b, findings)})

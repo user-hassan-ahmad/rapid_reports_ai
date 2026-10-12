@@ -291,3 +291,102 @@ async def test_model_failure_returns_no_cards(db_session, monkeypatch):
         raise RuntimeError("down")
     monkeypatch.setattr(M, "_call", call)
     assert await M.match(db_session, "CT", "", U) == []
+
+
+async def test_both_sides_of_the_id_comparison_are_normalised(db_session, monkeypatch):
+    async def call(prompt):
+        return M.RawMatch(findings=[M.RawFinding(id="u1", systems=[_sys("Fleischner")])])
+    monkeypatch.setattr(M, "_call", call)
+    f = [M.Finding(id=" [u1] ", text="8 mm part-solid nodule right upper lobe.")]
+    assert [c.key for c in await M.match(db_session, "CT", "", f)] == ["fleischner@2017"]
+
+
+async def test_malformed_tnm_gate_answer_fails_closed_and_is_not_cached(db_session, monkeypatch):
+    async def call(prompt):
+        return _raw(u1=[M.RawSystem(name="TNM", version="9", site="Lung", why="w")])
+    st = {"body": {"answers": {}}}
+
+    async def jev(payload, key, timeout, transport=None):
+        return _Resp(st["body"])
+    monkeypatch.setattr(M, "_call", call)
+    monkeypatch.setattr(M, "jev_post", jev)
+    assert await M.match(db_session, "CT", "", U[:1]) == []
+    assert len(M._GATE) == 0
+    st["body"] = {"answers": {"q": {"noul": 0.9}}}
+    assert len(await M.match(db_session, "MR", "", U[:1])) == 1
+
+
+async def test_malformed_edition_pick_is_not_cached(db_session, monkeypatch):
+    for v in ("2005", "2017"):
+        _put(db_session, f"fleischner@{v}", "Fleischner", v)
+
+    async def call(prompt):
+        return _raw(u1=[_sys("Fleischner", "")])
+
+    async def jev(payload, key, timeout, transport=None):
+        return _Resp({"answers": {"pick": {"choice": "ed_0"}}})   # no confidence
+    monkeypatch.setattr(M, "_call", call)
+    monkeypatch.setattr(M, "jev_post", jev)
+    assert (await M.match(db_session, "CT", "", U[:1]))[0].key == "fleischner@2017"   # latest, no pick
+    assert len(M._PICK) == 0
+
+
+async def test_pick_cache_key_includes_history(db_session, monkeypatch):
+    for v in ("2005", "2017"):
+        _put(db_session, f"fleischner@{v}", "Fleischner", v)
+    seen = []
+
+    async def call(prompt):
+        return _raw(u1=[_sys("Fleischner", "")])
+
+    async def pick(finding, name, rows, history=""):
+        seen.append(history)
+        return "fleischner@2005"
+    monkeypatch.setattr(M, "_call", call)
+    monkeypatch.setattr(M, "_jev_pick", pick)
+    await M.match(db_session, "CT", "smoker", U[:1])
+    await M.match(db_session, "CT", "never smoked", U[:1])
+    assert seen == ["smoker", "never smoked"]
+
+
+async def test_unmatched_branch_goes_to_jev_among_registry_branches(db_session, monkeypatch):
+    _put(db_session, "fleischner@2017", "Fleischner", "2017", branches=["Solid", "Subsolid"])
+    seen = []
+
+    async def call(prompt):
+        return _raw(u1=[_sys("Fleischner", "2017", branch="Part-solid")])
+
+    async def jev(payload, key, timeout, transport=None):
+        seen.append(payload)
+        return _Resp({"answers": {"branch": {"choice": "br_1", "confidence": 0.9}}})
+    monkeypatch.setattr(M, "_call", call)
+    monkeypatch.setattr(M, "jev_post", jev)
+    cards = await M.match(db_session, "CT", "", U[:1])
+    assert cards[0].branch == "Subsolid"
+    q = seen[0]["questions"]["branch"]
+    assert set(q["criteria"]) == {"br_0", "br_1", "none"} and q["criteria"]["br_1"] == "Subsolid"
+    assert seen[0]["state"] == f"FINDING:\n{U[0].text}\n\nMODEL BRANCH: Part-solid"
+    M._CACHE.clear()
+    await M.match(db_session, "CT", "", U[:1])
+    assert len(seen) == 1                                 # the success was cached
+
+
+async def test_branch_jev_none_or_failure_keeps_the_model_name(db_session, monkeypatch):
+    _put(db_session, "fleischner@2017", "Fleischner", "2017", branches=["Solid", "Subsolid"])
+    st = {"body": {"answers": {"branch": {"choice": "none", "confidence": 0.9}}}, "calls": 0}
+
+    async def call(prompt):
+        return _raw(u1=[_sys("Fleischner", "2017", branch="Part-solid")])
+
+    async def jev(payload, key, timeout, transport=None):
+        st["calls"] += 1
+        if st["body"] is None:
+            raise TimeoutError("jev slow")
+        return _Resp(st["body"])
+    monkeypatch.setattr(M, "_call", call)
+    monkeypatch.setattr(M, "jev_post", jev)
+    assert (await M.match(db_session, "CT", "", U[:1]))[0].branch == "Part-solid"
+    M.clear_cache()
+    st["body"] = None
+    assert (await M.match(db_session, "CT", "", U[:1]))[0].branch == "Part-solid"
+    assert len(M._BRANCH) == 0                            # the failure was not cached

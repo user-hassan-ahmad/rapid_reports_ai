@@ -58,14 +58,14 @@ def test_line_numbers_ok_maps_number_words():
 def test_validate_rejected_value_becomes_missing_even_if_not_needed():
     raw = P.RawPreview(settled=[Settled(input="risk", value="Medium"), Settled(input="ghost", value="x")],
                        not_needed=["risk", "count"])
-    out, _ = P.validate(raw, ENTRY, BR, answered={})
+    out, *_ = P.validate(raw, ENTRY, BR, answered={})
     assert out.settled == [] and out.missing == ["risk"]
 
 
 def test_validate_missing_is_computed_in_code():
-    out, _ = P.validate(P.RawPreview(), ENTRY, BR, answered={"risk": "High risk"})
+    out, *_ = P.validate(P.RawPreview(), ENTRY, BR, answered={"risk": "High risk"})
     assert [s.value for s in out.settled] == ["High risk"] and out.missing == ["count"]
-    out, _ = P.validate(P.RawPreview(not_needed=["count"]), ENTRY, BR, answered={"risk": "High risk"})
+    out, *_ = P.validate(P.RawPreview(not_needed=["count"]), ENTRY, BR, answered={"risk": "High risk"})
     assert out.missing == []
 
 
@@ -82,9 +82,34 @@ async def test_output_index_is_copied_verbatim(monkeypatch, jev):
     assert out.proposal.classification == "Fleischner 2017 · High risk"
     assert out.proposal.recommendation == "CT at 6-12 months, then CT at 18-24 months"
     assert out.proposal.line == GOOD.line
+    assert jev["payloads"] == []   # "smoker" is verbatim in the findings: code confirms it
+
+
+async def test_non_verbatim_quote_goes_to_jev(monkeypatch, jev):
+    monkeypatch.setattr(P, "_call", _model(GOOD.model_copy(update={"settled": [
+        Settled(input="risk", value="High risk", quote="heavy smoker")]})))
+    out = await P.preview(ENTRY, "Solid", "7 mm solid nodule, smokes heavily.", "", {})
+    assert out.proposal is not None
     q = jev["payloads"][0]["questions"]["s0"]["instructions"]
-    assert q == "The FINDINGS or CLINICAL HISTORY state this: smoker"
-    assert jev["payloads"][0]["state"] == "CLINICAL HISTORY:\nnone given\n\nFINDINGS:\n7 mm solid nodule, smoker."
+    assert q == "The FINDINGS or CLINICAL HISTORY state this: heavy smoker"
+    assert jev["payloads"][0]["state"] == "CLINICAL HISTORY:\nnone given\n\nFINDINGS:\n7 mm solid nodule, smokes heavily."
+
+
+def test_verbatim_is_flattened_whole_tokens_without_a_length_minimum():
+    assert P._verbatim("Smoker", "7 mm solid nodule,  SMOKER.", "")
+    assert P._verbatim("ex-smoker", "", "Ex–smoker, 40 pack years")
+    assert not P._verbatim("smoke", "7 mm solid nodule, smoker.", "")     # whole tokens only
+    assert not P._verbatim("a", "a b c", "")                               # at least 2 characters
+    assert not P._verbatim("..", "a .. b", "")
+
+
+async def test_jev_failure_only_makes_unconfirmed_values_missing(monkeypatch, jev):
+    jev["fail"] = True
+    monkeypatch.setattr(P, "_call", _model(GOOD.model_copy(update={"not_needed": [], "settled": [
+        Settled(input="risk", value="High risk", quote="smoker"),
+        Settled(input="count", value="Single", quote="solitary lesion")]})))
+    out = await P.preview(ENTRY, "Solid", "7 mm solid nodule, smoker.", "", {})
+    assert [s.input for s in out.settled] == ["risk"] and out.missing == ["count"]
 
 
 async def test_output_without_category_uses_identity(monkeypatch, jev):
@@ -100,10 +125,37 @@ async def test_invalid_output_index_has_no_proposal(monkeypatch, jev, idx):
     assert out.proposal is None and out.missing == []
 
 
-async def test_foreign_number_in_line_drops_proposal(monkeypatch, jev):
+async def test_foreign_number_in_line_uses_a_code_built_line(monkeypatch, jev):
     monkeypatch.setattr(P, "_call", _model(GOOD.model_copy(update={"line": "Fleischner 2017; follow up in 3 months."})))
     out = await P.preview(ENTRY, "Solid", "7 mm solid nodule, smoker.", "", {})
-    assert out.proposal is None and out.settled[0].value == "High risk"
+    assert out.proposal.line == "Fleischner 2017 · High risk." and out.settled[0].value == "High risk"
+    assert out.proposal.recommendation == "CT at 6-12 months, then CT at 18-24 months"
+
+
+async def test_empty_line_uses_a_code_built_line(monkeypatch, jev):
+    monkeypatch.setattr(P, "_call", _model(GOOD.model_copy(update={"line": "  "})))
+    out = await P.preview(ENTRY, "Solid", "7 mm solid nodule, smoker.", "", {})
+    assert out.proposal.line == "Fleischner 2017 · High risk."
+
+
+async def test_malformed_settled_answer_is_a_failure_not_a_low_score(monkeypatch):
+    async def post(payload, key, timeout, transport=None):
+        return _Resp({"answers": {}})
+    monkeypatch.setattr(P, "jev_post", post)
+    with pytest.raises(ValueError):
+        await P._jev_settled("f", "", ["q"])
+
+
+def test_disagree_only_for_a_real_option_compared_normalised():
+    _, d, _ = P.validate(P.RawPreview(settled=[Settled(input="risk", value="high  RISK")]), ENTRY, BR,
+                         answered={"risk": "High risk"})
+    assert not d                                   # same option once normalised
+    _, d, _ = P.validate(P.RawPreview(settled=[Settled(input="risk", value="Moderate")]), ENTRY, BR,
+                         answered={"risk": "High risk"})
+    assert not d                                   # not a real option: not a disagreement
+    _, d, given = P.validate(P.RawPreview(settled=[Settled(input="risk", value="Low risk")]), ENTRY, BR,
+                             answered={"risk": "High risk", "count": "Several"})
+    assert d and given == {"risk": "High risk"}    # the filtered answers come back
 
 
 async def test_jev_below_threshold_makes_input_missing(monkeypatch, jev):
@@ -116,7 +168,7 @@ async def test_jev_below_threshold_makes_input_missing(monkeypatch, jev):
 async def test_jev_failure_asks_every_model_value(monkeypatch, jev):
     jev["fail"] = True
     monkeypatch.setattr(P, "_call", _model(GOOD))
-    out = await P.preview(ENTRY, "Solid", "7 mm solid nodule, smoker.", "", {"count": "Single"})
+    out = await P.preview(ENTRY, "Solid", "7 mm solid nodule.", "", {"count": "Single"})
     assert [s.input for s in out.settled] == ["count"] and out.missing == ["risk"] and out.proposal is None
 
 
@@ -146,7 +198,7 @@ async def test_tnm_preview_proposal_comes_from_code(monkeypatch, jev):
     out = await P.preview(e, "Staging", "4.5 cm right upper lobe mass with ipsilateral hilar node.", "", {})
     assert out.proposal.line == "Staging (UICC TNM 9th): cT2b N1 M0, Stage IIB."
     assert "never X" in seen["system"]
-    assert len(jev["payloads"][0]["questions"]) == 3
+    assert jev["payloads"] == []   # every quote is verbatim in the findings: confirmed by code, no Jev call
 
 
 async def test_x_option_sentence_only_for_tnm(monkeypatch, jev):
@@ -187,7 +239,7 @@ async def test_tnm_single_option_axis_is_never_missing(monkeypatch, jev):
     out = await P.preview(e, "Staging", "no nodes, no mets", "", {})
     assert out.missing == [] and {s.input: s.value for s in out.settled}["T"] == "TX"
     assert out.proposal is not None and "cTX N0 M0" in out.proposal.line
-    assert len(jev["payloads"][0]["questions"]) == 2
+    assert jev["payloads"] == []   # N and M quotes are verbatim; T settles itself
 
 
 async def test_tnm_not_needed_cannot_skip_an_axis(monkeypatch, jev):

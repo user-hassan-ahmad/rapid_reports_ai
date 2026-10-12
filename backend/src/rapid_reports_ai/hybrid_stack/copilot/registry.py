@@ -56,6 +56,13 @@ def _fresh(db: Session, key: str) -> GuidelineRegistry | None:
     return db.get(GuidelineRegistry, key, populate_existing=True, with_for_update=True)
 
 
+def alias_hit(row: GuidelineRegistry, n: str, n_stripped: str) -> bool:
+    """Whether a normalised name (`n`, or `n_stripped`: the same with a trailing version token removed) is this row's
+    name, an alias, or its key slug."""
+    names = {norm(row.name), norm(row.key.split("@")[0].replace("-", " ")), *(norm(a) for a in row.aliases or [])}
+    return n in names or bool(n_stripped and n_stripped in names)
+
+
 def by_alias(db: Session, name: str) -> list[GuidelineRegistry]:
     """Every row whose name, alias or key slug is this name (any version): one row is a hit, several go to Jev.
     Matches with a trailing version/edition token stripped too, so "Fleischner 2017" still finds "Fleischner".
@@ -64,12 +71,8 @@ def by_alias(db: Session, name: str) -> list[GuidelineRegistry]:
     if not n:
         return []
     n_stripped = _strip_version(n)
-    out = []
-    for row in db.query(GuidelineRegistry).options(defer(GuidelineRegistry.chunks)).all():
-        names = {norm(row.name), norm(row.key.split("@")[0].replace("-", " ")), *(norm(a) for a in row.aliases or [])}
-        if n in names or (n_stripped and n_stripped in names):
-            out.append(row)
-    return out
+    return [row for row in db.query(GuidelineRegistry).options(defer(GuidelineRegistry.chunks)).all()
+            if alias_hit(row, n, n_stripped)]
 
 
 def known(db: Session, limit: int = 200) -> list[tuple[str, str, str]]:
