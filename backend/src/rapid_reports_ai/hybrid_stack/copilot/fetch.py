@@ -147,14 +147,14 @@ async def _fetch_branch(card: Card, branch: str, queries: list[str]) -> tuple[St
     carries inputs, rule and outputs."""
     term = _term(branch)
     label = _cover_label(card, branch)
-    chunks, sources = await S.gather(queries, branch, focus=term)
+    chunks, sources = await S.gather(queries, branch, focus=term, name=card.name)
     if not chunks:
         return None, Branch(name=branch, state="pending"), [], []
     text = _text(chunks)
     cover = (await J.coverage(text, [label])).get(label, 0.0)
     if cover < J.COVER_MIN:   # one retry on new pages only (review: the same URLs re-extract the same chunks)
         more, more_src = await S.gather([S.branch_query(card.name, card.version, term)], branch, focus=term,
-                                        exclude={c.url for c in chunks})
+                                        exclude={c.url for c in chunks}, name=card.name)
         chunks, sources = chunks + more, sources + more_src
         if more:
             text = _text(chunks)

@@ -31,7 +31,7 @@ def _branch(name, quote="no routine follow-up"):
 def _stub(monkeypatch, cover=0.9, evidence=1.0, structured=None):
     calls = {"gather": [], "structure": []}
 
-    async def gather(queries, branch, focus="", exclude=None):
+    async def gather(queries, branch, focus="", exclude=None, name=""):
         calls["gather"].append((queries, branch))
         return [Chunk(url="https://pubs.rsna.org/x", text="… No routine follow-up …", branch=branch)], \
                [Source(url="https://pubs.rsna.org/x", tier=1)]
@@ -87,7 +87,7 @@ async def test_unsupported_outputs_are_dropped(db_session, monkeypatch):
 async def test_no_results_returns_none_and_stores_nothing(db_session, monkeypatch):
     _stub(monkeypatch)
 
-    async def empty(queries, branch, focus="", exclude=None):
+    async def empty(queries, branch, focus="", exclude=None, name=""):
         return [], []
     monkeypatch.setattr(F.S, "gather", empty)
     assert await F.resolve_guideline(db_session, CARD) is None
@@ -162,7 +162,7 @@ async def test_no_transaction_held_while_fetching(db_session, monkeypatch):
     _stub(monkeypatch)
     seen = []
 
-    async def gather(queries, branch, focus="", exclude=None):
+    async def gather(queries, branch, focus="", exclude=None, name=""):
         seen.append(db_session.in_transaction())
         return [Chunk(url="https://pubs.rsna.org/x", text="… No routine follow-up …", branch=branch)], \
                [Source(url="https://pubs.rsna.org/x", tier=1)]
@@ -294,7 +294,7 @@ async def test_branches_of_one_key_fetch_concurrently(db_session, monkeypatch):
     _stub(monkeypatch)
     entered, release = [], asyncio.Event()
 
-    async def gather(queries, branch, focus="", exclude=None):
+    async def gather(queries, branch, focus="", exclude=None, name=""):
         entered.append(branch)
         await release.wait()
         return [Chunk(url="https://pubs.rsna.org/x", text="… No routine follow-up …", branch=branch)], \
