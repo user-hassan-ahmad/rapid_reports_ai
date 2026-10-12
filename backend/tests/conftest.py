@@ -276,6 +276,8 @@ def _empty_guideline_library(monkeypatch):
     sets L.get itself."""
     from rapid_reports_ai.hybrid_stack.copilot.library import bundle as L
     monkeypatch.setattr(L, "get", lambda: L.Library({}))
+    from rapid_reports_ai.hybrid_stack.copilot.library import preview_cache as PC
+    PC.clear()
 
 
 @pytest.fixture

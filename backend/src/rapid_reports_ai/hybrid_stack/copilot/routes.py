@@ -33,6 +33,7 @@ from . import tnm
 from .ask import QA, AskResult, Context, ask
 from .fetch import OVERVIEW, resolve_guideline
 from .library import bundle as L
+from .library import preview_cache as PC
 from .library.pack_preview import PACK_BRANCH, as_entry, preview_pack
 from .library.schema import FACTS
 from .matcher import Finding, match
@@ -157,22 +158,29 @@ def _check_card(card: CardIn) -> None:
         raise HTTPException(status_code=400, detail="Guideline key does not match its name and version")
 
 
-class MatchRequest(BaseModel):
-    scan_type: str = ""
-    clinical_history: str = ""
-    findings: list[FindingIn] = Field(default_factory=list, max_length=20)
-
-
-class MatchResult(BaseModel):
-    cards: list[Card] = Field(default_factory=list)
-    ms: int = 0
-
-
 def _check_patient(v: dict[str, str]) -> dict[str, str]:
     """The case's shared patient answers: keys from the fact vocabulary only, values capped."""
     if any(k not in FACTS or len(x) > 200 for k, x in v.items()):
         raise ValueError(f"patient: keys from {sorted(FACTS)}, values up to 200 characters")
     return v
+
+
+class MatchRequest(BaseModel):
+    scan_type: str = ""
+    clinical_history: str = ""
+    findings: list[FindingIn] = Field(default_factory=list, max_length=20)
+    dictation: str = ""           # the whole findings text the client sends as `findings` on /open (cache key)
+    patient: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("patient")
+    @classmethod
+    def _cap_patient(cls, v: dict[str, str]) -> dict[str, str]:
+        return _check_patient(v)
+
+
+class MatchResult(BaseModel):
+    cards: list[Card] = Field(default_factory=list)
+    ms: int = 0
 
 
 class OpenRequest(BaseModel):
@@ -290,16 +298,42 @@ def _pack(key: str):
 
 
 async def _pack_result(pack, req: OpenRequest, t0: float) -> OpenResult:
-    """Offline and engine-decided: never a fetch. Fail open, bounded, as _branch_and_preview."""
+    """Offline and engine-decided: never a fetch. The preview comes from the cache (started by /match) or starts now.
+    Fail open, bounded, as _branch_and_preview."""
     e, view = pack
+    sources = L.get().sources(e.key)
+    findings, history = req.findings[:6000], req.clinical_history[:2000]
+    k = PC.key(e.key, req.finding, findings, history, req.answered, req.patient)
     try:
-        prev = await asyncio.wait_for(preview_pack(e, req.findings[:6000], req.clinical_history[:2000], req.answered,
-                                                   L.get().sources(e.key), finding=req.finding, patient=req.patient),
-                                      PREVIEW_TIMEOUT_S)
+        task = PC.start(k, lambda: preview_pack(e, findings, history, req.answered, sources, finding=req.finding,
+                                                patient=req.patient))
+        prev = await asyncio.wait_for(asyncio.shield(task), PREVIEW_TIMEOUT_S)
     except Exception as ex:   # TimeoutError included
         logger.warning("[copilot.routes] pack preview %s: %s", type(ex).__name__, str(ex)[:200])
         prev = Preview()
     return OpenResult(entry=_public(view), preview=prev, branch=PACK_BRANCH, ms=_ms(t0))
+
+
+def _prewarm(req: MatchRequest, cards: list[Card]) -> int:
+    """Start each pack card's preview now, keyed as /open will key it before any answer. Fail open."""
+    lib = L.get()
+    texts = {f.id: f.text for f in req.findings}
+    dictation = (req.dictation or "\n".join(f.text for f in req.findings))[:6000]
+    history = req.clinical_history[:2000]
+    n = 0
+    for c in cards:
+        e = lib.lookup(c.key)
+        finding = texts.get(c.finding_id, "")
+        if e is None or e.tier != 1 or not finding:
+            continue
+        try:
+            PC.start(PC.key(e.key, finding, dictation, history, {}, req.patient),
+                     lambda e=e, finding=finding: preview_pack(e, dictation, history, {}, lib.sources(e.key),
+                                                               finding=finding, patient=req.patient))
+            n += 1
+        except Exception as ex:
+            logger.warning("[copilot.routes] prewarm %s: %s", type(ex).__name__, str(ex)[:200])
+    return n
 
 
 @router.post("/match", response_model=MatchResult)
@@ -308,6 +342,7 @@ async def copilot_match(req: MatchRequest, user: User = Depends(get_current_user
     t0 = time.perf_counter()
     findings = [Finding(id=f.id, text=f.text) for f in req.findings]
     cards = await match(db, req.scan_type[:300], req.clinical_history[:2000], findings)
+    _prewarm(req, cards)
     return MatchResult(cards=cards, ms=_ms(t0))
 
 

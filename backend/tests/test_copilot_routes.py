@@ -565,3 +565,33 @@ def test_open_passes_the_patient_map_and_rejects_unknown_facts(authed, toy_lib, 
     bad = authed.post("/api/canvas/stack/guidelines/open", json={
         "card": PACK_CARD, "findings": "x", "patient": {"shoe_size": "9"}})
     assert bad.status_code == 422
+
+
+async def test_match_starts_pack_previews_and_open_reuses_them(db_session, user, monkeypatch, toy):
+    from rapid_reports_ai.hybrid_stack.copilot.library import preview_cache as PC
+    lib = L.Library({"version": "v1", "entries": {"toy-nodule@1.0": {"entry": toy, "sources": TOY_SOURCES}}})
+    monkeypatch.setattr(L, "get", lambda: lib)
+    card = Card(key="toy-nodule@1.0", name="Toy 2020", version="2020", finding_id="u1", branch="Pack")
+
+    async def fake_match(db, scan, history, findings):
+        return [card]
+    calls = []
+
+    async def fake_preview(e, findings, history, answered, sources=None, finding="", patient=None):
+        calls.append((finding, findings, patient))
+        return Preview(missing=["risk"])
+    monkeypatch.setattr(CR, "match", fake_match)
+    monkeypatch.setattr(CR, "preview_pack", fake_preview)
+    dictation = "7 mm solid nodule. Liver normal."
+    await CR.copilot_match(CR.MatchRequest(scan_type="CT", findings=[CR.FindingIn(id="u1", text="7 mm solid nodule.")],
+                                           dictation=dictation, patient={"age_years": "60"}),
+                           user=user, db=db_session)
+    await asyncio.gather(*list(PC._RUNNING))
+    out = await CR.copilot_open(CR.OpenRequest(card=CR.CardIn(**PACK_CARD), finding="7 mm solid nodule.",
+                                               findings=dictation, patient={"age_years": "60"}), user=user)
+    assert out.preview.missing == ["risk"]
+    assert calls == [("7 mm solid nodule.", dictation, {"age_years": "60"})]      # computed once, at match time
+    again = await CR.copilot_open(CR.OpenRequest(card=CR.CardIn(**PACK_CARD), finding="7 mm solid nodule.",
+                                                 findings=dictation, answered={"risk": "low"},
+                                                 patient={"age_years": "60"}), user=user)
+    assert again.preview.missing == ["risk"] and len(calls) == 2                 # an answer is a new key
