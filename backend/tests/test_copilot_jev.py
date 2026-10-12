@@ -113,3 +113,45 @@ def test_windows_split_on_chunk_markers_and_are_capped():
 
 def test_windows_falls_back_to_paragraph_split_without_markers():
     assert J._windows("one paragraph\n\nanother paragraph") == ["one paragraph\n\nanother paragraph"]
+
+
+async def test_ask_raises_on_a_malformed_answer_after_one_retry(monkeypatch):
+    """A 200 without answers, without an asked key, or with a non-numeric noul is an outage, never a low score."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    for body in ({}, {"answers": {}}, {"answers": {"q": {"noul": None}}}, {"answers": {"q": {"noul": "0.9"}}},
+                 {"answers": {"q": {}}}):
+        n = {"calls": 0}
+
+        def handler(req, body=body, n=n):
+            n["calls"] += 1
+            return httpx.Response(200, json=body)
+        try:
+            await J._ask("SOURCE:\nx", {"q": {"type": "noul", "instructions": "i"}}, transport=httpx.MockTransport(handler))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"no raise for {body}")
+        assert n["calls"] == 2, body
+
+
+async def test_ask_retries_once_then_succeeds(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    n = {"calls": 0}
+
+    def handler(req):
+        n["calls"] += 1
+        if n["calls"] == 1:
+            return httpx.Response(503)
+        return httpx.Response(200, json={"answers": {"q": {"noul": 0.4}}})
+    got = await J._ask("SOURCE:\nx", {"q": {"type": "noul", "instructions": "i"}}, transport=httpx.MockTransport(handler))
+    assert got == {"q": 0.4} and n["calls"] == 2
+
+
+def test_choice_is_strict():
+    assert J.choice({"answers": {"p": {"choice": "a", "confidence": 0.7}}}, "p") == ("a", 0.7)
+    for body in ({}, {"answers": {}}, {"answers": {"p": {"choice": "a"}}}, {"answers": {"p": {"confidence": 0.7}}}):
+        try:
+            J.choice(body, "p")
+        except ValueError:
+            continue
+        raise AssertionError(body)

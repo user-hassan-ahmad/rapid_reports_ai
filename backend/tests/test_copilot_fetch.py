@@ -8,6 +8,7 @@ from rapid_reports_ai.hybrid_stack.copilot.types import (Branch, Card, Chunk, Gu
                                                          Publication, Source)
 
 _REAL_SPAWN = F._spawn_fill
+_REAL_COVERAGE = F.J.coverage
 
 CARD = Card(key="fleischner@2017", name="Fleischner", version="2017", finding_id="u1",
             branch="Solid", skeleton=["Solid", "Subsolid"], publication=Publication(title="T", year="2017"))
@@ -31,7 +32,7 @@ def _branch(name, quote="no routine follow-up"):
 def _stub(monkeypatch, cover=0.9, evidence=1.0, structured=None):
     calls = {"gather": [], "structure": []}
 
-    async def gather(queries, branch, focus="", exclude=None, name=""):
+    async def gather(queries, branch, focus="", exclude=None, name="", version="", title=""):
         calls["gather"].append((queries, branch))
         return [Chunk(url="https://pubs.rsna.org/x", text="… No routine follow-up …", branch=branch)], \
                [Source(url="https://pubs.rsna.org/x", tier=1)]
@@ -87,7 +88,7 @@ async def test_unsupported_outputs_are_dropped(db_session, monkeypatch):
 async def test_no_results_returns_none_and_stores_nothing(db_session, monkeypatch):
     _stub(monkeypatch)
 
-    async def empty(queries, branch, focus="", exclude=None, name=""):
+    async def empty(queries, branch, focus="", exclude=None, name="", version="", title=""):
         return [], []
     monkeypatch.setattr(F.S, "gather", empty)
     assert await F.resolve_guideline(db_session, CARD) is None
@@ -162,7 +163,7 @@ async def test_no_transaction_held_while_fetching(db_session, monkeypatch):
     _stub(monkeypatch)
     seen = []
 
-    async def gather(queries, branch, focus="", exclude=None, name=""):
+    async def gather(queries, branch, focus="", exclude=None, name="", version="", title=""):
         seen.append(db_session.in_transaction())
         return [Chunk(url="https://pubs.rsna.org/x", text="… No routine follow-up …", branch=branch)], \
                [Source(url="https://pubs.rsna.org/x", tier=1)]
@@ -294,7 +295,7 @@ async def test_branches_of_one_key_fetch_concurrently(db_session, monkeypatch):
     _stub(monkeypatch)
     entered, release = [], asyncio.Event()
 
-    async def gather(queries, branch, focus="", exclude=None, name=""):
+    async def gather(queries, branch, focus="", exclude=None, name="", version="", title=""):
         entered.append(branch)
         await release.wait()
         return [Chunk(url="https://pubs.rsna.org/x", text="… No routine follow-up …", branch=branch)], \
@@ -338,3 +339,23 @@ def test_source_text_capped_on_chunk_boundaries(monkeypatch):
     a, b = Chunk(url="u1", text="a" * 40), Chunk(url="u2", text="b" * 80)
     assert F._text([a, b]) == "[u1]\n" + "a" * 40
     assert len(F._text([b, a])) == 85 and len(F._text([Chunk(url="u", text="c" * 500)])) == 100
+
+
+async def test_malformed_jev_answer_is_an_outage_not_a_low_score(db_session, monkeypatch):
+    """A 200 with no answers raises (after one retry): nothing is stored, the branch is not marked not_available."""
+    _stub(monkeypatch)
+    monkeypatch.setattr(F.J, "coverage", _REAL_COVERAGE)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+
+    class _Bad:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"error": "upstream"}
+
+    async def post(payload, key, timeout, transport=None):
+        return _Bad()
+    monkeypatch.setattr(F.J, "jev_post", post)
+    assert await F.resolve_guideline(db_session, CARD) is None
+    assert R.by_key(db_session, CARD.key) is None

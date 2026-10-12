@@ -25,6 +25,8 @@ COVER_MIN = 0.7            # provisional: SOURCE states the criteria or manageme
 # re-check on the Task 12 seed fixture
 EVIDENCE_MIN = 0.5         # every evidence claim is judged by Jev; the exact-match fast path is a logged signal only
 ANSWERS_MIN = 0.7          # provisional: the stored material answers a radiologist's question
+RELEVANT_MIN = 0.5         # provisional: a search result is about the guideline asked for; the seed lab calibrates it
+SNIPPET_MAX = 600          # chars of each search result's snippet shown to the relevance gate
 
 _DASH = str.maketrans({"–": "-", "—": "-", "‐": "-", "−": "-"})
 _NUM = re.compile(r"\d+(?:\.\d+)?")
@@ -86,12 +88,47 @@ def _state(window: str) -> str:
     return "SOURCE:\n" + window
 
 
-async def _ask(state: str, questions: dict[str, dict[str, Any]], transport=None) -> dict[str, float]:
+def scores(body: Any, keys) -> dict[str, float]:
+    """The noul score per asked key from a Jev response body. A malformed or missing answer is an outage, never a low
+    score: no `answers`, a missing key or a non-numeric `noul` raises ValueError into the caller's failure path."""
+    ans = body.get("answers") if isinstance(body, dict) else None
+    if not isinstance(ans, dict):
+        raise ValueError("jev response has no answers")
+    out: dict[str, float] = {}
+    for k in keys:
+        a = ans.get(k)
+        v = a.get("noul") if isinstance(a, dict) else None
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v:
+            raise ValueError(f"jev answer {k!r} has no numeric noul")
+        out[k] = float(v)
+    return out
+
+
+def choice(body: Any, key: str) -> tuple[str, float]:
+    """(choice, confidence) for one choice question; malformed raises ValueError (an outage, never "none")."""
+    ans = body.get("answers") if isinstance(body, dict) else None
+    a = ans.get(key) if isinstance(ans, dict) else None
+    c = a.get("choice") if isinstance(a, dict) else None
+    conf = a.get("confidence") if isinstance(a, dict) else None
+    if not isinstance(c, str) or isinstance(conf, bool) or not isinstance(conf, (int, float)) or conf != conf:
+        raise ValueError(f"jev answer {key!r} has no choice/confidence")
+    return c, float(conf)
+
+
+async def _ask_once(state: str, questions: dict[str, dict[str, Any]], transport=None) -> dict[str, float]:
     r = await jev_post({"model": JEV_MODEL, "state": state, "questions": questions},
                        os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
     r.raise_for_status()
-    ans = r.json().get("answers") or {}
-    return {k: float((ans.get(k) or {}).get("noul") or 0.0) for k in questions}
+    return scores(r.json(), questions)
+
+
+async def _ask(state: str, questions: dict[str, dict[str, Any]], transport=None) -> dict[str, float]:
+    """One Jev call, retried once on any failure (timeout, HTTP error, malformed answer) before raising."""
+    try:
+        return await _ask_once(state, questions, transport)
+    except Exception as e:
+        logger.info("[copilot.jev] retrying once after %s: %s", type(e).__name__, str(e)[:160])
+    return await _ask_once(state, questions, transport)
 
 
 async def _ask_windowed(source: str, questions: dict[str, dict[str, Any]], transport=None) -> dict[str, float]:
@@ -136,6 +173,23 @@ async def evidence(source: str, claims: list[tuple[str, str]], transport=None) -
         f"{c}")} for i, (_, c) in enumerate(claims)}
     got = await _ask_windowed(source, qs, transport)
     return [got[f"c_{i}"] for i in range(len(claims))]
+
+
+async def relevance(results: list[dict], name: str, version: str, title: str = "", transport=None) -> list[float]:
+    """P(each search result is about the named guideline, not a different guideline or topic), in one batched call
+    over a single state listing every candidate (title, url, the start of its snippet). Raises on failure: the
+    caller falls back to ordering without it."""
+    if not results:
+        return []
+    ident = " ".join(f"{name} {version}".split())
+    about = ident + (f" ({title})" if title else "")
+    state = "SEARCH RESULTS:\n" + "\n\n".join(
+        f"[{i}] {r.get('title', '')} — {r.get('url', '')} — {(r.get('content') or '')[:SNIPPET_MAX]}"
+        for i, r in enumerate(results))
+    qs = {f"r_{i}": {"type": "noul", "instructions": f"Result [{i}] is about {about}, not a different guideline or topic."}
+          for i in range(len(results))}
+    got = await _ask(state, qs, transport)
+    return [got[f"r_{i}"] for i in range(len(results))]
 
 
 async def answers(material: str, question: str, transport=None) -> float:

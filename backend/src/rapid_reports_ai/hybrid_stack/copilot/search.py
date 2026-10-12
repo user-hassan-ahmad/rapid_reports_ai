@@ -11,20 +11,24 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from ...guideline_prefetch import DOMAIN_FILTER_PATHWAY, _GEO_BLOCK_SIGNATURES, _normalize_tavily_results
+from . import jev as J
 from .types import Chunk, Publication, Source
 
 logger = logging.getLogger(__name__)
 
 EXTRACT_FOCUS = "categories, criteria, thresholds, required features, management recommendations"
 TOP_URLS = 4
-PAGE_MAX = 16000            # per page cap on a full-page extract; 4 x 16k fits Jev's 6 x 12k windows
+PAGE_MAX = J.STATE_MAX - 200   # one page = one Jev window: the "[url]\n" header still fits, so 4 first-pass pages
+                               # plus 2 retry pages fill the WINDOW_CAP windows and none is dropped
 MIN_EXTRACT_CHARS = 1500    # a picked page's extract shorter than this reads as failed/paywalled/landing
 MIN_SCORE = 0.3            # a relevance floor below top results; if nothing clears it, use what search gave us
 SEARCH_TIMEOUT_S = 15.0
 EXTRACT_TIMEOUT_S = 55.0    # Tavily's advanced extract is slow on long guideline pages
+REFILL_TIMEOUT_S = 25.0     # the refill round is a second chance, not a second full wait
 
 # Tier 1: publishers and issuing societies. Tier 2: PubMed Central / Europe PMC full text. Tier 3: everything else.
-# Tier 4: abstract-only / landing pages (_ABSTRACT) demoted below everything else bar the relevance floor cut.
+# Tier 4: abstract-only / landing pages (_ABSTRACT), ranked below every other tier; only a result Jev's relevance
+# gate finds is not about the guideline ranks lower (rank).
 # www.* variants are covered by the bare domain's suffix match (_match_domain), so they aren't listed twice.
 TIER1 = {*DOMAIN_FILTER_PATHWAY, "rsna.org", "acr.org", "ajronline.org", "bir.org.uk", "esur.org",
          "eje.bioscientifica.com", "academic.oup.com", "uicc.org", "thorax.bmj.com",
@@ -70,46 +74,27 @@ def tier(url: str) -> int:
     return 3
 
 
-def _normalize_phrase(s: str) -> str:
-    return " ".join(re.sub(r"[^a-z0-9]+", " ", (s or "").lower()).split())
-
-
-def _name_phrases(name: str) -> list[str]:
-    """The guideline's full name as the phrase(s) an on-topic page must contain: the whole normalised name, plus
-    (when it has 3+ tokens, e.g. "BTA U classification") just its first two tokens, since a page naming the short
-    form ("BTA U") is still on topic."""
-    toks = _normalize_phrase(name).split()
-    if not toks:
-        return []
-    phrases = [" ".join(toks)]
-    if len(toks) >= 3:
-        phrases.append(" ".join(toks[:2]))
-    return phrases
-
-
-def on_topic(result: dict, name: str) -> bool:
-    """Whether a search result is about the named guideline at all, judged on what search already gave us (title +
-    the first 1500 chars of its snippet + the URL) rather than another network round trip."""
-    phrases = _name_phrases(name)
-    if not phrases:
-        return True
-    haystack = _normalize_phrase(
-        f"{result.get('title', '')} {(result.get('content') or '')[:1500]} {result.get('url', '')}")
-    return any(p in haystack for p in phrases)
-
-
-def rank(results: list[dict], name: str = "") -> list[dict]:
-    """Sort by tier, then on-topic, then score. When `name` is given, a result that fails the on-topic check never
-    ranks better than tier 3 and, within a tier, always sorts behind an on-topic one regardless of score — an
-    off-topic tier-1 page (demoted to 3) falls behind an on-topic tier-3 page even if its own score is higher.
-    `name=""` makes every result "on topic" so neither effect fires and score alone breaks ties, as before."""
+def rank(results: list[dict], relevance: dict[str, float] | None = None) -> list[dict]:
+    """Sort by tier, then score. With Jev's relevance scores (url -> score), a result scored below J.RELEVANT_MIN is
+    not about this guideline and ranks last, after tier 4; without them (no name, or Jev failed) tier and score alone
+    decide."""
     def key(r: dict) -> tuple[int, int, float]:
-        t = tier(r.get("url", ""))
-        topic_ok = not name or on_topic(r, name)
-        if name and not topic_ok:
-            t = max(t, 3)
-        return (t, 0 if topic_ok else 1, -float(r.get("score") or 0.0))
+        off = relevance is not None and relevance.get(r.get("url", ""), 1.0) < J.RELEVANT_MIN
+        return (int(off), tier(r.get("url", "")), -float(r.get("score") or 0.0))
     return sorted(results, key=key)
+
+
+async def _relevance(results: list[dict], name: str, version: str, title: str) -> dict[str, float] | None:
+    """Jev's relevance gate over every candidate, url -> score; None (no reordering) when there is no name or Jev
+    fails."""
+    if not name.strip() or not results:
+        return None
+    try:
+        got = await J.relevance(results, name, version, title)
+    except Exception as e:
+        logger.warning("[copilot.search] relevance gate failed (%s): tier and score order only", type(e).__name__)
+        return None
+    return {r["url"]: v for r, v in zip(results, got)}
 
 
 def _above_floor(results: list[dict]) -> list[dict]:
@@ -153,20 +138,21 @@ async def _search(query: str) -> list[dict]:
         return []
 
 
-async def _extract(urls: list[str]) -> dict[str, str]:
+async def _extract(urls: list[str], timeout: float = EXTRACT_TIMEOUT_S) -> dict[str, str] | None:
     """Full pages, not snippets: no `query` / `chunks_per_source` — a focused extract was only returning ~2.5-3.5k
     chars (5 snippets) per page, too little for the tables these guidelines live in. Each page is capped at
-    PAGE_MAX chars rather than left to Tavily's own limit."""
+    PAGE_MAX chars rather than left to Tavily's own limit. None when the call failed or timed out; {} when there
+    was nothing to extract or nothing came back."""
     key = os.environ.get("TAVILY_API_KEY", "")
     if not key or not urls:
         return {}
     try:
         from tavily import AsyncTavilyClient
         resp = await asyncio.wait_for(AsyncTavilyClient(key).extract(
-            urls=urls, extract_depth="advanced", timeout=EXTRACT_TIMEOUT_S), EXTRACT_TIMEOUT_S + 5)
+            urls=urls, extract_depth="advanced", timeout=timeout), timeout + 5)
     except Exception as e:
         logger.warning("[copilot.extract] %s: %s", type(e).__name__, str(e)[:160])
-        return {}
+        return None
     out: dict[str, str] = {}
     for r in resp.get("results", []):
         url = r.get("url", "")
@@ -177,14 +163,16 @@ async def _extract(urls: list[str]) -> dict[str, str]:
 
 
 async def gather(queries: list[str], branch: str, focus: str = "", exclude: set[str] | None = None,
-                  name: str = "") -> tuple[list[Chunk], list[Source]]:
+                  name: str = "", version: str = "", title: str = "") -> tuple[list[Chunk], list[Source]]:
     """Search every query in parallel, dedupe by canonical URL, drop any URL already in the registry (`exclude`),
-    keep only results above the relevance floor, rank by source tier (an off-topic result demoted to no better
-    than tier 3 when `name` is given; `name=""` skips the on-topic check entirely), extract the top URLs as full
-    pages. Any picked page whose extract comes back under MIN_EXTRACT_CHARS (failed/paywalled/landing) is swapped,
-    in one extra extract round, for the next ranked candidate not yet tried; a page that didn't make the cut keeps
-    its own search snippet when its replacement yields no text either. `focus` is kept for callers — full pages
-    are read now, so it no longer steers the extract."""
+    keep only results above the relevance floor, rank by source tier with Jev's relevance gate (a result not about
+    `name` `version` (`title`) ranks last; `name=""` skips the gate), extract the top URLs as full pages.
+
+    A picked page whose extract comes back under MIN_EXTRACT_CHARS (failed/paywalled/landing) is offered, in one
+    refill round, the next ranked candidate not yet tried: the replacement is taken only if its extract reaches
+    MIN_EXTRACT_CHARS or is longer than the short one. An unreplaced short page keeps whichever is longer, its
+    extract or its search snippet. No refill when the first extract call itself failed (Tavily down). `focus` is
+    kept for callers — full pages are read now, so it no longer steers the extract."""
     exclude = exclude or set()
     found: dict[str, dict] = {}
     for results in await asyncio.gather(*(_search(q) for q in queries)):
@@ -192,27 +180,31 @@ async def gather(queries: list[str], branch: str, focus: str = "", exclude: set[
             if r["url"] in exclude:
                 continue
             found.setdefault(_canon(r["url"]), r)
-    ranked = rank(_above_floor(list(found.values())), name)
+    cands = _above_floor(list(found.values()))
+    ranked = rank(cands, await _relevance(cands, name, version, title))
     top = ranked[:TOP_URLS]
     if not top:
         return [], []
-    extracted = await _extract([r["url"] for r in top])
+    first = await _extract([r["url"] for r in top])
+    extracted = dict(first or {})
     short = [r for r in top if len(extracted.get(r["url"], "")) < MIN_EXTRACT_CHARS]
-    if short:
+    if short and first is not None:
         tried = {r["url"] for r in top}
         replacements = [r for r in ranked if r["url"] not in tried][:len(short)]
         replaced = set()
         if replacements:
-            refill = await _extract([r["url"] for r in replacements])
+            refill = await _extract([r["url"] for r in replacements], timeout=REFILL_TIMEOUT_S) or {}
             for old, new in zip(short, replacements):
+                old_text = extracted.get(old["url"], "")
                 new_text = refill.get(new["url"]) or ""
-                if new_text.strip():   # the replacement yielded text; otherwise `old` keeps its spot and snippet
+                if new_text.strip() and (len(new_text) >= MIN_EXTRACT_CHARS or len(new_text) > len(old_text)):
                     top[top.index(old)] = new
                     extracted[new["url"]] = new_text
                     replaced.add(old["url"])
-        for r in short:   # any short page not successfully replaced falls back to its own search snippet, not the
-            if r["url"] not in replaced:   # too-short extract text it came back with
-                extracted.pop(r["url"], None)
+        short = [r for r in short if r["url"] not in replaced]
+    for r in short:   # an unreplaced short page keeps the longer of its extract and its search snippet
+        if len(r.get("content") or "") >= len(extracted.get(r["url"], "")):
+            extracted.pop(r["url"], None)
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     chunks, sources = [], []
     for r in top:

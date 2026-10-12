@@ -1,7 +1,13 @@
+import json
+
+import httpx
 import tavily
 
+from rapid_reports_ai.hybrid_stack.copilot import fetch as F
+from rapid_reports_ai.hybrid_stack.copilot import jev as J
+
 from rapid_reports_ai.hybrid_stack.copilot import search as S
-from rapid_reports_ai.hybrid_stack.copilot.types import Publication
+from rapid_reports_ai.hybrid_stack.copilot.types import Chunk, Publication
 
 
 def test_queries_use_identity_only():
@@ -57,35 +63,6 @@ def test_abstract_pages_demoted_to_tier_four():
     assert S.tier("https://europepmc.org/article/MED/1") == 2
 
 
-def test_on_topic_matches_full_name_or_its_first_two_tokens():
-    bta_u = {"title": "BTA U classification of thyroid nodules", "content": "", "url": "https://x.org/a"}
-    assert S.on_topic(bta_u, "BTA U classification")
-    short_form = {"title": "The BTA U system explained", "content": "", "url": "https://x.org/a"}
-    assert S.on_topic(short_form, "BTA U classification")   # first two tokens accepted for a 3+ token name
-    orads = {"title": "O-RADS US risk stratification", "content": "", "url": "https://x.org/a"}
-    assert S.on_topic(orads, "O-RADS US")
-    unrelated = {"title": "Unrelated thyroid nodule paper", "content": "no mention here", "url": "https://x.org/a"}
-    assert not S.on_topic(unrelated, "BTA U classification")
-
-
-def test_rank_demotes_off_topic_tier_one_below_on_topic_tier_three():
-    off_topic_tier1 = {"url": "https://acr.org/unrelated", "title": "Unrelated ATA thyroid paper",
-                        "content": "nothing about BTA here", "score": 0.9}
-    on_topic_tier3 = {"url": "https://radiopaedia.org/bta-u", "title": "BTA U classification overview",
-                       "content": "BTA U classification", "score": 0.4}
-    ranked = S.rank([off_topic_tier1, on_topic_tier3], "BTA U classification")
-    assert [r["url"] for r in ranked] == ["https://radiopaedia.org/bta-u", "https://acr.org/unrelated"]
-
-
-def test_rank_without_name_skips_the_on_topic_check():
-    off_topic_tier1 = {"url": "https://acr.org/unrelated", "title": "Unrelated ATA thyroid paper",
-                        "content": "nothing about BTA here", "score": 0.9}
-    on_topic_tier3 = {"url": "https://radiopaedia.org/bta-u", "title": "BTA U classification overview",
-                       "content": "BTA U classification", "score": 0.4}
-    ranked = S.rank([on_topic_tier3, off_topic_tier1])
-    assert [r["url"] for r in ranked] == ["https://acr.org/unrelated", "https://radiopaedia.org/bta-u"]
-
-
 def test_rank_is_stable_for_ties():
     results = [{"url": "https://radiopaedia.org/a", "score": 0.5}, {"url": "https://radiopaedia.org/b", "score": 0.5}]
     assert [r["url"] for r in S.rank(results)] == ["https://radiopaedia.org/a", "https://radiopaedia.org/b"]
@@ -115,7 +92,7 @@ async def test_gather_dedupes_and_extracts_top_four(monkeypatch):
                 {"url": "https://acr.org/d", "title": "D", "score": 0.6, "content": "s"},
                 {"url": "https://esur.org/e", "title": "E", "score": 0.55, "content": "s"}]
 
-    async def fake_extract(urls):
+    async def fake_extract(urls, timeout=S.EXTRACT_TIMEOUT_S):
         calls["extract"].append(urls)
         return {u: f"text of {u}" * 300 for u in urls}   # well over MIN_EXTRACT_CHARS
     monkeypatch.setattr(S, "_search", fake_search)
@@ -131,7 +108,7 @@ async def test_gather_falls_back_to_search_content_when_extract_fails(monkeypatc
     async def fake_search(q):
         return [{"url": "https://x.org/a", "title": "A", "score": 0.5, "content": "search snippet text"}]
 
-    async def fake_extract(urls):
+    async def fake_extract(urls, timeout=S.EXTRACT_TIMEOUT_S):
         return {}
     monkeypatch.setattr(S, "_search", fake_search)
     monkeypatch.setattr(S, "_extract", fake_extract)
@@ -144,7 +121,7 @@ async def test_gather_dedupes_canonical_duplicates_across_queries(monkeypatch):
         return [{"url": "https://pubs.rsna.org/b", "title": "B", "score": 0.9, "content": "s"},
                 {"url": "https://pubs.rsna.org/b/", "title": "B dup", "score": 0.8, "content": "s"}]
 
-    async def fake_extract(urls):
+    async def fake_extract(urls, timeout=S.EXTRACT_TIMEOUT_S):
         return {}
     monkeypatch.setattr(S, "_search", fake_search)
     monkeypatch.setattr(S, "_extract", fake_extract)
@@ -157,7 +134,7 @@ async def test_gather_skips_excluded_urls(monkeypatch):
         return [{"url": "https://pubs.rsna.org/known", "title": "Known", "score": 0.9, "content": "s"},
                 {"url": "https://pubs.rsna.org/new", "title": "New", "score": 0.8, "content": "s"}]
 
-    async def fake_extract(urls):
+    async def fake_extract(urls, timeout=S.EXTRACT_TIMEOUT_S):
         return {}
     monkeypatch.setattr(S, "_search", fake_search)
     monkeypatch.setattr(S, "_extract", fake_extract)
@@ -165,42 +142,12 @@ async def test_gather_skips_excluded_urls(monkeypatch):
     assert [c.url for c in chunks] == ["https://pubs.rsna.org/new"]
 
 
-async def test_gather_passes_name_into_the_on_topic_ranking(monkeypatch):
-    async def fake_search(q):
-        return [{"url": "https://acr.org/unrelated", "title": "Unrelated ATA thyroid paper",
-                  "content": "nothing about BTA here" * 300, "score": 0.9},
-                {"url": "https://radiopaedia.org/bta-u", "title": "BTA U classification overview",
-                 "content": "BTA U classification" * 300, "score": 0.4}]
-
-    async def fake_extract(urls):
-        return {u: f"full text of {u}" * 300 for u in urls}
-    monkeypatch.setattr(S, "_search", fake_search)
-    monkeypatch.setattr(S, "_extract", fake_extract)
-    chunks, _ = await S.gather(["q"], branch="Solid", name="BTA U classification")
-    assert [c.url for c in chunks] == ["https://radiopaedia.org/bta-u", "https://acr.org/unrelated"]
-
-
-async def test_gather_with_no_name_does_not_demote_off_topic_results(monkeypatch):
-    async def fake_search(q):
-        return [{"url": "https://acr.org/unrelated", "title": "Unrelated ATA thyroid paper",
-                  "content": "nothing about BTA here" * 300, "score": 0.9},
-                {"url": "https://radiopaedia.org/bta-u", "title": "BTA U classification overview",
-                 "content": "BTA U classification" * 300, "score": 0.4}]
-
-    async def fake_extract(urls):
-        return {u: f"full text of {u}" * 300 for u in urls}
-    monkeypatch.setattr(S, "_search", fake_search)
-    monkeypatch.setattr(S, "_extract", fake_extract)
-    chunks, _ = await S.gather(["q"], branch="Solid")   # name="" -> on-topic check skipped
-    assert [c.url for c in chunks] == ["https://acr.org/unrelated", "https://radiopaedia.org/bta-u"]
-
-
 async def test_gather_drops_results_below_the_relevance_floor(monkeypatch):
     async def fake_search(q):
         return [{"url": "https://pubs.rsna.org/weak", "title": "weak", "score": 0.1, "content": "s"},
                 {"url": "https://pubs.rsna.org/strong", "title": "strong", "score": 0.9, "content": "s"}]
 
-    async def fake_extract(urls):
+    async def fake_extract(urls, timeout=S.EXTRACT_TIMEOUT_S):
         return {}
     monkeypatch.setattr(S, "_search", fake_search)
     monkeypatch.setattr(S, "_extract", fake_extract)
@@ -242,7 +189,7 @@ async def test_gather_refills_a_short_extract_with_the_next_candidate(monkeypatc
     monkeypatch.setattr(S, "_search", fake_search)
     calls = []
 
-    async def fake_extract(urls):
+    async def fake_extract(urls, timeout=S.EXTRACT_TIMEOUT_S):
         calls.append(urls)
         full = "full page text " * 300
         if len(urls) == 4:   # the first round: top 4, with esur.org/c coming back short
@@ -260,7 +207,7 @@ async def test_gather_keeps_the_short_page_and_its_snippet_when_the_replacement_
         return list(_FIVE_TIER1)
     monkeypatch.setattr(S, "_search", fake_search)
 
-    async def fake_extract(urls):
+    async def fake_extract(urls, timeout=S.EXTRACT_TIMEOUT_S):
         full = "full page text " * 300
         if len(urls) == 4:
             return {u: ("too short" if u == "https://esur.org/c" else full) for u in urls}
@@ -361,4 +308,143 @@ async def test_extract_exception_returns_empty(monkeypatch):
         async def extract(self, **kwargs):
             raise RuntimeError("boom")
     monkeypatch.setattr(tavily, "AsyncTavilyClient", FakeClient)
-    assert await S._extract(["https://a"]) == {}
+    assert await S._extract(["https://a"]) is None   # a failure, as opposed to {} for "nothing came back"
+
+
+def test_one_page_is_one_window_and_six_pages_fit_without_dropping(caplog):
+    """4 max-size first-pass pages + 2 retry pages, joined the way fetch joins them: every page is its own window,
+    the count stays within WINDOW_CAP, and nothing is cut or dropped."""
+    pages = [Chunk(url=f"https://pubs.rsna.org/p{i}", text=chr(ord("a") + i) * S.PAGE_MAX, branch="b") for i in range(6)]
+    text = F._text(pages)
+    windows = J._windows(text)
+    assert len(windows) <= J.WINDOW_CAP
+    assert "dropping" not in caplog.text
+    joined = "\n\n".join(windows)
+    for c in pages:
+        assert f"[{c.url}]\n{c.text}" in joined
+
+
+_GATED = [{"url": "https://pubs.rsna.org/other", "title": "A different guideline", "score": 0.95, "content": "other"},
+          {"url": "https://radiopaedia.org/this", "title": "This guideline", "score": 0.4, "content": "this"}]
+
+
+async def test_relevance_gate_ranks_an_irrelevant_tier_one_below_a_relevant_tier_three(monkeypatch):
+    async def fake_search(q):
+        return list(_GATED)
+
+    async def fake_extract(urls, timeout=S.EXTRACT_TIMEOUT_S):
+        return {u: "full page text " * 300 for u in urls}
+    seen = {}
+
+    async def fake_ask(state, questions, transport=None):
+        seen["state"], seen["questions"] = state, questions
+        return {"r_0": 0.1, "r_1": 0.9}
+    monkeypatch.setattr(S, "_search", fake_search)
+    monkeypatch.setattr(S, "_extract", fake_extract)
+    monkeypatch.setattr(J, "_ask", fake_ask)
+    chunks, _ = await S.gather(["q"], branch="B", name="Sys", version="2", title="The Paper")
+    assert [c.url for c in chunks] == ["https://radiopaedia.org/this", "https://pubs.rsna.org/other"]
+    assert seen["questions"]["r_1"]["instructions"] == \
+        "Result [1] is about Sys 2 (The Paper), not a different guideline or topic."
+    assert "[0] A different guideline — https://pubs.rsna.org/other — other" in seen["state"]
+    assert "[1] This guideline — https://radiopaedia.org/this — this" in seen["state"]
+
+
+async def test_relevance_gate_failure_falls_back_to_tier_and_score(monkeypatch):
+    async def fake_search(q):
+        return list(_GATED)
+
+    async def fake_extract(urls, timeout=S.EXTRACT_TIMEOUT_S):
+        return {u: "full page text " * 300 for u in urls}
+
+    async def down(state, questions, transport=None):
+        raise ValueError("jev response has no answers")
+    monkeypatch.setattr(S, "_search", fake_search)
+    monkeypatch.setattr(S, "_extract", fake_extract)
+    monkeypatch.setattr(J, "_ask", down)
+    chunks, _ = await S.gather(["q"], branch="B", name="Sys", version="2")
+    assert [c.url for c in chunks] == ["https://pubs.rsna.org/other", "https://radiopaedia.org/this"]
+
+
+async def test_no_name_makes_no_relevance_call(monkeypatch):
+    async def fake_search(q):
+        return list(_GATED)
+
+    async def fake_extract(urls, timeout=S.EXTRACT_TIMEOUT_S):
+        return {u: "full page text " * 300 for u in urls}
+
+    async def ask(*a, **k):
+        raise AssertionError("no Jev call without a name")
+    monkeypatch.setattr(S, "_search", fake_search)
+    monkeypatch.setattr(S, "_extract", fake_extract)
+    monkeypatch.setattr(J, "_ask", ask)
+    chunks, _ = await S.gather(["q"], branch="B")
+    assert [c.url for c in chunks] == ["https://pubs.rsna.org/other", "https://radiopaedia.org/this"]
+
+
+def test_rank_puts_irrelevant_results_after_tier_four():
+    results = [{"url": "https://acr.org/off", "score": 0.9}, {"url": "https://pubmed.ncbi.nlm.nih.gov/1/", "score": 0.1}]
+    ranked = S.rank(results, {"https://acr.org/off": 0.2, "https://pubmed.ncbi.nlm.nih.gov/1/": 0.8})
+    assert [r["url"] for r in ranked] == ["https://pubmed.ncbi.nlm.nih.gov/1/", "https://acr.org/off"]
+
+
+async def test_no_refill_when_the_first_extract_failed(monkeypatch):
+    async def fake_search(q):
+        return list(_FIVE_TIER1)
+    calls = []
+
+    async def fake_extract(urls, timeout=S.EXTRACT_TIMEOUT_S):
+        calls.append(urls)
+        return None   # Tavily down
+    monkeypatch.setattr(S, "_search", fake_search)
+    monkeypatch.setattr(S, "_extract", fake_extract)
+    chunks, _ = await S.gather(["q"], branch="")
+    assert len(calls) == 1 and [c.text for c in chunks] == ["snippet a", "snippet b", "snippet c", "snippet d"]
+
+
+async def test_refill_uses_the_shorter_timeout(monkeypatch):
+    async def fake_search(q):
+        return list(_FIVE_TIER1)
+    timeouts = []
+
+    async def fake_extract(urls, timeout=S.EXTRACT_TIMEOUT_S):
+        timeouts.append(timeout)
+        full = "full page text " * 300
+        return {u: ("short" if u == "https://esur.org/c" else full) for u in urls}
+    monkeypatch.setattr(S, "_search", fake_search)
+    monkeypatch.setattr(S, "_extract", fake_extract)
+    await S.gather(["q"], branch="")
+    assert timeouts == [S.EXTRACT_TIMEOUT_S, S.REFILL_TIMEOUT_S] and S.REFILL_TIMEOUT_S == 25
+
+
+async def test_refill_rejects_a_replacement_no_better_than_the_short_page(monkeypatch):
+    async def fake_search(q):
+        return list(_FIVE_TIER1)
+    short_c = "c" * 900
+
+    async def fake_extract(urls, timeout=S.EXTRACT_TIMEOUT_S):
+        full = "full page text " * 300
+        if len(urls) == 4:
+            return {u: (short_c if u == "https://esur.org/c" else full) for u in urls}
+        return {u: "e" * 500 for u in urls}   # shorter than MIN_EXTRACT_CHARS and than c's extract
+    monkeypatch.setattr(S, "_search", fake_search)
+    monkeypatch.setattr(S, "_extract", fake_extract)
+    chunks, _ = await S.gather(["q"], branch="")
+    by = {c.url: c.text for c in chunks}
+    assert "https://bir.org.uk/e" not in by and by["https://esur.org/c"] == short_c   # extract longer than snippet
+
+
+async def test_refill_takes_a_replacement_longer_than_the_short_page(monkeypatch):
+    async def fake_search(q):
+        return list(_FIVE_TIER1)
+
+    async def fake_extract(urls, timeout=S.EXTRACT_TIMEOUT_S):
+        full = "full page text " * 300
+        if len(urls) == 4:
+            return {u: ("c" * 300 if u == "https://esur.org/c" else full) for u in urls}
+        return {u: "e" * 800 for u in urls}   # under MIN_EXTRACT_CHARS but longer than c's extract
+    monkeypatch.setattr(S, "_search", fake_search)
+    monkeypatch.setattr(S, "_extract", fake_extract)
+    chunks, _ = await S.gather(["q"], branch="")
+    urls = [c.url for c in chunks]
+    assert "https://bir.org.uk/e" in urls and "https://esur.org/c" not in urls
