@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "Radiological assessment of osteo-arthrosis (Kellgren JH, Lawrence JS. Ann Rheum Dis 1957;16:494-502)",
+      "issuer": "Kellgren and Lawrence, Rheumatism Research Centre, University of Manchester",
+      "edition": "1957",
+      "url": "https://doi.org/10.1136/ard.16.4.494",
+      "sha256": "3fcc39c8ac2d5927941e9603e6b087f01aa035af7a1e0d54226e263133b731b4",
+      "file": "sources/3fcc39c8ac2d5927941e9603e6b087f01aa035af7a1e0d54226e263133b731b4.pdf",
+      "text_file": "sources/3fcc39c8ac2d5927941e9603e6b087f01aa035af7a1e0d54226e263133b731b4.txt",
+      "retrieved": "2026-10-13"
+    }
+  ]
+}

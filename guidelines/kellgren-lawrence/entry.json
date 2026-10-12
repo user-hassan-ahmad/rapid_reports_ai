@@ -1,0 +1,353 @@
+{
+  "id": "kellgren-lawrence",
+  "version": "1957.1",
+  "topic": "osteoarthritis-radiographic-grade",
+  "issuer": "Kellgren and Lawrence (University of Manchester)",
+  "system": "Kellgren and Lawrence five-grade radiographic grading of osteo-arthrosis",
+  "display": "Kellgren-Lawrence 1957",
+  "edition": "1957",
+  "tier": 2,
+  "status": "current",
+  "applies_to": {
+    "region": [
+      "hand",
+      "wrist",
+      "cervical spine (apophyseal joints)",
+      "lumbar spine (apophyseal joints)",
+      "hip",
+      "knee"
+    ],
+    "modality": [
+      "XR"
+    ],
+    "finding_type": [
+      "osteoarthritis"
+    ],
+    "context": []
+  },
+  "aliases": [
+    "Kellgren-Lawrence",
+    "Kellgren Lawrence",
+    "KL grade",
+    "K-L grade",
+    "KL score",
+    "Kellgren and Lawrence",
+    "K&L grading"
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "Kellgren and Lawrence graded radiographic osteo-arthrosis on a five-point scale: none (0), doubtful (1), minimal (2), moderate (3) and severe (4).",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Methods"
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "The paper names the radiographic features taken as evidence of osteo-arthrosis and shows standard example films for grades 1 to 4 in most joints studied. It does not give written criteria for each grade, and it gives no management or prognosis for any grade.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Methods; Figs 1-8"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "Grades 2 to 4 were counted as definite osteo-arthrosis; grade 1 (doubtful) was not. A group of joints, such as the distal interphalangeal joints, took the grade of its most affected joint.",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Methods p.1 (group rule); Inter-Observer Error p.3 (grades 2-4 definite)"
+        }
+      },
+      {
+        "id": "sum.4",
+        "text": "The study found that different observers could grade the same films differently, enough to change prevalence estimates substantially. This rests on one small sample (85 people aged 55 to 64 from one Lancashire population, two observers), so the figures are not general.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Conclusions"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.g0",
+        "text": "Grade 0, none: a definite absence of x-ray changes of osteo-arthrosis.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Methods"
+        }
+      },
+      {
+        "id": "def.g1",
+        "text": "Grade 1, doubtful: the paper gives no wording beyond the label (its text on p.6 calls it minimal or doubtful). It is not counted as definite osteo-arthrosis, which the paper takes as grades 2 to 4. Standard example films are shown.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "Intra-Observer Error (grade 1 described as minimal or doubtful); Methods grade list p.1"
+        }
+      },
+      {
+        "id": "def.g2",
+        "text": "Grade 2, minimal: osteo-arthrosis in the authors' opinion definitely present, though minimal in severity.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Methods"
+        }
+      },
+      {
+        "id": "def.g3",
+        "text": "Grade 3, moderate: the paper gives no wording beyond the label; standard example films are shown.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Methods; Figs 1-8"
+        }
+      },
+      {
+        "id": "def.g4",
+        "text": "Grade 4, severe: the paper gives no wording beyond the label; standard example films are shown.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Methods; Figs 1-8"
+        }
+      },
+      {
+        "id": "def.features",
+        "text": "Features taken as evidence of osteo-arthrosis: osteophytes on the joint margins (in the knee, also on the tibial spines); periarticular ossicles, chiefly at the interphalangeal joints; cartilage narrowing with subchondral sclerosis; small pseudocystic areas with sclerotic walls, usually subchondral; altered shape of the bone ends, particularly the femoral head.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Methods"
+        }
+      },
+      {
+        "id": "def.groups",
+        "text": "For a group of joints the grade is that of the most affected joint. Where each knee was graded separately, the worse knee was used in the results.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Methods"
+        }
+      },
+      {
+        "id": "def.definite",
+        "text": "In this study, grades 2 to 4 counted as definite osteo-arthrosis.",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Inter-Observer Error"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "tbl.grades",
+        "title": "Five grades of osteo-arthrosis",
+        "columns": [
+          "Grade",
+          "Label",
+          "Meaning stated in the paper"
+        ],
+        "rows": [
+          [
+            "0",
+            "None",
+            "A definite absence of x-ray changes of osteo-arthrosis."
+          ],
+          [
+            "1",
+            "Doubtful",
+            "No wording beyond the label."
+          ],
+          [
+            "2",
+            "Minimal",
+            "Osteo-arthrosis definitely present in the authors' opinion, though minimal in severity."
+          ],
+          [
+            "3",
+            "Moderate",
+            "No wording beyond the label."
+          ],
+          [
+            "4",
+            "Severe",
+            "No wording beyond the label."
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Methods: grade list"
+        }
+      },
+      {
+        "id": "tbl.views",
+        "title": "Single view used for grading each joint group",
+        "columns": [
+          "Joint group",
+          "View"
+        ],
+        "rows": [
+          [
+            "Hands",
+            "Postero-anterior"
+          ],
+          [
+            "Cervical spine",
+            "Lateral"
+          ],
+          [
+            "Lumbar spine",
+            "Lateral"
+          ],
+          [
+            "Hips",
+            "Antero-posterior"
+          ],
+          [
+            "Knees",
+            "Antero-posterior"
+          ],
+          [
+            "Feet",
+            "Antero-posterior"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods: views"
+        }
+      },
+      {
+        "id": "tbl.figs",
+        "title": "Joints with standard example films in the paper",
+        "columns": [
+          "Figure",
+          "Joint",
+          "Grades shown"
+        ],
+        "rows": [
+          [
+            "1",
+            "Distal interphalangeal",
+            "1 to 4"
+          ],
+          [
+            "2",
+            "Proximal interphalangeal",
+            "1 to 4"
+          ],
+          [
+            "3",
+            "Metacarpophalangeal",
+            "1 to 4"
+          ],
+          [
+            "4",
+            "First carpometacarpal",
+            "1 to 4"
+          ],
+          [
+            "5",
+            "Wrist",
+            "1 to 4"
+          ],
+          [
+            "6",
+            "Cervical spine",
+            "1 to 4"
+          ],
+          [
+            "7",
+            "Hip",
+            "1 to 4"
+          ],
+          [
+            "8",
+            "Knee",
+            "1 to 4"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods (p.2: Figs 1-8 show grades 1-4 for these joints); figures on pp.2-7"
+        }
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.criteria",
+        "text": "The 1957 paper does not give a written definition of grades 1, 3 and 4. Do not add criteria (for example a joint-space narrowing description) that are not in this paper.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Methods; Figs 1-8"
+        }
+      },
+      {
+        "id": "pit.nomgmt",
+        "text": "The paper gives no management, treatment or prognosis for any grade.",
+        "locator": {
+          "source": "S1",
+          "page": 1
+        }
+      },
+      {
+        "id": "pit.observer",
+        "text": "Observers differed: inter-observer correlation was significant in all joints except the wrist, ranging from 0.10 (wrist) to 0.83 (knee; hip only 0.40), and one observer read four times as much definite hip osteo-arthrosis. Deviations of up to about +-31 per cent from the mean prevalence may be expected between observers, against about +-5 per cent for one observer reading twice (intra-observer correlation up to 0.88). The authors recommend one reader for all films or two readers in consultation.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Conclusions; Summary; correlation coefficients pp.4, 6"
+        }
+      },
+      {
+        "id": "pit.wrist",
+        "text": "For the wrist, agreement between observers was so slight it might be due to chance, chiefly when severe rheumatoid arthritis was also present.",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Inter-Observer Error, continued to p.4"
+        }
+      },
+      {
+        "id": "pit.spine",
+        "text": "In the spine, only degenerative disease of the apophyseal joints was graded. Vertebral body spur formation and disc narrowing were not included.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Introduction"
+        }
+      },
+      {
+        "id": "pit.scope",
+        "text": "Degenerative change in synchondroses was not included. Local and primary generalized forms were not separated, nor forms secondary to trauma.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Introduction"
+        }
+      },
+      {
+        "id": "pit.views",
+        "text": "Each joint was graded from a single view. No standard example films were shown for the lumbar spine.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods"
+        }
+      }
+    ]
+  }
+}
