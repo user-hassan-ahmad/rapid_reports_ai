@@ -1212,8 +1212,14 @@ git commit -m "feat(copilot): targeted source-first fetch, branch-first with bac
   TNM keys)
 - Test: `backend/tests/test_copilot_tnm.py`
 
-The data is `resources/tnm_9th_clean.json` v2.1, cleaned on 2026-10-12 by `scripts/tnm/clean_tnm_9th.py` (commit
-`aabba56`). Spec §5.8. Stage groups are shown only for sites in `STAGE_VERIFIED`, which starts empty; spec §2.25.
+The data is `resources/tnm_9th_clean.json` **v2.2**:
+- category text cleaned by `scripts/tnm/clean_tnm_9th.py` (commit `aabba56`);
+- clinical stage tables rebuilt and hand-checked by `scripts/tnm/rebuild_stage_tables.py` (commit `a21bf43`).
+
+Each rebuilt site has `stage_tables: [{variant, verified, rows: [{stage, T: [...], N: [...], M: [...]}]}]`. The cells
+are category lists, with `"Any"` for any. Oesophagus has two variants, squamous cell carcinoma and adenocarcinoma.
+Sites without `stage_tables` propose T, N and M only. The lookup below is the same one the rebuild script verified;
+keep the two identical.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1240,29 +1246,39 @@ def test_entry_has_axes_with_x_first_and_is_verified():
     assert e.status == "verified" and e.version == "9" and b.state == "checked"
     opts = {i.id: i.options for i in b.inputs}
     assert opts["T"][0] == "TX" and "T1mi" in opts["T"] and opts["N"][0] == "NX" and opts["M"][0] == "MX"
+    assert "histology" not in opts
     assert "T2b:" in b.rule and "Minimally invasive adenocarcinoma" in b.rule
 
 
-def test_stage_lookup_rules():
-    rows = [{"stage": "Stage I", "T": "T1, T2", "N": "N0", "M": "M0"},
-            {"stage": "Stage II", "T": "T3", "N": "N0", "M": "M0"},
-            {"stage": "Stage III", "T": "Any T", "N": "N1, N2", "M": "M0"},
-            {"stage": "Stage IIIC", "T": "T3, T4a", "N": "N2b", "M": "M0"},
-            {"stage": "Stage IV", "T": "Any T", "N": "Any N", "M": "M1"}]
-    assert N.lookup(rows, "T2a", "N0", "M0") == "Stage I"          # a subcategory matches its parent
-    assert N.lookup(rows, "T3", "N2b", "M0") == "Stage IIIC"       # the more specific row wins
-    assert N.lookup(rows, "TX", "NX", "M1") == "Stage IV"          # X matches only "Any"
-    assert N.lookup(rows, "TX", "N0", "M0") is None
-    assert N.lookup(rows, "T4b", "N0", "M0") is None               # no row: no stage
+def test_variant_site_asks_histology():
+    opts = {i.id: i.options for i in N.entry("Oesophagus").content.branches[0].inputs}
+    assert opts["histology"] == ["Squamous cell carcinoma", "Adenocarcinoma"]
 
 
-def test_proposal_built_in_code_and_stage_only_when_verified(monkeypatch):
+def test_stage_lookup_against_the_rebuilt_tables():
+    # Known UICC TNM 9 stages; the three v2.0 failures first.
+    cases = [("Lung", "T2b", "N1", "M0", "Stage IIB"), ("Kidney", "T3a", "N1", "M0", "Stage III"),
+             ("Colon and Rectum", "T4b", "N2b", "M0", "Stage IIIC"), ("Lung", "TX", "N0", "M0", "Occult carcinoma"),
+             ("Lung", "T4", "N3", "M0", "Stage IIIC"), ("Lung", "TX", "NX", "M1c1", "Stage IVB"),
+             ("Colon and Rectum", "T3", "N0", "M0", "Stage IIA"), ("Pancreas", "T2", "N0", "M0", "Stage IB"),
+             ("Stomach", "T3", "N2", "M0", "Stage III")]
+    for site, t, n, m, want in cases:
+        assert N.stage(site, "", t, n, m) == want, (site, t, n, m)
+    assert N.stage("Lung", "", "TX", "N1", "M0") is None            # X matches only a listed X or "Any"
+    assert N.stage("Oesophagus", "Adenocarcinoma", "T1", "N1", "M0") == "Stage IIA"
+    assert N.stage("Oesophagus", "Squamous cell carcinoma", "T1", "N1", "M0") == "Stage I"
+    assert N.stage("Oesophagus", "", "T1", "N1", "M0") is None      # histology needed
+    assert N.stage("Prostate", "", "T2", "N0", "M0") is None        # no verified table
+
+
+def test_proposal_built_in_code():
     p = N.proposal("Lung", {"T": "T2b", "N": "N1", "M": "M0"})
-    assert p.classification == "cT2b N1 M0 (UICC TNM 9th)" and p.line == "Staging (UICC TNM 9th): cT2b N1 M0."
-    monkeypatch.setattr(N, "STAGE_VERIFIED", {"Kidney"})
-    p2 = N.proposal("Kidney", {"T": "T1a", "N": "N0", "M": "M0"})
-    assert p2.line == "Staging (UICC TNM 9th): cT1a N0 M0, Stage I."
-    assert N.proposal("Lung", {"T": "T2b", "N": "N1"}) is None     # every axis must be answered
+    assert p.classification == "cT2b N1 M0, Stage IIB (UICC TNM 9th)"
+    assert p.line == "Staging (UICC TNM 9th): cT2b N1 M0, Stage IIB."
+    assert N.proposal("Prostate", {"T": "T2", "N": "N0", "M": "M0"}).line == "Staging (UICC TNM 9th): cT2 N0 M0."
+    assert N.proposal("Lung", {"T": "T2b", "N": "N1"}) is None       # every axis must be answered
+    assert N.proposal("Oesophagus", {"T": "T1", "N": "N1", "M": "M0"}) is None   # and histology where tables vary
+    assert N.proposal("Oesophagus", {"T": "T1", "N": "N1", "M": "M0", "histology": "Adenocarcinoma"}).line.endswith("Stage IIA.")
 
 
 def test_material_for_ask():
@@ -1278,14 +1294,13 @@ Expected: FAIL (an import error).
 
 ```python
 # backend/src/rapid_reports_ai/hybrid_stack/copilot/tnm.py
-"""UICC TNM 9th edition as a Copilot provider (spec §5.8): offline (resources/tnm_9th_clean.json v2.1), verified by
-provenance, no fetch. One branch with T, N and M inputs (X first: the reporting convention for an axis that cannot be
-assessed); the proposal is assembled in code. Stage groups only for sites whose grouping table has been rebuilt and
-checked (STAGE_VERIFIED): the parsed tables lost rows (spec §2.25)."""
+"""UICC TNM 9th edition as a Copilot provider (spec §5.8): offline (resources/tnm_9th_clean.json v2.2), verified by
+provenance, no fetch. One branch with T, N and M inputs (X first: the reporting convention for an axis that cannot
+be assessed), plus histology where a site's stage table varies by it. The proposal is assembled in code; the stage
+comes from the rebuilt, hand-checked stage_tables (scripts/tnm/rebuild_stage_tables.py: keep lookup identical)."""
 from __future__ import annotations
 
 import json
-import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -1295,7 +1310,6 @@ from .types import Branch, Entry, GuidelineContent, Input, Output, Proposal, Pub
 
 DATA = Path(__file__).resolve().parents[2] / "resources" / "tnm_9th_clean.json"
 EXCLUDED = {"Brain & Spinal Cord", "Hodgkin Lymphoma", "Non-Hodgkin Lymphomas"}
-STAGE_VERIFIED: set[str] = set()   # sites whose stage_grouping was rebuilt from the source and hand-checked
 X = {"T": "TX", "N": "NX", "M": "MX"}
 TAG = "UICC TNM 9th"
 SOURCE = "UICC TNM Classification of Malignant Tumours, 9th edition (offline)"
@@ -1322,6 +1336,14 @@ def site_for(key: str) -> str | None:
     return next((s for s in sites() if key_for(s) == key), None)
 
 
+def _tables(site: str) -> list[dict]:
+    return [t for t in _data()[site].get("stage_tables") or [] if t.get("verified")]
+
+
+def variants(site: str) -> list[str]:
+    return [t["variant"] for t in _tables(site) if t["variant"]]
+
+
 def _options(site: str, axis: str) -> list[str]:
     cats = list((_data()[site]["tnm"].get(axis) or {}).keys())
     return cats if X[axis] in cats else [X[axis], *cats]
@@ -1331,7 +1353,9 @@ def _result(site: str) -> TnmResult:
     r = _data()[site]
     return TnmResult(tumour=site, icd_o=r.get("icd_o", ""), edition_uicc="9th", edition_ajcc=None,
                      tnm_json={a: r["tnm"].get(a) or {} for a in "TNM"},
-                     stage_grouping=r.get("stage_grouping") or [], rules=r.get("rules", ""), rrf_score=1.0)
+                     stage_grouping=[{"stage": g["stage"], **{a: ", ".join(g[a]) for a in "TNM"}}
+                                     for t in _tables(site) for g in t["rows"]],
+                     rules=r.get("rules", ""), rrf_score=1.0)
 
 
 def material(site: str) -> str:
@@ -1341,10 +1365,13 @@ def material(site: str) -> str:
 def entry(site: str) -> Entry:
     r = _data()[site]
     inputs = [Input(id=a, question=f"{a} category", options=_options(site, a)) for a in "TNM"]
+    if variants(site):
+        inputs.append(Input(id="histology", question="Histology", options=variants(site)))
     rule = "\n".join(f"{k}: {v}" for a in "TNM" for k, v in (r["tnm"].get(a) or {}).items())
-    outputs = [Output(when=f"{g.get('T')}, {g.get('N')}, {g.get('M')}", classification=g.get("stage", ""),
-                      quote=f"{g.get('stage')}: {g.get('T')} {g.get('N')} {g.get('M')}")
-               for g in r.get("stage_grouping") or []]
+    outputs = [Output(when=f"{t['variant'] + ': ' if t['variant'] else ''}{', '.join(g['T'])} | {', '.join(g['N'])} | "
+                           f"{', '.join(g['M'])}", classification=g["stage"],
+                      quote=f"{g['stage']}: {' '.join(g['T'])} {' '.join(g['N'])} {' '.join(g['M'])}")
+               for t in _tables(site) for g in t["rows"]]
     return Entry(key=key_for(site), name=f"TNM {site}", version="9", status="verified",
                  publication=Publication(title=SOURCE, body="UICC", year="2025"),
                  content=GuidelineContent(applies_to=(r.get("rules") or "").split(". ")[0],
@@ -1354,40 +1381,46 @@ def entry(site: str) -> Entry:
                  sources=[Source(url="", title=SOURCE, tier=1)])
 
 
-def _cells(cell: str) -> list[str]:
-    return [c.strip() for c in re.split(r",|/|\bor\b", cell or "") if c.strip()]
+def _matches(cat: str, cells: list[str]) -> int:
+    """2: exact cell; 1: 'Any' or the cell is its parent (T2b under 'T2'); 0: no match. An X category matches only a
+    cell that lists it (Lung 'Occult carcinoma TX N0 M0') or 'Any'."""
+    if cat in cells:
+        return 2
+    if "Any" in cells:
+        return 1
+    if cat.endswith("X"):
+        return 0
+    return 1 if any(cat.startswith(c) for c in cells) else 0
 
 
 def lookup(rows: list[dict], t: str, n: str, m: str) -> str | None:
-    """The stage for T/N/M, or None. 'Any' matches anything; X matches only 'Any'; a category matches its parent row
-    (T2b matches 'T2'), scoring lower than an exact cell; disagreeing rows tied on specificity give no stage."""
-    hits: list[tuple[int, str]] = []
+    hits = []
     for g in rows:
-        score, ok = 0, True
-        for cat, cell in ((t, g.get("T", "")), (n, g.get("N", "")), (m, g.get("M", ""))):
-            cs = _cells(cell)
-            if any(c.lower().startswith("any") for c in cs):
-                continue
-            if cat.endswith("X") or not any(cat == c or cat.startswith(c) for c in cs):
-                ok = False
-                break
-            score += 2 if cat in cs else 1
-        if ok:
-            hits.append((score, g.get("stage", "")))
+        s = [_matches(c, g[a]) for c, a in ((t, "T"), (n, "N"), (m, "M"))]
+        if all(s):
+            hits.append((sum(s), g["stage"]))
     if not hits:
         return None
-    best = max(sc for sc, _ in hits)
-    stages = {st for sc, st in hits if sc == best}
+    best = max(h for h, _ in hits)
+    stages = {st for h, st in hits if h == best}
+    stages = {st for st in stages if not any(o != st and o.startswith(st) for o in stages)}   # IIA over II
     return stages.pop() if len(stages) == 1 else None
 
 
+def stage(site: str, variant: str, t: str, n: str, m: str) -> str | None:
+    tables = _tables(site)
+    if len(tables) > 1:
+        tables = [x for x in tables if x["variant"] == variant]
+    return lookup(tables[0]["rows"], t, n, m) if len(tables) == 1 else None
+
+
 def proposal(site: str, settled: dict[str, str]) -> Proposal | None:
-    if any(not settled.get(a) for a in "TNM"):
+    if any(not settled.get(a) for a in "TNM") or (variants(site) and settled.get("histology") not in variants(site)):
         return None
     tnm = f"c{settled['T']} {settled['N']} {settled['M']}"
-    stage = lookup(_data()[site].get("stage_grouping") or [], settled["T"], settled["N"], settled["M"]) \
-        if site in STAGE_VERIFIED else None
-    return Proposal(classification=f"{tnm} ({TAG})", line=f"Staging ({TAG}): {tnm}{', ' + stage if stage else ''}.")
+    st = stage(site, settled.get("histology", ""), settled["T"], settled["N"], settled["M"])
+    text = f"{tnm}, {st}" if st else tnm
+    return Proposal(classification=f"{text} ({TAG})", line=f"Staging ({TAG}): {text}.")
 ```
 
 In `fetch.py`, at the top of `resolve_guideline`:
@@ -1408,7 +1441,7 @@ Expected: all pass.
 
 ```bash
 git add backend/src/rapid_reports_ai/hybrid_stack/copilot/tnm.py backend/src/rapid_reports_ai/hybrid_stack/copilot/fetch.py backend/tests/test_copilot_tnm.py
-git commit -m "feat(copilot): offline UICC TNM 9 provider with X convention and code-built proposal"
+git commit -m "feat(copilot): offline UICC TNM 9 provider — X convention, histology variants, verified stage tables"
 ```
 
 ---
@@ -1818,7 +1851,7 @@ async def test_tnm_preview_proposal_comes_from_code(monkeypatch):
                        proposal=Proposal(classification="Stage IIB", line="model text"))
     monkeypatch.setattr(P, "_call", call)
     out = await P.preview(e, "Staging", "4.5 cm right upper lobe mass with ipsilateral hilar node.", "", {})
-    assert out.proposal.line == "Staging (UICC TNM 9th): cT2b N1 M0."
+    assert out.proposal.line == "Staging (UICC TNM 9th): cT2b N1 M0, Stage IIB."
 
 
 async def test_preview_failure_returns_empty(monkeypatch):

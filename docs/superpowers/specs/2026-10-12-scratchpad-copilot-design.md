@@ -94,9 +94,10 @@ Nothing reaches the report unless the radiologist presses Apply or ticks it.
 24. **A TNM site is chosen from a closed list, then gated by Jev; there's no embedding search.** The prefetch's pgvector
     hybrid search stays where it is. The Copilot path replaces it only once the lab (§8.5) shows the closed list plus
     Jev picks the site at least as well, with no false staging cards.
-25. **A stage group is shown only for sites whose grouping table has been verified.** The parsed tables lost the extra
-    rows each stage has (lung, kidney and colon all fail spot checks), so until each table is rebuilt and checked, a TNM
-    card proposes T, N and M only.
+25. **Stage groups come from rebuilt, hand-checked tables.** The original parse lost rows from the stage tables. The
+    clinical tables were rebuilt from the raw extraction (data v2.2, `stage_tables`) for 36 sites, with oesophagus
+    split by histology. Sites whose stage needs more than T, N and M, or whose category table is incomplete, have no
+    table: their cards propose T, N and M only. For a site whose table varies by histology, the card asks for it.
 
 ## 3. Layout
 
@@ -343,7 +344,8 @@ Shared by card open and by ask. The steps:
   - The key is `tnm-<slug(site)>@9`.
 - **Entry.** Built on the fly, with no fetch and no registry row:
   - one branch, "Staging", state `checked`;
-  - inputs `T`, `N` and `M`, whose options are the site's categories, with the X option added first when absent;
+  - inputs `T`, `N` and `M`, whose options are the site's categories, with the X option added first when absent,
+    plus `histology` when the site's stage table varies by it;
   - rule: the category definitions (the `format_tnm_evidence` text);
   - outputs: the stage grouping rows;
   - status `verified`; source "UICC TNM Classification of Malignant Tumours, 9th edition (offline)".
@@ -351,9 +353,12 @@ Shared by card open and by ask. The steps:
   - Qwen settles each axis it can from the findings, each with a quote. Unsettled axes are in-card choices.
   - The proposal is assembled **in code**: classification `cT2b N1 M0 (UICC TNM 9th)`, and line "Staging (UICC TNM
     9th): cT2b N1 M0."
-  - The stage group is added only for sites listed in `STAGE_VERIFIED`, and only when the lookup gives exactly one
-    stage. "Any" matches anything; X matches only "Any"; a category matches its parent row (T2b matches "T2"); when
-    several rows tie on specificity and disagree, no stage is given.
+  - The stage group comes from the site's verified `stage_tables`, and only when the lookup gives exactly one stage:
+    - "Any" matches anything;
+    - X matches only "Any" or a cell that lists it;
+    - a category matches its parent row (T2b matches "T2");
+    - a substage beats its summary stage (IIA over II);
+    - when several rows still tie and disagree, no stage is given.
   - There is no recommendation.
 - **Ask.** Material is the `format_tnm_evidence` text for the site. There is no gap search for TNM.
 
