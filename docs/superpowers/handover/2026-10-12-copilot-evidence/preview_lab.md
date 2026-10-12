@@ -32,6 +32,7 @@ Final run latency by pack, in ms, sorted:
    - Test: `test_bosniak_says_a_described_mass_is_not_too_small`.
 3. **BTS `nodule_count` could not be settled from "solitary".** The number guard required a digit in the quote, but the entry's own `how_stated` says "'solitary' is 1". A count may now come from a count word in its quote: single, solitary, sole, one, no other, no further, or two to ten. This applies only when the input's unit is not a measurement unit (mm, cm, mm3, HU, days, weeks, months, years, %). "Seven millimetres" is still dropped.
    - Test: `test_a_count_may_be_dictated_in_words_but_a_measurement_may_not`.
+   - Review follow-up, after the lab and not re-run: count words now apply only to inputs whose unit is exactly "count" (the BTS `nodule_count` unit was renamed from "nodules"), and "no other" / "no further" no longer count as 1, because they fire on "no other abnormality". Two final-run BTS cases settled the count from "No other (pulmonary) nodules" ("cm measurement, full Brock history" and "unstated: age"). Under the new rule that count would be asked instead.
 
 No case expectations were changed between runs.
 

@@ -2007,7 +2007,7 @@
       "prerequisites": [],
       "states": [],
       "type": "number",
-      "unit": "nodules"
+      "unit": "count"
      },
      {
       "how_stated": "true when the nodule margin is described as spiculated; false for smooth, well-defined or lobulated margins",
@@ -2204,7 +2204,7 @@
        "table": "Table 2, footnote: nodule count centred on 4"
       },
       "step": "derive",
-      "unit": "nodules"
+      "unit": "count"
      },
      {
       "expr": {
@@ -4364,5 +4364,5 @@
    ]
   }
  },
- "version": "9a4783e86b32"
+ "version": "b8b4ffb1621d"
 }

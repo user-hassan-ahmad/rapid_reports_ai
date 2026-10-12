@@ -130,7 +130,7 @@
    "id": "nodule_count",
    "label": "Number of nodules",
    "type": "number",
-   "unit": "nodules",
+   "unit": "count",
    "how_stated": "total number of nodules on this CT, e.g. 'solitary' is 1, 'three nodules' is 3",
    "locator": {
     "source": "S2",
@@ -280,7 +280,7 @@
   {
    "step": "derive",
    "id": "count_term",
-   "unit": "nodules",
+   "unit": "count",
    "expr": {
     "op": "sub",
     "args": [

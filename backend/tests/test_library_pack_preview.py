@@ -152,8 +152,10 @@ def test_settled_list_returned_as_json_text_is_parsed():
 
 
 @pytest.mark.parametrize("unit,value,quote,ok", [
-    ("nodules", 1, "Solitary nodule", True), ("nodules", 2, "two nodules", True), ("nodules", 1, "No other nodules", True),
-    ("nodules", 3, "two nodules", False), ("mm", 7, "seven millimetres", False), ("mm", 1, "single nodule", False)])
+    ("count", 1, "Solitary nodule", True), ("count", 2, "two nodules", True), ("count", 3, "two nodules", False),
+    ("count", 1, "No other nodules", False), ("count", 1, "no other abnormality", False),
+    ("mm", 7, "seven millimetres", False), ("mm", 1, "single nodule", False), ("", 1, "single nodule", False),
+    ("nodules", 1, "Solitary nodule", False)])
 def test_a_count_may_be_dictated_in_words_but_a_measurement_may_not(unit, value, quote, ok):
     from rapid_reports_ai.hybrid_stack.copilot.library.schema import InputDef
     i = InputDef(id="n", label="N", type="number", unit=unit, min_value=0, min_inclusive=False)
