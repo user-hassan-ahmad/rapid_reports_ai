@@ -70,7 +70,10 @@ def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = ()) -> st
         "structure or paragraph it describes that the input does not mention is left out entirely, never filled with "
         "a normal statement or an Opening pattern of its own. Every statement in the input appears, with its meaning "
         "unchanged; statements about the same structure may be joined into one sentence, naming only the structures "
-        "the input names; nothing is added.")
+        "the input names; nothing is added.\n"
+        "- **Required statements:** a rule in this sheet that requires a statement (always mention, always state, "
+        "always close with) applies only when the FINDINGS input contains that statement, and then only decides "
+        "where it goes; otherwise the rule is skipped and that structure is not mentioned.")
     removed = [t.strip() for t in declined if t.strip()]
     if removed:
         parts.append("## Removed by the Radiologist\n" + "\n".join(f'- DO NOT ASSERT: "{t}"' for t in removed))

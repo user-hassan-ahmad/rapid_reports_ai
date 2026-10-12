@@ -59,6 +59,12 @@ def test_a_blank_sheet_still_gives_the_session_rules():
     assert b.startswith("## Scratchpad Session") and "## Confirmed Conclusion" in b
 
 
+def test_session_rules_hold_back_statements_a_sheet_rule_requires():
+    b = stack_brief("## Domain Rules\nThe LGE paragraph always closes with a thrombus statement.\n", "C.", [])
+    assert "always closes with a thrombus statement" in b  # free prose stays; the session rule subordinates it
+    assert "applies only when the FINDINGS input contains that statement" in b
+
+
 def test_stack_prompts_take_out_what_the_scratchpad_confirmed():
     for text in (g.GLOBAL_STYLE_GUIDE_STACK, g.PRE_WRITING_ANALYSIS_STACK, g.VERIFICATION_CHECKLIST_STACK):
         assert "mandatory negative" not in text.lower()
