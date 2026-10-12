@@ -137,3 +137,18 @@ def test_semantic_flags_do_not_gate(authed_client, monkeypatch):
     body = r.json()
     assert body["flags"][0]["kind"] == "laterality_conflict"
     assert body["should_gate"] is False
+
+
+def test_scratchpad_skips_the_regex_tier_and_always_runs_the_model(authed_client, monkeypatch):
+    """Unfinished sentences are Jev's in the scratchpad: no regex truncation flag, and tier 2 still runs."""
+    called = []
+    import rapid_reports_ai.dictation_semantic as ds
+    async def _fake_check(*a, **k):
+        called.append(1)
+        return []
+
+    monkeypatch.setattr(ds, "check_semantic", _fake_check)
+    r = authed_client.post("/api/dictation/check",
+                           json={"findings": "- There is a lesion in the", "include_semantic": True, "skip_tier1": True})
+    assert r.status_code == 200
+    assert r.json()["flags"] == [] and called == [1]

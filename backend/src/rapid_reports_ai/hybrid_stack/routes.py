@@ -17,13 +17,13 @@ from ..dictation_v2 import v2_allowed
 from ..template_sheet_structure import fresh
 from .schemas import Region
 from .items import Item, ItemsResult, Referral, recheck as items_recheck, update as items_update
-from .jev_stack import MATERIAL_MIN, STALE_MIN, ask_material, ask_stale
+from .jev_stack import MATERIAL_MIN, STALE_MIN, UNFINISHED_MIN, ask_material, ask_stale, ask_unfinished
 from .normals import AssumedResult, assumed as assumed_normals
 from .slim_sheet import clean_sentences, get_or_make as slim_get_or_make
 from .template import template_region_normals
 from .draft import DraftResult, draft_conclusion
 from .service import GroupResult, SchemaResult, close_update, group_update, resolve_schema
-from .units import StackUnit
+from .units import StackUnit, sentences as split_sentences
 
 import logging
 logger = logging.getLogger(__name__)
@@ -211,6 +211,33 @@ async def stack_conclusion_check(req: StaleRequest, user: User = Depends(get_cur
         logger.warning("[stack.conclusion-check] %s: %s", type(e).__name__, str(e)[:200])
         return {"stale": False, "score": None}
     return {"stale": score >= STALE_MIN, "score": round(score, 3)}
+
+
+class UnfinishedRequest(BaseModel):
+    text: str = ""
+
+
+@router.post("/unfinished")
+async def stack_unfinished(req: UnfinishedRequest, user: User = Depends(get_current_user)):
+    """Unfinished sentences, judged by Jev (the scratchpad's only check for them): flags in the shape of
+    /api/dictation/check (kind truncation, severity high, offsets into `text`). Fails open: no flags."""
+    _require()
+    text = req.text[:20000]
+    found, at = [], 0
+    for s in split_sentences(text)[:80]:
+        k = text.find(s, at)
+        if k < 0:
+            continue
+        found.append((s, k))
+        at = k + len(s)
+    try:
+        scores = await ask_unfinished([s for s, _ in found])
+    except Exception as e:
+        logger.warning("[stack.unfinished] %s: %s", type(e).__name__, str(e)[:200])
+        return {"flags": []}
+    return {"flags": [{"kind": "truncation", "severity": "high", "excerpt": s, "message": "The sentence stops before it is finished.",
+                       "start": k, "end": k + len(s), "blocking": True, "score": round(p, 3)}
+                      for (s, k), p in zip(found, scores) if p >= UNFINISHED_MIN]}
 
 
 @router.post("/assumed", response_model=AssumedResult)

@@ -785,6 +785,9 @@ class DictationCheckRequest(BaseModel):
     include_semantic: bool = False
     scan_type: Optional[str] = None
     clinical_history: Optional[str] = None
+    # Scratchpad: unfinished sentences are Jev's (/api/canvas/stack/unfinished), so the regex tier is skipped and the
+    # model tier always runs.
+    skip_tier1: bool = False
 
 
 # Feedback request models
@@ -2757,7 +2760,7 @@ async def dictation_check_endpoint(
     """
     from .dictation_integrity import check_dictation
 
-    flags = check_dictation(request.findings)
+    flags = [] if request.skip_tier1 else check_dictation(request.findings)
 
     # Tier 2 runs only when asked, and only when tier 1 is clean: a truncated
     # dictation is already gated, so spending a model call to also tell the

@@ -211,3 +211,25 @@ async def test_post_chat_moves_a_cerebras_rate_limit_to_the_same_model_on_groq(m
                         5.0, httpx.MockTransport(handler))
     assert r.status_code == 200
     assert seen == [("api.cerebras.ai", "qwen-3.8-27b", "medium", 64000), ("api.groq.com", "qwen/qwen3.8-27b", "default", 16384)]
+
+
+def test_unfinished_route_flags_what_jev_scores_unfinished_with_offsets(authed, monkeypatch):
+    seen = {}
+
+    async def fake(sentences):
+        seen["s"] = sentences
+        return [0.05 if s.endswith(".") else 0.95 for s in sentences]
+    monkeypatch.setattr(R, "ask_unfinished", fake)
+    text = "Normal appendix. The terminal ileum is\nConclusion: acute appendicitis."
+    d = authed.post("/api/canvas/stack/unfinished", json={"text": text}).json()
+    assert seen["s"] == ["Normal appendix.", "The terminal ileum is", "Conclusion: acute appendicitis."]
+    [f] = d["flags"]
+    assert text[f["start"]:f["end"]] == "The terminal ileum is"
+    assert f["kind"] == "truncation" and f["severity"] == "high" and f["blocking"] is True
+
+
+def test_unfinished_route_fails_open(authed, monkeypatch):
+    async def boom(sentences):
+        raise RuntimeError("jev down")
+    monkeypatch.setattr(R, "ask_unfinished", boom)
+    assert authed.post("/api/canvas/stack/unfinished", json={"text": "The kidneys are"}).json() == {"flags": []}

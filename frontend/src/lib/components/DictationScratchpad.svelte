@@ -38,7 +38,7 @@
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
-	import { postAssumed, postChanged, postDictationCheck, postClose, postConclusionCheck, postDebug, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
+	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDebug, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit, similar } from '$lib/hybrid-stack/stackState';
 	import { abnormalAll, assumedFrom, openCount, rowSentences, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates } from '$lib/hybrid-stack/regionState';
@@ -1609,11 +1609,19 @@
 		const seq = ++checkSeq;
 		const keepSemantic = () => semanticChecks.filter((c) => text.includes(c.quote));
 		try {
-			const res = await postDictationCheck($token, { findings: text, include_semantic: semantic, scan_type: scanType, clinical_history: clinicalHistory });
+			// Unfinished sentences are Jev's (every variant, not a regex); the model tier runs with it, never gated on it.
+			const [unfinished, res] = await Promise.all([
+				postUnfinished($token, { text }).catch(() => ({ flags: [] })),
+				semantic
+					? postDictationCheck($token, { findings: text, include_semantic: true, skip_tier1: true, scan_type: scanType, clinical_history: clinicalHistory })
+					: Promise.resolve(null)
+			]);
 			if (seq !== checkSeq) return;
-			const all = toChecks(text, res.flags ?? [], stackUnits);
-			const tier1 = all.filter((c) => c.tier === 1);
-			semanticChecks = semantic && !tier1.length ? all.filter((c) => c.tier === 2) : keepSemantic();
+			const tier1 = toChecks(text, unfinished.flags ?? [], stackUnits);
+			const within = (a: string, b: string) => a.includes(b) || b.includes(a);
+			// A run-on the model also reads as a garble is one underline: the unfinished sentence.
+			semanticChecks = (res ? toChecks(text, res.flags ?? [], stackUnits) : keepSemantic())
+				.filter((c) => c.tier === 2 && !tier1.some((t) => within(t.quote, c.quote)));
 			checks = [...tier1, ...semanticChecks];
 		} catch {
 			if (seq !== checkSeq) return;

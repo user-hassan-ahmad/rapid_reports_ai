@@ -3,6 +3,7 @@ target region or chip), and whether the dictation already states a chip. Thresho
 (scripts/hybrid_stack_eval/labs; spec §10)."""
 from __future__ import annotations
 
+import asyncio
 import os
 from dataclasses import dataclass
 from typing import Any
@@ -251,3 +252,35 @@ async def ask_stale(conclusion: str, findings: list[str], transport=None) -> flo
     """P(the conclusion no longer reflects something important in the findings)."""
     state = "FINDINGS:\n" + "\n".join(f"- {f}" for f in findings) + f"\n\nCONCLUSION:\n{conclusion}"
     return await _noul(state, STALE_QUESTION, transport)
+
+
+# ── Unfinished sentences (lab 2026-10-12, scripts/unfinished_lab.py, 18 unfinished / 22 finished, 2 runs) ─────────
+# The scratchpad's only unfinished-sentence check (replaces the regex tier there): wording A, unfinished all >= 0.84,
+# finished all <= 0.55 (a lone heading 0.51, "hydronephrosis to a … calculus" 0.55). Asked inside the dictation, so a
+# sentence that runs into the next statement or heading is seen as such.
+UNFINISHED_MIN = 0.7
+UNFINISHED_BATCH = 10   # sentences per Jev call; batches run in parallel
+UNFINISHED_QUESTION = (
+    "SENTENCE stops before its statement is complete: it ends on a word that needs more after it (a verb, preposition, "
+    "conjunction or article), a measurement or comparison is left without its value, or it runs straight into another "
+    "statement or heading with the first left unfinished. A short deliberate fragment that states a complete finding, "
+    "a sweeping remark or a heading on its own is not unfinished. SENTENCE: {s}")
+
+
+async def ask_unfinished(sentences: list[str], transport=None) -> list[float]:
+    """P(unfinished) per sentence, each asked with the whole dictation as its context."""
+    if not sentences:
+        return []
+    state = "DICTATION:\n" + "\n".join(sentences)
+
+    async def batch(start: int, chunk: list[str]) -> list[float]:
+        qs = {f"u{start + i}": {"type": "noul", "instructions": UNFINISHED_QUESTION.format(s=s)} for i, s in enumerate(chunk)}
+        r = await jev_post({"model": JEV_MODEL, "state": state, "questions": qs},
+                           os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S * 2, transport)
+        r.raise_for_status()
+        a = r.json().get("answers") or {}
+        return [float((a.get(f"u{start + i}") or {}).get("noul") or 0.0) for i in range(len(chunk))]
+
+    parts = await asyncio.gather(*(batch(k, sentences[k:k + UNFINISHED_BATCH])
+                                   for k in range(0, len(sentences), UNFINISHED_BATCH)))
+    return [x for p in parts for x in p]
