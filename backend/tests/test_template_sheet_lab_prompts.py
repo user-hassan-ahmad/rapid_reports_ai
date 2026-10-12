@@ -125,3 +125,14 @@ def test_impression_exemplars_keep_their_line_breaks():
     from rapid_reports_ai import template_sheet_lab_prompts as P
     text = " ".join(str(v) for k, v in vars(P).items() if isinstance(v, str))
     assert "keeping its line breaks (each numbered or separate item on its own line" in text
+
+
+def test_grammar_asks_one_named_structure_per_normal_and_slotted_examples():
+    from rapid_reports_ai import template_sheet_lab_prompts as P
+
+    assert "(or group)" not in P.GRAMMAR
+    assert "names its structure in its own words" in P.GRAMMAR
+    assert "never a specific value, code, grade or time window" in P.ANALYSER_SYSTEM_PROMPT
+    assert "never contains a {slot}" in P.GRAMMAR
+    for prompt in (P.ANALYSER_SYSTEM_PROMPT, P.REPAIR_SYSTEM_PROMPT, P.TEMPLATE_SHEET_CONVERT_PROMPT):
+        assert "names its structure in its own words" in prompt
