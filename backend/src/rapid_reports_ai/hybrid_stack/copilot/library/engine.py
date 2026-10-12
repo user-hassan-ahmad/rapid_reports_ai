@@ -312,6 +312,8 @@ def evaluate(entry: Entry, given: dict[str, Any]) -> Trace:
     if out.state != "unknown":
         raise EvaluationError(f"result step {entry.result} ended {out.state}")
     possible, bounded, needed = _partial(entry, given, env)
+    if bounded and len(possible) == 1:      # the unknown inputs cannot change the outcome: it is settled
+        return Trace(outcome=possible[0], possible=possible, bounded=True, needed=[], inputs=inputs, steps=steps)
     return Trace(possible=possible, bounded=bounded, needed=needed, inputs=inputs, steps=steps)
 
 

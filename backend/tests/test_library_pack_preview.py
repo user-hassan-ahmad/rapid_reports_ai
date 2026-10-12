@@ -126,3 +126,11 @@ async def test_number_quote_not_verbatim_is_asked_even_if_jev_agrees(toy_entry, 
     _model(monkeypatch, KIND, {"input": "size", "value": 7, "quote": "seven millimetres"})
     out = await PP.preview_pack(toy_entry, FINDINGS, "", {})
     assert "size" in out.missing
+
+
+async def test_a_settled_outcome_that_cites_an_unknown_input_is_not_proposed(toy_entry, monkeypatch, jev):
+    e = toy_entry.model_copy(deep=True)
+    e.outcome("subsolid").classification = "subsolid nodule, {risk} risk"     # risk is never asked for subsolid
+    _model(monkeypatch)
+    out = await PP.preview_pack(e, FINDINGS, "", {"kind": "subsolid"})
+    assert out.proposal is None

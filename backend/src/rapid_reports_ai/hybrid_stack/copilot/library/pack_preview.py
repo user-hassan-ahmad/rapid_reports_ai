@@ -170,8 +170,13 @@ async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str
     if t.outcome is not None:
         o = e.outcome(t.outcome)
         cls = engine.render(e, t, o.classification)
-        proposal = Proposal(classification=f"{e.display} · {cls}", line=f"{e.display}: {cls}.",
-                            recommendation=engine.render(e, t, o.recommendation))
+        rec = engine.render(e, t, o.recommendation)
+        caveats = [engine.render(e, t, c) for c in o.caveats]
+        if any(engine.PH.search(x) for x in (cls, rec, *caveats)):
+            logger.info("[library.preview] %s: outcome %s cites an input still unknown; no proposal", e.key, o.id)
+        else:
+            proposal = Proposal(classification=f"{e.display} · {cls}", line=f"{e.display}: {cls}.",
+                                recommendation=rec)
     return Preview(settled=settled, missing=t.needed, proposal=proposal, possible=possible,
                    trace=t.model_dump(mode="json") if t.outcome is not None else None)
 

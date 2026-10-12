@@ -38,3 +38,25 @@ def test_too_many_combinations_falls_back_to_everything(toy_entry, monkeypatch):
     t = E.evaluate(toy_entry, {"kind": "solid"})
     assert t.bounded is False and t.needed == ["size", "risk", "margin"]    # cannot tell: every unknown is asked
     assert t.possible == sorted(o.id for o in toy_entry.outcomes)
+
+
+def test_a_single_possible_outcome_is_settled_even_when_a_table_key_is_unknown():
+    L = {"source": "S1", "page": 2}
+    e = Entry.model_validate({
+        "id": "t", "version": "1", "topic": "t", "issuer": "T", "system": "T", "display": "T", "edition": "1", "tier": 1,
+        "applies_to": {"region": ["chest"], "modality": ["CT"], "finding_type": ["nodule"], "context": ["incidental"]},
+        "aliases": [],
+        "inputs": [{"id": "a", "label": "A", "type": "enum", "options": ["x", "y"]},
+                   {"id": "b", "label": "B", "type": "enum", "options": ["p", "q"]}],
+        "logic": [{"step": "table", "id": "res", "keys": ["a", "b"], "rows": [
+            {"match": ["x", "p"], "result": "o1"}, {"match": ["x", "q"], "result": "o1"},
+            {"match": ["y", "p"], "result": "o2"}, {"match": ["y", "q"], "result": "o3"}]}],
+        "result": "res",
+        "outcomes": [{"id": o, "classification": f"class {o}", "recommendation": f"rec {o}", "locator": L}
+                     for o in ("o1", "o2", "o3")],
+        "reference": {"summary": [{"id": "sum.1", "text": "t", "locator": {"source": "S2"}}]},
+    })
+    t = E.evaluate(e, {"a": "x"})
+    assert t.outcome == "o1" and t.needed == [] and t.possible == ["o1"] and t.bounded
+    t = E.evaluate(e, {"a": "y"})
+    assert t.outcome is None and t.needed == ["b"] and t.possible == ["o2", "o3"]
