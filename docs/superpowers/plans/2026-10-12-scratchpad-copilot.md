@@ -1204,6 +1204,215 @@ git commit -m "feat(copilot): targeted source-first fetch, branch-first with bac
 
 ---
 
+### Task 5b: TNM provider (offline UICC TNM 9)
+
+**Files:**
+- Create: `backend/src/rapid_reports_ai/hybrid_stack/copilot/tnm.py`
+- Modify: `backend/src/rapid_reports_ai/hybrid_stack/copilot/fetch.py` (`resolve_guideline` returns the TNM entry for
+  TNM keys)
+- Test: `backend/tests/test_copilot_tnm.py`
+
+The data is `resources/tnm_9th_clean.json` v2.1, cleaned on 2026-10-12 by `scripts/tnm/clean_tnm_9th.py` (commit
+`aabba56`). Spec §5.8. Stage groups are shown only for sites in `STAGE_VERIFIED`, which starts empty; spec §2.25.
+
+- [ ] **Step 1: Write the failing test**
+
+```python
+# backend/tests/test_copilot_tnm.py
+from rapid_reports_ai.hybrid_stack.copilot import tnm as N
+
+
+def test_sites_closed_list_excludes_non_tnm():
+    s = N.sites()
+    assert "Lung" in s and "Kidney" in s and "Gastrointestinal Stromal Tumour (GIST)" in s
+    assert not ({"Brain & Spinal Cord", "Hodgkin Lymphoma", "Non-Hodgkin Lymphomas", "Bone & Soft Tissues"} & set(s))
+
+
+def test_keys_round_trip():
+    k = N.key_for("Colon and Rectum")
+    assert k == "tnm-colon-and-rectum@9" and N.is_tnm(k) and N.site_for(k) == "Colon and Rectum"
+    assert N.site_for("fleischner@2017") is None and N.site_for("tnm-nowhere@9") is None
+
+
+def test_entry_has_axes_with_x_first_and_is_verified():
+    e = N.entry("Lung")
+    b = e.content.branches[0]
+    assert e.status == "verified" and e.version == "9" and b.state == "checked"
+    opts = {i.id: i.options for i in b.inputs}
+    assert opts["T"][0] == "TX" and "T1mi" in opts["T"] and opts["N"][0] == "NX" and opts["M"][0] == "MX"
+    assert "T2b:" in b.rule and "Minimally invasive adenocarcinoma" in b.rule
+
+
+def test_stage_lookup_rules():
+    rows = [{"stage": "Stage I", "T": "T1, T2", "N": "N0", "M": "M0"},
+            {"stage": "Stage II", "T": "T3", "N": "N0", "M": "M0"},
+            {"stage": "Stage III", "T": "Any T", "N": "N1, N2", "M": "M0"},
+            {"stage": "Stage IIIC", "T": "T3, T4a", "N": "N2b", "M": "M0"},
+            {"stage": "Stage IV", "T": "Any T", "N": "Any N", "M": "M1"}]
+    assert N.lookup(rows, "T2a", "N0", "M0") == "Stage I"          # a subcategory matches its parent
+    assert N.lookup(rows, "T3", "N2b", "M0") == "Stage IIIC"       # the more specific row wins
+    assert N.lookup(rows, "TX", "NX", "M1") == "Stage IV"          # X matches only "Any"
+    assert N.lookup(rows, "TX", "N0", "M0") is None
+    assert N.lookup(rows, "T4b", "N0", "M0") is None               # no row: no stage
+
+
+def test_proposal_built_in_code_and_stage_only_when_verified(monkeypatch):
+    p = N.proposal("Lung", {"T": "T2b", "N": "N1", "M": "M0"})
+    assert p.classification == "cT2b N1 M0 (UICC TNM 9th)" and p.line == "Staging (UICC TNM 9th): cT2b N1 M0."
+    monkeypatch.setattr(N, "STAGE_VERIFIED", {"Kidney"})
+    p2 = N.proposal("Kidney", {"T": "T1a", "N": "N0", "M": "M0"})
+    assert p2.line == "Staging (UICC TNM 9th): cT1a N0 M0, Stage I."
+    assert N.proposal("Lung", {"T": "T2b", "N": "N1"}) is None     # every axis must be answered
+
+
+def test_material_for_ask():
+    assert "AUTHORITATIVE TNM REFERENCE" in N.material("Lung")
+```
+
+- [ ] **Step 2: Run the test and check it fails**
+
+Run: `cd backend && PYTHONPATH=src poetry run pytest tests/test_copilot_tnm.py -v`
+Expected: FAIL (an import error).
+
+- [ ] **Step 3: Write the provider**
+
+```python
+# backend/src/rapid_reports_ai/hybrid_stack/copilot/tnm.py
+"""UICC TNM 9th edition as a Copilot provider (spec §5.8): offline (resources/tnm_9th_clean.json v2.1), verified by
+provenance, no fetch. One branch with T, N and M inputs (X first: the reporting convention for an axis that cannot be
+assessed); the proposal is assembled in code. Stage groups only for sites whose grouping table has been rebuilt and
+checked (STAGE_VERIFIED): the parsed tables lost rows (spec §2.25)."""
+from __future__ import annotations
+
+import json
+import re
+from functools import lru_cache
+from pathlib import Path
+
+from ...tnm_lookup import TnmResult, format_tnm_evidence
+from .registry import slug
+from .types import Branch, Entry, GuidelineContent, Input, Output, Proposal, Publication, Source
+
+DATA = Path(__file__).resolve().parents[2] / "resources" / "tnm_9th_clean.json"
+EXCLUDED = {"Brain & Spinal Cord", "Hodgkin Lymphoma", "Non-Hodgkin Lymphomas"}
+STAGE_VERIFIED: set[str] = set()   # sites whose stage_grouping was rebuilt from the source and hand-checked
+X = {"T": "TX", "N": "NX", "M": "MX"}
+TAG = "UICC TNM 9th"
+SOURCE = "UICC TNM Classification of Malignant Tumours, 9th edition (offline)"
+
+
+@lru_cache(maxsize=1)
+def _data() -> dict:
+    return json.loads(DATA.read_text())["tumours"]
+
+
+def sites() -> list[str]:
+    return [s for s, r in _data().items() if s not in EXCLUDED and any(r["tnm"].get(a) for a in "TNM")]
+
+
+def key_for(site: str) -> str:
+    return f"tnm-{slug(site)}@9"
+
+
+def is_tnm(key: str) -> bool:
+    return key.startswith("tnm-")
+
+
+def site_for(key: str) -> str | None:
+    return next((s for s in sites() if key_for(s) == key), None)
+
+
+def _options(site: str, axis: str) -> list[str]:
+    cats = list((_data()[site]["tnm"].get(axis) or {}).keys())
+    return cats if X[axis] in cats else [X[axis], *cats]
+
+
+def _result(site: str) -> TnmResult:
+    r = _data()[site]
+    return TnmResult(tumour=site, icd_o=r.get("icd_o", ""), edition_uicc="9th", edition_ajcc=None,
+                     tnm_json={a: r["tnm"].get(a) or {} for a in "TNM"},
+                     stage_grouping=r.get("stage_grouping") or [], rules=r.get("rules", ""), rrf_score=1.0)
+
+
+def material(site: str) -> str:
+    return format_tnm_evidence(_result(site))
+
+
+def entry(site: str) -> Entry:
+    r = _data()[site]
+    inputs = [Input(id=a, question=f"{a} category", options=_options(site, a)) for a in "TNM"]
+    rule = "\n".join(f"{k}: {v}" for a in "TNM" for k, v in (r["tnm"].get(a) or {}).items())
+    outputs = [Output(when=f"{g.get('T')}, {g.get('N')}, {g.get('M')}", classification=g.get("stage", ""),
+                      quote=f"{g.get('stage')}: {g.get('T')} {g.get('N')} {g.get('M')}")
+               for g in r.get("stage_grouping") or []]
+    return Entry(key=key_for(site), name=f"TNM {site}", version="9", status="verified",
+                 publication=Publication(title=SOURCE, body="UICC", year="2025"),
+                 content=GuidelineContent(applies_to=(r.get("rules") or "").split(". ")[0],
+                                          summary=f"{TAG} staging of {site.lower()} tumours.",
+                                          branches=[Branch(name="Staging", state="checked", inputs=inputs, rule=rule,
+                                                           outputs=outputs)]),
+                 sources=[Source(url="", title=SOURCE, tier=1)])
+
+
+def _cells(cell: str) -> list[str]:
+    return [c.strip() for c in re.split(r",|/|\bor\b", cell or "") if c.strip()]
+
+
+def lookup(rows: list[dict], t: str, n: str, m: str) -> str | None:
+    """The stage for T/N/M, or None. 'Any' matches anything; X matches only 'Any'; a category matches its parent row
+    (T2b matches 'T2'), scoring lower than an exact cell; disagreeing rows tied on specificity give no stage."""
+    hits: list[tuple[int, str]] = []
+    for g in rows:
+        score, ok = 0, True
+        for cat, cell in ((t, g.get("T", "")), (n, g.get("N", "")), (m, g.get("M", ""))):
+            cs = _cells(cell)
+            if any(c.lower().startswith("any") for c in cs):
+                continue
+            if cat.endswith("X") or not any(cat == c or cat.startswith(c) for c in cs):
+                ok = False
+                break
+            score += 2 if cat in cs else 1
+        if ok:
+            hits.append((score, g.get("stage", "")))
+    if not hits:
+        return None
+    best = max(sc for sc, _ in hits)
+    stages = {st for sc, st in hits if sc == best}
+    return stages.pop() if len(stages) == 1 else None
+
+
+def proposal(site: str, settled: dict[str, str]) -> Proposal | None:
+    if any(not settled.get(a) for a in "TNM"):
+        return None
+    tnm = f"c{settled['T']} {settled['N']} {settled['M']}"
+    stage = lookup(_data()[site].get("stage_grouping") or [], settled["T"], settled["N"], settled["M"]) \
+        if site in STAGE_VERIFIED else None
+    return Proposal(classification=f"{tnm} ({TAG})", line=f"Staging ({TAG}): {tnm}{', ' + stage if stage else ''}.")
+```
+
+In `fetch.py`, at the top of `resolve_guideline`:
+
+```python
+    from . import tnm
+    if tnm.is_tnm(card.key):
+        site = tnm.site_for(card.key)
+        return tnm.entry(site) if site else None
+```
+
+- [ ] **Step 4: Run the tests and check they pass**
+
+Run: `cd backend && PYTHONPATH=src poetry run pytest tests/test_copilot_tnm.py tests/test_copilot_fetch.py -v`
+Expected: all pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add backend/src/rapid_reports_ai/hybrid_stack/copilot/tnm.py backend/src/rapid_reports_ai/hybrid_stack/copilot/fetch.py backend/tests/test_copilot_tnm.py
+git commit -m "feat(copilot): offline UICC TNM 9 provider with X convention and code-built proposal"
+```
+
+---
+
 ### Task 6: Matcher
 
 **Files:**
@@ -1296,6 +1505,26 @@ async def test_caps(db_session, monkeypatch):
     assert max(sum(c.finding_id == f.id for c in cards) for f in many) <= M.MAX_PER_FINDING
 
 
+async def test_tnm_candidate_needs_listed_site_and_jev_gate(db_session, monkeypatch):
+    M.clear_cache()
+
+    async def call(prompt):
+        assert "TNM SITES:" in prompt and "- Lung" in prompt
+        return _raw(u1=[M.RawSystem(name="TNM", version="9", site="Lung", why="primary lung mass")],
+                    u2=[M.RawSystem(name="TNM", version="9", site="Lungs", why="not on the list")])
+    gate = {"Lung": 0.9}
+
+    async def tnm_gate(finding, site):
+        return gate[site]
+    monkeypatch.setattr(M, "_call", call)
+    monkeypatch.setattr(M, "_tnm_gate", tnm_gate)
+    cards = await M.match(db_session, "CT", "", U)
+    assert [(c.key, c.status, c.branch) for c in cards] == [("tnm-lung@9", "verified", "Staging")]
+    M.clear_cache()
+    gate["Lung"] = 0.2
+    assert await M.match(db_session, "CT", "", U) == []
+
+
 async def test_model_failure_returns_no_cards(db_session, monkeypatch):
     M.clear_cache()
 
@@ -1331,10 +1560,12 @@ from ...enhancement_utils import MODEL_CONFIG, _run_agent_with_model
 from ...jev_client import JEV_MODEL, jev_post
 from ..schemas import scan_key
 from . import registry as R
+from . import tnm
 from .types import Card, Publication
 
 logger = logging.getLogger(__name__)
 
+TNM_GATE_MIN = 0.7   # provisional: Jev "a primary malignancy of this site that would be staged"; set by the Task 13 lab
 MAX_PER_FINDING = 2
 MAX_PER_CASE = 6
 TIMEOUT_S = 8.0
@@ -1354,7 +1585,9 @@ Each system:
 - why: one short clause, what about the finding makes it apply
 - publication: the defining publication's title, issuing body and year, as best you know them (never a URL)
 - skeleton: the system's branches or categories by name only (the groups its rules are organised by), never thresholds or intervals
-- branch: the skeleton branch this finding falls into ("" when the finding does not yet say enough to tell)"""
+- branch: the skeleton branch this finding falls into ("" when the finding does not yet say enough to tell)
+- site: "" except for TNM staging
+TNM STAGING: for a primary malignant tumour (known or suspected) that would be staged, list name "TNM", version "9", site = exactly one name from TNM SITES, skeleton ["Staging"], branch "Staging". Never TNM for a metastasis, a benign lesion or an indeterminate incidental finding."""
 
 
 class Finding(BaseModel):
@@ -1365,6 +1598,7 @@ class Finding(BaseModel):
 class RawSystem(BaseModel):
     name: str = ""
     version: str = ""
+    site: str = ""
     why: str = ""
     publication: Publication = Field(default_factory=Publication)
     skeleton: list[str] = Field(default_factory=list)
@@ -1389,6 +1623,7 @@ def _prompt(scan_type: str, history: str, findings: list[Finding], known: list[t
     s += "\n".join(f"- [{f.id}] {f.text}" for f in findings)
     if known:
         s += "\n\nKNOWN SYSTEMS (key: name version):\n" + "\n".join(f"- {k}: {n} {v}".rstrip() for k, n, v in known)
+    s += "\n\nTNM SITES:\n" + "\n".join(f"- {x}" for x in tnm.sites())
     return s
 
 
@@ -1424,9 +1659,34 @@ def _same_branch(branch: str, skeleton: list[str]) -> str:
     return skeleton[0] if len(skeleton) == 1 else branch
 
 
+async def _tnm_gate(finding: str, site: str) -> float:
+    q = {"type": "noul", "instructions": (f"The FINDING describes a primary malignant tumour (known or suspected) of this "
+                                          f"site that would be staged: {site}")}
+    r = await jev_post({"model": JEV_MODEL, "state": f"FINDING:\n{finding}", "questions": {"q": q}},
+                       os.environ.get("OPENROUTER_API_KEY", ""), 4.0)
+    r.raise_for_status()
+    return float(((r.json().get("answers") or {}).get("q") or {}).get("noul") or 0.0)
+
+
+async def _tnm_card(f: Finding, s: RawSystem) -> Card | None:
+    """A TNM candidate: the site must be on the closed list and pass the Jev gate (fails closed: no card)."""
+    if s.site not in tnm.sites():
+        return None
+    try:
+        if await _tnm_gate(f.text, s.site) < TNM_GATE_MIN:
+            return None
+    except Exception:
+        return None
+    e = tnm.entry(s.site)
+    return Card(key=e.key, name=e.name, version="9", finding_id=f.id, why=s.why, branch="Staging",
+                skeleton=["Staging"], publication=e.publication, known=True, status="verified")
+
+
 async def _card(db: Session, f: Finding, s: RawSystem) -> Card | None:
     if not s.name.strip():
         return None
+    if s.name.strip().upper() == "TNM":
+        return await _tnm_card(f, s)
     key = R.make_key(s.name, s.version)
     row = R.by_key(db, key)
     if row is None:
@@ -1483,7 +1743,7 @@ async def match(db: Session, scan_type: str, history: str, findings: list[Findin
 - [ ] **Step 4: Run the tests and check they pass**
 
 Run: `cd backend && PYTHONPATH=src poetry run pytest tests/test_copilot_matcher.py -v`
-Expected: 6 passed.
+Expected: 7 passed.
 
 - [ ] **Step 5: Commit**
 
@@ -1548,6 +1808,19 @@ async def test_preview_drops_proposal_with_foreign_number(monkeypatch):
     assert out.proposal is None and out.settled[0].value == "High risk"
 
 
+async def test_tnm_preview_proposal_comes_from_code(monkeypatch):
+    from rapid_reports_ai.hybrid_stack.copilot import tnm
+    e = tnm.entry("Lung")
+
+    async def call(prompt):
+        assert "TX" in prompt
+        return Preview(settled=[Settled(input="T", value="T2b"), Settled(input="N", value="N1"), Settled(input="M", value="M0")],
+                       proposal=Proposal(classification="Stage IIB", line="model text"))
+    monkeypatch.setattr(P, "_call", call)
+    out = await P.preview(e, "Staging", "4.5 cm right upper lobe mass with ipsilateral hilar node.", "", {})
+    assert out.proposal.line == "Staging (UICC TNM 9th): cT2b N1 M0."
+
+
 async def test_preview_failure_returns_empty(monkeypatch):
     async def call(prompt):
         raise RuntimeError("x")
@@ -1589,6 +1862,7 @@ PREVIEW_SYS = """You apply one branch of a published radiology classification sy
    - classification: "<system> <version>" followed by the ENTRY output's category label when it has one
    - line: one report sentence stating the classification for this finding (name the system and version; no recommendation, no interval)
    - recommendation: the ENTRY output's recommendation worded for this finding, "" when the output has none
+An axis or input the FINDINGS say cannot be assessed on this scan is settled with its X option (TX, NX, MX) when the input offers one.
 Never invent an input, option, category, threshold or interval the ENTRY does not contain."""
 
 
@@ -1638,6 +1912,11 @@ async def preview(e: Entry, branch: str, findings: str, history: str, answered: 
         logger.warning("[copilot.preview] %s: %s", type(ex).__name__, str(ex)[:200])
         return Preview(missing=[i.id for i in b.inputs if i.id not in answered])
     out = validate(raw, b, answered)
+    from . import tnm
+    if tnm.is_tnm(e.key):   # TNM: the model only settles axes; code assembles the proposal (and any stage)
+        site = tnm.site_for(e.key)
+        prop = tnm.proposal(site, {s.input: s.value for s in out.settled}) if site and not out.missing else None
+        return out.model_copy(update={"proposal": prop})
     if out.proposal is not None and not numbers_ok(out.proposal, e, b, findings):
         logger.info("[copilot.preview] proposal dropped by the numeric guard (%s)", e.key)
         out = out.model_copy(update={"proposal": None})
@@ -1647,7 +1926,7 @@ async def preview(e: Entry, branch: str, findings: str, history: str, answered: 
 - [ ] **Step 4: Run the tests and check they pass**
 
 Run: `cd backend && PYTHONPATH=src poetry run pytest tests/test_copilot_preview.py -v`
-Expected: 5 passed.
+Expected: 6 passed.
 
 - [ ] **Step 5: Commit**
 
@@ -1883,6 +2162,10 @@ async def _general_answer(question: str, ctx: Context, history: list[QA]) -> str
 
 
 def _material(db: Session, key: str) -> str:
+    from . import tnm
+    if tnm.is_tnm(key):
+        site = tnm.site_for(key)
+        return tnm.material(site) if site else ""
     row = R.by_key(db, key)
     if row is None:
         return ""
@@ -1896,6 +2179,12 @@ def _material(db: Session, key: str) -> str:
 
 
 async def _in_card(db: Session, question: str, key: str, ctx: Context, history: list[QA]) -> AskResult:
+    from . import tnm
+    if tnm.is_tnm(key):   # offline staging data: grounded in it, never a gap search
+        site = tnm.site_for(key)
+        material = tnm.material(site) if site else ""
+        return AskResult(kind="card", key=key, entry=tnm.entry(site) if site else None,
+                         answer=await _grounded(question, material, ctx, history))
     row = R.by_key(db, key)
     if row is None:
         return AskResult(kind="card", key=key, answer="", supported=False, error="unknown guideline")
@@ -2470,15 +2759,11 @@ git commit -m "feat(stack): Recommendations section from the radiologist's ticke
   {"name": "BTA U classification", "version": "2014", "finding": "1.5 cm solid hypoechoic thyroid nodule with microcalcification."},
   {"name": "O-RADS US", "version": "2022", "finding": "4 cm unilocular smooth left ovarian cyst, postmenopausal."},
   {"name": "LI-RADS CT/MRI", "version": "2018", "finding": "2.2 cm arterially enhancing liver observation with washout, cirrhotic liver."},
-  {"name": "TNM lung", "version": "8", "finding": "4.5 cm right upper lobe mass with ipsilateral hilar node."},
-  {"name": "TNM colon", "version": "8", "finding": "Sigmoid tumour extending through the muscularis into pericolic fat."},
-  {"name": "TNM pancreas", "version": "8", "finding": "3 cm pancreatic head mass abutting the SMV less than 180 degrees."},
-  {"name": "TNM kidney", "version": "8", "finding": "6 cm left renal mass confined to the kidney."},
   {"name": "Kellgren-Lawrence", "version": "", "finding": "Medial knee joint space narrowing with osteophytes."}
 ]
 ```
 
-Hassan may edit this list in plan review.
+Hassan may edit this list in plan review. TNM is not here: it comes from the offline provider (Task 5b).
 
 - [ ] **Step 2: Write the lab script**
 
@@ -2627,6 +2912,14 @@ Each is `{q, scope_key|null, expect: "card"|"general", expect_key|null}`.
 Keep both files out of git if they contain prod text: put them under the scratchpad and pass the path as an argument.
 Only synthetic stand-ins are committed.
 
+Also write `tnm_cases.json`:
+- 30 primary-tumour findings across at least 12 sites, with lung, colorectal, kidney, pancreas, oesophagus, breast,
+  head and neck, bladder and gynaecological sites well represented;
+- 20 negative controls: metastases, benign masses, indeterminate incidental lesions, and a primary that is already
+  treated and being followed.
+
+Each item is `{id, finding, expect_site | null}`, taken from prod stack logs where possible, otherwise synthetic.
+
 - [ ] **Step 2: Write the lab script**
 
 ```python
@@ -2650,6 +2943,7 @@ from rapid_reports_ai.hybrid_stack.copilot import fetch as F
 from rapid_reports_ai.hybrid_stack.copilot import matcher as M
 from rapid_reports_ai.hybrid_stack.copilot import preview as P
 from rapid_reports_ai.hybrid_stack.copilot import registry as R
+from rapid_reports_ai.hybrid_stack.copilot import tnm
 
 
 async def cases(path: Path, out: Path) -> None:
@@ -2691,15 +2985,44 @@ async def questions(path: Path, out: Path) -> None:
     print(f"ask routing: {ok}/{len(qs)} landed right")
 
 
-async def main(cases_path: str, questions_path: str, out_dir: str) -> None:
+async def tnm_arms(path: Path, out: Path) -> None:
+    """Spec §8.5: (a) closed list + Jev gate (scores recorded for every threshold) vs (b) hybrid_tnm_search (needs a
+    Postgres with pgvector and tnm_staging seeded, plus OPENAI_API_KEY)."""
+    from rapid_reports_ai.tnm_lookup import hybrid_tnm_search
+    rows = []
+    for c in json.loads(path.read_text()):
+        M.clear_cache()
+        with SessionLocal() as db:
+            raw = await M._call(M._prompt("CT", "", [M.Finding(id="u1", text=c["finding"])], []))
+            site = next((s.site for rf in raw.findings for s in rf.systems if s.name.upper() == "TNM"), "")
+            gate = await M._tnm_gate(c["finding"], site) if site in tnm.sites() else None
+            try:
+                hy = hybrid_tnm_search(c["finding"], db, top_k=1)
+                hybrid = hy[0].tumour if hy else None
+            except Exception as e:
+                hybrid = f"error: {type(e).__name__}"
+        rows.append({**c, "a_site": site or None, "a_gate": gate, "b_site": hybrid})
+    (out / f"tnm_arms_{os.getpid()}.json").write_text(json.dumps(rows, indent=1))
+    for bar in (0.5, 0.6, 0.7, 0.8):
+        a_ok = sum((r["a_site"] == r["expect_site"] and (r["a_gate"] or 0) >= bar) or (r["expect_site"] is None and not ((r["a_gate"] or 0) >= bar)) for r in rows)
+        a_false = sum(r["expect_site"] is None and (r["a_gate"] or 0) >= bar for r in rows)
+        print(f"arm a @ {bar}: right {a_ok}/{len(rows)}, false staging cards {a_false}")
+    b_ok = sum(r["b_site"] == r["expect_site"] for r in rows)
+    b_false = sum(r["expect_site"] is None and r["b_site"] not in (None,) for r in rows)
+    print(f"arm b (hybrid): right {b_ok}/{len(rows)}, false staging cards {b_false}")
+
+
+async def main(cases_path: str, questions_path: str, out_dir: str, tnm_path: str = "") -> None:
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     await cases(Path(cases_path), out)
     await questions(Path(questions_path), out)
+    if tnm_path:
+        await tnm_arms(Path(tnm_path), out)
 
 
 if __name__ == "__main__":
-    asyncio.run(main(*sys.argv[1:4]))
+    asyncio.run(main(*sys.argv[1:5]))
 ```
 
 - [ ] **Step 3: Run once, then hand read**
@@ -2719,6 +3042,14 @@ Run it with the scratchpad paths. Then read every case file and record in `<scra
   - landing;
   - grounded answers correct;
   - gap answers honest.
+
+- **TNM arms:**
+  - Set `TNM_GATE_MIN` in `matcher.py` at the lowest bar with zero false staging cards.
+  - Compare arm (a) at that bar with arm (b).
+  - **Arm (a) stays on the Copilot path only if it is at least as accurate as (b).** Otherwise, report to Hassan and
+    switch `_tnm_card` to take the site from `hybrid_tnm_search` instead. Prod already has pgvector; local may not.
+  - If (b) can't run locally, say so and run it against a Postgres with pgvector before deciding. Don't decide on arm
+    (a) alone.
 
 - [ ] **Step 4: Fix and re-run (one more run at most)**
 
@@ -3912,6 +4243,7 @@ Merge only on Hassan's go-ahead. It goes out with the new scratchpad layout (PR 
 | §5.5 | 8 |
 | §5.6 | 9 |
 | §5.7 | 2, 10, 19 |
+| §5.8 TNM | 5b, 6, 7, 8, 13 |
 | §6 | 11, 16, 19 |
 | §7 | the fail-open tests in 5–10 and 19 |
 | §8 labs | 12, 13 |

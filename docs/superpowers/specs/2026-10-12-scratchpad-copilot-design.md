@@ -86,6 +86,18 @@ Nothing reaches the report unless the radiologist presses Apply or ticks it.
     that guideline. The answer is grounded in the new chunks, which are added to the entry as supplementary evidence
     (still a draft until verified).
 
+22. **TNM staging uses the offline UICC TNM 9th edition data** (`resources/tnm_9th_clean.json`, cleaned to v2.1 on
+    2026-10-12), never a web fetch. TNM entries count as `verified` because of their source.
+23. **TNM follows the "X" convention.** An axis that can't be assessed is `TX`, `NX` or `MX`. UICC 9 defines TX and
+    NX; MX is offered as the reporting convention even though UICC no longer lists it. Any X axis means no stage group,
+    unless the table's row uses "Any" for that axis.
+24. **A TNM site is chosen from a closed list, then gated by Jev; there's no embedding search.** The prefetch's pgvector
+    hybrid search stays where it is. The Copilot path replaces it only once the lab (§8.5) shows the closed list plus
+    Jev picks the site at least as well, with no false staging cards.
+25. **A stage group is shown only for sites whose grouping table has been verified.** The parsed tables lost the extra
+    rows each stage has (lung, kidney and colon all fail spot checks), so until each table is rebuilt and checked, a TNM
+    card proposes T, N and M only.
+
 ## 3. Layout
 
 ```
@@ -201,8 +213,8 @@ Table `guideline_registry`, with an alembic migration:
 
 **Seeds and review**
 - Seed set, fetched by the same pipeline and verified before release: Fleischner 2017, Bosniak 2019, ESE adrenal
-  incidentaloma 2023, BTA U-grading, O-RADS US, LI-RADS CT/MR, TNM 8 for lung, colorectal, pancreas and kidney,
-  Kellgren–Lawrence. Hassan may change the list during plan review.
+  incidentaloma 2023, BTA U-grading, O-RADS US, LI-RADS CT/MR, Kellgren–Lawrence. TNM comes from the offline
+  provider (§5.8), not the fetch. Hassan may change the list during plan review.
 - Review page `/stack-guidelines`. It is a production review page like `/stack-families`, not a dev route: the
   entries live in the production database, and the server allows only `RR_STACK_REVIEWERS`.
   - It lists entries and shows each branch with its quotes and sources.
@@ -316,6 +328,35 @@ Shared by card open and by ask. The steps:
 - recommendations offered and ticked
 - latencies
 
+### 5.8 TNM provider (`copilot/tnm.py`)
+
+- **Data.**
+  - `resources/tnm_9th_clean.json` v2.1: 60 sites, each with structured T, N and M category dictionaries, the
+    `rules` text and a `stage_grouping` table. It is loaded once into memory, with no database and no network.
+  - Excluded, because they are not TNM-staged in practice or have no T/N/M table: Brain & Spinal Cord, Hodgkin
+    Lymphoma, Non-Hodgkin Lymphomas.
+- **Matcher.**
+  - The prompt carries the site names as a closed list. For a primary malignancy, known or suspected, the matcher
+    returns `name: "TNM"` and `site: <exact list name>`. Code rejects a site that isn't on the list.
+  - **Jev gate**, one yes/no per TNM candidate: "The FINDING describes a primary malignant tumour (known or suspected)
+    of <site> that would be staged." A card is made only at or above `TNM_GATE_MIN`, which the lab sets.
+  - The key is `tnm-<slug(site)>@9`.
+- **Entry.** Built on the fly, with no fetch and no registry row:
+  - one branch, "Staging", state `checked`;
+  - inputs `T`, `N` and `M`, whose options are the site's categories, with the X option added first when absent;
+  - rule: the category definitions (the `format_tnm_evidence` text);
+  - outputs: the stage grouping rows;
+  - status `verified`; source "UICC TNM Classification of Malignant Tumours, 9th edition (offline)".
+- **Preview.**
+  - Qwen settles each axis it can from the findings, each with a quote. Unsettled axes are in-card choices.
+  - The proposal is assembled **in code**: classification `cT2b N1 M0 (UICC TNM 9th)`, and line "Staging (UICC TNM
+    9th): cT2b N1 M0."
+  - The stage group is added only for sites listed in `STAGE_VERIFIED`, and only when the lookup gives exactly one
+    stage. "Any" matches anything; X matches only "Any"; a category matches its parent row (T2b matches "T2"); when
+    several rows tie on specificity and disagree, no stage is given.
+  - There is no recommendation.
+- **Ask.** Material is the `format_tnm_evidence` text for the site. There is no gap search for TNM.
+
 ## 6. Into the report
 
 - **Gate record** (`GateRecord` in `hybrid-stack/types.ts`) gains:
@@ -361,6 +402,12 @@ Everything fails open, and dictation, Confirm and Generate never wait on the Cop
 
    Each bar is set where false yes answers reach zero. First-open latency (card branch) and background-fill
    completeness are recorded.
+5. **TNM site selection.** Primary tumours across common sites, plus metastases, benign masses and incidental lesions
+   as negative controls. Two arms are compared on site accuracy and false staging cards:
+   - (a) the closed list plus the Jev gate;
+   - (b) `hybrid_tnm_search` on the finding text.
+   Arm (a) replaces (b) on the Copilot path only if it is at least as accurate, with zero false cards at the chosen
+   bar.
 3. **Preview.** Seed entries × case findings. Measured: settled and missing inputs are correct, the proposal is
    correct, and numbers come from the entry (the numeric check catches violations).
 4. **Ask routing.** Questions split into card-scoped, existing-guideline, new-guideline and general. Each must land in
