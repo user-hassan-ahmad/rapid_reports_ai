@@ -5,22 +5,42 @@ from __future__ import annotations
 import math
 from itertools import product
 
-from .engine import PH, EvaluationError, Trace, V, _inputs, _iv, _num, domain, evaluate, reach_states, render, run
-from .schema import (FACT_ROLES, AdjustStep, BandStep, Cases, DeriveStep, Entry, Manifest, RulesStep, ScoreStep,
-                     TableStep, conds)
+from .engine import PH, EvaluationError, Trace, V, _inputs, _iv, _num, domain, evaluate, reach_states, reaching, render, run
+from .schema import (DOES_NOT_APPLY, FACT_ROLES, AdjustStep, BandStep, Cases, DeriveStep, Entry, Manifest, RulesStep,
+                     ScoreStep, TableStep, conds)
 
 MAX_VERIFY = 200_000
 NUMERIC = {"number", "derive", "score"}
 TOL = 1e-3
+MAX_ELIGIBILITY = 3
 
 
 def check(entry: Entry, manifest: Manifest, cases: Cases | None) -> list[str]:
     p = _refs(entry)
     if p:
         return p                      # the later gates assume every reference resolves
-    p += _bands(entry) + _locators(entry, manifest)
+    p += _bands(entry) + _locators(entry, manifest) + _eligibility(entry)
     if entry.tier == 1:
         p += _formulas(entry) + _enumerate(entry) + _golden(entry, cases)
+    return p
+
+
+def _eligibility(e: Entry) -> list[str]:
+    """Spec §3.6: at most three eligibility inputs, each with its scope clause's locator, each able to change the
+    result, and a does_not_apply outcome for them to reach. A wider scope belongs in applies_to or a pitfall."""
+    el = [i for i in e.inputs if i.role == "eligibility"]
+    if not el:
+        return []
+    p = []
+    if len(el) > MAX_ELIGIBILITY:
+        p.append(f"{len(el)} eligibility inputs: at most {MAX_ELIGIBILITY} (a wider scope belongs in applies_to or a "
+                 f"pitfall)")
+    p += [f"eligibility input {i.id}: no locator for its scope clause" for i in el if i.locator is None]
+    if e.tier == 1:
+        if e.outcome(DOES_NOT_APPLY) is None:
+            p.append(f"eligibility inputs need a {DOES_NOT_APPLY} outcome")
+        reach = reaching(e)
+        p += [f"eligibility input {i.id} never reaches the result" for i in el if i.id not in reach]
     return p
 
 

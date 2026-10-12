@@ -240,7 +240,8 @@ async def test_each_missing_input_is_asked_with_its_definition_outcomes_and_cita
     out = await PP.preview_pack(toy_entry, FINDINGS, "", {}, TOY_SOURCES)
     assert out.missing == ["risk"]                                        # kept for compatibility
     assert out.asks == [{
-        "input": "risk", "label": "Patient risk", "definition": {"text": "", "citation": {}},
+        "input": "risk", "label": "Patient risk", "role": "clinical", "scope": "patient", "fact": "",
+        "definition": {"text": "", "citation": {}},
         "options": ["low", "high"],
         "decides_between": [{"outcome": "ct12", "classification": "solid nodule 6-8 mm, … risk", "citation": P2},
                             {"outcome": "ct6", "classification": "solid nodule 6-8 mm, … risk", "citation": P2}],
@@ -358,3 +359,53 @@ def test_a_typed_answer_is_read_like_a_quote(toy_entry):
     i = toy_entry.input("size")
     assert PP._answer(toy_entry, i, "1.2 cm").value == 12 and PP._answer(toy_entry, i, "7").value == 7
     assert PP._answer(toy_entry, i, "6-8 mm").band == "6to8" and PP._answer(toy_entry, i, "big") is None
+
+
+def _elig(toy):
+    from tests.test_library_verify import _eligible_toy
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
+    return Entry.model_validate(_eligible_toy(toy))
+
+
+async def test_an_unknown_eligibility_input_puts_the_card_in_check_first(toy, monkeypatch, jev):
+    _model(monkeypatch, KIND, SIZE)
+    out = await PP.preview_pack(_elig(toy), FINDING, "", {"risk": "high"}, finding=FINDING)
+    assert out.state == "check_first" and out.proposal is None and out.missing == ["known_cancer"]
+    assert out.asks[0]["role"] == "eligibility" and out.asks[0]["fact"] == "known_primary_cancer"
+
+
+async def test_eligibility_asks_come_before_clinical_asks(toy, monkeypatch, jev):
+    _model(monkeypatch, KIND, SIZE)
+    out = await PP.preview_pack(_elig(toy), FINDING, "", {}, finding=FINDING)
+    assert out.missing == ["known_cancer", "risk"] and [a["input"] for a in out.asks] == out.missing
+
+
+async def test_a_shared_patient_answer_excludes_with_a_reason_and_no_apply(toy, monkeypatch, jev):
+    _model(monkeypatch, KIND, SIZE)
+    out = await PP.preview_pack(_elig(toy), FINDING, "", {}, finding=FINDING,
+                                patient={"known_primary_cancer": "Yes"})
+    assert out.state == "does_not_apply" and out.proposal is None
+    assert out.exclusion.classification == "Toy 2020 · the toy guideline does not apply"
+    assert out.exclusion.citations and out.exclusion.recommendation == "Manage per the clinical context."
+    assert next(s for s in out.settled if s.input == "known_cancer").fact == "known_primary_cancer"
+
+
+async def test_an_eligible_patient_gets_the_normal_card(toy, monkeypatch, jev):
+    _model(monkeypatch, KIND, SIZE)
+    out = await PP.preview_pack(_elig(toy), FINDING, "", {"risk": "high"}, finding=FINDING,
+                                patient={"known_primary_cancer": "No"})
+    assert out.state == "applies" and out.proposal.recommendation == "CT at 6 months" and out.exclusion is None
+
+
+async def test_the_cards_own_answer_beats_the_shared_one(toy, monkeypatch, jev):
+    _model(monkeypatch, KIND, SIZE)
+    out = await PP.preview_pack(_elig(toy), FINDING, "", {"known_cancer": "No", "risk": "high"}, finding=FINDING,
+                                patient={"known_primary_cancer": "Yes"})
+    assert out.state == "applies"
+
+
+async def test_a_patient_answer_the_pack_cannot_take_is_ignored(toy, monkeypatch, jev):
+    _model(monkeypatch, KIND, SIZE)
+    out = await PP.preview_pack(_elig(toy), FINDING, "", {"risk": "high"}, finding=FINDING,
+                                patient={"known_primary_cancer": "seventy", "age_years": "60"})
+    assert out.state == "check_first" and out.missing == ["known_cancer"]

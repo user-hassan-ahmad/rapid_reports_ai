@@ -78,3 +78,17 @@ def test_scope_defaults_to_lesion_and_dims_belong_to_numbers():
         S.InputDef(id="k", label="K", type="enum", options=["x"], dims="max")
     with pytest.raises(ValidationError):
         S.InputDef(id="s", label="S", type="boolean", scope="case")
+
+
+def test_a_fact_needs_a_patient_scoped_input_of_its_own_form():
+    assert S.InputDef(id="a", label="Age", type="number", unit="years", scope="patient", fact="age_years").fact == "age_years"
+    assert S.InputDef(id="k", label="K", type="boolean", scope="patient", role="eligibility",
+                      fact="known_primary_cancer").role == "eligibility"
+    for bad in [dict(type="number", unit="years", fact="age_years"),                      # lesion scope
+                dict(type="number", unit="months", scope="patient", fact="age_years"),    # wrong unit
+                dict(type="boolean", scope="patient", fact="age_years"),                  # wrong type
+                dict(type="enum", options=["m", "f"], scope="patient", fact="sex"),       # wrong options
+                dict(type="boolean", scope="patient", fact="shoe_size")]:                 # not in the vocabulary
+        with pytest.raises(ValidationError):
+            S.InputDef(id="x", label="X", **bad)
+    assert S.InputDef(id="s", label="Sex", type="enum", options=["female", "male"], scope="patient", fact="sex")

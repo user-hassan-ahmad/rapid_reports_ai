@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 BranchState = Literal["checked", "not_available", "pending"]
+CardState = Literal["applies", "check_first", "does_not_apply"]
 
 
 class Input(BaseModel):
@@ -108,6 +109,7 @@ class Settled(BaseModel):
     input: str
     value: str
     quote: str = ""
+    fact: str = ""                # library packs: the shared patient fact this input carries ("" for none)
 
 
 class Proposal(BaseModel):
@@ -122,6 +124,9 @@ class Preview(BaseModel):
     settled: list[Settled] = Field(default_factory=list)
     missing: list[str] = Field(default_factory=list)
     proposal: Proposal | None = None
+    state: CardState = "applies"  # library packs (spec §7.4): does_not_apply (an eligibility input excludes), check_first
+                                  # (an unknown eligibility input could change the outcome), else applies
+    exclusion: Proposal | None = None   # does_not_apply: the reason and the scope clause's citations; never Applied
     possible: list[str] = Field(default_factory=list)   # library packs: outcomes still possible, rendered
     bounded: bool = True          # library packs: False when `possible` may be incomplete (an unknown number feeds a
                                   # formula); `missing` then lists every unknown input that reaches the result

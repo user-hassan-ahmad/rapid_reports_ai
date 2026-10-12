@@ -42,6 +42,7 @@
        "yes_other"
       ],
       "prerequisites": [],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "enum",
@@ -70,6 +71,7 @@
         "ref": "too_small"
        }
       ],
+      "role": "clinical",
       "scope": "patient",
       "states": [],
       "type": "enum",
@@ -96,6 +98,7 @@
         "ref": "too_small"
        }
       ],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "enum",
@@ -125,6 +128,7 @@
         "ref": "too_small"
        }
       ],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "enum",
@@ -157,6 +161,7 @@
         "ref": "too_small"
        }
       ],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "enum",
@@ -185,6 +190,7 @@
         "ref": "too_small"
        }
       ],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "enum",
@@ -211,6 +217,7 @@
         "ref": "too_small"
        }
       ],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "enum",
@@ -237,6 +244,7 @@
         "ref": "too_small"
        }
       ],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "enum",
@@ -267,6 +275,7 @@
         "ref": "technique"
        }
       ],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "enum",
@@ -290,6 +299,7 @@
         "ref": "too_small"
        }
       ],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "number",
@@ -1941,6 +1951,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "boolean",
@@ -1963,6 +1974,7 @@
        "nonsolid"
       ],
       "prerequisites": [],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "enum",
@@ -1984,6 +1996,7 @@
       "min_value": 0.0,
       "options": [],
       "prerequisites": [],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "number",
@@ -2004,6 +2017,7 @@
       "min_value": 18.0,
       "options": [],
       "prerequisites": [],
+      "role": "clinical",
       "scope": "patient",
       "states": [],
       "type": "number",
@@ -2025,6 +2039,7 @@
        "male"
       ],
       "prerequisites": [],
+      "role": "clinical",
       "scope": "patient",
       "states": [],
       "type": "enum",
@@ -2043,6 +2058,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
+      "role": "clinical",
       "scope": "patient",
       "states": [],
       "type": "boolean",
@@ -2061,6 +2077,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
+      "role": "clinical",
       "scope": "patient",
       "states": [],
       "type": "boolean",
@@ -2079,6 +2096,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "boolean",
@@ -2098,6 +2116,7 @@
       "min_value": 1.0,
       "options": [],
       "prerequisites": [],
+      "role": "clinical",
       "scope": "patient",
       "states": [],
       "type": "number",
@@ -2116,6 +2135,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "boolean",
@@ -2135,6 +2155,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
+      "role": "clinical",
       "scope": "patient",
       "states": [],
       "type": "boolean",
@@ -2159,6 +2180,7 @@
         "ref": "prior_study"
        }
       ],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "boolean",
@@ -2196,6 +2218,7 @@
         ]
        }
       ],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "enum",
@@ -2225,6 +2248,7 @@
         "ref": "growth"
        }
       ],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "number",
@@ -2254,6 +2278,7 @@
         "ref": "growth"
        }
       ],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "number",
@@ -2287,6 +2312,7 @@
         ]
        }
       ],
+      "role": "clinical",
       "scope": "patient",
       "states": [],
       "type": "number",
@@ -4299,6 +4325,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
+      "role": "clinical",
       "scope": "patient",
       "states": [],
       "type": "boolean",
@@ -4322,6 +4349,7 @@
        "part-solid"
       ],
       "prerequisites": [],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "enum",
@@ -4344,6 +4372,7 @@
        "multiple"
       ],
       "prerequisites": [],
+      "role": "clinical",
       "scope": "patient",
       "states": [],
       "type": "enum",
@@ -4364,6 +4393,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
+      "role": "clinical",
       "scope": "lesion",
       "states": [],
       "type": "number",
@@ -4391,6 +4421,7 @@
         "ref": "nodule_type"
        }
       ],
+      "role": "clinical",
       "scope": "patient",
       "states": [],
       "type": "enum",
@@ -5430,5 +5461,5 @@
    ]
   }
  },
- "version": "76c63e0527ce"
+ "version": "e57439a7e54c"
 }

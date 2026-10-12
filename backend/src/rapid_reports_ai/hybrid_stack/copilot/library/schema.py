@@ -11,6 +11,15 @@ State = Literal["present", "absent", "unknown", "not_assessable", "not_applicabl
 OptState = Literal["absent", "not_assessable"]      # states an input may allow besides present and unknown
 Role = Literal["primary", "amendment", "explanatory"]
 Scope = Literal["lesion", "patient"]                # lesion: the card's own finding; patient: history + dictation
+InputRole = Literal["clinical", "eligibility"]      # eligibility: the guideline's own scope, asked first (spec §3.6)
+Fact = Literal["known_primary_cancer", "immunocompromised", "screening_programme", "age_years", "sex"]
+# a shared patient fact -> (input type, unit, enum options). Every input carrying a fact has exactly this form, so one
+# answer per case fills it on every card (spec §3.6 "Shared answers")
+FACTS: dict[str, tuple[str, str, tuple[str, ...]]] = {
+    "known_primary_cancer": ("boolean", "", ()), "immunocompromised": ("boolean", "", ()),
+    "screening_programme": ("boolean", "", ()), "age_years": ("number", "years", ()),
+    "sex": ("enum", "", ("female", "male"))}
+DOES_NOT_APPLY = "does_not_apply"                   # the outcome an excluding eligibility input reaches; never Applied
 FACT_ROLES = ("primary", "amendment")               # sources a rule, band, score or outcome may cite
 
 
@@ -112,6 +121,8 @@ class InputDef(_M):
     locator: Locator | None = None
     scope: Scope = "lesion"                                # where a value may be quoted from (spec §3.6)
     dims: Literal["mean", "max"] | None = None             # a number dictated "A x B": its mean or its max
+    role: InputRole = "clinical"
+    fact: Fact | None = None                               # a shared patient fact (FACTS); patient scope only
 
     @model_validator(mode="after")
     def _options(self):
@@ -125,6 +136,11 @@ class InputDef(_M):
             raise ValueError(f"input {self.id!r}: empty range")
         if self.dims is not None and self.type != "number":
             raise ValueError(f"input {self.id!r}: only a number has dims")
+        if self.fact is not None:
+            t, unit, opts = FACTS[self.fact]
+            if self.scope != "patient" or self.type != t or self.unit != unit or tuple(self.options) != opts:
+                raise ValueError(f"input {self.id!r}: fact {self.fact} needs a patient-scoped {t}"
+                                 + (f" in {unit}" if unit else "") + (f" with options {list(opts)}" if opts else ""))
         return self
 
     @property

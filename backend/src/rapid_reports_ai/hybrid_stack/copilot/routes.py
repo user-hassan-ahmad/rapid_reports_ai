@@ -34,6 +34,7 @@ from .ask import QA, AskResult, Context, ask
 from .fetch import OVERVIEW, resolve_guideline
 from .library import bundle as L
 from .library.pack_preview import PACK_BRANCH, as_entry, preview_pack
+from .library.schema import FACTS
 from .matcher import Finding, match
 from .preview import preview
 from .recs import RecsResult, suggest
@@ -167,12 +168,20 @@ class MatchResult(BaseModel):
     ms: int = 0
 
 
+def _check_patient(v: dict[str, str]) -> dict[str, str]:
+    """The case's shared patient answers: keys from the fact vocabulary only, values capped."""
+    if any(k not in FACTS or len(x) > 200 for k, x in v.items()):
+        raise ValueError(f"patient: keys from {sorted(FACTS)}, values up to 200 characters")
+    return v
+
+
 class OpenRequest(BaseModel):
     card: CardIn
     finding: _s(1000) = ""        # the card's own finding unit; lesion-scoped inputs are settled only from it
     findings: str = ""
     clinical_history: str = ""
     answered: dict[str, str] = Field(default_factory=dict)
+    patient: dict[str, str] = Field(default_factory=dict)   # shared patient answers, by fact (spec §3.6)
 
     @field_validator("answered")
     @classmethod
@@ -180,6 +189,11 @@ class OpenRequest(BaseModel):
         if len(v) > 20 or any(len(k) > 60 or len(x) > 200 for k, x in v.items()):
             raise ValueError("answered: at most 20 inputs, ids up to 60 and values up to 200 characters")
         return v
+
+    @field_validator("patient")
+    @classmethod
+    def _cap_patient(cls, v: dict[str, str]) -> dict[str, str]:
+        return _check_patient(v)
 
 
 class OpenResult(BaseModel):
@@ -280,7 +294,7 @@ async def _pack_result(pack, req: OpenRequest, t0: float) -> OpenResult:
     e, view = pack
     try:
         prev = await asyncio.wait_for(preview_pack(e, req.findings[:6000], req.clinical_history[:2000], req.answered,
-                                                   L.get().sources(e.key), finding=req.finding),
+                                                   L.get().sources(e.key), finding=req.finding, patient=req.patient),
                                       PREVIEW_TIMEOUT_S)
     except Exception as ex:   # TimeoutError included
         logger.warning("[copilot.routes] pack preview %s: %s", type(ex).__name__, str(ex)[:200])

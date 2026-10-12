@@ -176,7 +176,8 @@ def test_open_preview_failure_still_returns_the_entry(authed, monkeypatch):
     monkeypatch.setattr(CR, "preview", prev)
     d = authed.post("/api/canvas/stack/guidelines/open", json={
         "card": {"key": "k@1", "name": "K", "version": "1", "finding_id": "u1", "branch": "B"}, "findings": "x"}).json()
-    assert d["entry"]["key"] == "k@1" and d["preview"] == {"settled": [], "missing": [], "proposal": None, "possible": [], "bounded": True, "asks": [], "trace": None, "degraded": False}
+    assert d["entry"]["key"] == "k@1" and d["preview"] == {"settled": [], "missing": [], "proposal": None, "possible": [], "bounded": True, "asks": [], "trace": None, "degraded": False,
+                                                              "state": "applies", "exclusion": None}
 
 
 async def test_open_timeout_keeps_the_fetch_going(db_session, user, monkeypatch):
@@ -549,3 +550,18 @@ def test_open_settles_lesion_inputs_from_the_cards_own_finding(authed, toy_lib, 
         "card": PACK_CARD, "finding": "7 mm solid nodule.", "findings": "7 mm solid nodule. 12 mm granuloma.",
         "answered": {}}).json()
     assert "size" in d["preview"]["missing"] and d["preview"]["settled"][0]["input"] == "kind"
+
+
+def test_open_passes_the_patient_map_and_rejects_unknown_facts(authed, toy_lib, monkeypatch):
+    seen = {}
+
+    async def fake(e, findings, history, answered, sources=None, finding="", patient=None):
+        seen["patient"] = patient
+        return Preview()
+    monkeypatch.setattr(CR, "preview_pack", fake)
+    ok = authed.post("/api/canvas/stack/guidelines/open", json={
+        "card": PACK_CARD, "findings": "x", "patient": {"age_years": "60"}})
+    assert ok.status_code == 200 and seen["patient"] == {"age_years": "60"}
+    bad = authed.post("/api/canvas/stack/guidelines/open", json={
+        "card": PACK_CARD, "findings": "x", "patient": {"shoe_size": "9"}})
+    assert bad.status_code == 422

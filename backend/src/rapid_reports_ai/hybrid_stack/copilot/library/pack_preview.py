@@ -22,7 +22,7 @@ from ..types import Branch, Entry as CardEntry, GuidelineContent, Input, Preview
 from . import engine
 from . import quantity as Q
 from .describe import citation
-from .schema import BandStep, Entry, InputDef, InputValue, RulesStep, conds
+from .schema import DOES_NOT_APPLY, BandStep, Entry, InputDef, InputValue, RulesStep, conds
 
 logger = logging.getLogger(__name__)
 
@@ -220,20 +220,27 @@ def _asks(e: Entry, t: engine.Trace, sources: list[dict], needed: list[str]) -> 
         i = e.input(k)
         decides = [{"outcome": o, "classification": engine.PH.sub("…", engine.render(e, t, e.outcome(o).classification)),
                     "citation": citation(e.outcome(o).locator, sources)} for o in t.decides.get(k, t.possible)]
-        out.append({"input": k, "label": i.label,
+        out.append({"input": k, "label": i.label, "role": i.role, "scope": i.scope, "fact": i.fact or "",
                     "definition": {"text": i.how_stated, "citation": citation(i.locator, sources)},
                     "options": display_options(e, i), "decides_between": decides, "citations": _reads(e, k, sources)})
     return out
 
 
-def _given(e: Entry, answered: dict[str, str]) -> dict[str, InputValue]:
-    """The radiologist's answers that are real values of this entry (anything else is ignored: still asked)."""
+def _given(e: Entry, answered: dict[str, str], patient: dict[str, str] | None = None) -> dict[str, InputValue]:
+    """The radiologist's answers on this card, then the case's shared patient answers for inputs carrying that fact
+    (one answer fills every card; a card's own answer wins). A value the entry cannot take is ignored: still asked."""
     out: dict[str, InputValue] = {}
     for k, s in answered.items():
         i = e.input(k)
         v = _answer(e, i, s) if i is not None else None
         if v is not None:
             out[k] = v
+    for i in e.inputs:
+        s = (patient or {}).get(i.fact) if i.fact else None
+        if s is not None and i.id not in out:
+            v = _answer(e, i, s)
+            if v is not None:
+                out[i.id] = v
     return out
 
 
@@ -308,20 +315,33 @@ def _outcome_text(e: Entry, t: engine.Trace, sources: list[dict]) -> Proposal | 
 
 def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict[str, str], sources: list[dict],
            degraded: bool) -> Preview:
-    settled = [Settled(input=k, value=_show(e, e.input(k), given[k]), quote=quotes.get(k, ""))
-               for k in (i.id for i in e.inputs) if k in given]
+    """The card (spec §7.4): eligibility asks first; the state worked out in code; a does_not_apply outcome is shown as
+    an exclusion, never as a proposal, so it can never be Applied."""
+    elig = [i.id for i in e.inputs if i.role == "eligibility"]
+    order = elig + [i.id for i in e.inputs if i.role != "eligibility"]
+    needed = sorted(t.needed, key=order.index)
+    settled = [Settled(input=k, value=_show(e, e.input(k), given[k]), quote=quotes.get(k, ""),
+                       fact=e.input(k).fact or "") for k in (i.id for i in e.inputs) if k in given]
     possible = [engine.PH.sub("…", engine.render(e, t, e.outcome(o).classification)) for o in t.possible]
-    return Preview(settled=settled, missing=t.needed,
-                   proposal=_outcome_text(e, t, sources) if t.outcome is not None else None,
-                   possible=possible, bounded=t.bounded, asks=_asks(e, t, sources, t.needed),
+    text = _outcome_text(e, t, sources) if t.outcome is not None else None
+    if t.outcome == DOES_NOT_APPLY:
+        state, proposal, exclusion = "does_not_apply", None, text
+        logger.info("[library.preview] %s does not apply (eligibility given: %s)", e.key,
+                    ", ".join(k for k in elig if k in given) or "none")
+    else:
+        state = "check_first" if set(elig) & set(needed) else "applies"
+        proposal, exclusion = text, None
+    return Preview(settled=settled, missing=needed, proposal=proposal, exclusion=exclusion, state=state,
+                   possible=possible, bounded=t.bounded, asks=_asks(e, t, sources, needed),
                    trace=t.model_dump(mode="json") if t.outcome is not None else None, degraded=degraded)
 
 
 async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str, str],
-                       sources: list[dict] | None = None, finding: str = "") -> Preview:
+                       sources: list[dict] | None = None, finding: str = "",
+                       patient: dict[str, str] | None = None) -> Preview:
     sources = sources or []
     finding = finding.strip() or findings          # no unit sent (an older client): the whole dictation, as before
-    given = _given(e, answered)
+    given = _given(e, answered, patient)
     model, degraded = await _settle(e, given, finding, findings, history)
     # a present number is read from its in-scope quote by code; every other value is put to Jev
     pending = {k: v for k, (v, _) in model.items() if not (e.input(k).type == "number" and v.state == "present")}

@@ -154,3 +154,44 @@ def test_gate_2_runs_a_discrete_only_chain_above_a_band(manifest):
     e = Entry.model_validate(DISCRETE_SCORE)
     assert [i.id for i in V._enumerated_inputs(e)] == ["k"]
     assert any("0/0" in p for p in check(e, manifest, None))
+
+
+import copy as _copy
+
+ELIG = {"id": "known_cancer", "label": "Known primary cancer", "type": "boolean", "scope": "patient",
+        "role": "eligibility", "fact": "known_primary_cancer", "locator": {"source": "S1", "page": 1, "section": "Scope"}}
+
+
+def _eligible_toy(toy, elig=ELIG):
+    t = _copy.deepcopy(toy)
+    t["inputs"].insert(0, _copy.deepcopy(elig))
+    rules = t["logic"][1]
+    for c in rules["cases"]:
+        c["when"] = {"all": [{"ref": elig["id"], "eq": False}, c["when"]]}
+    rules["cases"].insert(0, {"when": {"ref": elig["id"], "eq": True}, "result": "does_not_apply",
+                              "locator": {"source": "S1", "page": 1}})
+    t["outcomes"].append({"id": "does_not_apply", "classification": "the toy guideline does not apply",
+                          "recommendation": "Manage per the clinical context.",
+                          "locator": {"source": "S1", "page": 1, "section": "Scope"}})
+    return t
+
+
+def test_an_eligible_pack_passes_the_eligibility_gate(toy):
+    assert V._eligibility(Entry.model_validate(_eligible_toy(toy))) == []
+
+
+def test_the_eligibility_gate(toy):
+    t = _eligible_toy(toy)
+    for n in range(3):            # four eligibility inputs in all
+        t["inputs"].insert(1, {**ELIG, "id": f"other{n}", "fact": None})
+    assert any("at most 3" in p for p in V._eligibility(Entry.model_validate(t)))
+    t = _eligible_toy(toy, {**ELIG, "locator": None})
+    assert any("no locator" in p for p in V._eligibility(Entry.model_validate(t)))
+    t = _eligible_toy(toy)
+    t["outcomes"] = [o for o in t["outcomes"] if o["id"] != "does_not_apply"]
+    t["logic"][1]["cases"][0]["result"] = "none"
+    assert any("does_not_apply outcome" in p for p in V._eligibility(Entry.model_validate(t)))
+    t = _copy.deepcopy(toy)
+    t["inputs"].insert(0, _copy.deepcopy(ELIG))       # declared, but no rule reads it
+    t["outcomes"].append({"id": "does_not_apply", "classification": "x", "locator": {"source": "S1", "page": 1}})
+    assert any("never reaches the result" in p for p in V._eligibility(Entry.model_validate(t)))
