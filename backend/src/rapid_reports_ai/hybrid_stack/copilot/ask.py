@@ -107,6 +107,7 @@ class AskResult(BaseModel):
     entry: Entry | None = None
     searched: bool = False        # a targeted query ran for this question
     supported: bool = True        # the answer is grounded in guideline material
+    loading: bool = False         # the route timed out: a general answer now, the guideline still resolving
     error: str | None = None
 
 

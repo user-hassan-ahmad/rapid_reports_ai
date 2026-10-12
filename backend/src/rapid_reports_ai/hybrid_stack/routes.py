@@ -126,6 +126,7 @@ class LogRequest(BaseModel):
     latency_ms: dict = Field(default_factory=dict)
     gate: dict | None = None      # v2 §5: the confirmed record (None: not confirmed)
     report_id: str | None = None  # v2: set once Generate returns
+    copilot: dict | None = None   # Copilot session record (scratchpad copilot spec §5.7)
 
 
 class SlimRequest(BaseModel):
@@ -253,7 +254,7 @@ async def stack_log(req: LogRequest, user: User = Depends(get_current_user), db:
         row = DictationStackLog(user_id=user.id, session_id=req.session_id)
         db.add(row)
     for k, v in req.model_dump(exclude_unset=True).items():
-        if k == "session_id" or (k in ("gate", "report_id") and v is None):
+        if k == "session_id" or (k in ("gate", "report_id", "copilot") and v is None):
             continue  # a partial log (the report id alone) changes only what it sends; a gate is never erased
         setattr(row, k, v)
     db.commit()
