@@ -19,6 +19,12 @@ export interface IntegrityFlag {
 	suggestion?: string;
 	/** Holds Confirm (the backend decides; tier 1 always). */
 	blocking?: boolean;
+	/** Which statement the suggestion corrects: the quote, or the other half of a conflict. */
+	suggestion_for?: 'quote' | 'other';
+	/** An unfinished sentence's suggestion: words appended after it (ghost text). */
+	completion?: boolean;
+	/** The completion states a normal nobody dictated: labelled, and never accepted by a key in the walkthrough. */
+	adds_normal?: boolean;
 }
 
 /** A flag placed on the scratchpad: the sentence it belongs to (null: not placed yet, shown up top). */
@@ -32,6 +38,9 @@ export interface CheckFlag {
 	quote: string;
 	other: string | null;
 	suggestion: string;
+	suggestionFor: 'quote' | 'other';
+	completion: boolean;
+	addsNormal: boolean;
 	unitId: number | null;
 }
 
@@ -59,7 +68,8 @@ export function toChecks(text: string, flags: IntegrityFlag[], units: StackUnit[
 		const quote = tier === 1 ? f.excerpt.trim() : text.slice(f.start, f.end).trim() || f.excerpt.trim();
 		const other = f.related_start != null && f.related_end != null ? text.slice(f.related_start, f.related_end).trim() || null : null;
 		return { key: `${f.kind}|${norm(quote)}`, kind: f.kind, blocking: f.blocking ?? tier === 1, tier, message: f.message,
-			quote, other, suggestion: (f.suggestion ?? '').trim(), unitId: unitFor(quote, units) };
+			quote, other, suggestion: (f.suggestion ?? '').trim(), suggestionFor: f.suggestion_for === 'other' && other ? 'other' : 'quote',
+			completion: !!f.completion && !!(f.suggestion ?? '').trim(), addsNormal: !!f.adds_normal, unitId: unitFor(quote, units) };
 	});
 }
 
@@ -101,8 +111,19 @@ export function segments(text: string, checks: CheckFlag[]): { text: string; che
 	return out;
 }
 
-/** The line with the check's words replaced by its suggestion. */
-export const replaced = (text: string, c: CheckFlag) => (c.suggestion && text.includes(c.quote) ? text.replace(c.quote, c.suggestion) : text);
+/** The words a suggestion changes: the quote, or the other half of a conflict. */
+export const target = (c: CheckFlag) => (c.suggestionFor === 'other' && c.other ? c.other : c.quote);
+
+/** The line with the suggestion applied: a completion is appended after the unfinished words; any other suggestion
+ *  replaces the words it corrects. */
+export function replaced(text: string, c: CheckFlag): string {
+	const t = target(c);
+	if (!c.suggestion || !text.includes(t)) return text;
+	return text.replace(t, c.completion ? `${t.trimEnd()} ${c.suggestion}` : c.suggestion);
+}
+
+/** The line without the check's sentence (Delete sentence on an unfinished one). */
+export const withoutQuote = (text: string, c: CheckFlag) => text.replace(c.quote, '').replace(/\s{2,}/g, ' ').trim();
 
 /** Checks still asking: not answered, and (advisory ones) not skipped. */
 export const openChecks = (checks: CheckFlag[], answers: Record<string, CheckAnswer>) => checks.filter((c) => !answers[c.key]);

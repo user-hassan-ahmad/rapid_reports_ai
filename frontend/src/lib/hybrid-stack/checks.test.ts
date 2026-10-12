@@ -34,7 +34,7 @@ describe('dictation checks on the scratchpad', () => {
 	});
 	it('cuts a line into plain runs and underlined runs, both halves of a conflict included', () => {
 		const t = 'A left renal cyst; the right kidney is normal.';
-		const c = { key: 'k', kind: 'laterality_conflict', blocking: true, tier: 2 as const, message: '', quote: 'right kidney', other: 'left renal cyst', suggestion: '', unitId: 0 };
+		const c = { key: 'k', kind: 'laterality_conflict', blocking: true, tier: 2 as const, message: '', quote: 'right kidney', other: 'left renal cyst', suggestion: '', suggestionFor: 'quote' as const, completion: false, addsNormal: false, unitId: 0 };
 		expect(segments(t, [c]).map((x) => [x.text, !!x.check])).toEqual([
 			['A ', false], ['left renal cyst', true], ['; the ', false], ['right kidney', true], [' is normal.', false]
 		]);
