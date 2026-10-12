@@ -1,8 +1,22 @@
-"""Preview lab (library spec §12 next slice, item 4: the gate for Apply). Each case runs through the preview cache
-live (Qwen + Jev): the first call is a cache MISS (the latency gate), the second a cache HIT (reported apart). Scored
-against expected settled values, missing inputs, outcome and card state; an input in accept_missing may be asked
-instead of settled ("asked, never wrong"). Friction: the asks per card (every input in `missing`, eligibility
-included). At most 2 runs; output in the session scratchpad with the pid.
+"""Preview lab (library spec §12 next slice, item 4: the gate for Apply; strengthened in the lab fix round, item 6).
+Each case runs live (Qwen + Jev) through the preview cache and pack_preview.settle_pack / finish.
+
+Ground truth: every case carries `truth`, a value for every input of its pack (as a radiologist would answer it).
+After the preview, every asked input is filled from `truth` (repeatedly, as answers open new inputs) and the card is
+evaluated by the engine alone. Every settled value is compared with `truth`: one that disagrees is a WRONG VALUE.
+The outcome the preview proposes before any answer, and the final outcome after the fill, are compared with
+`expect_final` (the engine on `truth` alone): a mismatch is a WRONG PROPOSAL.
+
+Latency scenarios, fixed before any run, each reported separately (milliseconds, not degraded only):
+  (a) cold open: an empty cache, the settlement computed on open (MISS); always reported;
+  (b) open 2 s after /match, with the prewarm started by /match still running or done;
+  (c) open after more dictation: prewarmed at /match, then the dictation grows before open (a new key: a MISS);
+  (d) the answer path: each fill step (engine only; no model, no Jev).
+Gate: 0 wrong values, 0 wrong proposals, and (b) p95 under 2000 ms. If (b) passes and (a) does not, the gate
+passes with "cold open slow" flagged for Hassan.
+
+Friction: the asks per card before any answer (every input in `missing`, eligibility included). At most 2 runs;
+output in the session scratchpad with the pid.
 Usage: cd backend && PYTHONPATH=src .venv/bin/python scripts/guidelines/preview_lab.py --check
        cd backend && PYTHONPATH=src .venv/bin/python scripts/guidelines/preview_lab.py <scratchpad-dir>"""
 import asyncio
@@ -22,19 +36,23 @@ load_dotenv("/Users/hassan/Code/rapid_reports_ai/backend/.env")
 from rapid_reports_ai.hybrid_stack.copilot.library import engine  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library import preview_cache as PC  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library.bundle import BUNDLE, Library  # noqa: E402
-from rapid_reports_ai.hybrid_stack.copilot.library.pack_preview import _answer, _given, preview_pack  # noqa: E402
+from rapid_reports_ai.hybrid_stack.copilot.library.pack_preview import _answer, _given, finish, settle_pack  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library.schema import DOES_NOT_APPLY  # noqa: E402
 
 CASES = Path(__file__).with_name("preview_lab_cases.json")
+GATE_B_MS = 2000
+OPEN_DELAY_S = 2.0                     # scenario (b) and (c): the card is opened this long after /match
+MORE_DICTATION = " The remaining imaged structures are unremarkable."   # scenario (c): dictation after /match
+MAX_FILL = 10                          # fill rounds: answers may open new inputs
 
 
-def _ms(t0: float) -> int:
-    return int((time.perf_counter() - t0) * 1000)
+def _ms(t0: float) -> float:
+    return (time.perf_counter() - t0) * 1000
 
 
-def _pct(xs: list[int], q: float) -> int:
+def _pct(xs: list[float], q: float) -> int:
     xs = sorted(xs)
-    return xs[min(len(xs) - 1, int(q * len(xs)))] if xs else 0
+    return int(xs[min(len(xs) - 1, int(q * len(xs)))]) if xs else 0
 
 
 def _facts(e, settled: dict[str, str]) -> dict[str, str]:
@@ -46,10 +64,27 @@ def _state(e, t, missing) -> str:
     return "does_not_apply" if t.outcome == DOES_NOT_APPLY else "check_first" if elig & set(missing) else "applies"
 
 
+def _same(e, k: str, a: str, b: str) -> bool:
+    """Two answers to one input mean the same value ("12 mm" and "1.2 cm"; "Yes" and "Yes")."""
+    i = e.input(k)
+    x, y = _answer(e, i, a), _answer(e, i, b)
+    return x is not None and y is not None and x.model_dump() == y.model_dump()
+
+
+def _truth_given(e, truth: dict[str, str]) -> dict:
+    return {k: _answer(e, e.input(k), v) for k, v in truth.items()}
+
+
 def check(lib: Library, cases: list[dict]) -> int:
-    """Each case's expectations through the engine alone (no model call): its expected settled values, answers and
-    patient map must give expect_outcome, expect_missing and expect_state."""
+    """No model call. Each case's expectations through the engine alone: its expected settled values, answers and
+    patient map must give expect_outcome, expect_missing and expect_state; its truth must cover every input of the
+    pack with a value the pack can take, agree with every expected settled value and answer, and give expect_final."""
     bad, shared = 0, {}
+
+    def no(c, msg):
+        nonlocal bad
+        print(f"- {c['name']}: {msg}")
+        bad += 1
     for c in cases:
         e = lib.lookup(c["pack"])
         patient = {**c.get("patient", {}), **shared.get(c.get("patient_from", ""), {})}
@@ -57,8 +92,7 @@ def check(lib: Library, cases: list[dict]) -> int:
         for k, v in c["expect_settled"].items():
             x = _answer(e, e.input(k), v) if e.input(k) is not None else None
             if x is None:
-                print(f"- {c['name']}: expect_settled {k}={v!r} is not a value of {e.key}")
-                bad += 1
+                no(c, f"expect_settled {k}={v!r} is not a value of {e.key}")
                 continue
             given[k] = x
         shared[c["name"]] = _facts(e, c["expect_settled"])
@@ -69,75 +103,149 @@ def check(lib: Library, cases: list[dict]) -> int:
         got = (t.outcome, missing, _state(e, t, missing))
         want = (c["expect_outcome"], c["expect_missing"], c["expect_state"])
         if got != want:
-            print(f"- {c['name']}: engine gives {got}; the case says {want}")
-            bad += 1
+            no(c, f"engine gives {got}; the case says {want}")
+        truth = c.get("truth", {})
+        if set(truth) != {i.id for i in e.inputs}:
+            no(c, f"truth does not cover every input: missing {sorted({i.id for i in e.inputs} - set(truth))}, "
+                  f"unknown {sorted(set(truth) - {i.id for i in e.inputs})}")
+            continue
+        tg = _truth_given(e, truth)
+        if any(v is None for v in tg.values()):
+            no(c, f"truth values the pack cannot take: {[k for k, v in tg.items() if v is None]}")
+            continue
+        for src in (c["expect_settled"], c.get("answered", {}),
+                    {i.id: patient[i.fact] for i in e.inputs if i.fact and i.fact in patient}):
+            for k, v in src.items():
+                if not _same(e, k, v, truth[k]):
+                    no(c, f"{k}={v!r} disagrees with truth {truth[k]!r}")
+        final = engine.evaluate(e, tg).outcome
+        if final is None or final != c.get("expect_final"):
+            no(c, f"truth gives {final!r}; expect_final is {c.get('expect_final')!r}")
+        if c["expect_outcome"] is not None and c["expect_outcome"] != final:
+            no(c, f"expect_outcome {c['expect_outcome']!r} is not the truth's outcome {final!r}")
     print(f"{len(cases)} cases checked, {bad} disagree")
     return 1 if bad else 0
+
+
+def _fill(e, s, c: dict, patient: dict) -> tuple[object, list[float], dict]:
+    """Answer every asked input from truth until nothing is asked (or nothing changes): engine only."""
+    answered = dict(c.get("answered", {}))
+    steps: list[float] = []
+    t0 = time.perf_counter()
+    p = finish(e, s, answered, patient)
+    steps.append(_ms(t0))
+    for _ in range(MAX_FILL):
+        new = {k: c["truth"][k] for k in p.missing if k not in answered}
+        if not new:
+            break
+        answered.update(new)
+        t0 = time.perf_counter()
+        p = finish(e, s, answered, patient)
+        steps.append(_ms(t0))
+    return p, steps, answered
 
 
 async def one(lib: Library, c: dict, shared: dict) -> dict:
     e = lib.lookup(c["pack"])
     patient = {**c.get("patient", {}), **shared.get(c.get("patient_from", ""), {})}
     finding, findings, history = c.get("finding", ""), c["findings"], c.get("history", "")
-    answered = c.get("answered", {})
-    k = PC.key(e.key, finding, findings, history, answered, patient)
+    sources = lib.sources(e.key)
 
-    def make():
-        return preview_pack(e, findings, history, answered, lib.sources(e.key), finding=finding, patient=patient)
+    def make(d=findings):
+        return lambda: settle_pack(e, d, history, finding=finding)
+    k = PC.key(e.key, finding, findings, history)
+
+    # (a) cold open
+    PC.clear()
     t0 = time.perf_counter()
-    p = await PC.start(k, make)
-    miss = _ms(t0)
-    t1 = time.perf_counter()
-    await PC.start(k, make)
-    hit = _ms(t1)
-    settled = {s.input: s.value for s in p.settled}
-    shared[c["name"]] = {s.fact: s.value for s in p.settled if s.fact}
-    want, may = c["expect_settled"], set(c.get("accept_missing", []))
+    s = await PC.start(k, make())
+    p = finish(e, s, c.get("answered", {}), patient, sources)
+    ms_a = _ms(t0)
+
+    # (b) open 2 s after /match, the prewarm running
+    PC.clear()
+    PC.start(k, make(), prewarm=True)
+    await asyncio.sleep(OPEN_DELAY_S)
+    t0 = time.perf_counter()
+    sb = await PC.start(k, make())
+    finish(e, sb, c.get("answered", {}), patient, sources)
+    ms_b = _ms(t0)
+
+    # (c) more dictation after /match: the prewarmed key no longer matches, so the open is a MISS
+    PC.clear()
+    pre = PC.start(k, make(), prewarm=True)
+    await asyncio.sleep(OPEN_DELAY_S)
+    more = findings + MORE_DICTATION
+    t0 = time.perf_counter()
+    sc = await PC.start(PC.key(e.key, finding, more, history), make(more))
+    finish(e, sc, c.get("answered", {}), patient, sources)
+    ms_c = _ms(t0)
+    await asyncio.gather(pre, return_exceptions=True)
+
+    degraded = s.failed or sb.failed or sc.failed
+    settled = {x.input: x.value for x in p.settled}
+    shared[c["name"]] = {x.fact: x.value for x in p.settled if x.fact}
+    truth = c["truth"]
+    answered = c.get("answered", {})
+    model_settled = {x.input: (x.value, x.quote) for x in p.settled if x.input not in answered and x.quote}
+    wrong_values = {k: (v, q, truth[k]) for k, (v, q) in model_settled.items() if not _same(e, k, v, truth[k])}
+    final, steps, filled = _fill(e, s, c, patient)
     outcome = (p.trace or {}).get("outcome")
-    wrong_settled = {x: (settled[x], v) for x, v in want.items() if x in settled and settled[x] != v}
-    unasked = [x for x in want if x not in settled and x not in may]
-    asked_instead = [x for x in want if x not in settled and x in may]
-    return {"name": c["name"], "pack": c["pack"], "ms_miss": miss, "ms_hit": hit, "degraded": p.degraded,
-            "outcome": outcome, "expect_outcome": c["expect_outcome"], "state": p.state,
-            "expect_state": c["expect_state"],
-            "wrong_proposal": outcome is not None and outcome != c["expect_outcome"],
-            "outcome_ok": outcome == c["expect_outcome"], "state_ok": p.state == c["expect_state"],
-            "missing": p.missing, "expect_missing": c["expect_missing"], "asks": len(p.missing),
-            "missing_ok": p.missing == c["expect_missing"] or bool(asked_instead),
-            "wrong_settled": wrong_settled, "unasked": unasked, "asked_instead": asked_instead,
-            "settled": [s.model_dump() for s in p.settled], "possible": p.possible}
+    final_outcome = (final.trace or {}).get("outcome")
+    want = c["expect_final"]
+    want_settled, may = c["expect_settled"], set(c.get("accept_missing", []))
+    return {"name": c["name"], "pack": c["pack"], "two_lesion": c.get("two_lesion", False),
+            "ms_a": ms_a, "ms_b": ms_b, "ms_c": ms_c, "ms_d": steps, "degraded": degraded,
+            "outcome": outcome, "final_outcome": final_outcome, "expect_final": want,
+            "expect_outcome": c["expect_outcome"], "state": p.state, "expect_state": c["expect_state"],
+            "wrong_proposal": (outcome is not None and outcome != want) or final_outcome != want,
+            "wrong_values": wrong_values, "missing": p.missing, "expect_missing": c["expect_missing"],
+            "asks": len(p.missing), "filled": sorted(set(filled) - set(answered)),
+            "unasked": [x for x in want_settled if x not in settled and x not in may],
+            "asked_instead": [x for x in want_settled if x not in settled and x in may],
+            "settled": [x.model_dump() for x in p.settled], "possible": p.possible}
 
 
 async def main(out_dir: Path) -> int:
     lib = Library(json.loads(BUNDLE.read_text()))
     cases = json.loads(CASES.read_text())["cases"]
+    if check(lib, cases):
+        print("expectations disagree with the engine: fix the cases before any run")
+        return 1
     rows, shared = [], {}
     for c in cases:                      # sequential: latency is part of the gate
         rows.append(await one(lib, c, shared))
     out = out_dir / f"preview_lab_{os.getpid()}.json"
     out.write_text(json.dumps(rows, indent=1))
-    miss = [r["ms_miss"] for r in rows if not r["degraded"]]
-    hit = [r["ms_hit"] for r in rows if not r["degraded"]]
-    n = lambda key: sum(bool(r[key]) for r in rows)   # noqa: E731
+    ok = [r for r in rows if not r["degraded"]]
+    lat = {x: [r[f"ms_{x}"] for r in ok] for x in "abc"}
+    lat["d"] = [m for r in ok for m in r["ms_d"]]
+    wrong_values = sum(len(r["wrong_values"]) for r in rows)
+    wrong_proposals = sum(r["wrong_proposal"] for r in rows)
+    b95, a95 = _pct(lat["b"], 0.95), _pct(lat["a"], 0.95)
+    passed = wrong_values == 0 and wrong_proposals == 0 and b95 < GATE_B_MS
     print(f"{len(rows)} cases -> {out}")
-    print(f"wrong proposals: {n('wrong_proposal')}  wrong settled: {n('wrong_settled')}  unasked: {n('unasked')}  "
-          f"outcome ok: {n('outcome_ok')}  state ok: {n('state_ok')}  missing ok: {n('missing_ok')}  "
-          f"asked instead: {sum(len(r['asked_instead']) for r in rows)}  degraded: {n('degraded')}")
-    print(f"MISS ms p50 {_pct(miss, 0.5)} p95 {_pct(miss, 0.95)}   HIT ms p50 {_pct(hit, 0.5)} p95 {_pct(hit, 0.95)}")
-    for pack in sorted({r["pack"] for r in rows}):
-        print(f"  {pack}: miss ms {sorted(r['ms_miss'] for r in rows if r['pack'] == pack)}")
+    print(f"GATE: {'PASS' if passed else 'FAIL'}  wrong values {wrong_values}  wrong proposals {wrong_proposals}  "
+          f"(b) p95 {b95} ms (gate < {GATE_B_MS})" + ("  [cold open slow: flagged for Hassan]"
+                                                       if passed and a95 >= GATE_B_MS else ""))
+    for x, name in (("a", "cold open (MISS)"), ("b", "open 2 s after /match"), ("c", "open after more dictation"),
+                    ("d", "answer path")):
+        print(f"  ({x}) {name}: p50 {_pct(lat[x], 0.5)} p95 {_pct(lat[x], 0.95)} ms  n={len(lat[x])}")
+    print(f"degraded: {sum(r['degraded'] for r in rows)}  unasked: {sum(bool(r['unasked']) for r in rows)}  "
+          f"asked instead: {sum(len(r['asked_instead']) for r in rows)}")
     asks = [r["asks"] for r in rows]
     print(f"asks per card: mean {statistics.mean(asks):.2f} median {statistics.median(asks)} "
           f"<=2: {sum(a <= 2 for a in asks)}/{len(asks)}  distribution {sorted(Counter(asks).items())}")
     for pack in sorted({r["pack"] for r in rows}):
         xs = [r["asks"] for r in rows if r["pack"] == pack]
-        print(f"  {pack}: asks mean {statistics.mean(xs):.2f} {sorted(xs)}")
+        print(f"  {pack}: asks mean {statistics.mean(xs):.2f} {sorted(xs)}  "
+              f"(a) ms {sorted(int(r['ms_a']) for r in rows if r['pack'] == pack)}")
     for r in rows:
-        if r["wrong_proposal"] or r["wrong_settled"] or r["unasked"] or not r["state_ok"] or r["asked_instead"]:
-            print(f"- {r['pack']} / {r['name']}: outcome {r['outcome']} (want {r['expect_outcome']}), state "
-                  f"{r['state']} (want {r['expect_state']}), wrong {r['wrong_settled']}, unasked {r['unasked']}, "
-                  f"asked instead {r['asked_instead']}, missing {r['missing']}")
-    return 0
+        if r["wrong_proposal"] or r["wrong_values"] or r["unasked"] or r["degraded"]:
+            print(f"- {r['pack']} / {r['name']}: outcome {r['outcome']} final {r['final_outcome']} "
+                  f"(want {r['expect_final']}), wrong values {r['wrong_values']}, unasked {r['unasked']}, "
+                  f"degraded {r['degraded']}")
+    return 0 if passed else 2
 
 
 if __name__ == "__main__":
