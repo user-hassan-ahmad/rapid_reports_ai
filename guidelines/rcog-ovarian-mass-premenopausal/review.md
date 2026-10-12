@@ -80,7 +80,7 @@ M4 = irregular multilocular-solid AND size_band ≥100. B4 = smooth multilocular
 | pitfalls | ✓ p2 §1; p4 §4.2; p3 §2; p2 §2 and Table 1; pp5-6 §5.1; p5 §4.3.1 |
 
 ### Golden cases
-There are 26 cases, and every one of the 8 outcomes and 4 `iota` results is reached. The edges at 50, 70 and 100 mm (B4 and M4) are tested on both sides. Five cases assert `needed`, and these are the real unknowns (M7):
+There are 27 cases, and every one of the 8 outcomes and 4 `iota` results is reached. The edges at 50, 70 and 100 mm (B4 and M4) are tested on both sides. Five cases assert `needed`, and these are the real unknowns (M7):
 - size for a simple cyst;
 - M5 for a B2 mass with Doppler not described (B5 can't change the result there, so only M5 is asked);
 - M3 for uncounted papillary projections;
