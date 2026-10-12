@@ -311,4 +311,7 @@ def test_assumed_passes_the_region_text_capped(authed, monkeypatch):
     assert r.status_code == 200
     assert len(seen["region_text"]) == 40 and all(len(t) <= R.MAX_REGION_TEXT for t in seen["region_text"].values())
     authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"R0": ["Normal."]}})
-    assert seen["region_text"] == {}   # nothing grouped in a region: no region covers anything
+    assert seen["region_text"] is None   # an older client: the whole dictation answers coverage
+    authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"R0": ["Normal."]},
+                                                   "region_text": {}})
+    assert seen["region_text"] == {}     # sent but empty: nothing grouped in a region covers anything

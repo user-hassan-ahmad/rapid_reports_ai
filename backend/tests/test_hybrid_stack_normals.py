@@ -208,3 +208,23 @@ async def test_region_mode_failure_assumes_nothing(monkeypatch):
     monkeypatch.setattr(N, "ask_rows", boom)
     out = await N.assumed("x", BRAIN, [], [], [], region_text={"Lungs": "x"})
     assert out.assumed == {"Brain": [], "Lungs": []} and "RuntimeError" in out.error
+
+
+async def test_each_refresh_logs_its_jev_calls_and_failure(monkeypatch, caplog):
+    import logging
+    calls = []
+    monkeypatch.setattr(N, "ask_rows", _by_dictation({}, calls))
+    with caplog.at_level(logging.INFO, logger=N.__name__):
+        await N.assumed("Lungs clear.", BRAIN, [], [], [], region_text={"Lungs": "Lungs clear."})
+    line = [r for r in caplog.records if "jev_calls" in r.getMessage()][-1]
+    assert f"jev_calls={len(calls)}" in line.getMessage() and "failed=False" in line.getMessage()
+    assert len(calls) == 2 and line.levelno == logging.INFO
+
+    async def boom(*a, **k):
+        raise RuntimeError("down")
+    monkeypatch.setattr(N, "ask_rows", boom)
+    with caplog.at_level(logging.INFO, logger=N.__name__):
+        await N.assumed("x", BRAIN, [], [], [])
+    line = [r for r in caplog.records if "jev_calls" in r.getMessage()][-1]
+    assert "jev_calls=1" in line.getMessage() and "failed=True" in line.getMessage()
+    assert line.levelno == logging.WARNING

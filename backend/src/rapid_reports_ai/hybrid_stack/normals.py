@@ -33,12 +33,30 @@ async def _ask(dictation: str, sentences: list[str], gone: list[str], **parts):
     return [c for part in got for c in part]
 
 
+def _batches(n: int) -> int:
+    return -(-n // BATCH)
+
+
+def _text_regions(asked: list[tuple[str, str]], region_text: dict[str, str]) -> list[str]:
+    # region_text keys must match the region names exactly: a mismatch finds no text, so it fails toward offering
+    # more normals (nothing covers them), never toward dropping them.
+    return list(dict.fromkeys(r for r, _ in asked if (region_text.get(r) or "").strip()))
+
+
+def _jev_calls(asked: list[tuple[str, str]], region_text: dict[str, str] | None, conds: list[str]) -> int:
+    """The Jev calls one refresh makes (logged, so fan-out can be watched live)."""
+    n = _batches(len(asked)) + (1 if conds else 0)
+    if region_text is not None:
+        n += sum(_batches(sum(1 for r, _ in asked if r == t)) for t in _text_regions(asked, region_text))
+    return n
+
+
 async def _ask_by_region(dictation: str, asked: list[tuple[str, str]], texts: list[str], gone: list[str],
                          region_text: dict[str, str]) -> list[RowCheck]:
     """Task A3b: a normal is covered or hedged only by the sentences grouped in its own region (one stated call per
     region with text, in parallel; a region with none is covered by nothing); contradicted (and the same as a
     removed sentence) by the whole dictation, conclusion included."""
-    regions = list(dict.fromkeys(r for r, _ in asked if (region_text.get(r) or "").strip()))
+    regions = _text_regions(asked, region_text)
     idx = {r: [i for i, (ar, _) in enumerate(asked) if ar == r] for r in regions}
     whole, *per_region = await asyncio.gather(
         _ask(dictation, texts, gone, stated=False),
@@ -71,9 +89,9 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
                   clinical_history: str = "", labels: dict[str, str] | None = None,
                   region_text: dict[str, str] | None = None) -> AssumedResult:
     """Every region of the sheet is answered (an empty list: nothing assumed), so the caller never falls back to
-    the raw sheet. Every sentence is checked against the dictation, untouched regions included: a finding the
-    grouper filed under another region leaves its own region looking untouched (side review 2026-10-12: "The spleen
-    is normal" beside a misplaced splenic finding). A sentence is assumed only when the dictation neither covers,
+    the raw sheet. Every sentence is checked for contradiction against the whole dictation, untouched regions
+    included: a finding the grouper filed under another region leaves its own region looking untouched (side review
+    2026-10-12: "The spleen is normal" beside a misplaced splenic finding). A sentence is assumed only when the dictation neither covers,
     hedges nor contradicts it and it does not say the same as a removed sentence or a row's (owned). A template's
     context rule (`suppressions`: condition, sentence) whose condition is met for the case (clinical history and
     dictation) hides its sentence. Every sentence not assumed is in `dropped` with its reason. `labels` (sentence ->
@@ -92,9 +110,9 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     out: dict[str, list[str]] = {r: [] for r in region_normals}
     dropped: dict[str, list[dict]] = {r: [] for r in region_normals}
     error = None
+    conds = list(dict.fromkeys(c for c, _ in suppressions or []))
     if asked:
         try:
-            conds = list(dict.fromkeys(c for c, _ in suppressions or []))
             ctx = f"CLINICAL HISTORY:\n{clinical_history or '(not given)'}\nDICTATED FINDINGS:\n{dictation}"
             texts = [jev_text(s, labels[s]) if s in labels else s for _, s in asked]
             checks, met = await asyncio.gather(
@@ -114,4 +132,7 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
             error = f"{type(e).__name__}: {e}"
             out = {r: [] for r in region_normals}
             dropped = {r: [] for r in region_normals}
+        logger.log(logging.WARNING if error else logging.INFO, "[stack.normals] jev_calls=%d failed=%s mode=%s",
+                   _jev_calls(asked, region_text, conds), error is not None,
+                   "whole" if region_text is None else "region")
     return AssumedResult(assumed=out, dropped=dropped, ms=int((time.perf_counter() - t0) * 1000), error=error)

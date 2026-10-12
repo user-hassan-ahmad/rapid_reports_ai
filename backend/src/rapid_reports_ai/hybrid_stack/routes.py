@@ -103,7 +103,7 @@ class AssumedRequest(BaseModel):
     touched: list[str] = Field(default_factory=list)     # regions those rows (and removals) concern
     template_id: str | None = None                       # its context rules and normal labels apply
     clinical_history: str = ""                           # a context rule's condition is judged on it too
-    region_text: dict[str, str] = Field(default_factory=dict)   # region -> its grouped sentences (Task A3b)
+    region_text: dict[str, str] | None = None   # region -> its grouped sentences (Task A3b); None: an older client
 
 
 class DraftRequest(BaseModel):
@@ -261,7 +261,8 @@ async def stack_assumed(req: AssumedRequest, user: User = Depends(get_current_us
     return await assumed_normals(req.dictation, normals, req.abnormal, req.dictated_normal, req.removed[:50],
                                  owned, req.touched[:40], suppressions=suppressions,
                                  clinical_history=req.clinical_history[:2000], labels=labels,
-                                 region_text={r: t[:MAX_REGION_TEXT] for r, t in list(req.region_text.items())[:40]})
+                                 region_text=None if req.region_text is None else
+                                 {r: t[:MAX_REGION_TEXT] for r, t in list(req.region_text.items())[:40]})
 
 
 @router.post("/draft", response_model=DraftResult)
