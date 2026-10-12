@@ -37,6 +37,17 @@ def test_parses_sheet_containing_code_fence(raw):
     assert parsed == PAYLOAD
 
 
+def test_skips_stray_object_before_envelope():
+    raw = f'Draft: {{"note": 1}} then use {{laterality}}.\n{BODY}'
+    assert TemplateManager._parse_skill_sheet_json(raw, KEYS) == PAYLOAD
+
+
+def test_truncated_envelope_reports_truncation_not_inner_dict():
+    raw = BODY[: BODY.index('"questions"')]
+    with pytest.raises(ValueError, match="may be truncated"):
+        TemplateManager._parse_skill_sheet_json(raw, KEYS)
+
+
 def test_missing_keys_still_raises():
     with pytest.raises(ValueError, match="missing keys"):
         TemplateManager._parse_skill_sheet_json(json.dumps({"skill_sheet": SHEET}), KEYS)

@@ -3270,17 +3270,17 @@ Return a JSON object: {{"sections": ["LIVER", "BILIARY SYSTEM", ...]}}"""
     @staticmethod
     def _parse_skill_sheet_json(raw: str, keys: List[str]) -> Dict:
         """
-        Extract a JSON object from a GLM string response.
-        Handles markdown code fences and stray leading/trailing text.
+        Extract the JSON object carrying `keys` from a model's string response.
 
         Decodes in place from each '{' rather than regex-slicing: the skill
         sheet itself contains ``` fences and {placeholder} slots, which a
-        fence/brace regex mistakes for the envelope.
+        fence/brace regex mistakes for the envelope. Stray objects before the
+        envelope (prose, leaked reasoning) are skipped until one has all keys.
         """
         import json
 
         decoder = json.JSONDecoder()
-        parsed = None
+        first_dict = None
         start = raw.find("{")
         while start != -1:
             try:
@@ -3288,17 +3288,19 @@ Return a JSON object: {{"sections": ["LIVER", "BILIARY SYSTEM", ...]}}"""
             except json.JSONDecodeError:
                 obj = None
             if isinstance(obj, dict):
-                parsed = obj
-                break
+                if all(k in obj for k in keys):
+                    return obj
+                if first_dict is None:
+                    first_dict = obj
             start = raw.find("{", start + 1)
-        if parsed is None:
-            raise ValueError(f"No JSON object found in model response. Raw: {raw[:300]}")
 
-        # Validate expected keys are present
-        missing = [k for k in keys if k not in parsed]
-        if missing:
-            raise ValueError(f"Model response missing keys {missing}. Got: {list(parsed.keys())}")
-        return parsed
+        if first_dict is None:
+            raise ValueError(f"No JSON object found in model response. Raw: {raw[:300]}")
+        missing = [k for k in keys if k not in first_dict]
+        raise ValueError(
+            f"Model response missing keys {missing} (output may be truncated). "
+            f"Got: {list(first_dict.keys())}"
+        )
 
     async def analyze_reports_and_generate_config(
         self,
@@ -3639,7 +3641,9 @@ Generate a JSON object with exactly two keys:
             model_settings={
                 "temperature": 0.9,
                 "top_p": 0.95,
-                "max_tokens": 4096,
+                # Reasoning dominates the output budget and grows with the
+                # number of examples; 4096 truncated the JSON on larger sets.
+                "max_tokens": 16384,
                 "extra_body": {
                     "disable_reasoning": False,
                     "clear_thinking": False,
