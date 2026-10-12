@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 TIMEOUT_S = 12.0
 GAP_URLS = 2           # pages the gap search reads
-PACK_MATERIAL_MAX = 24000   # chars of a library entry's own fields given to the grounded answer
+PACK_MATERIAL_MAX = 32000   # chars of a library entry's own fields for the grounded answer (BTS is ~23k; a test keeps every pack under)
 NOT_IN_GUIDELINE = "The guideline does not address this."
 FROM_GENERAL = "From general knowledge:"
 

@@ -104,13 +104,25 @@ def cite_text(c: dict) -> str:
                                  c.get("table", "")) if x)
 
 
+def _short(loc: Locator | None) -> str:
+    """A compact citation: source id, then page (or the table or section name when the source has no pages)."""
+    if loc is None:
+        return ""
+    where = f"p. {loc.page}" if loc.page else (loc.table or loc.section)[:60]
+    return f"{loc.source} {where}".strip()
+
+
 def material(e: Entry, sources: list[dict]) -> str:
     """What Ask grounds an answer on for a library entry: its own located facts (rules, bands, outcomes, caveats,
-    reference fields) and the rows of its reference tables, each with its citation. Nothing from outside the entry."""
-    lines = [f"{e.display} ({e.issuer}, edition {e.edition}). Inputs: "
-             + "; ".join(i.label + (f" ({i.how_stated})" if i.how_stated else "") for i in e.inputs) + "."]
-    lines += [f"- {claim} [{cite_text(citation(loc, sources))}]" for _, claim, loc in facts(e)]
+    reference fields) and the rows of its reference tables. Each source's title is printed once; every line cites it
+    by id and page. Nothing from outside the entry."""
+    used = {loc.source for _, _, loc in facts(e)} | {t.locator.source for t in e.reference.tables if t.locator}
+    lines = [f"{e.display} ({e.issuer}, edition {e.edition}). Sources: " + "; ".join(
+        f"{s['id']} = {cite_text({'title': s.get('title', ''), 'edition': s.get('edition', '')})}"
+        for s in sources if s.get("id") in used) + "."]
+    lines.append("Inputs: " + "; ".join(i.label + (f" ({i.how_stated})" if i.how_stated else "") for i in e.inputs) + ".")
+    lines += [f"- {claim} [{_short(loc)}]" for _, claim, loc in facts(e)]
     for t in e.reference.tables:
-        lines.append(f"{t.title} [{cite_text(citation(t.locator, sources))}]: " + " | ".join(t.columns))
+        lines.append(f"{t.title} [{_short(t.locator)}]: " + " | ".join(t.columns))
         lines += ["  " + " | ".join(r) for r in t.rows]
     return "\n".join(lines)

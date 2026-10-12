@@ -9,3 +9,23 @@ def test_facts_cover_every_located_item(toy_entry):
     assert got["outcome.pet"] == "solid nodule … → PET-CT"
     assert got["reference.sum.1"] == "A toy guideline for tests."
     assert all(loc is not None for _, _, loc in facts(toy_entry))
+
+
+def test_every_bundled_pack_fits_the_ask_material_cap_with_the_late_facts_present():
+    """New-I3: Ask grounds on the whole pack, never a silently truncated half: every bundled entry's material fits
+    PACK_MATERIAL_MAX, and the facts added last (Fleischner does_not_apply, BTS resolved and volumetry) are in it."""
+    import json
+    from rapid_reports_ai.hybrid_stack.copilot import ask as A
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+    from rapid_reports_ai.hybrid_stack.copilot.library import describe as D
+    lib = LB.Library(json.loads(LB.BUNDLE.read_text()))
+    texts = {}
+    for e in lib.list():
+        texts[e.id] = D.material(e, lib.sources(e.key))
+        assert len(texts[e.id]) <= A.PACK_MATERIAL_MAX, (e.id, len(texts[e.id]))
+    assert "Fleischner 2017 does not apply" in texts["fleischner-pulmonary-nodule"]
+    assert "Lung-RADS" in texts["fleischner-pulmonary-nodule"]
+    assert "resolved on this CT" in texts["bts-pulmonary-nodule"]
+    assert "Assess growth by volumetry" in texts["bts-pulmonary-nodule"]
+    body = texts["bts-pulmonary-nodule"].split("\n", 1)[1]                  # titles only on the first line
+    assert "British Thoracic Society guidelines for the investigation" not in body
