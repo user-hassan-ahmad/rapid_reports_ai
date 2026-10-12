@@ -33,6 +33,7 @@ _UNIT_LINE = re.compile(r'^\s*(?:NORMAL\s*\[[^\]]+\]|NEGATIVE)\s*"([^"]+)"')
 
 UNREADABLE = "This change could not be applied: the template would not be readable."
 UNSAFE = "This change could not be applied safely."
+LOST_STRUCTURE = "This change could not be applied: the template would lose its structure."
 ADJUSTED = "Applied, with a small adjustment so the template stays consistent."
 
 
@@ -101,7 +102,7 @@ async def vet_sheet(sheet: str, origin: Origin, previous: str = "") -> VetOutcom
     if previous and sheet == previous:
         return VetOutcome("unchanged", previous)
     if not tsg.is_grammar_sheet(sheet):
-        return _refuse(previous, "This change could not be applied: the template would lose its structure.")
+        return _refuse(previous, LOST_STRUCTURE)
     requested = sheet
     existing = _unit_texts(previous) if previous and tsg.is_grammar_sheet(previous) else set()
     try:

@@ -167,3 +167,63 @@ def test_restore_refusal_leaves_the_template_unchanged(client, auth_headers, db_
     r = client.post(f"/api/templates/{t['id']}/versions/{vid}/restore", headers=auth_headers).json()
     assert r == {"success": False, "error": S.UNSAFE}
     assert _get(client, auth_headers, t["id"])["template_config"]["skill_sheet"] == EDITED
+
+
+def test_create_refuses_an_empty_guided_sheet(client, auth_headers):
+    r = _guided(client, auth_headers, sheet="")
+    assert r == {"success": False, "error": S.LOST_STRUCTURE}
+
+
+def test_update_refuses_emptying_the_sheet(client, auth_headers):
+    t = _guided(client, auth_headers)["template"]
+    r = client.put(f"/api/templates/{t['id']}", headers=auth_headers, json={
+        "template_config": {**t["template_config"], "skill_sheet": ""}}).json()
+    assert r == {"success": False, "error": S.LOST_STRUCTURE}
+    assert _get(client, auth_headers, t["id"])["template_config"]["skill_sheet"] == GOOD
+
+
+def test_update_refuses_switching_a_grammar_template_to_another_mode(client, auth_headers):
+    t = _guided(client, auth_headers)["template"]
+    r = client.put(f"/api/templates/{t['id']}", headers=auth_headers, json={
+        "template_config": {**t["template_config"], "generation_mode": "legacy"}}).json()
+    assert r == {"success": False, "error": "This template can't be switched to another mode."}
+    assert _get(client, auth_headers, t["id"])["template_config"]["generation_mode"] == "skill_sheet_guided"
+
+
+def test_update_of_a_non_guided_template_is_not_vetted(client, auth_headers, monkeypatch):
+    t = client.post("/api/templates", headers=auth_headers, json={
+        "name": "Legacy", "template_config": {"generation_mode": "legacy", "sections": []}}).json()["template"]
+
+    async def boom(*a, **k):
+        raise AssertionError("vetted a non-guided template")
+    monkeypatch.setattr(S, "vet_sheet", boom)
+    r = client.put(f"/api/templates/{t['id']}", headers=auth_headers, json={
+        "template_config": {"generation_mode": "legacy", "sections": [{"name": "X"}]}}).json()
+    assert r["success"]
+
+
+def test_restore_of_another_users_version_is_not_found(client, auth_headers, db_session):
+    from tests.conftest import _make_template
+    from rapid_reports_ai.database.models import User
+    other = User(id=uuid.uuid4(), email=f"{uuid.uuid4()}@nhs.net", password_hash="x", full_name="O",
+                 is_active=True, is_verified=True, is_approved=True)
+    db_session.add(other)
+    db_session.commit()
+    theirs = _make_template(db_session, other, "Theirs", {"generation_mode": "skill_sheet_guided", "skill_sheet": GOOD})
+    vid = _version_with(db_session, str(theirs.id), GOOD)
+    mine = _guided(client, auth_headers, sheet=EDITED)["template"]
+    for tid in (str(theirs.id), mine["id"]):
+        r = client.post(f"/api/templates/{tid}/versions/{vid}/restore", headers=auth_headers).json()
+        assert r["success"] is False and "not found" in r["error"]
+    assert _get(client, auth_headers, mine["id"])["template_config"]["skill_sheet"] == EDITED
+
+
+def test_restore_of_the_current_sheet_skips_vetting(client, auth_headers, db_session, monkeypatch):
+    t = _guided(client, auth_headers)["template"]
+    vid = _version_with(db_session, t["id"], GOOD)
+
+    async def boom(*a, **k):
+        raise AssertionError("vetted an unchanged sheet")
+    monkeypatch.setattr(S, "vet_sheet", boom)
+    r = client.post(f"/api/templates/{t['id']}/versions/{vid}/restore", headers=auth_headers).json()
+    assert r["success"], r

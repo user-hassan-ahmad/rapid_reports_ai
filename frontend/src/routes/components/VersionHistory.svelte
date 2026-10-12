@@ -20,6 +20,8 @@
 		
 		loading = true;
 		error = null;
+		restoreError = '';
+		restoreNotice = '';
 		
 		try {
 			const headers = { 'Content-Type': 'application/json' };
@@ -64,9 +66,9 @@
 			
 			const data = await response.json();
 			if (data.success) {
-				restoreNotice = data.notice || '';
-				// Reload versions to show the new snapshot
+				// Reload versions to show the new snapshot (the reload clears old messages, so set the notice after)
 				await loadVersions();
+				restoreNotice = data.notice || '';
 				// Call the restore callback
 				onRestore();
 			} else {

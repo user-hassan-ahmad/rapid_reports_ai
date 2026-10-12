@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Dict, Optional, List, Any, Literal, Union
+from typing import Dict, Optional, List, Any, Literal, Tuple, Union
 import copy
 import hashlib
 import os
@@ -1659,13 +1659,29 @@ def _carry_structure(new_config: dict, old_config: dict) -> dict:
     return new
 
 
-async def _vet_config(new_cfg: Optional[dict], old_cfg: Optional[dict], origin: str) -> tuple:
+SWITCH_MODE_REFUSED = "This template can't be switched to another mode."
+
+
+async def _vet_config(new_cfg: Optional[dict], old_cfg: Optional[dict], origin: str,
+                      creating: bool = False) -> Tuple[Optional[dict], str, str]:
     """Run the one save function (template_sheet_save.vet_sheet) when a guided template's sheet changes.
-    Returns (config to store, refusal message or "", notice or ""). coverage_sections comes from the parse."""
-    if not new_cfg or new_cfg.get("generation_mode") != "skill_sheet_guided":
+    Returns (config to store, refusal message or "", notice or ""). coverage_sections comes from the parse.
+    Also refuses emptying a guided sheet (or creating a guided template without one) and switching a
+    grammar-sheet template to another generation mode."""
+    old = old_cfg or {}
+    before = old.get("skill_sheet") or ""
+    if not new_cfg:
         return new_cfg, "", ""
-    sheet, before = new_cfg.get("skill_sheet") or "", (old_cfg or {}).get("skill_sheet") or ""
-    if not sheet or sheet == before:
+    if new_cfg.get("generation_mode") != "skill_sheet_guided":
+        if old.get("generation_mode") == "skill_sheet_guided" and tsg.is_grammar_sheet(before):
+            return None, SWITCH_MODE_REFUSED, ""
+        return new_cfg, "", ""
+    sheet = new_cfg.get("skill_sheet") or ""
+    if not sheet:
+        if creating or before:
+            return None, tsave.LOST_STRUCTURE, ""
+        return new_cfg, "", ""
+    if sheet == before:
         return new_cfg, "", ""
     out = await tsave.vet_sheet(sheet, origin=origin, previous=before)
     if out.status == "refused":
@@ -1709,7 +1725,7 @@ async def create_template_endpoint(
         if not template_data.template_config:
             return {"success": False, "error": "template_config is required"}
         normalized_config = _carry_structure(_normalize_template_config_styles(template_data.template_config), {})
-        normalized_config, refusal, _ = await _vet_config(normalized_config, {}, "analyser")
+        normalized_config, refusal, _ = await _vet_config(normalized_config, {}, "analyser", creating=True)
         if refusal:
             return {"success": False, "error": refusal}
         template = create_template(
@@ -2298,6 +2314,7 @@ async def restore_template_version_endpoint(
             template_id=template_id,
             version_id=version_id,
             user_id=str(current_user.id),
+            # the config was carried and vetted above; crud re-validates ownership and writes it as given
             config_transform=lambda _version_cfg, _current_cfg: vetted,
         )
         
@@ -2749,7 +2766,7 @@ async def skill_sheet_save_endpoint(
             "generation_mode": "skill_sheet_guided",
             "skill_sheet": request.skill_sheet,
             "scan_type": request.scan_type,
-        }, {}, "analyser")
+        }, {}, "analyser", creating=True)
         if refusal:
             return {"success": False, "error": refusal}
         logger.info("  coverage_sections: %s", template_config.get("coverage_sections"))
