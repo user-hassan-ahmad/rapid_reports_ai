@@ -1,0 +1,367 @@
+{
+  "id": "fazekas",
+  "version": "1987.1",
+  "topic": "white-matter-hyperintensities-mri",
+  "issuer": "Fazekas F et al. (Hospital of the University of Pennsylvania)",
+  "system": "Fazekas grading of periventricular and deep white-matter hyperintensity on MRI (0 to 3 each)",
+  "display": "Fazekas scale (1987)",
+  "edition": "1987",
+  "tier": 2,
+  "status": "current",
+  "applies_to": {
+    "region": [
+      "head"
+    ],
+    "modality": [
+      "MRI"
+    ],
+    "finding_type": [
+      "white matter hyperintensities"
+    ],
+    "context": []
+  },
+  "aliases": [
+    "Fazekas",
+    "Fazekas scale",
+    "Fazekas grade",
+    "Fazekas classification",
+    "Fazekas rating",
+    "Fazekas white matter",
+    "periventricular hyperintensity grade",
+    "deep white matter hyperintensity grade",
+    "PVH grade",
+    "DWMH grade"
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "Two separate 0 to 3 ratings of hyperintense white-matter signal on MR: periventricular hyperintensity (PVH) and separate deep white-matter hyperintensity (DWMH). The paper gives no combined score.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Subjects and Methods: rating scales for periventricular (PVH) and deep white-matter (DWMH) hyperintensity (journal p352)"
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "The scales are descriptive of pattern and extent. The paper gives no management for any grade; it reports how often each grade occurred in 12 Alzheimer, 4 multi-infarct dementia and 9 control subjects.",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Results: periventricular hyperintensity; deep white-matter hyperintensity; Table 2 (journal p353)",
+          "table": "Table 2"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "Per the authors, small discrete deep foci are neither characteristic of Alzheimer disease nor imply a vascular cause, since healthy elderly controls showed them to a similar extent; a smooth periventricular halo was the distinctive finding in Alzheimer disease in this series.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "Summary and Discussion (journal p355)"
+        }
+      },
+      {
+        "id": "sum.4",
+        "text": "Cohort is 25 subjects scanned at 1.5 T (spin-echo, sagittal, axial and coronal, read by a neuroradiologist blinded to diagnosis). The authors' interpretations come from this small series and speculation is flagged as such.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Subjects and Methods (journal p351-352)"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.pvh0",
+        "text": "PVH grade 0: no periventricular hyperintensity.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Subjects and Methods: rating scales for periventricular (PVH) and deep white-matter (DWMH) hyperintensity (journal p352)"
+        }
+      },
+      {
+        "id": "def.pvh1",
+        "text": "PVH grade 1: periventricular hyperintensity as 'caps' or a pencil-thin lining.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Subjects and Methods: rating scales for periventricular (PVH) and deep white-matter (DWMH) hyperintensity (journal p352)"
+        }
+      },
+      {
+        "id": "def.pvh2",
+        "text": "PVH grade 2: a smooth 'halo' of periventricular hyperintensity.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Subjects and Methods: rating scales for periventricular (PVH) and deep white-matter (DWMH) hyperintensity (journal p352)"
+        }
+      },
+      {
+        "id": "def.pvh3",
+        "text": "PVH grade 3: irregular periventricular hyperintensity extending into the deep white matter.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Subjects and Methods: rating scales for periventricular (PVH) and deep white-matter (DWMH) hyperintensity (journal p352)"
+        }
+      },
+      {
+        "id": "def.dwmh0",
+        "text": "DWMH grade 0: no deep white-matter hyperintense signal.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Subjects and Methods: rating scales for periventricular (PVH) and deep white-matter (DWMH) hyperintensity (journal p352)"
+        }
+      },
+      {
+        "id": "def.dwmh1",
+        "text": "DWMH grade 1: punctate foci.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Subjects and Methods: rating scales for periventricular (PVH) and deep white-matter (DWMH) hyperintensity (journal p352)"
+        }
+      },
+      {
+        "id": "def.dwmh2",
+        "text": "DWMH grade 2: beginning confluence of foci.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Subjects and Methods: rating scales for periventricular (PVH) and deep white-matter (DWMH) hyperintensity (journal p352)"
+        }
+      },
+      {
+        "id": "def.dwmh3",
+        "text": "DWMH grade 3: large confluent areas.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Subjects and Methods: rating scales for periventricular (PVH) and deep white-matter (DWMH) hyperintensity (journal p352)"
+        }
+      },
+      {
+        "id": "def.sep",
+        "text": "The deep white-matter signal is rated separately from the periventricular signal, so a study carries two grades.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Subjects and Methods: rating scales for periventricular (PVH) and deep white-matter (DWMH) hyperintensity (journal p352)"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "tab.pvh",
+        "title": "Periventricular hyperintensity (PVH) grade",
+        "columns": [
+          "Grade",
+          "Appearance"
+        ],
+        "rows": [
+          [
+            "0",
+            "Absent"
+          ],
+          [
+            "1",
+            "'Caps' or pencil-thin lining"
+          ],
+          [
+            "2",
+            "Smooth 'halo'"
+          ],
+          [
+            "3",
+            "Irregular, extending into the deep white matter"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Subjects and Methods: rating scales for periventricular (PVH) and deep white-matter (DWMH) hyperintensity (journal p352)"
+        }
+      },
+      {
+        "id": "tab.dwmh",
+        "title": "Deep white-matter hyperintensity (DWMH) grade",
+        "columns": [
+          "Grade",
+          "Appearance"
+        ],
+        "rows": [
+          [
+            "0",
+            "Absent"
+          ],
+          [
+            "1",
+            "Punctate foci"
+          ],
+          [
+            "2",
+            "Beginning confluence of foci"
+          ],
+          [
+            "3",
+            "Large confluent areas"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Subjects and Methods: rating scales for periventricular (PVH) and deep white-matter (DWMH) hyperintensity (journal p352)"
+        }
+      },
+      {
+        "id": "tab.freq",
+        "title": "Subjects by grade in the study (counts, not management)",
+        "columns": [
+          "Scale and grade",
+          "Controls (n=9)",
+          "Alzheimer disease (n=12)",
+          "Multi-infarct dementia (n=4)"
+        ],
+        "rows": [
+          [
+            "PVH 0 or 1",
+            "8",
+            "6",
+            "1"
+          ],
+          [
+            "PVH 2",
+            "0",
+            "6",
+            "0"
+          ],
+          [
+            "PVH 3",
+            "1",
+            "0",
+            "3"
+          ],
+          [
+            "DWMH 0",
+            "4",
+            "5",
+            "0"
+          ],
+          [
+            "DWMH 1",
+            "2",
+            "3",
+            "1"
+          ],
+          [
+            "DWMH 2",
+            "3",
+            "4",
+            "1"
+          ],
+          [
+            "DWMH 3",
+            "0",
+            "0",
+            "2"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Results: periventricular hyperintensity; deep white-matter hyperintensity; Table 2 (journal p353)",
+          "table": "Table 2"
+        }
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.nocombined",
+        "text": "There is no combined or total Fazekas score in this paper. PVH and DWMH are separate ratings. Library advice, not from the paper: record both grades rather than a sum.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Subjects and Methods: rating scales for periventricular (PVH) and deep white-matter (DWMH) hyperintensity (journal p352)"
+        }
+      },
+      {
+        "id": "pit.single",
+        "text": "A bare 'Fazekas grade N' is ambiguous. The paper defines only PVH 0 to 3 and DWMH 0 to 3 as separate ratings and gives no rule for one overall grade (not the higher of the two, not a sum). Ask which region is meant, or record both grades. A grade with the region named maps directly to that scale.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Subjects and Methods: rating scales for PVH and DWMH (journal p352); no single or overall grade appears in the paper"
+        }
+      },
+      {
+        "id": "pit.nomanagement",
+        "text": "The paper assigns no management, follow-up or prognosis to any grade. A grade should not be turned into a recommendation from this source.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "Summary and Discussion (journal p355)"
+        }
+      },
+      {
+        "id": "pit.small",
+        "text": "Frequencies come from 25 subjects (mean ages about 68 to 70 years) at 1.5 T. The authors say experience in normal people over 80 years was too limited to assess whether the PVH rim widens with age.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "Discussion (journal p355); mean ages in Subjects and Methods (journal p352)"
+        }
+      },
+      {
+        "id": "pit.punctate",
+        "text": "Punctate foci, or even beginning confluence, of DWMH were of no value in separating Alzheimer patients from controls; they were seen in about 60% of all subjects, unrelated to vascular risk factors.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "Discussion and Summary (journal p355); Deep White-Matter Hyperintensity (journal p353)"
+        }
+      },
+      {
+        "id": "pit.grade3",
+        "text": "Confluent DWMH (grade 3) and irregular PVH reaching the deep white matter (grade 3) occurred only in multi-infarct dementia, apart from one healthy 83-year-old with hypertension who had PVH grade 3. All grade 3 subjects had a history of hypertension. The authors say extensive deep white-matter change should rule against pure Alzheimer disease.",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Results, Periventricular Hyperintensity; Correlation of MR findings with clinical data (journal p353-354); Discussion (journal p354)",
+          "table": "Table 2"
+        }
+      },
+      {
+        "id": "pit.halo",
+        "text": "A smooth halo (PVH grade 2) is described in the literature as mostly ascribed to hydrocephalus and reported as a reliable sign in normal-pressure hydrocephalus. The authors raise this as a differential and note their patients had no signs of it.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "Discussion (journal p355)"
+        }
+      },
+      {
+        "id": "pit.age",
+        "text": "All subjects with no PVH were under 70 years old, but the presence or type of white-matter abnormality could not be predicted from age.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Results, Correlation of MR findings with clinical data (journal p354)"
+        }
+      },
+      {
+        "id": "pit.scope",
+        "text": "The authors applied these ratings, modified from earlier scales, to spin-echo MR in dementia research; the paper does not say which sequence was graded. It does not address FLAIR, other field strengths, or lesions from other causes such as demyelination.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Subjects and Methods (journal p351-352)"
+        }
+      }
+    ]
+  }
+}

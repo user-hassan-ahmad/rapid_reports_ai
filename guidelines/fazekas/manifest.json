@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "MR signal abnormalities at 1.5 T in Alzheimer's dementia and normal aging (Fazekas F, Chawluk JB, Alavi A, Hurtig HI, Zimmerman RA. AJR 1987;149:351-356)",
+      "issuer": "Fazekas F et al., Hospital of the University of Pennsylvania (published by the American Roentgen Ray Society)",
+      "edition": "1987",
+      "url": "https://doi.org/10.2214/ajr.149.2.351",
+      "sha256": "6fa59babab3f87a0e338af419945a8cdee386b4b5635d6a28e4fdf545c185a32",
+      "file": "sources/6fa59babab3f87a0e338af419945a8cdee386b4b5635d6a28e4fdf545c185a32.pdf",
+      "text_file": "sources/6fa59babab3f87a0e338af419945a8cdee386b4b5635d6a28e4fdf545c185a32.txt",
+      "retrieved": "2026-10-12"
+    }
+  ]
+}
