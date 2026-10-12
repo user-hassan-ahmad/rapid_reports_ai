@@ -62,7 +62,12 @@ class RawSettle(BaseModel):
 
 
 def _bands_for(e: Entry, i: InputDef) -> list:
-    return next((s.bands for s in e.logic if isinstance(s, BandStep) and s.ref == i.id), [])
+    """The band labels a number may be answered with: none when the number also feeds a non-band step (a formula),
+    which a band answer cannot feed (it would dead-end the card)."""
+    users = [s for s in e.logic if i.id in s.refs()]
+    if any(not isinstance(s, BandStep) for s in users):
+        return []
+    return next((s.bands for s in users if isinstance(s, BandStep) and s.ref == i.id), [])
 
 
 def display_options(e: Entry, i: InputDef) -> list[str]:

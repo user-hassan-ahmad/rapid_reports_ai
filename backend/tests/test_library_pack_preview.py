@@ -182,3 +182,22 @@ async def test_an_unbounded_preview_says_so_and_asks_every_reaching_input(monkey
 async def test_a_bounded_preview_says_so(toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND, SIZE)
     assert (await PP.preview_pack(toy_entry, FINDINGS, "", {})).bounded is True
+
+
+@pytest.mark.parametrize("input_id", ["diameter_mm", "interval_days"])
+def test_a_number_that_feeds_a_formula_offers_no_band_labels(input_id):
+    """I5: a band answer cannot feed the formula the number also feeds (size_term, vdt_days), so it would dead-end.
+    Only a typed value is offered and accepted."""
+    from tests.test_library_partial import _bts
+    e = _bts()
+    i = e.input(input_id)
+    labels = [b.label for s in e.logic if getattr(s, "ref", None) == input_id for b in s.bands]
+    assert labels                                                  # the pack does band this number
+    assert PP.display_options(e, i) == [PP._STATE_LABEL[s] for s in i.states]
+    assert all(PP._answer(e, i, lab) is None for lab in labels)
+    assert PP._answer(e, i, "10").value == 10
+
+
+def test_a_number_that_feeds_band_steps_only_keeps_its_band_labels(toy_entry):
+    assert PP.display_options(toy_entry, toy_entry.input("size")) == ["<6 mm", "6-8 mm", ">8 mm"]
+    assert PP._answer(toy_entry, toy_entry.input("size"), "6-8 mm").band == "6to8"
