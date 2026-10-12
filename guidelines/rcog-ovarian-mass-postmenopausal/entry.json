@@ -90,7 +90,7 @@
       "label": "Ascites",
       "type": "boolean",
       "scope": "patient",
-      "how_stated": "true when ascites is reported on this scan; false when no ascites or no free fluid is reported",
+      "how_stated": "true when the dictation says ascites, or describes more than a small amount of free fluid; false when no ascites or free fluid is reported, or only a small amount of pelvic free fluid (not ascites, by Hassan's ruling of 2026-10-13)",
       "locator": {
         "source": "S1",
         "page": 16,

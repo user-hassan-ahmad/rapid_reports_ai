@@ -153,7 +153,7 @@ into three groups:
     p9 symptoms when persistent or frequent. The scan indication alone is not enough.** A symptomatic woman with a
     simple, unilateral cyst ≤3 cm gets S1's own p19 wording, "further surgical evaluation is necessary"
     (`surgical_evaluation`), not "consider salpingo-oophorectomy".
-14. **Question: does a small amount of pelvic free fluid count as ascites?** S1 doesn't say (independent read M5). The
+14. **Decided by Hassan 2026-10-13: a small amount of pelvic free fluid is NOT ascites.** Ascites counts only when the dictation says "ascites" or describes more than a small amount of free fluid. This is now in the `ascites` how_stated, and a golden case checks it. The original question was: S1 doesn't say (independent read M5). The
     `ascites` how_stated is left as "ascites is reported". Ascites now routes to CT and MDT, so a library reading that
     excludes small physiological free fluid would change what reaches a report.
 
@@ -170,4 +170,4 @@ Minor findings were fixed as follows:
 - M7: "after discussion with the woman".
 - M8: the p1 citation in For Hassan 5.
 
-Golden cases are now 25.
+Golden cases are now 26, after the ascites ruling case.

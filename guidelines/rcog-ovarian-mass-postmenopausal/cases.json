@@ -510,6 +510,26 @@
         "size_band": "gt3_le5",
         "rmi": 0
       }
+    },
+    {
+      "name": "Simple 4 cm cyst with 'small amount of pelvic free fluid', CA125 20: ascites false, conservative, not CT/MDT",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 4,
+        "ca125": 20
+      },
+      "outcome": "conservative",
+      "steps": {
+        "feature_count": 0,
+        "rmi": 0.0
+      }
     }
   ]
 }
