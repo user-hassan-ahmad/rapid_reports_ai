@@ -278,8 +278,8 @@ async def _pack_result(pack, req: OpenRequest, t0: float) -> OpenResult:
     """Offline and engine-decided: never a fetch. Fail open, bounded, as _branch_and_preview."""
     e, view = pack
     try:
-        prev = await asyncio.wait_for(preview_pack(e, req.findings[:6000], req.clinical_history[:2000], req.answered),
-                                      PREVIEW_TIMEOUT_S)
+        prev = await asyncio.wait_for(preview_pack(e, req.findings[:6000], req.clinical_history[:2000], req.answered,
+                                                   L.get().sources(e.key)), PREVIEW_TIMEOUT_S)
     except Exception as ex:   # TimeoutError included
         logger.warning("[copilot.routes] pack preview %s: %s", type(ex).__name__, str(ex)[:200])
         prev = Preview()

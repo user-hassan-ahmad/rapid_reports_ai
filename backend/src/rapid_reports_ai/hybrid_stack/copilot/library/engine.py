@@ -16,6 +16,7 @@ from .schema import (AdjustStep, All, AnyOf, BandStep, Cond, DeriveStep, Entry, 
 
 PH = re.compile(r"\{([A-Za-z0-9_]+)\}")
 MAX_COMBOS = 50_000
+OVER_MAX = 4_000          # unbounded over-approximation: beyond this many combinations, every outcome (≈0.2 s)
 _ORDER = ("unknown", "not_assessable", "not_applicable", "absent")   # the state a blocked step takes, first wins
 
 
@@ -48,6 +49,7 @@ class Trace(BaseModel):
     possible: list[str] = Field(default_factory=list)
     bounded: bool = True              # False: an unknown number feeds a formula, so `possible` may be incomplete
     needed: list[str] = Field(default_factory=list)
+    decides: dict[str, list[str]] = Field(default_factory=dict)   # needed input -> the outcomes its value decides between
     inputs: dict[str, InputValue] = Field(default_factory=dict)
     steps: list[StepTrace] = Field(default_factory=list)
 
@@ -301,10 +303,32 @@ def reaching(entry: Entry) -> set[str]:
     return {i.id for i in entry.inputs} & seen
 
 
-def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V]) -> tuple[list[str], bool, list[str]]:
+def _over(entry: Entry, given: dict[str, InputValue], env: dict[str, V], names: list[str],
+          doms: dict[str, list[InputValue] | None], possible: list[str]) -> list[str]:
+    """Unbounded: the outcomes still possible, over-approximated. Every band step left unknown (it reads a formula or a
+    number that feeds one) is enumerated over its own band ids, with the enumerable unknown inputs; more than
+    OVER_MAX combinations gives every outcome. Safe: it may list an outcome no real value reaches, never miss one."""
+    bands = [s for s in entry.logic if isinstance(s, BandStep) and env.get(s.id, UNKNOWN).state == "unknown"]
+    bdoms = [[V(value=b.id) for b in s.bands] for s in bands]
+    if math.prod(len(doms[n]) for n in names) * math.prod(len(d) for d in bdoms) > OVER_MAX:
+        return sorted(o.id for o in entry.outcomes)
+    out = set(possible)
+    for combo in product(*(doms[n] for n in names)):
+        for bc in product(*bdoms):
+            e2 = _inputs(entry, {**given, **dict(zip(names, combo))})
+            run(entry, e2, {s.id: v for s, v in zip(bands, bc)})
+            r = e2[entry.result]
+            if r.state == "present":
+                out.add(r.value)
+    return sorted(out)
+
+
+def _partial(entry: Entry, given: dict[str, InputValue],
+             env: dict[str, V]) -> tuple[list[str], bool, list[str], dict[str, list[str]]]:
     """(possible outcomes, bounded, needed inputs). An unknown input is needed when changing it alone can change the
     outcome for some value of the other unknown inputs. Unbounded (an unknown number feeds a formula): enumeration
-    cannot tell, so every unknown applicable input that reaches the result is needed (safe over-asking)."""
+    cannot tell, so every unknown applicable input that reaches the result is needed (safe over-asking). `decides`:
+    for each needed input, the outcomes that changing it alone moves between (all still possible when unknown)."""
     unknown = [i for i in entry.inputs if env[i.id].state == "unknown"]
     doms = {i.id: domain(entry, i) for i in unknown}
     names = [k for k, d in doms.items() if d is not None]
@@ -312,7 +336,8 @@ def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V]) -> t
     reach = reaching(entry)
     every = [i.id for i in unknown if i.id in reach]
     if math.prod(len(doms[n]) for n in names) > MAX_COMBOS:
-        return sorted(o.id for o in entry.outcomes), False, every
+        allo = sorted(o.id for o in entry.outcomes)
+        return allo, False, every, {k: allo for k in every}
     results = []
     for combo in product(*(doms[n] for n in names)):
         e2, _ = _once(entry, {**given, **dict(zip(names, combo))})
@@ -320,17 +345,21 @@ def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V]) -> t
         results.append((combo, v.value if v.state == "present" else None))
     possible = sorted({r for _, r in results if r is not None})
     bounded = all(r is not None for _, r in results)
-    needed = []
+    needed, decides = [], {}
     for k, n in enumerate(names):
         groups: dict[tuple, set] = {}
         for combo, r in results:
             rest = tuple((v.state, v.value, v.band) for v in combo[:k] + combo[k + 1:])   # InputValue is unhashable
             groups.setdefault(rest, set()).add(r)
+        moved = {r for g in groups.values() if len(g) > 1 for r in g if r is not None}
         if any(len(g) > 1 for g in groups.values()):
             needed.append(n)
+            decides[n] = sorted(moved)
     if not bounded:
         needed = every
-    return possible, bounded, sorted(set(needed), key=order.index)
+        possible = _over(entry, given, env, names, doms, possible)
+    needed = sorted(set(needed), key=order.index)
+    return possible, bounded, needed, {n: decides.get(n) or possible for n in needed}
 
 
 def evaluate(entry: Entry, given: dict[str, Any]) -> Trace:
@@ -344,10 +373,10 @@ def evaluate(entry: Entry, given: dict[str, Any]) -> Trace:
         return Trace(outcome=out.value, possible=[out.value], inputs=inputs, steps=steps)
     if out.state != "unknown":
         raise EvaluationError(f"result step {entry.result} ended {out.state}")
-    possible, bounded, needed = _partial(entry, given, env)
+    possible, bounded, needed, decides = _partial(entry, given, env)
     if bounded and len(possible) == 1:      # the unknown inputs cannot change the outcome: it is settled
         return Trace(outcome=possible[0], possible=possible, bounded=True, needed=[], inputs=inputs, steps=steps)
-    return Trace(possible=possible, bounded=bounded, needed=needed, inputs=inputs, steps=steps)
+    return Trace(possible=possible, bounded=bounded, needed=needed, decides=decides, inputs=inputs, steps=steps)
 
 
 def _fmt(x: Any) -> str:

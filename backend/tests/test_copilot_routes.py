@@ -175,7 +175,7 @@ def test_open_preview_failure_still_returns_the_entry(authed, monkeypatch):
     monkeypatch.setattr(CR, "preview", prev)
     d = authed.post("/api/canvas/stack/guidelines/open", json={
         "card": {"key": "k@1", "name": "K", "version": "1", "finding_id": "u1", "branch": "B"}, "findings": "x"}).json()
-    assert d["entry"]["key"] == "k@1" and d["preview"] == {"settled": [], "missing": [], "proposal": None, "possible": [], "trace": None}
+    assert d["entry"]["key"] == "k@1" and d["preview"] == {"settled": [], "missing": [], "proposal": None, "possible": [], "bounded": True, "asks": [], "trace": None}
 
 
 async def test_open_timeout_keeps_the_fetch_going(db_session, user, monkeypatch):

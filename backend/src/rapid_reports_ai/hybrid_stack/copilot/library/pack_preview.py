@@ -17,7 +17,8 @@ from .. import preview as P
 from .. import registry as R
 from ..types import Branch, Entry as CardEntry, GuidelineContent, Input, Preview, Proposal, Publication, Settled, Source
 from . import engine
-from .schema import BandStep, Entry, InputDef, InputValue
+from .describe import citation
+from .schema import BandStep, Entry, InputDef, InputValue, RulesStep, conds
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +158,62 @@ async def _call(system: str, prompt: str) -> RawSettle:
     return r.output
 
 
-async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str, str]) -> Preview:
+def _cites(xs: list[dict]) -> list[dict]:
+    """Non-empty citations, first occurrence kept."""
+    out = []
+    for c in xs:
+        if c and c not in out:
+            out.append(c)
+    return out
+
+
+def _fired(e: Entry, t: engine.Trace, sources: list[dict]) -> list[dict]:
+    """The proposal's citations: the steps the result was reached through (for a rules step, the case that fired and
+    only the refs it tests), from the result back, then the outcome's own locator. Each names its step."""
+    st = {s.id: s for s in t.steps}
+    out, todo, seen = [], [e.result], set()
+    while todo:
+        k = todo.pop(0)
+        if k in seen or k not in st or st[k].state != "present":
+            continue
+        seen.add(k)
+        s, step = st[k], e.step(k)
+        refs = [c.ref for c in conds(step.cases[int(s.fired)].when)] \
+            if isinstance(step, RulesStep) and s.fired.isdigit() else s.uses
+        out.append(s)
+        todo += refs
+    o = e.outcome(t.outcome)
+    return _cites([{**c, "step": s.id} for s in out if (c := citation(s.locator, sources))]
+                  + ([{**c, "step": "outcome"}] if (c := citation(o.locator, sources)) else []))
+
+
+def _reads(e: Entry, input_id: str, sources: list[dict]) -> list[dict]:
+    """Citations of the steps that read this input: a rules step's cases that test it, any other step's locator."""
+    locs = []
+    for s in e.logic:
+        if isinstance(s, RulesStep):
+            locs += [c.locator for c in s.cases if any(x.ref == input_id for x in conds(c.when))]
+        elif input_id in s.refs():
+            locs.append(s.locator)
+    return _cites([citation(x, sources) for x in locs])
+
+
+def _asks(e: Entry, t: engine.Trace, sources: list[dict]) -> list[dict]:
+    """One ask per missing input: what it is, how it is answered, which outcomes it decides between, and where."""
+    out = []
+    for k in t.needed:
+        i = e.input(k)
+        decides = [{"outcome": o, "classification": engine.PH.sub("…", engine.render(e, t, e.outcome(o).classification)),
+                    "citation": citation(e.outcome(o).locator, sources)} for o in t.decides.get(k, t.possible)]
+        out.append({"input": k, "label": i.label,
+                    "definition": {"text": i.how_stated, "citation": citation(i.locator, sources)},
+                    "options": display_options(e, i), "decides_between": decides, "citations": _reads(e, k, sources)})
+    return out
+
+
+async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str, str],
+                       sources: list[dict] | None = None) -> Preview:
+    sources = sources or []
     given: dict[str, InputValue] = {}
     for k, s in answered.items():
         i = e.input(k)
@@ -202,8 +258,9 @@ async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str
             logger.info("[library.preview] %s: outcome %s cites an input still unknown; no proposal", e.key, o.id)
         else:
             proposal = Proposal(classification=f"{e.display} · {cls}", line=f"{e.display}: {cls}.",
-                                recommendation=rec)
+                                recommendation=rec, caveats=caveats, citations=_fired(e, t, sources))
     return Preview(settled=settled, missing=t.needed, proposal=proposal, possible=possible, bounded=t.bounded,
+                   asks=_asks(e, t, sources),
                    trace=t.model_dump(mode="json") if t.outcome is not None else None)
 
 

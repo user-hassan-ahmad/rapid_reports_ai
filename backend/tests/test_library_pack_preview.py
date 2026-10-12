@@ -201,3 +201,69 @@ def test_a_number_that_feeds_a_formula_offers_no_band_labels(input_id):
 def test_a_number_that_feeds_band_steps_only_keeps_its_band_labels(toy_entry):
     assert PP.display_options(toy_entry, toy_entry.input("size")) == ["<6 mm", "6-8 mm", ">8 mm"]
     assert PP._answer(toy_entry, toy_entry.input("size"), "6-8 mm").band == "6to8"
+
+
+# ── I6 and citations: caveats travel with the proposal; every ask and outcome carries its citation ─────────────────
+
+TOY_SOURCES = [{"id": "S1", "role": "primary", "title": "Toy guideline", "issuer": "TOY", "edition": "2020",
+                "url": "https://example.org/toy"},
+               {"id": "S2", "role": "explanatory", "title": "Toy review", "issuer": "Other", "edition": "2021",
+                "url": ""}]
+P2 = {"source": "S1", "title": "Toy guideline", "issuer": "TOY", "edition": "2020", "url": "https://example.org/toy",
+      "page": 2}
+P3 = {**P2, "page": 3}
+
+
+def _with_caveat(toy, caveat):
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
+    d = {**toy, "outcomes": [{**o, "caveats": [caveat]} if o["id"] == "ct6" else o for o in toy["outcomes"]]}
+    return Entry.model_validate(d)
+
+
+async def test_the_proposal_carries_rendered_caveats_and_the_fired_citations(toy, monkeypatch, jev):
+    e = _with_caveat(toy, "Only for {risk} risk adults.")
+    _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
+    out = await PP.preview_pack(e, FINDINGS, "Smoker.", {}, TOY_SOURCES)
+    assert out.proposal.caveats == ["Only for high risk adults."]
+    cites = out.proposal.citations
+    assert {**P3, "step": "plan"} in cites and {**P2, "step": "size_band"} in cites
+    assert {**P2, "step": "outcome"} in cites
+    assert all(c["title"] == "Toy guideline" for c in cites)
+
+
+async def test_a_caveat_with_an_unfilled_placeholder_blocks_the_proposal(toy, monkeypatch, jev):
+    e = _with_caveat(toy, "Only for {margin} margins.")
+    _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
+    out = await PP.preview_pack(e, FINDINGS, "Smoker.", {}, TOY_SOURCES)
+    assert out.proposal is None
+
+
+async def test_each_missing_input_is_asked_with_its_definition_outcomes_and_citations(toy_entry, monkeypatch, jev):
+    _model(monkeypatch, KIND, SIZE)
+    out = await PP.preview_pack(toy_entry, FINDINGS, "", {}, TOY_SOURCES)
+    assert out.missing == ["risk"]                                        # kept for compatibility
+    assert out.asks == [{
+        "input": "risk", "label": "Patient risk", "definition": {"text": "", "citation": {}},
+        "options": ["low", "high"],
+        "decides_between": [{"outcome": "ct12", "classification": "solid nodule 6-8 mm, … risk", "citation": P2},
+                            {"outcome": "ct6", "classification": "solid nodule 6-8 mm, … risk", "citation": P2}],
+        "citations": [P3]}]
+
+
+async def test_bts_asks_carry_citations_for_every_brock_input(monkeypatch, jev):
+    import json
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+    from tests.test_library_partial import BTS_BROCK
+    lib = LB.Library(json.loads(LB.BUNDLE.read_text()))
+    e = lib.lookup("bts-pulmonary-nodule")
+    _model(monkeypatch, {"input": "diameter_mm", "value": 10, "quote": "10 mm"},
+           {"input": "nodule_type", "value": "solid", "quote": "solid"},
+           {"input": "benign_features", "value": False, "quote": "no benign features"},
+           {"input": "prior_study", "value": False, "quote": "no prior"})
+    out = await PP.preview_pack(e, "10 mm solid nodule, no benign features, no prior imaging.", "", {},
+                                lib.sources(e.key))
+    asks = {a["input"]: a for a in out.asks}
+    assert BTS_BROCK <= set(asks) and [a["input"] for a in out.asks] == out.missing
+    for k in BTS_BROCK:
+        assert asks[k]["citations"] and all(c.get("title") for c in asks[k]["citations"])
+        assert asks[k]["decides_between"] and all("{" not in d["classification"] for d in asks[k]["decides_between"])

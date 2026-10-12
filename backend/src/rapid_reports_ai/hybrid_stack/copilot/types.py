@@ -114,6 +114,8 @@ class Proposal(BaseModel):
     classification: str
     line: str
     recommendation: str = ""
+    caveats: list[str] = Field(default_factory=list)       # library packs: the outcome's caveats, rendered
+    citations: list[dict[str, Any]] = Field(default_factory=list)   # library packs: where the fired steps come from
 
 
 class Preview(BaseModel):
@@ -123,4 +125,6 @@ class Preview(BaseModel):
     possible: list[str] = Field(default_factory=list)   # library packs: outcomes still possible, rendered
     bounded: bool = True          # library packs: False when `possible` may be incomplete (an unknown number feeds a
                                   # formula); `missing` then lists every unknown input that reaches the result
+    asks: list[dict[str, Any]] = Field(default_factory=list)   # library packs: one per missing input (label,
+    # definition, options, the outcomes it decides between with their citations, and the citations of its steps)
     trace: dict[str, Any] | None = None                 # library packs: the engine trace behind the proposal
