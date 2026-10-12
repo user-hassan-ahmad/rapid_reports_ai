@@ -93,3 +93,28 @@ def test_template_region_normals_from_the_stored_structure():
 def test_sex_specific_sentences_never_become_shared_normals():
     md = "## Region Normals\n- **Pelvic organs:** \"The bladder is normal.\" \"The prostate is normal in size.\" \"The uterus is unremarkable.\" \"The ovaries are normal.\"\n"
     assert SL.parse_slim(md, ["Pelvic organs"])[0] == {"Pelvic organs": ["The bladder is normal."]}
+
+
+def _lean_cfg(sheet=None):
+    return {"generation_mode": "skill_sheet_guided", "scan_type": "CMR",
+            "skill_sheet": sheet if sheet is not None else (Path(__file__).parent / "fixtures" / "template_pipeline" / "lean_cmr.md").read_text()}
+
+
+def test_template_structure_reparses_a_sheet_with_no_fresh_stored_copy():
+    """No stored structure (or a stale one): the sheet is parsed now, so the session still gets its normals."""
+    from rapid_reports_ai.hybrid_stack.template import template_structure
+    st = template_structure(_lean_cfg())
+    assert st is not None and st.usable and st.normals
+    stale = {**_lean_cfg(), "sheet_structure": {"failed": True}}
+    assert template_structure(stale) is not None
+
+
+def test_template_structure_is_none_for_a_sheet_that_is_not_clean_grammar():
+    from rapid_reports_ai.hybrid_stack.template import template_structure
+    assert template_structure(_lean_cfg("## FINDINGS\nDescribe the findings.")) is None   # not grammar
+    broken = _lean_cfg().copy()
+    broken["skill_sheet"] = broken["skill_sheet"] + "\nnormal [liver] \"lowercase keyword\"\n"   # lint error
+    from rapid_reports_ai.template_sheet_grammar import parse_sheet
+    assert not parse_sheet(broken["skill_sheet"]).structure.usable
+    assert template_structure(broken) is None
+    assert template_structure({**_lean_cfg(), "generation_mode": "auto"}) is None

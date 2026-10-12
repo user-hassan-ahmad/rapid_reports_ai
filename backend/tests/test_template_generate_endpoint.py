@@ -392,6 +392,15 @@ async def test_stack_session_reaches_todays_generator(aclient, auth_headers, mir
     assert seen[0]["stack"] == {"conclusion": "Normal cardiac MRI.", "declined": ["No LGE."]}
 
 
+async def test_stack_session_on_a_template_without_a_usable_structure_takes_todays_path(
+        aclient, auth_headers, guided_template, stubs, monkeypatch):
+    """No usable structure: no assumed normals were offered, so the stack brief would leave structures unstated."""
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+    await _generate_stack(aclient, auth_headers, guided_template)
+    assert stubs["mirror"][0]["stack"] is None and stubs["mirror"][0]["declined"] == ["No LGE."]
+    await _drain_options()
+
+
 async def test_no_stack_flag_passes_no_stack(aclient, auth_headers, mirror_template, stubs, monkeypatch):
     monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
     await _generate(aclient, auth_headers, mirror_template)

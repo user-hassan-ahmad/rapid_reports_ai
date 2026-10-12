@@ -12,15 +12,15 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..database.models import DictationStackLog, StackSchemaFamily, StackSlimSheet, Template, User
+from ..database.crud import get_template
+from ..database.models import DictationStackLog, StackSchemaFamily, StackSlimSheet, User
 from ..dictation_v2 import v2_allowed
-from ..template_sheet_structure import fresh
 from .schemas import Region
 from .items import Item, ItemsResult, Referral, recheck as items_recheck, update as items_update
 from .jev_stack import MATERIAL_MIN, STALE_MIN, UNFINISHED_MIN, ask_material, ask_stale, ask_unfinished
 from .normals import AssumedResult, assumed as assumed_normals
 from .slim_sheet import clean_sentences, get_or_make as slim_get_or_make
-from .template import template_region_normals
+from .template import template_region_normals, template_structure
 from .draft import DraftResult, draft_conclusion
 from .service import GroupResult, SchemaResult, close_update, group_update, resolve_schema
 from .units import StackUnit, sentences as split_sentences
@@ -140,7 +140,7 @@ class SlimResult(BaseModel):
     id: str | None = None
     region_normals: dict[str, list[str]] = Field(default_factory=dict)
     not_assessable: str = ""
-    status: str = ""              # provisional | approved | template | "" (not ready)
+    status: str = ""              # provisional | approved | template | template_unusable | "" (not ready)
     ready: bool = False
 
 
@@ -159,8 +159,8 @@ async def stack_schema(req: SchemaRequest, user: User = Depends(get_current_user
     _require()
     structure = None
     if req.template_id:
-        t = db.query(Template).filter(Template.id == req.template_id, Template.user_id == user.id).first()
-        structure = fresh(t.template_config or {}) if t is not None else None
+        t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
+        structure = template_structure(t.template_config) if t is not None else None
     return await resolve_schema(req.scan_type, req.clinical_history, structure, db)
 
 
@@ -327,10 +327,10 @@ async def stack_slim_sheet(req: SlimRequest, user: User = Depends(get_current_us
     ready means no quiet lines yet."""
     _require()
     if req.template_id:
-        t = db.query(Template).filter(Template.id == req.template_id, Template.user_id == user.id).first()
-        st = fresh(t.template_config or {}) if t is not None else None
-        if st is None:
-            return SlimResult()
+        t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
+        st = template_structure(t.template_config) if t is not None else None
+        if st is None:   # Generate takes today's template path; the scratchpad says so
+            return SlimResult(status="template_unusable")
         return SlimResult(region_normals=template_region_normals(st), status="template", ready=True)
     if not req.scan_type.strip():
         return SlimResult()

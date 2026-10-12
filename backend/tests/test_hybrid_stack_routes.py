@@ -233,3 +233,13 @@ def test_unfinished_route_fails_open(authed, monkeypatch):
         raise RuntimeError("jev down")
     monkeypatch.setattr(R, "ask_unfinished", boom)
     assert authed.post("/api/canvas/stack/unfinished", json={"text": "The kidneys are"}).json() == {"flags": []}
+
+
+def test_slim_sheet_for_a_template_without_a_usable_structure_says_so(authed, db_session, user):
+    from rapid_reports_ai.database.models import Template
+    t = Template(name="T", user_id=user.id, is_active=True, tags=[],
+                 template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": "## FINDINGS\nx"})
+    db_session.add(t)
+    db_session.commit()
+    d = authed.post("/api/canvas/stack/slim-sheet", json={"scan_type": "CT", "template_id": str(t.id)}).json()
+    assert d["status"] == "template_unusable" and not d["ready"] and d["region_normals"] == {}

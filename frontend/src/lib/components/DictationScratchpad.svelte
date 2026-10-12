@@ -292,6 +292,8 @@
 	// Each region's normal sentences (the slim sheet, or the template's structure) and what this scan cannot show.
 	let stackRegionNormals: Record<string, string[]> = {};
 	let stackNotAssessable = '';
+	/** A template whose sheet has no usable structure: no assumed normals, and Generate takes today's template path. */
+	let stackTemplateUnusable = false;
 	let slimSeq = 0;
 	let shownSentences: string[] = []; // every row sentence shown this session (a row owns its check)
 	// The session's referral rows: the first /items reply's, fixed so they never drift (null until it answers).
@@ -1786,11 +1788,14 @@
 		const seq = ++slimSeq;
 		stackRegionNormals = {};
 		stackNotAssessable = '';
+		stackTemplateUnusable = false;
 		onStackSheet(null);
 		if (!hybridStack || !stackRegions.length) return;
 		try {
 			const res = await postSlimSheet($token, { scan_type: scanType, clinical_history: clinicalHistory, template_id: stackTemplateId });
-			if (seq !== slimSeq || !res.ready) return;
+			if (seq !== slimSeq) return;
+			stackTemplateUnusable = res.status === 'template_unusable';
+			if (!res.ready) return;
 			stackRegionNormals = res.region_normals;
 			stackNotAssessable = res.not_assessable;
 			onStackSheet(res.id);
@@ -2603,6 +2608,11 @@
 					<div bind:this={editorContainer} class="min-h-full" class:hidden={stackView || polishMode === 'structured'}></div>
 					<div bind:this={structuredContainer} class="min-h-full" class:hidden={stackView || polishMode !== 'structured'}></div>
 					{#if stackView}
+						{#if stackTemplateUnusable}
+							<p role="status" class="mb-2 rounded-md border border-amber-400/30 bg-amber-500/[0.06] px-2.5 py-1.5 text-xs text-amber-200">
+								This template's sheet could not be read for assumed normals, so Generate writes the report the usual way (the template fills in its normals). Re-saving the template usually fixes this.
+							</p>
+						{/if}
 						<HybridStackView units={stackUnits} groups={stackGroups} {pillRegions} pending={stripNow}
 							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
 							checks={placedChecks} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {deleteRegion}

@@ -2,8 +2,31 @@
 paragraphs of a fresh grammar structure in template order, each paragraph's COVERS as includes."""
 from __future__ import annotations
 
-from ..template_sheet_structure import SheetStructure
+from typing import Optional
+
+from ..template_sheet_grammar import is_grammar_sheet, parse_sheet
+from ..template_sheet_structure import SheetStructure, fresh
 from .schemas import OTHER, Region, other_region
+
+
+def template_structure(config: dict) -> Optional[SheetStructure]:
+    """The structure a template scratchpad session uses, for its regions, its assumed normals and its Generate: the
+    stored parse when it is fresh, else the sheet parsed now (a copy gone stale after an edit or a grammar version
+    bump; the parser is pure code). None when the sheet is not a guided grammar sheet or does not parse clean: the
+    session then has no assumed normals and Generate takes today's template path (a stack brief strips the sheet's
+    normals, which only the assumed normals would have replaced)."""
+    config = config if isinstance(config, dict) else {}
+    st = fresh(config)
+    if st is not None:
+        return st
+    sheet = config.get("skill_sheet") or ""
+    if config.get("generation_mode") != "skill_sheet_guided" or not is_grammar_sheet(sheet):
+        return None
+    try:
+        st = parse_sheet(sheet, mode="template").structure
+    except Exception:
+        return None
+    return st if st.usable else None
 
 
 def template_regions(st: SheetStructure) -> list[Region]:

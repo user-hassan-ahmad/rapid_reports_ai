@@ -1858,6 +1858,13 @@ async def generate_report_from_template(
         use_mirror = _mirror_ready(template, current_user.email, request.pipeline)
         _stack = ({"conclusion": request.stack_conclusion, "declined": request.stack_declined or []}
                   if request.stack else None)
+        if _stack is not None:
+            from .hybrid_stack.template import template_structure
+            if template_structure(template.template_config) is None:
+                # No usable structure: the scratchpad offered no assumed normals, so the stack brief (which strips the
+                # sheet's normals) would leave every undictated structure unstated. Today's template path instead.
+                logger.info("template %s: stack session without a usable structure; today's path", template_id)
+                _stack = None
         mirror_candidate, options_job, _p1 = None, None, {"source": "pending"}
         if use_mirror:
             try:
