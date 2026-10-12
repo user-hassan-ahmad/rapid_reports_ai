@@ -328,6 +328,20 @@ async def _safe_card(rows: _Rows, f: Finding, s: RawSystem, history: str) -> Car
         return None
 
 
+async def card_for(db: Session, name: str, version: str, finding_id: str, finding_text: str, history: str = "",
+                   site: str = "") -> Card | None:
+    """One named system as a card through the matcher's own normalisation (exact key, alias, Jev edition pick, else a
+    new key; "TNM" via the closed site list and the Jev gate). For ask's no-card path. Never raises: None on any
+    failure."""
+    try:
+        rows = _Rows(db)
+    except Exception as e:
+        logger.warning("[copilot.match] registry read failed: %s", type(e).__name__)
+        return None
+    return await _safe_card(rows, Finding(id=finding_id, text=finding_text),
+                            RawSystem(name=name, version=version, site=site), history)
+
+
 def _rid(s: str) -> str:
     return s.strip().strip("[]").strip()
 

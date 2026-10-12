@@ -390,3 +390,33 @@ async def test_branch_jev_none_or_failure_keeps_the_model_name(db_session, monke
     st["body"] = None
     assert (await M.match(db_session, "CT", "", U[:1]))[0].branch == "Part-solid"
     assert len(M._BRANCH) == 0                            # the failure was not cached
+
+
+async def test_card_for_reuses_registry_normalisation(db_session):
+    _put(db_session, "fleischner@2017", "Fleischner", "2017", aliases=["fleischner society"], branches=["Solid"])
+    c = await M.card_for(db_session, "Fleischner Society", "2017", "u1", "7 mm solid nodule.")
+    assert (c.key, c.known, c.finding_id) == ("fleischner@2017", True, "u1")
+    new = await M.card_for(db_session, "Bosniak", "2019", "q", "cyst")
+    assert (new.key, new.known, new.status) == ("bosniak@2019", False, "new")
+    assert await M.card_for(db_session, "  ", "", "q", "x") is None
+
+
+async def test_card_for_tnm_uses_closed_list_and_gate(db_session, monkeypatch):
+    gate = {"score": 0.9}
+
+    async def tnm_gate(finding, site, history=""):
+        return gate["score"]
+    monkeypatch.setattr(M, "_tnm_gate", tnm_gate)
+    c = await M.card_for(db_session, "TNM", "9", "u1", "Spiculated lung mass.", site="lung")
+    assert c.key == "tnm-lung@9" and c.branch == "Staging"
+    assert await M.card_for(db_session, "TNM", "9", "u1", "x", site="Lungs") is None
+    M.clear_cache()
+    gate["score"] = 0.1
+    assert await M.card_for(db_session, "TNM", "9", "u1", "Spiculated lung mass.", site="Lung") is None
+
+
+async def test_card_for_failure_is_none(db_session, monkeypatch):
+    async def boom(*a, **k):
+        raise RuntimeError("x")
+    monkeypatch.setattr(M, "_card", boom)
+    assert await M.card_for(db_session, "Fleischner", "2017", "u1", "x") is None
