@@ -327,5 +327,34 @@ async def test_undictated_numbers_are_review_flags_and_never_edit_the_report(mon
         signature="Dr A", stack={"conclusion": "Lesion. Fazekas grade 2 change.", "declined": []})
     out["options_job"].cancel()
     review = out["quality_check"]["review"]
-    assert [r["text"] for r in review if r["kind"] == "undictated_number"] == ["4.5"]
+    assert [r["text"] for r in review if r["kind"] == "undictated_number"] == ["4.5 hours"]
     assert out["report_content"] == report + "\nCHECKED\n\nDr A"   # flagged, never edited
+
+
+async def test_with_the_check_off_the_flags_do_not_pretend_the_check_ran(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+
+    async def gen(self, template_config, user_inputs, user_signature=None, model_override=None,
+                  brief_text=None, history_supplied=False, stack=None):
+        return {"report_content": "Findings:\nGrade 3 injury.", "model_used": "q", "description": "d", "scan_type": "CT"}
+
+    async def off(report, findings, scan, options, **kw):
+        return report, options, {"enabled": False}
+    monkeypatch.setattr(tl.TemplateManager, "_generate_report_skill_sheet_guided", gen)
+    monkeypatch.setattr(tl, "run_quality_check", off)
+    out = await tl.generate_template_report_lean(sheet=OLD_SHEET, scan_type="CT", findings="Injury.", history="",
+                                                 case=None, signature=None)
+    out["options_job"].cancel()
+    assert out["quality_check"] == {"enabled": False,
+                                    "review": [{"kind": "undictated_number", "text": "Grade 3",
+                                                "sentence": "Grade 3 injury."}]}
+    monkeypatch.setattr(tl, "run_quality_check", lambda *a, **k: _none(a[0], a[3]))
+    out = await tl.generate_template_report_lean(sheet=OLD_SHEET, scan_type="CT", findings="Injury.", history="",
+                                                 case=None, signature=None)
+    out["options_job"].cancel()
+    assert out["quality_check"]["enabled"] is False and len(out["quality_check"]["review"]) == 1
+
+
+async def _none(report, options):
+    return report, options, None

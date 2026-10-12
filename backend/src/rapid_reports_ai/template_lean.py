@@ -483,7 +483,7 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
     # Numbers the writer added that no source supplies (a sheet's score/grade/time window): review flags only
     numbers = undictated_numbers(final, [findings, history, (stack or {}).get("conclusion")], sheet)
     if numbers:
-        quality = {**(quality or {})}
+        quality = {**(quality or {"enabled": False})}   # check off: the flags alone, still marked not run
         quality["review"] = [*(quality.get("review") or []), *numbers]
     if signature:
         final = final.rstrip() + "\n\n" + signature
