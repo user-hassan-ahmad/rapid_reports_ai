@@ -12,8 +12,9 @@ false. Misses were sound-alikes whose meaning stays obvious ("pleural infusion")
 garble (a prefix on a number) was caught.
 
 Suggestion and blocking (2026-10-12, scratchpad only): a garble carries the words to replace it only when one
-reading is certain; it blocks Confirm when it is ambiguous, has no suggestion, or sits on a number or side (code
-backstop); every conflict kind blocks. Lab (13 garbled, 12 clean, 2 runs): caught 13/13, suggestion right 9, empty 3
+reading is certain; it blocks Confirm when it is ambiguous, has no suggestion, or a number, side or negation is in
+its words or its suggestion (code backstop, widened after review 2026-10-12: a suggestion with one is withheld);
+every conflict kind blocks. Lab before the widening: Lab (13 garbled, 12 clean, 2 runs): caught 13/13, suggestion right 9, empty 3
 (all ambiguous), "appendix calculus" for "appendix collie" 1; blocking right 13/13; clean flagged 0/12.
 `severity` is unchanged (medium), so the old banner path still never gates on a model flag.
 
@@ -233,7 +234,7 @@ def _locate_flags(findings: str, result: SemanticFindings) -> list[IntegrityFlag
                 kind=issue.kind,
                 suggestion=(issue.suggestion or "").strip() if garbled and not issue.changes_meaning and not backstop else "",
                 # Every conflict holds Confirm; a garble only when it could change the report. Code backstop: a
-                # garble touching a number or a side always blocks, whatever the model said.
+                # number, side or negation in the words or the suggestion always blocks, whatever the model said.
                 blocking=not garbled or issue.changes_meaning or not (issue.suggestion or "").strip()
                 or backstop,
                 severity=_MEDIUM,

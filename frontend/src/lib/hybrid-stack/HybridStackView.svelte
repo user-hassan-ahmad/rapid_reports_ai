@@ -297,7 +297,8 @@
 		walkTotal = stops.length;
 		hoverKey = pinnedKey = null;
 		walking = true;
-		// The Confirm button that started the walk is gone: focus goes to the walkthrough bar, so Tab reaches its buttons
+		// The Confirm button that started the walk is gone: focus goes to the walkthrough bar (Tab there moves to the next
+		// stop while there is one, else through the buttons)
 		void tick().then(() => document.querySelector<HTMLElement>('[data-testid="walkthrough"]')?.focus());
 	}
 	function nextStop() {
@@ -312,7 +313,9 @@
 		if (!u) return null;
 		const k = (u.parts ?? []).findIndex((x) => x.text.includes(c.quote));
 		if (k >= 0) return { unitId: u.id, part: k, text: u.parts![k].text };
-		return u.text.includes(c.quote) || whole ? { unitId: u.id, part: null, text: u.text } : null;
+		// The whole unit only when it is drawn as one line (a split unit or a tray line has no editor at part null)
+		const drawn = whole && !u.parts?.length && shownUnitIds.has(u.id);
+		return u.text.includes(c.quote) || drawn ? { unitId: u.id, part: null, text: u.text } : null;
 	}
 	function replaceCheck(c: CheckFlag) {
 		const t = target(c);
@@ -346,9 +349,9 @@
 		const onControl = !!t && (t.tagName === 'BUTTON' || t.tagName === 'A');
 		const c = currentCheck;
 		if (e.key === 'Escape') walking = false;
-		else if (e.key === 'Tab' && c && !e.shiftKey && !onControl) nextStop();   // otherwise Tab moves focus
+		else if (e.key === 'Tab' && c && !e.shiftKey && !onControl && stops.length > 1) nextStop();   // otherwise Tab moves focus
 		else if (c && e.key === 'Enter' && c.suggestion && !onControl) replaceCheck(c);
-		else if (c && c.tier === 1 && (e.key === 'd' || e.key === 'D')) deleteSentence(c);
+		else if (c && c.tier === 1 && target(c) && (e.key === 'd' || e.key === 'D')) deleteSentence(c);
 		else if (c && (e.key === 'e' || e.key === 'E')) editCheck(c);
 		else if (c && (e.key === 'k' || e.key === 'K')) keepCheck(c);
 		else return;
@@ -674,7 +677,7 @@
 		<p class="flex flex-wrap gap-1.5">
 			{#if c.suggestion}<button type="button" class="rounded-md bg-orange-400 px-2.5 py-1 font-semibold text-gray-950 hover:bg-orange-300" onclick={() => replaceCheck(c)}>Replace</button>{/if}
 			<button type="button" class="rounded-md border border-white/15 px-2.5 py-1 text-gray-100 hover:bg-white/[0.06]" onclick={() => editCheck(c)}>{c.tier === 1 ? 'Finish it' : 'Edit'}</button>
-			{#if c.tier === 1}<button type="button" class="rounded-md border border-white/10 px-2.5 py-1 text-gray-400 hover:text-rose-300" onclick={() => deleteSentence(c)}>Delete sentence</button>{/if}
+			{#if c.tier === 1 && target(c)}<button type="button" class="rounded-md border border-white/10 px-2.5 py-1 text-gray-400 hover:text-rose-300" onclick={() => deleteSentence(c)}>Delete sentence</button>{/if}
 			<button type="button" class="rounded-md border border-white/10 px-2.5 py-1 text-gray-400 hover:text-gray-200" onclick={() => keepCheck(c)}>{c.blocking ? 'Keep as dictated' : 'Skip'}</button>
 		</p>
 		{#if walking}<p class="text-[10px] text-gray-500">{c.suggestion ? 'Enter replace · ' : ''}E edit · {c.tier === 1 ? 'D delete · ' : ''}K keep · Tab next · Esc exit</p>{/if}

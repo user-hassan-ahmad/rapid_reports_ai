@@ -475,6 +475,8 @@ structure it does not mention is left out, never given a normal or negative
 statement of its own."""),
     ("The principle: generate everything the skill sheet says must always be present.",
      "The principle: write every statement in the FINDINGS input, and nothing it does not contain."),
+    ("Management inference, differential synthesis, and symptom attribution belong in\nIMPRESSION only.",
+     "Symptom attribution belongs in IMPRESSION only, and only where the confirmed conclusion\nstates it."),
     ("""Recommendations must be specific""", """A recommendation appears only where the confirmed conclusion contains one; when it does,
 recommendations must be specific"""),
     ("""When a named guideline specifies the management pathway, state it and
