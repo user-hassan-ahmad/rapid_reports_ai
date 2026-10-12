@@ -491,3 +491,37 @@ async def test_abandoned_after_gate_skips_the_gap_search(db_session, monkeypatch
     monkeypatch.setattr(A, "_search_phrase", nope)
     res = await A.ask(db_session, "q?", "fleischner@2017", CTX, [], abandoned=ev)
     assert res.loading
+
+
+async def test_explicit_pack_question_skips_the_applicability_gate_background_match_keeps_it(db_session, monkeypatch, toy):
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as L
+    lib = L.Library({"version": "v1", "entries": {"toy-nodule@1.0": {"entry": toy, "sources": []}}})
+    monkeypatch.setattr(L, "get", lambda: lib)
+
+    async def route(question, ctx, history, known=""):
+        return A.RawRoute(guideline="Toy Nodule", version="2020", answer="")
+    seen = {}
+
+    async def resolve(db, card):
+        seen["card"] = card
+        return None
+
+    async def general(question, ctx, history):
+        return "G."
+    calls = []
+
+    async def pack_gate(finding, pack, history=""):
+        calls.append(pack.key)
+        return 0.0   # the gate would refuse this finding
+    monkeypatch.setattr(A, "_route", route)
+    monkeypatch.setattr(A, "resolve_guideline", resolve)
+    monkeypatch.setattr(A, "_general_answer", general)
+    monkeypatch.setattr(M, "_pack_gate", pack_gate)
+    await A.ask(db_session, "How is this followed up under Toy?", None, CTX, [], finding_id="u1")
+    assert seen["card"].key == "toy-nodule@1.0" and seen["card"].finding_id == "u1" and calls == []
+
+    async def call(prompt):   # the background matcher still gates the same pack
+        return M.RawMatch(findings=[M.RawFinding(id="u1", systems=[M.RawSystem(name="Toy Nodule", version="2020")])])
+    monkeypatch.setattr(M, "_call", call)
+    assert await M.match(db_session, "CT", "", [M.Finding(id="u1", text="7 mm solid nodule.")]) == []
+    assert calls == ["toy-nodule@1.0"]

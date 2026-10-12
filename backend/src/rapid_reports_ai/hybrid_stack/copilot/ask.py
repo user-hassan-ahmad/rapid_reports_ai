@@ -272,9 +272,9 @@ async def ask(db: Session, question: str, key: str | None, ctx: Context, history
         is_tnm = "tnm" in R.norm(raw.guideline).split()
         name = "TNM" if is_tnm else raw.guideline
         finding = f"{question}\n{ctx.findings}".strip()
-        # An explicit staging question needs no matching finding: the closed site list still applies, the case gate not.
-        card = await M.card_for(db, name, raw.version, finding_id or "q", finding, ctx.history, raw.site,
-                                gate=not is_tnm)
+        # An explicit question names the system it asks about: no matching finding is needed, so the case gates (TNM
+        # site, pack applicability) are skipped; the closed site list still applies. The background matcher keeps them.
+        card = await M.card_for(db, name, raw.version, finding_id or "q", finding, ctx.history, raw.site, gate=False)
         entry = await resolve_guideline(db, card) if card else None
         if _gone(abandoned):
             return _abandoned(None)
