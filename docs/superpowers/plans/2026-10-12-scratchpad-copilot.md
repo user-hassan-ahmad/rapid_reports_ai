@@ -2732,6 +2732,15 @@ git add backend/src/rapid_reports_ai/hybrid_stack/copilot/routes.py backend/src/
 git commit -m "feat(copilot): routes, kill switch, status flag, reviewer registry, session log field"
 ```
 
+**Notes from Task 8 review** (apply when writing the `/ask` route and the panel):
+- Wrap `/ask` in `asyncio.wait_for(..., ~45 s)`. On timeout return the General answer flagged "guideline still
+  loading", and let `resolve_guideline` finish as a background task in its own `SessionLocal` (never the request's
+  session).
+- The frontend matches a listed card by key. Ask cards carry `finding_id` "q", or the scoped finding's id when one
+  was passed.
+- Asking on a listed card that has not been resolved yet should resolve it first (or the panel enables ask on a card
+  only once it is opened): `_in_card` returns "unknown guideline" for a key the registry does not hold.
+
 ---
 
 ### Task 11: `stack_fallback` recommendations rule

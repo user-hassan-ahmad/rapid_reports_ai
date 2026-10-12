@@ -74,6 +74,11 @@ Nothing reaches the report unless the radiologist presses Apply or ticks it.
     fetched first. Query words are the guideline's name, version, publication and branch names, never dictated
     words, which also keeps patient text away from the search API. Fitting the guideline to the case happens
     afterwards, in the preview.
+    - One privacy choke point: every query's guideline identity goes through `search.safe_identity` (measurement
+      tokens and side/demographic words dropped from the name, the name capped at 8 words, the version kept). It is
+      a removal-only backstop: a name comes from a model that read the case.
+    - The ask gap phrase keeps only words found in the entry's own stored vocabulary (plus its name and version),
+      never a number other than the version, a unit, an age, a side or a demographic word.
 19. **The case's branch comes first; the rest fill in the background.** The card is ready once *its* branch is
     checked. The other branches fill afterwards, so the registry holds the whole system for every later case.
 20. **Jev judges every evidence claim; code can only remove, never approve.**
@@ -353,19 +358,32 @@ Shared by card open and by ask. The steps:
 - It works like a tool call, written as structured steps rather than native tool use (simpler to test, and the same
   on every provider).
 - **Card in scope:**
-  1. Jev: "SOURCE answers: <question>", over the entry's branches, chunks and supplements.
-  2. At or above the bar: one Qwen call answers, grounded in that material.
+  1. Jev: "SOURCE contains the answer to: <question>", over the entry's summary, checked branches and source
+     chunks, one call per window. Supplement answers are model text and never material (only a supplement's quote
+     would be, and ask stores none).
+  2. At or above the bar: one Qwen call answers, grounded on the summary and checked branches plus the window Jev
+     scored highest (capped at one Jev window), so an answer late in a long source is never cut off.
   3. Below the bar:
-     - one targeted query runs: `<name> <version> <question keywords from the guideline's vocabulary>`;
-     - Qwen writes the search phrase from the question with no case details;
-     - extract, then Jev checks again.
-     - If supported: answer, and append a supplement to the entry.
-     - If not: answer "the guideline doesn't address this", plus brief general knowledge clearly labelled as not from
-       the guideline.
-- **No card in scope:** a first Qwen call returns `{guideline: name | null, answer}`.
-  - `null`: the answer becomes a General block.
-  - A name: the matcher's normalisation runs, so a listed card is reused, then `resolve_guideline`, then the
-    card-in-scope path. The response carries the card, and the frontend files the Q&A under it.
+     - one targeted query runs: `<name> <version> <question keywords from the guideline's vocabulary>`, reading 2 new
+       pages (URLs already stored are excluded);
+     - Qwen writes the search phrase from the question with no case details; code keeps only words in the entry's
+       stored vocabulary (§2.18);
+     - extract, then Jev checks again, scoped: "The SOURCE, which is about <name> <version>, contains…".
+     - If supported: answer from the best window, and append a draft supplement (`verified: false`, no quote, the
+       URL of the page in that window). A failure to store it still returns the answer.
+     - If not: answer "The guideline does not address this.", plus brief general knowledge prefixed "From general
+       knowledge:".
+  - A TNM card is answered from the offline data, never gated or searched.
+- **No card in scope:** a first Qwen call returns `{guideline, version, site, answer}`. The prompt lists the
+  registry's known names and versions, to be reused exactly, and the TNM sites.
+  - No guideline: the answer becomes a General block.
+  - A name: the matcher's normalisation runs (`matcher.card_for`), so a listed card is reused, then
+    `resolve_guideline`, then the card-in-scope path. The response carries the card, and the frontend files the Q&A
+    under it.
+  - Any name with the token "TNM" is TNM. An explicit staging question skips the case gate (no finding need match);
+    the site must still be on the closed list.
+  - The card is made openable: its skeleton is the entry's branches, and with no branch from the route, Jev picks
+    one of the entry's branches (`matcher.pick_branch`), else the Overview when stored.
 - Answers are about two to four sentences, in British English.
 
 ### 5.6 Recommendations (`POST /recommendations`)
