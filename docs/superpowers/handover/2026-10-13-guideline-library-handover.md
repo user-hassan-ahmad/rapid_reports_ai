@@ -28,6 +28,7 @@ The card is a quick, source-based fact check. It works in this order:
 | Currency check of every system | `.superpowers/sdd/2026-10-13-guideline-library-next-slice/currency-check.md` |
 | Pack-authoring skill | `.claude/skills/guideline-pack/`: SKILL, AUTHORING-RULES, TRAPS, SOURCES. Gitignored, so it isn't versioned. |
 | Source PDFs | `guidelines/<id>/sources/`, gitignored; each manifest holds the sha256. Raw downloads: `.superpowers/sources-archive/`, also gitignored. |
+| Private backup (sources, ledgers, skill) | https://github.com/user-hassan-ahmad/rr-guideline-library-private (local `~/Code/rr-guideline-library-private`). To restore a pack's sources, copy `pack-sources/<id>/` into `guidelines/<id>/sources/`. |
 | Committed bundle | `backend/src/rapid_reports_ai/resources/guideline_bundle.json`, 21 entries. A drift test guards it. |
 
 Run commands from `backend/` as `PYTHONPATH=src .venv/bin/python …` or `.venv/bin/pytest`. Check one pack with `scripts/guidelines/check_pack.py <id>`. Rebuild with `scripts/guidelines/build_bundle.py`; `--check` reports drift.
