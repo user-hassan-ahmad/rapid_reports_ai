@@ -29,16 +29,15 @@
   "inputs": [
     {
       "id": "mimic",
-      "label": "Infectious, inflammatory or vascular lesion, or necrotic solid mass",
+      "label": "Infectious, inflammatory or vascular lesion, or haemorrhagic or necrotic solid mass",
       "type": "boolean",
       "scope": "lesion",
       "role": "eligibility",
-      "how_stated": "true when the finding is called an abscess, an infected or inflamed collection, a vascular lesion or a necrotic solid mass rather than a cystic renal mass; false when it is described as a renal cyst or cystic renal mass",
+      "how_stated": "true when the finding is called an abscess, an infected or inflamed collection, a vascular lesion, or a haemorrhagic or necrotic solid mass rather than a cystic renal mass; false when it is described as a renal cyst or cystic renal mass",
       "locator": {
         "source": "S1",
         "page": null,
-        "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
-        "table": "2"
+        "section": "Bosniak Classification, Version 2019, Cystic Mass: the Bosniak classification should be applied to cystic masses, not hemorrhagic or necrotic solid masses"
       }
     },
     {
@@ -1752,6 +1751,7 @@
       "classification": "Bosniak IIF (v2019) cystic renal mass: most are benign, and malignant ones are nearly all indolent.",
       "recommendation": "Imaging follow-up at 6 and 12 months, then yearly to 5 years in total, looking for morphological change.",
       "caveats": [
+        "Exclude renal infection, inflammation or a vascular cause clinically first; the classification applies only once these are excluded (Table 2 footnote).",
         "Not for patients with a renal cell carcinoma syndrome; patient factors still shape management."
       ],
       "locator": {
@@ -1766,6 +1766,7 @@
       "classification": "Bosniak III (v2019) cystic renal mass: intermediate probability of malignancy (about half).",
       "recommendation": "Consider urology referral if not already arranged.",
       "caveats": [
+        "Exclude renal infection, inflammation or a vascular cause clinically first; the classification applies only once these are excluded (Table 2 footnote).",
         "Whether observation or treatment suits class III best is unclear in the source.",
         "Not for patients with a renal cell carcinoma syndrome; patient factors still shape management."
       ],
@@ -1781,6 +1782,7 @@
       "classification": "Bosniak IV (v2019) cystic renal mass: most are malignant (about 90%).",
       "recommendation": "Consider urology referral if not already arranged.",
       "caveats": [
+        "Exclude renal infection, inflammation or a vascular cause clinically first; the classification applies only once these are excluded (Table 2 footnote).",
         "Not for patients with a renal cell carcinoma syndrome; patient factors still shape management."
       ],
       "locator": {
@@ -1821,7 +1823,7 @@
     },
     {
       "id": "does_not_apply",
-      "classification": "Bosniak 2019 does not apply: an infectious, inflammatory or vascular lesion, or a necrotic solid mass, is outside the classification",
+      "classification": "Bosniak 2019 does not apply: an infectious, inflammatory or vascular lesion, or a haemorrhagic or necrotic solid mass, is outside the classification",
       "recommendation": "Manage per the clinical context.",
       "locator": {
         "source": "S1",

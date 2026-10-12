@@ -138,13 +138,35 @@ Gate 5 re-run (evidence.md): age_band 0.85, applies.case0 0.86, outcome.does_not
 applies.case12 and management.row20, both unchanged table restatements that passed last run (Jev run-to-run variance),
 checked by hand against the table, p3. reference.pit.volume cleared.
 
+Fix round 2 (independent clinical read, findings 3, 4, 5, 7). Clauses read in the source: S1 p2 body ("in these
+patients, treatment should be based on the specific clinical situation"; for young patients "management decisions
+should be made on a case-by-case basis, and the physician should recognize that infectious causes are more likely than
+cancer and that use of serial CT should be minimized"; "known primary cancers who are at risk for metastases";
+"immunocompromised patients who are at risk for infection") and p2 "Implications for Patient Care".
+
+| Item | Check |
+|---|---|
+| `applies` case 0 and outcome `does_not_apply`: locator moved from the p3 table note (which does not name age) to S1 p2 "Implications for Patient Care", which names under-35, immunocompromised and cancer, with screening sent to Lung-RADS in the next bullet | ✓ |
+| outcome `does_not_apply`: new caveat "Under 35: decide case by case; infection is more likely than cancer, so keep serial CT to a minimum." (our words, p2) | ✓ |
+| input `exclusion`: label and `how_stated` now use the source's qualifiers ("immunocompromised and at risk for infection", "known primary cancer and at risk for metastases"); the invented examples (transplant, chemotherapy, HIV) are dropped | ✓ |
+
+Golden cases: one new case, age 34 with `exclusion` not stated → does_not_apply (age settles it without asking the
+exclusion). Gates 1-4 pass.
+
+Gate 5 re-run (evidence.md): applies.case0 0.87, outcome.does_not_apply 0.86, the new caveat 0.93. Newly flagged:
+reference.pit.volume 0.49, management.row5 0.45 and outcome.subsolid_multiple_lt6 0.45, all unchanged facts that passed
+before (Jev run-to-run variance), checked by hand against the table, p3; management.row20 cleared.
+
 **For Hassan (eligibility)**
 - DECISION: age is split out of the combined exclusion into its own `age` input (shared fact `age_years`), so one age
   answer serves the Fleischner and BTS cards; `exclusion` now covers screening, immunocompromise and known primary
   cancer only.
-- The single does_not_apply case (exclusion or under 35) cites the p3 table note, which does not name age; age's own
-  clause (p2) is cited by the `age` input and `age_band`. One case keeps "excluded whatever the other input says"
-  working; separate citations would need two cases, and a lone exclusion would then wait for the age.
+- The single does_not_apply case (exclusion or under 35) cites p2 "Implications for Patient Care", which names all
+  four exclusions (fix round 2; it cited the p3 table note, which does not name age). One case keeps "excluded
+  whatever the other input says" working in both directions.
+- The does_not_apply outcome now carries the source's advice for under-35s as a caveat (case by case, infection more
+  likely than cancer, minimal serial CT, p2). The Figure 7 note on short-term follow-up for infection in
+  immunocompromised patients is not added.
 - Age 35 exactly is in scope ("younger than 35" is excluded).
 - Most dictations state neither age nor exclusions, so most Fleischner cards open as check_first until answered.
 

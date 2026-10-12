@@ -91,6 +91,19 @@
    "fact": "age_years"
   },
   {
+   "id": "proven_malignant",
+   "label": "Nodule already proven to be lung cancer or a metastasis",
+   "type": "boolean",
+   "how_stated": "true only when this nodule has been shown on histology or cytology (biopsy or resection) to be lung cancer or a metastasis from another cancer, e.g. 'biopsy-proven adenocarcinoma'; false when this nodule is described as new, indeterminate or not yet sampled. A known cancer elsewhere, or a nodule merely suspected to be malignant, does not make it true.",
+   "locator": {
+    "source": "S1",
+    "page": 13,
+    "section": "Groups not covered: B. Adults where the nodule in question has been pathologically shown to represent lung cancer or a pulmonary metastasis from another cancer"
+   },
+   "scope": "lesion",
+   "role": "eligibility"
+  },
+  {
    "id": "sex",
    "label": "Sex",
    "type": "enum",
@@ -693,14 +706,22 @@
    "cases": [
     {
      "when": {
-      "ref": "age_band",
-      "eq": "lt18"
+      "any": [
+       {
+        "ref": "age_band",
+        "eq": "lt18"
+       },
+       {
+        "ref": "proven_malignant",
+        "eq": true
+       }
+      ]
      },
      "result": "does_not_apply",
      "locator": {
       "source": "S1",
       "page": 13,
-      "section": "Groups not covered"
+      "section": "Groups not covered: A. children (younger than 18); B. a nodule pathologically shown to be lung cancer or a pulmonary metastasis"
      }
     },
     {
@@ -709,6 +730,10 @@
        {
         "ref": "age_band",
         "eq": "ge18"
+       },
+       {
+        "ref": "proven_malignant",
+        "eq": false
        },
        {
         "all": [
@@ -741,6 +766,10 @@
        {
         "ref": "age_band",
         "eq": "ge18"
+       },
+       {
+        "ref": "proven_malignant",
+        "eq": false
        },
        {
         "all": [
@@ -782,6 +811,10 @@
         "eq": "ge18"
        },
        {
+        "ref": "proven_malignant",
+        "eq": false
+       },
+       {
         "all": [
          {
           "none": [
@@ -820,6 +853,10 @@
        {
         "ref": "age_band",
         "eq": "ge18"
+       },
+       {
+        "ref": "proven_malignant",
+        "eq": false
        },
        {
         "all": [
@@ -878,6 +915,10 @@
         "eq": "ge18"
        },
        {
+        "ref": "proven_malignant",
+        "eq": false
+       },
+       {
         "all": [
          {
           "none": [
@@ -932,6 +973,10 @@
        {
         "ref": "age_band",
         "eq": "ge18"
+       },
+       {
+        "ref": "proven_malignant",
+        "eq": false
        },
        {
         "all": [
@@ -994,6 +1039,10 @@
         "eq": "ge18"
        },
        {
+        "ref": "proven_malignant",
+        "eq": false
+       },
+       {
         "all": [
          {
           "none": [
@@ -1054,6 +1103,10 @@
         "eq": "ge18"
        },
        {
+        "ref": "proven_malignant",
+        "eq": false
+       },
+       {
         "all": [
          {
           "none": [
@@ -1112,6 +1165,10 @@
        {
         "ref": "age_band",
         "eq": "ge18"
+       },
+       {
+        "ref": "proven_malignant",
+        "eq": false
        },
        {
         "all": [
@@ -1202,6 +1259,10 @@
        {
         "ref": "age_band",
         "eq": "ge18"
+       },
+       {
+        "ref": "proven_malignant",
+        "eq": false
        },
        {
         "all": [
@@ -1302,6 +1363,10 @@
         "eq": "ge18"
        },
        {
+        "ref": "proven_malignant",
+        "eq": false
+       },
+       {
         "all": [
          {
           "none": [
@@ -1369,6 +1434,10 @@
         "eq": "ge18"
        },
        {
+        "ref": "proven_malignant",
+        "eq": false
+       },
+       {
         "all": [
          {
           "none": [
@@ -1434,6 +1503,10 @@
        {
         "ref": "age_band",
         "eq": "ge18"
+       },
+       {
+        "ref": "proven_malignant",
+        "eq": false
        },
        {
         "all": [
@@ -1507,6 +1580,10 @@
         "eq": "ge18"
        },
        {
+        "ref": "proven_malignant",
+        "eq": false
+       },
+       {
         "all": [
          {
           "none": [
@@ -1570,6 +1647,10 @@
         "eq": "ge18"
        },
        {
+        "ref": "proven_malignant",
+        "eq": false
+       },
+       {
         "ref": "resolved",
         "eq": true
        }
@@ -1588,6 +1669,10 @@
        {
         "ref": "age_band",
         "eq": "ge18"
+       },
+       {
+        "ref": "proven_malignant",
+        "eq": false
        },
        {
         "all": [
@@ -1644,6 +1729,10 @@
        {
         "ref": "age_band",
         "eq": "ge18"
+       },
+       {
+        "ref": "proven_malignant",
+        "eq": false
        },
        {
         "all": [
@@ -1713,6 +1802,10 @@
         "eq": "ge18"
        },
        {
+        "ref": "proven_malignant",
+        "eq": false
+       },
+       {
         "all": [
          {
           "none": [
@@ -1773,6 +1866,10 @@
         "eq": "ge18"
        },
        {
+        "ref": "proven_malignant",
+        "eq": false
+       },
+       {
         "all": [
          {
           "none": [
@@ -1831,6 +1928,10 @@
        {
         "ref": "age_band",
         "eq": "ge18"
+       },
+       {
+        "ref": "proven_malignant",
+        "eq": false
        },
        {
         "all": [
@@ -2142,12 +2243,12 @@
   },
   {
    "id": "does_not_apply",
-   "classification": "BTS 2015 does not apply: the guidelines do not cover patients under 18",
+   "classification": "BTS 2015 does not apply: the guidelines do not cover patients under 18 or a nodule already proven to be lung cancer or a metastasis",
    "recommendation": "Manage per the clinical context.",
    "locator": {
     "source": "S1",
     "page": 13,
-    "section": "Groups not covered"
+    "section": "Groups not covered: A. children (younger than 18); B. a nodule pathologically shown to be lung cancer or a pulmonary metastasis"
    }
   }
  ],

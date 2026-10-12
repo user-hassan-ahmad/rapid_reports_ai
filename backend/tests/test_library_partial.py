@@ -97,7 +97,8 @@ def test_over_approximation_keeps_outcomes_behind_a_not_applicable_band():
     """New-I1: a band unknown now but not applicable under some enumerated value must be enumerated over its states
     too, else the rules gated on that state (the 2D arm) drop out of `possible`."""
     given = {"prior_study": True, "resolved": False, "interval_days": 547.5, "benign_features": False, "sex": "female",
-             "family_history": False, "emphysema": False, "upper_lobe": True, "spiculation": False}
+             "family_history": False, "emphysema": False, "upper_lobe": True, "spiculation": False,
+             "proven_malignant": False}
     t = E.evaluate(_bts(), given)
     assert t.bounded is False and len(t.possible) < len(_bts().outcomes)      # not the over-the-cap fallback
     assert {"growth_workup_2d", "ct_2yr_2d", "volumetry_advised"} <= set(t.possible)

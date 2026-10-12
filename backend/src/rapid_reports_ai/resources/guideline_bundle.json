@@ -26,13 +26,13 @@
     "id": "bosniak-renal-cyst",
     "inputs": [
      {
-      "how_stated": "true when the finding is called an abscess, an infected or inflamed collection, a vascular lesion or a necrotic solid mass rather than a cystic renal mass; false when it is described as a renal cyst or cystic renal mass",
+      "how_stated": "true when the finding is called an abscess, an infected or inflamed collection, a vascular lesion, or a haemorrhagic or necrotic solid mass rather than a cystic renal mass; false when it is described as a renal cyst or cystic renal mass",
       "id": "mimic",
-      "label": "Infectious, inflammatory or vascular lesion, or necrotic solid mass",
+      "label": "Infectious, inflammatory or vascular lesion, or haemorrhagic or necrotic solid mass",
       "locator": {
-       "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+       "section": "Bosniak Classification, Version 2019, Cystic Mass: the Bosniak classification should be applied to cystic masses, not hemorrhagic or necrotic solid masses",
        "source": "S1",
-       "table": "2"
+       "table": ""
       },
       "max_inclusive": true,
       "min_inclusive": true,
@@ -1779,6 +1779,7 @@
      },
      {
       "caveats": [
+       "Exclude renal infection, inflammation or a vascular cause clinically first; the classification applies only once these are excluded (Table 2 footnote).",
        "Not for patients with a renal cell carcinoma syndrome; patient factors still shape management."
       ],
       "classification": "Bosniak IIF (v2019) cystic renal mass: most are benign, and malignant ones are nearly all indolent.",
@@ -1792,6 +1793,7 @@
      },
      {
       "caveats": [
+       "Exclude renal infection, inflammation or a vascular cause clinically first; the classification applies only once these are excluded (Table 2 footnote).",
        "Whether observation or treatment suits class III best is unclear in the source.",
        "Not for patients with a renal cell carcinoma syndrome; patient factors still shape management."
       ],
@@ -1806,6 +1808,7 @@
      },
      {
       "caveats": [
+       "Exclude renal infection, inflammation or a vascular cause clinically first; the classification applies only once these are excluded (Table 2 footnote).",
        "Not for patients with a renal cell carcinoma syndrome; patient factors still shape management."
       ],
       "classification": "Bosniak IV (v2019) cystic renal mass: most are malignant (about 90%).",
@@ -1846,7 +1849,7 @@
      },
      {
       "caveats": [],
-      "classification": "Bosniak 2019 does not apply: an infectious, inflammatory or vascular lesion, or a necrotic solid mass, is outside the classification",
+      "classification": "Bosniak 2019 does not apply: an infectious, inflammatory or vascular lesion, or a haemorrhagic or necrotic solid mass, is outside the classification",
       "id": "does_not_apply",
       "locator": {
        "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
@@ -2194,6 +2197,26 @@
       "states": [],
       "type": "number",
       "unit": "years"
+     },
+     {
+      "how_stated": "true only when this nodule has been shown on histology or cytology (biopsy or resection) to be lung cancer or a metastasis from another cancer, e.g. 'biopsy-proven adenocarcinoma'; false when this nodule is described as new, indeterminate or not yet sampled. A known cancer elsewhere, or a nodule merely suspected to be malignant, does not make it true.",
+      "id": "proven_malignant",
+      "label": "Nodule already proven to be lung cancer or a metastasis",
+      "locator": {
+       "page": 13,
+       "section": "Groups not covered: B. Adults where the nodule in question has been pathologically shown to represent lung cancer or a pulmonary metastasis from another cancer",
+       "source": "S1",
+       "table": ""
+      },
+      "max_inclusive": true,
+      "min_inclusive": true,
+      "options": [],
+      "prerequisites": [],
+      "role": "eligibility",
+      "scope": "lesion",
+      "states": [],
+      "type": "boolean",
+      "unit": ""
      },
      {
       "fact": "sex",
@@ -2938,14 +2961,22 @@
        {
         "locator": {
          "page": 13,
-         "section": "Groups not covered",
+         "section": "Groups not covered: A. children (younger than 18); B. a nodule pathologically shown to be lung cancer or a pulmonary metastasis",
          "source": "S1",
          "table": ""
         },
         "result": "does_not_apply",
         "when": {
-         "eq": "lt18",
-         "ref": "age_band"
+         "any": [
+          {
+           "eq": "lt18",
+           "ref": "age_band"
+          },
+          {
+           "eq": true,
+           "ref": "proven_malignant"
+          }
+         ]
         }
        },
        {
@@ -2961,6 +2992,10 @@
           {
            "eq": "ge18",
            "ref": "age_band"
+          },
+          {
+           "eq": false,
+           "ref": "proven_malignant"
           },
           {
            "all": [
@@ -2994,6 +3029,10 @@
           {
            "eq": "ge18",
            "ref": "age_band"
+          },
+          {
+           "eq": false,
+           "ref": "proven_malignant"
           },
           {
            "all": [
@@ -3036,6 +3075,10 @@
            "ref": "age_band"
           },
           {
+           "eq": false,
+           "ref": "proven_malignant"
+          },
+          {
            "all": [
             {
              "none": [
@@ -3075,6 +3118,10 @@
           {
            "eq": "ge18",
            "ref": "age_band"
+          },
+          {
+           "eq": false,
+           "ref": "proven_malignant"
           },
           {
            "all": [
@@ -3134,6 +3181,10 @@
            "ref": "age_band"
           },
           {
+           "eq": false,
+           "ref": "proven_malignant"
+          },
+          {
            "all": [
             {
              "none": [
@@ -3189,6 +3240,10 @@
           {
            "eq": "ge18",
            "ref": "age_band"
+          },
+          {
+           "eq": false,
+           "ref": "proven_malignant"
           },
           {
            "all": [
@@ -3252,6 +3307,10 @@
            "ref": "age_band"
           },
           {
+           "eq": false,
+           "ref": "proven_malignant"
+          },
+          {
            "all": [
             {
              "none": [
@@ -3313,6 +3372,10 @@
            "ref": "age_band"
           },
           {
+           "eq": false,
+           "ref": "proven_malignant"
+          },
+          {
            "all": [
             {
              "none": [
@@ -3372,6 +3435,10 @@
           {
            "eq": "ge18",
            "ref": "age_band"
+          },
+          {
+           "eq": false,
+           "ref": "proven_malignant"
           },
           {
            "all": [
@@ -3463,6 +3530,10 @@
           {
            "eq": "ge18",
            "ref": "age_band"
+          },
+          {
+           "eq": false,
+           "ref": "proven_malignant"
           },
           {
            "all": [
@@ -3564,6 +3635,10 @@
            "ref": "age_band"
           },
           {
+           "eq": false,
+           "ref": "proven_malignant"
+          },
+          {
            "all": [
             {
              "none": [
@@ -3632,6 +3707,10 @@
            "ref": "age_band"
           },
           {
+           "eq": false,
+           "ref": "proven_malignant"
+          },
+          {
            "all": [
             {
              "none": [
@@ -3698,6 +3777,10 @@
           {
            "eq": "ge18",
            "ref": "age_band"
+          },
+          {
+           "eq": false,
+           "ref": "proven_malignant"
           },
           {
            "all": [
@@ -3772,6 +3855,10 @@
            "ref": "age_band"
           },
           {
+           "eq": false,
+           "ref": "proven_malignant"
+          },
+          {
            "all": [
             {
              "none": [
@@ -3836,6 +3923,10 @@
            "ref": "age_band"
           },
           {
+           "eq": false,
+           "ref": "proven_malignant"
+          },
+          {
            "eq": true,
            "ref": "resolved"
           }
@@ -3855,6 +3946,10 @@
           {
            "eq": "ge18",
            "ref": "age_band"
+          },
+          {
+           "eq": false,
+           "ref": "proven_malignant"
           },
           {
            "all": [
@@ -3912,6 +4007,10 @@
           {
            "eq": "ge18",
            "ref": "age_band"
+          },
+          {
+           "eq": false,
+           "ref": "proven_malignant"
           },
           {
            "all": [
@@ -3982,6 +4081,10 @@
            "ref": "age_band"
           },
           {
+           "eq": false,
+           "ref": "proven_malignant"
+          },
+          {
            "all": [
             {
              "none": [
@@ -4043,6 +4146,10 @@
            "ref": "age_band"
           },
           {
+           "eq": false,
+           "ref": "proven_malignant"
+          },
+          {
            "all": [
             {
              "none": [
@@ -4102,6 +4209,10 @@
           {
            "eq": "ge18",
            "ref": "age_band"
+          },
+          {
+           "eq": false,
+           "ref": "proven_malignant"
           },
           {
            "all": [
@@ -4427,11 +4538,11 @@
      },
      {
       "caveats": [],
-      "classification": "BTS 2015 does not apply: the guidelines do not cover patients under 18",
+      "classification": "BTS 2015 does not apply: the guidelines do not cover patients under 18 or a nodule already proven to be lung cancer or a metastasis",
       "id": "does_not_apply",
       "locator": {
        "page": 13,
-       "section": "Groups not covered",
+       "section": "Groups not covered: A. children (younger than 18); B. a nodule pathologically shown to be lung cancer or a pulmonary metastasis",
        "source": "S1",
        "table": ""
       },
@@ -4720,9 +4831,9 @@
       "unit": "years"
      },
      {
-      "how_stated": "patient-level, usually from the clinical history or request: true when the scan is a lung cancer screening CT, the patient is immunocompromised (e.g. transplant, chemotherapy, HIV) or has a known primary cancer; false when the history states none of these. Leave it unset when the history does not say.",
+      "how_stated": "patient-level, usually from the clinical history or request: true when the scan is a lung cancer screening CT, the patient is immunocompromised and at risk for infection, or has a known primary cancer and is at risk for metastases; false when the history states none of these. Leave it unset when the history does not say.",
       "id": "exclusion",
-      "label": "Lung cancer screening, immunocompromise or known primary cancer",
+      "label": "Lung cancer screening, immunocompromise at risk of infection, or known primary cancer at risk of metastases",
       "locator": {
        "page": 2,
        "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system",
@@ -5138,10 +5249,10 @@
       "cases": [
        {
         "locator": {
-         "page": 3,
-         "section": "",
+         "page": 2,
+         "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system",
          "source": "S1",
-         "table": "Table note: recommendations do not apply to lung cancer screening, patients with immunosuppression, or patients with known primary cancer"
+         "table": ""
         },
         "result": "does_not_apply",
         "when": {
@@ -5803,15 +5914,16 @@
      },
      {
       "caveats": [
-       "The Fleischner Society advises the ACR Lung-RADS system for lung cancer screening CT."
+       "The Fleischner Society advises the ACR Lung-RADS system for lung cancer screening CT.",
+       "Under 35: decide case by case; infection is more likely than cancer, so keep serial CT to a minimum."
       ],
       "classification": "Fleischner 2017 does not apply: lung cancer screening, age under 35, immunocompromised patient or known primary cancer.",
       "id": "does_not_apply",
       "locator": {
-       "page": 3,
-       "section": "",
+       "page": 2,
+       "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system",
        "source": "S1",
-       "table": "Table note: recommendations do not apply to lung cancer screening, patients with immunosuppression, or patients with known primary cancer"
+       "table": ""
       },
       "recommendation": "Manage per the clinical context (screening programme protocol, or the patient's oncology or immunosuppression care)."
      }
@@ -6024,5 +6136,5 @@
    ]
   }
  },
- "version": "30acb1f747a0"
+ "version": "0e448c0ff9a7"
 }

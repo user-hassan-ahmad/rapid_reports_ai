@@ -505,6 +505,18 @@
         "exclusion": true
       },
       "outcome": "does_not_apply"
+    },
+    {
+      "name": "age 34, exclusion not stated: does not apply",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 7,
+        "risk": "low",
+        "age": 34
+      },
+      "outcome": "does_not_apply"
     }
   ]
 }

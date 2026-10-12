@@ -195,11 +195,31 @@ Table 2 footnote (page-less HTML, capped windows). Newly flagged: class.case16 (
 pass-through), outcome.class_i.caveat0 0.47, class_iii.caveat1 0.49, class_iv.caveat0 0.48: unchanged facts near the
 threshold (Jev variance), checked by hand as before. class.case0 cleared.
 
+Fix round 2 (independent clinical read, findings 2 and 6).
+
+| Item | Check |
+|---|---|
+| input `mimic`: label and `how_stated` add "haemorrhagic or necrotic solid mass"; locator moved to the "Cystic Mass" definition ("the Bosniak classification should be applied to cystic masses, not hemorrhagic or necrotic solid masses"); still lesion-scoped | ✓ |
+| outcome `does_not_apply`: classification adds "haemorrhagic"; locator stays the Table 2 footnote, as does `class` case 0 | ✓ |
+| outcomes `class_iif`, `class_iii`, `class_iv`: new first caveat "Exclude renal infection, inflammation or a vascular cause clinically first; the classification applies only once these are excluded (Table 2 footnote)." | ✓ footnote * |
+
+A caveat shares its outcome's locator (Table 4 here; the schema has no per-caveat locator), so the new caveat names the
+Table 2 footnote in its text. Golden cases unchanged (the outcomes and logic did not change). Gates 1-4 pass.
+
+Gate 5 re-run (evidence.md): the new caveat scores 0.84 (IIF), 0.84 (III), 0.86 (IV); class.case0 0.57;
+outcome.does_not_apply 0.42 (`check`, was 0.47), confirmed by reading the Table 2 footnote and the "Cystic Mass" text
+(haemorrhagic is in the latter only). No newly flagged facts; outcome.class_i.caveat0 cleared.
+
 **For Hassan (eligibility)**
 - DECISION: `mimic` is lesion-scoped (settled from the card's own finding only), so an abscess elsewhere in the
   dictation does not exclude this cyst.
-- The input follows the Table 2 footnote list; the "Cystic Mass" text's "hemorrhagic … solid masses" is not added
-  (enhancing contents on a renal mass protocol already route to not_cystic).
+- DECISION (agreed 2026-10-13): clinical evidence of renal infection, inflammation or a vascular cause usually sits in
+  the clinical history, which a lesion-scoped `mimic` cannot read. We chose a caveat on IIF, III and IV ("exclude these
+  clinically first", Table 2 footnote) rather than letting `mimic` read the history, so a complex cystic mass in a
+  septic patient still gets its class, with the caveat.
+- The input now also names a haemorrhagic solid mass ("Cystic Mass" definition), as well as the Table 2 footnote list
+  (fix round 2). The not_cystic route catches enhancing contents only on a renal mass protocol; on unenhanced CT a
+  haemorrhagic solid mass would otherwise reach class II.
 - A cyst dictated without saying it is a simple or cystic renal mass may leave `mimic` unknown, and the card opens as
   check_first until answered.
 

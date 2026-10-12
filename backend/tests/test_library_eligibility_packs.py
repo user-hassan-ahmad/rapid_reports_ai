@@ -17,9 +17,10 @@ def _elig(e):
 def test_each_pack_declares_its_scope_clause_as_eligibility():
     lib = _lib()
     f, b, k = (lib.lookup(x) for x in ("fleischner-pulmonary-nodule", "bts-pulmonary-nodule", "bosniak-renal-cyst"))
-    assert _elig(f) == ["age", "exclusion"] and _elig(b) == ["age"] and _elig(k) == ["mimic"]
+    assert _elig(f) == ["age", "exclusion"] and _elig(b) == ["age", "proven_malignant"] and _elig(k) == ["mimic"]
     assert f.input("age").fact == b.input("age").fact == "age_years" and b.input("sex").fact == "sex"
     assert f.input("exclusion").scope == "patient" and k.input("mimic").scope == "lesion"
+    assert b.input("proven_malignant").scope == "lesion" and b.input("proven_malignant").fact is None
     assert all(e.outcome(DOES_NOT_APPLY) is not None for e in (f, b, k))
 
 
@@ -36,6 +37,11 @@ def test_one_age_answer_fills_both_nodule_cards():
 def test_an_excluding_answer_settles_without_the_other_eligibility_input():
     f = _lib().lookup("fleischner-pulmonary-nodule")
     assert E.evaluate(f, {"exclusion": True}).outcome == DOES_NOT_APPLY        # age unknown, still excluded
+
+
+def test_a_proven_malignant_nodule_is_outside_bts():
+    b = _lib().lookup("bts-pulmonary-nodule")
+    assert E.evaluate(b, {"proven_malignant": True}).outcome == DOES_NOT_APPLY     # age unknown, still excluded
 
 
 def test_a_bosniak_mimic_does_not_apply():

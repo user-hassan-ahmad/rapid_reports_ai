@@ -188,11 +188,15 @@ Agreed with Hassan on 2026-10-12. Not built yet: it is part of the next slice (Â
 **Eligibility inputs:**
 - **Source.** Eligibility inputs come only from the guideline's stated scope or exclusions, each with a locator like any
   other fact. We never invent our own criteria. Examples:
-  - Fleischner: lung cancer screening, age under 35, immunocompromise, known primary cancer.
-  - BTS: age 18 or over; previous or active cancer (the December 2015 correction makes this clinical judgement).
-  - Bosniak: not an infectious, inflammatory or vascular lesion.
-- **Form.** They are usually patient-scoped yes/no inputs. A pack may combine closely related exclusions into one input
-  when the guideline treats them alike (Fleischner's four exclusions are one input).
+  - Fleischner: age under 35; lung cancer screening, immunocompromise or known primary cancer.
+  - BTS: age under 18; a nodule already proven to be lung cancer or a metastasis. Previous or active cancer is not an
+    exclusion (BTS covers these patients; the December 2015 correction makes small-nodule follow-up clinical
+    judgement), so it stays a caveat.
+  - Bosniak: an infectious, inflammatory or vascular lesion, or a haemorrhagic or necrotic solid mass.
+- **Form.** They are usually yes/no inputs, patient-scoped or lesion-scoped as the clause reads. A pack may combine
+  closely related exclusions into one input when the guideline treats them alike (Fleischner's screening,
+  immunocompromise and known primary cancer are one input). Age is a separate number input with the shared fact
+  `age_years`, banded at each guideline's own cut-off, so one answer serves every card in the case.
 - **Logic.** An eligibility input that excludes leads to a `does_not_apply` outcome. Its classification states that
   the guideline does not apply and why, its recommendation says to manage on clinical context, and it carries the
   locator of the scope clause. It never has an Apply.

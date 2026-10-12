@@ -11,7 +11,8 @@
     "sex": "female",
     "upper_lobe": true,
     "spiculation": false,
-    "resolved": false
+    "resolved": false,
+    "proven_malignant": false
    },
    "outcome": "discharge_small"
   },
@@ -29,7 +30,8 @@
     "nodule_count": 1,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 12
+    "diameter_mm": 12,
+    "proven_malignant": false
    },
    "outcome": "discharge_benign"
   },
@@ -47,7 +49,8 @@
     "nodule_count": 1,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 12
+    "diameter_mm": 12,
+    "proven_malignant": false
    },
    "outcome": "subsolid",
    "steps": {
@@ -68,7 +71,8 @@
     "nodule_count": 1,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 12
+    "diameter_mm": 12,
+    "proven_malignant": false
    },
    "outcome": "subsolid",
    "steps": {
@@ -89,7 +93,8 @@
     "nodule_count": 1,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 4.9
+    "diameter_mm": 4.9,
+    "proven_malignant": false
    },
    "outcome": "discharge_small"
   },
@@ -107,7 +112,8 @@
     "nodule_count": 1,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 5
+    "diameter_mm": 5,
+    "proven_malignant": false
    },
    "outcome": "ct_1yr"
   },
@@ -125,7 +131,8 @@
     "nodule_count": 1,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 5.9
+    "diameter_mm": 5.9,
+    "proven_malignant": false
    },
    "outcome": "ct_1yr"
   },
@@ -143,7 +150,8 @@
     "nodule_count": 1,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 6
+    "diameter_mm": 6,
+    "proven_malignant": false
    },
    "outcome": "ct_3m"
   },
@@ -161,7 +169,8 @@
     "nodule_count": 1,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 7.9
+    "diameter_mm": 7.9,
+    "proven_malignant": false
    },
    "outcome": "ct_3m"
   },
@@ -179,7 +188,8 @@
     "nodule_count": 1,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 8
+    "diameter_mm": 8,
+    "proven_malignant": false
    },
    "outcome": "brock_low",
    "steps": {
@@ -203,7 +213,8 @@
     "nodule_count": 1,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 9
+    "diameter_mm": 9,
+    "proven_malignant": false
    },
    "outcome": "pet_ct",
    "steps": {
@@ -227,7 +238,8 @@
     "nodule_count": 1,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 8.5
+    "diameter_mm": 8.5,
+    "proven_malignant": false
    },
    "outcome": "brock_low",
    "steps": {
@@ -249,7 +261,8 @@
     "nodule_count": 1,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 8.5
+    "diameter_mm": 8.5,
+    "proven_malignant": false
    },
    "outcome": "pet_ct",
    "steps": {
@@ -271,7 +284,8 @@
     "nodule_count": 1,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 9
+    "diameter_mm": 9,
+    "proven_malignant": false
    },
    "outcome": "brock_low",
    "steps": {
@@ -292,7 +306,8 @@
     "nodule_count": 1,
     "spiculation": true,
     "prior_study": false,
-    "diameter_mm": 15
+    "diameter_mm": 15,
+    "proven_malignant": false
    },
    "outcome": "pet_ct",
    "steps": {
@@ -314,7 +329,8 @@
     "nodule_count": 5,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 10
+    "diameter_mm": 10,
+    "proven_malignant": false
    },
    "outcome": "pet_ct",
    "steps": {
@@ -335,7 +351,8 @@
     "upper_lobe": true,
     "nodule_count": 1,
     "prior_study": false,
-    "diameter_mm": 8
+    "diameter_mm": 8,
+    "proven_malignant": false
    },
    "outcome": null,
    "needed": [
@@ -355,7 +372,8 @@
     "upper_lobe": true,
     "nodule_count": 1,
     "spiculation": false,
-    "diameter_mm": 7
+    "diameter_mm": 7,
+    "proven_malignant": false
    },
    "outcome": null,
    "needed": [
@@ -385,7 +403,8 @@
     "prior_volume_mm3": 100,
     "current_volume_mm3": 150,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": null,
    "needed": [
@@ -411,7 +430,8 @@
     "current_volume_mm3": 150,
     "interval_days": 91,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "growth_workup",
    "steps": {
@@ -438,7 +458,8 @@
     "current_volume_mm3": 120,
     "interval_days": 91,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "continue_no_growth",
    "steps": {
@@ -465,7 +486,8 @@
     "current_volume_mm3": 125,
     "interval_days": 91,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "growth_workup",
    "steps": {
@@ -492,7 +514,8 @@
     "current_volume_mm3": 124.9,
     "interval_days": 91,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "continue_no_growth",
    "steps": {
@@ -518,7 +541,8 @@
     "current_volume_mm3": 130,
     "interval_days": 182,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "continue_slow_growth",
    "steps": {
@@ -544,7 +568,8 @@
     "current_volume_mm3": 125,
     "interval_days": 200,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "continue_slow_growth",
    "steps": {
@@ -570,7 +595,8 @@
     "current_volume_mm3": 200,
     "interval_days": 400,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "growth_workup",
    "steps": {
@@ -596,7 +622,8 @@
     "current_volume_mm3": 200,
     "interval_days": 401,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "vdt_400_600",
    "steps": {
@@ -622,7 +649,8 @@
     "current_volume_mm3": 200,
     "interval_days": 600,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "vdt_400_600",
    "steps": {
@@ -648,7 +676,8 @@
     "current_volume_mm3": 200,
     "interval_days": 601,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "vdt_gt600",
    "steps": {
@@ -674,7 +703,8 @@
     "current_volume_mm3": 150,
     "interval_days": 365,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "vdt_gt600",
    "steps": {
@@ -700,7 +730,8 @@
     "current_volume_mm3": 110,
     "interval_days": 365,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "stable_discharge",
    "steps": {
@@ -726,7 +757,8 @@
     "current_volume_mm3": 110,
     "interval_days": 364,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "continue_no_growth"
   },
@@ -749,7 +781,8 @@
     "current_volume_mm3": 80,
     "interval_days": 91,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "continue_no_growth",
    "steps": {
@@ -776,7 +809,8 @@
     "current_volume_mm3": 80,
     "interval_days": 365,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "smaller_discharge",
    "steps": {
@@ -802,7 +836,8 @@
     "current_volume_mm3": 33,
     "interval_days": 365,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "stable_discharge"
   },
@@ -825,7 +860,8 @@
     "current_volume_mm3": 100,
     "interval_days": 365,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "stable_discharge",
    "steps": {
@@ -852,7 +888,8 @@
     "current_volume_mm3": 100,
     "interval_days": 91,
     "resolved": false,
-    "growth": "volumetry"
+    "growth": "volumetry",
+    "proven_malignant": false
    },
    "outcome": "continue_no_growth",
    "steps": {
@@ -874,7 +911,8 @@
     "nodule_count": 1,
     "spiculation": false,
     "diameter_mm": 7,
-    "prior_study": false
+    "prior_study": false,
+    "proven_malignant": false
    },
    "outcome": "ct_3m"
   },
@@ -895,7 +933,8 @@
     "prior_study": true,
     "resolved": false,
     "growth": "diameter_stable",
-    "interval_days": 91
+    "interval_days": 91,
+    "proven_malignant": false
    },
    "outcome": "continue_no_growth",
    "steps": {
@@ -919,7 +958,8 @@
     "prior_study": true,
     "resolved": false,
     "growth": "diameter_stable",
-    "interval_days": 365
+    "interval_days": 365,
+    "proven_malignant": false
    },
    "outcome": "ct_2yr_2d",
    "steps": {
@@ -943,7 +983,8 @@
     "prior_study": true,
     "resolved": false,
     "growth": "diameter_stable",
-    "interval_days": 729
+    "interval_days": 729,
+    "proven_malignant": false
    },
    "outcome": "ct_2yr_2d",
    "steps": {
@@ -967,7 +1008,8 @@
     "prior_study": true,
     "resolved": false,
     "growth": "diameter_stable",
-    "interval_days": 730
+    "interval_days": 730,
+    "proven_malignant": false
    },
    "outcome": "stable_2d_discharge",
    "steps": {
@@ -991,7 +1033,8 @@
     "prior_study": true,
     "resolved": false,
     "growth": "diameter_clear_growth",
-    "interval_days": 91
+    "interval_days": 91,
+    "proven_malignant": false
    },
    "outcome": "growth_workup_2d"
   },
@@ -1011,7 +1054,8 @@
     "diameter_mm": 7,
     "prior_study": true,
     "resolved": false,
-    "growth": "diameter_clear_growth"
+    "growth": "diameter_clear_growth",
+    "proven_malignant": false
    },
    "outcome": "growth_workup_2d"
   },
@@ -1032,7 +1076,8 @@
     "prior_study": true,
     "resolved": false,
     "growth": "diameter_indeterminate",
-    "interval_days": 365
+    "interval_days": 365,
+    "proven_malignant": false
    },
    "outcome": "volumetry_advised"
   },
@@ -1052,7 +1097,8 @@
     "diameter_mm": 7,
     "prior_study": true,
     "resolved": false,
-    "growth": "diameter_stable"
+    "growth": "diameter_stable",
+    "proven_malignant": false
    },
    "outcome": null,
    "needed": [
@@ -1076,7 +1122,8 @@
     "prior_study": true,
     "resolved": false,
     "growth": "diameter_stable",
-    "interval_days": 365
+    "interval_days": 365,
+    "proven_malignant": false
    },
    "outcome": "discharge_small"
   },
@@ -1086,7 +1133,8 @@
    "inputs": {
     "prior_study": true,
     "resolved": true,
-    "age": 65
+    "age": 65,
+    "proven_malignant": false
    },
    "outcome": "resolved"
   },
@@ -1105,7 +1153,8 @@
     "spiculation": false,
     "diameter_mm": 7,
     "prior_study": true,
-    "resolved": true
+    "resolved": true,
+    "proven_malignant": false
    },
    "outcome": "resolved"
   },
@@ -1126,7 +1175,8 @@
     "prior_study": true,
     "resolved": false,
     "growth": "volumetry",
-    "interval_days": 365
+    "interval_days": 365,
+    "proven_malignant": false
    },
    "outcome": null,
    "needed": [
@@ -1148,7 +1198,8 @@
     "nodule_count": 1,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 12
+    "diameter_mm": 12,
+    "proven_malignant": false
    },
    "outcome": "does_not_apply"
   },
@@ -1166,7 +1217,8 @@
     "nodule_count": 1,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 12
+    "diameter_mm": 12,
+    "proven_malignant": false
    },
    "outcome": "discharge_benign"
   },
@@ -1183,11 +1235,79 @@
     "nodule_count": 1,
     "spiculation": false,
     "prior_study": false,
-    "diameter_mm": 12
+    "diameter_mm": 12,
+    "proven_malignant": false
    },
    "outcome": null,
    "needed": [
     "age"
+   ]
+  },
+  {
+   "name": "nodule proven to be a metastasis: does not apply",
+   "origin": "ours",
+   "inputs": {
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 12,
+    "benign_features": false,
+    "proven_malignant": true
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "proven lung cancer, age not stated: does not apply",
+   "origin": "ours",
+   "inputs": {
+    "proven_malignant": true
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "nodule not proven malignant is in scope",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": true,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 12,
+    "proven_malignant": false
+   },
+   "outcome": "discharge_benign"
+  },
+  {
+   "name": "proven malignancy not stated",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": true,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 12
+   },
+   "outcome": null,
+   "needed": [
+    "proven_malignant"
    ]
   }
  ]

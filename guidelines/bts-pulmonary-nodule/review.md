@@ -185,13 +185,36 @@ by reading p13). Newly flagged: pathway.case5, pathway.case19, reference.sum.4, 
 earlier flags cleared the same way), checked by hand as before. age_term 0.05 as before (the coefficient sits in the
 S2 table image).
 
+Fix round 2 (independent clinical read, finding 1). Clause read in the source: S1 p13, "Groups not covered": "B.
+Adults where the nodule in question has been pathologically shown to represent lung cancer or a pulmonary metastasis
+from another cancer".
+
+| Item | Check |
+|---|---|
+| input `proven_malignant` (new): boolean, lesion scope, eligibility, no shared fact; true only on histology or cytology of this nodule; a known cancer elsewhere or a suspected malignancy does not make it true; locator S1 p13 Groups not covered B | ✓ |
+| `pathway` case 0: `age_band` lt18 or `proven_malignant` true → does_not_apply (either settles it alone); locator S1 p13 Groups not covered A and B | ✓ |
+| `pathway` cases 1-20: each now also requires `proven_malignant` false | ✓ |
+| outcome `does_not_apply`: classification names both exclusions; locator as case 0 | ✓ |
+| `pit.scope` kept (it already named B) | ✓ |
+
+Gate 2 now enumerates 184,320 combinations (was 92,160), under the 400,000 cap. Golden cases: every earlier case
+that reaches an outcome or asks for inputs now states `proven_malignant: false`; four new cases: proven metastasis
+(otherwise a full Brock description) → does_not_apply; proven lung cancer with nothing else stated → does_not_apply;
+not proven → discharge_benign; not stated → needed [proven_malignant]. Gates 1-4 pass.
+
+Gate 5 re-run (evidence.md): pathway.case0 0.73, outcome.does_not_apply 0.67 (inputs are not scored). Newly flagged:
+pathway.case20 0.46 and outcome.volumetry_advised.caveat0 0.47, both unchanged Figure 2 facts (image-only, Jev
+variance); pathway.case16 cleared. Checked by hand as before.
+
 **For Hassan (eligibility)**
 - DECISION: the `age` minimum drops from 18 to 0, so an under-18 age is accepted and excludes the card (it was
   refused and asked before).
 - The `age` input now cites the scope clause; the Brock age coefficient stays cited by the `age_term` step (S2).
-- "Groups not covered" B (a nodule already proven to be lung cancer or a metastasis) stays a pitfall, and
-  previous-or-active cancer stays a caveat and pitfall (decision T2): the guideline covers adults with current or
-  previous malignancy (Groups covered C and D).
+- DECISION (fix round 2): "Groups not covered" B (a nodule already proven on histology or cytology to be lung cancer
+  or a metastasis) is now a lesion-scoped eligibility input, `proven_malignant`, leading to does_not_apply. It is
+  settled only from this nodule's own finding and is otherwise asked, so most BTS cards now ask it as well as age.
+  Previous-or-active cancer stays a caveat and pitfall (decision T2): the guideline covers adults with current or
+  previous malignancy (Groups covered C and D), so a known cancer elsewhere never makes `proven_malignant` true.
 - DECISION (fix round 1): `prior_study` and `interval_days` are lesion-scoped (per nodule), so they are asked unless
   the nodule's own finding states the earlier CT and its interval; a comparison stated for another lesion never
   settles them.

@@ -48,9 +48,9 @@
     },
     {
       "id": "exclusion",
-      "label": "Lung cancer screening, immunocompromise or known primary cancer",
+      "label": "Lung cancer screening, immunocompromise at risk of infection, or known primary cancer at risk of metastases",
       "type": "boolean",
-      "how_stated": "patient-level, usually from the clinical history or request: true when the scan is a lung cancer screening CT, the patient is immunocompromised (e.g. transplant, chemotherapy, HIV) or has a known primary cancer; false when the history states none of these. Leave it unset when the history does not say.",
+      "how_stated": "patient-level, usually from the clinical history or request: true when the scan is a lung cancer screening CT, the patient is immunocompromised and at risk for infection, or has a known primary cancer and is at risk for metastases; false when the history states none of these. Leave it unset when the history does not say.",
       "locator": {
         "source": "S1",
         "page": 2,
@@ -437,8 +437,8 @@
           "result": "does_not_apply",
           "locator": {
             "source": "S1",
-            "page": 3,
-            "table": "Table note: recommendations do not apply to lung cancer screening, patients with immunosuppression, or patients with known primary cancer"
+            "page": 2,
+            "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system"
           }
         },
         {
@@ -1059,12 +1059,13 @@
       "classification": "Fleischner 2017 does not apply: lung cancer screening, age under 35, immunocompromised patient or known primary cancer.",
       "recommendation": "Manage per the clinical context (screening programme protocol, or the patient's oncology or immunosuppression care).",
       "caveats": [
-        "The Fleischner Society advises the ACR Lung-RADS system for lung cancer screening CT."
+        "The Fleischner Society advises the ACR Lung-RADS system for lung cancer screening CT.",
+        "Under 35: decide case by case; infection is more likely than cancer, so keep serial CT to a minimum."
       ],
       "locator": {
         "source": "S1",
-        "page": 3,
-        "table": "Table note: recommendations do not apply to lung cancer screening, patients with immunosuppression, or patients with known primary cancer"
+        "page": 2,
+        "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system"
       }
     }
   ],
