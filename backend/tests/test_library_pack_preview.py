@@ -955,3 +955,16 @@ async def test_the_prior_check_sees_the_history(monkeypatch, jev):
                                                               for q in p["questions"].values()))
     assert state.startswith("CLINICAL HISTORY:\nLung nodule on CT 2023.\n\nDICTATION (a CT report")
     assert "prior_study" in out.missing
+
+
+# review M1: phrasings that say a previous study may exist elsewhere or later ask, whatever Jev reads
+@pytest.mark.parametrize("sentence", ["No prior imaging available at time of reporting.",
+                                      "No prior imaging available on PACS.", "Prior imaging from Royal X to follow.",
+                                      "Previous CT awaiting transfer via IEP.", "Prior imaging pending.",
+                                      "Previous imaging unavailable."])
+async def test_a_prior_that_may_exist_elsewhere_or_later_asks(monkeypatch, jev, sentence):
+    from tests.test_library_partial import _bts
+    _prior_jev(jev, no=0.95, mentioned=0.05)
+    _model(monkeypatch)
+    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} {sentence}", "", {}, finding=PRIOR_FINDING)
+    assert "prior_study" in out.missing

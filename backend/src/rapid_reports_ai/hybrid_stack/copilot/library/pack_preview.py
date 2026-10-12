@@ -410,7 +410,10 @@ PRIOR_MENTIONED_MAX = 0.5
 PRIOR_MENTIONED = "The CLINICAL HISTORY or DICTATION mentions any previous imaging that exists or was performed"
 # a history that follows a known finding implies a previous study, whatever the dictation says: asked
 _FOLLOW_UP = re.compile(r"\b(?:known|follow[\s-]?up|surveillance|interval)\b", re.I)
-_ELSEWHERE = re.compile(r"\b(?:requested|awaited|another\s+trust|other\s+hospital|outside|external)\b", re.I)
+# a word saying a previous study may exist elsewhere or later ("available" is the common UK form: "none available
+# on PACS at the time of reporting"): asked
+_ELSEWHERE = re.compile(r"\b(?:requested|awaited|awaiting|pending|to\s+follow|available|unavailable|pacs|iep"
+                        r"|another\s+trust|other\s+hospital|outside|external)\b", re.I)
 _PRIOR_WORD = re.compile(r"\b(?:prior|prev|previous|previously|comparison|compared|earlier|old)\b", re.I)
 _SENTENCE = re.compile(r"[^.;\n]+(?:\.(?=\d)[^.;\n]*)*")
 
