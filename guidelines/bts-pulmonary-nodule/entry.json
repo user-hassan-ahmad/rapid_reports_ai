@@ -65,7 +65,9 @@
     "source": "S1",
     "page": 8,
     "table": "Figure 1 Initial approach to solid pulmonary nodules"
-   }
+   },
+   "min_value": 0,
+   "min_inclusive": false
   },
   {
    "id": "age",
@@ -76,7 +78,9 @@
    "locator": {
     "source": "S2",
     "table": "Table 2, model 2b: age"
-   }
+   },
+   "min_value": 18,
+   "max_value": 110
   },
   {
    "id": "sex",
@@ -116,7 +120,7 @@
    "id": "upper_lobe",
    "label": "Upper lobe location",
    "type": "boolean",
-   "how_stated": "true for a right or left upper lobe nodule (lingula counts as left upper lobe); false for middle or lower lobe",
+   "how_stated": "true for a right or left upper lobe nodule; false for middle or lower lobe (whether the lingula counts as upper lobe is not stated by the source: treat as left upper lobe)",
    "locator": {
     "source": "S2",
     "table": "Table 2, model 2b: nodule location"
@@ -131,7 +135,8 @@
    "locator": {
     "source": "S2",
     "table": "Table 2, model 2b: nodule count"
-   }
+   },
+   "min_value": 1
   },
   {
    "id": "spiculation",
@@ -159,7 +164,7 @@
    "label": "Baseline volume",
    "type": "number",
    "unit": "mm3",
-   "how_stated": "nodule volume on the baseline (first) CT in cubic millimetres, from volumetry software",
+   "how_stated": "nodule volume on the baseline (first) CT in cubic millimetres, from volumetry software; always above 0",
    "prerequisites": [
     {
      "ref": "prior_study",
@@ -170,14 +175,16 @@
     "source": "S1",
     "page": 8,
     "section": "Summary of recommendations: imaging follow-up"
-   }
+   },
+   "min_value": 0,
+   "min_inclusive": false
   },
   {
    "id": "current_volume_mm3",
    "label": "Current volume",
    "type": "number",
    "unit": "mm3",
-   "how_stated": "nodule volume on this CT in cubic millimetres, measured with the same volumetry software",
+   "how_stated": "nodule volume on this CT in cubic millimetres, measured with the same volumetry software; always above 0 (a resolved nodule has no volume: leave this unset)",
    "prerequisites": [
     {
      "ref": "prior_study",
@@ -188,14 +195,16 @@
     "source": "S1",
     "page": 8,
     "section": "Summary of recommendations: imaging follow-up"
-   }
+   },
+   "min_value": 0,
+   "min_inclusive": false
   },
   {
    "id": "interval_days",
    "label": "Interval from baseline CT",
    "type": "number",
    "unit": "days",
-   "how_stated": "days between the baseline CT and this CT, e.g. 3 months is about 91 days, 1 year is 365 days",
+   "how_stated": "days between the baseline CT and this CT, above 0, e.g. 3 months is about 91 days, 1 year is 365 days",
    "prerequisites": [
     {
      "ref": "prior_study",
@@ -206,7 +215,9 @@
     "source": "S1",
     "page": 9,
     "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
-   }
+   },
+   "min_value": 0,
+   "min_inclusive": false
   }
  ],
  "logic": [
@@ -1482,6 +1493,24 @@
      "source": "S1",
      "page": 8,
      "table": "Figure 1 Initial approach to solid pulmonary nodules"
+    }
+   },
+   {
+    "id": "pit.resolved",
+    "text": "A nodule that has resolved has no volume, so VDT cannot be calculated; this entry has no resolved-nodule route and asks for the volume instead.",
+    "locator": {
+     "source": "S1",
+     "page": 26,
+     "section": "Imaging follow-up: evidence review (resolving nodules)"
+    }
+   },
+   {
+    "id": "pit.2d",
+    "text": "Growth judged only on diameters (no volumetry) is not encoded: BTS then advises CT 2 years after baseline (Figure 2).",
+    "locator": {
+     "source": "S1",
+     "page": 9,
+     "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: 2D diameter arm"
     }
    }
   ]

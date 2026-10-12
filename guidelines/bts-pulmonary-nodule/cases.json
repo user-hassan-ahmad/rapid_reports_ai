@@ -768,6 +768,74 @@
     "interval_days": 365
    },
    "outcome": "stable_discharge"
+  },
+  {
+   "name": "1 year, equal volumes: VDT infinite, stable",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 100,
+    "interval_days": 365
+   },
+   "outcome": "stable_discharge",
+   "steps": {
+    "vdt_band": "gt600",
+    "volume_change_pct": 0
+   }
+  },
+  {
+   "name": "3 months, equal volumes: VDT infinite, CT at 1 year",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 100,
+    "interval_days": 91
+   },
+   "outcome": "continue_no_growth",
+   "steps": {
+    "vdt_band": "gt600",
+    "volume_change_pct": 0
+   }
+  },
+  {
+   "name": "no prior CT: growth steps not applicable, 7 mm",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": false
+   },
+   "outcome": "ct_3m"
   }
  ]
 }

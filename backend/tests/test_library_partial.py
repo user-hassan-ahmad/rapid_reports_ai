@@ -60,3 +60,13 @@ def test_a_single_possible_outcome_is_settled_even_when_a_table_key_is_unknown()
     assert t.outcome == "o1" and t.needed == [] and t.possible == ["o1"] and t.bounded
     t = E.evaluate(e, {"a": "y"})
     assert t.outcome is None and t.needed == ["b"] and t.possible == ["o2", "o3"]
+
+
+def test_partial_evaluation_samples_only_inside_a_declared_range(toy):
+    toy["inputs"][1].update(min_value=0, min_inclusive=False, max_value=7)      # size in (0, 7]
+    e = Entry.model_validate(toy)
+    xs = [v.value for v in E.domain(e, e.input("size"))]
+    assert xs and all(0 < x <= 7 for x in xs)
+    assert {E.evaluate(e, {"kind": "solid", "size": x, "risk": "low"}).outcome for x in xs} == {"none", "ct12"}
+    t = E.evaluate(e, {"kind": "solid", "risk": "low"})                         # never feeds 0 or 8+ to the engine
+    assert t.possible == ["ct12", "none"] and t.needed == ["size"]

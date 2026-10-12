@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from itertools import product
 
-from .engine import PH, EvaluationError, Trace, V, _inputs, _iv, domain, evaluate, render, run
+from .engine import PH, EvaluationError, Trace, V, _inputs, _iv, _num, domain, evaluate, render, run
 from .schema import (FACT_ROLES, AdjustStep, BandStep, Cases, DeriveStep, Entry, Manifest, RulesStep, ScoreStep,
                      TableStep, conds)
 
@@ -20,7 +20,7 @@ def check(entry: Entry, manifest: Manifest, cases: Cases | None) -> list[str]:
         return p                      # the later gates assume every reference resolves
     p += _bands(entry) + _locators(entry, manifest)
     if entry.tier == 1:
-        p += _enumerate(entry) + _golden(entry, cases)
+        p += _formulas(entry) + _enumerate(entry) + _golden(entry, cases)
     return p
 
 
@@ -178,6 +178,40 @@ def _enumerate(e: Entry) -> list[str]:
         if len(p) >= 20:
             p.append("… more")
             break
+    return p
+
+
+def _samples(i) -> list[float]:
+    """Values across a ranged input's valid range: near and at each bound, ordinary values, and far out."""
+    xs = set(i.representatives([])) | {-1.0, 0.0, 1.0, 1e-9, -1e-9, 1e6, -1e6}
+    for b in (i.min_value, i.max_value):
+        if b is not None:
+            xs |= {b, b + 1e-9, b - 1e-9, b + 1, b - 1, b + 1e6, b - 1e6}
+    return sorted(x for x in xs if i.in_range(x))
+
+
+def _formulas(e: Entry) -> list[str]:
+    """A derive step whose inputs all declare a valid range must compute for every value in that range: it is
+    sampled across the range (bounds, near-bounds, ordinary and far values). Steps on other values are skipped."""
+    p: list[str] = []
+    for s in e.logic:
+        if not isinstance(s, DeriveStep):
+            continue
+        ins = [e.input(r) for r in dict.fromkeys(s.refs())]
+        if not ins or any(i is None or i.type != "number" or not i.ranged for i in ins):
+            continue
+        grid = [_samples(i) for i in ins]
+        if math.prod(len(g) for g in grid) > 20_000:
+            p.append(f"{s.id}: too many range samples to check")
+            continue
+        for xs in product(*grid):
+            env = {i.id: V(value=x) for i, x in zip(ins, xs)}
+            try:
+                _num(s.expr, env)
+            except (EvaluationError, ArithmeticError) as ex:
+                shown = ", ".join(f"{i.id}={x:g}" for i, x in zip(ins, xs))
+                p.append(f"{s.id}: fails inside the declared ranges [{shown}]: {ex}")
+                break
     return p
 
 

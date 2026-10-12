@@ -58,7 +58,12 @@ def _coerce(i: InputDef, g: InputValue) -> V:
             raise ValueError(f"input {i.id}: state {g.state} is not allowed")
         return V(state=g.state)
     if i.type == "number":
-        return V(band=g.band) if g.band is not None else V(value=float(g.value))
+        if g.band is not None:
+            return V(band=g.band)
+        x = float(g.value)
+        if not i.in_range(x):
+            raise ValueError(f"input {i.id}: {x:g} is outside its valid range")
+        return V(value=x)
     if i.type == "boolean":
         if not isinstance(g.value, bool):
             raise ValueError(f"input {i.id}: {g.value!r} is not true or false")
@@ -130,9 +135,15 @@ def _num(n: Num, env: dict[str, V]) -> float:
     if n.op == "neg":
         return -a[0]
     if n.op == "exp":
-        return math.exp(a[0])
+        try:
+            return math.exp(a[0])
+        except OverflowError as ex:
+            raise EvaluationError(f"exp({a[0]}) overflows") from ex
     if n.op == "pow":
-        r = a[0] ** a[1]
+        try:
+            r = a[0] ** a[1]
+        except (ZeroDivisionError, OverflowError) as ex:
+            raise EvaluationError(f"pow({a[0]}, {a[1]}): {ex}") from ex
         if isinstance(r, complex):
             raise EvaluationError(f"pow({a[0]}, {a[1]}) is not real")
         return r
@@ -171,7 +182,10 @@ def _score(s: ScoreStep, env):
     z = s.intercept + math.fsum(
         t.coef * ((1.0 if env[t.ref].value == t.eq else 0.0) if t.eq is not None else float(env[t.ref].value))
         for t in s.terms)
-    return V(value=z if s.kind == "linear" else 1.0 / (1.0 + math.exp(-z))), ""
+    if s.kind == "linear":
+        return V(value=z), ""
+    p = 1.0 / (1.0 + math.exp(-z)) if z >= 0 else math.exp(z) / (1.0 + math.exp(z))   # never overflows
+    return V(value=p), ""
 
 
 def _cell(c: Any, v: V) -> bool:
@@ -253,6 +267,9 @@ def _edges(entry: Entry, input_id: str) -> list[float] | None:
     if any(not isinstance(s, BandStep) for s in users):
         return None
     pts = sorted({x for s in users for b in s.bands for x in (b.min, b.max) if x is not None})
+    i = entry.input(input_id)
+    if i is not None and i.ranged:                    # never sample outside the input's valid range
+        return i.representatives(pts)
     if not pts:
         return [0.0]
     mids = [(a + b) / 2 for a, b in zip(pts, pts[1:])]

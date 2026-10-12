@@ -65,7 +65,7 @@ intrapulmonary nodes, p7) ✓; subsolid (<5 mm SSN no follow-up, p8) ✓; discha
 "unfit for any treatment → discharge" (Fig 1) ✓; brock_low young-patient PET-CT (Fig 1 footnote $) ✓; extrapulmonary
 primary (p8) ✓; 2D diameters → 2 years (p8, Fig 2) ✓; discharge only on volumetry (Fig 2) ✓.
 
-## Jev check items (evidence.md: 36 of 77 below 0.5)
+## Jev check items (evidence.md, rerun after fix round 1: 38 of 79 below 0.5)
 
 All resolved by hand; no fact was wrong. Causes:
 - **Figure-only facts** (Figures 1 and 2 are images with no text layer): brock_band, interval_band, vdt_band,
@@ -80,6 +80,17 @@ All resolved by hand; no fact was wrong. Causes:
 - **Synthesis across pages**: pit.multiple (p8 "largest nodule"; count in Brock is our note), pit.vdt (p8 software
   variation, our "use the same one"), pit.volumetric and pit.brock (p7). ✓
 - **Our judgement**: pathway case 13 and smaller_discharge (shrinkage; see For Hassan). Accepted as flagged.
+- **Fix round 1 additions**: pit.2d (Figure 2's 2D-diameter arm, an image) ✓; pit.resolved (p26 discusses resolving
+  nodules; "no route here" is a statement about this entry) ✓. sum.4 flagged this run only (Jev variance; it
+  restates Figure 2) ✓.
+
+## Fix round 1: input ranges
+Declared valid ranges (the engine refuses values outside them, so pack preview asks instead):
+diameter_mm > 0; prior_volume_mm3, current_volume_mm3, interval_days > 0; nodule_count >= 1; age 18-110.
+The age minimum cites S1 p13 (children under 18 not covered); the 110 maximum is our plausibility bound, not sourced.
+The verify range check samples every derive step across these ranges: none fails. Equal volumes give an infinite VDT
+(band "over 600 days") with 0% change, so stable or CT at 1 year (two new golden cases). A resolved nodule (volume 0)
+is refused as a value and the volume is asked.
 
 ## For Hassan
 
@@ -102,3 +113,14 @@ All resolved by hand; no fact was wrong. Causes:
 9. **`benign_features` is an input**, so the pack asks for it whenever it is not dictated (Fig 1's first box).
 10. **BTS worked example** (0.3% Brock) cannot be reproduced without nodule count, family history and emphysema
     (0.30% if 10 nodules and neither); kept as a source case on outcome only.
+11. **"Clear evidence of growth"** (Fig 2) is not encoded apart from VDT: ≥25% growth with VDT over 400 days before
+    1 year goes to CT at 1 year, not work-up. Reason: at 1 year every ≥25% growth with VDT over 400 days falls in
+    the 400-600 or >600 arms, so "clear growth" cannot simply mean ≥25%. A radiologist's visual "clear growth" call
+    is not an input.
+12. **No growth route without volumetry**: with diameters only, the pack asks for volumes; Fig 2's 2D arm (CT at 2
+    years) is a caveat and pitfall only. UK practice often lacks volumetry.
+13. **Lingula**: S2 compares the upper lobes with the rest and never mentions the lingula; how_stated says to treat it
+    as left upper lobe (anatomical, our call).
+14. **Resolved nodule**: no route (volume 0 is refused, the volume is asked). A boolean `resolved` input leading to
+    discharge would be the fuller shape (reviewer suggestion); BTS p26 supports a low risk but gives no step.
+15. **Age range 18-110**: 18 from the guideline's scope; 110 is a plausibility bound of ours.

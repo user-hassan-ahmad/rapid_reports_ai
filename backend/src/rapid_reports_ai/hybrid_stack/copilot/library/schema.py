@@ -104,13 +104,43 @@ class InputDef(_M):
     how_stated: str = ""                                   # how a dictation would phrase it
     states: list[OptState] = Field(default_factory=list)
     prerequisites: list[Expr] = Field(default_factory=list)  # all must hold, else the input is not_applicable
+    min_value: float | None = None                         # a number's valid range; a value outside it is refused
+    min_inclusive: bool = True
+    max_value: float | None = None
+    max_inclusive: bool = True
     locator: Locator | None = None
 
     @model_validator(mode="after")
     def _options(self):
         if (self.type == "enum") != bool(self.options):
             raise ValueError(f"input {self.id!r}: options are given exactly when the type is enum")
+        if self.type != "number" and self.ranged:
+            raise ValueError(f"input {self.id!r}: only a number has a range")
+        if self.min_value is not None and self.max_value is not None and not (
+                self.min_value < self.max_value
+                or (self.min_value == self.max_value and self.min_inclusive and self.max_inclusive)):
+            raise ValueError(f"input {self.id!r}: empty range")
         return self
+
+    @property
+    def ranged(self) -> bool:
+        return self.min_value is not None or self.max_value is not None
+
+    def in_range(self, x: float) -> bool:
+        if x != x:                                         # NaN is never valid
+            return False
+        lo = self.min_value is None or (x >= self.min_value if self.min_inclusive else x > self.min_value)
+        hi = self.max_value is None or (x <= self.max_value if self.max_inclusive else x < self.max_value)
+        return lo and hi
+
+    def representatives(self, cuts: list[float]) -> list[float]:
+        """Values inside the range: every cut and inclusive bound inside it, and one value in each region that the
+        cuts and the range bounds divide it into."""
+        pts = sorted(set(cuts) | {b for b in (self.min_value, self.max_value) if b is not None})
+        if not pts:
+            return [0.0]
+        reps = {pts[0] - 1, pts[-1] + 1, *pts, *((a + b) / 2 for a, b in zip(pts, pts[1:]))}
+        return sorted(x for x in reps if self.in_range(x))
 
 
 class Band(_M):

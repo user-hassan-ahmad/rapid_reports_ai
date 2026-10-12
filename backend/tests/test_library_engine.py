@@ -115,3 +115,44 @@ def test_formula_edges(calc):
 def test_a_band_only_number_cannot_feed_a_formula(calc):
     t = E.evaluate(calc, {"a": {"band": "big"}, "b": 3, "flag": True, "grade": "g2"})
     assert _step(t, "r").state == "unknown" and _step(t, "a_band").value == "big"
+
+
+# --- declared input ranges ---------------------------------------------------------------------------------------
+
+def _ranged():
+    d = {**CALC, "inputs": [dict(i) for i in CALC["inputs"]]}
+    d["inputs"][0].update(min_value=0, min_inclusive=False)            # a > 0
+    d["inputs"][1].update(min_value=0, max_value=100)                  # 0 <= b <= 100
+    return Entry.model_validate(d)
+
+
+def test_a_number_outside_its_range_is_refused():
+    e = _ranged()
+    with pytest.raises(ValueError, match="outside its valid range"):
+        E.evaluate(e, {"a": 0, "b": 1})                                # exclusive minimum
+    with pytest.raises(ValueError, match="outside its valid range"):
+        E.evaluate(e, {"a": 1, "b": 100.5})
+    E._coerce(e.input("a"), E.as_value(1e-9)); E._coerce(e.input("b"), E.as_value(0))   # just inside, inclusive edge
+    E.evaluate(e, {"a": 1, "b": 100})
+
+
+def test_range_needs_a_number_and_a_non_empty_interval():
+    with pytest.raises(ValueError, match="only a number"):
+        Entry.model_validate({**CALC, "inputs": [{"id": "f", "label": "F", "type": "boolean", "min_value": 0}]})
+    bad = {**CALC, "inputs": [{"id": "a", "label": "A", "type": "number", "min_value": 5, "max_value": 5,
+                               "max_inclusive": False}]}
+    with pytest.raises(ValueError, match="empty range"):
+        Entry.model_validate(bad)
+
+
+def test_pow_of_zero_and_huge_logistic_do_not_escape_as_python_errors():
+    pw = {**CALC, "inputs": [{"id": "a", "label": "A", "type": "number"}],
+          "logic": [{"step": "derive", "id": "r", "expr": {"op": "pow", "args": [{"ref": "a"}, {"const": -0.5}]}},
+                    {"step": "score", "id": "p", "kind": "logistic", "terms": [{"ref": "a", "coef": -1}]},
+                    {"step": "rules", "id": "out", "cases": [{"when": {"ref": "a", "state": "present"}, "result": "o"}]}],
+          "result": "out", "outcomes": [{"id": "o", "classification": "o"}]}
+    e = Entry.model_validate(pw)
+    with pytest.raises(E.EvaluationError, match="pow"):
+        E.evaluate(e, {"a": 0})
+    t = E.evaluate(e, {"a": 1e6})                                      # exp(1e6) would overflow a naive logistic
+    assert next(s for s in t.steps if s.id == "p").value == 0.0

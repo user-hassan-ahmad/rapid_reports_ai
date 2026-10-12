@@ -88,3 +88,23 @@ def test_a_banded_score_needs_cases_either_side_of_its_cut_off(manifest):
         {"name": "lo", "origin": "ours", "inputs": {"x": 0.2}, "outcome": "a", "steps": {"s": 0.2}},
         {"name": "hi", "origin": "ours", "inputs": {"x": 0.5}, "outcome": "b", "steps": {"s": 0.5}}]})
     assert check(e, manifest, both) == []
+
+
+def _ln_entry(toy, **rng):
+    toy["inputs"].append({"id": "v", "label": "Volume", "type": "number", **rng})
+    toy["logic"].insert(0, {"step": "derive", "id": "lv", "locator": {"source": "S1", "page": 2},
+                            "expr": {"op": "ln", "args": [{"ref": "v"}]}})
+    return toy
+
+
+def test_a_formula_that_fails_inside_its_declared_range_is_a_problem(toy, manifest, cases):
+    p = _check(_ln_entry(toy, min_value=0), manifest, cases)                    # v = 0 allowed: ln 0
+    assert any("lv: fails inside the declared ranges" in x and "v=0" in x for x in p)
+
+
+def test_a_formula_safe_across_its_range_passes_and_unranged_inputs_are_skipped(toy, manifest, cases):
+    p = _check(_ln_entry(toy, min_value=0, min_inclusive=False), manifest, cases)
+    assert not any("lv:" in x and "fails" in x for x in p)
+    toy2 = _ln_entry(__import__("copy").deepcopy(toy))
+    toy2["inputs"][-1] = {"id": "v", "label": "Volume", "type": "number"}       # no range: not checked
+    assert not any("fails inside" in x for x in _check(toy2, manifest, cases))

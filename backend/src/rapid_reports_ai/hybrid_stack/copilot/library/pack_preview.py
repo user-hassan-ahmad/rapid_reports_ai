@@ -80,9 +80,10 @@ def _answer(e: Entry, i: InputDef, s: str) -> InputValue | None:
     if band is not None:
         return InputValue(band=band.id)
     try:
-        return InputValue(value=float(s))
+        x = float(s)
     except ValueError:
         return None
+    return InputValue(value=x) if i.in_range(x) else None     # out of range: still asked
 
 
 def _value(i: InputDef, item: RawItem) -> InputValue | None:
@@ -101,6 +102,8 @@ def _value(i: InputDef, item: RawItem) -> InputValue | None:
     try:
         x = float(item.value)
     except (TypeError, ValueError):
+        return None
+    if not i.in_range(x):                                     # e.g. a resolved nodule's volume of 0: ask instead
         return None
     ok = False
     for m in _NUM_UNIT.finditer(item.quote):

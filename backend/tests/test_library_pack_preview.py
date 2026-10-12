@@ -134,3 +134,13 @@ async def test_a_settled_outcome_that_cites_an_unknown_input_is_not_proposed(toy
     _model(monkeypatch)
     out = await PP.preview_pack(e, FINDINGS, "", {"kind": "subsolid"})
     assert out.proposal is None
+
+
+def test_an_out_of_range_number_is_dropped_so_the_input_is_asked(toy):
+    toy["inputs"][1].update(min_value=0, min_inclusive=False)
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
+    e = Entry.model_validate(toy)
+    i = e.input("size")
+    assert PP._value(i, PP.RawItem(input="size", value=0, quote="0 mm")) is None
+    assert PP._value(i, PP.RawItem(input="size", value=7, quote="7 mm")).value == 7
+    assert PP._answer(e, i, "0") is None and PP._answer(e, i, "7").value == 7
