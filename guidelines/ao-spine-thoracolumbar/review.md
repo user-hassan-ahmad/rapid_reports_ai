@@ -27,7 +27,7 @@ sum.1 (0.28): composite of the opening list of 3 parameters (p4) and the N and M
 
 1. Library note: the card carries the 2013 consensus paper only. Later AO Spine updates or the supplemental algorithm are not in the filed source and are not stated. Reports using "AO type A3" and similar are covered; reports using sub-modifiers beyond M1, M2 are not.
 2. Table 1's estimated case-count column (n and %) was left out; only the kappa column is carried. Say if you want it.
-3. Aliases (AOSpine, AO classification, "AO type A fracture" and similar) are library additions of how reports name the system; "TLICS" and "Magerl" are deliberately not aliases (different systems).
+3. Aliases (AOSpine, AO Spine classification, "AO type A fracture" and similar) are library additions of how reports name the system; "TLICS" and "Magerl" are deliberately not aliases (different systems).
 4. `applies_to.region` is `spine` (the library's existing vocabulary has no thoracolumbar value); the thoracolumbar scope is carried by `finding_type` and a pitfall. DECISION: confirm `spine` is acceptable for matching.
 5. The source gives no treatment rule or score per grade; none is added. The authors' attributed expectations (M1, ankylosed-spine extension injuries, type C; p10) are carried as attributed statements in sum.4 and pit.nomgmt.
 6. Independent read (clinical-read.md) fixes applied: no-treatment wording narrowed and authors' expectations added; display labelled as the 2013 consensus paper (status field left as the library convention); M1 qualifier 'seems stable from a bony standpoint'; A1 canal intact and A3 spinal canal; pit.sep split B versus C; modality XR added; kappa table title notes type A subtype kappas are single-vertebra cases only. Gate 5 re-run.

@@ -9,7 +9,7 @@
      "AO Spine thoracolumbar classification",
      "AOSpine thoracolumbar injury classification",
      "AOSpine TL classification",
-     "AO classification",
+     "AO Spine classification",
      "AO fracture type",
      "AO type A fracture",
      "AO type B injury",
@@ -20062,5 +20062,5 @@
    ]
   }
  },
- "version": "2dc526467bcc"
+ "version": "788f08c8e3f1"
 }
