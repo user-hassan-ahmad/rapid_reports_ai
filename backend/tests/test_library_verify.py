@@ -126,3 +126,31 @@ def test_enumeration_keeps_an_input_an_outcome_placeholder_names(toy, manifest, 
     from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
     e = Entry.model_validate(toy)
     assert "risk" in {i.id for i in V._enumerated_inputs(e)} and "margin" not in {i.id for i in V._enumerated_inputs(e)}
+
+
+DISCRETE_SCORE = {
+    "id": "dscore", "version": "1", "topic": "d", "issuer": "T", "system": "d", "display": "D", "edition": "1",
+    "tier": 1, "applies_to": {},
+    "inputs": [{"id": "k", "label": "K", "type": "enum", "options": ["a", "b"], "locator": {"source": "S1"}}],
+    "logic": [
+        {"step": "score", "id": "s", "kind": "linear", "terms": [{"ref": "k", "coef": 1, "eq": "b"}],
+         "locator": {"source": "S1"}},
+        {"step": "derive", "id": "d", "expr": {"op": "div", "args": [{"ref": "s"}, {"ref": "s"}]},
+         "locator": {"source": "S1"}},
+        {"step": "band", "id": "d_band", "ref": "d", "locator": {"source": "S1"},
+         "bands": [{"id": "lo", "label": "low", "max": 0.5}, {"id": "hi", "label": "high", "min": 0.5}]},
+        {"step": "rules", "id": "r", "cases": [
+            {"when": {"ref": "d_band", "eq": "lo"}, "result": "x", "locator": {"source": "S1"}},
+            {"when": {"ref": "d_band", "eq": "hi"}, "result": "y", "locator": {"source": "S1"}}]}],
+    "result": "r",
+    "outcomes": [{"id": "x", "classification": "x", "locator": {"source": "S1"}},
+                 {"id": "y", "classification": "y", "locator": {"source": "S1"}}],
+}
+
+
+def test_gate_2_runs_a_discrete_only_chain_above_a_band(manifest):
+    """A band whose upstream has no number is not a cut point for the enumeration: its discrete inputs are enumerated
+    and the chain is executed, so a defect only some combination hits (0/0 when k = a) fails the gate."""
+    e = Entry.model_validate(DISCRETE_SCORE)
+    assert [i.id for i in V._enumerated_inputs(e)] == ["k"]
+    assert any("0/0" in p for p in check(e, manifest, None))

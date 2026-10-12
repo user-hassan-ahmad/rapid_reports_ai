@@ -142,9 +142,26 @@ def _txt(v) -> str:
     return str(v.value) if v.state == "present" else f"@{v.state}"
 
 
+def _numeric_upstream(e: Entry, ref: str) -> bool:
+    """Whether a number input feeds this value, through any chain of steps."""
+    seen, todo = set(), [ref]
+    while todo:
+        k = todo.pop()
+        if k in seen:
+            continue
+        seen.add(k)
+        i, s = e.input(k), e.step(k)
+        if i is not None and i.type == "number":
+            return True
+        if s is not None:
+            todo += s.refs()
+    return False
+
+
 def _enumerated_inputs(e: Entry) -> list:
-    """The discrete inputs the enumeration needs: those the result reaches without passing through a band step (every
-    band step is overridden with each band id, so what feeds it cannot matter), the inputs their prerequisites name,
+    """The discrete inputs the enumeration needs: those the result reaches without passing through a band step fed by a
+    number (that band is overridden with each band id, so what feeds it cannot change the outcome; a band fed only by
+    discrete inputs is passed through, so the chain above it is still executed for every combination), the inputs their prerequisites name,
     and any input an outcome placeholder names. Brock's risk factors, for example, reach the result only through the
     banded score, so enumerating them would only multiply identical combinations."""
     need, todo = set(), [e.result]
@@ -156,7 +173,7 @@ def _enumerated_inputs(e: Entry) -> list:
             continue
         need.add(k)
         s, i = e.step(k), e.input(k)
-        if s is not None and not isinstance(s, BandStep):
+        if s is not None and (not isinstance(s, BandStep) or not _numeric_upstream(e, s.ref)):
             todo += s.refs()
         if i is not None:
             todo += [c.ref for p in i.prerequisites for c in conds(p)]
