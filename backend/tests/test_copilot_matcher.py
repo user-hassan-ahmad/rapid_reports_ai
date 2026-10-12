@@ -487,3 +487,24 @@ async def test_match_releases_the_connection_before_the_model(db_session, monkey
     monkeypatch.setattr(M, "_call", call)
     cards = await M.match(db_session, "CT chest", "", U)
     assert seen == [False] and cards[0].key == "fleischner@2017" and cards[0].known
+
+
+from rapid_reports_ai.hybrid_stack.copilot.library import bundle as L
+
+
+def _toy_lib(toy, *extra):
+    entries = {f"{e['id']}@{e['version']}": {"entry": e, "sources": []} for e in (toy, *extra)}
+    return L.Library({"version": "v1", "entries": entries})
+
+
+async def test_a_library_pack_hit_becomes_a_pack_card(db_session, monkeypatch, toy):
+    sib = {**toy, "id": "toy-other", "issuer": "OTHER", "display": "Other 2021", "aliases": ["other nodule"]}
+    monkeypatch.setattr(L, "get", lambda: _toy_lib(toy, sib))
+
+    async def call(prompt):
+        assert "- toy-nodule@1.0: Toy 2020 [aliases: toy nodule | toy guideline]" in prompt
+        return _raw(u1=[_sys("Toy Nodule", "2020")])
+    monkeypatch.setattr(M, "_call", call)
+    cards = await M.match(db_session, "CT chest", "", U[:1])
+    assert [(c.key, c.branch, c.skeleton, c.status, c.known, c.siblings) for c in cards] == \
+        [("toy-nodule@1.0", "Pack", ["Pack"], "verified", True, ["toy-other@1.0"])]

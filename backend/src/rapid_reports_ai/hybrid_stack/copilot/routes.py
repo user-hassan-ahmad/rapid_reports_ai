@@ -31,6 +31,8 @@ from . import matcher as M
 from . import registry as Reg
 from . import tnm
 from .ask import QA, AskResult, Context, ask
+from .library import bundle as L
+from .library.pack_preview import PACK_BRANCH, as_entry, preview_pack
 from .fetch import OVERVIEW, resolve_guideline
 from .matcher import Finding, match
 from .preview import preview
@@ -139,6 +141,8 @@ def _check_card(card: CardIn) -> None:
     """400 unless the key is well formed and, when it is not TNM and not already held, is the key the card's own
     name and version make: a client may not plant an arbitrary key in the shared registry."""
     if tnm.is_tnm(card.key):
+        return
+    if L.get().lookup(card.key) is not None:
         return
     if len(card.key) > KEY_MAX or not _KEY.match(card.key):
         raise HTTPException(status_code=400, detail="Bad guideline key")
@@ -261,6 +265,25 @@ def _offline(key: str) -> Entry | None:
     return tnm.entry(site) if site else None
 
 
+def _pack(key: str):
+    """The library pack for a card key, as (pack, card-shaped entry), or None."""
+    lib = L.get()
+    e = lib.lookup(key)
+    return (e, as_entry(e, lib.sources(e.key))) if e is not None and e.tier == 1 else None
+
+
+async def _pack_result(pack, req: OpenRequest, t0: float) -> OpenResult:
+    """Offline and engine-decided: never a fetch. Fail open, bounded, as _branch_and_preview."""
+    e, view = pack
+    try:
+        prev = await asyncio.wait_for(preview_pack(e, req.findings[:6000], req.clinical_history[:2000], req.answered),
+                                      PREVIEW_TIMEOUT_S)
+    except Exception as ex:   # TimeoutError included
+        logger.warning("[copilot.routes] pack preview %s: %s", type(ex).__name__, str(ex)[:200])
+        prev = Preview()
+    return OpenResult(entry=_public(view), preview=prev, branch=PACK_BRANCH, ms=_ms(t0))
+
+
 @router.post("/match", response_model=MatchResult)
 async def copilot_match(req: MatchRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _require()
@@ -277,6 +300,9 @@ async def copilot_open(req: OpenRequest, user: User = Depends(get_current_user))
     _check_card(req.card)
     t0 = time.perf_counter()
     card = req.card.card()
+    pack = _pack(card.key)
+    if pack is not None:
+        return await _pack_result(pack, req, t0)
     if tnm.is_tnm(card.key):
         entry = _offline(card.key)
     else:
@@ -295,6 +321,9 @@ async def copilot_preview(req: OpenRequest, user: User = Depends(get_current_use
     _require()
     t0 = time.perf_counter()
     card = req.card.card()
+    pack = _pack(card.key)
+    if pack is not None:
+        return await _pack_result(pack, req, t0)
     if tnm.is_tnm(card.key):
         entry = _offline(card.key)
     else:

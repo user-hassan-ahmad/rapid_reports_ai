@@ -22,6 +22,8 @@ from ..schemas import scan_key
 from . import jev as J
 from . import registry as R
 from . import tnm
+from .library import bundle as L
+from .library.pack_preview import PACK_BRANCH
 from .types import Card, Publication
 
 logger = logging.getLogger(__name__)
@@ -335,6 +337,12 @@ async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool 
         return None
     if s.name.strip().upper() == "TNM":
         return await _tnm_card(f, s, history, gate)
+    lib = L.get()
+    pack = lib.find(s.name, s.version) or lib.find(s.name)
+    if pack is not None and pack.tier == 1:
+        return Card(key=pack.key, name=pack.display, version=pack.edition, finding_id=f.id, why=s.why,
+                    branch=PACK_BRANCH, skeleton=[PACK_BRANCH], publication=Publication(body=pack.issuer, year=pack.edition),
+                    known=True, status="verified", siblings=[x.key for x in lib.siblings(pack)])
     row = await _resolve(rows, f, s, history)
     if row is not None:
         e = R.entry(row)
@@ -387,7 +395,8 @@ async def match(db: Session, scan_type: str, history: str, findings: list[Findin
     todo = [f for f in findings if keyf(f) not in _CACHE]
     if todo:
         try:
-            raw = await _call(_prompt(scan_type, history, todo, rows.known_text()))
+            known = "\n".join(x for x in (rows.known_text(), L.get().known_text()) if x)
+            raw = await _call(_prompt(scan_type, history, todo, known))
             got = {_rid(rf.id): rf.systems for rf in raw.findings}
             if any(_rid(f.id) in got for f in todo):
                 for f in todo:

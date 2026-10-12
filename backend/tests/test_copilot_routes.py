@@ -468,3 +468,43 @@ def test_open_resolve_crash_fails_open(authed, monkeypatch):
 def test_log_rejects_an_oversized_copilot_record(authed):
     big = {"threads": ["x" * 70000]}
     assert authed.post("/api/canvas/stack/log", json={"session_id": "s9", "copilot": big}).status_code == 413
+
+
+from rapid_reports_ai.hybrid_stack.copilot.library import bundle as L
+from rapid_reports_ai.hybrid_stack.copilot.library import pack_preview as PP
+
+TOY_SOURCES = [{"id": "S1", "role": "primary", "title": "Toy guideline", "issuer": "TOY", "edition": "2020",
+                "url": "https://example.org/toy"}]
+
+
+@pytest.fixture
+def toy_lib(monkeypatch, toy):
+    lib = L.Library({"version": "v1", "entries": {"toy-nodule@1.0": {"entry": toy, "sources": TOY_SOURCES}}})
+    monkeypatch.setattr(L, "get", lambda: lib)
+
+    async def resolve(db, card):
+        raise AssertionError("a pack is never fetched")
+
+    async def call(system, prompt):
+        return PP.RawSettle(settled=[PP.RawItem(input="kind", value="solid", quote="solid"),
+                                     PP.RawItem(input="size", value=7, quote="7 mm")])
+    monkeypatch.setattr(CR, "resolve_guideline", resolve)
+    monkeypatch.setattr(PP, "_call", call)
+    return lib
+
+
+PACK_CARD = {"key": "toy-nodule@1.0", "name": "Toy 2020", "version": "2020", "finding_id": "u1", "branch": "Pack"}
+
+
+def test_open_a_library_pack(authed, toy_lib):
+    d = authed.post("/api/canvas/stack/guidelines/open", json={
+        "card": PACK_CARD, "findings": "7 mm solid nodule.", "answered": {"risk": "high"}}).json()
+    assert d["error"] is None and d["entry"]["key"] == "toy-nodule@1.0" and d["branch"] == "Pack"
+    assert d["preview"]["proposal"]["recommendation"] == "CT at 6 months"
+    assert d["entry"]["sources"][0]["url"] == "https://example.org/toy"
+
+
+def test_preview_a_library_pack(authed, toy_lib):
+    d = authed.post("/api/canvas/stack/guidelines/preview", json={
+        "card": PACK_CARD, "findings": "7 mm solid nodule.", "answered": {}}).json()
+    assert d["preview"]["missing"] == ["risk"] and len(d["preview"]["possible"]) == 2
