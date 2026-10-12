@@ -47,29 +47,41 @@ def test_exact_quote_matches_across_symbol_spellings_and_trailing_stop():
     assert J.quote_in("solid nodule >=6mm diameter seen.", "solid nodule ≥ 6 mm diameter")
 
 
-async def test_evidence_skips_jev_for_exact_quotes(monkeypatch):
+async def test_evidence_sends_every_claim_to_jev_even_exact_quotes(monkeypatch):
+    """Code never approves a claim on exact match alone: an exact quote still goes to Jev, because a verbatim
+    quote can belong to the wrong branch, edition or guideline — only Jev's strict wording can tell."""
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
     seen = {}
     claims = [("No routine follow-up advised", "exact"), ("CT at 3 months", "reworded claim")]
-    scores = await J.evidence("SOURCE … No routine follow-up advised …", claims, transport=_jev({"c_1": 0.85}, seen))
-    assert scores == [1.0, 0.85]
-    assert list(seen["questions"]) == ["c_1"]
+    scores = await J.evidence("SOURCE … No routine follow-up advised …", claims,
+                              transport=_jev({"c_0": 0.9, "c_1": 0.85}, seen))
+    assert scores == [0.9, 0.85]
+    assert list(seen["questions"]) == ["c_0", "c_1"]
+    assert "exactly the guideline, edition and category named" in seen["questions"]["c_0"]["instructions"]
 
 
-async def test_evidence_number_mismatch_sends_an_exact_quote_to_jev(monkeypatch):
-    """A quote that matches verbatim but with a different interval must not short-circuit to 1.0 — the numbers in
-    the claim have to appear in the quote too."""
+async def test_evidence_drops_a_verbatim_sibling_branch_quote_scored_low_by_jev(monkeypatch):
+    """A verbatim quote from a sibling branch's row passes the exact-match fast path, but it is still sent to
+    Jev, and a low score drops it — the fast path cannot see branch context."""
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
     seen = {}
-    source = "Follow-up CT recommended at 3 months for this finding"
-    claims = [("Follow-up CT recommended at 3 months for this finding", "Follow-up CT recommended at 6 months")]
-    scores = await J.evidence(source, claims, transport=_jev({"c_0": 0.2}, seen))
-    assert scores == [0.2]
+    source = "SOURCE … No routine follow-up advised …"
+    quote = "No routine follow-up advised"
+    claim = "In Fleischner, for Subsolid: No routine follow-up advised"   # wrong branch, same wording
+    assert J.exact_signals(source, [(quote, claim)]) == [True]   # the fast path would have passed it
+    scores = await J.evidence(source, [(quote, claim)], transport=_jev({"c_0": 0.1}, seen))
+    assert scores == [0.1]
     assert list(seen["questions"]) == ["c_0"]
 
 
-async def test_evidence_without_jev_need_makes_no_call():
-    assert await J.evidence("abc def ghi jkl", [("abc def ghi jkl", "abc def ghi jkl")]) == [1.0]
+async def test_evidence_empty_claims_makes_no_call():
+    assert await J.evidence("abc def ghi jkl", []) == []
+
+
+def test_exact_signals_reports_the_exact_match_fast_path():
+    source = "Nodules <6 mm: No routine follow-up noted."
+    assert J.exact_signals(source, [("No routine follow-up noted", "No routine follow-up noted")]) == [True]
+    assert J.exact_signals(source, [("CT at 3 months", "CT at 3 months")]) == [False]
 
 
 async def test_answers(monkeypatch):

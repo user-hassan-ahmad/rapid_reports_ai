@@ -76,12 +76,17 @@ Nothing reaches the report unless the radiologist presses Apply or ticks it.
     afterwards, in the preview.
 19. **The case's branch comes first; the rest fill in the background.** The card is ready once *its* branch is
     checked. The other branches fill afterwards, so the registry holds the whole system for every later case.
-20. **Jev checks meaning; code only does an exact-match first pass.**
+20. **Jev judges every evidence claim; code can only remove, never approve.**
     - Branch coverage: "SOURCE states the criteria or management for X".
-    - Evidence: a claim whose quote isn't an exact match goes to Jev ("SOURCE states: claim"). Extracted tables lose
-      their layout, so exact matching alone would reject correct quotes.
+    - Evidence: every output's claim, and the branch rule, goes to Jev in one batch — "The SOURCE states this for
+      exactly the guideline, edition and category named, with the same values (a statement the SOURCE makes only
+      about a different category, edition or guideline does not count): claim". There is no exact-match shortcut:
+      a verbatim quote can belong to a sibling branch, edition or guideline, and only Jev's strict wording can tell.
+      The exact match is still computed and logged alongside the score, as a signal for the seed lab, never as a
+      pass. Bar: 0.5 (lab 2026-10-12, 24 claims x 2 runs on real fetched sources: true min 0.73, false max 0.19,
+      wrong-branch max 0.08).
     - Ask-time gaps: Jev decides whether the stored entry already answers a question, before any new search.
-    - Each threshold comes from the lab, set where false yes answers reach zero.
+    - Other thresholds (branch coverage) remain provisional, set where false yes answers reach zero in the lab.
 21. **The registry grows where radiologists ask.** A question the entry can't answer runs one targeted query within
     that guideline. The answer is grounded in the new chunks, which are added to the entry as supplementary evidence
     (still a draft until verified).
@@ -262,10 +267,13 @@ Shared by card open and by ask. The steps:
    management for: <branch>". If the case's branch is below the bar, one more query runs
    (`<name> <version> <branch> recommendations`) over pages not already read, then extract and Jev again. Still below the bar → `not_available`.
 4. **Structure (gpt-oss).** The branch is filled (inputs, rule, outputs) from the chunks, with a quote per output.
-5. **Evidence.** For each output, its quote is first checked for an exact match in the chunks: whitespace, case,
-   punctuation and dash variants are normalised, the match must fall on token boundaries, the quote must be at least
-   4 tokens long, and every number in the claim must appear in the quote. Otherwise Jev answers "SOURCE states: <when> → <classification>; <recommendation>". Unsupported
-   outputs are dropped. A branch with no supported outputs becomes `not_available`.
+5. **Evidence.** Every output's claim, and the branch rule (riding in the same batch, with no quote of its own),
+   is judged by Jev — the strict wording from §2.20, bar 0.5. The exact-match check (whitespace, case, punctuation
+   and dash variants normalised, token boundaries, quote at least 4 tokens, every number in the claim present in
+   the quote) is still computed and logged alongside the Jev score, but it never approves a claim by itself: a
+   verbatim quote can belong to the wrong branch, edition or guideline. Unsupported outputs are dropped; a
+   low-scored rule is blanked without dropping the outputs. A branch with no supported outputs becomes
+   `not_available`.
 6. **Save:** an upsert as `draft`, merging branches. A `verified` entry is never overwritten. The card's preview runs
    now.
 7. **Background fill:** steps 2–5 for each remaining skeleton branch, using Q3+ (one query per branch), saved as each

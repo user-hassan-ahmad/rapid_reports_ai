@@ -209,17 +209,45 @@ async def test_not_available_branch_stores_no_structure(db_session, monkeypatch)
     assert b.state == "not_available" and b.rule == "" and b.inputs == [] and b.outputs == []
 
 
-async def test_rule_with_numbers_absent_from_source_is_blanked(db_session, monkeypatch):
+async def test_rule_jev_scored_low_is_blanked(db_session, monkeypatch):
+    """The rule rides in the same evidence() batch as the outputs; a low Jev score on the rule claim blanks it
+    without touching the outputs' own scores."""
     st = F.Structured(branch=_branch("Solid").model_copy(update={"rule": "follow up at 12 months"}))
     _stub(monkeypatch, structured=st)
-    assert (await F.resolve_guideline(db_session, CARD)).content.branch("Solid").rule == ""
+
+    async def evidence_(source, claims, transport=None):
+        return [0.1 if "rule:" in c else 1.0 for _, c in claims]
+    monkeypatch.setattr(F.J, "evidence", evidence_)
+    b = (await F.resolve_guideline(db_session, CARD)).content.branch("Solid")
+    assert b.rule == "" and b.outputs   # outputs still kept; only the rule was dropped
 
 
-async def test_rule_with_numbers_in_source_is_kept(db_session, monkeypatch):
+async def test_rule_jev_scored_high_is_kept(db_session, monkeypatch):
     st = F.Structured(branch=_branch("Solid").model_copy(update={"rule": "routine follow-up not needed"}))
-    _stub(monkeypatch, structured=st)
+    _stub(monkeypatch, structured=st)   # default evidence=1.0 covers the rule claim too
     b = (await F.resolve_guideline(db_session, CARD)).content.branch("Solid")
     assert b.rule == "routine follow-up not needed" and b.fetched_at
+
+
+async def test_rule_claim_is_batched_with_output_claims_in_one_call(db_session, monkeypatch):
+    seen = []
+
+    async def evidence_(source, claims, transport=None):
+        seen.append(claims)
+        return [1.0 for _ in claims]
+    _stub(monkeypatch)
+    monkeypatch.setattr(F.J, "evidence", evidence_)
+    await F.resolve_guideline(db_session, CARD)
+    assert len(seen) == 1 and len(seen[0]) == 2   # one output claim + one rule claim, one call
+    assert seen[0][-1][1] == "In Fleischner 2017, for Solid: rule: r"
+
+
+async def test_exact_signals_logged_not_used_to_approve(db_session, monkeypatch, caplog):
+    import logging
+    _stub(monkeypatch)
+    with caplog.at_level(logging.DEBUG, logger="rapid_reports_ai.hybrid_stack.copilot.fetch"):
+        await F.resolve_guideline(db_session, CARD)
+    assert any("exact=" in r.getMessage() for r in caplog.records)
 
 
 def _seed_not_available(db, days_ago):

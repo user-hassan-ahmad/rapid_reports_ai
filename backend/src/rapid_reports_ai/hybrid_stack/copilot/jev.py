@@ -1,6 +1,8 @@
-"""Jev gates of the targeted fetch (spec §2.20, §5.3, §5.5): judgements about meaning over source text. Code does
-only the exact-quote first pass. Thresholds are provisional until the seed lab (plan Task 13) sets them where false
-yes answers reach zero."""
+"""Jev gates of the targeted fetch (spec §2.20, §5.3, §5.5): judgements about meaning over source text. Jev judges
+every evidence claim; code can only remove a claim (score below EVIDENCE_MIN), never approve one by exact match
+alone (exact_signals is a logged signal, not a shortcut) — a verbatim quote can belong to the wrong branch,
+edition or guideline. Other thresholds (COVER_MIN, ANSWERS_MIN) remain provisional until the seed lab (plan
+Task 13) sets them where false yes answers reach zero."""
 from __future__ import annotations
 
 import asyncio
@@ -19,7 +21,9 @@ WINDOW_CAP = 6             # a source past this many windows is capped, not sent
 SOURCE_MAX = STATE_MAX * WINDOW_CAP   # the structure step (Task 5) should cap a guideline's stored source to this
 
 COVER_MIN = 0.7            # provisional: SOURCE states the criteria or management for a branch
-EVIDENCE_MIN = 0.8         # provisional: SOURCE states a claim whose quote is not an exact match
+# lab 2026-10-12 (24 claims x 2 runs, strict wording): true min 0.73, false max 0.19 (wrong-branch <=0.08);
+# re-check on the Task 12 seed fixture
+EVIDENCE_MIN = 0.5         # every evidence claim is judged by Jev; the exact-match fast path is a logged signal only
 ANSWERS_MIN = 0.7          # provisional: the stored material answers a radiologist's question
 
 _DASH = str.maketrans({"–": "-", "—": "-", "‐": "-", "−": "-"})
@@ -112,17 +116,26 @@ async def coverage(source: str, branches: list[str], transport=None) -> dict[str
     return {b: got[f"b_{i}"] for i, b in enumerate(branches)}
 
 
+def exact_signals(source: str, claims: list[tuple[str, str]]) -> list[bool]:
+    """Per (quote, claim): whether the quote is an exact match whose numbers also match the claim. Logged
+    alongside Jev's score, never used to approve a claim — a verbatim quote from a sibling branch or edition
+    passes this fast path too, and only Jev can see that the context is wrong."""
+    return [quote_in(source, q) and _numbers_covered(c, q) for q, c in claims]
+
+
 async def evidence(source: str, claims: list[tuple[str, str]], transport=None) -> list[float]:
-    """Per (quote, claim): 1.0 when the quote is an exact match whose numbers also match the claim; otherwise
-    P(the SOURCE states the claim), from whichever window shows it."""
-    out: list[float] = [1.0 if quote_in(source, q) and _numbers_covered(c, q) else -1.0 for q, c in claims]
-    need = {f"c_{i}": {"type": "noul", "instructions": f"The SOURCE states this, with the same values: {c}"}
-            for i, (_, c) in enumerate(claims) if out[i] < 0}
-    if need:
-        got = await _ask_windowed(source, need, transport)
-        for k, v in got.items():
-            out[int(k[2:])] = v
-    return out
+    """Per (quote, claim): P(the SOURCE states the claim for exactly the guideline, edition and category named),
+    from whichever window shows it. Every claim goes to Jev — there is no exact-match shortcut (see
+    exact_signals): a verbatim quote can belong to the wrong branch, edition or guideline, and only Jev's strict
+    wording below can tell."""
+    if not claims:
+        return []
+    qs = {f"c_{i}": {"type": "noul", "instructions": (
+        "The SOURCE states this for exactly the guideline, edition and category named, with the same values "
+        "(a statement the SOURCE makes only about a different category, edition or guideline does not count): "
+        f"{c}")} for i, (_, c) in enumerate(claims)}
+    got = await _ask_windowed(source, qs, transport)
+    return [got[f"c_{i}"] for i in range(len(claims))]
 
 
 async def answers(material: str, question: str, transport=None) -> float:

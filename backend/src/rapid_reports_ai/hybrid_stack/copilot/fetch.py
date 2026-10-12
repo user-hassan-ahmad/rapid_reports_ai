@@ -1,6 +1,7 @@
 """The targeted fetch (spec §5.3): source first, the case's branch first. Search by identity, Jev checks the
-branch is covered, gpt-oss structures it with a quote per output, Jev checks every quote that is not an exact
-match, the entry is upserted as a draft; the other skeleton branches fill in the background."""
+branch is covered, gpt-oss structures it with a quote per output, Jev judges every output and the branch rule in
+one batch (the exact-match signal is logged only, never a shortcut), the entry is upserted as a draft; the other
+skeleton branches fill in the background."""
 from __future__ import annotations
 
 import asyncio
@@ -119,6 +120,14 @@ def _claim(card: Card, branch: str, o) -> str:
     return f"{head}: {body}" if body else head
 
 
+def _rule_claim(card: Card, branch: str, rule: str) -> str:
+    """The branch's decision rule as a plain sentence with the same context as _claim, so Jev judges it in the
+    same batch as the outputs (it has no quote of its own to exact-match against)."""
+    term = _term(branch)
+    head = f"In {_ident(card)}" + (f", for {term}" if term else "")
+    return f"{head}: rule: {rule}"
+
+
 def _loop_locks() -> dict[str, asyncio.Lock]:
     return _LOCKS.setdefault(asyncio.get_running_loop(), {})
 
@@ -153,13 +162,24 @@ async def _fetch_branch(card: Card, branch: str, queries: list[str]) -> tuple[St
     if cover < J.COVER_MIN:
         return None, Branch(name=branch, state="not_available"), chunks, sources
     st = await _structure(card.name, card.version, term or _OVERVIEW_LABEL, text)
-    claims = [(o.quote, _claim(card, branch, o)) for o in st.branch.outputs]
-    scores = await J.evidence(text, claims) if claims else []
-    kept = [o for o, s in zip(st.branch.outputs, scores) if s >= J.EVIDENCE_MIN]
+    outputs = st.branch.outputs
+    rule = st.branch.rule
+    claims = [(o.quote, _claim(card, branch, o)) for o in outputs]
+    # The rule has no quote of its own; it rides in the same Jev batch as the outputs rather than a call on its
+    # own, and is judged by the same strict wording (context included) as everything else.
+    if rule:
+        claims = claims + [(rule, _rule_claim(card, branch, rule))]
+    if claims:
+        exact = J.exact_signals(text, claims)
+        scores = await J.evidence(text, claims)
+        logger.debug("[copilot.fetch] %s/%s exact=%s scores=%s", card.key, branch, exact, scores)
+    else:
+        scores = []
+    output_scores, rule_score = scores[:len(outputs)], (scores[len(outputs)] if rule else None)
+    kept = [o for o, s in zip(outputs, output_scores) if s >= J.EVIDENCE_MIN]
     if not kept:
         return st, Branch(name=branch, state="not_available"), chunks, sources
-    # The rule is free text with no quote of its own: a number the source does not contain blanks it.
-    rule = st.branch.rule if J._numbers_covered(st.branch.rule, text) else ""
+    rule = rule if rule_score is not None and rule_score >= J.EVIDENCE_MIN else ""
     b = st.branch.model_copy(update={"name": branch, "outputs": kept, "rule": rule, "state": "checked"})
     return st, b, chunks, sources
 
