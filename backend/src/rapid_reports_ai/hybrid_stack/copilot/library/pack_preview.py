@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -37,7 +38,7 @@ ONE_LESION_MIN = 0.8      # Jev ONE_LESION: below it, every lesion input on the 
 ONE_LESION = "The FINDING describes only one lesion of any kind (nodule, granuloma, mass, cyst, scar or other)"
 _STATE_LABEL = {"absent": "Absent", "not_assessable": "Not assessable"}
 _LEAD = {"lesion": "The FINDING states", "patient": "The CLINICAL HISTORY or DICTATION state"}
-QUOTE_MIN = 0.8           # Jev "The QUOTE states <label>: <value>" on the quote alone: below it, an enum or boolean is asked
+QUOTE_MIN = 0.8           # Jev "The QUOTE states <label>: <value>" on the quote alone: below it, asked
 _QUOTE_OF = {"lesion": "a verbatim phrase from a radiology report about one lesion",
              "patient": "a verbatim phrase from a radiology request or report about the patient or the examination"}
 
@@ -363,6 +364,43 @@ async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding
     return ok, fa or fb or any(s is None for _, s in qs)
 
 
+# A prior study is asymmetric (lab fix round item 3): "Yes" settles only from the nodule's own finding, as any lesion
+# input; "No" never from the model, only from the whole dictation, when Jev finds it states there is no previous
+# imaging of the examined region, finds no previous imaging mentioned at all, and no word says one may exist elsewhere.
+NO_PRIOR_INPUT = "prior_study"
+NO_PRIOR_MIN = 0.8
+PRIOR_MENTIONED_MAX = 0.5
+PRIOR_MENTIONED = "The DICTATION mentions any previous imaging that exists or was performed"
+_ELSEWHERE = re.compile(r"\b(?:requested|awaited|another\s+trust|other\s+hospital|outside|external)\b", re.I)
+_PRIOR_WORD = re.compile(r"\b(?:prior|previous|previously|comparison|compared|earlier|old)\b", re.I)
+_SENTENCE = re.compile(r"[^.;\n]+(?:\.(?=\d)[^.;\n]*)*")
+
+
+def _no_prior_claim(e: Entry) -> str:
+    region = " or ".join(e.applies_to.region) or "region examined"
+    return f"The DICTATION states there is no previous imaging that includes the {region}"
+
+
+async def _no_prior(e: Entry, findings: str, history: str) -> tuple[str | None, bool]:
+    """(the dictation's sentence that settles "no previous imaging", or None; whether the Jev call failed)."""
+    i = e.input(NO_PRIOR_INPUT)
+    if i is None or i.type != "boolean" or _ELSEWHERE.search(f"{findings}\n{history}"):
+        return None, False
+    quote = next((m.group(0).strip() for m in _SENTENCE.finditer(findings or "") if _PRIOR_WORD.search(m.group(0))),
+                 None)
+    if quote is None:
+        return None, False
+    modality = " or ".join(e.applies_to.modality) or "imaging"
+    try:
+        no, mentioned = await _jev([_no_prior_claim(e), PRIOR_MENTIONED],
+                                   f"DICTATION (a {modality} report; any previous imaging would be listed here):\n"
+                                   f"{findings}")
+    except Exception as ex:
+        logger.info("[library.preview] prior check failed (%s)", type(ex).__name__)
+        return None, True
+    return (quote if no >= NO_PRIOR_MIN and mentioned < PRIOR_MENTIONED_MAX else None), False
+
+
 def _outcome_text(e: Entry, t: engine.Trace, sources: list[dict]) -> Proposal | None:
     """The reached outcome as the entry words it, or None when its text still cites an unknown input."""
     o = e.outcome(t.outcome)
@@ -405,6 +443,10 @@ def failed(e: Entry) -> Preview:
                    state="check_first" if any(i.role == "eligibility" for i in e.inputs) else "applies")
 
 
+async def _none() -> tuple[None, bool]:
+    return None, False
+
+
 async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str, str],
                        sources: list[dict] | None = None, finding: str = "",
                        patient: dict[str, str] | None = None) -> Preview:
@@ -415,19 +457,31 @@ async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str
     no_unit = not finding and any(i.scope == "lesion" and i.id not in given for i in e.inputs)
     if no_unit:
         logger.info("[library.preview] %s: no finding unit; lesion inputs asked", e.key)
-    model, degraded = await _settle(e, given, finding, findings, history)
+    prior_open = NO_PRIOR_INPUT not in given
+    (model, degraded), (no_prior, prior_failed) = await asyncio.gather(
+        _settle(e, given, finding, findings, history),
+        _no_prior(e, findings, history) if prior_open else _none())
+    if NO_PRIOR_INPUT in model and model[NO_PRIOR_INPUT][0].value is not True:
+        del model[NO_PRIOR_INPUT]            # "No" (or a state) never from the model: only from the whole dictation
     # every number (read by code from the quote) is put to Jev as stated for its scope: this catches a number of the
     # wrong time point or role ("was 5 mm, now 9 mm"; swapped volumes); every enum or boolean, as stated by its quote
     pending = {k: (v, st.quote) for k, (v, st) in model.items()}
     confirmed, jev_failed = await _confirm(e, pending, finding, findings, history) if pending else (set(), False)
     keep = [k for k in model if k in confirmed]
+    if no_prior is not None and NO_PRIOR_INPUT in keep:
+        keep.remove(NO_PRIOR_INPUT)          # the finding says yes, the dictation no: asked
+        no_prior = None
     given.update({k: model[k][0] for k in keep})
+    quotes = {k: model[k][1].quote for k in keep}
+    if no_prior is not None and NO_PRIOR_INPUT not in model:
+        given[NO_PRIOR_INPUT], quotes[NO_PRIOR_INPUT] = InputValue(value=False), no_prior
+    jev_failed = jev_failed or prior_failed
     try:
         t = engine.evaluate(e, given)
     except (engine.EvaluationError, ValueError) as ex:
         logger.error("[library.preview] %s cannot be evaluated: %s", e.key, ex)
         return failed(e)
-    out = _build(e, t, given, {k: model[k][1].quote for k in keep}, sources, degraded or jev_failed or no_unit)
+    out = _build(e, t, given, quotes, sources, degraded or jev_failed or no_unit)
     out._cacheable = no_unit and not (degraded or jev_failed)     # deterministic: the key holds the empty finding
     return out
 

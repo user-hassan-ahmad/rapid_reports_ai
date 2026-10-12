@@ -706,3 +706,83 @@ async def test_a_qualified_negation_asks_even_when_jev_says_one(monkeypatch, jev
     jev["scores"] = {ONE_CLAIM: 0.95}
     out = await _fleischner(monkeypatch, finding, "4 mm", 4)
     assert "diameter_mm" not in {x.input for x in out.settled}
+
+
+# lab fix round item 3: asymmetric prior_study. "No" from the whole dictation (Jev, and no word of imaging elsewhere);
+# "Yes" from the nodule's own finding only
+PRIOR_FINDING = "7 mm solid nodule in the right upper lobe."
+NO_PRIOR = "previous imaging that includes the chest"
+
+
+def _prior_jev(jev, no=0.85, mentioned=0.1):
+    jev["scores"] = {NO_PRIOR: no, PP.PRIOR_MENTIONED: mentioned}
+
+
+@pytest.mark.parametrize("sentence", ["No previous imaging.", "No prior CT for comparison."])
+async def test_no_prior_imaging_in_the_dictation_settles_prior_study_no(monkeypatch, jev, sentence):
+    from tests.test_library_partial import _bts
+    _prior_jev(jev)
+    _model(monkeypatch)
+    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} {sentence}", "", {}, finding=PRIOR_FINDING)
+    prior = next(x for x in out.settled if x.input == "prior_study")
+    assert prior.value == "No" and prior.quote == sentence.rstrip(".")
+    claims = [q["instructions"] for p in jev["payloads"] for q in p["questions"].values()]
+    assert "The DICTATION states there is no previous imaging that includes the chest" in claims
+
+
+@pytest.mark.parametrize("sentence,mentioned", [("Previous imaging requested.", 0.1),
+                                                ("Prior CT at another trust.", 0.1),
+                                                ("No prior CT chest; prior CT abdomen 2022.", 0.97)])
+async def test_prior_imaging_that_may_exist_elsewhere_asks_prior_study(monkeypatch, jev, sentence, mentioned):
+    from tests.test_library_partial import _bts
+    _prior_jev(jev, no=0.95, mentioned=mentioned)       # even when Jev reads "no previous imaging"
+    _model(monkeypatch)
+    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} {sentence}", "", {}, finding=PRIOR_FINDING)
+    assert "prior_study" not in {x.input for x in out.settled} and "prior_study" in out.missing
+
+
+@pytest.mark.parametrize("no", [0.79, 0.1])
+async def test_below_the_bar_prior_study_is_asked(monkeypatch, jev, no):
+    from tests.test_library_partial import _bts
+    _prior_jev(jev, no=no)
+    _model(monkeypatch)
+    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging.", "", {}, finding=PRIOR_FINDING)
+    assert "prior_study" in out.missing
+
+
+async def test_the_model_never_settles_prior_study_no(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    _prior_jev(jev, no=0.1)
+    finding = "7 mm solid nodule in the right upper lobe, new since the previous CT."
+    _model(monkeypatch, {"input": "prior_study", "value": False, "quote": "new"})
+    out = await PP.preview_pack(_bts(), finding, "", {}, finding=finding)
+    assert "prior_study" not in {x.input for x in out.settled}
+
+
+async def test_prior_study_yes_settles_only_from_the_nodules_own_finding(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    finding = "7 mm solid nodule in the right upper lobe, unchanged from the 2023 CT."
+    _model(monkeypatch, {"input": "prior_study", "value": True, "quote": "unchanged from the 2023 CT"})
+    out = await PP.preview_pack(_bts(), finding, "", {}, finding=finding)
+    assert next(x for x in out.settled if x.input == "prior_study").value == "Yes"
+    _model(monkeypatch, {"input": "prior_study", "value": True, "quote": "Comparison with CT 2023"})
+    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} Comparison with CT 2023.", "", {}, finding=PRIOR_FINDING)
+    assert "prior_study" in out.missing                    # quoted outside the finding: asked
+
+
+async def test_the_finding_saying_yes_and_the_dictation_no_asks(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    _prior_jev(jev)
+    finding = "7 mm solid nodule in the right upper lobe, unchanged from the 2023 CT."
+    _model(monkeypatch, {"input": "prior_study", "value": True, "quote": "unchanged from the 2023 CT"})
+    out = await PP.preview_pack(_bts(), f"{finding} No previous imaging.", "", {}, finding=finding)
+    assert "prior_study" in out.missing
+
+
+async def test_an_answered_prior_study_runs_no_prior_check(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    _model(monkeypatch)
+    await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging.", "", {"prior_study": "Yes"},
+                          finding=PRIOR_FINDING)
+    claims = [q["instructions"] for p in jev["payloads"] for q in p["questions"].values()]
+    assert not any(NO_PRIOR in c for c in claims)
