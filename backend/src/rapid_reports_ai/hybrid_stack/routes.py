@@ -20,7 +20,7 @@ from .items import Item, ItemsResult, Referral, recheck as items_recheck, update
 from .jev_stack import MATERIAL_MIN, STALE_MIN, UNFINISHED_MIN, ask_material, ask_stale, ask_unfinished
 from .normals import AssumedResult, assumed as assumed_normals
 from .slim_sheet import clean_sentences, get_or_make as slim_get_or_make
-from .template import template_region_normals, template_structure
+from .template import template_normal_labels, template_region_normals, template_structure, template_suppressions
 from .draft import DraftResult, draft_conclusion
 from .service import GroupResult, SchemaResult, close_update, group_update, resolve_schema
 from .units import StackUnit, sentences as split_sentences
@@ -100,6 +100,8 @@ class AssumedRequest(BaseModel):
     removed: list[str] = Field(default_factory=list)
     owned: list[str] = Field(default_factory=list)       # the rows' sentences: a row owns its check
     touched: list[str] = Field(default_factory=list)     # regions those rows (and removals) concern
+    template_id: str | None = None                       # its context rules and normal labels apply
+    clinical_history: str = ""                           # a context rule's condition is judged on it too
 
 
 class DraftRequest(BaseModel):
@@ -243,12 +245,20 @@ async def stack_unfinished(req: UnfinishedRequest, user: User = Depends(get_curr
 
 
 @router.post("/assumed", response_model=AssumedResult)
-async def stack_assumed(req: AssumedRequest, user: User = Depends(get_current_user)):
+async def stack_assumed(req: AssumedRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _require()
     normals = {r: s[:MAX_NORMALS_PER_REGION] for r, s in list(req.region_normals.items())[:40]}
     owned = list(dict.fromkeys(o for o in req.owned if o.strip()))[:100]   # the client sends current rows first
+    suppressions: list[tuple[str, str]] = []
+    labels: dict[str, str] = {}
+    if req.template_id:
+        t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
+        st = template_structure(t.template_config) if t is not None else None
+        if st is not None:
+            suppressions, labels = template_suppressions(st), template_normal_labels(st)
     return await assumed_normals(req.dictation, normals, req.abnormal, req.dictated_normal, req.removed[:50],
-                                 owned, req.touched[:40])
+                                 owned, req.touched[:40], suppressions=suppressions,
+                                 clinical_history=req.clinical_history[:2000], labels=labels)
 
 
 @router.post("/draft", response_model=DraftResult)

@@ -155,3 +155,32 @@ def test_loose_match_of_label_to_sentence():
     assert "Lung volumes preserved." not in _labels("LUNGS", "Lung volumes preserved.")
     assert "Both menisci appear normal." not in _labels("medial meniscus, lateral meniscus", "Both menisci appear normal.")
     assert "No hydrocephalus and no mass effect." in _labels("ventricles and basal cisterns", "No hydrocephalus and no mass effect.")
+
+
+from rapid_reports_ai.hybrid_stack.template import template_suppressions
+
+_RULED = """## Report Structure
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION CONCLUSION | header: "Conclusion:" | role: impression
+
+## Paragraph: Brain (FINDINGS)
+COVERS ["brain"]
+NEGATIVE "No other interval changes compared with the previous MRI."
+NORMAL [ventricles] "The ventricles are normal in size."
+RULE WHEN [context: no previous study is available] SUPPRESS "No other interval changes compared with the previous MRI."
+"""
+
+
+def test_context_suppressions_name_the_normal_they_hide():
+    st = parse_sheet(_RULED, mode="template").structure
+    assert st.usable
+    assert template_suppressions(st) == [
+        ("no previous study is available", "No other interval changes compared with the previous MRI.")]
+
+
+def test_a_slot_placeholder_sentence_is_never_offered():
+    sheet = _SUBJECTLESS + 'NORMAL [left ventricle] "LVEDVi {value} ml/m2."\n'
+    st = parse_sheet(sheet, mode="template").structure
+    assert st.usable
+    assert not any("{" in s for ss in template_region_normals(st).values() for s in ss)
+    assert "The spleen is normal in size." in template_region_normals(st)["Liver"]

@@ -57,7 +57,13 @@ export interface StackItem {
 }
 export interface ItemsResult { items: StackItem[]; capped: StackItem[]; contradicted: string[]; cached: boolean; ms: number; error: string | null }
 export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean }
-export interface AssumedResult { assumed: Record<string, string[]>; ms: number; error: string | null }
+export interface AssumedResult {
+	assumed: Record<string, string[]>;
+	/** Region -> normals not assumed, with why: covered | hedged | contradicted | removed | rule. */
+	dropped?: Record<string, { sentence: string; reason: string }[]>;
+	ms: number;
+	error: string | null;
+}
 export interface GateItem { id: string; kind: StackItem['kind']; region: string; question: string; sentences: string[]; answered_by: 'dictation' | 'tap' | 'skip' | 'not_assessed' }
 export interface DraftResult { text: string; ms: number; error: string | null }
 export interface GateRecord {

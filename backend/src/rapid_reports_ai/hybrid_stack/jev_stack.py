@@ -284,3 +284,30 @@ async def ask_unfinished(sentences: list[str], transport=None) -> list[float]:
     parts = await asyncio.gather(*(batch(k, sentences[k:k + UNFINISHED_BATCH])
                                    for k in range(0, len(sentences), UNFINISHED_BATCH)))
     return [x for p in parts for x in p]
+
+
+# ── Assumed normals: context rules and a bare global normal (conversion lab 2026-10-12) ─────────────────────────
+CONDITION_MIN = 0.5   # = template_brief.MET: one cut-off for every rule condition; silence is not met
+
+
+async def ask_conditions(state: str, conditions: list[str], transport=None) -> list[float]:
+    """Is each context condition stated for this case (history or dictation)? One Jev call; the question is
+    template_brief.q_condition (Jev wording suite 2026-10-01), so a rule fires here exactly as it does at Generate."""
+    if not conditions:
+        return []
+    from ..template_brief import q_condition
+    qs = {f"cond_{i}": q_condition(c) for i, c in enumerate(conditions)}
+    r = await jev_post({"model": JEV_MODEL, "state": state, "questions": qs},
+                       os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
+    r.raise_for_status()
+    ans = r.json().get("answers") or {}
+    return [float((ans.get(f"cond_{i}") or {}).get("noul") or 0.0) for i in range(len(conditions))]
+
+
+GLOBAL_NORMAL_MIN = 1.1   # off: Task A3 (a bare "normal" keeps the template's normals) awaits a Jev wording with a
+                          # clean gap; wording lab 2026-10-12 found none in two wordings
+
+
+async def ask_global_normal(dictation: str, transport=None) -> float:
+    """Stub until Task A3 lands: no dictation is read as a bare global normal."""
+    return 0.0

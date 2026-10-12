@@ -110,7 +110,7 @@ def test_items_assumed_and_draft_routes(authed, monkeypatch):
         return ItemsResult(items=[Item(id="a", kind="finding", region="Bowel", question="Abscess?",
                                        sentences=["No pericolic abscess."])])
 
-    async def assumed(dictation, normals, abnormal, dictated_normal, removed, owned, touched):
+    async def assumed(dictation, normals, abnormal, dictated_normal, removed, owned, touched, **k):
         assert normals == {"Liver": ["The liver is normal."]}
         return AssumedResult(assumed=normals)
 
@@ -258,3 +258,39 @@ def test_assumed_checks_up_to_sixteen_normals_per_region(authed, monkeypatch):
     r = authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"A": sentences}})
     assert r.status_code == 200
     assert len(seen["A"]) == 16 == R.MAX_NORMALS_PER_REGION
+
+
+_RULED_SHEET = """## Report Structure
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION CONCLUSION | header: "Conclusion:" | role: impression
+
+## Paragraph: Brain (FINDINGS)
+COVERS ["brain"]
+NEGATIVE "No other interval changes compared with the previous MRI."
+NORMAL [ventricles] "Unremarkable."
+RULE WHEN [context: no previous study is available] SUPPRESS "No other interval changes compared with the previous MRI."
+"""
+
+
+def test_assumed_applies_the_templates_context_rules_and_labels(authed, monkeypatch, db_session, user):
+    from rapid_reports_ai.database.models import Template
+    from rapid_reports_ai.hybrid_stack.normals import AssumedResult
+    t = Template(name="T", user_id=user.id, is_active=True, tags=[],
+                 template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": _RULED_SHEET})
+    db_session.add(t)
+    db_session.commit()
+    seen = {}
+
+    async def fake_assumed(dictation, normals, *a, **k):
+        seen.update(k)
+        return AssumedResult(assumed={r: [] for r in normals})
+
+    monkeypatch.setattr(R, "assumed_normals", fake_assumed)
+    r = authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"Brain": ["Unremarkable."]},
+                                                       "template_id": str(t.id), "clinical_history": "Headache."})
+    assert r.status_code == 200
+    assert seen["suppressions"] == [("no previous study is available",
+                                     "No other interval changes compared with the previous MRI.")]
+    assert seen["labels"] == {"Unremarkable.": "ventricles"} and seen["clinical_history"] == "Headache."
+    authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"Brain": ["Unremarkable."]}})
+    assert seen["suppressions"] == [] and seen["labels"] == {}

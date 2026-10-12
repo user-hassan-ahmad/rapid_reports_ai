@@ -1812,7 +1812,7 @@
 		try {
 			const res = await postAssumed($token, { dictation: snap.dictation, region_normals: stackRegionNormals, abnormal: snap.abnormal,
 				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences, owned: ownedNow(),
-				touched: touchedRegions() });
+				touched: touchedRegions(), template_id: stackTemplateId, clinical_history: clinicalHistory });
 			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed };
 		} catch {
 			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {} }; // nothing assumed

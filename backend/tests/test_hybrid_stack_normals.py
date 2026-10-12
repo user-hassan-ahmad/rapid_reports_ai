@@ -53,3 +53,63 @@ async def test_failure_assumes_nothing(monkeypatch):
     monkeypatch.setattr(N, "ask_rows", boom)
     out = await N.assumed("x", NORMALS, ["Pelvic organs"], [], [])
     assert out.assumed == {"Liver": [], "Kidneys": [], "Pelvic organs": []} and "RuntimeError" in out.error
+
+
+async def _zero(*a, **k):
+    return 0.0
+
+
+async def test_a_met_context_condition_drops_its_target(monkeypatch):
+    async def rows(dictation, sentences, removed, transport=None):
+        return [J.RowCheck(0.0, 0.0, 0.0) for _ in sentences]
+
+    async def conds(state, conditions):
+        assert "No previous MRI." in state and "Headache." in state
+        assert conditions == ["no previous study is available"]
+        return [0.9 for _ in conditions]
+
+    monkeypatch.setattr(N, "ask_rows", rows)
+    monkeypatch.setattr(N, "ask_conditions", conds)
+    monkeypatch.setattr(N, "ask_global_normal", _zero)
+    out = await N.assumed(
+        "No previous MRI.", {"Brain": ["No other interval changes compared with the previous MRI.",
+                                       "The ventricles are normal in size."]}, [], [], [],
+        suppressions=[("no previous study is available",
+                       "No other interval changes compared with the previous MRI.")],
+        clinical_history="Headache.")
+    assert out.assumed == {"Brain": ["The ventricles are normal in size."]}
+    assert out.dropped["Brain"] == [{"sentence": "No other interval changes compared with the previous MRI.",
+                                     "reason": "rule"}]
+
+
+async def test_an_unmet_context_condition_keeps_its_target(monkeypatch):
+    async def conds(state, conditions):
+        return [0.1 for _ in conditions]
+
+    monkeypatch.setattr(N, "ask_rows", _checks({}))
+    monkeypatch.setattr(N, "ask_conditions", conds)
+    out = await N.assumed("Stable since the previous MRI.", {"Brain": ["No other interval changes."]}, [], [], [],
+                          suppressions=[("no previous study is available", "No other interval changes.")])
+    assert out.assumed == {"Brain": ["No other interval changes."]} and out.dropped == {"Brain": []}
+
+
+async def test_dropped_normals_carry_their_reason(monkeypatch):
+    monkeypatch.setattr(N, "ask_rows", _checks({"The liver is normal.": (0.9, 0.0, 0.0),
+                                                 "The kidneys are normal.": (0.0, 0.9, 0.0),
+                                                 "The uterus is normal.": (0.4, 0.0, 0.0),
+                                                 "The ovaries are normal.": (0.0, 0.0, 0.8)}))
+    out = await N.assumed("x", NORMALS, [], [], ["Ovaries normal."])
+    assert out.dropped == {"Liver": [{"sentence": "The liver is normal.", "reason": "covered"}],
+                           "Kidneys": [{"sentence": "The kidneys are normal.", "reason": "contradicted"}],
+                           "Pelvic organs": [{"sentence": "The uterus is normal.", "reason": "hedged"},
+                                             {"sentence": "The ovaries are normal.", "reason": "removed"}]}
+    assert out.assumed["Pelvic organs"] == ["No adnexal mass."]
+
+
+async def test_a_labelled_normal_is_asked_with_its_label_and_returned_as_written(monkeypatch):
+    seen = []
+    monkeypatch.setattr(N, "ask_rows", _checks({}, seen))
+    out = await N.assumed("Splenic cyst.", {"Liver": ["Unremarkable.", "The spleen is normal."]}, [], [], [],
+                          labels={"Unremarkable.": "liver"})
+    assert seen == [["Liver: Unremarkable.", "The spleen is normal."]]
+    assert out.assumed == {"Liver": ["Unremarkable.", "The spleen is normal."]}

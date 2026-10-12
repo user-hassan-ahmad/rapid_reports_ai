@@ -34,6 +34,7 @@ export const postItems = (token: string | null, body: {
 
 export const postAssumed = (token: string | null, body: {
 	dictation: string; region_normals: Record<string, string[]>; abnormal: string[]; dictated_normal: string[]; removed?: string[]; owned?: string[]; touched?: string[];
+	template_id?: string | null; clinical_history?: string;
 }) => post<AssumedResult>(token, 'assumed', body);
 
 /** The quiet re-check after an edit that leaves the abnormal findings unchanged: the rows on screen against the

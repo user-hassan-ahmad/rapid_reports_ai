@@ -87,6 +87,9 @@ def jev_text(sentence: str, label: str) -> str:
     return f"{label}: {sentence}"
 
 
+_SLOT = re.compile(r"\{[^{}]*\}")   # a fill-in placeholder ("LVEDVi {value} ml/m2"): never assumed
+
+
 def _offered(st: SheetStructure):
     """(region name, sentence, structure label or None) for every sentence template_region_normals offers."""
     from ..report_reconcile import _MEASUREMENT
@@ -102,7 +105,7 @@ def _offered(st: SheetStructure):
         keep: set[str] = set()
         for raw, label in texts:
             t = _normalise(raw)
-            if t != "." and not _MEASUREMENT.search(t) and t.lower() not in keep:
+            if t != "." and not _MEASUREMENT.search(t) and not _SLOT.search(t) and t.lower() not in keep:
                 keep.add(t.lower())
                 yield name, t, label
 
@@ -125,3 +128,22 @@ def template_normal_labels(st: SheetStructure) -> dict[str, str]:
         if label and label.strip() and not _names_structure(t, label):
             out.setdefault(t, label)
     return out
+
+
+def template_suppressions(st: SheetStructure) -> list[tuple[str, str]]:
+    """(condition, sentence) for each context RULE that suppresses or replaces a sentence the scratchpad would
+    assume: when the condition is met for the case, that sentence is not assumed (conversion lab 2026-10-12: a
+    "no prior study" rule did not stop "compared with the previous MRI"). The sentence is returned as offered."""
+    offered = {_key(t): t for _, t, _ in _offered(st)}
+    out: list[tuple[str, str]] = []
+    for r in st.rules:
+        if r.condition_source != "context" or r.effect not in ("suppress", "replace") or not r.target:
+            continue
+        t = offered.get(_key(r.target))
+        if t is not None and (r.condition, t) not in out:
+            out.append((r.condition, t))
+    return out
+
+
+def _key(t: str) -> str:
+    return " ".join(t.lower().split()).rstrip(".")
