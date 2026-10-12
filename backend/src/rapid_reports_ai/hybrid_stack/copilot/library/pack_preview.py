@@ -384,7 +384,7 @@ NO_PRIOR_MIN = 0.8
 PRIOR_MENTIONED_MAX = 0.5
 PRIOR_MENTIONED = "The DICTATION mentions any previous imaging that exists or was performed"
 _ELSEWHERE = re.compile(r"\b(?:requested|awaited|another\s+trust|other\s+hospital|outside|external)\b", re.I)
-_PRIOR_WORD = re.compile(r"\b(?:prior|previous|previously|comparison|compared|earlier|old)\b", re.I)
+_PRIOR_WORD = re.compile(r"\b(?:prior|prev|previous|previously|comparison|compared|earlier|old)\b", re.I)
 _SENTENCE = re.compile(r"[^.;\n]+(?:\.(?=\d)[^.;\n]*)*")
 
 

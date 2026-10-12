@@ -719,7 +719,7 @@ def _prior_jev(jev, no=0.85, mentioned=0.1):
     jev["scores"] = {NO_PRIOR: no, PP.PRIOR_MENTIONED: mentioned}
 
 
-@pytest.mark.parametrize("sentence", ["No previous imaging.", "No prior CT for comparison."])
+@pytest.mark.parametrize("sentence", ["No previous imaging.", "No prior CT for comparison.", "No prev CT."])
 async def test_no_prior_imaging_in_the_dictation_settles_prior_study_no(monkeypatch, jev, sentence):
     from tests.test_library_partial import _bts
     _prior_jev(jev)
