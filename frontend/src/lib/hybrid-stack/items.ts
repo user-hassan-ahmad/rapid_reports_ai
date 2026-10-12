@@ -14,11 +14,16 @@ export function answerLabel(_sentences: string[]): string {
 /** Where a finding check sits: under the region of the dictated sentence that set it off (its source_text), so a row
  *  always sits next to the sentence it is about, whichever model placed what (hand read 2026-10-12). Falls back to
  *  the writer's region. */
+// A finding row belongs to a findings region: a phrase that also appears in the conclusion (or technique, or a
+// sweeping General line) never moves the row there (live 2026-10-12: "perforation" in the conclusion sent the
+// appendix row above the cards).
+const NOT_FINDINGS = new Set(['Conclusion', 'Technique', 'General']);
+
 export function anchorRegion(item: StackItem, units: StackUnit[]): string {
 	const src = norm(item.source_text ?? '');
 	if (item.kind !== 'finding' || !src) return item.region;
 	for (const u of units) {
-		if (u.heading || u.group === null) continue;
+		if (u.heading || u.group === null || NOT_FINDINGS.has(u.group)) continue;
 		if (u.parts && u.parts.length > 1) {
 			const part = u.parts.find((p) => norm(p.text).includes(src));
 			if (part) return part.group;

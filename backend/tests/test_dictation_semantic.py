@@ -180,3 +180,16 @@ def test_garble_on_a_number_or_side_always_blocks():
 def test_type_alias_and_missing_message_are_accepted():
     issue = SemanticIssue.model_validate({"type": "garbled_phrase", "quote": "duck", "suggestion": "duct"})
     assert issue.kind == "garbled_phrase" and issue.message == ""
+
+
+def test_a_garble_on_a_number_never_carries_a_suggestion():
+    text = "Non 4 mm calculus in the right kidney."
+    issue = SemanticIssue(kind="garbled_phrase", quote="Non 4 mm calculus", message="m", suggestion="No 4 mm calculus",
+                          changes_meaning=False)
+    f = _locate_flags(text, SemanticFindings(issues=[issue]))[0]
+    assert f.blocking and f.suggestion == ""
+
+
+def test_message_is_required_in_the_schema_but_tolerated_when_missing():
+    assert "message" in SemanticIssue.model_json_schema()["required"]
+    assert SemanticIssue.model_validate({"kind": "garbled_phrase", "quote": "x"}).message == ""

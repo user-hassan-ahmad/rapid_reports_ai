@@ -8,7 +8,7 @@ import time
 
 from pydantic import BaseModel
 
-from .http import post_json
+from .http import post_chat
 
 URL = "https://api.cerebras.ai/v1/chat/completions"
 MODEL = "qwen-3.8-27b"
@@ -56,7 +56,7 @@ async def draft_conclusion(scan_type: str, history: str, findings: str, transpor
                                                                        history=history or "(none given)",
                                                                        findings=findings)}]}
     try:
-        r = await post_json(URL, os.environ.get("CEREBRAS_API_KEY", ""), body, TIMEOUT_S, transport)
+        r = await post_chat(body, TIMEOUT_S, transport, "stack.draft")
         r.raise_for_status()
         text = clean(r.json()["choices"][0]["message"]["content"])
     except Exception as e:  # fail open: no draft; the radiologist dictates or types one

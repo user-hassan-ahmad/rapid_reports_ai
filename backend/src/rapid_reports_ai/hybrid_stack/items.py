@@ -152,11 +152,10 @@ async def _write(scan_type, history, regions, dictation, not_assessable, removed
     try:
         return await _call(QWEN, prompt, review, REVIEW_TIMEOUT_S if review else WRITER_TIMEOUT_S)
     except Exception as e:
-        if not review:
-            raise
-        logger.warning("[stack.items.review] %s: %s; fallback %s", type(e).__name__, str(e)[:200],
-                       MODEL_CONFIG["STACK_REVIEW_FALLBACK"])
-        return await _call(MODEL_CONFIG["STACK_REVIEW_FALLBACK"], prompt, True, FALLBACK_TIMEOUT_S)
+        # The setup call falls back too (live 2026-10-12: a Cerebras 429 left the session with no referral rows).
+        logger.warning("[stack.items.%s] %s: %s; fallback %s", "review" if review else "setup", type(e).__name__,
+                       str(e)[:200], MODEL_CONFIG["STACK_REVIEW_FALLBACK"])
+        return await _call(MODEL_CONFIG["STACK_REVIEW_FALLBACK"], prompt, review, FALLBACK_TIMEOUT_S)
 
 
 def _key(scan_type, history, regions, abnormal, referrals) -> tuple:
@@ -192,7 +191,11 @@ def _rows(raw: RawOutput, referrals: list[Referral] | None = None) -> list[Item]
 async def _split(rows: list[Item]) -> None:
     flat = [s for r in rows for s in r.sentences]
     try:
-        parts = await _split_bundled(flat)
+        try:
+            parts = await _split_bundled(flat)
+        except Exception as e:  # a Cerebras 429 (live 2026-10-12): the same model on Groq
+            logger.warning("[stack.items.split] %s: %s; Groq", type(e).__name__, str(e)[:200])
+            parts = await _split_bundled(flat, MODEL_CONFIG["QUICK_REPORT_GENERATOR_FALLBACK"])
     except Exception as e:  # keep the sentences as written
         logger.warning("[stack.items.split] %s: %s", type(e).__name__, str(e)[:200])
         return

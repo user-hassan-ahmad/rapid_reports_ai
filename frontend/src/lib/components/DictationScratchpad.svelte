@@ -14,7 +14,7 @@
 		isUnfinishedCorrection,
 		jevContext,
 		openStatement,
-		splitSpan,
+		polishSpan,
 		hash8,
 		isRedictation,
 		keytermQuery,
@@ -1046,7 +1046,7 @@
 	 *  Returns why it could not, so the caller falls back to the full polish. */
 	function applyLean(
 		lean: LeanResult,
-		split: { span: string; spanFrom: number },
+		split: { span: string; spanFrom: number; paragraph?: boolean },
 		solid0: string,
 		utterance: string,
 		to: number,
@@ -1065,7 +1065,7 @@
 		const pend = { to };
 		// Word-sense fixes apply to the polish's output too, where the heard words survived it.
 		const out = applyAsrFixes(lean.data.active_scratchpad, asr.fixes ?? []);
-		const insert = (split.span ? '' : separatorFor(solid0, out, false)) + out;
+		const insert = (split.span ? '' : separatorFor(solid0, out, !!split.paragraph)) + out;
 		const edits = committedEditChanges(doc, split.spanFrom, lean.data.committed_edits ?? []);
 		isQwenWriting = true;
 		editor.dispatch(replaceAndClear({ from: split.spanFrom, to: pend.to, insert }, edits));
@@ -1109,7 +1109,7 @@
 		const solid0 = doc0.slice(0, pend0 ? pend0.from : doc0.length);
 		const t0 = performance.now();
 		// Racing: the lean polish starts now, alongside the bundle; Jev's route decides whether it is used.
-		const split = racing() ? splitSpan(solid0) : null;
+		const split = racing() ? polishSpan(solid0, utterance) : null;
 		const leanP = split ? askLean(split, utterance) : null;
 		// Jev sees everything before this final, including earlier faded finals still waiting
 		// for a polish; the racing span and fast-append placement keep using the solid text.

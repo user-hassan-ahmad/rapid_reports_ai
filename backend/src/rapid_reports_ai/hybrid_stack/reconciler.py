@@ -10,7 +10,7 @@ import os
 
 from pydantic import BaseModel, Field
 
-from .http import post_json
+from .http import post_chat
 from .schemas import Region, family_keys, family_regions, library, other_region
 
 MAX_NEW_REGIONS = 8
@@ -92,11 +92,6 @@ async def reconcile(scan_type: str, history: str, transport=None) -> Reconciled:
             "messages": [{"role": "system", "content": RECONCILE_SYSTEM},
                          {"role": "user", "content": _prompt(scan_type, history)}],
             "response_format": {"type": "json_object"}}
-    key = os.environ.get("CEREBRAS_API_KEY", "")
-    for attempt in range(3):
-        r = await post_json(URL, key, body, 30.0, transport)
-        if r.status_code != 429:
-            break
-        await asyncio.sleep(1 + 2 * attempt)
+    r = await post_chat(body, 30.0, transport, "stack.reconcile")   # a Cerebras 429 goes to Groq at once
     r.raise_for_status()
     return validate(json.loads(r.json()["choices"][0]["message"]["content"]))

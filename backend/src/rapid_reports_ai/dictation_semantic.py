@@ -39,7 +39,7 @@ import inspect
 import re
 from typing import Callable, Literal, Optional
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, model_validator
 
 from .dictation_integrity import IntegrityFlag
 
@@ -66,7 +66,7 @@ class SemanticIssue(BaseModel):
         description="For a conflict between two statements: the exact substring of the "
                     "other statement, copied character-for-character. Empty otherwise."
     )
-    message: str = Field(default="", description="One sentence a radiologist can act on.")
+    message: str = Field(description="One sentence a radiologist can act on.")
     suggestion: str = Field(
         default="",
         description="garbled_phrase only: the words to replace `quote` with, only when one reading is certain "
@@ -77,6 +77,15 @@ class SemanticIssue(BaseModel):
         description="garbled_phrase only: true when the garbled words could stand for findings that mean "
                     "different things, a word seems missing, or it sits on a number, side or negation."
     )
+
+
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate_missing_message(cls, v):
+        # Required in the schema so the model writes it (the hover card's "why"); a reply without one is still used.
+        if isinstance(v, dict) and not v.get("message"):
+            v = {**v, "message": ""}
+        return v
 
 
 class SemanticFindings(BaseModel):
@@ -163,28 +172,34 @@ async def _default_analyse(
         _run_agent_with_model,
     )
 
-    model = MODEL_CONFIG["STRUCTURE_VALIDATOR"]
-    api_key = _get_api_key_for_provider(_get_model_provider(model))
-
     user_prompt = (
         f"Scan type: {scan_type or '(not given)'}\n"
         f"Clinical history: {clinical_history or '(not given)'}\n\n"
         f"Dictation:\n{findings}"
     )
 
-    result = await asyncio.wait_for(
-        _run_agent_with_model(
-            model_name=model,
-            output_type=SemanticFindings,
-            system_prompt=SEMANTIC_SYSTEM_PROMPT,
-            user_prompt=user_prompt,
-            api_key=api_key,
-            use_thinking=False,
-            model_settings={"temperature": 0.0, "max_tokens": 800},
-        ),
-        timeout=20,
-    )
-    return result.output
+    async def _run(model: str) -> SemanticFindings:
+        result = await asyncio.wait_for(
+            _run_agent_with_model(
+                model_name=model,
+                output_type=SemanticFindings,
+                system_prompt=SEMANTIC_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                api_key=_get_api_key_for_provider(_get_model_provider(model)),
+                use_thinking=False,
+                # 800 ran out while reasoning over a whole dictation (live 2026-10-12: "token limit exceeded before any
+                # response", so the check returned nothing and no underline showed).
+                model_settings={"temperature": 0.0, "max_tokens": 4000},
+            ),
+            timeout=20,
+        )
+        return result.output
+
+    try:
+        return await _run(MODEL_CONFIG["STRUCTURE_VALIDATOR"])
+    except Exception:
+        # Cerebras rate limit or any failure: the same model on Groq (STRUCTURE_VALIDATOR_FALLBACK, gpt-oss-120b).
+        return await _run(MODEL_CONFIG["STRUCTURE_VALIDATOR_FALLBACK"])
 
 
 def _locate_flags(findings: str, result: SemanticFindings) -> list[IntegrityFlag]:
@@ -205,14 +220,15 @@ def _locate_flags(findings: str, result: SemanticFindings) -> list[IntegrityFlag
         other = (issue.other_quote or "").strip()
         o = findings.find(other) if other else -1  # the earlier statement: first occurrence
         garbled = issue.kind == "garbled_phrase"
+        backstop = bool(_BACKSTOP.search(quote))   # a number or side: never a suggestion ("Non 4 mm" -> "No 4 mm" flips it)
         flags.append(
             IntegrityFlag(
                 kind=issue.kind,
-                suggestion=(issue.suggestion or "").strip() if garbled and not issue.changes_meaning else "",
+                suggestion=(issue.suggestion or "").strip() if garbled and not issue.changes_meaning and not backstop else "",
                 # Every conflict holds Confirm; a garble only when it could change the report. Code backstop: a
                 # garble touching a number or a side always blocks, whatever the model said.
                 blocking=not garbled or issue.changes_meaning or not (issue.suggestion or "").strip()
-                or bool(_BACKSTOP.search(quote)),
+                or backstop,
                 severity=_MEDIUM,
                 excerpt=quote[:60],
                 message=issue.message,

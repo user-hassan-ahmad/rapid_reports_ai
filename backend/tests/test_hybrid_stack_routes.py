@@ -191,3 +191,23 @@ def test_changed_recheck_and_conclusion_check_routes(authed, monkeypatch):
     assert authed.post("/api/canvas/stack/conclusion-check", json={"conclusion": "Uncomplicated diverticulitis.", "findings": ["x"]}).json()["stale"] is True
     row = {"id": "a", "kind": "finding", "region": "Bowel", "question": "Abscess?", "sentences": ["No abscess."]}
     assert authed.post("/api/canvas/stack/recheck", json={"dictation": "x", "rows": [row]}).json()["items"] == []
+
+
+async def test_post_chat_moves_a_cerebras_rate_limit_to_the_same_model_on_groq(monkeypatch):
+    import httpx
+    from rapid_reports_ai.hybrid_stack.http import post_chat
+    monkeypatch.setenv("CEREBRAS_API_KEY", "c")
+    monkeypatch.setenv("GROQ_API_KEY", "g")
+    seen = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        import json as _j
+        body = _j.loads(req.content)
+        seen.append((req.url.host, body["model"], body.get("reasoning_effort"), body.get("max_tokens")))
+        if "cerebras" in req.url.host:
+            return httpx.Response(429, json={"message": "high traffic"})
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+    r = await post_chat({"model": "qwen-3.8-27b", "reasoning_effort": "medium", "max_tokens": 64000, "messages": []},
+                        5.0, httpx.MockTransport(handler))
+    assert r.status_code == 200
+    assert seen == [("api.cerebras.ai", "qwen-3.8-27b", "medium", 64000), ("api.groq.com", "qwen/qwen3.8-27b", "default", 16384)]

@@ -244,7 +244,7 @@ async def test_review_mode_reaches_the_writer(monkeypatch):
     assert seen["review"] is True
 
 
-async def test_a_failed_review_falls_back_to_gpt_oss_and_setup_does_not(monkeypatch):
+async def test_a_failed_review_or_setup_falls_back_to_gpt_oss_on_groq(monkeypatch):
     calls = []
 
     async def call(model, prompt, review, timeout):
@@ -261,8 +261,8 @@ async def test_a_failed_review_falls_back_to_gpt_oss_and_setup_does_not(monkeypa
     assert calls == [(I.QWEN, True), (I.MODEL_CONFIG["STACK_REVIEW_FALLBACK"], True)]
     assert out.items[0].question == "Ovarian torsion?" and out.error is None
     calls.clear()
-    out = await I.update("CT AP", "", ["Pelvic organs"], "", [])          # setup: no fallback, fails open
-    assert calls == [(I.QWEN, False)] and out.items == [] and out.error
+    out = await I.update("CT AP", "", ["Pelvic organs"], "", [])          # setup falls back too (Cerebras 429s)
+    assert calls == [(I.QWEN, False), (I.MODEL_CONFIG["STACK_REVIEW_FALLBACK"], False)]
 
 
 

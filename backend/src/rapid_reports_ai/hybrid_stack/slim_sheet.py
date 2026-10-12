@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from ..database.models import StackSlimSheet
 from ..jev_client import JEV_MODEL, jev_post
 from ..report_reconcile import _MEASUREMENT
-from .http import post_json
+from .http import post_chat
 from .schemas import OTHER, Region
 
 logger = logging.getLogger(__name__)
@@ -152,7 +152,7 @@ async def generate(scan_type: str, family: str, contrast: str, regions: list[Reg
             "messages": [{"role": "system", "content": SLIM_SYS},
                          {"role": "user", "content": SLIM_USER.format(family=family, contrast=CONTRAST[contrast],
                                                                      regions=listed)}]}
-    r = await post_json(URL, os.environ.get("CEREBRAS_API_KEY", ""), body, TIMEOUT_S, transport)
+    r = await post_chat(body, TIMEOUT_S, transport, "stack.slim")
     r.raise_for_status()
     text = r.json()["choices"][0]["message"]["content"] or ""
     return re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip()
