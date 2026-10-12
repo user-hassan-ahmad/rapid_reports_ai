@@ -68,6 +68,24 @@ Nothing reaches the report unless the radiologist presses Apply or ticks it.
     default when the new scratchpad layout is deployed. A kill switch (`RR_STACK_COPILOT=0`) turns off the panel and
     every background call.
 
+17. **The fetch is source first (option A).** Search, then extract, then structure, every claim backed by a quote.
+    A card never shows a number that hasn't been checked against a source, and a shown card never changes.
+18. **Queries use the guideline's own terms, never the case's.** The case picks which **branch** of the guideline is
+    fetched first. Query words are the guideline's name, version, publication and branch names, never dictated
+    words, which also keeps patient text away from the search API. Fitting the guideline to the case happens
+    afterwards, in the preview.
+19. **The case's branch comes first; the rest fill in the background.** The card is ready once *its* branch is
+    checked. The other branches fill afterwards, so the registry holds the whole system for every later case.
+20. **Jev checks meaning; code only does an exact-match first pass.**
+    - Branch coverage: "SOURCE states the criteria or management for X".
+    - Evidence: a claim whose quote isn't an exact match goes to Jev ("SOURCE states: claim"). Extracted tables lose
+      their layout, so exact matching alone would reject correct quotes.
+    - Ask-time gaps: Jev decides whether the stored entry already answers a question, before any new search.
+    - Each threshold comes from the lab, set where false yes answers reach zero.
+21. **The registry grows where radiologists ask.** A question the entry can't answer runs one targeted query within
+    that guideline. The answer is grounded in the new chunks, which are added to the entry as supplementary evidence
+    (still a draft until verified).
+
 ## 3. Layout
 
 ```
@@ -150,10 +168,12 @@ Table `guideline_registry`, with an alembic migration:
 |---|---|
 | `key` (pk) | canonical `slug@version`, e.g. `fleischner@2017` |
 | `name`, `version`, `locale` | display name, version string, `uk` by default |
-| `aliases` | text[], lower-cased names and abbreviations |
+| `publication` | title, issuing body, year (the Q1 search key) |
+| `aliases` | JSON list of lower-cased names and abbreviations |
 | `status` | `draft` \| `verified` |
 | `content` | JSON (§5.1.1) |
-| `sources` | JSON list `{url, title, fetched_at}` |
+| `sources` | JSON list `{url, title, tier, fetched_at}` |
+| `chunks` | JSON list `{url, text, branch}`: the extracted evidence text, kept for ask-time grounding and review |
 | `created_at`, `updated_at`, `verified_by`, `verified_at` | |
 
 #### 5.1.1 `content` schema
@@ -161,56 +181,93 @@ Table `guideline_registry`, with an alembic migration:
 ```json
 {
   "applies_to": "one line: which findings this system classifies",
-  "inputs": [{"id": "risk", "question": "Patient risk", "options": ["Low risk", "High risk"],
-              "settled_by": "how a dictation would state it"}],
-  "rule": "the decision rule as compact plain text, citing thresholds exactly as the source states them",
-  "outputs": [{"when": "condition over inputs", "classification": "Bosniak IIF",
-               "recommendation": "Follow-up CT or MRI at 6 months, then 12 months, then annually for 5 years"}],
-  "summary": "two-sentence reference summary shown at the top of an opened card"
+  "summary": "two-sentence reference summary shown at the top of an opened card",
+  "branches": [
+    {"name": "Subsolid · single part-solid · ≥ 6 mm",
+     "state": "checked | not_available | pending",
+     "inputs": [{"id": "risk", "question": "Patient risk", "options": ["Low risk", "High risk"],
+                 "settled_by": "how a dictation would state it"}],
+     "rule": "the decision rule for this branch, citing thresholds as the source states them",
+     "outputs": [{"when": "condition over inputs", "classification": "label",
+                  "recommendation": "interval or action", "quote": "verbatim evidence from chunks"}]}
+  ],
+  "supplements": [{"question": "…", "answer": "…", "quote": "…", "url": "…"}]
 }
 ```
 
-- Seed set, verified before release: Fleischner 2017, Bosniak 2019, ESE adrenal incidentaloma 2023, BTA U-grading,
-  O-RADS US, LI-RADS CT/MR, TNM 8 for lung, colorectal, pancreas and kidney, Kellgren–Lawrence.
-- Hassan may change the seed list during plan review.
-- Review page `/stack-guidelines`, guarded with `requireDevRoute`. It lists entries, shows content and sources,
-  verifies an entry, and edits its JSON.
+- Branches come from the skeleton (§5.2). Each branch has its own state, so a partly filled entry is usable for its
+  `checked` branches.
+- Only a `checked` branch can drive a proposal.
+
+**Seeds and review**
+- Seed set, fetched by the same pipeline and verified before release: Fleischner 2017, Bosniak 2019, ESE adrenal
+  incidentaloma 2023, BTA U-grading, O-RADS US, LI-RADS CT/MR, TNM 8 for lung, colorectal, pancreas and kidney,
+  Kellgren–Lawrence. Hassan may change the list during plan review.
+- Review page `/stack-guidelines`. It is a production review page like `/stack-families`, not a dev route: the
+  entries live in the production database, and the server allows only `RR_STACK_REVIEWERS`.
+  - It lists entries and shows each branch with its quotes and sources.
+  - Hassan checks correctness and coverage, then verifies, edits the JSON, or discards (the next open re-fetches).
 
 ### 5.2 Matcher (`POST /match`)
 
 - Input: scan type, referral, and the abnormal units `{id, text}` from `/group`.
 - It runs after `/group` settles (debounced) and is cached per unit text. A unit whose text is unchanged is never
   re-matched.
-- One gpt-oss-120b call on Cerebras, about 1 s, with structured output.
-  - Per unit, it returns ranked candidates `{key, name, version, why}`.
-  - The prompt carries the list of existing registry keys and names, so the model reuses them, plus the UK locale.
-  - The prompt is case-agnostic (structural form, multi-domain examples).
-  - "No guideline" is a valid answer and is expected for most findings.
+- One gpt-oss-120b call on Cerebras, about 1 s, with structured output. Per unit it returns ranked candidates
+  `{name, version, why, publication, skeleton[], branch}`:
+  - `publication`: title, issuing body and year, from model knowledge. Never a URL.
+  - `skeleton`: the system's branch names only, never thresholds.
+  - `branch`: the skeleton branch this finding falls into, the only case-aware output.
+- The prompt:
+  - carries the existing registry keys and names, so the model reuses them, plus the UK locale;
+  - is case-agnostic (structural form, multi-domain examples);
+  - treats "no guideline" as a valid answer, and the expected one for most findings.
 - Normalisation:
-  - an exact key or alias hits the registry;
-  - otherwise, a registry entry of the same system with a different version goes to Jev, which chooses between distinct
-    entries or "none";
+  - an exact key or alias hits the registry, and the registry's own branches replace the model's skeleton;
+  - otherwise, a registry entry of the same system with a different version goes to Jev, which chooses between
+    distinct entries or "none";
   - otherwise the candidate becomes a new key, stored only when opened.
 - Caps are applied after ranking (§4.1).
 
-### 5.3 `resolve_guideline(key | name)`
+### 5.3 `resolve_guideline(card)`: the targeted fetch
 
-- Shared by the matcher's cards (on open) and by ask.
-- **Registry hit:** return the entry.
-- **Miss:**
-  1. A targeted fetch reuses the prefetch's Tavily search, triage and page extraction stages from
-     `guideline_prefetch.py`, with a single-guideline query.
-  2. gpt-oss extracts the pages into the `content` schema. Nested structured output goes to gpt-oss, per the routing rules.
-  3. The entry is stored as `draft` with its sources.
-- One lock per key, so concurrent opens share a single fetch.
-- Failure: the card shows "couldn't load guideline · retry", and nothing is stored.
+Shared by card open and by ask. The steps:
+
+1. **Registry hit with the card's branch `checked`:** return the entry, with no search.
+2. **First pass**, for a missing entry or an unchecked branch. Runs in parallel:
+   - Q1 `"<publication title>" <year>`
+   - Q2 `<name> <version> <branch name> criteria recommendations`
+   Then:
+   - Tavily search, basic depth, 5 results each, no domain filter.
+   - Code ranks the results by source tier: 1 = publisher or issuing society, 2 = PubMed Central full text,
+     3 = other reputable secondary summaries.
+   - Tavily extract runs on the top 2 URLs with a fixed focus query: "categories, criteria, thresholds, required
+     features, management recommendations".
+3. **Coverage (Jev).** One call with one yes/no question per branch in scope: "SOURCE states the criteria or
+   management for: <branch>". If the case's branch is below the bar, one more query runs
+   (`<name> <version> <branch> recommendations`), then extract and Jev again. Still below the bar → `not_available`.
+4. **Structure (gpt-oss).** The branch is filled (inputs, rule, outputs) from the chunks, with a quote per output.
+5. **Evidence.** For each output, its quote is first checked for an exact match in the chunks after whitespace and
+   case normalisation. Otherwise Jev answers "SOURCE states: <when> → <classification>; <recommendation>". Unsupported
+   outputs are dropped. A branch with no supported outputs becomes `not_available`.
+6. **Save:** an upsert as `draft`, merging branches. A `verified` entry is never overwritten. The card's preview runs
+   now.
+7. **Background fill:** steps 2–5 for each remaining skeleton branch, using Q3+ (one query per branch), saved as each
+   finishes. It is fire-and-forget: a failure leaves the branch `pending`, and the next open retries it.
+
+**Rules**
+- **Query text** comes only from the identity, the publication and branch names. No dictated words are ever sent.
+- **Locks:** one per key for the first pass, and one per branch for background fills, so concurrent opens share work.
+- **Failure:** the card shows "couldn't load guideline · retry", and nothing is stored for that branch.
 
 ### 5.4 Preview (`POST /open` and `POST /preview`)
 
 - `open`: `resolve_guideline`, then the preview.
 - `preview`: the preview alone, when an input is answered.
-- One Qwen call on Cerebras with low reasoning and JSON output. Input: the entry content, the current findings, the
-  referral and the answered inputs. Output:
+- One Qwen call on Cerebras with low reasoning and JSON output.
+  - Input: the card's branch (and any other `checked` branches), the current findings, the referral and the
+    answered inputs.
+  - Output:
 
 ```json
 {"settled": [{"input": "risk", "value": "High risk", "quote": "smoker"}],
@@ -218,18 +275,30 @@ Table `guideline_registry`, with an alembic migration:
  "proposal": {"classification": "Fleischner 2017 · high risk", "line": "…", "recommendation": "…"} | null}
 ```
 
-- The proposal is null while any required input is missing.
-- **Code check:** every number in `line` and `recommendation` must appear in the entry's `rule` or `outputs`. Otherwise
-  the proposal is dropped and the card shows the inputs only. This uses the same idea as the post-generation numeric
-  guards.
+- The proposal is null while any required input is missing, or when the branch is not `checked`.
+- **Code check:** every number in `classification`, `line` and `recommendation` must appear in the branch's rule or
+  outputs, the entry's name or version, or the findings. Otherwise the proposal is dropped, and the card shows the
+  inputs only.
 
 ### 5.5 Ask (`POST /ask`)
 
 - Input: the question, the open card's key (or none), case context, and the last few Q&As in scope.
-- One Qwen call with a single tool, `resolve_guideline(name)`.
-  - **Card in scope:** the answer is grounded in that entry, with no tool.
-  - **No card in scope:** the model either calls the tool (the response carries the card, and the frontend files the
-    Q&A under it) or answers plainly (a General block).
+- It works like a tool call, written as structured steps rather than native tool use (simpler to test, and the same
+  on every provider).
+- **Card in scope:**
+  1. Jev: "SOURCE answers: <question>", over the entry's branches, chunks and supplements.
+  2. At or above the bar: one Qwen call answers, grounded in that material.
+  3. Below the bar:
+     - one targeted query runs: `<name> <version> <question keywords from the guideline's vocabulary>`;
+     - Qwen writes the search phrase from the question with no case details;
+     - extract, then Jev checks again.
+     - If supported: answer, and append a supplement to the entry.
+     - If not: answer "the guideline doesn't address this", plus brief general knowledge clearly labelled as not from
+       the guideline.
+- **No card in scope:** a first Qwen call returns `{guideline: name | null, answer}`.
+  - `null`: the answer becomes a General block.
+  - A name: the matcher's normalisation runs, so a listed card is reused, then `resolve_guideline`, then the
+    card-in-scope path. The response carries the card, and the frontend files the Q&A under it.
 - Answers are about two to four sentences, in British English.
 
 ### 5.6 Recommendations (`POST /recommendations`)
@@ -255,11 +324,13 @@ Table `guideline_registry`, with an alembic migration:
 - **Findings block:** each enrichment line is added as a confirmed statement under its finding's region. The generator
   places it in that finding's paragraph, under the existing Scratchpad Session rule. The conclusion draft (`/draft`)
   reads the same block, so it may name the classification (§2.9).
-- **Recommendations:** a new request field `stack_recommendations: list[str]`, made of the ticked items.
-  - `stack_fallback` adds one section instructing the generator to write a RECOMMENDATIONS section after the
-    impression, containing exactly these items in report style and nothing else. With no items, there is no section.
-  - The Impression Plan's "no recommendation" rule stays. Recommendations live only in this section.
-- Template path: the same fields, mirrored where the template stack path builds its brief.
+- **Recommendations** travel in the findings block, as its last part: `Recommendations (selected by the radiologist):
+  <items>`. Both paths already send that block (quick as `findings`, template as `FINDINGS`), so no new request field
+  is needed.
+  - `stack_fallback` (quick path) adds one rule: when the findings carry that line, write a RECOMMENDATIONS section
+    after the impression, with exactly those items in report style and nothing else. With no line, there is no section.
+  - The Impression Plan's "no recommendation" rule stays. Recommendations live only in that section.
+  - The template path relies on the labelled line. Its placement gets checked in the local hand read.
 
 ## 7. Failure behaviour
 
@@ -282,7 +353,14 @@ Everything fails open, and dictation, Confirm and Generate never wait on the Cop
    - recall of the correct key;
    - wrong or irrelevant cards (precision matters most);
    - key normalisation.
-2. **Extraction.** Live fetch for the seed set, checked by hand against the sources. This doubles as seed verification.
+2. **Fetch and extraction.** The targeted fetch runs on the seed set and is checked by hand against the sources, for
+   correctness and branch coverage. This doubles as seed verification and supplies the Jev fixtures:
+   - covered and missing branches (coverage bar);
+   - true, reformatted and wrong quotes (evidence bar);
+   - questions the entry answers and questions it doesn't (ask-gap bar).
+
+   Each bar is set where false yes answers reach zero. First-open latency (card branch) and background-fill
+   completeness are recorded.
 3. **Preview.** Seed entries × case findings. Measured: settled and missing inputs are correct, the proposal is
    correct, and numbers come from the entry (the numeric check catches violations).
 4. **Ask routing.** Questions split into card-scoped, existing-guideline, new-guideline and general. Each must land in
