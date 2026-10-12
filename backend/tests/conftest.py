@@ -174,3 +174,97 @@ def guided_template(db_session: Session, test_user: User) -> Template:
 def legacy_template(db_session: Session, test_user: User) -> Template:
     """A retired (section-based) template: hidden from lists, generation refused, never deleted."""
     return _make_template(db_session, test_user, "Legacy", {"sections": []}, tags=["legacy-tag"])
+
+
+# ── guideline library: a toy tier 1 entry shared by the test_library_* files ────────────────────────────────────
+import copy as _copy
+import json as _json
+
+_L1 = {"source": "S1", "page": 2}
+TOY_ENTRY = {
+    "id": "toy-nodule", "version": "1.0", "topic": "toy-nodule", "issuer": "TOY", "system": "Toy nodule guideline",
+    "display": "Toy 2020", "edition": "2020", "tier": 1,
+    "applies_to": {"region": ["chest"], "modality": ["CT"], "finding_type": ["nodule"], "context": ["incidental"]},
+    "aliases": ["toy nodule", "toy guideline"],
+    "inputs": [
+        {"id": "kind", "label": "Nodule type", "type": "enum", "options": ["solid", "subsolid"]},
+        {"id": "size", "label": "Diameter", "type": "number", "unit": "mm", "how_stated": "diameter in mm"},
+        {"id": "risk", "label": "Patient risk", "type": "enum", "options": ["low", "high"],
+         "prerequisites": [{"ref": "kind", "eq": "solid"}]},
+        {"id": "margin", "label": "Margin", "type": "enum", "options": ["smooth", "spiculated"],
+         "states": ["not_assessable"]},
+    ],
+    "logic": [
+        {"step": "band", "id": "size_band", "ref": "size", "locator": _L1, "bands": [
+            {"id": "lt6", "label": "<6 mm", "max": 6},
+            {"id": "6to8", "label": "6-8 mm", "min": 6, "max": 8, "max_inclusive": True},
+            {"id": "gt8", "label": ">8 mm", "min": 8, "min_inclusive": False}]},
+        {"step": "rules", "id": "plan", "cases": [
+            {"when": {"ref": "kind", "eq": "subsolid"}, "result": "subsolid", "locator": {"source": "S1", "page": 3}},
+            {"when": {"all": [{"ref": "kind", "eq": "solid"}, {"ref": "size_band", "eq": "lt6"}]},
+             "result": "none", "locator": {"source": "S1", "page": 3}},
+            {"when": {"all": [{"ref": "kind", "eq": "solid"}, {"ref": "size_band", "eq": "6to8"},
+                              {"ref": "risk", "eq": "low"}]}, "result": "ct12", "locator": {"source": "S1", "page": 3}},
+            {"when": {"all": [{"ref": "kind", "eq": "solid"}, {"ref": "size_band", "eq": "6to8"},
+                              {"ref": "risk", "eq": "high"}]}, "result": "ct6", "locator": {"source": "S1", "page": 3}},
+            {"when": {"all": [{"ref": "kind", "eq": "solid"}, {"ref": "size_band", "eq": "gt8"}]},
+             "result": "pet", "locator": {"source": "S1", "page": 3}}]},
+    ],
+    "result": "plan",
+    "outcomes": [
+        {"id": "subsolid", "classification": "subsolid nodule", "recommendation": "CT in 12 months", "locator": _L1},
+        {"id": "none", "classification": "solid nodule {size_band}", "recommendation": "No follow-up", "locator": _L1},
+        {"id": "ct12", "classification": "solid nodule {size_band}, {risk} risk", "recommendation": "CT at 12 months",
+         "locator": _L1},
+        {"id": "ct6", "classification": "solid nodule {size_band}, {risk} risk", "recommendation": "CT at 6 months",
+         "locator": _L1},
+        {"id": "pet", "classification": "solid nodule {size_band}", "recommendation": "PET-CT", "locator": _L1},
+    ],
+    "reference": {"summary": [{"id": "sum.1", "text": "A toy guideline for tests.", "locator": {"source": "S2"}}]},
+}
+TOY_MANIFEST = {"sources": [
+    {"id": "S1", "role": "primary", "title": "Toy guideline", "issuer": "TOY", "edition": "2020",
+     "url": "https://example.org/toy", "file": "sources/abc.pdf", "text_file": "sources/abc.txt"},
+    {"id": "S2", "role": "explanatory", "title": "Toy review", "issuer": "Other", "edition": "2021"}]}
+TOY_CASES = {"cases": [
+    {"name": "subsolid", "origin": "ours", "inputs": {"kind": "subsolid", "size": 7}, "outcome": "subsolid"},
+    {"name": "solid small", "origin": "ours", "inputs": {"kind": "solid", "size": 5.9}, "outcome": "none"},
+    {"name": "edge 6 low", "origin": "ours", "inputs": {"kind": "solid", "size": 6, "risk": "low"}, "outcome": "ct12"},
+    {"name": "edge 8 high", "origin": "ours", "inputs": {"kind": "solid", "size": 8, "risk": "high"}, "outcome": "ct6"},
+    {"name": "just over 8", "origin": "ours", "inputs": {"kind": "solid", "size": 8.1}, "outcome": "pet"},
+    {"name": "risk unknown", "origin": "ours", "inputs": {"kind": "solid", "size": 7}, "outcome": None,
+     "needed": ["risk"]},
+]}
+
+
+@pytest.fixture
+def toy():
+    return _copy.deepcopy(TOY_ENTRY)
+
+
+@pytest.fixture
+def toy_entry(toy):
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
+    return Entry.model_validate(toy)
+
+
+@pytest.fixture
+def manifest():
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Manifest
+    return Manifest.model_validate(_copy.deepcopy(TOY_MANIFEST))
+
+
+@pytest.fixture
+def cases():
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Cases
+    return Cases.model_validate(_copy.deepcopy(TOY_CASES))
+
+
+@pytest.fixture
+def toy_dir(tmp_path, toy):
+    d = tmp_path / "guidelines" / "toy-nodule"
+    d.mkdir(parents=True)
+    (d / "entry.json").write_text(_json.dumps(toy))
+    (d / "manifest.json").write_text(_json.dumps(TOY_MANIFEST))
+    (d / "cases.json").write_text(_json.dumps(TOY_CASES))
+    return tmp_path / "guidelines"
