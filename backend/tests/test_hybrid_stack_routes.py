@@ -220,12 +220,17 @@ def test_unfinished_route_flags_what_jev_scores_unfinished_with_offsets(authed, 
         seen["s"] = sentences
         return [0.05 if s.endswith(".") else 0.95 for s in sentences]
     monkeypatch.setattr(R, "ask_unfinished", fake)
+
+    async def fills(dictation, sentences):
+        return [("normal.", "normal") for _ in sentences]
+    monkeypatch.setattr(R, "complete_sentences", fills)
     text = "Normal appendix. The terminal ileum is\nConclusion: acute appendicitis."
     d = authed.post("/api/canvas/stack/unfinished", json={"text": text}).json()
     assert seen["s"] == ["Normal appendix.", "The terminal ileum is", "Conclusion: acute appendicitis."]
     [f] = d["flags"]
     assert text[f["start"]:f["end"]] == "The terminal ileum is"
     assert f["kind"] == "truncation" and f["severity"] == "high" and f["blocking"] is True
+    assert f["suggestion"] == "normal." and f["completion"] is True and f["adds_normal"] is True
 
 
 def test_unfinished_route_fails_open(authed, monkeypatch):
@@ -233,3 +238,14 @@ def test_unfinished_route_fails_open(authed, monkeypatch):
         raise RuntimeError("jev down")
     monkeypatch.setattr(R, "ask_unfinished", boom)
     assert authed.post("/api/canvas/stack/unfinished", json={"text": "The kidneys are"}).json() == {"flags": []}
+
+
+
+def test_completion_guard_keeps_numbers_and_sides_out_unless_said():
+    from rapid_reports_ai.hybrid_stack.complete import guarded
+    d = "The appendix measures\nConclusion: appendix 12 mm."
+    assert guarded("12 mm", "dictation", d, "The appendix measures") == "12 mm."
+    assert guarded("14 mm", "dictation", d, "The appendix measures") == ""          # a value nobody said
+    assert guarded("normal on the left", "normal", d, "The kidney is") == ""        # a normal adds no side
+    assert guarded("normal.", "normal", d, "The terminal ileum is Conclusion, x.") == ""   # nothing open to finish
+    assert guarded("gallstones", "none", d, "The gallbladder contains") == ""

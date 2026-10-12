@@ -66,11 +66,18 @@ class SemanticIssue(BaseModel):
         description="For a conflict between two statements: the exact substring of the "
                     "other statement, copied character-for-character. Empty otherwise."
     )
-    message: str = Field(description="One sentence a radiologist can act on.")
+    message: str = Field(description="Never empty: one sentence a radiologist can act on, saying what is wrong and, "
+                                     "for a conflict, which statement the rest of the dictation supports.")
     suggestion: str = Field(
         default="",
-        description="garbled_phrase only: the words to replace `quote` with, only when one reading is certain "
-                    "(changes_meaning false). Empty otherwise."
+        description="garbled_phrase: the words to replace `quote` with, only when one reading is certain "
+                    "(changes_meaning false). A conflict: the wrong statement's exact words with only the wrong part "
+                    "corrected, when the dictation shows which statement is wrong (see suggestion_for). Empty otherwise."
+    )
+    suggestion_for: str = Field(
+        default="",
+        description="Conflicts only: which statement the suggestion corrects, \"quote\" or \"other_quote\"; "
+                    "empty when the evidence does not point to one."
     )
     changes_meaning: bool = Field(
         default=False,
@@ -138,6 +145,20 @@ SEMANTIC_SYSTEM_PROMPT = (
     "otherwise leave it empty: never pick between readings, and never supply "
     "a number, side or negation the dictation does not give.\n"
     "\n"
+    "For laterality_conflict, measurement_mismatch, unit_anomaly and "
+    "internal_contradiction, also give `suggestion` and `suggestion_for` when "
+    "the dictation itself shows which statement is wrong: the side or value is "
+    "stated more than once one way, a finding is described in detail in one "
+    "place and only mentioned in passing in the other, or the clinical history "
+    "or scan type names the side. `suggestion_for` is \"quote\" or "
+    "\"other_quote\" (the statement that is wrong), and `suggestion` is that "
+    "statement's exact words with only the wrong part corrected. When the "
+    "evidence is balanced, leave both empty: never pick a side or value the "
+    "text does not support.\n"
+    "\n"
+    "Always write `message`: one short sentence saying what is wrong and, for "
+    "a conflict, which statement the rest of the dictation supports.\n"
+    "\n"
     "When the issue is a conflict between two statements, `quote` is the later one "
     "and `other_quote` is the earlier one it conflicts with; otherwise leave "
     "`other_quote` empty.\n"
@@ -202,7 +223,26 @@ async def _default_analyse(
         return await _run(MODEL_CONFIG["STRUCTURE_VALIDATOR_FALLBACK"])
 
 
-def _locate_flags(findings: str, result: SemanticFindings) -> list[IntegrityFlag]:
+_NUM = re.compile(r"\d+(?:\.\d+)?")
+_SIDE = re.compile(r"\b(?:left|right|bilateral)\b", re.I)
+
+
+def _supported(suggestion: str, source: str, target: str = "") -> bool:
+    """A suggestion never brings a number or side the dictation (or history) does not already give, and a side or
+    value it swaps in must be stated more often there than the one it replaces: a one-against-one tie gets no
+    suggestion (lab 2026-10-12: the model 'corrected' the conclusion to the findings on balanced pairs)."""
+    have = lambda rx, t: {m.lower() for m in rx.findall(t)}
+    if not (have(_NUM, suggestion) <= have(_NUM, source) and have(_SIDE, suggestion) <= have(_SIDE, source)):
+        return False
+    count = lambda rx, v: sum(1 for m in rx.findall(source) if m.lower() == v)
+    for rx in (_SIDE, _NUM):
+        new, old = have(rx, suggestion) - have(rx, target), have(rx, target) - have(rx, suggestion)
+        if new and not all(count(rx, n) > max((count(rx, o) for o in old), default=0) for n in new):
+            return False
+    return True
+
+
+def _locate_flags(findings: str, result: SemanticFindings, history: str = "") -> list[IntegrityFlag]:
     """Turn model-reported issues into located advisory flags (pure, no I/O).
 
     Drops any issue whose quote is not a verbatim substring of ``findings`` — an
@@ -221,10 +261,20 @@ def _locate_flags(findings: str, result: SemanticFindings) -> list[IntegrityFlag
         o = findings.find(other) if other else -1  # the earlier statement: first occurrence
         garbled = issue.kind == "garbled_phrase"
         backstop = bool(_BACKSTOP.search(quote))   # a number or side: never a suggestion ("Non 4 mm" -> "No 4 mm" flips it)
+        # A conflict's suggestion corrects the statement the dictation shows is wrong, only with sides and values it
+        # already gives (directed suggestions, 2026-10-12).
+        target = {"quote": "quote", "other_quote": "other"}.get((issue.suggestion_for or "").strip())
+        target_text = quote if target == "quote" else other if target == "other" and o not in (-1, start) else ""
+        fix = (issue.suggestion or "").strip()
+        if fix and target_text and target_text[-1] in ".?!;," and fix[-1] not in ".?!;,":
+            fix += target_text[-1]   # the replaced words keep their punctuation
+        conflict_fix = (fix if not garbled and target_text and fix and fix != target_text
+                        and _supported(fix, f"{findings}\n{history}", target_text) else "")
         flags.append(
             IntegrityFlag(
                 kind=issue.kind,
-                suggestion=(issue.suggestion or "").strip() if garbled and not issue.changes_meaning and not backstop else "",
+                suggestion=(fix if garbled and not issue.changes_meaning and not backstop else conflict_fix),
+                suggestion_for=target if conflict_fix else "quote",
                 # Every conflict holds Confirm; a garble only when it could change the report. Code backstop: a
                 # garble touching a number or a side always blocks, whatever the model said.
                 blocking=not garbled or issue.changes_meaning or not (issue.suggestion or "").strip()
@@ -266,4 +316,5 @@ async def check_semantic(
     except Exception:
         return []
 
-    return _locate_flags(findings, result)
+    # The history and the scan type count as evidence for a side ("MRI left knee").
+    return _locate_flags(findings, result, f"{clinical_history or ''}\n{scan_type or ''}")

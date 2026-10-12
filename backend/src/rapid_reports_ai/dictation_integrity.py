@@ -67,6 +67,10 @@ class IntegrityFlag:
     # issue could change what the report says (side, number, presence, the finding named), which holds Confirm.
     suggestion: str = ""
     blocking: bool = False
+    # Which statement the suggestion corrects ("quote" or "other"); a completion appends to an unfinished sentence.
+    suggestion_for: str = "quote"
+    completion: bool = False
+    adds_normal: bool = False
 
 
 def _last_content_line(text: str) -> tuple[str, int]:

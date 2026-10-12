@@ -193,3 +193,36 @@ def test_a_garble_on_a_number_never_carries_a_suggestion():
 def test_message_is_required_in_the_schema_but_tolerated_when_missing():
     assert "message" in SemanticIssue.model_json_schema()["required"]
     assert SemanticIssue.model_validate({"kind": "garbled_phrase", "quote": "x"}).message == ""
+
+
+def test_a_conflict_suggestion_corrects_the_statement_the_dictation_outvotes():
+    text = "A 4 mm calculus in the right kidney. No right hydronephrosis. Conclusion: incidental left renal calculus."
+    issue = SemanticIssue(kind="laterality_conflict", quote="incidental left renal calculus.", other_quote="A 4 mm calculus in the right kidney.",
+                          message="m", suggestion="incidental right renal calculus", suggestion_for="quote")
+    f = _locate_flags(text, SemanticFindings(issues=[issue]), "Right flank pain.")[0]
+    assert f.suggestion == "incidental right renal calculus." and f.suggestion_for == "quote" and f.blocking
+
+
+def test_a_one_against_one_conflict_gets_no_suggestion():
+    text = "Small left pleural effusion. Conclusion: small right pleural effusion."
+    issue = SemanticIssue(kind="laterality_conflict", quote="small right pleural effusion.", other_quote="Small left pleural effusion.",
+                          message="m", suggestion="small left pleural effusion.", suggestion_for="quote")
+    assert _locate_flags(text, SemanticFindings(issues=[issue]), "Breathless.")[0].suggestion == ""
+
+
+def test_a_conflict_suggestion_never_brings_a_new_value():
+    text = "The spleen measures 14 cm. Conclusion: splenomegaly."
+    issue = SemanticIssue(kind="measurement_mismatch", quote="The spleen measures 14 cm.", message="m",
+                          suggestion="The spleen measures 16 cm.", suggestion_for="quote")
+    assert _locate_flags(text, SemanticFindings(issues=[issue]))[0].suggestion == ""
+
+
+def test_the_other_statement_can_be_the_one_corrected():
+    text = "Moderate hydronephrosis of the left kidney. The left ureter is dilated. Conclusion: right hydronephrosis."
+    issue = SemanticIssue(kind="laterality_conflict", quote="Conclusion: right hydronephrosis.", other_quote="Moderate hydronephrosis of the left kidney.",
+                          message="m", suggestion="Conclusion: left hydronephrosis.", suggestion_for="quote")
+    f = _locate_flags(text, SemanticFindings(issues=[issue]))[0]
+    assert f.suggestion == "Conclusion: left hydronephrosis."
+    flipped = SemanticIssue(kind="laterality_conflict", quote="Conclusion: right hydronephrosis.", other_quote="Moderate hydronephrosis of the left kidney.",
+                            message="m", suggestion="Moderate hydronephrosis of the right kidney.", suggestion_for="other_quote")
+    assert _locate_flags(text, SemanticFindings(issues=[flipped]))[0].suggestion == ""   # left is outvoted 2:1 the other way
