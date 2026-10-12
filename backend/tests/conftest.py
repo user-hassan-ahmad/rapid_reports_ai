@@ -268,3 +268,11 @@ def toy_dir(tmp_path, toy):
     (d / "manifest.json").write_text(_json.dumps(TOY_MANIFEST))
     (d / "cases.json").write_text(_json.dumps(TOY_CASES))
     return tmp_path / "guidelines"
+
+
+@pytest.fixture(autouse=True)
+def _empty_guideline_library(monkeypatch):
+    """Matcher and route tests must not depend on whichever packs the real bundle holds; a test that needs packs
+    sets L.get itself."""
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as L
+    monkeypatch.setattr(L, "get", lambda: L.Library({}))
