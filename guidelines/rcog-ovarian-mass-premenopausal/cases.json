@@ -1,0 +1,646 @@
+{
+  "cases": [
+    {
+      "name": "Incidental 32 mm simple cyst: under 50 mm",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": true,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false,
+        "simple_cyst": true,
+        "size_mm": 32
+      },
+      "outcome": "simple_lt50",
+      "steps": {
+        "iota": "benign",
+        "size_band": "lt50",
+        "pathway": "simple_lt50"
+      }
+    },
+    {
+      "name": "Simple cyst 49.9 mm: just under the 50 mm edge",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": true,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false,
+        "simple_cyst": true,
+        "size_mm": 49.9
+      },
+      "outcome": "simple_lt50",
+      "steps": {
+        "size_band": "lt50"
+      }
+    },
+    {
+      "name": "Simple cyst 50 mm: the 50 mm edge is in the 50-70 group",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": true,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false,
+        "simple_cyst": true,
+        "size_mm": 50
+      },
+      "outcome": "simple_50_70",
+      "steps": {
+        "size_band": "50to70"
+      }
+    },
+    {
+      "name": "Simple cyst 70 mm: the 70 mm edge is in the 50-70 group",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": true,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false,
+        "simple_cyst": true,
+        "size_mm": 70
+      },
+      "outcome": "simple_50_70",
+      "steps": {
+        "size_band": "50to70"
+      }
+    },
+    {
+      "name": "Simple cyst 70.1 mm: over 70 mm",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": true,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false,
+        "simple_cyst": true,
+        "size_mm": 70.1
+      },
+      "outcome": "simple_gt70",
+      "steps": {
+        "size_band": "gt70_lt100"
+      }
+    },
+    {
+      "name": "Simple cyst 120 mm: still a large simple cyst (B1)",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": true,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false,
+        "simple_cyst": true,
+        "size_mm": 120
+      },
+      "outcome": "simple_gt70",
+      "steps": {
+        "iota": "benign",
+        "size_band": "ge100"
+      }
+    },
+    {
+      "name": "Unilocular cyst with internal echoes (non-simple): benign, not simple",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": true,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false,
+        "simple_cyst": false,
+        "size_mm": 45
+      },
+      "outcome": "benign_not_simple",
+      "steps": {
+        "iota": "benign",
+        "pathway": "benign_not_simple"
+      }
+    },
+    {
+      "name": "Mass with acoustic shadowing (dermoid pattern), not unilocular: benign, size not needed",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": false,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": true,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false
+      },
+      "outcome": "benign_not_simple",
+      "steps": {
+        "iota": "benign"
+      }
+    },
+    {
+      "name": "Smooth multilocular cyst 99.9 mm: B4 applies just under 100 mm",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": false,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": true,
+        "b5_no_flow": false,
+        "size_mm": 99.9
+      },
+      "outcome": "benign_not_simple",
+      "steps": {
+        "iota": "benign",
+        "size_band": "gt70_lt100"
+      }
+    },
+    {
+      "name": "Smooth multilocular cyst 100 mm: B4 no longer applies, no rule",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": false,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": true,
+        "b5_no_flow": false,
+        "size_mm": 100
+      },
+      "outcome": "iota_unclassified",
+      "steps": {
+        "iota": "no_rule",
+        "size_band": "ge100"
+      }
+    },
+    {
+      "name": "Cyst with a 5 mm solid component, Doppler described as moderate flow: benign by B2",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": false,
+        "b2_small_solid": true,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false
+      },
+      "outcome": "benign_not_simple",
+      "steps": {
+        "iota": "benign"
+      }
+    },
+    {
+      "name": "Irregular solid mass with very strong flow: malignant, refer to gynaecological oncology",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": true,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": true,
+        "b1_unilocular": false,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false
+      },
+      "outcome": "refer_gynae_oncology",
+      "steps": {
+        "iota": "malignant",
+        "pathway": "refer_gynae_oncology"
+      }
+    },
+    {
+      "name": "Cyst with four papillary projections only: malignant by M3",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": true,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": false,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false
+      },
+      "outcome": "refer_gynae_oncology",
+      "steps": {
+        "iota": "malignant"
+      }
+    },
+    {
+      "name": "Irregular multilocular-solid tumour 100 mm: M4 applies at 100 mm",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": true,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": false,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false,
+        "size_mm": 100
+      },
+      "outcome": "refer_gynae_oncology",
+      "steps": {
+        "iota": "malignant",
+        "size_band": "ge100"
+      }
+    },
+    {
+      "name": "Irregular multilocular-solid tumour 99.9 mm: M4 does not apply, no rule",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": true,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": false,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false,
+        "size_mm": 99.9
+      },
+      "outcome": "iota_unclassified",
+      "steps": {
+        "iota": "no_rule",
+        "size_band": "gt70_lt100"
+      }
+    },
+    {
+      "name": "Simple unilocular cyst with ascites: both M and B features, unclassifiable",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": true,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": true,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false,
+        "simple_cyst": true,
+        "size_mm": 40
+      },
+      "outcome": "iota_both",
+      "steps": {
+        "iota": "both",
+        "pathway": "iota_both"
+      }
+    },
+    {
+      "name": "Shadowing plus four papillary structures: both, unclassifiable",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": true,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": false,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": true,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false
+      },
+      "outcome": "iota_both",
+      "steps": {
+        "iota": "both"
+      }
+    },
+    {
+      "name": "Multilocular-solid mass with moderate flow, no rule applies",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": false,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false
+      },
+      "outcome": "iota_unclassified",
+      "steps": {
+        "iota": "no_rule",
+        "pathway": "iota_unclassified"
+      }
+    },
+    {
+      "name": "Postmenopausal woman: GTG 62 does not apply",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": false,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": true,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false,
+        "simple_cyst": true,
+        "size_mm": 30
+      },
+      "outcome": "does_not_apply",
+      "steps": {
+        "pathway": "does_not_apply"
+      }
+    },
+    {
+      "name": "Pregnant woman: does not apply, even with an M-feature",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": true,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": true,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": false,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false
+      },
+      "outcome": "does_not_apply",
+      "steps": {}
+    },
+    {
+      "name": "Known borderline tumour: does not apply",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": true,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": true,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false,
+        "simple_cyst": true,
+        "size_mm": 30
+      },
+      "outcome": "does_not_apply",
+      "steps": {}
+    },
+    {
+      "name": "Postmenopausal stated, nothing else known: does not apply without the IOTA features",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": false
+      },
+      "outcome": "does_not_apply",
+      "steps": {}
+    },
+    {
+      "name": "Simple cyst, size not given: size needed",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": true,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false,
+        "simple_cyst": true
+      },
+      "outcome": null,
+      "needed": [
+        "size_mm"
+      ],
+      "steps": {}
+    },
+    {
+      "name": "Cyst with a 5 mm solid component, Doppler not described: M5 is asked (B5 cannot change the result)",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "b1_unilocular": false,
+        "b2_small_solid": true,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false
+      },
+      "outcome": null,
+      "needed": [
+        "m5_very_strong_flow"
+      ],
+      "steps": {}
+    },
+    {
+      "name": "Multiple small papillary projections, not counted: M3 is asked",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": false,
+        "b2_small_solid": true,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false
+      },
+      "outcome": null,
+      "needed": [
+        "m3_four_papillary"
+      ],
+      "steps": {}
+    },
+    {
+      "name": "Smooth multilocular cyst, size not given: size decides B4",
+      "origin": "ours",
+      "inputs": {
+        "premenopausal": true,
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": false,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": true,
+        "b5_no_flow": false
+      },
+      "outcome": null,
+      "needed": [
+        "size_mm"
+      ],
+      "steps": {}
+    },
+    {
+      "name": "Menopausal status not stated: premenopausal is needed",
+      "origin": "ours",
+      "inputs": {
+        "pregnant_or_acute": false,
+        "known_malignancy_or_borderline": false,
+        "m1_irregular_solid": false,
+        "m2_ascites": false,
+        "m3_four_papillary": false,
+        "m4_irregular_multilocular_solid": false,
+        "m5_very_strong_flow": false,
+        "b1_unilocular": true,
+        "b2_small_solid": false,
+        "b3_acoustic_shadowing": false,
+        "b4_smooth_multilocular": false,
+        "b5_no_flow": false,
+        "simple_cyst": true,
+        "size_mm": 30
+      },
+      "outcome": null,
+      "needed": [
+        "premenopausal"
+      ],
+      "steps": {}
+    }
+  ]
+}
