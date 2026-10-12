@@ -374,6 +374,8 @@ def _partial(entry: Entry, given: dict[str, InputValue],
         needed = every
         possible = _over(entry, given, env, names, doms, possible)
     needed = sorted(set(needed), key=order.index)
+    if not bounded:            # enumeration cannot tell what one input moves: each decides between all still possible
+        return possible, bounded, needed, {n: possible for n in needed}
     return possible, bounded, needed, {n: decides.get(n) or possible for n in needed}
 
 

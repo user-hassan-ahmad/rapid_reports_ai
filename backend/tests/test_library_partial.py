@@ -101,3 +101,14 @@ def test_over_approximation_keeps_outcomes_behind_a_not_applicable_band():
     t = E.evaluate(_bts(), given)
     assert t.bounded is False and len(t.possible) < len(_bts().outcomes)      # not the over-the-cap fallback
     assert {"growth_workup_2d", "ct_2yr_2d", "volumetry_advised"} <= set(t.possible)
+
+
+def test_unbounded_decides_between_is_every_possible_outcome():
+    """New-I2: on an unbounded trace enumeration cannot tell what one input moves, so each needed input decides between
+    every outcome still possible (nodule type: solid can still give ct_3m, brock_low or pet_ct, not only subsolid)."""
+    t = E.evaluate(_bts(), {"benign_features": False, "prior_study": False, "age": 65, "sex": "female",
+                            "family_history": False, "emphysema": False, "upper_lobe": True, "spiculation": False,
+                            "nodule_count": 1})
+    assert t.bounded is False and "nodule_type" in t.needed
+    assert all(t.decides[k] == t.possible for k in t.needed)
+    assert {"subsolid", "ct_3m"} <= set(t.decides["nodule_type"])
