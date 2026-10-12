@@ -51,9 +51,10 @@
       "options": [
         "renal_mass_protocol",
         "unenhanced_only",
-        "portal_venous_only"
+        "portal_venous_only",
+        "other_contrast_only"
       ],
-      "how_stated": "renal mass protocol CT (unenhanced plus contrast phases), unenhanced CT only, or a single portal venous phase only",
+      "how_stated": "renal mass protocol CT (unenhanced plus contrast phases); unenhanced CT only; a single portal venous phase only; or other contrast-enhanced CT with no unenhanced series",
       "prerequisites": [
         {
           "ref": "too_small",
@@ -91,14 +92,16 @@
     },
     {
       "id": "wall",
-      "label": "Wall thickness",
+      "label": "Wall",
       "type": "enum",
       "options": [
         "thin",
-        "minimally_thickened",
-        "thick"
+        "minimally_thickened_enhancing",
+        "minimally_thickened_not_enhancing",
+        "thick_enhancing",
+        "thick_not_enhancing"
       ],
-      "how_stated": "wall thin (2 mm or less), minimally thickened (3 mm) or thick (4 mm or more)",
+      "how_stated": "smooth wall thin (2 mm or less, may enhance), minimally thickened (3 mm) or thick (4 mm or more), and whether that wall enhances; not enhancing, or enhancement not assessable (needs unenhanced and enhanced images to compare, or a measurement)",
       "prerequisites": [
         {
           "ref": "too_small",
@@ -114,44 +117,23 @@
     },
     {
       "id": "septa",
-      "label": "Number of septa",
+      "label": "Septa (the one that sets the highest class)",
       "type": "enum",
       "options": [
         "none",
-        "few",
-        "many"
+        "few_thin",
+        "many_thin_enhancing",
+        "many_thin_not_enhancing",
+        "minimally_thickened_enhancing",
+        "minimally_thickened_not_enhancing",
+        "thick_enhancing",
+        "thick_not_enhancing"
       ],
-      "how_stated": "no septa, few (1 to 3) or many (4 or more) septa",
+      "how_stated": "no septa; few (1 to 3) thin (2 mm or less) septa, enhancing or not; many (4 or more) thin septa; or a minimally thickened (3 mm) or thick (4 mm or more) septum, and whether it enhances. Give the highest-class enhancing septum; if none enhances, the thickest. not enhancing, or enhancement not assessable (needs unenhanced and enhanced images to compare, or a measurement)",
       "prerequisites": [
         {
           "ref": "too_small",
           "eq": "no"
-        }
-      ],
-      "locator": {
-        "source": "S1",
-        "page": null,
-        "section": "General Points",
-        "table": "3"
-      }
-    },
-    {
-      "id": "septa_thickness",
-      "label": "Thickest septum",
-      "type": "enum",
-      "options": [
-        "thin",
-        "minimally_thickened",
-        "thick"
-      ],
-      "how_stated": "septa thin (2 mm or less), minimally thickened (3 mm) or thick (4 mm or more)",
-      "prerequisites": [
-        {
-          "ref": "septa",
-          "in": [
-            "few",
-            "many"
-          ]
         }
       ],
       "locator": {
@@ -163,40 +145,15 @@
     },
     {
       "id": "protrusion",
-      "label": "Convex protrusion from wall or septa",
+      "label": "Convex protrusion from wall or septa (most significant)",
       "type": "enum",
       "options": [
         "none",
-        "obtuse_3mm_or_less",
-        "obtuse_4mm_or_more",
-        "acute_any_size"
+        "irregular_thickening",
+        "nodule",
+        "not_enhancing"
       ],
-      "how_stated": "smooth with no protrusion; irregular thickening (obtuse-margined protrusion 3 mm or less); nodule (obtuse-margined 4 mm or more, or acute-margined of any size)",
-      "prerequisites": [
-        {
-          "ref": "too_small",
-          "eq": "no"
-        }
-      ],
-      "locator": {
-        "source": "S1",
-        "page": null,
-        "section": "General Points",
-        "table": "3"
-      }
-    },
-    {
-      "id": "enhancement",
-      "label": "Enhancement of wall, septa or protrusion",
-      "type": "enum",
-      "options": [
-        "present",
-        "absent"
-      ],
-      "states": [
-        "not_assessable"
-      ],
-      "how_stated": "enhancing or non-enhancing (clear visible enhancement comparing unenhanced and enhanced images, or measurable); not assessable on a single phase",
+      "how_stated": "none (smooth); irregular thickening (enhancing, obtuse margins, 3 mm or less); nodule (enhancing, acute margins of any size, or obtuse margins and 4 mm or more); or a protrusion that does not enhance or cannot be assessed. Measure perpendicular to its wall or septum, adding protrusions on both sides and excluding the septum. Give a nodule over irregular thickening.",
       "prerequisites": [
         {
           "ref": "too_small",
@@ -218,7 +175,7 @@
         "none",
         "present"
       ],
-      "how_stated": "calcification of any type in the wall or septa, or none",
+      "how_stated": "calcification of any type, or none",
       "prerequisites": [
         {
           "ref": "too_small",
@@ -255,11 +212,37 @@
       }
     },
     {
+      "id": "contents_enhancement",
+      "label": "Mass (contents) enhancement",
+      "type": "enum",
+      "options": [
+        "present",
+        "absent"
+      ],
+      "how_stated": "whether the mass itself enhances (non-enhancing mass), comparing unenhanced and enhanced series",
+      "prerequisites": [
+        {
+          "ref": "too_small",
+          "eq": "no"
+        },
+        {
+          "ref": "technique",
+          "eq": "renal_mass_protocol"
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+        "table": "2"
+      }
+    },
+    {
       "id": "hu",
       "label": "Attenuation of contents",
       "type": "number",
       "unit": "HU",
-      "how_stated": "attenuation in HU on the unenhanced series (on the single phase if only one was acquired)",
+      "how_stated": "attenuation in HU on the unenhanced series (on the contrast-enhanced series if there is no unenhanced one)",
       "prerequisites": [
         {
           "ref": "too_small",
@@ -358,14 +341,15 @@
                 "eq": "no"
               },
               {
-                "ref": "enhancement",
-                "eq": "present"
-              },
-              {
-                "ref": "protrusion",
-                "in": [
-                  "obtuse_4mm_or_more",
-                  "acute_any_size"
+                "all": [
+                  {
+                    "ref": "technique",
+                    "eq": "renal_mass_protocol"
+                  },
+                  {
+                    "ref": "protrusion",
+                    "eq": "nodule"
+                  }
                 ]
               }
             ]
@@ -386,33 +370,42 @@
                 "eq": "no"
               },
               {
-                "ref": "enhancement",
-                "eq": "present"
-              },
-              {
                 "none": [
                   {
-                    "ref": "protrusion",
-                    "in": [
-                      "obtuse_4mm_or_more",
-                      "acute_any_size"
+                    "all": [
+                      {
+                        "ref": "technique",
+                        "eq": "renal_mass_protocol"
+                      },
+                      {
+                        "ref": "protrusion",
+                        "eq": "nodule"
+                      }
                     ]
                   }
                 ]
               },
               {
-                "any": [
+                "all": [
                   {
-                    "ref": "wall",
-                    "eq": "thick"
+                    "ref": "technique",
+                    "eq": "renal_mass_protocol"
                   },
                   {
-                    "ref": "septa_thickness",
-                    "eq": "thick"
-                  },
-                  {
-                    "ref": "protrusion",
-                    "eq": "obtuse_3mm_or_less"
+                    "any": [
+                      {
+                        "ref": "protrusion",
+                        "eq": "irregular_thickening"
+                      },
+                      {
+                        "ref": "wall",
+                        "eq": "thick_enhancing"
+                      },
+                      {
+                        "ref": "septa",
+                        "eq": "thick_enhancing"
+                      }
+                    ]
                   }
                 ]
               }
@@ -434,59 +427,67 @@
                 "eq": "no"
               },
               {
-                "ref": "enhancement",
-                "eq": "present"
-              },
-              {
                 "none": [
                   {
-                    "ref": "protrusion",
-                    "in": [
-                      "obtuse_4mm_or_more",
-                      "acute_any_size"
-                    ]
-                  }
-                ]
-              },
-              {
-                "none": [
-                  {
-                    "any": [
+                    "all": [
                       {
-                        "ref": "wall",
-                        "eq": "thick"
-                      },
-                      {
-                        "ref": "septa_thickness",
-                        "eq": "thick"
+                        "ref": "technique",
+                        "eq": "renal_mass_protocol"
                       },
                       {
                         "ref": "protrusion",
-                        "eq": "obtuse_3mm_or_less"
+                        "eq": "nodule"
                       }
                     ]
                   }
                 ]
               },
               {
-                "any": [
-                  {
-                    "ref": "wall",
-                    "eq": "minimally_thickened"
-                  },
-                  {
-                    "ref": "septa_thickness",
-                    "eq": "minimally_thickened"
-                  },
+                "none": [
                   {
                     "all": [
                       {
-                        "ref": "septa",
-                        "eq": "many"
+                        "ref": "technique",
+                        "eq": "renal_mass_protocol"
                       },
                       {
-                        "ref": "septa_thickness",
-                        "eq": "thin"
+                        "any": [
+                          {
+                            "ref": "protrusion",
+                            "eq": "irregular_thickening"
+                          },
+                          {
+                            "ref": "wall",
+                            "eq": "thick_enhancing"
+                          },
+                          {
+                            "ref": "septa",
+                            "eq": "thick_enhancing"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "all": [
+                  {
+                    "ref": "technique",
+                    "eq": "renal_mass_protocol"
+                  },
+                  {
+                    "any": [
+                      {
+                        "ref": "wall",
+                        "eq": "minimally_thickened_enhancing"
+                      },
+                      {
+                        "ref": "septa",
+                        "in": [
+                          "minimally_thickened_enhancing",
+                          "many_thin_enhancing"
+                        ]
                       }
                     ]
                   }
@@ -512,8 +513,71 @@
               {
                 "none": [
                   {
-                    "ref": "enhancement",
-                    "eq": "present"
+                    "all": [
+                      {
+                        "ref": "technique",
+                        "eq": "renal_mass_protocol"
+                      },
+                      {
+                        "ref": "protrusion",
+                        "eq": "nodule"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "none": [
+                  {
+                    "all": [
+                      {
+                        "ref": "technique",
+                        "eq": "renal_mass_protocol"
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "protrusion",
+                            "eq": "irregular_thickening"
+                          },
+                          {
+                            "ref": "wall",
+                            "eq": "thick_enhancing"
+                          },
+                          {
+                            "ref": "septa",
+                            "eq": "thick_enhancing"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "none": [
+                  {
+                    "all": [
+                      {
+                        "ref": "technique",
+                        "eq": "renal_mass_protocol"
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "minimally_thickened_enhancing"
+                          },
+                          {
+                            "ref": "septa",
+                            "in": [
+                              "minimally_thickened_enhancing",
+                              "many_thin_enhancing"
+                            ]
+                          }
+                        ]
+                      }
+                    ]
                   }
                 ]
               },
@@ -522,46 +586,26 @@
                   {
                     "ref": "protrusion",
                     "in": [
-                      "obtuse_4mm_or_more",
-                      "acute_any_size"
+                      "irregular_thickening",
+                      "nodule",
+                      "not_enhancing"
                     ]
                   },
                   {
-                    "any": [
+                    "none": [
                       {
                         "ref": "wall",
-                        "eq": "thick"
-                      },
-                      {
-                        "ref": "septa_thickness",
-                        "eq": "thick"
-                      },
-                      {
-                        "ref": "protrusion",
-                        "eq": "obtuse_3mm_or_less"
+                        "eq": "thin"
                       }
                     ]
                   },
                   {
-                    "any": [
+                    "none": [
                       {
-                        "ref": "wall",
-                        "eq": "minimally_thickened"
-                      },
-                      {
-                        "ref": "septa_thickness",
-                        "eq": "minimally_thickened"
-                      },
-                      {
-                        "all": [
-                          {
-                            "ref": "septa",
-                            "eq": "many"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "thin"
-                          }
+                        "ref": "septa",
+                        "in": [
+                          "none",
+                          "few_thin"
                         ]
                       }
                     ]
@@ -592,46 +636,26 @@
                       {
                         "ref": "protrusion",
                         "in": [
-                          "obtuse_4mm_or_more",
-                          "acute_any_size"
+                          "irregular_thickening",
+                          "nodule",
+                          "not_enhancing"
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
                             "ref": "wall",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "protrusion",
-                            "eq": "obtuse_3mm_or_less"
+                            "eq": "thin"
                           }
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
-                            "ref": "wall",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "all": [
-                              {
-                                "ref": "septa",
-                                "eq": "many"
-                              },
-                              {
-                                "ref": "septa_thickness",
-                                "eq": "thin"
-                              }
+                            "ref": "septa",
+                            "in": [
+                              "none",
+                              "few_thin"
                             ]
                           }
                         ]
@@ -668,46 +692,26 @@
                       {
                         "ref": "protrusion",
                         "in": [
-                          "obtuse_4mm_or_more",
-                          "acute_any_size"
+                          "irregular_thickening",
+                          "nodule",
+                          "not_enhancing"
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
                             "ref": "wall",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "protrusion",
-                            "eq": "obtuse_3mm_or_less"
+                            "eq": "thin"
                           }
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
-                            "ref": "wall",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "all": [
-                              {
-                                "ref": "septa",
-                                "eq": "many"
-                              },
-                              {
-                                "ref": "septa_thickness",
-                                "eq": "thin"
-                              }
+                            "ref": "septa",
+                            "in": [
+                              "none",
+                              "few_thin"
                             ]
                           }
                         ]
@@ -722,7 +726,7 @@
               },
               {
                 "ref": "septa",
-                "eq": "few"
+                "eq": "few_thin"
               }
             ]
           },
@@ -748,46 +752,26 @@
                       {
                         "ref": "protrusion",
                         "in": [
-                          "obtuse_4mm_or_more",
-                          "acute_any_size"
+                          "irregular_thickening",
+                          "nodule",
+                          "not_enhancing"
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
                             "ref": "wall",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "protrusion",
-                            "eq": "obtuse_3mm_or_less"
+                            "eq": "thin"
                           }
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
-                            "ref": "wall",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "all": [
-                              {
-                                "ref": "septa",
-                                "eq": "many"
-                              },
-                              {
-                                "ref": "septa_thickness",
-                                "eq": "thin"
-                              }
+                            "ref": "septa",
+                            "in": [
+                              "none",
+                              "few_thin"
                             ]
                           }
                         ]
@@ -811,6 +795,14 @@
               {
                 "all": [
                   {
+                    "none": [
+                      {
+                        "ref": "contents_enhancement",
+                        "eq": "present"
+                      }
+                    ]
+                  },
+                  {
                     "ref": "calcification",
                     "eq": "none"
                   },
@@ -822,7 +814,8 @@
                     "ref": "technique",
                     "in": [
                       "renal_mass_protocol",
-                      "portal_venous_only"
+                      "portal_venous_only",
+                      "other_contrast_only"
                     ]
                   }
                 ]
@@ -851,46 +844,26 @@
                       {
                         "ref": "protrusion",
                         "in": [
-                          "obtuse_4mm_or_more",
-                          "acute_any_size"
+                          "irregular_thickening",
+                          "nodule",
+                          "not_enhancing"
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
                             "ref": "wall",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "protrusion",
-                            "eq": "obtuse_3mm_or_less"
+                            "eq": "thin"
                           }
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
-                            "ref": "wall",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "all": [
-                              {
-                                "ref": "septa",
-                                "eq": "many"
-                              },
-                              {
-                                "ref": "septa_thickness",
-                                "eq": "thin"
-                              }
+                            "ref": "septa",
+                            "in": [
+                              "none",
+                              "few_thin"
                             ]
                           }
                         ]
@@ -951,46 +924,26 @@
                       {
                         "ref": "protrusion",
                         "in": [
-                          "obtuse_4mm_or_more",
-                          "acute_any_size"
+                          "irregular_thickening",
+                          "nodule",
+                          "not_enhancing"
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
                             "ref": "wall",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "protrusion",
-                            "eq": "obtuse_3mm_or_less"
+                            "eq": "thin"
                           }
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
-                            "ref": "wall",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "all": [
-                              {
-                                "ref": "septa",
-                                "eq": "many"
-                              },
-                              {
-                                "ref": "septa_thickness",
-                                "eq": "thin"
-                              }
+                            "ref": "septa",
+                            "in": [
+                              "none",
+                              "few_thin"
                             ]
                           }
                         ]
@@ -1013,6 +966,14 @@
               },
               {
                 "all": [
+                  {
+                    "none": [
+                      {
+                        "ref": "contents_enhancement",
+                        "eq": "present"
+                      }
+                    ]
+                  },
                   {
                     "ref": "calcification",
                     "eq": "present"
@@ -1047,46 +1008,26 @@
                       {
                         "ref": "protrusion",
                         "in": [
-                          "obtuse_4mm_or_more",
-                          "acute_any_size"
+                          "irregular_thickening",
+                          "nodule",
+                          "not_enhancing"
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
                             "ref": "wall",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "protrusion",
-                            "eq": "obtuse_3mm_or_less"
+                            "eq": "thin"
                           }
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
-                            "ref": "wall",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "all": [
-                              {
-                                "ref": "septa",
-                                "eq": "many"
-                              },
-                              {
-                                "ref": "septa_thickness",
-                                "eq": "thin"
-                              }
+                            "ref": "septa",
+                            "in": [
+                              "none",
+                              "few_thin"
                             ]
                           }
                         ]
@@ -1114,28 +1055,8 @@
                     "eq": "ge70"
                   },
                   {
-                    "any": [
-                      {
-                        "ref": "technique",
-                        "eq": "unenhanced_only"
-                      },
-                      {
-                        "all": [
-                          {
-                            "ref": "technique",
-                            "eq": "renal_mass_protocol"
-                          },
-                          {
-                            "none": [
-                              {
-                                "ref": "enhancement",
-                                "eq": "absent"
-                              }
-                            ]
-                          }
-                        ]
-                      }
-                    ]
+                    "ref": "technique",
+                    "eq": "unenhanced_only"
                   }
                 ]
               }
@@ -1163,46 +1084,26 @@
                       {
                         "ref": "protrusion",
                         "in": [
-                          "obtuse_4mm_or_more",
-                          "acute_any_size"
+                          "irregular_thickening",
+                          "nodule",
+                          "not_enhancing"
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
                             "ref": "wall",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "protrusion",
-                            "eq": "obtuse_3mm_or_less"
+                            "eq": "thin"
                           }
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
-                            "ref": "wall",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "all": [
-                              {
-                                "ref": "septa",
-                                "eq": "many"
-                              },
-                              {
-                                "ref": "septa_thickness",
-                                "eq": "thin"
-                              }
+                            "ref": "septa",
+                            "in": [
+                              "none",
+                              "few_thin"
                             ]
                           }
                         ]
@@ -1238,7 +1139,7 @@
                     "eq": "renal_mass_protocol"
                   },
                   {
-                    "ref": "enhancement",
+                    "ref": "contents_enhancement",
                     "eq": "absent"
                   }
                 ]
@@ -1267,46 +1168,26 @@
                       {
                         "ref": "protrusion",
                         "in": [
-                          "obtuse_4mm_or_more",
-                          "acute_any_size"
+                          "irregular_thickening",
+                          "nodule",
+                          "not_enhancing"
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
                             "ref": "wall",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "protrusion",
-                            "eq": "obtuse_3mm_or_less"
+                            "eq": "thin"
                           }
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
-                            "ref": "wall",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "all": [
-                              {
-                                "ref": "septa",
-                                "eq": "many"
-                              },
-                              {
-                                "ref": "septa_thickness",
-                                "eq": "thin"
-                              }
+                            "ref": "septa",
+                            "in": [
+                              "none",
+                              "few_thin"
                             ]
                           }
                         ]
@@ -1363,46 +1244,26 @@
                       {
                         "ref": "protrusion",
                         "in": [
-                          "obtuse_4mm_or_more",
-                          "acute_any_size"
+                          "irregular_thickening",
+                          "nodule",
+                          "not_enhancing"
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
                             "ref": "wall",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "thick"
-                          },
-                          {
-                            "ref": "protrusion",
-                            "eq": "obtuse_3mm_or_less"
+                            "eq": "thin"
                           }
                         ]
                       },
                       {
-                        "any": [
+                        "none": [
                           {
-                            "ref": "wall",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "ref": "septa_thickness",
-                            "eq": "minimally_thickened"
-                          },
-                          {
-                            "all": [
-                              {
-                                "ref": "septa",
-                                "eq": "many"
-                              },
-                              {
-                                "ref": "septa_thickness",
-                                "eq": "thin"
-                              }
+                            "ref": "septa",
+                            "in": [
+                              "none",
+                              "few_thin"
                             ]
                           }
                         ]
@@ -1432,6 +1293,14 @@
                           {
                             "all": [
                               {
+                                "none": [
+                                  {
+                                    "ref": "contents_enhancement",
+                                    "eq": "present"
+                                  }
+                                ]
+                              },
+                              {
                                 "ref": "calcification",
                                 "eq": "none"
                               },
@@ -1443,7 +1312,8 @@
                                 "ref": "technique",
                                 "in": [
                                   "renal_mass_protocol",
-                                  "portal_venous_only"
+                                  "portal_venous_only",
+                                  "other_contrast_only"
                                 ]
                               }
                             ]
@@ -1467,6 +1337,14 @@
                           {
                             "all": [
                               {
+                                "none": [
+                                  {
+                                    "ref": "contents_enhancement",
+                                    "eq": "present"
+                                  }
+                                ]
+                              },
+                              {
                                 "ref": "calcification",
                                 "eq": "present"
                               },
@@ -1483,28 +1361,8 @@
                                 "eq": "ge70"
                               },
                               {
-                                "any": [
-                                  {
-                                    "ref": "technique",
-                                    "eq": "unenhanced_only"
-                                  },
-                                  {
-                                    "all": [
-                                      {
-                                        "ref": "technique",
-                                        "eq": "renal_mass_protocol"
-                                      },
-                                      {
-                                        "none": [
-                                          {
-                                            "ref": "enhancement",
-                                            "eq": "absent"
-                                          }
-                                        ]
-                                      }
-                                    ]
-                                  }
-                                ]
+                                "ref": "technique",
+                                "eq": "unenhanced_only"
                               }
                             ]
                           },
@@ -1523,7 +1381,7 @@
                                 "eq": "renal_mass_protocol"
                               },
                               {
-                                "ref": "enhancement",
+                                "ref": "contents_enhancement",
                                 "eq": "absent"
                               }
                             ]
@@ -1581,7 +1439,7 @@
       "recommendation": "No follow-up needed.",
       "caveats": [
         "Call it a cyst only if confirmed as one; otherwise a likely benign mass.",
-        "Abundant thick or nodular calcification, or a homogeneous hyperattenuating non-enhancing mass over 3 cm, may be better assessed by MRI before classing.",
+        "Abundant thick or nodular calcification, heterogeneous contents, or a homogeneous hyperattenuating non-enhancing mass over 3 cm may be better assessed by MRI before classing.",
         "Not for patients with a renal cell carcinoma syndrome; patient factors still shape management."
       ],
       "locator": {
@@ -1637,10 +1495,10 @@
     {
       "id": "unclassifiable",
       "classification": "Features do not fit a Bosniak 2019 class; manage on its features.",
-      "recommendation": "Consider renal mass protocol MRI (with subtraction) to look for occult enhancing elements before assigning a class.",
+      "recommendation": "Consider dedicated renal mass protocol CT or MRI (with subtraction) to look for enhancing elements before assigning a class.",
       "caveats": [
         "The source allows a rare undefined combination to be placed in IIF.",
-        "Enhancement needs unenhanced and enhanced images to compare, or a measurement."
+        "Enhancement needs unenhanced and enhanced images to compare, or a measurement; a cystic mass is under about 25% enhancing tissue."
       ],
       "locator": {
         "source": "S1",
