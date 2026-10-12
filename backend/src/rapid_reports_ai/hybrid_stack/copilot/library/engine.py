@@ -15,7 +15,7 @@ from .schema import (AdjustStep, All, AnyOf, BandStep, Cond, DeriveStep, Entry, 
                      NoneOf, Num, RulesStep, ScoreStep, TableStep, as_value, conds)
 
 PH = re.compile(r"\{([A-Za-z0-9_]+)\}")
-MAX_COMBOS = 50_000
+MAX_COMBOS = 10_000      # partial evaluation (≈0.75 s at the cap); beyond it every reaching unknown is asked
 OVER_MAX = 4_000          # unbounded over-approximation: beyond this many combinations, every outcome (≈0.2 s)
 _ORDER = ("not_applicable", "unknown", "not_assessable", "absent")   # the state a blocked step takes, first wins:
 # not_applicable is final (no later answer undoes a false prerequisite), so it beats unknown; the other states wait for
@@ -105,8 +105,12 @@ def truth(e: Expr, env: dict[str, V]) -> bool | None:
 def _inputs(entry: Entry, given: dict[str, InputValue]) -> dict[str, V]:
     env: dict[str, V] = {}
     for i in entry.inputs:
-        if any(truth(p, env) is False for p in i.prerequisites):
+        held = [truth(p, env) for p in i.prerequisites]
+        if False in held:
             env[i.id] = V(state="not_applicable")
+            continue
+        if None in held:             # a prerequisite still unknown: the input is not used yet, so the prerequisite
+            env[i.id] = UNKNOWN      # gets asked before a value behind it can settle anything
             continue
         g = given.get(i.id)
         env[i.id] = UNKNOWN if g is None or g.state == "unknown" else _coerce(i, g)
@@ -345,7 +349,10 @@ def _partial(entry: Entry, given: dict[str, InputValue],
     outcome for some value of the other unknown inputs. Unbounded (an unknown number feeds a formula): enumeration
     cannot tell, so every unknown applicable input that reaches the result is needed (safe over-asking). `decides`:
     for each needed input, the outcomes that changing it alone moves between (all still possible when unknown)."""
-    unknown = [i for i in entry.inputs if env[i.id].state == "unknown"]
+    # a given value behind a still-unknown prerequisite is not enumerated: each combination re-applies it once the
+    # enumerated prerequisite allows it, so only the prerequisite is asked
+    held = {k for k, v in given.items() if v.state != "unknown"}
+    unknown = [i for i in entry.inputs if env[i.id].state == "unknown" and i.id not in held]
     doms = {i.id: domain(entry, i) for i in unknown}
     names = [k for k, d in doms.items() if d is not None]
     order = [i.id for i in entry.inputs]

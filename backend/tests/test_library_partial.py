@@ -122,3 +122,20 @@ def test_a_blocked_formula_state_is_monotone():
     assert E._blocked(["a", "b"], {"a": E.V(state="not_assessable"), "b": U}).state == "unknown"
     assert E._blocked(["a", "b"], {"a": E.V(state="absent"), "b": U}).state == "unknown"
     assert E._blocked(["a", "b"], {"a": E.V(state="absent"), "b": E.V(state="not_assessable")}).state == "not_assessable"
+
+
+def _bosniak():
+    import json
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+    return LB.Library(json.loads(LB.BUNDLE.read_text())).lookup("bosniak-renal-cyst")
+
+
+def test_an_input_behind_an_unknown_prerequisite_is_not_used_until_the_prerequisite_is_known():
+    """Controller ruling: contents enhancement only counts on renal mass protocol CT, so with the technique unknown it
+    is not used and the technique is asked; on RMP it settles not_cystic."""
+    e = _bosniak()
+    t = E.evaluate(e, {"too_small": "no", "contents_enhancement": "present"})
+    assert t.outcome is None and "technique" in t.needed
+    assert t.inputs["contents_enhancement"].state == "unknown"
+    t = E.evaluate(e, {"too_small": "no", "technique": "renal_mass_protocol", "contents_enhancement": "present"})
+    assert t.outcome == "not_cystic"
