@@ -166,8 +166,12 @@ def test_a_count_may_be_dictated_in_words_but_a_measurement_may_not(unit, quote,
 
 
 def test_bosniak_says_a_described_mass_is_not_too_small():
-    from rapid_reports_ai.hybrid_stack.copilot.library.bundle import compile_bundle, Library
-    e = Library(compile_bundle()).lookup("bosniak-renal-cyst")
+    """Reads the one pack's source entry, never the whole guidelines folder: another pack in progress cannot break it."""
+    import json
+    from pathlib import Path
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
+    src = Path(__file__).resolve().parents[2] / "guidelines" / "bosniak-renal-cyst" / "entry.json"
+    e = Entry.model_validate(json.loads(src.read_text()))
     assert "no when the mass is described by its features" in e.input("too_small").how_stated
 
 
