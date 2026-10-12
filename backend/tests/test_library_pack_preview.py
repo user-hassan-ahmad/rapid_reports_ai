@@ -600,3 +600,27 @@ async def test_the_plural_comes_from_the_packs_finding_types(monkeypatch, jev, f
     _model(monkeypatch, {"input": "hu", "value": -20, "quote": "-20 HU"})
     out = await PP.preview_pack(_pack("bosniak-renal-cyst"), finding, "", {}, finding=finding)
     assert "hu" not in {x.input for x in out.settled}
+
+
+@pytest.mark.parametrize("key,finding,inp,quote,value", [
+    ("fleischner-pulmonary-nodule", "8 mm solid nodule in the RUL. No other pulmonary nodules.", "diameter_mm", "8 mm", 8),
+    ("fleischner-pulmonary-nodule", "8 mm solid nodule in the RUL; no further nodules.", "diameter_mm", "8 mm", 8),
+    ("fleischner-pulmonary-nodule", "8 mm solid nodule. No additional nodules are seen.", "diameter_mm", "8 mm", 8),
+    ("fleischner-pulmonary-nodule", "8 mm solid nodule. No further pulmonary nodules or masses.", "diameter_mm",
+     "8 mm", 8),
+    ("bosniak-renal-cyst", "Left renal cyst of -20 HU. No other renal lesions.", "hu", "-20 HU", -20)])
+async def test_an_unqualified_negation_settles_when_jev_says_one(monkeypatch, jev, key, finding, inp, quote, value):
+    jev["scores"] = {ONE_CLAIM: 0.95}
+    _model(monkeypatch, {"input": inp, "value": value, "quote": quote})
+    out = await PP.preview_pack(_pack(key), finding, "", {}, finding=finding)
+    assert inp in {x.input for x in out.settled}
+
+
+@pytest.mark.parametrize("finding", [
+    "4 mm solid nodule. No other new nodules.", "4 mm solid nodule. No other enlarging nodules.",
+    "New 4 mm solid nodule. No other nodules have changed.",
+    "4 mm solid nodule. No other nodules apart from stable subpleural nodularity."])
+async def test_a_qualified_negation_asks_even_when_jev_says_one(monkeypatch, jev, finding):
+    jev["scores"] = {ONE_CLAIM: 0.95}
+    out = await _fleischner(monkeypatch, finding, "4 mm", 4)
+    assert "diameter_mm" not in {x.input for x in out.settled}

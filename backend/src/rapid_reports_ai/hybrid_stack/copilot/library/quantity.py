@@ -128,6 +128,9 @@ def _agrees(r: float, model: float | None, unit: str) -> bool:
 
 
 _RUN_ON = re.compile(r"\d\s+[-−+]?\d")    # "8 4 mm": a bare number run into the measurement is another number
+# a measurement that starts or ends on a connector ("x 8 mm", "8 mm to") is a piece of a larger one (a leading sign
+# joined to its digit, "-20 HU", is not a connector)
+_EDGE = re.compile(r"^\s*(?:(?:x|×|by|to)(?![a-z])|[-–−](?![\d.]))|(?<![a-z])(?:x|×|by|to|[-–−])\s*$", re.I)
 
 
 def _widen(text: str, s: int, e: int) -> tuple[int, int]:
@@ -165,10 +168,12 @@ def spans(quote: str, text: str) -> list[str]:
 _NOT_UNIT = rf"(?![.,]?\d)(?!\s*-?\s*(?:{_UNITS})(?![a-z0-9]))"
 _DATE = re.compile(rf"(?<![\w.,/-])(\d{{1,4}})([/.-])(\d{{1,4}})(?:\2(\d{{1,4}}))?{_NOT_UNIT}(?![\w/-])", re.I)
 _YEAR = re.compile(rf"(?<![\w.,/-])(?:199\d|20\d\d){_NOT_UNIT}(?![\w/-])", re.I)
+# a number before a dimension or range connector is part of a measurement ("image 4 x 8 mm"), never a label
+_NOT_LINK = r"(?!\s*(?:x|×|by|to|-|–|−)(?![a-z]))"
 _IMAGE = re.compile(rf"(?<![a-z])(?:series|slice|image|img|se|im)\s*[(\[]?\s*(?::|#|no\.?)?\s*\d+{_NOT_UNIT}"
-                    r"\s*[)\]]?", re.I)
+                    rf"{_NOT_LINK}\s*[)\]]?", re.I)
 _LABEL = re.compile(rf"(?<![a-z])(?:(?:segment|seg|level|rib)\s*\d+|[ctls]\d+)"
-                    rf"(?:\s*[/-]\s*[ctls]?\d+)?{_NOT_UNIT}(?![a-z])", re.I)
+                    rf"(?:\s*[/-]\s*[ctls]?\d+)?{_NOT_UNIT}{_NOT_LINK}(?![a-z])", re.I)
 _OWN_COUNT = re.compile(r"\b(?:single|solitary)\b", re.I)
 _NUMBER_WORDS = ("zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen"
                  "|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety"
@@ -239,10 +244,29 @@ def _plural(noun: str) -> str:
     return w + "es" if re.search(r"(?:s|x|z|ch|sh)$", w) else w + "s"
 
 
+# a qualified negation still names other lesions ("no other new nodules"): it keeps the backstop
+_QUALIFIER = re.compile(r"\b(?:new|enlarging|growing|changed|change|suspicious|significant|worrying|larger|dominant"
+                        r"|solid|apart from|except|other than|since)\b", re.I)
+_CLAUSE = re.compile(r"[^.;,:\n]+(?:[.,](?=\d)[^.;,:\n]*)*")      # split at . ; , : and new lines, never in a decimal
+
+
 def many(text: str, nouns: list[str]) -> bool:
-    """The text has a multiplicity word, or the plural of one of the lesion nouns ("pulmonary nodule" -> nodules)."""
-    words = "|".join([_MANY_WORDS, *(re.escape(_plural(n)) for n in nouns if n.strip())])
-    return re.search(rf"\b(?:{words})\b", text or "", re.I) is not None
+    """The text has a multiplicity word, or the plural of one of the lesion nouns ("pulmonary nodule" -> nodules).
+    An unqualified negation ending its clause ("No other pulmonary nodules.", "no further nodules or masses are seen")
+    is left out; one with a qualifier (new, enlarging, changed, apart from, …) is not. Jev's one-lesion check still
+    guards every finding."""
+    plurals = "|".join(["lesions", *(re.escape(_plural(n)) for n in nouns if n.strip())])
+    words = "|".join([_MANY_WORDS, plurals])
+    neg = re.compile(rf"\bno\s+(?:other|further|additional)\s+(?:(?!(?:{words})\b)[a-z]+\s+)?(?:{plurals})"
+                     rf"(?:\s+or\s+(?:{plurals}|masses))?(?:\s+are)?(?:\s+(?:seen|identified|present|demonstrated))?"
+                     rf"(?:\s+bilaterally)?\s*$", re.I)
+    for m in _CLAUSE.finditer(text or ""):
+        c = m.group(0)
+        if not _QUALIFIER.search(c):
+            c = neg.sub(" ", c)
+        if re.search(rf"\b(?:{words})\b", c, re.I):
+            return True
+    return False
 
 
 def settle(quote: str, texts: list[str], unit: str, dims: str | None = None,
@@ -255,7 +279,7 @@ def settle(quote: str, texts: list[str], unit: str, dims: str | None = None,
     if not found:
         return None
     for w in found:
-        if any(g.search(w) for g in _GUARDS) or _RUN_ON.search(w):
+        if any(g.search(w) for g in _GUARDS) or _RUN_ON.search(w) or _EDGE.search(w):
             return None
         rs = readings(w, unit, dims)
         if len(rs) != 1:

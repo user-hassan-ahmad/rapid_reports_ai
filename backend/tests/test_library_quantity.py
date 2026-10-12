@@ -225,3 +225,55 @@ def test_a_bare_number_run_into_the_measurement_gives_no_reading_for_any_scope()
 @pytest.mark.parametrize("text,quote", [("Segment 6 8 mm lesion.", "8 mm"), ("Image 45 8 mm nodule.", "8 mm")])
 def test_a_label_number_before_the_measurement_is_not_widened_in(text, quote):
     assert Q.settle(quote, [text], "mm") == 8 and Q.alone(text, quote, 8, "mm")
+
+
+# final fix: a label or image number never splits a dimension set
+@pytest.mark.parametrize("text,quote,dims", [
+    ("Image 4 x 8 mm nodule.", "8 mm", "mean"), ("Image 4 x 8 mm nodule.", "4 x 8 mm", "mean"),
+    ("Image 4 x 8 mm nodule.", "8 mm", "max"), ("Image 4 x 8 mm nodule.", "4 x 8 mm", "max"),
+    ("Nodule level 4 x 8 mm.", "8 mm", "mean"), ("Nodule level 4 x 8 mm.", "8 mm", "max"),
+    ("Nodule im 4 x 8 mm.", "8 mm", "mean"), ("Nodule im 4 by 8 mm.", "8 mm", "mean"),
+    ("Segment 6 x 8 mm lesion.", "8 mm", "mean"), ("Segment 6 × 8 mm lesion.", "8 mm", "max"),
+    ("Segment 6 x 8 mm lesion.", "8 mm", None), ("Segment 4 to 8 mm lesion.", "8 mm", None),
+    ("Segment 4 - 8 mm lesion.", "8 mm", None), ("Segment 4 – 8 mm lesion.", "8 mm", None)])
+def test_a_number_before_a_dimension_or_range_connector_is_never_a_label(text, quote, dims):
+    v = Q.settle(quote, [text], "mm", dims)
+    whole = Q.readings(text.split(" ", 1)[1] if text.startswith(("Image", "Segment")) else text, "mm", dims)
+    assert v is None or (v in whole and v != 8.0) or (dims == "max" and whole == [8.0] and v == 8.0)
+
+
+@pytest.mark.parametrize("text", ["Segment 6 8 mm lesion.", "Image 45 8 mm nodule.",
+                                  "8 mm nodule (series 3, image 45)."])
+def test_a_label_number_without_a_connector_still_settles(text):
+    assert Q.settle("8 mm", [text], "mm") == 8 and Q.alone(text, "8 mm", 8, "mm")
+
+
+@pytest.mark.parametrize("span", ["x 8 mm", "by 8 mm", "to 8 mm", "- 8 mm", "8 mm x", "8 mm -", "8 mm to"])
+def test_a_widened_span_on_a_connector_gives_no_reading(span):
+    assert Q.settle(span, [span], "mm") is None
+
+
+NODULE = ["pulmonary nodule"]
+
+
+@pytest.mark.parametrize("text,nouns", [
+    ("8 mm solid nodule in the RUL. No other pulmonary nodules.", NODULE),
+    ("8 mm solid nodule in the RUL; no further nodules.", NODULE),
+    ("8 mm solid nodule. No additional nodules are seen.", NODULE),
+    ("8 mm solid nodule. No further pulmonary nodules or masses.", NODULE),
+    ("8 mm solid nodule. No other nodules identified bilaterally.", NODULE),
+    ("Left renal cyst of -20 HU. No other renal lesions.", ["renal cyst", "cystic renal mass"])])
+def test_an_unqualified_negation_does_not_fire_the_backstop(text, nouns):
+    assert not Q.many(text, nouns)
+
+
+@pytest.mark.parametrize("text", [
+    "4 mm solid nodule. No other new nodules.", "4 mm solid nodule. No other enlarging nodules.",
+    "New 4 mm solid nodule. No other nodules have changed.",
+    "4 mm solid nodule. No other nodules apart from stable subpleural nodularity.",
+    "4 mm solid nodule. No other suspicious nodules.", "4 mm solid nodule. No further nodules since 2019.",
+    "4 mm solid nodule. No other nodules except a calcified granuloma.",
+    "4 mm solid nodule. No other significant nodules.", "4 mm solid nodule. No larger nodules.",
+    "4 mm solid nodule. Further nodules bilaterally."])
+def test_a_qualified_negation_still_fires_the_backstop(text):
+    assert Q.many(text, NODULE)

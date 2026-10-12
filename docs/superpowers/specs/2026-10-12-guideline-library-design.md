@@ -457,7 +457,9 @@ Status (2026-10-12): items 1 and 2 done, item 3 **failed** its gate, item 4 not 
    numbers too. A lesion number settles only when its finding describes one lesion: (1) the finding holds no other
    number (digits or number words such as "eight", "two", "both"), apart from the same reading again, image
    references, dates and years, anatomical labels (segment 6, S6, T4, L2/3, rib 5) and "single"/"solitary"; (2) no
-   multiplicity word (further, other, another, scattered, bilateral, …, or the plural of the pack's finding type);
+   multiplicity word (further, other, another, scattered, bilateral, …, or the plural of the pack's finding type),
+   except in an unqualified negation such as "No other pulmonary nodules" (a qualifier such as new, enlarging,
+   changed or "apart from" keeps it); a label or image number is never one that a connector (x, by, to, -) follows;
    and (3) Jev scores "The FINDING describes only one <finding type>" at 0.8 or more, asked in the same lesion
    batch. Anything else ("8 and 4 mm", "two nodules", "further subcentimetre nodules", a prior size) asks it.
 2. **Eligibility triage.** Add `role: eligibility` (§3.6) with shared patient answers, and the three card states and
