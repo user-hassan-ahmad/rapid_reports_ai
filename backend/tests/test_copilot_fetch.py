@@ -141,3 +141,13 @@ async def test_spawn_fill_saves_other_branches_in_own_session(db_session, db_eng
     entry = R.entry(R.by_key(db_session, CARD.key))
     assert [b.name for b in entry.content.checked()] == ["Solid", "Subsolid"]
 
+
+
+async def test_tnm_key_served_offline_without_search(db_session, monkeypatch):
+    from rapid_reports_ai.hybrid_stack.copilot import tnm
+    calls = _stub(monkeypatch)
+    card = CARD.model_copy(update={"key": tnm.key_for("Lung"), "branch": "Staging", "skeleton": ["Staging"]})
+    entry = await F.resolve_guideline(db_session, card)
+    assert entry.status == "verified" and entry.name == "TNM Lung" and calls["gather"] == []
+    assert R.by_key(db_session, card.key) is None
+    assert await F.resolve_guideline(db_session, card.model_copy(update={"key": "tnm-nowhere@9"})) is None

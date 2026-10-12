@@ -14,6 +14,7 @@ from ...enhancement_utils import MODEL_CONFIG, _run_agent_with_model
 from . import jev as J
 from . import registry as R
 from . import search as S
+from . import tnm
 from .types import Branch, Card, Chunk, Entry, GuidelineContent, Source
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,9 @@ async def resolve_guideline(db: Session, card: Card) -> Entry | None:
     """The entry with the card's branch resolved (checked or not_available), or None when nothing could be fetched.
     Never raises: a failure is logged and returns what the registry already holds (or None)."""
     try:
+        if tnm.is_tnm(card.key):   # offline provider: never searched, never stored
+            site = tnm.site_for(card.key)
+            return tnm.entry(site) if site else None
         row = R.by_key(db, card.key)
         if row is not None:
             b = R.entry(row).content.branch(card.branch)
