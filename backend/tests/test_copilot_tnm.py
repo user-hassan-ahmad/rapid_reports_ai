@@ -4,7 +4,8 @@ from rapid_reports_ai.hybrid_stack.copilot import tnm as N
 def test_sites_closed_list_excludes_non_tnm():
     s = N.sites()
     assert "Lung" in s and "Kidney" in s and "Gastrointestinal Stromal Tumour (GIST)" in s
-    assert not ({"Brain & Spinal Cord", "Hodgkin Lymphoma", "Non-Hodgkin Lymphomas", "Bone & Soft Tissues"} & set(s))
+    excluded = {"Brain & Spinal Cord", "Hodgkin Lymphoma", "Non-Hodgkin Lymphomas", "Gestational Trophoblastic Neoplasms"}
+    assert excluded <= set(N._data()) and not (excluded & set(s))   # present in the data, kept out of the list
 
 
 def test_keys_round_trip():
@@ -56,3 +57,30 @@ def test_proposal_built_in_code():
 
 def test_material_for_ask():
     assert "AUTHORITATIVE TNM REFERENCE" in N.material("Lung")
+
+
+def test_parent_category_resolved_through_subcategories():
+    assert N.stage("Lung", "", "TX", "NX", "M1c") == "Stage IVB"          # M1c1, M1c2 agree
+    assert N.stage("Lung", "", "T4", "N3", "M1") is None                  # M1a/M1b IVA vs M1c IVB disagree
+    assert N.stage("Lung", "", "T1", "N0", "M0") is None                  # T1mi/T1a IA1, T1b IA2, T1c IA3
+    assert N.stage("Colon and Rectum", "", "T4", "N2", "M1") == "Stage IV"   # a row lists M1 itself: exact wins
+    assert N.stage("Kidney", "", "T1", "N0", "M0") == "Stage I"
+    assert N.stage("Kidney", "", "T1", "N0", "M1") == "Stage IV"
+
+
+def test_pt_only_site_settles_t_as_tx():
+    b = N.entry("Melanoma of Skin").content.branches[0]
+    assert {i.id: i.options for i in b.inputs}["T"] == ["TX"] and b.rule.startswith("T: T classified after excision")
+    assert N.proposal("Melanoma of Skin", {"N": "N1", "M": "M0"}).line == "Staging (UICC TNM 9th): cTX N1 M0."
+    assert N.proposal("Testis", {"N": "N1"}) is None
+
+
+def test_axes_and_proposal_only_for_defined_axes(monkeypatch):
+    data = {**N._data(), "Fake": {"tnm": {"T": {"T1": "a"}, "N": {"N0": "b"}, "M": {}}, "rules": ""}}
+    monkeypatch.setattr(N, "_data", lambda: data)
+    assert N.axes("Fake") == ["T", "N"] and [i.id for i in N.entry("Fake").content.branches[0].inputs] == ["T", "N"]
+    assert N.proposal("Fake", {"T": "T1", "N": "N0"}).line == "Staging (UICC TNM 9th): cT1 N0."
+
+
+def test_applies_to_falls_back_to_site():
+    assert N.entry("Larynx").content.applies_to == "Larynx tumours"

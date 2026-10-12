@@ -163,7 +163,7 @@ def matches(cat: str, cells: list[str]) -> int:
     return 1 if any(cat.startswith(c) for c in cells) else 0
 
 
-def lookup(rows: list[dict], t: str, n: str, m: str) -> str | None:
+def _direct(rows: list[dict], t: str, n: str, m: str) -> str | None:
     hits = []
     for g in rows:
         s = [matches(c, g[a]) for c, a in ((t, "T"), (n, "N"), (m, "M"))]
@@ -178,6 +178,26 @@ def lookup(rows: list[dict], t: str, n: str, m: str) -> str | None:
     return stages.pop() if len(stages) == 1 else None
 
 
+def _leaves(cat: str, cats: list[str]) -> list[str]:
+    """The most specific subcategories of `cat` (M1 -> M1a, M1b, M1c1, M1c2), or [] when it has none."""
+    kids = [k for k in cats if k != cat and k.startswith(cat) and not k.endswith("X")]
+    return [k for k in kids if not any(o != k and o.startswith(k) for o in kids)]
+
+
+def lookup(rows: list[dict], t: str, n: str, m: str, cats: dict[str, list[str]] | None = None) -> str | None:
+    """A parent category no row lists exactly (Lung M1 over M1a-M1c2) is resolved through its subcategories: one
+    stage when they all agree, else None. A row that lists the parent itself (Colon 'Stage IV ... M1') wins.
+    Keep identical to hybrid_stack/copilot/tnm.py."""
+    cats = cats or {}
+    q = {"T": t, "N": n, "M": m}
+    split = {a: _leaves(c, cats.get(a, [])) for a, c in q.items()}
+    split = {a: kids for a, kids in split.items() if kids and not any(q[a] in g[a] for g in rows)}
+    if not split:
+        return _direct(rows, t, n, m)
+    got = {_direct(rows, *combo) for combo in product(*(split.get(a) or [q[a]] for a in "TNM"))}
+    return got.pop() if len(got) == 1 and None not in got else None
+
+
 def checks(site: str, rows: list[dict], cats: dict[str, list[str]]) -> list[str]:
     out = []
     for g in rows:
@@ -188,7 +208,7 @@ def checks(site: str, rows: list[dict], cats: dict[str, list[str]]) -> list[str]
     # T0 / Tis / Ta with nodes or distant spread are not staged in the source tables: not counted as gaps.
     leaves = {a: [c for c in cats[a] if not c.endswith("X") and c not in ("T0", "Tis", "Ta")
                   and not any(o != c and o.startswith(c) for o in cats[a])] for a in "TNM"}
-    none = [f"{t} {n} {m}" for t, n, m in product(leaves["T"], leaves["N"], leaves["M"]) if lookup(rows, t, n, m) is None]
+    none = [f"{t} {n} {m}" for t, n, m in product(leaves["T"], leaves["N"], leaves["M"]) if lookup(rows, t, n, m, cats) is None]
     if none:
         out.append(f"{len(none)} leaf combos with no stage, e.g. {none[:6]}")
     return out

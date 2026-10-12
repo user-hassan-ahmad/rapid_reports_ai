@@ -180,3 +180,133 @@ async def test_branchless_card_stores_overview_and_searches_by_identity(db_sessi
     assert queries == ['"T" 2017', "Fleischner 2017 criteria recommendations"]
     assert not any("overview" in q.lower() for q in queries)
     assert calls["structure"] == ["the guideline as a whole"]
+
+
+def test_claim_is_a_sentence_with_context_and_no_empty_fragments():
+    o = Output(when="<6 mm", classification="Category 2", recommendation="No follow-up", quote="q")
+    assert F._claim(CARD, "Solid", o) == "In Fleischner 2017, for Solid: when <6 mm; Category 2; recommendation: No follow-up"
+    o2 = Output(when="", classification="", recommendation="CT at 3 months", quote="q")
+    assert F._claim(CARD, F.OVERVIEW, o2) == "In Fleischner 2017: recommendation: CT at 3 months"
+    assert "→" not in F._claim(CARD, "Solid", Output(when="x", quote="q"))
+
+
+async def test_coverage_names_the_guideline(db_session, monkeypatch):
+    _stub(monkeypatch)
+    asked = []
+
+    async def coverage(source, branches, transport=None):
+        asked.extend(branches)
+        return {b: 0.9 for b in branches}
+    monkeypatch.setattr(F.J, "coverage", coverage)
+    await F.resolve_guideline(db_session, CARD)
+    await F.resolve_guideline(db_session, CARD.model_copy(update={"key": "other@1", "branch": ""}))
+    assert asked == ["Fleischner 2017: Solid", "Fleischner 2017"]
+
+
+async def test_not_available_branch_stores_no_structure(db_session, monkeypatch):
+    _stub(monkeypatch, evidence=0.1)
+    b = (await F.resolve_guideline(db_session, CARD)).content.branch("Solid")
+    assert b.state == "not_available" and b.rule == "" and b.inputs == [] and b.outputs == []
+
+
+async def test_rule_with_numbers_absent_from_source_is_blanked(db_session, monkeypatch):
+    st = F.Structured(branch=_branch("Solid").model_copy(update={"rule": "follow up at 12 months"}))
+    _stub(monkeypatch, structured=st)
+    assert (await F.resolve_guideline(db_session, CARD)).content.branch("Solid").rule == ""
+
+
+async def test_rule_with_numbers_in_source_is_kept(db_session, monkeypatch):
+    st = F.Structured(branch=_branch("Solid").model_copy(update={"rule": "routine follow-up not needed"}))
+    _stub(monkeypatch, structured=st)
+    b = (await F.resolve_guideline(db_session, CARD)).content.branch("Solid")
+    assert b.rule == "routine follow-up not needed" and b.fetched_at
+
+
+def _seed_not_available(db, days_ago):
+    at = (F._now() - F.timedelta(days=days_ago)).isoformat(timespec="seconds")
+    R.upsert(db, key=CARD.key, name="Fleischner", version="2017", aliases=[], publication=None,
+             content=GuidelineContent(branches=[Branch(name="Solid", state="not_available", fetched_at=at)]),
+             sources=[], chunks=[])
+
+
+async def test_fresh_not_available_is_served_without_search(db_session, monkeypatch):
+    _seed_not_available(db_session, 1)
+    calls = _stub(monkeypatch)
+    assert (await F.resolve_guideline(db_session, CARD)).content.branch("Solid").state == "not_available"
+    assert calls["gather"] == []
+
+
+async def test_stale_not_available_is_fetched_again(db_session, monkeypatch):
+    _seed_not_available(db_session, F.NOT_AVAILABLE_RETRY_DAYS + 1)
+    calls = _stub(monkeypatch)
+    assert (await F.resolve_guideline(db_session, CARD)).content.branch("Solid").state == "checked"
+    assert len(calls["gather"]) == 1
+
+
+def test_to_fill_includes_stale_not_available():
+    old = (F._now() - F.timedelta(days=30)).isoformat()
+    new = F._now().isoformat()
+    content = GuidelineContent(branches=[Branch(name="Solid", state="not_available", fetched_at=old),
+                                         Branch(name="Subsolid", state="not_available", fetched_at=new)])
+    assert F.to_fill(["Solid", "Subsolid"], content) == ["Solid"]
+
+
+async def test_cancelled_fill_releases_claims(monkeypatch):
+    _stub(monkeypatch)
+    _REAL_SPAWN(CARD, GuidelineContent())
+    assert F._FILLING == {"fleischner@2017|Solid", "fleischner@2017|Subsolid"}
+    (task,) = list(F._TASKS)
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    await asyncio.sleep(0)
+    assert F._FILLING == set() and F._TASKS == set()
+
+
+async def test_branches_of_one_key_fetch_concurrently(db_session, monkeypatch):
+    _stub(monkeypatch)
+    entered, release = [], asyncio.Event()
+
+    async def gather(queries, branch, focus="", exclude=None):
+        entered.append(branch)
+        await release.wait()
+        return [Chunk(url="https://pubs.rsna.org/x", text="… No routine follow-up …", branch=branch)], \
+               [Source(url="https://pubs.rsna.org/x", tier=1)]
+    monkeypatch.setattr(F.S, "gather", gather)
+    runs = [asyncio.create_task(F.resolve_guideline(db_session, CARD.model_copy(update={"branch": b})))
+            for b in ("Solid", "Subsolid")]
+    for _ in range(20):
+        await asyncio.sleep(0)
+    assert sorted(entered) == ["Solid", "Subsolid"]        # both in flight before either finishes
+    release.set()
+    await asyncio.gather(*runs)
+    entry = R.entry(R.by_key(db_session, CARD.key))
+    assert sorted(b.name for b in entry.content.checked()) == ["Solid", "Subsolid"]
+
+
+async def test_open_of_a_branch_being_filled_waits_then_rereads(db_session, monkeypatch):
+    calls = _stub(monkeypatch)
+    lock = F._lock(CARD.key, "Solid")
+    await lock.acquire()                                    # the background fill holds the branch
+    run = asyncio.create_task(F.resolve_guideline(db_session, CARD))
+    for _ in range(5):
+        await asyncio.sleep(0)
+    assert not run.done()
+    R.upsert(db_session, key=CARD.key, name="Fleischner", version="2017", aliases=[], publication=None,
+             content=GuidelineContent(branches=[_branch("Solid").model_copy(update={"state": "checked"})]),
+             sources=[], chunks=[])                         # what the fill saved
+    lock.release()
+    entry = await run
+    assert entry.content.branch("Solid").state == "checked" and calls["gather"] == []
+
+
+def test_locks_are_per_event_loop():
+    async def get():
+        return F._lock("k", "b")
+    assert asyncio.run(get()) is not asyncio.run(get())
+
+
+def test_source_text_capped_on_chunk_boundaries(monkeypatch):
+    monkeypatch.setattr(F.J, "SOURCE_MAX", 100)
+    a, b = Chunk(url="u1", text="a" * 40), Chunk(url="u2", text="b" * 80)
+    assert F._text([a, b]) == "[u1]\n" + "a" * 40
+    assert len(F._text([b, a])) == 85 and len(F._text([Chunk(url="u", text="c" * 500)])) == 100

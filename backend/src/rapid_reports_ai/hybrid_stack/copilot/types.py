@@ -29,6 +29,7 @@ class Branch(BaseModel):
     inputs: list[Input] = Field(default_factory=list)
     rule: str = ""
     outputs: list[Output] = Field(default_factory=list)
+    fetched_at: str = ""          # UTC ISO, set on save: a stale not_available is fetched again
 
 
 class Supplement(BaseModel):
