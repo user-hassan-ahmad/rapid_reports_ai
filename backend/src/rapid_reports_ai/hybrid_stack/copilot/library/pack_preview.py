@@ -410,7 +410,11 @@ NO_PRIOR_INPUT = "prior_study"
 NO_PRIOR_MIN = 0.8
 PRIOR_MENTIONED_MAX = 0.5
 PRIOR_MENTIONED = "The CLINICAL HISTORY or DICTATION mentions any previous imaging that exists or was performed"
-# a history that follows a known finding implies a previous study, whatever the dictation says: asked
+# the history alone: any earlier imaging of the patient (a CT abdomen that showed the nodule) may be the prior study
+# (live: "previous imaging" alone scored a CT abdomen that showed the nodule 0.27-0.33; naming the kinds 0.96)
+HISTORY_MENTIONED = ("The CLINICAL HISTORY mentions a scan, X-ray or other imaging of this patient, of any date or "
+                     "body part")
+# a history or dictation that follows a known finding implies a previous study, whatever else is said: asked
 _FOLLOW_UP = re.compile(r"\b(?:known|follow[\s-]?up|surveillance|interval)\b", re.I)
 # a word saying a previous study may exist elsewhere or later ("available" is the common UK form: "none available
 # on PACS at the time of reporting"): asked
@@ -427,9 +431,10 @@ def _no_prior_claim(e: Entry) -> str:
 
 async def _no_prior(e: Entry, findings: str, history: str) -> tuple[str | None, bool]:
     """(the dictation's sentence that settles "no previous imaging", or None; whether the Jev call failed). Jev sees
-    the clinical history as well: "No" settles only when neither it nor the dictation mentions previous imaging."""
+    the clinical history as well: "No" settles only when neither it nor the dictation mentions previous imaging, the
+    history alone mentions none (HISTORY_MENTIONED), and no follow-up word is in either."""
     i = e.input(NO_PRIOR_INPUT)
-    if i is None or i.type != "boolean" or _ELSEWHERE.search(f"{findings}\n{history}") or _FOLLOW_UP.search(history):
+    if i is None or i.type != "boolean" or _ELSEWHERE.search(f"{findings}\n{history}") or _FOLLOW_UP.search(f"{findings}\n{history}"):
         return None, False
     quote = next((m.group(0).strip() for m in _SENTENCE.finditer(findings or "") if _PRIOR_WORD.search(m.group(0))),
                  None)
@@ -437,14 +442,15 @@ async def _no_prior(e: Entry, findings: str, history: str) -> tuple[str | None, 
         return None, False
     modality = " or ".join(e.applies_to.modality) or "imaging"
     try:
-        no, mentioned = await _jev([_no_prior_claim(e), PRIOR_MENTIONED],
+        no, mentioned, in_history = await _jev([_no_prior_claim(e), PRIOR_MENTIONED, HISTORY_MENTIONED],
                                    f"CLINICAL HISTORY:\n{history or 'none given'}\n\n"
                                    f"DICTATION (a {modality} report; any previous imaging would be listed here):\n"
                                    f"{findings}")
     except Exception as ex:
         logger.info("[library.preview] prior check failed (%s)", type(ex).__name__)
         return None, True
-    return (quote if no >= NO_PRIOR_MIN and mentioned < PRIOR_MENTIONED_MAX else None), False
+    ok = no >= NO_PRIOR_MIN and mentioned < PRIOR_MENTIONED_MAX and in_history < PRIOR_MENTIONED_MAX
+    return (quote if ok else None), False
 
 
 def _outcome_text(e: Entry, t: engine.Trace, sources: list[dict]) -> Proposal | None:
@@ -495,7 +501,8 @@ class Settlement:
     preview cache holds it, and each answer re-runs only the engine over it (`finish`), so a settled value cannot
     change between answers."""
     values: dict[str, tuple[InputValue, str]] = field(default_factory=dict)   # input -> (value, quote)
-    failed: bool = False       # the model or a Jev check failed: inputs it could have settled are asked; never cached
+    failed: bool = False       # the model or a Jev check failed: inputs it could have settled are asked; cached all
+                               # the same (answers never settle again), and a fresh /open may retry it once
     no_unit: bool = False      # no finding unit: every lesion input is asked (deterministic, so cached)
 
 
@@ -508,6 +515,8 @@ async def settle_pack(e: Entry, findings: str, history: str, finding: str = "") 
         logger.info("[library.preview] %s: no finding unit; lesion inputs asked", e.key)
     (model, degraded), (no_prior, prior_failed) = await asyncio.gather(
         _settle(e, {}, finding, findings, history), _no_prior(e, findings, history))
+    if degraded:
+        no_prior = None                      # no model: no "the finding says yes" cross-check, so never a lone "No"
     if NO_PRIOR_INPUT in model and model[NO_PRIOR_INPUT][0].value is not True:
         del model[NO_PRIOR_INPUT]            # "No" (or a state) never from the model: only from the whole dictation
     # every number (read by code from the quote) is put to Jev as stated for its scope: this catches a number of the

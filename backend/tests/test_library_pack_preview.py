@@ -722,7 +722,7 @@ NO_PRIOR = "previous imaging that includes the chest"
 
 
 def _prior_jev(jev, no=0.85, mentioned=0.1):
-    jev["scores"] = {NO_PRIOR: no, PP.PRIOR_MENTIONED: mentioned}
+    jev["scores"] = {NO_PRIOR: no, PP.PRIOR_MENTIONED: mentioned, PP.HISTORY_MENTIONED: 0.05}
 
 
 @pytest.mark.parametrize("sentence", ["No previous imaging.", "No prior CT for comparison.", "No prev CT."])
@@ -973,3 +973,49 @@ async def test_a_prior_that_may_exist_elsewhere_or_later_asks(monkeypatch, jev, 
     _model(monkeypatch)
     out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} {sentence}", "", {}, finding=PRIOR_FINDING)
     assert "prior_study" in out.missing
+
+
+# re-review I2: a history that mentions any previous imaging asks; so do follow-up words in the dictation; a model
+# failure never leaves a "No" resting on the mention guard alone
+async def test_a_history_mentioning_previous_imaging_asks_prior_study(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    _prior_jev(jev)
+    jev["scores"][PP.HISTORY_MENTIONED] = 0.9
+    _model(monkeypatch)
+    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous chest imaging.",
+                                "Incidental lung nodule on CT abdomen 2024.", {}, finding=PRIOR_FINDING)
+    assert "prior_study" in out.missing
+    claims = [q["instructions"] for p in jev["payloads"] for q in p["questions"].values()]
+    assert PP.HISTORY_MENTIONED in claims and "scan, X-ray or other imaging" in PP.HISTORY_MENTIONED
+
+
+@pytest.mark.parametrize("sentence", ["Known 7 mm nodule. No previous imaging.",
+                                      "For follow-up. No previous imaging.", "Surveillance CT. No prior CT.",
+                                      "Interval CT. No previous imaging."])
+async def test_follow_up_words_in_the_dictation_ask_prior_study(monkeypatch, jev, sentence):
+    from tests.test_library_partial import _bts
+    _prior_jev(jev, no=0.95, mentioned=0.05)
+    _model(monkeypatch)
+    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} {sentence}", "", {}, finding=PRIOR_FINDING)
+    assert "prior_study" in out.missing
+
+
+@pytest.mark.parametrize("history", ["", "64-year-old woman.", "Cough."])
+async def test_no_previous_imaging_with_a_plain_history_still_settles_no(monkeypatch, jev, history):
+    from tests.test_library_partial import _bts
+    _prior_jev(jev)
+    jev["scores"][PP.HISTORY_MENTIONED] = 0.05
+    _model(monkeypatch)
+    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging.", history, {}, finding=PRIOR_FINDING)
+    assert next(x for x in out.settled if x.input == "prior_study").value == "No"
+
+
+async def test_a_model_failure_never_settles_prior_study_no(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    _prior_jev(jev)
+
+    async def boom(system, prompt):
+        raise TimeoutError("slow")
+    monkeypatch.setattr(PP, "_call", boom)
+    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging.", "", {}, finding=PRIOR_FINDING)
+    assert "prior_study" not in {x.input for x in out.settled}
