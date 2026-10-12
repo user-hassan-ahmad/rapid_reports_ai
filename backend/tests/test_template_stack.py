@@ -137,7 +137,7 @@ def test_stack_terminology_applies_only_to_sheet_wording():
 
 def test_fixed_lines_never_contradict_the_input():
     b = stack_brief("", "C.", [])
-    assert "a FIXED line never contradicts the input or its values" in b
+    assert "a FIXED line never contradicts the input, the clinical history" in b
     assert "written only when that RULE applies" in b
     assert "gives every slot's value" in b
 
@@ -154,6 +154,6 @@ async def test_session_rules_reach_the_generation_system_prompt(capture):
         cfg, {"FINDINGS": "Left ventricle: dilated.", "CLINICAL_HISTORY": "SOB"}, None,
         stack={"conclusion": "Dilated left ventricle.", "declined": []})
     sp = next(k for k in capture if k["output_type"] is str)["system_prompt"]
-    for s in ("**Fixed lines:**", "a FIXED line never contradicts the input or its values",
+    for s in ("**Fixed lines:**", "a FIXED line never contradicts the input, the clinical history",
               "**Examples are wording only:**", "the wording the report adds"):
         assert s in sp
