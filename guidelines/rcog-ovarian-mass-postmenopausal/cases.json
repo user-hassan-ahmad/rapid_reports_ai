@@ -301,7 +301,7 @@
       }
     },
     {
-      "name": "Symptomatic woman, simple 2 cm cyst, CA125 10: further surgical evaluation (I2)",
+      "name": "Symptomatic woman, simple 2 cm cyst, CA125 10: same single no-follow-up outcome (Hassan 2026-10-13)",
       "origin": "ours",
       "inputs": {
         "postmenopausal": true,
@@ -314,7 +314,7 @@
         "size_cm": 2,
         "ca125": 10
       },
-      "outcome": "surgical_evaluation",
+      "outcome": "no_follow_up",
       "steps": {
         "rmi": 0
       }
@@ -530,6 +530,21 @@
         "feature_count": 0,
         "rmi": 0.0
       }
+    },
+    {
+      "name": "Simple 2 cm cyst, symptoms not stated: no-follow-up without asking symptomatic",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "size_cm": 2
+      },
+      "outcome": "no_follow_up",
+      "needed": []
     }
   ]
 }

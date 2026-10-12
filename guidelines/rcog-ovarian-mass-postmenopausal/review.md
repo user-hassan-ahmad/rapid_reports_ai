@@ -49,27 +49,25 @@ from the inputs themselves. With no U feature, RMI is 0 whatever the CA125. So t
 | case | outcome | verdict |
 |---|---|---|
 | 0 | does_not_apply | ✓ p7 §1: not postmenopausal, or confirmed ovarian malignancy |
-| 1 | no_follow_up | ✓ p19 §6.1.1 and the p4 summary (Dec 2025): "Asymptomatic, simple, unilateral, unilocular ovarian cysts of 3 cm or less ... do not require follow-up"; the p6 box. Ascites and metastases are excluded (library addition, For Hassan). CA125 is not needed |
+| 1 | no_follow_up | ✓ p7 §2 (December 2025): simple, unilateral, unilocular cystic lesions of 3 cm or less are "clinically inconsequential" and need no follow-up, with no symptom condition; the p1 update note; the p6 box. One outcome whatever the symptoms; `symptomatic` is never asked on this path (Hassan, 2026-10-13; For Hassan 5). Ascites and metastases are excluded (For Hassan 3). CA125 is not needed |
 | 2 | ct_mdt | ✓ p4, p16 §5.1 (grade B): "CT of the abdomen and pelvis ... RMI I score greater than or equal to 200, with onward referral to a gynaecological oncology multidisciplinary team"; the p6 figure. Also fires for ascites or metastases whatever the RMI: p4 and p14 §4.4.3.1 (grade B), CT and MDT when ultrasound findings suggest malignancy; p21 §6.1.2.3 (For Hassan 3) |
-| 3 | consider_surgery | ✓ p6 figure. No ascites or metastases; RMI I < 200 (or no U feature); not the ≤3 cm symptomatic simple cyst of case 4; "Cysts with ANY of the following features: symptomatic, non-simple features, > 5 cm, multilocular, bilateral", then "Consider surgery salpingo-oophorectomy (usually bilateral)" |
-| 4 | surgical_evaluation | ✓ p19 §6.1.1 (good practice point): "If a woman is symptomatic, further surgical evaluation is necessary". Used for a symptomatic woman with a simple, unilateral cyst ≤3 cm, instead of "consider salpingo-oophorectomy" (For Hassan 13) |
-| 5 | conservative | ✓ p19 §6.1.1 (grade D): "> 3 cm but ≤ 5 cm in the presence of normal serum CA125 ... managed conservatively, with a repeat evaluation in 4–6 months"; the p6 ALL box |
-| 6 | surgery_raised_ca125 | ✓ p20 §6.1.2: "Women who do not fit the criteria for conservative management should be offered surgical treatment ... as determined by the RMI". This is the text's normal-CA125 condition; the figure omits it (For Hassan) |
+| 3 | consider_surgery | ✓ p6 figure. No ascites or metastases; RMI I < 200 (or no U feature); not a simple, unilateral cyst ≤3 cm (case 1); "Cysts with ANY of the following features: symptomatic, non-simple features, > 5 cm, multilocular, bilateral", then "Consider surgery salpingo-oophorectomy (usually bilateral)" |
+| 4 | conservative | ✓ p19 §6.1.1 (grade D): "> 3 cm but ≤ 5 cm in the presence of normal serum CA125 ... managed conservatively, with a repeat evaluation in 4–6 months"; the p6 ALL box |
+| 5 | surgery_raised_ca125 | ✓ p20 §6.1.2: "Women who do not fit the criteria for conservative management should be offered surgical treatment ... as determined by the RMI". This is the text's normal-CA125 condition; the figure omits it (For Hassan) |
 
 Partition: for an eligible woman, ascites or metastases give case 2. Without them, a U feature (complex morphology or
 bilateral) puts the ANY box in force, so RMI ≥200 gives case 2 and RMI <200 gives case 3. With no U feature, RMI is 0.
-The ANY box gives case 3, except a symptomatic woman with a simple cyst ≤3 cm, who gets case 4. Otherwise the cyst is
-simple, unilateral, asymptomatic and ≤5 cm, and goes to case 1 (≤3 cm) or to case 5 or 6 by CA125. Gate 2 confirms
+With no ascites or metastases, a simple, unilateral cyst ≤3 cm gives case 1 whatever the symptoms. Among the rest with no U feature, the ANY box gives case 3; otherwise the cyst is
+simple, unilateral, asymptomatic and over 3 cm up to 5 cm, and goes to case 4 or 5 by CA125. Gate 2 confirms
 one outcome per combination. The former `does_not_fit` outcome was removed when ascites and metastases moved to
 case 2.
 
 ### Outcomes
 | outcome | verdict |
 |---|---|
-| no_follow_up | ✓ "do not require follow-up" (text), "do not require routine follow-up" (figure). Caveat 0: p7 §2 ("clinically inconsequential ... at the discretion of the reporting clinician whether or not to describe them") ✓. Caveat 1 labelled as a library addition ✓ |
+| no_follow_up | ✓ The recommendation is Hassan's wording (2026-10-13). "No imaging follow-up required" is p7 §2 and the p1 note; "If symptomatic, clinical assessment is advised" rests on p19 ("If a woman is symptomatic, further surgical evaluation is necessary"). Caveat 0: p7 §2 (reporting discretion) ✓. Caveat 1 records the ruling ✓. Caveat 2 is the labelled ascites/metastases routing ✓ |
 | ct_mdt | ✓ p16 and p14. Caveat 0 (new) labels the ascites/metastases routing. The other caveats: p6 figure (MDT high likelihood → full staging laparotomy by a gynaecological oncologist; low likelihood → pelvic clearance by a suitably trained gynaecologist) and p22 §6.3 ✓. Caveat 1: p16-17 (threshold 250 used by some centres) ✓. Caveat 2: p17 ("benign conditions may cause elevation of the RMI score and early malignancy may not") ✓ |
 | consider_surgery | ✓ p6 figure. The laparoscopic sentence moved out of the recommendation into caveat 0, with S1's own exception (p20 §6.1.2.2 grade B; p14 §4.4.3.1), after the read (I1). Caveat 1: p19 ("Clinicians should discuss the pros and cons of conservative versus surgical management ... RMI I less than 200") ✓. Caveat 2: p15 §4.4.3.2 (MRI second-line when ultrasound is inconclusive, grade B) ✓. Caveat 3: p19 ("repeat imaging often is safer than immediate operative intervention") ✓ |
-| surgical_evaluation | ✓ p19 wording ("further surgical evaluation is necessary"). Caveat 0: p7 §2 (≤3 cm simple cysts clinically inconsequential) ✓. Caveat 1: p9 and the I2 reading of symptomatic ✓ |
 | conservative | ✓ p19 and p6. "Consider" is kept from the figure ("Consider conservative management"); "can be managed conservatively" in the text. Caveat 0: p6 figure branches (resolve → discharge; persistent unchanged → repeat in another 4-6 months → individualise treatment after discussion with the woman; change in features → consider intervention) ✓. Caveat 1: p19 ✓. Caveat 2: library reading of "normal", labelled ✓ |
 | surgery_raised_ca125 | ✓ p20 §6.1.2. Caveat 0: arithmetic from p16 (U = 0 makes RMI 0) and p19's normal-CA125 condition ✓. Caveat 1 (added, M3): p19, discuss the pros and cons of conservative versus surgical management at RMI I <200 ✓. Caveat 2: p10 §4.3.1 (benign causes: PID, fibroids, endometriosis, acute cyst events, peritoneal irritation; "should not be used in isolation") ✓. Caveat 3: the figure-versus-text point (For Hassan) ✓ |
 | does_not_apply | ✓ p7 §1 |
@@ -87,7 +85,7 @@ case 2.
 
 ## Gate 5 flags
 
-After the fixes, 57 facts were scored and 50 fell below 0.5 (the first run, before the read, had 55 and 47). I read each one against the source. None needed a correction. They fall
+After the ≤3 cm ruling, 54 facts were scored and 48 fell below 0.5. (Earlier runs: 55 and 47 before the read, then 57 and 50 after it.) I read each one against the source. None needed a correction. They fall
 into three groups:
 
 1. **Formula and logic steps** (feature_count 0.03, u_score 0.05, u_band 0.48, rmi 0.30, pathway cases 0, 1, 2, 4
@@ -97,7 +95,7 @@ into three groups:
    so these score low:
    - ct_mdt caveat 0: p14 and p16 (library routing, labelled). Caveat 1: pp 6 and 22.
    - consider_surgery caveat 0: p20 and p14. Caveat 2: p15. Caveat 3: p19.
-   - surgical_evaluation caveats 0 and 1: p7 and p9.
+   - no_follow_up caveats 1 and 2: the ruling and the routing, which are not source text.
    - surgery_raised_ca125 caveat 1: p19.
    - no_follow_up caveat 0: p7.
    - conservative caveat 0: p6 figure.
@@ -107,7 +105,7 @@ into three groups:
    conservative 2, surgery_raised_ca125 0 and 3) say what the library did, not what the source says, so they cannot
    score high.
 3. **Paraphrases of text rows and reference fields**, scoring 0.15-0.49:
-   - outcomes no_follow_up, ct_mdt, conservative, surgical_evaluation, surgery_raised_ca125 and does_not_apply;
+   - outcomes no_follow_up, ct_mdt, conservative, surgery_raised_ca125 and does_not_apply;
    - size_band and ca125_band;
    - sum.2, sum.3, def.*, tab.*, pit.*.
 
@@ -133,9 +131,13 @@ into three groups:
    carrying S1's exception. This replaces the earlier `does_not_fit` route.
 4. **DECISION: papillary projections count as "solid areas" for the U score.** S1's RMI lists "solid areas" (p16).
    Its complex-cyst definition lists solid nodules and papillary projections separately (p12).
-5. **DECISION: the ≤3 cm no-follow-up route requires an asymptomatic woman.** The text (p4 and p19) and the p1
-   update note ("asymptomatic, simple, unilateral, unilocular cysts of 3 cm or less") say so; the 2025 figure note
-   doesn't. A symptomatic woman goes to `surgical_evaluation` (For Hassan 13).
+5. **Decided by Hassan 2026-10-13: a simple, unilateral, unilocular cyst of 3 cm or less has one outcome, whatever
+   the symptoms.** The outcome reads "No imaging follow-up required (RCOG GTG 34, Dec 2025). If symptomatic, clinical
+   assessment is advised." This follows p7, which is written for the reporting radiologist: it calls these cysts
+   "clinically inconsequential" with no symptom condition. The RCOG/RCR consensus line on RCOG's page also has no
+   symptom condition. p4 and p19 (and the p1 note) do say "asymptomatic"; their symptomatic clause supplies the
+   clinical-assessment advice (p19). `symptomatic` is not asked on this path. The earlier `surgical_evaluation`
+   outcome was removed.
 6. An incomplete septum makes a cyst `unilocular_non_simple`: not simple, because S1 requires no septations, and not
    multilocular, because multilocular needs complete septation. S1 p12 notes that IOTA counts this as unilocular.
 7. IOTA is not encoded. GTG 34 offers it only as "an alternative for those experienced in this technique" (p17), and
@@ -150,9 +152,8 @@ into three groups:
     significant. Counting them would add a U point (for example, RMI 69 becomes 207) and would take a simple 4 cm cyst
     off conservative management.
 13. **DECISION (independent read I2, controller ruling): `symptomatic` means symptoms attributed to the cyst, or the
-    p9 symptoms when persistent or frequent. The scan indication alone is not enough.** A symptomatic woman with a
-    simple, unilateral cyst ≤3 cm gets S1's own p19 wording, "further surgical evaluation is necessary"
-    (`surgical_evaluation`), not "consider salpingo-oophorectomy".
+    p9 symptoms when persistent or frequent. The scan indication alone is not enough.** It now matters only for cysts over 3 cm or
+    non-simple cysts; the ≤3 cm simple route ignores it (For Hassan 5).
 14. **Decided by Hassan 2026-10-13: a small amount of pelvic free fluid is NOT ascites.** Ascites counts only when the dictation says "ascites" or describes more than a small amount of free fluid. This is now in the `ascites` how_stated, and a golden case checks it. The original question was: S1 doesn't say (independent read M5). The
     `ascites` how_stated is left as "ascites is reported". Ascites now routes to CT and MDT, so a library reading that
     excludes small physiological free fluid would change what reaches a report.
@@ -170,4 +171,4 @@ Minor findings were fixed as follows:
 - M7: "after discussion with the woman".
 - M8: the p1 citation in For Hassan 5.
 
-Golden cases are now 26, after the ascites ruling case.
+Golden cases are now 27: after the ascites ruling case and the ≤3 cm ruling (the symptomatic 2 cm case now reaches no_follow_up, and a 2 cm case with symptoms unstated asserts `needed` is empty).

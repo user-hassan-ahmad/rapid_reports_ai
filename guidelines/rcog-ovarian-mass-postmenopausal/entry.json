@@ -398,10 +398,6 @@
                 "eq": false
               },
               {
-                "ref": "symptomatic",
-                "eq": false
-              },
-              {
                 "ref": "size_band",
                 "eq": "le3"
               }
@@ -410,8 +406,8 @@
           "result": "no_follow_up",
           "locator": {
             "source": "S1",
-            "page": 19,
-            "section": "6.1.1: asymptomatic, simple, unilateral, unilocular cysts of 3 cm or less do not require follow-up"
+            "page": 7,
+            "section": "Section 2 (December 2025 update, p1 note): simple, unilateral, unilocular cystic lesions of 3 cm or less are clinically inconsequential and need no follow-up"
           }
         },
         {
@@ -621,10 +617,6 @@
                       {
                         "ref": "size_band",
                         "eq": "le3"
-                      },
-                      {
-                        "ref": "symptomatic",
-                        "eq": true
                       }
                     ]
                   }
@@ -637,50 +629,6 @@
             "source": "S1",
             "page": 6,
             "table": "Clinical algorithm: RMI I < 200, cysts with ANY of symptomatic, non-simple features, > 5 cm, multilocular, bilateral"
-          }
-        },
-        {
-          "when": {
-            "all": [
-              {
-                "ref": "postmenopausal",
-                "eq": true
-              },
-              {
-                "ref": "malignancy_confirmed",
-                "eq": false
-              },
-              {
-                "ref": "morphology",
-                "eq": "simple"
-              },
-              {
-                "ref": "bilateral",
-                "eq": false
-              },
-              {
-                "ref": "ascites",
-                "eq": false
-              },
-              {
-                "ref": "metastases",
-                "eq": false
-              },
-              {
-                "ref": "size_band",
-                "eq": "le3"
-              },
-              {
-                "ref": "symptomatic",
-                "eq": true
-              }
-            ]
-          },
-          "result": "surgical_evaluation",
-          "locator": {
-            "source": "S1",
-            "page": 19,
-            "section": "6.1.1: if a woman is symptomatic, further surgical evaluation is necessary"
           }
         },
         {
@@ -786,16 +734,17 @@
   "outcomes": [
     {
       "id": "no_follow_up",
-      "classification": "Simple, unilateral, unilocular ovarian cyst of 3 cm or less in an asymptomatic postmenopausal woman: low risk of malignancy.",
-      "recommendation": "No routine follow-up required.",
+      "classification": "Simple, unilateral, unilocular ovarian cyst of 3 cm or less in a postmenopausal woman: clinically inconsequential.",
+      "recommendation": "No imaging follow-up required (RCOG GTG 34, Dec 2025). If symptomatic, clinical assessment is advised.",
       "caveats": [
-        "RCOG regards such cysts as clinically inconsequential; whether to mention them in the report is at the reporting clinician's discretion.",
+        "Whether to mention such a cyst in the report is at the reporting clinician's discretion (RCOG).",
+        "The clinical-assessment clause rests on RCOG's statement that a symptomatic woman needs further evaluation; this route applies whatever the symptoms (Hassan's ruling, 2026-10-13).",
         "With ascites or metastases the CT and MDT route applies instead (library routing; RCOG's 3 cm statement does not address them)."
       ],
       "locator": {
         "source": "S1",
-        "page": 19,
-        "section": "6.1.1 (December 2025 update); Clinical algorithm p6; Section 2 p7"
+        "page": 7,
+        "section": "Section 2 (December 2025 update; p1 update note); 6.1.1 p19 for the symptomatic clause"
       }
     },
     {
@@ -843,20 +792,6 @@
         "source": "S1",
         "page": 19,
         "section": "6.1.1; Clinical algorithm p6: consider conservative management, repeat assessment in 4-6 months"
-      }
-    },
-    {
-      "id": "surgical_evaluation",
-      "classification": "Simple, unilateral, unilocular ovarian cyst of 3 cm or less in a symptomatic postmenopausal woman.",
-      "recommendation": "Further surgical evaluation is necessary (RCOG).",
-      "caveats": [
-        "RCOG regards simple cysts of 3 cm or less as clinically inconsequential, so consider whether the symptoms are due to the cyst.",
-        "Symptomatic means symptoms from the cyst, or persistent or frequent symptoms suggesting ovarian cancer; the scan indication alone is not enough."
-      ],
-      "locator": {
-        "source": "S1",
-        "page": 19,
-        "section": "6.1.1: if a woman is symptomatic, further surgical evaluation is necessary; Section 2 p7"
       }
     },
     {
