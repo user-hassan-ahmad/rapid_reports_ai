@@ -56,9 +56,11 @@ gate.
 ("Answered by the radiologist: LVEF 45%"). N/A items produce the template's "Values not provided: …" line at its
 `position`, so that line is now the radiologist's explicit choice. `LIST_MISSING` stays in the stack brief.
 
-**Template editor.** After the sheet is built, `SkillSheetCreator.svelte` / `TemplateRefinePanel.svelte` show
-"Required in every report:" as removable chips with "+ add". Edits rewrite the `LIST_MISSING` line; the save path
-re-parses as today (`_queue_structure`). Guidance: keep the list short; one block per measurement group.
+**Template editor.** The sheet is never shown to the user (standing rule); requirements are shown as report
+behaviour. After the sheet is built, `SkillSheetCreator.svelte` / `TemplateRefinePanel.svelte` show "Every report
+will include:" as removable chips with "+ add", derived from the parsed structure. A chip edit is applied by code
+to the `LIST_MISSING` line (never by showing or hand-editing the sheet); the save path re-parses as today
+(`_queue_structure`). Guidance: keep the list short; one block per measurement group.
 
 ### 2. Required statements
 
@@ -70,7 +72,8 @@ sheet's model) turns it into a unit in the right paragraph:
 - conditional → `NEGATIVE "No intracardiac thrombus." WHEN [findings: LGE is reported]`.
 
 The rule sentence itself stays in Domain Rules (it may also carry placement, which the session rule keeps). The
-converted units are shown in the template editor as "This template will also state:" with remove, and the save
+converted units are shown in the template editor as report behaviour, "Every report will also state:" with
+remove (the sheet itself is never shown), and the save
 lints and stores them like any other unit. A sentence the extraction misses is still held back by the session
 rule.
 
@@ -119,11 +122,24 @@ any assumed normal; each no shows nothing. The answers go into `gateKey`.
 3. Should a filled value that disagrees with a dictated value elsewhere raise a check? (Proposed: the existing
    contradiction check covers it.)
 
+## Shipping requirements (with the template stack and the conversion)
+
+The sheet is never exposed to the user; every path below works on it behind the scenes.
+
+1. **Chat-to-edit keeps the grammar.** `refine_skill_sheet` gets the grammar (as `TEMPLATE_SHEET_CONVERT_PROMPT`
+   carries it), then lint; on errors one repair call (`REPAIR_SYSTEM_PROMPT`); still failing → keep the previous
+   sheet and tell the user the change could not be applied. The reply stays framed as report behaviour.
+2. **New templates are written in the grammar.** The conversion step runs after
+   `analyze_examples_to_skill_sheet`; a failed conversion keeps the free-form sheet (today's path).
+3. **Existing templates converted once** (31 skill-sheet templates, hand read + one end-to-end test each), written
+   by a one-off script: old sheet kept in `template_config.legacy_skill_sheet`, a TemplateVersion, and a JSON
+   backup. Legacy templates (no generation mode) soft-deleted.
+
 ## Build order
 
 1. Answer open question 1.
 2. Value cluster (backend fill + chips + blocking + Generate wiring), using existing `LIST_MISSING` lines.
-3. Template-editor chips for `LIST_MISSING`.
+3. Template-editor chips for `LIST_MISSING` (report behaviour; the sheet is never shown).
 4. Grammar change + conditional Jev check.
 5. Save-time Domain Rules extraction (after its lab).
 
