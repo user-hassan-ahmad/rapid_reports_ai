@@ -8,6 +8,12 @@ This spec replaces the runtime web-retrieval back half of the Copilot spec
 The front half of that spec stands: cards, Apply as the only path into the report, the enrichment line, the
 Recommendations checklist, the matcher, the preview, and offline TNM.
 
+**Amended 2026-10-13** (Hassan approved the redesign after the settling root-cause review,
+`.superpowers/sdd/2026-10-13-guideline-library-next-slice/settling-root-cause-review.md`): the card becomes a visible
+draft with a Calculate step (§7.4–§7.10), the safety rule becomes "nothing reaches the report unseen" (§7.10), and the
+Apply gate becomes the real-dictation lab (§12, "Draft card slice"). Plan:
+`docs/superpowers/plans/2026-10-13-guideline-draft-card.md`.
+
 ## 1. Why
 
 **Goal:** give the radiologist guideline help while they dictate, not after the report is written. The help has four
@@ -17,7 +23,9 @@ parts:
 - questions answered in context;
 - an explicit Apply that adds a classification under the finding and a ticked recommendation under the conclusion.
 
-**Constraints:** what reaches a report must be correct, and the flow must stay frictionless.
+**Constraints:** what reaches a report must be correct, and the flow must stay frictionless. Safety rule (2026-10-13,
+§7.10): **nothing reaches the report unseen**. Every value behind an applied result is shown to the radiologist, who can
+change it, and Apply writes only the result of a Calculate the radiologist tapped.
 
 **Evidence from the seed lab:**
 - About 26 of 30 rows fetched from real pages were correct.
@@ -83,8 +91,8 @@ Each entry has four layers.
 |---|---|
 | **Inputs** | Typed. Numeric inputs have explicit inclusive or exclusive band edges. Each input has a `how_stated` hint (how a dictation would phrase it), prerequisites, and five states (§3.1). |
 | **Logic** | A pipeline of six step types, all data-only (§3.2). Tier 1 only. |
-| **Outcomes** | Classification, recommendation and caveats. Each carries a source locator. |
-| **Reference** | Summary, definitions, tables and pitfalls. Each field has a stable field id and a locator. |
+| **Outcomes** | Classification, recommendation and caveats. Each carries a source locator. An optional short `category` label from the source (2026-10-13) lets checker mode recognise a dictated category (§7.8). |
+| **Reference** | Summary, definitions, tables and pitfalls. Each field has a stable field id and a locator. Optional `links` (2026-10-13) tie a field or a table row to the outcome, step value or input value it describes (§7.11). |
 
 ### 3.1 Input states
 
@@ -96,7 +104,9 @@ Each entry has four layers.
 | `not_assessable` | Stated as impossible to assess. | TNM's X convention; "margins obscured" |
 | `not_applicable` | A prerequisite is false. | a growth rate when there is no prior study |
 
-The model never sets `unknown` or `not_applicable`. They follow from what is missing and from the prerequisites.
+The model never sets `unknown` or `not_applicable`. They follow from what is missing and from the prerequisites. The
+radiologist may set `unknown` by choosing "Not stated" on the card (§7.6); `not_applicable` only ever follows from a
+prerequisite.
 
 ### 3.2 Logic step types
 
@@ -201,8 +211,8 @@ Agreed with Hassan on 2026-10-12. Not built yet: it is part of the next slice (�
   the guideline does not apply and why, its recommendation says to manage on clinical context, and it carries the
   locator of the scope clause. It never has an Apply.
 - **Settling.** The model settles eligibility inputs exactly as it settles clinical ones: verbatim quotes from the
-  clinical history or the dictation, with the same checks. An unstated eligibility input stays unknown and is never
-  assumed eligible.
+  clinical history or the dictation, with the same checks and the same value states (§7.5). An unstated eligibility
+  input stays unknown (asked) and is never assumed eligible.
 - **Size.** A pack has at most three eligibility inputs. If a guideline's scope needs more, the scope belongs in the
   matcher's `applies_to` or in a pitfall, not in questions.
 
@@ -221,8 +231,9 @@ packs by a shared vocabulary of patient facts (for example `known_primary_cancer
 ## 4. Evaluation engine
 
 **Who does what:**
-- **The model** only settles inputs from the dictation. Every settled value carries a verbatim quote, which Jev checks
-  (the existing preview rule).
+- **The model** only proposes input values from the dictation. Every proposed value carries a verbatim quote. Code reads
+  numbers from the quote and, with one batched Jev claim per scope, decides each value's state: read, pre-filled or
+  asked (§7.5). Nothing the model proposes reaches the report unless the radiologist sees it and taps Calculate (§7.10).
 - **Code** evaluates the logic and returns a **trace**. The trace records:
   - which steps ran;
   - which rules fired;
@@ -243,7 +254,8 @@ packs by a shared vocabulary of patient facts (for example `known_primary_cancer
 An input whose value cannot change the outcome is never asked.
 
 **Change to the preview.** The "model picks an output index" step goes away. The model settles inputs, code
-evaluates, and code builds the proposal.
+evaluates, and code builds the proposal. (2026-10-13: the preview builds the draft and a draft outcome; only Calculate,
+over the values the radiologist confirmed, builds the result that Apply writes, §7.7.)
 
 **Scope: one evaluation per lesion.**
 - The host supplies context that spans lesions as ordinary inputs, e.g. the nodule count or the most suspicious
@@ -294,7 +306,8 @@ A module `hybrid_stack/copilot/library/`:
 ### 7.2 Provenance
 
 - `GateRecord.enrichments[]` already carries `key` and `version`. It gains `outcome_id` and a compact trace
-  (rule ids and locators).
+  (rule ids and locators), and (2026-10-13) each value Calculate used with its state (read, pre-filled, answered or
+  edited) and quote, so an applied result shows which values the radiologist confirmed without changing.
 - The report stores the bundle version.
 - When a pack is corrected, past reports that used the affected `pack_id@version` can be found.
 
@@ -306,28 +319,202 @@ A module `hybrid_stack/copilot/library/`:
   now.
 - **No gap search.** Ask never searches the web.
 
-### 7.4 Card states and the eligibility strip
+### 7.4 The draft card
 
-Agreed with Hassan on 2026-10-12. Not built yet: it is part of the next slice.
+Agreed with Hassan on 2026-10-13, after the settling root-cause review. This replaces the card states of 2026-10-12,
+which kept "asked, never wrong" (§7.10). Not built yet: see `docs/superpowers/plans/2026-10-13-guideline-draft-card.md`.
 
-A pack card is always in one of three states, worked out from the preview:
+**What the card is.** A quick fact check against the source. It shows what the guideline needs to decide this
+finding. It drafts each value from the dictation, with the quote that value came from, and lets the radiologist
+correct any value in place. It then calculates the classification or recommendation from the confirmed values, with
+citations. Apply writes that result and nothing else.
+
+**Flow:**
+1. **Paint.** The card opens with the pack's reference body and the inputs that decide the outcome, in `needed`
+   order. Painting needs no model call.
+2. **Draft.** The settlement (prewarmed by /match, cached per §12) gives each input one of the value states in §7.5.
+3. **Which lesion?** If the finding describes more than one lesion, the card asks that one pick before anything else
+   (§7.9).
+4. **Eligibility.** Unknown eligibility inputs that could change the outcome lead the card, as "Does this apply?"
+   rows.
+5. **Edit.** The radiologist can change any value inline (§7.6).
+6. **Calculate.** The engine runs over the confirmed values (§7.7).
+7. **Apply.** Writes the last Calculate result (§7.7).
+
+**Order of `needed`:**
+- Eligibility inputs come first, then parent inputs, then the rest. Within each group the order is the pack's input
+  order. A parent input is one that some other input's prerequisite tests.
+- An input behind a prerequisite that is still unknown is not asked yet. It is listed in `waiting` and appears only
+  once its parent is known and applicable. For BTS, the five follow-up inputs appear only after "prior study: Yes".
+- If a waiting input could change the outcome, its unknown parent is asked in its place.
+- An input whose value cannot change the outcome is never asked (§4).
+
+**Card states**, worked out in code from the preview:
 
 | State | When | What the card shows |
 |---|---|---|
-| **Does not apply** | An eligibility input settles to an exclusion | The card dims and shows the reason, with the scope clause's citation. There is no Apply. |
-| **Check first** | Some eligibility inputs are unknown and could change the outcome | A short "Does this apply?" strip of one to three yes/no chips, above everything else. The clinical questions and possible outcomes appear dimmed beneath it. |
-| **Applies** | Every eligibility input is settled and eligible, or none can change the outcome | The normal card: the clinical questions (only those that can change the outcome), then the proposal. |
+| **Which lesion** | The finding describes more than one lesion, and no span has been picked yet | The verbatim lesion spans to pick from. Patient inputs are drafted; lesion inputs wait for the pick. |
+| **Does not apply** | An eligibility input (read, pre-filled, answered or edited) excludes | The card dims and shows the reason with the scope clause's citation. Changing that value brings the card back. There is no Calculate and no Apply. |
+| **Check first** | Some eligibility inputs are unknown and could change the outcome | One to three "Does this apply?" rows above everything else. The clinical values appear dimmed beneath them. |
+| **Applies** | Every eligibility input is known and eligible, or none can change the outcome | The draft values in `needed` order, the draft outcome, and Calculate |
 
-- **Ordering.** `Preview.asks` lists eligibility inputs before clinical ones. Within each group the order is the pack's
-  input order.
-- **Every ask is explained.** Each ask carries its definition, the outcomes it decides between with their citations,
-  and the citation of the rule it feeds. These are the `asks` fields already built.
-- **Once per case.** A patient-scoped answer given on one card fills that input on every other card in the case, and
-  their previews re-run from the cache key, which includes the answers.
-- **No questionnaires.** If a card would need more than three eligibility chips, the pack is wrong (§3.6 Size). The
-  gates check this.
-- **Logging.** `does_not_apply` outcomes and every tap on an eligibility chip are logged with the stack session, as
-  data on how often guidelines are excluded and on which facts.
+**Unchanged from 2026-10-12:**
+- **Every ask is explained.** Each asked input carries its definition, the outcomes it decides between (with their
+  citations), and the citation of the rule it feeds. These are the existing `asks` fields.
+- **Once per case.** A patient-scoped answer given on one card fills that input on every other card in the case, as
+  an answered value. Their previews re-run from the cache, keyed by the answers.
+- **No questionnaires.** A card needing more than three eligibility rows means the pack is wrong (§3.6 Size).
+- **Logging.** `does_not_apply` outcomes and every eligibility answer are logged with the stack session.
+
+### 7.5 Value states
+
+Each input on the card is in exactly one state:
+
+| State | When | How it is shown |
+|---|---|---|
+| **Read** | Code read the value with certainty. One of: **(a)** a number that `quantity.settle` reads as one value; for a lesion input, its finding holds no other number (`quantity.alone`). **(b)** An enum option that appears in its quote, with no negation or hedge before it. Either way, the scope's batched Jev claim must confirm it, and a lesion value also needs a finding that describes one lesion. An attenuation must also be stated as unenhanced. Booleans and the states (absent, not assessable) are never read. | Plainly, with its quote available |
+| **Pre-filled** | Any other value the model proposes with a quote that is verbatim and in scope (§3.6) | Highlighted, with its quote and the reasons it is not read |
+| **Asked** | No value was proposed; or the quote is not verbatim in scope; or a number cannot be read (a range, a bound, a fraction, an unknown unit, out of range); or the input is demoted (below) | Empty, with the `asks` explanation |
+| **Answered** | The radiologist set the value, on this card or as a shared patient answer | As set; an answer always wins over a draft |
+
+- **Quotes only.** A value is never pre-filled from inference alone. The model still leaves out anything not stated,
+  and a proposal without a verbatim quote is dropped.
+- **Highlight reasons.** Guards that used to force an ask now only say why a value is pre-filled rather than read:
+  - another number in the finding (`alone`);
+  - a negation or hedge before the quote (`_MODIFIER`);
+  - an attenuation not stated as unenhanced (the HU phase claim);
+  - the scope's Jev claim scoring below its bar;
+  - the Jev call failing.
+- **Jev failure.** Nothing is read; every proposal is pre-filled. The card is otherwise usable.
+- **Demotion.** An input whose pre-fill error rate in the real-dictation lab is above the agreed rate (§12) is
+  demoted: its proposals are dropped and it is asked. The list lives in code, by pack and input, with the lab run that
+  set it.
+
+### 7.6 Inline edit
+
+- **Every value is editable in place**, whatever its state: read, pre-filled, asked or answered.
+- **The choices are:**
+  - the input's own options: the enum options, Yes/No, the band labels, or a typed number read as a quote would be;
+  - the states the input allows: "Absent" and "Not assessable";
+  - "Not stated" (`unknown`), which is always offered.
+- **`not_applicable` is never chosen.** An input whose prerequisite is false shows "N/A" and changes only when its
+  parent is edited.
+- **An edit is an answer.** It re-runs only the engine over the cached settlement (`finish`), with no model or Jev
+  call, so nothing else on the card moves.
+- **Every edit is logged** with the value and state before and after, as data on automation bias.
+
+### 7.7 Calculate and Apply
+
+- **The draft outcome.** The preview runs the engine over the draft (read and pre-filled values, plus answers) and
+  shows the outcome as a draft, labelled "on these values". It can never be applied.
+- **Calculate** runs the engine over the confirmed values: every value as the card shows it, with each edit. The tap
+  confirms every value shown. Calculate makes no model or Jev call and is deterministic. It returns:
+  - the classification, recommendation and caveats as the entry words them;
+  - the citations of the steps that fired and of the outcome;
+  - each value used, with its state and quote;
+  - the trace;
+  - `pack_id@version` and the bundle version.
+- **No guessing.** If an input that could change the outcome is still unknown, Calculate returns no outcome. It
+  returns the possible outcomes and what is still needed.
+- **Exclusions.** A `does_not_apply` result is shown as the exclusion and never applied.
+- **Apply** writes exactly the last Calculate result: the classification line under the finding, and the ticked
+  recommendation under the conclusion. Any edit after Calculate clears that result, so Apply needs a fresh
+  Calculate.
+
+### 7.8 Checker mode
+
+- **When it starts.** The finding states the pack's category. That means a short `category` label on an outcome, from
+  the source, quoted verbatim in the finding and confirmed by Jev in the lesion batch, as in "Bosniak IIF". The card
+  then checks the dictated category instead of computing one.
+- **How it checks.** The engine runs over the draft values, and D is the set of outcomes with the dictated category:
+  - **Agrees:** the draft outcome is in D, or every possible outcome is. Calculate gives the guideline's result for
+    that category.
+  - **Disagrees:** no outcome in D is still possible. A flag shows the computed category, or the possible ones, and
+    the values and citations behind it. The radiologist can correct a value, which re-checks it.
+  - **Cannot be checked:** some outcome in D is still possible, but the draft reaches no outcome. Calculate uses the
+    dictated category. If D holds more than one outcome, only the inputs that choose between them are asked.
+- **Lookup packs** have no checker mode, because their category is itself an input and the dictated grade is a value
+  (CAD-RADS, CAC-DRS, SINS).
+- **The checker never writes text by itself.** A settling error can only cause a wrong flag. A missed flag leaves
+  things as they are today.
+
+### 7.9 Which lesion?
+
+- **Trigger.** The finding describes more than one lesion of any kind. Either the Jev one-lesion claim in the lesion
+  batch scores below its bar, or the settle call lists two or more lesion spans.
+- **The ask.** The card asks once. It offers the verbatim spans, each checked in code as verbatim in the finding.
+  The radiologist picks one, and the card drafts the lesion inputs from that span alone. Patient inputs are not
+  affected.
+- **No usable spans.** Fewer than two verbatim spans means no pick; the lesion inputs are asked.
+- **Showing the pick.** The picked span is shown on the card and carried in the Calculate result.
+- **Latency.** The settlement of each span is prewarmed, a bounded number of them, as soon as the spans are known.
+
+### 7.10 Safety rule and the reversal
+
+**The rule: nothing reaches the report unseen.**
+- Every value behind an applied result is shown on the card, with its state and quote, and the radiologist can change
+  it.
+- Apply writes only the result of a Calculate that the radiologist tapped over those values.
+- Code still reads every number and the engine still decides.
+- Every word of the result comes from the entry.
+- A value is shown as read only when code read it with certainty. No value is pre-filled from inference alone.
+
+**Reversal, recorded 2026-10-13 (Hassan).** This replaces two rulings:
+- **"Asked, never wrong":** every value not confirmed was asked, and no unconfirmed value was shown.
+- **"No chips":** no confirmable value chips on the card.
+
+**Why.** "Asked, never wrong" held (preview lab run 2 had 0 wrong values) while friction got worse:
+- on the same 41 cases, mean asks rose from 4.0 to 4.4, and cards with 2 asks or fewer fell from 58.5% to 39%;
+- across all 51 cases the mean was 5.47, and two-lesion cards averaged 9.7.
+
+The cause was a false premise: a finding unit is a sentence, not a lesion. Every guard turned a doubt into a tap, and
+the list of guards could never be finished. Of the 279 asks, 174 were inputs the dictation never stated and about 105
+came from guards.
+
+**The trade.** The card can now show a wrong pre-filled value. It can no longer put a value into the report without
+the radiologist seeing it.
+
+**Containment:**
+- pre-fills are highlighted and never shown as read;
+- nothing is pre-filled from inference;
+- edits are logged;
+- an input is demoted when the real-dictation lab measures it above the agreed pre-fill error rate (§12).
+
+### 7.11 Case-aware reference
+
+Agreed with Hassan on 2026-10-13.
+
+**What it does.** When the card opens, its reference section highlights the rows, bands, definitions and pitfalls
+that match what has been read, dictated or calculated, for example:
+- Fleischner: the 6–8 mm solid row;
+- Bosniak: the IIF definition;
+- CAD-RADS: the category 3 line and its footnote.
+
+The rest of the reference stays available, collapsed.
+
+**How it works:**
+- **Explicit links in pack data.** A reference text item (summary, definition or pitfall), a whole reference table,
+  or a single table row may carry `links`. Each link names the id it describes:
+  - an outcome;
+  - a step's value: a band id, a table or rules result, or an adjust id;
+  - an input's value: an enum option, true or false, or a band id.
+- **No text matching**, ever.
+- **Hits come from the engine trace.** The trace already records the outcome reached, each step's value (band ids,
+  table rows, rules results) and each present input. Hits are worked out from the trace of the draft, then from the
+  trace of the last Calculate. In checker mode the dictated category's outcomes also count as hits.
+- **No links, no highlight.** A pack with no links highlights nothing, and the card shows the full reference
+  expanded, as it does today.
+- **The verify gate** checks that every link names a real outcome, step, input and value of the entry, and that a
+  table's row links line up with its rows.
+- **The API.** The preview and the Calculate result each carry `highlight`:
+  - `linked`: whether the pack has any links;
+  - the reference field ids hit;
+  - the row indices hit in each table.
+
+  The UI expands what is hit and collapses the rest.
+
+**Links on the existing packs** are added as a follow-up, most dictated first: CAD-RADS, CAC-DRS (Agatston),
+Fleischner, BTS, Bosniak, PI-RADS.
 
 ## 8. Quality gates
 
@@ -443,7 +630,8 @@ Status (2026-10-12): items 1 and 2 done, item 3 **failed** its gate, item 4 not 
    `docs/superpowers/handover/2026-10-12-copilot-evidence/preview_lab.md`.
    - **Proposed fix (not built):** give each input a scope (lesion or patient). Lesion-scoped quotes must come from
      the card's own finding unit, not the whole dictation. Latency needs a smaller settle prompt or a faster model.
-   - **Frontend must not start Apply until this passes** a re-run of the preview lab.
+   - **Frontend must not start Apply until this passes** a re-run of the preview lab. (Superseded 2026-10-13: the
+     Apply gate is the real-dictation lab; see "Draft card slice" below.)
 4. **Frontend Tasks 14–19.** Apply appears only on pack and TNM cards. The Task 14 mock-up needs Hassan's approval
    first. Task 20, the review page, is dropped. Blocked on item 3.
 5. **Then:** the tier 2 parser lab, further packs in coverage-lab order, the monthly routine, and retiring prefetch
@@ -462,14 +650,23 @@ Status (2026-10-12): items 1 and 2 done, item 3 **failed** its gate, item 4 not 
    changed or "apart from" keeps it); a label or image number is never one that a connector (x, by, to, -) follows;
    and (3) Jev scores "The FINDING describes only one <finding type>" at 0.8 or more, asked in the same lesion
    batch. Anything else ("8 and 4 mm", "two nodules", "further subcentimetre nodules", a prior size) asks it.
+   *Superseded 2026-10-13* (see "Draft card slice"): (1) and (3) now only make a value pre-filled rather than read,
+   and (3) triggers "Which lesion?". (2) is retired.
 2. **Eligibility triage.** Add `role: eligibility` (§3.6) with shared patient answers, and the three card states and
-   the eligibility strip (§7.4). The existing packs' scope clauses become eligibility inputs: Fleischner's exclusion
+   the eligibility strip (§7.4; folded into the draft card on 2026-10-13). The existing packs' scope clauses become eligibility inputs: Fleischner's exclusion
    input is reclassified, and BTS and Bosniak gain theirs from the source. The gates enforce at most three eligibility
    inputs, each with a scope-clause locator.
 3. **Preview cache.** Run the preview when the card is produced and cache it by (pack, unit text, history, answered),
    so opening a card is instant.
 4. **Preview lab re-run.** Add cases with clinical history, two lesions in one sentence, eligibility exclusions stated
-   in the history, and shared patient answers across two cards. This lab is the gate for Apply.
+   in the history, and shared patient answers across two cards. This lab was the gate for Apply until 2026-10-13.
+   *Result (run 2, HEAD 4341832, 3bf81c0):*
+   - passed, marginally: 0 wrong values and 0 wrong proposals;
+   - (b) p95 was 1991 ms against the 2000 ms bar, with BTS alone at 3300 ms;
+   - friction got worse: mean asks 5.47, and only 31% of cards had 2 asks or fewer.
+
+   Apply was not switched on. The lab is now a regression suite only, because its phrasings were invented and its
+   truth maps were written by the fixer. Results: `docs/superpowers/handover/2026-10-12-copilot-evidence/preview_lab_next_slice.md`.
 5. **Lookup packs and reference cards** for the graded systems that lead real use (CAD-RADS 2.0, CAC-DRS, then tier 2
    cards for Outerbridge, Lund-Mackay, AO Spine, Stoller and SINS), using the light authoring procedure.
 
@@ -480,6 +677,80 @@ Status (2026-10-12): items 1 and 2 done, item 3 **failed** its gate, item 4 not 
   inputs are unknown. No proposal is built with an unfilled placeholder.
 - **§5 pack applicability gate:** pack cards pass a Jev yes/no check built from the pack's `applies_to`, threshold
   `PACK_GATE_MIN`, fail closed. Explicit asks that name a system bypass the gate, as TNM does.
+
+**Draft card slice (agreed with Hassan on 2026-10-13, after the settling root-cause review):**
+
+Plan: `docs/superpowers/plans/2026-10-13-guideline-draft-card.md`.
+
+**Banked from the next slice:**
+- run 2's 0 wrong values is the state of the code;
+- Apply stays off;
+- guard rounds stop;
+- packs continue unaffected.
+
+**Build:**
+1. **Parent questions first.** `needed` lists eligibility inputs first, then parent inputs. An input behind an
+   unknown prerequisite waits (§7.4).
+2. **The real-dictation lab**, run first on today's settler as the baseline.
+3. **Value states and Calculate** (§7.5–§7.7).
+4. **Retire and demote guards.** These are retired:
+   - the per-input "QUOTE states" Jev claim;
+   - `_no_prior` and its regexes and claims (`_FOLLOW_UP`, `_ELSEWHERE`, `_PRIOR_WORD`, `PRIOR_MENTIONED`,
+     `HISTORY_MENTIONED`). prior_study is now proposed like any input, and asked first as a parent;
+   - `quantity.many`, with `_ORGANS` and the negation-slot allowlist (`_QUALIFIER`, `_MANY_WORDS`).
+
+   These are demoted to highlight reasons (§7.5): `quantity.alone`, the Jev one-lesion claim (now the trigger for
+   "Which lesion?"), `_MODIFIER`, and the HU phase claim.
+
+   These are kept:
+   - the engine and the packs;
+   - scope and eligibility;
+   - the verbatim check;
+   - `quantity.readings` and `quantity.settle`, with their refusals;
+   - the Settlement/`finish` split and the cache;
+   - one batched Jev claim per scope.
+5. **Case-aware reference** (§7.11), then links on the existing packs, most dictated first.
+6. **Checker mode** (§7.8). Outcomes gain an optional `category` label from the source.
+7. **"Which lesion?"** (§7.9).
+8. **Re-run the real-dictation lab against the gate**, then write the results here.
+9. **Frontend.** No Copilot card UI exists on this branch. The plan builds the backend contract (/open, /preview and
+   /calculate). The card UI and the Task 14 mock-up are a separate plan, and Hassan approves the mock-up first.
+
+**Apply gate: the real-dictation lab.** This replaces the preview lab as the gate.
+- **Sample.**
+  - About 100 production findings, read only through Metabase from `reports` (scan type, clinical history,
+    findings). They are grouped offline by the stack grouper, matched by the matcher with the pack gate, and spread
+    across packs.
+  - About 20 cases that Hassan dictates in his own style, without seeing the guards.
+  - All of it stays in the session scratchpad and is never committed.
+- **Truth.**
+  - A Claude Fable 5.1 labeller (`claude-fable-5-1`) labels every input of every card. Its prompt holds every source
+    of the pack and the entry itself.
+  - For each input it gives the value or "not stated", with the quote and the source locator. It also gives the
+    lesion spans and any dictated category.
+  - It never sees the settler's output.
+  - Hassan spot-checks the boundary items: those the labeller flags, every disagreement between labeller and settler,
+    and any label served by a fallback model. His verdict wins. The fixer never writes truth.
+- **Bar.**
+  - 0 wrong values shown as **read**.
+  - A median of 2 taps or fewer to Calculate. Taps are counted until Calculate returns an outcome when it is filled
+    from truth. They are:
+    - an answer to each asked input the engine needs;
+    - a correction of each wrong draft value;
+    - the "Which lesion?" pick.
+
+    The Calculate tap itself is not counted.
+  - The pre-fill error rate (wrong pre-fills over pre-fills) is reported for each input. Any input above the agreed
+    rate is demoted to asked (§7.5).
+- **Also reported:**
+  - wrong pre-fills overall;
+  - Calculate's outcome against the outcome truth gives;
+  - how often the category is dictated, and how correct checker-mode flags are;
+  - how often "Which lesion?" is shown, and how correct the picked spans are;
+  - time to first paint and time to the draft (p50 and p95).
+- **Regression.** The 51-case preview lab stays as a regression suite only.
+
+*Results:* written here by plan task G.
 
 **Separately:** make the repo private (§11).
 
