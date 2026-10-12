@@ -18,7 +18,7 @@
     "applies_to": {
      "context": [],
      "finding_type": [
-      "thoracolumbar spine fracture"
+      "thoracolumbar fracture"
      ],
      "modality": [
       "CT",
@@ -10484,7 +10484,7 @@
     "applies_to": {
      "context": [],
      "finding_type": [
-      "white matter hyperintensities"
+      "white matter hyperintensity"
      ],
      "modality": [
       "MRI"
@@ -12501,7 +12501,7 @@
     "applies_to": {
      "context": [],
      "finding_type": [
-      "osteoarthritis"
+      "osteoarthritic joint"
      ],
      "modality": [
       "XR"
@@ -18645,7 +18645,7 @@
     "applies_to": {
      "context": [],
      "finding_type": [
-      "spinal metastasis instability"
+      "neoplastic vertebral lesion"
      ],
      "modality": [
       "CT",
@@ -19662,7 +19662,7 @@
     "applies_to": {
      "context": [],
      "finding_type": [
-      "ankle fracture"
+      "malleolar fracture"
      ],
      "modality": [
       "XR"
@@ -20062,5 +20062,5 @@
    ]
   }
  },
- "version": "788f08c8e3f1"
+ "version": "06222b90afb8"
 }
