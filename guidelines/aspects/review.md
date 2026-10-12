@@ -37,6 +37,6 @@ study cohort. The first version was tier 1; every fix from the read is applied b
 
 1. Table 1's printed row labels are inverted against the text and Figure 2 ("7 (n=89)" is really the above-7 group). The card follows the text and figure; counts and the 1 of 91 are quoted under the corrected labels, as the read verified (statistics reproduce only under the swap). DECISION: confirm quoting the counts.
 2. Library addition: the 8-10 and 0-7 definitions and region counts are our arithmetic from the one-point-per-region rule; the source states only the 7-or-less versus above-7 split.
-3. Alias: the bare "ASPECTS" alias was removed so that "pc-ASPECTS" is not matched; aliases are the full name and "MCA ASPECTS". DECISION: this may reduce matching of a plain "ASPECTS 8" dictation.
+3. Alias: the bare "ASPECTS" alias is kept (Hassan's ruling: "ASPECTS 8" dictations matter more than a pc-ASPECTS collision); the pc-ASPECTS pitfall stays and the matcher's applicability gate decides fit.
 4. Integer-only scoring is a pitfall (the source defines no fractional score); the earlier half-up rounding was dropped.
 5. The source gives no management for any score; the thrombolysis-exclusion warning is kept only as the study limitation `pit.limit`. Later ASPECTS use (thrombectomy thresholds) is outside this source and not in the card.
