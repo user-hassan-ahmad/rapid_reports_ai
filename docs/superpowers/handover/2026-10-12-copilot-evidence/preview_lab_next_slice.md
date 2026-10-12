@@ -1,5 +1,162 @@
 # Preview lab, next slice (the gate for Apply)
 
+## Re-run after the lab fix round (HEAD 4341832, 2026-10-13)
+
+**Gate: PASSED, with "cold open slow" flagged for Hassan.** The gate is the one defined in lab-fix-brief §6:
+
+| Gate item | Result |
+|---|---|
+| Wrong values (a settled value that disagrees with the case's `truth`) | **0** |
+| Wrong proposals (the proposal before any answer, or the final outcome after every ask is filled from truth, differs from `expect_final`) | **0** |
+| Scenario (b) p95 | **1991 ms** against a bar of 2000 ms |
+
+- **The (b) pass is marginal.** It is 9 ms under the bar, and two of the 51 (b) opens were over 2 s: BTS "two lesions in one sentence" (3299 ms) and BTS "RML 4mm SN" (2719 ms).
+- **Run 2 was not used.** The coordinator's rule allows a run 2 only to confirm a run 1 that failed on latency or friction alone, and run 1 passed. A second sample could fall either side of 2000 ms.
+- **Branch and command.** On feat/scratchpad-copilot at 4341832, the bundle check reported "bundle up to date". `preview_lab.py --check` reported "51 cases checked, 0 disagree" before the run.
+- **Raw output.** `preview_lab_53503.json` in the session scratchpad (`/private/tmp/claude-501/-Users-hassan-Code-rapid-reports-ai-backend/10e9e5c6-f67c-49c0-8e81-edffd2532c71/scratchpad/`).
+- **Degraded rows.** None in any scenario (0 of 51 in each).
+- **Proposals reached.** Every card reached `expect_final` once its asks were filled from truth (51 of 51). Before any answer, 5 cards proposed an outcome, and all 5 were right.
+
+### Latency (ms, every row; no row was degraded)
+
+| Scenario | n | p50 | p95 | Note |
+|---|---|---|---|---|
+| (a) cold open (MISS) | 51 | 1883 | **3641** | Over 2 s, so "cold open slow" is flagged |
+| (b) open 2 s after /match, prewarm running | 51 | 81 | **1991** | The gate |
+| (c) open after more dictation (a MISS) | 51 | 1851 | **4116** | |
+| (d) answer path, each fill step (engine only) | 97 | 0 | **158** | Maximum 388 ms. 13 of 97 steps were over 50 ms. |
+
+The degraded rows are listed apart, as the brief asks: there are none in (a), (b) or (c).
+
+**p95 per pack:**
+
+| Pack | (a) | (b) | (c) |
+|---|---|---|---|
+| Fleischner | 3604 | 473 | 5033 |
+| Bosniak | 3457 | 1363 | 3061 |
+| BTS | 5093 | **3300** | 4116 |
+
+BTS is the only pack whose (b) p95 is over the bar. It passes overall only because it is 18 of the 51 cards.
+
+### Friction: asks per card before any answer (eligibility included)
+
+| | This run (51 cases) | The same 41 cases as the last run | Last run (41 cases) |
+|---|---|---|---|
+| Mean | **5.47** | 4.41 | 4.02 |
+| Median | 4 | 3 | 2 |
+| Cards with 2 asks or fewer | **16/51 (31.4%)** | 16/41 (39.0%) | 24/41 (58.5%) |
+| Fleischner mean | **2.05** | 1.81 | 0.88 |
+| Bosniak mean | **6.00** | 4.91 | 3.55 |
+| BTS mean | **8.67** | 7.00 | 8.00 |
+| Cards checking eligibility first | 25/51 | | 15/41 |
+
+**Distribution (asks: cards):**
+
+| Asks | Cards |
+|---|---|
+| 0 | 5 |
+| 1 | 3 |
+| 2 | 8 |
+| 3 | 8 |
+| 4 | 7 |
+| 5 | 3 |
+| 6 | 1 |
+| 8 | 1 |
+| 9 | 2 |
+| 10 | 5 |
+| 11 | 1 |
+| 13 | 1 |
+| 14 | 3 |
+| 15 | 3 |
+
+**Asks per card, by pack:**
+
+| Pack | Asks per card |
+|---|---|
+| Fleischner | 0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4 |
+| Bosniak | 2, 2, 3, 3, 3, 4, 5, 5, 8, 9, 10, 10, 10, 10 |
+| BTS | 0, 2, 2, 3, 4, 4, 5, 6, 9, 10, 11, 13, 14, 14, 14, 15, 15, 15 |
+
+**Two-lesion cards.** The 12 cards mean 9.67 asks, because the one-lesion guard asks every lesion input on them. The other 39 cards mean 4.18 (median 3); 16 of those 39 have 2 asks or fewer.
+
+**What moved, on the same 41 cases:**
+- **BTS fell from 8.0 to 7.0.** `prior_study` = No now settles from a no-prior sentence anywhere in the dictation.
+- **Fleischner doubled, from 0.9 to 1.8, and Bosniak rose from 3.6 to 4.9.** The quote check and the finding claim now ask inferred values. See below.
+
+**The most-asked inputs:**
+
+| Pack | Input | Cards |
+|---|---|---|
+| BTS | `proven_malignant` | 17 |
+| BTS | `benign_features` | 16 |
+| Bosniak | `too_small` | 14 |
+| Bosniak | `protrusion` | 14 |
+| BTS | `resolved` | 13 |
+| BTS | `prior_study` | 12 |
+| Fleischner | `count` | 11 |
+| BTS | `spiculation` | 11 |
+| Bosniak | `hu` | 10 |
+
+### Asks caused by inferred values (diagnostic replay)
+
+I replayed `settle_pack` on the 46 cards with any ask. This was a diagnostic only, not a lab run, and it changed nothing. The replay recorded the model's proposals and every Jev claim score. Its settled set differed from the lab's on 5 of the 46 cards, because the model and Jev are run-to-run noisy.
+
+**Why each of the 279 asks was asked:**
+
+| Reason | Asks |
+|---|---|
+| Not proposed by the model: unstated, or missed | 174 |
+| One-lesion guard | 42 |
+| Inferred value: the quote claim failed | 38 |
+| Inferred value: the finding claim failed | 21 |
+| Other rules: a number, the HU phase, the prior check | 4 |
+
+So about **59 asks (21%) come from a value the model proposed that Jev would not accept as stated.**
+
+**Inferred rather than stated (about 52 asks).** The truth agrees with the value, but the text implies it rather than saying it:
+
+| Pack | Input | Value | Typical quote | Asks |
+|---|---|---|---|---|
+| Fleischner | `count` | single | "No other pulmonary nodules" (quote 0.13) or the nodule sentence (finding 0.70) | 11 |
+| Bosniak | `too_small` | no | features, not the size (finding 0.70–0.71) | 10 |
+| Bosniak | `protrusion` | none | "no solid component" (quote 0.40) | 7 |
+| BTS | `benign_features` | No | "no calcification" (quote 0.56) or "No calcification or fat." (finding 0.70) | 10 |
+| BTS | `resolved` | No | "8 mm smooth solid nodule" (finding 0.46) | 7 |
+| BTS | `spiculation` | No | "smooth" (finding 0.45) | 3 |
+| BTS | `upper_lobe` | No | "right middle lobe" (finding 0.70) | 1 |
+| Bosniak | `wall` | thin | "No nodularity or wall thickening" (quote 0.05) | 2 |
+| Fleischner | `risk` | high | "Ex-smoker, 40 pack-years" (0.15–0.24) | 1 |
+
+**Stated, but abbreviated or near the bar (7 asks).** These are not inferences:
+
+| Pack | Input | Quote | Score |
+|---|---|---|---|
+| BTS | `nodule_type` | "SN" | quote 0.09 |
+| Fleischner | `nodule_type` | "PSN" | quote 0.16 |
+| Bosniak | `margin` | "well-def" | 0.69 |
+| Bosniak | `septa` | "4+ thin enh septa" | finding 0.74 |
+| Bosniak | `septa` | "a single thin (1 mm) septum" | 0.73 |
+| BTS | `sex` | "woman" | quote 0.79 |
+| BTS | `growth` | "Volumetry … previously …" | quote 0.71 |
+
+**One-lesion guard.** The guard scored under 0.8 on all 12 two-lesion cards (0.01–0.14). It also fired on one single-lesion card: Bosniak "complex cystic lesion with mural nodule" scored 0.42, reading the mural nodule as a second lesion. That is a false positive, and it costs every lesion input on the card as an ask.
+
+### Concerns from this run
+
+1. **(b) passes by 9 ms.** BTS alone has a (b) p95 of 3.3 s. A confirmation sample is worth having before Apply ships.
+2. **Cold open and more-dictation opens are slow.** (a) p95 is 3.6 s and (c) p95 is 4.1 s, with BTS (a) up to 5.1 s.
+3. **The answer path misses the 50 ms target in the lab.** Its p95 is 158 ms, its maximum 388 ms, and 13 of 97 steps were over 50 ms. The unit test asserts under 50 ms, so the lab's figure includes something the test does not, such as building the asks and citations or the first `engine.evaluate` on a large pack. This has not been investigated.
+4. **Friction rose.** On the same 41 cases, the mean went from 4.0 to 4.4, and the share at 2 asks or fewer fell from 58.5% to 39.0%.
+   - About 52 asks come from inferred values the new checks now refuse.
+   - The lab-fix re-review set the measure: "escalate to Hassan only if asks per card rise materially". **Fleischner doubling (0.9 → 1.8) and Bosniak (3.6 → 4.9) meet that measure.**
+   - The re-review's own lever is to put derived values to Jev as their own proposition, for example "the nodule lies in the middle or a lower lobe" or "no other nodules are present". That needs one lab measurement.
+5. **The one-lesion guard has a false positive on a mural nodule** (0.42). It is safe, but it costs about 8 asks on that card.
+6. **The `truth` maps were authored by the fixer.** A wrong value is judged against them, as the lab-fix report says.
+
+---
+
+## First run (HEAD ea542d8, 2026-10-12)
+
 **Gate: FAILED.**
 - **Latency failed.** The cache MISS p95 is 4264 ms, and the gate is under 2000 ms.
 - **Correctness passed by the lab's metric.** There were 0 wrong proposals.
