@@ -1,0 +1,320 @@
+{
+  "id": "stoller-meniscus",
+  "version": "1987.1",
+  "topic": "meniscal-signal-grade-mri",
+  "issuer": "Stoller DW et al. (University of California San Francisco; Cedars-Sinai Medical Center)",
+  "system": "Stoller grading of meniscal MR signal intensity (grades 1 to 3) with histologic correlation",
+  "display": "Stoller meniscal signal grade (1987)",
+  "edition": "1987",
+  "tier": 2,
+  "status": "current",
+  "applies_to": {
+    "region": [
+      "knee"
+    ],
+    "modality": [
+      "MRI"
+    ],
+    "finding_type": [
+      "meniscal signal abnormality"
+    ],
+    "context": []
+  },
+  "aliases": [
+    "Stoller",
+    "Stoller grade",
+    "Stoller classification",
+    "Stoller grading",
+    "Stoller meniscus",
+    "meniscal signal grade",
+    "meniscal signal grading",
+    "MR meniscal grade",
+    "grade 1 meniscal signal",
+    "grade 2 meniscal signal",
+    "grade 3 meniscal signal",
+    "intrameniscal signal grade"
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "Three grades of meniscal MR signal (1 to 3) defined by where the signal lies relative to an articular surface: punctate, linear intrameniscal, or reaching at least one articular surface. Read on sagittal images, corroborated on coronal.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Materials and Methods: MR grading system (journal p731-732; grade 1 on p731, grades 2 and 3 continue on p732)"
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "In 12 post-mortem or amputation menisci (36 segments) each grade matched one histologic stage (grade 1 to stage 1, 2 to 2, 3 to 3) in 100% of segments; stage 3 is fibrocartilaginous separation, a tear.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Results: one-to-one correspondence of MR grade and histologic stage (journal p732)"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "The authors read stages 1 and 2 as a continuum of degeneration that ends in stage 3 tears. They suggest posterior-horn grade 2 signal may be of prognostic importance, as an expectation rather than a finding. The paper gives no management for any grade.",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Discussion: stage 1 and 2 degeneration as potential precursors of tears (journal p733)"
+        }
+      },
+      {
+        "id": "sum.4",
+        "text": "Ex vivo series: 12 menisci from 8 autopsies and 4 above-knee amputations, ages 50 to 89, imaged at 1.5 T with spin echo TR/TE 800/25 and 5 mm sagittal sections. Authors expect isolated MR-histology discrepancies in a larger series.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Materials and Methods (journal p731)"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.g1",
+        "text": "MR grade 1: one or several punctate foci of signal that do not contact an articular surface. The capsular margin of the meniscus is not counted as an articular surface.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Materials and Methods: MR grading system (journal p731-732; grade 1 on p731, grades 2 and 3 continue on p732)"
+        }
+      },
+      {
+        "id": "def.g2",
+        "text": "MR grade 2: linear intrameniscal signal that does not extend to an articular surface.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Materials and Methods: MR grading system (journal p731-732; grade 1 on p731, grades 2 and 3 continue on p732)"
+        }
+      },
+      {
+        "id": "def.g3",
+        "text": "MR grade 3: signal that extends to at least one articular surface.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Materials and Methods: MR grading system (journal p731-732; grade 1 on p731, grades 2 and 3 continue on p732)"
+        }
+      },
+      {
+        "id": "def.s0",
+        "text": "Histologic stage 0: normal meniscus, intact fibrocartilaginous matrix with chondrocytes spread evenly through homogeneous collagen-reinforced ground substance.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Materials and Methods: histologic stages 0-3 (journal p732)"
+        }
+      },
+      {
+        "id": "def.s1",
+        "text": "Histologic stage 1: pale, hyponuclear foci with discrete foci of mucinous degeneration of chondrocytes. Corresponded to MR grade 1 in all 11 stage 1 segments.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Materials and Methods: histologic stages 0-3 (journal p732)"
+        }
+      },
+      {
+        "id": "def.s2",
+        "text": "Histologic stage 2: progression to discrete bands of mucinous degeneration, with no distinct cleavage plane. Corresponded to MR grade 2 in all 16 stage 2 segments.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Materials and Methods: histologic stages 0-3 (journal p732)"
+        }
+      },
+      {
+        "id": "def.s3",
+        "text": "Histologic stage 3: fibrocartilaginous separation, with or without macroscopic extension to an articular surface. Corresponded to MR grade 3 in all 8 stage 3 segments.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Materials and Methods: histologic stages 0-3 (journal p732)"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "tab.grades",
+        "title": "MR signal grade and histologic correlate",
+        "columns": [
+          "MR grade",
+          "MR signal",
+          "Histologic stage",
+          "Segments (of 36)",
+          "Match with MR grade"
+        ],
+        "rows": [
+          [
+            "1",
+            "Punctate focus or foci, not contiguous with an articular surface",
+            "1: foci of mucinous degeneration",
+            "11",
+            "11 of 11 (100%)"
+          ],
+          [
+            "2",
+            "Linear intrameniscal signal, no articular surface extension",
+            "2: discrete bands of mucinous degeneration, no distinct cleavage plane",
+            "16",
+            "16 of 16 (100%)"
+          ],
+          [
+            "3",
+            "Signal extending to at least one articular surface",
+            "3: fibrocartilaginous separation, with or without macroscopic surface extension",
+            "8",
+            "8 of 8 (100%)"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Materials and Methods: MR grading system and histologic stages; Results (journal p731-732)"
+        }
+      },
+      {
+        "id": "tab.table1",
+        "title": "Meniscal abnormalities classified by stage and location (source Table 1; counts of segments)",
+        "columns": [
+          "Location of abnormality",
+          "Stage 1",
+          "Stage 2",
+          "Stage 3"
+        ],
+        "rows": [
+          [
+            "Anterior horn",
+            "6",
+            "5",
+            "1"
+          ],
+          [
+            "Body",
+            "3",
+            "7",
+            "1"
+          ],
+          [
+            "Posterior horn",
+            "2",
+            "4",
+            "6 (five posteromedial menisci, one posterolateral meniscus)"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Results: Table 1, meniscal abnormalities classified by stage and location (journal p733)",
+          "table": "Table 1"
+        }
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.nograde0",
+        "text": "The paper defines MR signal grades 1 to 3 only. Normal meniscus is histologic stage 0; no MR 'grade 0' is defined. A normal meniscus on a report is simply not graded here.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Materials and Methods: MR grading system and histologic stage 0 (journal p731-732)"
+        }
+      },
+      {
+        "id": "pit.nomgmt",
+        "text": "No management, follow-up or surgical advice is given for any grade. The authors do say presurgical MR would help find degeneration and tears the arthroscopist may not see, calling this clinically significant, and expect posterior-horn grade 2 signal may be of prognostic importance.",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Discussion (journal p733)"
+        }
+      },
+      {
+        "id": "pit.grade3",
+        "text": "Grade 3 matched fibrocartilaginous separation in every segment. Two of the eight stage 3 segments were intrasubstance tears not reaching the meniscal surface, but showed mucinous degeneration contiguous with the tear and the articular surface. Grade 3 signal may thus reflect a confined degenerative cleavage tear, which can be missed at arthroscopy.",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Results and Discussion: stage 3 segments; confined intrasubstance cleavage tears (journal p732-733)"
+        }
+      },
+      {
+        "id": "pit.arthro",
+        "text": "The authors cite a 6% false-positive rate, in arthroscopically detected tears, for grade 3 signal, and read it as undiagnosed confined tears. It is quoted from reference 22 (the same group's forthcoming first-44-cases accuracy study), not measured in this series.",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Discussion (journal p733)"
+        }
+      },
+      {
+        "id": "pit.undergrade",
+        "text": "Linear degeneration perpendicular to the imaging plane could be undergraded as grade 1. Focal signal on contiguous images indicates more extensive degeneration.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Discussion: potential pitfalls in MR signal interpretation (journal p734)"
+        }
+      },
+      {
+        "id": "pit.fray",
+        "text": "Small areas of fraying or fibrillation on the free edge of the meniscus might be missed on 5 mm sections.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Discussion: potential pitfalls in MR signal interpretation (journal p734)"
+        }
+      },
+      {
+        "id": "pit.mimic",
+        "text": "Two normal structures can mimic grade 3 signal: the transverse ligament joining the anterior horns, which can look like a grade 3 signal in the anterior horn of the lateral meniscus (a pseudotear seen in about 30% of clinical knee MR examinations), and the popliteus tendon sheath at the posterior horn of the lateral meniscus, which falsely appears as a grade 3 vertical tear.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Discussion: potential pitfalls in MR signal interpretation (journal p734)"
+        }
+      },
+      {
+        "id": "pit.bucket",
+        "text": "If the body of the medial meniscus cannot be seen, consider a bucket-handle tear, especially when separate meniscal fragments are seen on coronal images. The paper's example shows grade 3 signal in both anterior and posterior horns.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Discussion: potential pitfalls in MR signal interpretation (journal p734)"
+        }
+      },
+      {
+        "id": "pit.scope",
+        "text": "Grades were validated against histology in 12 menisci from older subjects (50 to 89 years), ex vivo, at 1.5 T, using sagittal 5 mm spin echo with a 800/25 sequence. Library inference, not paper text: other sequences, field strengths, younger or acutely injured knees are not addressed.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Materials and Methods (journal p731)"
+        }
+      },
+      {
+        "id": "pit.100",
+        "text": "The 100% match is histologic correlation of graded segments: 35 abnormal segments from 12 menisci (segments of one meniscus are not independent), read blind by two radiologists and two pathologists, ex vivo. The paper gives no inter-observer statistic, sensitivity or specificity, and does not report the MR grade of the one remaining (implied stage 0) segment. It is not diagnostic accuracy.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Results and Discussion: correspondence of MR grade and histologic stage; blind protocol (journal p732-733)"
+        }
+      },
+      {
+        "id": "pit.arthroscopy",
+        "text": "Arthroscopy could not show stage 1 and 2 degeneration, the precursors of a visible tear, and is limited for inferior, peripheral and posterior abnormalities. Stage 3 confined tears may be overlooked at arthroscopy.",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Discussion: limits of arthroscopy (journal p733)"
+        }
+      }
+    ]
+  }
+}
