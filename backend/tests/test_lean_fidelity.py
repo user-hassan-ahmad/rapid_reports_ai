@@ -104,8 +104,8 @@ def test_moved_into_earlier_detects_new_words_placed_before_dictated_text():
     assert moved_into_earlier(span, new, moved)
     kept = span[:-1] + " of the right kidney with no associated"
     assert not moved_into_earlier(span, new, kept)                      # continuing the last sentence
-    assert not moved_into_earlier("The liver is normal. The spleen is normal.", "The pancreas is normal.",
-                                  "The liver, spleen and pancreas are normal.")   # joined into one statement
+    assert moved_into_earlier("The liver is normal. The spleen is normal.", "The pancreas is normal.",
+                              "The liver, spleen and pancreas are normal.")   # a merged sentence asks Jev (which clears joins)
     assert not moved_into_earlier(span, new, span + " Of the right kidney with no associated.")
 
 
