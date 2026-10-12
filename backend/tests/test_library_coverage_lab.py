@@ -23,3 +23,12 @@ def test_metabase_rows_become_cases():
                               ["b", "CT head", "[]"]]}}
     assert CL.cases_from_metabase(body) == [
         {"id": "a", "scan_type": "CT chest", "clinical_history": "", "findings": [{"id": "u1", "text": "8 mm nodule."}]}]
+
+
+def test_report_rows_become_sentence_cases():
+    body = {"data": {"cols": [{"name": "id"}, {"name": "scan_type"}, {"name": "clinical_history"}, {"name": "findings"}],
+                     "rows": [["a", "CT chest", "cough", "FINDINGS:\n8 mm nodule in the right upper lobe. Liver is normal."],
+                              ["b", "CT head", "", ""]]}}
+    got = CL.cases_from_reports(body)
+    assert got == [{"id": "a", "scan_type": "CT chest", "clinical_history": "cough", "findings": [
+        {"id": "s0", "text": "8 mm nodule in the right upper lobe."}, {"id": "s1", "text": "Liver is normal."}]}]
