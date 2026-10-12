@@ -11,6 +11,12 @@ garbled and 12 valid-but-unusual dictations, 2 runs: caught 11/13 and 10/13 (bas
 false. Misses were sound-alikes whose meaning stays obvious ("pleural infusion"); every lost-meaning
 garble (a prefix on a number) was caught.
 
+Suggestion and blocking (2026-10-12, scratchpad only): a garble carries the words to replace it only when one
+reading is certain; it blocks Confirm when it is ambiguous, has no suggestion, or sits on a number or side (code
+backstop); every conflict kind blocks. Lab (13 garbled, 12 clean, 2 runs): caught 13/13, suggestion right 9, empty 3
+(all ambiguous), "appendix calculus" for "appendix collie" 1; blocking right 13/13; clean flagged 0/12.
+`severity` is unchanged (medium), so the old banner path still never gates on a model flag.
+
 Two deliberate constraints follow from using a model:
 
 1. **Advisory, never gating.** Tier 1 is deterministic, so a flag is a fact and
@@ -30,9 +36,10 @@ for the natural pauses: when dictation settles, or immediately before generate.
 from __future__ import annotations
 
 import inspect
+import re
 from typing import Callable, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from .dictation_integrity import IntegrityFlag
 
@@ -48,7 +55,8 @@ SemanticKind = Literal[
 
 
 class SemanticIssue(BaseModel):
-    kind: SemanticKind
+    # gpt-oss sometimes names the field "type" (lab 2026-10-12): accepted rather than failing the whole check.
+    kind: SemanticKind = Field(validation_alias=AliasChoices("kind", "type"))
     quote: str = Field(
         description="The exact substring of the dictation the issue refers to, "
                     "copied character-for-character."
@@ -58,7 +66,17 @@ class SemanticIssue(BaseModel):
         description="For a conflict between two statements: the exact substring of the "
                     "other statement, copied character-for-character. Empty otherwise."
     )
-    message: str = Field(description="One sentence a radiologist can act on.")
+    message: str = Field(default="", description="One sentence a radiologist can act on.")
+    suggestion: str = Field(
+        default="",
+        description="garbled_phrase only: the words to replace `quote` with, only when one reading is certain "
+                    "(changes_meaning false). Empty otherwise."
+    )
+    changes_meaning: bool = Field(
+        default=False,
+        description="garbled_phrase only: true when the garbled words could stand for findings that mean "
+                    "different things, a word seems missing, or it sits on a number, side or negation."
+    )
 
 
 class SemanticFindings(BaseModel):
@@ -99,6 +117,18 @@ SEMANTIC_SYSTEM_PROMPT = (
     "correct answer for a clean dictation, and the overwhelming majority of "
     "dictations are clean.\n"
     "\n"
+    "For garbled_phrase only, also decide whether the intended words are "
+    "certain. `changes_meaning` is false when only one reading fits the "
+    "sentence (a sound-alike or split term of one clear term, such as a "
+    "misheard structure name); it is true when the garbled words could stand "
+    "for findings that mean different things (a misheard word that sounds "
+    "like more than one term that fits the sentence), a word seems to be "
+    "missing or only part of a longer term is clear, or "
+    "the garble sits on a number, side or negation. `suggestion` is the words "
+    "to replace the quote, given only when `changes_meaning` is false; "
+    "otherwise leave it empty: never pick between readings, and never supply "
+    "a number, side or negation the dictation does not give.\n"
+    "\n"
     "When the issue is a conflict between two statements, `quote` is the later one "
     "and `other_quote` is the earlier one it conflicts with; otherwise leave "
     "`other_quote` empty.\n"
@@ -112,6 +142,7 @@ SEMANTIC_SYSTEM_PROMPT = (
 )
 
 _MEDIUM = "medium"
+_BACKSTOP = re.compile(r"\d|\b(?:left|right|bilateral)\b", re.I)
 
 
 async def _default_analyse(
@@ -173,9 +204,15 @@ def _locate_flags(findings: str, result: SemanticFindings) -> list[IntegrityFlag
             continue  # not verbatim — drop rather than approximate
         other = (issue.other_quote or "").strip()
         o = findings.find(other) if other else -1  # the earlier statement: first occurrence
+        garbled = issue.kind == "garbled_phrase"
         flags.append(
             IntegrityFlag(
                 kind=issue.kind,
+                suggestion=(issue.suggestion or "").strip() if garbled and not issue.changes_meaning else "",
+                # Every conflict holds Confirm; a garble only when it could change the report. Code backstop: a
+                # garble touching a number or a side always blocks, whatever the model said.
+                blocking=not garbled or issue.changes_meaning or not (issue.suggestion or "").strip()
+                or bool(_BACKSTOP.search(quote)),
                 severity=_MEDIUM,
                 excerpt=quote[:60],
                 message=issue.message,

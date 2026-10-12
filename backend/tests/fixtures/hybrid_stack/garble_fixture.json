@@ -2,67 +2,120 @@
  {
   "dictation": "A tiny non-2 mm calculus is noted in the lower pole calyx of the right kidney with no associated hydronephrosis. The bladder is unremarkable.",
   "garble": "non-2 mm",
-  "kind": "prefix on a number"
+  "kind": "prefix on a number",
+  "suggestion_ok": [
+   ""
+  ],
+  "blocking": true
  },
  {
   "dictation": "There is a 3 cm hypoenhancing mass in the pancreatic head with upstream dilatation of the pancreatic duck. The liver is normal.",
   "garble": "pancreatic duck",
-  "kind": "sound-alike"
+  "kind": "sound-alike",
+  "suggestion_ok": [
+   "pancreatic duct"
+  ],
+  "blocking": false
  },
  {
   "dictation": "Small left pleural infusion with adjacent basal atelectasis. No pneumothorax.",
   "garble": "pleural infusion",
-  "kind": "sound-alike"
+  "kind": "sound-alike",
+  "suggestion_ok": [
+   "pleural effusion"
+  ],
+  "blocking": false
  },
  {
   "dictation": "The appendix is dilated to 11 mm with an obstructing appendix collie at its base and periappendiceal fat stranding.",
   "garble": "appendix collie",
-  "kind": "split term"
+  "kind": "split term",
+  "suggestion_ok": [
+   "appendicolith"
+  ],
+  "blocking": false
  },
  {
   "dictation": "Acute left subdural haematoma measuring 8 mm with 4 mm midline sift. The basal cisterns are patent.",
   "garble": "midline sift",
-  "kind": "sound-alike"
+  "kind": "sound-alike",
+  "suggestion_ok": [
+   "midline shift"
+  ],
+  "blocking": false
  },
  {
   "dictation": "Patchy consolidation in the right lower lobe in keeping with new monia. No pleural effusion.",
   "garble": "new monia",
-  "kind": "split term"
+  "kind": "split term",
+  "suggestion_ok": [
+   "pneumonia"
+  ],
+  "blocking": false
  },
  {
   "dictation": "The common bile duct is dilated to 9 mm with a distal storm. No intrahepatic duct dilatation.",
   "garble": "distal storm",
-  "kind": "sound-alike"
+  "kind": "sound-alike",
+  "suggestion_ok": [
+   "distal stone",
+   ""
+  ],
+  "blocking": null
  },
  {
   "dictation": "At L4/5 there is a broad based disc pull trusion narrowing the left lateral recess.",
   "garble": "disc pull trusion",
-  "kind": "split term"
+  "kind": "split term",
+  "suggestion_ok": [
+   "disc protrusion"
+  ],
+  "blocking": false
  },
  {
   "dictation": "Infrarenal abdominal aortic aneurysm measuring 5.5 cm with a mural trombone. No retroperitoneal haematoma.",
   "garble": "mural trombone",
-  "kind": "sound-alike"
+  "kind": "sound-alike",
+  "suggestion_ok": [
+   "mural thrombus"
+  ],
+  "blocking": false
  },
  {
   "dictation": "The liver is small with a nodular contour in keeping with sorosis. Moderate ascites.",
   "garble": "sorosis",
-  "kind": "sound-alike"
+  "kind": "sound-alike",
+  "suggestion_ok": [
+   "cirrhosis"
+  ],
+  "blocking": false
  },
  {
   "dictation": "Post-2 cm surgical clips in the gallbladder fossa. The common bile duct is of normal calibre.",
   "garble": "Post-2 cm",
-  "kind": "prefix on a number"
+  "kind": "prefix on a number",
+  "suggestion_ok": [
+   ""
+  ],
+  "blocking": true
  },
  {
   "dictation": "No acute intracranial haemorrhage. The ventricles are normal in size. The basal cisterns are patient.",
   "garble": "cisterns are patient",
-  "kind": "sound-alike"
+  "kind": "sound-alike",
+  "suggestion_ok": [
+   "cisterns are patent"
+  ],
+  "blocking": false
  },
  {
   "dictation": "A 4 mm obstructing calculus at the left VUJ with moderate proximal hydro you rita nephrosis.",
   "garble": "hydro you rita nephrosis",
-  "kind": "split term"
+  "kind": "split term",
+  "suggestion_ok": [
+   "hydroureteronephrosis"
+  ],
+  "blocking": false
  },
  {
   "dictation": "A sub-5 mm nodule in the right upper lobe. No follow-up required.",

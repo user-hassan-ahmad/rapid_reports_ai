@@ -139,3 +139,44 @@ def test_other_quote_is_optional():
     issue = SemanticIssue(kind="unit_anomaly", quote="joint effusion", message="x")
     [f] = _locate_flags(FINDINGS, SemanticFindings(issues=[issue]))
     assert f.related_start is None
+
+
+# --- scratchpad fields: suggestion and blocking (severity stays medium for the banner) ---
+
+
+def test_conflicts_block_in_the_scratchpad_but_stay_medium():
+    issue = SemanticIssue(kind="laterality_conflict", quote="left ankle mortise", message="m")
+    f = _locate_flags(FINDINGS, SemanticFindings(issues=[issue]))[0]
+    assert f.blocking and f.severity == "medium" and f.suggestion == ""
+
+
+def test_certain_garble_is_advisory_with_its_suggestion():
+    text = "Upstream dilatation of the pancreatic duck."
+    issue = SemanticIssue(kind="garbled_phrase", quote="duck", message="m", suggestion="duct", changes_meaning=False)
+    f = _locate_flags(text, SemanticFindings(issues=[issue]))[0]
+    assert not f.blocking and f.suggestion == "duct"
+
+
+def test_ambiguous_garble_blocks_and_drops_any_suggestion():
+    text = "The duct is dilated with a distal storm."
+    issue = SemanticIssue(kind="garbled_phrase", quote="storm", message="m", suggestion="stricture", changes_meaning=True)
+    f = _locate_flags(text, SemanticFindings(issues=[issue]))[0]
+    assert f.blocking and f.suggestion == ""
+
+
+def test_garble_with_no_suggestion_blocks():
+    text = "A tiny non-2 mm calculus."
+    issue = SemanticIssue(kind="garbled_phrase", quote="calculus", message="m", changes_meaning=False)
+    assert _locate_flags(text, SemanticFindings(issues=[issue]))[0].blocking
+
+
+def test_garble_on_a_number_or_side_always_blocks():
+    text = "A tiny non-2 mm calculus in the left kidny."
+    for quote in ("non-2 mm", "left kidny"):
+        issue = SemanticIssue(kind="garbled_phrase", quote=quote, message="m", suggestion="x", changes_meaning=False)
+        assert _locate_flags(text, SemanticFindings(issues=[issue]))[0].blocking
+
+
+def test_type_alias_and_missing_message_are_accepted():
+    issue = SemanticIssue.model_validate({"type": "garbled_phrase", "quote": "duck", "suggestion": "duct"})
+    assert issue.kind == "garbled_phrase" and issue.message == ""
