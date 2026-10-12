@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import math
 import re
+from itertools import product
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -14,6 +15,7 @@ from .schema import (AdjustStep, All, AnyOf, BandStep, Cond, DeriveStep, Entry, 
                      NoneOf, Num, RulesStep, ScoreStep, TableStep, as_value)
 
 PH = re.compile(r"\{([A-Za-z0-9_]+)\}")
+MAX_COMBOS = 50_000
 _ORDER = ("unknown", "not_assessable", "not_applicable", "absent")   # the state a blocked step takes, first wins
 
 
@@ -244,8 +246,58 @@ def _once(entry: Entry, given: dict[str, InputValue]) -> tuple[dict[str, V], lis
     return env, run(entry, env)
 
 
+def _edges(entry: Entry, input_id: str) -> list[float] | None:
+    """One number per region the band edges cut the line into, edges included; None when the number also feeds a
+    formula (its effect cannot be enumerated)."""
+    users = [s for s in entry.logic if input_id in s.refs()]
+    if any(not isinstance(s, BandStep) for s in users):
+        return None
+    pts = sorted({x for s in users for b in s.bands for x in (b.min, b.max) if x is not None})
+    if not pts:
+        return [0.0]
+    mids = [(a + b) / 2 for a, b in zip(pts, pts[1:])]
+    return sorted({pts[0] - 1, *pts, pts[-1] + 1, *mids})
+
+
+def domain(entry: Entry, i: InputDef) -> list[InputValue] | None:
+    """Every value class of an input: its options, true and false, or its band regions; plus the states it allows."""
+    extra = [InputValue(state=s) for s in i.states]
+    if i.type == "enum":
+        return [InputValue(value=o) for o in i.options] + extra
+    if i.type == "boolean":
+        return [InputValue(value=True), InputValue(value=False)] + extra
+    xs = _edges(entry, i.id)
+    return None if xs is None else [InputValue(value=x) for x in xs] + extra
+
+
 def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V]) -> tuple[list[str], bool, list[str]]:
-    return [], True, []          # Task 3
+    """(possible outcomes, bounded, needed inputs). An unknown input is needed when changing it alone can change the
+    outcome for some value of the other unknown inputs."""
+    unknown = [i for i in entry.inputs if env[i.id].state == "unknown"]
+    doms = {i.id: domain(entry, i) for i in unknown}
+    unbounded = [k for k, d in doms.items() if d is None]
+    names = [k for k, d in doms.items() if d is not None]
+    order = [i.id for i in entry.inputs]
+    if math.prod(len(doms[n]) for n in names) > MAX_COMBOS:
+        return sorted(o.id for o in entry.outcomes), False, [i.id for i in unknown]
+    results = []
+    for combo in product(*(doms[n] for n in names)):
+        e2, _ = _once(entry, {**given, **dict(zip(names, combo))})
+        v = e2[entry.result]
+        results.append((combo, v.value if v.state == "present" else None))
+    possible = sorted({r for _, r in results if r is not None})
+    bounded = all(r is not None for _, r in results)
+    needed = []
+    for k, n in enumerate(names):
+        groups: dict[tuple, set] = {}
+        for combo, r in results:
+            rest = tuple((v.state, v.value, v.band) for v in combo[:k] + combo[k + 1:])   # InputValue is unhashable
+            groups.setdefault(rest, set()).add(r)
+        if any(len(g) > 1 for g in groups.values()):
+            needed.append(n)
+    if not bounded:
+        needed += unbounded
+    return possible, bounded, sorted(set(needed), key=order.index)
 
 
 def evaluate(entry: Entry, given: dict[str, Any]) -> Trace:
