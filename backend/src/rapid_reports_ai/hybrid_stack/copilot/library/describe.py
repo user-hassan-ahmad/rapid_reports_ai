@@ -81,3 +81,36 @@ def facts(e: Entry) -> list[tuple[str, str, Locator]]:
     out += [(f"reference.{f.id}", getattr(f, "text", None) or f"{f.title}: " + " | ".join(f.columns), f.locator)
             for f in e.reference.fields()]
     return [x for x in out if x[2] is not None]
+
+
+def citation(loc: Locator | None, sources: list[dict]) -> dict:
+    """A locator with its source's public fields (title, issuer, edition, url) resolved from the bundle; {} for none."""
+    if loc is None:
+        return {}
+    src = next((s for s in sources if s.get("id") == loc.source), {})
+    out = {"source": loc.source, **{k: src[k] for k in ("title", "issuer", "edition", "url") if src.get(k)}}
+    out.update({k: v for k, v in (("page", loc.page), ("section", loc.section), ("table", loc.table)) if v})
+    return out
+
+
+def cite_text(c: dict) -> str:
+    """A citation as one short line: title (edition), p. N, section, table."""
+    if not c:
+        return ""
+    head = c.get("title") or c.get("source", "")
+    if c.get("edition"):
+        head += f" ({c['edition']})"
+    return ", ".join(x for x in (head, f"p. {c['page']}" if c.get("page") else "", c.get("section", ""),
+                                 c.get("table", "")) if x)
+
+
+def material(e: Entry, sources: list[dict]) -> str:
+    """What Ask grounds an answer on for a library entry: its own located facts (rules, bands, outcomes, caveats,
+    reference fields) and the rows of its reference tables, each with its citation. Nothing from outside the entry."""
+    lines = [f"{e.display} ({e.issuer}, edition {e.edition}). Inputs: "
+             + "; ".join(i.label + (f" ({i.how_stated})" if i.how_stated else "") for i in e.inputs) + "."]
+    lines += [f"- {claim} [{cite_text(citation(loc, sources))}]" for _, claim, loc in facts(e)]
+    for t in e.reference.tables:
+        lines.append(f"{t.title} [{cite_text(citation(t.locator, sources))}]: " + " | ".join(t.columns))
+        lines += ["  " + " | ".join(r) for r in t.rows]
+    return "\n".join(lines)

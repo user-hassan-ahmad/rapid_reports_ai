@@ -21,12 +21,16 @@ from . import registry as R
 from . import search as S
 from . import tnm
 from .fetch import OVERVIEW, resolve_guideline
+from .library import bundle as L
+from .library import describe as D
+from .library.pack_preview import as_entry
 from .types import Card, Chunk, Entry, GuidelineContent, Supplement
 
 logger = logging.getLogger(__name__)
 
 TIMEOUT_S = 12.0
 GAP_URLS = 2           # pages the gap search reads
+PACK_MATERIAL_MAX = 24000   # chars of a library entry's own fields given to the grounded answer
 NOT_IN_GUIDELINE = "The guideline does not address this."
 FROM_GENERAL = "From general knowledge:"
 
@@ -152,7 +156,18 @@ async def _general_answer(question: str, ctx: Context, history: list[QA]) -> str
 
 
 def _known(db: Session) -> str:
-    return "\n".join(f"- {n} {v or ''}".rstrip() for _, n, v in R.known(db))
+    """The library's entries, then (web path on only) the registry's."""
+    lines = [f"- {e.display}" + ("" if e.edition in e.display else f" {e.edition}") for e in L.get().list()]
+    if R.web_fetch_on():
+        lines += [f"- {n} {v or ''}".rstrip() for _, n, v in R.known(db)]
+    return "\n".join(lines)
+
+
+def _library(key: str):
+    """The library entry for a key, with its public sources, or None."""
+    lib = L.get()
+    e = lib.lookup(key)
+    return (e, lib.sources(e.key)) if e is not None else None
 
 
 def _head(e: Entry) -> str:
@@ -203,6 +218,14 @@ async def _in_card(db: Session, question: str, key: str, ctx: Context, history: 
             return AskResult(kind="card", key=key, answer="", supported=False, error="unknown guideline")
         return AskResult(kind="card", key=key, entry=tnm.entry(site),
                          answer=await _grounded(question, tnm.material(site)[:J.STATE_MAX], ctx, history))
+    pack = _library(key)
+    if pack is not None:   # a library entry: grounded in its own fields only; never gated, searched or stored
+        e, sources = pack
+        material = D.material(e, sources)[:PACK_MATERIAL_MAX]
+        return AskResult(kind="card", key=key, entry=as_entry(e, sources),
+                         answer=await _grounded(question, material, ctx, history))
+    if not R.web_fetch_on():   # spec §2.9: outside the library and TNM there is nothing to answer from
+        return AskResult(kind="card", key=key, answer="", supported=False, error="unknown guideline")
     row = R.by_key(db, key)
     if row is None:
         return AskResult(kind="card", key=key, answer="", supported=False, error="unknown guideline")
@@ -255,6 +278,17 @@ async def _card_branch(card: Card, entry: Entry, finding: str, history: str) -> 
                                    "skeleton": names or card.skeleton})
 
 
+async def _entry_for(db: Session, card: Card | None) -> Entry | None:
+    """A routed card's entry: a library entry from the bundle, TNM offline, else (web path on) the registry or a
+    fetch. A library key never goes through resolve_guideline."""
+    if card is None:
+        return None
+    pack = _library(card.key)
+    if pack is not None:
+        return as_entry(*pack)
+    return await resolve_guideline(db, card)
+
+
 async def ask(db: Session, question: str, key: str | None, ctx: Context, history: list[QA],
               finding_id: str = "", abandoned: asyncio.Event | None = None) -> AskResult:
     """Never raises: a failure (model, Jev outage, search, DB) returns an error the panel shows with a retry.
@@ -275,7 +309,7 @@ async def ask(db: Session, question: str, key: str | None, ctx: Context, history
         # An explicit question names the system it asks about: no matching finding is needed, so the case gates (TNM
         # site, pack applicability) are skipped; the closed site list still applies. The background matcher keeps them.
         card = await M.card_for(db, name, raw.version, finding_id or "q", finding, ctx.history, raw.site, gate=False)
-        entry = await resolve_guideline(db, card) if card else None
+        entry = await _entry_for(db, card)
         if _gone(abandoned):
             return _abandoned(None)
         if card is None or entry is None:

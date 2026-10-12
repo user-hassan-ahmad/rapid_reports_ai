@@ -15,6 +15,8 @@ from rapid_reports_ai.hybrid_stack.copilot.recs import RecsResult
 from rapid_reports_ai.hybrid_stack.copilot.types import Branch, Card, GuidelineContent, Input, Preview, Supplement
 from rapid_reports_ai.main import app
 
+pytestmark = pytest.mark.usefixtures("web_fetch_on")   # these tests exercise the web path
+
 
 @pytest.fixture
 def user(db_session):

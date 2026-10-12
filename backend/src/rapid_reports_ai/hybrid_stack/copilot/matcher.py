@@ -382,6 +382,10 @@ async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool 
         return Card(key=pack.key, name=pack.display, version=pack.edition, finding_id=f.id, why=s.why,
                     branch=PACK_BRANCH, skeleton=[PACK_BRANCH], publication=Publication(body=pack.issuer, year=pack.edition),
                     known=True, status="verified", siblings=[x.key for x in lib.siblings(pack)])
+    if not R.web_fetch_on():   # spec §5: outside the library, no card; the name is logged as demand
+        logger.info("[copilot.match] outside the library, no card (demand): %r %r", s.name.strip()[:120],
+                    s.version.strip()[:24])
+        return None
     row = await _resolve(rows, f, s, history)
     if row is not None:
         e = R.entry(row)
@@ -435,7 +439,8 @@ async def match(db: Session, scan_type: str, history: str, findings: list[Findin
     todo = [f for f in findings if keyf(f) not in _CACHE]
     if todo:
         try:
-            known = "\n".join(x for x in (rows.known_text(), L.get().known_text()) if x)
+            reg = rows.known_text() if R.web_fetch_on() else ""
+            known = "\n".join(x for x in (reg, L.get().known_text()) if x)
             raw = await _call(_prompt(scan_type, history, todo, known))
             got = {_rid(rf.id): rf.systems for rf in raw.findings}
             if any(_rid(f.id) in got for f in todo):

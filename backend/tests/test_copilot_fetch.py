@@ -9,6 +9,8 @@ from rapid_reports_ai.hybrid_stack.copilot import search as S
 from rapid_reports_ai.hybrid_stack.copilot.types import (Branch, Card, Chunk, GuidelineContent, Input, Output,
                                                          Publication, Source)
 
+pytestmark = pytest.mark.usefixtures("web_fetch_on")   # these tests exercise the web path
+
 _REAL_SPAWN = F._spawn_fill
 _REAL_COVERAGE = F.J.coverage
 

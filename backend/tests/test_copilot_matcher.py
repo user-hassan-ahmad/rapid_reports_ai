@@ -4,6 +4,8 @@ from rapid_reports_ai.hybrid_stack.copilot import matcher as M
 from rapid_reports_ai.hybrid_stack.copilot import registry as R
 from rapid_reports_ai.hybrid_stack.copilot.types import Branch, Entry, GuidelineContent, Publication
 
+pytestmark = pytest.mark.usefixtures("web_fetch_on")   # these tests exercise the web path
+
 U = [M.Finding(id="u1", text="8 mm part-solid nodule right upper lobe."), M.Finding(id="u2", text="Simple renal cyst.")]
 
 

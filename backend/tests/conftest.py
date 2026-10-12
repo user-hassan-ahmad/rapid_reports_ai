@@ -276,3 +276,9 @@ def _empty_guideline_library(monkeypatch):
     sets L.get itself."""
     from rapid_reports_ai.hybrid_stack.copilot.library import bundle as L
     monkeypatch.setattr(L, "get", lambda: L.Library({}))
+
+
+@pytest.fixture
+def web_fetch_on(monkeypatch):
+    """The runtime web path (registry cards, targeted fetch, gap search) on: it is off by default (RR_COPILOT_WEB_FETCH)."""
+    monkeypatch.setenv("RR_COPILOT_WEB_FETCH", "1")

@@ -217,6 +217,8 @@ async def resolve_guideline(db: Session, card: Card) -> Entry | None:
         if tnm.is_tnm(card.key):   # offline provider: never searched, never stored
             site = tnm.site_for(card.key)
             return tnm.entry(site) if site else None
+        if not R.web_fetch_on() or R.is_library_key(card.key):   # spec §2.9: no retrieval at request time
+            return None
         row = R.by_key(db, card.key)
         if row is not None:
             held = R.entry(row)

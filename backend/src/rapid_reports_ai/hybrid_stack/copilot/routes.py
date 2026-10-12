@@ -307,6 +307,8 @@ async def copilot_open(req: OpenRequest, user: User = Depends(get_current_user))
         return await _pack_result(pack, req, t0)
     if tnm.is_tnm(card.key):
         entry = _offline(card.key)
+    elif not Reg.web_fetch_on():   # spec §2.9, §5: outside the library and TNM, nothing to open
+        entry = None
     else:
         done, entry = await _bounded(_resolve_fresh(card), OPEN_TIMEOUT_S)
         if not done:
@@ -328,6 +330,8 @@ async def copilot_preview(req: OpenRequest, user: User = Depends(get_current_use
         return await _pack_result(pack, req, t0)
     if tnm.is_tnm(card.key):
         entry = _offline(card.key)
+    elif not Reg.web_fetch_on():
+        entry = None
     else:
         row = Reg.by_key(db, card.key)
         entry = Reg.entry(row) if row is not None else None
@@ -348,7 +352,8 @@ async def _ask_job(req: AskRequest, ctx: Context, history: list[QA], abandoned: 
     try:
         async with _sem():
             with SessionLocal() as db:
-                if card is not None and not tnm.is_tnm(card.key) and Reg.by_key(db, card.key) is None:
+                if (card is not None and Reg.web_fetch_on() and not tnm.is_tnm(card.key)
+                        and not Reg.is_library_key(card.key) and Reg.by_key(db, card.key) is None):
                     await resolve_guideline(db, card)
                 return await ask(db, req.question, key, ctx, history, req.finding_id, abandoned)
     except Exception as e:   # ask never raises; the session or the pre-resolve might

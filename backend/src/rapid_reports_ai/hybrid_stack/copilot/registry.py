@@ -2,14 +2,31 @@
 small (tens to low hundreds of rows), so alias lookup scans it rather than keeping a second table."""
 from __future__ import annotations
 
+import os
 import re
 import unicodedata
+from typing import Mapping
 
 import sqlalchemy.exc
 from sqlalchemy.orm import Session, defer
 
 from ...database.models import GuidelineRegistry
 from .types import Branch, Chunk, Entry, GuidelineContent, Publication, Source
+
+WEB_FETCH_ENV = "RR_COPILOT_WEB_FETCH"
+
+
+def web_fetch_on(env: Mapping[str, str] | None = None) -> bool:
+    """The runtime web path (registry cards, targeted fetch, gap search) is on only when RR_COPILOT_WEB_FETCH=1.
+    Off by default (library spec §2.9, §5): the Copilot offers library packs and TNM only."""
+    return (os.environ if env is None else env).get(WEB_FETCH_ENV, "0") == "1"
+
+
+def is_library_key(key: str) -> bool:
+    """A key the guideline library holds: never resolved, fetched or stored through the registry."""
+    from .library import bundle as L   # late: the library imports this module
+    return L.get().lookup(key) is not None
+
 
 _RANK = {"checked": 2, "not_available": 1, "pending": 0}
 
@@ -161,6 +178,8 @@ def upsert(db: Session, *, key: str, name: str, version: str, aliases: list[str]
     through the merge path, since by then the sibling's row exists to merge onto."""
     if not key or key.startswith("@"):
         raise ValueError(f"invalid guideline key: {key!r}")
+    if is_library_key(key):
+        raise ValueError(f"a guideline library key is never stored in the registry: {key!r}")
 
     row = _fresh(db, key)
     if row is not None:

@@ -8,6 +8,8 @@ from rapid_reports_ai.hybrid_stack.copilot import tnm
 from rapid_reports_ai.hybrid_stack.copilot.types import (Branch, Chunk, GuidelineContent, Output, Source,
                                                          Supplement)
 
+pytestmark = pytest.mark.usefixtures("web_fetch_on")   # these tests exercise the web path
+
 CTX = A.Context(scan_type="CT chest", history="", findings="7 mm solid nodule.")
 
 
@@ -500,14 +502,12 @@ async def test_explicit_pack_question_skips_the_applicability_gate_background_ma
 
     async def route(question, ctx, history, known=""):
         return A.RawRoute(guideline="Toy Nodule", version="2020", answer="")
-    seen = {}
 
     async def resolve(db, card):
-        seen["card"] = card
-        return None
+        raise AssertionError("a library pack is never resolved")
 
-    async def general(question, ctx, history):
-        return "G."
+    async def grounded(question, material, ctx, history):
+        return "From the pack."
     calls = []
 
     async def pack_gate(finding, pack, history=""):
@@ -515,10 +515,11 @@ async def test_explicit_pack_question_skips_the_applicability_gate_background_ma
         return 0.0   # the gate would refuse this finding
     monkeypatch.setattr(A, "_route", route)
     monkeypatch.setattr(A, "resolve_guideline", resolve)
-    monkeypatch.setattr(A, "_general_answer", general)
+    monkeypatch.setattr(A, "_grounded", grounded)
     monkeypatch.setattr(M, "_pack_gate", pack_gate)
-    await A.ask(db_session, "How is this followed up under Toy?", None, CTX, [], finding_id="u1")
-    assert seen["card"].key == "toy-nodule@1.0" and seen["card"].finding_id == "u1" and calls == []
+    res = await A.ask(db_session, "How is this followed up under Toy?", None, CTX, [], finding_id="u1")
+    assert res.card.key == "toy-nodule@1.0" and res.card.finding_id == "u1" and calls == []
+    assert res.answer == "From the pack."
 
     async def call(prompt):   # the background matcher still gates the same pack
         return M.RawMatch(findings=[M.RawFinding(id="u1", systems=[M.RawSystem(name="Toy Nodule", version="2020")])])
