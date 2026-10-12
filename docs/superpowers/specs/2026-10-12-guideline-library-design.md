@@ -174,6 +174,46 @@ cells), not markdown.
 - Cases come from the guideline's own worked examples first, then from cases we write.
 - The cases we write must include values either side of every cut-off.
 
+### 3.6 Input scope and eligibility
+
+Agreed with Hassan on 2026-10-12. Not built yet: it is part of the next slice (§12).
+
+**Two input attributes, both optional:**
+
+| Attribute | Values | Default | Effect |
+|---|---|---|---|
+| `scope` | `lesion` \| `patient` | `lesion` | Lesion-scoped inputs are settled only from the card's own finding unit. Patient-scoped inputs are settled from the clinical history and the whole dictation, and their answers are shared across every card in the case. |
+| `role` | `clinical` \| `eligibility` | `clinical` | Eligibility inputs encode the guideline's own scope statement: who and what the guideline applies to. They are evaluated and asked first. |
+
+**Eligibility inputs:**
+- **Source.** Eligibility inputs come only from the guideline's stated scope or exclusions, each with a locator like any
+  other fact. We never invent our own criteria. Examples:
+  - Fleischner: lung cancer screening, age under 35, immunocompromise, known primary cancer.
+  - BTS: age 18 or over; previous or active cancer (the December 2015 correction makes this clinical judgement).
+  - Bosniak: not an infectious, inflammatory or vascular lesion.
+- **Form.** They are usually patient-scoped yes/no inputs. A pack may combine closely related exclusions into one input
+  when the guideline treats them alike (Fleischner's four exclusions are one input).
+- **Logic.** An eligibility input that excludes leads to a `does_not_apply` outcome. Its classification states that
+  the guideline does not apply and why, its recommendation says to manage on clinical context, and it carries the
+  locator of the scope clause. It never has an Apply.
+- **Settling.** The model settles eligibility inputs exactly as it settles clinical ones: verbatim quotes from the
+  clinical history or the dictation, with the same checks. An unstated eligibility input stays unknown and is never
+  assumed eligible.
+- **Size.** A pack has at most three eligibility inputs. If a guideline's scope needs more, the scope belongs in the
+  matcher's `applies_to` or in a pitfall, not in questions.
+
+**Two layers of fit, kept separate:**
+
+| Layer | Question | Mechanism | Visible to the radiologist |
+|---|---|---|---|
+| Finding fit | Is this the right kind of finding? (a renal cyst, not a liver cyst) | Silent Jev applicability gate in the matcher (§5) | No: the card never appears |
+| Patient and context eligibility | Does this guideline apply to this patient? (not known cancer, not screening) | Eligibility inputs inside the pack | Yes: the eligibility strip (§7.4) |
+
+**Shared answers.** Patient-scoped answers (settled or tapped) are held per case and passed to every card's preview as
+`answered`. One answer to "known primary cancer?" serves the Fleischner and BTS cards alike. Inputs are matched across
+packs by a shared vocabulary of patient facts (for example `known_primary_cancer`, `immunocompromised`,
+`screening_programme`, `age_years`). An input that maps to no shared fact stays card-local.
+
 ## 4. Evaluation engine
 
 **Who does what:**
@@ -261,6 +301,29 @@ A module `hybrid_stack/copilot/library/`:
 - **No answer in the entry:** Ask says so, then adds brief general knowledge prefixed "From general knowledge:", as
   now.
 - **No gap search.** Ask never searches the web.
+
+### 7.4 Card states and the eligibility strip
+
+Agreed with Hassan on 2026-10-12. Not built yet: it is part of the next slice.
+
+A pack card is always in one of three states, worked out from the preview:
+
+| State | When | What the card shows |
+|---|---|---|
+| **Does not apply** | An eligibility input settles to an exclusion | The card dims and shows the reason, with the scope clause's citation. There is no Apply. |
+| **Check first** | Some eligibility inputs are unknown and could change the outcome | A short "Does this apply?" strip of one to three yes/no chips, above everything else. The clinical questions and possible outcomes appear dimmed beneath it. |
+| **Applies** | Every eligibility input is settled and eligible, or none can change the outcome | The normal card: the clinical questions (only those that can change the outcome), then the proposal. |
+
+- **Ordering.** `Preview.asks` lists eligibility inputs before clinical ones. Within each group the order is the pack's
+  input order.
+- **Every ask is explained.** Each ask carries its definition, the outcomes it decides between with their citations,
+  and the citation of the rule it feeds. These are the `asks` fields already built.
+- **Once per case.** A patient-scoped answer given on one card fills that input on every other card in the case, and
+  their previews re-run from the cache key, which includes the answers.
+- **No questionnaires.** If a card would need more than three eligibility chips, the pack is wrong (§3.6 Size). The
+  gates check this.
+- **Logging.** `does_not_apply` outcomes and every tap on an eligibility chip are logged with the stack session, as
+  data on how often guidelines are excluded and on which facts.
 
 ## 8. Quality gates
 
@@ -381,6 +444,21 @@ Status (2026-10-12): items 1 and 2 done, item 3 **failed** its gate, item 4 not 
    first. Task 20, the review page, is dropped. Blocked on item 3.
 5. **Then:** the tier 2 parser lab, further packs in coverage-lab order, the monthly routine, and retiring prefetch
    (§10).
+
+**Next slice (agreed with Hassan on 2026-10-12, after the big-picture review):**
+1. **Per-finding settling.** Add `scope` (§3.6) and a `finding` request field. Lesion quotes must be verbatim in the
+   card's own unit. Code reads numbers and units from the quote, using one conversion table. One batched Jev check,
+   "the FINDING states `<label>`: `<value>`", runs for enum and yes/no inputs.
+2. **Eligibility triage.** Add `role: eligibility` (§3.6) with shared patient answers, and the three card states and
+   the eligibility strip (§7.4). The existing packs' scope clauses become eligibility inputs: Fleischner's exclusion
+   input is reclassified, and BTS and Bosniak gain theirs from the source. The gates enforce at most three eligibility
+   inputs, each with a scope-clause locator.
+3. **Preview cache.** Run the preview when the card is produced and cache it by (pack, unit text, history, answered),
+   so opening a card is instant.
+4. **Preview lab re-run.** Add cases with clinical history, two lesions in one sentence, eligibility exclusions stated
+   in the history, and shared patient answers across two cards. This lab is the gate for Apply.
+5. **Lookup packs and reference cards** for the graded systems that lead real use (CAD-RADS 2.0, CAC-DRS, then tier 2
+   cards for Outerbridge, Lund-Mackay, AO Spine, Stoller and SINS), using the light authoring procedure.
 
 **Changes the build made to §3, §4 and §5:**
 - **§3 inputs:** numeric inputs may declare `min_value` / `max_value` ranges. The engine rejects out-of-range values,
