@@ -1,0 +1,1489 @@
+{
+ "id": "bts-pulmonary-nodule",
+ "version": "2015.1",
+ "topic": "pulmonary-nodule-incidental",
+ "issuer": "British Thoracic Society",
+ "system": "British Thoracic Society guidelines for the investigation and management of pulmonary nodules: solid-nodule pathway",
+ "display": "BTS 2015",
+ "edition": "2015",
+ "tier": 1,
+ "status": "current",
+ "applies_to": {
+  "region": [
+   "chest"
+  ],
+  "modality": [
+   "CT"
+  ],
+  "finding_type": [
+   "pulmonary nodule"
+  ],
+  "context": [
+   "incidental"
+  ]
+ },
+ "aliases": [
+  "bts nodule",
+  "bts nodule guideline",
+  "bts 2015",
+  "british thoracic society nodule guideline"
+ ],
+ "inputs": [
+  {
+   "id": "benign_features",
+   "label": "Clear benign features",
+   "type": "boolean",
+   "how_stated": "true when the nodule has a benign calcification pattern (diffuse, central, laminated or popcorn), macroscopic fat (e.g. hamartoma), or is a typical perifissural or subpleural nodule (smooth, solid, lentiform or triangular, within 1 cm of a fissure or pleura, under 10 mm); false when none of these is described",
+   "locator": {
+    "source": "S1",
+    "page": 7,
+    "section": "Summary of recommendations: initial assessment of the probability of malignancy"
+   }
+  },
+  {
+   "id": "nodule_type",
+   "label": "Nodule type",
+   "type": "enum",
+   "options": [
+    "solid",
+    "part_solid",
+    "nonsolid"
+   ],
+   "how_stated": "solid; part-solid (solid and ground-glass components); or nonsolid (pure ground-glass). For multiple nodules, the largest one.",
+   "locator": {
+    "source": "S2",
+    "table": "Table 2, model 2b: nodule type"
+   }
+  },
+  {
+   "id": "diameter_mm",
+   "label": "Maximum diameter",
+   "type": "number",
+   "unit": "mm",
+   "how_stated": "maximum diameter of the nodule in millimetres, e.g. '9 mm nodule'; for multiple nodules, the largest",
+   "locator": {
+    "source": "S1",
+    "page": 8,
+    "table": "Figure 1 Initial approach to solid pulmonary nodules"
+   }
+  },
+  {
+   "id": "age",
+   "label": "Age",
+   "type": "number",
+   "unit": "years",
+   "how_stated": "patient age in years, usually from the request details",
+   "locator": {
+    "source": "S2",
+    "table": "Table 2, model 2b: age"
+   }
+  },
+  {
+   "id": "sex",
+   "label": "Sex",
+   "type": "enum",
+   "options": [
+    "female",
+    "male"
+   ],
+   "how_stated": "patient sex, usually from the request details",
+   "locator": {
+    "source": "S2",
+    "table": "Table 2, model 2b: sex"
+   }
+  },
+  {
+   "id": "family_history",
+   "label": "Family history of lung cancer",
+   "type": "boolean",
+   "how_stated": "true when a first-degree or other family history of lung cancer is given in the clinical details",
+   "locator": {
+    "source": "S2",
+    "table": "Table 2, model 2b: family history of lung cancer"
+   }
+  },
+  {
+   "id": "emphysema",
+   "label": "Emphysema on CT",
+   "type": "boolean",
+   "how_stated": "true when any emphysema is reported on this CT; false when the lungs are described without emphysema",
+   "locator": {
+    "source": "S2",
+    "table": "Table 2, model 2b: emphysema"
+   }
+  },
+  {
+   "id": "upper_lobe",
+   "label": "Upper lobe location",
+   "type": "boolean",
+   "how_stated": "true for a right or left upper lobe nodule (lingula counts as left upper lobe); false for middle or lower lobe",
+   "locator": {
+    "source": "S2",
+    "table": "Table 2, model 2b: nodule location"
+   }
+  },
+  {
+   "id": "nodule_count",
+   "label": "Number of nodules",
+   "type": "number",
+   "unit": "nodules",
+   "how_stated": "total number of nodules on this CT, e.g. 'solitary' is 1, 'three nodules' is 3",
+   "locator": {
+    "source": "S2",
+    "table": "Table 2, model 2b: nodule count"
+   }
+  },
+  {
+   "id": "spiculation",
+   "label": "Spiculation",
+   "type": "boolean",
+   "how_stated": "true when the nodule margin is described as spiculated; false for smooth, well-defined or lobulated margins",
+   "locator": {
+    "source": "S2",
+    "table": "Table 2, model 2b: spiculation"
+   }
+  },
+  {
+   "id": "prior_study",
+   "label": "Prior CT showing the nodule",
+   "type": "boolean",
+   "how_stated": "true when an earlier CT showing this nodule is available for comparison; false when this is the first CT to show it",
+   "locator": {
+    "source": "S1",
+    "page": 8,
+    "table": "Figure 1 Initial approach to solid pulmonary nodules: previous imaging"
+   }
+  },
+  {
+   "id": "prior_volume_mm3",
+   "label": "Baseline volume",
+   "type": "number",
+   "unit": "mm3",
+   "how_stated": "nodule volume on the baseline (first) CT in cubic millimetres, from volumetry software",
+   "prerequisites": [
+    {
+     "ref": "prior_study",
+     "eq": true
+    }
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 8,
+    "section": "Summary of recommendations: imaging follow-up"
+   }
+  },
+  {
+   "id": "current_volume_mm3",
+   "label": "Current volume",
+   "type": "number",
+   "unit": "mm3",
+   "how_stated": "nodule volume on this CT in cubic millimetres, measured with the same volumetry software",
+   "prerequisites": [
+    {
+     "ref": "prior_study",
+     "eq": true
+    }
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 8,
+    "section": "Summary of recommendations: imaging follow-up"
+   }
+  },
+  {
+   "id": "interval_days",
+   "label": "Interval from baseline CT",
+   "type": "number",
+   "unit": "days",
+   "how_stated": "days between the baseline CT and this CT, e.g. 3 months is about 91 days, 1 year is 365 days",
+   "prerequisites": [
+    {
+     "ref": "prior_study",
+     "eq": true
+    }
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 9,
+    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
+   }
+  }
+ ],
+ "logic": [
+  {
+   "step": "derive",
+   "id": "size_term",
+   "unit": "",
+   "expr": {
+    "op": "sub",
+    "args": [
+     {
+      "op": "pow",
+      "args": [
+       {
+        "op": "div",
+        "args": [
+         {
+          "ref": "diameter_mm"
+         },
+         {
+          "const": 10
+         }
+        ]
+       },
+       {
+        "const": -0.5
+       }
+      ]
+     },
+     {
+      "const": 1.58113883
+     }
+    ]
+   },
+   "locator": {
+    "source": "S2",
+    "table": "Table 2, footnote: nodule-size transformation"
+   }
+  },
+  {
+   "step": "derive",
+   "id": "age_term",
+   "unit": "years",
+   "expr": {
+    "op": "sub",
+    "args": [
+     {
+      "ref": "age"
+     },
+     {
+      "const": 62
+     }
+    ]
+   },
+   "locator": {
+    "source": "S2",
+    "table": "Table 2, footnote: age centred on 62 years"
+   }
+  },
+  {
+   "step": "derive",
+   "id": "count_term",
+   "unit": "nodules",
+   "expr": {
+    "op": "sub",
+    "args": [
+     {
+      "ref": "nodule_count"
+     },
+     {
+      "const": 4
+     }
+    ]
+   },
+   "locator": {
+    "source": "S2",
+    "table": "Table 2, footnote: nodule count centred on 4"
+   }
+  },
+  {
+   "step": "derive",
+   "id": "volume_change_pct",
+   "unit": "%",
+   "expr": {
+    "op": "mul",
+    "args": [
+     {
+      "op": "sub",
+      "args": [
+       {
+        "op": "div",
+        "args": [
+         {
+          "ref": "current_volume_mm3"
+         },
+         {
+          "ref": "prior_volume_mm3"
+         }
+        ]
+       },
+       {
+        "const": 1
+       }
+      ]
+     },
+     {
+      "const": 100
+     }
+    ]
+   },
+   "locator": {
+    "source": "S1",
+    "page": 8,
+    "section": "Summary of recommendations: imaging follow-up (25% volume change)"
+   }
+  },
+  {
+   "step": "derive",
+   "id": "vdt_days",
+   "unit": "days",
+   "expr": {
+    "op": "div",
+    "args": [
+     {
+      "op": "mul",
+      "args": [
+       {
+        "op": "ln",
+        "args": [
+         {
+          "const": 2
+         }
+        ]
+       },
+       {
+        "ref": "interval_days"
+       }
+      ]
+     },
+     {
+      "op": "ln",
+      "args": [
+       {
+        "op": "div",
+        "args": [
+         {
+          "ref": "current_volume_mm3"
+         },
+         {
+          "ref": "prior_volume_mm3"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   "locator": {
+    "source": "S1",
+    "page": 57,
+    "section": "Appendix 1: prediction models and volume doubling time (VDT) calculation"
+   }
+  },
+  {
+   "step": "score",
+   "id": "brock",
+   "kind": "logistic",
+   "intercept": -6.7892,
+   "terms": [
+    {
+     "ref": "age_term",
+     "coef": 0.0287
+    },
+    {
+     "ref": "sex",
+     "coef": 0.6011,
+     "eq": "female"
+    },
+    {
+     "ref": "family_history",
+     "coef": 0.2961
+    },
+    {
+     "ref": "emphysema",
+     "coef": 0.2953
+    },
+    {
+     "ref": "size_term",
+     "coef": -5.3854
+    },
+    {
+     "ref": "nodule_type",
+     "coef": -0.1276,
+     "eq": "nonsolid"
+    },
+    {
+     "ref": "nodule_type",
+     "coef": 0.377,
+     "eq": "part_solid"
+    },
+    {
+     "ref": "upper_lobe",
+     "coef": 0.6581
+    },
+    {
+     "ref": "count_term",
+     "coef": -0.0824
+    },
+    {
+     "ref": "spiculation",
+     "coef": 0.7729
+    }
+   ],
+   "locator": {
+    "source": "S2",
+    "table": "Table 2, model 2b: full model with spiculation"
+   }
+  },
+  {
+   "step": "band",
+   "id": "diameter_band",
+   "ref": "diameter_mm",
+   "locator": {
+    "source": "S1",
+    "page": 8,
+    "table": "Figure 1 Initial approach to solid pulmonary nodules"
+   },
+   "bands": [
+    {
+     "id": "lt5",
+     "label": "under 5 mm",
+     "max": 5
+    },
+    {
+     "id": "5to6",
+     "label": "5 mm to under 6 mm",
+     "min": 5,
+     "max": 6
+    },
+    {
+     "id": "6to8",
+     "label": "6 mm to under 8 mm",
+     "min": 6,
+     "max": 8
+    },
+    {
+     "id": "ge8",
+     "label": "8 mm or more",
+     "min": 8
+    }
+   ]
+  },
+  {
+   "step": "band",
+   "id": "brock_band",
+   "ref": "brock",
+   "locator": {
+    "source": "S1",
+    "page": 8,
+    "table": "Figure 1 Initial approach to solid pulmonary nodules: Brock risk"
+   },
+   "bands": [
+    {
+     "id": "lt10",
+     "label": "under 10%",
+     "max": 0.1
+    },
+    {
+     "id": "ge10",
+     "label": "10% or more",
+     "min": 0.1
+    }
+   ]
+  },
+  {
+   "step": "band",
+   "id": "interval_band",
+   "ref": "interval_days",
+   "locator": {
+    "source": "S1",
+    "page": 9,
+    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: CT 1 year after baseline"
+   },
+   "bands": [
+    {
+     "id": "lt1y",
+     "label": "under 1 year from baseline",
+     "max": 365
+    },
+    {
+     "id": "ge1y",
+     "label": "1 year or more from baseline",
+     "min": 365
+    }
+   ]
+  },
+  {
+   "step": "band",
+   "id": "change_band",
+   "ref": "volume_change_pct",
+   "locator": {
+    "source": "S1",
+    "page": 8,
+    "section": "Summary of recommendations: imaging follow-up (25% volume change)"
+   },
+   "bands": [
+    {
+     "id": "lt25",
+     "label": "volume change under 25%",
+     "max": 25
+    },
+    {
+     "id": "ge25",
+     "label": "volume growth of 25% or more",
+     "min": 25
+    }
+   ]
+  },
+  {
+   "step": "band",
+   "id": "vdt_band",
+   "ref": "vdt_days",
+   "locator": {
+    "source": "S1",
+    "page": 9,
+    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: VDT categories"
+   },
+   "bands": [
+    {
+     "id": "neg",
+     "label": "negative (volume decreased)",
+     "max": 0
+    },
+    {
+     "id": "le400",
+     "label": "400 days or less",
+     "min": 0,
+     "max": 400,
+     "max_inclusive": true
+    },
+    {
+     "id": "400to600",
+     "label": "over 400 to 600 days",
+     "min": 400,
+     "min_inclusive": false,
+     "max": 600,
+     "max_inclusive": true
+    },
+    {
+     "id": "gt600",
+     "label": "over 600 days",
+     "min": 600,
+     "min_inclusive": false
+    }
+   ]
+  },
+  {
+   "step": "rules",
+   "id": "pathway",
+   "cases": [
+    {
+     "when": {
+      "ref": "benign_features",
+      "eq": true
+     },
+     "result": "discharge_benign",
+     "locator": {
+      "source": "S1",
+      "page": 8,
+      "table": "Figure 1: clear features of benign disease"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "in": [
+         "part_solid",
+         "nonsolid"
+        ]
+       }
+      ]
+     },
+     "result": "subsolid",
+     "locator": {
+      "source": "S1",
+      "page": 8,
+      "section": "Summary of recommendations: management of sub-solid nodules (SSNs)"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "eq": "lt5"
+       }
+      ]
+     },
+     "result": "discharge_small",
+     "locator": {
+      "source": "S1",
+      "page": 8,
+      "table": "Figure 1: nodule <5 mm diameter"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "eq": "5to6"
+       },
+       {
+        "ref": "vdt_band",
+        "state": "not_applicable"
+       }
+      ]
+     },
+     "result": "ct_1yr",
+     "locator": {
+      "source": "S1",
+      "page": 9,
+      "table": "Figure 2: 5-6 mm diameter, CT 1 year after baseline"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "eq": "6to8"
+       },
+       {
+        "ref": "vdt_band",
+        "state": "not_applicable"
+       }
+      ]
+     },
+     "result": "ct_3m",
+     "locator": {
+      "source": "S1",
+      "page": 9,
+      "table": "Figure 2: >=6 mm diameter, CT 3 months after baseline"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "eq": "ge8"
+       },
+       {
+        "ref": "vdt_band",
+        "state": "not_applicable"
+       },
+       {
+        "ref": "brock_band",
+        "eq": "lt10"
+       }
+      ]
+     },
+     "result": "brock_low",
+     "locator": {
+      "source": "S1",
+      "page": 8,
+      "table": "Figure 1: <10% risk of malignancy, CT surveillance"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "eq": "ge8"
+       },
+       {
+        "ref": "vdt_band",
+        "state": "not_applicable"
+       },
+       {
+        "ref": "brock_band",
+        "eq": "ge10"
+       }
+      ]
+     },
+     "result": "pet_ct",
+     "locator": {
+      "source": "S1",
+      "page": 8,
+      "table": "Figure 1: >=10% risk of malignancy, PET-CT"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "in": [
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
+       },
+       {
+        "none": [
+         {
+          "ref": "vdt_band",
+          "state": "not_applicable"
+         }
+        ]
+       },
+       {
+        "ref": "vdt_band",
+        "eq": "le400"
+       },
+       {
+        "ref": "change_band",
+        "eq": "ge25"
+       }
+      ]
+     },
+     "result": "growth_workup",
+     "locator": {
+      "source": "S1",
+      "page": 9,
+      "table": "Figure 2: VDT <=400 days or clear evidence of growth"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "in": [
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
+       },
+       {
+        "none": [
+         {
+          "ref": "vdt_band",
+          "state": "not_applicable"
+         }
+        ]
+       },
+       {
+        "none": [
+         {
+          "all": [
+           {
+            "ref": "vdt_band",
+            "eq": "le400"
+           },
+           {
+            "ref": "change_band",
+            "eq": "ge25"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "none": [
+         {
+          "ref": "interval_band",
+          "eq": "ge1y"
+         }
+        ]
+       },
+       {
+        "ref": "change_band",
+        "eq": "ge25"
+       },
+       {
+        "ref": "vdt_band",
+        "in": [
+         "400to600",
+         "gt600"
+        ]
+       }
+      ]
+     },
+     "result": "continue_slow_growth",
+     "locator": {
+      "source": "S1",
+      "page": 9,
+      "table": "Figure 2: VDT >400 days at 3 months, CT 1 year after baseline"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "in": [
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
+       },
+       {
+        "none": [
+         {
+          "ref": "vdt_band",
+          "state": "not_applicable"
+         }
+        ]
+       },
+       {
+        "none": [
+         {
+          "all": [
+           {
+            "ref": "vdt_band",
+            "eq": "le400"
+           },
+           {
+            "ref": "change_band",
+            "eq": "ge25"
+           }
+          ]
+         }
+        ]
+       },
+       {
+        "none": [
+         {
+          "ref": "interval_band",
+          "eq": "ge1y"
+         }
+        ]
+       },
+       {
+        "none": [
+         {
+          "all": [
+           {
+            "ref": "change_band",
+            "eq": "ge25"
+           },
+           {
+            "ref": "vdt_band",
+            "in": [
+             "400to600",
+             "gt600"
+            ]
+           }
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "result": "continue_no_growth",
+     "locator": {
+      "source": "S1",
+      "page": 9,
+      "table": "Figure 2: no significant growth, CT 1 year after baseline"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "in": [
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
+       },
+       {
+        "none": [
+         {
+          "ref": "vdt_band",
+          "state": "not_applicable"
+         }
+        ]
+       },
+       {
+        "ref": "interval_band",
+        "eq": "ge1y"
+       },
+       {
+        "ref": "change_band",
+        "eq": "ge25"
+       },
+       {
+        "ref": "vdt_band",
+        "eq": "400to600"
+       }
+      ]
+     },
+     "result": "vdt_400_600",
+     "locator": {
+      "source": "S1",
+      "page": 9,
+      "table": "Figure 2: VDT 400-600 days"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "in": [
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
+       },
+       {
+        "none": [
+         {
+          "ref": "vdt_band",
+          "state": "not_applicable"
+         }
+        ]
+       },
+       {
+        "ref": "interval_band",
+        "eq": "ge1y"
+       },
+       {
+        "ref": "change_band",
+        "eq": "ge25"
+       },
+       {
+        "ref": "vdt_band",
+        "eq": "gt600"
+       }
+      ]
+     },
+     "result": "vdt_gt600",
+     "locator": {
+      "source": "S1",
+      "page": 9,
+      "table": "Figure 2: VDT >600 days"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "in": [
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
+       },
+       {
+        "none": [
+         {
+          "ref": "vdt_band",
+          "state": "not_applicable"
+         }
+        ]
+       },
+       {
+        "ref": "interval_band",
+        "eq": "ge1y"
+       },
+       {
+        "none": [
+         {
+          "ref": "change_band",
+          "eq": "ge25"
+         },
+         {
+          "ref": "vdt_band",
+          "eq": "neg"
+         }
+        ]
+       }
+      ]
+     },
+     "result": "stable_discharge",
+     "locator": {
+      "source": "S1",
+      "page": 9,
+      "table": "Figure 2: stable on basis of volumetry, discharge"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "in": [
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
+       },
+       {
+        "none": [
+         {
+          "ref": "vdt_band",
+          "state": "not_applicable"
+         }
+        ]
+       },
+       {
+        "ref": "interval_band",
+        "eq": "ge1y"
+       },
+       {
+        "ref": "vdt_band",
+        "eq": "neg"
+       }
+      ]
+     },
+     "result": "smaller_discharge",
+     "locator": {
+      "source": "S1",
+      "page": 26,
+      "section": "Imaging follow-up: evidence statements (stable, shrunken or resolved nodules)"
+     }
+    }
+   ]
+  }
+ ],
+ "result": "pathway",
+ "outcomes": [
+  {
+   "id": "discharge_benign",
+   "classification": "Solid nodule with clear benign features (benign calcification, macroscopic fat, or typical perifissural or subpleural nodule).",
+   "recommendation": "No follow-up or further investigation needed.",
+   "caveats": [
+    "Larger intrapulmonary lymph nodes may be followed up, especially with a known extrapulmonary primary cancer."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 7,
+    "section": "Summary of recommendations: initial assessment of the probability of malignancy"
+   }
+  },
+  {
+   "id": "subsolid",
+   "classification": "Sub-solid nodule (part-solid or pure ground-glass): outside the BTS solid-nodule pathway.",
+   "recommendation": "Manage with the BTS sub-solid nodule algorithm, starting with repeat thin-section CT at 3 months.",
+   "caveats": [
+    "Sub-solid nodules under 5 mm need no follow-up."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 8,
+    "section": "Summary of recommendations: management of sub-solid nodules (SSNs)"
+   }
+  },
+  {
+   "id": "discharge_small",
+   "classification": "Solid nodule {diameter_band} in maximum diameter.",
+   "recommendation": "No nodule follow-up needed.",
+   "caveats": [
+    "With previous or active cancer, follow-up of nodules this small is a matter of clinical judgement (BTS correction, December 2015).",
+    "Equivalent volumetric threshold is under 80 mm3."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 8,
+    "table": "Figure 1 Initial approach to solid pulmonary nodules"
+   }
+  },
+  {
+   "id": "ct_1yr",
+   "classification": "Solid nodule {diameter_band}, no prior imaging for comparison.",
+   "recommendation": "CT surveillance: repeat CT 1 year after baseline and assess growth by volume doubling time.",
+   "caveats": [
+    "Unfit for any treatment: BTS advises discharge instead."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 9,
+    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
+   }
+  },
+  {
+   "id": "ct_3m",
+   "classification": "Solid nodule {diameter_band}, no prior imaging for comparison.",
+   "recommendation": "CT surveillance: repeat CT at 3 months and 1 year after baseline, assessing growth by volume doubling time.",
+   "caveats": [
+    "Unfit for any treatment: BTS advises discharge instead."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 9,
+    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
+   }
+  },
+  {
+   "id": "brock_low",
+   "classification": "Solid nodule {diameter_band}, Brock malignancy risk {brock_band}.",
+   "recommendation": "CT surveillance: repeat CT at 3 months and 1 year after baseline, assessing growth by volume doubling time.",
+   "caveats": [
+    "Consider PET-CT for larger nodules in younger patients: the Brock model was developed in a 50-75-year-old screening cohort.",
+    "Unfit for any treatment: BTS advises discharge instead."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 8,
+    "table": "Figure 1 Initial approach to solid pulmonary nodules"
+   }
+  },
+  {
+   "id": "pet_ct",
+   "classification": "Solid nodule {diameter_band}, Brock malignancy risk {brock_band}.",
+   "recommendation": "PET-CT if the nodule is above the local PET-CT detection threshold, then reassess risk with the Herder model.",
+   "caveats": [
+    "Management after the Herder risk assessment is outside this entry.",
+    "Unfit for any treatment: BTS advises discharge instead."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 8,
+    "table": "Figure 1 Initial approach to solid pulmonary nodules"
+   }
+  },
+  {
+   "id": "growth_workup",
+   "classification": "Solid nodule with significant growth (25% or more by volume), volume doubling time {vdt_band}.",
+   "recommendation": "Further investigation (biopsy, imaging or resection) and consideration of definitive management.",
+   "caveats": [
+    "With a known extrapulmonary primary cancer, interpret growth in the context of the primary and its treatment."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 9,
+    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
+   }
+  },
+  {
+   "id": "continue_slow_growth",
+   "classification": "Solid nodule growing slowly before 1 year from baseline: volume doubling time {vdt_band}.",
+   "recommendation": "Repeat CT 1 year after baseline and reassess volume doubling time.",
+   "caveats": [
+    "With a known extrapulmonary primary cancer, interpret growth in the context of the primary and its treatment."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 9,
+    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
+   }
+  },
+  {
+   "id": "continue_no_growth",
+   "classification": "Solid nodule {diameter_band} without significant growth before 1 year from baseline.",
+   "recommendation": "Repeat CT 1 year after baseline and reassess volume doubling time.",
+   "caveats": [
+    "With a known extrapulmonary primary cancer, interpret growth in the context of the primary and its treatment."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 9,
+    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
+   }
+  },
+  {
+   "id": "vdt_400_600",
+   "classification": "Solid nodule growing at 1 year or more from baseline: volume doubling time {vdt_band}.",
+   "recommendation": "Consider biopsy or ongoing yearly CT surveillance, guided by patient preference.",
+   "caveats": [
+    "With a known extrapulmonary primary cancer, interpret growth in the context of the primary and its treatment."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 9,
+    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
+   }
+  },
+  {
+   "id": "vdt_gt600",
+   "classification": "Solid nodule growing slowly at 1 year or more from baseline: volume doubling time {vdt_band}.",
+   "recommendation": "Consider discharge or ongoing CT surveillance, taking account of patient preference, fitness and age.",
+   "caveats": [
+    "Discharge is an option only when growth was assessed by volumetry.",
+    "With a known extrapulmonary primary cancer, interpret growth in the context of the primary and its treatment."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 9,
+    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
+   }
+  },
+  {
+   "id": "stable_discharge",
+   "classification": "Solid nodule {diameter_band}, stable on volumetry (volume change under 25%) at 1 year or more from baseline.",
+   "recommendation": "Discharge from nodule follow-up.",
+   "caveats": [
+    "Applies to volumetric growth assessment; if growth is judged on 2D diameters, BTS advises CT follow-up for a total of 2 years.",
+    "With a known extrapulmonary primary cancer, interpret growth in the context of the primary and its treatment."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 9,
+    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
+   }
+  },
+  {
+   "id": "smaller_discharge",
+   "classification": "Solid nodule {diameter_band}, smaller than at baseline at 1 year or more (negative volume doubling time).",
+   "recommendation": "No growth at 1 year: discharge as for a stable nodule.",
+   "caveats": [
+    "BTS gives no separate step for a shrinking nodule; its evidence review reports a low cancer probability for shrunken or resolved nodules.",
+    "Applies to volumetric growth assessment; if growth is judged on 2D diameters, BTS advises CT follow-up for a total of 2 years.",
+    "With a known extrapulmonary primary cancer, interpret growth in the context of the primary and its treatment."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 26,
+    "section": "Imaging follow-up: evidence review (stable, shrunken or resolved nodules)"
+   }
+  }
+ ],
+ "reference": {
+  "summary": [
+   {
+    "id": "sum.1",
+    "text": "BTS 2015 pathway for solid pulmonary nodules in adults: discharge benign-looking and very small nodules, follow up small nodules with CT, and risk-assess larger nodules with the Brock model.",
+    "locator": {
+     "source": "S1",
+     "page": 8,
+     "table": "Figure 1 Initial approach to solid pulmonary nodules"
+    }
+   },
+   {
+    "id": "sum.2",
+    "text": "Nodules 8 mm or more without prior imaging are scored with the Brock model; 10% or more leads to PET-CT and Herder reassessment, under 10% to CT surveillance.",
+    "locator": {
+     "source": "S1",
+     "page": 8,
+     "table": "Figure 1 Initial approach to solid pulmonary nodules"
+    }
+   },
+   {
+    "id": "sum.3",
+    "text": "Growth is judged by volumetry and volume doubling time at 3 months and 1 year; 25% or more volume change counts as significant growth.",
+    "locator": {
+     "source": "S1",
+     "page": 8,
+     "section": "Summary of recommendations: imaging follow-up"
+    }
+   },
+   {
+    "id": "sum.4",
+    "text": "VDT 400 days or less prompts work-up; 400-600 days, biopsy or yearly surveillance; over 600 days, discharge or surveillance; stable at 1 year, discharge.",
+    "locator": {
+     "source": "S1",
+     "page": 9,
+     "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
+    }
+   }
+  ],
+  "definitions": [
+   {
+    "id": "def.vdt",
+    "text": "Volume doubling time (VDT): days for the nodule volume to double, from two volumes and the interval: ln 2 x interval / ln(current / baseline volume). Negative when the nodule shrinks.",
+    "locator": {
+     "source": "S1",
+     "page": 57,
+     "section": "Appendix 1: VDT calculation"
+    }
+   },
+   {
+    "id": "def.growth",
+    "text": "Significant growth: a volume increase of 25% or more. Stability: volume change under 25% on CT after 1 year.",
+    "locator": {
+     "source": "S1",
+     "page": 8,
+     "section": "Summary of recommendations: imaging follow-up"
+    }
+   },
+   {
+    "id": "def.brock",
+    "text": "Brock (PanCan) model: logistic model of cancer probability from age, sex, family history, emphysema, nodule size, type, upper-lobe location, nodule count and spiculation (full model with spiculation).",
+    "locator": {
+     "source": "S2",
+     "table": "Table 2, model 2b"
+    }
+   },
+   {
+    "id": "def.benign",
+    "text": "Clear benign features: diffuse, central, laminated or popcorn calcification; macroscopic fat; typical perifissural or subpleural nodule (smooth, solid, lentiform or triangular, within 1 cm of a fissure or pleura, under 10 mm).",
+    "locator": {
+     "source": "S1",
+     "page": 7,
+     "section": "Summary of recommendations: initial assessment"
+    }
+   },
+   {
+    "id": "def.nodule",
+    "text": "Pulmonary nodule: focal rounded opacity up to 3 cm, mostly surrounded by aerated lung, without related thoracic abnormalities such as lymphadenopathy.",
+    "locator": {
+     "source": "S1",
+     "page": 11,
+     "table": "Table 1 Definition and terms relating to pulmonary nodules"
+    }
+   }
+  ],
+  "pitfalls": [
+   {
+    "id": "pit.volumetric",
+    "text": "BTS also gives volumetric size thresholds (80 mm3 and 300 mm3); this entry uses maximum diameter only for the size steps.",
+    "locator": {
+     "source": "S1",
+     "page": 7,
+     "section": "Summary of recommendations"
+    }
+   },
+   {
+    "id": "pit.scope",
+    "text": "Does not apply to children under 18, or to nodules already proven to be lung cancer or metastasis. Opacities over 3 cm are masses, not nodules.",
+    "locator": {
+     "source": "S1",
+     "page": 13,
+     "section": "Groups not covered"
+    }
+   },
+   {
+    "id": "pit.cancer",
+    "text": "Previous or active cancer: follow-up below the 5 mm discharge threshold is a matter of clinical judgement (BTS correction, December 2015).",
+    "locator": {
+     "source": "A1",
+     "page": 1
+    }
+   },
+   {
+    "id": "pit.brock",
+    "text": "Brock was developed in current or former smokers aged 50-75. BTS recommends it for nodules 8 mm or more in smokers aged 50 or over, and suggests it for all patients.",
+    "locator": {
+     "source": "S1",
+     "page": 7,
+     "section": "Summary of recommendations: initial assessment"
+    }
+   },
+   {
+    "id": "pit.multiple",
+    "text": "With multiple nodules, base the risk assessment on the largest nodule; nodule count still enters the Brock model.",
+    "locator": {
+     "source": "S1",
+     "page": 8,
+     "section": "Summary of recommendations"
+    }
+   },
+   {
+    "id": "pit.vdt",
+    "text": "Measure VDT from the baseline CT; volumes differ between software packages, so use the same one. Growth judged on 2D diameters needs 2 years of follow-up.",
+    "locator": {
+     "source": "S1",
+     "page": 8,
+     "section": "Summary of recommendations: imaging follow-up"
+    }
+   },
+   {
+    "id": "pit.unfit",
+    "text": "Patients unfit for any treatment are discharged at the first step of the BTS algorithm; this entry does not ask about fitness.",
+    "locator": {
+     "source": "S1",
+     "page": 8,
+     "table": "Figure 1 Initial approach to solid pulmonary nodules"
+    }
+   },
+   {
+    "id": "pit.herder",
+    "text": "Herder risk after PET-CT and the sub-solid nodule algorithm are not encoded here.",
+    "locator": {
+     "source": "S1",
+     "page": 8,
+     "table": "Figure 1 Initial approach to solid pulmonary nodules"
+    }
+   }
+  ]
+ }
+}
