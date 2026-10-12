@@ -392,6 +392,7 @@ async def test_a_shared_patient_answer_excludes_with_a_reason_and_no_apply(toy, 
     assert out.state == "does_not_apply" and out.proposal is None
     assert out.exclusion.classification == "Toy 2020 · the toy guideline does not apply"
     assert out.exclusion.citations and out.exclusion.recommendation == "Manage per the clinical context."
+    assert any(c.get("step") == "outcome" and c.get("section") == "Scope" for c in out.exclusion.citations)
     assert next(s for s in out.settled if s.input == "known_cancer").fact == "known_primary_cancer"
 
 
@@ -443,3 +444,28 @@ async def test_swapped_volumes_are_asked(monkeypatch, jev):
            {"input": "current_volume_mm3", "value": 120, "quote": "120 mm3"})
     out = await PP.preview_pack(e, finding, "", {"prior_study": "Yes", "growth": "volumetry"}, finding=finding)
     assert not {"prior_volume_mm3", "current_volume_mm3"} & {s.input for s in out.settled}
+
+
+async def test_an_errored_preview_is_check_first_when_the_pack_has_eligibility(toy, toy_entry, monkeypatch, jev):
+    _model(monkeypatch, KIND, SIZE)
+
+    def broken(entry, given):
+        raise E.EvaluationError("two cases hold")
+    monkeypatch.setattr(PP.engine, "evaluate", broken)
+    out = await PP.preview_pack(_elig(toy), FINDING, "", {}, finding=FINDING)
+    assert out.degraded is True and out.state == "check_first"
+    out = await PP.preview_pack(toy_entry, FINDING, "", {}, finding=FINDING)
+    assert out.degraded is True and out.state == "applies"
+
+
+def test_failed_gives_the_state_of_a_preview_that_never_ran(toy, toy_entry):
+    assert PP.failed(_elig(toy)).state == "check_first" and PP.failed(_elig(toy)).degraded is True
+    assert PP.failed(toy_entry).state == "applies"
+
+
+async def test_a_degraded_settle_leaves_eligibility_asked_first(toy, monkeypatch, jev):
+    async def boom(system, prompt):
+        raise TimeoutError("slow")
+    monkeypatch.setattr(PP, "_call", boom)
+    out = await PP.preview_pack(_elig(toy), FINDING, "", {}, finding=FINDING)
+    assert out.degraded is True and out.state == "check_first" and out.missing[0] == "known_cancer"

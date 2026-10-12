@@ -341,6 +341,13 @@ def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict
                    trace=t.model_dump(mode="json") if t.outcome is not None else None, degraded=degraded)
 
 
+def failed(e: Entry) -> Preview:
+    """A preview that never ran (an error or a timeout): nothing settled; eligibility, if the pack has any, was never
+    assessed, so the card is check_first rather than applies."""
+    return Preview(degraded=True,
+                   state="check_first" if any(i.role == "eligibility" for i in e.inputs) else "applies")
+
+
 async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str, str],
                        sources: list[dict] | None = None, finding: str = "",
                        patient: dict[str, str] | None = None) -> Preview:
@@ -355,15 +362,15 @@ async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str
     # every value, numbers included (read by code from the quote), is put to Jev as stated for its scope: this
     # catches a number of the wrong time point or the wrong role ("was 5 mm, now 9 mm"; swapped volumes)
     pending = {k: v for k, (v, _) in model.items()}
-    confirmed, failed = await _confirm(e, pending, finding, findings, history) if pending else (set(), False)
+    confirmed, jev_failed = await _confirm(e, pending, finding, findings, history) if pending else (set(), False)
     keep = [k for k in model if k in confirmed]
     given.update({k: model[k][0] for k in keep})
     try:
         t = engine.evaluate(e, given)
     except (engine.EvaluationError, ValueError) as ex:
         logger.error("[library.preview] %s cannot be evaluated: %s", e.key, ex)
-        return Preview(degraded=True)
-    return _build(e, t, given, {k: model[k][1].quote for k in keep}, sources, degraded or failed or no_unit)
+        return failed(e)
+    return _build(e, t, given, {k: model[k][1].quote for k in keep}, sources, degraded or jev_failed or no_unit)
 
 
 def as_entry(e: Entry, sources: list[dict]) -> CardEntry:

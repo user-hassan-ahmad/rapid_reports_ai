@@ -35,7 +35,7 @@ from .fetch import OVERVIEW, resolve_guideline
 from .library import bundle as L
 from .library import describe as D
 from .library import preview_cache as PC
-from .library.pack_preview import PACK_BRANCH, REFERENCE_BRANCH, as_entry, preview_pack
+from .library.pack_preview import PACK_BRANCH, REFERENCE_BRANCH, as_entry, failed, preview_pack
 from .library.schema import FACTS
 from .matcher import Finding, match
 from .preview import preview
@@ -325,8 +325,8 @@ async def _pack_result(pack, req: OpenRequest, t0: float) -> OpenResult:
                                                 patient=req.patient))
         prev = await asyncio.wait_for(asyncio.shield(task), PREVIEW_TIMEOUT_S)
     except Exception as ex:   # TimeoutError included
-        logger.warning("[copilot.routes] pack preview %s: %s", type(ex).__name__, str(ex)[:200])
-        prev = Preview()
+        logger.warning("[copilot.routes] pack preview %s", type(ex).__name__)   # no message: it may hold dictation
+        prev = failed(e)
     return OpenResult(entry=_public(view), preview=prev, branch=PACK_BRANCH, reference=D.reference_view(e, sources),
                       ms=_ms(t0))
 

@@ -615,3 +615,24 @@ def test_a_pack_open_with_no_finding_asks_lesion_inputs_and_says_degraded(authed
     d = authed.post("/api/canvas/stack/guidelines/open", json={
         "card": PACK_CARD, "findings": "7 mm solid nodule.", "answered": {"risk": "high"}}).json()
     assert d["preview"]["proposal"] is None and "kind" in d["preview"]["missing"] and d["preview"]["degraded"] is True
+
+
+def test_a_failed_pack_preview_is_check_first_when_the_pack_has_eligibility(authed, monkeypatch, toy):
+    from tests.test_library_verify import _eligible_toy
+    lib = L.Library({"version": "v1", "entries": {"toy-nodule@1.0": {"entry": _eligible_toy(toy),
+                                                                      "sources": TOY_SOURCES}}})
+    monkeypatch.setattr(L, "get", lambda: lib)
+
+    async def boom(*a, **k):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(CR, "preview_pack", boom)
+    d = authed.post("/api/canvas/stack/guidelines/open", json={"card": PACK_CARD, "findings": "x"}).json()
+    assert d["preview"]["state"] == "check_first" and d["preview"]["degraded"] is True
+
+
+def test_a_failed_pack_preview_applies_when_the_pack_has_no_eligibility(authed, toy_lib, monkeypatch):
+    async def boom(*a, **k):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(CR, "preview_pack", boom)
+    d = authed.post("/api/canvas/stack/guidelines/open", json={"card": PACK_CARD, "findings": "x"}).json()
+    assert d["preview"]["state"] == "applies" and d["preview"]["degraded"] is True

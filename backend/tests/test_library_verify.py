@@ -195,3 +195,41 @@ def test_the_eligibility_gate(toy):
     t["inputs"].insert(0, _copy.deepcopy(ELIG))       # declared, but no rule reads it
     t["outcomes"].append({"id": "does_not_apply", "classification": "x", "locator": {"source": "S1", "page": 1}})
     assert any("never reaches the result" in p for p in V._eligibility(Entry.model_validate(t)))
+
+
+def test_every_does_not_apply_combination_has_an_eligibility_input_settled(toy):
+    """(a) A combination that reaches does_not_apply with no eligibility input settled excludes for no stated reason."""
+    t = _copy.deepcopy(toy)
+    t["inputs"].insert(0, _copy.deepcopy(ELIG))                         # declared, never read
+    t["outcomes"].append({"id": "does_not_apply", "classification": "x", "locator": {"source": "S1", "page": 1}})
+    sub = next(c for c in t["logic"][1]["cases"] if c["result"] == "subsolid")
+    sub["result"] = "does_not_apply"
+    p = V._enumerate(Entry.model_validate(t))
+    assert any("does_not_apply with no eligibility input settled" in x for x in p)
+
+
+def test_each_eligibility_input_must_lead_to_does_not_apply(toy):
+    """(b) An eligibility input that never decides a does_not_apply combination is not eligibility."""
+    t = _eligible_toy(toy)
+    t["inputs"].insert(1, {**ELIG, "id": "other", "fact": None})        # declared, never read
+    p = V._enumerate(Entry.model_validate(t))
+    assert any("other never leads to does_not_apply" in x for x in p)
+    assert not any("known_cancer never leads" in x for x in p)
+
+
+def test_a_does_not_apply_outcome_needs_an_eligibility_input(toy):
+    """(c)"""
+    t = _copy.deepcopy(toy)
+    t["outcomes"].append({"id": "does_not_apply", "classification": "x", "locator": {"source": "S1", "page": 1}})
+    assert any("no eligibility input" in x for x in V._eligibility(Entry.model_validate(t)))
+
+
+def test_the_does_not_apply_text_has_no_placeholder(toy):
+    """(d) The exclusion always reads in full: no input can be left unknown in its text."""
+    t = _eligible_toy(toy)
+    next(o for o in t["outcomes"] if o["id"] == "does_not_apply")["classification"] = "excluded at {risk} risk"
+    assert any("placeholder" in x for x in V._eligibility(Entry.model_validate(t)))
+
+
+def test_an_eligible_toy_passes_the_enumeration_eligibility_checks(toy):
+    assert V._enumerate(Entry.model_validate(_eligible_toy(toy))) == []

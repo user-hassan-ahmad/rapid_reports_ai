@@ -27,11 +27,15 @@ def check(entry: Entry, manifest: Manifest, cases: Cases | None) -> list[str]:
 
 def _eligibility(e: Entry) -> list[str]:
     """Spec §3.6: at most three eligibility inputs, each with its scope clause's locator, each able to change the
-    result, and a does_not_apply outcome for them to reach. A wider scope belongs in applies_to or a pitfall."""
+    result, and a does_not_apply outcome for them to reach, whose text has no placeholder; no does_not_apply outcome
+    without them. A wider scope belongs in applies_to or a pitfall. Gate 2 checks the rest per combination."""
     el = [i for i in e.inputs if i.role == "eligibility"]
+    dna = e.outcome(DOES_NOT_APPLY)
     if not el:
-        return []
+        return [f"a {DOES_NOT_APPLY} outcome but no eligibility input to reach it"] if dna is not None else []
     p = []
+    if dna is not None and any(PH.search(x) for x in (dna.classification, dna.recommendation, *dna.caveats)):
+        p.append(f"the {DOES_NOT_APPLY} outcome text has a placeholder: an exclusion always reads in full")
     if len(el) > MAX_ELIGIBILITY:
         p.append(f"{len(el)} eligibility inputs: at most {MAX_ELIGIBILITY} (a wider scope belongs in applies_to or a "
                  f"pitfall)")
@@ -211,6 +215,9 @@ def _enumerate(e: Entry) -> list[str]:
     if total > MAX_VERIFY:
         return [f"{total} combinations: too many to enumerate"]
     p: list[str] = []
+    elig = [i for i in e.inputs if i.role == "eligibility"]
+    bands = {i.id: [s.id for s in e.logic if isinstance(s, BandStep) and s.ref == i.id] for i in elig}
+    witnessed: set[str] = set()
     for combo in product(*(d for _, _, d in free)):
         given = {n: v for (k, n, _), v in zip(free, combo) if k == "in"}
         over = {n: v for (k, n, _), v in zip(free, combo) if k == "step"}
@@ -226,12 +233,35 @@ def _enumerate(e: Entry) -> list[str]:
                 t = Trace(outcome=out.value, inputs={i.id: _iv(env[i.id]) for i in e.inputs}, steps=steps)
                 if any(PH.search(render(e, t, x)) for x in (o.classification, o.recommendation, *o.caveats)):
                     p.append(f"[{label}] outcome {o.id} leaves a placeholder unfilled")
+                if elig and o.id == DOES_NOT_APPLY:
+                    held = [i.id for i in elig if _held(i, env, over, bands)]
+                    if not held:
+                        p.append(f"[{label}] {DOES_NOT_APPLY} with no eligibility input settled")
+                    witnessed |= {k for k in held if k not in witnessed and _decides(e, given, over, k, bands)}
         except EvaluationError as ex:
             p.append(f"[{label}] {ex}")
         if len(p) >= 20:
             p.append("… more")
-            break
-    return p
+            return p
+    return p + [f"eligibility input {i.id} never leads to {DOES_NOT_APPLY}" for i in elig if i.id not in witnessed]
+
+
+def _held(i, env: dict, over: dict, bands: dict) -> bool:
+    """An eligibility input is settled (not unknown, not not_applicable): a number through its band step."""
+    if i.type == "number":
+        return any(b in over and over[b].state not in ("unknown", "not_applicable") for b in bands[i.id])
+    return env[i.id].state not in ("unknown", "not_applicable")
+
+
+def _decides(e: Entry, given: dict, over: dict, k: str, bands: dict) -> bool:
+    """With this eligibility input unknown and everything else the same, the result is no longer does_not_apply."""
+    env = _inputs(e, {n: v for n, v in given.items() if n != k})
+    try:
+        run(e, env, {**over, **{b: V(state="unknown") for b in bands[k]}})
+    except EvaluationError:
+        return False
+    out = env[e.result]
+    return not (out.state == "present" and out.value == DOES_NOT_APPLY)
 
 
 def _samples(i) -> list[float]:
