@@ -86,6 +86,9 @@ Nothing reaches the report unless the radiologist presses Apply or ticks it.
       pass. Bar: 0.5 (lab 2026-10-12, 24 claims x 2 runs on real fetched sources: true min 0.73, false max 0.19,
       wrong-branch max 0.08).
     - Ask-time gaps: Jev decides whether the stored entry already answers a question, before any new search.
+    - A malformed or missing Jev answer is an outage, never a low score: a response without `answers`, without an
+      asked key or without a numeric score raises into the caller's failure path (one retry per source window
+      first); nothing is stored as `not_available` and no failure is cached.
     - Other thresholds (branch coverage) remain provisional, set where false yes answers reach zero in the lab.
 21. **The registry grows where radiologists ask.** A question the entry can't answer runs one targeted query within
     that guideline. The answer is grounded in the new chunks, which are added to the entry as supplementary evidence
@@ -241,11 +244,19 @@ Table `guideline_registry`, with an alembic migration:
   - is case-agnostic (structural form, multi-domain examples);
   - treats "no guideline" as a valid answer, and the expected one for most findings.
 - Normalisation:
+  - the prompt's KNOWN SYSTEMS rows print each entry's branches, so the model reuses the registry's names;
   - an exact key or alias hits the registry, and the registry's own branches replace the model's skeleton;
+  - the model's branch is matched to the registry's branches exactly, else once normalised; else Jev chooses among
+    the registry's branches (or "none"); "none" or a Jev failure keeps the model's name, a new branch fetched on
+    open;
   - otherwise, a registry entry of the same system with a different version goes to Jev, which chooses between
-    distinct entries or "none";
+    distinct entries or "none"; a versionless candidate with several rows and no pick takes the latest row,
+    verified first (never a new unversioned key);
   - otherwise the candidate becomes a new key, stored only when opened.
-- Caps are applied after ranking (§4.1).
+- At most 3 candidates are resolved per finding; caps are applied after ranking, in rank order (every finding's
+  first card before any finding's second, §4.1).
+- The match, edition-pick, branch-pick and TNM-gate caches key on normalised text and include the history where
+  the answer depends on it; they hold successes only.
 
 ### 5.3 `resolve_guideline(card)`: the targeted fetch
 
@@ -258,11 +269,19 @@ Shared by card open and by ask. The steps:
    Then:
    - Tavily search, basic depth, 5 results each, no domain filter.
    - Code ranks the results by source tier: 1 = publisher or issuing society, 2 = PubMed Central full text,
-     3 = other reputable secondary summaries.
+     3 = other reputable secondary summaries, 4 = abstract-only and landing pages (ranked last of the tiers).
+   - **Relevance gate (Jev).** One batched call over every candidate (title, URL, the first 600 characters of its
+     snippet), one question each: "Result [i] is about <name> <version> (<publication title>), not a different
+     guideline or topic." A result below the bar (0.5, provisional; the seed lab calibrates it) ranks last, after
+     tier 4. A Jev failure means no relevance reordering (tier and score only), logged.
    - Results scoring below 0.3 are dropped first, unless none pass; known access-block pages fall back to their
      search snippet; URLs are canonicalised before de-duplication.
-   - Tavily extract runs on the top 2 URLs with a focus query: "<branch>: categories, criteria, thresholds, required
-     features, management recommendations".
+   - Tavily extract reads the top 4 URLs as full pages, each capped at one Jev window (so the first pass plus a
+     retry fit the window cap).
+   - **Refill:** a picked page whose extract is under 1,500 characters is offered the next ranked candidate in one
+     extra extract round (shorter timeout). The replacement is taken only if its extract reaches 1,500 characters
+     or is longer than the short one; an unreplaced short page keeps the longer of its extract and its search
+     snippet. No refill when the first extract call itself failed.
 3. **Coverage (Jev).** One call with one yes/no question per branch in scope: "SOURCE states the criteria or
    management for: <branch>". If the case's branch is below the bar, one more query runs
    (`<name> <version> <branch> recommendations`) over pages not already read, then extract and Jev again. Still below the bar → `not_available`.
@@ -308,21 +327,25 @@ Shared by card open and by ask. The steps:
   - `settled` keeps only real options of real inputs; the radiologist's answers win.
   - **Jev verifies the evidence, the model keeps the judgement.** Every model-settled value must carry its quote, the
     shortest verbatim span of the findings or referral that settles it (for a TNM X value, the span stating the axis
-    cannot be assessed); an empty quote makes the input missing. Jev checks each quote in one batched call ("The
+    cannot be assessed); an empty quote makes the input missing. Code confirms a quote that appears verbatim in the
+    findings or referral (both flattened: case, whitespace and punctuation runs; whole tokens; at least 2
+    characters; no minimum token count), a deterministic fact. Jev checks only the rest, in one batched call ("The
     FINDINGS or CLINICAL HISTORY state this: <quote>"); the quote → option mapping stays Qwen's, read against the
-    entry's rule. A quote below the bar, or every value when Jev fails, becomes missing: the input is asked, never
-    assumed. Answered inputs are not checked.
+    entry's rule. A quote below the bar becomes missing, and when Jev fails, only the quotes code did not confirm
+    become missing: the input is asked, never assumed. Answered inputs are not checked.
   - `missing` is computed in code: required inputs − settled − `not_needed`. A rejected or unconfirmed value is always
     missing. TNM: required = the site's axes (+ histology where the stage table varies by it), and `not_needed` is
     ignored.
   - `proposal`, only when nothing is missing: `classification` = "<name> <version> · <output's category>" and
-    `recommendation` = the chosen output's recommendation, both copied verbatim. `line` is the model's sentence. An
-    invalid or absent output number, or a model value that contradicts an answered input, gives no proposal. TNM:
+    `recommendation` = the chosen output's recommendation, both copied verbatim. `line` is the model's sentence; when
+    it is empty or fails the code check below, code builds it as "<classification>." instead. An invalid or absent
+    output number, or a model value (a real option, compared normalised) that contradicts an answered input, gives no
+    proposal. TNM:
     the proposal (and any stage) is assembled in code (§5.8).
 - The proposal is null while any required input is missing, or when the branch is not `checked`.
 - **Code check:** every number in `line` (number words mapped to digits) must appear in the branch's rule, outputs or
-  options, the entry's name or version, or the findings. Otherwise the proposal is dropped, and the card shows the
-  inputs only.
+  options, the entry's name or version, or the findings. Otherwise the model's line is replaced by the code-built
+  line; a proposal whose classification and recommendation were copied by code is never dropped for its wording.
 
 ### 5.5 Ask (`POST /ask`)
 
