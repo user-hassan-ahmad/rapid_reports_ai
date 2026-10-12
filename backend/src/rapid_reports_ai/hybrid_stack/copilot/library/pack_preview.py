@@ -322,11 +322,13 @@ def _nouns(e: Entry) -> list[str]:
     return [t for t in e.applies_to.finding_type if t.strip()] or ["lesion"]
 
 
-PHASE_MAX = 0.5           # Jev _phase_claim at or above it: the attenuation is asked
+UNENHANCED_MIN = 0.8      # Jev _phase_claim below it: the attenuation is asked (review M2)
 
 
 def _phase_claim(shown: str) -> str:
-    return f"The FINDING states that {shown} was measured on a contrast-enhanced (post-contrast) phase"
+    """An attenuation settles only when the finding states it was measured unenhanced: a post-contrast value, or one
+    with no phase in a two-phase study, may not be the value the input means."""
+    return f"The FINDING states that {shown} was measured on an unenhanced (non-contrast) series"
 
 
 def _quote_state(i: InputDef, quote: str) -> str:
@@ -364,7 +366,7 @@ async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding
             return set(), True, False
         claims = [f"{_LEAD[scope]} {e.input(k).label}: {_show(e, e.input(k), pending[k][0]).replace('_', ' ')}"
                   for k in ids]
-        # an attenuation measured after contrast may be an enhanced value, not the one the input means: asked
+        # an attenuation not stated as unenhanced may be an enhanced value, not the one the input means: asked
         hu = [k for k in ids if scope == "lesion" and e.input(k).type == "number"
               and Q.FAMILY.get(Q.canon(e.input(k).unit)) == "attenuation"]
         claims += [_phase_claim(_show(e, e.input(k), pending[k][0])) for k in hu]
@@ -377,7 +379,7 @@ async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding
             return set(), False, True
         if one_lesion and got[-1] < ONE_LESION_MIN:
             logger.info("[library.preview] %s: finding not one lesion (%.2f); lesion inputs asked", e.key, got[-1])
-        phased = {k for k, s in zip(hu, got[len(ids):]) if s >= PHASE_MAX}
+        phased = {k for k, s in zip(hu, got[len(ids):]) if s < UNENHANCED_MIN}
         bar = {k: P.SETTLED_MIN if e.input(k).type == "number" else QUOTE_MIN for k in ids}
         return ({k for k, s in zip(ids, got) if s >= bar[k]} - phased,
                 not one_lesion or got[-1] >= ONE_LESION_MIN, False)
