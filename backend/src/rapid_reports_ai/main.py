@@ -2710,33 +2710,22 @@ async def skill_sheet_test_generate_endpoint(
     request: SkillSheetTestGenerateRequest,
     current_user: User = Depends(get_current_user)
 ):
-    """Generate a test report from a skill sheet (no saved template required)."""
+    """Generate a test report from a skill sheet (no saved template required), through the scratchpad path the
+    template will be reported on (template_preview.preview_report)."""
     try:
         logger.info("━━━ SKILL SHEET TEST GENERATE ━━━")
         logger.info("  scan_type: %s", request.scan_type)
-        logger.info("  clinical_history: %s", request.clinical_history[:200] if request.clinical_history else "(empty)")
         logger.info("  findings_input: %d chars", len(request.findings_input))
         logger.info("  skill_sheet: %d chars", len(request.skill_sheet))
 
-        tm = TemplateManager()
-        api_key = get_system_api_key('cerebras', 'CEREBRAS_API_KEY')
-        if not api_key:
-            return {"success": False, "error": "Cerebras API key not configured"}
-
-        result = await tm.test_generate_with_skill_sheet(
-            skill_sheet=request.skill_sheet,
-            scan_type=request.scan_type,
-            clinical_history=request.clinical_history,
-            findings_input=request.findings_input,
-            api_key=api_key,
-        )
-
-        logger.info("━━━ SKILL SHEET TEST GENERATE RESULT ━━━")
-        logger.info("  model_used: %s", result.get("model_used", "unknown"))
-        logger.info("  report_content: %d chars", len(result.get("report_content", "")))
-        logger.info("  ── generated report ──\n%s", result.get("report_content", ""))
-
-        return {"success": True, **result}
+        from . import template_preview
+        out = await template_preview.preview_report(request.skill_sheet, request.scan_type,
+                                                    request.clinical_history, request.findings_input)
+        if not out.get("usable"):
+            return {"success": False, "error": "The template isn't readable yet; refine it and try again."}
+        logger.info("  model_used: %s, report_content: %d chars", out.get("model_used"),
+                    len(out.get("report_content") or ""))
+        return {"success": True, "report_content": out["report_content"], "model_used": out.get("model_used")}
     except Exception as e:
         import traceback
         traceback.print_exc()

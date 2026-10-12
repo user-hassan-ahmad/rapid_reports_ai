@@ -114,6 +114,7 @@
 	let loadingNewTestCase = false;
 	let error = '';
 	let hasGenerated = false;
+	let previewStale = false; // the sheet changed since the shown preview was generated
 
 	let showSaveDialog = false;
 	let templateName = '';
@@ -460,11 +461,10 @@
 			chatHistory = chatHistory.slice(0, -1);
 		} finally { loading = false; }
 
-		// Auto-regenerate the preview so the user can verify the behavioral_claim
-		// against a fresh report without clicking Regenerate. No-op if testFindings
-		// isn't populated yet (e.g., still in questions stage).
-		if (isRefineTurn && stage === 'refine' && testFindings.trim()) {
-			runTestGenerate();
+		// The preview re-runs on demand (Update preview), not after every refine turn: it runs the full scratchpad
+		// path (grouping, assumed normals, generation). Flag it stale when the sheet changed under a shown report.
+		if (isRefineTurn && testReport && preMutationSkillSheet !== null && skillSheet !== preMutationSkillSheet) {
+			previewStale = true;
 		}
 	}
 
@@ -517,6 +517,7 @@
 	async function runTestGenerate() {
 		if (!skillSheet || !testFindings.trim()) return;
 		loadingTest = true;
+		previewStale = false;
 		error = '';
 		prevReport = testReport;
 		testReport = '';
@@ -1086,10 +1087,10 @@
 								>
 									{#if loadingTest}
 										<span class="inline-block w-3 h-3 border-2 border-purple-400/30 border-t-purple-400 rounded-full animate-spin"></span>
-										Regenerating...
+										Updating preview...
 									{:else}
 										<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-										Regenerate
+										Update preview{#if previewStale}&nbsp;<span class="text-purple-400/70">(template changed)</span>{/if}
 									{/if}
 								</button>
 							{/if}
@@ -1194,7 +1195,7 @@
 							<div class="mt-6 pt-4 border-t border-white/[0.06] flex items-start gap-3 max-w-2xl mx-auto">
 								<svg class="w-4 h-4 text-purple-400/60 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
 								<p class="text-xs text-gray-600 leading-relaxed">
-									Not quite right? Use the <button class="text-purple-400 hover:text-purple-300" on:click={() => goToStage('refine')}>Refine</button> tab to add corrections — describe what should change and your style guide updates automatically. Then regenerate to see the effect.
+									Not quite right? Use the <button class="text-purple-400 hover:text-purple-300" on:click={() => goToStage('refine')}>Refine</button> tab to add corrections — describe what should change and your style guide updates automatically. Then update the preview to see the effect.
 								</p>
 							</div>
 						</div>
