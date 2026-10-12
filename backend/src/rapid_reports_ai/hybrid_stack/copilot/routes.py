@@ -31,9 +31,9 @@ from . import matcher as M
 from . import registry as Reg
 from . import tnm
 from .ask import QA, AskResult, Context, ask
+from .fetch import OVERVIEW, resolve_guideline
 from .library import bundle as L
 from .library.pack_preview import PACK_BRANCH, as_entry, preview_pack
-from .fetch import OVERVIEW, resolve_guideline
 from .matcher import Finding, match
 from .preview import preview
 from .recs import RecsResult, suggest
@@ -142,8 +142,10 @@ def _check_card(card: CardIn) -> None:
     name and version make: a client may not plant an arbitrary key in the shared registry."""
     if tnm.is_tnm(card.key):
         return
-    if L.get().lookup(card.key) is not None:
+    if _pack(card.key) is not None:
         return
+    if L.get().lookup(card.key) is not None:
+        raise HTTPException(status_code=400, detail="Not an openable guideline")
     if len(card.key) > KEY_MAX or not _KEY.match(card.key):
         raise HTTPException(status_code=400, detail="Bad guideline key")
     if card.key == Reg.make_key(card.name, card.version):

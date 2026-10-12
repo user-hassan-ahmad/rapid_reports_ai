@@ -508,3 +508,16 @@ def test_preview_a_library_pack(authed, toy_lib):
     d = authed.post("/api/canvas/stack/guidelines/preview", json={
         "card": PACK_CARD, "findings": "7 mm solid nodule.", "answered": {}}).json()
     assert d["preview"]["missing"] == ["risk"] and len(d["preview"]["possible"]) == 2
+
+
+def test_a_non_servable_library_key_is_rejected_and_never_fetched(authed, monkeypatch, toy):
+    t2 = {k: v for k, v in toy.items() if k not in ("logic", "result", "outcomes")} | {"tier": 2}
+    lib = L.Library({"version": "v1", "entries": {"toy-nodule@1.0": {"entry": t2, "sources": TOY_SOURCES}}})
+    monkeypatch.setattr(L, "get", lambda: lib)
+
+    async def resolve(db, card):
+        raise AssertionError("never fetched")
+    monkeypatch.setattr(CR, "resolve_guideline", resolve)
+    r = authed.post("/api/canvas/stack/guidelines/open", json={
+        "card": {**PACK_CARD, "name": "Anything", "version": "9"}, "findings": "x", "answered": {}})
+    assert r.status_code == 400
