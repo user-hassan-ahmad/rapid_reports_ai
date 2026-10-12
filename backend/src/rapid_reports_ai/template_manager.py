@@ -2522,6 +2522,7 @@ No user input provided. Omit this section entirely from output.
         model_override: str = None,
         brief_text: str | None = None,
         history_supplied: bool = False,
+        stack: dict | None = None,
     ) -> dict:
         """
         Generate a report using the skill sheet + global style guide prompt
@@ -2541,6 +2542,8 @@ No user input provided. Omit this section entirely from output.
         replaces the raw skill sheet and switches to the _BRIEF prompt package.
         history_supplied: True when code writes the CLINICAL HISTORY section (spec §4); adds a
         note after the inputs telling the model not to write it.
+        stack: a scratchpad session ({"conclusion", "declined"}): FINDINGS is the confirmed findings block, so the
+        sheet is reduced to structure and style (template_stack.stack_brief) and read with the _STACK prompts.
         """
         from pydantic import BaseModel
         from .enhancement_utils import (
@@ -2553,15 +2556,25 @@ No user input provided. Omit this section entirely from output.
         from .global_style_guide import (
             SYSTEM_PREAMBLE, GLOBAL_STYLE_GUIDE, PRE_WRITING_ANALYSIS, VERIFICATION_CHECKLIST,
             GLOBAL_STYLE_GUIDE_BRIEF, PRE_WRITING_ANALYSIS_BRIEF, VERIFICATION_CHECKLIST_BRIEF,
-            TEMPLATE_SHEET_HEADER_BRIEF,
+            TEMPLATE_SHEET_HEADER_BRIEF, GLOBAL_STYLE_GUIDE_STACK, PRE_WRITING_ANALYSIS_STACK,
+            VERIFICATION_CHECKLIST_STACK, TEMPLATE_SHEET_HEADER_STACK,
         )
+        from .template_stack import stack_brief
 
         skill_sheet = template_config.get("skill_sheet", "")
         scan_type = template_config.get("scan_type", "")
         findings_input = user_inputs.get("FINDINGS", "")
         clinical_history = user_inputs.get("CLINICAL_HISTORY", "")
 
-        if brief_text and brief_text.strip():
+        if stack is not None:
+            # Scratchpad session: the radiologist confirmed the content; the sheet keeps structure and style only
+            pre_writing, checklist = PRE_WRITING_ANALYSIS_STACK, VERIFICATION_CHECKLIST_STACK
+            brief = stack_brief(skill_sheet, stack.get("conclusion") or "", stack.get("declined") or ())
+            system_prompt = (
+                f"{SYSTEM_PREAMBLE}\n\n{GLOBAL_STYLE_GUIDE_STACK}\n\n"
+                f"{TEMPLATE_SHEET_HEADER_STACK}\n\n{brief}"
+            )
+        elif brief_text and brief_text.strip():
             # Mirror path (spec template-pipeline-mirror §5): the sheet reconciled with this
             # dictation. skill_sheet is unused here; the brief replaces it. A blank brief is a
             # failed brief and takes the raw path below.
@@ -2708,6 +2721,7 @@ Findings: {findings_input}{history_note}
         user_inputs: dict,
         user_signature: str = None,
         model_override: str = None,
+        stack: dict | None = None,
     ) -> dict:
         """
         Generate report using structured config with section-aware prompt construction.
@@ -2717,6 +2731,7 @@ Findings: {findings_input}{history_note}
             template_config: Structured configuration dict containing scan info and sections
             user_inputs: User-provided values for input fields (e.g., FINDINGS, CLINICAL_HISTORY)
             user_signature: Optional user signature to append
+            stack: a scratchpad session ({"conclusion", "declined"}); skill_sheet_guided templates only.
             model_override: Optional model name to override the default TEMPLATE_REPORT_GENERATOR.
                 Only wired through the skill_sheet_guided path; production templated path
                 still uses MODEL_CONFIG. Used by the quick-report proto for A/B model comparison.
@@ -2739,7 +2754,7 @@ Findings: {findings_input}{history_note}
         if template_config.get("generation_mode") == "skill_sheet_guided":
             return await self._generate_report_skill_sheet_guided(
                 template_config, user_inputs, user_signature,
-                model_override=model_override,
+                model_override=model_override, stack=stack,
             )
 
         # Extract metadata

@@ -135,8 +135,9 @@ async def test_case_options_fail_closed_on_jev_error_and_without_a_case(monkeypa
 
 def _gen_fakes(monkeypatch, calls, options_delay=0.0):
     async def fake_gen(self, template_config, user_inputs, user_signature=None, model_override=None,
-                       brief_text=None, history_supplied=False):
-        calls["gen"] = {"sheet": template_config["skill_sheet"], "brief_text": brief_text, "inputs": user_inputs}
+                       brief_text=None, history_supplied=False, stack=None):
+        calls["gen"] = {"sheet": template_config["skill_sheet"], "brief_text": brief_text, "inputs": user_inputs,
+                        "stack": stack}
         return {"report_content": REPORT, "model_used": "q", "description": "d", "scan_type": "CT"}
 
     async def fake_case_options(case, findings, scan_type, history, **kw):

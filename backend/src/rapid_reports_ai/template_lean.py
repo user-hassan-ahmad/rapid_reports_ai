@@ -399,8 +399,10 @@ def without_declined(options: List[dict], declined: Sequence[str]) -> List[dict]
 
 async def generate_template_report_lean(*, sheet: str, scan_type: str, findings: str, history: str,
                                         case: "Optional[dict] | Callable[[], Awaitable[Optional[dict]]]",
-                                        signature: Optional[str], declined: Sequence[str] = ()) -> dict:
+                                        signature: Optional[str], declined: Sequence[str] = (),
+                                        stack: Optional[dict] = None) -> dict:
     """`declined`: scratchpad v2 chips the radiologist removed (spec 2026-10-11 §6), never offered back.
+    `stack`: a scratchpad session ({"conclusion", "declined"}), passed to the generator (template_stack).
     Today's single-pass generator on the stored sheet, then the post-generation check (sections from the
     report's own headers). Returns as soon as the check has finished: the report never waits for options.
     Phase-1 options are routed and written beside the generator and vetted (vet_options) after it, in the
@@ -417,7 +419,7 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         t0 = time.time()
         out = await TemplateManager()._generate_report_skill_sheet_guided(
             template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": sheet, "scan_type": scan_type},
-            user_inputs={"FINDINGS": findings, "CLINICAL_HISTORY": history})
+            user_inputs={"FINDINGS": findings, "CLINICAL_HISTORY": history}, stack=stack)
         rec["lat"]["generator_s"] = round(time.time() - t0, 1)
         return out
 

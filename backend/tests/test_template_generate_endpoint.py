@@ -364,6 +364,39 @@ async def test_flag_on_with_an_old_sheet_runs_the_lean_path(aclient, auth_header
     assert r["pipeline"] == "mirror" and not stubs["current"] and stubs["mirror"][0]["sheet"].startswith("## FINDINGS")
 
 
+async def _generate_stack(aclient, headers, template):
+    body = {"user_inputs": {"FINDINGS": "LV normal.", "CLINICAL_HISTORY": "?HCM"}, "stack": True,
+            "stack_conclusion": "Normal cardiac MRI.", "stack_declined": ["No LGE."]}
+    return (await aclient.post(f"/api/templates/{template.id}/generate", headers=headers, json=body)).json()
+
+
+async def test_stack_session_reaches_the_lean_generator(aclient, auth_headers, mirror_template, stubs, monkeypatch):
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+    r = await _generate_stack(aclient, auth_headers, mirror_template)
+    assert r["success"] and stubs["mirror"][0]["stack"] == {"conclusion": "Normal cardiac MRI.", "declined": ["No LGE."]}
+    assert stubs["mirror"][0]["declined"] == ["No LGE."]
+    await _drain_options()
+
+
+async def test_stack_session_reaches_todays_generator(aclient, auth_headers, mirror_template, stubs, monkeypatch):
+    seen = []
+
+    async def fake_current(self, template_config, user_inputs, user_signature=None, **kw):
+        seen.append(kw)
+        return {"report_content": "R", "description": "d", "scan_type": "CMR", "model_used": "m"}
+    monkeypatch.setattr(TemplateManager, "generate_report_from_config", fake_current)
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "0")
+    await _generate_stack(aclient, auth_headers, mirror_template)
+    assert seen[0]["stack"] == {"conclusion": "Normal cardiac MRI.", "declined": ["No LGE."]}
+
+
+async def test_no_stack_flag_passes_no_stack(aclient, auth_headers, mirror_template, stubs, monkeypatch):
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+    await _generate(aclient, auth_headers, mirror_template)
+    assert stubs["mirror"][0]["stack"] is None
+    await _drain_options()
+
+
 async def test_allowlisted_user_can_choose_current(aclient, auth_headers, mirror_template, stubs, monkeypatch,
                                                    test_user):
     monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")

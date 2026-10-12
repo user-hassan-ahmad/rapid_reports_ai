@@ -672,6 +672,8 @@ class TemplateGenerateRequest(BaseModel):
     model: str = MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
     pipeline: Optional[str] = None  # "mirror" / "current": honoured for allowlisted users only
     stack_declined: Optional[List[str]] = None  # scratchpad v2: chips the radiologist removed (never offered back)
+    stack: bool = False  # a scratchpad session: FINDINGS is the confirmed findings block (template_stack)
+    stack_conclusion: str = ""  # the conclusion the radiologist confirmed (the impression phrases it)
 
 
 class TemplatePrepareRequest(BaseModel):
@@ -1854,6 +1856,8 @@ async def generate_report_from_template(
         # stored sheet, the post-generation check; Phase 1 for options only, finished in the background (the
         # report never waits for options). The heavy mirror (tp.generate_template_report) is parked.
         use_mirror = _mirror_ready(template, current_user.email, request.pipeline)
+        _stack = ({"conclusion": request.stack_conclusion, "declined": request.stack_declined or []}
+                  if request.stack else None)
         mirror_candidate, options_job, _p1 = None, None, {"source": "pending"}
         if use_mirror:
             try:
@@ -1874,7 +1878,7 @@ async def generate_report_from_template(
                         _db.close()
                 mirror_result = await tl.generate_template_report_lean(
                     sheet=_sheet, scan_type=_scan, findings=_findings, history=_history, case=_resolve_case,
-                    signature=current_user.signature, declined=request.stack_declined or [])
+                    signature=current_user.signature, declined=request.stack_declined or [], stack=_stack)
                 options_job = mirror_result.get("options_job")
                 mirror_candidate = tp.candidate_record(mirror_result, int((time.perf_counter() - _tpl_gen_t0) * 1000))
                 mirror_candidate["phase1_source"] = _p1["source"]   # "pending" until the options job resolves it
@@ -1899,7 +1903,8 @@ async def generate_report_from_template(
             report_output_dict = await tm.generate_report_from_config(
                 template_config=template.template_config,
                 user_inputs=user_inputs,
-                user_signature=current_user.signature
+                user_signature=current_user.signature,
+                stack=_stack,
             )
         print(
             f"[FLOW_TIMING] template_generate: llm_done "

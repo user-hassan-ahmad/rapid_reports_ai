@@ -438,7 +438,9 @@
 				body: JSON.stringify({
 					user_inputs: variableValues,
 					model: selectedModel,
-					...(useStack ? { stack_declined: declined } : {})
+					...(useStack
+						? { stack: true, stack_declined: declined, stack_conclusion: stackGate?.conclusion_text ?? '' }
+						: {})
 				})
 			});
 			const data = await res.json();
@@ -863,6 +865,7 @@
 					onStackPills={(p) => { stackPills = p; }}
 					stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
 					onStackGate={(g, f) => { stackGate = g; stackFindings = f; }}
+					onStackGenerate={async () => { await tick(); void handleGenerateReport(); }}
 					onStackSession={(id) => { stackSessionId = id; }}
 					stackTemplateId={selectedTemplate?.id ?? null}
 				/>
