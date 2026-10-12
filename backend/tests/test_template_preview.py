@@ -170,3 +170,34 @@ def test_test_generate_endpoint_uses_the_preview(authed, monkeypatch):
     r = client.post("/api/templates/skill-sheet/test-generate",
                     json={"skill_sheet": "S", "scan_type": "CT", "clinical_history": "H", "findings_input": "F"})
     assert r.json()["success"] is False
+
+
+async def test_preview_report_returns_undictated_number_flags(monkeypatch):
+    from rapid_reports_ai.hybrid_stack import normals, service
+    from rapid_reports_ai import template_manager, template_number_check
+    seen = {}
+
+    async def fake_group(scan_type, text, regions, previous):
+        return NS(units=[U("Gallstones 12 mm.", regions[0].name, abnormal=True), U("Cholelithiasis.", "Conclusion")])
+
+    async def fake_assumed(dictation, region_normals, abnormal, dictated_normal, removed, **kw):
+        return NS(assumed={}, dropped={}, error=None)
+
+    class FakeTM:
+        async def generate_report_from_config(self, cfg, inputs, sig, stack=None):
+            return {"report_content": "Gallstones 12 mm. A 23 mm cyst.", "model_used": "m"}
+
+    real = template_number_check.undictated_numbers
+
+    def spy(report, sources, sheet=""):
+        seen.update(report=report, sources=list(sources), sheet=sheet)
+        return real(report, seen["sources"], sheet)
+
+    monkeypatch.setattr(service, "group_update", fake_group)
+    monkeypatch.setattr(normals, "assumed", fake_assumed)
+    monkeypatch.setattr(template_manager, "TemplateManager", FakeTM)
+    monkeypatch.setattr(template_number_check, "undictated_numbers", spy)
+    out = await template_preview.preview_report(SHEET, "CT", "Pain.", "Gallstones 12 mm. Cholelithiasis.")
+    assert seen["sources"] == [out["findings_block"], "Pain.", "Cholelithiasis."] and seen["sheet"] == SHEET
+    texts = [f["text"] for f in out["number_flags"]]
+    assert len(texts) == 1 and "23" in texts[0]

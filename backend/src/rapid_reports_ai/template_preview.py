@@ -158,6 +158,9 @@ async def preview_report(sheet: str, scan_type: str, history: str, dictation: st
     gen = await template_manager.TemplateManager().generate_report_from_config(
         cfg, {"FINDINGS": block, "CLINICAL_HISTORY": history}, None,
         stack={"conclusion": conclusion, "declined": declined})
+    from . import template_number_check
+    flags = template_number_check.undictated_numbers(gen["report_content"], [block, history, conclusion], sheet)
     return {"usable": True, "regions": [r.name for r in regions], "assumed": kept, "dropped": a.dropped,
             "assumed_error": a.error, "grouper_error": getattr(g, "error", None), "findings_block": block,
-            "report_content": gen["report_content"], "model_used": gen.get("model_used")}
+            "report_content": gen["report_content"], "model_used": gen.get("model_used"),
+            "number_flags": flags}

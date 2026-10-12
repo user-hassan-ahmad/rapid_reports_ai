@@ -138,13 +138,25 @@ def test_grammar_asks_one_named_structure_per_normal_and_slotted_examples():
         assert "names its structure in its own words" in prompt
 
 
-def test_convert_prompt_exemplars_are_slotted_and_diagnosis_free():
+def test_convert_prompt_exemplars_are_slotted_and_diagnosis_slotted():
     from rapid_reports_ai import template_sheet_lab_prompts as P
 
     t = P.TEMPLATE_SHEET_CONVERT_PROMPT
     assert "every specific value, code, grade or time window becomes a {slot}" in t
-    assert "any diagnosis is dropped from the quote" in t
+    assert "any diagnosis is dropped from the quote" not in t
+    assert "the diagnosis itself becomes a {diagnosis} slot" in t
+    assert "which most likely represents {diagnosis}" in t
     assert "is kept, word for word" not in t
+
+
+def test_analyser_exemplars_keep_interpretive_wording_with_diagnosis_slotted():
+    from rapid_reports_ai import template_sheet_lab_prompts as P
+
+    a = P.ANALYSER_SYSTEM_PROMPT
+    assert "never a diagnosis" not in a
+    assert "keep the radiologist's interpretive wording" in a
+    assert "the diagnosis itself goes in a {diagnosis} slot" in a
+    assert "which most likely represents {diagnosis}" in a
 
 
 def test_labelled_openings_reach_the_analyser_repair_and_convert_prompts():
