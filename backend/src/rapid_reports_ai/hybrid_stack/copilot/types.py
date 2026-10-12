@@ -121,4 +121,6 @@ class Preview(BaseModel):
     missing: list[str] = Field(default_factory=list)
     proposal: Proposal | None = None
     possible: list[str] = Field(default_factory=list)   # library packs: outcomes still possible, rendered
+    bounded: bool = True          # library packs: False when `possible` may be incomplete (an unknown number feeds a
+                                  # formula); `missing` then lists every unknown input that reaches the result
     trace: dict[str, Any] | None = None                 # library packs: the engine trace behind the proposal

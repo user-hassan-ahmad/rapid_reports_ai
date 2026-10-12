@@ -36,7 +36,7 @@ def test_a_number_feeding_a_formula_is_unbounded():
 def test_too_many_combinations_falls_back_to_everything(toy_entry, monkeypatch):
     monkeypatch.setattr(E, "MAX_COMBOS", 1)
     t = E.evaluate(toy_entry, {"kind": "solid"})
-    assert t.bounded is False and t.needed == ["size", "risk", "margin"]    # cannot tell: every unknown is asked
+    assert t.bounded is False and t.needed == ["size", "risk"]    # cannot tell: every unknown that reaches the result
     assert t.possible == sorted(o.id for o in toy_entry.outcomes)
 
 
@@ -70,3 +70,24 @@ def test_partial_evaluation_samples_only_inside_a_declared_range(toy):
     assert {E.evaluate(e, {"kind": "solid", "size": x, "risk": "low"}).outcome for x in xs} == {"none", "ct12"}
     t = E.evaluate(e, {"kind": "solid", "risk": "low"})                         # never feeds 0 or 8+ to the engine
     assert t.possible == ["ct12", "none"] and t.needed == ["size"]
+
+
+def _bts():
+    import json
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+    return LB.Library(json.loads(LB.BUNDLE.read_text())).lookup("bts-pulmonary-nodule")
+
+
+BTS_10MM = {"diameter_mm": 10, "nodule_type": "solid", "benign_features": False, "prior_study": False}
+BTS_BROCK = {"age", "sex", "family_history", "emphysema", "upper_lobe", "spiculation", "nodule_count"}
+
+
+def test_unbounded_asks_every_applicable_input_that_reaches_the_result():
+    """I4: a 10 mm solid nodule with no prior goes to Brock, whose inputs feed a formula. The card must ask every one
+    of them, not only those the enumerable part shows to matter; inputs made not applicable are never asked."""
+    e = _bts()
+    t = E.evaluate(e, BTS_10MM)
+    assert t.outcome is None and t.bounded is False
+    assert BTS_BROCK <= set(t.needed)
+    assert not {"prior_volume_mm3", "current_volume_mm3", "interval_days", "diameter_mm"} & set(t.needed)
+    assert t.needed == [i.id for i in e.inputs if i.id in t.needed]          # in the entry's input order

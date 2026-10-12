@@ -198,7 +198,7 @@ async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str
         else:
             proposal = Proposal(classification=f"{e.display} · {cls}", line=f"{e.display}: {cls}.",
                                 recommendation=rec)
-    return Preview(settled=settled, missing=t.needed, proposal=proposal, possible=possible,
+    return Preview(settled=settled, missing=t.needed, proposal=proposal, possible=possible, bounded=t.bounded,
                    trace=t.model_dump(mode="json") if t.outcome is not None else None)
 
 

@@ -12,7 +12,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from .schema import (AdjustStep, All, AnyOf, BandStep, Cond, DeriveStep, Entry, Expr, InputDef, InputValue, Locator,
-                     NoneOf, Num, RulesStep, ScoreStep, TableStep, as_value)
+                     NoneOf, Num, RulesStep, ScoreStep, TableStep, as_value, conds)
 
 PH = re.compile(r"\{([A-Za-z0-9_]+)\}")
 MAX_COMBOS = 50_000
@@ -287,16 +287,32 @@ def domain(entry: Entry, i: InputDef) -> list[InputValue] | None:
     return None if xs is None else [InputValue(value=x) for x in xs] + extra
 
 
+def reaching(entry: Entry) -> set[str]:
+    """Every input id the result step depends on, through any chain of steps (and input prerequisites)."""
+    deps = {s.id: set(s.refs()) for s in entry.logic}
+    deps.update({i.id: {c.ref for p in i.prerequisites for c in conds(p)} for i in entry.inputs})
+    seen, todo = set(), [entry.result]
+    while todo:
+        k = todo.pop()
+        if k in seen:
+            continue
+        seen.add(k)
+        todo += deps.get(k, set())
+    return {i.id for i in entry.inputs} & seen
+
+
 def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V]) -> tuple[list[str], bool, list[str]]:
     """(possible outcomes, bounded, needed inputs). An unknown input is needed when changing it alone can change the
-    outcome for some value of the other unknown inputs."""
+    outcome for some value of the other unknown inputs. Unbounded (an unknown number feeds a formula): enumeration
+    cannot tell, so every unknown applicable input that reaches the result is needed (safe over-asking)."""
     unknown = [i for i in entry.inputs if env[i.id].state == "unknown"]
     doms = {i.id: domain(entry, i) for i in unknown}
-    unbounded = [k for k, d in doms.items() if d is None]
     names = [k for k, d in doms.items() if d is not None]
     order = [i.id for i in entry.inputs]
+    reach = reaching(entry)
+    every = [i.id for i in unknown if i.id in reach]
     if math.prod(len(doms[n]) for n in names) > MAX_COMBOS:
-        return sorted(o.id for o in entry.outcomes), False, [i.id for i in unknown]
+        return sorted(o.id for o in entry.outcomes), False, every
     results = []
     for combo in product(*(doms[n] for n in names)):
         e2, _ = _once(entry, {**given, **dict(zip(names, combo))})
@@ -313,7 +329,7 @@ def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V]) -> t
         if any(len(g) > 1 for g in groups.values()):
             needed.append(n)
     if not bounded:
-        needed += unbounded
+        needed = every
     return possible, bounded, sorted(set(needed), key=order.index)
 
 

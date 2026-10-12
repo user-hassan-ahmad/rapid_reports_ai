@@ -166,3 +166,19 @@ def test_bosniak_says_a_described_mass_is_not_too_small():
     from rapid_reports_ai.hybrid_stack.copilot.library.bundle import compile_bundle, Library
     e = Library(compile_bundle()).lookup("bosniak-renal-cyst")
     assert "no when the mass is described by its features" in e.input("too_small").how_stated
+
+
+async def test_an_unbounded_preview_says_so_and_asks_every_reaching_input(monkeypatch, jev):
+    from tests.test_library_partial import BTS_BROCK, _bts
+    e = _bts()
+    _model(monkeypatch, {"input": "diameter_mm", "value": 10, "quote": "10 mm"},
+           {"input": "nodule_type", "value": "solid", "quote": "solid"},
+           {"input": "benign_features", "value": False, "quote": "no benign features"},
+           {"input": "prior_study", "value": False, "quote": "no prior"})
+    out = await PP.preview_pack(e, "10 mm solid nodule, no benign features, no prior imaging.", "", {})
+    assert out.proposal is None and out.bounded is False and BTS_BROCK <= set(out.missing)
+
+
+async def test_a_bounded_preview_says_so(toy_entry, monkeypatch, jev):
+    _model(monkeypatch, KIND, SIZE)
+    assert (await PP.preview_pack(toy_entry, FINDINGS, "", {})).bounded is True
