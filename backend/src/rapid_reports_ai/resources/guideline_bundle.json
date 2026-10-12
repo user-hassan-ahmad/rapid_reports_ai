@@ -12895,7 +12895,7 @@
     "applies_to": {
      "context": [],
      "finding_type": [
-      "chronic rhinosinusitis sinus opacification"
+      "paranasal sinus mucosal thickening or opacification (rhinosinusitis)"
      ],
      "modality": [
       "CT"
@@ -20062,5 +20062,5 @@
    ]
   }
  },
- "version": "c3d6b4540e84"
+ "version": "2dc526467bcc"
 }
