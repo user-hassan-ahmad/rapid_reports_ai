@@ -192,8 +192,23 @@ async def relevance(results: list[dict], name: str, version: str, title: str = "
     return [got[f"r_{i}"] for i in range(len(results))]
 
 
-async def answers(material: str, question: str, transport=None) -> float:
+def _answers_q(question: str, about: str) -> dict[str, dict[str, Any]]:
+    head = f"The SOURCE, which is about {about}, contains" if about else "The SOURCE contains"
+    return {"q": {"type": "noul", "instructions": f"{head} the answer to this question: {question}"}}
+
+
+async def answers_best(material: str, question: str, about: str = "", transport=None) -> tuple[float, str]:
+    """(P(the material answers the radiologist's question), the window that scored highest), one call per window.
+    The caller grounds its answer on that window, so an answer late in a long source is never cut off. `about`
+    (a guideline's name and version) scopes the question to that guideline: a page about something else does not
+    count."""
+    windows = _windows(material)
+    q = _answers_q(question, about)
+    results = await asyncio.gather(*(_ask(_state(w), q, transport) for w in windows))
+    best = max(range(len(windows)), key=lambda i: results[i]["q"])
+    return results[best]["q"], windows[best]
+
+
+async def answers(material: str, question: str, transport=None, about: str = "") -> float:
     """P(the stored guideline material answers the radiologist's question)."""
-    got = await _ask_windowed(material, {"q": {"type": "noul", "instructions": (
-        f"The SOURCE contains the answer to this question: {question}")}}, transport)
-    return got["q"]
+    return (await answers_best(material, question, about, transport))[0]

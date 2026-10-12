@@ -155,3 +155,29 @@ def test_choice_is_strict():
         except ValueError:
             continue
         raise AssertionError(body)
+
+
+async def test_answers_best_returns_the_window_that_answers(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    monkeypatch.setattr(J, "STATE_MAX", 40)
+    asked = []
+
+    def handler(req):
+        body = json.loads(req.content)
+        asked.append(body["questions"]["q"]["instructions"])
+        return httpx.Response(200, json={"answers": {"q": {"noul": 0.9 if "the answer" in body["state"] else 0.1}}})
+    source = "[a]\nfiller filler filler text\n\n[b]\nthe answer is here"
+    score, window = await J.answers_best(source, "Q?", about="Fleischner 2017", transport=httpx.MockTransport(handler))
+    assert score == 0.9 and "the answer is here" in window and "filler" not in window
+    assert asked[0] == "The SOURCE, which is about Fleischner 2017, contains the answer to this question: Q?"
+
+
+async def test_answers_wording_without_about(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    asked = []
+
+    def handler(req):
+        asked.append(json.loads(req.content)["questions"]["q"]["instructions"])
+        return httpx.Response(200, json={"answers": {"q": {"noul": 0.5}}})
+    assert await J.answers("m", "Q?", transport=httpx.MockTransport(handler)) == 0.5
+    assert asked == ["The SOURCE contains the answer to this question: Q?"]

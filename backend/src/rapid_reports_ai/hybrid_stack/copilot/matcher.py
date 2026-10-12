@@ -210,13 +210,15 @@ def _same_branch(branch: str, skeleton: list[str]) -> str:
     return same[0] if len(same) == 1 else branch
 
 
-async def _jev_branch(finding: str, name: str, skeleton: list[str], model_branch: str) -> str | None:
+async def _jev_branch(finding: str, name: str, skeleton: list[str], model_branch: str, history: str = "") -> str | None:
     """Which of the registry's existing branches this finding falls into, or none. Choice keys are neutral (br_0,
-    br_1, ...) and mapped back to the branch names."""
+    br_1, ...) and mapped back to the branch names. No model branch (ask's pick_branch): the finding alone."""
     ids = {f"br_{i}": b for i, b in enumerate(skeleton)}
     crit = {**ids, "none": "None of these branches fits the FINDING."}
     q = {"type": "choice", "instructions": f"Which branch of {name} does the FINDING fall into?", "criteria": crit}
-    r = await jev_post({"model": JEV_MODEL, "state": f"FINDING:\n{finding}\n\nMODEL BRANCH: {model_branch}",
+    state = (_state(finding, history) if history else f"FINDING:\n{finding}") + \
+        (f"\n\nMODEL BRANCH: {model_branch}" if model_branch else "")
+    r = await jev_post({"model": JEV_MODEL, "state": state,
                         "questions": {"branch": q}}, os.environ.get("OPENROUTER_API_KEY", ""), JEV_TIMEOUT_S)
     r.raise_for_status()
     c, conf = J.choice(r.json(), "branch")
@@ -239,6 +241,25 @@ async def _branch(finding: str, row_key: str, name: str, skeleton: list[str], mo
             return model_branch
         _put(_BRANCH, k, v)
     return v or model_branch
+
+
+async def pick_branch(finding: str, entry, history: str = "") -> str | None:
+    """The entry's branch this finding falls into, chosen by Jev with no model branch to start from (ask's no-card
+    path: the route names a guideline, not a branch). None on "none" or a Jev failure; successes are cached."""
+    names = [b.name for b in entry.content.branches]
+    if not names:
+        return None
+    k = (R.norm(finding), entry.key, "", R.norm(history))
+    hit, v = _get(_BRANCH, k)
+    if hit:
+        return v
+    try:
+        v = await _jev_branch(finding, entry.name, names, "", history)
+    except Exception as e:
+        logger.info("[copilot.match] branch pick failed (%s): %s", entry.key, type(e).__name__)
+        return None
+    _put(_BRANCH, k, v)
+    return v
 
 
 async def _tnm_gate(finding: str, site: str, history: str = "") -> float:
@@ -264,15 +285,16 @@ async def _gate(finding: str, site: str, history: str) -> float | None:
     return v
 
 
-async def _tnm_card(f: Finding, s: RawSystem, history: str) -> Card | None:
+async def _tnm_card(f: Finding, s: RawSystem, history: str, gate: bool = True) -> Card | None:
     """A TNM candidate: the site must be on the closed list (matched normalised) and pass the Jev gate (fails
-    closed: no card)."""
+    closed: no card). `gate=False` only for an explicit staging question (ask), where no finding need match."""
     site = {R.norm(x): x for x in tnm.sites()}.get(R.norm(s.site))
     if site is None:
         return None
-    score = await _gate(f.text, site, history)
-    if score is None or score < TNM_GATE_MIN:
-        return None
+    if gate:
+        score = await _gate(f.text, site, history)
+        if score is None or score < TNM_GATE_MIN:
+            return None
     e = tnm.entry(site)
     return Card(key=e.key, name=e.name, version="9", finding_id=f.id, why=s.why, branch="Staging",
                 skeleton=["Staging"], publication=e.publication, known=True, status="verified")
@@ -302,11 +324,11 @@ async def _resolve(rows: _Rows, f: Finding, s: RawSystem, history: str) -> Guide
     return None if s.version else _latest(cands)
 
 
-async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str) -> Card | None:
+async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool = True) -> Card | None:
     if not s.name.strip():
         return None
     if s.name.strip().upper() == "TNM":
-        return await _tnm_card(f, s, history)
+        return await _tnm_card(f, s, history, gate)
     row = await _resolve(rows, f, s, history)
     if row is not None:
         e = R.entry(row)
@@ -320,26 +342,26 @@ async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str) -> Card | N
                 why=s.why, branch=s.branch, skeleton=s.skeleton, publication=s.publication, known=False, status="new")
 
 
-async def _safe_card(rows: _Rows, f: Finding, s: RawSystem, history: str) -> Card | None:
+async def _safe_card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool = True) -> Card | None:
     try:
-        return await _card(rows, f, s, history)
+        return await _card(rows, f, s, history, gate)
     except Exception as e:   # one candidate that fails to resolve is skipped, not the whole match
         logger.warning("[copilot.match] candidate %r skipped: %s", s.name, type(e).__name__)
         return None
 
 
 async def card_for(db: Session, name: str, version: str, finding_id: str, finding_text: str, history: str = "",
-                   site: str = "") -> Card | None:
+                   site: str = "", gate: bool = True) -> Card | None:
     """One named system as a card through the matcher's own normalisation (exact key, alias, Jev edition pick, else a
-    new key; "TNM" via the closed site list and the Jev gate). For ask's no-card path. Never raises: None on any
-    failure."""
+    new key; "TNM" via the closed site list and, unless `gate=False`, the Jev gate). For ask's no-card path. Never
+    raises: None on any failure."""
     try:
         rows = _Rows(db)
     except Exception as e:
         logger.warning("[copilot.match] registry read failed: %s", type(e).__name__)
         return None
     return await _safe_card(rows, Finding(id=finding_id, text=finding_text),
-                            RawSystem(name=name, version=version, site=site), history)
+                            RawSystem(name=name, version=version, site=site), history, gate)
 
 
 def _rid(s: str) -> str:

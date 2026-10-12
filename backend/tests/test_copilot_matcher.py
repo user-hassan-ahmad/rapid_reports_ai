@@ -420,3 +420,39 @@ async def test_card_for_failure_is_none(db_session, monkeypatch):
         raise RuntimeError("x")
     monkeypatch.setattr(M, "_card", boom)
     assert await M.card_for(db_session, "Fleischner", "2017", "u1", "x") is None
+
+
+async def test_card_for_tnm_without_gate_skips_jev_but_keeps_closed_list(db_session, monkeypatch):
+    async def tnm_gate(finding, site, history=""):
+        raise AssertionError("no gate for an explicit staging question")
+    monkeypatch.setattr(M, "_tnm_gate", tnm_gate)
+    c = await M.card_for(db_session, "TNM", "9", "q", "How is this staged?", site="Lung", gate=False)
+    assert c.key == "tnm-lung@9"
+    assert await M.card_for(db_session, "TNM", "9", "q", "x", site="Lungs", gate=False) is None
+
+
+async def test_pick_branch_asks_jev_without_a_model_branch_and_caches(db_session, monkeypatch):
+    row = _put(db_session, "fleischner@2017", "Fleischner", "2017", branches=["Solid", "Subsolid"])
+    entry = R.entry(row)
+    seen = []
+
+    async def post(payload, key, timeout, transport=None):
+        seen.append(payload)
+        return _Resp({"answers": {"branch": {"choice": "br_1", "confidence": 0.9}}})
+    monkeypatch.setattr(M, "jev_post", post)
+    assert await M.pick_branch("8 mm part-solid nodule.", entry, "smoker") == "Subsolid"
+    assert await M.pick_branch("8 mm part-solid nodule.", entry, "smoker") == "Subsolid"
+    assert len(seen) == 1 and "MODEL BRANCH" not in seen[0]["state"] and "smoker" in seen[0]["state"]
+    assert set(seen[0]["questions"]["branch"]["criteria"]) == {"br_0", "br_1", "none"}
+
+
+async def test_pick_branch_failure_is_none_and_not_cached(db_session, monkeypatch):
+    entry = R.entry(_put(db_session, "fleischner@2017", "Fleischner", "2017", branches=["Solid"]))
+    n = {"calls": 0}
+
+    async def post(payload, key, timeout, transport=None):
+        n["calls"] += 1
+        return _Resp({})
+    monkeypatch.setattr(M, "jev_post", post)
+    assert await M.pick_branch("x", entry) is None
+    assert await M.pick_branch("x", entry) is None and n["calls"] == 2

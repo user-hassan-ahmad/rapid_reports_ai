@@ -463,3 +463,17 @@ async def test_gather_top_limits_the_pages_read(monkeypatch):
     monkeypatch.setattr(S, "_extract", fake_extract)
     chunks, _ = await S.gather(["q"], branch="", top=2)
     assert calls == [["https://acr.org/0", "https://acr.org/1"]] and len(chunks) == 2
+
+
+def test_safe_identity_drops_measurements_and_case_words_keeps_version():
+    assert S.safe_identity("Management of 2 cm left adrenal nodule", "2017") == ("Management of adrenal nodule", "2017")
+    assert S.safe_identity("Fleischner", "2017") == ("Fleischner", "2017")
+    assert S.safe_identity("Guideline for 45 year-old female smoker", "v2.1") == ("Guideline for", "v2.1")
+    assert S.safe_identity("a b c d e f g h i j", "") == ("a b c d e f g h", "")
+    assert S.safe_identity("Bosniak", "2019") == ("Bosniak", "2019")
+
+
+def test_query_builders_go_through_safe_identity():
+    for q in S.first_pass_queries("Management of 2 cm left adrenal nodule", "", Publication(), "Adenoma") + \
+            [S.branch_query("Management of 2 cm left adrenal nodule", "", "Adenoma")]:
+        assert "2 cm" not in q and "left" not in q.split() and "adrenal nodule" in q

@@ -292,3 +292,11 @@ async def test_code_built_line_without_a_classification_says_it_applies(monkeypa
     out = await P.preview(ENTRY, "Solid", "7 mm solid nodule, non-smoker.", "", {})
     assert out.proposal.line == "Fleischner 2017 applies." and "·" not in out.proposal.line
     assert out.proposal.recommendation == "CT at 6-12 months"
+
+
+async def test_code_built_line_does_not_double_a_full_stop(monkeypatch, jev):
+    br = BR.model_copy(update={"outputs": [BR.outputs[0], BR.outputs[1].model_copy(update={"classification": "High risk."})]})
+    entry = ENTRY.model_copy(update={"content": GuidelineContent(branches=[br])})
+    monkeypatch.setattr(P, "_call", _model(GOOD.model_copy(update={"line": ""})))
+    out = await P.preview(entry, "Solid", "7 mm solid nodule, smoker.", "", {})
+    assert out.proposal.line == "Fleischner 2017: High risk."

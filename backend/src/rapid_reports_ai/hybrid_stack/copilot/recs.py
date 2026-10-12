@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 
 from pydantic import BaseModel, Field
@@ -19,6 +20,7 @@ TIMEOUT_S = 10.0
 RECS_SYS = """You suggest follow-up actions a radiologist may choose to add as recommendations at the end of a report. They tick the ones they want; the rest are dropped.
 - 0-4 items, most important first; each one short sentence in British English.
 - Only actions the findings or the clinical question call for: referral to a named specialty or multidisciplinary meeting, further imaging with a named modality, correlation with prior imaging or a named test.
+- Never restate the clinical history.
 - Never an item already APPLIED, never a surveillance interval, size threshold or classification (those come only from guidelines the radiologist applies), never "clinical correlation" on its own.
 - Return an empty list when nothing is called for."""
 
@@ -40,6 +42,17 @@ async def _call(prompt: str) -> RawRecs:
     return r.output
 
 
+_BULLET = re.compile(r"^\s*(?:[-*•–—]+|\(?\d{1,2}[.)]|\(?[a-z][)])\s*", re.I)
+# A number in a suggestion is an interval or threshold, which only an applied guideline may give: dropped.
+_NUMBERISH = re.compile(r"\d|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|"
+                        r"fifteen|sixteen|seventeen|eighteen|nineteen|twenty(?:[- ](?:one|two|three|four))?|half|"
+                        r"quarter)\b", re.I)
+
+
+def _clean(item: str) -> str:
+    return _BULLET.sub("", item.strip()).strip()
+
+
 def _n(s: str) -> str:
     return " ".join(s.lower().strip().rstrip(".").split())
 
@@ -56,8 +69,11 @@ async def suggest(scan_type: str, history: str, findings: str, conclusion: str, 
         return RecsResult(ms=int((time.perf_counter() - t0) * 1000), error=type(e).__name__)
     seen = {_n(a) for a in applied}
     items = []
-    for it in raw.items:
-        if it.strip() and _n(it) not in seen:
+    for it in (_clean(x) for x in raw.items):
+        if _NUMBERISH.search(it):
+            logger.info("[copilot.recs] dropped a suggestion carrying a number")
+            continue
+        if it and _n(it) not in seen:
             seen.add(_n(it))
             items.append(it.strip())
     return RecsResult(items=items[:MAX_ITEMS], ms=int((time.perf_counter() - t0) * 1000))

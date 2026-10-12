@@ -33,10 +33,12 @@ class Branch(BaseModel):
 
 
 class Supplement(BaseModel):
+    """An ask-time answer kept with its source page. A draft (never material for a later answer) until verified."""
     question: str
     answer: str
     quote: str = ""
     url: str = ""
+    verified: bool = False
 
 
 class GuidelineContent(BaseModel):

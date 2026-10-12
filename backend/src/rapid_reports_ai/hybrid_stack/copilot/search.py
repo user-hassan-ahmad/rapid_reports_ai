@@ -46,7 +46,29 @@ def _clean(s: str) -> str:
     return " ".join(re.sub(r"[·•|]+", " ", s).split())
 
 
+# The privacy backstop (spec §2.18): a guideline name comes from a model that read the case, so a measurement
+# ("2 cm", "45 years") or a side/demographic word in it never reaches the search API. Removal only.
+_MEASURE = re.compile(r"\b\d+[- ]?years?[- ]old\b|\b\d+(?:[.,]\d+)?\s*(?:mm|cm|m|ml|kg|years?|yrs?|yo|months?|weeks?)\b",
+                      re.I)
+_CASEY_WORDS = {"left", "right", "bilateral", "male", "female", "man", "woman", "year-old", "pregnant", "smoker",
+                "mr", "mrs", "ms", "he", "she"}
+NAME_MAX_WORDS = 8
+
+
+def safe_identity(name: str, version: str) -> tuple[str, str]:
+    """(name, version) safe to search: measurement tokens and side/demographic words dropped from the name, the
+    name capped at NAME_MAX_WORDS words, the version kept intact. Every query builder goes through this."""
+    cleaned = _MEASURE.sub(" ", name or "")
+    words = [w for w in cleaned.split() if w.lower().strip(".,;:()") not in _CASEY_WORDS]
+    out = " ".join(words[:NAME_MAX_WORDS])
+    if out != " ".join((name or "").split()):
+        logger.info("[copilot.search] identity scrubbed for search (%d -> %d words)", len((name or "").split()),
+                    len(words[:NAME_MAX_WORDS]))
+    return out, version
+
+
 def first_pass_queries(name: str, version: str, pub: Publication, branch: str) -> list[str]:
+    name, version = safe_identity(name, version)
     ident = _clean(f"{name} {version}")
     title = pub.title.replace('"', "")
     q1 = f'"{title}" {pub.year}'.strip() if title else f"{ident} classification"
@@ -55,6 +77,7 @@ def first_pass_queries(name: str, version: str, pub: Publication, branch: str) -
 
 
 def branch_query(name: str, version: str, branch: str) -> str:
+    name, version = safe_identity(name, version)
     return _clean(f"{name} {version} {branch} recommendations")
 
 
