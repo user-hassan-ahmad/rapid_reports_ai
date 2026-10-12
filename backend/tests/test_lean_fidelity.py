@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from rapid_reports_ai.lean_fidelity import fidelity_violation, verbatim_append
+from rapid_reports_ai.lean_fidelity import fidelity_violation, moved_into_earlier, verbatim_append
 
 
 def test_tonights_deletion_is_caught():
@@ -92,3 +92,18 @@ def test_a_negative_replaced_by_its_positive_is_caught():
 def test_negations_that_survive_rewording_pass():
     assert fidelity_violation("There is no pleural effusion.", "No pneumothorax.",
                               "No pleural effusion. No pneumothorax.", []) is None
+
+
+
+def test_moved_into_earlier_detects_new_words_placed_before_dictated_text():
+    span = "Extensive perinephric stranding. A tiny non-obstructing 2 mm calculus is also noted in the lower pole."
+    new = "of the right kidney with no associated"
+    moved = ("Extensive perinephric stranding of the right kidney with no associated. "
+             "A tiny non-obstructing 2 mm calculus is also noted in the lower pole.")
+    assert fidelity_violation(span, new, moved, []) is None           # every count survives: the old check passed it
+    assert moved_into_earlier(span, new, moved)
+    kept = span[:-1] + " of the right kidney with no associated"
+    assert not moved_into_earlier(span, new, kept)                      # continuing the last sentence
+    assert not moved_into_earlier("The liver is normal. The spleen is normal.", "The pancreas is normal.",
+                                  "The liver, spleen and pancreas are normal.")   # joined into one statement
+    assert not moved_into_earlier(span, new, span + " Of the right kidney with no associated.")
