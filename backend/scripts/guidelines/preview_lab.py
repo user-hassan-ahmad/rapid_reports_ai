@@ -7,7 +7,8 @@ evaluated by the engine alone. Every settled value is compared with `truth`: one
 The outcome the preview proposes before any answer, and the final outcome after the fill, are compared with
 `expect_final` (the engine on `truth` alone): a mismatch is a WRONG PROPOSAL.
 
-Latency scenarios, fixed before any run, each reported separately (milliseconds, not degraded only):
+Latency scenarios, fixed before any run, each reported separately (milliseconds, over every row; degraded rows
+(a model or Jev failure or timeout) are also reported apart, and a degraded (b) open counts as over the bar):
   (a) cold open: an empty cache, the settlement computed on open (MISS); always reported;
   (b) open 2 s after /match, with the prewarm started by /match still running or done;
   (c) open after more dictation: prewarmed at /match, then the dictation grows before open (a new key: a MISS);
@@ -36,7 +37,8 @@ load_dotenv("/Users/hassan/Code/rapid_reports_ai/backend/.env")
 from rapid_reports_ai.hybrid_stack.copilot.library import engine  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library import preview_cache as PC  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library.bundle import BUNDLE, Library  # noqa: E402
-from rapid_reports_ai.hybrid_stack.copilot.library.pack_preview import _answer, _given, finish, settle_pack  # noqa: E402
+from rapid_reports_ai.hybrid_stack.copilot.library.pack_preview import (  # noqa: E402
+    Settlement, _answer, _given, finish, settle_pack)
 from rapid_reports_ai.hybrid_stack.copilot.library.schema import DOES_NOT_APPLY  # noqa: E402
 
 CASES = Path(__file__).with_name("preview_lab_cases.json")
@@ -153,31 +155,34 @@ async def one(lib: Library, c: dict, shared: dict) -> dict:
 
     def make(d=findings):
         return lambda: settle_pack(e, d, history, finding=finding)
+
+    def failed():                      # an error or a timeout: a failed settlement, as the routes cache it
+        return Settlement(failed=True)
     k = PC.key(e.key, finding, findings, history)
 
     # (a) cold open
     PC.clear()
     t0 = time.perf_counter()
-    s = await PC.start(k, make())
+    s = await PC.start(k, make(), fallback=failed)
     p = finish(e, s, c.get("answered", {}), patient, sources)
     ms_a = _ms(t0)
 
     # (b) open 2 s after /match, the prewarm running
     PC.clear()
-    PC.start(k, make(), prewarm=True)
+    PC.start(k, make(), prewarm=True, fallback=failed)
     await asyncio.sleep(OPEN_DELAY_S)
     t0 = time.perf_counter()
-    sb = await PC.start(k, make())
+    sb = await PC.start(k, make(), fallback=failed)
     finish(e, sb, c.get("answered", {}), patient, sources)
     ms_b = _ms(t0)
 
     # (c) more dictation after /match: the prewarmed key no longer matches, so the open is a MISS
     PC.clear()
-    pre = PC.start(k, make(), prewarm=True)
+    pre = PC.start(k, make(), prewarm=True, fallback=failed)
     await asyncio.sleep(OPEN_DELAY_S)
     more = findings + MORE_DICTATION
     t0 = time.perf_counter()
-    sc = await PC.start(PC.key(e.key, finding, more, history), make(more))
+    sc = await PC.start(PC.key(e.key, finding, more, history), make(more), fallback=failed)
     finish(e, sc, c.get("answered", {}), patient, sources)
     ms_c = _ms(t0)
     await asyncio.gather(pre, return_exceptions=True)
@@ -196,6 +201,7 @@ async def one(lib: Library, c: dict, shared: dict) -> dict:
     want_settled, may = c["expect_settled"], set(c.get("accept_missing", []))
     return {"name": c["name"], "pack": c["pack"], "two_lesion": c.get("two_lesion", False),
             "ms_a": ms_a, "ms_b": ms_b, "ms_c": ms_c, "ms_d": steps, "degraded": degraded,
+            "degraded_a": s.failed, "degraded_b": sb.failed, "degraded_c": sc.failed,
             "outcome": outcome, "final_outcome": final_outcome, "expect_final": want,
             "expect_outcome": c["expect_outcome"], "state": p.state, "expect_state": c["expect_state"],
             "wrong_proposal": (outcome is not None and outcome != want) or final_outcome != want,
@@ -217,20 +223,27 @@ async def main(out_dir: Path) -> int:
         rows.append(await one(lib, c, shared))
     out = out_dir / f"preview_lab_{os.getpid()}.json"
     out.write_text(json.dumps(rows, indent=1))
-    ok = [r for r in rows if not r["degraded"]]
-    lat = {x: [r[f"ms_{x}"] for r in ok] for x in "abc"}
-    lat["d"] = [m for r in ok for m in r["ms_d"]]
+    # every row counts (review I4): a degraded open is a slow one (a model or Jev timeout); a degraded (b) open counts
+    # as over the bar whatever its time
+    lat = {x: [r[f"ms_{x}"] for r in rows] for x in "abc"}
+    lat["d"] = [m for r in rows for m in r["ms_d"]]
+    gate_b = [max(r["ms_b"], GATE_B_MS) if r["degraded_b"] else r["ms_b"] for r in rows]
     wrong_values = sum(len(r["wrong_values"]) for r in rows)
     wrong_proposals = sum(r["wrong_proposal"] for r in rows)
-    b95, a95 = _pct(lat["b"], 0.95), _pct(lat["a"], 0.95)
+    b95, a95 = _pct(gate_b, 0.95), _pct(lat["a"], 0.95)
     passed = wrong_values == 0 and wrong_proposals == 0 and b95 < GATE_B_MS
     print(f"{len(rows)} cases -> {out}")
     print(f"GATE: {'PASS' if passed else 'FAIL'}  wrong values {wrong_values}  wrong proposals {wrong_proposals}  "
-          f"(b) p95 {b95} ms (gate < {GATE_B_MS})" + ("  [cold open slow: flagged for Hassan]"
-                                                       if passed and a95 >= GATE_B_MS else ""))
+          f"(b) p95 {b95} ms, degraded (b) counted over the bar (gate < {GATE_B_MS})"
+          + ("  [cold open slow: flagged for Hassan]" if passed and a95 >= GATE_B_MS else ""))
     for x, name in (("a", "cold open (MISS)"), ("b", "open 2 s after /match"), ("c", "open after more dictation"),
                     ("d", "answer path")):
-        print(f"  ({x}) {name}: p50 {_pct(lat[x], 0.5)} p95 {_pct(lat[x], 0.95)} ms  n={len(lat[x])}")
+        print(f"  ({x}) {name}, all rows: p50 {_pct(lat[x], 0.5)} p95 {_pct(lat[x], 0.95)} ms  n={len(lat[x])}")
+    for x in "abc":
+        bad = [r[f"ms_{x}"] for r in rows if r[f"degraded_{x}"]]
+        good = [r[f"ms_{x}"] for r in rows if not r[f"degraded_{x}"]]
+        print(f"  ({x}) degraded: n={len(bad)} p50 {_pct(bad, 0.5)} p95 {_pct(bad, 0.95)} ms; "
+              f"not degraded: n={len(good)} p50 {_pct(good, 0.5)} p95 {_pct(good, 0.95)} ms")
     print(f"degraded: {sum(r['degraded'] for r in rows)}  unasked: {sum(bool(r['unasked']) for r in rows)}  "
           f"asked instead: {sum(len(r['asked_instead']) for r in rows)}")
     asks = [r["asks"] for r in rows]
