@@ -70,3 +70,6 @@ htmlcov/
 # Local Firecrawl CLI / plugin cache
 .firecrawl/
 
+
+# Guideline publisher files: kept on disk for authoring and jev_evidence, never in git (url + sha256 in each manifest)
+guidelines/*/sources/
