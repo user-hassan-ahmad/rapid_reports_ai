@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "Staging in rhinosinusitus (Lund VJ, Mackay IS. Rhinology 1993;31:183-184, short communication, PMID 8140385)",
+      "issuer": "Rhinology (journal archive free download)",
+      "edition": "1993",
+      "url": "https://www.rhinologyjournal.com/download.php?id=1490",
+      "sha256": "27e87d20237a3ebefb9be592b36d36ad8efe8b9fa7e7e6a541016772f9f38444",
+      "file": "sources/27e87d20237a3ebefb9be592b36d36ad8efe8b9fa7e7e6a541016772f9f38444.pdf",
+      "text_file": "sources/27e87d20237a3ebefb9be592b36d36ad8efe8b9fa7e7e6a541016772f9f38444.txt",
+      "retrieved": "2026-10-12"
+    }
+  ]
+}
