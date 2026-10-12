@@ -277,3 +277,19 @@ def test_an_unqualified_negation_does_not_fire_the_backstop(text, nouns):
     "4 mm solid nodule. Further nodules bilaterally."])
 def test_a_qualified_negation_still_fires_the_backstop(text):
     assert Q.many(text, NODULE)
+
+
+@pytest.mark.parametrize("word", ["increasing", "enlarged", "evolving", "worsening", "progressing", "developing",
+                                  "interval", "incident", "stable", "bigger", "concerning", "indeterminate",
+                                  "subsolid", "measurable"])
+def test_the_negation_slot_holds_only_an_organ_word(word):
+    assert Q.many(f"4 mm solid nodule in the right upper lobe. No other {word} nodules.", NODULE)
+
+
+@pytest.mark.parametrize("text,nouns", [
+    ("4 mm solid nodule. No other pulmonary nodules.", NODULE), ("4 mm solid nodule. No other lung nodules.", NODULE),
+    ("Cyst -20 HU. No other renal lesions.", ["renal cyst", "cystic renal mass"]),
+    ("Cyst -20 HU. No other kidney lesions.", ["renal cyst", "cystic renal mass"]),
+    ("4 mm solid nodule; no further nodules.", NODULE), ("4 mm solid nodule. No additional nodules are seen.", NODULE)])
+def test_an_organ_word_in_the_negation_slot_stays_exempt(text, nouns):
+    assert not Q.many(text, nouns)
