@@ -357,9 +357,10 @@ pointed at the hidden editor):
 - **After Generate**, the review rail keeps its items; open rows take the same tinted left edge (amber check, green
   automatic edit, blue option), so a flag looks alike before and after Generate.
 - **The clean-up guard** (live clean-up, `fix/polish-attachment`, separate from this PR): new words placed before text
-  already dictated trigger one Jev question (moved a side, location, size or descriptor onto another finding?); a
-  move falls back to the words as said. Lab 24 pairs: 12/12 caught at >= 0.3, 0/12 false; replay of 111 real
-  clean-ups: the detector fired 0 times.
+  already dictated, new words out of spoken order, a side or number shifting between dictated sentences, or a new
+  sentence merged into a finished one trigger one Jev question (moved a side, location, size or descriptor onto
+  another finding?); a move falls back to the words as said. Whole guard on 28 pairs: 15/15 caught (3 swaps with no
+  new words included), 0/13 false; replay of 111 real clean-ups: 0 fires.
 
 ### 10.3 Before release
 
