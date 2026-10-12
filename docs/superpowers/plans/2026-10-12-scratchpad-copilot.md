@@ -960,7 +960,7 @@ def _branch(name, quote="no routine follow-up"):
 def _stub(monkeypatch, cover=0.9, evidence=1.0, structured=None):
     calls = {"gather": [], "structure": []}
 
-    async def gather(queries, branch):
+    async def gather(queries, branch, focus="", exclude=None):
         calls["gather"].append((queries, branch))
         return [Chunk(url="https://pubs.rsna.org/x", text="… No routine follow-up …", branch=branch)], \
                [Source(url="https://pubs.rsna.org/x", tier=1)]
@@ -1016,7 +1016,7 @@ async def test_unsupported_outputs_are_dropped(db_session, monkeypatch):
 async def test_no_results_returns_none_and_stores_nothing(db_session, monkeypatch):
     _stub(monkeypatch)
 
-    async def empty(queries, branch):
+    async def empty(queries, branch, focus="", exclude=None):
         return [], []
     monkeypatch.setattr(F.S, "gather", empty)
     assert await F.resolve_guideline(db_session, CARD) is None
@@ -1084,7 +1084,7 @@ class Structured(BaseModel):
 
 
 async def _structure(name: str, version: str, branch: str, text: str) -> Structured:
-    prompt = f"SYSTEM: {name} {version}\nBRANCH: {branch}\n\nSOURCE:\n{text[:24000]}"
+    prompt = f"SYSTEM: {name} {version}\nBRANCH: {branch}\n\nSOURCE:\n{text[:J.SOURCE_MAX]}"   # the cap Jev's windows cover
     r = await asyncio.wait_for(_run_agent_with_model(
         model_name=MODEL_CONFIG["GUIDELINE_PREFETCH"], output_type=Structured, system_prompt=STRUCTURE_SYS,
         user_prompt=prompt, api_key="", model_settings={"temperature": 0, "max_tokens": 6000,
@@ -1103,12 +1103,13 @@ def to_fill(skeleton: list[str], content: GuidelineContent) -> list[str]:
 
 async def _fetch_branch(card: Card, branch: str, queries: list[str]) -> tuple[Structured | None, Branch, list[Chunk], list[Source]]:
     """One branch: gather → coverage (one extra query below the bar) → structure → evidence."""
-    chunks, sources = await S.gather(queries, branch)
+    chunks, sources = await S.gather(queries, branch, focus=branch)
     if not chunks:
         return None, Branch(name=branch, state="pending"), [], []
     cover = (await J.coverage(_text(chunks), [branch])).get(branch, 0.0)
-    if cover < J.COVER_MIN:
-        more, more_src = await S.gather([S.branch_query(card.name, card.version, branch)], branch)
+    if cover < J.COVER_MIN:   # one retry on new pages only (review: the same URLs re-extract the same chunks)
+        more, more_src = await S.gather([S.branch_query(card.name, card.version, branch)], branch, focus=branch,
+                                        exclude={c.url for c in chunks})
         chunks, sources = chunks + more, sources + more_src
         cover = (await J.coverage(_text(chunks), [branch])).get(branch, 0.0) if more else cover
     if cover < J.COVER_MIN:
@@ -2018,7 +2019,7 @@ async def test_card_scope_gap_searches_and_adds_supplement(db_session, monkeypat
     async def phrase(question, name, version):
         return "Fleischner 2017 calcified nodule"
 
-    async def gather(queries, branch):
+    async def gather(queries, branch, focus="", exclude=None):
         assert queries == ["Fleischner 2017 calcified nodule"]
         return [Chunk(url="https://b", text="benign calcification needs no follow-up")], [Source(url="https://b")]
 
@@ -2043,7 +2044,7 @@ async def test_card_scope_gap_unanswered_says_so(db_session, monkeypatch):
     async def phrase(question, name, version):
         return "x"
 
-    async def gather(queries, branch):
+    async def gather(queries, branch, focus="", exclude=None):
         return [], []
 
     async def general(question, ctx, history):
@@ -2054,6 +2055,11 @@ async def test_card_scope_gap_unanswered_says_so(db_session, monkeypatch):
     monkeypatch.setattr(A, "_general_answer", general)
     res = await A.ask(db_session, "q?", "fleischner@2017", CTX, [])
     assert not res.supported and res.answer.startswith(A.NOT_IN_GUIDELINE)
+
+
+def test_safe_phrase_drops_case_text():
+    assert A._safe_phrase("Fleischner 2017 calcified nodule", "Fleischner", "2017") == "Fleischner 2017 calcified nodule"
+    assert A._safe_phrase("Fleischner 7 mm nodule left lower lobe", "Fleischner", "2017") == "Fleischner 2017"
 
 
 async def test_no_scope_general(db_session, monkeypatch):
@@ -2103,6 +2109,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -2127,7 +2134,15 @@ ROUTE_SYS = """A radiologist reporting a scan asks you a question. Decide what i
 
 GROUNDED_SYS = """Answer a radiologist's question about one published guideline in 2-4 plain sentences of British English. Use only the MATERIAL for any criterion, category, threshold or interval, and say which part of the guideline it comes from. Use the CASE only to make the answer specific. If the MATERIAL does not answer the question, say so in one sentence."""
 
-PHRASE_SYS = """Write one web search phrase (at most 10 words) that would find the part of the named guideline answering the radiologist's question. Use the guideline's name, version and its own terms; never patient details, sizes, sides or anything specific to the case. Reply with the phrase only."""
+PHRASE_SYS = """Write one web search phrase (at most 10 words) that would find the part of the named guideline answering the radiologist's question. Use the guideline's name, version and its own terms; never patient details, ages, sizes, measurements, sides, dates or anything specific to the case. Reply with the phrase only."""
+_CASEY = re.compile(r"\d|\b(left|right|bilateral|year[- ]old|yo|male|female|patient)\b", re.I)
+
+
+def _safe_phrase(phrase: str, name: str, version: str) -> str:
+    """The search API never sees case text (spec §2.18): a phrase carrying digits other than the version, sides or
+    demographics falls back to the guideline's identity alone."""
+    rest = phrase.replace(version, "") if version else phrase
+    return f"{name} {version}".strip() if _CASEY.search(rest) else phrase
 
 GENERAL_SYS = """Answer a radiologist's question in 2-3 plain sentences of British English from general radiology knowledge, using the CASE for context. Say when something is uncertain or varies by local practice."""
 
@@ -2225,7 +2240,7 @@ async def _in_card(db: Session, question: str, key: str, ctx: Context, history: 
     material = _material(db, key)
     if material and await J.answers(material, question) >= J.ANSWERS_MIN:
         return AskResult(kind="card", key=key, entry=e, answer=await _grounded(question, material, ctx, history))
-    phrase = await _search_phrase(question, e.name, e.version)
+    phrase = _safe_phrase(await _search_phrase(question, e.name, e.version), e.name, e.version)
     chunks, sources = await S.gather([phrase], branch="")
     new = "\n\n".join(c.text for c in chunks)
     if new and await J.answers(new, question) >= J.ANSWERS_MIN:

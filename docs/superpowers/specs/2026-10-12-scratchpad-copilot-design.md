@@ -254,14 +254,17 @@ Shared by card open and by ask. The steps:
    - Tavily search, basic depth, 5 results each, no domain filter.
    - Code ranks the results by source tier: 1 = publisher or issuing society, 2 = PubMed Central full text,
      3 = other reputable secondary summaries.
-   - Tavily extract runs on the top 2 URLs with a fixed focus query: "categories, criteria, thresholds, required
+   - Results scoring below 0.3 are dropped first, unless none pass; known access-block pages fall back to their
+     search snippet; URLs are canonicalised before de-duplication.
+   - Tavily extract runs on the top 2 URLs with a focus query: "<branch>: categories, criteria, thresholds, required
      features, management recommendations".
 3. **Coverage (Jev).** One call with one yes/no question per branch in scope: "SOURCE states the criteria or
    management for: <branch>". If the case's branch is below the bar, one more query runs
-   (`<name> <version> <branch> recommendations`), then extract and Jev again. Still below the bar → `not_available`.
+   (`<name> <version> <branch> recommendations`) over pages not already read, then extract and Jev again. Still below the bar → `not_available`.
 4. **Structure (gpt-oss).** The branch is filled (inputs, rule, outputs) from the chunks, with a quote per output.
-5. **Evidence.** For each output, its quote is first checked for an exact match in the chunks after whitespace and
-   case normalisation. Otherwise Jev answers "SOURCE states: <when> → <classification>; <recommendation>". Unsupported
+5. **Evidence.** For each output, its quote is first checked for an exact match in the chunks: whitespace, case,
+   punctuation and dash variants are normalised, the match must fall on token boundaries, the quote must be at least
+   4 tokens long, and every number in the claim must appear in the quote. Otherwise Jev answers "SOURCE states: <when> → <classification>; <recommendation>". Unsupported
    outputs are dropped. A branch with no supported outputs becomes `not_available`.
 6. **Save:** an upsert as `draft`, merging branches. A `verified` entry is never overwritten. The card's preview runs
    now.
@@ -269,7 +272,11 @@ Shared by card open and by ask. The steps:
    finishes. It is fire-and-forget: a failure leaves the branch `pending`, and the next open retries it.
 
 **Rules**
-- **Query text** comes only from the identity, the publication and branch names. No dictated words are ever sent.
+- **Query text** comes only from the identity, the publication and branch names. No dictated words are ever sent. The
+  ask path's search phrase is model-written from the question; code replaces it with the bare identity if it
+  carries digits, sides or demographics.
+- **Jev source length:** long source text is split into windows on chunk boundaries and asked in parallel; the
+  highest score per question counts, since each one asks whether something exists.
 - **Locks:** one per key for the first pass, and one per branch for background fills, so concurrent opens share work.
 - **Failure:** the card shows "couldn't load guideline · retry", and nothing is stored for that branch.
 
