@@ -26,7 +26,8 @@ def jev(monkeypatch):
     def score(text):
         if any(d in text for d in st["deny"]):
             return 0.1
-        return next((v for k, v in st["scores"].items() if k in text), st["score"])
+        default = 0.05 if "(post-contrast) phase" in text else st["score"]    # a phase claim: no, unless set
+        return next((v for k, v in st["scores"].items() if k in text), default)
 
     async def post(payload, key, timeout, transport=None):
         st["calls"] += 1
@@ -786,3 +787,26 @@ async def test_an_answered_prior_study_runs_no_prior_check(monkeypatch, jev):
                           finding=PRIOR_FINDING)
     claims = [q["instructions"] for p in jev["payloads"] for q in p["questions"].values()]
     assert not any(NO_PRIOR in c for c in claims)
+
+
+# lab fix round item 4: an attenuation is blocked only by another attenuation; one measured after contrast is asked
+@pytest.mark.parametrize("finding,quote,value,phase,settles", [
+    ("3 cm left renal cyst, 45 HU post contrast.", "45 HU", 45, 0.97, False),           # live Jev 0.97
+    ("3 cm left renal cyst measuring 10 HU on the unenhanced series.", "10 HU", 10, 0.02, True),
+    ("Left renal cyst, 20 HU unenhanced, enhancing by 25 HU.", "25 HU", 25, 0.02, False),   # same family: blocked
+    ("Left renal cyst, 20 HU unenhanced, enhancing by 25 HU.", "20 HU", 20, 0.02, False)])
+async def test_hu_meaning_probes(monkeypatch, jev, finding, quote, value, phase, settles):
+    jev["scores"] = {"contrast-enhanced (post-contrast) phase": phase}
+    _model(monkeypatch, {"input": "hu", "value": value, "quote": quote})
+    out = await PP.preview_pack(_pack("bosniak-renal-cyst"), finding, "", {}, finding=finding)
+    assert ("hu" in {x.input for x in out.settled}) is settles
+
+
+async def test_a_size_in_another_family_no_longer_asks_the_attenuation(monkeypatch, jev):
+    finding = "3 cm well-defined left renal cyst, 10 HU unenhanced."
+    jev["scores"] = {"contrast-enhanced (post-contrast) phase": 0.02}
+    _model(monkeypatch, {"input": "hu", "value": 10, "quote": "10 HU"})
+    out = await PP.preview_pack(_pack("bosniak-renal-cyst"), finding, "", {}, finding=finding)
+    assert {x.input: x.value for x in out.settled}.get("hu") == "10 HU"
+    claims = [q["instructions"] for p in jev["payloads"] for q in p["questions"].values()]
+    assert "The FINDING states that 10 HU was measured on a contrast-enhanced (post-contrast) phase" in claims

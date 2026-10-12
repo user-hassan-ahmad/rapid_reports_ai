@@ -201,12 +201,33 @@ def _date(m: re.Match) -> bool:
     return year(c) and ((day(a) and month(b)) or (month(a) and day(b)))
 
 
+# unit families (lab fix round item 4): a lesion number is blocked only by another number of its own family. Length
+# and volume are one family, size: both measure a lesion, so a volume beside a diameter may be a prior or a sibling.
+FAMILY = {"mm": "size", "cm": "size", "mm3": "size", "cm3": "size", "HU": "attenuation",
+          "days": "time", "weeks": "time", "months": "time", "years": "time"}
+_PIECE = rf"{_N}(?:\s*-?\s*(?:{_UNITS})(?![a-z0-9]))?"
+_MEASURE = re.compile(rf"[{_SIGN}]?\s?{_PIECE}(?:{_X}{_PIECE}){{0,2}}", re.I)
+_UNIT_AT_END = re.compile(rf"(?<![a-z])(?:{_UNITS})$", re.I)
+_UNIT_WORD = re.compile(rf"(?<![a-z])({_UNITS})(?![a-z0-9])", re.I)
+
+
+def _other_family(w: str, unit: str) -> bool:
+    """The run is one measurement (a number or a dimension set) whose recognised unit is attached and of another
+    family than the input's: "15 mm" beside "20 HU". A bare number, a range, a bound or an unknown unit is not."""
+    w, mine = w.strip(), FAMILY.get(canon(unit))
+    if mine is None or any(g.search(w) for g in _GUARDS) or not _MEASURE.fullmatch(w) or not _UNIT_AT_END.search(w):
+        return False
+    fams = {FAMILY.get(canon(m.group(1))) for m in _UNIT_WORD.finditer(w)}
+    return bool(fams) and None not in fams and mine not in fams
+
+
 def alone(text: str, quote: str, value: float, unit: str, dims: str | None = None) -> bool:
     """A lesion number is settled only when, apart from its quoted measurement, the finding holds no other number:
     no digit and no number word (zero to twenty, the tens, hundred, half, dozen, single, solitary, both, several,
     multiple). Allowed besides: the same reading again in the unit's family ("stable at 8 mm"); an image reference
     (series, image, img, slice, se, im); a date or a year 1990-2099; an anatomical label (segment, seg, S, level,
-    rib, or a vertebra such as T4 or L2/3); and "single" or "solitary", the input's own count. Anything else asks: it
+    rib, or a vertebra such as T4 or L2/3); "single" or "solitary", the input's own count; and a measurement whose
+    recognised unit is attached and of another FAMILY ("15 mm" beside "20 HU"). Anything else asks: it
     may be a sibling, a prior or a count of lesions, and which number is meant is the radiologist's to say. A count
     input keeps its own rule."""
     if canon(unit) == "count":
@@ -229,7 +250,8 @@ def alone(text: str, quote: str, value: float, unit: str, dims: str | None = Non
             runs.append([m.start(), m.end()])
     for a, b in reversed(runs):
         w = rest[a:b]
-        if re.search(r"\d", w) and not any(g.search(w) for g in _GUARDS) and readings(w, unit, dims) == [value]:
+        same = not any(g.search(w) for g in _GUARDS) and readings(w, unit, dims) == [value]
+        if re.search(r"\d", w) and (same or _other_family(w, unit)):
             rest = rest[:a] + " " * (b - a) + rest[b:]
     return _NUMBER.search(rest) is None
 

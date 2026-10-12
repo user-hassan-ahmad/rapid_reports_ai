@@ -162,7 +162,12 @@ OTHER_NUMBER = [
     ("Seen 12 weeks ago and 6 weeks ago.", "6 weeks", "days", None),
     ("Nodule 9 mm. Adjacent 1 cm lymph node.", "9 mm", "mm", None),
     ("8 mm nodule (series 3 image 45), 2019 CT 200 mm3.", "8 mm", "mm", None),
-    ("Cyst 20 HU, 3 cm.", "20 HU", "HU", None),
+    # lab fix round item 4: a number of the same family still blocks; so does one without an attached unit
+    ("20 HU unenhanced, enhancing by 25 HU.", "25 HU", "HU", None),
+    ("20 HU unenhanced, enhancing by 25 HU.", "20 HU", "HU", None),
+    ("Cyst 20 HU, measuring 3 x 2.", "20 HU", "HU", None), ("Cyst 20 HU, 3.", "20 HU", "HU", None),
+    ("Cyst 20 HU, 3 to 4 cm.", "20 HU", "HU", None),
+    ("Cyst 3 cm, about twenty HU.", "3 cm", "mm", None),
     # the ruling: a count of nodules, or a size elsewhere, asks which one is meant
     ("Two nodules, the larger 8 mm.", "8 mm", "mm", None), ("Both nodules 8 mm.", "8 mm", "mm", None),
     ("Several nodules, the largest 8 mm.", "8 mm", "mm", None),
@@ -194,6 +199,11 @@ ALONE = [
     ("Nodule 8 mm, previously 0.8 cm.", "8 mm", "mm", None, 8),
     ("7 x 5 mm (mean 6 mm).", "7 x 5 mm", "mm", "mean", 6), ("7 x 5 mm (mean 6 mm).", "6 mm", "mm", "mean", 6),
     ("Two nodules, 8 and 4 mm.", "two nodules", "count", None, 2),   # a count keeps its own rule
+    # lab fix round item 4: another number with an attached unit of another family does not block
+    ("Cyst 20 HU, 3 cm.", "20 HU", "HU", None, 20), ("Cyst 20 HU, 3 cm.", "3 cm", "mm", None, 30),
+    ("Left renal cyst 32 x 28 mm, 20 HU.", "20 HU", "HU", None, 20),
+    ("Left renal cyst 32 x 28 mm, -5 HU.", "32 x 28 mm", "mm", "max", 32),
+    ("Interval 91 days, nodule 9 mm.", "91 days", "days", None, 91), ("Nodule 8 mm, 3 months.", "8 mm", "mm", None, 8),
 ]
 
 

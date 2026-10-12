@@ -302,6 +302,13 @@ def _nouns(e: Entry) -> list[str]:
     return [t for t in e.applies_to.finding_type if t.strip()] or ["lesion"]
 
 
+PHASE_MAX = 0.5           # Jev _phase_claim at or above it: the attenuation is asked
+
+
+def _phase_claim(shown: str) -> str:
+    return f"The FINDING states that {shown} was measured on a contrast-enhanced (post-contrast) phase"
+
+
 def _quote_state(i: InputDef, quote: str) -> str:
     """The quote alone as evidence, with the input's definition beside it (not part of it): the value must be in the
     quote's own words, never in the rest of the finding or in what is usual."""
@@ -334,6 +341,9 @@ async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding
             return set(), True, False
         claims = [f"{_LEAD[scope]} {e.input(k).label}: {_show(e, e.input(k), pending[k][0]).replace('_', ' ')}"
                   for k in ids]
+        # an attenuation measured after contrast may be an enhanced value, not the one the input means: asked
+        hu = [k for k in ids if scope == "lesion" and Q.FAMILY.get(Q.canon(e.input(k).unit)) == "attenuation"]
+        claims += [_phase_claim(_show(e, e.input(k), pending[k][0])) for k in hu]
         if one_lesion:                 # one lesion or several is a question of meaning: Jev, in the same batch
             claims.append(ONE_LESION)
         try:
@@ -343,7 +353,8 @@ async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding
             return set(), False, True
         if one_lesion and got[-1] < ONE_LESION_MIN:
             logger.info("[library.preview] %s: finding not one lesion (%.2f); lesion inputs asked", e.key, got[-1])
-        return ({k for k, s in zip(ids, got) if s >= P.SETTLED_MIN},
+        phased = {k for k, s in zip(hu, got[len(ids):]) if s >= PHASE_MAX}
+        return ({k for k, s in zip(ids, got) if s >= P.SETTLED_MIN} - phased,
                 not one_lesion or got[-1] >= ONE_LESION_MIN, False)
 
     async def quote(k: str) -> tuple[str, float | None]:
