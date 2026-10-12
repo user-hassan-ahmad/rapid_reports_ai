@@ -63,7 +63,9 @@ Nothing reaches the report unless the radiologist presses Apply or ticks it.
     - A question that involves no guideline gets a plain answer block in a "General" group.
 14. **Thread answers are only for reading.** They never change a card's proposal. Inputs do.
 15. **Threads last only for the session.** They are logged with the stack session for analysis and are never shared
-    across cases. Only registry content is shared.
+    across cases. Only registry content is shared, and it never carries case text: a supplement stores only the
+    case-free search phrase and the source URL, never the question or the answer. Supplements are shown only to
+    reviewers; every other response strips them.
 16. **Rollout is for all users, with no per-user gate.** It is tested in the lab and locally, then switched on by
     default when the new scratchpad layout is deployed. A kill switch (`RR_STACK_COPILOT=0`) turns off the panel and
     every background call.
@@ -97,7 +99,7 @@ Nothing reaches the report unless the radiologist presses Apply or ticks it.
     - Other thresholds (branch coverage) remain provisional, set where false yes answers reach zero in the lab.
 21. **The registry grows where radiologists ask.** A question the entry can't answer runs one targeted query within
     that guideline. The answer is grounded in the new chunks, which are added to the entry as supplementary evidence
-    (still a draft until verified).
+    (still a draft until verified). The supplement records only the case-free search phrase and the page URL (§2.15).
 
 22. **TNM staging uses the offline UICC TNM 9th edition data** (`resources/tnm_9th_clean.json`, cleaned to v2.1 on
     2026-10-12), never a web fetch. TNM entries count as `verified` because of their source.
@@ -217,7 +219,7 @@ Table `guideline_registry`, with an alembic migration:
      "outputs": [{"when": "condition over inputs", "classification": "label",
                   "recommendation": "interval or action", "quote": "verbatim evidence from chunks"}]}
   ],
-  "supplements": [{"question": "…", "answer": "…", "quote": "…", "url": "…"}]
+  "supplements": [{"question": "<the case-free search phrase>", "answer": "", "quote": "", "url": "…", "verified": false}]
 }
 ```
 
@@ -370,7 +372,9 @@ Shared by card open and by ask. The steps:
        stored vocabulary (§2.18);
      - extract, then Jev checks again, scoped: "The SOURCE, which is about <name> <version>, contains…".
      - If supported: answer from the best window, and append a draft supplement (`verified: false`, no quote, the
-       URL of the page in that window). A failure to store it still returns the answer.
+       URL of the page in that window). It is case-free: `question` is the vocabulary-filtered search phrase and
+       `answer` is empty; the radiologist's question and the answer (both case-grounded) are never stored. A failure
+       to store it still returns the answer.
      - If not: answer "The guideline does not address this.", plus brief general knowledge prefixed "From general
        knowledge:".
   - A TNM card is answered from the offline data, never gated or searched.

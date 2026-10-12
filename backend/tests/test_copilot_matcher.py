@@ -475,3 +475,15 @@ async def test_pick_branch_failure_is_none_and_not_cached(db_session, monkeypatc
     monkeypatch.setattr(M, "jev_post", post)
     assert await M.pick_branch("x", entry) is None
     assert await M.pick_branch("x", entry) is None and n["calls"] == 2
+
+
+async def test_match_releases_the_connection_before_the_model(db_session, monkeypatch):
+    _put(db_session, "fleischner@2017", "Fleischner", "2017", branches=["Solid"])
+    seen = []
+
+    async def call(prompt):
+        seen.append(db_session.in_transaction())
+        return _raw(u1=[_sys("Fleischner", branch="Solid")], u2=[])
+    monkeypatch.setattr(M, "_call", call)
+    cards = await M.match(db_session, "CT chest", "", U)
+    assert seen == [False] and cards[0].key == "fleischner@2017" and cards[0].known

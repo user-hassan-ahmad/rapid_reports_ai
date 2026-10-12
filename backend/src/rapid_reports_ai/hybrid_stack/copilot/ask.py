@@ -1,7 +1,8 @@
 """Ask (spec §5.5), written as structured steps rather than native tool use. With a card in scope: Jev decides
 whether the stored material answers the question, and the answer is grounded on the window Jev found it in; if not,
-one targeted query within that guideline (in its own vocabulary, no case details), and a supported answer is kept as
-a draft supplement (never material for a later answer). With no card: route the question to a guideline (normalised
+one targeted query within that guideline (in its own vocabulary, no case details), and a supported find is kept as a
+draft supplement: the case-free search phrase and the page url only, never the question or the answer, which carry the
+case (spec §2.15); the registry is shared by every user. With no card: route the question to a guideline (normalised
 and resolved like a matched card) or answer it as a general question."""
 from __future__ import annotations
 
@@ -185,7 +186,17 @@ def _err(key: str | None, ex: Exception) -> AskResult:
     return AskResult(kind="card" if key else "general", key=key, answer="", supported=False, error=type(ex).__name__)
 
 
-async def _in_card(db: Session, question: str, key: str, ctx: Context, history: list[QA]) -> AskResult:
+def _gone(abandoned: asyncio.Event | None) -> bool:
+    return abandoned is not None and abandoned.is_set()
+
+
+def _abandoned(key: str | None, e: Entry | None = None) -> AskResult:
+    """The route gave up waiting (it answered "loading"): stop before any further Jev, search or model call."""
+    return AskResult(kind="card" if key else "general", key=key, entry=e, answer="", supported=False, loading=True)
+
+
+async def _in_card(db: Session, question: str, key: str, ctx: Context, history: list[QA],
+                   abandoned: asyncio.Event | None = None) -> AskResult:
     if tnm.is_tnm(key):   # offline staging data: grounded in it, never gated or gap-searched
         site = tnm.site_for(key)
         if site is None:
@@ -199,11 +210,15 @@ async def _in_card(db: Session, question: str, key: str, ctx: Context, history: 
     stored = R.chunks(row)
     head, material, vocab = _head(e), _material(e, stored), _vocab(e, stored)
     db.rollback()   # nothing pending: release the connection before the Jev and model awaits
+    if _gone(abandoned):
+        return _abandoned(key, e)
     if material:
         score, window = await J.answers_best(material, question)
         if score >= J.ANSWERS_MIN:
             return AskResult(kind="card", key=key, entry=e,
                              answer=await _grounded(question, _ground(head, window), ctx, history))
+    if _gone(abandoned):
+        return _abandoned(key, e)
     phrase = _safe_phrase(await _search_phrase(question, e.name, e.version), e.name, e.version, vocab)
     chunks, sources = await S.gather([phrase], branch="", exclude={c.url for c in stored}, name=e.name,
                                      version=e.version, title=e.publication.title, top=GAP_URLS)
@@ -215,8 +230,9 @@ async def _in_card(db: Session, question: str, key: str, ctx: Context, history: 
             url = next((c.url for c in chunks if f"[{c.url}]" in window), chunks[0].url)
             entry = e
             try:   # storing is a bonus: a failure still returns the grounded answer
+                # Case-free: the vocabulary-filtered phrase and the url, never the question or the answer.
                 R.upsert(db, key=key, name=e.name, version=e.version, aliases=[], publication=None,
-                         content=GuidelineContent(supplements=[Supplement(question=question, answer=answer, url=url)]),
+                         content=GuidelineContent(supplements=[Supplement(question=phrase, answer="", url=url)]),
                          sources=sources, chunks=chunks)
                 entry = R.entry(R.by_key(db, key))
             except Exception as ex:
@@ -240,13 +256,17 @@ async def _card_branch(card: Card, entry: Entry, finding: str, history: str) -> 
 
 
 async def ask(db: Session, question: str, key: str | None, ctx: Context, history: list[QA],
-              finding_id: str = "") -> AskResult:
+              finding_id: str = "", abandoned: asyncio.Event | None = None) -> AskResult:
     """Never raises: a failure (model, Jev outage, search, DB) returns an error the panel shows with a retry.
-    Ends the caller session's transaction (resolve_guideline does too): the caller must have no pending writes."""
+    Ends the caller session's transaction (resolve_guideline does too): the caller must have no pending writes.
+    `abandoned` (set by the route on timeout): the resolve still finishes, so the registry grows, but nothing after it
+    runs."""
     try:
         if key:
-            return await _in_card(db, question, key, ctx, history)
-        raw = await _route(question, ctx, history, _known(db))
+            return await _in_card(db, question, key, ctx, history, abandoned)
+        known = _known(db)
+        db.rollback()   # nothing pending: release the connection before the model await
+        raw = await _route(question, ctx, history, known)
         if not raw.guideline.strip():
             return AskResult(kind="general", answer=raw.answer.strip())
         is_tnm = "tnm" in R.norm(raw.guideline).split()
@@ -256,10 +276,12 @@ async def ask(db: Session, question: str, key: str | None, ctx: Context, history
         card = await M.card_for(db, name, raw.version, finding_id or "q", finding, ctx.history, raw.site,
                                 gate=not is_tnm)
         entry = await resolve_guideline(db, card) if card else None
+        if _gone(abandoned):
+            return _abandoned(None)
         if card is None or entry is None:
             return AskResult(kind="general", answer=await _general_answer(question, ctx, history), supported=False)
         card = await _card_branch(card, entry, finding, ctx.history)
-        res = await _in_card(db, question, entry.key, ctx, history)
+        res = await _in_card(db, question, entry.key, ctx, history, abandoned)
         return res.model_copy(update={"card": card})
     except Exception as ex:
         logger.warning("[copilot.ask] %s: %s", type(ex).__name__, str(ex)[:200])

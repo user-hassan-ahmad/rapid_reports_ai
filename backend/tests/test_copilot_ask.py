@@ -124,9 +124,11 @@ async def test_card_scope_gap_searches_and_adds_a_draft_supplement(db_session, m
                     "version": "2017", "top": A.GAP_URLS} and A.GAP_URLS == 2
     assert seen_best[1][1] == "Fleischner 2017"   # the gap gate is scoped to the guideline
     sup = R.entry(R.by_key(db_session, "fleischner@2017")).content.supplements[0]
-    assert (sup.question, sup.url, sup.quote, sup.verified) == ("Does calcification matter?", "https://b", "", False)
+    # case-free: the search phrase and the url, never the question or the answer
+    assert (sup.question, sup.answer, sup.url, sup.quote, sup.verified) == ("Fleischner 2017 nodule", "", "https://b", "",
+                                                                            False)
     assert R.entry(R.by_key(db_session, "fleischner@2017")).content.branch("Solid").state == "checked"
-    assert res.entry.content.supplements[0].answer == "Benign calcification needs no follow-up."
+    assert res.answer == "Benign calcification needs no follow-up."
 
 
 async def test_supplement_store_failure_still_answers(db_session, monkeypatch):
@@ -402,3 +404,90 @@ async def test_named_tnm_variant_routes_offline(db_session, monkeypatch):
     monkeypatch.setattr(A, "_grounded", grounded)
     res = await A.ask(db_session, "Stage?", None, CTX, [])
     assert res.card.key == "tnm-lung@9" and res.error is None and res.answer == "S."
+
+
+async def test_stored_supplement_carries_no_case_text(db_session, monkeypatch):
+    _seed(db_session)
+    best, _ = _best(0.1, 0.9)
+
+    async def phrase(question, name, version):
+        return "Fleischner 7 mm nodule left lower lobe smoker"
+
+    async def grounded(question, material, ctx, history):
+        return "In this 64 year old smoker the 7 mm left nodule needs CT at 6-12 months."
+    monkeypatch.setattr(A.J, "answers_best", best)
+    monkeypatch.setattr(A, "_search_phrase", phrase)
+    monkeypatch.setattr(A.S, "gather", _gather([Chunk(url="https://b", text="nodule follow-up")]))
+    monkeypatch.setattr(A, "_grounded", grounded)
+    q = "My 64 year old smoker has a 7 mm left lower lobe nodule: when to rescan?"
+    await A.ask(db_session, q, "fleischner@2017", CTX, [])
+    sup = R.entry(R.by_key(db_session, "fleischner@2017")).content.supplements[0]
+    assert sup.answer == "" and sup.question == "Fleischner 2017 nodule"
+    for case in ("64", "7 mm", "left", "smoker", "rescan"):
+        assert case not in sup.model_dump_json()
+
+
+async def test_route_releases_the_connection_before_the_model(db_session, monkeypatch):
+    _seed(db_session)
+    seen = []
+
+    async def route(question, ctx, history, known=""):
+        seen.append((db_session.in_transaction(), known))
+        return A.RawRoute(guideline="", answer="a")
+    monkeypatch.setattr(A, "_route", route)
+    await A.ask(db_session, "q?", None, CTX, [])
+    assert seen == [(False, "- Fleischner 2017")]
+
+
+async def test_abandoned_in_card_stops_before_jev(db_session, monkeypatch):
+    import asyncio
+    _seed(db_session)
+
+    async def best(*a, **k):
+        raise AssertionError("no Jev after abandon")
+    monkeypatch.setattr(A.J, "answers_best", best)
+    ev = asyncio.Event()
+    ev.set()
+    res = await A.ask(db_session, "q?", "fleischner@2017", CTX, [], abandoned=ev)
+    assert res.loading and res.answer == "" and R.entry(R.by_key(db_session, "fleischner@2017")).content.supplements == []
+
+
+async def test_abandoned_no_card_returns_right_after_resolve(db_session, monkeypatch):
+    import asyncio
+    _seed(db_session)
+    ev = asyncio.Event()
+    calls = []
+
+    async def route(question, ctx, history, known=""):
+        return A.RawRoute(guideline="Fleischner", version="2017")
+
+    async def resolve(db, card):
+        calls.append("resolve")
+        ev.set()   # the route timed out while this ran
+        return R.entry(R.by_key(db, card.key))
+
+    async def nope(*a, **k):
+        raise AssertionError("nothing after resolve")
+    monkeypatch.setattr(A, "_route", route)
+    monkeypatch.setattr(A, "resolve_guideline", resolve)
+    monkeypatch.setattr(A.M, "pick_branch", nope)
+    monkeypatch.setattr(A.J, "answers_best", nope)
+    res = await A.ask(db_session, "q?", None, CTX, [], abandoned=ev)
+    assert calls == ["resolve"] and res.loading and res.answer == ""
+
+
+async def test_abandoned_after_gate_skips_the_gap_search(db_session, monkeypatch):
+    import asyncio
+    _seed(db_session)
+    ev = asyncio.Event()
+
+    async def best(material, q, about="", transport=None):
+        ev.set()
+        return 0.1, material
+
+    async def nope(*a, **k):
+        raise AssertionError("no gap search after abandon")
+    monkeypatch.setattr(A.J, "answers_best", best)
+    monkeypatch.setattr(A, "_search_phrase", nope)
+    res = await A.ask(db_session, "q?", "fleischner@2017", CTX, [], abandoned=ev)
+    assert res.loading

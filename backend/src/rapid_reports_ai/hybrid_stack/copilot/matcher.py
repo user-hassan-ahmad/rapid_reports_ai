@@ -123,6 +123,10 @@ class _Rows:
         rows.sort(key=lambda r: (r.status != "verified", -(r.updated_at.timestamp() if r.updated_at else 0)))
         self.rows = rows
         self.by_key = {r.key: r for r in rows}
+        # Detach the loaded rows (nothing later reads a deferred column: chunks are never used here), then release
+        # the pooled connection before the model and Jev awaits. The caller has no pending writes (ask/routes contract).
+        db.expunge_all()
+        db.rollback()
 
     def alias(self, name: str) -> list[GuidelineRegistry]:
         """As registry.by_alias: name, alias or key slug, with a trailing version token stripped too."""

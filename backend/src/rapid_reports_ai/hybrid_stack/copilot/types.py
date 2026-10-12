@@ -33,9 +33,10 @@ class Branch(BaseModel):
 
 
 class Supplement(BaseModel):
-    """An ask-time answer kept with its source page. A draft (never material for a later answer) until verified."""
+    """An ask-time find kept with its source page: case-free (question is the vocabulary-filtered search phrase,
+    answer empty; spec §2.15). A draft (never material for a later answer) until verified; reviewers only."""
     question: str
-    answer: str
+    answer: str = ""
     quote: str = ""
     url: str = ""
     verified: bool = False
