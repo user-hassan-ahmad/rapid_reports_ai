@@ -88,6 +88,7 @@ async def test_an_unmet_context_condition_keeps_its_target(monkeypatch):
 
     monkeypatch.setattr(N, "ask_rows", _checks({}))
     monkeypatch.setattr(N, "ask_conditions", conds)
+    monkeypatch.setattr(N, "ask_global_normal", _zero)
     out = await N.assumed("Stable since the previous MRI.", {"Brain": ["No other interval changes."]}, [], [], [],
                           suppressions=[("no previous study is available", "No other interval changes.")])
     assert out.assumed == {"Brain": ["No other interval changes."]} and out.dropped == {"Brain": []}
@@ -113,3 +114,21 @@ async def test_a_labelled_normal_is_asked_with_its_label_and_returned_as_written
                           labels={"Unremarkable.": "liver"})
     assert seen == [["Liver: Unremarkable.", "The spleen is normal."]]
     assert out.assumed == {"Liver": ["Unremarkable.", "The spleen is normal."]}
+
+
+async def test_a_condition_check_failure_assumes_nothing(monkeypatch):
+    async def boom(state, conditions):
+        raise RuntimeError("jev down")
+
+    monkeypatch.setattr(N, "ask_rows", _checks({}))
+    monkeypatch.setattr(N, "ask_conditions", boom)
+    monkeypatch.setattr(N, "ask_global_normal", _zero)
+    out = await N.assumed("x", NORMALS, [], [], [], suppressions=[("no prior study", "The liver is normal.")])
+    assert out.assumed == {r: [] for r in NORMALS} and out.dropped == {r: [] for r in NORMALS}
+    assert out.error and "jev down" in out.error
+
+
+def test_one_normaliser_matches_suppressions():
+    from rapid_reports_ai.hybrid_stack import template as T
+    assert N.norm_key is T.norm_key
+    assert T.norm_key("  No  other changes. ") == T.norm_key("no other changes")

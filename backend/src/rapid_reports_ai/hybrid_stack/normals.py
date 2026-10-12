@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from .jev_stack import (CONDITION_MIN, CONTRA_MIN, GLOBAL_NORMAL_MIN, HEDGED_MIN, REMOVED_MIN, STATED_MIN,
                         ask_conditions, ask_global_normal, ask_rows, normal_assumed)
-from .template import jev_text
+from .template import jev_text, norm_key
 
 logger = logging.getLogger(__name__)
 
@@ -22,10 +22,6 @@ class AssumedResult(BaseModel):
     dropped: dict[str, list[dict]] = {}   # region -> [{sentence, reason: covered|hedged|contradicted|removed|rule}]
     ms: int = 0
     error: str | None = None
-
-
-def _norm(s: str) -> str:
-    return " ".join(s.lower().strip().rstrip(".").split())
 
 
 BATCH = 15   # sentences per Jev call; batches run in parallel (one call over every sentence timed out)
@@ -88,9 +84,9 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
                 _ask(dictation, [jev_text(s, labels[s]) if s in labels else s for _, s in asked], gone),
                 ask_conditions(ctx, conds) if conds else _no_conditions(),
                 ask_global_normal(dictation))
-            hidden = {_norm(s) for c, s in suppressions or [] if met[conds.index(c)] >= CONDITION_MIN}
+            hidden = {norm_key(s) for c, s in suppressions or [] if met[conds.index(c)] >= CONDITION_MIN}
             for (region, s), c in zip(asked, checks):
-                if _norm(s) in hidden:
+                if norm_key(s) in hidden:
                     dropped[region].append({"sentence": s, "reason": "rule"})
                 elif normal_assumed(c) or (global_normal >= GLOBAL_NORMAL_MIN and _covered_only(c)):
                     out[region].append(s)

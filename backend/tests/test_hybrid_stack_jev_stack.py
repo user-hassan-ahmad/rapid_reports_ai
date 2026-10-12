@@ -51,3 +51,21 @@ async def test_ask_stated_returns_one_score_per_chip(monkeypatch):
     assert await J.ask_stated("No free gas.", ["No free gas.", "No ascites."],
                               transport=httpx.MockTransport(handler)) == [0.9, 0.1]
     assert await J.ask_stated("x", []) == []
+
+
+async def test_ask_conditions_reads_each_conditions_score(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    seen = {}
+
+    def handler(req):
+        seen.update(json.loads(req.content))
+        return httpx.Response(200, json={"answers": {"cond_0": {"noul": 0.8}}})   # cond_1 missing
+    out = await J.ask_conditions("CLINICAL HISTORY:\nx", ["no prior study", "contrast given"],
+                                 transport=httpx.MockTransport(handler))
+    assert out == [0.8, 0.0]
+    assert list(seen["questions"]) == ["cond_0", "cond_1"]
+    assert seen["questions"]["cond_0"]["instructions"].endswith("Condition: no prior study")
+
+    def fail(req):
+        raise AssertionError("no call without conditions")
+    assert await J.ask_conditions("x", [], transport=httpx.MockTransport(fail)) == []

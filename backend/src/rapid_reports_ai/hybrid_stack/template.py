@@ -68,6 +68,12 @@ def _names_structure(text: str, label: str) -> bool:
     return not lab or bool(words & lab)
 
 
+def norm_key(t: str) -> str:
+    """The match key for one sentence against another (a rule's target, a suppressed normal): case, spacing and a
+    final full stop ignored."""
+    return " ".join(t.lower().strip().rstrip(".").split())
+
+
 def _normalise(t: str) -> str:
     t = " ".join(t.split()).strip()
     return t if t.endswith(".") else t + "."
@@ -134,16 +140,12 @@ def template_suppressions(st: SheetStructure) -> list[tuple[str, str]]:
     """(condition, sentence) for each context RULE that suppresses or replaces a sentence the scratchpad would
     assume: when the condition is met for the case, that sentence is not assumed (conversion lab 2026-10-12: a
     "no prior study" rule did not stop "compared with the previous MRI"). The sentence is returned as offered."""
-    offered = {_key(t): t for _, t, _ in _offered(st)}
+    offered = {norm_key(t): t for _, t, _ in _offered(st)}
     out: list[tuple[str, str]] = []
     for r in st.rules:
         if r.condition_source != "context" or r.effect not in ("suppress", "replace") or not r.target:
             continue
-        t = offered.get(_key(r.target))
+        t = offered.get(norm_key(r.target))
         if t is not None and (r.condition, t) not in out:
             out.append((r.condition, t))
     return out
-
-
-def _key(t: str) -> str:
-    return " ".join(t.lower().split()).rstrip(".")
