@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appendSentence, buildView, closedText, lineChange, liveTail, moveUnit, sentenceOffset } from './stackState';
+import { appendSentence, buildView, closedText, heldBack, lineChange, liveTail, moveUnit, sentenceOffset } from './stackState';
 import type { StackUnit } from './types';
 
 const u = (id: number, text: string, group: string | null, extra: Partial<StackUnit> = {}): StackUnit => ({
@@ -110,4 +110,16 @@ describe('closedText', () => {
 		expect(closedText('A liver cyst.')).toBe('');
 	});
 });
+
+	it('heldBack keeps a placed sentence the new words ran on from (live trace 2026-10-12)', () => {
+		const mk = (id: number, text: string): StackUnit => ({ id, text, group: 'Kidneys', structure: null, attach_to: null, parts: null, covers: [], pinned: false, heading: false });
+		const units = [mk(0, 'A 4 mm calculus at the left VUJ.'), mk(1, 'And extensive perinephric stranding')];
+		const v = 'A 4 mm calculus at the left VUJ. And extensive perinephric stranding A tiny non-obstructing 2 mm calculus';
+		expect(heldBack(v, units)).toBe('A 4 mm calculus at the left VUJ. And extensive perinephric stranding');
+		// the sentence being spoken, with nothing placed in it, is still held back
+		expect(heldBack('A 4 mm calculus at the left VUJ. Moderate hydro', units.slice(0, 1))).toBe('A 4 mm calculus at the left VUJ.');
+		// a placed last sentence is never held back
+		expect(heldBack('A 4 mm calculus at the left VUJ. And extensive perinephric stranding.', units)).toBe(
+			'A 4 mm calculus at the left VUJ. And extensive perinephric stranding.');
+	});
 });

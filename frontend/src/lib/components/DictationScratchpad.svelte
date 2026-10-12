@@ -39,7 +39,7 @@
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
 	import { postAssumed, postChanged, postDictationCheck, postClose, postConclusionCheck, postDebug, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
-	import { appendSentence, closedText, lineChange, liveTail, moveUnit, similar } from '$lib/hybrid-stack/stackState';
+	import { appendSentence, heldBack, lineChange, liveTail, moveUnit, similar } from '$lib/hybrid-stack/stackState';
 	import { abnormalAll, assumedFrom, openCount, rowSentences, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates } from '$lib/hybrid-stack/regionState';
 	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
@@ -1506,12 +1506,7 @@
 	let pauseTimer: ReturnType<typeof setTimeout> | null = null;
 	// A sentence already placed is never held back again (debug trace 2026-10-12: a polish edit after the pause
 	// restarted the hold-back, the next grouping left the placed last sentence out, and it fell back into the box).
-	const groupable = (v: string) => {
-		if (!isRecording || Date.now() - lastWordsAt >= PAUSE_MS) return v;
-		const held = closedText(v);
-		const last = v.slice(held.length).trim();
-		return last && stackUnits.some((u) => u.text === last || similar(u.text, last)) ? v : held;
-	};
+	const groupable = (v: string) => (!isRecording || Date.now() - lastWordsAt >= PAUSE_MS ? v : heldBack(v, stackUnits));
 	/** New speech (a final or interim words) restarts the hold-back; the polish's own edits never do. */
 	function noteWords(): void {
 		if (!isRecording || isQwenWriting) return;

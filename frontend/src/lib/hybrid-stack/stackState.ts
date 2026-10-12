@@ -119,6 +119,24 @@ export function closedText(verbatim: string): string {
 	return at > 0 ? verbatim.slice(0, at).trimEnd() : '';
 }
 
+/** What the grouper gets while words are still coming: the text minus the sentence being spoken. A placed sentence is
+ *  never held back again (debug trace 2026-10-12: a polish edit restarted the hold-back and the placed last sentence
+ *  fell back into the box). And when the new words ran on from a placed sentence with no full stop between (the
+ *  fast append left "And extensive perinephric stranding" open, then "A tiny … calculus" joined it), only the words
+ *  after the placed sentence are held: holding the whole run withdrew the placed sentence from its card. */
+export function heldBack(verbatim: string, units: StackUnit[]): string {
+	const held = closedText(verbatim);
+	const rest = verbatim.slice(held.length);
+	const last = rest.trim();
+	if (!last || units.some((u) => u.text === last || similar(u.text, last))) return verbatim;
+	const lead = units
+		.filter((u) => !u.heading)
+		.map((u) => u.text.trim())
+		.filter((t) => t && last.startsWith(t) && last.length > t.length)
+		.sort((a, b) => b.length - a.length)[0];
+	return lead ? verbatim.slice(0, held.length + rest.indexOf(lead) + lead.length) : held;
+}
+
 const words = (t: string) => new Set(t.toLowerCase().match(/[a-z0-9]+/g) ?? []);
 /** A placed sentence the polish lightly reworded (a word, a full stop) is still the same sentence. */
 export function similar(a: string, b: string): boolean {
