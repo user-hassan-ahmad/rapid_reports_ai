@@ -1019,3 +1019,24 @@ async def test_a_model_failure_never_settles_prior_study_no(monkeypatch, jev):
     monkeypatch.setattr(PP, "_call", boom)
     out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging.", "", {}, finding=PRIOR_FINDING)
     assert "prior_study" not in {x.input for x in out.settled}
+
+
+# check of 606696f: "f/u" and "FU" are follow-up too, as whole tokens only
+@pytest.mark.parametrize("dictation,history", [
+    ("f/u nodule. Comparison: none.", ""), ("FU RUL nodule. No previous imaging.", ""),
+    ("No previous imaging.", "f/u RUL nodule.")])
+async def test_f_u_asks_prior_study(monkeypatch, jev, dictation, history):
+    from tests.test_library_partial import _bts
+    _prior_jev(jev, no=0.95, mentioned=0.05)
+    _model(monkeypatch)
+    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} {dictation}", history, {}, finding=PRIOR_FINDING)
+    assert "prior_study" in out.missing
+
+
+async def test_fu_inside_a_word_is_not_follow_up(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    _prior_jev(jev)
+    _model(monkeypatch)
+    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging. Patient refusal of contrast.",
+                                "Fully independent.", {}, finding=PRIOR_FINDING)
+    assert next(x for x in out.settled if x.input == "prior_study").value == "No"

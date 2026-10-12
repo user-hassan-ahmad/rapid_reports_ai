@@ -415,7 +415,8 @@ PRIOR_MENTIONED = "The CLINICAL HISTORY or DICTATION mentions any previous imagi
 HISTORY_MENTIONED = ("The CLINICAL HISTORY mentions a scan, X-ray or other imaging of this patient, of any date or "
                      "body part")
 # a history or dictation that follows a known finding implies a previous study, whatever else is said: asked
-_FOLLOW_UP = re.compile(r"\b(?:known|follow[\s-]?up|surveillance|interval)\b", re.I)
+_FOLLOW_UP = re.compile(r"\b(?:known|follow[\s-]?up|surveillance|interval)\b"
+                        r"|(?<![\w/])f/?u(?![\w/])", re.I)            # "f/u", "FU": whole tokens only
 # a word saying a previous study may exist elsewhere or later ("available" is the common UK form: "none available
 # on PACS at the time of reporting"): asked
 _ELSEWHERE = re.compile(r"\b(?:requested|awaited|awaiting|pending|to\s+follow|available|unavailable|pacs|iep"
