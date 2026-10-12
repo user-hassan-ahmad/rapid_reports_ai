@@ -91,3 +91,13 @@ def test_unbounded_asks_every_applicable_input_that_reaches_the_result():
     assert BTS_BROCK <= set(t.needed)
     assert not {"prior_volume_mm3", "current_volume_mm3", "interval_days", "diameter_mm"} & set(t.needed)
     assert t.needed == [i.id for i in e.inputs if i.id in t.needed]          # in the entry's input order
+
+
+def test_over_approximation_keeps_outcomes_behind_a_not_applicable_band():
+    """New-I1: a band unknown now but not applicable under some enumerated value must be enumerated over its states
+    too, else the rules gated on that state (the 2D arm) drop out of `possible`."""
+    given = {"prior_study": True, "resolved": False, "interval_days": 547.5, "benign_features": False, "sex": "female",
+             "family_history": False, "emphysema": False, "upper_lobe": True, "spiculation": False}
+    t = E.evaluate(_bts(), given)
+    assert t.bounded is False and len(t.possible) < len(_bts().outcomes)      # not the over-the-cap fallback
+    assert {"growth_workup_2d", "ct_2yr_2d", "volumetry_advised"} <= set(t.possible)

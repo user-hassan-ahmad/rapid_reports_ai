@@ -304,20 +304,34 @@ def reaching(entry: Entry) -> set[str]:
     return {i.id for i in entry.inputs} & seen
 
 
+def reach_states(e: Entry, ref: str) -> set[str]:
+    """The non-present states a value can take: an input's allowed states (plus not_applicable behind a
+    prerequisite), or the union over a step's inputs."""
+    i = e.input(ref)
+    if i is not None:
+        return set(i.states) | ({"not_applicable"} if i.prerequisites else set())
+    s = e.step(ref)
+    return set().union(*(reach_states(e, r) for r in s.refs())) if s is not None else set()
+
+
 def _over(entry: Entry, given: dict[str, InputValue], env: dict[str, V], names: list[str],
           doms: dict[str, list[InputValue] | None], possible: list[str]) -> list[str]:
     """Unbounded: the outcomes still possible, over-approximated. Every band step left unknown (it reads a formula or a
     number that feeds one) is enumerated over its own band ids, with the enumerable unknown inputs; more than
     OVER_MAX combinations gives every outcome. Safe: it may list an outcome no real value reaches, never miss one."""
     bands = [s for s in entry.logic if isinstance(s, BandStep) and env.get(s.id, UNKNOWN).state == "unknown"]
-    bdoms = [[V(value=b.id) for b in s.bands] for s in bands]
+    bdoms = [[V(value=b.id) for b in s.bands] + [V(state=x) for x in sorted(reach_states(entry, s.ref))]
+             for s in bands]           # band ids and the states the band can take, as gate 2 enumerates them
     if math.prod(len(doms[n]) for n in names) * math.prod(len(d) for d in bdoms) > OVER_MAX:
         return sorted(o.id for o in entry.outcomes)
     out = set(possible)
     for combo in product(*(doms[n] for n in names)):
         for bc in product(*bdoms):
             e2 = _inputs(entry, {**given, **dict(zip(names, combo))})
-            run(entry, e2, {s.id: v for s, v in zip(bands, bc)})
+            try:
+                run(entry, e2, {s.id: v for s, v in zip(bands, bc)})
+            except EvaluationError:    # an override no real value produces; gate 2 owns the entry's correctness
+                continue
             r = e2[entry.result]
             if r.state == "present":
                 out.add(r.value)

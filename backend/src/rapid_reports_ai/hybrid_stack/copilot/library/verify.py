@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from itertools import product
 
-from .engine import PH, EvaluationError, Trace, V, _inputs, _iv, _num, domain, evaluate, render, run
+from .engine import PH, EvaluationError, Trace, V, _inputs, _iv, _num, domain, evaluate, reach_states, render, run
 from .schema import (FACT_ROLES, AdjustStep, BandStep, Cases, DeriveStep, Entry, Manifest, RulesStep, ScoreStep,
                      TableStep, conds)
 
@@ -135,13 +135,7 @@ def _locators(e: Entry, m: Manifest) -> list[str]:
 
 
 def _reach(e: Entry, ref: str) -> set[str]:
-    """The non-present states a value can take: an input's allowed states (plus not_applicable behind a
-    prerequisite), or the union over a step's inputs."""
-    i = e.input(ref)
-    if i is not None:
-        return set(i.states) | ({"not_applicable"} if i.prerequisites else set())
-    s = e.step(ref)
-    return set().union(*(_reach(e, r) for r in s.refs())) if s is not None else set()
+    return reach_states(e, ref)
 
 
 def _txt(v) -> str:
