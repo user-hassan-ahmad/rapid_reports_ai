@@ -73,4 +73,14 @@ def test_get_fails_open(monkeypatch, tmp_path):
 
 
 def test_committed_bundle_matches_the_guidelines_folder():
-    assert json.loads(L.BUNDLE.read_text()) == L.compile_bundle(L.GUIDELINES)
+    assert json.loads(L.BUNDLE.read_text()) == L.compile_bundle(L.guidelines_root())
+
+
+def test_guidelines_root_is_safe_on_a_short_install_path():
+    """A deploy layout shallower than the repo (e.g. /app/rapid_reports_ai/...) must not raise at import or lookup:
+    the bundle is loaded from resources/, and the source folders are only needed to compile it."""
+    from pathlib import Path
+    root = L.guidelines_root(Path("/app/rapid_reports_ai/library/bundle.py"))
+    assert isinstance(root, Path) and not root.exists()
+    assert L.compile_bundle(root) == {"version": L.compile_bundle(root)["version"], "entries": {}}
+    assert L.guidelines_root() == L.Path(L.__file__).resolve().parents[6] / "guidelines"

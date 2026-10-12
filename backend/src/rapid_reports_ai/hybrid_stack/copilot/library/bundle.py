@@ -21,9 +21,15 @@ from .verify import check
 logger = logging.getLogger(__name__)
 
 _HERE = Path(__file__).resolve()
-GUIDELINES = _HERE.parents[6] / "guidelines"
 BUNDLE = _HERE.parents[3] / "resources" / "guideline_bundle.json"
 _PUBLIC = ("id", "role", "title", "issuer", "edition", "url")
+
+
+def guidelines_root(here: Path = _HERE) -> Path:
+    """The repo's guidelines/ folder, resolved only when compiling. A deploy layout shallower than the repo has no
+    such folder; it gets a path that does not exist (an empty compile) rather than an IndexError at import."""
+    parents = here.parents
+    return parents[6] / "guidelines" if len(parents) > 6 else parents[-1] / "missing-guidelines"
 
 
 class BundleError(Exception):
@@ -39,7 +45,8 @@ def _read(d: Path) -> list[tuple[Entry, Manifest, Cases | None]]:
     return out
 
 
-def compile_bundle(root: Path = GUIDELINES) -> dict[str, Any]:
+def compile_bundle(root: Path | None = None) -> dict[str, Any]:
+    root = guidelines_root() if root is None else root
     entries: dict[str, Any] = {}
     problems: list[str] = []
     for d in sorted(p for p in root.iterdir() if p.is_dir()) if root.exists() else []:
