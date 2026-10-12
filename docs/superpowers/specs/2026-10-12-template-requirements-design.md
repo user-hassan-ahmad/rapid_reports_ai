@@ -132,8 +132,8 @@ The sheet is never exposed to the user; every path below works on it behind the 
 2. **New templates are written in the grammar.** The conversion step runs after
    `analyze_examples_to_skill_sheet`; a failed conversion keeps the free-form sheet (today's path).
 3. **Existing templates converted once** (31 skill-sheet templates, hand read + one end-to-end test each), written
-   by a one-off script: old sheet kept in `template_config.legacy_skill_sheet`, a TemplateVersion, and a JSON
-   backup. Legacy templates (no generation mode) soft-deleted.
+   by a one-off script: old sheet kept as a pre-upgrade TemplateVersion and a JSON backup (see the template pipeline
+   design). Legacy templates (no generation mode) soft-deleted.
 
 ## Build order
 
