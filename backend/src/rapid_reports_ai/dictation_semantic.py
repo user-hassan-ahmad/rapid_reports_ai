@@ -156,7 +156,9 @@ SEMANTIC_SYSTEM_PROMPT = (
 )
 
 _MEDIUM = "medium"
-_BACKSTOP = re.compile(r"\d|\b(?:left|right|bilateral)\b", re.I)
+# A number, side or negation in the garbled words or in the suggestion: never a one-click suggestion, always blocking
+# ("Non 4 mm" -> "No 4 mm", "write kidney" -> "right kidney", "for mm" -> "4 mm", "Know free" -> "No free").
+_BACKSTOP = re.compile(r"\d|\b(?:left|right|bilateral|no|not|non|without)\b", re.I)
 
 
 async def _default_analyse(
@@ -225,7 +227,7 @@ def _locate_flags(findings: str, result: SemanticFindings) -> list[IntegrityFlag
         other = (issue.other_quote or "").strip()
         o = findings.find(other) if other else -1  # the earlier statement: first occurrence
         garbled = issue.kind == "garbled_phrase"
-        backstop = bool(_BACKSTOP.search(quote))   # a number or side: never a suggestion ("Non 4 mm" -> "No 4 mm" flips it)
+        backstop = bool(_BACKSTOP.search(f"{quote} {issue.suggestion or ''}"))
         flags.append(
             IntegrityFlag(
                 kind=issue.kind,

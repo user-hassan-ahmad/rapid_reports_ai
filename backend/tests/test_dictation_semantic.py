@@ -193,3 +193,20 @@ def test_a_garble_on_a_number_never_carries_a_suggestion():
 def test_message_is_required_in_the_schema_but_tolerated_when_missing():
     assert "message" in SemanticIssue.model_json_schema()["required"]
     assert SemanticIssue.model_validate({"kind": "garbled_phrase", "quote": "x"}).message == ""
+
+
+def test_a_suggestion_that_brings_in_a_side_number_or_negation_blocks_and_is_withheld():
+    """Review 2026-10-12: the backstop read only the garbled words, so a sound-alike could add one in a click."""
+    text = "The write kidney has a stone measuring for mm. Know free fluid."
+    for quote, suggestion in (("write kidney", "right kidney"), ("for mm", "4 mm"), ("Know free", "No free")):
+        issue = SemanticIssue(kind="garbled_phrase", quote=quote, message="m", suggestion=suggestion,
+                              changes_meaning=False)
+        f = _locate_flags(text, SemanticFindings(issues=[issue]))[0]
+        assert f.blocking and f.suggestion == "", quote
+
+
+def test_a_plain_garble_keeps_its_suggestion():
+    text = "The common bile duck is dilated."
+    issue = SemanticIssue(kind="garbled_phrase", quote="duck", message="m", suggestion="duct", changes_meaning=False)
+    f = _locate_flags(text, SemanticFindings(issues=[issue]))[0]
+    assert not f.blocking and f.suggestion == "duct"

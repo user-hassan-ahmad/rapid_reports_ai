@@ -337,4 +337,33 @@ describe('HybridStackView v2', () => {
 		await userEvent.keyboard('d');
 		expect(props.onEditLine).toHaveBeenCalledWith(0, null, '');
 	});
+
+	it('browser shortcuts stay theirs in the walkthrough: Ctrl+D does not delete the sentence (review 2026-10-12)', async () => {
+		const units = [u(0, 'The pancreas is', 'Liver', { abnormal: true })];
+		const c = { key: 'p', kind: 'truncation', blocking: true, tier: 1 as const, message: 'Unfinished.', quote: 'The pancreas is', other: null, suggestion: '', unitId: 0 };
+		const props = { ...base(), units, checks: [c], conclusion: { kind: 'draft', text: 'x', edited: false } as const, namedNormals: true };
+		render(HybridStackView, props);
+		await page.getByRole('button', { name: 'Confirm · 1 to resolve' }).click();
+		await userEvent.keyboard('{Control>}d{/Control}');
+		expect(props.onEditLine).not.toHaveBeenCalled();
+	});
+
+	it('a check whose words differ only in case or spacing from the line still blocks (review 2026-10-12)', async () => {
+		const units = [u(0, 'The pancreas is', 'Liver', { abnormal: true })];
+		const c = { key: 'p', kind: 'truncation', blocking: true, tier: 1 as const, message: 'Unfinished.', quote: 'the  pancreas is', other: null, suggestion: '', unitId: 0 };
+		render(HybridStackView, { ...base(), units, checks: [c], conclusion: { kind: 'draft', text: 'x', edited: false } as const, namedNormals: true });
+		await expect.element(page.getByRole('button', { name: '1 to check · 1 blocking' })).toBeInTheDocument();
+	});
+
+	it('the walkthrough Confirm waits for a typed line to be added (review 2026-10-12)', async () => {
+		const units = [u(0, 'The pancreas is', 'Liver', { abnormal: true })];
+		const c = { key: 'p', kind: 'truncation', blocking: true, tier: 1 as const, message: 'Unfinished.', quote: 'The pancreas is', other: null, suggestion: '', unitId: 0 };
+		const props = { ...base(), units, conclusion: { kind: 'draft', text: 'x', edited: false } as const, namedNormals: true };
+		const r = render(HybridStackView, { ...props, checks: [c] });
+		await page.getByRole('button', { name: 'Confirm · 1 to resolve' }).click();
+		r.rerender({ ...props, checks: [c], checkAnswers: { p: 'as_dictated' } });
+		await expect.element(page.getByTestId('walkthrough')).toHaveTextContent('All checked');
+		await page.getByLabelText('New line').fill('Small left renal cyst');
+		await expect.element(page.getByRole('button', { name: 'Confirm', exact: true })).toBeDisabled();
+	});
 });

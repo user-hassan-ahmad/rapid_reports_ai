@@ -3,6 +3,7 @@
 	// regions with their amber rows and the normals that will be reported, the tray, the conclusion and the gate
 	// bar. Every line is the radiologist's own sentence from the verbatim text; a click opens it for editing.
 	// Rows are asked, never assumed: a tap adds only the sentences listed above its button.
+	import { tick } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { buildView } from './stackState';
@@ -189,7 +190,11 @@
 	// Checks still asking: not answered, and their words still in the text (an edit that removes them resolves them).
 	// A check whose words are on a line shown here is an underline with a hover card; any other is a row, in the card
 	// holding its sentence or up top.
-	const inText = (q: string) => units.some((u) => u.text.includes(q) || (u.parts ?? []).some((x) => x.text.includes(q)));
+	// Against all lines joined, case and spacing aside: a check's sentence boundaries (Jev's splitter, the model's quote)
+	// need not match the grouper's, and a check whose words are still there must never drop out (review 2026-10-12).
+	const squash = (t: string) => t.toLowerCase().replace(/\s+/g, ' ').trim();
+	const allText = $derived(squash(units.flatMap((u) => [u.text, ...(u.parts ?? []).map((x) => x.text)]).join(' ')));
+	const inText = (q: string) => allText.includes(squash(q));
 	const liveChecks = $derived(checks.filter((c) => !checkAnswers[c.key] && (c.unitId === null || inText(c.quote))));
 	const blockingChecks = $derived(liveChecks.filter((c) => c.blocking).length);
 	const flatRows = (rows: ViewRow[]): ViewRow[] => rows.flatMap((r) => [r, ...flatRows(r.children)]);
@@ -292,21 +297,34 @@
 		walkTotal = stops.length;
 		hoverKey = pinnedKey = null;
 		walking = true;
+		// The Confirm button that started the walk is gone: focus goes to the walkthrough bar, so Tab reaches its buttons
+		void tick().then(() => document.querySelector<HTMLElement>('[data-testid="walkthrough"]')?.focus());
 	}
 	function nextStop() {
 		if (current && stops.length > 1) walkSkipped = [...walkSkipped.filter((x) => x !== current), current];
 	}
-	function replaceCheck(c: CheckFlag) {
+	/** The line a check acts on: its card's line, else (a row check) its unit's line holding the words; with `whole`,
+	 *  the unit itself when the words span lines (Edit only). */
+	function target(c: CheckFlag, whole = false): { unitId: number; part: number | null; text: string } | null {
 		const r = cardLine(c);
-		if (!r || !c.suggestion) return;
-		onEditLine(r.unitId, partIndex(r), replaced(r.text, c));
+		if (r) return { unitId: r.unitId, part: partIndex(r), text: r.text };
+		const u = units.find((x) => x.id === c.unitId);
+		if (!u) return null;
+		const k = (u.parts ?? []).findIndex((x) => x.text.includes(c.quote));
+		if (k >= 0) return { unitId: u.id, part: k, text: u.parts![k].text };
+		return u.text.includes(c.quote) || whole ? { unitId: u.id, part: null, text: u.text } : null;
+	}
+	function replaceCheck(c: CheckFlag) {
+		const t = target(c);
+		if (!t || !c.suggestion) return;
+		onEditLine(t.unitId, t.part, replaced(t.text, c));
 		onCheckAnswer(c.key, 'replaced');
 		pinnedKey = hoverKey = null;
 	}
 	function deleteSentence(c: CheckFlag) {
-		const r = cardLine(c);
-		if (!r) return;
-		onEditLine(r.unitId, partIndex(r), withoutQuote(r.text, c));
+		const t = target(c);
+		if (!t) return;
+		onEditLine(t.unitId, t.part, withoutQuote(t.text, c));
 		pinnedKey = hoverKey = null;
 	}
 	function keepCheck(c: CheckFlag) {
@@ -314,17 +332,22 @@
 		pinnedKey = hoverKey = null;
 	}
 	function editCheck(c: CheckFlag) {
-		const r = cardLine(c);
-		if (r) open(r);
+		const t = target(c, true);
+		if (!t) return;
+		commit();
+		editing = { unitId: t.unitId, part: t.part };
+		editValue = t.text;
+		onEditing(true);
 	}
 	function walkKey(e: KeyboardEvent) {
-		if (!walking || editing) return;
+		if (!walking || editing || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;   // browser shortcuts stay theirs
 		const t = e.target as HTMLElement | null;
 		if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+		const onControl = !!t && (t.tagName === 'BUTTON' || t.tagName === 'A');
 		const c = currentCheck;
 		if (e.key === 'Escape') walking = false;
-		else if (e.key === 'Tab') nextStop();
-		else if (c && e.key === 'Enter' && c.suggestion) replaceCheck(c);
+		else if (e.key === 'Tab' && c && !e.shiftKey && !onControl) nextStop();   // otherwise Tab moves focus
+		else if (c && e.key === 'Enter' && c.suggestion && !onControl) replaceCheck(c);
 		else if (c && c.tier === 1 && (e.key === 'd' || e.key === 'D')) deleteSentence(c);
 		else if (c && (e.key === 'e' || e.key === 'E')) editCheck(c);
 		else if (c && (e.key === 'k' || e.key === 'K')) keepCheck(c);
@@ -673,7 +696,7 @@
 					Dictate correction
 				</button>
 			{/if}
-			{#if c.suggestion}<button type="button" class="rounded-md bg-orange-400/90 px-2 py-0.5 text-xs font-semibold text-gray-950 hover:bg-orange-300" onclick={() => replaceCheck(c)}>Replace with “{c.suggestion}”</button>{/if}
+			{#if c.suggestion && target(c)}<button type="button" class="rounded-md bg-orange-400/90 px-2 py-0.5 text-xs font-semibold text-gray-950 hover:bg-orange-300" onclick={() => replaceCheck(c)}>Replace with “{c.suggestion}”</button>{/if}
 			{#if !c.blocking}<button type="button" class="rounded-md px-2 py-0.5 text-xs text-gray-500 hover:text-gray-300" onclick={() => onCheckAnswer(c.key, 'skip')}>Skip</button>{/if}
 			<button type="button" class="rounded-md bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-200 hover:bg-emerald-500/25" onclick={() => onCheckAnswer(c.key, 'as_dictated')}>✓ As dictated</button>
 		</span>
@@ -1083,7 +1106,7 @@
 	<!-- Gate bar: the open questions and what will be assumed; Confirm takes ownership of both. With anything that
 	     blocks Confirm still open, Confirm (or the "to check" chip) starts the walkthrough instead. -->
 	{#if walking}
-		<section aria-label="Walkthrough" data-testid="walkthrough" class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-orange-400/40 bg-orange-400/[0.07] px-2.5 py-2">
+		<section aria-label="Walkthrough" data-testid="walkthrough" tabindex="-1" class="outline-none flex flex-wrap items-center justify-between gap-2 rounded-lg border border-orange-400/40 bg-orange-400/[0.07] px-2.5 py-2">
 			<p class="flex flex-col text-xs">
 				{#if stops.length}
 					<span class="font-medium text-orange-100">Checking {walkTotal - stops.length + 1} of {walkTotal} · {current?.startsWith('row:') ? 'Referral question' : currentCheck ? checkLabel(currentCheck.kind) : ''}</span>
@@ -1098,7 +1121,7 @@
 				{#if stops.length > 1}<button type="button" class="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-gray-200 hover:bg-white/[0.06]" onclick={nextStop}>Next ›</button>{/if}
 				{#if !stops.length}
 					<button type="button" class="rounded-lg bg-purple-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-40"
-						disabled={!hasConclusion || syncing || editing !== null} onclick={finishWalk}>{onConfirmGenerate ? 'Confirm & Generate' : 'Confirm'}</button>
+						disabled={!hasConclusion || syncing || editing !== null || newLine.trim().length > 0} onclick={finishWalk}>{onConfirmGenerate ? 'Confirm & Generate' : 'Confirm'}</button>
 				{/if}
 			</span>
 		</section>

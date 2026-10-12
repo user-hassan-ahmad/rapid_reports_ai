@@ -1,6 +1,6 @@
 // Dictation checks in the scratchpad (2026-10-12): the integrity check's flags (/api/dictation/check) underlined on the
 // words they are about, with a hover card (Grammarly-style). Blocking checks hold Confirm and are walked through at
-// Confirm: tier 1 (code: an unfinished sentence, a dimension missing), every conflict (sides, measurements,
+// Confirm: tier 1 (an unfinished sentence, judged by Jev at /api/canvas/stack/unfinished; a dangling dimension is one), every conflict (sides, measurements,
 // contradictions, units) and a garble that could change the report. A garble whose reading is certain is advisory and
 // carries the words to replace it.
 import type { StackUnit } from './types';

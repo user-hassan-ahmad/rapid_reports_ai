@@ -545,6 +545,9 @@ for _old, _new in (
      "the answers given in the scratchpad and the normals the radiologist confirmed; nothing else is stated, for "
      "any structure or region. **DO NOT ASSERT**: the radiologist removed this statement; it never appears, in "
      "any wording or section.\n\n"),
+    # principle 8 names the descriptor-propagation principle replaced above (review 2026-10-12)
+    ("The descriptor-propagation principle propagates what WAS dictated; it does not mandate emitting a "
+     "placeholder for what wasn't. ", ""),
 ):
     _S = _swap(_S, _old, _new)
 QUICK_REPORT_HARDENING_PREAMBLE_STACK = _S

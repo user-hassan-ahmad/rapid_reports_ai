@@ -143,6 +143,9 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	// Scratchpad v2 gate (spec 2026-10-11 §5-6): Generate waits for the Confirm, then sends the findings block.
 	let stackGate: GateRecord | null = null;
 	let stackFindings = '';
+	// The Generate button's locks, also honoured by the walkthrough's Confirm & Generate (review 2026-10-12)
+	$: generateBlocked = isRecording || loading || (analyseLoading && !analyserReady) || !scratchpadContent.trim() ||
+		sectionsDirty || (integrityGate && !integrityAcknowledged) || (stackGated && !stackGate);
 	let stackSessionId = '';
 	let stackSheetId: string | null = null;
 	$: stackGated = hybridStack && !!stackSchema;
@@ -1051,7 +1054,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			onStackPills={(p) => { stackPills = p; }}
 			stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
 			onStackGate={(g, f) => { stackGate = g; stackFindings = f; }}
-			onStackGenerate={async () => { await tick(); void handleGenerateReport(); }}
+			onStackGenerate={async () => { await tick(); if (!generateBlocked) void handleGenerateReport(); }}
 			onStackSession={(id) => { stackSessionId = id; }}
 			onStackSheet={(id) => { stackSheetId = id; }}
 		/>
@@ -1106,7 +1109,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			<button
 				type="button"
 				onclick={() => handleGenerateReport()}
-				disabled={isRecording || loading || (analyseLoading && !analyserReady) || !scratchpadContent.trim() || sectionsDirty || (integrityGate && !integrityAcknowledged) || (stackGated && !stackGate)}
+				disabled={generateBlocked}
 				class="btn-primary-subtle w-full px-6 py-3 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
 				class:best-ready={bestSheetReady && !loading}
 			>

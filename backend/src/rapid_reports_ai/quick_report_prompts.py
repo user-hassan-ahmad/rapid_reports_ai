@@ -442,7 +442,10 @@ When bilateral findings of the same type and severity are present, combine into
 a single sentence with directional comparison if asymmetric.
 
 """),
-    ("""Recommendations must be specific""", """A recommendation appears only where the skill sheet lists one; when it does:
+    ("""Management inference, differential synthesis, and symptom attribution belong in
+IMPRESSION only.""", """Symptom attribution belongs in IMPRESSION only, and only where the confirmed conclusion
+states it."""),
+    ("""Recommendations must be specific""", """A recommendation appears only where the confirmed conclusion contains one; when it does:
 recommendations must be specific"""),
     ("""When a named guideline specifies the management pathway, state it and
 commit. Reserve hedging for genuine clinical ambiguity.""", ""),
@@ -475,5 +478,5 @@ QR_VERIFICATION_CHECKLIST_STACK = _swaps(
 - The impression phrases the confirmed conclusion: every finding it names, nothing it does not contain
 """),
     ("- Recommendations are specific (specialty, urgency, pathway)",
-     "- No recommendation appears unless the skill sheet lists it; a listed one is specific (specialty, urgency, pathway)"),
+     "- No recommendation appears unless the confirmed conclusion contains it; one that does is specific (specialty, urgency, pathway)"),
 )

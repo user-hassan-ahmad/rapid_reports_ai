@@ -404,6 +404,8 @@
 	let stackFindings = '';
 	let stackSessionId = '';
 	$: stackGated = hybridStack && !!stackSchema;
+	// The Generate button's locks, also honoured by the walkthrough's Confirm & Generate (review 2026-10-12)
+	$: generateBlocked = isRecording || loading || !scratchpadContent.trim() || sectionsDirty || (stackGated && !stackGate);
 
 	async function handleGenerateReport() {
 		if (!scratchpadRef || !selectedTemplate) return;
@@ -865,7 +867,7 @@
 					onStackPills={(p) => { stackPills = p; }}
 					stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
 					onStackGate={(g, f) => { stackGate = g; stackFindings = f; }}
-					onStackGenerate={async () => { await tick(); void handleGenerateReport(); }}
+					onStackGenerate={async () => { await tick(); if (!generateBlocked) void handleGenerateReport(); }}
 					onStackSession={(id) => { stackSessionId = id; }}
 					stackTemplateId={selectedTemplate?.id ?? null}
 				/>
@@ -875,7 +877,7 @@
 				<button
 					type="button"
 					onclick={() => handleGenerateReport()}
-					disabled={isRecording || loading || !scratchpadContent.trim() || sectionsDirty || (stackGated && !stackGate)}
+					disabled={generateBlocked}
 					class="btn-primary-subtle w-full px-6 py-3 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
 				>
 					{#if loading}
