@@ -384,6 +384,14 @@ def _non_excluding(entry: Entry, given: dict[str, InputValue],
     return fill, over
 
 
+def _pinned(entry: Entry, input_id: str, fixed: dict[str, V] | None) -> bool:
+    """Every step that reads the input is a band step overridden in `fixed`, and no prerequisite tests it: its value
+    cannot move anything, so it is not enumerated (the held-out eligibility number in the clinical pass)."""
+    users = [s for s in entry.logic if input_id in s.refs()]
+    return (bool(fixed) and bool(users) and all(isinstance(s, BandStep) and s.id in fixed for s in users)
+            and not any(c.ref == input_id for i in entry.inputs for p in i.prerequisites for c in conds(p)))
+
+
 def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V], fixed: dict[str, V] | None = None,
              hold_out: bool = True) -> tuple[list[str], bool, list[str], dict[str, list[str]]]:
     """(possible outcomes, bounded, needed inputs). An unknown input is needed when changing it alone can change the
@@ -413,7 +421,7 @@ def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V], fixe
             return possible, bounded, needed, {n: possible if n in first else decides.get(n) or possible
                                                for n in needed}
     doms = {i.id: domain(entry, i) for i in unknown}
-    names = [k for k, d in doms.items() if d is not None]
+    names = [k for k, d in doms.items() if d is not None and not _pinned(entry, k, fixed)]
     order = [i.id for i in entry.inputs]
     reach = reaching(entry)
     every = [i.id for i in unknown if i.id in reach]

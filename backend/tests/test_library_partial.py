@@ -179,3 +179,21 @@ def test_held_out_values_come_from_the_entry():
     fill, over = E._non_excluding(e, {}, [e.input("age"), e.input("proven_malignant")])
     assert {k: v.value for k, v in fill.items()} == {"proven_malignant": False}
     assert {k: v.value for k, v in over.items()} == {"age_band": "ge18"}
+
+
+def test_a_pinned_eligibility_number_is_not_enumerated_in_the_second_pass(monkeypatch):
+    """Fleischner age is held out through its age_band override: the clinical pass never enumerates age itself (its
+    band is pinned, so its values cannot move anything), and the asks are unchanged."""
+    import json
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+    e = LB.Library(json.loads(LB.BUNDLE.read_text())).lookup("fleischner-pulmonary-nodule")
+    g = {"nodule_type": "solid", "count": "single", "diameter_mm": 7}
+    seen, real = [], E._once
+
+    def spy(entry, given, over=None):
+        seen.append(dict(given))
+        return real(entry, given, over)
+    monkeypatch.setattr(E, "_once", spy)
+    t = E.evaluate(e, g)
+    assert not any("age" in x for x in seen)
+    assert t.outcome is None and t.needed == ["age", "exclusion", "risk"]
