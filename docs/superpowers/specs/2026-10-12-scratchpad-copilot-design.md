@@ -229,8 +229,8 @@ Table `guideline_registry`, with an alembic migration:
 ### 5.2 Matcher (`POST /match`)
 
 - Input: scan type, referral, and the abnormal units `{id, text}` from `/group`.
-- It runs after `/group` settles (debounced) and is cached per unit text. A unit whose text is unchanged is never
-  re-matched.
+- It runs after `/group` settles (debounced) and is cached per (scan type, referral, unit text). A unit whose text is
+  unchanged is never re-matched; a model failure caches nothing.
 - One gpt-oss-120b call on Cerebras, about 1 s, with structured output. Per unit it returns ranked candidates
   `{name, version, why, publication, skeleton[], branch}`:
   - `publication`: title, issuing body and year, from model knowledge. Never a URL.
@@ -292,20 +292,33 @@ Shared by card open and by ask. The steps:
 
 - `open`: `resolve_guideline`, then the preview.
 - `preview`: the preview alone, when an input is answered.
-- One Qwen call on Cerebras with low reasoning and JSON output.
-  - Input: the card's branch (and any other `checked` branches), the current findings, the referral and the
+- **The model chooses, code copies.** One Qwen call on Cerebras with low reasoning and JSON output.
+  - Input: the card's one branch, with its outputs numbered, plus the current findings, the referral and the
     answered inputs.
-  - Output:
+  - Output: choices only.
 
 ```json
 {"settled": [{"input": "risk", "value": "High risk", "quote": "smoker"}],
- "missing": ["risk"],
- "proposal": {"classification": "Fleischner 2017 · high risk", "line": "…", "recommendation": "…"} | null}
+ "not_needed": ["count"],
+ "output": 2,
+ "line": "…"}
 ```
 
+- **Code builds the preview** (`{settled, missing, proposal}`):
+  - `settled` keeps only real options of real inputs; the radiologist's answers win.
+  - **Jev checks every model-settled value** in one batched call ("The FINDINGS or CLINICAL HISTORY state this:
+    <input question>: <value>"). A value below the bar, or every value when Jev fails, becomes missing: the input is
+    asked, never assumed. Answered inputs are not checked.
+  - `missing` is computed in code: required inputs − settled − `not_needed`. A rejected or unconfirmed value is always
+    missing. TNM: required = the site's axes (+ histology where the stage table varies by it), and `not_needed` is
+    ignored.
+  - `proposal`, only when nothing is missing: `classification` = "<name> <version> · <output's category>" and
+    `recommendation` = the chosen output's recommendation, both copied verbatim. `line` is the model's sentence. An
+    invalid or absent output number, or a model value that contradicts an answered input, gives no proposal. TNM:
+    the proposal (and any stage) is assembled in code (§5.8).
 - The proposal is null while any required input is missing, or when the branch is not `checked`.
-- **Code check:** every number in `classification`, `line` and `recommendation` must appear in the branch's rule or
-  outputs, the entry's name or version, or the findings. Otherwise the proposal is dropped, and the card shows the
+- **Code check:** every number in `line` (number words mapped to digits) must appear in the branch's rule, outputs or
+  options, the entry's name or version, or the findings. Otherwise the proposal is dropped, and the card shows the
   inputs only.
 
 ### 5.5 Ask (`POST /ask`)

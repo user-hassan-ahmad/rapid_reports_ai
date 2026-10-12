@@ -6,11 +6,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from collections import OrderedDict
 
 from pydantic import BaseModel, Field
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
+from ...database.models import GuidelineRegistry
 from ...enhancement_utils import MODEL_CONFIG, _run_agent_with_model
 from ...jev_client import JEV_MODEL, jev_post
 from ..schemas import scan_key
@@ -23,11 +25,15 @@ logger = logging.getLogger(__name__)
 TNM_GATE_MIN = 0.7   # provisional: Jev "a primary malignancy of this site that would be staged"; set by the Task 13 lab
 MAX_PER_FINDING = 2
 MAX_PER_CASE = 6
+CANDIDATES_PER_FINDING = 3   # resolved per finding (a candidate may resolve to nothing; the next one fills in)
 TIMEOUT_S = 8.0
 JEV_TIMEOUT_S = 4.0  # the edition pick and the TNM site gate; both fail closed (no pick, no card)
 PICK_MIN = 0.6
-_CACHE: "OrderedDict[tuple, list]" = OrderedDict()
+KNOWN_MAX = 200      # registry rows offered to the model, verified first then most recent
 _CACHE_MAX = 512
+_CACHE: "OrderedDict[tuple, list]" = OrderedDict()        # (scan, history, finding) -> the model's systems
+_GATE: "OrderedDict[tuple, float]" = OrderedDict()        # (history, finding, site) -> Jev score (successes only)
+_PICK: "OrderedDict[tuple, str | None]" = OrderedDict()   # (finding, name, row keys) -> picked key (successes only)
 
 MATCH_SYS = """You recognise which published radiology classification systems, scoring systems, staging systems or management guidelines apply to findings a radiologist has dictated. Practice is in the UK: where several systems exist for the same finding, prefer the one used in UK radiology.
 
@@ -40,8 +46,8 @@ Each system:
 - version: the edition or year ("" if it has none); when KNOWN SYSTEMS lists it, that version
 - why: one short clause, what about the finding makes it apply
 - publication: the defining publication's title, issuing body and year, as best you know them (never a URL)
-- skeleton: the system's branches or categories by name only (the groups its rules are organised by), never thresholds or intervals
-- branch: the skeleton branch this finding falls into ("" when the finding does not yet say enough to tell)
+- skeleton: the system's branches or categories by name only (the groups its rules are organised by), never thresholds or intervals; when KNOWN SYSTEMS lists branches for it, exactly those names
+- branch: the skeleton branch this finding falls into, spelled exactly as in skeleton ("" when the finding does not yet say enough to tell)
 - site: "" except for TNM staging
 TNM STAGING: for a primary malignant tumour (known or suspected) that would be staged, list name "TNM", version "9", site = exactly one name from TNM SITES, skeleton ["Staging"], branch "Staging". Never TNM for a metastasis, a benign lesion or an indeterminate incidental finding."""
 
@@ -72,13 +78,79 @@ class RawMatch(BaseModel):
 
 def clear_cache() -> None:
     _CACHE.clear()
+    _GATE.clear()
+    _PICK.clear()
 
 
-def _prompt(scan_type: str, history: str, findings: list[Finding], known: list[tuple[str, str, str]]) -> str:
+def _put(cache: OrderedDict, k, v) -> None:
+    cache[k] = v
+    cache.move_to_end(k)
+    while len(cache) > _CACHE_MAX:
+        cache.popitem(last=False)
+
+
+def _get(cache: OrderedDict, k):
+    if k in cache:
+        cache.move_to_end(k)
+        return True, cache[k]
+    return False, None
+
+
+# --- the registry, loaded once per match() -------------------------------------------------------------------------
+
+def _vnum(v: str) -> tuple:
+    return tuple(int(x) for x in re.findall(r"\d+", v or ""))
+
+
+def _nv(v: str) -> str:
+    """A version compared loosely: "v2019" = "2019", "2nd edition" = "2nd"."""
+    v = re.sub(r"\bedition\b", "", R.norm(v))
+    return re.sub(r"[^0-9a-z.]+", "", v).lstrip("v")
+
+
+class _Rows:
+    """Every registry row (chunks deferred), so one match() reads the table once and resolves candidates in memory
+    (and concurrently, without sharing the session across tasks)."""
+
+    def __init__(self, db: Session):
+        rows = db.query(GuidelineRegistry).options(defer(GuidelineRegistry.chunks)).all()
+        rows.sort(key=lambda r: (r.status != "verified", -(r.updated_at.timestamp() if r.updated_at else 0)))
+        self.rows = rows
+        self.by_key = {r.key: r for r in rows}
+
+    def alias(self, name: str) -> list[GuidelineRegistry]:
+        """As registry.by_alias: name, alias or key slug, with a trailing version token stripped too."""
+        n = R.norm(name)
+        if not n:
+            return []
+        ns = R._strip_version(n)
+        out = []
+        for r in self.rows:
+            names = {R.norm(r.name), R.norm(r.key.split("@")[0].replace("-", " ")), *(R.norm(a) for a in r.aliases or [])}
+            if n in names or (ns and ns in names):
+                out.append(r)
+        return out
+
+    def known_text(self) -> str:
+        if len(self.rows) > KNOWN_MAX:
+            logger.info("[copilot.match] registry has %d rows; offering the first %d", len(self.rows), KNOWN_MAX)
+        lines = []
+        for r in self.rows[:KNOWN_MAX]:
+            branches = [b.get("name", "") for b in (r.content or {}).get("branches") or [] if b.get("name")]
+            tail = f" [branches: {' | '.join(branches)}]" if branches else ""
+            lines.append(f"- {r.key}: {r.name} {r.version or ''}".rstrip() + tail)
+        return "\n".join(lines)
+
+
+def _latest(rows: list[GuidelineRegistry]) -> GuidelineRegistry:
+    return sorted(rows, key=lambda r: (r.status == "verified", _vnum(r.version)), reverse=True)[0]
+
+
+def _prompt(scan_type: str, history: str, findings: list[Finding], known: str) -> str:
     s = f"SCAN TYPE: {scan_type}\nCLINICAL HISTORY: {history or 'none given'}\n\nFINDINGS:\n"
     s += "\n".join(f"- [{f.id}] {f.text}" for f in findings)
     if known:
-        s += "\n\nKNOWN SYSTEMS (key: name version):\n" + "\n".join(f"- {k}: {n} {v}".rstrip() for k, n, v in known)
+        s += "\n\nKNOWN SYSTEMS (key: name version [branches]):\n" + known
     s += "\n\nTNM SITES:\n" + "\n".join(f"- {x}" for x in tnm.sites())
     return s
 
@@ -91,77 +163,120 @@ async def _call(prompt: str) -> RawMatch:
     return r.output
 
 
-async def _jev_pick(finding: str, name: str, rows) -> str | None:
-    """Several registry versions of one system: Jev chooses between distinct entries, or none."""
-    crit = {r.key: f"{r.name} {r.version}".strip() for r in rows}
+def _state(finding: str, history: str) -> str:
+    return f"CLINICAL HISTORY:\n{history or 'none given'}\n\nFINDING:\n{finding}"
+
+
+async def _jev_pick(finding: str, name: str, rows, history: str = "") -> str | None:
+    """Several registry versions of one system: Jev chooses between distinct entries, or none. Choice keys are
+    neutral (ed_0, ed_1, ...) and mapped back to row keys."""
+    ids = {f"ed_{i}": r.key for i, r in enumerate(rows)}
+    crit = {}
+    for cid, r in zip(ids, rows):
+        applies = ((r.content or {}).get("applies_to") or "").strip()
+        year = ((r.publication or {}).get("year") or "").strip()
+        crit[cid] = f"{r.name} {r.version}".strip() + (f" — {applies}" if applies else "") + (f" ({year})" if year else "")
     crit["none"] = "None of these editions applies."
     q = {"type": "choice", "instructions": f"Which edition of {name} should be applied to the FINDING?", "criteria": crit}
-    r = await jev_post({"model": JEV_MODEL, "state": f"FINDING:\n{finding}", "questions": {"pick": q}},
+    r = await jev_post({"model": JEV_MODEL, "state": _state(finding, history), "questions": {"pick": q}},
                        os.environ.get("OPENROUTER_API_KEY", ""), JEV_TIMEOUT_S)
     r.raise_for_status()
     a = r.json()["answers"]["pick"]
-    return a["choice"] if a["choice"] != "none" and float(a.get("confidence") or 0) >= PICK_MIN else None
+    ok = a.get("choice") in ids and float(a.get("confidence") or 0) >= PICK_MIN
+    return ids[a["choice"]] if ok else None
+
+
+async def _pick(finding: str, name: str, rows, history: str) -> str | None:
+    k = (R.norm(finding), R.norm(name), tuple(r.key for r in rows))
+    hit, v = _get(_PICK, k)
+    if hit:
+        return v
+    try:
+        v = await _jev_pick(finding, name, rows, history)
+    except Exception as e:
+        logger.info("[copilot.match] edition pick failed (%s): %s", name, type(e).__name__)
+        return None
+    _put(_PICK, k, v)
+    return v
 
 
 def _same_branch(branch: str, skeleton: list[str]) -> str:
-    """The registry's own name for the model's branch: exact, then the same normalised name, then one name's words
-    within the other's (whole words: "solid" is not a word of "subsolid"); else the model's name (a new branch,
-    fetched on open). A one-branch skeleton is always that branch."""
-    if branch in skeleton or not skeleton:
+    """The registry's own name for the model's branch: exact, or the same once normalised; else the model's name
+    (a new branch, fetched on open). No containment: "Part-solid" is not "Solid" or "Subsolid"."""
+    if branch in skeleton:
         return branch
     nb = R.norm(branch)
     same = [b for b in skeleton if nb and R.norm(b) == nb]
-    if len(same) == 1:
-        return same[0]
-    wb = set(nb.split())
-    hits = [b for b in skeleton if wb and (wb <= set(R.norm(b).split()) or set(R.norm(b).split()) <= wb)
-            and R.norm(b)]
-    if len(hits) == 1:
-        return hits[0]
-    return skeleton[0] if len(skeleton) == 1 else branch
+    return same[0] if len(same) == 1 else branch
 
 
-async def _tnm_gate(finding: str, site: str) -> float:
+async def _tnm_gate(finding: str, site: str, history: str = "") -> float:
     q = {"type": "noul", "instructions": (f"The FINDING describes a primary malignant tumour (known or suspected) of this "
                                           f"site that would be staged: {site}")}
-    r = await jev_post({"model": JEV_MODEL, "state": f"FINDING:\n{finding}", "questions": {"q": q}},
+    r = await jev_post({"model": JEV_MODEL, "state": _state(finding, history), "questions": {"q": q}},
                        os.environ.get("OPENROUTER_API_KEY", ""), JEV_TIMEOUT_S)
     r.raise_for_status()
     return float(((r.json().get("answers") or {}).get("q") or {}).get("noul") or 0.0)
 
 
-async def _tnm_card(f: Finding, s: RawSystem) -> Card | None:
-    """A TNM candidate: the site must be on the closed list and pass the Jev gate (fails closed: no card)."""
-    if s.site not in tnm.sites():
-        return None
+async def _gate(finding: str, site: str, history: str) -> float | None:
+    k = (R.norm(history), R.norm(finding), site)
+    hit, v = _get(_GATE, k)
+    if hit:
+        return v
     try:
-        if await _tnm_gate(f.text, s.site) < TNM_GATE_MIN:
-            return None
+        v = await _tnm_gate(finding, site, history)
     except Exception as e:
-        logger.info("[copilot.match] TNM gate failed closed (%s): %s", s.site, type(e).__name__)
+        logger.info("[copilot.match] TNM gate failed closed (%s): %s", site, type(e).__name__)
         return None
-    e = tnm.entry(s.site)
+    _put(_GATE, k, v)
+    return v
+
+
+async def _tnm_card(f: Finding, s: RawSystem, history: str) -> Card | None:
+    """A TNM candidate: the site must be on the closed list (matched normalised) and pass the Jev gate (fails
+    closed: no card)."""
+    site = {R.norm(x): x for x in tnm.sites()}.get(R.norm(s.site))
+    if site is None:
+        return None
+    score = await _gate(f.text, site, history)
+    if score is None or score < TNM_GATE_MIN:
+        return None
+    e = tnm.entry(site)
     return Card(key=e.key, name=e.name, version="9", finding_id=f.id, why=s.why, branch="Staging",
                 skeleton=["Staging"], publication=e.publication, known=True, status="verified")
 
 
-async def _card(db: Session, f: Finding, s: RawSystem) -> Card | None:
+async def _resolve(rows: _Rows, f: Finding, s: RawSystem, history: str) -> GuidelineRegistry | None:
+    """The registry row this candidate is: exact key; else an alias row of the same version; else (one unversioned
+    row) that row; else Jev picks between editions; a versionless candidate with several rows and no pick takes the
+    latest (verified first), never a new unversioned key."""
+    row = rows.by_key.get(R.make_key(s.name, s.version))
+    if row is not None:
+        return row
+    cands = rows.alias(s.name)
+    if not cands:
+        return None
+    if s.version:
+        same = [r for r in cands if _nv(r.version) == _nv(s.version)]
+        if same:
+            return same[0]
+        if len(cands) == 1:
+            return cands[0] if not cands[0].version else None
+    elif len(cands) == 1:
+        return cands[0]
+    picked = await _pick(f.text, s.name, cands, history)
+    if picked:
+        return rows.by_key.get(picked)
+    return None if s.version else _latest(cands)
+
+
+async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str) -> Card | None:
     if not s.name.strip():
         return None
     if s.name.strip().upper() == "TNM":
-        return await _tnm_card(f, s)
-    key = R.make_key(s.name, s.version)
-    row = R.by_key(db, key)
-    if row is None:
-        rows = R.by_alias(db, s.name)
-        if len(rows) == 1 and (not s.version or rows[0].version == s.version or not rows[0].version):
-            row = rows[0]
-        elif len(rows) > 1:
-            try:
-                picked = await _jev_pick(f.text, s.name, rows)
-            except Exception:
-                picked = None
-            row = R.by_key(db, picked) if picked else None
+        return await _tnm_card(f, s, history)
+    row = await _resolve(rows, f, s, history)
     if row is not None:
         e = R.entry(row)
         skeleton = [b.name for b in e.content.branches] or s.skeleton
@@ -169,39 +284,55 @@ async def _card(db: Session, f: Finding, s: RawSystem) -> Card | None:
         return Card(key=e.key, name=e.name, version=e.version, finding_id=f.id, why=s.why, branch=branch,
                     skeleton=skeleton, publication=e.publication if e.publication.title else s.publication,
                     known=True, status=e.status)
-    return Card(key=key, name=s.name.strip(), version=s.version.strip(), finding_id=f.id, why=s.why, branch=s.branch,
-                skeleton=s.skeleton, publication=s.publication, known=False, status="new")
+    return Card(key=R.make_key(s.name, s.version), name=s.name.strip(), version=s.version.strip(), finding_id=f.id,
+                why=s.why, branch=s.branch, skeleton=s.skeleton, publication=s.publication, known=False, status="new")
+
+
+async def _safe_card(rows: _Rows, f: Finding, s: RawSystem, history: str) -> Card | None:
+    try:
+        return await _card(rows, f, s, history)
+    except Exception as e:   # one candidate that fails to resolve is skipped, not the whole match
+        logger.warning("[copilot.match] candidate %r skipped: %s", s.name, type(e).__name__)
+        return None
+
+
+def _rid(s: str) -> str:
+    return s.strip().strip("[]").strip()
 
 
 async def match(db: Session, scan_type: str, history: str, findings: list[Finding]) -> list[Card]:
-    """Cards for these findings, ranked and capped. Only findings whose text the cache has not seen call the model.
-    Fails open: no cards (and one candidate that fails to resolve is skipped, not the whole match)."""
-    sk = scan_key(scan_type)
-    keyf = lambda f: (sk, R.norm(f.text))
+    """Cards for these findings, ranked and capped. Only findings the cache has not seen (with this scan type and
+    history) call the model; a model failure caches nothing and still returns the cached findings' cards."""
+    sk, hk = scan_key(scan_type), R.norm(history)
+    keyf = lambda f: (sk, hk, R.norm(f.text))
+    try:
+        rows = _Rows(db)
+    except Exception as e:
+        logger.warning("[copilot.match] registry read failed: %s", type(e).__name__)
+        return []
     todo = [f for f in findings if keyf(f) not in _CACHE]
     if todo:
         try:
-            raw = await _call(_prompt(scan_type, history, todo, R.known(db)))
+            raw = await _call(_prompt(scan_type, history, todo, rows.known_text()))
+            got = {_rid(rf.id): rf.systems for rf in raw.findings}
+            if any(f.id in got for f in todo):
+                for f in todo:
+                    _put(_CACHE, keyf(f), got.get(f.id, []))
+            else:
+                logger.warning("[copilot.match] none of %d finding ids came back; nothing cached", len(todo))
         except Exception as e:
             logger.warning("[copilot.match] %s: %s", type(e).__name__, str(e)[:200])
-            return []
-        got = {rf.id: rf.systems for rf in raw.findings}
-        for f in todo:
-            _CACHE[keyf(f)] = got.get(f.id, [])
-            while len(_CACHE) > _CACHE_MAX:
-                _CACHE.popitem(last=False)
+    plan = [(f, s) for f in findings for s in (_CACHE.get(keyf(f)) or [])[:CANDIDATES_PER_FINDING]]
+    resolved = await asyncio.gather(*(_safe_card(rows, f, s, history) for f, s in plan))
+    per_finding: dict[str, list[Card]] = {f.id: [] for f in findings}
+    for (f, _), c in zip(plan, resolved):
+        if c is not None and all(x.id != c.id for x in per_finding[f.id]):
+            per_finding[f.id].append(c)
+    # Caps in rank order: every finding's first card before any finding's second.
     cards: list[Card] = []
-    for f in findings:
-        per = 0
-        for s in _CACHE.get(keyf(f), []):
-            if per >= MAX_PER_FINDING or len(cards) >= MAX_PER_CASE:
-                break
-            try:
-                c = await _card(db, f, s)
-            except Exception as e:
-                logger.warning("[copilot.match] candidate %r skipped: %s", s.name, type(e).__name__)
-                continue
-            if c is not None and all(x.id != c.id for x in cards):
-                cards.append(c)
-                per += 1
+    for rank in range(MAX_PER_FINDING):
+        for f in findings:
+            ranked = per_finding.get(f.id) or []
+            if rank < len(ranked) and len(cards) < MAX_PER_CASE and all(x.id != ranked[rank].id for x in cards):
+                cards.append(ranked[rank])
     return cards
