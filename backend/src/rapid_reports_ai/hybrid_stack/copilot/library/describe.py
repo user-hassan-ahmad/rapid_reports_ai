@@ -114,16 +114,53 @@ def _short(loc: Locator | None) -> str:
 
 def material(e: Entry, sources: list[dict]) -> str:
     """What Ask grounds an answer on for a library entry: its own located facts (rules, bands, outcomes, caveats,
-    reference fields) and the rows of its reference tables. Each source's title is printed once; every line cites it
-    by id and page. Nothing from outside the entry."""
-    used = {loc.source for _, _, loc in facts(e)} | {t.locator.source for t in e.reference.tables if t.locator}
+    reference fields) and the rows of its reference tables. Each source's title is printed once; every fact cites it
+    by id and page. Nothing from outside the entry, and nothing dropped: each outcome's wording is printed once, rule
+    and table rows name the outcome by id, and a caveat shared by several outcomes is printed once with their ids."""
+    located = facts(e)
+    used = {loc.source for _, _, loc in located} | {t.locator.source for t in e.reference.tables if t.locator}
     lines = [f"{e.display} ({e.issuer}, edition {e.edition}). Sources: " + "; ".join(
         f"{s['id']} = {cite_text({'title': s.get('title', ''), 'edition': s.get('edition', '')})}"
         for s in sources if s.get("id") in used) + "."]
     if e.inputs:
         lines.append("Inputs: " + "; ".join(i.label + (f" ({i.how_stated})" if i.how_stated else "")
                                             for i in e.inputs) + ".")
-    lines += [f"- {claim} [{_short(loc)}]" for _, claim, loc in facts(e)]
+    by_id = {k: (claim, loc) for k, claim, loc in located}
+    for s in e.logic:
+        if isinstance(s, RulesStep):
+            cases = [c for c in s.cases if c.locator is not None]
+            if cases:
+                lines.append(f"Rules {s.id} (condition → outcome id):")
+            last = None
+            for c in cases:
+                if _short(c.locator) != last:
+                    last = _short(c.locator)
+                    lines.append(f"  [{last}]")
+                lines.append(f"  {_expr(e, c.when)} → {c.result}")
+        elif isinstance(s, TableStep):
+            if s.locator is not None and s.rows:
+                lines.append(f"Table {s.id} [{_short(s.locator)}]: "
+                             + " | ".join(_name(e, k) for k in s.keys) + " → outcome id")
+                lines += ["  " + " | ".join(_val(e, k, c) for k, c in zip(s.keys, r.match)) + f" → {r.result}"
+                          for r in s.rows]
+        elif s.id in by_id:
+            claim, loc = by_id[s.id]
+            lines.append(f"- {claim} [{_short(loc)}]")
+    located_outcomes = [o for o in e.outcomes if o.locator is not None]
+    if located_outcomes:
+        lines.append("Outcomes (id: classification → recommendation):")
+        lines += [f"- {o.id}: {_result(e, o.id)} [{_short(o.locator)}]" for o in located_outcomes]
+    caveats: dict[str, tuple[list[str], list[str]]] = {}
+    for o in located_outcomes:
+        for c in o.caveats:
+            ids, locs = caveats.setdefault(c, ([], []))
+            ids.append(o.id)
+            if _short(o.locator) not in locs:
+                locs.append(_short(o.locator))
+    if caveats:
+        lines.append("Caveats (outcome ids they apply to):")
+        lines += [f"- ({', '.join(ids)}) {c} [{'; '.join(locs)}]" for c, (ids, locs) in caveats.items()]
+    lines += [f"- {claim} [{_short(loc)}]" for k, claim, loc in located if k.startswith("reference.")]
     for t in e.reference.tables:
         lines.append(f"{t.title} [{_short(t.locator)}]: " + " | ".join(t.columns))
         lines += ["  " + " | ".join(r) for r in t.rows]

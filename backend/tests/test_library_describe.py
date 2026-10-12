@@ -54,3 +54,24 @@ def test_material_for_a_reference_entry_has_no_inputs_line(toy_reference):
     from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
     m = D.material(Entry.model_validate(toy_reference), [{"id": "S1", "title": "Toy grading", "edition": "2020"}])
     assert "Inputs:" not in m and "Grade table" in m and "2 | partial-thickness defect" in m
+
+
+def test_ask_material_drops_no_located_fact_of_any_bundled_pack():
+    """Compact rows and shared caveats must not lose a fact: every outcome's wording, every caveat, every reference
+    field and every rule or table row (as its outcome id) of every bundled entry is in its Ask material."""
+    import json
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+    from rapid_reports_ai.hybrid_stack.copilot.library import describe as D
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import RulesStep, TableStep
+    lib = LB.Library(json.loads(LB.BUNDLE.read_text()))
+    for e in lib.list():
+        text = D.material(e, lib.sources(e.key))
+        lines = text.splitlines()
+        for fid, claim, _ in D.facts(e):
+            if fid.startswith(("outcome.", "reference.")) or "." not in fid:
+                assert claim in text, (e.id, fid)
+        for s in e.logic:
+            if isinstance(s, RulesStep):
+                assert all(f"{D._expr(e, c.when)} → {c.result}" in text for c in s.cases if c.locator), (e.id, s.id)
+            elif isinstance(s, TableStep) and s.locator:
+                assert all(any(x.endswith(f" → {r.result}") for x in lines) for r in s.rows), (e.id, s.id)
