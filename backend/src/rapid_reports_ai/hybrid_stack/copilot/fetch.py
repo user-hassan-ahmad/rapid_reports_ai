@@ -20,6 +20,8 @@ from .types import Branch, Card, Chunk, Entry, GuidelineContent, Source
 logger = logging.getLogger(__name__)
 
 STRUCTURE_TIMEOUT_S = 30.0
+OVERVIEW = "Overview"   # the branch a branchless (ask-originated) card resolves into; never a branch named ""
+_OVERVIEW_LABEL = "the guideline as a whole"
 _LOCKS: dict[str, asyncio.Lock] = {}
 _FILLING: set[str] = set()
 _TASKS: set[asyncio.Task] = set()
@@ -57,20 +59,27 @@ def to_fill(skeleton: list[str], content: GuidelineContent) -> list[str]:
     return [b for b in skeleton if b not in done]
 
 
+def _term(branch: str) -> str:
+    """The branch as a search term: Overview searches by identity alone."""
+    return "" if branch == OVERVIEW else branch
+
+
 async def _fetch_branch(card: Card, branch: str, queries: list[str]) -> tuple[Structured | None, Branch, list[Chunk], list[Source]]:
     """One branch: gather → coverage (one extra query below the bar) → structure → evidence."""
-    chunks, sources = await S.gather(queries, branch, focus=branch)
+    term = _term(branch)
+    label = term or _OVERVIEW_LABEL   # what Jev and the structure step are asked about
+    chunks, sources = await S.gather(queries, branch, focus=term)
     if not chunks:
         return None, Branch(name=branch, state="pending"), [], []
-    cover = (await J.coverage(_text(chunks), [branch])).get(branch, 0.0)
+    cover = (await J.coverage(_text(chunks), [label])).get(label, 0.0)
     if cover < J.COVER_MIN:   # one retry on new pages only (review: the same URLs re-extract the same chunks)
-        more, more_src = await S.gather([S.branch_query(card.name, card.version, branch)], branch, focus=branch,
+        more, more_src = await S.gather([S.branch_query(card.name, card.version, term)], branch, focus=term,
                                         exclude={c.url for c in chunks})
         chunks, sources = chunks + more, sources + more_src
-        cover = (await J.coverage(_text(chunks), [branch])).get(branch, 0.0) if more else cover
+        cover = (await J.coverage(_text(chunks), [label])).get(label, 0.0) if more else cover
     if cover < J.COVER_MIN:
         return None, Branch(name=branch, state="not_available"), chunks, sources
-    st = await _structure(card.name, card.version, branch, _text(chunks))
+    st = await _structure(card.name, card.version, label, _text(chunks))
     claims = [(o.quote, f"{o.when} → {o.classification}; {o.recommendation}".strip()) for o in st.branch.outputs]
     scores = await J.evidence(_text(chunks), claims) if claims else []
     kept = [o for o, s in zip(st.branch.outputs, scores) if s >= J.EVIDENCE_MIN]
@@ -111,17 +120,23 @@ async def resolve_guideline(db: Session, card: Card) -> Entry | None:
             if b is not None and b.state != "pending" or not card.branch:
                 _spawn_fill(card, R.entry(row).content)
                 return R.entry(row)
+        branch = card.branch or OVERVIEW
+        # Release the request's transaction before every long await (lock wait, network fetch): nothing is pending,
+        # and holding it would keep a pooled connection checked out for up to ~100 s. Rollback also expires the
+        # identity map, so the reads below see what sibling sessions committed meanwhile.
+        db.rollback()
         lock = _LOCKS.setdefault(card.key, asyncio.Lock())
         async with lock:
-            db.expire_all()
             row = R.by_key(db, card.key)
-            if row is not None and (b := R.entry(row).content.branch(card.branch)) is not None and b.state != "pending":
-                return R.entry(row)
+            held = R.entry(row) if row is not None else None
+            if held is not None and (b := held.content.branch(branch)) is not None and b.state != "pending":
+                return held
+            db.rollback()
             st, b, chunks, sources = await _fetch_branch(
-                card, card.branch, S.first_pass_queries(card.name, card.version, card.publication, card.branch))
+                card, branch, S.first_pass_queries(card.name, card.version, card.publication, card.branch))
             if not chunks:
-                return R.entry(row) if row is not None else None
-            _save(db, card, st, b, chunks, sources)   # inside the try: upsert raises on a bad key or a DB error
+                return held
+            _save(db, card, st, b, chunks, sources)   # inside the try: upsert raises on a bad key or a DB error; it re-reads the row fresh
         entry = R.entry(R.by_key(db, card.key))
     except Exception as e:
         logger.warning("[copilot.fetch] %s %s: %s", card.key, type(e).__name__, str(e)[:200])
@@ -146,7 +161,7 @@ async def _fill(card: Card, branches: list[str]) -> None:
     leaves the branch pending; the next open retries it."""
     async def one(branch: str) -> None:
         try:
-            st, br, chunks, sources = await _fetch_branch(card, branch, [S.branch_query(card.name, card.version, branch)])
+            st, br, chunks, sources = await _fetch_branch(card, branch, [S.branch_query(card.name, card.version, _term(branch))])
             if chunks:
                 with SessionLocal() as db:
                     _save(db, card, st, br, chunks, sources)

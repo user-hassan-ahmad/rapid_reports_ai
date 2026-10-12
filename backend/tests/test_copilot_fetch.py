@@ -151,3 +151,32 @@ async def test_tnm_key_served_offline_without_search(db_session, monkeypatch):
     assert entry.status == "verified" and entry.name == "TNM Lung" and calls["gather"] == []
     assert R.by_key(db_session, card.key) is None
     assert await F.resolve_guideline(db_session, card.model_copy(update={"key": "tnm-nowhere@9"})) is None
+
+
+async def test_no_transaction_held_while_fetching(db_session, monkeypatch):
+    # A row whose Solid branch is pending: the request reads it, then must release the connection before the fetch.
+    R.upsert(db_session, key=CARD.key, name="Fleischner", version="2017", aliases=[], publication=None,
+             content=GuidelineContent(branches=[Branch(name="Solid")]), sources=[], chunks=[])
+    R.by_key(db_session, CARD.key)
+    assert db_session.in_transaction()
+    _stub(monkeypatch)
+    seen = []
+
+    async def gather(queries, branch, focus="", exclude=None):
+        seen.append(db_session.in_transaction())
+        return [Chunk(url="https://pubs.rsna.org/x", text="… No routine follow-up …", branch=branch)], \
+               [Source(url="https://pubs.rsna.org/x", tier=1)]
+    monkeypatch.setattr(F.S, "gather", gather)
+    entry = await F.resolve_guideline(db_session, CARD)
+    assert seen == [False] and entry.content.branch("Solid").state == "checked"
+
+
+async def test_branchless_card_stores_overview_and_searches_by_identity(db_session, monkeypatch):
+    calls = _stub(monkeypatch)
+    entry = await F.resolve_guideline(db_session, CARD.model_copy(update={"branch": "", "skeleton": []}))
+    assert [b.name for b in entry.content.branches] == [F.OVERVIEW]
+    assert entry.content.branch(F.OVERVIEW).state == "checked"
+    queries = calls["gather"][0][0]
+    assert queries == ['"T" 2017', "Fleischner 2017 criteria recommendations"]
+    assert not any("overview" in q.lower() for q in queries)
+    assert calls["structure"] == ["the guideline as a whole"]
