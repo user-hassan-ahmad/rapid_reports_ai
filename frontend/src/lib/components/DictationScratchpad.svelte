@@ -38,10 +38,11 @@
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
-	import { postAssumed, postChanged, postClose, postConclusionCheck, postDebug, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
+	import { postAssumed, postChanged, postDictationCheck, postClose, postConclusionCheck, postDebug, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, closedText, lineChange, liveTail, moveUnit, similar } from '$lib/hybrid-stack/stackState';
 	import { abnormalAll, assumedFrom, openCount, rowSentences, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates } from '$lib/hybrid-stack/regionState';
+	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
 	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
@@ -272,6 +273,15 @@
 	// A conclusion the radiologist owns (edited, typed or dictated) is never overwritten: a material change that it no
 	// longer reflects (Jev, conclusion lab 13/13, 0 false) shows a quiet note, keyed to the conclusion text it was
 	// computed for, with a suggested redraft on request.
+	// Dictation checks (2026-10-12): the integrity check runs with the review, not on every pause. Tier 1 (code) on
+	// every review and re-check; tier 2 (gpt-oss) only on the first review and material changes, its flags kept while
+	// their words are still in the dictation. Answers are keyed by kind and quote, so they survive a re-check.
+	let checks: CheckFlag[] = [];
+	let semanticChecks: CheckFlag[] = [];
+	let checkAnswers: Record<string, CheckAnswer> = {};
+	let seenChecks: Record<string, CheckFlag> = {};
+	let checkedFor = '';
+	let checkSeq = 0;
 	let conclusionNote: { for: string; added: string[]; suggestion: string | null; loading: boolean } | null = null;
 	// The last /assumed answer and the state it was computed for (review 2026-10-12): a region assumes only what was
 	// checked for its current state, and Confirm waits while the answer is behind the dictation.
@@ -341,7 +351,21 @@
 					? ({ kind: 'waiting' } as const)
 					: ({ kind: 'none', failed: draftFailed } as const);
 	// The gate re-arms on any change to what it confirms (spec §5).
-	$: gateKey = [verbatimNow, findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
+	// A check sits on the sentence that now holds its words (units move as the grouping settles).
+	$: placedChecks = checks.map((c) => ({ ...c, unitId: unitFor(c.quote, stackUnits) }));
+	$: checksBehind = stackView && !isRecording && !!verbatimNow.trim() && checkedFor !== verbatimNow;
+	// Backstop: the review path runs the check; if the text settled without one (nothing for the review to do), run
+	// tier 1 so Confirm never waits on a check nobody started.
+	let checksTimer: ReturnType<typeof setTimeout> | null = null;
+	$: if (checksBehind && !reviewBehind) {
+		void verbatimNow;
+		if (checksTimer) clearTimeout(checksTimer);
+		checksTimer = setTimeout(() => {
+			checksTimer = null;
+			if (checksBehind && !reviewBehind && !isRecording) void runChecks(verbatimNow, false);
+		}, 1500);
+	}
+	$: gateKey = [verbatimNow, JSON.stringify(checks.map((c) => c.key)), JSON.stringify(checkAnswers), findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
 		regionView.remainder.join('|'), String(rowsOpen), Object.keys(tappedRows).join('|'), Object.keys(skippedRows).join('|'), removedSentences.join('|'),
 		JSON.stringify(confirmedAssumed)].join('\u0003');
 	$: if (stackGate && stackGate.units_hash !== gateKey) {
@@ -1563,7 +1587,10 @@
 	async function gateReview(text: string): Promise<void> {
 		const before = reviewedAbnormal;
 		const after = abnormalAll(stackUnits);
-		if (before === null) return refreshItems(true);
+		if (before === null) {
+			void runChecks(text, true);
+			return refreshItems(true);
+		}
 		let material = true; // fails to material: a failure re-runs the review rather than skipping it
 		if (before.map(normS).join('\u0003') === after.map(normS).join('\u0003')) material = false;
 		else {
@@ -1574,9 +1601,34 @@
 			}
 		}
 		if (isRecording || verbatimNow !== text || reviewedFor === text) return; // superseded
+		void runChecks(text, material);
 		if (!material) return recheckRows(text);
 		void refreshItems(true);
 		void reactConclusion(before, after);
+	}
+	/** The integrity check for this text. A failure shows nothing new and lets Confirm through (never a blocker it
+	 *  cannot clear); tier 2 flags already shown stay while their words do. */
+	async function runChecks(text: string, semantic: boolean): Promise<void> {
+		const seq = ++checkSeq;
+		const keepSemantic = () => semanticChecks.filter((c) => text.includes(c.quote));
+		try {
+			const res = await postDictationCheck($token, { findings: text, include_semantic: semantic, scan_type: scanType, clinical_history: clinicalHistory });
+			if (seq !== checkSeq) return;
+			const all = toChecks(text, res.flags ?? [], stackUnits);
+			const tier1 = all.filter((c) => c.blocking);
+			semanticChecks = semantic && !tier1.length ? all.filter((c) => !c.blocking) : keepSemantic();
+			checks = [...tier1, ...semanticChecks];
+		} catch {
+			if (seq !== checkSeq) return;
+			semanticChecks = keepSemantic();
+			checks = semanticChecks;
+		}
+		seenChecks = { ...seenChecks, ...Object.fromEntries(checks.map((c) => [c.key, c])) };
+		checkedFor = text;
+	}
+	/** "✓ As dictated" or Skip on a check. */
+	function answerCheck(key: string, how: CheckAnswer): void {
+		checkAnswers = { ...checkAnswers, [key]: how };
 	}
 	/** The quiet re-check: the rows on screen against the current dictation; no writer call, no skeleton. */
 	async function recheckRows(text: string): Promise<void> {
@@ -1892,6 +1944,8 @@
 			removed: removedSentences,
 			capped: stackCapped.map((c) => ({ region: c.region, question: c.question })),
 			review_failed: reviewFailed,
+			checks: Object.values(seenChecks).map((c) => ({ kind: c.kind, quote: c.quote, other: c.other,
+				answered_by: checkAnswers[c.key] ?? (checks.some((x) => x.key === c.key) ? 'open' : 'edited') })),
 			units_hash: gateKey
 		};
 		stackGate = gate;
@@ -1962,6 +2016,11 @@
 		reviewedFor = '';
 		reviewedAbnormal = null;
 		conclusionNote = null;
+		checks = [];
+		semanticChecks = [];
+		checkAnswers = {};
+		seenChecks = {};
+		checkedFor = '';
 		reviewFailed = false;
 		removedSentences = [];
 		assumedSnap = null;
@@ -2541,12 +2600,12 @@
 					{#if stackView}
 						<HybridStackView units={stackUnits} groups={stackGroups} {pillRegions} pending={stripNow}
 							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
-							conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {deleteRegion}
+							checks={placedChecks} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
 							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
 							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
-							syncing={assumedBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
+							syncing={assumedBehind || checksBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
 					{/if}
 				</div>
 

@@ -399,7 +399,8 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		if (integrityTimer) clearTimeout(integrityTimer);
 		if (semanticTimer) clearTimeout(semanticTimer);
 		integrityAcknowledged = false;
-		if (!content?.trim()) {
+		// The scratchpad view runs the same check with its review and shows the flags on their sentences.
+		if (!content?.trim() || stackGated) {
 			integrityFlags = [];
 			integrityGate = false;
 			scratchpadRef?.setIntegrityRanges([]);
@@ -1058,7 +1059,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			<!-- Dictation integrity — surfaces a truncated or incomplete dictation
 			     before it becomes a confident report. Amber, not red: this is a
 			     "look at this" not a "you broke something". -->
-			{#if integrityFlags.length > 0 && !integrityAcknowledged}
+			{#if !stackGated && integrityFlags.length > 0 && !integrityAcknowledged}
 				<div
 					role="alert"
 					class="shrink-0 flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.07] px-4 py-3"

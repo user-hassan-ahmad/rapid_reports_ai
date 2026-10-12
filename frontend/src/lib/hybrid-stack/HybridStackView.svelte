@@ -7,6 +7,7 @@
 	import { flip } from 'svelte/animate';
 	import { buildView } from './stackState';
 	import { CONCLUSION, GENERAL, OTHER, TECHNIQUE, regionStates, showsGroup } from './regionState';
+	import { checkLabel, type CheckAnswer, type CheckFlag } from './checks';
 	import { anchorRegion, answerLabel, openCount, quietLine, rowSentences, unansweredChecks } from './items';
 	import type { StackItem, StackUnit, ViewRow } from './types';
 
@@ -41,6 +42,9 @@
 		onToggleMic = () => {},
 		conclusion = { kind: 'none' },
 		conclusionNote = null,
+		checks = [],
+		checkAnswers = {},
+		onCheckAnswer = () => {},
 		gateConfirmed = false,
 		deleteRegion = null,
 		incoming = null,
@@ -98,6 +102,10 @@
 		onToggleMic?: () => void;
 		conclusion?: ConclusionState;
 		conclusionNote?: ConclusionNote | null;
+		/** Dictation checks placed on their sentences (an unfinished sentence blocks Confirm; the rest are advisory). */
+		checks?: CheckFlag[];
+		checkAnswers?: Record<string, CheckAnswer>;
+		onCheckAnswer?: (key: string, how: CheckAnswer) => void;
 		gateConfirmed?: boolean;
 		/** A voice "delete the X line": the region whose lines wait for a Delete click (null: none). */
 		deleteRegion?: string | null;
@@ -175,6 +183,34 @@
 	// A finding row whose region has no card (the writer named a region outside the scratchpad) shows up top.
 	const looseRows = $derived(items.filter((i) => i.kind === 'finding' && !covered.has(anchorRegion(i, units))));
 	const openRows = $derived(openCount(items, tapped, removed, skipped));
+	// Checks still asking. An unfinished sentence placed on a line is marked on the line itself; everything else is a row
+	// in the card holding its sentence, or up top when no card does.
+	const liveChecks = $derived(checks.filter((c) => !checkAnswers[c.key]));
+	const blockingChecks = $derived(liveChecks.filter((c) => c.blocking).length);
+	const lineCheck = (unitId: number) => liveChecks.find((c) => c.blocking && c.unitId === unitId);
+	const rowChecks = $derived(liveChecks.filter((c) => !c.blocking || c.unitId === null));
+	const unitIds = (rows: ViewRow[]): number[] => rows.flatMap((r) => [r.unitId, ...unitIds(r.children)]);
+	const checksIn = (rows: ViewRow[]) => {
+		const ids = new Set(unitIds(rows));
+		return rowChecks.filter((c) => c.unitId !== null && ids.has(c.unitId));
+	};
+	const shownUnitIds = $derived(new Set(shown.flatMap((g) => unitIds(g.rows))));
+	const looseChecks = $derived(rowChecks.filter((c) => c.unitId === null || !shownUnitIds.has(c.unitId)));
+	/** "Dictate correction": the sentence opens for editing and the mic starts. */
+	function correct(c: CheckFlag) {
+		const find = (rows: ViewRow[]): ViewRow | null => {
+			for (const r of rows) {
+				if (r.unitId === c.unitId) return r;
+				const k = find(r.children);
+				if (k) return k;
+			}
+			return null;
+		};
+		const r = find(view.groups.flatMap((g) => g.rows));
+		if (!r) return;
+		open(r);
+		if (!recording) onToggleMic();
+	}
 	const unanswered = $derived(unansweredChecks(items, tapped, removed, skipped));
 	const keptAssumed = (region: string) => {
 		const gone = new Set(removed.map((r) => r.trim().toLowerCase().replace(/\.$/, '')));
@@ -473,6 +509,26 @@
 	{/if}
 {/snippet}
 
+{#snippet checkRow(c: CheckFlag)}
+	<!-- A dictation check (2026-10-12), in the row language of the checklist: what it asks, the words it is about, and
+	     answer-shaped buttons. The model's explanation sits behind ⓘ. -->
+	<div class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border-l-2 border-amber-400/80 bg-amber-500/[0.07] px-2 py-1.5" data-check={c.kind} transition:fade={{ duration: ms }}>
+		<span class="text-sm font-medium text-amber-100">{checkLabel(c.kind)}</span>
+		<span class="min-w-0 text-xs text-gray-300">{`“${c.quote}”${c.other ? ` · “${c.other}”` : ''}`}</span>
+		<span class="cursor-help text-xs text-gray-500" title={c.message} aria-label="Why: {c.message}">ⓘ</span>
+		<span class="ml-auto flex gap-1">
+			{#if c.unitId !== null}
+				<button type="button" class="inline-flex items-center gap-1 rounded-md border border-white/10 px-2 py-0.5 text-xs text-gray-300 hover:bg-white/[0.06]" onclick={() => correct(c)}>
+					<svg viewBox="0 0 24 24" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+					Dictate correction
+				</button>
+			{/if}
+			{#if !c.blocking}<button type="button" class="rounded-md px-2 py-0.5 text-xs text-gray-500 hover:text-gray-300" onclick={() => onCheckAnswer(c.key, 'skip')}>Skip</button>{/if}
+			<button type="button" class="rounded-md bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-200 hover:bg-emerald-500/25" onclick={() => onCheckAnswer(c.key, 'as_dictated')}>✓ As dictated</button>
+		</span>
+	</div>
+{/snippet}
+
 {#snippet micControls(hint: string)}
 	<!-- Dictation controls in any inline edit (hand read 2026-10-12): a mic toggle that keeps the cursor in place, and
 	     the hotkeys. -->
@@ -557,11 +613,19 @@
 				{@render micControls('Enter save · Esc cancel')}
 			{:else}
 				<!-- The grouper's structure label is a tooltip, not text: it repeated the sentence (hand read 2026-10-12). -->
+				{@const unfinished = lineCheck(r.unitId)}
 				<button type="button" class="w-full rounded px-1 text-left text-sm leading-6 text-gray-200 hover:bg-white/[0.05]" onclick={() => open(r)}
 					title={r.structure ? `Placed as: ${r.structure}` : undefined}>
-					{#if nested}<span aria-hidden="true" class="text-gray-500">↳ </span>{/if}{r.text}
+					{#if nested}<span aria-hidden="true" class="text-gray-500">↳ </span>{/if}<span class={unfinished ? 'underline decoration-amber-400/70 decoration-dashed underline-offset-4' : ''}>{r.text}</span>
 					{#if r.pinned}<span class="ml-1 text-xs text-gray-500" title="Placed by you">•</span>{/if}
 				</button>
+				{#if unfinished}
+					<span class="flex flex-wrap items-center gap-2 px-1 text-[11px]" data-check="line">
+						<span class="text-amber-300/90" title={unfinished.message}>{checkLabel(unfinished.kind)}</span>
+						<button type="button" class="text-gray-400 hover:text-gray-200" onclick={() => open(r)}>Finish it</button>
+						<button type="button" class="text-emerald-300/90 hover:text-emerald-200" onclick={() => onCheckAnswer(unfinished.key, 'as_dictated')}>✓ As dictated</button>
+					</span>
+				{/if}
 			{/if}
 			{#if r.children.length}
 				<ul>{#each r.children as c (c.unitId + ':' + c.text)}{@render line(c, true)}{/each}</ul>
@@ -645,8 +709,11 @@
 	{#if referrals.length}
 		<section aria-label="Referral question" class="space-y-1">{#each referrals as it (it.id)}{@render row(it, 'Referral')}{/each}</section>
 	{/if}
-	{#if looseRows.length}
-		<section aria-label="Checks" class="space-y-1">{#each looseRows as it (it.id)}{@render row(it, it.region || null)}{/each}</section>
+	{#if looseRows.length || looseChecks.length}
+		<section aria-label="Checks" class="space-y-1">
+			{#each looseRows as it (it.id)}{@render row(it, it.region || null)}{/each}
+			{#each looseChecks as c (c.key)}{@render checkRow(c)}{/each}
+		</section>
 	{/if}
 
 
@@ -660,6 +727,7 @@
 	<!-- Scratchpad: abnormal regions only -->
 	{#each shown as g (g.name)}
 		{@const mine = ownMembers(g).flatMap((m) => rowsFor(m))}
+		{@const flagged = checksIn(g.rows)}
 		{@const normals = ownMembers(g).flatMap((m) => keptAssumed(m))}
 		<section
 			animate:flip={{ duration: ms }}
@@ -681,8 +749,11 @@
 					<button type="button" class="rounded px-2 py-0.5 text-gray-400 hover:text-gray-200" onclick={() => onDeleteRegion(g.name, false)}>Keep</button>
 				</div>
 			{/if}
-			{#if mine.length}
-				<div class="mt-1 space-y-1 px-1" aria-label="Questions for {g.name}">{#each mine as it (it.id)}{@render row(it, null)}{/each}</div>
+			{#if mine.length || flagged.length}
+				<div class="mt-1 space-y-1 px-1" aria-label="Questions for {g.name}">
+					{#each flagged as c (c.key)}{@render checkRow(c)}{/each}
+					{#each mine as it (it.id)}{@render row(it, null)}{/each}
+				</div>
 			{/if}
 			{#if normals.length}
 				<p class="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-1 text-xs" data-quiet={g.name}>
@@ -861,6 +932,7 @@
 	<section aria-label="Confirm" class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-2.5 py-2">
 		<p class="flex flex-wrap gap-2 text-xs">
 			<span class="rounded px-1.5 py-0.5 {openRows ? 'bg-amber-500/15 text-amber-200' : 'bg-white/5 text-gray-500'}">{openRows} referral {openRows === 1 ? 'question' : 'questions'} open</span>
+			{#if blockingChecks}<span class="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-200" data-gate="unfinished">{blockingChecks} unfinished {blockingChecks === 1 ? 'sentence' : 'sentences'}</span>{/if}
 			{#if reviewing}<span class="rounded bg-white/5 px-1.5 py-0.5 text-gray-400">checking the findings…</span>
 			{:else if reviewFailed}<span class="rounded bg-rose-500/15 px-1.5 py-0.5 text-rose-200" data-review="failed">checks unavailable: review the scan as usual</span>
 			{:else if reviewWaiting}<span class="rounded bg-white/5 px-1.5 py-0.5 text-gray-500">checks appear when you stop dictating</span>
@@ -874,7 +946,7 @@
 			class="rounded-lg px-4 py-1.5 text-xs font-medium transition-colors {gateConfirmed
 				? 'bg-emerald-500/20 text-emerald-200'
 				: 'bg-purple-700 text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-40'}"
-			disabled={gateConfirmed || openRows > 0 || !hasConclusion || syncing || newLine.trim().length > 0 || editing !== null}
+			disabled={gateConfirmed || openRows > 0 || blockingChecks > 0 || !hasConclusion || syncing || newLine.trim().length > 0 || editing !== null}
 			onclick={onConfirm}>{gateConfirmed ? 'Confirmed ✓' : syncing ? 'Updating…' : 'Confirm'}</button>
 	</section>
 </div>

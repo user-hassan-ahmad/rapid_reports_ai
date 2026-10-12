@@ -72,6 +72,8 @@ export interface GateRecord {
 	removed: string[]; // sentences the radiologist removed: never stated
 	capped: { region: string; question: string }[];
 	review_failed?: boolean; // the end-of-dictation review failed: no finding checks were offered
+	// Dictation checks seen this session and how each ended: answered, skipped, edited away, or still open (advisory).
+	checks?: { kind: string; quote: string; other: string | null; answered_by: 'as_dictated' | 'skip' | 'edited' | 'open' }[];
 	units_hash: string;
 }
 export interface StackCommand { action: 'dictate' | 'delete' | 'answer'; region: string | null; item: string | null; command: string | null; confidence: number | null }

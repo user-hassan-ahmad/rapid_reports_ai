@@ -263,4 +263,33 @@ describe('HybridStackView v2', () => {
 		expect(onToggleMic).toHaveBeenCalledTimes(1);
 		localStorage.removeItem('rr_dictation_hotkey');
 	});
+
+	it('an unfinished sentence is marked on its line and holds Confirm until finished or kept as dictated', async () => {
+		const onCheckAnswer = vi.fn();
+		const units = [u(0, 'An 8 mm liver cyst with', 'Liver', { abnormal: true })];
+		const c = { key: 'truncation|x', kind: 'truncation', blocking: true, message: 'Ends mid-sentence.', quote: 'An 8 mm liver cyst with', other: null, unitId: 0 };
+		const props = { ...base(), units, onCheckAnswer, conclusion: { kind: 'draft', text: 'Liver cyst.', edited: false } as const, namedNormals: true };
+		const r = render(HybridStackView, { ...props, checks: [c] });
+		await expect.element(page.getByText('Unfinished sentence?')).toBeInTheDocument();
+		await expect.element(page.getByText('1 unfinished sentence')).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+		await page.getByRole('button', { name: '✓ As dictated' }).click();
+		expect(onCheckAnswer).toHaveBeenCalledWith('truncation|x', 'as_dictated');
+		r.rerender({ ...props, checks: [c], checkAnswers: { 'truncation|x': 'as_dictated' } });
+		await expect.element(page.getByText('Unfinished sentence?')).not.toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeEnabled();
+	});
+
+	it('a side conflict is a row in its card, quoting both statements; it can be skipped and never blocks', async () => {
+		const onCheckAnswer = vi.fn();
+		const units = [u(0, 'A 4 mm calculus at the left VUJ.', 'Kidneys', { abnormal: true }), u(1, 'Perinephric stranding of the right kidney.', 'Kidneys', { abnormal: true })];
+		const c = { key: 'laterality_conflict|p', kind: 'laterality_conflict', blocking: false, message: 'Sides differ.', quote: units[1].text, other: units[0].text, unitId: 1 };
+		render(HybridStackView, { ...base(), units, onCheckAnswer, checks: [c], conclusion: { kind: 'draft', text: 'Left VUJ calculus.', edited: false } as const, namedNormals: true });
+		const row = page.getByRole('region', { name: 'Kidneys' }).getByText('Sides as intended?');
+		await expect.element(row).toBeInTheDocument();
+		await expect.element(page.getByText('“Perinephric stranding of the right kidney.” · “A 4 mm calculus at the left VUJ.”')).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeEnabled();
+		await page.getByRole('button', { name: 'Skip' }).click();
+		expect(onCheckAnswer).toHaveBeenCalledWith('laterality_conflict|p', 'skip');
+	});
 });

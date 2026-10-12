@@ -1,4 +1,5 @@
 import { API_URL } from '$lib/config.js';
+import type { IntegrityFlag } from './checks';
 import type { AssumedResult, DraftResult, GateRecord, GroupResult, ItemsResult, Region, SlimSheet, StackItem, StackSchema, StackUnit } from './types';
 
 async function post<T>(token: string | null, path: string, body: unknown, keepalive = false): Promise<T> {
@@ -47,6 +48,15 @@ export const postChanged = (token: string | null, body: { before: string[]; afte
 /** Whether the radiologist's own conclusion no longer reflects the findings (fails quiet). */
 export const postConclusionCheck = (token: string | null, body: { conclusion: string; findings: string[] }) =>
 	post<{ stale: boolean; score: number | null }>(token, 'conclusion-check', body);
+
+/** The dictation integrity check (tier 1 code; tier 2 gpt-oss when asked and tier 1 is clean). */
+export async function postDictationCheck(token: string | null, body: { findings: string; include_semantic: boolean; scan_type?: string; clinical_history?: string }): Promise<{ flags: IntegrityFlag[] }> {
+	const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+	if (token) headers['Authorization'] = `Bearer ${token}`;
+	const res = await fetch(`${API_URL}/api/dictation/check`, { method: 'POST', headers, body: JSON.stringify(body) });
+	if (!res.ok) throw new Error(`dictation check ${res.status}`);
+	return (await res.json()) as { flags: IntegrityFlag[] };
+}
 
 export const postSlimSheet = (token: string | null, body: { scan_type: string; clinical_history: string; template_id?: string | null }) =>
 	post<SlimSheet>(token, 'slim-sheet', body);

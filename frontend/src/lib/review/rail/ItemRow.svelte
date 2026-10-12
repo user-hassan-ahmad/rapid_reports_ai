@@ -181,6 +181,22 @@
 	.rv-row:hover {
 		background: var(--rv-surface-hover);
 	}
+	/* One row language before and after Generate (2026-10-12): an open row carries the scratchpad's tinted left edge in
+	   its kind's colour; a finished one is plain. */
+	.rv-row:not(.rv-done) {
+		border-left: 2px solid transparent;
+	}
+	.rv-row-check:not(.rv-done) {
+		border-left-color: var(--rv-amber-line);
+		background: color-mix(in srgb, var(--rv-amber-line) 7%, transparent);
+	}
+	.rv-row-preapplied:not(.rv-done) {
+		border-left-color: var(--rv-green-line);
+		background: color-mix(in srgb, var(--rv-green-line) 6%, transparent);
+	}
+	.rv-row-option:not(.rv-done) {
+		border-left-color: var(--rv-blue-line);
+	}
 	/* Gate G: the label column keeps at least half the row and wraps; the actions shrink and wrap beside it. */
 	.rv-row-main {
 		flex: 1 1 50%;

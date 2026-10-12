@@ -339,6 +339,28 @@ re-check button. The full review keeps the existing rows on screen; the skeleton
 - Fixtures: `tests/fixtures/hybrid_stack/material_change_fixture.json`, `conclusion_check_fixture.json`; script
   `scripts/scratchpad_v2_labs.py material | conclusion`. Both fixtures were written by us: watch the live logs.
 
+### 10.2c Dictation checks in the checklist (2026-10-12)
+
+The integrity check (`/api/dictation/check`: tier 1 code rules for an unfinished sentence or a missing dimension;
+tier 2 gpt-oss-120b on Cerebras for sides, measurement vs descriptor, contradictions and units) keeps its backend.
+In a scratchpad session its yellow banner and its 600 ms polling are retired (the banner's "jump to" link also
+pointed at the hidden editor):
+
+- **Placement.** An unfinished sentence is a dashed amber underline on its line ("Unfinished sentence? · Finish it ·
+  ✓ As dictated"). A tier 2 flag is an amber row in the card holding its sentence, quoting both statements, with
+  Dictate correction (the line opens and the mic starts), Skip and ✓ As dictated. Unplaced flags show up top.
+- **One gate.** An unfinished sentence is an open item at Confirm (it replaces "Generate anyway"); tier 2 never blocks.
+- **Timing.** The check runs with the review: tier 1 on every review and quiet re-check, tier 2 only on the first
+  review and material changes; tier 2 flags stay while their words are still dictated. Answers are keyed by kind and
+  quote. A failed check shows nothing new and never holds Confirm.
+- **Gate record.** `checks`: each flag seen and how it ended (as_dictated, skip, edited, open).
+- **After Generate**, the review rail keeps its items; open rows take the same tinted left edge (amber check, green
+  automatic edit, blue option), so a flag looks alike before and after Generate.
+- **The clean-up guard** (live clean-up, `fix/polish-attachment`, separate from this PR): new words placed before text
+  already dictated trigger one Jev question (moved a side, location, size or descriptor onto another finding?); a
+  move falls back to the words as said. Lab 24 pairs: 12/12 caught at >= 0.3, 0/12 false; replay of 111 real
+  clean-ups: the detector fired 0 times.
+
 ### 10.3 Before release
 
 Hand reads on the local build:

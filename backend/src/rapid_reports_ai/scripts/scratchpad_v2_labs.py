@@ -209,9 +209,44 @@ async def conclusion_lab() -> None:
         print(f"   gold={it['gold']!s:<5} a={r['stale_a']:.2f} b={r['stale_b']:.2f} {it['kind']}")
 
 
+ATTACH_WORDINGS = {
+    "attach_a": ("Compared with SPOKEN, the CLEANED text attaches a side, location, measurement or descriptor to a different "
+                 "finding than the spoken words do (words moved from where they were said onto another finding), rather "
+                 "than only tidying, joining fragments of the same sentence, joining related findings without changing "
+                 "what each one says, or applying a spoken correction."),
+    "attach_b": ("Reading SPOKEN as the radiologist meant it, CLEANED changes which finding at least one side, location, "
+                 "size or descriptor belongs to."),
+}
+
+
+async def _attach_one(spoken: str, cleaned: str) -> dict:
+    from rapid_reports_ai.jev_client import JEV_MODEL, jev_post
+    import os
+    qs = {k: {"type": "noul", "instructions": w} for k, w in ATTACH_WORDINGS.items()}
+    r = await jev_post({"model": JEV_MODEL, "state": f"SPOKEN:\n{spoken}\n\nCLEANED:\n{cleaned}", "questions": qs},
+                       os.environ.get("OPENROUTER_API_KEY", ""), 6.0, None)
+    r.raise_for_status()
+    a = r.json().get("answers") or {}
+    return {k: float((a.get(k) or {}).get("noul") or 0.0) for k in qs}
+
+
+async def attach_lab() -> None:
+    items = json.loads((FIX / "attachment_fixture.json").read_text())
+    res = await _gather(lambda it: _attach_one(it["spoken"], it["cleaned"]), items)
+    rows = [(it, r) for it, r in zip(items, res) if isinstance(r, dict)]
+    print(f"attach: {len(rows)}/{len(items)} answered")
+    for k in ATTACH_WORDINGS:
+        for t in (0.3, 0.4, 0.5, 0.6, 0.7):
+            tp = sum(1 for it, r in rows if it["gold"] and r[k] >= t)
+            fp = sum(1 for it, r in rows if not it["gold"] and r[k] >= t)
+            print(f"  {k} t={t:.1f}: moved caught {tp}/{sum(it['gold'] for it, _ in rows)}  same-meaning flagged {fp}")
+    for it, r in sorted(rows, key=lambda x: (not x[0]["gold"], -x[1]["attach_a"])):
+        print(f"   gold={it['gold']!s:<5} a={r['attach_a']:.2f} b={r['attach_b']:.2f} {it['kind']:<30} {it['cleaned'][:60]!r}")
+
+
 async def main(argv: list[str]) -> None:
     for name in argv or ["command", "chip"]:
-        await {"command": command_lab, "chip": chip_lab, "contra": contra_lab, "rows": rows_lab, "material": material_lab, "conclusion": conclusion_lab}[name]()
+        await {"command": command_lab, "chip": chip_lab, "contra": contra_lab, "rows": rows_lab, "material": material_lab, "conclusion": conclusion_lab, "attach": attach_lab}[name]()
 
 
 if __name__ == "__main__":
