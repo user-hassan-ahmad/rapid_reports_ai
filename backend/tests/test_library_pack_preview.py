@@ -324,7 +324,7 @@ async def test_an_enum_or_boolean_is_checked_against_its_quote_alone(toy_entry, 
     await PP.preview_pack(toy_entry, TWO, "Smoker.", {}, finding=FINDING)
     kind = next(p["state"] for p in jev["payloads"] if "Nodule type: solid" in str(p["questions"]))
     assert kind.startswith("QUOTE (a verbatim phrase from a radiology report about one lesion; the only evidence):\nsolid")
-    assert "DEFINITION of Nodule type (not part of the quote)" in kind and "right upper lobe" not in kind
+    assert "\n\nDEFINITION of Nodule type: " in kind and "right upper lobe" not in kind
     risk = next(p["state"] for p in jev["payloads"] if "Patient risk: high" in str(p["questions"]))
     assert "\nsmoker\n" in risk and "Smoker." not in risk and "about the patient or the examination" in risk
 

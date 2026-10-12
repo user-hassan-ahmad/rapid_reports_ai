@@ -314,7 +314,7 @@ def _quote_state(i: InputDef, quote: str) -> str:
     """The quote alone as evidence, with the input's definition beside it (not part of it): the value must be in the
     quote's own words, never in the rest of the finding or in what is usual."""
     return (f"QUOTE ({_QUOTE_OF[i.scope]}; the only evidence):\n{quote}\n\n"
-            f"DEFINITION of {i.label} (not part of the quote): {i.how_stated or i.label}\n\n"
+            f"DEFINITION of {i.label}: {i.how_stated or i.label}\n\n"
             "A value is stated only when the QUOTE's own words give it; a value that is merely not contradicted, "
             "usual or assumed is not stated.")
 
