@@ -61,7 +61,14 @@ Fail-closed sweep. Every line that is not a unit line is checked:
 - in every section except the free-prose ones (FREE_PROSE_SECTIONS): a negative statement written as
   prose (it should be a NEGATIVE unit — the brief can only reconcile units), an error; and a conditional
   phrase outside quotes, a WARNING only (stored on the structure, never blocking: voice guidance
-  legitimately says "when present, give the maximal diameter").
+  legitimately says "when present, give the maximal diameter"). A conditional is an error only when its
+  consequence (a quoted text, or the unquoted text once the condition clause is set aside) states an absence:
+  "When T2 is not acquired, the paragraph opens with …" warns; 'When nothing is identified: "No …"' blocks.
+
+Labelled opening variants. A paragraph that opens differently by case state carries one prose line per state,
+'Opening (<state>): "<opening words>"' (the state a short free-text label, no colon or quote). The label is never
+linted; the rest of the line is checked like any "Opening:" line. Like all prose they are not stored on the
+structure: the sheet keeps them as written and the report writer reads them there.
 """
 from __future__ import annotations
 
@@ -127,6 +134,17 @@ class LintError:
     text: str  # the sheet line as written
     reason: str  # one of the reason constants above
     detail: str = ""
+    paragraph: str = ""  # the paragraph id of a voice (prose) line error under a paragraph; "" otherwise
+
+
+# Errors on a voice line: a prose line under a paragraph (Opening:, Order:, Abnormal pattern: …) that states an
+# absence or a conditional absence. Wording, not content: template_sheet_save may drop such a line on an automatic
+# write rather than refuse the sheet.
+VOICE_REASONS = (CONDITIONAL_NEGATIVE, PROSE_NEGATIVE)
+
+
+def is_voice_error(e: "LintError") -> bool:
+    return e.reason in VOICE_REASONS and bool(e.paragraph)
 
 
 @dataclass
@@ -211,6 +229,11 @@ _PROSE_COND = re.compile(
     r"\b(?:if|when|unless|whenever|wherever|where|provided|in\s+case|in\s+the\s+presence\s+of"
     r"|should\s+\w+\s+be|otherwise|depending\s+on|once|for\s+patients\s+with)\b", re.I)
 _PROSE_COND_EXEMPT = re.compile(r"\bif\s+any\b(?=\s*(?:[,.)]|$))", re.I)
+# A condition clause runs from its conditional word to the next comma, colon, semicolon, full stop or quote.
+_COND_CLAUSE = re.compile(_PROSE_COND.pattern + r"[^,:;.\"“”]*", re.I)
+# A labelled opening variant, 'Opening (<state>): "…"': one per case state of a paragraph that opens differently
+# by case. The label is a free-text state (no colon or quote) and is never linted; the rest is an Opening line.
+_LABELLED_OPENING = re.compile(r"^Opening\s*\([^():\"“”]*\)\s*:", re.I)
 
 # Decoration a model may put before a unit keyword or a paragraph heading.
 _INVISIBLE = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
@@ -265,8 +288,12 @@ _NEG_CUE = re.compile(r"\b(?:no|without|absent|nil|negative\s+for)\b|\bnot\s+\w+
 
 
 def _negative_cue(plain: str) -> bool:
+    """A negative cue in the consequence of a conditional line: a quoted text that opens with an absence, or a cue
+    in the unquoted text once every condition clause ("When T2 is not acquired", "if negative for …") is set aside.
+    A cue inside the condition only names the case, it states nothing."""
     quoted = [a or b for a, b in _QUOTED.findall(plain)]
-    return any(_QUOTED_NEG.match(q) for q in quoted) or bool(_NEG_CUE.search(_outside_quotes(plain)))
+    consequence = _COND_CLAUSE.sub(" ", _QUOTED.sub('"', plain))
+    return any(_QUOTED_NEG.match(q) for q in quoted) or bool(_NEG_CUE.search(consequence.replace('"', " ")))
 
 
 def _states_absence(plain: str) -> bool:
@@ -311,14 +338,16 @@ def _sweep(i: int, body: str, ctx: "_Ctx", err, warn) -> None:
         return
     if ctx.kind == "free":
         return
+    plain = _LABELLED_OPENING.sub("Opening:", plain)
+    voice = ctx.paragraph if ctx.kind == "paragraph" else ""
     cm = _PROSE_COND.search(_PROSE_COND_EXEMPT.sub(" ", _outside_quotes(plain)))
     if cm:
         if _negative_cue(_PROSE_COND_EXEMPT.sub(" ", plain)):
-            err(i, CONDITIONAL_NEGATIVE, cm.group(0).lower())
+            err(i, CONDITIONAL_NEGATIVE, cm.group(0).lower(), paragraph=voice)
             return
         warn(i, PROSE_CONDITIONAL, cm.group(0).lower())
     if _states_absence(plain):
-        err(i, PROSE_NEGATIVE)
+        err(i, PROSE_NEGATIVE, paragraph=voice)
 
 
 @dataclass
@@ -346,8 +375,9 @@ def parse_sheet(sheet: str, mode: Mode = "template") -> GrammarResult:
     errors: List[LintError] = []
     warnings: List[LintError] = []
 
-    def err(i: int, reason: str, detail: str = "") -> None:
-        errors.append(LintError(line=i, text=lines[i - 1] if i else "", reason=reason, detail=detail))
+    def err(i: int, reason: str, detail: str = "", paragraph: str = "") -> None:
+        errors.append(LintError(line=i, text=lines[i - 1] if i else "", reason=reason, detail=detail,
+                                paragraph=paragraph))
 
     def warn(i: int, reason: str, detail: str = "") -> None:
         warnings.append(LintError(line=i, text=lines[i - 1], reason=reason, detail=detail))

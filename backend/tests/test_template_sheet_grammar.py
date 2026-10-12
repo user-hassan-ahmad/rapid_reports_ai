@@ -270,9 +270,9 @@ def test_prose_conditional_is_a_stored_warning_not_an_error():
     'When normal, write “No ascites.”',
     "Ensure no ascites is described when absent.",
     "If the study is normal, state the absence of free fluid without further comment.",
-    "When the ducts are not dilated, say so in one clause.",
     'If clear, write "There is no pleural effusion."',
-    "If negative for collection, say nothing more.",
+    'When nothing is identified: "No extracardiac abnormality."',
+    "If contrast was not given, no enhancement is described.",
 ])
 def test_conditional_negatives_in_prose_block(prose, mode):
     sheet = PARA + prose + "\n"
@@ -286,6 +286,12 @@ def test_conditional_negatives_in_prose_block(prose, mode):
     "If any segment is dilated, give its calibre.",
     "List the dilated segments, if any.",
     'When an aneurysm is present, use "aneurysmal" rather than "ectatic".',
+    # the negative cue sits in the condition only: the consequence states no absence
+    "When the ducts are not dilated, say so in one clause.",
+    "If negative for collection, say nothing more.",
+    "If contrast was not given, the paragraph is omitted.",
+    'Opening: When T2 is acquired: "T2 mapping demonstrated no evidence of myocardial high T2 signal..." When T2 is not '
+    'acquired, the paragraph opens directly with: "Late gadolinium enhancement imaging demonstrates..."',
 ])
 def test_conditionals_without_a_negative_cue_only_warn(prose):
     r = parse(PARA + prose + "\n")
@@ -314,6 +320,32 @@ def test_absence_statements_in_prose_block(prose):
 def test_normal_state_voice_prose_stays_prose(prose):
     r = parse(PARA + prose + "\n")
     assert r.errors == [] and r.structure.usable
+
+
+LABELLED = (PARA + 'COVERS ["organ"]\n'
+            'Opening (normal): "The organ is normal in size and contour."\n'
+            'Opening (abnormal): "The organ is enlarged, measuring {measurement}."\n'
+            'Opening (when T2 not acquired): "Late enhancement imaging demonstrates {pattern}."\n'
+            'Opening (no prior): "The organ is normal."\n'
+            'Order: size, then contour.\n')
+
+
+@pytest.mark.parametrize("mode", ["template", "v1"])
+def test_labelled_openings_are_clean_prose(mode):
+    r = g.parse_sheet(LABELLED, mode=mode)
+    assert r.errors == [] and r.warnings == [] and r.structure.usable, (r.errors, r.warnings)
+
+
+def test_labelled_opening_text_is_still_checked_like_an_opening():
+    r = parse(PARA + 'Opening (normal): If normal, write "No ascites."\n')
+    assert [e.reason for e in r.errors] == [g.CONDITIONAL_NEGATIVE]
+
+
+def test_prose_errors_under_a_paragraph_are_voice_errors():
+    r = parse(PARA + "Opening: Ascites is absent.\n" + "\n## Unknown block\nAscites is absent.\n")
+    voice = [e.line for e in r.errors if g.is_voice_error(e)]
+    assert len(r.errors) == 2 and voice == [r.errors[0].line]
+    assert not any(g.is_voice_error(e) for e in parse(PARA + 'NEGATIVE "No x" WHEN [bogus: a b]\n').errors)
 
 
 def test_unusable_without_findings_and_impression_roles():

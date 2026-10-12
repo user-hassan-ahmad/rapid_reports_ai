@@ -175,3 +175,11 @@ async def test_scores_rule_reaches_the_generation_system_prompt(capture):
         stack={"conclusion": "Dilated left ventricle.", "declined": []})
     sp = next(k for k in capture if k["output_type"] is str)["system_prompt"]
     assert "**Scores, grades and values:**" in sp and "never estimate, infer or fill one in" in sp
+
+
+def test_labelled_openings_reach_the_brief_as_written():
+    lines = ['Opening (normal): "The left ventricle is normal in size."',
+             'Opening (abnormal): "The left ventricle is {severity} dilated."']
+    sheet = '## Paragraph: Left ventricle (FINDINGS)\nCOVERS ["left ventricle"]\n' + "\n".join(lines)
+    b = stack_brief(sheet, "", [])
+    assert all(l in b.splitlines() for l in lines)
