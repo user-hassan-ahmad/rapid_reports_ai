@@ -2587,19 +2587,23 @@ async def skill_sheet_analyze_endpoint(
         import asyncio
         examples = [{"label": ex.label, "content": ex.content} for ex in request.examples]
 
-        # Run skill sheet analysis and test case generation in parallel
-        analysis_task = tm.analyze_examples_to_skill_sheet(
-            examples=examples,
-            scan_type=request.scan_type,
-            protocol_notes=protocol_notes,
-            api_key=api_key,
+        from . import template_writer
+
+        # The grammar analyser writes the sheet (vetted by the save function); the test case runs in parallel.
+        analysis_task = template_writer.write_sheet(
+            [{"label": e["label"] or "", "content": e["content"]} for e in examples],
+            request.scan_type,
+            protocol_notes,
         )
         test_case_task = tm.generate_test_case(
             examples=examples,
             scan_type=request.scan_type,
             api_key=api_key,
         )
-        result, test_case = await asyncio.gather(analysis_task, test_case_task)
+        try:
+            result, test_case = await asyncio.gather(analysis_task, test_case_task)
+        except ValueError as refusal:
+            return {"success": False, "error": str(refusal)}
 
         logger.info("━━━ SKILL SHEET ANALYZE RESULT ━━━")
         logger.info("  skill_sheet: %d chars", len(result.get("skill_sheet", "")))
