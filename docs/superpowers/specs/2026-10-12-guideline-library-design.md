@@ -264,7 +264,7 @@ A module `hybrid_stack/copilot/library/`:
 
 ## 8. Quality gates
 
-Every entry passes these before it merges. All except gate 6 run as pytest tests under `backend/tests/guidelines/`,
+Every entry passes these before it merges. All except gate 6 run as pytest tests (`backend/tests/test_library_*.py`),
 and the bundle build runs them. The repo has no GitHub Actions; a pre-commit hook or a workflow can wrap the same
 tests later.
 
@@ -295,7 +295,7 @@ guidelines/<entry-id>/
   cases.json
   manifest.json
   sources/<sha256>.pdf        # publisher files; repo is private (§11)
-backend/src/rapid_reports_ai/hybrid_stack/copilot/resources/guideline_bundle.json   # compiled, committed
+backend/src/rapid_reports_ai/resources/guideline_bundle.json   # compiled, committed (beside tnm_9th_clean.json)
 backend/scripts/guidelines/build_bundle.py
 ```
 
