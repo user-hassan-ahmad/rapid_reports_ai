@@ -497,3 +497,15 @@ def test_a_patient_number_is_not_held_to_one_measurement():
     i = InputDef(id="a", label="Age", type="number", unit="years", scope="patient")
     assert PP._value(i, PP.RawItem(input="a", value=65, quote="65 years"),
                      ["Aged 65 years, smoker for 40 years."]).value == 65
+
+
+async def test_only_a_missing_finding_makes_a_degraded_preview_cacheable(toy_entry, monkeypatch, jev):
+    _model(monkeypatch, {"input": "risk", "value": "high", "quote": "smoker"})
+    out = await PP.preview_pack(toy_entry, TWO, "Smoker.", {})
+    assert out.degraded is True and out._cacheable is True
+    jev["fail"] = True
+    out = await PP.preview_pack(toy_entry, TWO, "Smoker.", {})
+    assert out.degraded is True and out._cacheable is False
+    jev["fail"] = False
+    out = await PP.preview_pack(toy_entry, FINDING, "Smoker.", {}, finding=FINDING)
+    assert out._cacheable is False

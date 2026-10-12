@@ -2,7 +2,7 @@
 of every pack card it returns; /open and /preview await the same task, so opening a card is a cache hit and the
 settle latency is hidden. Process-local, bounded (LRU, MAX_ENTRIES), never persisted; the key holds clinical text
 (finding, dictation, history) and is never logged. Fail open: a failed or degraded preview reaches the caller once
-and is never served again."""
+and is never served again, unless it is degraded only for want of a finding unit (deterministic)."""
 from __future__ import annotations
 
 import asyncio
@@ -41,7 +41,7 @@ def _good(t: asyncio.Task, loop: asyncio.AbstractEventLoop) -> bool:
     if t.exception() is not None:
         return False
     r = t.result()
-    return isinstance(r, Preview) and not r.degraded
+    return isinstance(r, Preview) and (not r.degraded or r._cacheable)
 
 
 def _done(t: asyncio.Task) -> None:

@@ -109,3 +109,13 @@ async def test_clear_forgets_every_entry_and_running_task():
     PC.clear()
     assert not PC._C and not PC._RUNNING and not PC._PREWARMING
     gate.set()
+
+
+async def test_a_preview_degraded_only_for_want_of_a_finding_is_served_again():
+    """No finding is deterministic (the key holds the empty finding): it need not be recomputed."""
+    p = Preview(degraded=True)
+    p._cacheable = True
+    calls = []
+    await PC.start(K, _maker(calls, p))
+    again = await PC.start(K, _maker(calls, Preview(missing=["fresh"])))
+    assert again.degraded is True and len(calls) == 1

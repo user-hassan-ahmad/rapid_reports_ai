@@ -372,7 +372,9 @@ async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str
     except (engine.EvaluationError, ValueError) as ex:
         logger.error("[library.preview] %s cannot be evaluated: %s", e.key, ex)
         return failed(e)
-    return _build(e, t, given, {k: model[k][1].quote for k in keep}, sources, degraded or jev_failed or no_unit)
+    out = _build(e, t, given, {k: model[k][1].quote for k in keep}, sources, degraded or jev_failed or no_unit)
+    out._cacheable = no_unit and not (degraded or jev_failed)     # deterministic: the key holds the empty finding
+    return out
 
 
 def as_entry(e: Entry, sources: list[dict]) -> CardEntry:
