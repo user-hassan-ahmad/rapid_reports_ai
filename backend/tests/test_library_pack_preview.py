@@ -312,7 +312,7 @@ async def test_every_value_is_put_to_jev_with_its_scope_as_state(toy_entry, monk
     by_state = {p["state"]: [q["instructions"] for q in p["questions"].values()] for p in jev["payloads"]}
     assert by_state[f"FINDING:\n{FINDING}"] == ["The FINDING states Nodule type: solid",
                                                  "The FINDING states Diameter: 7 mm",
-                                                 "The FINDING describes only one nodule"]
+                                                 PP.ONE_LESION]
     patient = next(s for s in by_state if s.startswith("CLINICAL HISTORY"))
     assert TWO in patient and by_state[patient] == ["The CLINICAL HISTORY or DICTATION state Patient risk: high"]
 
@@ -557,8 +557,7 @@ async def test_a_finding_with_several_lesions_asks_its_size(monkeypatch, jev, fi
 async def test_the_multiplicity_backstop_asks_even_when_jev_says_one(monkeypatch, jev, finding):
     jev["scores"] = {ONE_CLAIM: 0.95}
     out = await _fleischner(monkeypatch, finding, "4 mm", 4)
-    assert "diameter_mm" not in {x.input for x in out.settled}
-    assert "nodule_type" in {x.input for x in out.settled}             # enum lesion inputs are unchanged
+    assert not {"diameter_mm", "nodule_type"} & {x.input for x in out.settled}   # every lesion input is asked
 
 
 @pytest.mark.parametrize("verdict,settles", [(0.95, True), (0.8, True), (0.79, False), (0.1, False)])
@@ -584,15 +583,59 @@ async def test_the_one_lesion_claim_rides_in_the_lesion_batch(monkeypatch, jev):
     out = await _fleischner(monkeypatch, "Solitary 8 mm solid nodule.", "8 mm", 8)
     assert jev["calls"] == 1 and "diameter_mm" in {x.input for x in out.settled}
     claims = [q["instructions"] for q in jev["payloads"][0]["questions"].values()]
-    assert "The FINDING describes only one pulmonary nodule" in claims
+    assert PP.ONE_LESION in claims
 
 
-async def test_no_one_lesion_claim_without_a_lesion_number(monkeypatch, jev):
+def test_the_one_lesion_claim_names_a_lesion_of_any_kind_not_the_packs_noun():
+    assert "lesion of any kind" in PP.ONE_LESION
+    assert all(w in PP.ONE_LESION for w in ("nodule", "granuloma", "mass", "cyst", "scar"))
+
+
+async def test_an_enum_alone_still_carries_the_one_lesion_claim(monkeypatch, jev):
+    finding = "Solid nodule in the right upper lobe."
+    _model(monkeypatch, {"input": "nodule_type", "value": "solid", "quote": "solid"})
+    out = await PP.preview_pack(_pack("fleischner-pulmonary-nodule"), finding, "", {}, finding=finding)
+    claims = [q["instructions"] for p in jev["payloads"] for q in p["questions"].values()]
+    assert PP.ONE_LESION in claims and "nodule_type" in {x.input for x in out.settled}
+
+
+async def test_the_multiplicity_backstop_asks_an_enum_too(monkeypatch, jev):
+    jev["scores"] = {ONE_CLAIM: 0.95}
     _model(monkeypatch, {"input": "nodule_type", "value": "solid", "quote": "solid"})
     out = await PP.preview_pack(_pack("fleischner-pulmonary-nodule"), "Scattered solid nodules.", "", {},
                                 finding="Scattered solid nodules.")
-    claims = [q["instructions"] for p in jev["payloads"] for q in p["questions"].values()]
-    assert not any(ONE_CLAIM in c for c in claims) and "nodule_type" in {x.input for x in out.settled}
+    assert "nodule_type" not in {x.input for x in out.settled} and "nodule_type" in out.missing
+
+
+# lab fix round item 1: lab case #36, a granuloma (not the pack's noun) lending its lobe and type to the nodule
+LAB_36 = ("6 mm solid nodule with no calcification in the right lower lobe and a 12 mm densely calcified granuloma "
+          "in the left upper lobe.")
+
+
+async def test_lab_case_36_two_lesions_in_one_sentence_asks_upper_lobe_and_nodule_type(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    jev["scores"] = {ONE_CLAIM: 0.01}                                  # live Jev: 0.01 (see lab-fix-report.md)
+    _model(monkeypatch, {"input": "upper_lobe", "value": True, "quote": "left upper lobe"},
+           {"input": "nodule_type", "value": "solid", "quote": "densely calcified granuloma"},
+           {"input": "spiculation", "value": False, "quote": "no calcification"},
+           {"input": "diameter_mm", "value": 6, "quote": "6 mm"})
+    out = await PP.preview_pack(_bts(), LAB_36 + " No previous imaging.", "64-year-old woman.", {}, finding=LAB_36)
+    settled = {x.input for x in out.settled}
+    assert not {"upper_lobe", "nodule_type", "spiculation", "diameter_mm"} & settled
+    assert {"upper_lobe", "nodule_type"} <= set(out.missing)
+
+
+@pytest.mark.parametrize("item,inp", [({"input": "upper_lobe", "value": True, "quote": "right upper lobe"}, "upper_lobe"),
+                                      ({"input": "nodule_type", "value": "solid", "quote": "solid"}, "nodule_type"),
+                                      ({"input": "diameter_mm", "value": 6, "quote": "6 mm"}, "diameter_mm")])
+@pytest.mark.parametrize("verdict,settles", [(0.79, False), (0.8, True)])
+async def test_below_the_one_lesion_bar_every_lesion_input_is_asked(monkeypatch, jev, item, inp, verdict, settles):
+    from tests.test_library_partial import _bts
+    finding = "6 mm solid nodule in the right upper lobe."
+    jev["scores"] = {ONE_CLAIM: verdict}
+    _model(monkeypatch, item)
+    out = await PP.preview_pack(_bts(), finding, "", {}, finding=finding)
+    assert (inp in {x.input for x in out.settled}) is settles
 
 
 @pytest.mark.parametrize("finding", ["Renal cysts, the largest -20 HU.", "Cystic renal masses, the dominant -20 HU."])
