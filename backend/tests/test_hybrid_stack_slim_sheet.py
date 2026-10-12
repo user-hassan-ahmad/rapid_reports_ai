@@ -6,6 +6,8 @@ import httpx
 from rapid_reports_ai.database.models import StackSlimSheet
 from rapid_reports_ai.hybrid_stack import slim_sheet as SL
 from rapid_reports_ai.hybrid_stack.schemas import Region
+from rapid_reports_ai.hybrid_stack.template import jev_text, template_normal_labels, template_region_normals
+from rapid_reports_ai.template_sheet_grammar import parse_sheet
 
 SHEET = """## Scan Context
 - **Modality:** CT, portal venous phase
@@ -120,9 +122,6 @@ def test_template_structure_is_none_for_a_sheet_that_is_not_clean_grammar():
     assert template_structure({**_lean_cfg(), "generation_mode": "auto"}) is None
 
 
-from rapid_reports_ai.template_sheet_grammar import parse_sheet
-from rapid_reports_ai.hybrid_stack.template import template_region_normals
-
 _SUBJECTLESS = """## Report Structure
 SECTION FINDINGS | header: "Findings:" | role: findings
 SECTION CONCLUSION | header: "Conclusion:" | role: impression
@@ -135,7 +134,24 @@ NORMAL [spleen] "The spleen is normal in size."
 """
 
 
-def test_a_normal_without_its_structure_is_named_by_its_label():
+def _labels(label, sentence):
+    sheet = _SUBJECTLESS.replace('NORMAL [liver] "Unremarkable."', f'NORMAL [{label}] "{sentence}"')
+    return template_normal_labels(parse_sheet(sheet, mode="template").structure)
+
+
+def test_subjectless_normal_is_offered_raw_and_labelled_for_jev():
     st = parse_sheet(_SUBJECTLESS, mode="template").structure
     assert st.usable
-    assert template_region_normals(st)["Liver"] == ["Liver: unremarkable.", "The spleen is normal in size."]
+    assert template_region_normals(st)["Liver"] == ["Unremarkable.", "The spleen is normal in size."]
+    assert template_normal_labels(st) == {"Unremarkable.": "liver"}
+
+
+def test_jev_text_normalises_the_label():
+    assert jev_text("Unremarkable.", '"LEFT VENTRICLE"') == "Left ventricle: Unremarkable."
+    assert jev_text("MCL intact.", "knee joint") == "Knee joint: MCL intact."
+
+
+def test_loose_match_of_label_to_sentence():
+    assert "Lung volumes preserved." not in _labels("LUNGS", "Lung volumes preserved.")
+    assert "Both menisci appear normal." not in _labels("medial meniscus, lateral meniscus", "Both menisci appear normal.")
+    assert "No hydrocephalus and no mass effect." in _labels("ventricles and basal cisterns", "No hydrocephalus and no mass effect.")

@@ -257,4 +257,4 @@ def test_assumed_checks_up_to_sixteen_normals_per_region(authed, monkeypatch):
     sentences = [f"Normal {i}." for i in range(20)]
     r = authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"A": sentences}})
     assert r.status_code == 200
-    assert len(seen["A"]) == 16
+    assert len(seen["A"]) == 16 == R.MAX_NORMALS_PER_REGION
