@@ -161,7 +161,7 @@ In `pack_preview.py` `_show`, replace the number branch's last line:
 - [ ] **Step 4: Run the tests to verify they pass, then the library suites**
 
 Run: `cd backend && PYTHONPATH=src .venv/bin/pytest tests/test_library_*.py tests/test_copilot_*.py -q`
-Expected: all pass. If `test_library_describe.py` reports a pack's Ask material over `PACK_MATERIAL_MAX` (the citations are longer now), raise `PACK_MATERIAL_MAX` in `backend/src/rapid_reports_ai/hybrid_stack/copilot/ask.py` from `32000` to `40000` and re-run (the material goes to Qwen, whose context is ample).
+Expected: all pass. If `test_library_describe.py` reports a pack's Ask material over `PACK_MATERIAL_MAX` (the citations are longer now), raise `PACK_MATERIAL_MAX` in `backend/src/rapid_reports_ai/hybrid_stack/copilot/ask.py` from `32000` to `40000` and re-run (the material goes to Qwen, whose context is ample). (Controller ruling 2026-10-13: the cap is now `48000`, so Ask grounding never truncates CAD-RADS 2.0.)
 
 - [ ] **Step 5: Commit**
 

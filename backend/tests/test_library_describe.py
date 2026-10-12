@@ -18,6 +18,7 @@ def test_every_bundled_pack_fits_the_ask_material_cap_with_the_late_facts_presen
     from rapid_reports_ai.hybrid_stack.copilot import ask as A
     from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
     from rapid_reports_ai.hybrid_stack.copilot.library import describe as D
+    assert A.PACK_MATERIAL_MAX == 48000                                      # controller ruling 2026-10-13
     lib = LB.Library(json.loads(LB.BUNDLE.read_text()))
     texts = {}
     for e in lib.list():

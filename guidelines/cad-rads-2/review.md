@@ -59,7 +59,7 @@ section 3.1.1 on occlusion context; section 3.3.1 on the N rule. All ✓.
 - `not_assessable` ischaemia; acute I- with CT-FFR and with CTP (no deferral, `fixed_defect` not asked); `other` presentation.
 - Five `needed` cases: presentation, plaque_burden, ischemia, ischemia_test and e_modifier.
 
-## Gate 5 flags (196 of 227 below 0.5, after compaction)
+## Gate 5 flags (300 of 363 below 0.5)
 
 All of them are expected. The management lives in the images of Tables 4, 5, 6, 7 and 11, which the text extract holds as captions only, and gate 5 caps its text windows. I resolved every flag by reading the table images and sections 3.3.4-3.3.6 myself:
 
@@ -69,18 +69,17 @@ All of them are expected. The management lives in the images of Tables 4, 5, 6, 
 | `outcome.*`, `outcome.*.caveatN` | table footnotes (image only) confirmed on the images; section 3.3.1, 3.3.4, 3.3.5 and 3.3.6 text confirmed in the extract. The acute CAD-RADS 2 troponin caveat now cites Table 11 (M-3) |
 | `reference.*` below 0.5 | sections 3.3-3.3.6 and the footnotes of Tables 4 and 5, confirmed. `def.i` now includes peri-infarct ischaemia (M-5) and scores 0.90 |
 
-## Compaction for Ask (material 46,152 → 31,550 characters; cap 32,000)
+## Compaction for Ask (material 46,152 → 40,398 characters; cap raised to 48,000 by controller ruling)
 
-Every fact and every hedge is kept. The outcome ids, the logic and the golden cases are unchanged.
+The outcome ids, the logic and the golden cases are unchanged.
 
-- Caveats that applied across many outcomes now sit once each in `reference`. They cover guideline-directed care, functional assessment, the CT-FFR cut-offs and gradient, high-risk plaque (the three 3.3.4 statements merged), revascularisation benefit, Table 4 footnote d (target lesion), footnote e (ICA may be favoured), and occlusion context. The N rule duplicated `pit.n` and was dropped. `def.i` now carries the instruction to document the infarct in the impression.
-- The fallback outcomes (borderline CTP; I- from a fixed infarct; CAD-RADS 2 with an I result) state the "no source management" sentence and then the category line once, in short form. The full line remains on the category's own outcome.
-- The 12 E outcomes share one caveat. The Table 3 examples moved to `pit.e`.
-- Repeated phrases were shortened with their hedges kept:
+- **Kept:** every outcome caveat, 185 in all. Caveats travel into the Apply proposal, so none moved to `reference`; an earlier attempt that moved them was reverted. A few were shortened without changing their meaning: the acute CAD-RADS 5 "other treatments" line, the Table 11 troponin line, the `management_not_defined` note, and "Outpatient follow-up is for" became "Follow-up is for". `tests/test_library_cad_rads_caveats.py` pins the caveat count per outcome and the conditions the clinical read required.
+- **Fallback outcomes** (borderline CTP; I- from a fixed infarct; CAD-RADS 2 with an I result): they state the "no source management" sentence, then the category line once, in short form.
+- **Repeated phrases** were shortened with their hedges kept:
   - "other treatments, including … should be considered" became "anti-anginal therapy (and revascularisation options) should be considered";
   - "Preventive management, including aggressive preventive pharmacotherapy" became "Aggressive preventive pharmacotherapy";
   - in classifications, "CT ischaemia test positive (I+)" became "I+".
-- Outcome locators are grouped: Table 4 or 5 for category lines; Table 4 or 5 with Tables 6-7 for I outcomes; Table 3 for E. The exact cell for each outcome is in the checklist above. The `how_stated` hints were shortened without changing their meaning.
+- **Locators and hints:** outcome locators are grouped, and the exact cell is in the checklist above. The `how_stated` hints are shorter, with the same meaning.
 
 ## For Hassan
 
