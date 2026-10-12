@@ -220,3 +220,61 @@ async def test_a_whitespace_only_repair_of_a_chat_edit_has_no_notice(monkeypatch
     monkeypatch.setattr(S, "_repair", respace)
     out = await S.vet_sheet(BAD_UNIT, origin="chat", previous=GOOD)
     assert out.status == "saved" and out.sheet != BAD_UNIT and out.message == ""
+
+
+# ── voice lines (W1): a style line never refuses an automatic write ─────────────
+
+VOICE_LINE = "Opening: When the study is normal, no further comment is made."
+VOICE = GOOD + VOICE_LINE + "\n"
+LABELLED = GOOD + 'Opening (normal): "The menisci are intact."\nOpening (abnormal): "There is a {pattern} tear."\n'
+
+
+def _counting_no_repair(calls):
+    async def repair(sheet, errors):
+        calls.append(errors)
+        return sheet
+    return repair
+
+
+@pytest.mark.parametrize("origin", ["analyser", "repair", "rebuild"])
+async def test_a_voice_line_still_failing_after_the_repair_is_dropped(no_jev, monkeypatch, origin):
+    calls = []
+    monkeypatch.setattr(S, "_repair", _counting_no_repair(calls))
+    out = await S.vet_sheet(VOICE, origin=origin, previous="")
+    assert out.status == "saved" and out.sheet == GOOD
+    assert out.dropped == [{"text": VOICE_LINE, "reason": tsg.CONDITIONAL_NEGATIVE}]
+    assert len(calls) == 1  # no second repair pass
+
+
+@pytest.mark.parametrize("origin", ["chat", "restore"])
+async def test_a_voice_line_in_a_user_edit_is_refused(no_jev, monkeypatch, origin):
+    monkeypatch.setattr(S, "_repair", _no_repair)
+    out = await S.vet_sheet(VOICE, origin=origin, previous=GOOD)
+    assert out.status == "refused" and out.sheet == GOOD and out.message == S.UNREADABLE
+
+
+async def test_a_voice_line_with_a_unit_error_is_still_refused(no_jev, monkeypatch):
+    monkeypatch.setattr(S, "_repair", _no_repair)
+    out = await S.vet_sheet(VOICE + 'NORMAL "no structure label"\n', origin="analyser")
+    assert out.status == "refused" and out.message == S.UNREADABLE
+
+
+async def test_a_prose_negative_outside_a_paragraph_is_still_refused(no_jev, monkeypatch):
+    monkeypatch.setattr(S, "_repair", _no_repair)
+    out = await S.vet_sheet(GOOD + "\n## Notes\nAscites is absent.\n", origin="analyser")
+    assert out.status == "refused"
+
+
+async def test_units_are_checked_after_a_voice_line_drop(monkeypatch):
+    monkeypatch.setattr(S, "check_units", _fails_on("Mild chondral thinning."))
+    monkeypatch.setattr(S, "_repair", _no_repair)
+    out = await S.vet_sheet(BAD_UNIT + VOICE_LINE + "\n", origin="analyser")
+    assert out.status == "saved" and out.sheet == GOOD
+    assert [d["text"] for d in out.dropped] == [VOICE_LINE, "Mild chondral thinning."]
+
+
+async def test_labelled_openings_save_unchanged_without_a_repair(no_jev, monkeypatch):
+    calls = []
+    monkeypatch.setattr(S, "_repair", _counting_no_repair(calls))
+    out = await S.vet_sheet(LABELLED, origin="analyser")
+    assert out.status == "saved" and out.sheet == LABELLED and calls == [] and out.dropped == []

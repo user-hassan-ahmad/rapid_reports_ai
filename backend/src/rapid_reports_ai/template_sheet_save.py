@@ -9,7 +9,12 @@ for (a chat edit is refused instead) or something every report already states.
 
 What is guaranteed: vetting (drop or repair) never removes or rewrites a unit the previous sheet had on an automatic
 write, and the repair call never removes or rewrites a unit it was not asked to fix. What is NOT checked here: whether the incoming sheet itself keeps every unit of the previous
-one (a new template has no previous; a rebuild may legitimately reword units, a later regression gate covers it)."""
+one (a new template has no previous; a rebuild may legitimately reword units, a later regression gate covers it).
+
+Voice lines: a prose line under a paragraph (Opening:, Order:, Abnormal pattern: …) is wording, not content. On an
+automatic write, such a line that still fails the lint after the one repair is dropped (reported in `dropped`) rather
+than refusing the whole sheet; the sheet is then re-parsed and its units checked as usual. A user's edit (chat,
+restore) with such a line is refused, and so is any sheet left unusable for another reason."""
 from __future__ import annotations
 
 import dataclasses
@@ -87,6 +92,14 @@ def _drop_lines(sheet: str, texts: Set[str]) -> str:
     return "\n".join(keep) + ("\n" if sheet.endswith("\n") else "")
 
 
+def _drop_voice_lines(sheet: str, errors) -> tuple:
+    """The sheet without the voice lines that carry a lint error (tsg.is_voice_error), and what was dropped."""
+    voice = {e.line: e for e in errors if tsg.is_voice_error(e)}
+    kept = [line for i, line in enumerate(sheet.splitlines(), 1) if i not in voice]
+    out = "\n".join(kept) + ("\n" if sheet.endswith("\n") else "")
+    return out, [DroppedUnit(text=e.text, reason=e.reason) for _, e in sorted(voice.items())]
+
+
 def _refuse(previous: str, message: str) -> VetOutcome:
     return VetOutcome("refused", previous, message)
 
@@ -105,6 +118,7 @@ async def vet_sheet(sheet: str, origin: Origin, previous: str = "") -> VetOutcom
         return _refuse(previous, LOST_STRUCTURE)
     requested = sheet
     existing = _unit_texts(previous) if previous and tsg.is_grammar_sheet(previous) else set()
+    dropped: List[DroppedUnit] = []
     try:
         res, fails = await _parse_and_check(sheet)
         if res.errors or not res.structure.usable or fails:
@@ -119,12 +133,15 @@ async def vet_sheet(sheet: str, origin: Origin, previous: str = "") -> VetOutcom
                 logger.warning("[sheet-save] %s refused: repair removed %s", origin, sorted(keep - _unit_texts(sheet)))
                 return _refuse(previous, UNSAFE)
             res, fails = await _parse_and_check(sheet)
+            if origin in AUTOMATIC and any(tsg.is_voice_error(e) for e in res.errors):
+                sheet, dropped = _drop_voice_lines(sheet, res.errors)
+                logger.info("[sheet-save] %s dropped %d voice line(s): %s", origin, len(dropped), dropped)
+                res, fails = await _parse_and_check(sheet)
     except Exception as e:  # a check or repair that could not run never lets an unchecked sheet through
         logger.warning("[sheet-save] %s refused: %s: %s", origin, type(e).__name__, str(e)[:200])
         return _refuse(previous, "The template could not be checked just now. Please try again.")
     if res.errors or not res.structure.usable:
         return _refuse(previous, UNREADABLE)
-    dropped: List[DroppedUnit] = []
     if fails:
         failed = {f.text for f in fails}
         failed_keys = {norm_key(t) for t in failed}
@@ -137,8 +154,8 @@ async def vet_sheet(sheet: str, origin: Origin, previous: str = "") -> VetOutcom
         if _unit_texts(sheet) & failed_keys:
             logger.warning("[sheet-save] %s refused: failing unit(s) survived the drop", origin)
             return _refuse(previous, UNSAFE)
-        dropped = [DroppedUnit(text=f.text, reason=f.reason) for f in fails]
-        logger.info("[sheet-save] %s dropped %d unit(s): %s", origin, len(fails), dropped)
+        dropped += [DroppedUnit(text=f.text, reason=f.reason) for f in fails]
+        logger.info("[sheet-save] %s dropped %d unit(s): %s", origin, len(fails), dropped[-len(fails):])
         res = tsg.parse_sheet(sheet, mode="template")
         if res.errors or not res.structure.usable:
             return _refuse(previous, UNREADABLE)
