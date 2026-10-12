@@ -1,0 +1,675 @@
+{
+  "cases": [
+    {
+      "name": "text: few thick enhancing septa is III, not II",
+      "origin": "source",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "few",
+        "protrusion": "none",
+        "enhancement": "present",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 10,
+        "septa_thickness": "thick"
+      },
+      "outcome": "class_iii"
+    },
+    {
+      "name": "fig 1 top: two thin septa is II",
+      "origin": "source",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "few",
+        "protrusion": "none",
+        "enhancement": "present",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 10,
+        "septa_thickness": "thin"
+      },
+      "outcome": "class_ii"
+    },
+    {
+      "name": "fig 1 bottom: five thin enhancing septa is IIF",
+      "origin": "source",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "many",
+        "protrusion": "none",
+        "enhancement": "present",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 10,
+        "septa_thickness": "thin"
+      },
+      "outcome": "class_iif"
+    },
+    {
+      "name": "fig 2: thin smooth enhancing wall, simple fluid is I",
+      "origin": "source",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "present",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 10
+      },
+      "outcome": "class_i"
+    },
+    {
+      "name": "fig 2: 3 mm enhancing wall is IIF",
+      "origin": "source",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "minimally_thickened",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "present",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 10
+      },
+      "outcome": "class_iif"
+    },
+    {
+      "name": "fig 2: 4 mm enhancing wall is III",
+      "origin": "source",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thick",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "present",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 10
+      },
+      "outcome": "class_iii"
+    },
+    {
+      "name": "fig 3: obtuse 3 mm protrusion is III",
+      "origin": "source",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "obtuse_3mm_or_less",
+        "enhancement": "present",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 10
+      },
+      "outcome": "class_iii"
+    },
+    {
+      "name": "fig 3: obtuse 4 mm protrusion is IV",
+      "origin": "source",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "obtuse_4mm_or_more",
+        "enhancement": "present",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 10
+      },
+      "outcome": "class_iv"
+    },
+    {
+      "name": "fig 3: acute small protrusion is IV",
+      "origin": "source",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "acute_any_size",
+        "enhancement": "present",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 10
+      },
+      "outcome": "class_iv"
+    },
+    {
+      "name": "fig 4: few thin enhancing septa with thick calcification is II",
+      "origin": "source",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "few",
+        "protrusion": "none",
+        "enhancement": "present",
+        "calcification": "present",
+        "contents": "uniform",
+        "hu": 10,
+        "septa_thickness": "thin"
+      },
+      "outcome": "class_ii"
+    },
+    {
+      "name": "II.6 too small, homogeneous low attenuation",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "yes_homogeneous_low_attenuation"
+      },
+      "outcome": "class_ii"
+    },
+    {
+      "name": "too small, other",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "yes_other"
+      },
+      "outcome": "unclassifiable"
+    },
+    {
+      "name": "II.2 unenhanced 70 HU",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "unenhanced_only",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "absent",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 70
+      },
+      "outcome": "class_ii",
+      "steps": {
+        "hu_band": "ge70"
+      }
+    },
+    {
+      "name": "unenhanced 69.9 HU undefined",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "unenhanced_only",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "absent",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 69.9
+      },
+      "outcome": "unclassifiable",
+      "steps": {
+        "hu_band": "31_69"
+      }
+    },
+    {
+      "name": "II.3 RMP 30.1 HU non-enhancing",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "absent",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 30.1
+      },
+      "outcome": "class_ii",
+      "steps": {
+        "hu_band": "31_69"
+      }
+    },
+    {
+      "name": "II.3 RMP calcified 45 HU non-enhancing",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "absent",
+        "calcification": "present",
+        "contents": "uniform",
+        "hu": 45
+      },
+      "outcome": "class_ii"
+    },
+    {
+      "name": "RMP 45 HU enhancing undefined",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "present",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 45
+      },
+      "outcome": "unclassifiable"
+    },
+    {
+      "name": "II.2 RMP 80 HU wall enhancing",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "present",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 80
+      },
+      "outcome": "class_ii"
+    },
+    {
+      "name": "II.4 unenhanced 20 HU",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "unenhanced_only",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "absent",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 20
+      },
+      "outcome": "class_ii",
+      "steps": {
+        "hu_band": "m9_20"
+      }
+    },
+    {
+      "name": "II.4 unenhanced -9 HU",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "unenhanced_only",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "absent",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": -9
+      },
+      "outcome": "class_ii",
+      "steps": {
+        "hu_band": "m9_20"
+      }
+    },
+    {
+      "name": "unenhanced -9.1 HU undefined",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "unenhanced_only",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "absent",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": -9.1
+      },
+      "outcome": "unclassifiable",
+      "steps": {
+        "hu_band": "lt_m9"
+      }
+    },
+    {
+      "name": "II.5 portal venous 20.1 HU",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "portal_venous_only",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": {
+          "state": "not_assessable"
+        },
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 20.1
+      },
+      "outcome": "class_ii",
+      "steps": {
+        "hu_band": "21_30"
+      }
+    },
+    {
+      "name": "II.5 portal venous 30 HU",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "portal_venous_only",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": {
+          "state": "not_assessable"
+        },
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 30
+      },
+      "outcome": "class_ii",
+      "steps": {
+        "hu_band": "21_30"
+      }
+    },
+    {
+      "name": "portal venous 30.1 HU undefined",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "portal_venous_only",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": {
+          "state": "not_assessable"
+        },
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 30.1
+      },
+      "outcome": "unclassifiable",
+      "steps": {
+        "hu_band": "31_69"
+      }
+    },
+    {
+      "name": "I portal venous 20 HU",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "portal_venous_only",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": {
+          "state": "not_assessable"
+        },
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 20
+      },
+      "outcome": "class_i",
+      "steps": {
+        "hu_band": "m9_20"
+      }
+    },
+    {
+      "name": "I RMP -9 HU",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "absent",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": -9
+      },
+      "outcome": "class_i",
+      "steps": {
+        "hu_band": "m9_20"
+      }
+    },
+    {
+      "name": "RMP 20.1 HU enhancing undefined",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "present",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 20.1
+      },
+      "outcome": "unclassifiable",
+      "steps": {
+        "hu_band": "21_30"
+      }
+    },
+    {
+      "name": "calcified wall, simple fluid, no septa is II",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "absent",
+        "calcification": "present",
+        "contents": "uniform",
+        "hu": 10
+      },
+      "outcome": "class_ii"
+    },
+    {
+      "name": "heterogeneous, no septa",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "absent",
+        "calcification": "none",
+        "contents": "heterogeneous",
+        "hu": 10
+      },
+      "outcome": "unclassifiable"
+    },
+    {
+      "name": "ill-defined, otherwise simple",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "ill_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "absent",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 10
+      },
+      "outcome": "unclassifiable"
+    },
+    {
+      "name": "3 mm non-enhancing wall (MRI advised)",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "minimally_thickened",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "absent",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 10
+      },
+      "outcome": "unclassifiable"
+    },
+    {
+      "name": "many septa, enhancement not assessable",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "portal_venous_only",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "many",
+        "protrusion": "none",
+        "enhancement": {
+          "state": "not_assessable"
+        },
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 10,
+        "septa_thickness": "thin"
+      },
+      "outcome": "unclassifiable"
+    },
+    {
+      "name": "nodule plus thick septa is IV (highest class)",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "many",
+        "protrusion": "acute_any_size",
+        "enhancement": "present",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 10,
+        "septa_thickness": "thick"
+      },
+      "outcome": "class_iv"
+    },
+    {
+      "name": "many minimally thickened septa is IIF",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "many",
+        "protrusion": "none",
+        "enhancement": "present",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 10,
+        "septa_thickness": "minimally_thickened"
+      },
+      "outcome": "class_iif"
+    },
+    {
+      "name": "simple on RMP, HU not given",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "none",
+        "enhancement": "absent",
+        "calcification": "none",
+        "contents": "uniform"
+      },
+      "outcome": null,
+      "needed": [
+        "hu"
+      ]
+    },
+    {
+      "name": "thick wall, enhancement not given",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thick",
+        "septa": "none",
+        "protrusion": "none",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 10
+      },
+      "outcome": null,
+      "needed": [
+        "enhancement"
+      ]
+    },
+    {
+      "name": "few septa, thickness not given",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "few",
+        "protrusion": "none",
+        "calcification": "none",
+        "contents": "uniform",
+        "hu": 10
+      },
+      "outcome": null,
+      "needed": [
+        "septa_thickness",
+        "enhancement"
+      ]
+    }
+  ]
+}

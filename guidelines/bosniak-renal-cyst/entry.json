@@ -1,0 +1,1881 @@
+{
+  "id": "bosniak-renal-cyst",
+  "version": "2019.1",
+  "topic": "cystic-renal-mass",
+  "issuer": "Society of Abdominal Radiology (Silverman et al.)",
+  "system": "Bosniak Classification of Cystic Renal Masses, Version 2019",
+  "display": "Bosniak 2019",
+  "edition": "2019",
+  "tier": 1,
+  "applies_to": {
+    "region": [
+      "abdomen"
+    ],
+    "modality": [
+      "CT"
+    ],
+    "finding_type": [
+      "renal cyst",
+      "cystic renal mass"
+    ],
+    "context": []
+  },
+  "aliases": [
+    "bosniak",
+    "bosniak classification",
+    "bosniak 2019",
+    "bosniak v2019"
+  ],
+  "inputs": [
+    {
+      "id": "too_small",
+      "label": "Too small to characterise",
+      "type": "enum",
+      "options": [
+        "no",
+        "yes_homogeneous_low_attenuation",
+        "yes_other"
+      ],
+      "how_stated": "'too small to characterise' (eg, section thickness over half the diameter); say whether it is well-defined, homogeneous and of low attenuation",
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+        "table": "2"
+      }
+    },
+    {
+      "id": "technique",
+      "label": "CT technique",
+      "type": "enum",
+      "options": [
+        "renal_mass_protocol",
+        "unenhanced_only",
+        "portal_venous_only"
+      ],
+      "how_stated": "renal mass protocol CT (unenhanced plus contrast phases), unenhanced CT only, or a single portal venous phase only",
+      "prerequisites": [
+        {
+          "ref": "too_small",
+          "eq": "no"
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+        "table": "2"
+      }
+    },
+    {
+      "id": "margin",
+      "label": "Margin",
+      "type": "enum",
+      "options": [
+        "well_defined",
+        "ill_defined"
+      ],
+      "how_stated": "well-defined or ill-defined",
+      "prerequisites": [
+        {
+          "ref": "too_small",
+          "eq": "no"
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+        "table": "2"
+      }
+    },
+    {
+      "id": "wall",
+      "label": "Wall thickness",
+      "type": "enum",
+      "options": [
+        "thin",
+        "minimally_thickened",
+        "thick"
+      ],
+      "how_stated": "wall thin (2 mm or less), minimally thickened (3 mm) or thick (4 mm or more)",
+      "prerequisites": [
+        {
+          "ref": "too_small",
+          "eq": "no"
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "General Points",
+        "table": "3"
+      }
+    },
+    {
+      "id": "septa",
+      "label": "Number of septa",
+      "type": "enum",
+      "options": [
+        "none",
+        "few",
+        "many"
+      ],
+      "how_stated": "no septa, few (1 to 3) or many (4 or more) septa",
+      "prerequisites": [
+        {
+          "ref": "too_small",
+          "eq": "no"
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "General Points",
+        "table": "3"
+      }
+    },
+    {
+      "id": "septa_thickness",
+      "label": "Thickest septum",
+      "type": "enum",
+      "options": [
+        "thin",
+        "minimally_thickened",
+        "thick"
+      ],
+      "how_stated": "septa thin (2 mm or less), minimally thickened (3 mm) or thick (4 mm or more)",
+      "prerequisites": [
+        {
+          "ref": "septa",
+          "in": [
+            "few",
+            "many"
+          ]
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "General Points",
+        "table": "3"
+      }
+    },
+    {
+      "id": "protrusion",
+      "label": "Convex protrusion from wall or septa",
+      "type": "enum",
+      "options": [
+        "none",
+        "obtuse_3mm_or_less",
+        "obtuse_4mm_or_more",
+        "acute_any_size"
+      ],
+      "how_stated": "smooth with no protrusion; irregular thickening (obtuse-margined protrusion 3 mm or less); nodule (obtuse-margined 4 mm or more, or acute-margined of any size)",
+      "prerequisites": [
+        {
+          "ref": "too_small",
+          "eq": "no"
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "General Points",
+        "table": "3"
+      }
+    },
+    {
+      "id": "enhancement",
+      "label": "Enhancement of wall, septa or protrusion",
+      "type": "enum",
+      "options": [
+        "present",
+        "absent"
+      ],
+      "states": [
+        "not_assessable"
+      ],
+      "how_stated": "enhancing or non-enhancing (clear visible enhancement comparing unenhanced and enhanced images, or measurable); not assessable on a single phase",
+      "prerequisites": [
+        {
+          "ref": "too_small",
+          "eq": "no"
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "General Points",
+        "table": "3"
+      }
+    },
+    {
+      "id": "calcification",
+      "label": "Calcification",
+      "type": "enum",
+      "options": [
+        "none",
+        "present"
+      ],
+      "how_stated": "calcification of any type in the wall or septa, or none",
+      "prerequisites": [
+        {
+          "ref": "too_small",
+          "eq": "no"
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+        "table": "2"
+      }
+    },
+    {
+      "id": "contents",
+      "label": "Contents",
+      "type": "enum",
+      "options": [
+        "uniform",
+        "heterogeneous"
+      ],
+      "how_stated": "fluid of uniform attenuation throughout, or heterogeneous contents",
+      "prerequisites": [
+        {
+          "ref": "too_small",
+          "eq": "no"
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "General Points",
+        "table": "3"
+      }
+    },
+    {
+      "id": "hu",
+      "label": "Attenuation of contents",
+      "type": "number",
+      "unit": "HU",
+      "how_stated": "attenuation in HU on the unenhanced series (on the single phase if only one was acquired)",
+      "prerequisites": [
+        {
+          "ref": "too_small",
+          "eq": "no"
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+        "table": "2"
+      }
+    }
+  ],
+  "logic": [
+    {
+      "step": "band",
+      "id": "hu_band",
+      "ref": "hu",
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+        "table": "2"
+      },
+      "bands": [
+        {
+          "id": "lt_m9",
+          "label": "below -9 HU",
+          "max": -9
+        },
+        {
+          "id": "m9_20",
+          "label": "-9 to 20 HU",
+          "min": -9,
+          "max": 20,
+          "max_inclusive": true
+        },
+        {
+          "id": "21_30",
+          "label": "over 20 to 30 HU",
+          "min": 20,
+          "min_inclusive": false,
+          "max": 30,
+          "max_inclusive": true
+        },
+        {
+          "id": "31_69",
+          "label": "over 30 and under 70 HU",
+          "min": 30,
+          "min_inclusive": false,
+          "max": 70
+        },
+        {
+          "id": "ge70",
+          "label": "70 HU or more",
+          "min": 70
+        }
+      ]
+    },
+    {
+      "step": "rules",
+      "id": "class",
+      "cases": [
+        {
+          "when": {
+            "ref": "too_small",
+            "eq": "yes_homogeneous_low_attenuation"
+          },
+          "result": "class_ii",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "ref": "too_small",
+            "eq": "yes_other"
+          },
+          "result": "unclassifiable",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "too_small",
+                "eq": "no"
+              },
+              {
+                "ref": "enhancement",
+                "eq": "present"
+              },
+              {
+                "ref": "protrusion",
+                "in": [
+                  "obtuse_4mm_or_more",
+                  "acute_any_size"
+                ]
+              }
+            ]
+          },
+          "result": "class_iv",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "too_small",
+                "eq": "no"
+              },
+              {
+                "ref": "enhancement",
+                "eq": "present"
+              },
+              {
+                "none": [
+                  {
+                    "ref": "protrusion",
+                    "in": [
+                      "obtuse_4mm_or_more",
+                      "acute_any_size"
+                    ]
+                  }
+                ]
+              },
+              {
+                "any": [
+                  {
+                    "ref": "wall",
+                    "eq": "thick"
+                  },
+                  {
+                    "ref": "septa_thickness",
+                    "eq": "thick"
+                  },
+                  {
+                    "ref": "protrusion",
+                    "eq": "obtuse_3mm_or_less"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "class_iii",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "too_small",
+                "eq": "no"
+              },
+              {
+                "ref": "enhancement",
+                "eq": "present"
+              },
+              {
+                "none": [
+                  {
+                    "ref": "protrusion",
+                    "in": [
+                      "obtuse_4mm_or_more",
+                      "acute_any_size"
+                    ]
+                  }
+                ]
+              },
+              {
+                "none": [
+                  {
+                    "any": [
+                      {
+                        "ref": "wall",
+                        "eq": "thick"
+                      },
+                      {
+                        "ref": "septa_thickness",
+                        "eq": "thick"
+                      },
+                      {
+                        "ref": "protrusion",
+                        "eq": "obtuse_3mm_or_less"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "any": [
+                  {
+                    "ref": "wall",
+                    "eq": "minimally_thickened"
+                  },
+                  {
+                    "ref": "septa_thickness",
+                    "eq": "minimally_thickened"
+                  },
+                  {
+                    "all": [
+                      {
+                        "ref": "septa",
+                        "eq": "many"
+                      },
+                      {
+                        "ref": "septa_thickness",
+                        "eq": "thin"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "class_iif",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "too_small",
+                "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "ref": "enhancement",
+                    "eq": "present"
+                  }
+                ]
+              },
+              {
+                "any": [
+                  {
+                    "ref": "protrusion",
+                    "in": [
+                      "obtuse_4mm_or_more",
+                      "acute_any_size"
+                    ]
+                  },
+                  {
+                    "any": [
+                      {
+                        "ref": "wall",
+                        "eq": "thick"
+                      },
+                      {
+                        "ref": "septa_thickness",
+                        "eq": "thick"
+                      },
+                      {
+                        "ref": "protrusion",
+                        "eq": "obtuse_3mm_or_less"
+                      }
+                    ]
+                  },
+                  {
+                    "any": [
+                      {
+                        "ref": "wall",
+                        "eq": "minimally_thickened"
+                      },
+                      {
+                        "ref": "septa_thickness",
+                        "eq": "minimally_thickened"
+                      },
+                      {
+                        "all": [
+                          {
+                            "ref": "septa",
+                            "eq": "many"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "thin"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "unclassifiable",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "too_small",
+                "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "any": [
+                      {
+                        "ref": "protrusion",
+                        "in": [
+                          "obtuse_4mm_or_more",
+                          "acute_any_size"
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "protrusion",
+                            "eq": "obtuse_3mm_or_less"
+                          }
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "all": [
+                              {
+                                "ref": "septa",
+                                "eq": "many"
+                              },
+                              {
+                                "ref": "septa_thickness",
+                                "eq": "thin"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "ref": "margin",
+                "eq": "ill_defined"
+              }
+            ]
+          },
+          "result": "unclassifiable",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "too_small",
+                "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "any": [
+                      {
+                        "ref": "protrusion",
+                        "in": [
+                          "obtuse_4mm_or_more",
+                          "acute_any_size"
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "protrusion",
+                            "eq": "obtuse_3mm_or_less"
+                          }
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "all": [
+                              {
+                                "ref": "septa",
+                                "eq": "many"
+                              },
+                              {
+                                "ref": "septa_thickness",
+                                "eq": "thin"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "ref": "margin",
+                "eq": "well_defined"
+              },
+              {
+                "ref": "septa",
+                "eq": "few"
+              }
+            ]
+          },
+          "result": "class_ii",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "too_small",
+                "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "any": [
+                      {
+                        "ref": "protrusion",
+                        "in": [
+                          "obtuse_4mm_or_more",
+                          "acute_any_size"
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "protrusion",
+                            "eq": "obtuse_3mm_or_less"
+                          }
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "all": [
+                              {
+                                "ref": "septa",
+                                "eq": "many"
+                              },
+                              {
+                                "ref": "septa_thickness",
+                                "eq": "thin"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "ref": "margin",
+                "eq": "well_defined"
+              },
+              {
+                "ref": "septa",
+                "eq": "none"
+              },
+              {
+                "ref": "contents",
+                "eq": "uniform"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "calcification",
+                    "eq": "none"
+                  },
+                  {
+                    "ref": "hu_band",
+                    "eq": "m9_20"
+                  },
+                  {
+                    "ref": "technique",
+                    "in": [
+                      "renal_mass_protocol",
+                      "portal_venous_only"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "class_i",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "too_small",
+                "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "any": [
+                      {
+                        "ref": "protrusion",
+                        "in": [
+                          "obtuse_4mm_or_more",
+                          "acute_any_size"
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "protrusion",
+                            "eq": "obtuse_3mm_or_less"
+                          }
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "all": [
+                              {
+                                "ref": "septa",
+                                "eq": "many"
+                              },
+                              {
+                                "ref": "septa_thickness",
+                                "eq": "thin"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "ref": "margin",
+                "eq": "well_defined"
+              },
+              {
+                "ref": "septa",
+                "eq": "none"
+              },
+              {
+                "ref": "contents",
+                "eq": "uniform"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "calcification",
+                    "eq": "none"
+                  },
+                  {
+                    "ref": "hu_band",
+                    "eq": "m9_20"
+                  },
+                  {
+                    "ref": "technique",
+                    "eq": "unenhanced_only"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "class_ii",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "too_small",
+                "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "any": [
+                      {
+                        "ref": "protrusion",
+                        "in": [
+                          "obtuse_4mm_or_more",
+                          "acute_any_size"
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "protrusion",
+                            "eq": "obtuse_3mm_or_less"
+                          }
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "all": [
+                              {
+                                "ref": "septa",
+                                "eq": "many"
+                              },
+                              {
+                                "ref": "septa_thickness",
+                                "eq": "thin"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "ref": "margin",
+                "eq": "well_defined"
+              },
+              {
+                "ref": "septa",
+                "eq": "none"
+              },
+              {
+                "ref": "contents",
+                "eq": "uniform"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "calcification",
+                    "eq": "present"
+                  },
+                  {
+                    "ref": "hu_band",
+                    "eq": "m9_20"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "class_ii",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Bosniak II",
+            "table": ""
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "too_small",
+                "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "any": [
+                      {
+                        "ref": "protrusion",
+                        "in": [
+                          "obtuse_4mm_or_more",
+                          "acute_any_size"
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "protrusion",
+                            "eq": "obtuse_3mm_or_less"
+                          }
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "all": [
+                              {
+                                "ref": "septa",
+                                "eq": "many"
+                              },
+                              {
+                                "ref": "septa_thickness",
+                                "eq": "thin"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "ref": "margin",
+                "eq": "well_defined"
+              },
+              {
+                "ref": "septa",
+                "eq": "none"
+              },
+              {
+                "ref": "contents",
+                "eq": "uniform"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "hu_band",
+                    "eq": "ge70"
+                  },
+                  {
+                    "any": [
+                      {
+                        "ref": "technique",
+                        "eq": "unenhanced_only"
+                      },
+                      {
+                        "all": [
+                          {
+                            "ref": "technique",
+                            "eq": "renal_mass_protocol"
+                          },
+                          {
+                            "none": [
+                              {
+                                "ref": "enhancement",
+                                "eq": "absent"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "class_ii",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "too_small",
+                "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "any": [
+                      {
+                        "ref": "protrusion",
+                        "in": [
+                          "obtuse_4mm_or_more",
+                          "acute_any_size"
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "protrusion",
+                            "eq": "obtuse_3mm_or_less"
+                          }
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "all": [
+                              {
+                                "ref": "septa",
+                                "eq": "many"
+                              },
+                              {
+                                "ref": "septa_thickness",
+                                "eq": "thin"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "ref": "margin",
+                "eq": "well_defined"
+              },
+              {
+                "ref": "septa",
+                "eq": "none"
+              },
+              {
+                "ref": "contents",
+                "eq": "uniform"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "hu_band",
+                    "in": [
+                      "21_30",
+                      "31_69",
+                      "ge70"
+                    ]
+                  },
+                  {
+                    "ref": "technique",
+                    "eq": "renal_mass_protocol"
+                  },
+                  {
+                    "ref": "enhancement",
+                    "eq": "absent"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "class_ii",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "too_small",
+                "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "any": [
+                      {
+                        "ref": "protrusion",
+                        "in": [
+                          "obtuse_4mm_or_more",
+                          "acute_any_size"
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "protrusion",
+                            "eq": "obtuse_3mm_or_less"
+                          }
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "all": [
+                              {
+                                "ref": "septa",
+                                "eq": "many"
+                              },
+                              {
+                                "ref": "septa_thickness",
+                                "eq": "thin"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "ref": "margin",
+                "eq": "well_defined"
+              },
+              {
+                "ref": "septa",
+                "eq": "none"
+              },
+              {
+                "ref": "contents",
+                "eq": "uniform"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "hu_band",
+                    "eq": "21_30"
+                  },
+                  {
+                    "ref": "technique",
+                    "eq": "portal_venous_only"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "class_ii",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "too_small",
+                "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "any": [
+                      {
+                        "ref": "protrusion",
+                        "in": [
+                          "obtuse_4mm_or_more",
+                          "acute_any_size"
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "thick"
+                          },
+                          {
+                            "ref": "protrusion",
+                            "eq": "obtuse_3mm_or_less"
+                          }
+                        ]
+                      },
+                      {
+                        "any": [
+                          {
+                            "ref": "wall",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "ref": "septa_thickness",
+                            "eq": "minimally_thickened"
+                          },
+                          {
+                            "all": [
+                              {
+                                "ref": "septa",
+                                "eq": "many"
+                              },
+                              {
+                                "ref": "septa_thickness",
+                                "eq": "thin"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "ref": "margin",
+                "eq": "well_defined"
+              },
+              {
+                "ref": "septa",
+                "eq": "none"
+              },
+              {
+                "none": [
+                  {
+                    "all": [
+                      {
+                        "ref": "contents",
+                        "eq": "uniform"
+                      },
+                      {
+                        "any": [
+                          {
+                            "all": [
+                              {
+                                "ref": "calcification",
+                                "eq": "none"
+                              },
+                              {
+                                "ref": "hu_band",
+                                "eq": "m9_20"
+                              },
+                              {
+                                "ref": "technique",
+                                "in": [
+                                  "renal_mass_protocol",
+                                  "portal_venous_only"
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "all": [
+                              {
+                                "ref": "calcification",
+                                "eq": "none"
+                              },
+                              {
+                                "ref": "hu_band",
+                                "eq": "m9_20"
+                              },
+                              {
+                                "ref": "technique",
+                                "eq": "unenhanced_only"
+                              }
+                            ]
+                          },
+                          {
+                            "all": [
+                              {
+                                "ref": "calcification",
+                                "eq": "present"
+                              },
+                              {
+                                "ref": "hu_band",
+                                "eq": "m9_20"
+                              }
+                            ]
+                          },
+                          {
+                            "all": [
+                              {
+                                "ref": "hu_band",
+                                "eq": "ge70"
+                              },
+                              {
+                                "any": [
+                                  {
+                                    "ref": "technique",
+                                    "eq": "unenhanced_only"
+                                  },
+                                  {
+                                    "all": [
+                                      {
+                                        "ref": "technique",
+                                        "eq": "renal_mass_protocol"
+                                      },
+                                      {
+                                        "none": [
+                                          {
+                                            "ref": "enhancement",
+                                            "eq": "absent"
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "all": [
+                              {
+                                "ref": "hu_band",
+                                "in": [
+                                  "21_30",
+                                  "31_69",
+                                  "ge70"
+                                ]
+                              },
+                              {
+                                "ref": "technique",
+                                "eq": "renal_mass_protocol"
+                              },
+                              {
+                                "ref": "enhancement",
+                                "eq": "absent"
+                              }
+                            ]
+                          },
+                          {
+                            "all": [
+                              {
+                                "ref": "hu_band",
+                                "eq": "21_30"
+                              },
+                              {
+                                "ref": "technique",
+                                "eq": "portal_venous_only"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "unclassifiable",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+            "table": "2"
+          }
+        }
+      ]
+    }
+  ],
+  "result": "class",
+  "outcomes": [
+    {
+      "id": "class_i",
+      "classification": "Bosniak I (v2019): benign simple renal cyst.",
+      "recommendation": "No follow-up needed.",
+      "caveats": [
+        "Not for patients with a renal cell carcinoma syndrome; patient factors still shape management."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "General Points",
+        "table": "4"
+      }
+    },
+    {
+      "id": "class_ii",
+      "classification": "Bosniak II (v2019): benign or likely benign cystic renal mass.",
+      "recommendation": "No follow-up needed.",
+      "caveats": [
+        "Call it a cyst only if confirmed as one; otherwise a likely benign mass.",
+        "Abundant thick or nodular calcification, or a homogeneous hyperattenuating non-enhancing mass over 3 cm, may be better assessed by MRI before classing.",
+        "Not for patients with a renal cell carcinoma syndrome; patient factors still shape management."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "General Points",
+        "table": "4"
+      }
+    },
+    {
+      "id": "class_iif",
+      "classification": "Bosniak IIF (v2019) cystic renal mass: most are benign, and malignant ones are nearly all indolent.",
+      "recommendation": "Imaging follow-up at 6 and 12 months, then yearly to 5 years in total, looking for morphological change.",
+      "caveats": [
+        "Not for patients with a renal cell carcinoma syndrome; patient factors still shape management."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "General Points",
+        "table": "4"
+      }
+    },
+    {
+      "id": "class_iii",
+      "classification": "Bosniak III (v2019) cystic renal mass: intermediate probability of malignancy (about half).",
+      "recommendation": "Consider urology referral if not already arranged.",
+      "caveats": [
+        "Whether observation or treatment suits class III best is unclear in the source.",
+        "Not for patients with a renal cell carcinoma syndrome; patient factors still shape management."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "General Points",
+        "table": "4"
+      }
+    },
+    {
+      "id": "class_iv",
+      "classification": "Bosniak IV (v2019) cystic renal mass: most are malignant (about 90%).",
+      "recommendation": "Consider urology referral if not already arranged.",
+      "caveats": [
+        "Not for patients with a renal cell carcinoma syndrome; patient factors still shape management."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "General Points",
+        "table": "4"
+      }
+    },
+    {
+      "id": "unclassifiable",
+      "classification": "Features do not fit a Bosniak 2019 class; manage on its features.",
+      "recommendation": "Consider renal mass protocol MRI (with subtraction) to look for occult enhancing elements before assigning a class.",
+      "caveats": [
+        "The source allows a rare undefined combination to be placed in IIF.",
+        "Enhancement needs unenhanced and enhanced images to compare, or a measurement."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+        "table": "2"
+      }
+    }
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "Bosniak v2019 grades the likelihood of malignancy in a cystic renal mass (I, II, IIF, III, IV) from CT or MRI features.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "Abstract",
+          "table": ""
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "IV: enhancing nodule. III: enhancing thick (4 mm or more) or irregular wall or septa. IIF: minimally thickened (3 mm) enhancing wall or septa, or 4 or more thin enhancing septa.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+          "table": "2"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "I and II are well-defined with thin smooth walls; II covers few thin septa, calcification, and several homogeneous attenuation types.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+          "table": "2"
+        }
+      },
+      {
+        "id": "sum.4",
+        "text": "When features span classes, assign the highest class.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+          "table": "2"
+        }
+      },
+      {
+        "id": "sum.5",
+        "text": "This entry encodes the CT features only.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+          "table": "2"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.cystic",
+        "text": "Cystic mass: less than about 25% of the mass is enhancing tissue.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "General Points",
+          "table": ""
+        }
+      },
+      {
+        "id": "def.enh",
+        "text": "Enhancement: clear visible enhancement comparing unenhanced and enhanced images, or measurable by established thresholds.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "General Points",
+          "table": "3"
+        }
+      },
+      {
+        "id": "def.homog",
+        "text": "Homogeneous: similar attenuation throughout; a thin wall is allowed but no septa or calcification.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "General Points",
+          "table": "3"
+        }
+      },
+      {
+        "id": "def.fluid",
+        "text": "Simple fluid at CT: homogeneous, -9 to 20 HU on unenhanced or enhanced CT.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "General Points",
+          "table": "3"
+        }
+      },
+      {
+        "id": "def.septum",
+        "text": "Septum: a linear or curvilinear structure joining two surfaces. Few: 1 to 3. Many: 4 or more.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "General Points",
+          "table": "3"
+        }
+      },
+      {
+        "id": "def.thick",
+        "text": "Wall or septum: thin 2 mm or less; minimally thickened 3 mm; thick 4 mm or more. Guideposts, not absolutes.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "General Points",
+          "table": "3"
+        }
+      },
+      {
+        "id": "def.irreg",
+        "text": "Irregular thickening: focal or diffuse enhancing convex protrusion(s) 3 mm or less with obtuse margins.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "General Points",
+          "table": "3"
+        }
+      },
+      {
+        "id": "def.nodule",
+        "text": "Nodule: enhancing convex protrusion of any size with acute margins, or 4 mm or more with obtuse margins.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "General Points",
+          "table": "3"
+        }
+      },
+      {
+        "id": "def.measure",
+        "text": "Measure protrusions perpendicular to the wall or septum; if on both sides, add them, excluding the wall itself.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "General Points",
+          "table": "3"
+        }
+      },
+      {
+        "id": "def.small",
+        "text": "Too small to characterise: eg, section thickness over half the mass diameter; small masses near enhancing parenchyma also suffer pseudoenhancement.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "Recent Developments to Improve Characterization of Cystic Renal Masses",
+          "table": ""
+        }
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.scope",
+        "text": "Not for infectious, inflammatory or vascular lesions, or necrotic solid masses.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+          "table": "2"
+        }
+      },
+      {
+        "id": "pit.mri",
+        "text": "MRI criteria are not encoded in this version of the entry.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+          "table": "2"
+        }
+      },
+      {
+        "id": "pit.us",
+        "text": "Ultrasound role is uncertain apart from diagnosing a Bosniak I simple cyst.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
+          "table": "2"
+        }
+      },
+      {
+        "id": "pit.syndrome",
+        "text": "Reporting phrases are for the general population, not renal cell carcinoma syndromes.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "General Points",
+          "table": "4"
+        }
+      },
+      {
+        "id": "pit.terms",
+        "text": "Say 'cyst' only for class I and confirmed class II cysts; avoid 'complex' or 'complicated cyst'.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "General Points",
+          "table": ""
+        }
+      },
+      {
+        "id": "pit.size",
+        "text": "Size and growth are not part of the classification; in surveillance, morphological change matters most.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "Mass Size Is Not Included in the Bosniak Classification",
+          "table": ""
+        }
+      },
+      {
+        "id": "pit.mgmt",
+        "text": "It predicts the likelihood of cancer, not its behaviour; it is not a full management algorithm.",
+        "locator": {
+          "source": "S1",
+          "page": null,
+          "section": "The Bosniak Classification Predicts Likelihood of Cancer, Not Biologic Behavior",
+          "table": ""
+        }
+      }
+    ]
+  }
+}

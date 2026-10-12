@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "Bosniak Classification of Cystic Renal Masses, Version 2019: An Update Proposal and Needs Assessment (Silverman SG, et al. Radiology 2019;292:475-488) - PMC open-access full text PMC6677285; tables 1-4 filed as images",
+      "issuer": "Society of Abdominal Radiology (Silverman et al.)",
+      "edition": "2019",
+      "url": "https://doi.org/10.1148/radiol.2019182646",
+      "sha256": "afe9269a67b94ef5ac96f46935a43df6c0db573636608e5bde45b92067c7e976",
+      "file": "sources/afe9269a67b94ef5ac96f46935a43df6c0db573636608e5bde45b92067c7e976.html",
+      "text_file": "sources/c0ee45a4907dd7aed5bab8b0f33e617158bcc9c80c9ee40a6c868f035cdc4ea7.txt",
+      "retrieved": "2026-10-12 (PMC full text, PMC6677285)"
+    }
+  ]
+}
