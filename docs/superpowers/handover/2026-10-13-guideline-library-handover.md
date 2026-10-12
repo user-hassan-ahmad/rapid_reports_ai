@@ -55,7 +55,7 @@ Run commands from `backend/` as `PYTHONPATH=src .venv/bin/python …` or `.venv/
     - tier 2 reference cards: Kellgren–Lawrence, Garden, Weber/AO 44, Salter–Harris (prognosis only), Fazekas, ASPECTS, AO Spine, Stoller and Lund–Mackay.
 
   Every pack had an independent clinical read, and each read's findings were fixed. Outerbridge was dropped from this slice.
-- **Preview lab, run 2:** 0 wrong values and 0 wrong proposals. Friction is too high, at a mean of 5.5 asks per card. **Apply stays OFF.** That result prompted the redesign.
+- **Preview lab, run 2:** 0 wrong values and 0 wrong proposals. Friction is too high, at a mean of 5.5 asks per card. **Apply is OFF**, and Hassan decides when to enable it, from the real-dictation lab's report. That result prompted the redesign.
 - **Ask material cap:** `PACK_MATERIAL_MAX` is 48k. CAD-RADS is at 40.4k.
 
 ## Next: execute the draft-card plan
@@ -64,13 +64,19 @@ Its tasks, in order:
 - (b) Build the real-dictation lab before the redesign, as the baseline:
   - production findings come read-only via Metabase and stay in the scratchpad, never committed;
   - the grouper runs offline;
-  - a Claude Fable 5.1 labeller works with all the sources;
+  - an independent Claude Opus 5.5 subagent labels the truth with every pack's sources. The harness writes the cards and a labelling brief, then validates the labels: the schema, every card labelled, and `served_by` recorded. Labels are made once and reused, and the labeller never sees the settler's output. It runs under the Max plan, so there is no API spend;
   - Hassan spot-checks the boundary items.
 - (c) Add the read / pre-filled / asked states and Calculate. Retire the per-input QUOTE Jev claim, `_no_prior`, `Q.many`, `_ORGANS` and the negation allowlist. Demote the one-lesion check, `Q.alone`, the modifier guard and the HU phase claim to highlight signals.
 - Highlight the reference rows that match the case, using explicit links in the pack data.
 - (d) Checker mode, for when the category is dictated.
 - (e) "Which lesion?"
-- (f) The gate: 0 wrong values shown as "read", and a median of 2 taps or fewer to Calculate.
+- (f) Re-run the lab. It reports, with the baseline beside each figure:
+  - wrong "read" values, with each case named;
+  - wrong pre-fills per input;
+  - taps to Calculate (median and distribution);
+  - checker agreement, latency and degraded rows.
+
+  It then recommends whether to turn Apply on, which inputs to demote to "asked", and what to fix next. Then it stops for Hassan's decision. There are no automatic gates: 0 wrong "read" values and a median of 2 taps or fewer are reference targets only. A wrong value during a run is reported, not tuned.
 - (g) Spec §12 and the handover.
 
 No Copilot card UI exists on this branch, so the plan covers the backend API contract only.
@@ -118,14 +124,13 @@ No Copilot card UI exists on this branch, so the plan covers the backend API con
 
 
 ## Decisions the plan needs from Hassan (raised by the plan writer, commit 1b38fb3)
-1. **Pre-fill error rate** above which an input is demoted to "asked". No number is set yet; until it is, Task 9 reports rates and demotes nothing.
+1. **Demotion:** the lab reports each input's pre-fill error rate and recommends which inputs to demote; Hassan decides.
 2. **Checker disagreement.** When the dictated category disagrees with the features and nothing is corrected, the plan applies the computed result with a flag and never writes the dictated category. Confirm, or offer the dictated category instead.
 3. **To confirm:**
    - the preview's draft outcome ("on these values") can never be applied; only Calculate's result can;
    - booleans and absent / not-assessable states are only ever "pre-filled", never "read";
    - prior_study stays lesion-scoped and is asked first as a parent.
-4. **Fable 5.1 labelling budget:** an estimated $30–60 for about 120 cards. Task 2 stops and asks if the estimate goes above $100.
-5. **About 20 dictations in Hassan's own style** are wanted before labelling, or confirm that real production findings are enough.
+4. **About 20 dictations in Hassan's own style** are wanted before labelling, or confirm that real production findings are enough.
 
 ## Gotchas
 - **Permissions:** the auto-mode permission classifier sometimes blocks new subagent dispatches. Don't work around it. Ask Hassan to allow it in `/permissions`, or to run `claude -p "<brief path>"` himself. Writing a brief file first keeps that a one-liner.

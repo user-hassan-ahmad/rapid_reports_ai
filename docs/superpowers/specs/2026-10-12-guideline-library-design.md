@@ -11,7 +11,8 @@ Recommendations checklist, the matcher, the preview, and offline TNM.
 **Amended 2026-10-13** (Hassan approved the redesign after the settling root-cause review,
 `.superpowers/sdd/2026-10-13-guideline-library-next-slice/settling-root-cause-review.md`): the card becomes a visible
 draft with a Calculate step (§7.4–§7.10), the safety rule becomes "nothing reaches the report unseen" (§7.10), and the
-Apply gate becomes the real-dictation lab (§12, "Draft card slice"). Plan:
+preview lab gives way to the real-dictation lab, which reports metrics with recommendations so that Hassan can decide
+whether to enable Apply (§12, "Draft card slice"). Plan:
 `docs/superpowers/plans/2026-10-13-guideline-draft-card.md`.
 
 ## 1. Why
@@ -386,9 +387,9 @@ Each input on the card is in exactly one state:
   - the scope's Jev claim scoring below its bar;
   - the Jev call failing.
 - **Jev failure.** Nothing is read; every proposal is pre-filled. The card is otherwise usable.
-- **Demotion.** An input whose pre-fill error rate in the real-dictation lab is above the agreed rate (§12) is
-  demoted: its proposals are dropped and it is asked. The list lives in code, by pack and input, with the lab run that
-  set it.
+- **Demotion.** The real-dictation lab reports each input's pre-fill error rate and recommends which inputs to demote
+  (§12). Hassan decides. A demoted input's proposals are dropped and it is asked. The list lives in code, by pack and
+  input, with the lab run behind it.
 
 ### 7.6 Inline edit
 
@@ -478,7 +479,7 @@ the radiologist seeing it.
 - pre-fills are highlighted and never shown as read;
 - nothing is pre-filled from inference;
 - edits are logged;
-- an input is demoted when the real-dictation lab measures it above the agreed pre-fill error rate (§12).
+- an input can be demoted to asked when Hassan decides so from the real-dictation lab's pre-fill error rates (§12).
 
 ### 7.11 Case-aware reference
 
@@ -631,7 +632,7 @@ Status (2026-10-12): items 1 and 2 done, item 3 **failed** its gate, item 4 not 
    - **Proposed fix (not built):** give each input a scope (lesion or patient). Lesion-scoped quotes must come from
      the card's own finding unit, not the whole dictation. Latency needs a smaller settle prompt or a faster model.
    - **Frontend must not start Apply until this passes** a re-run of the preview lab. (Superseded 2026-10-13: the
-     Apply gate is the real-dictation lab; see "Draft card slice" below.)
+     real-dictation lab reports metrics and Hassan decides on Apply; see "Draft card slice" below.)
 4. **Frontend Tasks 14–19.** Apply appears only on pack and TNM cards. The Task 14 mock-up needs Hassan's approval
    first. Task 20, the review page, is dropped. Blocked on item 3.
 5. **Then:** the tier 2 parser lab, further packs in coverage-lab order, the monthly routine, and retiring prefetch
@@ -659,7 +660,7 @@ Status (2026-10-12): items 1 and 2 done, item 3 **failed** its gate, item 4 not 
 3. **Preview cache.** Run the preview when the card is produced and cache it by (pack, unit text, history, answered),
    so opening a card is instant.
 4. **Preview lab re-run.** Add cases with clinical history, two lesions in one sentence, eligibility exclusions stated
-   in the history, and shared patient answers across two cards. This lab was the gate for Apply until 2026-10-13.
+   in the history, and shared patient answers across two cards. This lab decided Apply until 2026-10-13.
    *Result (run 2, HEAD 4341832, 3bf81c0):*
    - passed, marginally: 0 wrong values and 0 wrong proposals;
    - (b) p95 was 1991 ms against the 2000 ms bar, with BTS alone at 3300 ms;
@@ -684,7 +685,7 @@ Plan: `docs/superpowers/plans/2026-10-13-guideline-draft-card.md`.
 
 **Banked from the next slice:**
 - run 2's 0 wrong values is the state of the code;
-- Apply stays off;
+- Apply is off, and Hassan decides when to enable it;
 - guard rounds stop;
 - packs continue unaffected.
 
@@ -712,11 +713,13 @@ Plan: `docs/superpowers/plans/2026-10-13-guideline-draft-card.md`.
 5. **Case-aware reference** (§7.11), then links on the existing packs, most dictated first.
 6. **Checker mode** (§7.8). Outcomes gain an optional `category` label from the source.
 7. **"Which lesion?"** (§7.9).
-8. **Re-run the real-dictation lab against the gate**, then write the results here.
+8. **Re-run the real-dictation lab**, report the metrics beside the baseline with recommendations, and write the
+   results here. Hassan decides whether to enable Apply.
 9. **Frontend.** No Copilot card UI exists on this branch. The plan builds the backend contract (/open, /preview and
    /calculate). The card UI and the Task 14 mock-up are a separate plan, and Hassan approves the mock-up first.
 
-**Apply gate: the real-dictation lab.** This replaces the preview lab as the gate.
+**Real-dictation lab: metrics reported with recommendations; Hassan decides whether to enable Apply.** It replaces
+the preview lab. It has no automatic pass or fail.
 - **Sample.**
   - About 100 production findings, read only through Metabase from `reports` (scan type, clinical history,
     findings). They are grouped offline by the stack grouper, matched by the matcher with the pack gate, and spread
@@ -724,30 +727,34 @@ Plan: `docs/superpowers/plans/2026-10-13-guideline-draft-card.md`.
   - About 20 cases that Hassan dictates in his own style, without seeing the guards.
   - All of it stays in the session scratchpad and is never committed.
 - **Truth.**
-  - A Claude Fable 5.1 labeller (`claude-fable-5-1`) labels every input of every card. Its prompt holds every source
-    of the pack and the entry itself.
+  - An independent Claude Opus 5.5 subagent labels every input of every card. It is read-only on code, and has every
+    pack's `sources/` folder and the entry itself. The harness writes the cards and a labelling brief, and validates
+    the labels it gets back. Labels are made once and reused.
   - For each input it gives the value or "not stated", with the quote and the source locator. It also gives the
     lesion spans and any dictated category.
   - It never sees the settler's output.
   - Hassan spot-checks the boundary items: those the labeller flags, every disagreement between labeller and settler,
-    and any label served by a fallback model. His verdict wins. The fixer never writes truth.
-- **Bar.**
-  - 0 wrong values shown as **read**.
-  - A median of 2 taps or fewer to Calculate. Taps are counted until Calculate returns an outcome when it is filled
-    from truth. They are:
+    and any card the labeller could not label. His verdict wins. The fixer never writes truth.
+- **Reported, against reference targets (not automatic gates):**
+  - wrong values shown as **read**, with each case named. The reference target is 0.
+  - Taps to Calculate, as the median and the distribution. The reference target is a median of 2 or fewer. Taps are
+    counted until Calculate returns an outcome when it is filled from truth. They are:
     - an answer to each asked input the engine needs;
     - a correction of each wrong draft value;
     - the "Which lesion?" pick.
 
     The Calculate tap itself is not counted.
-  - The pre-fill error rate (wrong pre-fills over pre-fills) is reported for each input. Any input above the agreed
-    rate is demoted to asked (§7.5).
+  - The pre-fill error rate (wrong pre-fills over pre-fills) for each input.
 - **Also reported:**
   - wrong pre-fills overall;
   - Calculate's outcome against the outcome truth gives;
   - how often the category is dictated, and how correct checker-mode flags are;
   - how often "Which lesion?" is shown, and how correct the picked spans are;
-  - time to first paint and time to the draft (p50 and p95).
+  - time to first paint and time to the draft (p50 and p95);
+  - degraded rows.
+- **Recommendations.** The report ends with recommendations: whether to turn Apply on, which inputs to demote to
+  asked (§7.5), and what to fix next. Then it stops for Hassan's decision.
+- **A wrong value during a run** is reported, not tuned. Hassan decides what follows.
 - **Regression.** The 51-case preview lab stays as a regression suite only.
 
 *Results:* written here by plan task G.

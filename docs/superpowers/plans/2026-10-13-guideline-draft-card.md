@@ -10,7 +10,9 @@
 - a finding with several lesions asks "Which lesion?" once;
 - the reference highlights what this case hit.
 
-The gate for Apply is a lab on real production dictations, labelled by Claude Fable 5.1 and spot-checked by Hassan.
+A lab on real production dictations measures the card before and after the redesign. An independent Claude Opus 5.5
+subagent labels the truth and Hassan spot-checks it. The lab reports metrics with recommendations, and Hassan decides
+whether to enable Apply. There are no automatic pass or fail gates.
 
 **Architecture:**
 - **What stays.** The engine (`library/engine.py`) and the Settlement/`finish` split (`library/pack_preview.py`),
@@ -28,8 +30,8 @@ The gate for Apply is a lab on real production dictations, labelled by Claude Fa
 - **The lab** (`scripts/guidelines/real_lab.py`) runs before the redesign, to set a baseline, and again after it.
 
 **Tech Stack:** Python 3, FastAPI, pydantic v2, pytest (asyncio_mode auto), pydantic-ai via `_run_agent_with_model`
-(Qwen on Cerebras), Jev via `jev_post`, the Anthropic Python SDK (installed 0.71.0) for the Fable labeller, and
-Metabase `/api/dataset` for read-only production SQL.
+(Qwen on Cerebras), Jev via `jev_post`, Metabase `/api/dataset` for read-only production SQL, and a Claude Opus 5.5
+subagent for labelling, dispatched by the controller under Hassan's Max plan (no API calls and no API spend).
 
 **Spec:** `docs/superpowers/specs/2026-10-12-guideline-library-design.md`, amended 2026-10-13:
 - §7.4 the draft card and the order of `needed`;
@@ -40,7 +42,7 @@ Metabase `/api/dataset` for read-only production SQL.
 - §7.9 Which lesion?;
 - §7.10 the safety rule and the reversal;
 - §7.11 case-aware reference;
-- §12 "Draft card slice" and the real-dictation Apply gate.
+- §12 "Draft card slice" and the real-dictation lab (metrics with recommendations; Hassan decides on Apply).
 
 **Approved direction:** `.superpowers/sdd/2026-10-13-guideline-library-next-slice/settling-root-cause-review.md`.
 Binding decisions are in the "Hassan 2026-10-13: redesign approved" section of
@@ -70,8 +72,8 @@ card slice" item 9).
 - **Tests:**
   - Tests are flat in `backend/tests/`, named `test_library_*.py` or `test_copilot_*.py`. Run them with
     `cd backend && PYTHONPATH=src .venv/bin/pytest …`.
-  - Tests make no real model, Jev, Anthropic, Metabase or network calls. Mock `PP._call`, `P.jev_post`, `M._call`
-    and `M._pgate`, and the Anthropic client.
+  - Tests make no real model, Jev, Metabase or network calls, and never dispatch a subagent. Mock `PP._call`,
+    `P.jev_post`, `M._call` and `M._pgate`. The labeller is tested only through its brief writer and label loader.
 - **Safety rule (spec §7.10): nothing reaches the report unseen.**
   - A pack preview never returns an Apply-able `proposal`. Only `/calculate` returns a result.
   - `/calculate` evaluates only the values the client sends. An input the client did not send is `unknown`, never
@@ -86,18 +88,18 @@ card slice" item 9).
   - Committed docs carry aggregates only, never a production sentence.
 - **Lab economy:**
   - At most 2 live settler runs per lab cycle.
-  - Fable labels are produced once and reused by every later run. Truth never changes between baseline and re-run
+  - Labels are produced once, by one labelling subagent, and reused by every later run. Truth never changes between baseline and re-run
     except by Hassan's verdicts.
   - The fixer never writes truth.
 - **Keys:** load them with `load_dotenv("/Users/hassan/Code/rapid_reports_ai/backend/.env")`. `METABASE_URL` and
-  `METABASE_API_KEY` live there. For Anthropic, use `ANTHROPIC_API_KEY`, or the `ant auth` profile when it is unset
-  (check with `ant auth status`).
+  `METABASE_API_KEY` live there.
 - **Labeller:**
-  - The model is `claude-fable-5-1`. Do not send a `thinking` parameter. Use `output_config.effort: "high"`, with
-    structured output through `output_config.format`.
-  - Enable the server-side fallback (`fallbacks: "default"` with beta `server-side-fallback-2026-07-01`) and record
-    when a fallback model served. That label becomes a boundary item.
-  - SDK 0.71.0 predates some of these parameters, so pass `output_config` and `fallbacks` through `extra_body`.
+  - An independent Claude Opus 5.5 subagent, dispatched by the controller (Agent tool, `model: opus`). It runs under
+    Hassan's Max plan: no Anthropic SDK, no API key and no budget.
+  - It is read-only on code. It may read the brief, the cards file and every pack's `entry.json`, `manifest.json` and
+    `sources/` folder, and it writes only `labels_<pid>.json`.
+  - It never sees the settler's output. Labelling runs before any `run`, and the brief names no `settler_*` file.
+  - The harness validates what it writes: the schema, every card labelled, and `served_by` recorded.
 - **Prompts:**
   - Prompts stay case-agnostic: no single-domain clinical example in any system prompt.
   - British English.
@@ -109,7 +111,7 @@ card slice" item 9).
   suite only. Engine-derived `expect_missing` fields are updated when the engine's order changes. Their `truth` maps
   are never edited.
 - **Review:** "reviewed" means an independent reviewer. If one cannot run, stop and ask Hassan before any merge.
-  Apply stays off until Hassan rules on the gate.
+  Apply is off. The lab reports and recommends; Hassan decides whether to enable it.
 
 ## Review Focus
 
@@ -121,7 +123,8 @@ card slice" item 9).
    child that could change the outcome always brings its parent into `needed`, so `needed` is never empty while the
    outcome is still open and bounded.
 3. **Lab independence.**
-   - Truth comes from Fable with every pack source in its prompt, and Fable never sees the settler's output.
+   - Truth comes from an independent Opus 5.5 subagent with every pack's sources, and it never sees the settler's
+     output.
    - Hassan's verdicts override truth.
    - No production text leaves the scratchpad.
    - The taps definition matches spec §12 exactly.
@@ -164,7 +167,7 @@ card slice" item 9).
 6. Reference links on the most dictated packs (follow-up to Task 5)
 7. Checker mode (d)
 8. "Which lesion?" (e)
-9. Re-run the real-dictation lab against the gate (f)
+9. Re-run the real-dictation lab; report metrics with recommendations for Hassan's decision (f)
 10. Spec §12 results and handover (g)
 
 Out of scope: the card UI and the Task 14 mock-up.
@@ -350,21 +353,41 @@ git commit -m "feat(library): parent questions first; a child behind an unknown 
    pack gate (`M._pgate` ≥ `M.PACK_GATE_MIN`). The cards are sampled per pack and written to `cards_<pid>.json`.
 3. `hassan`: Hassan's own dictations (`hassan_cases.json`, which he writes) go through the same grouping and
    matching, appended with `source: "hassan"`.
-4. `label`: Fable labels each card, giving `labels_<pid>.json`.
-5. `run`: the current settler (`settle_pack` + `finish`) on each card, giving `settler_<pid>.json`, with timings.
-6. `sheet`: boundary items for Hassan, giving `spotcheck_<pid>.csv`.
-7. `score`: the metrics against the gate, giving `score_<pid>.json` and a markdown table on stdout.
+4. `brief`: writes `label_brief_<pid>.md` beside the cards. The controller then dispatches the labelling subagent
+   with that brief. It writes `labels_<pid>.json`.
+5. `labels`: validates and loads `labels_<pid>.json`: the schema, every card labelled, and `served_by` recorded. It
+   prints any problem and exits non-zero.
+6. `run`: the current settler (`settle_pack` + `finish`) on each card, giving `settler_<pid>.json`, with timings.
+7. `sheet`: boundary items for Hassan, giving `spotcheck_<pid>.csv`.
+8. `score`: the metrics and the reference targets, giving `score_<pid>.json` and a markdown table on stdout.
 
 **Interfaces (pure, tested):**
 ```python
 def sample_cards(cards: list[dict], per_pack: int, total: int, seed: int = 13) -> list[dict]: ...
-def label_request(e: Entry, card: dict, sources: list[Path]) -> dict: ...      # Anthropic create() kwargs
-def parse_label(e: Entry, raw: dict) -> dict: ...                              # validated label, boundary flags
+def write_brief(lib: Library, cards: list[dict], cards_path: Path, labels_path: Path) -> str: ...
+def load_labels(lib: Library, cards: list[dict], raw: dict) -> tuple[dict[str, dict], list[str]]: ...  # (labels, problems)
+def parse_label(e: Entry, raw: dict, served_by: str) -> dict: ...              # one card: boundary flags
 def drafts(s) -> dict[str, tuple[InputValue, str, str]]: ...                   # input -> (value, quote, tier)
 def verdicts(e: Entry, s, label: dict) -> dict[str, str]: ...                  # input -> ok | wrong | missed | asked
 def taps(e: Entry, s, label: dict, patient: dict, picked: bool = False) -> tuple[int, str | None]: ...
 def spot_rows(e: Entry, card: dict, s, label: dict) -> list[dict]: ...
-def metrics(rows: list[dict]) -> dict: ...
+def metrics(rows: list[dict]) -> dict:
+    """rows: one per card with card, pack, taps, verdicts (input -> ok|wrong|asked), tiers (input -> read|prefilled)
+    and degraded. Measured and reported, never judged: Hassan decides."""
+    wrong_read = [f"{r['card']}:{k}" for r in rows for k, v in r["verdicts"].items()
+                  if v == "wrong" and r["tiers"].get(k) == "read"]
+    pf: dict[str, dict] = defaultdict(lambda: {"wrong": 0, "prefilled": 0})
+    for r in rows:
+        for k, t in r["tiers"].items():
+            if t == "prefilled":
+                key = f"{r['pack']}.{k}"
+                pf[key]["prefilled"] += 1
+                pf[key]["wrong"] += r["verdicts"][k] == "wrong"
+    return {"cards": len(rows), "wrong_read": wrong_read,
+            "median_taps": statistics.median(r["taps"] for r in rows) if rows else None,
+            "taps_distribution": dict(sorted(Counter(r["taps"] for r in rows).items())),
+            "prefill_error": {k: {**v, "rate": v["wrong"] / v["prefilled"]} for k, v in sorted(pf.items())},
+            "degraded": [r["card"] for r in rows if r.get("degraded")]}
 ```
 
 **Truth semantics (spec §12):**
@@ -403,7 +426,7 @@ spec.loader.exec_module(RL)
 def _label(**inputs):
     return {"inputs": {k: {"stated": v is not None, "value": v, "quote": "", "locator": "", "assumed": a,
                            "boundary": False, "note": ""} for k, (v, a) in inputs.items()},
-            "lesions": [], "category": None, "served_by": "claude-fable-5-1"}
+            "lesions": [], "category": None, "served_by": "claude-opus-5-5 subagent"}
 
 
 def test_sampling_caps_each_pack_and_the_total():
@@ -427,22 +450,48 @@ def test_taps_count_answers_and_corrections_never_the_calculate_tap(toy_entry):
     assert (n, outcome) == (3, "ct6")          # correct kind, answer size, answer risk (assumed)
 
 
-def test_the_label_request_carries_every_source_and_caches_the_pack(toy_entry, tmp_path):
-    pdf = tmp_path / "s1.pdf"
-    pdf.write_bytes(b"%PDF-1.4 x")
-    req = RL.label_request(toy_entry, {"finding": "f", "findings": "d", "clinical_history": "h"}, [pdf])
-    content = req["messages"][0]["content"]
-    assert req["model"] == "claude-fable-5-1" and "thinking" not in req
-    assert content[0]["type"] == "document" and content[0]["source"]["media_type"] == "application/pdf"
-    assert any(b.get("cache_control") for b in content[:-1]) and "cache_control" not in content[-1]
-    assert req["extra_body"]["output_config"]["format"]["type"] == "json_schema"
-    assert req["extra_body"]["fallbacks"] == "default"
+def _lib_with(toy_entry):
+    class Lib:
+        def lookup(self, key):
+            return toy_entry if key == toy_entry.key else None
+    return Lib()
+
+
+CARDS = [{"id": "c1", "pack": "toy-nodule", "finding": "7 mm solid nodule.", "findings": "7 mm solid nodule.",
+          "clinical_history": "Smoker."}]
+ONE = {"inputs": [{"input": "kind", "stated": True, "value": "solid", "quote": "solid", "locator": "S1 p2",
+                   "assumed": None, "boundary": False, "note": ""}], "lesions": [], "category": None}
+
+
+def test_the_brief_names_every_source_folder_the_schema_and_never_the_settler(toy_entry, tmp_path):
+    b = RL.write_brief(_lib_with(toy_entry), CARDS, tmp_path / "cards_1.json", tmp_path / "labels_1.json")
+    assert "guidelines/toy-nodule/sources/" in b and "guidelines/toy-nodule/entry.json" in b
+    assert str(tmp_path / "labels_1.json") in b and '"served_by"' in b       # the output path and the schema
+    assert "settler" not in b.lower()
+
+
+def test_labels_load_when_every_card_is_labelled(toy_entry):
+    got, problems = RL.load_labels(_lib_with(toy_entry), CARDS,
+                                   {"served_by": "claude-opus-5-5 subagent a1", "labels": {"c1": ONE}})
+    assert problems == [] and got["c1"]["served_by"] == "claude-opus-5-5 subagent a1"
+    assert got["c1"]["inputs"]["kind"]["value"] == "solid" and got["c1"]["inputs"]["size"]["stated"] is False
+
+
+@pytest.mark.parametrize("raw,problem", [
+    ({"labels": {"c1": ONE}}, "served_by"),
+    ({"served_by": "x", "labels": {}}, "c1 is not labelled"),
+    ({"served_by": "x", "labels": {"c1": {"inputs": [{"input": "kind"}]}}}, "c1: schema"),
+    ({"served_by": "x", "labels": {"c1": ONE, "c9": ONE}}, "c9 is not a card"),
+])
+def test_a_bad_label_file_is_refused_with_its_problem(toy_entry, raw, problem):
+    got, problems = RL.load_labels(_lib_with(toy_entry), CARDS, raw)
+    assert any(problem in p for p in problems)
 
 
 def test_a_label_value_the_pack_cannot_take_becomes_a_boundary_item(toy_entry):
     raw = {"inputs": [{"input": "kind", "stated": True, "value": "cystic", "quote": "q", "locator": "S1 p2",
                        "assumed": None, "boundary": False, "note": ""}], "lesions": [], "category": None}
-    got = RL.parse_label(toy_entry, raw)
+    got = RL.parse_label(toy_entry, raw, "claude-opus-5-5 subagent")
     assert got["inputs"]["kind"]["boundary"] is True and "size" in got["inputs"]     # missing inputs: not stated
 
 
@@ -456,12 +505,14 @@ def test_spot_rows_list_flagged_and_disagreeing_items_only(toy_entry):
                             "settler_tier", "settler_quote", "hassan_value", "hassan_note"}
 
 
-def test_metrics_report_the_gate():
-    rows = [{"pack": "p", "taps": 1, "verdicts": {"a": "ok"}, "tiers": {"a": "read"}},
-            {"pack": "p", "taps": 3, "verdicts": {"a": "wrong", "b": "ok"}, "tiers": {"a": "prefilled", "b": "read"}}]
+def test_metrics_report_what_hassan_decides_on():
+    rows = [{"card": "c1", "pack": "p", "taps": 1, "verdicts": {"a": "ok"}, "tiers": {"a": "read"}, "degraded": False},
+            {"card": "c2", "pack": "p", "taps": 3, "verdicts": {"a": "wrong", "b": "wrong"},
+             "tiers": {"a": "prefilled", "b": "read"}, "degraded": True}]
     m = RL.metrics(rows)
-    assert m["wrong_read"] == 0 and m["median_taps"] == 2
-    assert m["prefill_error"] == {"p.a": {"wrong": 1, "prefilled": 1, "rate": 1.0}}
+    assert m["wrong_read"] == ["c2:b"] and m["median_taps"] == 2 and m["taps_distribution"] == {1: 1, 3: 1}
+    assert m["prefill_error"] == {"p.a": {"wrong": 1, "prefilled": 1, "rate": 1.0}} and m["degraded"] == ["c2"]
+    assert "pass" not in m and "gate" not in m                   # measured and reported; Hassan decides
 ```
 
 The toy pack's key is `toy-nodule` (`tests/conftest.py`).
@@ -474,22 +525,24 @@ Expected: FAIL. `real_lab.py` does not exist.
 - [ ] **Step 3: Write `backend/scripts/guidelines/real_lab.py`**
 
 ```python
-"""Real-dictation lab (library spec §12, "Draft card slice": the Apply gate). Production findings, read only through
-Metabase, grouped offline by the stack grouper, matched to library packs (matcher naming + pack gate); truth from a
-Claude Fable 5.1 labeller holding every pack source; Hassan spot-checks the boundary items; the settler is scored.
+"""Real-dictation lab (library spec §12, "Draft card slice"). Production findings, read only through Metabase,
+grouped offline by the stack grouper, matched to library packs (matcher naming + pack gate); truth from an independent
+Claude Opus 5.5 subagent holding every pack's sources (the controller dispatches it with the brief this script writes);
+Hassan spot-checks the boundary items; the settler is measured. Metrics and recommendations only: Hassan decides.
 Everything stays in <scratchpad>/real_lab/, pid in each name; nothing from production is ever committed.
 
   export  <dir>                       read-only SQL via Metabase           -> export_<pid>.json
   group   <export.json> <dir> [--per-pack 30 --total 100]                  -> cards_<pid>.json
   hassan  <hassan_cases.json> <cards.json> <dir>   Hassan's own dictations, appended -> cards_<pid>.json
-  label   <cards.json> <dir>          Fable 5.1 truth (once; reused)       -> labels_<pid>.json
+  brief   <cards.json> <dir>          the labelling brief for the subagent -> label_brief_<pid>.md
+          (the controller dispatches the Opus 5.5 subagent; it writes labels_<pid>.json, once; reused)
+  labels  <labels.json> <cards.json>  validate and load the subagent's labels
   run     <cards.json> <dir>          the settler as it stands             -> settler_<pid>.json
   sheet   <cards> <labels> <settler> <dir>                                 -> spotcheck_<pid>.csv
   score   <cards> <labels> <settler> [--verdicts spotcheck.csv]            -> score_<pid>.json + table
-Gate: 0 wrong values shown as read; median taps to Calculate <= 2; pre-fill error rate per input reported.
+Reported against reference targets (0 wrong values shown as read; median taps to Calculate <= 2), never as a gate.
 Usage: cd backend && PYTHONPATH=src .venv/bin/python scripts/guidelines/real_lab.py <cmd> ..."""
 import asyncio
-import base64
 import csv
 import importlib.util
 import json
@@ -502,6 +555,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from dotenv import load_dotenv
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")    # model keys only, never the app database
 load_dotenv("/Users/hassan/Code/rapid_reports_ai/backend/.env")
@@ -513,7 +567,6 @@ from rapid_reports_ai.hybrid_stack.copilot.library.pack_preview import (  # noqa
 from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry, InputValue  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[3]
-LABEL_MODEL = "claude-fable-5-1"
 MAX_FILL = 10
 NOT_STATED = "Not stated"
 SQL = """select id::text as id,
@@ -524,31 +577,51 @@ from reports
 where created_at > now() - interval '365 days' and input_data->'variables'->>'FINDINGS' is not null
 order by created_at desc limit 2000"""
 
-LABEL_SYS = """You label radiology dictations against one published guideline, as the ground truth for a test.
-You hold the guideline's own source documents and the library's encoding of it (PACK). For the FINDING given, and
-for every input listed in PACK, decide what the dictation itself states, reading the sources for what each input
-means. An input is stated only when the FINDING (lesion inputs) or the CLINICAL HISTORY or DICTATION (patient inputs)
+LABEL_INSTRUCTIONS = """You label radiology dictations against published guidelines, as the ground truth for a test.
+For each card in CARDS, open its pack's entry.json and read its sources/ folder (the guideline's own documents) for
+what each input means. For the card's FINDING, and for every input of its pack, decide what the dictation itself
+states. An input is stated only when the FINDING (lesion inputs) or the CLINICAL HISTORY or DICTATION (patient inputs)
 gives it in words; a value that is usual, likely or merely not contradicted is not stated.
-For each input return: stated; value (exactly one of the input's listed values when stated, else null); quote (the
+For each input give: stated; value (exactly one of the input's listed values when stated, else null); quote (the
 shortest verbatim span that states it, else ""); locator (where in the sources the input is defined, as "S<n> p<page>
 <section or table>"); assumed (when not stated: the value a radiologist would most likely give from the whole report
 and the images it describes, else null); boundary (true when a careful reader could label it differently); note.
-Also return lesions (when the FINDING describes more than one lesion of any kind, the shortest verbatim span for each;
-else []) and category (when the FINDING states the system's category by name: {label, quote}; else null)."""
+Also give lesions (when the FINDING describes more than one lesion of any kind, the shortest verbatim span for each;
+else []) and category (when the FINDING states the system's category by name: {label, quote}; else null).
+You are read-only on code. Write one file only: the OUTPUT path below, as JSON in the SCHEMA below, with served_by set
+to your model and agent id. Label every card; never skip one."""
 
-LABEL_SCHEMA = {
-    "type": "object", "additionalProperties": False, "required": ["inputs", "lesions", "category"],
-    "properties": {
-        "inputs": {"type": "array", "items": {
-            "type": "object", "additionalProperties": False,
-            "required": ["input", "stated", "value", "quote", "locator", "assumed", "boundary", "note"],
-            "properties": {"input": {"type": "string"}, "stated": {"type": "boolean"},
-                           "value": {"type": ["string", "null"]}, "quote": {"type": "string"},
-                           "locator": {"type": "string"}, "assumed": {"type": ["string", "null"]},
-                           "boundary": {"type": "boolean"}, "note": {"type": "string"}}}},
-        "lesions": {"type": "array", "items": {"type": "string"}},
-        "category": {"type": ["object", "null"], "additionalProperties": False, "required": ["label", "quote"],
-                     "properties": {"label": {"type": "string"}, "quote": {"type": "string"}}}}}
+
+class LabelInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    input: str
+    stated: bool
+    value: str | None
+    quote: str
+    locator: str
+    assumed: str | None
+    boundary: bool
+    note: str = ""
+
+
+class LabelCategory(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    label: str
+    quote: str
+
+
+class CardLabel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    inputs: list[LabelInput]
+    lesions: list[str] = Field(default_factory=list)
+    category: LabelCategory | None = None
+
+
+class LabelFile(BaseModel):
+    """What the labelling subagent writes: labels_<pid>.json."""
+    model_config = ConfigDict(extra="forbid")
+    served_by: str = Field(min_length=1)          # the model and agent id that labelled
+    labels: dict[str, CardLabel]                  # card id -> its label
 
 
 def _coverage_lab():
@@ -663,27 +736,20 @@ def pack_text(e: Entry) -> str:
     return f"PACK: {e.display} ({e.issuer} {e.edition})\nINPUTS:\n" + "\n".join(rows)
 
 
-def label_request(e: Entry, card: dict, sources: list[Path]) -> dict:
-    docs = [{"type": "document", "title": p.name,
-             "source": {"type": "base64", "media_type": "application/pdf",
-                        "data": base64.standard_b64encode(p.read_bytes()).decode()}} for p in sources]
-    pack = {"type": "text", "text": pack_text(e), "cache_control": {"type": "ephemeral", "ttl": "1h"}}
-    case = {"type": "text", "text": f"CLINICAL HISTORY:\n{card['clinical_history'] or 'none given'}\n\n"
-                                    f"DICTATION:\n{card['findings']}\n\nFINDING:\n{card['finding']}"}
-    return {"model": LABEL_MODEL, "max_tokens": 16000, "system": LABEL_SYS,
-            "messages": [{"role": "user", "content": [*docs, pack, case]}],
-            "extra_body": {"output_config": {"effort": "high",
-                                             "format": {"type": "json_schema", "schema": LABEL_SCHEMA}},
-                           "fallbacks": "default"}}
+def write_brief(lib, cards: list[dict], cards_path: Path, labels_path: Path) -> str:
+    """The labelling brief: instructions, the output path and schema, and for each pack in the sample its inputs and
+    where its entry and sources live. The cards file carries the dictations. Nothing from the settler is named."""
+    packs = sorted({c["pack"] for c in cards})
+    parts = [LABEL_INSTRUCTIONS, f"CARDS: {cards_path}", f"OUTPUT: {labels_path}",
+             "SCHEMA:\n" + json.dumps(LabelFile.model_json_schema(), indent=1)]
+    for k in packs:
+        e = lib.lookup(k)
+        parts.append(f"{pack_text(e)}\nENTRY: guidelines/{k}/entry.json\nMANIFEST: guidelines/{k}/manifest.json\n"
+                     f"SOURCES: guidelines/{k}/sources/")
+    return "\n\n".join(parts)
 
 
-def _sources(e: Entry) -> list[Path]:
-    """Every source file the pack's manifest lists (primary, amendment and explanatory), from guidelines/<id>/sources."""
-    m = json.loads((ROOT / "guidelines" / e.id / "manifest.json").read_text())
-    return [ROOT / "guidelines" / e.id / s["file"] for s in m["sources"] if s.get("file")]
-
-
-def parse_label(e: Entry, raw: dict) -> dict:
+def parse_label(e: Entry, raw: dict, served_by: str) -> dict:
     """The label keyed by input; every pack input present (an unlabelled one: not stated, boundary); a value the
     pack cannot take becomes a boundary item with no value."""
     got = {x["input"]: x for x in raw.get("inputs", []) if e.input(x["input"]) is not None}
@@ -698,28 +764,30 @@ def parse_label(e: Entry, raw: dict) -> dict:
             x["stated"] = False
         out[i.id] = x
     return {"inputs": out, "lesions": raw.get("lesions", []), "category": raw.get("category"),
-            "served_by": raw.get("served_by", LABEL_MODEL)}
+            "served_by": served_by}
 
 
-async def label(cards_path: Path, out_dir: Path) -> Path:
-    import anthropic
-    client, lib = anthropic.AsyncAnthropic(), _lib()
-    sem, out = asyncio.Semaphore(3), {}
-
-    async def one(c: dict) -> None:
-        e = lib.lookup(c["pack"])
-        req = label_request(e, c, _sources(e))
-        async with sem:
-            r = await client.beta.messages.create(betas=["server-side-fallback-2026-07-01"], **req)
-        if r.stop_reason == "refusal":
-            out[c["id"]] = {"error": "refusal"}
-            return
-        text = next(b.text for b in r.content if b.type == "text")
-        out[c["id"]] = parse_label(e, {**json.loads(text), "served_by": r.model})
-    await asyncio.gather(*(one(c) for c in json.loads(cards_path.read_text())))
-    p = _pid(out_dir, "labels", "json")
-    p.write_text(json.dumps(out, indent=1))
-    return p
+def load_labels(lib, cards: list[dict], raw: dict) -> tuple[dict[str, dict], list[str]]:
+    """(labels by card id, problems). Problems: the file's schema, served_by missing, a card not labelled, a label
+    for no card, or a card label that fails the schema. A card with a problem gets no label."""
+    problems: list[str] = []
+    if not str(raw.get("served_by") or "").strip():
+        problems.append("served_by is not recorded")
+    labels = raw.get("labels") if isinstance(raw.get("labels"), dict) else {}
+    ids = {c["id"] for c in cards}
+    problems += [f"{k} is not a card" for k in labels if k not in ids]
+    out: dict[str, dict] = {}
+    for c in cards:
+        if c["id"] not in labels:
+            problems.append(f"{c['id']} is not labelled")
+            continue
+        try:
+            got = CardLabel.model_validate(labels[c["id"]])
+        except ValidationError as ex:
+            problems.append(f"{c['id']}: schema: {ex.errors()[0]['msg']}")
+            continue
+        out[c["id"]] = parse_label(lib.lookup(c["pack"]), got.model_dump(), str(raw.get("served_by") or ""))
+    return out, problems
 
 
 # ── run / score ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -781,13 +849,12 @@ def taps(e: Entry, s, label: dict, patient: dict, picked: bool = False) -> tuple
 
 
 def spot_rows(e: Entry, card: dict, s, label: dict) -> list[dict]:
-    """Boundary items for Hassan: the labeller's own flags, every disagreement with the settler, fallback labels."""
+    """Boundary items for Hassan: the labeller's own flags and every disagreement with the settler."""
     d, v = drafts(s), verdicts(e, s, label)
-    fallback = label.get("served_by") != LABEL_MODEL
     rows = []
     for i in e.inputs:
         lab = label["inputs"][i.id]
-        if not (lab["boundary"] or v[i.id] == "wrong" or fallback):
+        if not (lab["boundary"] or v[i.id] == "wrong"):
             continue
         val, q, tier = d.get(i.id, (None, "", "asked"))
         rows.append({"case": card["id"], "pack": card["pack"], "input": i.id, "label_value": lab["value"] or "",
@@ -817,8 +884,11 @@ Then add `run`, `sheet`, `score` and `main`, all using the functions above:
 - `run` times `settle_pack` per card on a cold cache, as scenario (a), and records `drafts`, `finish(...).missing`,
   `draft_outcome` (`proposal` on today's code) and `ms`.
 - `score` applies Hassan's `hassan_value` overrides from the filled spot-check CSV to the labels before
-  `verdicts`/`taps`. It reports the gate and the "also reported" list in spec §12. Checker and lesion rows are `n/a`
+  `verdicts`/`taps`. It reports every metric in spec §12, each beside its reference target where it has one, and
+  never prints pass or fail. Checker and lesion rows are `n/a`
   until Tasks 7 and 8.
+- `brief` writes `write_brief(...)` to `label_brief_<pid>.md`. `labels` runs `load_labels` and exits non-zero on
+  any problem.
 - `main` dispatches on `sys.argv[1]`.
 
 `run` re-settles from the stored dictation, so after Task 3 it measures the new settler with no other change.
@@ -832,14 +902,12 @@ Expected: PASS.
 
 ```bash
 git add backend/scripts/guidelines/real_lab.py backend/tests/test_library_real_lab.py
-git commit -m "lab(library): real-dictation lab harness (Metabase export, offline grouping, Fable labels, spot sheet, score)"
+git commit -m "lab(library): real-dictation lab harness (Metabase export, offline grouping, labelling brief and loader, spot sheet, score)"
 ```
 
-- [ ] **Step 6: Check source sizes before labelling.** For each pack in the sample, list `_sources(e)`. The request
-  limit is 32 MB and 600 pages. A pack over the limit sends its `sources/*.txt` siblings as text `document` blocks
-  instead; record which. Estimate the cost: (input tokens per pack × 1.25 cache write) + (cards × cached reads) +
-  (cards × about 5k output), at $10 in and $50 out per MTok. Expect about $30–60. Stop and ask Hassan if the estimate
-  is above $100.
+- [ ] **Step 6: Check every sampled pack has its sources on disk.** For each pack in the sample, list
+  `guidelines/<id>/sources/`. A pack with a missing source is reported to Hassan, with the citation and DOI, before
+  labelling. Its cards are labelled only after he supplies the source.
 
 - [ ] **Step 7: Export, group and ask Hassan for his dictations**
   - Run `export`, or the Chrome fallback, then `group … --per-pack 30 --total 100`.
@@ -848,7 +916,13 @@ git commit -m "lab(library): real-dictation lab harness (Metabase export, offlin
   - Run `hassan`.
   - Report the per-pack counts.
 
-- [ ] **Step 8: Label once.** Run `label`. Rows with `error` or a fallback `served_by` go to the spot-check sheet.
+- [ ] **Step 8: Label once.**
+  - Run `brief`.
+  - The controller dispatches one independent Claude Opus 5.5 subagent with the brief path. It is read-only on code,
+    can read every pack's `sources/`, and writes only `labels_<pid>.json`. It must run before any `run`, so that it
+    never sees the settler's output.
+  - Run `labels`. If it reports problems, send the subagent the problem list once, to complete the missing or invalid
+    cards in the same file. Anything still unlabelled goes to Hassan on the spot-check sheet as "not labelled".
 
 - [ ] **Step 9: Baseline on today's settler.** Run `run` once, then `sheet`. Hand `spotcheck_<pid>.csv` to Hassan
   through the coordinator. He fills `hassan_value` and `hassan_note` on boundary items only. Then run `score` with
@@ -858,9 +932,10 @@ git commit -m "lab(library): real-dictation lab harness (Metabase export, offlin
 
 Create `docs/superpowers/handover/2026-10-12-copilot-evidence/real_lab.md`, aggregates only:
 - the sample: counts per pack and source;
-- truth: labels, boundary items, Hassan's overrides, fallback count;
-- baseline: wrong read values (on today's settler every settled value counts as read), median taps, cards with 2
-  taps or fewer, per-input settle error, and how often the category was dictated per pack;
+- truth: labels, boundary items, Hassan's overrides, the labeller's `served_by`;
+- baseline: wrong read values, each case named (on today's settler every settled value counts as read); taps to
+  Calculate, as the median and the distribution; per-input settle error; how often the category was dictated per
+  pack; degraded rows;
 - latency p50 and p95;
 - the run pid.
 
@@ -1917,32 +1992,43 @@ git commit -m "feat(library): which lesion? one pick drafts lesion values from t
 
 ---
 
-### Task 9: Re-run the real-dictation lab against the gate
+### Task 9: Re-run the real-dictation lab; report metrics and recommendations
 
 **Files:**
 - Modify: `docs/superpowers/handover/2026-10-12-copilot-evidence/real_lab.md`
 
 - [ ] **Step 1: Reuse the Task 2 cards and labels.** Do not re-export and do not re-label. Run `run` on the same
-  `cards_<pid>.json`, using the new settler. At most 2 runs. Run 2 only confirms a run 1 that missed on latency
-  alone.
-- [ ] **Step 2: Make a new spot-check sheet**, with the same Hassan verdicts carried over by (case, input), and send
-  Hassan only the rows that are new: disagreements the old settler did not have. Then run `score` with every
-  verdict.
-- [ ] **Step 3: Judge the gate.**
-  - **0 wrong `read` values.** Any wrong read stops the gate. Report the input and the reason; do not tune and
-    re-run.
-  - **Median taps of 2 or fewer.**
-  - **Pre-fill error rate** per input. List each input above the agreed rate (Hassan sets it; until then, report the
-    rates and do not demote).
-  - **Also reported:**
-    - checker share and flag correctness, against the labeller's `category` and Hassan's verdicts;
-    - "Which lesion?" share and pick agreement;
-    - Calculate outcome against the truth outcome;
-    - latency p50 and p95 for first paint and for the draft;
-    - the baseline beside each number.
-- [ ] **Step 4: Demote, if Hassan agreed a rate.** Each input above the rate goes into a `DEMOTED: dict[str, set[str]]`
-  (pack → inputs) constant in `pack_preview.py`. A demoted input's proposals are dropped, so it is asked. Add this
-  test:
+  `cards_<pid>.json` with the new settler. At most 2 runs.
+  - **A wrong value during a run** is reported: the case, the input and the reason. Do not tune and do not re-run.
+    Hassan decides what follows.
+- [ ] **Step 2: Make a new spot-check sheet.** Carry Hassan's earlier verdicts over by (case, input). Send him only
+  the new rows, meaning disagreements the old settler did not have. Then run `score` with every verdict.
+- [ ] **Step 3: Write the results table**, baseline beside re-run, with no pass or fail:
+  - **Wrong values shown as "read"**, with each case and input named. The reference target is 0.
+  - **Wrong pre-fills per input**: count, rate and the cases.
+  - **Taps to Calculate**: the median and the distribution. The reference target is a median of 2 or fewer.
+  - **Checker agreement**: share and flag correctness, against the labeller's `category` and Hassan's verdicts.
+  - **"Which lesion?"**: share and pick agreement.
+  - **Calculate outcome** against the truth outcome.
+  - **Latency**: p50 and p95 for first paint and for the draft.
+  - **Degraded rows.**
+- [ ] **Step 4: Write the recommendations, then stop for Hassan's decision.**
+  - Whether to turn Apply on, and why.
+  - Which inputs to demote to "asked", with their pre-fill error rates.
+  - What to fix next.
+
+  Nothing is demoted and Apply is not switched on in this task.
+- [ ] **Step 5: Write the evidence and commit.** Update `real_lab.md` with the re-run section and the
+  recommendations, aggregates only.
+
+```bash
+git add docs/superpowers/handover/2026-10-12-copilot-evidence/real_lab.md
+git commit -m "lab(library): real-dictation lab re-run on the draft card, with recommendations"
+```
+
+- [ ] **Step 6: Only after Hassan decides.** If Hassan names inputs to demote, add them to a
+  `DEMOTED: dict[str, set[str]]` (pack → inputs) constant in `pack_preview.py`. A demoted input's proposals are
+  dropped, so it is asked. Add this test:
 
 ```python
 def test_a_demoted_input_is_asked(toy_entry, monkeypatch, jev):
@@ -1950,16 +2036,8 @@ def test_a_demoted_input_is_asked(toy_entry, monkeypatch, jev):
     ...  # settle with a risk proposal; assert "risk" not in s.values
 ```
 
-  Commit it as `feat(library): demote inputs above the agreed pre-fill error rate (real lab <pid>)`. Re-scoring after
-  demotion needs no new run: drop the demoted inputs' drafts in `score`.
-- [ ] **Step 5: Write the evidence and commit.** Update `real_lab.md` with the re-run section, aggregates only.
-
-```bash
-git add docs/superpowers/handover/2026-10-12-copilot-evidence/real_lab.md
-git commit -m "lab(library): real-dictation lab re-run on the draft card"
-```
-
-Apply stays off whatever the result. Hassan rules on the gate.
+  Commit it as `feat(library): demote inputs Hassan chose from real lab <pid>`. Re-scoring needs no new run: drop the
+  demoted inputs' drafts in `score`.
 
 ---
 
@@ -1969,14 +2047,14 @@ Apply stays off whatever the result. Hassan rules on the gate.
 - Modify: `docs/superpowers/specs/2026-10-12-guideline-library-design.md` (§12, the "*Results:*" line under "Draft card slice")
 - Create: `docs/superpowers/handover/2026-10-13-draft-card-handover.md`
 
-- [ ] **Step 1: Replace** `*Results:* written here by plan task G.` with the gate table: baseline beside re-run, for
-  wrong read, median taps, cards with 2 taps or fewer, the inputs with the highest pre-fill error, checker, lesion
-  pick and latency. Add the evidence path and the commit range. Leave every other section alone.
+- [ ] **Step 1: Replace** `*Results:* written here by plan task G.` with the results table, baseline beside re-run:
+  wrong read values (cases named), wrong pre-fills per input, taps to Calculate (median and distribution), checker
+  agreement, lesion pick, latency and degraded rows. Add the recommendations and Hassan's decision, if he has made it. Add the evidence path and the commit range. Leave every other section alone.
 - [ ] **Step 2: Write the handover:**
   - the state of each task, with commits;
   - the API contract the UI will read. Name the fields: `Preview.draft`, `waiting`, `draft_outcome`, `lesions`,
     `checker`, `highlight`; `POST /calculate` → `Calculation`;
-  - what stays off (Apply, the UI);
+  - what is off (Apply, until Hassan decides; the UI);
   - the open decisions for Hassan, listed in that order;
   - the next plan, which is the card UI with the Task 14 mock-up first.
 - [ ] **Step 3: Commit**
