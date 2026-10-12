@@ -902,6 +902,27 @@ class StackSlimSheet(Base):
     __table_args__ = (Index("ix_stack_slim_sheets_key", "family", "contrast", "prompt_version"),)
 
 
+class GuidelineRegistry(Base):
+    """Scratchpad Copilot registry (spec 2026-10-12-scratchpad-copilot §5.1): one row per guideline version, shared by
+    every user. Filled lazily by the targeted fetch (status draft) and verified by a reviewer. Holds the guideline,
+    never how it applied to a case."""
+    __tablename__ = "guideline_registry"
+    key = Column(String(128), primary_key=True)          # slug@version
+    name = Column(Text, nullable=False)
+    version = Column(String(32), nullable=False, default="")
+    locale = Column(String(8), nullable=False, default="uk")
+    publication = Column(JSONBType(), nullable=True)     # {title, body, year}
+    aliases = Column(JSONBType(), nullable=False, default=list)
+    status = Column(String(16), nullable=False, default="draft")
+    content = Column(JSONBType(), nullable=False)        # GuidelineContent
+    sources = Column(JSONBType(), nullable=False, default=list)
+    chunks = Column(JSONBType(), nullable=False, default=list)
+    verified_by = Column(Text, nullable=True)
+    verified_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=_now, nullable=False)
+    updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+
 class DictationStackLog(Base):
     """One row per dictation session: the hybrid stack beside its shadow (spec §5, live testing)."""
     __tablename__ = "dictation_stack_logs"
@@ -921,5 +942,6 @@ class DictationStackLog(Base):
     latency_ms = Column(JSONBType(), nullable=True)
     gate = Column(JSONBType(), nullable=True)            # v2: what the radiologist confirmed before Generate
     report_id = Column(String(64), nullable=True)        # v2: the report generated from this session
+    copilot = Column(JSONBType(), nullable=True)         # Copilot: cards matched/opened/applied, threads, recommendations
     created_at = Column(DateTime, default=_now, nullable=False)
     updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
