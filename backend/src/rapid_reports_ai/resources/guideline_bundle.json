@@ -42,6 +42,7 @@
        "yes_other"
       ],
       "prerequisites": [],
+      "scope": "lesion",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -69,6 +70,7 @@
         "ref": "too_small"
        }
       ],
+      "scope": "lesion",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -94,6 +96,7 @@
         "ref": "too_small"
        }
       ],
+      "scope": "lesion",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -122,6 +125,7 @@
         "ref": "too_small"
        }
       ],
+      "scope": "lesion",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -153,6 +157,7 @@
         "ref": "too_small"
        }
       ],
+      "scope": "lesion",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -180,6 +185,7 @@
         "ref": "too_small"
        }
       ],
+      "scope": "lesion",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -205,6 +211,7 @@
         "ref": "too_small"
        }
       ],
+      "scope": "lesion",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -230,6 +237,7 @@
         "ref": "too_small"
        }
       ],
+      "scope": "lesion",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -259,6 +267,7 @@
         "ref": "technique"
        }
       ],
+      "scope": "lesion",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -281,6 +290,7 @@
         "ref": "too_small"
        }
       ],
+      "scope": "lesion",
       "states": [],
       "type": "number",
       "unit": "HU"
@@ -1931,6 +1941,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
+      "scope": "lesion",
       "states": [],
       "type": "boolean",
       "unit": ""
@@ -1952,6 +1963,7 @@
        "nonsolid"
       ],
       "prerequisites": [],
+      "scope": "lesion",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -1971,6 +1983,7 @@
       "min_value": 0.0,
       "options": [],
       "prerequisites": [],
+      "scope": "lesion",
       "states": [],
       "type": "number",
       "unit": "mm"
@@ -1990,6 +2003,7 @@
       "min_value": 18.0,
       "options": [],
       "prerequisites": [],
+      "scope": "lesion",
       "states": [],
       "type": "number",
       "unit": "years"
@@ -2010,6 +2024,7 @@
        "male"
       ],
       "prerequisites": [],
+      "scope": "lesion",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -2027,6 +2042,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
+      "scope": "lesion",
       "states": [],
       "type": "boolean",
       "unit": ""
@@ -2044,6 +2060,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
+      "scope": "lesion",
       "states": [],
       "type": "boolean",
       "unit": ""
@@ -2061,6 +2078,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
+      "scope": "lesion",
       "states": [],
       "type": "boolean",
       "unit": ""
@@ -2079,6 +2097,7 @@
       "min_value": 1.0,
       "options": [],
       "prerequisites": [],
+      "scope": "lesion",
       "states": [],
       "type": "number",
       "unit": "count"
@@ -2096,6 +2115,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
+      "scope": "lesion",
       "states": [],
       "type": "boolean",
       "unit": ""
@@ -2114,6 +2134,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
+      "scope": "lesion",
       "states": [],
       "type": "boolean",
       "unit": ""
@@ -2137,6 +2158,7 @@
         "ref": "prior_study"
        }
       ],
+      "scope": "lesion",
       "states": [],
       "type": "boolean",
       "unit": ""
@@ -2173,6 +2195,7 @@
         ]
        }
       ],
+      "scope": "lesion",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -2201,6 +2224,7 @@
         "ref": "growth"
        }
       ],
+      "scope": "lesion",
       "states": [],
       "type": "number",
       "unit": "mm3"
@@ -2229,6 +2253,7 @@
         "ref": "growth"
        }
       ],
+      "scope": "lesion",
       "states": [],
       "type": "number",
       "unit": "mm3"
@@ -2261,6 +2286,7 @@
         ]
        }
       ],
+      "scope": "lesion",
       "states": [],
       "type": "number",
       "unit": "days"
@@ -4272,6 +4298,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
+      "scope": "lesion",
       "states": [],
       "type": "boolean",
       "unit": ""
@@ -4294,6 +4321,7 @@
        "part-solid"
       ],
       "prerequisites": [],
+      "scope": "lesion",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -4315,6 +4343,7 @@
        "multiple"
       ],
       "prerequisites": [],
+      "scope": "lesion",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -4333,6 +4362,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
+      "scope": "lesion",
       "states": [],
       "type": "number",
       "unit": "mm"
@@ -4359,6 +4389,7 @@
         "ref": "nodule_type"
        }
       ],
+      "scope": "lesion",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -5397,5 +5428,5 @@
    ]
   }
  },
- "version": "aaa70dd72261"
+ "version": "75704e538fc3"
 }

@@ -68,3 +68,13 @@ def test_as_value():
     assert S.as_value({"band": "6to8"}).band == "6to8"
     iv = S.InputValue(value="x")
     assert S.as_value(iv) is iv
+
+
+def test_scope_defaults_to_lesion_and_dims_belong_to_numbers():
+    assert S.InputDef(id="a", label="A", type="boolean").scope == "lesion"
+    assert S.InputDef(id="p", label="P", type="boolean", scope="patient").scope == "patient"
+    assert S.InputDef(id="d", label="D", type="number", unit="mm", dims="mean").dims == "mean"
+    with pytest.raises(ValidationError):
+        S.InputDef(id="k", label="K", type="enum", options=["x"], dims="max")
+    with pytest.raises(ValidationError):
+        S.InputDef(id="s", label="S", type="boolean", scope="case")

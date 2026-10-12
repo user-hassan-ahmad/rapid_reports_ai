@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 State = Literal["present", "absent", "unknown", "not_assessable", "not_applicable"]
 OptState = Literal["absent", "not_assessable"]      # states an input may allow besides present and unknown
 Role = Literal["primary", "amendment", "explanatory"]
+Scope = Literal["lesion", "patient"]                # lesion: the card's own finding; patient: history + dictation
 FACT_ROLES = ("primary", "amendment")               # sources a rule, band, score or outcome may cite
 
 
@@ -109,6 +110,8 @@ class InputDef(_M):
     max_value: float | None = None
     max_inclusive: bool = True
     locator: Locator | None = None
+    scope: Scope = "lesion"                                # where a value may be quoted from (spec §3.6)
+    dims: Literal["mean", "max"] | None = None             # a number dictated "A x B": its mean or its max
 
     @model_validator(mode="after")
     def _options(self):
@@ -120,6 +123,8 @@ class InputDef(_M):
                 self.min_value < self.max_value
                 or (self.min_value == self.max_value and self.min_inclusive and self.max_inclusive)):
             raise ValueError(f"input {self.id!r}: empty range")
+        if self.dims is not None and self.type != "number":
+            raise ValueError(f"input {self.id!r}: only a number has dims")
         return self
 
     @property
