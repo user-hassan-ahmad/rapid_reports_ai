@@ -1,7 +1,7 @@
 # Review: nhs-aaa-surveillance@2025.1
 
 Read side by side with S1, the GOV.UK HTML page "Abdominal aortic aneurysm screening pathway requirements" (NHS England,
-updated 25 September 2025), via its text extraction. The page is page-less, so every locator uses `section`. The
+last updated 27 October 2025, an organisational change; the filed copy shows 25 September 2025 and the thresholds are unchanged), via its text extraction. The page is page-less, so every locator uses `section`. The
 end-to-end pathway figure on the page is an SVG with empty alt text and was not filed; its accessible text-only version
 is a separate publication, also not filed. Nothing in this entry rests on the figure.
 
