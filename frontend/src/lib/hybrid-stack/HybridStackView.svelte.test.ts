@@ -315,4 +315,17 @@ describe('HybridStackView v2', () => {
 		await page.getByRole('button', { name: 'Exit' }).click();
 		await expect.element(page.getByTestId('walkthrough')).not.toBeInTheDocument();
 	});
+	it('the hover card survives the move from the words onto it, and closes after the pointer leaves it', async () => {
+		const units = [u(0, 'Dilatation of the pancreatic duck.', 'Liver', { abnormal: true })];
+		const c = { key: 'g', kind: 'garbled_phrase', blocking: false, tier: 2 as const, message: 'A misheard word.', quote: 'duck', other: null, suggestion: 'duct', unitId: 0 };
+		render(HybridStackView, { ...base(), units, checks: [c], conclusion: { kind: 'draft', text: 'x', edited: false } as const, namedNormals: true });
+		await page.getByText('duck', { exact: true }).hover();
+		const card = page.getByRole('dialog', { name: 'Possible dictation error' });
+		await expect.element(card).toBeInTheDocument();
+		await card.hover();                                   // leaving the words for the card keeps it open
+		await new Promise((r) => setTimeout(r, 500));
+		await expect.element(card).toBeInTheDocument();
+		await page.getByRole('heading', { name: 'Liver' }).hover();
+		await expect.element(card).not.toBeInTheDocument();
+	});
 });

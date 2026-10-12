@@ -227,6 +227,41 @@
 	// ── dictation checks: hover card and walkthrough ───────────────────────────────────────────────
 	let hoverKey: string | null = $state(null);
 	let pinnedKey: string | null = $state(null);
+	// Hover intent (hand read 2026-10-12: the card vanished the moment the pointer left the words): leaving starts a
+	// short grace period that entering the card cancels.
+	let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+	function hoverOn(key: string) {
+		if (walking) return;
+		if (hoverTimer) clearTimeout(hoverTimer);
+		hoverKey = key;
+	}
+	function hoverOff() {
+		if (hoverTimer) clearTimeout(hoverTimer);
+		hoverTimer = setTimeout(() => (hoverKey = null), 350);
+	}
+	const hoverHold = () => hoverTimer && clearTimeout(hoverTimer);
+	/** The card is placed against the window (fixed), so no panel clips it: under its words when it fits, above them
+	 *  otherwise, kept inside the window sideways; it follows its words on scroll and resize. */
+	function placeCard(node: HTMLElement, key: string) {
+		const anchor = () => node.parentElement?.querySelector<HTMLElement>(`[data-stop="${CSS.escape(`check:${key}`)}"]`) ?? node.parentElement;
+		const place = () => {
+			const a = anchor()?.getBoundingClientRect();
+			if (!a) return;
+			const h = node.offsetHeight, w = node.offsetWidth, gap = 6, pad = 8;
+			const below = a.bottom + gap + h <= window.innerHeight - pad || a.top - gap - h < pad;
+			node.style.top = `${below ? a.bottom + gap : a.top - gap - h}px`;
+			node.style.left = `${Math.max(pad, Math.min(a.left, window.innerWidth - w - pad))}px`;
+		};
+		place();
+		window.addEventListener('scroll', place, true);
+		window.addEventListener('resize', place);
+		return {
+			destroy() {
+				window.removeEventListener('scroll', place, true);
+				window.removeEventListener('resize', place);
+			}
+		};
+	}
 	let walking = $state(false);
 	let walkSkipped: string[] = $state([]);
 	let walkTotal = $state(0);
@@ -595,8 +630,10 @@
 	<!-- The hover card of an underlined check (2026-10-12, Grammarly-style): what it is, the words, why, the likely
 	     words when one reading is certain, and Replace / Edit / Keep. In the walkthrough it stays open on the current
 	     item and the keys below act on it. -->
-	<div role="dialog" aria-label={checkLabel(c.kind)} data-card={c.key} transition:fade={{ duration: ms }}
-		class="absolute left-1 top-full z-30 mt-1 w-80 max-w-[calc(100vw-2rem)] space-y-2 rounded-lg border border-white/15 bg-gray-950/95 p-3 text-xs leading-5 text-gray-300 shadow-xl">
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div role="dialog" aria-label={checkLabel(c.kind)} data-card={c.key} transition:fade={{ duration: ms }} use:placeCard={c.key}
+		onmouseenter={hoverHold} onmouseleave={() => { if (!walking) hoverOff(); }}
+		class="fixed z-50 w-80 max-w-[calc(100vw-1rem)] space-y-2 rounded-lg border border-white/15 bg-gray-950/95 p-3 text-xs leading-5 text-gray-300 shadow-xl">
 		<p class="flex items-center gap-2">
 			<span class="rounded px-1.5 py-px text-[10px] font-semibold {c.blocking ? 'bg-orange-400 text-gray-950' : 'bg-white/10 text-gray-300'}">{c.blocking ? 'Blocks Confirm' : 'Advisory'}</span>
 			<span class="text-sm font-medium text-gray-100">{checkLabel(c.kind)}</span>
@@ -696,7 +733,7 @@
 	<!-- No sentence travels across the screen (hand read 2026-10-12: the slide back and forth read as a bug): a placed
 	     sentence fades in where it belongs with a soft highlight that fades out. -->
 	<li class="relative flex items-start gap-1 rounded transition-colors duration-1000 {fresh.includes(`${r.unitId}|${r.text}`) ? 'bg-purple-500/15' : ''}" in:fade={{ duration: ms }}
-		onmouseleave={() => { if (!walking) hoverKey = null; }}>
+		onmouseleave={() => { if (!walking) hoverOff(); }}>
 		<div class="min-w-0 flex-1 {nested ? 'pl-4' : ''}">
 			{#if isEditing(r)}
 				<!-- True inline edit (hand read 2026-10-12): same font, line height and padding as the sentence; it wraps and
@@ -726,7 +763,7 @@
 					{#if nested}<span aria-hidden="true" class="text-gray-500">↳ </span>{/if}{#each segments(r.text, marks) as seg, k (k)}{#if seg.check}{@const c = seg.check}<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions --><span
 						data-stop={`check:${c.key}`} data-check={c.kind}
 						class="rounded-sm underline decoration-orange-400 decoration-2 underline-offset-4 {c.blocking ? '' : 'decoration-dotted'} {currentCheck?.key === c.key ? 'bg-orange-400/15' : ''}"
-						onmouseenter={() => { if (!walking) hoverKey = c.key; }}
+						onmouseenter={() => hoverOn(c.key)}
 						onclick={(e) => { e.stopPropagation(); if (!walking) pinnedKey = pinnedKey === c.key ? null : c.key; }}>{seg.text}</span>{:else}{seg.text}{/if}{/each}
 					{#if r.pinned}<span class="ml-1 text-xs text-gray-500" title="Placed by you">•</span>{/if}
 				</button>
