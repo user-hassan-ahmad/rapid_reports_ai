@@ -186,6 +186,8 @@ MODEL_CONFIG = {
     "CANVAS_INTELLIPROMPTS_FALLBACK": _Q_GROQ,
 
     # --- Structured reasoning, tools & checks: gpt-oss-120b ------------------------------
+    # Scratchpad end-of-dictation review: Qwen writes the checks; gpt-oss on Groq if it fails (another provider).
+    "STACK_REVIEW_FALLBACK": _OSS_GROQ,
     "FINDING_EXTRACTION": _OSS_CEREBRAS,
     "FINDING_EXTRACTION_FALLBACK": _OSS_GROQ,
     "QUERY_GENERATION": _OSS_CEREBRAS,

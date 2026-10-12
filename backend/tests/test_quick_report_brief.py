@@ -621,3 +621,35 @@ def test_full_labels_default_on_and_zero_turns_it_off(monkeypatch):
     assert qb.full_labels() is True
     monkeypatch.setenv("RR_BRIEF_FULL_LABELS", "0")
     assert qb.full_labels() is False
+
+
+def test_stack_fallback_keeps_structure_and_drops_content_sections():
+    b = qb.stack_fallback(SHEET_F, "Acute subdural.", ["No midline shift."])
+    assert "The orbits are clear." not in b.text   # unchecked normals never pass: the findings block carries them
+    assert "No skull fracture" not in b.text and "If present" not in b.text and "Abnormal exemplar" not in b.text
+    assert '- DO NOT ASSERT: "No midline shift." — removed by the radiologist' in b.text
+    assert '"Acute subdural."' in b.text and b.decisions["stack_fallback"] is True
+
+
+def test_stack_brief_on_a_slim_sheet_drops_region_normals():
+    slim = "## Structural Pattern\n- **Sections:** FINDINGS, IMPRESSION\n\n## Region Normals\n- **Liver:** \"The liver is normal.\"\n"
+    b = qb.stack_fallback(slim, "C.", [])
+    assert "Sections:" in b.text and "The liver is normal." not in b.text
+
+
+def test_stack_fallback_never_raises():
+    b = qb.stack_fallback(None, "C.", [])   # an unreadable sheet: conclusion only
+    assert '"C."' in b.text
+
+
+def test_stack_brief_always_guards_against_unconfirmed_normals():
+    b = qb.stack_fallback("## Structural Pattern\n- **Sections:** FINDINGS\n", "", [])
+    assert "state only what the findings state" in b.text and "even for a region in the sweep order" in b.text
+
+
+def test_stack_brief_keeps_the_report_flow_and_says_labels_are_for_tracing():
+    slim = ("## Structural Pattern\n- **Sections:** FINDINGS, IMPRESSION\n\n## Report Flow\n"
+            "- **Paragraphs:** Paragraph 1: Liver, Gallbladder and bile ducts\n")
+    b = qb.stack_fallback(slim, "", [])
+    assert "Paragraph 1: Liver, Gallbladder and bile ducts" in b.text
+    assert "labelled by region only so each can be traced" in b.text and "never in the input's order" in b.text

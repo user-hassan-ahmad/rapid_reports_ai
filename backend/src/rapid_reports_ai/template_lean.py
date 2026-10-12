@@ -19,7 +19,7 @@ import asyncio
 import logging
 import re
 import time
-from typing import Awaitable, Callable, Dict, List, Optional, Tuple
+from typing import Awaitable, Callable, Dict, List, Optional, Sequence, Tuple
 
 from . import report_reconcile as rc
 from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model
@@ -389,10 +389,19 @@ async def vet_options(options: List[dict], report: str, impression: str, finding
     return kept, dropped
 
 
+def without_declined(options: List[dict], declined: Sequence[str]) -> List[dict]:
+    """Finding-negative options without the chips the radiologist removed in the scratchpad (v2)."""
+    if not declined:
+        return options
+    return [o for o in options if not (o.get("kind") == "finding_negative"
+                                       and rc.duplicates_negative(o["text"], list(declined)))]
+
+
 async def generate_template_report_lean(*, sheet: str, scan_type: str, findings: str, history: str,
                                         case: "Optional[dict] | Callable[[], Awaitable[Optional[dict]]]",
-                                        signature: Optional[str]) -> dict:
-    """Today's single-pass generator on the stored sheet, then the post-generation check (sections from the
+                                        signature: Optional[str], declined: Sequence[str] = ()) -> dict:
+    """`declined`: scratchpad v2 chips the radiologist removed (spec 2026-10-11 §6), never offered back.
+    Today's single-pass generator on the stored sheet, then the post-generation check (sections from the
     report's own headers). Returns as soon as the check has finished: the report never waits for options.
     Phase-1 options are routed and written beside the generator and vetted (vet_options) after it, in the
     returned `options_job` (an asyncio task the caller finishes in the background; it resolves to
@@ -421,6 +430,7 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         job["lat"]["phase1_wait_s"] = round(time.time() - t0, 1)
         raw, dec = await case_options(resolved, findings, scan_type, history, findings_section="FINDINGS",
                                       impression_section="IMPRESSION", inclusion_logic=style)
+        raw = without_declined(raw, declined)
         t1 = time.time()
         written = await write_options(raw, findings, scan_type, model=MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"],
                                       runner=_run_agent_with_model, style=style, impression_section="IMPRESSION",

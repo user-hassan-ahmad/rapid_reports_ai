@@ -1,0 +1,1997 @@
+[
+  {
+    "id": "cmd_001",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "Appendix is dilated to 11 mm with periappendiceal fat stranding.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [
+      "No free intraperitoneal gas.",
+      "No intra-abdominal collection.",
+      "No lymphadenopathy.",
+      "No hydronephrosis."
+    ],
+    "utterance": "No free gas.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_002",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "There is a 9 mm hypodense lesion in segment 6 of the liver.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [
+      "No free intraperitoneal gas.",
+      "No intra-abdominal collection."
+    ],
+    "utterance": "The liver shows a further 4 mm cyst in segment 2.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_003",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "Right ureteric stent in situ.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "The previously accepted stent position is unchanged.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_004",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "Small bowel loops are dilated to 3.8 cm.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [
+      "No free intraperitoneal gas.",
+      "No intra-abdominal collection.",
+      "No lymphadenopathy."
+    ],
+    "utterance": "Transition point in the right iliac fossa",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_005",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "Pancreas is atrophic.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "Probably related to chronic pancreatitis.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_006",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "Sigmoid diverticulosis.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [
+      "No intra-abdominal collection."
+    ],
+    "utterance": "no diverticulitis, no collection",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_007",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "The kidneys are normal in size.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [
+      "No hydronephrosis."
+    ],
+    "utterance": "Kidneys and ureters otherwise unremarkable.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_008",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "There is a 2.3 cm left adrenal nodule.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "Measuring minus 5 Hounsfield units, in keeping with an adenoma.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_009",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "Gallbladder contains several calculi.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "No gallbladder wall thickening or pericholecystic fluid.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_010",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "Mild degenerative change in the lumbar spine.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "Delete-able, no, there's a Schmorl's node at L2.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_011",
+    "scan_type": "CT chest",
+    "scratchpad": "Scattered centrilobular emphysema.",
+    "regions": [
+      "Lungs",
+      "Airways",
+      "Pleura",
+      "Mediastinum",
+      "Heart and pericardium",
+      "Lymph nodes",
+      "Upper abdomen",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "Scratch marks on the skin surface artefact.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_012",
+    "scan_type": "CT chest",
+    "scratchpad": "There is a 7 mm solid nodule in the right lower lobe.",
+    "regions": [
+      "Lungs",
+      "Airways",
+      "Pleura",
+      "Mediastinum",
+      "Heart and pericardium",
+      "Lymph nodes",
+      "Upper abdomen",
+      "Bones"
+    ],
+    "chips": [
+      "No pleural effusion.",
+      "No mediastinal lymphadenopathy."
+    ],
+    "utterance": "The lungs are otherwise clear.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_013",
+    "scan_type": "CT chest",
+    "scratchpad": "Small left pleural effusion.",
+    "regions": [
+      "Lungs",
+      "Airways",
+      "Pleura",
+      "Mediastinum",
+      "Heart and pericardium",
+      "Lymph nodes",
+      "Upper abdomen",
+      "Bones"
+    ],
+    "chips": [
+      "No pneumothorax."
+    ],
+    "utterance": "Adjacent passive atelectasis.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_014",
+    "scan_type": "CT chest",
+    "scratchpad": "Mediastinal lymph nodes are not enlarged.",
+    "regions": [
+      "Lungs",
+      "Airways",
+      "Pleura",
+      "Mediastinum",
+      "Heart and pericardium",
+      "Lymph nodes",
+      "Upper abdomen",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "Heart size is normal, no pericardial effusion.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_015",
+    "scan_type": "CT chest",
+    "scratchpad": "Spiculated mass in the left upper lobe measuring 3.2 cm.",
+    "regions": [
+      "Lungs",
+      "Airways",
+      "Pleura",
+      "Mediastinum",
+      "Heart and pericardium",
+      "Lymph nodes",
+      "Upper abdomen",
+      "Bones"
+    ],
+    "chips": [
+      "No pleural effusion.",
+      "No bone metastases."
+    ],
+    "utterance": "Possibly abutting the pleura, but no definite chest wall invasion.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_016",
+    "scan_type": "CT chest",
+    "scratchpad": "Bilateral lower lobe ground glass.",
+    "regions": [
+      "Lungs",
+      "Airways",
+      "Pleura",
+      "Mediastinum",
+      "Heart and pericardium",
+      "Lymph nodes",
+      "Upper abdomen",
+      "Bones"
+    ],
+    "chips": [
+      "No pleural effusion."
+    ],
+    "utterance": "Accept that this could be infective or inflammatory.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_017",
+    "scan_type": "CT chest",
+    "scratchpad": "Right hilar node measuring 14 mm short axis.",
+    "regions": [
+      "Lungs",
+      "Airways",
+      "Pleura",
+      "Mediastinum",
+      "Heart and pericardium",
+      "Lymph nodes",
+      "Upper abdomen",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "Under the circumstances, a PET CT would be helpful.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_018",
+    "scan_type": "MR brain",
+    "scratchpad": "Multiple periventricular T2 hyperintense lesions.",
+    "regions": [
+      "Brain parenchyma",
+      "White matter",
+      "Ventricles",
+      "Extra-axial spaces",
+      "Posterior fossa",
+      "Vessels",
+      "Orbits",
+      "Skull and scalp"
+    ],
+    "chips": [
+      "No enhancing lesions.",
+      "No restricted diffusion."
+    ],
+    "utterance": "Some are perpendicular to the lateral ventricles.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_019",
+    "scan_type": "MR brain",
+    "scratchpad": "Small acute infarct in the left corona radiata.",
+    "regions": [
+      "Brain parenchyma",
+      "White matter",
+      "Ventricles",
+      "Extra-axial spaces",
+      "Posterior fossa",
+      "Vessels",
+      "Orbits",
+      "Skull and scalp"
+    ],
+    "chips": [
+      "No haemorrhagic transformation.",
+      "No mass effect."
+    ],
+    "utterance": "No haemorrhagic transformation.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_020",
+    "scan_type": "MR brain",
+    "scratchpad": "The ventricles are normal in size.",
+    "regions": [
+      "Brain parenchyma",
+      "White matter",
+      "Ventricles",
+      "Extra-axial spaces",
+      "Posterior fossa",
+      "Vessels",
+      "Orbits",
+      "Skull and scalp"
+    ],
+    "chips": [],
+    "utterance": "Ventricles normal.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_021",
+    "scan_type": "MR brain",
+    "scratchpad": "Extra-axial spaces are within normal limits.",
+    "regions": [
+      "Brain parenchyma",
+      "White matter",
+      "Ventricles",
+      "Extra-axial spaces",
+      "Posterior fossa",
+      "Vessels",
+      "Orbits",
+      "Skull and scalp"
+    ],
+    "chips": [],
+    "utterance": "The posterior fossa structures are normal",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_022",
+    "scan_type": "MR brain",
+    "scratchpad": "There is a 12 mm extra-axial dural-based lesion over the right convexity.",
+    "regions": [
+      "Brain parenchyma",
+      "White matter",
+      "Ventricles",
+      "Extra-axial spaces",
+      "Posterior fossa",
+      "Vessels",
+      "Orbits",
+      "Skull and scalp"
+    ],
+    "chips": [
+      "No mass effect."
+    ],
+    "utterance": "Likely a meningioma.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_023",
+    "scan_type": "CT head",
+    "scratchpad": "No acute intracranial haemorrhage.",
+    "regions": [
+      "Brain parenchyma",
+      "Ventricles",
+      "Extra-axial spaces",
+      "Posterior fossa",
+      "Skull",
+      "Sinuses and mastoids"
+    ],
+    "chips": [
+      "No midline shift."
+    ],
+    "utterance": "Remove any doubt, there is no midline shift.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_024",
+    "scan_type": "CT head",
+    "scratchpad": "Chronic small vessel ischaemic change.",
+    "regions": [
+      "Brain parenchyma",
+      "Ventricles",
+      "Extra-axial spaces",
+      "Posterior fossa",
+      "Skull",
+      "Sinuses and mastoids"
+    ],
+    "chips": [],
+    "utterance": "Generalised volume loss appropriate for age.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_025",
+    "scan_type": "CT head",
+    "scratchpad": "Left frontal scalp haematoma.",
+    "regions": [
+      "Brain parenchyma",
+      "Ventricles",
+      "Extra-axial spaces",
+      "Posterior fossa",
+      "Skull",
+      "Sinuses and mastoids"
+    ],
+    "chips": [
+      "No skull fracture."
+    ],
+    "utterance": "No underlying skull fracture.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_026",
+    "scan_type": "MR lumbar spine",
+    "scratchpad": "L4/5 disc bulge with a superimposed right paracentral protrusion.",
+    "regions": [
+      "Alignment",
+      "Vertebral bodies",
+      "Discs",
+      "Spinal canal",
+      "Neural foramina",
+      "Conus",
+      "Paraspinal soft tissues"
+    ],
+    "chips": [],
+    "utterance": "Contacting the traversing right L5 nerve root.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_027",
+    "scan_type": "MR lumbar spine",
+    "scratchpad": "Normal lumbar lordosis.",
+    "regions": [
+      "Alignment",
+      "Vertebral bodies",
+      "Discs",
+      "Spinal canal",
+      "Neural foramina",
+      "Conus",
+      "Paraspinal soft tissues"
+    ],
+    "chips": [],
+    "utterance": "Alignment is maintained.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_028",
+    "scan_type": "MR lumbar spine",
+    "scratchpad": "Moderate right L5/S1 foraminal narrowing.",
+    "regions": [
+      "Alignment",
+      "Vertebral bodies",
+      "Discs",
+      "Spinal canal",
+      "Neural foramina",
+      "Conus",
+      "Paraspinal soft tissues"
+    ],
+    "chips": [],
+    "utterance": "Sorry about the noise, the left foramen is patent.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_029",
+    "scan_type": "MR lumbar spine",
+    "scratchpad": "Conus terminates at L1.",
+    "regions": [
+      "Alignment",
+      "Vertebral bodies",
+      "Discs",
+      "Spinal canal",
+      "Neural foramina",
+      "Conus",
+      "Paraspinal soft tissues"
+    ],
+    "chips": [
+      "No spinal canal stenosis."
+    ],
+    "utterance": "L3/4, mild facet hypertrophy, no canal stenosis.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_030",
+    "scan_type": "MR knee",
+    "scratchpad": "Horizontal tear of the posterior horn of the medial meniscus.",
+    "regions": [
+      "Menisci",
+      "Cruciate ligaments",
+      "Collateral ligaments",
+      "Extensor mechanism",
+      "Articular cartilage",
+      "Bone marrow",
+      "Joint effusion"
+    ],
+    "chips": [
+      "No displaced meniscal fragment."
+    ],
+    "utterance": "Extending to the inferior articular surface.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_031",
+    "scan_type": "MR knee",
+    "scratchpad": "The ACL is intact.",
+    "regions": [
+      "Menisci",
+      "Cruciate ligaments",
+      "Collateral ligaments",
+      "Extensor mechanism",
+      "Articular cartilage",
+      "Bone marrow",
+      "Joint effusion"
+    ],
+    "chips": [],
+    "utterance": "PCL intact.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_032",
+    "scan_type": "MR knee",
+    "scratchpad": "Small joint effusion.",
+    "regions": [
+      "Menisci",
+      "Cruciate ligaments",
+      "Collateral ligaments",
+      "Extensor mechanism",
+      "Articular cartilage",
+      "Bone marrow",
+      "Joint effusion"
+    ],
+    "chips": [],
+    "utterance": "The lateral meniscus is intact",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_033",
+    "scan_type": "MR knee",
+    "scratchpad": "Bone marrow oedema in the lateral femoral condyle.",
+    "regions": [
+      "Menisci",
+      "Cruciate ligaments",
+      "Collateral ligaments",
+      "Extensor mechanism",
+      "Articular cartilage",
+      "Bone marrow",
+      "Joint effusion"
+    ],
+    "chips": [],
+    "utterance": "Correction of alignment not required, the patella is normally sited.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_034",
+    "scan_type": "MR shoulder",
+    "scratchpad": "Full thickness tear of the supraspinatus tendon.",
+    "regions": [
+      "Rotator cuff",
+      "Biceps tendon",
+      "Labrum",
+      "Acromioclavicular joint",
+      "Bone marrow",
+      "Joint effusion"
+    ],
+    "chips": [
+      "No muscle atrophy."
+    ],
+    "utterance": "Retracted 15 mm, with no muscle atrophy.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_035",
+    "scan_type": "MR shoulder",
+    "scratchpad": "Mild acromioclavicular joint osteoarthritis.",
+    "regions": [
+      "Rotator cuff",
+      "Biceps tendon",
+      "Labrum",
+      "Acromioclavicular joint",
+      "Bone marrow",
+      "Joint effusion"
+    ],
+    "chips": [],
+    "utterance": "Biceps tendon is in the groove.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_036",
+    "scan_type": "MR shoulder",
+    "scratchpad": "Superior labral tear.",
+    "regions": [
+      "Rotator cuff",
+      "Biceps tendon",
+      "Labrum",
+      "Acromioclavicular joint",
+      "Bone marrow",
+      "Joint effusion"
+    ],
+    "chips": [],
+    "utterance": "Extending from anterior to posterior.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_037",
+    "scan_type": "US abdomen",
+    "scratchpad": "The liver is of increased echogenicity.",
+    "regions": [
+      "Liver",
+      "Gallbladder",
+      "Common bile duct",
+      "Pancreas",
+      "Spleen",
+      "Kidneys",
+      "Aorta",
+      "Bladder"
+    ],
+    "chips": [
+      "No focal liver lesion."
+    ],
+    "utterance": "In keeping with fatty infiltration.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_038",
+    "scan_type": "US abdomen",
+    "scratchpad": "Gallbladder contains a 1.4 cm calculus.",
+    "regions": [
+      "Liver",
+      "Gallbladder",
+      "Common bile duct",
+      "Pancreas",
+      "Spleen",
+      "Kidneys",
+      "Aorta",
+      "Bladder"
+    ],
+    "chips": [
+      "No gallbladder wall thickening.",
+      "CBD is not dilated."
+    ],
+    "utterance": "Positive sonographic Murphy's sign.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_039",
+    "scan_type": "US abdomen",
+    "scratchpad": "The kidneys are normal in size and echotexture.",
+    "regions": [
+      "Liver",
+      "Gallbladder",
+      "Common bile duct",
+      "Pancreas",
+      "Spleen",
+      "Kidneys",
+      "Aorta",
+      "Bladder"
+    ],
+    "chips": [
+      "No hydronephrosis."
+    ],
+    "utterance": "No hydronephrosis.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_040",
+    "scan_type": "US abdomen",
+    "scratchpad": "Abdominal aorta measures 2.1 cm.",
+    "regions": [
+      "Liver",
+      "Gallbladder",
+      "Common bile duct",
+      "Pancreas",
+      "Spleen",
+      "Kidneys",
+      "Aorta",
+      "Bladder"
+    ],
+    "chips": [],
+    "utterance": "The aorta is of normal calibre.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_041",
+    "scan_type": "MR pelvis",
+    "scratchpad": "Uterus is anteverted with a 3 cm intramural fibroid.",
+    "regions": [
+      "Uterus",
+      "Ovaries",
+      "Bladder",
+      "Rectum",
+      "Lymph nodes",
+      "Pelvic bones",
+      "Free fluid"
+    ],
+    "chips": [
+      "No adnexal mass."
+    ],
+    "utterance": "Endometrium measures 6 mm.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_042",
+    "scan_type": "MR pelvis",
+    "scratchpad": "Right ovarian cyst measuring 4 cm, simple.",
+    "regions": [
+      "Uterus",
+      "Ovaries",
+      "Bladder",
+      "Rectum",
+      "Lymph nodes",
+      "Pelvic bones",
+      "Free fluid"
+    ],
+    "chips": [
+      "No pelvic free fluid."
+    ],
+    "utterance": "Left ovary normal.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_043",
+    "scan_type": "MR pelvis",
+    "scratchpad": "Rectal tumour from 6 to 10 cm from the anal verge.",
+    "regions": [
+      "Uterus",
+      "Ovaries",
+      "Bladder",
+      "Rectum",
+      "Lymph nodes",
+      "Pelvic bones",
+      "Free fluid"
+    ],
+    "chips": [
+      "No extramural venous invasion."
+    ],
+    "utterance": "T3 with 3 mm extramural spread, MRF clear.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_044",
+    "scan_type": "CT angiogram neck",
+    "scratchpad": "Atherosclerotic plaque at the left carotid bifurcation.",
+    "regions": [
+      "Aortic arch",
+      "Common carotid arteries",
+      "Internal carotid arteries",
+      "Vertebral arteries",
+      "Circle of Willis",
+      "Soft tissues of the neck"
+    ],
+    "chips": [
+      "No right ICA stenosis."
+    ],
+    "utterance": "Approximately 50 percent stenosis of the left ICA by NASCET.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_045",
+    "scan_type": "CT angiogram neck",
+    "scratchpad": "Vertebral arteries are patent.",
+    "regions": [
+      "Aortic arch",
+      "Common carotid arteries",
+      "Internal carotid arteries",
+      "Vertebral arteries",
+      "Circle of Willis",
+      "Soft tissues of the neck"
+    ],
+    "chips": [],
+    "utterance": "Right dominant.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_046",
+    "scan_type": "US lower limb venous Doppler",
+    "scratchpad": "Occlusive thrombus in the left popliteal vein.",
+    "regions": [
+      "Common femoral vein",
+      "Femoral vein",
+      "Popliteal vein",
+      "Calf veins",
+      "Soft tissues"
+    ],
+    "chips": [
+      "Common femoral vein is compressible."
+    ],
+    "utterance": "Extending into the calf veins",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_047",
+    "scan_type": "CT pulmonary angiogram",
+    "scratchpad": "Filling defects in the right lower lobe segmental arteries.",
+    "regions": [
+      "Pulmonary arteries",
+      "Right heart",
+      "Lungs",
+      "Pleura",
+      "Mediastinum",
+      "Bones"
+    ],
+    "chips": [
+      "No right heart strain.",
+      "No pleural effusion."
+    ],
+    "utterance": "No right heart strain.",
+    "gold_command": "dictate",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_048",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "There is an 8 mm hypodense lesion in the liver.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "Actually, make that 9 mm.",
+    "gold_command": "correct",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_049",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "Left renal calculus measuring 6 mm.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "Sorry, right not left.",
+    "gold_command": "correct",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_050",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "Hypodense lesion in segment 7 of the liver.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "Correction, the lesion is in segment 6.",
+    "gold_command": "correct",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_051",
+    "scan_type": "CT chest",
+    "scratchpad": "There is a 5 mm nodule in the left upper lobe.",
+    "regions": [
+      "Lungs",
+      "Airways",
+      "Pleura",
+      "Mediastinum",
+      "Heart and pericardium",
+      "Lymph nodes",
+      "Upper abdomen",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "no wait, I meant left lower lobe",
+    "gold_command": "correct",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_052",
+    "scan_type": "CT chest",
+    "scratchpad": "Small right pleural effusion.",
+    "regions": [
+      "Lungs",
+      "Airways",
+      "Pleura",
+      "Mediastinum",
+      "Heart and pericardium",
+      "Lymph nodes",
+      "Upper abdomen",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "Change small to moderate.",
+    "gold_command": "correct",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_053",
+    "scan_type": "MR brain",
+    "scratchpad": "Acute infarct in the right MCA territory.",
+    "regions": [
+      "Brain parenchyma",
+      "White matter",
+      "Ventricles",
+      "Extra-axial spaces",
+      "Posterior fossa",
+      "Vessels",
+      "Orbits",
+      "Skull and scalp"
+    ],
+    "chips": [],
+    "utterance": "Sorry, that should be the left MCA territory.",
+    "gold_command": "correct",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_054",
+    "scan_type": "MR lumbar spine",
+    "scratchpad": "Disc protrusion at L3/4.",
+    "regions": [
+      "Alignment",
+      "Vertebral bodies",
+      "Discs",
+      "Spinal canal",
+      "Neural foramina",
+      "Conus",
+      "Paraspinal soft tissues"
+    ],
+    "chips": [],
+    "utterance": "I mean L4/5, not L3/4.",
+    "gold_command": "correct",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_055",
+    "scan_type": "MR knee",
+    "scratchpad": "Tear of the anterior horn of the lateral meniscus.",
+    "regions": [
+      "Menisci",
+      "Cruciate ligaments",
+      "Collateral ligaments",
+      "Extensor mechanism",
+      "Articular cartilage",
+      "Bone marrow",
+      "Joint effusion"
+    ],
+    "chips": [],
+    "utterance": "Correction, posterior horn.",
+    "gold_command": "correct",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_056",
+    "scan_type": "MR shoulder",
+    "scratchpad": "Partial thickness tear of the infraspinatus.",
+    "regions": [
+      "Rotator cuff",
+      "Biceps tendon",
+      "Labrum",
+      "Acromioclavicular joint",
+      "Bone marrow",
+      "Joint effusion"
+    ],
+    "chips": [],
+    "utterance": "Make that supraspinatus.",
+    "gold_command": "correct",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_057",
+    "scan_type": "US abdomen",
+    "scratchpad": "Common bile duct measures 9 mm.",
+    "regions": [
+      "Liver",
+      "Gallbladder",
+      "Common bile duct",
+      "Pancreas",
+      "Spleen",
+      "Kidneys",
+      "Aorta",
+      "Bladder"
+    ],
+    "chips": [],
+    "utterance": "Actually 6 mm, it's not dilated.",
+    "gold_command": "correct",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_058",
+    "scan_type": "CT angiogram neck",
+    "scratchpad": "70 percent stenosis of the right ICA.",
+    "regions": [
+      "Aortic arch",
+      "Common carotid arteries",
+      "Internal carotid arteries",
+      "Vertebral arteries",
+      "Circle of Willis",
+      "Soft tissues of the neck"
+    ],
+    "chips": [],
+    "utterance": "Sorry, 50 percent.",
+    "gold_command": "correct",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_059",
+    "scan_type": "US lower limb venous Doppler",
+    "scratchpad": "Thrombus in the right femoral vein.",
+    "regions": [
+      "Common femoral vein",
+      "Femoral vein",
+      "Popliteal vein",
+      "Calf veins",
+      "Soft tissues"
+    ],
+    "chips": [],
+    "utterance": "correction it's the left side",
+    "gold_command": "correct",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_060",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "Liver is normal. There is a 3 mm hypodensity too small to characterise.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "Scratch that.",
+    "gold_command": "delete",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_061",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "Spleen measures 11 cm. Liver contains a 9 mm cyst.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "Delete the liver line.",
+    "gold_command": "delete",
+    "gold_region": "Liver",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_062",
+    "scan_type": "CT chest",
+    "scratchpad": "Lungs are clear. Small hiatus hernia. Heart size normal.",
+    "regions": [
+      "Lungs",
+      "Airways",
+      "Pleura",
+      "Mediastinum",
+      "Heart and pericardium",
+      "Lymph nodes",
+      "Upper abdomen",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "Remove the last sentence.",
+    "gold_command": "delete",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_063",
+    "scan_type": "CT chest",
+    "scratchpad": "Mild bronchial wall thickening. No pleural effusion.",
+    "regions": [
+      "Lungs",
+      "Airways",
+      "Pleura",
+      "Mediastinum",
+      "Heart and pericardium",
+      "Lymph nodes",
+      "Upper abdomen",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "Delete that.",
+    "gold_command": "delete",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_064",
+    "scan_type": "MR brain",
+    "scratchpad": "Few nonspecific white matter foci. Ventricles normal.",
+    "regions": [
+      "Brain parenchyma",
+      "White matter",
+      "Ventricles",
+      "Extra-axial spaces",
+      "Posterior fossa",
+      "Vessels",
+      "Orbits",
+      "Skull and scalp"
+    ],
+    "chips": [],
+    "utterance": "Get rid of the white matter sentence.",
+    "gold_command": "delete",
+    "gold_region": "White matter",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_065",
+    "scan_type": "CT head",
+    "scratchpad": "No haemorrhage. Mucosal thickening in the maxillary sinuses.",
+    "regions": [
+      "Brain parenchyma",
+      "Ventricles",
+      "Extra-axial spaces",
+      "Posterior fossa",
+      "Skull",
+      "Sinuses and mastoids"
+    ],
+    "chips": [],
+    "utterance": "Lose the sinus bit.",
+    "gold_command": "delete",
+    "gold_region": "Sinuses and mastoids",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_066",
+    "scan_type": "MR lumbar spine",
+    "scratchpad": "L5/S1 disc desiccation. Conus at L1.",
+    "regions": [
+      "Alignment",
+      "Vertebral bodies",
+      "Discs",
+      "Spinal canal",
+      "Neural foramina",
+      "Conus",
+      "Paraspinal soft tissues"
+    ],
+    "chips": [],
+    "utterance": "delete delete",
+    "gold_command": "delete",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_067",
+    "scan_type": "MR knee",
+    "scratchpad": "Small effusion. Small Baker's cyst.",
+    "regions": [
+      "Menisci",
+      "Cruciate ligaments",
+      "Collateral ligaments",
+      "Extensor mechanism",
+      "Articular cartilage",
+      "Bone marrow",
+      "Joint effusion"
+    ],
+    "chips": [],
+    "utterance": "Take out the effusion line.",
+    "gold_command": "delete",
+    "gold_region": "Joint effusion",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_068",
+    "scan_type": "US abdomen",
+    "scratchpad": "Gallbladder is normal. Pancreas obscured by bowel gas.",
+    "regions": [
+      "Liver",
+      "Gallbladder",
+      "Common bile duct",
+      "Pancreas",
+      "Spleen",
+      "Kidneys",
+      "Aorta",
+      "Bladder"
+    ],
+    "chips": [],
+    "utterance": "Remove what I said about the pancreas.",
+    "gold_command": "delete",
+    "gold_region": "Pancreas",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_069",
+    "scan_type": "MR pelvis",
+    "scratchpad": "Uterus normal. Small amount of free fluid in the pouch of Douglas.",
+    "regions": [
+      "Uterus",
+      "Ovaries",
+      "Bladder",
+      "Rectum",
+      "Lymph nodes",
+      "Pelvic bones",
+      "Free fluid"
+    ],
+    "chips": [],
+    "utterance": "Strike that last one.",
+    "gold_command": "delete",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_070",
+    "scan_type": "CT angiogram neck",
+    "scratchpad": "Mild plaque at the arch. Vertebrals patent.",
+    "regions": [
+      "Aortic arch",
+      "Common carotid arteries",
+      "Internal carotid arteries",
+      "Vertebral arteries",
+      "Circle of Willis",
+      "Soft tissues of the neck"
+    ],
+    "chips": [],
+    "utterance": "Clear everything under aortic arch.",
+    "gold_command": "delete",
+    "gold_region": "Aortic arch",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_071",
+    "scan_type": "MR shoulder",
+    "scratchpad": "Mild subacromial bursitis. Bone marrow normal.",
+    "regions": [
+      "Rotator cuff",
+      "Biceps tendon",
+      "Labrum",
+      "Acromioclavicular joint",
+      "Bone marrow",
+      "Joint effusion"
+    ],
+    "chips": [],
+    "utterance": "Undo that.",
+    "gold_command": "delete",
+    "gold_region": null,
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_072",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "Liver normal.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "For the kidneys, there is a 4 mm calculus.",
+    "gold_command": "send_to_region",
+    "gold_region": "Kidneys and ureters",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_073",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "Appendicitis with no perforation.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "Under bones, mild degenerative change.",
+    "gold_command": "send_to_region",
+    "gold_region": "Bones",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_074",
+    "scan_type": "CT chest",
+    "scratchpad": "Mediastinum normal.",
+    "regions": [
+      "Lungs",
+      "Airways",
+      "Pleura",
+      "Mediastinum",
+      "Heart and pericardium",
+      "Lymph nodes",
+      "Upper abdomen",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "Put this in the lungs: small nodule right lower lobe.",
+    "gold_command": "send_to_region",
+    "gold_region": "Lungs",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_075",
+    "scan_type": "CT chest",
+    "scratchpad": "Lungs clear.",
+    "regions": [
+      "Lungs",
+      "Airways",
+      "Pleura",
+      "Mediastinum",
+      "Heart and pericardium",
+      "Lymph nodes",
+      "Upper abdomen",
+      "Bones"
+    ],
+    "chips": [],
+    "utterance": "In the upper abdomen, a small hypodensity in the liver too small to characterise.",
+    "gold_command": "send_to_region",
+    "gold_region": "Upper abdomen",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_076",
+    "scan_type": "MR brain",
+    "scratchpad": "Ventricles normal.",
+    "regions": [
+      "Brain parenchyma",
+      "White matter",
+      "Ventricles",
+      "Extra-axial spaces",
+      "Posterior fossa",
+      "Vessels",
+      "Orbits",
+      "Skull and scalp"
+    ],
+    "chips": [],
+    "utterance": "For the orbits, normal appearances.",
+    "gold_command": "send_to_region",
+    "gold_region": "Orbits",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_077",
+    "scan_type": "CT head",
+    "scratchpad": "No intracranial haemorrhage.",
+    "regions": [
+      "Brain parenchyma",
+      "Ventricles",
+      "Extra-axial spaces",
+      "Posterior fossa",
+      "Skull",
+      "Sinuses and mastoids"
+    ],
+    "chips": [],
+    "utterance": "skull, no fracture",
+    "gold_command": "send_to_region",
+    "gold_region": "Skull",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_078",
+    "scan_type": "MR lumbar spine",
+    "scratchpad": "Discs are desiccated at L4/5 and L5/S1.",
+    "regions": [
+      "Alignment",
+      "Vertebral bodies",
+      "Discs",
+      "Spinal canal",
+      "Neural foramina",
+      "Conus",
+      "Paraspinal soft tissues"
+    ],
+    "chips": [],
+    "utterance": "Paraspinal soft tissues: normal.",
+    "gold_command": "send_to_region",
+    "gold_region": "Paraspinal soft tissues",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_079",
+    "scan_type": "MR knee",
+    "scratchpad": "ACL intact.",
+    "regions": [
+      "Menisci",
+      "Cruciate ligaments",
+      "Collateral ligaments",
+      "Extensor mechanism",
+      "Articular cartilage",
+      "Bone marrow",
+      "Joint effusion"
+    ],
+    "chips": [],
+    "utterance": "Go to bone marrow. Bone bruise lateral tibial plateau.",
+    "gold_command": "send_to_region",
+    "gold_region": "Bone marrow",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_080",
+    "scan_type": "MR shoulder",
+    "scratchpad": "Supraspinatus tendinosis.",
+    "regions": [
+      "Rotator cuff",
+      "Biceps tendon",
+      "Labrum",
+      "Acromioclavicular joint",
+      "Bone marrow",
+      "Joint effusion"
+    ],
+    "chips": [],
+    "utterance": "Regarding the labrum, there is a small posterior tear.",
+    "gold_command": "send_to_region",
+    "gold_region": "Labrum",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_081",
+    "scan_type": "US abdomen",
+    "scratchpad": "Liver echogenic.",
+    "regions": [
+      "Liver",
+      "Gallbladder",
+      "Common bile duct",
+      "Pancreas",
+      "Spleen",
+      "Kidneys",
+      "Aorta",
+      "Bladder"
+    ],
+    "chips": [],
+    "utterance": "Spleen section: 13 cm, mildly enlarged.",
+    "gold_command": "send_to_region",
+    "gold_region": "Spleen",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_082",
+    "scan_type": "MR pelvis",
+    "scratchpad": "Uterus normal.",
+    "regions": [
+      "Uterus",
+      "Ovaries",
+      "Bladder",
+      "Rectum",
+      "Lymph nodes",
+      "Pelvic bones",
+      "Free fluid"
+    ],
+    "chips": [],
+    "utterance": "Under ovaries, both normal.",
+    "gold_command": "send_to_region",
+    "gold_region": "Ovaries",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_083",
+    "scan_type": "CT angiogram neck",
+    "scratchpad": "No ICA stenosis.",
+    "regions": [
+      "Aortic arch",
+      "Common carotid arteries",
+      "Internal carotid arteries",
+      "Vertebral arteries",
+      "Circle of Willis",
+      "Soft tissues of the neck"
+    ],
+    "chips": [],
+    "utterance": "Next one goes in vertebral arteries, left is hypoplastic.",
+    "gold_command": "send_to_region",
+    "gold_region": "Vertebral arteries",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_084",
+    "scan_type": "US lower limb venous Doppler",
+    "scratchpad": "Common femoral vein compressible.",
+    "regions": [
+      "Common femoral vein",
+      "Femoral vein",
+      "Popliteal vein",
+      "Calf veins",
+      "Soft tissues"
+    ],
+    "chips": [],
+    "utterance": "For the calf veins, not well seen.",
+    "gold_command": "send_to_region",
+    "gold_region": "Calf veins",
+    "gold_chip": null
+  },
+  {
+    "id": "cmd_085",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "Perforated sigmoid diverticulitis.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [
+      "No free intraperitoneal gas.",
+      "No intra-abdominal collection.",
+      "No lymphadenopathy.",
+      "No hydronephrosis."
+    ],
+    "utterance": "Accept no free gas.",
+    "gold_command": "accept_suggestion",
+    "gold_region": null,
+    "gold_chip": "No free intraperitoneal gas."
+  },
+  {
+    "id": "cmd_086",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "Retroperitoneal mass.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [
+      "No free intraperitoneal gas.",
+      "No intra-abdominal collection.",
+      "No lymphadenopathy.",
+      "No hydronephrosis."
+    ],
+    "utterance": "Add the one about lymph nodes.",
+    "gold_command": "accept_suggestion",
+    "gold_region": null,
+    "gold_chip": "No lymphadenopathy."
+  },
+  {
+    "id": "cmd_087",
+    "scan_type": "CT abdomen and pelvis",
+    "scratchpad": "Obstructing left ureteric calculus.",
+    "regions": [
+      "Liver",
+      "Gallbladder and biliary tree",
+      "Pancreas",
+      "Spleen",
+      "Kidneys and ureters",
+      "Bowel",
+      "Peritoneum",
+      "Lymph nodes",
+      "Vessels",
+      "Bones"
+    ],
+    "chips": [
+      "No hydronephrosis.",
+      "No perinephric collection."
+    ],
+    "utterance": "Yes, include no hydronephrosis.",
+    "gold_command": "accept_suggestion",
+    "gold_region": null,
+    "gold_chip": "No hydronephrosis."
+  },
+  {
+    "id": "cmd_088",
+    "scan_type": "CT chest",
+    "scratchpad": "Right upper lobe mass.",
+    "regions": [
+      "Lungs",
+      "Airways",
+      "Pleura",
+      "Mediastinum",
+      "Heart and pericardium",
+      "Lymph nodes",
+      "Upper abdomen",
+      "Bones"
+    ],
+    "chips": [
+      "No pleural effusion.",
+      "No mediastinal lymphadenopathy."
+    ],
+    "utterance": "Take the pleural effusion one.",
+    "gold_command": "accept_suggestion",
+    "gold_region": null,
+    "gold_chip": "No pleural effusion."
+  },
+  {
+    "id": "cmd_089",
+    "scan_type": "CT chest",
+    "scratchpad": "Pneumonia in the left lower lobe.",
+    "regions": [
+      "Lungs",
+      "Airways",
+      "Pleura",
+      "Mediastinum",
+      "Heart and pericardium",
+      "Lymph nodes",
+      "Upper abdomen",
+      "Bones"
+    ],
+    "chips": [
+      "No empyema.",
+      "No pneumothorax."
+    ],
+    "utterance": "accept the first suggestion",
+    "gold_command": "accept_suggestion",
+    "gold_region": null,
+    "gold_chip": "No empyema."
+  },
+  {
+    "id": "cmd_090",
+    "scan_type": "MR brain",
+    "scratchpad": "Acute left MCA infarct.",
+    "regions": [
+      "Brain parenchyma",
+      "White matter",
+      "Ventricles",
+      "Extra-axial spaces",
+      "Posterior fossa",
+      "Vessels",
+      "Orbits",
+      "Skull and scalp"
+    ],
+    "chips": [
+      "No haemorrhagic transformation.",
+      "No mass effect."
+    ],
+    "utterance": "Add no haemorrhagic transformation.",
+    "gold_command": "accept_suggestion",
+    "gold_region": null,
+    "gold_chip": "No haemorrhagic transformation."
+  },
+  {
+    "id": "cmd_091",
+    "scan_type": "CT head",
+    "scratchpad": "Subdural haematoma left convexity 6 mm.",
+    "regions": [
+      "Brain parenchyma",
+      "Ventricles",
+      "Extra-axial spaces",
+      "Posterior fossa",
+      "Skull",
+      "Sinuses and mastoids"
+    ],
+    "chips": [
+      "No midline shift.",
+      "No skull fracture."
+    ],
+    "utterance": "Use the midline shift chip.",
+    "gold_command": "accept_suggestion",
+    "gold_region": null,
+    "gold_chip": "No midline shift."
+  },
+  {
+    "id": "cmd_092",
+    "scan_type": "MR lumbar spine",
+    "scratchpad": "L4/5 disc protrusion.",
+    "regions": [
+      "Alignment",
+      "Vertebral bodies",
+      "Discs",
+      "Spinal canal",
+      "Neural foramina",
+      "Conus",
+      "Paraspinal soft tissues"
+    ],
+    "chips": [
+      "No spinal canal stenosis.",
+      "Conus is normal."
+    ],
+    "utterance": "Accept canal stenosis.",
+    "gold_command": "accept_suggestion",
+    "gold_region": null,
+    "gold_chip": "No spinal canal stenosis."
+  },
+  {
+    "id": "cmd_093",
+    "scan_type": "MR knee",
+    "scratchpad": "Medial meniscal tear.",
+    "regions": [
+      "Menisci",
+      "Cruciate ligaments",
+      "Collateral ligaments",
+      "Extensor mechanism",
+      "Articular cartilage",
+      "Bone marrow",
+      "Joint effusion"
+    ],
+    "chips": [
+      "No displaced meniscal fragment.",
+      "Cruciate ligaments are intact."
+    ],
+    "utterance": "yes to the displaced fragment one",
+    "gold_command": "accept_suggestion",
+    "gold_region": null,
+    "gold_chip": "No displaced meniscal fragment."
+  },
+  {
+    "id": "cmd_094",
+    "scan_type": "US abdomen",
+    "scratchpad": "Gallstones.",
+    "regions": [
+      "Liver",
+      "Gallbladder",
+      "Common bile duct",
+      "Pancreas",
+      "Spleen",
+      "Kidneys",
+      "Aorta",
+      "Bladder"
+    ],
+    "chips": [
+      "No gallbladder wall thickening.",
+      "CBD is not dilated."
+    ],
+    "utterance": "Include the CBD one.",
+    "gold_command": "accept_suggestion",
+    "gold_region": null,
+    "gold_chip": "CBD is not dilated."
+  },
+  {
+    "id": "cmd_095",
+    "scan_type": "MR pelvis",
+    "scratchpad": "Rectal tumour, T3.",
+    "regions": [
+      "Uterus",
+      "Ovaries",
+      "Bladder",
+      "Rectum",
+      "Lymph nodes",
+      "Pelvic bones",
+      "Free fluid"
+    ],
+    "chips": [
+      "No extramural venous invasion.",
+      "No pelvic lymphadenopathy."
+    ],
+    "utterance": "Accept EMVI.",
+    "gold_command": "accept_suggestion",
+    "gold_region": null,
+    "gold_chip": "No extramural venous invasion."
+  },
+  {
+    "id": "cmd_096",
+    "scan_type": "CT pulmonary angiogram",
+    "scratchpad": "Bilateral pulmonary emboli.",
+    "regions": [
+      "Pulmonary arteries",
+      "Right heart",
+      "Lungs",
+      "Pleura",
+      "Mediastinum",
+      "Bones"
+    ],
+    "chips": [
+      "No right heart strain.",
+      "No pleural effusion."
+    ],
+    "utterance": "Add the right heart one please.",
+    "gold_command": "accept_suggestion",
+    "gold_region": null,
+    "gold_chip": "No right heart strain."
+  }
+]

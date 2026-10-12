@@ -37,6 +37,13 @@
 	import { joinRecovered, planRevision, type Revision } from '$lib/dictation-lab/revisions';
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
+	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
+	import { postAssumed, postChanged, postDictationCheck, postClose, postConclusionCheck, postDebug, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
+	import { appendSentence, heldBack, lineChange, liveTail, moveUnit, similar } from '$lib/hybrid-stack/stackState';
+	import { abnormalAll, assumedFrom, openCount, rowSentences, type AssumedSnap } from '$lib/hybrid-stack/items';
+	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates } from '$lib/hybrid-stack/regionState';
+	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
+	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
 	import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
@@ -73,6 +80,23 @@
 	export let onDecision: (record: DecisionRecord, display: string) => void = () => {};
 	/** Dictation Lab only, front door 'decision': undo / edit / re-dictation against a decision id. */
 	export let onOutcome: (event: OutcomeEvent) => void = () => {};
+	// Hybrid dictation stack (rr_hybrid_stack, spec 2026-10-10): one grouped view of the verbatim text.
+	// The old Verbatim/Structured tabs run in shadow: the Structured text is built once per sampled session.
+	export let hybridStack = false;
+	export let stackRegions: Region[] = [];
+	export let stackGroups: string[] = [];
+	export let stackSchemaMeta: { key: string; source: string; provisional: boolean } | null = null;
+	export let onStackPills: (pills: string[]) => void = () => {};
+	export let stackShadowRate = 0.25; // share of sessions that build the old Structured text once, at session end
+	/** Template sessions: the template whose structure gives the region normals (checklist spec §8.3). */
+	export let stackTemplateId: string | null = null;
+	/** The slim sheet the session uses (null: none yet), so Generate builds from it. */
+	export let onStackSheet: (sheetId: string | null) => void = () => {};
+	/** Scratchpad v2 gate (spec 2026-10-11 §5): the confirmed record and the findings block Generate sends,
+	 *  or (null, '') whenever it re-arms. */
+	export let onStackGate: (gate: GateRecord | null, findings: string) => void = () => {};
+	/** The stack session id, so the parent can link the generated report to it. */
+	export let onStackSession: (sessionId: string) => void = () => {};
 
 	// CM6 highlight decoration for IntelliPrompt source linking
 	const setHighlight = StateEffect.define<{ from: number; to: number } | null>();
@@ -220,6 +244,161 @@
 	let writingStructured = false;
 	let structuredNotice = '';
 	let verbatimNow = '';
+	const GROUP_DEBOUNCE_MS = 600;
+	const CLOSE_IDLE_MS = 1500;
+	// Scratchpad checklist (spec 2026-10-11-scratchpad-checklist): rows asked, never assumed; region normals
+	// assumed unless removed; conclusion draft, gate, inline edits, voice commands (v2).
+	const ITEMS_DEBOUNCE_MS = 500;
+	const FOLD_MS = 1200;
+	let stackItems: StackItem[] = []; // the open and folding rows from /items
+	let stackCapped: StackItem[] = [];
+	let tappedRows: Record<string, StackItem> = {}; // answered with a tap: the sentences listed at the tap
+	let dictatedRows: Record<string, StackItem> = {}; // answered by the dictation (for the gate record)
+	let foldedRows: string[] = []; // answered rows already folded away: never shown again
+	let removedSentences: string[] = []; // never stated; sent to Generate as DO NOT ASSERT
+	// Rows skipped (finding checks) or marked not assessed (referral rows): folded, nothing stated, logged.
+	let skippedRows: Record<string, { item: StackItem; how: 'skip' | 'not_assessed' | 'abnormal' }> = {};
+	// The end-of-dictation review (hand read 2026-10-12): finding checks are written once dictation stops, over the
+	// whole dictation, and replace the previous set; nothing accumulates. The text the last review covered:
+	let reviewedFor = '';
+	let reviewing = false;
+	let reviewFailed = false; // the last review failed: shown at the gate and logged, never silent
+	let reviewTimer: ReturnType<typeof setTimeout> | null = null;
+	const REVIEW_IDLE_MS = 800;
+	// The review is gated (2026-10-12, material-change lab 16/16, 0 false): after the first review, a change re-runs
+	// the full review only when Jev says the abnormal findings changed materially; anything else (rewording, an
+	// inline edit, a typed normal) gets the quiet re-check of the rows on screen. The abnormal findings the last full
+	// review covered (null until the first one):
+	let reviewedAbnormal: string[] | null = null;
+	// A conclusion the radiologist owns (edited, typed or dictated) is never overwritten: a material change that it no
+	// longer reflects (Jev, conclusion lab 13/13, 0 false) shows a quiet note, keyed to the conclusion text it was
+	// computed for, with a suggested redraft on request.
+	// Dictation checks (2026-10-12): the integrity check runs with the review, not on every pause. Tier 1 (code) on
+	// every review and re-check; tier 2 (gpt-oss) only on the first review and material changes, its flags kept while
+	// their words are still in the dictation. Answers are keyed by kind and quote, so they survive a re-check.
+	let checks: CheckFlag[] = [];
+	let semanticChecks: CheckFlag[] = [];
+	let checkAnswers: Record<string, CheckAnswer> = {};
+	let seenChecks: Record<string, CheckFlag> = {};
+	let checkedFor = '';
+	let checkSeq = 0;
+	let conclusionNote: { for: string; added: string[]; suggestion: string | null; loading: boolean } | null = null;
+	// The last /assumed answer and the state it was computed for (review 2026-10-12): a region assumes only what was
+	// checked for its current state, and Confirm waits while the answer is behind the dictation.
+	let assumedSnap: AssumedSnap | null = null;
+	let itemsTimer: ReturnType<typeof setTimeout> | null = null;
+	// Each region's normal sentences (the slim sheet, or the template's structure) and what this scan cannot show.
+	let stackRegionNormals: Record<string, string[]> = {};
+	let stackNotAssessable = '';
+	let slimSeq = 0;
+	let shownSentences: string[] = []; // every row sentence shown this session (a row owns its check)
+	// The session's referral rows: the first /items reply's, fixed so they never drift (null until it answers).
+	let fixedReferrals: { question: string; region: string; sentences: string[] }[] | null = null;
+	let itemsSeq = 0;
+	let assumedSeq = 0;
+	let draft: { text: string; hash: string; edited: boolean; typed: boolean } | null = null;
+	let draftLoading = false;
+	let draftFailed = false;
+	let stackGate: GateRecord | null = null;
+	let stackEditing = false;
+	let stackIncoming: { seq: number; text: string } | null = null;
+	let incomingSeq = 0;
+	let deleteRegion: string | null = null;
+	$: pillRegions = stackRegions.map((r) => r.name).filter((n) => n !== OTHER);
+	// The v2 view takes over only once a schema exists: a failed schema fetch leaves today's editor in place.
+	$: stackView = hybridStack && stackRegions.length > 0;
+	$: regionView = regionStates(stackUnits, pillRegions);
+	// Tapped rows stay on screen as the radiologist's answers even after the writer stops returning them.
+	$: viewItems = [...stackItems, ...Object.values(tappedRows).filter((t) => !stackItems.some((i) => i.id === t.id))];
+	// Debug trace (local only): a sentence already placed this session showing in the live strip again.
+	let placedTexts = new Set<string>();
+	let lastDebugKey = '';
+	$: stripNow = stackView ? liveTail(verbatimNow, stackUnits) : [];
+	$: {
+		for (const u of stackUnits) if (u.group !== null && !u.heading) placedTexts.add(u.text);
+		const back = stripNow.filter((t) => [...placedTexts].some((p) => p === t || similar(p, t)));
+		const key = back.join('|');
+		if (back.length && key !== lastDebugKey) {
+			lastDebugKey = key;
+			void postDebug($token, { kind: 'strip_returned', at: new Date().toISOString(), returned: back, strip: stripNow,
+				verbatim: verbatimNow, units: stackUnits.map((u) => ({ id: u.id, group: u.group, text: u.text })),
+				recording: isRecording, busy: stackBusy, timer: stackTimer !== null, pendingPolish: structureBusy(),
+				groupFailures, placed: [...placedTexts].slice(-40) });
+		}
+	}
+	$: rowsOpen = openCount(viewItems, Object.keys(tappedRows), removedSentences, Object.keys(skippedRows));
+	// Confirm waits for the review of what is on screen; a failed review counts as done (nothing new is asked).
+	$: reviewBehind = stackView && !!verbatimNow.trim() && reviewedFor !== verbatimNow;
+	$: if (stackView && !isRecording && reviewBehind) scheduleReview(verbatimNow);
+	// What Confirm takes ownership of: the region normals still shown (abnormal regions' checked sentences,
+	// untouched regions' sheet sentences), minus anything removed.
+	$: confirmedAssumed = assumedFrom(assumedSnap, regionView.abnormal, regionView.assumedNormal, removedSentences);
+	$: assumedBehind = Object.keys(stackRegionNormals).length > 0 && (assumedSnap === null || assumedSnap.dictation !== verbatimNow);
+	// Regions are confirmed by name only when no sheet exists for this session (v2 behaviour); with a sheet, a region
+	// with no sentence left assumes nothing. An abnormal region's remainder is never named (review 2026-10-12).
+	$: namedNormals = Object.keys(stackRegionNormals).length === 0;
+	$: dictatedConclusion = conclusionText(stackUnits);
+	// The conclusion follows the findings: greyed until the first findings land, then the AI draft (or, without one,
+	// a field to type or dictate with a button to draft it).
+	$: findingsLanded = findingsText(stackUnits, stackGroups).trim().length > 0;
+	$: conclusionView = dictatedConclusion
+		? ({ kind: 'dictated' } as const)
+		: draft
+			? ({ kind: 'draft', text: draft.text, edited: draft.edited, typed: draft.typed } as const)
+			: draftLoading
+				? ({ kind: 'loading' } as const)
+				: !findingsLanded
+					? ({ kind: 'waiting' } as const)
+					: ({ kind: 'none', failed: draftFailed } as const);
+	// The gate re-arms on any change to what it confirms (spec §5).
+	// A check sits on the sentence that now holds its words (units move as the grouping settles).
+	$: placedChecks = checks.map((c) => ({ ...c, unitId: unitFor(c.quote, stackUnits) }));
+	$: checksBehind = stackView && !isRecording && !!verbatimNow.trim() && checkedFor !== verbatimNow;
+	// Backstop: the review path runs the check; if the text settled without one (nothing for the review to do), run
+	// tier 1 so Confirm never waits on a check nobody started.
+	let checksTimer: ReturnType<typeof setTimeout> | null = null;
+	$: if (checksBehind && !reviewBehind) {
+		void verbatimNow;
+		if (checksTimer) clearTimeout(checksTimer);
+		checksTimer = setTimeout(() => {
+			checksTimer = null;
+			if (checksBehind && !reviewBehind && !isRecording) void runChecks(verbatimNow, false);
+		}, 1500);
+	}
+	$: gateKey = [verbatimNow, JSON.stringify(checks.map((c) => c.key)), JSON.stringify(checkAnswers), findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
+		regionView.remainder.join('|'), String(rowsOpen), Object.keys(tappedRows).join('|'), Object.keys(skippedRows).join('|'), removedSentences.join('|'),
+		JSON.stringify(confirmedAssumed)].join('\u0003');
+	$: if (stackGate && stackGate.units_hash !== gateKey) {
+		stackGate = null;
+		onStackGate(null, '');
+	}
+	$: onStackSession(stackSessionId);
+	let ghostNow = '';
+	let stackUnits: StackUnit[] = [];
+	let stackTimer: ReturnType<typeof setTimeout> | null = null;
+	let closeTimer: ReturnType<typeof setTimeout> | null = null;
+	let stackBusy = false;
+	let groupFailures = 0; // consecutive /group failures (or unplaced replies); capped retries, then fail open
+	const GROUP_RETRIES = 3;
+	let stackSessionId = crypto.randomUUID();
+	let stackManualMoves = 0;
+	let stackLatency: Record<string, number> = {};
+	let lastJevCovered: string[] = []; // shadow: today's coverage pills, for the log
+	// Shadow Structured build: once per sampled session, after recording stops — never per settle, so it
+	// never queues the live polish behind it on the shared Cerebras limits.
+	let stackShadowSampled = Math.random() < stackShadowRate;
+	let lastRegionsKey = '';
+	$: {
+		const k = stackRegions.map((r) => r.name).join('|');
+		if (k !== lastRegionsKey) {
+			lastRegionsKey = k;
+			stackUnits = [];
+			fixedReferrals = null; // a new case asks its own questions
+			scheduleGroup(0);
+			scheduleItems(0); // the referral row appears before anything is dictated
+			void loadSlimSheet();
+		}
+	}
 	const STRUCTURE_DEBOUNCE_MS = 1500;
 	$: structuredStale = polishMode === 'structured' && !!verbatimNow.trim() && !isCurrent(structured, verbatimNow);
 	// The parent can set the mode too (a draft restored in Structured view): build for it.
@@ -230,6 +409,8 @@
 	// Lab: Deepgram's interim words drawn in grey at the end of the verbatim text (ghostText);
 	// production keeps the caption under the editor.
 	function showGhost(text: string): void {
+		ghostNow = text; // the grouped view shows the words being spoken too
+		if (text.trim()) noteWords();
 		if (labConfig && editor) editor.dispatch({ effects: setGhost.of(text) });
 	}
 	function visibleEditor(): EditorView | null {
@@ -464,6 +645,10 @@
 	): void {
 		currentInterim = '';
 		showGhost('');
+		if (hybridStack && stackEditing) {
+			void dictateIntoEdit(transcript, asr);
+			return;
+		}
 
 		// Accumulate into session transcript
 		const appended = sessionTranscript ? `${sessionTranscript} ${transcript}` : transcript;
@@ -775,6 +960,9 @@
 					open_line: openStatement(solid),
 					latest_utterance: chunk,
 					checklist: checklistSections,
+					...(hybridStack && stackRegions.length
+						? { stack_regions: stackRegions.map((r) => r.name), stack_items: openItemsForVoice() }
+						: {}),
 					...(asr ?? {})
 				})
 			});
@@ -950,6 +1138,26 @@
 			// under it would be overwritten or duplicated. Join the polish instead.
 			route = 'polish';
 			reason = 'polish_in_flight';
+		}
+
+		// Voice commands (v2 §7.3, checklist §9): answer a named row, or select a named region's lines for a Delete
+		// click. The command's own words are never written.
+		const cmd = (data?.stack_command ?? null) as StackCommand | null;
+		if (hybridStack && !heldNow && pend && pendingText === chunk.trim() && cmd &&
+			((cmd.action === 'answer' && !!cmd.item && isOpenRow(cmd.item)) || (cmd.action === 'delete' && cmd.region))) {
+			isQwenWriting = true;
+			editor.dispatch(replaceAndClear({ from: pend.from, to: pend.to, insert: '' }));
+			isQwenWriting = false;
+			if (cmd.action === 'answer' && cmd.item) answerRow(cmd.item);
+			else deleteRegion = cmd.region;
+			emitDecision({ ...({} as DecisionRecord), id: data?.decision_id ?? `local-${++localDecisionSeq}`, seq: ++decisionSeq,
+				at: Date.now(), route: 'skip', reason: `stack_${cmd.action}`, qset: data?.qset ?? null, action: data?.action ?? null,
+				confidence: cmd.confidence, probabilities: null, is_correction: null, standalone: null, latency_ms: data?.latency_ms ?? null,
+				roundtrip_ms: roundtrip, polish_called: false, polish_ms: null, utterance_len: chunk.length, utterance_hash: hash8(chunk),
+				applied_len: 0, closes_line: false, line_closed_by: null, error: null, asr_fix_count: 0, asr_flag_count: 0,
+				repair_ms: null, asr_conf: asr?.asr_conf ?? null, asr_min_conf: asr?.asr_min_conf ?? null,
+				asr_word_confs: asr?.asr_word_confs ?? null, wait_ms: waitMs, final_to_solid_ms: Date.now() - arrivedAt }, chunk);
+			return;
 		}
 
 		// Polish (now or later) is given the cleaned text, not the raw final: the code-side
@@ -1281,6 +1489,545 @@
 			void buildStructured();
 		}, delay);
 	}
+	function scheduleGroup(delay = GROUP_DEBOUNCE_MS): void {
+		if (!hybridStack || !stackRegions.length) return;
+		if (stackTimer) clearTimeout(stackTimer);
+		stackTimer = setTimeout(() => {
+			stackTimer = null;
+			void runGroup();
+		}, delay);
+	}
+	/** What the grouper gets: while words are still coming, the sentence being spoken is held back (it can still grow
+	 *  or be re-punctuated); a pause (PAUSE_MS with no new words) or stopping releases it. The pause rule is the
+	 *  dictation flow's own idea of a finished statement (hand read 2026-10-12: holding until the next sentence left
+	 *  the last one waiting through every pause). */
+	const PAUSE_MS = 1200;
+	let lastWordsAt = 0;
+	let pauseTimer: ReturnType<typeof setTimeout> | null = null;
+	// A sentence already placed is never held back again (debug trace 2026-10-12: a polish edit after the pause
+	// restarted the hold-back, the next grouping left the placed last sentence out, and it fell back into the box).
+	const groupable = (v: string) => (!isRecording || Date.now() - lastWordsAt >= PAUSE_MS ? v : heldBack(v, stackUnits));
+	/** New speech (a final or interim words) restarts the hold-back; the polish's own edits never do. */
+	function noteWords(): void {
+		if (!isRecording || isQwenWriting) return;
+		lastWordsAt = Date.now();
+		if (pauseTimer) clearTimeout(pauseTimer);
+		pauseTimer = setTimeout(() => {
+			pauseTimer = null;
+			scheduleGroup(0); // the pause releases the held sentence
+		}, PAUSE_MS + 50);
+	}
+	async function runGroup(): Promise<void> {
+		if (!groupable(verbatimNow).trim()) return;
+		if (stackBusy || structureBusy()) {
+			scheduleGroup(); // as the Structured build: wait for pending (faded) text to settle
+			return;
+		}
+		const text = groupable(verbatimNow);
+		stackBusy = true;
+		try {
+			const res = await postGroup($token, { scan_type: scanType, text, regions: stackRegions, previous: stackUnits });
+			if (groupable(verbatimNow) === text) {
+				stackUnits = res.units;
+				onStackPills(res.pills);
+				void refreshAssumed(); // the checks wait for the end of dictation; the assumed normals follow the text
+				// The grouper failed or left sentences unplaced (they are kept, as said): retry a few times.
+				if ((res.error || res.units.some((u) => u.group === null && !u.heading)) && groupFailures < GROUP_RETRIES) {
+					groupFailures += 1;
+					stackBusy = false;
+					scheduleGroup(2000);
+					return;
+				}
+				groupFailures = 0;
+				for (const [k, v] of Object.entries(res.timings_ms)) stackLatency[k] = Math.max(stackLatency[k] ?? 0, v);
+			} else scheduleGroup(0);
+		} catch {
+			// fail open: the verbatim text is on screen; a few retries, then the gate lets Confirm through and the
+			// ungrouped text goes into the findings block as said
+			stackBusy = false;
+			if (groupFailures < GROUP_RETRIES) {
+				groupFailures += 1;
+				scheduleGroup(2000);
+			}
+			return;
+		} finally {
+			stackBusy = false;
+		}
+	}
+	function stackMove(id: number, group: string): void {
+		stackUnits = moveUnit(stackUnits, id, group);
+		stackManualMoves += 1;
+	}
+	// ── Scratchpad checklist ─────────────────────────────────────────────────────────────────────
+	/** The setup call: the referral rows, from the history alone, before anything is dictated. */
+	function scheduleItems(delay = ITEMS_DEBOUNCE_MS): void {
+		if (!hybridStack || !stackRegions.length) return;
+		if (itemsTimer) clearTimeout(itemsTimer);
+		itemsTimer = setTimeout(() => {
+			itemsTimer = null;
+			void refreshItems(false);
+			void refreshAssumed();
+		}, delay);
+	}
+	/** The end-of-dictation review: once the text has been still for a moment and the mic is off. */
+	function scheduleReview(text: string): void {
+		if (reviewTimer) clearTimeout(reviewTimer);
+		reviewTimer = setTimeout(() => {
+			reviewTimer = null;
+			if (!isRecording && verbatimNow === text && reviewedFor !== text) void gateReview(text);
+		}, REVIEW_IDLE_MS);
+	}
+	/** The first review always runs; after it, a material change runs the full review (and the conclusion reacts),
+	 *  anything else the quiet re-check. */
+	async function gateReview(text: string): Promise<void> {
+		const before = reviewedAbnormal;
+		const after = abnormalAll(stackUnits);
+		if (before === null) {
+			void runChecks(text, true);
+			return refreshItems(true);
+		}
+		let material = true; // fails to material: a failure re-runs the review rather than skipping it
+		if (before.map(normS).join('\u0003') === after.map(normS).join('\u0003')) material = false;
+		else {
+			try {
+				material = (await postChanged($token, { before, after })).material;
+			} catch {
+				/* material */
+			}
+		}
+		if (isRecording || verbatimNow !== text || reviewedFor === text) return; // superseded
+		void runChecks(text, material);
+		if (!material) return recheckRows(text);
+		void refreshItems(true);
+		void reactConclusion(before, after);
+	}
+	/** The integrity check for this text. A failure shows nothing new and lets Confirm through (never a blocker it
+	 *  cannot clear); tier 2 flags already shown stay while their words do. */
+	async function runChecks(text: string, semantic: boolean): Promise<void> {
+		const seq = ++checkSeq;
+		const keepSemantic = () => semanticChecks.filter((c) => text.includes(c.quote));
+		try {
+			const res = await postDictationCheck($token, { findings: text, include_semantic: semantic, scan_type: scanType, clinical_history: clinicalHistory });
+			if (seq !== checkSeq) return;
+			const all = toChecks(text, res.flags ?? [], stackUnits);
+			const tier1 = all.filter((c) => c.blocking);
+			semanticChecks = semantic && !tier1.length ? all.filter((c) => !c.blocking) : keepSemantic();
+			checks = [...tier1, ...semanticChecks];
+		} catch {
+			if (seq !== checkSeq) return;
+			semanticChecks = keepSemantic();
+			checks = semanticChecks;
+		}
+		seenChecks = { ...seenChecks, ...Object.fromEntries(checks.map((c) => [c.key, c])) };
+		checkedFor = text;
+	}
+	/** "✓ As dictated" or Skip on a check. */
+	function answerCheck(key: string, how: CheckAnswer): void {
+		checkAnswers = { ...checkAnswers, [key]: how };
+	}
+	/** The quiet re-check: the rows on screen against the current dictation; no writer call, no skeleton. */
+	async function recheckRows(text: string): Promise<void> {
+		const seq = ++itemsSeq;
+		const tapped = Object.values(tappedRows).flatMap((r) => r.sentences);
+		const open = stackItems.filter((i) => !i.answered);
+		if (!open.length && !tapped.length) {
+			reviewedFor = text;
+			return;
+		}
+		try {
+			const res = await postRecheck($token, { dictation: text, rows: open, removed: removedSentences, tapped });
+			if (seq !== itemsSeq) return;
+			reviewedFor = text;
+			applyRows(res, true);
+		} catch {
+			if (seq === itemsSeq) reviewedFor = text; // fail open: the rows on screen stay as they are
+		}
+	}
+	/** A material change: an unedited AI draft is redrawn; a conclusion the radiologist owns is checked and, if it no
+	 *  longer reflects the findings, gets the quiet note (never overwritten, Confirm never blocked). */
+	async function reactConclusion(before: string[], after: string[]): Promise<void> {
+		if (!dictatedConclusion && draft && !draft.edited && !draft.typed) {
+			draft = null;
+			conclusionNote = null;
+			return requestDraft();
+		}
+		const text = dictatedConclusion || draft?.text || '';
+		if (!text.trim() || !after.length) return;
+		try {
+			const res = await postConclusionCheck($token, { conclusion: text, findings: after });
+			if (!res.stale || (dictatedConclusion || draft?.text || '') !== text) return;
+			const added = after.filter((a) => !before.some((b) => normS(b) === normS(a)));
+			const prev = conclusionNote?.for === text ? conclusionNote.added : [];
+			conclusionNote = { for: text, added: [...new Set([...prev, ...added])], suggestion: null, loading: false };
+		} catch {
+			/* fails quiet: no note */
+		}
+	}
+	async function suggestConclusion(): Promise<void> {
+		if (!conclusionNote || conclusionNote.loading) return;
+		const note = conclusionNote;
+		conclusionNote = { ...note, loading: true };
+		try {
+			const res = await postDraft($token, { scan_type: scanType, clinical_history: clinicalHistory, findings: findingsText(stackUnits, stackGroups) });
+			if (conclusionNote?.for === note.for) conclusionNote = { ...note, suggestion: res.text || null, loading: false };
+		} catch {
+			if (conclusionNote?.for === note.for) conclusionNote = { ...note, loading: false };
+		}
+	}
+	/** The suggestion accepted: it replaces the conclusion as an AI draft (a dictated conclusion's lines are removed). */
+	function acceptConclusion(): void {
+		const text = conclusionNote?.suggestion;
+		if (!text) return;
+		if (dictatedConclusion) stackDeleteRegion(CONCLUSION, true);
+		draft = { text, hash: findingsHash(stackUnits), edited: false, typed: false };
+		conclusionNote = null;
+	}
+	// The note belongs to the conclusion it was computed for: any edit to the conclusion retires it.
+	$: if (conclusionNote && conclusionNote.for !== (dictatedConclusion || draft?.text || '')) conclusionNote = null;
+	/** The rows for this dictation (spec §4.2). A row the dictation answers shows green, then folds away. */
+	const normS = (x: string) => x.trim().toLowerCase().replace(/\.$/, '').replace(/\s+/g, ' ');
+	/** The rows for this dictation (spec §4.2). A row the dictation answers shows green, then folds away. A failed or
+	 *  shorter writer reply never clears a row still waiting for the radiologist (review 2026-10-12): it stays until
+	 *  answered, tapped or removed, so the gate cannot unlock by omission. */
+	async function refreshItems(review: boolean): Promise<void> {
+		const seq = ++itemsSeq;
+		const text = review ? verbatimNow : '';
+		const abnormal = abnormalAll(stackUnits);
+		if (review) reviewing = true;
+		try {
+			const res = await postItems($token, { scan_type: scanType, clinical_history: clinicalHistory, regions: pillRegions,
+				dictation: text, abnormal, not_assessable: stackNotAssessable, removed: removedSentences,
+				tapped: Object.values(tappedRows).flatMap((r) => r.sentences), referrals: fixedReferrals, review });
+			if (seq !== itemsSeq) return; // superseded while in flight
+			if (review) {
+				reviewedFor = text;
+				reviewFailed = !!res.error;
+			}
+			if (res.error) return; // the writer failed: what is on screen stays
+			if (review) reviewedAbnormal = abnormal;
+			if (fixedReferrals === null)
+				fixedReferrals = res.items.filter((i) => i.kind === 'referral').map((i) => ({ question: i.question, region: i.region, sentences: i.sentences }));
+			applyRows(res, false);
+		} catch {
+			if (seq === itemsSeq && review) {
+				reviewedFor = text; // fail open: nothing new is asked; Confirm is not held, but the gate says so
+				reviewFailed = true;
+			}
+		} finally {
+			if (seq === itemsSeq) reviewing = false;
+		}
+	}
+	/** A reply applied: contradicted taps dropped, answered rows shown green then folded, the set replaced. A quiet
+	 *  re-check saw only the open rows, so rows already answered and the capped list stay. */
+	function applyRows(res: ItemsResult, recheck: boolean): void {
+		// Tapped answers the dictation now contradicts are dropped; a row left with none is asked again.
+		if (res.contradicted.length) {
+			const bad = new Set(res.contradicted.map(normS));
+			tappedRows = Object.fromEntries(Object.entries(tappedRows)
+				.map(([k, r]) => [k, { ...r, sentences: r.sentences.filter((x) => !bad.has(normS(x))) }] as const)
+				.filter(([, r]) => r.sentences.length > 0));
+		}
+		for (const it of res.items) {
+			if (!it.answered || dictatedRows[it.id] || tappedRows[it.id]) continue;
+			const was = stackItems.find((x) => x.id === it.id);
+			dictatedRows = { ...dictatedRows, [it.id]: { ...it, sentences: was?.sentences ?? it.sentences } };
+			setTimeout(() => {
+				foldedRows = [...foldedRows, it.id];
+				stackItems = stackItems.filter((x) => x.id !== it.id);
+			}, FOLD_MS);
+		}
+		// Each reply replaces the set on screen (tapped answers are kept separately): nothing accumulates.
+		const kept = recheck ? stackItems.filter((x) => x.answered && !res.items.some((r) => r.id === x.id)) : [];
+		stackItems = [...kept, ...res.items].filter((it) => !foldedRows.includes(it.id));
+		if (!recheck) stackCapped = res.capped;
+		shownSentences = [...new Set([...shownSentences, ...stackItems.flatMap((i) => i.sentences), ...res.capped.flatMap((i) => i.sentences)])];
+		stackLatency.items = Math.max(stackLatency.items ?? 0, res.ms);
+		void refreshAssumed(); // a row owns its check: the normals saying the same step aside
+	}
+	/** "Abnormal…" in a row: the finding is added to the dictation as said (the grouper places it, the review re-runs)
+	 *  and the row folds as answered by the radiologist's own words. */
+	function abnormalRow(id: string, text: string): void {
+		const it = stackItems.find((x) => x.id === id);
+		if (!it) return;
+		skippedRows = { ...skippedRows, [id]: { item: it, how: 'abnormal' } };
+		stackAppend(text);
+	}
+	/** A pre-written normal edited: the original is never stated, and the edited text joins the dictation as the
+	 *  radiologist's own words (the region then reads as dictated normal). Empty: the same as ×. */
+	function editAssumed(original: string, text: string): void {
+		removeSentence(original);
+		if (text.trim()) stackAppend(text.trim());
+	}
+	/** Skip a finding check, or mark a referral question not assessed: folded, nothing stated, logged. */
+	function skipRow(id: string): void {
+		const it = stackItems.find((x) => x.id === id);
+		if (!it || tappedRows[id]) return;
+		skippedRows = { ...skippedRows, [id]: { item: it, how: it.kind === 'referral' ? 'not_assessed' : 'skip' } };
+	}
+	/** Every row sentence ever shown, capped ones included: a region normal saying the same is never assumed. The
+	 *  current rows and the tapped answers go first (the server keeps the first 100). */
+	function ownedNow(): string[] {
+		return [...new Set([...stackItems.flatMap((i) => i.sentences), ...stackCapped.flatMap((i) => i.sentences),
+			...Object.values(tappedRows).flatMap((r) => r.sentences), ...shownSentences])];
+	}
+	/** The region normals for this session (spec §8): made once per scan-type family and shared; the first case of
+	 *  a new family may wait for it, and the scratchpad works without it meanwhile. */
+	async function loadSlimSheet(): Promise<void> {
+		const seq = ++slimSeq;
+		stackRegionNormals = {};
+		stackNotAssessable = '';
+		onStackSheet(null);
+		if (!hybridStack || !stackRegions.length) return;
+		try {
+			const res = await postSlimSheet($token, { scan_type: scanType, clinical_history: clinicalHistory, template_id: stackTemplateId });
+			if (seq !== slimSeq || !res.ready) return;
+			stackRegionNormals = res.region_normals;
+			stackNotAssessable = res.not_assessable;
+			onStackSheet(res.id);
+		} catch {
+			/* fail open: no quiet lines */
+		}
+	}
+	/** Which region normals stay assumed, given the dictation (spec §5). The answer is kept with the dictation and
+	 *  region states it was computed for; a failure assumes nothing (and lets Confirm through). */
+	async function refreshAssumed(): Promise<void> {
+		if (!Object.keys(stackRegionNormals).length) return;
+		const seq = ++assumedSeq;
+		const snap = { dictation: verbatimNow, abnormal: [...regionView.abnormal], untouched: [...regionView.assumedNormal] };
+		try {
+			const res = await postAssumed($token, { dictation: snap.dictation, region_normals: stackRegionNormals, abnormal: snap.abnormal,
+				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences, owned: ownedNow(),
+				touched: touchedRegions() });
+			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed };
+		} catch {
+			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {} }; // nothing assumed
+		}
+	}
+	/** Regions a row or a removal concerns: every one of their sentences is checked, not only word matches. */
+	function touchedRegions(): string[] {
+		const rows = [...stackItems, ...stackCapped, ...Object.values(tappedRows)].map((r) => r.region);
+		const gone = new Set(removedSentences.map(normS));
+		const fromSheet = Object.entries(stackRegionNormals).filter(([, xs]) => xs.some((x) => gone.has(normS(x)))).map(([r]) => r);
+		return [...new Set([...rows, ...fromSheet])].filter(Boolean);
+	}
+	$: if (Object.keys(stackRegionNormals).length) void refreshAssumed();
+	// Confirm waits while the answer is behind the dictation; this keeps it from waiting on a grouping that failed.
+	let assumedTimer: ReturnType<typeof setTimeout> | null = null;
+	function armAssumed(): void {
+		if (assumedTimer) clearTimeout(assumedTimer);
+		assumedTimer = setTimeout(() => {
+			assumedTimer = null;
+			if (assumedBehind) void refreshAssumed();
+		}, 1200);
+	}
+	// Re-armed on every text change and every answer while behind (review 2026-10-12: a boolean that stays true
+	// re-runs nothing in Svelte 4, so the timer must depend on what changes).
+	$: if (hybridStack && assumedBehind) {
+		void verbatimNow;
+		void assumedSnap;
+		armAssumed();
+	}
+	function isOpenRow(id: string): boolean {
+		const it = stackItems.find((x) => x.id === id);
+		return !!it && !it.answered && !tappedRows[id] && !skippedRows[id] && rowSentences(it, removedSentences).length > 0;
+	}
+	/** A tap (or voice "answer …"): the row's listed sentences become the radiologist's answer. */
+	function answerRow(id: string): void {
+		const it = stackItems.find((x) => x.id === id);
+		if (!it || !isOpenRow(id)) return;
+		tappedRows = { ...tappedRows, [id]: { ...it, sentences: rowSentences(it, removedSentences) } };
+	}
+	/** × on a row sentence or an assumed normal: never stated, never offered again. */
+	function removeSentence(sentence: string): void {
+		const t = sentence.trim();
+		if (!t || removedSentences.some((r) => r.toLowerCase() === t.toLowerCase())) return;
+		removedSentences = [...removedSentences, t];
+		void refreshAssumed(); // rows filter removed sentences on screen; no new writer call
+	}
+	/** The open rows as the voice command sees them: the question and the sentences "accept" would add. */
+	function openItemsForVoice(): { id: string; text: string }[] {
+		return stackItems.filter((i) => isOpenRow(i.id))
+			.map((i) => ({ id: i.id, text: `${i.question} ${rowSentences(i, removedSentences).join(' ')}` }));
+	}
+	/** A line edited in the view: exactly that sentence (or part) changes in the verbatim text. */
+	function stackEditLine(id: number, part: number | null, text: string): void {
+		if (!editor) return;
+		const c = lineChange(editor.state.doc.toString(), stackUnits, id, part, text);
+		if (c) editor.dispatch({ changes: c });
+	}
+	/** A final while a line or the draft is open: written there as said (the bundle's cleaned text), never
+	 *  polished; a voice accept still accepts. */
+	async function dictateIntoEdit(chunk: string, asr: AsrFields | null): Promise<void> {
+		const solid = editor ? editor.state.doc.toString() : '';
+		const { data } = await askBundle(chunk, solid, asr);
+		const cmd = (data?.stack_command ?? null) as StackCommand | null;
+		if (cmd?.action === 'answer' && cmd.item && isOpenRow(cmd.item)) return answerRow(cmd.item);
+		if (cmd?.action === 'delete') return; // in an open line, the keyboard deletes
+		const text = (data?.clean_text || data?.text || chunk).trim();
+		if (!text) return;
+		if (stackEditing) stackIncoming = { seq: ++incomingSeq, text };
+		else stackAppend(text); // the field closed while the words were being cleaned: never drop them
+	}
+	/** A finding typed into the view's new-line field: appended to the verbatim text as said. */
+	function stackAppend(text: string): void {
+		if (!editor) return;
+		const pend = firstPendingRange();
+		const at = pend ? pend.from : editor.state.doc.length;
+		editor.dispatch({ changes: { from: at, insert: appendSentence(editor.state.doc.sliceString(0, at), text) } });
+	}
+	function stackDeleteRegion(region: string, confirmed: boolean): void {
+		deleteRegion = null;
+		if (!confirmed || !editor) return;
+		// Remove from the last line back, so earlier offsets stay valid. A split sentence loses only its parts
+		// in this region (one change per sentence: the parts kept, rejoined).
+		const units = [...stackUnits].filter((u) => !u.heading).reverse();
+		for (const u of units) {
+			const doc = editor.state.doc.toString();
+			if (u.parts && u.parts.length > 1) {
+				if (!u.parts.some((p) => p.group === region)) continue;
+				const kept = u.parts.filter((p) => p.group !== region).map((p) => p.text).join(' ');
+				const c = lineChange(doc, stackUnits, u.id, null, kept);
+				if (c) editor.dispatch({ changes: c });
+			} else if (u.group === region) {
+				const c = lineChange(doc, stackUnits, u.id, null, '');
+				if (c) editor.dispatch({ changes: c });
+			}
+		}
+	}
+	async function requestDraft(): Promise<void> {
+		const findings = findingsText(stackUnits, stackGroups);
+		if (!findings.trim() || draftLoading) return;
+		draftLoading = true;
+		draftFailed = false;
+		try {
+			const res = await postDraft($token, { scan_type: scanType, clinical_history: clinicalHistory, findings });
+			if (res.text) draft = { text: res.text, hash: findingsHash(stackUnits), edited: false, typed: false };
+			else draftFailed = true;
+			stackLatency.draft = Math.max(stackLatency.draft ?? 0, res.ms);
+		} catch {
+			draftFailed = true; // fail open: the radiologist types or dictates one, or asks again
+		} finally {
+			draftLoading = false;
+		}
+	}
+	function stackDraftEdit(text: string): void {
+		if (draft === null && !text.trim()) return;
+		draft = text || draft ? { text, hash: draft?.hash ?? findingsHash(stackUnits), edited: true, typed: draft?.typed ?? true } : null;
+	}
+	function stackDraftRefresh(): void {
+		draft = null; // offered only when the field is empty (the ✨ button): nothing of the radiologist's is replaced
+		void requestDraft();
+	}
+	function stackConfirm(): void {
+		const gate: GateRecord = {
+			confirmed_at: new Date().toISOString(),
+			conclusion_text: dictatedConclusion || draft?.text || '',
+			conclusion_source: dictatedConclusion ? 'dictated' : draft?.typed ? 'typed' : draft?.edited ? 'draft_edited' : 'draft',
+			assumed_normal: namedNormals ? regionView.assumedNormal : [],
+			remainder_normal: [],
+			dictated_normal: regionView.dictatedNormal,
+			items: [
+				...Object.values(tappedRows).map((r): GateItem => ({ id: r.id, kind: r.kind, region: r.region, question: r.question,
+					sentences: r.sentences.filter((x) => !removedSentences.some((g) => normS(g) === normS(x))), answered_by: 'tap' })),
+				...Object.values(dictatedRows).filter((r) => !tappedRows[r.id])
+					.map((r): GateItem => ({ id: r.id, kind: r.kind, region: r.region, question: r.question, sentences: r.sentences, answered_by: 'dictation' })),
+				...Object.values(skippedRows).filter(({ item }) => !tappedRows[item.id])
+					.map(({ item, how }): GateItem => ({ id: item.id, kind: item.kind, region: item.region, question: item.question, sentences: [],
+						answered_by: how === 'abnormal' ? 'dictation' : how }))
+			],
+			assumed: confirmedAssumed,
+			removed: removedSentences,
+			capped: stackCapped.map((c) => ({ region: c.region, question: c.question })),
+			review_failed: reviewFailed,
+			checks: Object.values(seenChecks).map((c) => ({ kind: c.kind, quote: c.quote, other: c.other,
+				answered_by: checkAnswers[c.key] ?? (checks.some((x) => x.key === c.key) ? 'open' : 'edited') })),
+			units_hash: gateKey
+		};
+		stackGate = gate;
+		// Sentences the grouping never received (after failed retries) still reach the report, as said.
+		const tail = liveTail(verbatimNow, stackUnits).map((text, k): StackUnit => ({
+			id: 100000 + k, text, group: null, structure: null, attach_to: null, parts: null, covers: [], pinned: false, heading: false
+		}));
+		onStackGate(gate, buildFindingsBlock([...stackUnits, ...tail], stackGroups, gate));
+		void sendStackLog();
+	}
+	function scheduleClose(): void {
+		if (!hybridStack) return;
+		if (closeTimer) clearTimeout(closeTimer);
+		closeTimer = setTimeout(async () => {
+			closeTimer = null;
+			if (isRecording || !stackUnits.length) return;
+			try {
+				const res = await postClose($token, { units: stackUnits, regions: stackRegions });
+				stackUnits = res.units;
+				onStackPills(res.pills);
+			} catch {
+				/* fail open */
+			}
+			if (!isRecording && !conclusionText(stackUnits) && !draft) void requestDraft();
+			if (stackShadowSampled && !isRecording) {
+				structuredWanted = true;
+				try {
+					await buildStructured();
+				} catch {
+					/* shadow only */
+				}
+				structuredWanted = false;
+			}
+			void sendStackLog();
+		}, CLOSE_IDLE_MS);
+	}
+	async function sendStackLog(): Promise<void> {
+		if (!hybridStack || !stackUnits.length) return;
+		try {
+			await postLog($token, {
+				session_id: stackSessionId, scan_type: scanType, schema_key: stackSchemaMeta?.key ?? null,
+				schema_source: stackSchemaMeta?.source ?? null, provisional: stackSchemaMeta?.provisional ?? false,
+				units: stackUnits, pills_derived: [...new Set(stackUnits.flatMap((u) => u.covers))],
+				pills_jev: lastJevCovered, sections: checklistSections, structured_text: structured.text ?? '',
+				manual_moves: stackManualMoves, latency_ms: stackLatency, gate: stackGate
+			});
+		} catch {
+			/* logging never affects dictation */
+		}
+	}
+	/** A cleared scratchpad ends the stack session: log it, then start a new one. */
+	function resetStack(): void {
+		void sendStackLog();
+		stackUnits = [];
+		onStackPills([]);
+		stackSessionId = crypto.randomUUID();
+		stackManualMoves = 0;
+		stackLatency = {};
+		stackShadowSampled = Math.random() < stackShadowRate;
+		stackItems = [];
+		stackCapped = [];
+		tappedRows = {};
+		dictatedRows = {};
+		foldedRows = [];
+		shownSentences = [];
+		fixedReferrals = null;
+		skippedRows = {};
+		reviewedFor = '';
+		reviewedAbnormal = null;
+		conclusionNote = null;
+		checks = [];
+		semanticChecks = [];
+		checkAnswers = {};
+		seenChecks = {};
+		checkedFor = '';
+		reviewFailed = false;
+		removedSentences = [];
+		assumedSnap = null;
+		scheduleItems(0);
+		draft = null;
+		draftFailed = false;
+		deleteRegion = null;
+		if (stackGate) {
+			stackGate = null;
+			onStackGate(null, '');
+		}
+	}
 	/** Derive the structured text from the verbatim text: /process in structured mode, the
 	 *  verbatim text as the transcript, an empty scratchpad. Never while a final is faded or a
 	 *  polish is pending (it would structure half a statement); the next settle retries. */
@@ -1358,12 +2105,14 @@
 		// sub-second) never wait for the IntelliPrompts call.
 		const coverage = review('coverage').then((data) => {
 			if (data.covered_sections && Array.isArray(data.covered_sections)) {
+				lastJevCovered = data.covered_sections;
 				onCoveredSectionsChange(data.covered_sections);
 			}
 			onCoverageScoresChange(data.coverage_scores ?? null);
 			if (data.coverage) onCoverageTrace(data.coverage as CoverageTrace);
 		});
-		const prompts = review('prompts').then((data) => {
+		// Scratchpad: checklist rows replace IntelliPrompts (their margin anchors to the hidden editor).
+		const prompts = stackView ? Promise.resolve() : review('prompts').then((data) => {
 			// Backend now owns the full merge — replace activePrompts with the final merged list
 			if (data.prompts && Array.isArray(data.prompts)) {
 				onPromptsChange(data.prompts);
@@ -1501,6 +2250,10 @@
 		isRecording = false;
 		showGhost(''); // words never finalised must not linger as ghost text
 		onRecordingChange(false);
+		lastWordsAt = 0;
+		groupFailures = 0; // retries resume once dictation stops, so nothing is left stuck in the live strip
+		scheduleGroup(0); // the held-back last sentence now joins its region
+		scheduleClose();
 		isConnecting = false;
 		if (workletNode) {
 			workletNode.disconnect();
@@ -1587,11 +2340,16 @@
 				if (update.docChanged) {
 					const content = update.state.doc.toString();
 					verbatimNow = content;
+					noteWords();
 					if (polishMode === 'clean') onContentChange(content);
 					if (!content.trim()) {
 						structured = emptyStructured();
 						showStructured('');
-					} else scheduleStructure();
+						if (stackUnits.length) resetStack();
+					} else {
+						scheduleStructure();
+						scheduleGroup();
+					}
 					if (!isRecording && !isQwenWriting) {
 					let hasWordChange = false;
 					let charsDeleted = 0;
@@ -1655,6 +2413,13 @@
 
 	onDestroy(() => {
 		if (typingDebounceTimer) clearTimeout(typingDebounceTimer);
+		if (stackTimer) clearTimeout(stackTimer);
+		if (closeTimer) clearTimeout(closeTimer);
+		if (itemsTimer) clearTimeout(itemsTimer);
+		if (assumedTimer) clearTimeout(assumedTimer);
+		if (reviewTimer) clearTimeout(reviewTimer);
+		if (pauseTimer) clearTimeout(pauseTimer);
+		void sendStackLog();
 		if (editor) {
 			editor.destroy();
 			editor = null;
@@ -1690,6 +2455,7 @@
 
 	<!-- Floating dictate button — centered, overlaps the top edge of the editor+margin row -->
 	<div class="flex flex-col items-center gap-1.5 relative z-10">
+		{#if !stackView}
 		<div class="inline-flex bg-white/[0.03] border border-white/10 rounded-lg p-0.5 gap-0.5" role="group" aria-label="Polish mode">
 			<button type="button" onclick={() => setMode('clean')}
 				class={polishMode === 'clean'
@@ -1704,6 +2470,7 @@
 				Structured
 			</button>
 		</div>
+		{/if}
 		<button
 			type="button"
 			onclick={toggleRecording}
@@ -1823,14 +2590,24 @@
 							{structuredNotice || (structured.text === null ? 'Structuring…' : 'Updating structured view…')}
 						</div>
 					{/if}
-					<div bind:this={editorContainer} class="min-h-full" class:hidden={polishMode === 'structured'}></div>
-					<div bind:this={structuredContainer} class="min-h-full" class:hidden={polishMode !== 'structured'}></div>
+					<div bind:this={editorContainer} class="min-h-full" class:hidden={stackView || polishMode === 'structured'}></div>
+					<div bind:this={structuredContainer} class="min-h-full" class:hidden={stackView || polishMode !== 'structured'}></div>
+					{#if stackView}
+						<HybridStackView units={stackUnits} groups={stackGroups} {pillRegions} pending={stripNow}
+							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
+							checks={placedChecks} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {deleteRegion}
+							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
+							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
+							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
+							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
+							syncing={assumedBehind || checksBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
+					{/if}
 				</div>
 
 				<!-- Margin column — width animates open/closed; stops click bubbling to editor focus handler -->
 				<div
 					class="shrink-0 overflow-hidden"
-					style="width: {activePrompts.length > 0 ? '240px' : '0px'}; transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1)"
+					style="width: {activePrompts.length > 0 && !stackView ? '240px' : '0px'}; transition: width 300ms cubic-bezier(0.4, 0, 0.2, 1)"
 					onclick={(e) => e.stopPropagation()}
 				>
 					<IntelliPromptsMargin
@@ -1891,6 +2668,7 @@
 	:global(.cm-integrity-laterality_conflict) { --integrity: 167, 139, 250; }
 	:global(.cm-integrity-measurement_mismatch),
 	:global(.cm-integrity-unit_anomaly) { --integrity: 56, 189, 248; }
+	:global(.cm-integrity-garbled_phrase) { --integrity: 251, 191, 36; }
 	:global(.cm-integrity-related) {
 		text-decoration-style: dotted !important;
 		background: transparent !important;

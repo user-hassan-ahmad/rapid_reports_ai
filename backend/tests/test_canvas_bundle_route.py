@@ -223,3 +223,29 @@ def test_flags_are_returned_and_the_log_has_no_words(authed_client, lab, monkeyp
     p = json.loads(line.split(" ", 1)[1])
     assert p["asr_flag_count"] == 1 and p["asr_fix_count"] == 0 and p["word_sense_min"] == 0.37
     assert "glands" not in line and "renal" not in line
+
+
+def test_stack_command_is_asked_beside_the_bundle(authed_client, lab, monkeypatch):
+    lab(FakeBundle())
+    seen = {}
+
+    async def ask(scratchpad, utterance, regions, chips):
+        seen.update(scratchpad=scratchpad, regions=regions, chips=chips)
+        return {"command": "accept_suggestion", "confidence": 0.7, "region": None, "chip": "No free gas."}
+    monkeypatch.setattr(cr, "ask_command", ask)
+    d = authed_client.post("/api/canvas/bundle", json={**BODY, "stack_regions": ["Lungs"],
+                                                       "stack_items": [{"id": "r1", "text": "No free gas."}]}).json()
+    assert d["stack_command"] == {"action": "answer", "region": None, "item": "r1",
+                                  "command": "accept_suggestion", "confidence": 0.7}
+    assert seen == {"scratchpad": BODY["active"], "regions": ["Lungs"], "chips": ["No free gas."]}
+
+
+def test_stack_command_not_asked_without_regions_and_fails_open(authed_client, lab, monkeypatch):
+    lab(FakeBundle())
+
+    async def boom(*a, **k):
+        raise RuntimeError("jev down")
+    monkeypatch.setattr(cr, "ask_command", boom)
+    assert authed_client.post("/api/canvas/bundle", json=BODY).json()["stack_command"] is None
+    d = authed_client.post("/api/canvas/bundle", json={**BODY, "stack_regions": ["Lungs"]}).json()
+    assert d["stack_command"] is None and d["route"] == "fast_append"

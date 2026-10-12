@@ -32,7 +32,7 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
 from .report_reconcile import (  # noqa: F401 — re-exported; tests patch these names on this module
     JEV_MODEL, JEV_TIMEOUT_S, JEV_URL, MAX_FINDING_OPTIONS, MAX_OPTIONS, PLAN_SYS, PLAN_TIMEOUT_S,
@@ -253,6 +253,51 @@ def distinct_keys(cands: List[FindingNegative]) -> List[str]:
 
 
 # ── compile ──────────────────────────────────────────────────────────────────
+
+# Sections a stack-session fallback never passes to the generator: they decide content (negatives, differentials,
+# impression shape) that the radiologist already confirmed in the scratchpad.
+# "Region Normals" and "Recommendation Scope" are slim-sheet sections (checklist spec §8): the confirmed normals arrive
+# in the findings block, and recommendations are the conclusion's or the options panel's, never the generator's.
+STACK_FALLBACK_DROP = {"Companion Matrix", "Clinical Lane", "Impression Exemplars", "Impression Plan",
+                       "Conditional Suppression Rules", "Interpretive Clause Rules", "Region Normals",
+                       "Recommendation Scope"}
+
+
+def stack_fallback(sheet: str, conclusion: str, declined: Sequence[str] = ()) -> Brief:
+    """The brief of every stack session (checklist spec §7): from the slim sheet, or from today's sheet when the slim
+    one is missing; never the raw sheet, which would state its own negatives and impression. Structure and style
+    stay; content comes from the findings block (the radiologist's answers and confirmed normals), the confirmed
+    conclusion and the removed sentences. No negatives stage. The Normal-study path is dropped: unchecked,
+    it would state undictated negatives about the abnormal region. Pure code; never raises."""
+    try:
+        secs = [s for s in parse_sheet(_ln.strip_links(sheet)) if s.heading not in STACK_FALLBACK_DROP]
+        for s in secs:
+            s.bullets = [b for b in s.bullets if b.label not in DROP_TOP_BULLETS and not b.label.startswith("Normal-study path")]
+    except Exception:  # the sheet itself may be what failed: structure from the findings block alone
+        secs = []
+    # Always (review 2026-10-12): the sweep order and style rules must never fill a step with normals of their own.
+    guard = [f'  - DO NOT ASSERT: "{t}" — removed by the radiologist' for t in declined]
+    secs.append(Section("Companion Matrix", bullets=[Bullet("Mandatory negatives", [
+        "- **Mandatory negatives:** (scratchpad: state only what the findings state — never a normal or negative "
+        "statement the findings do not contain, even for a region in the sweep order)"] + guard)]))
+    # The findings block is grouped by scratchpad region so every statement can be traced; the report's order and
+    # paragraphs are the house flow, not that grouping (hand read 2026-10-12: reports mirrored the scratchpad).
+    secs.append(Section("Scratchpad Session", bullets=[Bullet("Content and flow", [
+        "- **Content and flow:** the FINDINGS input is the radiologist's confirmed statements, labelled by region "
+        "only so each can be traced. Write FINDINGS in the paragraphs, order and joining that the Report Flow and "
+        "Structural Pattern set (an abnormal finding leads its paragraph), never in the input's order or under its "
+        "labels unless the Report Flow uses those headings. The Report Flow only decides WHERE the input's statements "
+        "go: a region or structure it lists that the input does not mention is left out entirely, never filled with a "
+        "normal statement (no 'not dilated', 'normal' or 'no lymphadenopathy' the input does not contain). Every "
+        "statement in the input appears, with its meaning unchanged; statements about the same structure may be joined "
+        "into one sentence, naming only the structures the input names; nothing is added."])]))
+    if conclusion.strip():
+        secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", [
+            "- **Confirmed conclusion (the radiologist's own; write the impression from it in report style, keeping "
+            "every finding it names and adding nothing it does not contain — no grade, negative or recommendation):** "
+            f'"{conclusion.strip()}"'])]))
+    return Brief(text=render(secs), decisions={"stack_fallback": True, "options": []}, reconcile_ms=0)
+
 
 async def compile_brief(sheet: str, scan_type: str, findings: str, clinical_history: str = "") -> Brief:
     t0 = time.time()

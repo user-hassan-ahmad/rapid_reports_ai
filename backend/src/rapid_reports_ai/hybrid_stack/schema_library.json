@@ -1,0 +1,506 @@
+{
+ "_note": "Visual schemas for the hybrid stack: broad regions (one visual zone each) with what each includes. A family lists region keys in report order. The grouper places each sentence in a region and names the structure; Jev maps the free-text scan type to a family.",
+ "regions": {
+  "lung_bases": {
+   "name": "Lung bases",
+   "includes": "visualised lower lungs and pleura, lower chest"
+  },
+  "liver": {
+   "name": "Liver",
+   "includes": "liver parenchyma, focal liver lesions, hepatic contour, cirrhosis, hepatic capsule"
+  },
+  "biliary": {
+   "name": "Gallbladder and bile ducts",
+   "includes": "gallbladder, intrahepatic and common bile ducts"
+  },
+  "pancreas": {
+   "name": "Pancreas",
+   "includes": "pancreas, pancreatic duct"
+  },
+  "spleen": {
+   "name": "Spleen",
+   "includes": "spleen size and lesions, splenic injury"
+  },
+  "adrenals_kidneys": {
+   "name": "Kidneys, ureters and adrenals",
+   "includes": "kidneys, renal calculi, hydronephrosis, perinephric space, ureters, vesicoureteric junction, adrenal glands"
+  },
+  "bowel": {
+   "name": "Stomach and bowel",
+   "includes": "oesophagus below the diaphragm, stomach, duodenum, small bowel, colon, appendix, rectum, bowel wall, diverticula"
+  },
+  "peritoneum": {
+   "name": "Peritoneum and mesentery",
+   "includes": "free fluid, ascites, free gas, collections and abscesses, omentum, mesentery, peritoneal deposits, pouch of Douglas"
+  },
+  "nodes_abdo": {
+   "name": "Abdominal and pelvic lymph nodes",
+   "includes": "retroperitoneal, para-aortic, mesenteric, iliac, pelvic sidewall and inguinal lymph nodes"
+  },
+  "vessels_abdo": {
+   "name": "Vessels",
+   "includes": "aorta, aneurysm and its neck and thrombus, IVC, iliac arteries, renal and mesenteric arteries, portal, splenic and mesenteric veins, varices"
+  },
+  "bladder": {
+   "name": "Bladder",
+   "includes": "urinary bladder"
+  },
+  "pelvic_organs": {
+   "name": "Pelvic organs",
+   "includes": "uterus, endometrium, cervix, ovaries, adnexa, prostate, seminal vesicles"
+  },
+  "abdo_bones": {
+   "name": "Bones and body wall",
+   "includes": "spine, pelvis bones, ribs, abdominal wall, hernias, muscles and subcutaneous tissues"
+  },
+  "lungs": {
+   "name": "Lungs and airways",
+   "includes": "lung parenchyma, nodules, masses, consolidation, infarcts, contusion, emphysema, scarring, trachea and bronchi"
+  },
+  "pleura": {
+   "name": "Pleura",
+   "includes": "pleural effusion, pneumothorax, haemothorax, pleural thickening"
+  },
+  "mediastinum": {
+   "name": "Mediastinum",
+   "includes": "mediastinal masses and fat, thymus, oesophagus, mediastinal haematoma"
+  },
+  "nodes_chest": {
+   "name": "Thoracic lymph nodes",
+   "includes": "mediastinal, hilar, paratracheal, subcarinal, axillary and supraclavicular lymph nodes"
+  },
+  "heart": {
+   "name": "Heart and pericardium",
+   "includes": "heart size, cardiac chambers, right heart strain, pericardial effusion, contrast reflux"
+  },
+  "pulm_arteries": {
+   "name": "Pulmonary arteries",
+   "includes": "pulmonary trunk and arteries, filling defects, emboli, opacification"
+  },
+  "aorta_chest": {
+   "name": "Aorta and great vessels",
+   "includes": "thoracic aorta, great vessels, SVC"
+  },
+  "thyroid_lower_neck": {
+   "name": "Thyroid and lower neck",
+   "includes": "thyroid, lower neck soft tissues"
+  },
+  "chest_wall": {
+   "name": "Chest wall and bones",
+   "includes": "ribs, sternum, thoracic spine, shoulder girdle, breasts, chest wall soft tissues"
+  },
+  "upper_abdomen": {
+   "name": "Upper abdomen",
+   "includes": "visualised liver, spleen, adrenals, kidneys and upper abdominal organs"
+  },
+  "brain": {
+   "name": "Brain parenchyma",
+   "includes": "cerebral hemispheres, grey and white matter, intra-axial masses, oedema, infarcts, enhancing lesions, diffusion"
+  },
+  "extra_axial": {
+   "name": "Extra-axial spaces",
+   "includes": "subdural, extradural and subarachnoid spaces and haemorrhage, meninges"
+  },
+  "csf": {
+   "name": "Ventricles and mass effect",
+   "includes": "ventricles, sulci, basal cisterns, hydrocephalus, midline shift, effacement, herniation"
+  },
+  "posterior_fossa": {
+   "name": "Posterior fossa",
+   "includes": "cerebellum, brainstem, fourth ventricle"
+  },
+  "sella": {
+   "name": "Sella and pituitary",
+   "includes": "pituitary, sella, suprasellar region"
+  },
+  "head_vessels": {
+   "name": "Intracranial vessels",
+   "includes": "intracranial arteries, venous sinuses"
+  },
+  "skull": {
+   "name": "Skull and skull base",
+   "includes": "calvarium, skull fractures, skull base"
+  },
+  "orbits_sinuses": {
+   "name": "Orbits, sinuses and mastoids",
+   "includes": "orbits, paranasal sinuses, mastoid air cells, middle ears"
+  },
+  "scalp": {
+   "name": "Scalp and soft tissues",
+   "includes": "scalp, extracranial soft tissues, scalp haematoma"
+  },
+  "oropharynx": {
+   "name": "Oral cavity and oropharynx",
+   "includes": "tongue, floor of mouth, palatine tonsils, glossotonsillar sulcus, soft palate, tongue base"
+  },
+  "nasopharynx": {
+   "name": "Nasopharynx",
+   "includes": "nasopharynx, adenoids"
+  },
+  "larynx": {
+   "name": "Larynx and hypopharynx",
+   "includes": "larynx, vocal cords, hypopharynx, piriform sinuses"
+  },
+  "salivary": {
+   "name": "Salivary glands",
+   "includes": "parotid and submandibular glands"
+  },
+  "thyroid": {
+   "name": "Thyroid",
+   "includes": "thyroid and parathyroid glands"
+  },
+  "nodes_neck": {
+   "name": "Lymph nodes",
+   "includes": "cervical lymph nodes, levels I to VI, contralateral nodes"
+  },
+  "neck_vessels": {
+   "name": "Vessels",
+   "includes": "carotid arteries, jugular veins"
+  },
+  "neck_bones": {
+   "name": "Bones",
+   "includes": "cervical spine, mandible, skull base"
+  },
+  "lung_apices": {
+   "name": "Lung apices and upper mediastinum",
+   "includes": "lung apices, upper mediastinum"
+  },
+  "neck_soft": {
+   "name": "Deep spaces and soft tissues",
+   "includes": "parapharyngeal and other deep neck spaces, muscles, subcutaneous tissues"
+  },
+  "spine_alignment": {
+   "name": "Alignment and vertebrae",
+   "includes": "alignment, lordosis, vertebral body heights, marrow signal, fractures"
+  },
+  "cord": {
+   "name": "Cord and conus",
+   "includes": "spinal cord calibre and signal, conus, cauda equina"
+  },
+  "cvj": {
+   "name": "Craniocervical junction",
+   "includes": "foramen magnum, C1 and C2"
+  },
+  "sacrum": {
+   "name": "Sacrum and sacroiliac joints",
+   "includes": "sacrum, sacroiliac joints"
+  },
+  "paraspinal": {
+   "name": "Paraspinal and other soft tissues",
+   "includes": "paraspinal muscles, prevertebral soft tissues, incidental findings outside the spine such as thyroid or kidneys"
+  },
+  "menisci": {
+   "name": "Menisci",
+   "includes": "medial and lateral menisci, meniscal tears"
+  },
+  "cruciates": {
+   "name": "Cruciate ligaments",
+   "includes": "anterior and posterior cruciate ligaments"
+  },
+  "collaterals": {
+   "name": "Collateral ligaments and corners",
+   "includes": "medial and lateral collateral ligaments, posterolateral and posteromedial corners"
+  },
+  "extensor": {
+   "name": "Extensor mechanism",
+   "includes": "patella, patellar and quadriceps tendons"
+  },
+  "cartilage": {
+   "name": "Articular cartilage",
+   "includes": "articular cartilage of all compartments, chondral defects"
+  },
+  "knee_bones": {
+   "name": "Bones and marrow",
+   "includes": "bone bruising and its pattern, fractures, marrow lesions of femur, tibia and fibula"
+  },
+  "knee_joint": {
+   "name": "Joint and synovium",
+   "includes": "joint effusion, synovium, loose bodies"
+  },
+  "knee_soft": {
+   "name": "Soft tissues",
+   "includes": "popliteal fossa, Baker's cyst, muscles"
+  },
+  "cuff": {
+   "name": "Rotator cuff",
+   "includes": "supraspinatus, infraspinatus, subscapularis and teres minor tendons and muscles, tear size and retraction, fatty atrophy"
+  },
+  "biceps": {
+   "name": "Biceps",
+   "includes": "long head of biceps tendon, bicipital groove"
+  },
+  "glenohumeral": {
+   "name": "Labrum and glenohumeral joint",
+   "includes": "labrum, capsule, glenohumeral cartilage, effusion"
+  },
+  "ac_joint": {
+   "name": "Acromion and AC joint",
+   "includes": "acromion shape, acromioclavicular joint, subacromial bursa"
+  },
+  "shoulder_bones": {
+   "name": "Bones and marrow",
+   "includes": "humerus, glenoid, fractures, marrow"
+  },
+  "shoulder_soft": {
+   "name": "Soft tissues",
+   "includes": "muscles, axilla, subcutaneous tissues"
+  },
+  "rectum": {
+   "name": "Rectum and mesorectum",
+   "includes": "rectal tumour, height from anal verge, muscularis propria, mesorectum, mesorectal fascia, extramural venous invasion, anal canal"
+  },
+  "nodes_pelvis": {
+   "name": "Lymph nodes",
+   "includes": "mesorectal, pelvic sidewall, iliac and inguinal lymph nodes"
+  },
+  "pelvic_fluid": {
+   "name": "Peritoneum and pelvic fluid",
+   "includes": "free fluid, pouch of Douglas, peritoneal reflection, collections"
+  },
+  "pelvis_bones": {
+   "name": "Bones and soft tissues",
+   "includes": "pelvic bones, sacrum, hips, pelvic muscles"
+  },
+  "head_face": {
+   "name": "Head and face",
+   "includes": "brain, intracranial haemorrhage, skull, facial bones"
+  },
+  "spine_all": {
+   "name": "Spine",
+   "includes": "cervical, thoracic and lumbar spine"
+  },
+  "limbs": {
+   "name": "Limbs",
+   "includes": "upper and lower limb bones and joints"
+  },
+  "other": {
+   "name": "Other findings",
+   "includes": "a specific structure that fits no region above"
+  },
+  "generic_head": {
+   "name": "Head",
+   "includes": "brain, skull, face, orbits, sinuses"
+  },
+  "generic_neck": {
+   "name": "Neck",
+   "includes": "neck soft tissues, airway, thyroid, cervical nodes and vessels"
+  },
+  "generic_chest": {
+   "name": "Chest",
+   "includes": "lungs, pleura, heart, mediastinum, chest wall"
+  },
+  "generic_abdomen": {
+   "name": "Abdomen",
+   "includes": "abdominal organs, bowel, peritoneum, abdominal vessels and nodes"
+  },
+  "generic_pelvis": {
+   "name": "Pelvis",
+   "includes": "bladder, pelvic organs, pelvic bones and nodes"
+  }
+ },
+ "levels": {
+  "cervical": [
+   "C2/3",
+   "C3/4",
+   "C4/5",
+   "C5/6",
+   "C6/7",
+   "C7/T1"
+  ],
+  "lumbar": [
+   "T12/L1",
+   "L1/2",
+   "L2/3",
+   "L3/4",
+   "L4/5",
+   "L5/S1"
+  ]
+ },
+ "families": {
+  "abdomen_pelvis": {
+   "description": "CT or MRI of the abdomen and/or pelvis as a whole, including CT KUB, liver MRI and abdominal aortic imaging",
+   "regions": [
+    "liver",
+    "biliary",
+    "pancreas",
+    "spleen",
+    "adrenals_kidneys",
+    "bowel",
+    "peritoneum",
+    "nodes_abdo",
+    "vessels_abdo",
+    "bladder",
+    "pelvic_organs",
+    "lung_bases",
+    "abdo_bones",
+    "other"
+   ]
+  },
+  "chest": {
+   "description": "CT of the chest alone, including CT pulmonary angiogram",
+   "regions": [
+    "lungs",
+    "pleura",
+    "pulm_arteries",
+    "heart",
+    "aorta_chest",
+    "mediastinum",
+    "nodes_chest",
+    "thyroid_lower_neck",
+    "chest_wall",
+    "upper_abdomen",
+    "other"
+   ]
+  },
+  "chest_abdomen_pelvis": {
+   "description": "CT of the chest, abdomen and pelvis together (staging or follow-up)",
+   "regions": [
+    "lungs",
+    "pleura",
+    "heart",
+    "mediastinum",
+    "nodes_chest",
+    "liver",
+    "biliary",
+    "pancreas",
+    "spleen",
+    "adrenals_kidneys",
+    "bowel",
+    "peritoneum",
+    "nodes_abdo",
+    "vessels_abdo",
+    "bladder",
+    "pelvic_organs",
+    "chest_wall",
+    "abdo_bones",
+    "other"
+   ]
+  },
+  "head": {
+   "description": "CT or MRI of the head or brain",
+   "regions": [
+    "brain",
+    "extra_axial",
+    "csf",
+    "posterior_fossa",
+    "sella",
+    "head_vessels",
+    "skull",
+    "orbits_sinuses",
+    "scalp",
+    "other"
+   ]
+  },
+  "neck": {
+   "description": "CT or MRI of the neck soft tissues",
+   "regions": [
+    "oropharynx",
+    "nasopharynx",
+    "larynx",
+    "salivary",
+    "thyroid",
+    "nodes_neck",
+    "neck_vessels",
+    "neck_bones",
+    "lung_apices",
+    "neck_soft",
+    "other"
+   ]
+  },
+  "cervical_spine": {
+   "description": "MRI or CT of the cervical spine",
+   "regions": [
+    "spine_alignment",
+    "cvj",
+    "cord",
+    "@cervical",
+    "paraspinal",
+    "other"
+   ]
+  },
+  "lumbar_spine": {
+   "description": "MRI or CT of the lumbar spine",
+   "regions": [
+    "spine_alignment",
+    "cord",
+    "@lumbar",
+    "sacrum",
+    "paraspinal",
+    "other"
+   ]
+  },
+  "knee": {
+   "description": "MRI of the knee",
+   "regions": [
+    "menisci",
+    "cruciates",
+    "collaterals",
+    "extensor",
+    "cartilage",
+    "knee_bones",
+    "knee_joint",
+    "knee_soft",
+    "other"
+   ]
+  },
+  "shoulder": {
+   "description": "MRI of the shoulder",
+   "regions": [
+    "cuff",
+    "biceps",
+    "glenohumeral",
+    "ac_joint",
+    "shoulder_bones",
+    "shoulder_soft",
+    "other"
+   ]
+  },
+  "pelvis_mr": {
+   "description": "MRI of the pelvis alone: gynaecological, prostate or rectal",
+   "regions": [
+    "rectum",
+    "pelvic_organs",
+    "bladder",
+    "nodes_pelvis",
+    "pelvic_fluid",
+    "pelvis_bones",
+    "other"
+   ]
+  },
+  "trauma": {
+   "description": "Whole-body or multi-region trauma CT",
+   "regions": [
+    "head_face",
+    "spine_all",
+    "lungs",
+    "pleura",
+    "aorta_chest",
+    "chest_wall",
+    "liver",
+    "spleen",
+    "adrenals_kidneys",
+    "pancreas",
+    "bowel",
+    "peritoneum",
+    "pelvis_bones",
+    "bladder",
+    "limbs",
+    "other"
+   ]
+  },
+  "generic": {
+   "description": "Fallback when no family describes the examination",
+   "regions": [
+    "generic_head",
+    "generic_neck",
+    "generic_chest",
+    "generic_abdomen",
+    "generic_pelvis",
+    "spine_all",
+    "limbs",
+    "other"
+   ]
+  }
+ },
+ "level_includes": "disc, spinal canal, lateral recesses, neural foramina, nerve roots, facet and uncovertebral joints, endplates at this level"
+}

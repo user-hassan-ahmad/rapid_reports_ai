@@ -26,6 +26,7 @@ from .lean_fidelity import fidelity_violation, verbatim_append
 from .lean_polish import LEAN_SYSTEM_PROMPT, LEAN_USER_TEMPLATE
 from .jev_questions import FAST_APPEND_BANDS, QSET_VERSION
 from .utterance_bundle import BundleDecision, BundleState, get_jev_bundle
+from .hybrid_stack.jev_stack import ask_command, decide_command
 from .section_coverage import (
     CoverageDecision,
     CoverageTrace,
@@ -1072,6 +1073,11 @@ class BundleRequest(BaseModel):
     asr_conf: Optional[float] = None
     asr_min_conf: Optional[float] = None
     asr_word_confs: Optional[list[float]] = None
+    # Scratchpad (hybrid stack): the session's region names and the open checklist rows ({id, text}: the question
+    # and the sentences a tap adds). With regions, the voice command is asked beside the bundle
+    # (hybrid_stack.jev_stack; v2 spec §7.3, checklist spec §9: "accept" answers a named row).
+    stack_regions: list[str] = []
+    stack_items: list[dict] = []
 
 
 class BundleLineClose(BaseModel):
@@ -1104,6 +1110,25 @@ class BundleRouteResponse(BaseModel):
     asr_fixes: list[dict] = []
     asr_flags: list[dict] = []
     repair_ms: Optional[int] = None
+    # Scratchpad v2: {"action": "dictate"|"delete"|"accept", "region", "chip", "command", "confidence"}
+    stack_command: Optional[dict] = None
+
+
+async def _stack_command(request: "BundleRequest") -> Optional[dict]:
+    """The voice command of this final (v2 §7.3), asked beside the bundle. Fails open: None (dictation)."""
+    rows = [(str(r.get("id", "")), str(r.get("text", ""))) for r in request.stack_items if r.get("id") and r.get("text")]
+    texts = [t for _, t in rows]
+    try:
+        parsed = await ask_command("\n".join(x for x in (request.active, request.open_line) if x),
+                                   request.latest_utterance, request.stack_regions, texts)
+    except Exception as e:
+        logger.warning("[canvas.bundle.command] %s: %s", type(e).__name__, e)
+        return None
+    d = decide_command(parsed)
+    item = rows[texts.index(d["chip"])][0] if d["action"] == "accept" and d["chip"] in texts else None
+    action = "answer" if item else ("dictate" if d["action"] == "accept" else d["action"])
+    return {"action": action, "region": d["region"], "item": item,
+            "command": parsed.get("command"), "confidence": parsed.get("confidence")}
 
 
 @canvas_router.post("/bundle", response_model=BundleRouteResponse)
@@ -1115,16 +1140,22 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
     decision_id = uuid.uuid4().hex[:12]
     d: BundleDecision | BaseException | None = None
     t0 = _time.perf_counter()
+    stack_command: Optional[dict] = None
     if code_route(request.latest_utterance, request.active) is None:  # bare mark / filler: decided by code
-        try:
-            d = await get_jev_bundle().classify(BundleState(
-                scan_type=request.scan_type, committed=request.committed, active=request.active,
-                open_line=request.open_line, latest_utterance=request.latest_utterance,
-                checklist=list(request.checklist),
-            ), word_sense=True)
-        except Exception as e:  # fail open: polish
-            logger.error("[canvas.bundle] ❌ %s: %s", type(e).__name__, e)
-            d = e
+        async def classify():
+            try:
+                return await get_jev_bundle().classify(BundleState(
+                    scan_type=request.scan_type, committed=request.committed, active=request.active,
+                    open_line=request.open_line, latest_utterance=request.latest_utterance,
+                    checklist=list(request.checklist),
+                ), word_sense=True)
+            except Exception as e:  # fail open: polish
+                logger.error("[canvas.bundle] ❌ %s: %s", type(e).__name__, e)
+                return e
+        if request.stack_regions:
+            d, stack_command = await asyncio.gather(classify(), _stack_command(request))
+        else:
+            d = await classify()
     r = route_bundle(d if d is not None else RuntimeError("not asked"), request.latest_utterance,
                      asr_min_conf=request.asr_min_conf, preceding=request.active)
     ok = isinstance(d, BundleDecision)
@@ -1157,6 +1188,7 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
         asr_fixes=rep.fixes if rep else [],
         asr_flags=rep.flags if rep else [],
         repair_ms=rep.latency_ms if rep else None,
+        stack_command=stack_command,
     )
     utt = request.latest_utterance or ""
     logger.info("[canvas.bundle.decision] %s", json.dumps({
@@ -1180,6 +1212,8 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
         "asr_fix_confidence": [f["confidence"] for f in rep.fixes] if rep else [],
         "repair_asked": rep.asked if rep else 0,
         "repair_error": rep.error if rep else None,
+        "stack_command": ({k: stack_command[k] for k in ("action", "command", "confidence")}
+                          if stack_command else None),
     }))
     return resp
 

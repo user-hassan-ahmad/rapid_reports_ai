@@ -39,6 +39,8 @@ export interface BundleRouteResponse {
 	asr_fixes?: { heard: string; replacement: string; confidence: number }[];
 	asr_flags?: { word: string; score: number }[];
 	repair_ms?: number | null;
+	/** Scratchpad v2 (hybrid stack): the voice command of this final, when stack regions were sent. */
+	stack_command?: { action: 'dictate' | 'delete' | 'answer'; region: string | null; item: string | null; command: string | null; confidence: number | null } | null;
 }
 
 /** One routed utterance. No text. */

@@ -1,0 +1,1529 @@
+{
+  "_note": "Synthetic dictations (no patient data). Each utterance is spoken by TTS and transcribed separately, as a live final would be. 'expect' checks the group of the line containing 'phrase' (case-insensitive); 'group' lists acceptable substrings of the group name. 'attach': true means the line should continue an earlier line rather than stand alone.",
+  "cases": [
+    {
+      "id": "c01_ct_ap_appendicitis",
+      "scan_type": "CT abdomen and pelvis with contrast",
+      "clinical_history": "Right iliac fossa pain, raised inflammatory markers.",
+      "voice": "Daniel",
+      "utterances": [
+        "Portal venous phase CT of the abdomen and pelvis. No prior imaging for comparison.",
+        "The appendix is dilated with surrounding fat stranding.",
+        "It measures 11 millimetres in diameter.",
+        "There is an appendicolith at the base.",
+        "No free gas. A small amount of free fluid in the pelvis.",
+        "The liver, spleen, pancreas and adrenal glands are unremarkable.",
+        "Kidneys are normal. Uh, no hydronephrosis.",
+        "Going back to the liver, there is a 6 millimetre hypodensity in segment 4, too small to characterise.",
+        "Lung bases are clear.",
+        "Impression. Acute appendicitis with an appendicolith, no evidence of perforation."
+      ],
+      "expect": [
+        {
+          "phrase": "dilated",
+          "group": [
+            "appendix",
+            "bowel",
+            "gastrointestinal",
+            "gi"
+          ]
+        },
+        {
+          "phrase": "in diameter",
+          "group": [
+            "appendix",
+            "bowel",
+            "gastrointestinal",
+            "gi"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "appendicolith at",
+          "group": [
+            "appendix",
+            "bowel",
+            "gastrointestinal",
+            "gi"
+          ]
+        },
+        {
+          "phrase": "segment 4",
+          "group": [
+            "liver",
+            "hepat"
+          ]
+        },
+        {
+          "phrase": "lung bases",
+          "group": [
+            "lung",
+            "thora",
+            "chest"
+          ]
+        },
+        {
+          "phrase": "acute appendicitis",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "abdomen_pelvis"
+    },
+    {
+      "id": "c02_ct_chest_staging",
+      "scan_type": "CT chest, abdomen and pelvis staging",
+      "clinical_history": "Biopsy-proven right upper lobe adenocarcinoma. Staging.",
+      "voice": "Flo (English (UK))",
+      "utterances": [
+        "Contrast enhanced CT chest, abdomen and pelvis.",
+        "There is a 5.2 centimetre spiculated mass in the right upper lobe which invades the mediastinal fat and abuts the superior vena cava.",
+        "Enlarged right lower paratracheal node measuring 18 millimetres short axis, and a subcarinal node of 14 millimetres.",
+        "No pleural effusion.",
+        "The left lung is clear.",
+        "There's a 2.1 centimetre left adrenal nodule, indeterminate on this study.",
+        "The liver and bones show no suspicious lesion.",
+        "Overall, findings are in keeping with a T4 N2 right upper lobe tumour. The left adrenal nodule is indeterminate and could represent a metastasis. Suggest PET CT."
+      ],
+      "expect": [
+        {
+          "phrase": "upper lobe which",
+          "group": [
+            "lung",
+            "pulmon"
+          ]
+        },
+        {
+          "phrase": "paratracheal",
+          "group": [
+            "mediast",
+            "node",
+            "hil"
+          ]
+        },
+        {
+          "phrase": "pleural effusion",
+          "group": [
+            "pleura"
+          ]
+        },
+        {
+          "phrase": "adrenal nodule",
+          "group": [
+            "adrenal"
+          ]
+        },
+        {
+          "phrase": "upper lobe tumour",
+          "group": [
+            "conclusion"
+          ]
+        },
+        {
+          "phrase": "pet",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "chest_abdomen_pelvis"
+    },
+    {
+      "id": "c03_mr_brain_mass",
+      "scan_type": "MRI head with gadolinium",
+      "clinical_history": "New onset seizure. Headache.",
+      "voice": "Daniel",
+      "utterances": [
+        "Multiplanar multisequence MRI of the brain pre and post gadolinium.",
+        "There is a 4 centimetre rim-enhancing mass in the right frontal lobe, sorry, left frontal lobe, with central necrosis.",
+        "Extensive surrounding vasogenic oedema.",
+        "There's 6 millimetres of midline shift to the right with effacement of the left lateral ventricle.",
+        "No hydrocephalus.",
+        "No other enhancing lesion.",
+        "The diffusion shows no restriction within the lesion.",
+        "Conclusion, a left frontal rim enhancing necrotic mass with mass effect. The main differential is high grade glioma versus a solitary metastasis. Recommend urgent neurosurgical referral and CT chest abdomen pelvis."
+      ],
+      "expect": [
+        {
+          "phrase": "central necrosis",
+          "group": [
+            "brain",
+            "parenchym",
+            "cerebr",
+            "frontal",
+            "supratentorial",
+            "intracranial"
+          ]
+        },
+        {
+          "phrase": "vasogenic",
+          "group": [
+            "brain",
+            "parenchym",
+            "cerebr",
+            "frontal",
+            "supratentorial",
+            "intracranial"
+          ]
+        },
+        {
+          "phrase": "midline shift",
+          "group": [
+            "brain",
+            "parenchym",
+            "cerebr",
+            "ventric",
+            "csf",
+            "supratentorial",
+            "intracranial",
+            "mass effect"
+          ]
+        },
+        {
+          "phrase": "hydrocephalus",
+          "group": [
+            "ventric",
+            "csf",
+            "brain",
+            "intracranial"
+          ]
+        },
+        {
+          "phrase": "glioma",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "head"
+    },
+    {
+      "id": "c04_ct_head_trauma",
+      "scan_type": "CT head non-contrast",
+      "clinical_history": "Fall from standing, on anticoagulation, GCS 14.",
+      "voice": "Moira",
+      "utterances": [
+        "Non-contrast CT head.",
+        "There is an acute left convexity subdural haematoma measuring 9 millimetres in maximal thickness.",
+        "So in summary, acute left subdural haematoma with mild mass effect, for urgent neurosurgical discussion.",
+        "There is a non-displaced fracture of the left parietal bone.",
+        "Overlying left parietal scalp haematoma.",
+        "Effacement of the left sulci, 3 millimetre midline shift.",
+        "The basal cisterns are patent.",
+        "Mastoid air cells and paranasal sinuses are clear."
+      ],
+      "expect": [
+        {
+          "phrase": "convexity subdural",
+          "group": [
+            "extra-axial",
+            "extra axial",
+            "subdural",
+            "haemorrhage",
+            "intracranial"
+          ]
+        },
+        {
+          "phrase": "in summary",
+          "group": [
+            "conclusion"
+          ]
+        },
+        {
+          "phrase": "fracture",
+          "group": [
+            "bone",
+            "skull",
+            "calvari",
+            "osseous"
+          ]
+        },
+        {
+          "phrase": "scalp",
+          "group": [
+            "soft tissue",
+            "scalp",
+            "extracranial"
+          ]
+        },
+        {
+          "phrase": "basal cisterns",
+          "group": [
+            "ventric",
+            "csf",
+            "cistern",
+            "brain",
+            "intracranial"
+          ]
+        },
+        {
+          "phrase": "mastoid",
+          "group": [
+            "sinus",
+            "mastoid"
+          ]
+        }
+      ],
+      "family": "head"
+    },
+    {
+      "id": "c05_mr_lumbar_spine",
+      "scan_type": "MRI lumbar spine",
+      "clinical_history": "Left leg sciatica, L5 distribution.",
+      "voice": "Daniel",
+      "utterances": [
+        "Sagittal and axial T1 and T2 weighted MRI of the lumbar spine.",
+        "Normal lumbar lordosis. Vertebral body heights are maintained.",
+        "The conus terminates at L1 with normal signal.",
+        "L3 slash 4, mild disc bulge without stenosis.",
+        "At L4 slash 5 there is a left paracentral disc extrusion compressing the traversing left L5 nerve root.",
+        "It causes moderate left lateral recess stenosis.",
+        "L5 slash S1, normal.",
+        "Modic type 2 endplate changes at L4 slash 5.",
+        "Conclusion. Left paracentral L4 slash 5 extrusion compressing the left L5 nerve root, concordant with symptoms."
+      ],
+      "expect": [
+        {
+          "phrase": "conus",
+          "group": [
+            "cord",
+            "conus",
+            "neural",
+            "spinal canal"
+          ]
+        },
+        {
+          "phrase": "mild disc bulge",
+          "group": [
+            "l3",
+            "disc",
+            "level",
+            "lumbar spine",
+            "canal"
+          ]
+        },
+        {
+          "phrase": "extrusion compressing the traversing",
+          "group": [
+            "l4",
+            "disc",
+            "level",
+            "lumbar spine",
+            "canal"
+          ]
+        },
+        {
+          "phrase": "lateral recess",
+          "group": [
+            "l4",
+            "disc",
+            "level",
+            "canal",
+            "foramin",
+            "lumbar spine",
+            "canal"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "modic",
+          "group": [
+            "l4",
+            "vertebra",
+            "bone",
+            "marrow",
+            "endplate",
+            "level",
+            "alignment",
+            "lumbar spine",
+            "canal"
+          ]
+        },
+        {
+          "phrase": "concordant",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "lumbar_spine"
+    },
+    {
+      "id": "c06_ctpa_pe",
+      "scan_type": "CT pulmonary angiogram",
+      "clinical_history": "Pleuritic chest pain, tachycardia, raised D-dimer.",
+      "voice": "Flo (English (UK))",
+      "utterances": [
+        "CT pulmonary angiogram. Good opacification of the pulmonary arteries.",
+        "There are filling defects in the right and left main pulmonary arteries extending into the lobar branches bilaterally.",
+        "The right ventricle is dilated with an RV to LV ratio of 1.4, and there is reflux of contrast into the IVC.",
+        "Wedge-shaped peripheral consolidation in the right lower lobe, likely a pulmonary infarct.",
+        "Small right pleural effusion.",
+        "Incidental 15 millimetre nodule in the left lobe of the thyroid.",
+        "No other abnormality.",
+        "Impression, bilateral pulmonary emboli with CT evidence of right heart strain. Right lower lobe infarct. Thyroid nodule, suggest non-urgent ultrasound."
+      ],
+      "expect": [
+        {
+          "phrase": "filling defects",
+          "group": [
+            "pulmonary arter",
+            "vascul",
+            "pulmonary vessel"
+          ]
+        },
+        {
+          "phrase": "right ventricle",
+          "group": [
+            "heart",
+            "cardi"
+          ]
+        },
+        {
+          "phrase": "infarct.",
+          "group": [
+            "lung",
+            "parenchym",
+            "pulmon"
+          ]
+        },
+        {
+          "phrase": "pleural effusion",
+          "group": [
+            "pleura"
+          ]
+        },
+        {
+          "phrase": "thyroid.",
+          "group": [
+            "thyroid",
+            "neck",
+            "soft tissue",
+            "lower neck"
+          ]
+        },
+        {
+          "phrase": "no other abnormality",
+          "group": [
+            "general",
+            "other"
+          ]
+        },
+        {
+          "phrase": "right heart strain",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "chest"
+    },
+    {
+      "id": "c07_mr_liver_cirrhosis",
+      "scan_type": "MRI liver with hepatobiliary contrast",
+      "clinical_history": "Cirrhosis, hepatitis C. Surveillance. New lesion on ultrasound.",
+      "voice": "Daniel",
+      "utterances": [
+        "MRI liver with dynamic post-contrast imaging.",
+        "The liver is cirrhotic with a nodular contour and caudate hypertrophy.",
+        "In segment 8 there's a 24 millimetre lesion with non-rim arterial phase hyperenhancement.",
+        "On the portal venous phase it shows washout and an enhancing capsule.",
+        "Splenomegaly at 15 centimetres.",
+        "Small volume ascites.",
+        "Oesophageal and gastric varices.",
+        "The portal vein is patent.",
+        "Impression: 24 millimetre LI-RADS 5 observation in segment 8, consistent with hepatocellular carcinoma, on a background of cirrhosis with portal hypertension. MDT discussion."
+      ],
+      "expect": [
+        {
+          "phrase": "nodular contour",
+          "group": [
+            "liver",
+            "hepat"
+          ]
+        },
+        {
+          "phrase": "arterial phase",
+          "group": [
+            "liver",
+            "hepat"
+          ]
+        },
+        {
+          "phrase": "washout",
+          "group": [
+            "liver",
+            "hepat"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "splenomegaly",
+          "group": [
+            "spleen",
+            "splen"
+          ]
+        },
+        {
+          "phrase": "varices",
+          "group": [
+            "vascul",
+            "portal",
+            "vessel",
+            "venous",
+            "oesophag",
+            "stomach",
+            "bowel",
+            "gastro"
+          ]
+        },
+        {
+          "phrase": "patent",
+          "group": [
+            "vascul",
+            "portal",
+            "vessel",
+            "venous",
+            "hepat"
+          ]
+        },
+        {
+          "phrase": "hepatocellular",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "abdomen_pelvis"
+    },
+    {
+      "id": "c08_ct_kub_stone",
+      "scan_type": "CT KUB",
+      "clinical_history": "Left loin to groin pain, haematuria.",
+      "voice": "Moira",
+      "utterances": [
+        "Low dose non-contrast CT KUB.",
+        "The left kidney, it's moderately hydronephrotic with perinephric stranding.",
+        "There's a 6 millimetre calculus at the left vesicoureteric junction.",
+        "The left ureter is dilated down to the stone.",
+        "Right kidney is normal, there's a 3 millimetre non obstructing lower pole calculus.",
+        "The bladder is unremarkable.",
+        "Compared with the CT from 2023 the right lower pole stone is unchanged.",
+        "Obstructing 6 millimetre left VUJ calculus with moderate hydronephrosis."
+      ],
+      "expect": [
+        {
+          "phrase": "hydronephrotic",
+          "group": [
+            "kidney",
+            "renal",
+            "urinary",
+            "urinary tract"
+          ]
+        },
+        {
+          "phrase": "vesicoureteric",
+          "group": [
+            "ureter",
+            "urinary",
+            "kidney",
+            "renal",
+            "bladder"
+          ]
+        },
+        {
+          "phrase": "dilated down",
+          "group": [
+            "ureter",
+            "urinary",
+            "kidney",
+            "renal"
+          ]
+        },
+        {
+          "phrase": "lower pole calculus",
+          "group": [
+            "kidney",
+            "renal",
+            "urinary"
+          ]
+        },
+        {
+          "phrase": "bladder",
+          "group": [
+            "bladder",
+            "urinary"
+          ]
+        },
+        {
+          "phrase": "unchanged",
+          "group": [
+            "kidney",
+            "renal",
+            "urinary",
+            "comparison",
+            "technique"
+          ]
+        },
+        {
+          "phrase": "obstructing 6",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "abdomen_pelvis"
+    },
+    {
+      "id": "c09_mr_knee",
+      "scan_type": "MRI right knee",
+      "clinical_history": "Twisting injury playing football, effusion, instability.",
+      "voice": "Daniel",
+      "utterances": [
+        "MRI of the right knee.",
+        "Complete tear of the anterior cruciate ligament at the femoral attachment.",
+        "Bone bruising of the lateral femoral condyle and posterolateral tibial plateau, typical pivot shift pattern.",
+        "There's a vertical longitudinal tear of the posterior horn of the medial meniscus.",
+        "Lateral meniscus intact.",
+        "The posterior cruciate ligament and collateral ligaments are intact.",
+        "Moderate joint effusion.",
+        "Articular cartilage is preserved.",
+        "Conclusion. Complete ACL tear with pivot shift bone bruising and a medial meniscal posterior horn tear."
+      ],
+      "expect": [
+        {
+          "phrase": "anterior cruciate",
+          "group": [
+            "cruciate",
+            "ligament",
+            "acl"
+          ]
+        },
+        {
+          "phrase": "bone bruising",
+          "group": [
+            "bone",
+            "marrow",
+            "osseous"
+          ]
+        },
+        {
+          "phrase": "posterior horn of the medial",
+          "group": [
+            "menisc"
+          ]
+        },
+        {
+          "phrase": "collateral",
+          "group": [
+            "ligament",
+            "collateral",
+            "cruciate"
+          ]
+        },
+        {
+          "phrase": "effusion",
+          "group": [
+            "effusion",
+            "joint",
+            "synovi"
+          ]
+        },
+        {
+          "phrase": "cartilage",
+          "group": [
+            "cartilage",
+            "articular",
+            "chondral"
+          ]
+        },
+        {
+          "phrase": "pivot shift bone bruising",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "knee"
+    },
+    {
+      "id": "c10_ct_ap_diverticulitis_runon",
+      "scan_type": "CT abdomen and pelvis with contrast",
+      "clinical_history": "Left iliac fossa pain and fever.",
+      "voice": "Flo (English (UK))",
+      "utterances": [
+        "CT abdomen pelvis portal venous phase.",
+        "Liver spleen pancreas and adrenals are unremarkable kidneys are normal and there's a 3 centimetre simple appearing left ovarian cyst.",
+        "Sigmoid diverticulosis with marked wall thickening and pericolic inflammation of the mid sigmoid.",
+        "Adjacent to it there is a 3.5 centimetre rim enhancing pericolic collection.",
+        "No extraluminal gas.",
+        "Um the rest of the bowel is normal. No lymphadenopathy.",
+        "The lung bases are clear and no aggressive bone lesion.",
+        "So complicated sigmoid diverticulitis with a 3.5 centimetre pericolic abscess, Hinchey 1b. Suggest surgical review and follow-up colonic evaluation after recovery."
+      ],
+      "expect": [
+        {
+          "phrase": "ovarian cyst",
+          "group": [
+            "ovar",
+            "adnex",
+            "pelvi",
+            "reproductive",
+            "gynae",
+            "uter"
+          ]
+        },
+        {
+          "phrase": "wall thickening",
+          "group": [
+            "bowel",
+            "colon",
+            "gastro",
+            "gi"
+          ]
+        },
+        {
+          "phrase": "rim enhancing pericolic",
+          "group": [
+            "bowel",
+            "colon",
+            "gastro",
+            "gi",
+            "peritone"
+          ]
+        },
+        {
+          "phrase": "lymphadenopathy",
+          "group": [
+            "node",
+            "lymph"
+          ]
+        },
+        {
+          "phrase": "surgical review",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "abdomen_pelvis"
+    },
+    {
+      "id": "c11_ct_ap_ovarian_conclusion_first",
+      "scan_type": "CT abdomen and pelvis with contrast",
+      "clinical_history": "Abdominal distension, raised CA-125.",
+      "voice": "Karen",
+      "utterances": [
+        "Portal venous phase CT abdomen and pelvis.",
+        "So overall this looks like ovarian malignancy with peritoneal disease. I'll go through it.",
+        "There is a 9 centimetre complex solid and cystic mass arising from the right adnexa.",
+        "The left ovary is normal.",
+        "Extensive omental caking, and moderate volume ascites.",
+        "There are peritoneal deposits along the right paracolic gutter.",
+        "The liver has no focal lesion, but there's a capsular deposit on the right lobe.",
+        "No hydronephrosis.",
+        "Enlarged right external iliac node, 15 millimetres.",
+        "Recommend gynae oncology MDT."
+      ],
+      "expect": [
+        {
+          "phrase": "ovarian malignancy",
+          "group": [
+            "conclusion"
+          ]
+        },
+        {
+          "phrase": "right adnexa",
+          "group": [
+            "adnex",
+            "ovar",
+            "pelvi",
+            "gyn",
+            "reproductive",
+            "uter"
+          ]
+        },
+        {
+          "phrase": "left ovary",
+          "group": [
+            "adnex",
+            "ovar",
+            "pelvi",
+            "gyn",
+            "reproductive",
+            "uter"
+          ]
+        },
+        {
+          "phrase": "omental",
+          "group": [
+            "perit",
+            "omen",
+            "mesent"
+          ]
+        },
+        {
+          "phrase": "paracolic",
+          "group": [
+            "perit",
+            "omen",
+            "mesent"
+          ]
+        },
+        {
+          "phrase": "capsular",
+          "group": [
+            "liver",
+            "hepat",
+            "perit"
+          ]
+        },
+        {
+          "phrase": "iliac node",
+          "group": [
+            "node",
+            "lymph"
+          ]
+        },
+        {
+          "phrase": "mdt",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "abdomen_pelvis"
+    },
+    {
+      "id": "c12_ct_chest_pingpong",
+      "scan_type": "CT chest with contrast",
+      "clinical_history": "Follow-up of pulmonary nodules. Ex-smoker.",
+      "voice": "Reed (English (UK))",
+      "utterances": [
+        "CT chest with contrast, compared with the study from March.",
+        "The 8 millimetre nodule in the right upper lobe is unchanged.",
+        "Heart size is normal. No pericardial effusion.",
+        "Oh, and back to the lungs, there's a new 5 millimetre nodule in the left lower lobe.",
+        "Mild centrilobular emphysema, upper lobe predominant.",
+        "No mediastinal or hilar lymphadenopathy.",
+        "There's an old healed fracture of the left seventh rib.",
+        "And the lungs again, the previously noted left lingular scarring is stable.",
+        "The thyroid is unremarkable.",
+        "Stable right upper lobe nodule. New 5 millimetre left lower lobe nodule, follow-up CT in 12 months per guidelines."
+      ],
+      "expect": [
+        {
+          "phrase": "is unchanged",
+          "group": [
+            "lung",
+            "pulmon"
+          ]
+        },
+        {
+          "phrase": "heart size",
+          "group": [
+            "heart",
+            "cardi",
+            "pericard"
+          ]
+        },
+        {
+          "phrase": "back to the lungs",
+          "group": [
+            "lung",
+            "pulmon"
+          ]
+        },
+        {
+          "phrase": "emphysema",
+          "group": [
+            "lung",
+            "pulmon",
+            "airway"
+          ]
+        },
+        {
+          "phrase": "hilar",
+          "group": [
+            "mediast",
+            "node",
+            "hil"
+          ]
+        },
+        {
+          "phrase": "rib",
+          "group": [
+            "bone",
+            "osseous",
+            "skelet",
+            "chest wall"
+          ]
+        },
+        {
+          "phrase": "scarring",
+          "group": [
+            "lung",
+            "pulmon"
+          ]
+        },
+        {
+          "phrase": "thyroid",
+          "group": [
+            "thyroid",
+            "neck",
+            "soft tissue"
+          ]
+        },
+        {
+          "phrase": "12 months",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "chest"
+    },
+    {
+      "id": "c13_mr_cervical_spine_levels",
+      "scan_type": "MRI cervical spine",
+      "clinical_history": "Neck pain radiating to the right arm.",
+      "voice": "Daniel",
+      "utterances": [
+        "Sagittal and axial MRI of the cervical spine.",
+        "Straightening of the cervical lordosis.",
+        "The cord is normal in calibre and signal.",
+        "C3 slash 4, small disc osteophyte complex, no stenosis.",
+        "C5 slash 6, broad-based disc osteophyte complex with moderate right foraminal narrowing.",
+        "It contacts the exiting right C6 nerve root.",
+        "C6 slash 7, mild bilateral uncovertebral hypertrophy.",
+        "Incidental 1 centimetre nodule in the right lobe of the thyroid.",
+        "Conclusion, multilevel cervical spondylosis, worst at C5 slash 6 with moderate right foraminal narrowing contacting the right C6 nerve root."
+      ],
+      "expect": [
+        {
+          "phrase": "cord is normal",
+          "group": [
+            "cord",
+            "canal",
+            "neural"
+          ]
+        },
+        {
+          "phrase": "no stenosis",
+          "group": [
+            "c3"
+          ]
+        },
+        {
+          "phrase": "broad-based",
+          "group": [
+            "c5"
+          ]
+        },
+        {
+          "phrase": "exiting",
+          "group": [
+            "c5"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "uncovertebral",
+          "group": [
+            "c6"
+          ]
+        },
+        {
+          "phrase": "thyroid",
+          "group": [
+            "thyroid",
+            "neck",
+            "soft tissue",
+            "paraspinal",
+            "prevertebral"
+          ]
+        },
+        {
+          "phrase": "spondylosis",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "cervical_spine"
+    },
+    {
+      "id": "c14_ct_neck_nodes",
+      "scan_type": "CT neck with contrast",
+      "clinical_history": "Left neck lump, 6 weeks.",
+      "voice": "Rishi",
+      "utterances": [
+        "Contrast enhanced CT neck.",
+        "There is an enhancing mass of the left palatine tonsil measuring 3 centimetres.",
+        "It extends into the left glossotonsillar sulcus.",
+        "Necrotic left level 2 lymph node measuring 28 millimetres.",
+        "Further enlarged left level 3 node, 14 millimetres.",
+        "No contralateral nodes.",
+        "The larynx and hypopharynx are normal.",
+        "The parotid and submandibular glands are unremarkable.",
+        "The visualised lung apices are clear.",
+        "Impression, left tonsillar primary with necrotic left level 2 and 3 nodal metastases."
+      ],
+      "expect": [
+        {
+          "phrase": "palatine tonsil",
+          "group": [
+            "oropharyn",
+            "tonsil",
+            "pharyn"
+          ]
+        },
+        {
+          "phrase": "glossotonsillar",
+          "group": [
+            "oropharyn",
+            "tonsil",
+            "pharyn"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "level 2 lymph",
+          "group": [
+            "node",
+            "lymph"
+          ]
+        },
+        {
+          "phrase": "contralateral",
+          "group": [
+            "node",
+            "lymph"
+          ]
+        },
+        {
+          "phrase": "larynx",
+          "group": [
+            "laryn",
+            "hypopharyn"
+          ]
+        },
+        {
+          "phrase": "parotid",
+          "group": [
+            "saliv",
+            "parotid",
+            "gland"
+          ]
+        },
+        {
+          "phrase": "apices",
+          "group": [
+            "lung",
+            "apic",
+            "chest",
+            "thora"
+          ]
+        },
+        {
+          "phrase": "tonsillar primary",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "neck"
+    },
+    {
+      "id": "c15_mr_rectum_corrections",
+      "scan_type": "MRI pelvis rectal cancer staging",
+      "clinical_history": "Biopsy-proven rectal adenocarcinoma.",
+      "voice": "Moira",
+      "utterances": [
+        "High resolution MRI of the rectum.",
+        "There is a tumour in the mid rectum, the lower edge is 8 centimetres from the anal verge.",
+        "It extends through the muscularis propria by 3 millimetres, sorry, 4 millimetres.",
+        "The mesorectal fascia is clear by 6 millimetres.",
+        "Extramural venous invasion is present.",
+        "Two mesorectal nodes with irregular borders. Scratch that. Three mesorectal nodes with irregular borders.",
+        "No lateral pelvic sidewall nodes.",
+        "The bladder and seminal vesicles are clear of tumour.",
+        "Conclusion, mid rectal tumour, T3b, N1, EMVI positive, CRM clear."
+      ],
+      "expect": [
+        {
+          "phrase": "anal verge",
+          "group": [
+            "rect",
+            "tumour",
+            "primary"
+          ]
+        },
+        {
+          "phrase": "muscularis",
+          "group": [
+            "rect",
+            "tumour",
+            "primary",
+            "t stag"
+          ]
+        },
+        {
+          "phrase": "mesorectal fascia",
+          "group": [
+            "mesorect",
+            "fascia",
+            "crm",
+            "circumferential"
+          ]
+        },
+        {
+          "phrase": "venous invasion",
+          "group": [
+            "emvi",
+            "venous",
+            "vascul",
+            "rect",
+            "tumour",
+            "mesorect"
+          ]
+        },
+        {
+          "phrase": "irregular borders",
+          "group": [
+            "node",
+            "lymph"
+          ]
+        },
+        {
+          "phrase": "sidewall",
+          "group": [
+            "node",
+            "lymph",
+            "sidewall"
+          ]
+        },
+        {
+          "phrase": "seminal",
+          "group": [
+            "pelvi",
+            "bladder",
+            "prostat",
+            "seminal",
+            "organ"
+          ]
+        },
+        {
+          "phrase": "t3b",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "pelvis_mr"
+    },
+    {
+      "id": "c16_ct_trauma_runon",
+      "scan_type": "CT trauma whole body",
+      "clinical_history": "High speed road traffic collision.",
+      "voice": "Eddy (English (UK))",
+      "utterances": [
+        "Trauma CT head to pelvis with arterial and portal venous phases.",
+        "No intracranial haemorrhage no skull fracture cervical spine is intact.",
+        "Right sided pneumothorax, moderate size, with fractures of the right fourth to seventh ribs.",
+        "Pulmonary contusion in the right lower lobe and there's a small right haemothorax.",
+        "The aorta is intact no mediastinal haematoma.",
+        "Grade 3 splenic laceration with perisplenic haematoma no active extravasation.",
+        "The liver kidneys and pancreas are intact.",
+        "Left superior pubic ramus fracture.",
+        "Summary, right pneumothorax with rib fractures and contusion, grade 3 splenic injury, left pubic ramus fracture. Discussed with trauma team leader at 14:20."
+      ],
+      "expect": [
+        {
+          "phrase": "intracranial",
+          "group": [
+            "head",
+            "brain",
+            "intracran"
+          ]
+        },
+        {
+          "phrase": "pneumothorax, moderate",
+          "group": [
+            "pleura",
+            "lung",
+            "chest",
+            "thora"
+          ]
+        },
+        {
+          "phrase": "contusion in",
+          "group": [
+            "lung",
+            "pulmon",
+            "chest",
+            "thora"
+          ]
+        },
+        {
+          "phrase": "aorta is intact",
+          "group": [
+            "aort",
+            "vascul",
+            "mediast",
+            "great vessel"
+          ]
+        },
+        {
+          "phrase": "splenic laceration",
+          "group": [
+            "spleen",
+            "splen"
+          ]
+        },
+        {
+          "phrase": "pubic ramus fracture.",
+          "group": [
+            "pelvi",
+            "bone",
+            "skelet",
+            "osseous"
+          ]
+        },
+        {
+          "phrase": "trauma team",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "trauma"
+    },
+    {
+      "id": "c17_mr_shoulder_fragments",
+      "scan_type": "MRI left shoulder",
+      "clinical_history": "Fall onto outstretched hand, weakness on abduction.",
+      "voice": "Flo (English (UK))",
+      "utterances": [
+        "MRI left shoulder.",
+        "Full thickness tear of the supraspinatus tendon.",
+        "Measuring 18 millimetres anteroposterior.",
+        "With 2 centimetres of retraction.",
+        "Um, infraspinatus is intact. Subscapularis, there's a partial thickness articular surface tear at the upper fibres.",
+        "Mild fatty atrophy of supraspinatus muscle.",
+        "Long head of biceps is in the groove, normal.",
+        "Type 2 acromion, mild acromioclavicular joint arthropathy.",
+        "Labrum intact.",
+        "Conclusion. Full thickness supraspinatus tear with retraction, and upper subscapularis partial tear."
+      ],
+      "expect": [
+        {
+          "phrase": "supraspinatus tendon",
+          "group": [
+            "rotator",
+            "cuff",
+            "tendon"
+          ]
+        },
+        {
+          "phrase": "anteroposterior",
+          "group": [
+            "rotator",
+            "cuff",
+            "tendon"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "retraction.",
+          "group": [
+            "rotator",
+            "cuff",
+            "tendon"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "subscapularis, there",
+          "group": [
+            "rotator",
+            "cuff",
+            "tendon",
+            "subscap"
+          ]
+        },
+        {
+          "phrase": "fatty atrophy",
+          "group": [
+            "muscle",
+            "rotator",
+            "cuff"
+          ]
+        },
+        {
+          "phrase": "biceps",
+          "group": [
+            "biceps",
+            "tendon"
+          ]
+        },
+        {
+          "phrase": "acromion",
+          "group": [
+            "acromio",
+            "ac joint",
+            "bone",
+            "osseous",
+            "subacromial"
+          ]
+        },
+        {
+          "phrase": "labrum",
+          "group": [
+            "labr",
+            "glenohumeral",
+            "joint"
+          ]
+        },
+        {
+          "phrase": "partial tear",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "shoulder"
+    },
+    {
+      "id": "c18_ct_aorta_measurements",
+      "scan_type": "CT angiogram aorta",
+      "clinical_history": "Known abdominal aortic aneurysm, surveillance.",
+      "voice": "Daniel",
+      "utterances": [
+        "CT angiogram of the aorta, compared with the scan from last year.",
+        "Infrarenal abdominal aortic aneurysm.",
+        "Maximum diameter 5.6 centimetres, previously 5.1.",
+        "The neck is 18 millimetres long.",
+        "There's mural thrombus but no periaortic stranding or rupture.",
+        "The aneurysm extends to the aortic bifurcation; the common iliac arteries are not aneurysmal.",
+        "The renal arteries are single bilaterally and patent.",
+        "Incidental simple cyst in the left kidney.",
+        "Impression, 5.6 centimetre infrarenal AAA with growth of 5 millimetres in a year, now above the threshold for repair. Refer to vascular surgery."
+      ],
+      "expect": [
+        {
+          "phrase": "infrarenal abdominal aortic",
+          "group": [
+            "aort",
+            "aneurysm"
+          ]
+        },
+        {
+          "phrase": "maximum diameter",
+          "group": [
+            "aort",
+            "aneurysm"
+          ],
+          "attach": true
+        },
+        {
+          "phrase": "neck is",
+          "group": [
+            "aort",
+            "aneurysm"
+          ]
+        },
+        {
+          "phrase": "mural thrombus",
+          "group": [
+            "aort",
+            "aneurysm"
+          ]
+        },
+        {
+          "phrase": "common iliac",
+          "group": [
+            "iliac",
+            "aort",
+            "aneurysm",
+            "vascul",
+            "arter"
+          ]
+        },
+        {
+          "phrase": "renal arteries",
+          "group": [
+            "renal arter",
+            "branch",
+            "visceral",
+            "vascul",
+            "arter",
+            "aort"
+          ]
+        },
+        {
+          "phrase": "simple cyst",
+          "group": [
+            "kidney",
+            "renal",
+            "other",
+            "solid organ",
+            "abdom",
+            "incidental"
+          ]
+        },
+        {
+          "phrase": "vascular surgery",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "abdomen_pelvis"
+    },
+    {
+      "id": "c19_mr_pelvis_female_nosex",
+      "scan_type": "MRI pelvis",
+      "clinical_history": "Pelvic pain and menorrhagia.",
+      "voice": "Karen",
+      "utterances": [
+        "MRI pelvis.",
+        "The uterus is bulky and contains multiple fibroids, the largest is intramural in the fundus measuring 6 centimetres.",
+        "The endometrium is 9 millimetres.",
+        "There's a 4 centimetre left ovarian endometrioma with a T2 shading.",
+        "Right ovary is normal.",
+        "Small amount of free fluid in the pouch of Douglas.",
+        "Bladder unremarkable. No pelvic lymphadenopathy.",
+        "Conclusion. Fibroid uterus, and a left ovarian endometrioma."
+      ],
+      "expect": [
+        {
+          "phrase": "bulky",
+          "group": [
+            "uter",
+            "gyn",
+            "reproductive",
+            "pelvic organ"
+          ]
+        },
+        {
+          "phrase": "endometrium",
+          "group": [
+            "uter",
+            "endometri",
+            "gyn",
+            "reproductive",
+            "pelvic organ"
+          ]
+        },
+        {
+          "phrase": "endometrioma with",
+          "group": [
+            "ovar",
+            "adnex",
+            "gyn",
+            "reproductive",
+            "pelvic organ"
+          ]
+        },
+        {
+          "phrase": "right ovary",
+          "group": [
+            "ovar",
+            "adnex",
+            "gyn",
+            "reproductive",
+            "pelvic organ"
+          ]
+        },
+        {
+          "phrase": "douglas",
+          "group": [
+            "perit",
+            "free fluid",
+            "pouch",
+            "pelvi"
+          ]
+        },
+        {
+          "phrase": "bladder",
+          "group": [
+            "bladder",
+            "urinary"
+          ]
+        },
+        {
+          "phrase": "fibroid uterus",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "pelvis_mr"
+    },
+    {
+      "id": "c20_ct_cap_lymphoma_followup",
+      "scan_type": "CT chest, abdomen and pelvis",
+      "clinical_history": "Follow-up diffuse large B-cell lymphoma after 4 cycles of chemotherapy.",
+      "voice": "Reed (English (UK))",
+      "utterances": [
+        "CT chest abdomen and pelvis with contrast compared with the baseline staging CT.",
+        "The bulky anterior mediastinal mass has reduced from 9 to 4 centimetres.",
+        "The right axillary nodes have resolved.",
+        "So partial response so far. Actually let me finish first.",
+        "Splenomegaly has resolved, the spleen now measures 11 centimetres.",
+        "Para-aortic nodes, previously 3 centimetres, now 1.2 centimetres short axis.",
+        "No new lesion.",
+        "There's a new small left pleural effusion.",
+        "Impression, partial response. New small left pleural effusion, likely reactive."
+      ],
+      "expect": [
+        {
+          "phrase": "anterior mediastinal",
+          "group": [
+            "mediast"
+          ]
+        },
+        {
+          "phrase": "axillary",
+          "group": [
+            "axill",
+            "node",
+            "lymph",
+            "chest wall"
+          ]
+        },
+        {
+          "phrase": "spleen now",
+          "group": [
+            "spleen",
+            "splen"
+          ]
+        },
+        {
+          "phrase": "para-aortic",
+          "group": [
+            "node",
+            "lymph",
+            "retroperit"
+          ]
+        },
+        {
+          "phrase": "new small left pleural effusion.",
+          "group": [
+            "pleura",
+            "lung"
+          ]
+        },
+        {
+          "phrase": "likely reactive",
+          "group": [
+            "conclusion"
+          ]
+        }
+      ],
+      "family": "chest_abdomen_pelvis"
+    }
+  ]
+}

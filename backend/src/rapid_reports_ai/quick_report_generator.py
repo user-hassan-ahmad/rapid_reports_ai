@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import List
+from typing import List, Sequence
 
 from pydantic import BaseModel
 
@@ -20,7 +20,7 @@ from .enhancement_utils import (
     _get_model_provider,
     _run_agent_with_model,
 )
-from .quick_report_brief import compile_brief
+from .quick_report_brief import compile_brief, stack_fallback
 from .linked_normals import strip_links
 from .quick_report_quality import run_quality_check
 from .report_reconcile import write_options
@@ -106,13 +106,22 @@ async def generate_quick_report(
     user_signature: str | None = None,
     model_override: str | None = None,
     use_brief: bool = True,
+    stack: bool = False,
+    declined: Sequence[str] = (),
+    conclusion: str = "",
+    stack_sheet: str = "",
 ) -> dict:
     """Write one quick report from a compiled brief (the sheet reconciled with this dictation),
     or from the raw sheet with the full prompts if the brief cannot be compiled. Falls back
     once to QUICK_REPORT_GENERATOR_FALLBACK when the configured primary raises; an override
     naming a different model is an explicit comparison and does not fall back."""
     brief = None
-    if use_brief:
+    if stack:
+        # A scratchpad session (checklist spec §7): the findings are the radiologist's answers, so the brief carries
+        # structure and style only (the slim sheet, else today's sheet stripped of its content sections), the
+        # confirmed conclusion and the removed sentences. No negatives stage; never the raw sheet.
+        brief = stack_fallback(stack_sheet or skill_sheet, conclusion, declined)
+    elif use_brief:
         try:
             brief = await compile_brief(skill_sheet, scan_type, findings, clinical_history)
         except Exception as e:

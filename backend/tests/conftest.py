@@ -35,6 +35,9 @@ from rapid_reports_ai.database.models import (  # noqa: E402
     ReportReviewRun,
     ReportReviewItem,
     ReportChatMessage,
+    StackSchemaFamily,
+    DictationStackLog,
+    StackSlimSheet,
 )
 from rapid_reports_ai.main import app  # noqa: E402
 
@@ -53,6 +56,9 @@ _TEST_TABLES = [
     ReportReviewRun.__table__,
     ReportReviewItem.__table__,
     ReportChatMessage.__table__,
+    StackSchemaFamily.__table__,
+    DictationStackLog.__table__,
+    StackSlimSheet.__table__,
 ]
 
 

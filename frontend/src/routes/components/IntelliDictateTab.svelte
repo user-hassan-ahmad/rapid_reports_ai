@@ -14,6 +14,9 @@ import type { CoverageTrace, LabConfig, PillThresholds } from '$lib/dictation-la
 import type { DecisionRecord, OutcomeEvent } from '$lib/dictation-lab/decisionFirst';
 import { pillState } from '$lib/dictation-lab/coverage';
 import { effectiveConfig } from '$lib/dictation-lab/package';
+import { fetchSchema, postReportId } from '$lib/hybrid-stack/api';
+import { hybridStackOn } from '$lib/hybrid-stack/flag';
+import type { GateRecord, StackSchema } from '$lib/hybrid-stack/types';
 import { hasUnsavedWork as unsavedWork } from '$lib/utils/confirmGate';
 import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedReport';
 
@@ -132,6 +135,37 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	// The dictation package: the lab page's config, or the package where the server allows it
 	// (apiKeyStatus.dictation_v2) unless this browser opted out, or null (today's dictation).
 	$: dictationConfig = effectiveConfig(labConfig, undefined, (apiKeyStatus as { dictation_v2?: boolean })?.dictation_v2 === true);
+	// The hybrid dictation stack (rr_hybrid_stack): the grouped view and pills from its grouping, where the
+	// server allows it and the dictation package is on. /sections and the Jev pills keep running in shadow.
+	$: stackStatus = apiKeyStatus as { hybrid_stack?: boolean; hybrid_stack_shadow_rate?: number };
+	$: hybridStack = hybridStackOn(undefined, stackStatus?.hybrid_stack === true && dictationConfig !== null);
+	let stackSchema: StackSchema | null = null;
+	// Scratchpad v2 gate (spec 2026-10-11 §5-6): Generate waits for the Confirm, then sends the findings block.
+	let stackGate: GateRecord | null = null;
+	let stackFindings = '';
+	let stackSessionId = '';
+	let stackSheetId: string | null = null;
+	$: stackGated = hybridStack && !!stackSchema;
+	let stackPills: string[] = [];
+	let stackSchemaFor = ''; // the scan type + history the schema was requested for
+	// Also covers a restored draft (sections come from storage, no /sections call) and a flag that
+	// arrives after the workspace exists (the settings status is fetched asynchronously).
+	$: if (hybridStack && sectionsGeneratedFromScanType && stackSchemaFor !== `${sectionsGeneratedFromScanType}|${sectionsGeneratedFromHistory}`) {
+		void loadStackSchema(sectionsGeneratedFromScanType, sectionsGeneratedFromHistory);
+	}
+	async function loadStackSchema(scan: string, history: string) {
+		stackSchemaFor = `${scan.trim()}|${history.trim()}`;
+		stackPills = [];
+		if (!hybridStack || !scan.trim()) {
+			stackSchema = null;
+			return;
+		}
+		try {
+			stackSchema = await fetchSchema($token, { scan_type: scan.trim(), clinical_history: history.trim() });
+		} catch {
+			stackSchema = null; // fail open: today's pills show
+		}
+	}
 	/** Dictation Lab only: three-state pills from coverage scores. null = binary pills as in production. */
 	export let pillThresholds: PillThresholds | null = null;
 	export let onCoverageTrace: (trace: CoverageTrace) => void = () => {};
@@ -157,7 +191,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 
 	// Review guide shows the pre-generated checklist sections only.
 	// Coverage state comes entirely from covered_sections returned by Qwen — no text parsing.
-	$: allChecklistSections = prePoppedSections;
+	$: allChecklistSections = hybridStack && stackSchema ? stackSchema.pills : prePoppedSections;
 
 	/**
 	 * Fire the speculative-parallel quick-report analyser in the background.
@@ -225,6 +259,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
+			void loadStackSchema(scanType, clinicalHistory); // in parallel; /sections stays as the shadow list
 			const res = await fetch(`${API_URL}/api/canvas/sections`, {
 				method: 'POST',
 				headers,
@@ -259,6 +294,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
+			void loadStackSchema(scanType, clinicalHistory); // in parallel; /sections stays as the shadow list
 			const res = await fetch(`${API_URL}/api/canvas/sections`, {
 				method: 'POST',
 				headers,
@@ -363,7 +399,8 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		if (integrityTimer) clearTimeout(integrityTimer);
 		if (semanticTimer) clearTimeout(semanticTimer);
 		integrityAcknowledged = false;
-		if (!content?.trim()) {
+		// The scratchpad view runs the same check with its review and shows the flags on their sentences.
+		if (!content?.trim() || stackGated) {
 			integrityFlags = [];
 			integrityGate = false;
 			scratchpadRef?.setIntegrityRanges([]);
@@ -415,7 +452,11 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	async function handleGenerateReport() {
 		if (!scratchpadRef) return;
 
-		const content = scratchpadToFindings(scratchpadRef.getContent());
+		const dictated = scratchpadToFindings(scratchpadRef.getContent());
+		const useStack = stackGated && stackGate !== null;
+		const content = useStack ? stackFindings : dictated;
+		const declined = useStack && stackGate ? stackGate.removed : [];
+		const session = stackSessionId;
 		const gen = ++generationToken;
 		loading = true;
 		error = null;
@@ -435,6 +476,12 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			// analyser inline from scan_type + clinical_history.
 			const bestAvailable = bestSheetId || fastSheetId;
 			const body: Record<string, unknown> = { findings: content };
+			if (useStack) {
+				body.stack = true;
+				body.stack_removed = declined;
+				if (stackSheetId) body.stack_sheet_id = stackSheetId;
+				body.stack_conclusion = stackGate?.conclusion_text ?? '';
+			}
 			if (bestAvailable) {
 				body.sheet_id = bestAvailable;
 			} else {
@@ -474,10 +521,11 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 					reportOptions = panelOptions(cand.options ?? []);
 					reviewSections = sectionList(cand.sections);
 					hasResponseEver = true;
-					findingsAtReportGeneration = content;
+					findingsAtReportGeneration = dictated;
 					loading = false;
 				} else if (eventName === 'done') {
 					reportId = data?.report_id ?? null;
+					if (useStack && reportId && session) void postReportId($token, session, reportId).catch(() => {});
 					// If /generate ran the analyser inline (no sheet_id sent),
 					// capture the sheet_id it created so subsequent regenerate
 					// flows see a warm fast sheet.
@@ -951,14 +999,16 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			</div>
 		{/if}
 
-		<!-- Coverage chip strip -->
-		<div class="flex flex-wrap gap-1.5 transition-opacity duration-300 {isReviewing ? 'opacity-50' : ''} {regenerating ? 'animate-pulse' : ''}">
+		<!-- Coverage chip strip (the scratchpad v2 tray replaces it in stack mode) -->
+		<div class:hidden={stackGated} class="flex flex-wrap gap-1.5 transition-opacity duration-300 {isReviewing ? 'opacity-50' : ''} {regenerating ? 'animate-pulse' : ''}">
 			{#each allChecklistSections as section}
-				{@const state = pillThresholds && coverageScores
-					? pillState(coverageScores[section], pillThresholds)
-					: coveredSections.has(section)
-						? 'covered'
-						: 'absent'}
+				{@const state = hybridStack && stackSchema
+					? (stackPills.includes(section) ? 'covered' : 'absent')
+					: pillThresholds && coverageScores
+						? pillState(coverageScores[section], pillThresholds)
+						: coveredSections.has(section)
+							? 'covered'
+							: 'absent'}
 				<span
 					class="px-2.5 py-1 rounded-full text-[11px] font-medium transition-all duration-300
 					{state === 'covered'
@@ -980,7 +1030,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			{activePrompts}
 			{scanType}
 			{clinicalHistory}
-			{polishMode}
+			polishMode={hybridStack ? 'clean' : polishMode}
 			onModeChange={(m) => { polishMode = m; }}
 			{apiKeyStatus}
 			onContentChange={(c) => { scratchpadContent = c; }}
@@ -994,13 +1044,22 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			{onCoverageTrace}
 			{onDecision}
 			{onOutcome}
+			{hybridStack}
+			stackRegions={stackSchema?.regions ?? []}
+			stackGroups={stackSchema?.groups ?? []}
+			stackSchemaMeta={stackSchema ? { key: stackSchema.key, source: stackSchema.source, provisional: stackSchema.provisional } : null}
+			onStackPills={(p) => { stackPills = p; }}
+			stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
+			onStackGate={(g, f) => { stackGate = g; stackFindings = f; }}
+			onStackSession={(id) => { stackSessionId = id; }}
+			onStackSheet={(id) => { stackSheetId = id; }}
 		/>
 	</div>
 
 			<!-- Dictation integrity — surfaces a truncated or incomplete dictation
 			     before it becomes a confident report. Amber, not red: this is a
 			     "look at this" not a "you broke something". -->
-			{#if integrityFlags.length > 0 && !integrityAcknowledged}
+			{#if !stackGated && integrityFlags.length > 0 && !integrityAcknowledged}
 				<div
 					role="alert"
 					class="shrink-0 flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/[0.07] px-4 py-3"
@@ -1046,7 +1105,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			<button
 				type="button"
 				onclick={() => handleGenerateReport()}
-				disabled={isRecording || loading || (analyseLoading && !analyserReady) || !scratchpadContent.trim() || sectionsDirty || (integrityGate && !integrityAcknowledged)}
+				disabled={isRecording || loading || (analyseLoading && !analyserReady) || !scratchpadContent.trim() || sectionsDirty || (integrityGate && !integrityAcknowledged) || (stackGated && !stackGate)}
 				class="btn-primary-subtle w-full px-6 py-3 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
 				class:best-ready={bestSheetReady && !loading}
 			>
@@ -1057,6 +1116,8 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 					<span>Start dictating findings</span>
 				{:else if integrityGate && !integrityAcknowledged}
 					<span>Check dictation to continue</span>
+				{:else if stackGated && !stackGate && scratchpadContent.trim()}
+					<span>Confirm the scratchpad to generate</span>
 				{:else}
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />

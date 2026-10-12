@@ -1,0 +1,405 @@
+[
+ {
+  "before": [
+   "A 4 mm obstructing calculus at the left VUJ with moderate hydronephrosis."
+  ],
+  "after": [
+   "A 4 mm obstructing calculus at the left vesicoureteric junction with moderate hydronephrosis."
+  ],
+  "gold": false,
+  "kind": "abbrev"
+ },
+ {
+  "before": [
+   "The lesion in case is more than 180 degrees of the gastroduodenal artery."
+  ],
+  "after": [
+   "The lesion encases more than 180 degrees of the gastroduodenal artery."
+  ],
+  "gold": false,
+  "kind": "asr fix"
+ },
+ {
+  "before": [
+   "There is an ill defined hypoenhancing mass measuring approximately thirty-two by twenty-eight millimetres within the head of the pancreas."
+  ],
+  "after": [
+   "There is an ill-defined hypoenhancing mass measuring approximately 32 by 28 mm within the head of the pancreas."
+  ],
+  "gold": false,
+  "kind": "numbers"
+ },
+ {
+  "before": [
+   "A 3 cm hypoenhancing mass in the pancreatic head with double duct dilatation.",
+   "The lesion abuts the superior mesenteric vein."
+  ],
+  "after": [
+   "The lesion abuts the superior mesenteric vein.",
+   "A 3 cm hypoenhancing mass in the pancreatic head with double duct dilatation."
+  ],
+  "gold": false,
+  "kind": "reorder"
+ },
+ {
+  "before": [
+   "Sigmoid diverticulitis with pericolic fat stranding."
+  ],
+  "after": [
+   "Acute sigmoid diverticulitis with surrounding pericolic fat stranding."
+  ],
+  "gold": false,
+  "kind": "wording"
+ },
+ {
+  "before": [
+   "A 2 cm simple cyst in segment 6 of the liver."
+  ],
+  "after": [
+   "A 2 cm simple cyst in liver segment 6."
+  ],
+  "gold": false,
+  "kind": "wording"
+ },
+ {
+  "before": [
+   "Small left pleural effusion."
+  ],
+  "after": [
+   "There is a small left pleural effusion."
+  ],
+  "gold": false,
+  "kind": "wording"
+ },
+ {
+  "before": [
+   "An 8 mm acute left subdural haematoma."
+  ],
+  "after": [
+   "An acute left subdural haematoma, 8 mm in depth."
+  ],
+  "gold": false,
+  "kind": "wording"
+ },
+ {
+  "before": [
+   "A complex tear of the posterior horn of the medial meniscus."
+  ],
+  "after": [
+   "Complex tear involving the posterior horn of the medial meniscus."
+  ],
+  "gold": false,
+  "kind": "wording"
+ },
+ {
+  "before": [
+   "Filling defects in the right lower lobe segmental arteries in keeping with pulmonary emboli."
+  ],
+  "after": [
+   "Filling defects in the right lower lobe segmental pulmonary arteries, in keeping with acute pulmonary emboli."
+  ],
+  "gold": false,
+  "kind": "wording"
+ },
+ {
+  "before": [
+   "A splenic laceration with perisplenic haematoma."
+  ],
+  "after": [
+   "Splenic laceration with a perisplenic haematoma."
+  ],
+  "gold": false,
+  "kind": "wording"
+ },
+ {
+  "before": [
+   "Dilated small bowel loops to 4 cm with a transition point in the right lower quadrant."
+  ],
+  "after": [
+   "Small bowel loops are dilated up to 4 cm, with a transition point in the right lower quadrant."
+  ],
+  "gold": false,
+  "kind": "wording"
+ },
+ {
+  "before": [
+   "A 5 cm simple right ovarian cyst."
+  ],
+  "after": [
+   "A simple-appearing 5 cm cyst in the right ovary."
+  ],
+  "gold": false,
+  "kind": "wording"
+ },
+ {
+  "before": [
+   "Gallstones with gallbladder wall thickening and pericholecystic fluid."
+  ],
+  "after": [
+   "Multiple gallstones with gallbladder wall thickening and a small amount of pericholecystic fluid."
+  ],
+  "gold": false,
+  "kind": "detail-light"
+ },
+ {
+  "before": [
+   "A 6 mm calculus at the left VUJ."
+  ],
+  "after": [
+   "A 6 mm calculus at the left VUJ. The liver and spleen are normal."
+  ],
+  "gold": false,
+  "kind": "normal added"
+ },
+ {
+  "before": [
+   "Right upper lobe spiculated mass, 3.2 cm."
+  ],
+  "after": [
+   "A 3.2 cm spiculated mass in the right upper lobe."
+  ],
+  "gold": false,
+  "kind": "wording"
+ },
+ {
+  "before": [
+   "A 4 mm obstructing calculus at the left VUJ with moderate hydronephrosis."
+  ],
+  "after": [
+   "A 4 mm obstructing calculus at the left VUJ with moderate hydronephrosis and forniceal rupture."
+  ],
+  "gold": true,
+  "kind": "complication added"
+ },
+ {
+  "before": [
+   "A 3 cm hypoenhancing mass in the pancreatic head."
+  ],
+  "after": [
+   "A 3 cm hypoenhancing mass in the pancreatic head. Multiple liver lesions in keeping with metastases."
+  ],
+  "gold": true,
+  "kind": "new finding"
+ },
+ {
+  "before": [
+   "A 3 cm hypoenhancing mass in the pancreatic head with double duct dilatation.",
+   "The lesion abuts the superior mesenteric vein."
+  ],
+  "after": [
+   "A 3 cm hypoenhancing mass in the pancreatic head with double duct dilatation."
+  ],
+  "gold": true,
+  "kind": "finding removed"
+ },
+ {
+  "before": [
+   "A 2 cm simple cyst in segment 6 of the liver."
+  ],
+  "after": [
+   "A 4 cm simple cyst in segment 6 of the liver."
+  ],
+  "gold": true,
+  "kind": "size changed"
+ },
+ {
+  "before": [
+   "Small left pleural effusion."
+  ],
+  "after": [
+   "Small right pleural effusion."
+  ],
+  "gold": true,
+  "kind": "side changed"
+ },
+ {
+  "before": [
+   "An 8 mm acute left subdural haematoma."
+  ],
+  "after": [
+   "An 8 mm acute left subdural haematoma with 5 mm midline shift."
+  ],
+  "gold": true,
+  "kind": "complication added"
+ },
+ {
+  "before": [
+   "Sigmoid diverticulitis with pericolic fat stranding."
+  ],
+  "after": [
+   "Sigmoid diverticulitis with a 3 cm pericolic abscess."
+  ],
+  "gold": true,
+  "kind": "complication added"
+ },
+ {
+  "before": [
+   "Filling defects in the right lower lobe segmental arteries."
+  ],
+  "after": [
+   "Filling defects in the right and left main pulmonary arteries."
+  ],
+  "gold": true,
+  "kind": "extent changed"
+ },
+ {
+  "before": [
+   "A splenic laceration with perisplenic haematoma."
+  ],
+  "after": [
+   "A splenic laceration with perisplenic haematoma and active contrast extravasation."
+  ],
+  "gold": true,
+  "kind": "complication added"
+ },
+ {
+  "before": [
+   "Dilated small bowel loops to 4 cm with a transition point."
+  ],
+  "after": [
+   "Dilated small bowel loops to 4 cm with a transition point and reduced wall enhancement."
+  ],
+  "gold": true,
+  "kind": "complication added"
+ },
+ {
+  "before": [
+   "A 5 cm simple right ovarian cyst."
+  ],
+  "after": [
+   "A 5 cm complex right ovarian cyst with solid components."
+  ],
+  "gold": true,
+  "kind": "character changed"
+ },
+ {
+  "before": [
+   "The lesion abuts the superior mesenteric vein."
+  ],
+  "after": [
+   "The lesion encases the superior mesenteric artery."
+  ],
+  "gold": true,
+  "kind": "relationship changed"
+ },
+ {
+  "before": [
+   "A complex tear of the posterior horn of the medial meniscus."
+  ],
+  "after": [
+   "A complex tear of the posterior horn of the medial meniscus. Complete tear of the anterior cruciate ligament."
+  ],
+  "gold": true,
+  "kind": "new finding"
+ },
+ {
+  "before": [
+   "Gallstones without gallbladder wall thickening."
+  ],
+  "after": [
+   "Gallstones with gallbladder wall thickening and pericholecystic fluid."
+  ],
+  "gold": true,
+  "kind": "character changed"
+ },
+ {
+  "before": [
+   "A 6 mm calculus at the left VUJ."
+  ],
+  "after": [
+   "A 6 mm calculus at the left VUJ. A 3 cm left renal mass."
+  ],
+  "gold": true,
+  "kind": "new finding"
+ },
+ {
+  "before": [
+   "Right upper lobe spiculated mass, 3.2 cm."
+  ],
+  "after": [
+   "Right upper lobe spiculated mass, 3.2 cm, invading the chest wall."
+  ],
+  "gold": true,
+  "kind": "extent changed"
+ },
+ {
+  "before": [
+   "A 4.5 cm infrarenal abdominal aortic aneurysm."
+  ],
+  "after": [
+   "A 5.5 cm infrarenal abdominal aortic aneurysm."
+  ],
+  "gold": true,
+  "kind": "size corrected"
+ },
+ {
+  "before": [
+   "A 6 mm calculus at the left VUJ."
+  ],
+  "after": [
+   "A 9 mm calculus at the left VUJ."
+  ],
+  "gold": true,
+  "kind": "size corrected"
+ },
+ {
+  "before": [
+   "A 32 mm hypoenhancing mass in the pancreatic head."
+  ],
+  "after": [
+   "A 23 mm hypoenhancing mass in the pancreatic head."
+  ],
+  "gold": true,
+  "kind": "size corrected"
+ },
+ {
+  "before": [
+   "A 3 mm nodule in the right lower lobe."
+  ],
+  "after": [
+   "A 3 cm nodule in the right lower lobe."
+  ],
+  "gold": true,
+  "kind": "unit corrected"
+ },
+ {
+  "before": [
+   "An 8 mm acute left subdural haematoma with 2 mm midline shift."
+  ],
+  "after": [
+   "An 8 mm acute left subdural haematoma with 7 mm midline shift."
+  ],
+  "gold": true,
+  "kind": "size corrected"
+ },
+ {
+  "before": [
+   "A 1.0 cm nodule in the right lower lobe."
+  ],
+  "after": [
+   "A 10 mm nodule in the right lower lobe."
+  ],
+  "gold": false,
+  "kind": "same size, units"
+ },
+ {
+  "before": [
+   "A 4.5cm infrarenal abdominal aortic aneurysm."
+  ],
+  "after": [
+   "A 4.5 cm infrarenal abdominal aortic aneurysm."
+  ],
+  "gold": false,
+  "kind": "number format"
+ },
+ {
+  "before": [
+   "A five millimetre calculus at the left VUJ."
+  ],
+  "after": [
+   "A 5 mm calculus at the left VUJ."
+  ],
+  "gold": false,
+  "kind": "number format"
+ }
+]
