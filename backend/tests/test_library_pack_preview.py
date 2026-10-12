@@ -20,14 +20,15 @@ class _Resp:
 
 @pytest.fixture
 def jev(monkeypatch):
-    st = {"score": 0.9, "fail": False, "fail_if": None, "calls": 0, "payloads": []}
+    st = {"score": 0.9, "fail": False, "fail_if": None, "deny": [], "calls": 0, "payloads": []}
 
     async def post(payload, key, timeout, transport=None):
         st["calls"] += 1
         st["payloads"].append(payload)
         if st["fail"] or (st["fail_if"] and st["fail_if"] in payload["state"]):
             raise TimeoutError("jev slow")
-        return _Resp({"answers": {k: {"noul": st["score"]} for k in payload["questions"]}})
+        return _Resp({"answers": {k: {"noul": 0.1 if any(d in q["instructions"] for d in st["deny"]) else st["score"]}
+                                  for k, q in payload["questions"].items()}})
     monkeypatch.setattr(P, "jev_post", post)
     return st
 
@@ -46,7 +47,7 @@ SIZE = {"input": "size", "value": 7, "quote": "7 mm"}
 
 async def test_settled_inputs_reach_a_proposal_copied_from_the_entry(toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
-    out = await PP.preview_pack(toy_entry, FINDINGS, "Smoker.", {})
+    out = await PP.preview_pack(toy_entry, FINDINGS, "Smoker.", {}, finding=FINDINGS)
     assert [(s.input, s.value) for s in out.settled] == [("kind", "solid"), ("size", "7 mm"), ("risk", "high")]
     assert out.missing == [] and out.proposal.recommendation == "CT at 6 months"
     assert out.proposal.classification == "Toy 2020 · solid nodule 6-8 mm, high risk"
@@ -56,7 +57,7 @@ async def test_settled_inputs_reach_a_proposal_copied_from_the_entry(toy_entry, 
 
 async def test_missing_input_shows_possible_outcomes(toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND, SIZE)
-    out = await PP.preview_pack(toy_entry, FINDINGS, "", {})
+    out = await PP.preview_pack(toy_entry, FINDINGS, "", {}, finding=FINDINGS)
     assert out.proposal is None and out.missing == ["risk"]
     assert out.possible == ["solid nodule 6-8 mm, … risk"] * 2      # ct12 and ct6 render alike while risk is unknown
 
@@ -65,36 +66,36 @@ async def test_bad_options_and_disallowed_states_are_dropped(toy_entry, monkeypa
     _model(monkeypatch, {"input": "kind", "value": "cystic", "quote": "cystic"},
            {"input": "margin", "state": "absent", "quote": "no spiculation"},
            {"input": "ghost", "value": "x", "quote": "x"})
-    out = await PP.preview_pack(toy_entry, "cystic lesion, no spiculation, x", "", {})
+    out = await PP.preview_pack(toy_entry, "cystic lesion, no spiculation, x", "", {}, finding="cystic lesion, no spiculation, x")
     assert out.settled == [] and "kind" in out.missing
 
 
 async def test_the_radiologists_answer_wins(toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
-    out = await PP.preview_pack(toy_entry, FINDINGS, "Smoker.", {"risk": "low"})
+    out = await PP.preview_pack(toy_entry, FINDINGS, "Smoker.", {"risk": "low"}, finding=FINDINGS)
     risk = next(s for s in out.settled if s.input == "risk")
     assert (risk.value, risk.quote) == ("low", "") and out.proposal.recommendation == "CT at 12 months"
 
 
 async def test_band_label_answer(toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND)
-    out = await PP.preview_pack(toy_entry, "solid nodule", "", {"size": "6-8 mm", "risk": "low"})
+    out = await PP.preview_pack(toy_entry, "solid nodule", "", {"size": "6-8 mm", "risk": "low"}, finding="solid nodule")
     assert out.proposal.recommendation == "CT at 12 months"
 
 
 async def test_unconfirmed_values_are_asked(toy_entry, monkeypatch, jev):
     jev["fail"] = True
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "heavy smoker"})
-    out = await PP.preview_pack(toy_entry, FINDINGS, "Heavy smoker.", {})
-    assert out.missing == ["kind", "risk"] and out.proposal is None and out.degraded is True
-    assert [s.input for s in out.settled] == ["size"]           # a number is read by code, never put to Jev
+    out = await PP.preview_pack(toy_entry, FINDINGS, "Heavy smoker.", {}, finding=FINDINGS)
+    assert "kind" in out.missing and out.proposal is None and out.degraded is True
+    assert out.settled == []                                   # a number is put to Jev too: a failed check asks it
 
 
 async def test_model_failure_uses_answers_only(toy_entry, monkeypatch, jev):
     async def boom(system, prompt):
         raise TimeoutError("slow")
     monkeypatch.setattr(PP, "_call", boom)
-    out = await PP.preview_pack(toy_entry, FINDINGS, "", {"kind": "subsolid"})
+    out = await PP.preview_pack(toy_entry, FINDINGS, "", {"kind": "subsolid"}, finding=FINDINGS)
     assert out.proposal.recommendation == "CT in 12 months"
     assert out.degraded is True
 
@@ -105,7 +106,7 @@ async def test_entry_defect_gives_no_proposal(toy_entry, monkeypatch, jev):
     def broken(entry, given):
         raise E.EvaluationError("two cases hold")
     monkeypatch.setattr(PP.engine, "evaluate", broken)
-    out = await PP.preview_pack(toy_entry, FINDINGS, "", {})
+    out = await PP.preview_pack(toy_entry, FINDINGS, "", {}, finding=FINDINGS)
     assert out.proposal is None
 
 
@@ -121,7 +122,7 @@ def test_as_entry_shows_inputs_as_choices(toy_entry):
 
 async def test_number_quote_not_verbatim_is_asked_even_if_jev_agrees(toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND, {"input": "size", "value": 7, "quote": "seven millimetres"})
-    out = await PP.preview_pack(toy_entry, FINDINGS, "", {})
+    out = await PP.preview_pack(toy_entry, FINDINGS, "", {}, finding=FINDINGS)
     assert "size" in out.missing
 
 
@@ -129,7 +130,7 @@ async def test_a_settled_outcome_that_cites_an_unknown_input_is_not_proposed(toy
     e = toy_entry.model_copy(deep=True)
     e.outcome("subsolid").classification = "subsolid nodule, {risk} risk"     # risk is never asked for subsolid
     _model(monkeypatch)
-    out = await PP.preview_pack(e, FINDINGS, "", {"kind": "subsolid"})
+    out = await PP.preview_pack(e, FINDINGS, "", {"kind": "subsolid"}, finding=FINDINGS)
     assert out.proposal is None
 
 
@@ -155,7 +156,7 @@ def test_settled_list_returned_as_json_text_is_parsed():
 def test_a_count_may_be_dictated_in_words_but_a_measurement_may_not(unit, quote, want):
     from rapid_reports_ai.hybrid_stack.copilot.library.schema import InputDef
     i = InputDef(id="n", label="N", type="number", unit=unit, min_value=0, min_inclusive=False)
-    v = PP._value(i, PP.RawItem(input="n", value=99, quote=quote))       # the model's number is ignored
+    v = PP._value(i, PP.RawItem(input="n", value=None, quote=quote))
     assert (v.value if v is not None else None) == want
 
 
@@ -172,13 +173,13 @@ async def test_an_unbounded_preview_says_so_and_asks_every_reaching_input(monkey
            {"input": "nodule_type", "value": "solid", "quote": "solid"},
            {"input": "benign_features", "value": False, "quote": "no benign features"},
            {"input": "prior_study", "value": False, "quote": "no prior"})
-    out = await PP.preview_pack(e, "10 mm solid nodule, no benign features, no prior imaging.", "", {})
+    out = await PP.preview_pack(e, "10 mm solid nodule, no benign features, no prior imaging.", "", {}, finding="10 mm solid nodule, no benign features, no prior imaging.")
     assert out.proposal is None and out.bounded is False and BTS_BROCK <= set(out.missing)
 
 
 async def test_a_bounded_preview_says_so(toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND, SIZE)
-    assert (await PP.preview_pack(toy_entry, FINDINGS, "", {})).bounded is True
+    assert (await PP.preview_pack(toy_entry, FINDINGS, "", {}, finding=FINDINGS)).bounded is True
 
 
 @pytest.mark.parametrize("input_id", ["diameter_mm", "interval_days"])
@@ -220,7 +221,7 @@ def _with_caveat(toy, caveat):
 async def test_the_proposal_carries_rendered_caveats_and_the_fired_citations(toy, monkeypatch, jev):
     e = _with_caveat(toy, "Only for {risk} risk adults.")
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
-    out = await PP.preview_pack(e, FINDINGS, "Smoker.", {}, TOY_SOURCES)
+    out = await PP.preview_pack(e, FINDINGS, "Smoker.", {}, TOY_SOURCES, finding=FINDINGS)
     assert out.proposal.caveats == ["Only for high risk adults."]
     cites = out.proposal.citations
     assert {**P3, "step": "plan"} in cites and {**P2, "step": "size_band"} in cites
@@ -231,13 +232,13 @@ async def test_the_proposal_carries_rendered_caveats_and_the_fired_citations(toy
 async def test_a_caveat_with_an_unfilled_placeholder_blocks_the_proposal(toy, monkeypatch, jev):
     e = _with_caveat(toy, "Only for {margin} margins.")
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
-    out = await PP.preview_pack(e, FINDINGS, "Smoker.", {}, TOY_SOURCES)
+    out = await PP.preview_pack(e, FINDINGS, "Smoker.", {}, TOY_SOURCES, finding=FINDINGS)
     assert out.proposal is None
 
 
 async def test_each_missing_input_is_asked_with_its_definition_outcomes_and_citations(toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND, SIZE)
-    out = await PP.preview_pack(toy_entry, FINDINGS, "", {}, TOY_SOURCES)
+    out = await PP.preview_pack(toy_entry, FINDINGS, "", {}, TOY_SOURCES, finding=FINDINGS)
     assert out.missing == ["risk"]                                        # kept for compatibility
     assert out.asks == [{
         "input": "risk", "label": "Patient risk", "role": "clinical", "scope": "patient", "fact": "",
@@ -259,7 +260,7 @@ async def test_bts_asks_carry_citations_for_every_brock_input(monkeypatch, jev):
            {"input": "benign_features", "value": False, "quote": "no benign features"},
            {"input": "prior_study", "value": False, "quote": "no prior"})
     out = await PP.preview_pack(e, "10 mm solid nodule, no benign features, no prior imaging.", "", {},
-                                lib.sources(e.key))
+                                lib.sources(e.key), finding="10 mm solid nodule, no benign features, no prior imaging.")
     asks = {a["input"]: a for a in out.asks}
     assert BTS_BROCK <= set(asks) and [a["input"] for a in out.asks] == out.missing
     for k in BTS_BROCK:
@@ -291,17 +292,21 @@ async def test_a_patient_value_may_quote_the_history(toy_entry, monkeypatch, jev
     assert out.proposal.recommendation == "CT at 6 months"
 
 
-async def test_without_a_finding_the_whole_dictation_is_the_finding(toy_entry, monkeypatch, jev):
-    _model(monkeypatch, KIND, {"input": "size", "value": 12, "quote": "12 mm densely calcified granuloma"})
-    out = await PP.preview_pack(toy_entry, TWO, "", {})
-    assert ("size", "12 mm") in {(s.input, s.value) for s in out.settled}
+async def test_without_a_finding_lesion_inputs_are_asked_never_read_from_the_dictation(toy_entry, monkeypatch, jev):
+    prompts = []
+    _model(monkeypatch, KIND, {"input": "size", "value": 12, "quote": "12 mm densely calcified granuloma"},
+           {"input": "risk", "value": "high", "quote": "smoker"}, prompts=prompts)
+    out = await PP.preview_pack(toy_entry, TWO, "Smoker.", {})
+    assert not {"kind", "size"} & {s.input for s in out.settled} and "kind" in out.missing and out.degraded is True
+    assert "- kind" not in prompts[0] and "- size" not in prompts[0] and "- risk [patient]" in prompts[0]
 
 
-async def test_every_enum_and_boolean_value_is_put_to_jev_with_its_scope_as_state(toy_entry, monkeypatch, jev):
+async def test_every_value_is_put_to_jev_with_its_scope_as_state(toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
     await PP.preview_pack(toy_entry, TWO, "Smoker.", {}, finding=FINDING)
     by_state = {p["state"]: [q["instructions"] for q in p["questions"].values()] for p in jev["payloads"]}
-    assert by_state[f"FINDING:\n{FINDING}"] == ["The FINDING states Nodule type: solid"]
+    assert by_state[f"FINDING:\n{FINDING}"] == ["The FINDING states Nodule type: solid",
+                                                 "The FINDING states Diameter: 7 mm"]
     patient = next(s for s in by_state if s.startswith("CLINICAL HISTORY"))
     assert TWO in patient and by_state[patient] == ["The CLINICAL HISTORY or DICTATION state Patient risk: high"]
 
@@ -310,7 +315,7 @@ async def test_a_value_jev_does_not_find_stated_is_asked(toy_entry, monkeypatch,
     jev["score"] = P.SETTLED_MIN - 0.1
     _model(monkeypatch, KIND, SIZE)
     out = await PP.preview_pack(toy_entry, FINDING, "", {}, finding=FINDING)
-    assert [s.input for s in out.settled] == ["size"] and "kind" in out.missing and out.degraded is False
+    assert out.settled == [] and "kind" in out.missing and out.degraded is False
 
 
 async def test_a_jev_failure_on_one_scope_asks_only_that_scopes_values(toy_entry, monkeypatch, jev):
@@ -321,12 +326,12 @@ async def test_a_jev_failure_on_one_scope_asks_only_that_scopes_values(toy_entry
 
 
 @pytest.mark.parametrize("model_value,quote,want", [
-    (12, "1.2 cm", "12 mm"), (120, "12 mm", "12 mm"), (9, "7 mm", "7 mm"), (None, "8mm", "8 mm"),
-    (7, "9 x 7 mm", "7 mm"), (8, "9 x 7 mm", None), (7, "6-8 mm", None), (7, "seven millimetres", None)])
+    (12, "1.2 cm", "12 mm"), (1.2, "1.2 cm", "12 mm"), (120, "12 mm", None), (9, "7 mm", None), (None, "8mm", "8 mm"),
+    (7, "9 x 7 mm", None), (8, "9 x 7 mm", None), (7, "6-8 mm", None), (7, "seven millimetres", None)])
 async def test_the_number_is_read_from_its_quote_never_taken_from_the_model(toy_entry, monkeypatch, jev,
                                                                            model_value, quote, want):
     _model(monkeypatch, KIND, {"input": "size", "value": model_value, "quote": quote})
-    out = await PP.preview_pack(toy_entry, f"{quote} solid nodule.", "", {})
+    out = await PP.preview_pack(toy_entry, f"{quote} solid nodule.", "", {}, finding=f"{quote} solid nodule.")
     assert {s.input: s.value for s in out.settled}.get("size") == want
 
 
@@ -409,3 +414,32 @@ async def test_a_patient_answer_the_pack_cannot_take_is_ignored(toy, monkeypatch
     out = await PP.preview_pack(_elig(toy), FINDING, "", {"risk": "high"}, finding=FINDING,
                                 patient={"known_primary_cancer": "seventy", "age_years": "60"})
     assert out.state == "check_first" and out.missing == ["known_cancer"]
+
+
+@pytest.mark.parametrize("finding,quote", [("Nodule measuring under 5 mm, solid.", "5 mm"),
+                                           ("Solid nodule, 6 to 8 mm.", "8 mm"),
+                                           ("Solid nodule up to 8 x 5 mm.", "5 mm")])
+async def test_a_quote_inside_a_bound_or_range_is_asked(toy_entry, monkeypatch, jev, finding, quote):
+    _model(monkeypatch, KIND, {"input": "size", "value": float(quote.split()[0]), "quote": quote})
+    out = await PP.preview_pack(toy_entry, finding, "", {}, finding=finding)
+    assert "size" not in {s.input for s in out.settled}
+
+
+async def test_jev_saying_no_to_a_number_asks_it(toy_entry, monkeypatch, jev):
+    """"was 5 mm, now 9 mm" read as the current size of the wrong time point: Jev's no unsettles it."""
+    jev["deny"] = ["Diameter: 5 mm"]
+    finding = "Solid nodule, was 5 mm, now 9 mm."
+    _model(monkeypatch, KIND, {"input": "size", "value": 5, "quote": "5 mm"})
+    out = await PP.preview_pack(toy_entry, finding, "", {}, finding=finding)
+    assert "size" not in {s.input for s in out.settled} and "kind" in {s.input for s in out.settled}
+
+
+async def test_swapped_volumes_are_asked(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    e = _bts()
+    finding = "Solid nodule, volume 180 mm3, previously 120 mm3."
+    jev["deny"] = ["Baseline volume: 180 mm3", "Current volume: 120 mm3"]
+    _model(monkeypatch, {"input": "prior_volume_mm3", "value": 180, "quote": "180 mm3"},
+           {"input": "current_volume_mm3", "value": 120, "quote": "120 mm3"})
+    out = await PP.preview_pack(e, finding, "", {"prior_study": "Yes", "growth": "volumetry"}, finding=finding)
+    assert not {"prior_volume_mm3", "current_volume_mm3"} & {s.input for s in out.settled}

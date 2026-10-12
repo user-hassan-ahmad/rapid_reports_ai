@@ -100,6 +100,7 @@ class Card(BaseModel):
     status: Literal["draft", "verified", "new"] = "new"
     siblings: list[str] = Field(default_factory=list)   # library packs: other bodies' packs on the same topic
     reference: bool = False       # a tier 2 library entry: read-only (reference fields and Ask), no preview, no Apply
+    finding: str = ""             # library cards: the finding unit's text; lesion inputs are settled only from it
 
     @property
     def id(self) -> str:

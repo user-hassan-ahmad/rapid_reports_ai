@@ -125,6 +125,7 @@ class CardIn(BaseModel):
     publication: PublicationIn = Field(default_factory=PublicationIn)
     known: bool = False
     status: Literal["draft", "verified", "new"] = "new"
+    finding: _s(1000) = ""        # library cards: the finding unit's text, as /match returned it
 
     def card(self) -> Card:
         return Card(**self.model_dump())
@@ -317,9 +318,10 @@ async def _pack_result(pack, req: OpenRequest, t0: float) -> OpenResult:
     e, view = pack
     sources = L.get().sources(e.key)
     findings, history = req.findings[:6000], req.clinical_history[:2000]
-    k = PC.key(e.key, req.finding, findings, history, req.answered, req.patient)
+    finding = req.finding or req.card.finding     # the unit sent with the request, else the one /match gave the card
+    k = PC.key(e.key, finding, findings, history, req.answered, req.patient)
     try:
-        task = PC.start(k, lambda: preview_pack(e, findings, history, req.answered, sources, finding=req.finding,
+        task = PC.start(k, lambda: preview_pack(e, findings, history, req.answered, sources, finding=finding,
                                                 patient=req.patient))
         prev = await asyncio.wait_for(asyncio.shield(task), PREVIEW_TIMEOUT_S)
     except Exception as ex:   # TimeoutError included
@@ -338,7 +340,7 @@ def _prewarm(req: MatchRequest, cards: list[Card]) -> int:
     n = 0
     for c in cards:
         e = lib.lookup(c.key)
-        finding = texts.get(c.finding_id, "")
+        finding = c.finding or texts.get(c.finding_id, "")
         if e is None or e.tier != 1 or not finding:
             continue
         try:

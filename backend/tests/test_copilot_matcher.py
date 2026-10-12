@@ -605,3 +605,17 @@ async def test_a_reference_entry_hit_becomes_a_read_only_card(db_session, monkey
     assert [(c.key, c.branch, c.skeleton, c.reference) for c in cards] == \
         [("toy-grade@1.0", "Reference", ["Reference"], True)]
     assert gated == ["toy-grade@1.0"]
+
+
+async def test_a_library_card_carries_its_finding_text(db_session, monkeypatch, toy):
+    monkeypatch.setattr(L, "get", lambda: _toy_lib(toy))
+
+    async def call(prompt):
+        return _raw(u1=[_sys("Toy Nodule", "2020")])
+
+    async def pack_gate(finding, pack, history=""):
+        return 0.9
+    monkeypatch.setattr(M, "_call", call)
+    monkeypatch.setattr(M, "_pack_gate", pack_gate)
+    cards = await M.match(db_session, "CT chest", "", U[:1])
+    assert [(c.key, c.finding) for c in cards] == [("toy-nodule@1.0", U[0].text)]

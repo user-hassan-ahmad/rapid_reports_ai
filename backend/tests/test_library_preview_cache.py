@@ -31,7 +31,7 @@ def test_the_key_reads_every_input():
     variants = [base, ["p@2", *base[1:]], ["p@1", "g", *base[2:]], [*base[:2], "e", *base[3:]],
                 [*base[:3], "i", *base[4:]], [*base[:4], {"a": "2"}, base[5]], [*base[:5], {"age_years": "61"}]]
     assert len({PC.key(*v) for v in variants}) == len(variants)
-    assert PC.key("p@1", "", "d", "h", {}, {}) == PC.key("p@1", "d", "d", "h", {}, {})   # no unit = the dictation
+    assert PC.key("p@1", "", "d", "h", {}, {}) != PC.key("p@1", "d", "d", "h", {}, {})   # no unit asks lesion inputs
     assert PC.key("p@1", "f  x\n", "d", "h", {}, {}) == PC.key("p@1", "f x", "d", "h", {}, {})
 
 

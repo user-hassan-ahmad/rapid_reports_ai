@@ -25,8 +25,8 @@ def _t(s: str) -> str:
 
 def key(pack_key: str, finding: str, findings: str, history: str, answered: dict[str, str],
         patient: dict[str, str]) -> tuple:
-    """Everything the preview reads. An empty finding is the whole dictation, as in preview_pack."""
-    return (pack_key, _t(finding) or _t(findings), _t(findings), _t(history), tuple(sorted(answered.items())),
+    """Everything the preview reads. An empty finding stays empty: preview_pack then asks every lesion input."""
+    return (pack_key, _t(finding), _t(findings), _t(history), tuple(sorted(answered.items())),
             tuple(sorted(patient.items())))
 
 

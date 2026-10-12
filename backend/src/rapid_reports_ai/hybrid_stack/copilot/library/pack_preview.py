@@ -1,8 +1,9 @@
 """Preview for a library pack (library spec §4, §12 next slice). The model only settles inputs, each with the shortest
 verbatim span that settles it, and only from that input's scope: a lesion input from the card's own finding unit, a
-patient input from the clinical history or the whole dictation. Code reads every number and its unit from the quote
-(the model's number is never trusted); one batched Jev call per scope checks every other value as stated; the
-radiologist's answers win; the engine evaluates. Every word of the proposal comes from the entry. Any failure leaves
+patient input from the clinical history or the whole dictation; with no finding unit, lesion inputs are asked. Code
+reads every number and its unit from the whole measurement its quote sits in (the model's number must agree); one
+batched Jev call per scope checks every value, numbers included, as stated; the radiologist's answers win; the engine
+evaluates. Every word of the proposal comes from the entry. Any failure leaves
 the input asked, never assumed."""
 from __future__ import annotations
 
@@ -40,7 +41,7 @@ For each input its scope states, return one item:
 - input: the input's id;
 - state: "present" when the value is given; "absent" when the feature is said not to be there and the input lists absent; "not_assessable" when it is said that it cannot be assessed and the input lists not_assessable;
 - value: when present, for an enum exactly one of its options, for a boolean true or false, for a number the number as dictated; otherwise null;
-- quote: the shortest span, copied verbatim from the FINDING ([lesion]) or from the CLINICAL HISTORY or DICTATION ([patient]), that settles it; a number's quote includes its unit.
+- quote: the shortest span, copied verbatim from the FINDING ([lesion]) or from the CLINICAL HISTORY or DICTATION ([patient]), that settles it; a number's quote is the whole measurement as dictated, with its unit.
 Leave out every input that is not stated: never settle a value from what is usual or likely, and never invent an input, option or state."""
 
 
@@ -123,15 +124,17 @@ def _num(v) -> float | None:
         return None
 
 
-def _value(i: InputDef, item: RawItem) -> InputValue | None:
+def _value(i: InputDef, item: RawItem, texts: list[str] | None = None) -> InputValue | None:
     """The model's value if it is a real one: an allowed state, an option, a boolean, or a number read by code from
-    the quote in the input's unit (the model's own number only chooses between several readings)."""
+    the whole measurement its quote sits in within `texts` (the quote alone when no texts are given). The model's own
+    number must agree with that one reading, or choose between several."""
     if item.state in _STATE_LABEL:
         return InputValue(state=item.state) if item.state in i.states else None
     if item.state != "present":
         return None
     if i.type == "number":
-        x = Q.pick(Q.readings(item.quote, i.unit, i.dims), _num(item.value))
+        x = (Q.pick(Q.readings(item.quote, i.unit, i.dims), _num(item.value), i.unit) if texts is None
+             else Q.settle(item.quote, texts, i.unit, i.dims, _num(item.value)))
         return InputValue(value=x) if x is not None and i.in_range(x) else None   # out of range: asked
     if item.value is None:
         return None
@@ -158,7 +161,7 @@ def _prompt(e: Entry, ids: list[str], finding: str, findings: str, history: str)
     s = f"SYSTEM: {e.display}\nINPUTS:\n{_inputs_text(e, ids)}"
     if any(e.input(k).scope == "patient" for k in ids):
         s += f"\n\nCLINICAL HISTORY: {history or 'none given'}\n\nDICTATION:\n{findings}"
-    return s + f"\n\nFINDING:\n{finding}"
+    return s + f"\n\nFINDING:\n{finding}" if finding else s
 
 
 def _in_scope(i: InputDef, quote: str, finding: str, findings: str, history: str) -> bool:
@@ -247,8 +250,9 @@ def _given(e: Entry, answered: dict[str, str], patient: dict[str, str] | None = 
 
 async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings: str,
                   history: str) -> tuple[dict[str, tuple[InputValue, Settled]], bool]:
-    """(the model's real values for the open inputs whose quotes lie in their scope, whether the call failed)."""
-    ids = [i.id for i in e.inputs if i.id not in given]
+    """(the model's real values for the open inputs whose quotes lie in their scope, whether the call failed). With
+    no finding unit, lesion inputs are not offered: they are asked."""
+    ids = [i.id for i in e.inputs if i.id not in given and (finding or i.scope != "lesion")]
     if not ids:
         return {}, False
     try:
@@ -262,7 +266,7 @@ async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings
         q = item.quote.strip()
         if i is None or i.id not in ids or not q or not _in_scope(i, q, finding, findings, history):
             continue
-        v = _value(i, item)
+        v = _value(i, item, [finding] if i.scope == "lesion" else [findings, history])
         if v is not None:
             out[i.id] = (v, Settled(input=i.id, value=_show(e, i, v), quote=q))
     return out, False
@@ -341,20 +345,25 @@ async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str
                        sources: list[dict] | None = None, finding: str = "",
                        patient: dict[str, str] | None = None) -> Preview:
     sources = sources or []
-    finding = finding.strip() or findings          # no unit sent (an older client): the whole dictation, as before
+    finding = finding.strip()
     given = _given(e, answered, patient)
+    # no finding unit: lesion inputs are never read from the whole dictation (another lesion's values); they are asked
+    no_unit = not finding and any(i.scope == "lesion" and i.id not in given for i in e.inputs)
+    if no_unit:
+        logger.info("[library.preview] %s: no finding unit; lesion inputs asked", e.key)
     model, degraded = await _settle(e, given, finding, findings, history)
-    # a present number is read from its in-scope quote by code; every other value is put to Jev
-    pending = {k: v for k, (v, _) in model.items() if not (e.input(k).type == "number" and v.state == "present")}
+    # every value, numbers included (read by code from the quote), is put to Jev as stated for its scope: this
+    # catches a number of the wrong time point or the wrong role ("was 5 mm, now 9 mm"; swapped volumes)
+    pending = {k: v for k, (v, _) in model.items()}
     confirmed, failed = await _confirm(e, pending, finding, findings, history) if pending else (set(), False)
-    keep = [k for k in model if k not in pending or k in confirmed]
+    keep = [k for k in model if k in confirmed]
     given.update({k: model[k][0] for k in keep})
     try:
         t = engine.evaluate(e, given)
     except (engine.EvaluationError, ValueError) as ex:
         logger.error("[library.preview] %s cannot be evaluated: %s", e.key, ex)
         return Preview(degraded=True)
-    return _build(e, t, given, {k: model[k][1].quote for k in keep}, sources, degraded or failed)
+    return _build(e, t, given, {k: model[k][1].quote for k in keep}, sources, degraded or failed or no_unit)
 
 
 def as_entry(e: Entry, sources: list[dict]) -> CardEntry:

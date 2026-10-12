@@ -383,7 +383,7 @@ async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool 
         return Card(key=pack.key, name=pack.display, version=pack.edition, finding_id=f.id, why=s.why,
                     branch=branch, skeleton=[branch], publication=Publication(body=pack.issuer, year=pack.edition),
                     known=True, status="verified", siblings=[x.key for x in lib.siblings(pack)],
-                    reference=pack.tier == 2)
+                    reference=pack.tier == 2, finding=f.text)
     if not R.web_fetch_on():   # spec §5: outside the library, no card; the name is logged as demand
         logger.info("[copilot.match] outside the library, no card (demand): %r %r", s.name.strip()[:120],
                     s.version.strip()[:24])

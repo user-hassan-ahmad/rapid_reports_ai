@@ -515,8 +515,9 @@ PACK_CARD = {"key": "toy-nodule@1.0", "name": "Toy 2020", "version": "2020", "fi
 
 
 def test_open_a_library_pack(authed, toy_lib):
-    d = authed.post("/api/canvas/stack/guidelines/open", json={
-        "card": PACK_CARD, "findings": "7 mm solid nodule.", "answered": {"risk": "high"}}).json()
+    d = authed.post("/api/canvas/stack/guidelines/open", json={      # the card carries its own finding from /match
+        "card": {**PACK_CARD, "finding": "7 mm solid nodule."}, "findings": "7 mm solid nodule.",
+        "answered": {"risk": "high"}}).json()
     assert d["error"] is None and d["entry"]["key"] == "toy-nodule@1.0" and d["branch"] == "Pack"
     assert d["preview"]["proposal"]["recommendation"] == "CT at 6 months"
     assert d["entry"]["sources"][0]["url"] == "https://example.org/toy"
@@ -524,7 +525,7 @@ def test_open_a_library_pack(authed, toy_lib):
 
 def test_preview_a_library_pack(authed, toy_lib):
     d = authed.post("/api/canvas/stack/guidelines/preview", json={
-        "card": PACK_CARD, "findings": "7 mm solid nodule.", "answered": {}}).json()
+        "card": PACK_CARD, "finding": "7 mm solid nodule.", "findings": "7 mm solid nodule.", "answered": {}}).json()
     assert d["preview"]["missing"] == ["risk"] and len(d["preview"]["possible"]) == 2
 
 
@@ -608,3 +609,9 @@ def test_a_reference_card_opens_read_only_and_is_never_fetched(authed, monkeypat
 def test_a_pack_open_carries_its_reference_fields(authed, toy_lib):
     d = authed.post("/api/canvas/stack/guidelines/open", json={"card": PACK_CARD, "findings": "7 mm solid nodule."}).json()
     assert d["reference"]["summary"][0]["id"] == "sum.1"
+
+
+def test_a_pack_open_with_no_finding_asks_lesion_inputs_and_says_degraded(authed, toy_lib):
+    d = authed.post("/api/canvas/stack/guidelines/open", json={
+        "card": PACK_CARD, "findings": "7 mm solid nodule.", "answered": {"risk": "high"}}).json()
+    assert d["preview"]["proposal"] is None and "kind" in d["preview"]["missing"] and d["preview"]["degraded"] is True
