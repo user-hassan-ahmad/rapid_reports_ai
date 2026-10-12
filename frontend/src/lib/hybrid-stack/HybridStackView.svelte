@@ -7,7 +7,7 @@
 	import { flip } from 'svelte/animate';
 	import { buildView } from './stackState';
 	import { CONCLUSION, GENERAL, OTHER, TECHNIQUE, regionStates, showsGroup } from './regionState';
-	import { checkLabel, replaced, segments, target, withoutQuote, type CheckAnswer, type CheckFlag } from './checks';
+	import { checkLabel, replaced, segments, withoutQuote, type CheckAnswer, type CheckFlag } from './checks';
 	import { anchorRegion, answerLabel, openCount, quietLine, rowSentences, unansweredChecks, waiting } from './items';
 	import type { StackItem, StackUnit, ViewRow } from './types';
 
@@ -296,10 +296,8 @@
 	function nextStop() {
 		if (current && stops.length > 1) walkSkipped = [...walkSkipped.filter((x) => x !== current), current];
 	}
-	/** Enter accepts a suggestion in the walkthrough, except a completion that states a normal: that needs a click. */
-	const keyAccepts = (c: CheckFlag) => !!c.suggestion && !(c.completion && c.addsNormal);
 	function replaceCheck(c: CheckFlag) {
-		const r = shownLines.find((x) => x.text.includes(target(c))) ?? cardLine(c);
+		const r = cardLine(c);
 		if (!r || !c.suggestion) return;
 		onEditLine(r.unitId, partIndex(r), replaced(r.text, c));
 		onCheckAnswer(c.key, 'replaced');
@@ -326,7 +324,7 @@
 		const c = currentCheck;
 		if (e.key === 'Escape') walking = false;
 		else if (e.key === 'Tab') nextStop();
-		else if (c && e.key === 'Enter' && keyAccepts(c)) replaceCheck(c);
+		else if (c && e.key === 'Enter' && c.suggestion) replaceCheck(c);
 		else if (c && c.tier === 1 && (e.key === 'd' || e.key === 'D')) deleteSentence(c);
 		else if (c && (e.key === 'e' || e.key === 'E')) editCheck(c);
 		else if (c && (e.key === 'k' || e.key === 'K')) keepCheck(c);
@@ -649,19 +647,14 @@
 		</p>
 		<p class="text-gray-200">{`“${c.quote}”${c.other ? ` · “${c.other}”` : ''}`}</p>
 		{#if c.message}<p class="text-gray-400">{c.message}</p>{/if}
-		{#if c.suggestion && c.completion}
-			<p>Completes as: <span class="text-gray-200">{c.quote}</span> <span class="font-semibold text-orange-300">{c.suggestion}</span>
-				{#if c.addsNormal}<span class="ml-1 rounded bg-white/10 px-1 py-px text-[10px] text-gray-300" title="Not dictated: accepting it states it">adds: normal</span>{/if}</p>
-		{:else if c.suggestion}
-			<p>Likely: <span class="font-semibold text-orange-300">{c.suggestion}</span>{#if c.suggestionFor === 'other'}<span class="text-gray-500"> (changes “{c.other}”)</span>{/if}</p>
-		{/if}
+		{#if c.suggestion}<p>Likely: <span class="font-semibold text-orange-300">{c.suggestion}</span></p>{/if}
 		<p class="flex flex-wrap gap-1.5">
-			{#if c.suggestion}<button type="button" class="rounded-md bg-orange-400 px-2.5 py-1 font-semibold text-gray-950 hover:bg-orange-300" onclick={() => replaceCheck(c)}>{c.completion ? 'Accept' : 'Replace'}</button>{/if}
+			{#if c.suggestion}<button type="button" class="rounded-md bg-orange-400 px-2.5 py-1 font-semibold text-gray-950 hover:bg-orange-300" onclick={() => replaceCheck(c)}>Replace</button>{/if}
 			<button type="button" class="rounded-md border border-white/15 px-2.5 py-1 text-gray-100 hover:bg-white/[0.06]" onclick={() => editCheck(c)}>{c.tier === 1 ? 'Finish it' : 'Edit'}</button>
 			{#if c.tier === 1}<button type="button" class="rounded-md border border-white/10 px-2.5 py-1 text-gray-400 hover:text-rose-300" onclick={() => deleteSentence(c)}>Delete sentence</button>{/if}
 			<button type="button" class="rounded-md border border-white/10 px-2.5 py-1 text-gray-400 hover:text-gray-200" onclick={() => keepCheck(c)}>{c.blocking ? 'Keep as dictated' : 'Skip'}</button>
 		</p>
-		{#if walking}<p class="text-[10px] text-gray-500">{keyAccepts(c) ? (c.completion ? 'Enter accept · ' : 'Enter replace · ') : ''}E edit · {c.tier === 1 ? 'D delete · ' : ''}K keep · Tab next · Esc exit</p>{/if}
+		{#if walking}<p class="text-[10px] text-gray-500">{c.suggestion ? 'Enter replace · ' : ''}E edit · {c.tier === 1 ? 'D delete · ' : ''}K keep · Tab next · Esc exit</p>{/if}
 	</div>
 {/snippet}
 
@@ -680,7 +673,7 @@
 					Dictate correction
 				</button>
 			{/if}
-			{#if c.suggestion}<button type="button" class="rounded-md bg-orange-400/90 px-2 py-0.5 text-xs font-semibold text-gray-950 hover:bg-orange-300" onclick={() => replaceCheck(c)}>{c.completion ? 'Accept' : 'Replace with'} “{c.suggestion}”</button>{/if}
+			{#if c.suggestion}<button type="button" class="rounded-md bg-orange-400/90 px-2 py-0.5 text-xs font-semibold text-gray-950 hover:bg-orange-300" onclick={() => replaceCheck(c)}>Replace with “{c.suggestion}”</button>{/if}
 			{#if !c.blocking}<button type="button" class="rounded-md px-2 py-0.5 text-xs text-gray-500 hover:text-gray-300" onclick={() => onCheckAnswer(c.key, 'skip')}>Skip</button>{/if}
 			<button type="button" class="rounded-md bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-200 hover:bg-emerald-500/25" onclick={() => onCheckAnswer(c.key, 'as_dictated')}>✓ As dictated</button>
 		</span>
@@ -779,8 +772,7 @@
 						data-stop={`check:${c.key}`} data-check={c.kind}
 						class="rounded-sm underline decoration-orange-400 decoration-2 underline-offset-4 {c.blocking ? '' : 'decoration-dotted'} {currentCheck?.key === c.key ? 'bg-orange-400/15' : ''}"
 						onmouseenter={() => hoverOn(c.key)}
-						onclick={(e) => { e.stopPropagation(); if (!walking) pinnedKey = pinnedKey === c.key ? null : c.key; }}>{seg.text}</span>{#if c.completion && seg.text === c.quote}<span
-						class="italic text-gray-500" data-ghost={c.key}> {c.suggestion}</span>{/if}{:else}{seg.text}{/if}{/each}
+						onclick={(e) => { e.stopPropagation(); if (!walking) pinnedKey = pinnedKey === c.key ? null : c.key; }}>{seg.text}</span>{:else}{seg.text}{/if}{/each}
 					{#if r.pinned}<span class="ml-1 text-xs text-gray-500" title="Placed by you">•</span>{/if}
 				</button>
 				{#each marks.filter((c) => cardOpen(c) && cardLine(c) === r) as c (c.key)}{@render checkCard(c)}{/each}

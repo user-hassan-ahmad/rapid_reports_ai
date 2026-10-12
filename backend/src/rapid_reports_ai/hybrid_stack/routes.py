@@ -21,7 +21,6 @@ from .jev_stack import MATERIAL_MIN, STALE_MIN, UNFINISHED_MIN, ask_material, as
 from .normals import AssumedResult, assumed as assumed_normals
 from .slim_sheet import clean_sentences, get_or_make as slim_get_or_make
 from .template import template_region_normals
-from .complete import complete as complete_sentences
 from .draft import DraftResult, draft_conclusion
 from .service import GroupResult, SchemaResult, close_update, group_update, resolve_schema
 from .units import StackUnit, sentences as split_sentences
@@ -236,13 +235,9 @@ async def stack_unfinished(req: UnfinishedRequest, user: User = Depends(get_curr
     except Exception as e:
         logger.warning("[stack.unfinished] %s: %s", type(e).__name__, str(e)[:200])
         return {"flags": []}
-    flagged = [((s, k), p) for (s, k), p in zip(found, scores) if p >= UNFINISHED_MIN]
-    # The words that would finish each one (ghost text the radiologist accepts or not); never blocks the flags.
-    fills = await complete_sentences(text, [s for (s, _), _ in flagged]) if flagged else []
     return {"flags": [{"kind": "truncation", "severity": "high", "excerpt": s, "message": "The sentence stops before it is finished.",
-                       "start": k, "end": k + len(s), "blocking": True, "score": round(p, 3),
-                       "suggestion": fill, "completion": bool(fill), "adds_normal": src == "normal"}
-                      for ((s, k), p), (fill, src) in zip(flagged, fills)]}
+                       "start": k, "end": k + len(s), "blocking": True, "score": round(p, 3)}
+                      for (s, k), p in zip(found, scores) if p >= UNFINISHED_MIN]}
 
 
 @router.post("/assumed", response_model=AssumedResult)

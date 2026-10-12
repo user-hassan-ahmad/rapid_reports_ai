@@ -2788,7 +2788,6 @@ async def dictation_check_endpoint(
                 "related_end": f.related_end,
                 "suggestion": f.suggestion,
                 "blocking": f.blocking or f.severity == "high",   # tier 1 (unfinished) always holds Confirm
-                "suggestion_for": f.suggestion_for,
             }
             for f in flags
         ],
