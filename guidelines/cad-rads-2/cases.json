@@ -1,0 +1,990 @@
+{
+ "cases": [
+  {
+   "name": "Source example vi: CAD-RADS 3/P3/I+ (category, P and I from the source; presentation assumed by the library)",
+   "origin": "source",
+   "inputs": {
+    "presentation": "stable",
+    "category": "3",
+    "e_modifier": false,
+    "ischemia": "positive"
+   },
+   "outcome": "stable_3_ipos",
+   "steps": {
+    "cadrads": "stable_3_ipos"
+   }
+  },
+  {
+   "name": "Source example vii: CAD-RADS 4A/P2/I- by stress CTP, no reversible ischaemia (category, P and I from the source; presentation assumed by the library)",
+   "origin": "source",
+   "inputs": {
+    "presentation": "stable",
+    "category": "4A",
+    "e_modifier": false,
+    "ischemia": "negative",
+    "ischemia_test": "ctp",
+    "fixed_defect": false
+   },
+   "outcome": "stable_4a_ineg_defer",
+   "steps": {
+    "cadrads": "stable_4a_ineg_defer"
+   }
+  },
+  {
+   "name": "Source example v: CAD-RADS 4A/P3/N (category, P and I from the source; presentation assumed by the library)",
+   "origin": "source",
+   "inputs": {
+    "presentation": "stable",
+    "category": "4A",
+    "e_modifier": false,
+    "ischemia": {
+     "state": "absent"
+    }
+   },
+   "outcome": "stable_4a",
+   "steps": {
+    "cadrads": "stable_4a"
+   }
+  },
+  {
+   "name": "Source Fig 4: CAD-RADS 2/P2 (category, P and I from the source; presentation assumed by the library)",
+   "origin": "source",
+   "inputs": {
+    "presentation": "stable",
+    "category": "2",
+    "e_modifier": false,
+    "plaque_burden": "P2",
+    "ischemia": {
+     "state": "absent"
+    }
+   },
+   "outcome": "stable_2_p12",
+   "steps": {
+    "cadrads": "stable_2_p12"
+   }
+  },
+  {
+   "name": "Source Fig 5: CAD-RADS 1/P3 (category, P and I from the source; presentation assumed by the library)",
+   "origin": "source",
+   "inputs": {
+    "presentation": "stable",
+    "category": "1",
+    "e_modifier": false,
+    "plaque_burden": "P3"
+   },
+   "outcome": "stable_1_p34",
+   "steps": {
+    "cadrads": "stable_1_p34"
+   }
+  },
+  {
+   "name": "Source example i: CAD-RADS N/P2/S (category, P and I from the source; presentation assumed by the library)",
+   "origin": "source",
+   "inputs": {
+    "presentation": "stable",
+    "category": "N"
+   },
+   "outcome": "stable_n",
+   "steps": {
+    "cadrads": "stable_n"
+   }
+  },
+  {
+   "name": "Source example iv: CAD-RADS 2/P4/G (category, P and I from the source; presentation assumed by the library)",
+   "origin": "source",
+   "inputs": {
+    "presentation": "acute",
+    "category": "2",
+    "e_modifier": false,
+    "plaque_burden": "P4",
+    "ischemia": {
+     "state": "absent"
+    }
+   },
+   "outcome": "acute_2_p34",
+   "steps": {
+    "cadrads": "acute_2_p34"
+   }
+  },
+  {
+   "name": "Source example viii: CAD-RADS 4A/I+/E, anomalous left main, no plaque (category, P and I from the source; presentation assumed by the library)",
+   "origin": "source",
+   "inputs": {
+    "presentation": "stable",
+    "category": "4A",
+    "e_modifier": true
+   },
+   "outcome": "stable_4a_e",
+   "steps": {
+    "cadrads": "stable_4a_e"
+   }
+  },
+  {
+   "name": "ours: stable 0",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "0"
+   },
+   "outcome": "stable_0",
+   "steps": {
+    "cadrads": "stable_0"
+   }
+  },
+  {
+   "name": "ours: stable 1 True",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "1",
+    "e_modifier": true
+   },
+   "outcome": "stable_1_e",
+   "steps": {
+    "cadrads": "stable_1_e"
+   }
+  },
+  {
+   "name": "ours: stable 1 False P1",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "1",
+    "e_modifier": false,
+    "plaque_burden": "P1"
+   },
+   "outcome": "stable_1_p1",
+   "steps": {
+    "cadrads": "stable_1_p1"
+   }
+  },
+  {
+   "name": "ours: stable 1 False P2",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "1",
+    "e_modifier": false,
+    "plaque_burden": "P2"
+   },
+   "outcome": "stable_1_p2",
+   "steps": {
+    "cadrads": "stable_1_p2"
+   }
+  },
+  {
+   "name": "ours: stable 2 True",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "2",
+    "e_modifier": true
+   },
+   "outcome": "stable_2_e",
+   "steps": {
+    "cadrads": "stable_2_e"
+   }
+  },
+  {
+   "name": "ours: stable 2 False P1 positive",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "2",
+    "e_modifier": false,
+    "plaque_burden": "P1",
+    "ischemia": "positive"
+   },
+   "outcome": "stable_2_p12_i",
+   "steps": {
+    "cadrads": "stable_2_p12_i"
+   }
+  },
+  {
+   "name": "ours: stable 2 False P3 positive",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "2",
+    "e_modifier": false,
+    "plaque_burden": "P3",
+    "ischemia": "positive"
+   },
+   "outcome": "stable_2_p34_i",
+   "steps": {
+    "cadrads": "stable_2_p34_i"
+   }
+  },
+  {
+   "name": "ours: stable 2 False P3 @absent",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "2",
+    "e_modifier": false,
+    "plaque_burden": "P3",
+    "ischemia": {
+     "state": "absent"
+    }
+   },
+   "outcome": "stable_2_p34",
+   "steps": {
+    "cadrads": "stable_2_p34"
+   }
+  },
+  {
+   "name": "ours: stable 3 True",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "3",
+    "e_modifier": true
+   },
+   "outcome": "stable_3_e",
+   "steps": {
+    "cadrads": "stable_3_e"
+   }
+  },
+  {
+   "name": "ours: stable 3 False negative ct_ffr",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "3",
+    "e_modifier": false,
+    "ischemia": "negative",
+    "ischemia_test": "ct_ffr"
+   },
+   "outcome": "stable_3_ineg_defer",
+   "steps": {
+    "cadrads": "stable_3_ineg_defer"
+   }
+  },
+  {
+   "name": "ours: stable 3 False negative ctp True",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "3",
+    "e_modifier": false,
+    "ischemia": "negative",
+    "ischemia_test": "ctp",
+    "fixed_defect": true
+   },
+   "outcome": "stable_3_ineg_infarct",
+   "steps": {
+    "cadrads": "stable_3_ineg_infarct"
+   }
+  },
+  {
+   "name": "ours: stable 3 False borderline ct_ffr",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "3",
+    "e_modifier": false,
+    "ischemia": "borderline",
+    "ischemia_test": "ct_ffr"
+   },
+   "outcome": "stable_3_iborder_ffr",
+   "steps": {
+    "cadrads": "stable_3_iborder_ffr"
+   }
+  },
+  {
+   "name": "ours: stable 3 False borderline ctp",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "3",
+    "e_modifier": false,
+    "ischemia": "borderline",
+    "ischemia_test": "ctp"
+   },
+   "outcome": "stable_3_iborder_ctp",
+   "steps": {
+    "cadrads": "stable_3_iborder_ctp"
+   }
+  },
+  {
+   "name": "ours: stable 3 False @absent",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "3",
+    "e_modifier": false,
+    "ischemia": {
+     "state": "absent"
+    }
+   },
+   "outcome": "stable_3",
+   "steps": {
+    "cadrads": "stable_3"
+   }
+  },
+  {
+   "name": "ours: stable 4A False positive",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "4A",
+    "e_modifier": false,
+    "ischemia": "positive"
+   },
+   "outcome": "stable_4a_ipos",
+   "steps": {
+    "cadrads": "stable_4a_ipos"
+   }
+  },
+  {
+   "name": "ours: stable 4A False negative ctp True",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "4A",
+    "e_modifier": false,
+    "ischemia": "negative",
+    "ischemia_test": "ctp",
+    "fixed_defect": true
+   },
+   "outcome": "stable_4a_ineg_infarct",
+   "steps": {
+    "cadrads": "stable_4a_ineg_infarct"
+   }
+  },
+  {
+   "name": "ours: stable 4A False borderline ct_ffr",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "4A",
+    "e_modifier": false,
+    "ischemia": "borderline",
+    "ischemia_test": "ct_ffr"
+   },
+   "outcome": "stable_4a_iborder_ffr",
+   "steps": {
+    "cadrads": "stable_4a_iborder_ffr"
+   }
+  },
+  {
+   "name": "ours: stable 4A False borderline ctp",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "4A",
+    "e_modifier": false,
+    "ischemia": "borderline",
+    "ischemia_test": "ctp"
+   },
+   "outcome": "stable_4a_iborder_ctp",
+   "steps": {
+    "cadrads": "stable_4a_iborder_ctp"
+   }
+  },
+  {
+   "name": "ours: stable 4B True",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "4B",
+    "e_modifier": true
+   },
+   "outcome": "stable_4b_e",
+   "steps": {
+    "cadrads": "stable_4b_e"
+   }
+  },
+  {
+   "name": "ours: stable 4B False",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "4B",
+    "e_modifier": false
+   },
+   "outcome": "stable_4b",
+   "steps": {
+    "cadrads": "stable_4b"
+   }
+  },
+  {
+   "name": "ours: stable 5 True",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "5",
+    "e_modifier": true
+   },
+   "outcome": "stable_5_e",
+   "steps": {
+    "cadrads": "stable_5_e"
+   }
+  },
+  {
+   "name": "ours: stable 5 False",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "5",
+    "e_modifier": false
+   },
+   "outcome": "stable_5",
+   "steps": {
+    "cadrads": "stable_5"
+   }
+  },
+  {
+   "name": "ours: acute 0",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "0"
+   },
+   "outcome": "acute_0",
+   "steps": {
+    "cadrads": "acute_0"
+   }
+  },
+  {
+   "name": "ours: acute 1 True",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "1",
+    "e_modifier": true
+   },
+   "outcome": "acute_1_e",
+   "steps": {
+    "cadrads": "acute_1_e"
+   }
+  },
+  {
+   "name": "ours: acute 1 False P1",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "1",
+    "e_modifier": false,
+    "plaque_burden": "P1"
+   },
+   "outcome": "acute_1_p12",
+   "steps": {
+    "cadrads": "acute_1_p12"
+   }
+  },
+  {
+   "name": "ours: acute 1 False P3",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "1",
+    "e_modifier": false,
+    "plaque_burden": "P3"
+   },
+   "outcome": "acute_1_p34",
+   "steps": {
+    "cadrads": "acute_1_p34"
+   }
+  },
+  {
+   "name": "ours: acute 2 True",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "2",
+    "e_modifier": true
+   },
+   "outcome": "acute_2_e",
+   "steps": {
+    "cadrads": "acute_2_e"
+   }
+  },
+  {
+   "name": "ours: acute 2 False P1 positive",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "2",
+    "e_modifier": false,
+    "plaque_burden": "P1",
+    "ischemia": "positive"
+   },
+   "outcome": "acute_2_p12_i",
+   "steps": {
+    "cadrads": "acute_2_p12_i"
+   }
+  },
+  {
+   "name": "ours: acute 2 False P1 @absent",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "2",
+    "e_modifier": false,
+    "plaque_burden": "P1",
+    "ischemia": {
+     "state": "absent"
+    }
+   },
+   "outcome": "acute_2_p12",
+   "steps": {
+    "cadrads": "acute_2_p12"
+   }
+  },
+  {
+   "name": "ours: acute 2 False P3 positive",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "2",
+    "e_modifier": false,
+    "plaque_burden": "P3",
+    "ischemia": "positive"
+   },
+   "outcome": "acute_2_p34_i",
+   "steps": {
+    "cadrads": "acute_2_p34_i"
+   }
+  },
+  {
+   "name": "ours: acute 3 True",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "3",
+    "e_modifier": true
+   },
+   "outcome": "acute_3_e",
+   "steps": {
+    "cadrads": "acute_3_e"
+   }
+  },
+  {
+   "name": "ours: acute 3 False positive",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "3",
+    "e_modifier": false,
+    "ischemia": "positive"
+   },
+   "outcome": "acute_3_ipos",
+   "steps": {
+    "cadrads": "acute_3_ipos"
+   }
+  },
+  {
+   "name": "ours: acute 3 False negative ct_ffr",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "3",
+    "e_modifier": false,
+    "ischemia": "negative",
+    "ischemia_test": "ct_ffr"
+   },
+   "outcome": "acute_3_ineg",
+   "steps": {
+    "cadrads": "acute_3_ineg"
+   }
+  },
+  {
+   "name": "ours: acute 3 False borderline ct_ffr",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "3",
+    "e_modifier": false,
+    "ischemia": "borderline",
+    "ischemia_test": "ct_ffr"
+   },
+   "outcome": "acute_3_iborder_ffr",
+   "steps": {
+    "cadrads": "acute_3_iborder_ffr"
+   }
+  },
+  {
+   "name": "ours: acute 3 False borderline ctp",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "3",
+    "e_modifier": false,
+    "ischemia": "borderline",
+    "ischemia_test": "ctp"
+   },
+   "outcome": "acute_3_iborder_ctp",
+   "steps": {
+    "cadrads": "acute_3_iborder_ctp"
+   }
+  },
+  {
+   "name": "ours: acute 3 False @absent",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "3",
+    "e_modifier": false,
+    "ischemia": {
+     "state": "absent"
+    }
+   },
+   "outcome": "acute_3",
+   "steps": {
+    "cadrads": "acute_3"
+   }
+  },
+  {
+   "name": "ours: acute 4A True",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "4A",
+    "e_modifier": true
+   },
+   "outcome": "acute_4a_e",
+   "steps": {
+    "cadrads": "acute_4a_e"
+   }
+  },
+  {
+   "name": "ours: acute 4A False positive",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "4A",
+    "e_modifier": false,
+    "ischemia": "positive"
+   },
+   "outcome": "acute_4a_ipos",
+   "steps": {
+    "cadrads": "acute_4a_ipos"
+   }
+  },
+  {
+   "name": "ours: acute 4A False negative ct_ffr",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "4A",
+    "e_modifier": false,
+    "ischemia": "negative",
+    "ischemia_test": "ct_ffr"
+   },
+   "outcome": "acute_4a_ineg",
+   "steps": {
+    "cadrads": "acute_4a_ineg"
+   }
+  },
+  {
+   "name": "ours: acute 4A False borderline ct_ffr",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "4A",
+    "e_modifier": false,
+    "ischemia": "borderline",
+    "ischemia_test": "ct_ffr"
+   },
+   "outcome": "acute_4a_iborder_ffr",
+   "steps": {
+    "cadrads": "acute_4a_iborder_ffr"
+   }
+  },
+  {
+   "name": "ours: acute 4A False borderline ctp",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "4A",
+    "e_modifier": false,
+    "ischemia": "borderline",
+    "ischemia_test": "ctp"
+   },
+   "outcome": "acute_4a_iborder_ctp",
+   "steps": {
+    "cadrads": "acute_4a_iborder_ctp"
+   }
+  },
+  {
+   "name": "ours: acute 4A False @absent",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "4A",
+    "e_modifier": false,
+    "ischemia": {
+     "state": "absent"
+    }
+   },
+   "outcome": "acute_4a",
+   "steps": {
+    "cadrads": "acute_4a"
+   }
+  },
+  {
+   "name": "ours: acute 4B True",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "4B",
+    "e_modifier": true
+   },
+   "outcome": "acute_4b_e",
+   "steps": {
+    "cadrads": "acute_4b_e"
+   }
+  },
+  {
+   "name": "ours: acute 4B False",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "4B",
+    "e_modifier": false
+   },
+   "outcome": "acute_4b",
+   "steps": {
+    "cadrads": "acute_4b"
+   }
+  },
+  {
+   "name": "ours: acute 5 True",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "5",
+    "e_modifier": true
+   },
+   "outcome": "acute_5_e",
+   "steps": {
+    "cadrads": "acute_5_e"
+   }
+  },
+  {
+   "name": "ours: acute 5 False",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "5",
+    "e_modifier": false
+   },
+   "outcome": "acute_5",
+   "steps": {
+    "cadrads": "acute_5"
+   }
+  },
+  {
+   "name": "ours: acute N",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "N"
+   },
+   "outcome": "acute_n",
+   "steps": {
+    "cadrads": "acute_n"
+   }
+  },
+  {
+   "name": "ours: other 0",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "other",
+    "category": "0"
+   },
+   "outcome": "management_not_defined",
+   "steps": {
+    "cadrads": "management_not_defined"
+   }
+  },
+  {
+   "name": "P edge: stable CAD-RADS 1/P4",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "1",
+    "e_modifier": false,
+    "plaque_burden": "P4"
+   },
+   "outcome": "stable_1_p34",
+   "steps": {
+    "cadrads": "stable_1_p34"
+   }
+  },
+  {
+   "name": "P edge: acute CAD-RADS 1/P2",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "1",
+    "e_modifier": false,
+    "plaque_burden": "P2"
+   },
+   "outcome": "acute_1_p12",
+   "steps": {
+    "cadrads": "acute_1_p12"
+   }
+  },
+  {
+   "name": "P edge: acute CAD-RADS 1/P3",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "1",
+    "e_modifier": false,
+    "plaque_burden": "P3"
+   },
+   "outcome": "acute_1_p34",
+   "steps": {
+    "cadrads": "acute_1_p34"
+   }
+  },
+  {
+   "name": "P edge: stable CAD-RADS 2/P3",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "2",
+    "e_modifier": false,
+    "plaque_burden": "P3",
+    "ischemia": {
+     "state": "absent"
+    }
+   },
+   "outcome": "stable_2_p34",
+   "steps": {
+    "cadrads": "stable_2_p34"
+   }
+  },
+  {
+   "name": "Non-diagnostic CT-FFR (not assessable) behaves as no ischaemia test",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "3",
+    "e_modifier": false,
+    "ischemia": {
+     "state": "not_assessable"
+    }
+   },
+   "outcome": "acute_3",
+   "steps": {
+    "cadrads": "acute_3"
+   }
+  },
+  {
+   "name": "Acute 4A with CT-FFR I-: Table 5 line, no deferral",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "4A",
+    "e_modifier": false,
+    "ischemia": "negative",
+    "ischemia_test": "ct_ffr"
+   },
+   "outcome": "acute_4a_ineg",
+   "steps": {
+    "cadrads": "acute_4a_ineg"
+   }
+  },
+  {
+   "name": "Acute 3 with CTP I- for fixed infarct: fixed_defect not asked",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "acute",
+    "category": "3",
+    "e_modifier": false,
+    "ischemia": "negative",
+    "ischemia_test": "ctp"
+   },
+   "outcome": "acute_3_ineg",
+   "steps": {
+    "cadrads": "acute_3_ineg"
+   }
+  },
+  {
+   "name": "Other indication with CAD-RADS 3: nothing else asked",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "other",
+    "category": "3"
+   },
+   "outcome": "management_not_defined",
+   "steps": {
+    "cadrads": "management_not_defined"
+   }
+  },
+  {
+   "name": "Presentation not stated: ask for it",
+   "origin": "ours",
+   "inputs": {
+    "category": "4B",
+    "e_modifier": false
+   },
+   "outcome": null,
+   "needed": [
+    "presentation"
+   ]
+  },
+  {
+   "name": "CAD-RADS 2 without P: ask for plaque burden",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "2",
+    "e_modifier": false,
+    "ischemia": {
+     "state": "absent"
+    }
+   },
+   "outcome": null,
+   "needed": [
+    "plaque_burden"
+   ]
+  },
+  {
+   "name": "CAD-RADS 3 with no I stated: ask about ischaemia testing",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "3",
+    "e_modifier": false
+   },
+   "outcome": null,
+   "needed": [
+    "ischemia",
+    "ischemia_test",
+    "fixed_defect"
+   ]
+  },
+  {
+   "name": "Stable 3 I- without the test named: ask which test",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "3",
+    "e_modifier": false,
+    "ischemia": "negative"
+   },
+   "outcome": null,
+   "needed": [
+    "ischemia_test",
+    "fixed_defect"
+   ]
+  },
+  {
+   "name": "E not stated: ask for it",
+   "origin": "ours",
+   "inputs": {
+    "presentation": "stable",
+    "category": "4B"
+   },
+   "outcome": null,
+   "needed": [
+    "e_modifier"
+   ]
+  }
+ ]
+}

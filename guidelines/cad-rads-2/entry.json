@@ -1,0 +1,2545 @@
+{
+ "id": "cad-rads-2",
+ "version": "2022.1",
+ "topic": "coronary-stenosis-ccta",
+ "issuer": "Society of Cardiovascular Computed Tomography (SCCT), with ACC, ACR and NASCI (expert consensus document)",
+ "system": "CAD-RADS 2.0 Coronary Artery Disease - Reporting and Data System",
+ "display": "CAD-RADS 2.0",
+ "edition": "2022",
+ "tier": 1,
+ "status": "current",
+ "applies_to": {
+  "region": [
+   "heart"
+  ],
+  "modality": [
+   "CT"
+  ],
+  "finding_type": [
+   "coronary stenosis"
+  ],
+  "context": []
+ },
+ "aliases": [
+  "cad-rads",
+  "cadrads",
+  "cad-rads 2.0",
+  "cad rads 2",
+  "cad-rads 2022",
+  "coronary artery disease reporting and data system"
+ ],
+ "inputs": [
+  {
+   "id": "category",
+   "label": "CAD-RADS category",
+   "type": "enum",
+   "options": [
+    "0",
+    "1",
+    "2",
+    "3",
+    "4A",
+    "4B",
+    "5",
+    "N"
+   ],
+   "scope": "lesion",
+   "how_stated": "the CAD-RADS stenosis category as dictated: 0, 1, 2, 3, 4A, 4B, 5 or N (eg 'CAD-RADS 3/P2', 'CAD-RADS 4A'). It is the term before the first slash; N is the category only when it stands first (CAD-RADS N/P2), while a trailing N is a modifier (CAD-RADS 3/P2/N is category 3). Do not infer the category from stenosis percentages.",
+   "locator": {
+    "source": "S1",
+    "section": "3.1 CAD-RADS categories; 3.3.1 Modifier N",
+    "table": "Table 4 and Table 5, Category column"
+   }
+  },
+  {
+   "id": "presentation",
+   "label": "Clinical presentation",
+   "type": "enum",
+   "options": [
+    "stable",
+    "acute",
+    "other"
+   ],
+   "scope": "patient",
+   "how_stated": "stable for stable (chronic) chest pain or suspected stable coronary artery disease; acute for acute chest pain, eg an emergency department presentation with suspected acute coronary syndrome; other when the CCTA indication is not chest pain (eg pre-procedural planning or no symptoms)",
+   "locator": {
+    "source": "S1",
+    "section": "3.1 CAD-RADS categories (Tables 4 and 5 list the categories for stable and for acute chest pain)",
+    "table": "Table 4; Table 5"
+   }
+  },
+  {
+   "id": "e_modifier",
+   "label": "Modifier E (non-atherosclerotic cause of the coronary abnormality)",
+   "type": "boolean",
+   "scope": "lesion",
+   "prerequisites": [
+    {
+     "ref": "category",
+     "in": [
+      "1",
+      "2",
+      "3",
+      "4A",
+      "4B",
+      "5"
+     ]
+    },
+    {
+     "ref": "presentation",
+     "in": [
+      "stable",
+      "acute"
+     ]
+    }
+   ],
+   "how_stated": "true when the CAD-RADS code carries /E or the stenosis is attributed to a non-atherosclerotic cause (eg dissection, anomalous origin with inter-arterial course, aneurysm, vasculitis, fistula, extrinsic compression); false when the code is given without E and the disease is atherosclerotic",
+   "locator": {
+    "source": "S1",
+    "section": "3.3.6 Modifier E = exceptions",
+    "table": "Table 3"
+   }
+  },
+  {
+   "id": "plaque_burden",
+   "label": "Plaque burden (P category)",
+   "type": "enum",
+   "options": [
+    "P1",
+    "P2",
+    "P3",
+    "P4"
+   ],
+   "scope": "lesion",
+   "prerequisites": [
+    {
+     "ref": "category",
+     "in": [
+      "1",
+      "2"
+     ]
+    },
+    {
+     "ref": "presentation",
+     "in": [
+      "stable",
+      "acute"
+     ]
+    },
+    {
+     "ref": "e_modifier",
+     "eq": false
+    }
+   ],
+   "how_stated": "the P category dictated after the stenosis category, P1 to P4 (eg 'CAD-RADS 2/P3'); P1 mild, P2 moderate, P3 severe, P4 extensive overall amount of coronary plaque",
+   "locator": {
+    "source": "S1",
+    "section": "3.2.1 Overall amount of coronary plaque (P)",
+    "table": "Table 1 (plaque burden scale); Table 2"
+   }
+  },
+  {
+   "id": "ischemia",
+   "label": "Ischaemia modifier (I) from CT-FFR or stress CT perfusion",
+   "type": "enum",
+   "options": [
+    "positive",
+    "negative",
+    "borderline"
+   ],
+   "states": [
+    "absent",
+    "not_assessable"
+   ],
+   "scope": "lesion",
+   "prerequisites": [
+    {
+     "ref": "category",
+     "in": [
+      "2",
+      "3",
+      "4A"
+     ]
+    },
+    {
+     "ref": "presentation",
+     "in": [
+      "stable",
+      "acute"
+     ]
+    },
+    {
+     "ref": "e_modifier",
+     "eq": false
+    }
+   ],
+   "how_stated": "the I modifier from CT-FFR or stress myocardial CT perfusion: positive for I+, negative for I-, borderline for I+/- (I±); absent when the report states no CT-FFR or CTP was performed; not assessable when the CT-FFR or CTP was non-diagnostic",
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5 Modifier I = ischemia: CT-FFR or CTP",
+    "table": "Table 1 (ischemia scale); Table 6; Table 7"
+   }
+  },
+  {
+   "id": "ischemia_test",
+   "label": "CT ischaemia test used",
+   "type": "enum",
+   "options": [
+    "ct_ffr",
+    "ctp"
+   ],
+   "scope": "lesion",
+   "prerequisites": [
+    {
+     "ref": "category",
+     "in": [
+      "3",
+      "4A"
+     ]
+    },
+    {
+     "ref": "ischemia",
+     "in": [
+      "negative",
+      "borderline"
+     ]
+    }
+   ],
+   "how_stated": "ct_ffr when the I modifier comes from CT-FFR (FFR-CT, CT-derived fractional flow reserve); ctp when it comes from stress myocardial CT perfusion",
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5.1 CT-FFR; 3.3.5.2 Myocardial CT perfusion",
+    "table": "Table 6; Table 7"
+   }
+  },
+  {
+   "id": "fixed_defect",
+   "label": "CT perfusion I- coded for a prior infarct (fixed perfusion defect)",
+   "type": "boolean",
+   "scope": "lesion",
+   "prerequisites": [
+    {
+     "ref": "presentation",
+     "eq": "stable"
+    },
+    {
+     "ref": "category",
+     "in": [
+      "3",
+      "4A"
+     ]
+    },
+    {
+     "ref": "ischemia",
+     "eq": "negative"
+    },
+    {
+     "ref": "ischemia_test",
+     "eq": "ctp"
+    }
+   ],
+   "how_stated": "true when the CTP shows a fixed (stress and rest) perfusion defect of prior infarction with no ischaemia; false when stress CTP shows no perfusion defect",
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5.2 Myocardial CT perfusion",
+    "table": "Table 1 footnote a; Table 7"
+   }
+  }
+ ],
+ "logic": [
+  {
+   "step": "table",
+   "id": "cadrads",
+   "keys": [
+    "presentation",
+    "category",
+    "e_modifier",
+    "plaque_burden",
+    "ischemia",
+    "ischemia_test",
+    "fixed_defect"
+   ],
+   "rows": [
+    {
+     "match": [
+      "stable",
+      "0",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_0"
+    },
+    {
+     "match": [
+      "stable",
+      "1",
+      true,
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_1_e"
+    },
+    {
+     "match": [
+      "stable",
+      "1",
+      false,
+      "P1",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_1_p1"
+    },
+    {
+     "match": [
+      "stable",
+      "1",
+      false,
+      "P2",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_1_p2"
+    },
+    {
+     "match": [
+      "stable",
+      "1",
+      false,
+      "P3",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_1_p34"
+    },
+    {
+     "match": [
+      "stable",
+      "1",
+      false,
+      "P4",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_1_p34"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      true,
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_e"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P1",
+      "positive",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p12_i"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P1",
+      "negative",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p12_i"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P1",
+      "borderline",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p12_i"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P1",
+      "@absent",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p12"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P1",
+      "@not_assessable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p12"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P2",
+      "positive",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p12_i"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P2",
+      "negative",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p12_i"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P2",
+      "borderline",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p12_i"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P2",
+      "@absent",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p12"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P2",
+      "@not_assessable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p12"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P3",
+      "positive",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p34_i"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P3",
+      "negative",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p34_i"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P3",
+      "borderline",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p34_i"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P3",
+      "@absent",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p34"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P3",
+      "@not_assessable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p34"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P4",
+      "positive",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p34_i"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P4",
+      "negative",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p34_i"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P4",
+      "borderline",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p34_i"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P4",
+      "@absent",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p34"
+    },
+    {
+     "match": [
+      "stable",
+      "2",
+      false,
+      "P4",
+      "@not_assessable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_2_p34"
+    },
+    {
+     "match": [
+      "stable",
+      "3",
+      true,
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_3_e"
+    },
+    {
+     "match": [
+      "stable",
+      "3",
+      false,
+      "@not_applicable",
+      "positive",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_3_ipos"
+    },
+    {
+     "match": [
+      "stable",
+      "3",
+      false,
+      "@not_applicable",
+      "negative",
+      "ct_ffr",
+      "@not_applicable"
+     ],
+     "result": "stable_3_ineg_defer"
+    },
+    {
+     "match": [
+      "stable",
+      "3",
+      false,
+      "@not_applicable",
+      "negative",
+      "ctp",
+      true
+     ],
+     "result": "stable_3_ineg_infarct"
+    },
+    {
+     "match": [
+      "stable",
+      "3",
+      false,
+      "@not_applicable",
+      "negative",
+      "ctp",
+      false
+     ],
+     "result": "stable_3_ineg_defer"
+    },
+    {
+     "match": [
+      "stable",
+      "3",
+      false,
+      "@not_applicable",
+      "borderline",
+      "ct_ffr",
+      "@not_applicable"
+     ],
+     "result": "stable_3_iborder_ffr"
+    },
+    {
+     "match": [
+      "stable",
+      "3",
+      false,
+      "@not_applicable",
+      "borderline",
+      "ctp",
+      "@not_applicable"
+     ],
+     "result": "stable_3_iborder_ctp"
+    },
+    {
+     "match": [
+      "stable",
+      "3",
+      false,
+      "@not_applicable",
+      "@absent",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_3"
+    },
+    {
+     "match": [
+      "stable",
+      "3",
+      false,
+      "@not_applicable",
+      "@not_assessable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_3"
+    },
+    {
+     "match": [
+      "stable",
+      "4A",
+      true,
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_4a_e"
+    },
+    {
+     "match": [
+      "stable",
+      "4A",
+      false,
+      "@not_applicable",
+      "positive",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_4a_ipos"
+    },
+    {
+     "match": [
+      "stable",
+      "4A",
+      false,
+      "@not_applicable",
+      "negative",
+      "ct_ffr",
+      "@not_applicable"
+     ],
+     "result": "stable_4a_ineg_defer"
+    },
+    {
+     "match": [
+      "stable",
+      "4A",
+      false,
+      "@not_applicable",
+      "negative",
+      "ctp",
+      true
+     ],
+     "result": "stable_4a_ineg_infarct"
+    },
+    {
+     "match": [
+      "stable",
+      "4A",
+      false,
+      "@not_applicable",
+      "negative",
+      "ctp",
+      false
+     ],
+     "result": "stable_4a_ineg_defer"
+    },
+    {
+     "match": [
+      "stable",
+      "4A",
+      false,
+      "@not_applicable",
+      "borderline",
+      "ct_ffr",
+      "@not_applicable"
+     ],
+     "result": "stable_4a_iborder_ffr"
+    },
+    {
+     "match": [
+      "stable",
+      "4A",
+      false,
+      "@not_applicable",
+      "borderline",
+      "ctp",
+      "@not_applicable"
+     ],
+     "result": "stable_4a_iborder_ctp"
+    },
+    {
+     "match": [
+      "stable",
+      "4A",
+      false,
+      "@not_applicable",
+      "@absent",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_4a"
+    },
+    {
+     "match": [
+      "stable",
+      "4A",
+      false,
+      "@not_applicable",
+      "@not_assessable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_4a"
+    },
+    {
+     "match": [
+      "stable",
+      "4B",
+      true,
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_4b_e"
+    },
+    {
+     "match": [
+      "stable",
+      "4B",
+      false,
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_4b"
+    },
+    {
+     "match": [
+      "stable",
+      "5",
+      true,
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_5_e"
+    },
+    {
+     "match": [
+      "stable",
+      "5",
+      false,
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_5"
+    },
+    {
+     "match": [
+      "stable",
+      "N",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "stable_n"
+    },
+    {
+     "match": [
+      "acute",
+      "0",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_0"
+    },
+    {
+     "match": [
+      "acute",
+      "1",
+      true,
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_1_e"
+    },
+    {
+     "match": [
+      "acute",
+      "1",
+      false,
+      "P1",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_1_p12"
+    },
+    {
+     "match": [
+      "acute",
+      "1",
+      false,
+      "P2",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_1_p12"
+    },
+    {
+     "match": [
+      "acute",
+      "1",
+      false,
+      "P3",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_1_p34"
+    },
+    {
+     "match": [
+      "acute",
+      "1",
+      false,
+      "P4",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_1_p34"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      true,
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_e"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P1",
+      "positive",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p12_i"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P1",
+      "negative",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p12_i"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P1",
+      "borderline",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p12_i"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P1",
+      "@absent",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p12"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P1",
+      "@not_assessable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p12"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P2",
+      "positive",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p12_i"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P2",
+      "negative",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p12_i"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P2",
+      "borderline",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p12_i"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P2",
+      "@absent",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p12"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P2",
+      "@not_assessable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p12"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P3",
+      "positive",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p34_i"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P3",
+      "negative",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p34_i"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P3",
+      "borderline",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p34_i"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P3",
+      "@absent",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p34"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P3",
+      "@not_assessable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p34"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P4",
+      "positive",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p34_i"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P4",
+      "negative",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p34_i"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P4",
+      "borderline",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p34_i"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P4",
+      "@absent",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p34"
+    },
+    {
+     "match": [
+      "acute",
+      "2",
+      false,
+      "P4",
+      "@not_assessable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_2_p34"
+    },
+    {
+     "match": [
+      "acute",
+      "3",
+      true,
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_3_e"
+    },
+    {
+     "match": [
+      "acute",
+      "3",
+      false,
+      "@not_applicable",
+      "positive",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_3_ipos"
+    },
+    {
+     "match": [
+      "acute",
+      "3",
+      false,
+      "@not_applicable",
+      "negative",
+      "ct_ffr",
+      "@not_applicable"
+     ],
+     "result": "acute_3_ineg"
+    },
+    {
+     "match": [
+      "acute",
+      "3",
+      false,
+      "@not_applicable",
+      "negative",
+      "ctp",
+      "@not_applicable"
+     ],
+     "result": "acute_3_ineg"
+    },
+    {
+     "match": [
+      "acute",
+      "3",
+      false,
+      "@not_applicable",
+      "borderline",
+      "ct_ffr",
+      "@not_applicable"
+     ],
+     "result": "acute_3_iborder_ffr"
+    },
+    {
+     "match": [
+      "acute",
+      "3",
+      false,
+      "@not_applicable",
+      "borderline",
+      "ctp",
+      "@not_applicable"
+     ],
+     "result": "acute_3_iborder_ctp"
+    },
+    {
+     "match": [
+      "acute",
+      "3",
+      false,
+      "@not_applicable",
+      "@absent",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_3"
+    },
+    {
+     "match": [
+      "acute",
+      "3",
+      false,
+      "@not_applicable",
+      "@not_assessable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_3"
+    },
+    {
+     "match": [
+      "acute",
+      "4A",
+      true,
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_4a_e"
+    },
+    {
+     "match": [
+      "acute",
+      "4A",
+      false,
+      "@not_applicable",
+      "positive",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_4a_ipos"
+    },
+    {
+     "match": [
+      "acute",
+      "4A",
+      false,
+      "@not_applicable",
+      "negative",
+      "ct_ffr",
+      "@not_applicable"
+     ],
+     "result": "acute_4a_ineg"
+    },
+    {
+     "match": [
+      "acute",
+      "4A",
+      false,
+      "@not_applicable",
+      "negative",
+      "ctp",
+      "@not_applicable"
+     ],
+     "result": "acute_4a_ineg"
+    },
+    {
+     "match": [
+      "acute",
+      "4A",
+      false,
+      "@not_applicable",
+      "borderline",
+      "ct_ffr",
+      "@not_applicable"
+     ],
+     "result": "acute_4a_iborder_ffr"
+    },
+    {
+     "match": [
+      "acute",
+      "4A",
+      false,
+      "@not_applicable",
+      "borderline",
+      "ctp",
+      "@not_applicable"
+     ],
+     "result": "acute_4a_iborder_ctp"
+    },
+    {
+     "match": [
+      "acute",
+      "4A",
+      false,
+      "@not_applicable",
+      "@absent",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_4a"
+    },
+    {
+     "match": [
+      "acute",
+      "4A",
+      false,
+      "@not_applicable",
+      "@not_assessable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_4a"
+    },
+    {
+     "match": [
+      "acute",
+      "4B",
+      true,
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_4b_e"
+    },
+    {
+     "match": [
+      "acute",
+      "4B",
+      false,
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_4b"
+    },
+    {
+     "match": [
+      "acute",
+      "5",
+      true,
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_5_e"
+    },
+    {
+     "match": [
+      "acute",
+      "5",
+      false,
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_5"
+    },
+    {
+     "match": [
+      "acute",
+      "N",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "acute_n"
+    },
+    {
+     "match": [
+      "other",
+      "0",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "management_not_defined"
+    },
+    {
+     "match": [
+      "other",
+      "1",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "management_not_defined"
+    },
+    {
+     "match": [
+      "other",
+      "2",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "management_not_defined"
+    },
+    {
+     "match": [
+      "other",
+      "3",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "management_not_defined"
+    },
+    {
+     "match": [
+      "other",
+      "4A",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "management_not_defined"
+    },
+    {
+     "match": [
+      "other",
+      "4B",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "management_not_defined"
+    },
+    {
+     "match": [
+      "other",
+      "5",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "management_not_defined"
+    },
+    {
+     "match": [
+      "other",
+      "N",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable",
+      "@not_applicable"
+     ],
+     "result": "management_not_defined"
+    }
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1 CAD-RADS categories; 3.3.5 Modifier I; 3.3.6 Modifier E",
+    "table": "Table 4; Table 5; Table 6; Table 7"
+   }
+  }
+ ],
+ "result": "cadrads",
+ "outcomes": [
+  {
+   "id": "stable_0",
+   "classification": "CAD-RADS 0: no plaque or stenosis (0%); absence of coronary artery disease.",
+   "recommendation": "No further cardiac investigation. Reassurance; consider non-atherosclerotic causes of symptoms.",
+   "caveats": [],
+   "locator": {
+    "source": "S1",
+    "section": "3.1",
+    "table": "Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 0"
+   }
+  },
+  {
+   "id": "acute_0",
+   "classification": "CAD-RADS 0: no plaque or stenosis (0%); absence of coronary artery disease; ACS highly unlikely.",
+   "recommendation": "No further evaluation of ACS is required; reassurance. If troponin is positive, consider other sources of raised troponin.",
+   "caveats": [],
+   "locator": {
+    "source": "S1",
+    "section": "3.1",
+    "table": "Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 0"
+   }
+  },
+  {
+   "id": "stable_n",
+   "classification": "CAD-RADS N: non-diagnostic study; obstructive coronary artery disease cannot be excluded.",
+   "recommendation": "Additional or alternative evaluation may be needed.",
+   "caveats": [
+    "CAD-RADS N is used when at least one segment is non-interpretable and interpretable segments show no stenosis ≥50%; with a stenosis ≥50% the numeric category is reported with modifier N (section 3.3.1)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.1",
+    "table": "Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS N"
+   }
+  },
+  {
+   "id": "acute_n",
+   "classification": "CAD-RADS N: non-diagnostic study; obstructive coronary artery disease cannot be excluded; ACS cannot be excluded.",
+   "recommendation": "Additional or alternative evaluation for ACS is needed.",
+   "caveats": [
+    "CAD-RADS N is used when at least one segment is non-interpretable and interpretable segments show no stenosis ≥50%; with a stenosis ≥50% the numeric category is reported with modifier N (section 3.3.1)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.1",
+    "table": "Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS N"
+   }
+  },
+  {
+   "id": "stable_1_p1",
+   "classification": "CAD-RADS 1: minimal stenosis (1-24%) or plaque without stenosis; minimal non-obstructive coronary artery disease, mild plaque burden (P1).",
+   "recommendation": "No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; consider risk factor modification and preventive pharmacotherapy.",
+   "caveats": [
+    "High-risk plaque (two or more high-risk features) signals the need for more aggressive preventive therapy, including in CAD-RADS 1 and 2 (section 3.3.4)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1",
+    "table": "Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 1, P1"
+   }
+  },
+  {
+   "id": "stable_1_p2",
+   "classification": "CAD-RADS 1: minimal stenosis (1-24%) or plaque without stenosis; minimal non-obstructive coronary artery disease, moderate plaque burden (P2).",
+   "recommendation": "No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; risk factor modification and preventive pharmacotherapy.",
+   "caveats": [
+    "High-risk plaque (two or more high-risk features) signals the need for more aggressive preventive therapy, including in CAD-RADS 1 and 2 (section 3.3.4)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1",
+    "table": "Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 1, P2"
+   }
+  },
+  {
+   "id": "stable_1_p34",
+   "classification": "CAD-RADS 1: minimal stenosis (1-24%) or plaque without stenosis; minimal non-obstructive coronary artery disease, severe or extensive plaque burden (P3 or P4).",
+   "recommendation": "No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; aggressive risk factor modification and preventive pharmacotherapy.",
+   "caveats": [
+    "High-risk plaque (two or more high-risk features) signals the need for more aggressive preventive therapy, including in CAD-RADS 1 and 2 (section 3.3.4)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1",
+    "table": "Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 1, P3 or P4"
+   }
+  },
+  {
+   "id": "stable_2_p12",
+   "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive coronary artery disease, mild or moderate plaque burden (P1 or P2).",
+   "recommendation": "No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; risk factor modification and preventive pharmacotherapy.",
+   "caveats": [
+    "High-risk plaque (two or more high-risk features) signals the need for more aggressive preventive therapy, including in CAD-RADS 1 and 2 (section 3.3.4)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1",
+    "table": "Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 2, P1 or P2"
+   }
+  },
+  {
+   "id": "stable_2_p34",
+   "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive coronary artery disease, severe or extensive plaque burden (P3 or P4).",
+   "recommendation": "No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; aggressive risk factor modification and preventive pharmacotherapy.",
+   "caveats": [
+    "High-risk plaque (two or more high-risk features) signals the need for more aggressive preventive therapy, including in CAD-RADS 1 and 2 (section 3.3.4)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1",
+    "table": "Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 2, P3 or P4"
+   }
+  },
+  {
+   "id": "acute_1_p12",
+   "classification": "CAD-RADS 1: minimal stenosis (1-24%) or plaque without stenosis; minimal non-obstructive coronary artery disease, mild or moderate plaque burden (P1 or P2); ACS unlikely.",
+   "recommendation": "No further evaluation of ACS is required. Outpatient follow-up for risk factor modification and preventive pharmacotherapy.",
+   "caveats": [
+    "If troponin is positive, consider other sources of raised troponin (Table 5; Table 9).",
+    "In acute chest pain with high-risk plaque, admission or observation may be considered even without severe stenosis; if discharged, short-term clinical follow-up may be useful (section 3.3.4).",
+    "High-risk plaque (two or more high-risk features) signals the need for more aggressive preventive therapy, including in CAD-RADS 1 and 2 (section 3.3.4)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1",
+    "table": "Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 1, P1 or P2"
+   }
+  },
+  {
+   "id": "acute_1_p34",
+   "classification": "CAD-RADS 1: minimal stenosis (1-24%) or plaque without stenosis; minimal non-obstructive coronary artery disease, severe or extensive plaque burden (P3 or P4); ACS unlikely.",
+   "recommendation": "No further evaluation of ACS is required. Outpatient follow-up for aggressive risk factor modification and preventive pharmacotherapy.",
+   "caveats": [
+    "If troponin is positive, consider other sources of raised troponin (Table 5; Table 9).",
+    "In acute chest pain with high-risk plaque, admission or observation may be considered even without severe stenosis; if discharged, short-term clinical follow-up may be useful (section 3.3.4).",
+    "High-risk plaque (two or more high-risk features) signals the need for more aggressive preventive therapy, including in CAD-RADS 1 and 2 (section 3.3.4)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1",
+    "table": "Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 1, P3 or P4"
+   }
+  },
+  {
+   "id": "acute_2_p12",
+   "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive coronary artery disease, mild or moderate plaque burden (P1 or P2); ACS less likely.",
+   "recommendation": "No further evaluation of ACS is required; if suspicion is high, troponin positive or high-risk plaque, consider admission with cardiology consultation. Outpatient risk factor follow-up.",
+   "caveats": [
+    "Outpatient follow-up is for risk factor modification and preventive pharmacotherapy (Table 5).",
+    "Table 11 (suggested report text) adds for CAD-RADS 2: if troponin is positive, consider other sources of raised troponin (Table 9); Table 5 lists a positive troponin among the reasons to consider admission.",
+    "In acute chest pain with high-risk plaque, admission or observation may be considered even without severe stenosis; if discharged, short-term clinical follow-up may be useful (section 3.3.4).",
+    "High-risk plaque (two or more high-risk features) signals the need for more aggressive preventive therapy, including in CAD-RADS 1 and 2 (section 3.3.4)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1",
+    "table": "Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 2, P1 or P2"
+   }
+  },
+  {
+   "id": "acute_2_p34",
+   "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive coronary artery disease, severe or extensive plaque burden (P3 or P4); ACS less likely.",
+   "recommendation": "No further evaluation of ACS is required; if suspicion is high, troponin positive or high-risk plaque, consider admission with cardiology consultation. Outpatient aggressive risk factor follow-up.",
+   "caveats": [
+    "Outpatient follow-up is for aggressive risk factor modification and preventive pharmacotherapy (Table 5).",
+    "Table 11 (suggested report text) adds for CAD-RADS 2: if troponin is positive, consider other sources of raised troponin (Table 9); Table 5 lists a positive troponin among the reasons to consider admission.",
+    "In acute chest pain with high-risk plaque, admission or observation may be considered even without severe stenosis; if discharged, short-term clinical follow-up may be useful (section 3.3.4).",
+    "High-risk plaque (two or more high-risk features) signals the need for more aggressive preventive therapy, including in CAD-RADS 1 and 2 (section 3.3.4)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1",
+    "table": "Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 2, P3 or P4"
+   }
+  },
+  {
+   "id": "stable_2_p12_i",
+   "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive coronary artery disease, mild or moderate plaque burden (P1 or P2); CT ischaemia test result reported (I modifier).",
+   "recommendation": "CAD-RADS 2.0 gives no management for an ischaemia result with CAD-RADS 2; the category line applies. No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; risk factor modification and preventive pharmacotherapy.",
+   "caveats": [
+    "Tables 6 and 7 allow CT-FFR or CTP in CAD-RADS 2 only for a proximal lesion with stenosis of 40% or more, including with high-risk plaque; their management rows name CAD-RADS 3 or 4A.",
+    "Library decision: the category 2 line is used unchanged whatever the I result.",
+    "High-risk plaque (two or more high-risk features) signals the need for more aggressive preventive therapy, including in CAD-RADS 1 and 2 (section 3.3.4)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5",
+    "table": "Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 2, P1 or P2; Table 6: Interpretation of CT-FFR and Table 7: Interpretation of stress myocardial CT perfusion (CCTA column)"
+   }
+  },
+  {
+   "id": "stable_2_p34_i",
+   "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive coronary artery disease, severe or extensive plaque burden (P3 or P4); CT ischaemia test result reported (I modifier).",
+   "recommendation": "CAD-RADS 2.0 gives no management for an ischaemia result with CAD-RADS 2; the category line applies. No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; aggressive risk factor modification and preventive pharmacotherapy.",
+   "caveats": [
+    "Tables 6 and 7 allow CT-FFR or CTP in CAD-RADS 2 only for a proximal lesion with stenosis of 40% or more, including with high-risk plaque; their management rows name CAD-RADS 3 or 4A.",
+    "Library decision: the category 2 line is used unchanged whatever the I result.",
+    "High-risk plaque (two or more high-risk features) signals the need for more aggressive preventive therapy, including in CAD-RADS 1 and 2 (section 3.3.4)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5",
+    "table": "Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 2, P3 or P4; Table 6: Interpretation of CT-FFR and Table 7: Interpretation of stress myocardial CT perfusion (CCTA column)"
+   }
+  },
+  {
+   "id": "acute_2_p12_i",
+   "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive coronary artery disease, mild or moderate plaque burden (P1 or P2); ACS less likely; CT ischaemia test result reported (I modifier).",
+   "recommendation": "CAD-RADS 2.0 gives no management for an ischaemia result with CAD-RADS 2; the category line applies. No further evaluation of ACS is required; if suspicion is high, troponin positive or high-risk plaque, consider admission with cardiology consultation. Outpatient risk factor follow-up.",
+   "caveats": [
+    "Tables 6 and 7 allow CT-FFR or CTP in CAD-RADS 2 only for a proximal lesion with stenosis of 40% or more, including with high-risk plaque; their management rows name CAD-RADS 3 or 4A.",
+    "Library decision: the category 2 line is used unchanged whatever the I result.",
+    "Outpatient follow-up is for risk factor modification and preventive pharmacotherapy (Table 5).",
+    "Table 11 (suggested report text) adds for CAD-RADS 2: if troponin is positive, consider other sources of raised troponin (Table 9); Table 5 lists a positive troponin among the reasons to consider admission.",
+    "In acute chest pain with high-risk plaque, admission or observation may be considered even without severe stenosis; if discharged, short-term clinical follow-up may be useful (section 3.3.4).",
+    "High-risk plaque (two or more high-risk features) signals the need for more aggressive preventive therapy, including in CAD-RADS 1 and 2 (section 3.3.4)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5",
+    "table": "Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 2, P1 or P2; Table 6: Interpretation of CT-FFR and Table 7: Interpretation of stress myocardial CT perfusion (CCTA column)"
+   }
+  },
+  {
+   "id": "acute_2_p34_i",
+   "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive coronary artery disease, severe or extensive plaque burden (P3 or P4); ACS less likely; CT ischaemia test result reported (I modifier).",
+   "recommendation": "CAD-RADS 2.0 gives no management for an ischaemia result with CAD-RADS 2; the category line applies. No further evaluation of ACS is required; if suspicion is high, troponin positive or high-risk plaque, consider admission with cardiology consultation. Outpatient aggressive risk factor follow-up.",
+   "caveats": [
+    "Tables 6 and 7 allow CT-FFR or CTP in CAD-RADS 2 only for a proximal lesion with stenosis of 40% or more, including with high-risk plaque; their management rows name CAD-RADS 3 or 4A.",
+    "Library decision: the category 2 line is used unchanged whatever the I result.",
+    "Outpatient follow-up is for aggressive risk factor modification and preventive pharmacotherapy (Table 5).",
+    "Table 11 (suggested report text) adds for CAD-RADS 2: if troponin is positive, consider other sources of raised troponin (Table 9); Table 5 lists a positive troponin among the reasons to consider admission.",
+    "In acute chest pain with high-risk plaque, admission or observation may be considered even without severe stenosis; if discharged, short-term clinical follow-up may be useful (section 3.3.4).",
+    "High-risk plaque (two or more high-risk features) signals the need for more aggressive preventive therapy, including in CAD-RADS 1 and 2 (section 3.3.4)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5",
+    "table": "Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 2, P3 or P4; Table 6: Interpretation of CT-FFR and Table 7: Interpretation of stress myocardial CT perfusion (CCTA column)"
+   }
+  },
+  {
+   "id": "stable_3",
+   "classification": "CAD-RADS 3: moderate stenosis (50-69%).",
+   "recommendation": "Consider functional assessment. Aggressive risk factor modification and preventive pharmacotherapy; other treatments, including anti-anginal therapy, should be considered per guideline-directed care.",
+   "caveats": [
+    "Applies when no CT-FFR or CT perfusion was performed, or when it was non-diagnostic (modifier N for CT-FFR or CTP, section 3.3.5.1).",
+    "Functional assessment includes CT-FFR, CT perfusion, stress testing (exercise ECG, stress echocardiography, SPECT, PET, cardiac MRI) or invasive FFR (Table 4 footnote c; Table 5 footnote b).",
+    "Functional imaging or ICA should be considered to identify a target lesion (if unknown) and if symptoms persist despite adequate medical therapy (Table 4 footnote d).",
+    "CAD-RADS 3 with high-risk plaque (excluding left main lesions) should prompt consideration of more aggressive management than CAD-RADS 3 alone, particularly in acute chest pain (section 3.3.4).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1.1",
+    "table": "Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 3"
+   }
+  },
+  {
+   "id": "stable_3_ipos",
+   "classification": "CAD-RADS 3: moderate stenosis (50-69%); CT ischaemia test positive (I+).",
+   "recommendation": "Consider ICA, especially if frequent symptoms persist after guideline-directed medical therapy. Aggressive risk factor modification and preventive pharmacotherapy; other treatments, including anti-anginal therapy, should be considered per guideline-directed care.",
+   "caveats": [
+    "For CT-FFR, I+ is a lesion-specific value ≤0.75 in a vessel large enough for PCI, I- is >0.80 and I+/- is 0.76-0.80 (Table 6).",
+    "Benefit of revascularisation should be confined to patients with persistent symptoms despite optimal medical therapy (Table 4 footnote e; Table 5 footnote d).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5",
+    "table": "Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 3, modifier I+"
+   }
+  },
+  {
+   "id": "stable_3_ineg_defer",
+   "classification": "CAD-RADS 3: moderate stenosis (50-69%); CT ischaemia test negative (I-); CT-FFR >0.80 or stress CTP without a perfusion defect.",
+   "recommendation": "Deferral of ICA would be appropriate; optimise medical therapy. Aggressive risk factor modification and preventive pharmacotherapy.",
+   "caveats": [
+    "Functional imaging or ICA should be considered to identify a target lesion (if unknown) and if symptoms persist despite adequate medical therapy (Table 4 footnote d).",
+    "For CT-FFR, I+ is a lesion-specific value ≤0.75 in a vessel large enough for PCI, I- is >0.80 and I+/- is 0.76-0.80 (Table 6).",
+    "The deferral advice is in the CT-FFR guidance (section 3.3.5.1, Table 6); for CTP, a negative study excludes ischaemia and avoids further downstream testing (section 3.3.5.2). Library decision: applied to stable chest pain only.",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5.1",
+    "table": "Table 6: Interpretation of CT-FFR, CAD-RADS 3 or 4A/I-; Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 3 and footnote d"
+   }
+  },
+  {
+   "id": "stable_3_ineg_infarct",
+   "classification": "CAD-RADS 3: moderate stenosis (50-69%); CT ischaemia test negative (I-); CTP fixed perfusion defect from prior infarction.",
+   "recommendation": "CAD-RADS 2.0 gives no ICA deferral advice for an I- coded for a fixed infarct; the category line applies. Consider functional assessment. Aggressive risk factor modification and preventive pharmacotherapy; other treatments, including anti-anginal therapy, should be considered per guideline-directed care.",
+   "caveats": [
+    "A prior infarct with a fixed perfusion defect and no ischaemia is coded I-; document the infarct in the impression (Table 1 footnote a).",
+    "Library decision: the Table 4 category line is used unchanged.",
+    "Functional assessment includes CT-FFR, CT perfusion, stress testing (exercise ECG, stress echocardiography, SPECT, PET, cardiac MRI) or invasive FFR (Table 4 footnote c; Table 5 footnote b).",
+    "Functional imaging or ICA should be considered to identify a target lesion (if unknown) and if symptoms persist despite adequate medical therapy (Table 4 footnote d).",
+    "CAD-RADS 3 with high-risk plaque (excluding left main lesions) should prompt consideration of more aggressive management than CAD-RADS 3 alone, particularly in acute chest pain (section 3.3.4).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5.2",
+    "table": "Table 1 footnote a; Table 7: Interpretation of stress myocardial CT perfusion, second row; Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 3"
+   }
+  },
+  {
+   "id": "stable_3_iborder_ffr",
+   "classification": "CAD-RADS 3: moderate stenosis (50-69%); CT ischaemia test borderline (I+/-); CT-FFR 0.76-0.80.",
+   "recommendation": "Consider ICA according to symptoms, lesion location and trans-lesional CT-FFR gradient, if likely to benefit from revascularisation. Aggressive risk factor modification and preventive pharmacotherapy.",
+   "caveats": [
+    "For CT-FFR, the trans-lesional gradient (pressure loss from 1-2 cm proximal to 1-2 cm distal to the stenosis) is significant above 0.12 (section 3.3.5.1; Table 6).",
+    "For CT-FFR, I+ is a lesion-specific value ≤0.75 in a vessel large enough for PCI, I- is >0.80 and I+/- is 0.76-0.80 (Table 6).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5.1",
+    "table": "Table 6: Interpretation of CT-FFR, CAD-RADS 3 or 4A/I+/-"
+   }
+  },
+  {
+   "id": "stable_3_iborder_ctp",
+   "classification": "CAD-RADS 3: moderate stenosis (50-69%); CT ischaemia test borderline (I+/-); stress CTP borderline or inconclusive.",
+   "recommendation": "CAD-RADS 2.0 gives no management for a borderline CTP result; the category line applies. Consider functional assessment. Aggressive risk factor modification and preventive pharmacotherapy; other treatments, including anti-anginal therapy, should be considered per guideline-directed care.",
+   "caveats": [
+    "Table 7 and section 3.3.5.2 define I+/- for CTP but give no management; the CT-FFR gradient guidance does not apply (library decision).",
+    "Functional assessment includes CT-FFR, CT perfusion, stress testing (exercise ECG, stress echocardiography, SPECT, PET, cardiac MRI) or invasive FFR (Table 4 footnote c; Table 5 footnote b).",
+    "Functional imaging or ICA should be considered to identify a target lesion (if unknown) and if symptoms persist despite adequate medical therapy (Table 4 footnote d).",
+    "CAD-RADS 3 with high-risk plaque (excluding left main lesions) should prompt consideration of more aggressive management than CAD-RADS 3 alone, particularly in acute chest pain (section 3.3.4).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5.2",
+    "table": "Table 7: Interpretation of stress myocardial CT perfusion; Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 3"
+   }
+  },
+  {
+   "id": "stable_4a",
+   "classification": "CAD-RADS 4A: severe stenosis (70-99%).",
+   "recommendation": "Consider ICA or functional assessment. Aggressive risk factor modification and preventive pharmacotherapy; other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care.",
+   "caveats": [
+    "Applies when no CT-FFR or CT perfusion was performed, or when it was non-diagnostic (modifier N for CT-FFR or CTP, section 3.3.5.1).",
+    "Functional assessment includes CT-FFR, CT perfusion, stress testing (exercise ECG, stress echocardiography, SPECT, PET, cardiac MRI) or invasive FFR (Table 4 footnote c; Table 5 footnote b).",
+    "Functional imaging or ICA should be considered to identify a target lesion (if unknown) and if symptoms persist despite adequate medical therapy (Table 4 footnote d).",
+    "ICA may be favoured with high-grade stenosis (>90%), high-risk plaque features, I+ or concordant ischaemia on other stress tests in a candidate for revascularisation (Table 4 footnote e).",
+    "Benefit of revascularisation should be confined to patients with persistent symptoms despite optimal medical therapy (Table 4 footnote e; Table 5 footnote d).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1.1",
+    "table": "Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 4A"
+   }
+  },
+  {
+   "id": "stable_4a_ipos",
+   "classification": "CAD-RADS 4A: severe stenosis (70-99%); CT ischaemia test positive (I+).",
+   "recommendation": "Consider ICA; ICA may be favoured with I+ in a candidate for revascularisation. Aggressive risk factor modification and preventive pharmacotherapy; other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care.",
+   "caveats": [
+    "For CT-FFR, I+ is a lesion-specific value ≤0.75 in a vessel large enough for PCI, I- is >0.80 and I+/- is 0.76-0.80 (Table 6).",
+    "Benefit of revascularisation should be confined to patients with persistent symptoms despite optimal medical therapy (Table 4 footnote e; Table 5 footnote d).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5.1",
+    "table": "Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 4A and footnote e; Table 11 footnote a; Table 6: Interpretation of CT-FFR, CAD-RADS 3 or 4A/I+"
+   }
+  },
+  {
+   "id": "stable_4a_ineg_defer",
+   "classification": "CAD-RADS 4A: severe stenosis (70-99%); CT ischaemia test negative (I-); CT-FFR >0.80 or stress CTP without a perfusion defect.",
+   "recommendation": "Deferral of ICA would be appropriate; optimise medical therapy. Aggressive risk factor modification and preventive pharmacotherapy.",
+   "caveats": [
+    "Functional imaging or ICA should be considered to identify a target lesion (if unknown) and if symptoms persist despite adequate medical therapy (Table 4 footnote d).",
+    "For CT-FFR, I+ is a lesion-specific value ≤0.75 in a vessel large enough for PCI, I- is >0.80 and I+/- is 0.76-0.80 (Table 6).",
+    "The deferral advice is in the CT-FFR guidance (section 3.3.5.1, Table 6); for CTP, a negative study excludes ischaemia and avoids further downstream testing (section 3.3.5.2). Library decision: applied to stable chest pain only.",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5.1",
+    "table": "Table 6: Interpretation of CT-FFR, CAD-RADS 3 or 4A/I-; Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 4A and footnote d"
+   }
+  },
+  {
+   "id": "stable_4a_ineg_infarct",
+   "classification": "CAD-RADS 4A: severe stenosis (70-99%); CT ischaemia test negative (I-); CTP fixed perfusion defect from prior infarction.",
+   "recommendation": "CAD-RADS 2.0 gives no ICA deferral advice for an I- coded for a fixed infarct; the category line applies. Consider ICA or functional assessment. Aggressive risk factor modification and preventive pharmacotherapy; other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care.",
+   "caveats": [
+    "A prior infarct with a fixed perfusion defect and no ischaemia is coded I-; document the infarct in the impression (Table 1 footnote a).",
+    "Library decision: the Table 4 category line is used unchanged.",
+    "Functional assessment includes CT-FFR, CT perfusion, stress testing (exercise ECG, stress echocardiography, SPECT, PET, cardiac MRI) or invasive FFR (Table 4 footnote c; Table 5 footnote b).",
+    "Functional imaging or ICA should be considered to identify a target lesion (if unknown) and if symptoms persist despite adequate medical therapy (Table 4 footnote d).",
+    "ICA may be favoured with high-grade stenosis (>90%), high-risk plaque features, I+ or concordant ischaemia on other stress tests in a candidate for revascularisation (Table 4 footnote e).",
+    "Benefit of revascularisation should be confined to patients with persistent symptoms despite optimal medical therapy (Table 4 footnote e; Table 5 footnote d).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5.2",
+    "table": "Table 1 footnote a; Table 7: Interpretation of stress myocardial CT perfusion, second row; Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 4A"
+   }
+  },
+  {
+   "id": "stable_4a_iborder_ffr",
+   "classification": "CAD-RADS 4A: severe stenosis (70-99%); CT ischaemia test borderline (I+/-); CT-FFR 0.76-0.80.",
+   "recommendation": "Consider ICA according to symptoms, lesion location and trans-lesional CT-FFR gradient, if likely to benefit from revascularisation. Aggressive risk factor modification and preventive pharmacotherapy.",
+   "caveats": [
+    "For CT-FFR, the trans-lesional gradient (pressure loss from 1-2 cm proximal to 1-2 cm distal to the stenosis) is significant above 0.12 (section 3.3.5.1; Table 6).",
+    "For CT-FFR, I+ is a lesion-specific value ≤0.75 in a vessel large enough for PCI, I- is >0.80 and I+/- is 0.76-0.80 (Table 6).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5.1",
+    "table": "Table 6: Interpretation of CT-FFR, CAD-RADS 3 or 4A/I+/-"
+   }
+  },
+  {
+   "id": "stable_4a_iborder_ctp",
+   "classification": "CAD-RADS 4A: severe stenosis (70-99%); CT ischaemia test borderline (I+/-); stress CTP borderline or inconclusive.",
+   "recommendation": "CAD-RADS 2.0 gives no management for a borderline CTP result; the category line applies. Consider ICA or functional assessment. Aggressive risk factor modification and preventive pharmacotherapy; other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care.",
+   "caveats": [
+    "Table 7 and section 3.3.5.2 define I+/- for CTP but give no management; the CT-FFR gradient guidance does not apply (library decision).",
+    "Functional assessment includes CT-FFR, CT perfusion, stress testing (exercise ECG, stress echocardiography, SPECT, PET, cardiac MRI) or invasive FFR (Table 4 footnote c; Table 5 footnote b).",
+    "Functional imaging or ICA should be considered to identify a target lesion (if unknown) and if symptoms persist despite adequate medical therapy (Table 4 footnote d).",
+    "ICA may be favoured with high-grade stenosis (>90%), high-risk plaque features, I+ or concordant ischaemia on other stress tests in a candidate for revascularisation (Table 4 footnote e).",
+    "Benefit of revascularisation should be confined to patients with persistent symptoms despite optimal medical therapy (Table 4 footnote e; Table 5 footnote d).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5.2",
+    "table": "Table 7: Interpretation of stress myocardial CT perfusion; Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 4A"
+   }
+  },
+  {
+   "id": "acute_3",
+   "classification": "CAD-RADS 3: moderate stenosis (50-69%); ACS possible.",
+   "recommendation": "Consider hospital admission with cardiology consultation and functional assessment. Preventive management, including aggressive preventive pharmacotherapy; other treatments, including anti-anginal therapy, should be considered per guideline-directed care.",
+   "caveats": [
+    "Applies when no CT-FFR or CT perfusion was performed, or when it was non-diagnostic (modifier N for CT-FFR or CTP, section 3.3.5.1).",
+    "Functional assessment includes CT-FFR, CT perfusion, stress testing (exercise ECG, stress echocardiography, SPECT, PET, cardiac MRI) or invasive FFR (Table 4 footnote c; Table 5 footnote b).",
+    "CAD-RADS 3 with high-risk plaque (excluding left main lesions) should prompt consideration of more aggressive management than CAD-RADS 3 alone, particularly in acute chest pain (section 3.3.4).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1.1",
+    "table": "Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 3"
+   }
+  },
+  {
+   "id": "acute_3_ipos",
+   "classification": "CAD-RADS 3: moderate stenosis (50-69%); ACS possible; CT ischaemia test positive (I+).",
+   "recommendation": "Consider hospital admission with cardiology consultation; consider ICA. Preventive management, including aggressive preventive pharmacotherapy; other treatments, including anti-anginal therapy, should be considered per guideline-directed care.",
+   "caveats": [
+    "For CT-FFR, I+ is a lesion-specific value ≤0.75 in a vessel large enough for PCI, I- is >0.80 and I+/- is 0.76-0.80 (Table 6).",
+    "Benefit of revascularisation should be confined to patients with persistent symptoms despite optimal medical therapy (Table 4 footnote e; Table 5 footnote d).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5",
+    "table": "Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 3, modifier I+"
+   }
+  },
+  {
+   "id": "acute_3_ineg",
+   "classification": "CAD-RADS 3: moderate stenosis (50-69%); ACS possible; CT ischaemia test negative (I-).",
+   "recommendation": "Consider hospital admission with cardiology consultation and functional assessment. Preventive management, including aggressive preventive pharmacotherapy; other treatments, including anti-anginal therapy, should be considered per guideline-directed care.",
+   "caveats": [
+    "Negative lesion-specific ischaemia test: the source's ICA deferral guidance (Table 6) is not specific to acute chest pain, so the Table 5 line applies unchanged (library decision).",
+    "For CT-FFR, I+ is a lesion-specific value ≤0.75 in a vessel large enough for PCI, I- is >0.80 and I+/- is 0.76-0.80 (Table 6).",
+    "A prior infarct with a fixed perfusion defect and no ischaemia is coded I-; document the infarct in the impression (Table 1 footnote a).",
+    "Functional assessment includes CT-FFR, CT perfusion, stress testing (exercise ECG, stress echocardiography, SPECT, PET, cardiac MRI) or invasive FFR (Table 4 footnote c; Table 5 footnote b).",
+    "CAD-RADS 3 with high-risk plaque (excluding left main lesions) should prompt consideration of more aggressive management than CAD-RADS 3 alone, particularly in acute chest pain (section 3.3.4).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5",
+    "table": "Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 3"
+   }
+  },
+  {
+   "id": "acute_3_iborder_ffr",
+   "classification": "CAD-RADS 3: moderate stenosis (50-69%); ACS possible; CT ischaemia test borderline (I+/-); CT-FFR 0.76-0.80.",
+   "recommendation": "Consider hospital admission with cardiology consultation. Consider ICA according to symptoms, lesion location and trans-lesional CT-FFR gradient, if likely to benefit from revascularisation. Preventive management, including aggressive preventive pharmacotherapy.",
+   "caveats": [
+    "For CT-FFR, the trans-lesional gradient (pressure loss from 1-2 cm proximal to 1-2 cm distal to the stenosis) is significant above 0.12 (section 3.3.5.1; Table 6).",
+    "For CT-FFR, I+ is a lesion-specific value ≤0.75 in a vessel large enough for PCI, I- is >0.80 and I+/- is 0.76-0.80 (Table 6).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5.1",
+    "table": "Table 6: Interpretation of CT-FFR, CAD-RADS 3 or 4A/I+/-; Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 3"
+   }
+  },
+  {
+   "id": "acute_3_iborder_ctp",
+   "classification": "CAD-RADS 3: moderate stenosis (50-69%); ACS possible; CT ischaemia test borderline (I+/-); stress CTP borderline or inconclusive.",
+   "recommendation": "CAD-RADS 2.0 gives no management for a borderline CTP result; the category line applies. Consider hospital admission with cardiology consultation and functional assessment. Preventive management, including aggressive preventive pharmacotherapy; other treatments, including anti-anginal therapy, should be considered per guideline-directed care.",
+   "caveats": [
+    "Table 7 and section 3.3.5.2 define I+/- for CTP but give no management; the CT-FFR gradient guidance does not apply (library decision).",
+    "Functional assessment includes CT-FFR, CT perfusion, stress testing (exercise ECG, stress echocardiography, SPECT, PET, cardiac MRI) or invasive FFR (Table 4 footnote c; Table 5 footnote b).",
+    "CAD-RADS 3 with high-risk plaque (excluding left main lesions) should prompt consideration of more aggressive management than CAD-RADS 3 alone, particularly in acute chest pain (section 3.3.4).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5.2",
+    "table": "Table 7: Interpretation of stress myocardial CT perfusion; Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 3"
+   }
+  },
+  {
+   "id": "acute_4a",
+   "classification": "CAD-RADS 4A: severe stenosis (70-99%); ACS likely.",
+   "recommendation": "Hospital admission with cardiology consultation; consider ICA or functional assessment. Preventive management, including aggressive preventive pharmacotherapy; other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care.",
+   "caveats": [
+    "Applies when no CT-FFR or CT perfusion was performed, or when it was non-diagnostic (modifier N for CT-FFR or CTP, section 3.3.5.1).",
+    "Functional assessment includes CT-FFR, CT perfusion, stress testing (exercise ECG, stress echocardiography, SPECT, PET, cardiac MRI) or invasive FFR (Table 4 footnote c; Table 5 footnote b).",
+    "ICA may be favoured with high-grade stenosis (>90%), high-risk plaque features, I+ or concordant ischaemia on other stress tests in a candidate for revascularisation (Table 4 footnote e).",
+    "Benefit of revascularisation should be confined to patients with persistent symptoms despite optimal medical therapy (Table 4 footnote e; Table 5 footnote d).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1.1",
+    "table": "Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 4A"
+   }
+  },
+  {
+   "id": "acute_4a_ipos",
+   "classification": "CAD-RADS 4A: severe stenosis (70-99%); ACS likely; CT ischaemia test positive (I+).",
+   "recommendation": "Hospital admission with cardiology consultation; consider ICA, which may be favoured with I+ in a candidate for revascularisation. Preventive management, including aggressive preventive pharmacotherapy; other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care.",
+   "caveats": [
+    "For CT-FFR, I+ is a lesion-specific value ≤0.75 in a vessel large enough for PCI, I- is >0.80 and I+/- is 0.76-0.80 (Table 6).",
+    "Benefit of revascularisation should be confined to patients with persistent symptoms despite optimal medical therapy (Table 4 footnote e; Table 5 footnote d).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5.1",
+    "table": "Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 4A and footnote e; Table 11 footnote a; Table 6: Interpretation of CT-FFR, CAD-RADS 3 or 4A/I+"
+   }
+  },
+  {
+   "id": "acute_4a_ineg",
+   "classification": "CAD-RADS 4A: severe stenosis (70-99%); ACS likely; CT ischaemia test negative (I-).",
+   "recommendation": "Hospital admission with cardiology consultation; consider ICA or functional assessment. Preventive management, including aggressive preventive pharmacotherapy; other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care.",
+   "caveats": [
+    "Negative lesion-specific ischaemia test: the source's ICA deferral guidance (Table 6) is not specific to acute chest pain, so the Table 5 line applies unchanged (library decision).",
+    "For CT-FFR, I+ is a lesion-specific value ≤0.75 in a vessel large enough for PCI, I- is >0.80 and I+/- is 0.76-0.80 (Table 6).",
+    "A prior infarct with a fixed perfusion defect and no ischaemia is coded I-; document the infarct in the impression (Table 1 footnote a).",
+    "Functional assessment includes CT-FFR, CT perfusion, stress testing (exercise ECG, stress echocardiography, SPECT, PET, cardiac MRI) or invasive FFR (Table 4 footnote c; Table 5 footnote b).",
+    "ICA may be favoured with high-grade stenosis (>90%), high-risk plaque features, I+ or concordant ischaemia on other stress tests in a candidate for revascularisation (Table 4 footnote e).",
+    "Benefit of revascularisation should be confined to patients with persistent symptoms despite optimal medical therapy (Table 4 footnote e; Table 5 footnote d).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5",
+    "table": "Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 4A"
+   }
+  },
+  {
+   "id": "acute_4a_iborder_ffr",
+   "classification": "CAD-RADS 4A: severe stenosis (70-99%); ACS likely; CT ischaemia test borderline (I+/-); CT-FFR 0.76-0.80.",
+   "recommendation": "Hospital admission with cardiology consultation. Consider ICA according to symptoms, lesion location and trans-lesional CT-FFR gradient, if likely to benefit from revascularisation. Preventive management, including aggressive preventive pharmacotherapy.",
+   "caveats": [
+    "For CT-FFR, the trans-lesional gradient (pressure loss from 1-2 cm proximal to 1-2 cm distal to the stenosis) is significant above 0.12 (section 3.3.5.1; Table 6).",
+    "For CT-FFR, I+ is a lesion-specific value ≤0.75 in a vessel large enough for PCI, I- is >0.80 and I+/- is 0.76-0.80 (Table 6).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5.1",
+    "table": "Table 6: Interpretation of CT-FFR, CAD-RADS 3 or 4A/I+/-; Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 4A"
+   }
+  },
+  {
+   "id": "acute_4a_iborder_ctp",
+   "classification": "CAD-RADS 4A: severe stenosis (70-99%); ACS likely; CT ischaemia test borderline (I+/-); stress CTP borderline or inconclusive.",
+   "recommendation": "CAD-RADS 2.0 gives no management for a borderline CTP result; the category line applies. Hospital admission with cardiology consultation; consider ICA or functional assessment. Preventive management, including aggressive preventive pharmacotherapy; other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care.",
+   "caveats": [
+    "Table 7 and section 3.3.5.2 define I+/- for CTP but give no management; the CT-FFR gradient guidance does not apply (library decision).",
+    "Functional assessment includes CT-FFR, CT perfusion, stress testing (exercise ECG, stress echocardiography, SPECT, PET, cardiac MRI) or invasive FFR (Table 4 footnote c; Table 5 footnote b).",
+    "ICA may be favoured with high-grade stenosis (>90%), high-risk plaque features, I+ or concordant ischaemia on other stress tests in a candidate for revascularisation (Table 4 footnote e).",
+    "Benefit of revascularisation should be confined to patients with persistent symptoms despite optimal medical therapy (Table 4 footnote e; Table 5 footnote d).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.5.2",
+    "table": "Table 7: Interpretation of stress myocardial CT perfusion; Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 4A"
+   }
+  },
+  {
+   "id": "stable_4b",
+   "classification": "CAD-RADS 4B: left main stenosis ≥50% or three-vessel obstructive (≥70%) disease.",
+   "recommendation": "ICA is recommended. Aggressive risk factor modification and preventive pharmacotherapy; other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care.",
+   "caveats": [
+    "Benefit of revascularisation should be confined to patients with persistent symptoms despite optimal medical therapy (Table 4 footnote e; Table 5 footnote d).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1.1",
+    "table": "Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 4B"
+   }
+  },
+  {
+   "id": "stable_5",
+   "classification": "CAD-RADS 5: total coronary occlusion (100%) or sub-total occlusion.",
+   "recommendation": "Consider ICA, functional and/or viability assessment. Aggressive risk factor modification and preventive pharmacotherapy; other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care.",
+   "caveats": [
+    "The relevance of total occlusion varies with context: acute or chronic; in chronic occlusion, lesion length, calcification, tortuosity and collaterals may matter (section 3.1.1).",
+    "Benefit of revascularisation should be confined to patients with persistent symptoms despite optimal medical therapy (Table 4 footnote e; Table 5 footnote d).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1.1",
+    "table": "Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 5"
+   }
+  },
+  {
+   "id": "acute_4b",
+   "classification": "CAD-RADS 4B: left main stenosis ≥50% or three-vessel obstructive (≥70%) disease; ACS likely.",
+   "recommendation": "Hospital admission with cardiology consultation; ICA is recommended. Preventive management, including aggressive preventive pharmacotherapy; other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care.",
+   "caveats": [
+    "Benefit of revascularisation should be confined to patients with persistent symptoms despite optimal medical therapy (Table 4 footnote e; Table 5 footnote d).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1.1",
+    "table": "Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 4B"
+   }
+  },
+  {
+   "id": "acute_5",
+   "classification": "CAD-RADS 5: total coronary occlusion (100%) or sub-total occlusion; ACS very likely.",
+   "recommendation": "Hospital admission with cardiology consultation; expedited ICA and revascularisation if acute occlusion is suspected. Preventive management, including aggressive preventive pharmacotherapy.",
+   "caveats": [
+    "Expedited ICA applies unless the occlusion can be identified as chronic from CT, clinical features or history (Table 5 footnote e).",
+    "Other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care (Table 5).",
+    "The relevance of total occlusion varies with context: acute or chronic; in chronic occlusion, lesion length, calcification, tortuosity and collaterals may matter (section 3.1.1).",
+    "Guideline-directed care in the source means the 2021 AHA/ACC chest pain, 2012 ACC/AHA stable ischaemic heart disease and 2019 ACC/AHA prevention guidelines (Table 4 footnote d; Table 5 footnote c)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1.1",
+    "table": "Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 5"
+   }
+  },
+  {
+   "id": "stable_1_e",
+   "classification": "CAD-RADS 1: minimal stenosis (1-24%) or plaque without stenosis; minimal non-obstructive coronary artery disease; non-atherosclerotic cause (modifier E).",
+   "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
+   "caveats": [
+    "Only if atherosclerotic plaque is also present, the CAD-RADS 1 line applies: P1: No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; consider risk factor modification and preventive pharmacotherapy. P2: No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; risk factor modification and preventive pharmacotherapy. P3 or P4: No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; aggressive risk factor modification and preventive pharmacotherapy.",
+    "Library decision: with modifier E, P and I results are not used to choose this line.",
+    "Examples of E causes: dissection, anomalous origin, aneurysm or pseudoaneurysm, vasculitis, fistula, extrinsic compression, arteriovenous malformation (Table 3, not comprehensive)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.6 Modifier E = exceptions",
+    "table": "Table 3; Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 1"
+   }
+  },
+  {
+   "id": "stable_2_e",
+   "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive coronary artery disease; non-atherosclerotic cause (modifier E).",
+   "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
+   "caveats": [
+    "Only if atherosclerotic plaque is also present, the CAD-RADS 2 line applies: P1 or P2: No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; risk factor modification and preventive pharmacotherapy. P3 or P4: No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; aggressive risk factor modification and preventive pharmacotherapy.",
+    "Library decision: with modifier E, P and I results are not used to choose this line.",
+    "Examples of E causes: dissection, anomalous origin, aneurysm or pseudoaneurysm, vasculitis, fistula, extrinsic compression, arteriovenous malformation (Table 3, not comprehensive)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.6 Modifier E = exceptions",
+    "table": "Table 3; Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 2"
+   }
+  },
+  {
+   "id": "stable_3_e",
+   "classification": "CAD-RADS 3: moderate stenosis (50-69%); non-atherosclerotic cause (modifier E).",
+   "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
+   "caveats": [
+    "Only if atherosclerotic plaque is also present, the CAD-RADS 3 line applies: Consider functional assessment. Aggressive risk factor modification and preventive pharmacotherapy; other treatments, including anti-anginal therapy, should be considered per guideline-directed care.",
+    "Library decision: with modifier E, P and I results are not used to choose this line.",
+    "Examples of E causes: dissection, anomalous origin, aneurysm or pseudoaneurysm, vasculitis, fistula, extrinsic compression, arteriovenous malformation (Table 3, not comprehensive)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.6 Modifier E = exceptions",
+    "table": "Table 3; Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 3"
+   }
+  },
+  {
+   "id": "stable_4a_e",
+   "classification": "CAD-RADS 4A: severe stenosis (70-99%); non-atherosclerotic cause (modifier E).",
+   "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
+   "caveats": [
+    "Only if atherosclerotic plaque is also present, the CAD-RADS 4A line applies: Consider ICA or functional assessment. Aggressive risk factor modification and preventive pharmacotherapy; other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care.",
+    "Library decision: with modifier E, P and I results are not used to choose this line.",
+    "Examples of E causes: dissection, anomalous origin, aneurysm or pseudoaneurysm, vasculitis, fistula, extrinsic compression, arteriovenous malformation (Table 3, not comprehensive)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.6 Modifier E = exceptions",
+    "table": "Table 3; Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 4A"
+   }
+  },
+  {
+   "id": "stable_4b_e",
+   "classification": "CAD-RADS 4B: left main stenosis ≥50% or three-vessel obstructive (≥70%) disease; non-atherosclerotic cause (modifier E).",
+   "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
+   "caveats": [
+    "Only if atherosclerotic plaque is also present, the CAD-RADS 4B line applies: ICA is recommended. Aggressive risk factor modification and preventive pharmacotherapy; other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care.",
+    "Library decision: with modifier E, P and I results are not used to choose this line.",
+    "Examples of E causes: dissection, anomalous origin, aneurysm or pseudoaneurysm, vasculitis, fistula, extrinsic compression, arteriovenous malformation (Table 3, not comprehensive)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.6 Modifier E = exceptions",
+    "table": "Table 3; Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 4B"
+   }
+  },
+  {
+   "id": "stable_5_e",
+   "classification": "CAD-RADS 5: total coronary occlusion (100%) or sub-total occlusion; non-atherosclerotic cause (modifier E).",
+   "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
+   "caveats": [
+    "Only if atherosclerotic plaque is also present, the CAD-RADS 5 line applies: Consider ICA, functional and/or viability assessment. Aggressive risk factor modification and preventive pharmacotherapy; other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care.",
+    "Library decision: with modifier E, P and I results are not used to choose this line.",
+    "Examples of E causes: dissection, anomalous origin, aneurysm or pseudoaneurysm, vasculitis, fistula, extrinsic compression, arteriovenous malformation (Table 3, not comprehensive)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.6 Modifier E = exceptions",
+    "table": "Table 3; Table 4: CAD-RADS for patients presenting with stable chest pain, CAD-RADS 5"
+   }
+  },
+  {
+   "id": "acute_1_e",
+   "classification": "CAD-RADS 1: minimal stenosis (1-24%) or plaque without stenosis; minimal non-obstructive coronary artery disease; ACS unlikely; non-atherosclerotic cause (modifier E).",
+   "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
+   "caveats": [
+    "Only if atherosclerotic plaque is also present, the CAD-RADS 1 line applies: P1 or P2: No further evaluation of ACS is required. Outpatient follow-up for risk factor modification and preventive pharmacotherapy. P3 or P4: No further evaluation of ACS is required. Outpatient follow-up for aggressive risk factor modification and preventive pharmacotherapy.",
+    "Library decision: with modifier E, P and I results are not used to choose this line.",
+    "Examples of E causes: dissection, anomalous origin, aneurysm or pseudoaneurysm, vasculitis, fistula, extrinsic compression, arteriovenous malformation (Table 3, not comprehensive)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.6 Modifier E = exceptions",
+    "table": "Table 3; Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 1"
+   }
+  },
+  {
+   "id": "acute_2_e",
+   "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive coronary artery disease; ACS less likely; non-atherosclerotic cause (modifier E).",
+   "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
+   "caveats": [
+    "Only if atherosclerotic plaque is also present, the CAD-RADS 2 line applies: P1 or P2: No further evaluation of ACS is required; if suspicion is high, troponin positive or high-risk plaque, consider admission with cardiology consultation. Outpatient risk factor follow-up. P3 or P4: No further evaluation of ACS is required; if suspicion is high, troponin positive or high-risk plaque, consider admission with cardiology consultation. Outpatient aggressive risk factor follow-up.",
+    "Library decision: with modifier E, P and I results are not used to choose this line.",
+    "Examples of E causes: dissection, anomalous origin, aneurysm or pseudoaneurysm, vasculitis, fistula, extrinsic compression, arteriovenous malformation (Table 3, not comprehensive)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.6 Modifier E = exceptions",
+    "table": "Table 3; Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 2"
+   }
+  },
+  {
+   "id": "acute_3_e",
+   "classification": "CAD-RADS 3: moderate stenosis (50-69%); ACS possible; non-atherosclerotic cause (modifier E).",
+   "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
+   "caveats": [
+    "Only if atherosclerotic plaque is also present, the CAD-RADS 3 line applies: Consider hospital admission with cardiology consultation and functional assessment. Preventive management, including aggressive preventive pharmacotherapy; other treatments, including anti-anginal therapy, should be considered per guideline-directed care.",
+    "Library decision: with modifier E, P and I results are not used to choose this line.",
+    "Examples of E causes: dissection, anomalous origin, aneurysm or pseudoaneurysm, vasculitis, fistula, extrinsic compression, arteriovenous malformation (Table 3, not comprehensive)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.6 Modifier E = exceptions",
+    "table": "Table 3; Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 3"
+   }
+  },
+  {
+   "id": "acute_4a_e",
+   "classification": "CAD-RADS 4A: severe stenosis (70-99%); ACS likely; non-atherosclerotic cause (modifier E).",
+   "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
+   "caveats": [
+    "Only if atherosclerotic plaque is also present, the CAD-RADS 4A line applies: Hospital admission with cardiology consultation; consider ICA or functional assessment. Preventive management, including aggressive preventive pharmacotherapy; other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care.",
+    "Library decision: with modifier E, P and I results are not used to choose this line.",
+    "Examples of E causes: dissection, anomalous origin, aneurysm or pseudoaneurysm, vasculitis, fistula, extrinsic compression, arteriovenous malformation (Table 3, not comprehensive)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.6 Modifier E = exceptions",
+    "table": "Table 3; Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 4A"
+   }
+  },
+  {
+   "id": "acute_4b_e",
+   "classification": "CAD-RADS 4B: left main stenosis ≥50% or three-vessel obstructive (≥70%) disease; ACS likely; non-atherosclerotic cause (modifier E).",
+   "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
+   "caveats": [
+    "Only if atherosclerotic plaque is also present, the CAD-RADS 4B line applies: Hospital admission with cardiology consultation; ICA is recommended. Preventive management, including aggressive preventive pharmacotherapy; other treatments, including anti-anginal therapy and revascularisation options, should be considered per guideline-directed care.",
+    "Library decision: with modifier E, P and I results are not used to choose this line.",
+    "Examples of E causes: dissection, anomalous origin, aneurysm or pseudoaneurysm, vasculitis, fistula, extrinsic compression, arteriovenous malformation (Table 3, not comprehensive)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.6 Modifier E = exceptions",
+    "table": "Table 3; Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 4B"
+   }
+  },
+  {
+   "id": "acute_5_e",
+   "classification": "CAD-RADS 5: total coronary occlusion (100%) or sub-total occlusion; ACS very likely; non-atherosclerotic cause (modifier E).",
+   "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
+   "caveats": [
+    "Only if atherosclerotic plaque is also present, the CAD-RADS 5 line applies: Hospital admission with cardiology consultation; expedited ICA and revascularisation if acute occlusion is suspected. Preventive management, including aggressive preventive pharmacotherapy.",
+    "Library decision: with modifier E, P and I results are not used to choose this line.",
+    "Examples of E causes: dissection, anomalous origin, aneurysm or pseudoaneurysm, vasculitis, fistula, extrinsic compression, arteriovenous malformation (Table 3, not comprehensive)."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.3.6 Modifier E = exceptions",
+    "table": "Table 3; Table 5: CAD-RADS for patients presenting with acute chest pain, CAD-RADS 5"
+   }
+  },
+  {
+   "id": "management_not_defined",
+   "classification": "CAD-RADS category stated, but the CAD-RADS 2.0 management tables cover stable and acute chest pain only.",
+   "recommendation": "No CAD-RADS 2.0 management suggestion for this indication; manage on clinical context.",
+   "caveats": [
+    "Library addition: the source's management tables are for patients presenting with stable chest pain (Table 4) or acute chest pain (Table 5); other indications get no CAD-RADS management line here."
+   ],
+   "locator": {
+    "source": "S1",
+    "section": "3.1 CAD-RADS categories",
+    "table": "Table 4; Table 5 (titles)"
+   }
+  }
+ ],
+ "reference": {
+  "summary": [
+   {
+    "id": "sum.1",
+    "text": "CAD-RADS 2.0 standardises coronary CT angiography reporting as stenosis category, then plaque burden (P1-P4), then modifiers, with management suggestions for stable and for acute chest pain.",
+    "locator": {
+     "source": "S1",
+     "section": "Abstract; 3.1 CAD-RADS categories"
+    }
+   },
+   {
+    "id": "sum.2",
+    "text": "The category is per patient: the most severe (clinically most relevant) luminal stenosis, from CAD-RADS 0 (no plaque or stenosis) to 5 (total occlusion), with N for a non-diagnostic study.",
+    "locator": {
+     "source": "S1",
+     "section": "1. Introduction; 3.1",
+     "table": "Table 4 and Table 5 footnotes"
+    }
+   },
+   {
+    "id": "sum.3",
+    "text": "CAD-RADS complements and does not replace the report impression, and its management suggestions do not replace clinical judgement; it is an expert consensus document.",
+    "locator": {
+     "source": "S1",
+     "section": "1. Introduction; 2. Clinical value of CAD-RADS"
+    }
+   }
+  ],
+  "definitions": [
+   {
+    "id": "def.stenosis",
+    "text": "Stenosis grading: 0% no visible stenosis; 1-24% minimal; 25-49% mild; 50-69% moderate; 70-99% severe; 100% occluded.",
+    "locator": {
+     "source": "S1",
+     "section": "3.1",
+     "table": "Table 1"
+    }
+   },
+   {
+    "id": "def.4b",
+    "text": "CAD-RADS 4 is split: 4A is a 70-99% stenosis; 4B is left main stenosis ≥50% or three-vessel obstructive (≥70%) disease.",
+    "locator": {
+     "source": "S1",
+     "section": "3.1.1",
+     "table": "Table 4"
+    }
+   },
+   {
+    "id": "def.p",
+    "text": "Plaque burden P1 mild, P2 moderate, P3 severe, P4 extensive; by CAC 1-100, 101-300, 301-999, >1000, or by segment involvement score ≤2, 3-4, 5-7, ≥8, or visually. P is not used with CAD-RADS 0.",
+    "locator": {
+     "source": "S1",
+     "section": "3.2.1",
+     "table": "Table 1; Table 2"
+    }
+   },
+   {
+    "id": "def.i",
+    "text": "Modifier I records a CT ischaemia test (CT-FFR or stress CTP): I+ lesion-specific ischaemia, a reversible perfusion defect or peri-infarct ischaemia (stress defect larger than rest defect); I- negative, including a fixed infarct without ischaemia; I+/- borderline.",
+    "locator": {
+     "source": "S1",
+     "section": "3.3.5",
+     "table": "Table 1; Table 6; Table 7"
+    }
+   },
+   {
+    "id": "def.mods",
+    "text": "Other modifiers: N non-diagnostic, HRP high-risk plaque (two or more of positive remodelling, low attenuation <30 HU, spotty calcification, napkin-ring sign), S stent, G graft, E non-atherosclerotic cause.",
+    "locator": {
+     "source": "S1",
+     "section": "3.3 Modifiers; 3.3.4"
+    }
+   },
+   {
+    "id": "def.order",
+    "text": "Coding order: stenosis category, then P, then modifiers N, HRP, I, S, G, E, separated by slashes (eg CAD-RADS 3/P3/I+).",
+    "locator": {
+     "source": "S1",
+     "section": "3.3.6 (coding framework and examples)",
+     "table": "Table 8"
+    }
+   }
+  ],
+  "pitfalls": [
+   {
+    "id": "pit.vessels",
+    "text": "Grade vessels larger than 1.5 mm in diameter; CAD-RADS does not apply to smaller vessels.",
+    "locator": {
+     "source": "S1",
+     "section": "3.1",
+     "table": "Table 4 and Table 5 footnotes"
+    }
+   },
+   {
+    "id": "pit.n",
+    "text": "Use N as the category only when no interpretable segment has a stenosis ≥50%; otherwise give the numeric category with modifier N (eg 3/P2/N).",
+    "locator": {
+     "source": "S1",
+     "section": "3.3.1 Modifier N"
+    }
+   },
+   {
+    "id": "pit.graft",
+    "text": "A stenosis bypassed by a fully patent graft is not counted; grade grafts and native segments distal to and including the anastomosis.",
+    "locator": {
+     "source": "S1",
+     "section": "3.3.3 Modifier G"
+    }
+   },
+   {
+    "id": "pit.stent",
+    "text": "In-stent stenosis is graded like native stenosis; the category depends on the severe stenosis whether or not it is in a stented vessel.",
+    "locator": {
+     "source": "S1",
+     "section": "3.3.2 Modifier S"
+    }
+   },
+   {
+    "id": "pit.e",
+    "text": "CAD-RADS is for atherosclerotic disease; non-atherosclerotic narrowing (dissection, anomalous origin, aneurysm, vasculitis, fistula, extrinsic compression) is flagged with modifier E.",
+    "locator": {
+     "source": "S1",
+     "section": "3.3.6 Modifier E",
+     "table": "Table 3"
+    }
+   },
+   {
+    "id": "pit.multivessel",
+    "text": "In multivessel disease the physiologically significant lesion may not be the most anatomically severe; clarify this in the report and impression.",
+    "locator": {
+     "source": "S1",
+     "section": "3.3.5.1 CT-FFR"
+    }
+   },
+   {
+    "id": "pit.scenario",
+    "text": "The recommendations may not apply to every clinical scenario; add comments and convey uncertainty where relevant.",
+    "locator": {
+     "source": "S1",
+     "section": "4. Discussion"
+    }
+   }
+  ]
+ }
+}
