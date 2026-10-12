@@ -1,13 +1,14 @@
 """The one path that writes a template's skill sheet (template pipeline spec, block 2). Parse; save-time unit
 checks; one repair call; then drop (automatic writes, new units only) or refuse (a user's chat edit, a broken or
-reverted sheet, an existing unit an automatic write would lose, a check that could not run).
+reverted sheet, an automatic write whose drop or repair would remove or rewrite a unit the previous sheet had, a
+check that could not run).
 
 Why drop vs refuse: a missing normal only leaves the report silent on a structure, while a wrong normal puts a false
 statement in it. So an automatic write may drop a NEW bad unit, but never silently drops something the user asked
 for (a chat edit is refused instead) or something every report already states.
 
-What is guaranteed: vetting never drops a unit the previous sheet had, and the repair call never removes a unit it
-was not asked to fix. What is NOT checked here: whether the incoming sheet itself keeps every unit of the previous
+What is guaranteed: vetting (drop or repair) never removes or rewrites a unit the previous sheet had on an automatic
+write, and the repair call never removes or rewrites a unit it was not asked to fix. What is NOT checked here: whether the incoming sheet itself keeps every unit of the previous
 one (a new template has no previous; a rebuild may legitimately reword units, a later regression gate covers it)."""
 from __future__ import annotations
 
@@ -47,6 +48,12 @@ class VetOutcome:
     message: str = ""
     dropped: List[DroppedUnit] = field(default_factory=list)
     coverage_sections: List[str] = field(default_factory=list)
+
+
+def _shape(sheet: str) -> tuple:
+    """What a reader of the sheet would notice changed: its unit texts and section names (not spacing)."""
+    st = tsg.parse_sheet(sheet, mode="template").structure
+    return (sorted(norm_key(u.text) for u in [*st.normals, *st.negatives]), [x.name for x in st.sections])
 
 
 def _unit_texts(sheet: str) -> Set[str]:
@@ -96,11 +103,14 @@ async def vet_sheet(sheet: str, origin: Origin, previous: str = "") -> VetOutcom
     if not tsg.is_grammar_sheet(sheet):
         return _refuse(previous, "This change could not be applied: the template would lose its structure.")
     requested = sheet
+    existing = _unit_texts(previous) if previous and tsg.is_grammar_sheet(previous) else set()
     try:
         res, fails = await _parse_and_check(sheet)
         if res.errors or not res.structure.usable or fails:
             asked = {norm_key(f.text) for f in fails}
-            keep = _unit_texts(sheet) - asked  # units the repair was not asked to fix
+            # units the repair may not remove or rewrite: those it was not asked to fix and, on an automatic write,
+            # every unit the previous sheet had (an existing unit that still fails is refused below)
+            keep = _unit_texts(sheet) - (asked - existing if origin in AUTOMATIC else asked)
             sheet = await _repair(sheet, _errors(res, fails))
             if not tsg.is_grammar_sheet(sheet):
                 return _refuse(previous, UNREADABLE)
@@ -120,7 +130,6 @@ async def vet_sheet(sheet: str, origin: Origin, previous: str = "") -> VetOutcom
         if origin not in AUTOMATIC:
             pairs = dict.fromkeys(f'"{f.text}" ({f.reason})' for f in fails)  # ordered, de-duplicated
             return _refuse(previous, f"Couldn't apply: {'; '.join(pairs)}.")
-        existing = _unit_texts(previous) if previous and tsg.is_grammar_sheet(previous) else set()
         if existing & failed_keys:
             return _refuse(previous, "This change would remove a statement every report includes.")
         sheet = _drop_lines(sheet, failed)
@@ -133,5 +142,5 @@ async def vet_sheet(sheet: str, origin: Origin, previous: str = "") -> VetOutcom
         if res.errors or not res.structure.usable:
             return _refuse(previous, UNREADABLE)
     coverage = [s.name for s in sorted(res.structure.sections, key=lambda s: s.order)]
-    notice = ADJUSTED if origin not in AUTOMATIC and sheet != requested else ""
+    notice = ADJUSTED if origin not in AUTOMATIC and _shape(sheet) != _shape(requested) else ""
     return VetOutcome("saved", sheet, message=notice, dropped=dropped, coverage_sections=coverage)

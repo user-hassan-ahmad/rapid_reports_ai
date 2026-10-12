@@ -194,3 +194,29 @@ async def test_chat_refusal_pairs_each_text_with_its_own_reason(monkeypatch):
     assert out.status == "refused"
     assert f'"Mild chondral thinning." ({NOT_NORMAL})' in out.message
     assert f'"The bones are {{x}}." ({PLACEHOLDER})' in out.message
+
+
+async def test_automatic_repair_that_rewrites_a_failing_existing_unit_is_refused(monkeypatch):
+    monkeypatch.setattr(S, "check_units", _fails_on("The menisci are intact."))
+
+    async def rewrite(sheet, errors):
+        return sheet.replace("The menisci are intact.", "The menisci are preserved.")
+    monkeypatch.setattr(S, "_repair", rewrite)
+    changed = GOOD + 'NORMAL [ligaments] "The cruciate ligaments are intact."\n'
+    out = await S.vet_sheet(changed, origin="rebuild", previous=GOOD)
+    assert out.status == "refused" and out.sheet == GOOD
+
+
+async def test_a_whitespace_only_repair_of_a_chat_edit_has_no_notice(monkeypatch):
+    calls = []
+
+    async def fails(st, sheet=""):
+        calls.append(sheet)
+        return [UnitFailure(0, "Mild chondral thinning.", NOT_NORMAL)] if len(calls) == 1 else []
+
+    async def respace(sheet, errors):
+        return sheet.replace("\n\n", "\n\n\n")
+    monkeypatch.setattr(S, "check_units", fails)
+    monkeypatch.setattr(S, "_repair", respace)
+    out = await S.vet_sheet(BAD_UNIT, origin="chat", previous=GOOD)
+    assert out.status == "saved" and out.sheet != BAD_UNIT and out.message == ""
