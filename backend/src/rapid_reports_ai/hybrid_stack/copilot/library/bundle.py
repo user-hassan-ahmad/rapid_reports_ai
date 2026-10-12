@@ -128,9 +128,8 @@ class Library:
         return engine.evaluate(e, given)
 
     def known_text(self) -> str:
-        """Lines for the matcher prompt's KNOWN SYSTEMS block, in its `- key: name` format."""
-        return "\n".join(f"- {e.key}: {e.display} [aliases: {' | '.join(e.aliases)}]" for e in self._current()
-                         if e.tier == 1)
+        """Lines for the matcher prompt's KNOWN SYSTEMS block, in its `- key: name` format (both tiers)."""
+        return "\n".join(f"- {e.key}: {e.display} [aliases: {' | '.join(e.aliases)}]" for e in self._current())
 
 
 @lru_cache(maxsize=1)

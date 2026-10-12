@@ -27,6 +27,7 @@ from .schema import DOES_NOT_APPLY, BandStep, Entry, InputDef, InputValue, Rules
 logger = logging.getLogger(__name__)
 
 PACK_BRANCH = "Pack"
+REFERENCE_BRANCH = "Reference"
 TIMEOUT_S = 10.0
 _STATE_LABEL = {"absent": "Absent", "not_assessable": "Not assessable"}
 _LEAD = {"lesion": "The FINDING states", "patient": "The CLINICAL HISTORY or DICTATION state"}
@@ -364,7 +365,7 @@ def as_entry(e: Entry, sources: list[dict]) -> CardEntry:
         publication=Publication(title=primary.get("title", ""), body=e.issuer, year=e.edition),
         content=GuidelineContent(
             applies_to=", ".join(e.applies_to.finding_type), summary=" ".join(t.text for t in e.reference.summary),
-            branches=[Branch(name=PACK_BRANCH, state="checked", inputs=[
+            branches=[Branch(name=PACK_BRANCH if e.tier == 1 else REFERENCE_BRANCH, state="checked", inputs=[
                 Input(id=i.id, question=i.label, options=display_options(e, i), settled_by=i.how_stated)
                 for i in e.inputs])]),
         sources=[Source(url=s.get("url", ""), title=s.get("title", ""), tier=1) for s in sources

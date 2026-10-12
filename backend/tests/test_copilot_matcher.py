@@ -586,3 +586,22 @@ async def test_card_for_pack_without_gate_skips_jev(db_session, monkeypatch, toy
     monkeypatch.setattr(M, "_pack_gate", pack_gate)
     c = await M.card_for(db_session, "Toy Nodule", "2020", "q", "x", gate=False)
     assert c.key == "toy-nodule@1.0"
+
+
+async def test_a_reference_entry_hit_becomes_a_read_only_card(db_session, monkeypatch, toy, toy_reference):
+    monkeypatch.setattr(L, "get", lambda: _toy_lib(toy, toy_reference))
+
+    async def call(prompt):
+        assert "- toy-grade@1.0: Toy grade 2020 [aliases: toy grade]" in prompt
+        return _raw(u1=[_sys("Toy grade", "2020")])
+    gated = []
+
+    async def pack_gate(finding, pack, history=""):
+        gated.append(pack.key)
+        return 0.9
+    monkeypatch.setattr(M, "_call", call)
+    monkeypatch.setattr(M, "_pack_gate", pack_gate)
+    cards = await M.match(db_session, "MRI knee", "", U[:1])
+    assert [(c.key, c.branch, c.skeleton, c.reference) for c in cards] == \
+        [("toy-grade@1.0", "Reference", ["Reference"], True)]
+    assert gated == ["toy-grade@1.0"]

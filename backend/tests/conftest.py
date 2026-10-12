@@ -235,11 +235,29 @@ TOY_CASES = {"cases": [
     {"name": "risk unknown", "origin": "ours", "inputs": {"kind": "solid", "size": 7}, "outcome": None,
      "needed": ["risk"]},
 ]}
+TOY_REFERENCE = {
+    "id": "toy-grade", "version": "1.0", "topic": "toy-grade", "issuer": "TOY", "system": "Toy grading",
+    "display": "Toy grade 2020", "edition": "2020", "tier": 2,
+    "applies_to": {"region": ["knee"], "modality": ["MRI"], "finding_type": ["cartilage defect"], "context": []},
+    "aliases": ["toy grade"],
+    "reference": {
+        "summary": [{"id": "sum.1", "text": "A toy grading for tests.", "locator": {"source": "S1", "page": 1}}],
+        "definitions": [{"id": "def.g2", "text": "Grade 2: a partial-thickness defect.",
+                         "locator": {"source": "S1", "page": 2}}],
+        "tables": [{"id": "tab.grades", "title": "Grade table", "columns": ["Grade", "Meaning"],
+                    "rows": [["1", "softening"], ["2", "partial-thickness defect"]],
+                    "locator": {"source": "S1", "page": 2, "table": "1"}}],
+        "pitfalls": []}}
 
 
 @pytest.fixture
 def toy():
     return _copy.deepcopy(TOY_ENTRY)
+
+
+@pytest.fixture
+def toy_reference():
+    return _copy.deepcopy(TOY_REFERENCE)
 
 
 @pytest.fixture

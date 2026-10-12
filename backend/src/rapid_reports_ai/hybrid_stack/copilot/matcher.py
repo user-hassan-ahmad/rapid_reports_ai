@@ -23,7 +23,7 @@ from . import jev as J
 from . import registry as R
 from . import tnm
 from .library import bundle as L
-from .library.pack_preview import PACK_BRANCH
+from .library.pack_preview import PACK_BRANCH, REFERENCE_BRANCH
 from .types import Card, Publication
 
 logger = logging.getLogger(__name__)
@@ -372,16 +372,18 @@ async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool 
         return await _tnm_card(f, s, history, gate)
     lib = L.get()
     pack = lib.find(s.name, s.version) or lib.find(s.name)
-    if pack is not None and pack.tier == 1:
-        # A name hit is not applicability: Jev must agree the finding is the kind this pack is for (fails closed: no
+    if pack is not None:
+        # A name hit is not applicability: Jev must agree the finding is the kind this entry is for (fails closed: no
         # card, never a fall-through to the registry). Siblings share topic and applies_to: gated once, on the hit.
         if gate:
             score = await _pgate(f.text, pack, history)
             if score is None or score < PACK_GATE_MIN:
                 return None
+        branch = PACK_BRANCH if pack.tier == 1 else REFERENCE_BRANCH
         return Card(key=pack.key, name=pack.display, version=pack.edition, finding_id=f.id, why=s.why,
-                    branch=PACK_BRANCH, skeleton=[PACK_BRANCH], publication=Publication(body=pack.issuer, year=pack.edition),
-                    known=True, status="verified", siblings=[x.key for x in lib.siblings(pack)])
+                    branch=branch, skeleton=[branch], publication=Publication(body=pack.issuer, year=pack.edition),
+                    known=True, status="verified", siblings=[x.key for x in lib.siblings(pack)],
+                    reference=pack.tier == 2)
     if not R.web_fetch_on():   # spec §5: outside the library, no card; the name is logged as demand
         logger.info("[copilot.match] outside the library, no card (demand): %r %r", s.name.strip()[:120],
                     s.version.strip()[:24])

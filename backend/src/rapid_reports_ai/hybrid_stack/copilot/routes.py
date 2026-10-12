@@ -33,8 +33,9 @@ from . import tnm
 from .ask import QA, AskResult, Context, ask
 from .fetch import OVERVIEW, resolve_guideline
 from .library import bundle as L
+from .library import describe as D
 from .library import preview_cache as PC
-from .library.pack_preview import PACK_BRANCH, as_entry, preview_pack
+from .library.pack_preview import PACK_BRANCH, REFERENCE_BRANCH, as_entry, preview_pack
 from .library.schema import FACTS
 from .matcher import Finding, match
 from .preview import preview
@@ -144,10 +145,8 @@ def _check_card(card: CardIn) -> None:
     name and version make: a client may not plant an arbitrary key in the shared registry."""
     if tnm.is_tnm(card.key):
         return
-    if _pack(card.key) is not None:
+    if L.get().lookup(card.key) is not None:      # a library entry of either tier
         return
-    if L.get().lookup(card.key) is not None:
-        raise HTTPException(status_code=400, detail="Not an openable guideline")
     if len(card.key) > KEY_MAX or not _KEY.match(card.key):
         raise HTTPException(status_code=400, detail="Bad guideline key")
     if card.key == Reg.make_key(card.name, card.version):
@@ -210,6 +209,7 @@ class OpenResult(BaseModel):
     branch: str = ""              # the branch previewed (a branchless card's is chosen here)
     ms: int = 0
     error: str | None = None      # "unavailable" (nothing fetched), "loading" (still fetching), "unknown guideline"
+    reference: dict[str, Any] | None = None   # library entries: reference fields with citations
 
 
 class AskRequest(BaseModel):
@@ -297,6 +297,20 @@ def _pack(key: str):
     return (e, as_entry(e, lib.sources(e.key))) if e is not None and e.tier == 1 else None
 
 
+def _reference(key: str):
+    """The tier 2 library entry for a card key, as (entry, card-shaped entry), or None."""
+    lib = L.get()
+    e = lib.lookup(key)
+    return (e, as_entry(e, lib.sources(e.key))) if e is not None and e.tier == 2 else None
+
+
+def _reference_result(ref, t0: float) -> OpenResult:
+    """Read-only: the reference fields and the entry; no preview, so no Apply."""
+    e, view = ref
+    return OpenResult(entry=_public(view), preview=None, branch=REFERENCE_BRANCH,
+                      reference=D.reference_view(e, L.get().sources(e.key)), ms=_ms(t0))
+
+
 async def _pack_result(pack, req: OpenRequest, t0: float) -> OpenResult:
     """Offline and engine-decided: never a fetch. The preview comes from the cache (started by /match) or starts now.
     Fail open, bounded, as _branch_and_preview."""
@@ -311,7 +325,8 @@ async def _pack_result(pack, req: OpenRequest, t0: float) -> OpenResult:
     except Exception as ex:   # TimeoutError included
         logger.warning("[copilot.routes] pack preview %s: %s", type(ex).__name__, str(ex)[:200])
         prev = Preview()
-    return OpenResult(entry=_public(view), preview=prev, branch=PACK_BRANCH, ms=_ms(t0))
+    return OpenResult(entry=_public(view), preview=prev, branch=PACK_BRANCH, reference=D.reference_view(e, sources),
+                      ms=_ms(t0))
 
 
 def _prewarm(req: MatchRequest, cards: list[Card]) -> int:
@@ -356,6 +371,9 @@ async def copilot_open(req: OpenRequest, user: User = Depends(get_current_user))
     pack = _pack(card.key)
     if pack is not None:
         return await _pack_result(pack, req, t0)
+    ref = _reference(card.key)
+    if ref is not None:
+        return _reference_result(ref, t0)
     if tnm.is_tnm(card.key):
         entry = _offline(card.key)
     elif not Reg.web_fetch_on():   # spec §2.9, §5: outside the library and TNM, nothing to open
@@ -379,6 +397,9 @@ async def copilot_preview(req: OpenRequest, user: User = Depends(get_current_use
     pack = _pack(card.key)
     if pack is not None:
         return await _pack_result(pack, req, t0)
+    ref = _reference(card.key)
+    if ref is not None:
+        return _reference_result(ref, t0)
     if tnm.is_tnm(card.key):
         entry = _offline(card.key)
     elif not Reg.web_fetch_on():

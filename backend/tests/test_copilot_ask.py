@@ -526,3 +526,18 @@ async def test_explicit_pack_question_skips_the_applicability_gate_background_ma
     monkeypatch.setattr(M, "_call", call)
     assert await M.match(db_session, "CT", "", [M.Finding(id="u1", text="7 mm solid nodule.")]) == []
     assert calls == ["toy-nodule@1.0"]
+
+
+async def test_ask_on_a_reference_card_is_grounded_in_its_fields(db_session, monkeypatch, toy_reference):
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as L
+    lib = L.Library({"version": "v1", "entries": {"toy-grade@1.0": {"entry": toy_reference, "sources": []}}})
+    monkeypatch.setattr(L, "get", lambda: lib)
+    seen = {}
+
+    async def grounded(question, material, ctx, history):
+        seen["material"] = material
+        return "Grade 2 is a partial-thickness defect."
+    monkeypatch.setattr(A, "_grounded", grounded)
+    res = await A.ask(db_session, "what is grade 2?", "toy-grade@1.0", A.Context(), [])
+    assert res.answer == "Grade 2 is a partial-thickness defect." and "Grade table" in seen["material"]
+    assert res.entry.content.branches[0].name == "Reference"

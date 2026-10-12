@@ -99,6 +99,7 @@ class Card(BaseModel):
     known: bool = False           # already in the registry
     status: Literal["draft", "verified", "new"] = "new"
     siblings: list[str] = Field(default_factory=list)   # library packs: other bodies' packs on the same topic
+    reference: bool = False       # a tier 2 library entry: read-only (reference fields and Ask), no preview, no Apply
 
     @property
     def id(self) -> str:

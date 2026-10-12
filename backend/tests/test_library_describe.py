@@ -38,3 +38,19 @@ def test_a_short_citation_keeps_the_table_or_section_beside_the_page():
     assert D._short(Locator(source="S1", page=3)) == "S1 p. 3"
     assert D._short(Locator(source="S1", section="Groups not covered")) == "S1 Groups not covered"
     assert D._short(Locator(source="S1", page=3, section="x" * 80)) == "S1 p. 3, " + "x" * 40
+
+
+def test_reference_view_gives_every_field_with_its_citation(toy_reference):
+    from rapid_reports_ai.hybrid_stack.copilot.library import describe as D
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
+    v = D.reference_view(Entry.model_validate(toy_reference), [{"id": "S1", "title": "Toy grading", "edition": "2020"}])
+    assert v["tables"][0]["rows"] == [["1", "softening"], ["2", "partial-thickness defect"]]
+    assert v["definitions"][0]["citation"] == {"source": "S1", "title": "Toy grading", "edition": "2020", "page": 2}
+    assert v["pitfalls"] == [] and "locator" not in v["summary"][0]
+
+
+def test_material_for_a_reference_entry_has_no_inputs_line(toy_reference):
+    from rapid_reports_ai.hybrid_stack.copilot.library import describe as D
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
+    m = D.material(Entry.model_validate(toy_reference), [{"id": "S1", "title": "Toy grading", "edition": "2020"}])
+    assert "Inputs:" not in m and "Grade table" in m and "2 | partial-thickness defect" in m

@@ -120,9 +120,20 @@ def material(e: Entry, sources: list[dict]) -> str:
     lines = [f"{e.display} ({e.issuer}, edition {e.edition}). Sources: " + "; ".join(
         f"{s['id']} = {cite_text({'title': s.get('title', ''), 'edition': s.get('edition', '')})}"
         for s in sources if s.get("id") in used) + "."]
-    lines.append("Inputs: " + "; ".join(i.label + (f" ({i.how_stated})" if i.how_stated else "") for i in e.inputs) + ".")
+    if e.inputs:
+        lines.append("Inputs: " + "; ".join(i.label + (f" ({i.how_stated})" if i.how_stated else "")
+                                            for i in e.inputs) + ".")
     lines += [f"- {claim} [{_short(loc)}]" for _, claim, loc in facts(e)]
     for t in e.reference.tables:
         lines.append(f"{t.title} [{_short(t.locator)}]: " + " | ".join(t.columns))
         lines += ["  " + " | ".join(r) for r in t.rows]
     return "\n".join(lines)
+
+
+def reference_view(e: Entry, sources: list[dict]) -> dict:
+    """The entry's reference fields for the reading pane, each with its citation instead of its locator. A tier 2
+    card shows only this; a tier 1 card shows it beside the preview."""
+    def one(f) -> dict:
+        return {**f.model_dump(exclude={"locator"}), "citation": citation(f.locator, sources)}
+    r = e.reference
+    return {k: [one(f) for f in getattr(r, k)] for k in ("summary", "definitions", "tables", "pitfalls")}

@@ -528,19 +528,6 @@ def test_preview_a_library_pack(authed, toy_lib):
     assert d["preview"]["missing"] == ["risk"] and len(d["preview"]["possible"]) == 2
 
 
-def test_a_non_servable_library_key_is_rejected_and_never_fetched(authed, monkeypatch, toy):
-    t2 = {k: v for k, v in toy.items() if k not in ("logic", "result", "outcomes")} | {"tier": 2}
-    lib = L.Library({"version": "v1", "entries": {"toy-nodule@1.0": {"entry": t2, "sources": TOY_SOURCES}}})
-    monkeypatch.setattr(L, "get", lambda: lib)
-
-    async def resolve(db, card):
-        raise AssertionError("never fetched")
-    monkeypatch.setattr(CR, "resolve_guideline", resolve)
-    r = authed.post("/api/canvas/stack/guidelines/open", json={
-        "card": {**PACK_CARD, "name": "Anything", "version": "9"}, "findings": "x", "answered": {}})
-    assert r.status_code == 400
-
-
 def test_open_settles_lesion_inputs_from_the_cards_own_finding(authed, toy_lib, monkeypatch):
     async def call(system, prompt):
         return PP.RawSettle(settled=[PP.RawItem(input="kind", value="solid", quote="solid"),
@@ -595,3 +582,29 @@ async def test_match_starts_pack_previews_and_open_reuses_them(db_session, user,
                                                  findings=dictation, answered={"risk": "low"},
                                                  patient={"age_years": "60"}), user=user)
     assert again.preview.missing == ["risk"] and len(calls) == 2                 # an answer is a new key
+
+
+def test_a_reference_card_opens_read_only_and_is_never_fetched(authed, monkeypatch, toy_reference):
+    lib = L.Library({"version": "v1", "entries": {"toy-grade@1.0": {"entry": toy_reference, "sources": TOY_SOURCES}}})
+    monkeypatch.setattr(L, "get", lambda: lib)
+
+    async def resolve(db, card):
+        raise AssertionError("never fetched")
+
+    async def call(system, prompt):
+        raise AssertionError("a reference card is never previewed")
+    monkeypatch.setattr(CR, "resolve_guideline", resolve)
+    monkeypatch.setattr(PP, "_call", call)
+    card = {"key": "toy-grade@1.0", "name": "Toy grade 2020", "version": "2020", "finding_id": "u1",
+            "branch": "Reference"}
+    for path in ("open", "preview"):
+        d = authed.post(f"/api/canvas/stack/guidelines/{path}", json={"card": card, "findings": "grade 2."}).json()
+        assert d["error"] is None and d["preview"] is None and d["branch"] == "Reference"
+        assert d["entry"]["content"]["branches"][0]["name"] == "Reference"
+        assert d["reference"]["tables"][0]["rows"][1] == ["2", "partial-thickness defect"]
+        assert d["reference"]["tables"][0]["citation"]["page"] == 2
+
+
+def test_a_pack_open_carries_its_reference_fields(authed, toy_lib):
+    d = authed.post("/api/canvas/stack/guidelines/open", json={"card": PACK_CARD, "findings": "7 mm solid nodule."}).json()
+    assert d["reference"]["summary"][0]["id"] == "sum.1"
