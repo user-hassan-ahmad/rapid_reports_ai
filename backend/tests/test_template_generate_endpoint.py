@@ -277,7 +277,9 @@ def stubs(monkeypatch, db_engine):
 
 
 async def _drain_options():
-    await asyncio.gather(*list(tp._OPTION_TASKS), return_exceptions=True)
+    # this test's loop only: a task an earlier test left behind belongs to a closed loop and can never be awaited here
+    loop = asyncio.get_running_loop()
+    await asyncio.gather(*[t for t in list(tp._OPTION_TASKS) if t.get_loop() is loop], return_exceptions=True)
 
 
 async def _generate(aclient, headers, template, pipeline=None):

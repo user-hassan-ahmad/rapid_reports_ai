@@ -434,7 +434,8 @@ TEMPLATE_SHEET_HEADER_STACK = """## TEMPLATE SKILL SHEET
 The following skill sheet defines this radiologist's structure and style for this template. Its negatives, normal
 statements, suppression rules, interpretive clauses and case deliberation were taken out: the radiologist confirmed
 every statement in the FINDINGS input, and the conclusion, in the scratchpad before generation. The skill sheet
-inherits the Global Style Guide; where they conflict, the skill sheet takes precedence."""
+inherits the Global Style Guide; where they conflict, the skill sheet takes precedence, except over its Scratchpad
+Session rules, which outrank both."""
 
 GLOBAL_STYLE_GUIDE_STACK = _swaps(
     GLOBAL_STYLE_GUIDE,

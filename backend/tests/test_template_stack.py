@@ -11,43 +11,46 @@ from rapid_reports_ai import global_style_guide as g
 from rapid_reports_ai.template_manager import TemplateManager
 from rapid_reports_ai.template_stack import stack_brief
 
-FIX = Path(__file__).parent / "fixtures"
-V1 = (FIX / "template_sheet.md").read_text()
-GRAMMAR = (FIX / "template_pipeline" / "master_cmr.md").read_text()
-_CONTENT = re.compile(r"^\s*(?:NORMAL|NEGATIVE|IF_PRESENT|RECOMMEND|DIFFERENTIAL|QUESTION)\b|Interpretive phrasing:")
+FIX = Path(__file__).parent / "fixtures" / "template_pipeline"
+LEAN = (FIX / "lean_cmr.md").read_text()      # a stored template sheet (lean grammar)
+MASTER = (FIX / "master_cmr.md").read_text()  # with the Phase-1 case units
+_CONTENT = re.compile(r"^\s*(?:-\s+)?(?:NORMAL|NEGATIVE|IF_PRESENT|RECOMMEND|DIFFERENTIAL|QUESTION)\b|Interpretive phrasing:")
 
 
-def test_v1_sheet_keeps_structure_and_style_and_drops_content():
-    b = stack_brief(V1, "", [])
-    for kept in ("## Structural Pattern", '`header: "Impression"`', "## Terminology Rules", "Suppressed terms",
-                 "### Quoted examples", "### Normal study impression", "### Primary Pathology Paragraph"):
-        assert kept in b
-    for gone in ("Mandatory negatives", "No pneumoperitoneum", "No periappendiceal collection", "Normal pattern",
-                 "Interpretive Clause Rules", "Conditional Suppression Rules", "Negative Finding Rules",
-                 "Inclusion logic", "Promoted to Impression"):
-        assert gone not in b
-    assert "## Fixed Blocks" in b and "## Scan Context" in b
-
-
-def test_grammar_sheet_drops_every_content_statement():
-    b = stack_brief(GRAMMAR, "", [])
+@pytest.mark.parametrize("sheet", [LEAN, MASTER])
+def test_content_units_go_structure_and_style_stay(sheet):
+    b = stack_brief(sheet, "", [])
     assert not [l for l in b.splitlines() if _CONTENT.search(l)]
     assert "## Case Deliberation" not in b and "## Open Questions" not in b and "### Inclusion logic" not in b
-    for kept in ("## Report Structure", "SECTION CONCLUSION", "TERM PREFER", "FIXED \"Cardiac MRI at 1.5 T.",
-                 "Abnormal pattern:", "Measurement:", "## Reference Values", "## Domain Rules",
-                 "### Full impressions (verbatim)", "Recommendation phrasing:"):
+    for kept in ("## Report Structure", "SECTION CONCLUSION", "TERM PREFER", 'FIXED "Cardiac MRI at 1.5 T.',
+                 "Abnormal pattern:", "Measurement:", "COVERS [", "RULE WHEN", "## Reference Values"):
         assert kept in b
+
+
+def test_bulleted_and_indented_units_go_too():
+    """The grammar allows indentation and a "- " bullet before the keyword (review 2026-10-12)."""
+    sheet = ('## Paragraph: Liver (FINDINGS)\nCOVERS ["liver"]\n- NORMAL [liver] "The liver is normal."\n'
+             '  NEGATIVE "No focal lesion."\n  - IF_PRESENT [cirrhosis] "No ascites" (core)\nOpening: "The liver..."')
+    b = stack_brief(sheet, "", [])
+    assert "normal." not in b and "focal lesion" not in b and "ascites" not in b
+    assert 'COVERS ["liver"]' in b and "Opening:" in b
+
+
+def test_a_dropped_block_ends_at_the_next_grammar_context():
+    sheet = "## Open Questions\n- [NEEDS CLARIFICATION] x\n### sub\nprose\n# Next\nkept line"
+    b = stack_brief(sheet, "", [])
+    assert "NEEDS CLARIFICATION" not in b and "prose" not in b and "# Next" in b and "kept line" in b
 
 
 def test_conclusion_and_removed_sentences_are_carried():
-    b = stack_brief(V1, "  Acute appendicitis.  ", ["No free fluid.", "  "])
-    assert '- DO NOT ASSERT: "No free fluid."' in b and b.count("DO NOT ASSERT") == 1
-    assert b.rstrip().endswith('"Acute appendicitis."') and "## Confirmed Conclusion" in b
-    assert "## Scratchpad Session" in b
+    b = stack_brief(LEAN, "  Normal cardiac MRI.  ", ["No pericardial effusion.", "  "])
+    assert '- DO NOT ASSERT: "No pericardial effusion."' in b and b.count("DO NOT ASSERT") == 1
+    assert b.rstrip().endswith('"Normal cardiac MRI."') and "## Confirmed Conclusion" in b
+    assert "outrank every other rule" in b
 
 
 def test_no_conclusion_or_removals_no_sections():
-    b = stack_brief(V1, " ", [])
+    b = stack_brief(LEAN, " ", ["  ", ""])
     assert "## Confirmed Conclusion" not in b and "## Removed by the Radiologist" not in b
 
 
@@ -68,6 +71,7 @@ def test_stack_prompts_take_out_what_the_scratchpad_confirmed():
     # A sheet-defined CLINICAL HISTORY section is still written as on today's raw path
     assert "If a CLINICAL HISTORY section is defined in the skill sheet" in g.GLOBAL_STYLE_GUIDE_STACK
     assert "supplied separately" not in g.GLOBAL_STYLE_GUIDE_STACK
+    assert "except over its Scratchpad\nSession rules" in g.TEMPLATE_SHEET_HEADER_STACK
     # Unchanged style rules
     for kept in ("### Terminology Enforcement", "### Data Authority", "### Fixed Blocks and Parametrisation"):
         assert kept in g.GLOBAL_STYLE_GUIDE_STACK
@@ -90,22 +94,22 @@ def capture(monkeypatch):
 
 
 async def test_stack_session_uses_the_stack_brief_and_prompts(capture):
-    cfg = {"generation_mode": "skill_sheet_guided", "skill_sheet": V1, "scan_type": "CT AP"}
+    cfg = {"generation_mode": "skill_sheet_guided", "skill_sheet": LEAN, "scan_type": "CMR"}
     await TemplateManager().generate_report_from_config(
-        cfg, {"FINDINGS": "Appendix: dilated.", "CLINICAL_HISTORY": "RIF pain"}, None,
-        stack={"conclusion": "Acute appendicitis.", "declined": ["No free fluid."]})
+        cfg, {"FINDINGS": "Left ventricle: dilated.", "CLINICAL_HISTORY": "SOB"}, None,
+        stack={"conclusion": "Dilated left ventricle.", "declined": ["No pericardial effusion."]})
     gen = next(k for k in capture if k["output_type"] is str)
     sp, up = gen["system_prompt"], gen["user_prompt"]
     assert g.GLOBAL_STYLE_GUIDE_STACK in sp and g.TEMPLATE_SHEET_HEADER_STACK in sp
-    assert g.GLOBAL_STYLE_GUIDE not in sp and "No pneumoperitoneum" not in sp
-    assert '"Acute appendicitis."' in sp and 'DO NOT ASSERT: "No free fluid."' in sp
+    assert g.GLOBAL_STYLE_GUIDE not in sp and "No significant valvular regurgitation" not in sp
+    assert '"Dilated left ventricle."' in sp and 'DO NOT ASSERT: "No pericardial effusion."' in sp
     assert g.PRE_WRITING_ANALYSIS_STACK in up and g.VERIFICATION_CHECKLIST_STACK in up
-    assert "Findings: Appendix: dilated." in up and "Clinical History: RIF pain" in up
+    assert "Findings: Left ventricle: dilated." in up and "Clinical History: SOB" in up
 
 
 async def test_no_stack_keeps_the_raw_path(capture):
-    cfg = {"generation_mode": "skill_sheet_guided", "skill_sheet": V1, "scan_type": "CT AP"}
+    cfg = {"generation_mode": "skill_sheet_guided", "skill_sheet": LEAN, "scan_type": "CMR"}
     await TemplateManager().generate_report_from_config(cfg, {"FINDINGS": "f"}, None)
     gen = next(k for k in capture if k["output_type"] is str)
-    assert g.GLOBAL_STYLE_GUIDE in gen["system_prompt"] and "No pneumoperitoneum" in gen["system_prompt"]
+    assert g.GLOBAL_STYLE_GUIDE in gen["system_prompt"] and "No significant valvular regurgitation" in gen["system_prompt"]
     assert g.PRE_WRITING_ANALYSIS in gen["user_prompt"]
