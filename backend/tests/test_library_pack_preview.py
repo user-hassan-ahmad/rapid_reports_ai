@@ -58,7 +58,7 @@ async def test_settled_inputs_reach_a_proposal_copied_from_the_entry(toy_entry, 
     assert out.missing == [] and out.proposal.recommendation == "CT at 6 months"
     assert out.proposal.classification == "Toy 2020 · solid nodule 6-8 mm, high risk"
     assert out.proposal.line == "Toy 2020: solid nodule 6-8 mm, high risk."
-    assert out.trace["outcome"] == "ct6" and jev["calls"] == 3     # the lesion batch, then one per enum quote
+    assert out.trace["outcome"] == "ct6" and jev["calls"] == 4     # one batch per scope, then one per enum quote
 
 
 async def test_missing_input_shows_possible_outcomes(toy_entry, monkeypatch, jev):
@@ -311,21 +311,24 @@ async def test_every_value_is_put_to_jev_with_its_scope_as_state(toy_entry, monk
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
     await PP.preview_pack(toy_entry, TWO, "Smoker.", {}, finding=FINDING)
     by_state = {p["state"]: [q["instructions"] for q in p["questions"].values()] for p in jev["payloads"]}
-    assert by_state[f"FINDING:\n{FINDING}"] == ["The FINDING states Diameter: 7 mm", PP.ONE_LESION]
+    assert by_state[f"FINDING:\n{FINDING}"] == ["The FINDING states Nodule type: solid",
+                                                 "The FINDING states Diameter: 7 mm", PP.ONE_LESION]
     quotes = {s: c for s, c in by_state.items() if s.startswith("QUOTE")}
     assert sorted(c[0] for c in quotes.values()) == ["The QUOTE states Nodule type: solid",
                                                       "The QUOTE states Patient risk: high"]
-    assert not any(s.startswith("CLINICAL HISTORY") for s in by_state)     # no patient number: no patient batch
+    patient = next(s for s in by_state if s.startswith("CLINICAL HISTORY"))
+    assert by_state[patient] == ["The CLINICAL HISTORY or DICTATION state Patient risk: high"]
 
 
 # lab fix round item 2: an enum or boolean settles only when its quote, alone, states it
 async def test_an_enum_or_boolean_is_checked_against_its_quote_alone(toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND, {"input": "risk", "value": "high", "quote": "smoker"})
     await PP.preview_pack(toy_entry, TWO, "Smoker.", {}, finding=FINDING)
-    kind = next(p["state"] for p in jev["payloads"] if "Nodule type: solid" in str(p["questions"]))
+    kind = next(p["state"] for p in jev["payloads"]
+                if "QUOTE states Nodule type: solid" in str(p["questions"]))
     assert kind.startswith("QUOTE (a verbatim phrase from a radiology report about one lesion; the only evidence):\nsolid")
     assert "\n\nDEFINITION of Nodule type: " in kind and "right upper lobe" not in kind
-    risk = next(p["state"] for p in jev["payloads"] if "Patient risk: high" in str(p["questions"]))
+    risk = next(p["state"] for p in jev["payloads"] if "QUOTE states Patient risk: high" in str(p["questions"]))
     assert "\nsmoker\n" in risk and "Smoker." not in risk and "about the patient or the examination" in risk
 
 
@@ -622,8 +625,8 @@ async def test_the_one_lesion_claim_rides_in_the_lesion_batch(monkeypatch, jev):
     out = await _fleischner(monkeypatch, "Solitary 8 mm solid nodule.", "8 mm", 8)
     assert jev["calls"] == 2 and "diameter_mm" in {x.input for x in out.settled}     # the batch and one quote
     lesion = next(p for p in jev["payloads"] if p["state"].startswith("FINDING"))
-    assert [q["instructions"] for q in lesion["questions"].values()] == ["The FINDING states Nodule diameter: 8 mm",
-                                                                         PP.ONE_LESION]
+    assert [q["instructions"] for q in lesion["questions"].values()] == [
+        "The FINDING states Nodule type: solid", "The FINDING states Nodule diameter: 8 mm", PP.ONE_LESION]
 
 
 def test_the_one_lesion_claim_names_a_lesion_of_any_kind_not_the_packs_noun():
@@ -878,3 +881,53 @@ async def test_the_answer_path_is_under_50_ms(monkeypatch, jev):
         PP.finish(e, s, answered, sources=[])
         worst = max(worst, time.perf_counter() - t0)
     assert worst < 0.05
+
+
+# review I1: an enum or boolean needs both the quote claim and the finding claim; a modifier before the quote asks
+@pytest.mark.parametrize("finding,item,inp", [
+    ("8 mm solid nodule in the right upper lobe, not spiculated.",
+     {"input": "spiculation", "value": True, "quote": "spiculated"}, "spiculation"),
+    ("12 mm part-solid nodule in the right upper lobe.", {"input": "nodule_type", "value": "solid", "quote": "solid"},
+     "nodule_type"),
+    ("12 mm ground-glass nodule, no solid component.",
+     {"input": "nodule_type", "value": "solid", "quote": "solid component"}, "nodule_type"),
+    ("8 mm nodule, possibly spiculated.", {"input": "spiculation", "value": True, "quote": "spiculated"},
+     "spiculation")])
+async def test_a_quote_stripped_of_its_modifier_is_asked_even_when_jev_agrees(monkeypatch, jev, finding, item, inp):
+    from tests.test_library_partial import _bts
+    jev["score"] = 0.95
+    _model(monkeypatch, item)
+    out = await PP.preview_pack(_bts(), finding, "", {}, finding=finding)
+    assert inp not in {x.input for x in out.settled} and inp in out.missing
+
+
+async def test_a_context_stripped_quote_fails_the_finding_claim(monkeypatch, jev):
+    """The reviewer's 'upper lobe' from 'separating it from the upper lobe': no modifier; the finding claim asks."""
+    from tests.test_library_partial import _bts
+    finding = "7 mm solid nodule in the right lower lobe, adjacent to the oblique fissure separating it from the upper lobe."
+    jev["scores"] = {"The FINDING states Upper lobe location": 0.04, "The QUOTE states Upper lobe location": 0.95}
+    _model(monkeypatch, {"input": "upper_lobe", "value": True, "quote": "upper lobe"})
+    out = await PP.preview_pack(_bts(), finding, "", {}, finding=finding)
+    assert "upper_lobe" in out.missing
+
+
+@pytest.mark.parametrize("finding_score,quote_score,settles", [(0.95, 0.95, True), (0.79, 0.95, False),
+                                                               (0.95, 0.79, False), (0.8, 0.8, True)])
+async def test_an_enum_settles_only_when_both_claims_reach_point_eight(toy_entry, monkeypatch, jev, finding_score,
+                                                                      quote_score, settles):
+    jev["scores"] = {"The FINDING states Nodule type": finding_score, "The QUOTE states Nodule type": quote_score}
+    _model(monkeypatch, KIND)
+    out = await PP.preview_pack(toy_entry, FINDING, "", {}, finding=FINDING)
+    assert ("kind" in {x.input for x in out.settled}) is settles
+
+
+@pytest.mark.parametrize("quote,text,modified", [
+    ("spiculated", "8 mm nodule, not spiculated.", True), ("spiculated", "8 mm nodule, not clearly spiculated.", True),
+    ("solid", "12 mm part-solid nodule.", True), ("solid", "Non-solid nodule.", True),
+    ("solid", "Semi-solid nodule.", True), ("spiculated", "Nodule, ?spiculated.", True),
+    ("calcification", "Nodule without calcification.", True), ("emphysema", "No emphysema.", True),
+    ("spiculated", "8 mm spiculated nodule.", False), ("solid", "8 mm solid nodule.", False),
+    ("right upper lobe", "Nodule in the right upper lobe.", False), ("not spiculated", "8 mm, not spiculated.", False),
+    ("solid", "Nodule is solid.", False)])
+def test_the_modifier_guard(quote, text, modified):
+    assert PP._modified(quote, [text]) is modified

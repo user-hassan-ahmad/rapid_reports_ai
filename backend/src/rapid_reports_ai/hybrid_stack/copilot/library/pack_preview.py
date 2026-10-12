@@ -183,6 +183,22 @@ def _in_scope(i: InputDef, quote: str, finding: str, findings: str, history: str
     return P._verbatim(quote, finding, "") if i.scope == "lesion" else P._verbatim(quote, findings, history)
 
 
+# a negation, a hedge, a hyphen-joined modifier ("part-", "non-", "semi-") or a "?" right before a quoted word changes
+# what it says: an enum or boolean quoted without it gives no reading (one word may sit between: "not clearly")
+_MODIFIER = re.compile(r"(?:\b(?:no|not|non|nor|neither|without|absent|free\s+of|possibly|probably|likely|questionably"
+                       r"|query|equivocal|equivocally|ruled\s+out|cannot\s+exclude)\s+(?:[a-z]+\s+)?"
+                       r"|[a-z0-9]-\s*|\?\s*)$", re.I)
+
+
+def _modified(quote: str, texts: list[str]) -> bool:
+    """Any occurrence of the quote in its scope's text has a modifier right before it (_MODIFIER)."""
+    words = re.findall(r"[^\W_]+", quote or "")
+    if not words:
+        return False
+    pat = re.compile(r"(?<![^\W_])" + r"[\W_]*".join(re.escape(w) for w in words) + r"(?![^\W_])", re.I)
+    return any(_MODIFIER.search(t[:m.start()]) for t in texts if t for m in pat.finditer(t))
+
+
 async def _call(system: str, prompt: str) -> RawSettle:
     r = await asyncio.wait_for(_run_agent_with_model(
         model_name=QWEN, output_type=RawSettle, system_prompt=system, user_prompt=prompt, api_key="",
@@ -281,7 +297,10 @@ async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings
         q = item.quote.strip()
         if i is None or i.id not in ids or not q or not _in_scope(i, q, finding, findings, history):
             continue
-        v = _value(i, item, [finding] if i.scope == "lesion" else [findings, history])
+        texts = [finding] if i.scope == "lesion" else [findings, history]
+        if i.type != "number" and _modified(q, texts):
+            continue                 # "spiculated" from "not spiculated", "solid" from "part-solid": asked
+        v = _value(i, item, texts)
         if v is not None and i.scope == "lesion" and several:
             continue                 # the finding names other lesions: which one's value is meant is asked
         if v is not None:
@@ -326,24 +345,28 @@ def _quote_claim(e: Entry, i: InputDef, v: InputValue) -> str:
 async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding: str, findings: str,
                    history: str) -> tuple[set[str], bool]:
     """(confirmed ids, whether a Jev call failed). Run together:
-    - per scope, one batched call for the numbers: "The FINDING states <label>: <value>" with the finding unit alone
-      as state (lesion), or the same of the history and the dictation (patient); SETTLED_MIN. The lesion batch also
-      carries ONE_LESION whenever any lesion input is pending: below ONE_LESION_MIN every lesion input is asked;
-    - per enum or boolean value, one call on its QUOTE alone: "The QUOTE states <label>: <value>"; QUOTE_MIN.
+    - per scope, one batched call: "The FINDING states <label>: <value>" with the finding unit alone as state
+      (lesion), or the same of the history and the dictation (patient). A number needs SETTLED_MIN, an enum or a
+      boolean QUOTE_MIN. The lesion batch also carries ONE_LESION whenever any lesion input is pending: below
+      ONE_LESION_MIN every lesion input is asked;
+    - per enum or boolean value, one more call on its QUOTE alone: "The QUOTE states <label>: <value>"; QUOTE_MIN.
+      An enum or boolean settles only when both claims pass: the quote must state it, and the finding must too
+      (a quote stripped of its context, "spiculated" from "not spiculated", fails the second).
     A failed call leaves its inputs asked (the lesion batch: every lesion input)."""
     states = {"lesion": f"FINDING:\n{finding}",
               "patient": f"CLINICAL HISTORY:\n{history or 'none given'}\n\nDICTATION:\n{findings}"}
 
-    async def numbers(scope: str) -> tuple[set[str], bool, bool]:
-        """(confirmed numbers, one lesion, failed)"""
-        ids = [k for k in pending if e.input(k).scope == scope and e.input(k).type == "number"]
-        one_lesion = scope == "lesion" and any(e.input(k).scope == "lesion" for k in pending)
-        if not ids and not one_lesion:
+    async def batch(scope: str) -> tuple[set[str], bool, bool]:
+        """(confirmed ids, one lesion, failed)"""
+        ids = [k for k in pending if e.input(k).scope == scope]
+        one_lesion = scope == "lesion" and bool(ids)
+        if not ids:
             return set(), True, False
         claims = [f"{_LEAD[scope]} {e.input(k).label}: {_show(e, e.input(k), pending[k][0]).replace('_', ' ')}"
                   for k in ids]
         # an attenuation measured after contrast may be an enhanced value, not the one the input means: asked
-        hu = [k for k in ids if scope == "lesion" and Q.FAMILY.get(Q.canon(e.input(k).unit)) == "attenuation"]
+        hu = [k for k in ids if scope == "lesion" and e.input(k).type == "number"
+              and Q.FAMILY.get(Q.canon(e.input(k).unit)) == "attenuation"]
         claims += [_phase_claim(_show(e, e.input(k), pending[k][0])) for k in hu]
         if one_lesion:                 # one lesion or several is a question of meaning: Jev, in the same batch
             claims.append(ONE_LESION)
@@ -355,7 +378,8 @@ async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding
         if one_lesion and got[-1] < ONE_LESION_MIN:
             logger.info("[library.preview] %s: finding not one lesion (%.2f); lesion inputs asked", e.key, got[-1])
         phased = {k for k, s in zip(hu, got[len(ids):]) if s >= PHASE_MAX}
-        return ({k for k, s in zip(ids, got) if s >= P.SETTLED_MIN} - phased,
+        bar = {k: P.SETTLED_MIN if e.input(k).type == "number" else QUOTE_MIN for k in ids}
+        return ({k for k, s in zip(ids, got) if s >= bar[k]} - phased,
                 not one_lesion or got[-1] >= ONE_LESION_MIN, False)
 
     async def quote(k: str) -> tuple[str, float | None]:
@@ -368,9 +392,10 @@ async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding
             return k, None
 
     choices = [k for k in pending if e.input(k).type != "number"]
-    (a, one, fa), (b, _, fb), *qs = await asyncio.gather(numbers("lesion"), numbers("patient"),
+    (a, one, fa), (b, _, fb), *qs = await asyncio.gather(batch("lesion"), batch("patient"),
                                                         *(quote(k) for k in choices))
-    ok = a | b | {k for k, s in qs if s is not None and s >= QUOTE_MIN}
+    quoted = {k for k, s in qs if s is not None and s >= QUOTE_MIN}
+    ok = {k for k in a | b if e.input(k).type == "number" or k in quoted}
     if not one or fa:
         ok = {k for k in ok if e.input(k).scope != "lesion"}
     return ok, fa or fb or any(s is None for _, s in qs)
