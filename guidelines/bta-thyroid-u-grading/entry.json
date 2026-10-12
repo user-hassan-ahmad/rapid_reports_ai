@@ -1,0 +1,275 @@
+{
+  "id": "bta-thyroid-u-grading",
+  "version": "2014.1",
+  "topic": "thyroid-nodule",
+  "issuer": "British Thyroid Association",
+  "system": "British Thyroid Association guidelines for the management of thyroid cancer (third edition): ultrasound U classification of thyroid nodules",
+  "display": "BTA 2014 U classification",
+  "edition": "2014",
+  "tier": 1,
+  "status": "current",
+  "applies_to": {
+    "region": ["neck"],
+    "modality": ["US"],
+    "finding_type": ["thyroid nodule"],
+    "context": []
+  },
+  "aliases": [
+    "U classification",
+    "U grade",
+    "U score",
+    "BTA U classification",
+    "BTA U grading",
+    "BTA thyroid",
+    "U1-U5"
+  ],
+  "inputs": [
+    {
+      "id": "u_grade",
+      "label": "U grade",
+      "type": "enum",
+      "options": ["U1", "U2", "U3", "U4", "U5"],
+      "how_stated": "the U score of this nodule as dictated: U1 normal, U2 benign, U3 indeterminate or equivocal, U4 suspicious, U5 malignant. (In a multinodular thyroid the report must also record the score of the most suspicious nodule.)",
+      "locator": {
+        "source": "S1",
+        "page": 30,
+        "table": "Fig. 4.1 Thyroid nodules: Ultrasound (U) Classification"
+      },
+      "scope": "lesion"
+    }
+  ],
+  "logic": [
+    {
+      "step": "table",
+      "id": "grade",
+      "keys": ["u_grade"],
+      "rows": [
+        {"match": ["U1"], "result": "u1_normal"},
+        {"match": ["U2"], "result": "u2_benign"},
+        {"match": ["U3"], "result": "u3_indeterminate"},
+        {"match": ["U4"], "result": "u4_suspicious"},
+        {"match": ["U5"], "result": "u5_malignant"}
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 28,
+        "section": "4.3 Selection of nodules for FNAC, recommendations i (U1-U2) and ii (U3-U5)",
+        "table": "Fig. 4.1 U classification (p30)"
+      }
+    }
+  ],
+  "result": "grade",
+  "outcomes": [
+    {
+      "id": "u1_normal",
+      "classification": "U1: normal thyroid appearance.",
+      "recommendation": "Reassuring; FNAC not required unless the patient is at statistically high clinical risk of malignancy. No routine ultrasound follow-up.",
+      "caveats": [
+        "Clinical features linked to a higher probability of malignancy: age under 20 or over 60, a firm nodule, fixation to adjacent structures, rapid growth, vocal cord paralysis, regional lymphadenopathy, previous neck irradiation, family history of thyroid cancer.",
+        "Discharge without follow-up applies to asymptomatic nodules with no clinical reason to suspect malignancy."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 28,
+        "section": "4.3 recommendation i (U1-U2 reassuring, FNAC not required unless statistically high risk, Chapter 3.7, clinical features p25); 4.5 i (p29, discharge, no routine US follow-up); 4.6 i (p31)",
+        "table": "Fig. 4.1 U1 Normal (p30); Fig. 4.2 benign appearance (U1-2): no follow-up required (p31)"
+      }
+    },
+    {
+      "id": "u2_benign",
+      "classification": "U2: benign appearance.",
+      "recommendation": "Reassuring; FNAC not required unless the patient is at statistically high clinical risk of malignancy. No routine ultrasound follow-up.",
+      "caveats": [
+        "Clinical features linked to a higher probability of malignancy: age under 20 or over 60, a firm nodule, fixation to adjacent structures, rapid growth, vocal cord paralysis, regional lymphadenopathy, previous neck irradiation, family history of thyroid cancer.",
+        "Discharge without follow-up applies to asymptomatic nodules with no clinical reason to suspect malignancy."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 28,
+        "section": "4.3 recommendation i (U1-U2 reassuring, FNAC not required unless statistically high risk, Chapter 3.7, clinical features p25); 4.5 i (p29, discharge, no routine US follow-up); 4.6 i (p31)",
+        "table": "Fig. 4.1 U2 Benign (p30); Fig. 4.2 benign appearance (U1-2): no follow-up required (p31)"
+      }
+    },
+    {
+      "id": "u3_indeterminate",
+      "classification": "U3: indeterminate or equivocal appearance.",
+      "recommendation": "Ultrasound-guided FNAC.",
+      "caveats": [
+        "In pregnancy, FNAC of a U3 nodule may be deferred until after delivery if the patient prefers.",
+        "Non-diagnostic (Thy1) or benign (Thy2) cytology with these ultrasound features: repeat FNAC is advised."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 28,
+        "section": "4.3 recommendation ii (U3-U5: US-guided FNAC should follow); 4.5 iii-iv (p29, repeat FNAC); 14.1 iii (p75, pregnancy)",
+        "table": "Fig. 4.1 U3 Indeterminate/Equivocal (p30); Fig. 4.2 (p31)"
+      }
+    },
+    {
+      "id": "u4_suspicious",
+      "classification": "U4: suspicious appearance.",
+      "recommendation": "Ultrasound-guided FNAC. Assess the rest of the neck for nodal metastases.",
+      "caveats": [
+        "Any abnormal neck lymph node should also undergo FNAC.",
+        "Nodule under 1 cm: extrathyroidal extension, nodal disease and clinical risk inform whether FNAC is pursued; otherwise a clinician and MDT judgement, to avoid overtreating micropapillary carcinoma.",
+        "Non-diagnostic (Thy1) or benign (Thy2) cytology with these ultrasound features: repeat FNAC is advised."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 28,
+        "section": "4.3 recommendation ii (U3-U5: US-guided FNAC should follow) and text on nodules <1 cm; 4.3 iii and 4.4 iv (p29, abnormal nodes, neck assessment mandatory when malignancy suspected); 4.5 iii-iv (p29)",
+        "table": "Fig. 4.1 U4 Suspicious (p30); Fig. 4.2 (p31)"
+      }
+    },
+    {
+      "id": "u5_malignant",
+      "classification": "U5: malignant appearance.",
+      "recommendation": "Ultrasound-guided FNAC. Assess the rest of the neck for nodal metastases.",
+      "caveats": [
+        "Any abnormal neck lymph node should also undergo FNAC.",
+        "Nodule under 1 cm: extrathyroidal extension, nodal disease and clinical risk inform whether FNAC is pursued; otherwise a clinician and MDT judgement, to avoid overtreating micropapillary carcinoma.",
+        "Non-diagnostic (Thy1) cytology: repeat FNAC. Benign (Thy2) cytology: review the clinical and ultrasound suspicion; if high, repeat US-guided FNAC or MDT discussion."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 28,
+        "section": "4.3 recommendation ii (U3-U5: US-guided FNAC should follow) and text on nodules <1 cm; 4.3 iii and 4.4 iv (p29, abnormal nodes, neck assessment mandatory when malignancy suspected); 4.5 iii (p29)",
+        "table": "Fig. 4.1 U5 Malignant (p30); Fig. 4.2 (p31): Thy1 to repeat FNAC; Thy2 to review of clinical and US suspicion, then repeat US-guided FNAC or MDT discussion"
+      }
+    }
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "The BTA 2014 U classification grades a thyroid nodule on ultrasound from U1 (normal) to U5 (malignant) to estimate the risk of malignancy and guide FNAC.",
+        "locator": {"source": "S1", "page": 28, "section": "4.2 ii (U1-U5 system recommended, 2+, C)"}
+      },
+      {
+        "id": "sum.2",
+        "text": "U1-U2 are reassuring and do not need FNAC unless the patient is at statistically high clinical risk; U3-U5 should go on to ultrasound-guided FNAC.",
+        "locator": {"source": "S1", "page": 28, "section": "4.3 recommendations i and ii (2++, B)"}
+      },
+      {
+        "id": "sum.3",
+        "text": "The report should describe the nodule's characteristics, give measurements of significant nodules and state the U score; in a multinodular thyroid, record the score of the most suspicious nodule. Note retrosternal extension or tracheal deviation.",
+        "locator": {"source": "S1", "page": 29, "section": "4.4 Radiology reporting, ii and iii (Good Practice Points)"}
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.nodule",
+        "text": "A thyroid nodule on ultrasound is a discrete lesion that can be told apart from the adjacent normal thyroid parenchyma.",
+        "locator": {"source": "S1", "page": 28, "section": "Chapter 4 introduction"}
+      },
+      {
+        "id": "def.taller_than_wide",
+        "text": "Taller than wide: the anteroposterior diameter exceeds the transverse diameter (AP > TR) in the axial plane.",
+        "locator": {"source": "S1", "page": 29, "table": "Table 4.1"}
+      },
+      {
+        "id": "def.spongiform",
+        "text": "Spongiform (honeycomb): microcystic spaces with thin walls making up more than half of the nodule.",
+        "locator": {"source": "S1", "page": 29, "table": "Table 4.1"}
+      },
+      {
+        "id": "def.solid_cystic",
+        "text": "In a mixed solid and cystic nodule, assess the solid part: an eccentric solid portion, a non-smooth margin, hypoechogenicity and microcalcification within it are specific signs of malignancy; a taller-than-wide or irregular overall shape also predicts malignancy.",
+        "locator": {"source": "S1", "page": 28, "section": "4.3 Selection of nodules for FNAC"}
+      }
+    ],
+    "tables": [
+      {
+        "id": "tab.u_classification",
+        "title": "U classification of thyroid nodules (Fig. 4.1) and the FNAC decision (4.3)",
+        "columns": ["Grade", "Category", "Ultrasound signs", "FNAC"],
+        "rows": [
+          ["U1", "Normal", "Normal appearance", "Not required unless statistically high clinical risk"],
+          ["U2", "Benign", "(a) halo, iso-echoic or mildly hyperechoic; (b) cystic change with or without ring-down sign (colloid); (c) microcystic or spongiform; (d, e) peripheral eggshell calcification; (f) peripheral vascularity", "Not required unless statistically high clinical risk"],
+          ["U3", "Indeterminate/equivocal", "(a) homogeneous, markedly hyperechoic, solid, halo (follicular lesion); (b) ?hypoechoic, equivocal echogenic foci, cystic change; (c) mixed or central vascularity", "Ultrasound-guided FNAC"],
+          ["U4", "Suspicious", "(a) solid, hypoechoic relative to thyroid; (b) solid, very hypoechoic relative to strap muscle; (c) disrupted peripheral calcification, hypoechoic; (d) lobulated outline", "Ultrasound-guided FNAC"],
+          ["U5", "Malignant", "(a) solid, hypoechoic, lobulated or irregular outline, microcalcification (?papillary carcinoma); (b) solid, hypoechoic, lobulated or irregular outline, globular calcification (?medullary carcinoma); (c) intranodular vascularity; (d) taller than wide (AP > TR); (e) characteristic associated lymphadenopathy", "Ultrasound-guided FNAC"]
+        ],
+        "locator": {"source": "S1", "page": 30, "section": "4.3 recommendations i and ii (p28)", "table": "Fig. 4.1 Thyroid nodules: Ultrasound (U) Classification"}
+      },
+      {
+        "id": "tab.features",
+        "title": "Ultrasound features indicative of benign and malignant nodules (Table 4.1)",
+        "columns": ["Group", "Feature"],
+        "rows": [
+          ["Benign", "Spongiform or honeycomb appearance (thin-walled microcystic spaces making up more than half of the nodule)"],
+          ["Benign", "Purely cystic nodule, or a cystic component containing colloid (hyperechoic foci with a ring-down sign)"],
+          ["Benign", "Eggshell calcification around the periphery of the nodule"],
+          ["Benign", "Iso-echoic or mildly hyperechoic relative to normal thyroid, typically with a surrounding hypoechoic halo"],
+          ["Benign", "Peripheral vascularity on colour or power Doppler"],
+          ["Malignant (papillary and medullary)", "Solid and hypoechoic relative to normal thyroid, which may contain hyperechoic foci (microcalcification)"],
+          ["Malignant (papillary and medullary)", "Irregular margin, intranodular vascularity and no halo"],
+          ["Malignant (papillary and medullary)", "Taller than wide (AP > TR in the axial plane)"],
+          ["Malignant (papillary and medullary)", "Irregular or spiculated margin and taller-than-wide shape both have good positive predictive value"],
+          ["Malignant (papillary and medullary)", "Peripheral eggshell calcification with a broken rim and hypoechoic tissue extending beyond it"],
+          ["Follicular lesions", "Typically hyperechoic and homogeneous with a well-defined halo"],
+          ["Follicular lesions", "Hypoechogenicity and loss of the halo are associated with carcinoma"]
+        ],
+        "locator": {"source": "S1", "page": 29, "table": "Table 4.1"}
+      },
+      {
+        "id": "tab.report_features",
+        "title": "Suggested features for the thyroid ultrasound report (Table 4.3)",
+        "columns": ["Feature", "Descriptors"],
+        "rows": [
+          ["Relevant nodule size", ""],
+          ["Nodule composition", "Solid, cystic, mixed solid/cystic, microcystic/spongiform"],
+          ["Cystic component", "?Ring-down sign (colloid)"],
+          ["Echogenicity", "Markedly hypoechoic, hypoechoic, iso-echoic, hyperechoic"],
+          ["Calcifications", "Microcalcification, macrocalcification, rim/eggshell"],
+          ["Margin", "Well defined, irregular/lobulated, spiculated"],
+          ["Taller than wide", "AP > TR: yes/no"],
+          ["Halo", "Regular/continuous, interrupted, absent"],
+          ["Colour flow", "Central, peripheral, mixed, none"],
+          ["Extent", "Retrosternal extension/tracheal deviation"],
+          ["Classification", "Benign (U2), equivocal/indeterminate (U3), suspicious (U4), malignant (U5)"],
+          ["Lymphadenopathy", "Suspected malignancy, ?metastases: anatomical location/levels"],
+          ["Biopsy", "FNAC/core biopsy, needle gauge, number of passes, location of nodule biopsied; complications: yes/no"]
+        ],
+        "locator": {"source": "S1", "page": 31, "table": "Table 4.3"}
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.summation",
+        "text": "No single ultrasound feature is diagnostic: use the signs together, and read them against the patient's clinical picture and any cytology.",
+        "locator": {"source": "S1", "page": 28, "section": "4.1 ii and 4.2 i"}
+      },
+      {
+        "id": "pit.size",
+        "text": "Nodule size correlates poorly with malignancy and is not a reliable indicator; the U classification rests on morphology.",
+        "locator": {"source": "S1", "page": 28, "section": "Chapter 4 introduction and 4.3"}
+      },
+      {
+        "id": "pit.discordance",
+        "text": "When clinical suspicion, cytology and ultrasound appearances disagree, management should be discussed at the MDT.",
+        "locator": {"source": "S1", "page": 30, "section": "4.4 v"}
+      },
+      {
+        "id": "pit.scope",
+        "text": "The guideline does not address thyroid lymphoma or metastases to the thyroid, and is written for adults; in children the general principles of management are similar, but nodules are more likely to be malignant and the threshold for surgery is lower.",
+        "locator": {"source": "S1", "page": 15, "section": "1 Introduction (lymphoma, metastases); front matter p8 (adult focus); 15 Thyroid cancer in childhood, intro and i (p78)"}
+      },
+      {
+        "id": "pit.ct",
+        "text": "Nodules found incidentally on CT need clinical evaluation, and usually nothing more; ultrasound is advised for suspicious CT findings (extracapsular extension, tracheal invasion, associated suspicious lymphadenopathy), a high-risk patient or significant clinical concern.",
+        "locator": {"source": "S1", "page": 31, "section": "4.6 Incidental nodules, ii"}
+      },
+      {
+        "id": "pit.pet",
+        "text": "A nodule with focal FDG uptake on PET-CT should have ultrasound and FNAC, unless disseminated disease is found and the prognosis of another malignancy would preclude further investigation.",
+        "locator": {"source": "S1", "page": 31, "section": "4.6 Incidental nodules, iii"}
+      },
+      {
+        "id": "pit.nodes",
+        "text": "Any abnormal neck lymph node should undergo FNAC to aid diagnosis and staging.",
+        "locator": {"source": "S1", "page": 29, "section": "4.3 iii"}
+      }
+    ]
+  }
+}

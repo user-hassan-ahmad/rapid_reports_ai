@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "British Thyroid Association Guidelines for the Management of Thyroid Cancer, third edition (Perros P, et al. Clin Endocrinol (Oxf) 2014;81 Suppl 1:1-122)",
+      "issuer": "British Thyroid Association",
+      "edition": "2014 (third edition)",
+      "url": "https://doi.org/10.1111/cen.12515",
+      "sha256": "43e975381179c018001750ffdbb3be32ecce78f6f03e3dd919450f7e6a21727c",
+      "file": "sources/43e975381179c018001750ffdbb3be32ecce78f6f03e3dd919450f7e6a21727c.pdf",
+      "text_file": "sources/43e975381179c018001750ffdbb3be32ecce78f6f03e3dd919450f7e6a21727c.txt",
+      "retrieved": "2026-10-12"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "cases": [
+    {"name": "U1 normal: reassure, no FNAC", "origin": "ours", "inputs": {"u_grade": "U1"}, "outcome": "u1_normal", "steps": {"grade": "u1_normal"}},
+    {"name": "U2 benign (spongiform nodule): reassure, no FNAC", "origin": "ours", "inputs": {"u_grade": "U2"}, "outcome": "u2_benign", "steps": {"grade": "u2_benign"}},
+    {"name": "U3 indeterminate (markedly hyperechoic, homogeneous, solid nodule with halo): US-guided FNAC", "origin": "ours", "inputs": {"u_grade": "U3"}, "outcome": "u3_indeterminate", "steps": {"grade": "u3_indeterminate"}},
+    {"name": "U4 suspicious (solid hypoechoic nodule): US-guided FNAC and neck assessment", "origin": "ours", "inputs": {"u_grade": "U4"}, "outcome": "u4_suspicious", "steps": {"grade": "u4_suspicious"}},
+    {"name": "U5 malignant (solid hypoechoic nodule with irregular outline and microcalcification): US-guided FNAC and neck assessment", "origin": "ours", "inputs": {"u_grade": "U5"}, "outcome": "u5_malignant", "steps": {"grade": "u5_malignant"}},
+    {"name": "U grade not stated: ask for it", "origin": "ours", "inputs": {}, "outcome": null, "needed": ["u_grade"]},
+    {"name": "U grade explicitly unknown: ask for it", "origin": "ours", "inputs": {"u_grade": {"state": "unknown"}}, "outcome": null, "needed": ["u_grade"]}
+  ]
+}
