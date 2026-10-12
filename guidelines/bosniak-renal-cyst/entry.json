@@ -42,7 +42,8 @@
         "page": null,
         "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
         "table": "2"
-      }
+      },
+      "scope": "lesion"
     },
     {
       "id": "technique",
@@ -66,7 +67,8 @@
         "page": null,
         "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
         "table": "2"
-      }
+      },
+      "scope": "patient"
     },
     {
       "id": "margin",
@@ -88,7 +90,8 @@
         "page": null,
         "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
         "table": "2"
-      }
+      },
+      "scope": "lesion"
     },
     {
       "id": "wall",
@@ -113,7 +116,8 @@
         "page": null,
         "section": "General Points",
         "table": "3"
-      }
+      },
+      "scope": "lesion"
     },
     {
       "id": "septa",
@@ -141,7 +145,8 @@
         "page": null,
         "section": "General Points",
         "table": "3"
-      }
+      },
+      "scope": "lesion"
     },
     {
       "id": "protrusion",
@@ -165,7 +170,8 @@
         "page": null,
         "section": "General Points",
         "table": "3"
-      }
+      },
+      "scope": "lesion"
     },
     {
       "id": "calcification",
@@ -187,7 +193,8 @@
         "page": null,
         "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
         "table": "2"
-      }
+      },
+      "scope": "lesion"
     },
     {
       "id": "contents",
@@ -209,7 +216,8 @@
         "page": null,
         "section": "General Points",
         "table": "3"
-      }
+      },
+      "scope": "lesion"
     },
     {
       "id": "contents_enhancement",
@@ -235,7 +243,8 @@
         "page": null,
         "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
         "table": "2"
-      }
+      },
+      "scope": "lesion"
     },
     {
       "id": "hu",
@@ -254,7 +263,8 @@
         "page": null,
         "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
         "table": "2"
-      }
+      },
+      "scope": "lesion"
     }
   ],
   "logic": [

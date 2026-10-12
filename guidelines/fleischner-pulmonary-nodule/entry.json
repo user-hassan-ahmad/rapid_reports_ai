@@ -38,7 +38,8 @@
         "source": "S1",
         "page": 2,
         "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system"
-      }
+      },
+      "scope": "patient"
     },
     {
       "id": "nodule_type",
@@ -54,7 +55,8 @@
         "source": "S1",
         "page": 3,
         "table": "Table: A Solid Nodules; B Subsolid Nodules"
-      }
+      },
+      "scope": "lesion"
     },
     {
       "id": "count",
@@ -69,7 +71,8 @@
         "source": "S1",
         "page": 3,
         "table": "Table: Single / Multiple rows"
-      }
+      },
+      "scope": "patient"
     },
     {
       "id": "diameter_mm",
@@ -81,7 +84,9 @@
         "source": "S1",
         "page": 3,
         "table": "Table footnote: average of long and short axes, rounded to the nearest millimetre"
-      }
+      },
+      "scope": "lesion",
+      "dims": "mean"
     },
     {
       "id": "risk",
@@ -102,7 +107,8 @@
         "source": "S1",
         "page": 12,
         "section": "Risk Estimation and Risk Models"
-      }
+      },
+      "scope": "patient"
     }
   ],
   "logic": [

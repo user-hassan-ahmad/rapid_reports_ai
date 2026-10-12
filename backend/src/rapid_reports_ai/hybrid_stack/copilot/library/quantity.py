@@ -1,7 +1,8 @@
 """Numbers read from a quoted span by code (library spec §12, next slice item 1). The model's number is never
 trusted: it only chooses between several readings of one quote. One conversion table; a spoken unit that is neither
 the input's unit nor converts to it by that table gives no reading, so the input is asked. A range ("6-8 mm") or a
-fraction ("3/12") gives no reading either: which end is meant is a judgement, so it is asked."""
+fraction ("3/12") or a bound ("under 5 mm") gives no reading either: which value is meant is a judgement, so it is
+asked."""
 from __future__ import annotations
 
 import re
@@ -27,11 +28,18 @@ _NUM = r"(\d+(?:\.\d+)?)"
 _UNITS = "|".join(sorted((re.escape(u) for u in _CANON), key=len, reverse=True))
 _U = rf"(?:\s*-?\s*({_UNITS})(?![a-z0-9]))?"
 _X = r"\s*(?:x|×|by)\s*"
-_RANGE = re.compile(rf"(?<![\d.]){_NUM}{_U}\s*(?:-|–|to)\s*{_NUM}{_U}", re.I)
+_RANGE = re.compile(rf"(?<![\d.]){_NUM}{_U}\s*(?:-|–|to(?:\s+(?:under|below|less than))?)\s*{_NUM}{_U}", re.I)
 _FRACTION = re.compile(r"(?<![\d.])\d+\s*/\s*\d+")
 _DIMS = re.compile(rf"(?<![\d.]){_NUM}{_U}{_X}{_NUM}{_U}(?:{_X}{_NUM}{_U})?", re.I)
 _QTY = re.compile(rf"(?<![\d.]){_NUM}{_U}", re.I)
 _COUNT_RE = re.compile(r"\b(" + "|".join(sorted(COUNT_WORDS, key=len, reverse=True)) + r")\b", re.I)
+_CW = "|".join(sorted(COUNT_WORDS, key=len, reverse=True))
+# a bound ("under 5 mm", "8 mm or more", "<6 mm") names a band edge, not the value: no reading, like a range
+_BOUND = re.compile(
+    rf"(?:[<>≤≥]=?|\b(?:under|over|below|above|less than|more than|greater than|fewer than|smaller than|larger than"
+    rf"|up to|at least|at most)\b)\s*(?:\d+(?:\.\d+)?|\b(?:{_CW})\b){_U}"
+    rf"|(?<![\d.])\d+(?:\.\d+)?{_U}\s*(?:\bor (?:more|less|greater|larger|smaller|above|below|over|under)\b"
+    rf"|\band (?:above|over|below|under)\b|\+)", re.I)
 
 
 def canon(unit: str) -> str:
@@ -70,7 +78,7 @@ def readings(quote: str, unit: str, dims: str | None = None) -> list[float]:
                 out.extend(vals)
         return " "
 
-    text = _FRACTION.sub(" ", _RANGE.sub(" ", quote or ""))
+    text = _BOUND.sub(" ", _FRACTION.sub(" ", _RANGE.sub(" ", quote or "")))
     text = _DIMS.sub(group, text)
     for m in _QTY.finditer(text):
         v = _conv(float(m.group(1)), m.group(2), want)

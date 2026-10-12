@@ -42,7 +42,8 @@ def test_readings(quote, unit, dims, want):
 
 
 @pytest.mark.parametrize("quote,unit", [("6-8 mm", "mm"), ("6 to 8 mm", "mm"), ("1.2–1.5 cm", "mm"),
-                                        ("3/12 interval", "days"), ("seen at 6/52", "days")])
+                                        ("3/12 interval", "days"), ("seen at 6/52", "days"),
+                                        ("5 mm to under 6 mm", "mm")])
 def test_a_range_or_fraction_gives_no_reading(quote, unit):
     assert Q.readings(quote, unit) == []
 
@@ -58,3 +59,11 @@ def test_one_conversion_table():
     assert Q.CONVERT == {("cm", "mm"): 10.0, ("mm", "cm"): 0.1, ("cm3", "mm3"): 1000.0, ("mm3", "cm3"): 0.001,
                          ("weeks", "days"): 7.0}
     assert (Q.canon("HU"), Q.canon("mm³"), Q.canon("cc"), Q.canon("count")) == ("HU", "mm3", "cm3", "count")
+
+
+@pytest.mark.parametrize("quote,unit", [("under 5 mm", "mm"), ("8 mm or more", "mm"), ("<6 mm", "mm"),
+                                        ("≥ 8 mm", "mm"), ("less than 1.5 cm", "mm"), ("at least 3 weeks", "days"),
+                                        ("more than two nodules", "count"), ("2 years or more", "years")])
+def test_a_bound_gives_no_reading(quote, unit):
+    """"under 5 mm" or "8 mm or more" names a band edge, not the value: asked, like a range."""
+    assert Q.readings(quote, unit) == []

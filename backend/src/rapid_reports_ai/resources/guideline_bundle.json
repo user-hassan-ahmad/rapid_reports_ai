@@ -70,7 +70,7 @@
         "ref": "too_small"
        }
       ],
-      "scope": "lesion",
+      "scope": "patient",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -1969,6 +1969,7 @@
       "unit": ""
      },
      {
+      "dims": "max",
       "how_stated": "maximum diameter of the nodule in millimetres, e.g. '9 mm nodule'; for multiple nodules, the largest",
       "id": "diameter_mm",
       "label": "Maximum diameter",
@@ -2003,7 +2004,7 @@
       "min_value": 18.0,
       "options": [],
       "prerequisites": [],
-      "scope": "lesion",
+      "scope": "patient",
       "states": [],
       "type": "number",
       "unit": "years"
@@ -2024,7 +2025,7 @@
        "male"
       ],
       "prerequisites": [],
-      "scope": "lesion",
+      "scope": "patient",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -2042,7 +2043,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
-      "scope": "lesion",
+      "scope": "patient",
       "states": [],
       "type": "boolean",
       "unit": ""
@@ -2060,7 +2061,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
-      "scope": "lesion",
+      "scope": "patient",
       "states": [],
       "type": "boolean",
       "unit": ""
@@ -2097,7 +2098,7 @@
       "min_value": 1.0,
       "options": [],
       "prerequisites": [],
-      "scope": "lesion",
+      "scope": "patient",
       "states": [],
       "type": "number",
       "unit": "count"
@@ -2134,7 +2135,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
-      "scope": "lesion",
+      "scope": "patient",
       "states": [],
       "type": "boolean",
       "unit": ""
@@ -2286,7 +2287,7 @@
         ]
        }
       ],
-      "scope": "lesion",
+      "scope": "patient",
       "states": [],
       "type": "number",
       "unit": "days"
@@ -4298,7 +4299,7 @@
       "min_inclusive": true,
       "options": [],
       "prerequisites": [],
-      "scope": "lesion",
+      "scope": "patient",
       "states": [],
       "type": "boolean",
       "unit": ""
@@ -4343,12 +4344,13 @@
        "multiple"
       ],
       "prerequisites": [],
-      "scope": "lesion",
+      "scope": "patient",
       "states": [],
       "type": "enum",
       "unit": ""
      },
      {
+      "dims": "mean",
       "how_stated": "average of long and short axis, as dictated (whole nodule for part-solid; the most suspicious nodule when multiple)",
       "id": "diameter_mm",
       "label": "Nodule diameter",
@@ -4389,7 +4391,7 @@
         "ref": "nodule_type"
        }
       ],
-      "scope": "lesion",
+      "scope": "patient",
       "states": [],
       "type": "enum",
       "unit": ""
@@ -5428,5 +5430,5 @@
    ]
   }
  },
- "version": "75704e538fc3"
+ "version": "76c63e0527ce"
 }

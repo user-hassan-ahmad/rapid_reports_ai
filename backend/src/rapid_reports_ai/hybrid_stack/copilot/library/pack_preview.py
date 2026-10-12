@@ -1,22 +1,26 @@
-"""Preview for a library pack (library spec §4). The model only settles inputs, each with the shortest verbatim span
-that settles it; code checks every value (a real option, an allowed state, a number present in its quote) and every
-quote (verbatim, else Jev); the radiologist's answers win; the engine evaluates. Every word of the proposal comes
-from the entry: no model-written line, no output index."""
+"""Preview for a library pack (library spec §4, §12 next slice). The model only settles inputs, each with the shortest
+verbatim span that settles it, and only from that input's scope: a lesion input from the card's own finding unit, a
+patient input from the clinical history or the whole dictation. Code reads every number and its unit from the quote
+(the model's number is never trusted); one batched Jev call per scope checks every other value as stated; the
+radiologist's answers win; the engine evaluates. Every word of the proposal comes from the entry. Any failure leaves
+the input asked, never assumed."""
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import re
+import os
 
 from pydantic import BaseModel, Field, field_validator
 
 from ....enhancement_utils import _run_agent_with_model
 from ....report_reconcile import QWEN
+from .. import jev as J
 from .. import preview as P
 from .. import registry as R
 from ..types import Branch, Entry as CardEntry, GuidelineContent, Input, Preview, Proposal, Publication, Settled, Source
 from . import engine
+from . import quantity as Q
 from .describe import citation
 from .schema import BandStep, Entry, InputDef, InputValue, RulesStep, conds
 
@@ -24,20 +28,19 @@ logger = logging.getLogger(__name__)
 
 PACK_BRANCH = "Pack"
 TIMEOUT_S = 10.0
-_NUM_UNIT = re.compile(r"(\d+(?:\.\d+)?)\s*(cms?\b|centimet\w*|mm\b|millimet\w*)?", re.I)
 _STATE_LABEL = {"absent": "Absent", "not_assessable": "Not assessable"}
-# a count input (unit "count") may be dictated in words ("solitary nodule", "two nodules"); no other number may
-_COUNT_WORDS = {"single": 1, "solitary": 1, "sole": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
-                "seven": 7, "eight": 8, "nine": 9, "ten": 10}
-_COUNT_RE = re.compile(r"\b(" + "|".join(sorted(_COUNT_WORDS, key=len, reverse=True)) + r")\b", re.I)
+_LEAD = {"lesion": "The FINDING states", "patient": "The CLINICAL HISTORY or DICTATION state"}
 
-SETTLE_SYS = """You settle the inputs of one published radiology classification system from a radiologist's dictation. INPUTS lists each input's id, type and allowed values: use nothing else.
-For each input the FINDINGS or CLINICAL HISTORY state, return one item:
+SETTLE_SYS = """You settle the inputs of one published radiology classification system for ONE finding. INPUTS lists each open input's id, scope, type and allowed values: use nothing else.
+An input's scope decides where it may be settled from:
+- [lesion]: the FINDING only, never another lesion in the dictation, even one of the same kind;
+- [patient]: the CLINICAL HISTORY or the DICTATION (the patient, the examination or the study as a whole).
+For each input its scope states, return one item:
 - input: the input's id;
-- state: "present" when the dictation gives its value; "absent" when the dictation says the feature is not there and the input lists absent; "not_assessable" when the dictation says it cannot be assessed and the input lists not_assessable;
-- value: when present, for an enum exactly one of its options, for a boolean true or false, for a number the number in the input's unit (centimetres converted to millimetres when the unit is mm); otherwise null;
-- quote: the shortest span, copied verbatim from the FINDINGS or CLINICAL HISTORY, that settles it.
-Leave out every input the dictation does not state: never settle a value from what is usual or likely, and never invent an input, option or state."""
+- state: "present" when the value is given; "absent" when the feature is said not to be there and the input lists absent; "not_assessable" when it is said that it cannot be assessed and the input lists not_assessable;
+- value: when present, for an enum exactly one of its options, for a boolean true or false, for a number the number as dictated; otherwise null;
+- quote: the shortest span, copied verbatim from the FINDING ([lesion]) or from the CLINICAL HISTORY or DICTATION ([patient]), that settles it; a number's quote includes its unit.
+Leave out every input that is not stated: never settle a value from what is usual or likely, and never invent an input, option or state."""
 
 
 class RawItem(BaseModel):
@@ -105,51 +108,61 @@ def _answer(e: Entry, i: InputDef, s: str) -> InputValue | None:
     try:
         x = float(s)
     except ValueError:
+        xs = Q.readings(s, i.unit)                    # "72 years", "1.2 cm": read as a quote would be
+        x = xs[0] if len(xs) == 1 else None
+    return InputValue(value=x) if x is not None and i.in_range(x) else None     # out of range: still asked
+
+
+def _num(v) -> float | None:
+    if v is None or isinstance(v, bool):
         return None
-    return InputValue(value=x) if i.in_range(x) else None     # out of range: still asked
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
 
 
 def _value(i: InputDef, item: RawItem) -> InputValue | None:
-    """The model's value if it is a real one: an option, a boolean, an allowed state, or a number that appears in its
-    quote (or is ten times one, when the quote is in cm and the unit mm)."""
+    """The model's value if it is a real one: an allowed state, an option, a boolean, or a number read by code from
+    the quote in the input's unit (the model's own number only chooses between several readings)."""
     if item.state in _STATE_LABEL:
         return InputValue(state=item.state) if item.state in i.states else None
-    if item.state != "present" or item.value is None:
+    if item.state != "present":
+        return None
+    if i.type == "number":
+        x = Q.pick(Q.readings(item.quote, i.unit, i.dims), _num(item.value))
+        return InputValue(value=x) if x is not None and i.in_range(x) else None   # out of range: asked
+    if item.value is None:
         return None
     if i.type == "enum":
         m = {R.norm(o): o for o in i.options}
         hit = m.get(R.norm(str(item.value)))
         return InputValue(value=hit) if hit is not None else None
-    if i.type == "boolean":
-        return InputValue(value=item.value) if isinstance(item.value, bool) else None
-    try:
-        x = float(item.value)
-    except (TypeError, ValueError):
-        return None
-    if not i.in_range(x):                                     # e.g. a resolved nodule's volume of 0: ask instead
-        return None
-    ok = False
-    for m in _NUM_UNIT.finditer(item.quote):
-        n, u = float(m.group(1)), (m.group(2) or "").lower()
-        if u.startswith("c"):
-            cands = [n * 10] if i.unit == "mm" else [n]
-        else:
-            cands = [n]
-        ok = ok or any(abs(x - c) < 1e-6 for c in cands)
-    if not ok and i.unit == "count":
-        ok = any(abs(x - _COUNT_WORDS[m.group(1).lower()]) < 1e-6 for m in _COUNT_RE.finditer(item.quote))
-    return InputValue(value=x) if ok else None
+    return InputValue(value=item.value) if isinstance(item.value, bool) else None
 
 
-def _inputs_text(e: Entry) -> str:
+def _inputs_text(e: Entry, ids: list[str]) -> str:
     lines = []
-    for i in e.inputs:
+    for i in (e.input(k) for k in ids):
         allowed = (" | ".join(i.options) if i.type == "enum" else "true | false" if i.type == "boolean"
                    else f"number in {i.unit or 'the unit dictated'}")
         states = f"; states allowed: {', '.join(i.states)}" if i.states else ""
         hint = f" (dictated as: {i.how_stated})" if i.how_stated else ""
-        lines.append(f"- {i.id}: {i.label}{hint} [{allowed}{states}]")
+        lines.append(f"- {i.id} [{i.scope}]: {i.label}{hint} [{allowed}{states}]")
     return "\n".join(lines)
+
+
+def _prompt(e: Entry, ids: list[str], finding: str, findings: str, history: str) -> str:
+    """Only the open inputs; the history and the whole dictation only when a patient input is open."""
+    s = f"SYSTEM: {e.display}\nINPUTS:\n{_inputs_text(e, ids)}"
+    if any(e.input(k).scope == "patient" for k in ids):
+        s += f"\n\nCLINICAL HISTORY: {history or 'none given'}\n\nDICTATION:\n{findings}"
+    return s + f"\n\nFINDING:\n{finding}"
+
+
+def _in_scope(i: InputDef, quote: str, finding: str, findings: str, history: str) -> bool:
+    """A lesion input's quote lies verbatim in the card's own finding; a patient input's in the history or dictation."""
+    return P._verbatim(quote, finding, "") if i.scope == "lesion" else P._verbatim(quote, findings, history)
 
 
 async def _call(system: str, prompt: str) -> RawSettle:
@@ -199,10 +212,11 @@ def _reads(e: Entry, input_id: str, sources: list[dict]) -> list[dict]:
     return _cites([citation(x, sources) for x in locs])
 
 
-def _asks(e: Entry, t: engine.Trace, sources: list[dict]) -> list[dict]:
-    """One ask per missing input: what it is, how it is answered, which outcomes it decides between, and where."""
+def _asks(e: Entry, t: engine.Trace, sources: list[dict], needed: list[str]) -> list[dict]:
+    """One ask per missing input, in `needed` order: what it is, how it is answered, which outcomes it decides
+    between, and where."""
     out = []
-    for k in t.needed:
+    for k in needed:
         i = e.input(k)
         decides = [{"outcome": o, "classification": engine.PH.sub("…", engine.render(e, t, e.outcome(o).classification)),
                     "citation": citation(e.outcome(o).locator, sources)} for o in t.decides.get(k, t.possible)]
@@ -212,57 +226,114 @@ def _asks(e: Entry, t: engine.Trace, sources: list[dict]) -> list[dict]:
     return out
 
 
-async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str, str],
-                       sources: list[dict] | None = None) -> Preview:
-    sources = sources or []
-    given: dict[str, InputValue] = {}
+def _given(e: Entry, answered: dict[str, str]) -> dict[str, InputValue]:
+    """The radiologist's answers that are real values of this entry (anything else is ignored: still asked)."""
+    out: dict[str, InputValue] = {}
     for k, s in answered.items():
         i = e.input(k)
         v = _answer(e, i, s) if i is not None else None
         if v is not None:
-            given[k] = v
-    model: dict[str, tuple[InputValue, Settled]] = {}
-    prompt = (f"SYSTEM: {e.display}\nINPUTS:\n{_inputs_text(e)}\n\nANSWERED BY THE RADIOLOGIST: "
-              f"{', '.join(given) or 'none'}\n\nCLINICAL HISTORY: {history or 'none given'}\n\nFINDINGS:\n{findings}")
+            out[k] = v
+    return out
+
+
+async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings: str,
+                  history: str) -> tuple[dict[str, tuple[InputValue, Settled]], bool]:
+    """(the model's real values for the open inputs whose quotes lie in their scope, whether the call failed)."""
+    ids = [i.id for i in e.inputs if i.id not in given]
+    if not ids:
+        return {}, False
     try:
-        raw = await _call(SETTLE_SYS, prompt)
-        for item in raw.settled:
-            i = e.input(item.input)
-            if i is None or i.id in given or not item.quote.strip():
-                continue
-            v = _value(i, item)
-            if v is not None:
-                model[i.id] = (v, Settled(input=i.id, value=_show(e, i, v), quote=item.quote.strip()))
+        raw = await _call(SETTLE_SYS, _prompt(e, ids, finding, findings, history))
     except Exception as ex:
         logger.warning("[library.preview] settle %s: %s", type(ex).__name__, str(ex)[:200])
-    confirmed = await P.confirm_quotes({k: s for k, (_, s) in model.items()}, findings, history) if model else set()
-    # a number is never confirmed by Jev alone: its quote must be verbatim in the dictation
-    confirmed = {k for k in confirmed if e.input(k).type != "number" or P._verbatim(model[k][1].quote, findings, history)}
-    given.update({k: v for k, (v, _) in model.items() if k in confirmed})
+        return {}, True
+    out: dict[str, tuple[InputValue, Settled]] = {}
+    for item in raw.settled:
+        i = e.input(item.input)
+        q = item.quote.strip()
+        if i is None or i.id not in ids or not q or not _in_scope(i, q, finding, findings, history):
+            continue
+        v = _value(i, item)
+        if v is not None:
+            out[i.id] = (v, Settled(input=i.id, value=_show(e, i, v), quote=q))
+    return out, False
+
+
+async def _jev(claims: list[str], state: str) -> list[float]:
+    qs = {f"v{n}": {"type": "noul", "instructions": c} for n, c in enumerate(claims)}
+    r = await P.jev_post({"model": P.JEV_MODEL, "state": state, "questions": qs},
+                         os.environ.get("OPENROUTER_API_KEY", ""), P.JEV_TIMEOUT_S)
+    r.raise_for_status()
+    s = J.scores(r.json(), qs)        # malformed raises: an outage, never a low score
+    return [s[f"v{n}"] for n in range(len(claims))]
+
+
+async def _confirm(e: Entry, pending: dict[str, InputValue], finding: str, findings: str,
+                   history: str) -> tuple[set[str], bool]:
+    """(confirmed ids, whether a Jev call failed). One batched Jev call per scope, run together: "The FINDING states
+    <label>: <value>" with the finding unit alone as state (lesion), or the same of the history and the dictation
+    (patient). Below SETTLED_MIN, or a failed call, leaves the input asked."""
+    states = {"lesion": f"FINDING:\n{finding}",
+              "patient": f"CLINICAL HISTORY:\n{history or 'none given'}\n\nDICTATION:\n{findings}"}
+
+    async def one(scope: str) -> tuple[set[str], bool]:
+        ids = [k for k in pending if e.input(k).scope == scope]
+        if not ids:
+            return set(), False
+        claims = [f"{_LEAD[scope]} {e.input(k).label}: {_show(e, e.input(k), pending[k]).replace('_', ' ')}"
+                  for k in ids]
+        try:
+            got = await _jev(claims, states[scope])
+        except Exception as ex:
+            logger.info("[library.preview] value check failed (%s): %d value(s) asked", type(ex).__name__, len(ids))
+            return set(), True
+        return {k for k, s in zip(ids, got) if s >= P.SETTLED_MIN}, False
+
+    (a, fa), (b, fb) = await asyncio.gather(one("lesion"), one("patient"))
+    return a | b, fa or fb
+
+
+def _outcome_text(e: Entry, t: engine.Trace, sources: list[dict]) -> Proposal | None:
+    """The reached outcome as the entry words it, or None when its text still cites an unknown input."""
+    o = e.outcome(t.outcome)
+    cls, rec = engine.render(e, t, o.classification), engine.render(e, t, o.recommendation)
+    caveats = [engine.render(e, t, c) for c in o.caveats]
+    if any(engine.PH.search(x) for x in (cls, rec, *caveats)):
+        logger.info("[library.preview] %s: outcome %s cites an input still unknown; no proposal", e.key, o.id)
+        return None
+    return Proposal(classification=f"{e.display} · {cls}", line=f"{e.display}: {cls}.", recommendation=rec,
+                    caveats=caveats, citations=_fired(e, t, sources))
+
+
+def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict[str, str], sources: list[dict],
+           degraded: bool) -> Preview:
+    settled = [Settled(input=k, value=_show(e, e.input(k), given[k]), quote=quotes.get(k, ""))
+               for k in (i.id for i in e.inputs) if k in given]
+    possible = [engine.PH.sub("…", engine.render(e, t, e.outcome(o).classification)) for o in t.possible]
+    return Preview(settled=settled, missing=t.needed,
+                   proposal=_outcome_text(e, t, sources) if t.outcome is not None else None,
+                   possible=possible, bounded=t.bounded, asks=_asks(e, t, sources, t.needed),
+                   trace=t.model_dump(mode="json") if t.outcome is not None else None, degraded=degraded)
+
+
+async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str, str],
+                       sources: list[dict] | None = None, finding: str = "") -> Preview:
+    sources = sources or []
+    finding = finding.strip() or findings          # no unit sent (an older client): the whole dictation, as before
+    given = _given(e, answered)
+    model, degraded = await _settle(e, given, finding, findings, history)
+    # a present number is read from its in-scope quote by code; every other value is put to Jev
+    pending = {k: v for k, (v, _) in model.items() if not (e.input(k).type == "number" and v.state == "present")}
+    confirmed, failed = await _confirm(e, pending, finding, findings, history) if pending else (set(), False)
+    keep = [k for k in model if k not in pending or k in confirmed]
+    given.update({k: model[k][0] for k in keep})
     try:
         t = engine.evaluate(e, given)
     except (engine.EvaluationError, ValueError) as ex:
         logger.error("[library.preview] %s cannot be evaluated: %s", e.key, ex)
-        return Preview()
-    order = [i.id for i in e.inputs]
-    settled = [Settled(input=k, value=_show(e, e.input(k), given[k]),
-                       quote=model[k][1].quote if k in model and k in confirmed else "")
-               for k in order if k in given]
-    possible = [engine.PH.sub("…", engine.render(e, t, e.outcome(o).classification)) for o in t.possible]
-    proposal = None
-    if t.outcome is not None:
-        o = e.outcome(t.outcome)
-        cls = engine.render(e, t, o.classification)
-        rec = engine.render(e, t, o.recommendation)
-        caveats = [engine.render(e, t, c) for c in o.caveats]
-        if any(engine.PH.search(x) for x in (cls, rec, *caveats)):
-            logger.info("[library.preview] %s: outcome %s cites an input still unknown; no proposal", e.key, o.id)
-        else:
-            proposal = Proposal(classification=f"{e.display} · {cls}", line=f"{e.display}: {cls}.",
-                                recommendation=rec, caveats=caveats, citations=_fired(e, t, sources))
-    return Preview(settled=settled, missing=t.needed, proposal=proposal, possible=possible, bounded=t.bounded,
-                   asks=_asks(e, t, sources),
-                   trace=t.model_dump(mode="json") if t.outcome is not None else None)
+        return Preview(degraded=True)
+    return _build(e, t, given, {k: model[k][1].quote for k in keep}, sources, degraded or failed)
 
 
 def as_entry(e: Entry, sources: list[dict]) -> CardEntry:

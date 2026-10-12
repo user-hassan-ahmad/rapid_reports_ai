@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from rapid_reports_ai.auth import get_current_user
 from rapid_reports_ai.database.models import DictationStackLog, User
 from rapid_reports_ai.hybrid_stack.copilot import ask as A
+from rapid_reports_ai.hybrid_stack.copilot import preview as P
 from rapid_reports_ai.hybrid_stack.copilot import registry as Reg
 from rapid_reports_ai.hybrid_stack.copilot import routes as CR
 from rapid_reports_ai.hybrid_stack.copilot import tnm
@@ -175,7 +176,7 @@ def test_open_preview_failure_still_returns_the_entry(authed, monkeypatch):
     monkeypatch.setattr(CR, "preview", prev)
     d = authed.post("/api/canvas/stack/guidelines/open", json={
         "card": {"key": "k@1", "name": "K", "version": "1", "finding_id": "u1", "branch": "B"}, "findings": "x"}).json()
-    assert d["entry"]["key"] == "k@1" and d["preview"] == {"settled": [], "missing": [], "proposal": None, "possible": [], "bounded": True, "asks": [], "trace": None}
+    assert d["entry"]["key"] == "k@1" and d["preview"] == {"settled": [], "missing": [], "proposal": None, "possible": [], "bounded": True, "asks": [], "trace": None, "degraded": False}
 
 
 async def test_open_timeout_keeps_the_fetch_going(db_session, user, monkeypatch):
@@ -492,6 +493,20 @@ def toy_lib(monkeypatch, toy):
                                      PP.RawItem(input="size", value=7, quote="7 mm")])
     monkeypatch.setattr(CR, "resolve_guideline", resolve)
     monkeypatch.setattr(PP, "_call", call)
+
+    class _JevResp:
+        def __init__(self, body):
+            self._body = body
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._body
+
+    async def jev(payload, key, timeout, transport=None):
+        return _JevResp({"answers": {k: {"noul": 0.9} for k in payload["questions"]}})
+    monkeypatch.setattr(P, "jev_post", jev)
     return lib
 
 
@@ -523,3 +538,14 @@ def test_a_non_servable_library_key_is_rejected_and_never_fetched(authed, monkey
     r = authed.post("/api/canvas/stack/guidelines/open", json={
         "card": {**PACK_CARD, "name": "Anything", "version": "9"}, "findings": "x", "answered": {}})
     assert r.status_code == 400
+
+
+def test_open_settles_lesion_inputs_from_the_cards_own_finding(authed, toy_lib, monkeypatch):
+    async def call(system, prompt):
+        return PP.RawSettle(settled=[PP.RawItem(input="kind", value="solid", quote="solid"),
+                                     PP.RawItem(input="size", value=12, quote="12 mm granuloma")])
+    monkeypatch.setattr(PP, "_call", call)
+    d = authed.post("/api/canvas/stack/guidelines/open", json={
+        "card": PACK_CARD, "finding": "7 mm solid nodule.", "findings": "7 mm solid nodule. 12 mm granuloma.",
+        "answered": {}}).json()
+    assert "size" in d["preview"]["missing"] and d["preview"]["settled"][0]["input"] == "kind"

@@ -169,6 +169,7 @@ class MatchResult(BaseModel):
 
 class OpenRequest(BaseModel):
     card: CardIn
+    finding: _s(1000) = ""        # the card's own finding unit; lesion-scoped inputs are settled only from it
     findings: str = ""
     clinical_history: str = ""
     answered: dict[str, str] = Field(default_factory=dict)
@@ -279,7 +280,8 @@ async def _pack_result(pack, req: OpenRequest, t0: float) -> OpenResult:
     e, view = pack
     try:
         prev = await asyncio.wait_for(preview_pack(e, req.findings[:6000], req.clinical_history[:2000], req.answered,
-                                                   L.get().sources(e.key)), PREVIEW_TIMEOUT_S)
+                                                   L.get().sources(e.key), finding=req.finding),
+                                      PREVIEW_TIMEOUT_S)
     except Exception as ex:   # TimeoutError included
         logger.warning("[copilot.routes] pack preview %s: %s", type(ex).__name__, str(ex)[:200])
         prev = Preview()

@@ -38,7 +38,8 @@
     "source": "S1",
     "page": 7,
     "section": "Summary of recommendations: initial assessment of the probability of malignancy"
-   }
+   },
+   "scope": "lesion"
   },
   {
    "id": "nodule_type",
@@ -53,7 +54,8 @@
    "locator": {
     "source": "S2",
     "table": "Table 2, model 2b: nodule type"
-   }
+   },
+   "scope": "lesion"
   },
   {
    "id": "diameter_mm",
@@ -67,7 +69,9 @@
     "table": "Figure 1 Initial approach to solid pulmonary nodules"
    },
    "min_value": 0,
-   "min_inclusive": false
+   "min_inclusive": false,
+   "scope": "lesion",
+   "dims": "max"
   },
   {
    "id": "age",
@@ -80,7 +84,8 @@
     "table": "Table 2, model 2b: age"
    },
    "min_value": 18,
-   "max_value": 110
+   "max_value": 110,
+   "scope": "patient"
   },
   {
    "id": "sex",
@@ -94,7 +99,8 @@
    "locator": {
     "source": "S2",
     "table": "Table 2, model 2b: sex"
-   }
+   },
+   "scope": "patient"
   },
   {
    "id": "family_history",
@@ -104,7 +110,8 @@
    "locator": {
     "source": "S2",
     "table": "Table 2, model 2b: family history of lung cancer"
-   }
+   },
+   "scope": "patient"
   },
   {
    "id": "emphysema",
@@ -114,7 +121,8 @@
    "locator": {
     "source": "S2",
     "table": "Table 2, model 2b: emphysema"
-   }
+   },
+   "scope": "patient"
   },
   {
    "id": "upper_lobe",
@@ -124,7 +132,8 @@
    "locator": {
     "source": "S2",
     "table": "Table 2, model 2b: nodule location"
-   }
+   },
+   "scope": "lesion"
   },
   {
    "id": "nodule_count",
@@ -136,7 +145,8 @@
     "source": "S2",
     "table": "Table 2, model 2b: nodule count"
    },
-   "min_value": 1
+   "min_value": 1,
+   "scope": "patient"
   },
   {
    "id": "spiculation",
@@ -146,7 +156,8 @@
    "locator": {
     "source": "S2",
     "table": "Table 2, model 2b: spiculation"
-   }
+   },
+   "scope": "lesion"
   },
   {
    "id": "prior_study",
@@ -157,7 +168,8 @@
     "source": "S1",
     "page": 8,
     "table": "Figure 1 Initial approach to solid pulmonary nodules: previous imaging"
-   }
+   },
+   "scope": "patient"
   },
   {
    "id": "resolved",
@@ -174,7 +186,8 @@
     "source": "S1",
     "page": 26,
     "section": "Imaging follow-up: evidence statements (stable, shrunken or resolved nodules)"
-   }
+   },
+   "scope": "lesion"
   },
   {
    "id": "growth",
@@ -205,7 +218,8 @@
     "source": "S1",
     "page": 9,
     "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: baseline volumetric analysis, or diameter measurement if volumetry is not available; stable on basis of 2D non-automated diameter value; clear evidence of growth"
-   }
+   },
+   "scope": "lesion"
   },
   {
    "id": "prior_volume_mm3",
@@ -229,7 +243,8 @@
     "section": "Summary of recommendations: imaging follow-up"
    },
    "min_value": 0,
-   "min_inclusive": false
+   "min_inclusive": false,
+   "scope": "lesion"
   },
   {
    "id": "current_volume_mm3",
@@ -253,7 +268,8 @@
     "section": "Summary of recommendations: imaging follow-up"
    },
    "min_value": 0,
-   "min_inclusive": false
+   "min_inclusive": false,
+   "scope": "lesion"
   },
   {
    "id": "interval_days",
@@ -281,7 +297,8 @@
     "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
    },
    "min_value": 0,
-   "min_inclusive": false
+   "min_inclusive": false,
+   "scope": "patient"
   }
  ],
  "logic": [

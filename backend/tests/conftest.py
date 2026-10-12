@@ -189,7 +189,7 @@ TOY_ENTRY = {
     "inputs": [
         {"id": "kind", "label": "Nodule type", "type": "enum", "options": ["solid", "subsolid"]},
         {"id": "size", "label": "Diameter", "type": "number", "unit": "mm", "how_stated": "diameter in mm"},
-        {"id": "risk", "label": "Patient risk", "type": "enum", "options": ["low", "high"],
+        {"id": "risk", "label": "Patient risk", "type": "enum", "options": ["low", "high"], "scope": "patient",
          "prerequisites": [{"ref": "kind", "eq": "solid"}]},
         {"id": "margin", "label": "Margin", "type": "enum", "options": ["smooth", "spiculated"],
          "states": ["not_assessable"]},

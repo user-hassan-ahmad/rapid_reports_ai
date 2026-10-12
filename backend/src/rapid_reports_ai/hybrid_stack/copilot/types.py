@@ -128,3 +128,5 @@ class Preview(BaseModel):
     asks: list[dict[str, Any]] = Field(default_factory=list)   # library packs: one per missing input (label,
     # definition, options, the outcomes it decides between with their citations, and the citations of its steps)
     trace: dict[str, Any] | None = None                 # library packs: the engine trace behind the proposal
+    degraded: bool = False        # library packs: the settle model or a Jev check failed, so inputs it could have
+                                  # settled are asked; never served from the preview cache again
