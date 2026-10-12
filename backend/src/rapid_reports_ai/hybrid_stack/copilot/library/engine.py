@@ -105,15 +105,15 @@ def truth(e: Expr, env: dict[str, V]) -> bool | None:
 def _inputs(entry: Entry, given: dict[str, InputValue]) -> dict[str, V]:
     env: dict[str, V] = {}
     for i in entry.inputs:
+        g = given.get(i.id)
+        v = UNKNOWN if g is None or g.state == "unknown" else _coerce(i, g)   # validated even when not used yet
         held = [truth(p, env) for p in i.prerequisites]
         if False in held:
             env[i.id] = V(state="not_applicable")
-            continue
-        if None in held:             # a prerequisite still unknown: the input is not used yet, so the prerequisite
+        elif None in held:           # a prerequisite still unknown: the input is not used yet, so the prerequisite
             env[i.id] = UNKNOWN      # gets asked before a value behind it can settle anything
-            continue
-        g = given.get(i.id)
-        env[i.id] = UNKNOWN if g is None or g.state == "unknown" else _coerce(i, g)
+        else:
+            env[i.id] = v
     return env
 
 

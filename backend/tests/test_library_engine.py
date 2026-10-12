@@ -156,3 +156,12 @@ def test_pow_of_zero_and_huge_logistic_do_not_escape_as_python_errors():
         E.evaluate(e, {"a": 0})
     t = E.evaluate(e, {"a": 1e6})                                      # exp(1e6) would overflow a naive logistic
     assert next(s for s in t.steps if s.id == "p").value == 0.0
+
+
+def test_a_bad_value_behind_an_unknown_or_false_prerequisite_is_refused(toy_entry):
+    """A given value is validated even when its prerequisite is unknown (kind not given) or false (subsolid)."""
+    with pytest.raises(ValueError):
+        E.evaluate(toy_entry, {"size": 7, "risk": "medium"})
+    with pytest.raises(ValueError):
+        E.evaluate(toy_entry, {"kind": "subsolid", "size": 7, "risk": "medium"})
+    assert E.evaluate(toy_entry, {"size": 7, "risk": "low"}).needed == ["kind"]

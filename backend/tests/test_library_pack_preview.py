@@ -267,3 +267,11 @@ async def test_bts_asks_carry_citations_for_every_brock_input(monkeypatch, jev):
     for k in BTS_BROCK:
         assert asks[k]["citations"] and all(c.get("title") for c in asks[k]["citations"])
         assert asks[k]["decides_between"] and all("{" not in d["classification"] for d in asks[k]["decides_between"])
+
+
+def test_a_count_shows_as_a_bare_number():
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry, InputDef, InputValue
+    from tests.test_library_partial import _bts
+    e = _bts()
+    assert PP._show(e, e.input("nodule_count"), InputValue(value=1.0)) == "1"
+    assert PP._show(e, e.input("diameter_mm"), InputValue(value=9.0)) == "9 mm"

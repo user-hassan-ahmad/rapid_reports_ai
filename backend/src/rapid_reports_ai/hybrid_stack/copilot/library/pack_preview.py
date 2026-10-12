@@ -84,7 +84,8 @@ def _show(e: Entry, i: InputDef, v: InputValue) -> str:
     if i.type == "number":
         if v.band is not None:
             return next((b.label for b in _bands_for(e, i) if b.id == v.band), v.band)
-        return f"{float(v.value):g} {i.unit}".strip()
+        unit = "" if i.unit == "count" else i.unit
+        return f"{float(v.value):g} {unit}".strip()
     return str(v.value)
 
 

@@ -29,3 +29,12 @@ def test_every_bundled_pack_fits_the_ask_material_cap_with_the_late_facts_presen
     assert "Assess growth by volumetry" in texts["bts-pulmonary-nodule"]
     body = texts["bts-pulmonary-nodule"].split("\n", 1)[1]                  # titles only on the first line
     assert "British Thoracic Society guidelines for the investigation" not in body
+
+
+def test_a_short_citation_keeps_the_table_or_section_beside_the_page():
+    from rapid_reports_ai.hybrid_stack.copilot.library import describe as D
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Locator
+    assert D._short(Locator(source="S1", page=3, table="Table 2")) == "S1 p. 3, Table 2"
+    assert D._short(Locator(source="S1", page=3)) == "S1 p. 3"
+    assert D._short(Locator(source="S1", section="Groups not covered")) == "S1 Groups not covered"
+    assert D._short(Locator(source="S1", page=3, section="x" * 80)) == "S1 p. 3, " + "x" * 40

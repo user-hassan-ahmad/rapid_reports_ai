@@ -105,10 +105,10 @@ def cite_text(c: dict) -> str:
 
 
 def _short(loc: Locator | None) -> str:
-    """A compact citation: source id, then page (or the table or section name when the source has no pages)."""
+    """A compact citation: source id, page, and the table or section name (cut to 40 characters)."""
     if loc is None:
         return ""
-    where = f"p. {loc.page}" if loc.page else (loc.table or loc.section)[:60]
+    where = ", ".join(x for x in (f"p. {loc.page}" if loc.page else "", (loc.table or loc.section)[:40]) if x)
     return f"{loc.source} {where}".strip()
 
 
