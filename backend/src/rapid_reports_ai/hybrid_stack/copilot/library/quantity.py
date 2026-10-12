@@ -3,18 +3,20 @@ trusted: it must agree with the one reading, or choose between several. `settle`
 measurement it sits in before reading it, so a sub-span of a bound, range or dimension set is never read alone. One conversion table; a spoken unit that is neither
 the input's unit nor converts to it by that table gives no reading, so the input is asked. A range ("6-8 mm") or a
 fraction ("3/12") or a bound ("under 5 mm") gives no reading either: which value is meant is a judgement, so it is
-asked."""
+asked. A lesion number also needs its finding to hold no other number (`alone`, an allow list), so a sibling, a prior
+or a count of lesions asks the size."""
 from __future__ import annotations
 
 import re
 
 # spoken unit (lower case) -> canonical unit
 _CANON = {
-    "mm": "mm", "millimetre": "mm", "millimetres": "mm", "millimeter": "mm", "millimeters": "mm",
+    "mm": "mm", "mms": "mm", "millimetre": "mm", "millimetres": "mm", "millimeter": "mm", "millimeters": "mm",
     "cm": "cm", "cms": "cm", "centimetre": "cm", "centimetres": "cm", "centimeter": "cm", "centimeters": "cm",
-    "mm3": "mm3", "mm³": "mm3", "cubic millimetres": "mm3", "cubic millimeters": "mm3",
+    "mm3": "mm3", "mm³": "mm3", "cubic mm": "mm3", "cu mm": "mm3", "cubic millimetres": "mm3",
+    "cubic millimeters": "mm3",
     "cm3": "cm3", "cm³": "cm3", "cc": "cm3", "ml": "cm3", "mls": "cm3", "millilitres": "cm3", "milliliters": "cm3",
-    "hu": "HU", "hounsfield units": "HU",
+    "hu": "HU", "h.u.": "HU", "hounsfield units": "HU",
     "day": "days", "days": "days", "week": "weeks", "weeks": "weeks", "month": "months", "months": "months",
     "year": "years", "years": "years", "yr": "years", "yrs": "years", "yo": "years",
 }
@@ -28,7 +30,8 @@ COUNT_WORDS = {"single": 1, "solitary": 1, "sole": 1, "one": 1, "two": 2, "three
 
 _NUM = r"(\d+(?:\.\d+)?)"
 _N = r"\d+(?:\.\d+)?"
-_UNITS = "|".join(sorted((re.escape(u) for u in _CANON), key=len, reverse=True))
+# a space inside a spoken unit matches any run of spaces ("cubic  millimetres")
+_UNITS = "|".join(re.escape(u).replace(r"\ ", r"\s+") for u in sorted(_CANON, key=len, reverse=True))
 _U = rf"(?:\s*-?\s*({_UNITS})(?![a-z0-9]))?"
 _UQ = rf"(?:\s*-?\s*(?:{_UNITS})(?![a-z0-9]))?"           # the same, not captured
 _X = r"\s*(?:x|×|by)\s*"
@@ -59,7 +62,7 @@ _TOK = re.compile(rf"(?<![a-wyz_\d.,])\d+(?:[.,]\d+)*|(?<![a-z])(?:{_UNITS}|{_BO
 
 
 def canon(unit: str) -> str:
-    u = (unit or "").strip()
+    u = " ".join((unit or "").split())
     return _CANON.get(u.lower(), u)
 
 
@@ -124,7 +127,7 @@ def _agrees(r: float, model: float | None, unit: str) -> bool:
     return any(abs(r - model * f) < 1e-6 for f in (1.0, *(f for (_, b), f in CONVERT.items() if b == want)))
 
 
-def _widen(text: str, s: int, e: int) -> str:
+def _widen(text: str, s: int, e: int) -> tuple[int, int]:
     """The whole measurement expression around text[s:e]: adjacent numbers, units, x/by, ranges, bounds and signs."""
     toks = [(m.start(), m.end()) for m in _TOK.finditer(text)]
     changed = True
@@ -135,11 +138,11 @@ def _widen(text: str, s: int, e: int) -> str:
                 s, changed = ts, True
             if te > e and (ts < e or not text[e:ts].strip()):
                 e, changed = te, True
-    return text[s:e]
+    return s, e
 
 
-def spans(quote: str, text: str) -> list[str]:
-    """Each occurrence of the quote in the text (case, spacing and punctuation aside), widened."""
+def _at(quote: str, text: str) -> list[tuple[int, int]]:
+    """Where each occurrence of the quote in the text (case, spacing and punctuation aside) lies, widened."""
     words = re.findall(r"[^\W_]+(?:[.,][^\W_]+)*", quote or "")
     if not words or not text:
         return []
@@ -147,36 +150,77 @@ def spans(quote: str, text: str) -> list[str]:
     return [_widen(text, m.start(), m.end()) for m in pat.finditer(text)]
 
 
-_LIST_GAP = re.compile(r"\s*(?:,|;|&|\band\b|\bor\b)\s*", re.I)
+def spans(quote: str, text: str) -> list[str]:
+    """Each occurrence of the quote in the text (case, spacing and punctuation aside), widened."""
+    return [text[s:e] for s, e in _at(quote, text)]
 
 
-def several(text: str, unit: str, dims: str | None = None) -> bool:
-    """The text holds more than one distinct measurement in the unit's family (every unit that converts to it): a
-    dimension set is one measurement; a bare number listed before one ("8 and 4 mm") shares its unit; the same
-    measurement repeated is one. Counts and unitless numbers have no family."""
-    want = canon(unit)
-    if want in BARE or not text:
-        return False
-    fam = {u for u in set(_CANON.values()) if u == want or (u, want) in CONVERT}
-    exprs: list[list[int]] = []                      # runs of measurement tokens with only spaces between
-    for m in _TOK.finditer(text):
-        if exprs and not text[exprs[-1][1]:m.start()].strip():
-            exprs[-1][1] = m.end()
+# numbers a finding may hold besides its one measurement (fix round 4): each never followed by a unit
+_NOT_UNIT = rf"(?![.,]?\d)(?!\s*-?\s*(?:{_UNITS})(?![a-z0-9]))"
+_DATE = re.compile(rf"(?<![\w.,/-])(\d{{1,4}})([/.-])(\d{{1,4}})(?:\2(\d{{1,4}}))?{_NOT_UNIT}(?![\w/-])", re.I)
+_YEAR = re.compile(rf"(?<![\w.,/-])(?:199\d|20\d\d){_NOT_UNIT}(?![\w/-])", re.I)
+_IMAGE = re.compile(rf"(?<![a-z])(?:series|slice|image|img|se|im)\s*[(\[]?\s*(?::|#|no\.?)?\s*\d+{_NOT_UNIT}"
+                    r"\s*[)\]]?", re.I)
+_LABEL = re.compile(rf"(?<![a-z])(?:(?:segment|seg|level|rib)\s*\d+|[ctls]\d+)"
+                    rf"(?:\s*[/-]\s*[ctls]?\d+)?{_NOT_UNIT}(?![a-z])", re.I)
+_OWN_COUNT = re.compile(r"\b(?:single|solitary)\b", re.I)
+_NUMBER_WORDS = ("zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen"
+                 "|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety"
+                 "|hundreds?|half|halves|dozens?|single|solitary|both|several|multiple")
+_NUMBER = re.compile(rf"\d|\b(?:{_NUMBER_WORDS})\b", re.I)
+
+
+def _date(m: re.Match) -> bool:
+    """Digit groups joined by / . or - that make a calendar date: d/m/y or m/d/y (a two- or four-digit year), y-m-d,
+    or a month and a four-digit year."""
+    a, b, c = m.group(1), m.group(3), m.group(4)
+
+    def year(y: str, short: bool = True) -> bool:
+        return (short and len(y) == 2) or (len(y) == 4 and 1990 <= int(y) <= 2099)
+
+    def month(x: str) -> bool:
+        return len(x) <= 2 and 1 <= int(x) <= 12
+
+    def day(x: str) -> bool:
+        return len(x) <= 2 and 1 <= int(x) <= 31
+    if c is None:
+        return (year(a, False) and month(b)) or (month(a) and year(b, False))
+    if len(a) == 4:
+        return year(a) and month(b) and day(c)
+    return year(c) and ((day(a) and month(b)) or (month(a) and day(b)))
+
+
+def alone(text: str, quote: str, value: float, unit: str, dims: str | None = None) -> bool:
+    """A lesion number is settled only when, apart from its quoted measurement, the finding holds no other number:
+    no digit and no number word (zero to twenty, the tens, hundred, half, dozen, single, solitary, both, several,
+    multiple). Allowed besides: the same reading again in the unit's family ("stable at 8 mm"); an image reference
+    (series, image, img, slice, se, im); a date or a year 1990-2099; an anatomical label (segment, seg, S, level,
+    rib, or a vertebra such as T4 or L2/3); and "single" or "solitary", the input's own count. Anything else asks: it
+    may be a sibling, a prior or a count of lesions, and which number is meant is the radiologist's to say. A count
+    input keeps its own rule."""
+    if canon(unit) == "count":
+        return True
+    at = _at(quote, text)
+    if not at or any(re.search(r"\d\s+[-−+]?\d", text[s:e]) for s, e in at):
+        return False                                # "8 4 mm": a bare number widened in with the quote is another
+    rest = list(text)
+    for s, e in at:
+        rest[s:e] = " " * (e - s)
+    rest = "".join(rest)
+    rest = _DATE.sub(lambda m: " " if _date(m) else m.group(0), rest)
+    for rx in (_YEAR, _IMAGE, _LABEL, _OWN_COUNT):
+        rest = rx.sub(" ", rest)
+    runs: list[list[int]] = []                      # runs of measurement tokens with only spaces between
+    for m in _TOK.finditer(rest):
+        if runs and not rest[runs[-1][1]:m.start()].strip():
+            runs[-1][1] = m.end()
         else:
-            exprs.append([m.start(), m.end()])
-    exprs = [x for x in exprs if re.search(r"\d", text[x[0]:x[1]])]
-    units = [{canon(u.group(0)) for u in re.finditer(rf"(?<![a-z])(?:{_UNITS})(?![a-z0-9])", text[a:b], re.I)}
-             for a, b in exprs]
-    member = [bool(u & fam) for u in units]
-    for k in range(len(exprs) - 2, -1, -1):          # "8 and 4 mm", "8, 4 mm": the bare number shares the unit
-        if not member[k] and not units[k] and member[k + 1] and _LIST_GAP.fullmatch(text[exprs[k][1]:exprs[k + 1][0]]):
-            member[k] = True
-    sigs = set()
-    for (a, b), m in zip(exprs, member):
-        if m:
-            w = text[a:b]
-            sigs.add(tuple(readings(w, unit, dims)) or " ".join(w.lower().split()))
-    return len(sigs) > 1
+            runs.append([m.start(), m.end()])
+    for a, b in reversed(runs):
+        w = rest[a:b]
+        if re.search(r"\d", w) and not any(g.search(w) for g in _GUARDS) and readings(w, unit, dims) == [value]:
+            rest = rest[:a] + " " * (b - a) + rest[b:]
+    return _NUMBER.search(rest) is None
 
 
 def settle(quote: str, texts: list[str], unit: str, dims: str | None = None,

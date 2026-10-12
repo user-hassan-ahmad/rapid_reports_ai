@@ -127,16 +127,18 @@ def _num(v) -> float | None:
 def _value(i: InputDef, item: RawItem, texts: list[str] | None = None) -> InputValue | None:
     """The model's value if it is a real one: an allowed state, an option, a boolean, or a number read by code from
     the whole measurement its quote sits in within `texts` (the quote alone when no texts are given). The model's own
-    number must agree with that one reading, or choose between several."""
+    number must agree with that one reading, or choose between several. A lesion number settles only when its
+    finding holds no other number (quantity.alone)."""
     if item.state in _STATE_LABEL:
         return InputValue(state=item.state) if item.state in i.states else None
     if item.state != "present":
         return None
     if i.type == "number":
-        if texts is not None and i.scope == "lesion" and Q.several(texts[0], i.unit, i.dims):
-            return None              # several measurements in this finding: which one is meant is asked, never guessed
         x = (Q.pick(Q.readings(item.quote, i.unit, i.dims), _num(item.value), i.unit) if texts is None
              else Q.settle(item.quote, texts, i.unit, i.dims, _num(item.value)))
+        if x is not None and texts is not None and i.scope == "lesion" and not Q.alone(texts[0], item.quote, x,
+                                                                                       i.unit, i.dims):
+            return None              # another number in this finding: which one is meant is asked, never guessed
         return InputValue(value=x) if x is not None and i.in_range(x) else None   # out of range: asked
     if item.value is None:
         return None

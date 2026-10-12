@@ -134,17 +134,84 @@ def test_settle_gives_the_one_reading_of_the_whole_measurement(quote, text, unit
     assert Q.settle(quote, [text], unit, dims, model) == want
 
 
-@pytest.mark.parametrize("text,unit", [
-    ("Two nodules measuring 8 and 4 mm.", "mm"), ("8 mm, 4 mm.", "mm"), ("5 mm nodule; 9 mm nodule.", "mm"),
-    ("Cyst 20 HU on unenhanced, 45 HU post contrast.", "HU"), ("8 mm (previously 6 mm).", "mm"),
-    ("Nodule 0.8 cm, previously 6 mm.", "mm")])
-def test_a_finding_with_several_measurements_in_the_unit_family_is_several(text, unit):
-    assert Q.several(text, unit)
+# (finding, quote, unit, dims): another number in the finding besides the quoted measurement, so the size is asked
+OTHER_NUMBER = [
+    # fix round 3 re-review: spelled-out siblings and unrecognised unit spellings
+    ("Two solid nodules measuring eight millimetres and 4 mm.", "4 mm", "mm", "mean"),
+    ("Nodule eight millimetres, previously 6 mm.", "6 mm", "mm", "mean"),
+    ("Two solid nodules, 8 mms and 4 mm.", "4 mm", "mm", "mean"),
+    ("Volume 180 cubic mm, previously 120 mm3.", "120 mm3", "mm3", None),
+    ("Cyst 20 HU on unenhanced, 45 H.U. post contrast.", "20 HU", "HU", None),
+    ("Cyst 20 HU on unenhanced, 45 H.U. post contrast.", "45 H.U.", "HU", None),
+    # fix round 3: several measurements
+    ("Two nodules measuring 8 and 4 mm.", "4 mm", "mm", "mean"), ("Two nodules measuring 8 and 4 mm.", "8 and 4 mm", "mm", None),
+    ("8 mm, 4 mm.", "8 mm", "mm", None), ("8 mm and 4 mm.", "4 mm", "mm", None),
+    ("5 mm nodule; 9 mm nodule.", "9 mm", "mm", "max"),
+    ("Cyst 20 HU on unenhanced, 45 HU post contrast.", "45 HU", "HU", None),
+    ("8 mm (previously 6 mm).", "8 mm", "mm", None), ("Was 5 mm, now 9 mm.", "9 mm", "mm", None),
+    ("Nodule 8 mm, previously 0.6 cm.", "8 mm", "mm", None), ("Nodule 0.8 cm, previously 6 mm.", "0.8 cm", "mm", None),
+    ("9 mm (6 mm in 2019).", "9 mm", "mm", None), ("9 mm vs 6 mm.", "9 mm", "mm", None),
+    ("9 mm from 6 mm.", "9 mm", "mm", None), ("6 mm → 9 mm.", "9 mm", "mm", None),
+    ("7 x 5 mm, previously 4 x 3 mm.", "7 x 5 mm", "mm", "mean"),
+    ("Volume 200 mm3, previously 0.1 cm3.", "200 mm3", "mm3", None),
+    ("Volume 200 mm3, previously 0.1 ml.", "200 mm3", "mm3", None),
+    ("Volume 200 mm3, previously 0.1 cc.", "200 mm3", "mm3", None),
+    ("8-mm, prior 6-mm.", "8-mm", "mm", None), ("8mm, prior 6mm.", "8mm", "mm", None),
+    ("8 millimeter, prior 6 mm.", "8 millimeter", "mm", None),
+    ("20 HU, 45 Hounsfield units.", "20 HU", "HU", None),
+    ("Seen 12 weeks ago and 6 weeks ago.", "6 weeks", "days", None),
+    ("Nodule 9 mm. Adjacent 1 cm lymph node.", "9 mm", "mm", None),
+    ("8 mm nodule (series 3 image 45), 2019 CT 200 mm3.", "8 mm", "mm", None),
+    ("Cyst 20 HU, 3 cm.", "20 HU", "HU", None),
+    # the ruling: a count of nodules, or a size elsewhere, asks which one is meant
+    ("Two nodules, the larger 8 mm.", "8 mm", "mm", None), ("Both nodules 8 mm.", "8 mm", "mm", None),
+    ("Several nodules, the largest 8 mm.", "8 mm", "mm", None),
+    ("Multiple nodules, the largest 8 mm.", "8 mm", "mm", None),
+    ("8 mm nodule, half the size of the dozen others.", "8 mm", "mm", None),
+    ("8 mm nodule; another of twenty millimetres.", "8 mm", "mm", None),
+    ("8 mm nodule, one of three.", "8 mm", "mm", None),
+    ("8 mm nodule, previously 8 mm3.", "8 mm", "mm", None),         # the same number in another family
+    ("8 mm nodule, stable at 8.", "8 mm", "mm", None),              # a bare 8 has no unit: not the same reading
+    ("Nodules 8 4 mm.", "4 mm", "mm", None),                         # a bare number run into the measurement
+]
+
+# (finding, quote, unit, dims, value): nothing but the quoted measurement and the allowed exceptions
+ALONE = [
+    ("A solitary 8 mm nodule.", "8 mm", "mm", None, 8), ("A single 8 mm nodule.", "8 mm", "mm", None, 8),
+    ("8 mm nodule in segment 6.", "8 mm", "mm", None, 8), ("Segment 6, 8 mm lesion.", "8 mm", "mm", None, 8),
+    ("8 mm nodule in S6.", "8 mm", "mm", None, 8), ("8 mm nodule, seg 6.", "8 mm", "mm", None, 8),
+    ("8 mm nodule (series 3, image 45).", "8 mm", "mm", None, 8),
+    ("8 mm nodule (Series: 3, Image: 45).", "8 mm", "mm", None, 8),
+    ("8 mm nodule (se 3 im 45).", "8 mm", "mm", None, 8), ("8 mm nodule, slice [112].", "8 mm", "mm", None, 8),
+    ("8 mm nodule, stable since 12/03/2024.", "8 mm", "mm", None, 8),
+    ("8 mm nodule, stable since 2024-03-12.", "8 mm", "mm", None, 8),
+    ("8 mm nodule, stable since 12.03.24.", "8 mm", "mm", None, 8),
+    ("8 mm nodule, stable since 2019.", "8 mm", "mm", None, 8),
+    ("8 mm nodule at the level of T4, near rib 5.", "8 mm", "mm", None, 8),
+    ("8 mm nodule abutting the L2/3 disc, level 4.", "8 mm", "mm", None, 8),
+    ("A 12 x 7 mm nodule.", "12 x 7 mm", "mm", "mean", 9.5), ("Attenuation -20 HU.", "-20 HU", "HU", None, -20),
+    ("8 mm nodule, stable at 8 mm.", "8 mm", "mm", None, 8), ("8 mm nodule, stable at 8 mm.", "8 mm nodule", "mm", None, 8),
+    ("Nodule 8 mm, previously 0.8 cm.", "8 mm", "mm", None, 8),
+    ("7 x 5 mm (mean 6 mm).", "7 x 5 mm", "mm", "mean", 6), ("7 x 5 mm (mean 6 mm).", "6 mm", "mm", "mean", 6),
+    ("Two nodules, 8 and 4 mm.", "two nodules", "count", None, 2),   # a count keeps its own rule
+]
 
 
-@pytest.mark.parametrize("text,unit,dims", [
-    ("A solitary 8 mm nodule.", "mm", None), ("A 12 x 7 mm nodule.", "mm", "mean"), ("Attenuation -20 HU.", "HU", None),
-    ("8 mm nodule; the 8 mm nodule is unchanged.", "mm", None), ("8 mm nodule, 2019 CT, 200 mm3.", "mm", None),
-    ("Two nodules, 8 and 4 mm.", "count", None), ("Cyst 20 HU, 3 cm.", "HU", None)])
-def test_one_measurement_in_the_unit_family_is_not_several(text, unit, dims):
-    assert not Q.several(text, unit, dims)
+@pytest.mark.parametrize("text,quote,unit,dims", OTHER_NUMBER)
+def test_a_finding_with_another_number_is_not_alone(text, quote, unit, dims):
+    v = Q.settle(quote, [text], unit, dims)
+    assert v is None or not Q.alone(text, quote, v, unit, dims)
+
+
+@pytest.mark.parametrize("text,quote,unit,dims,value", ALONE)
+def test_a_finding_with_only_its_measurement_and_the_allowed_numbers_is_alone(text, quote, unit, dims, value):
+    assert Q.settle(quote, [text], unit, dims) == value
+    assert Q.alone(text, quote, value, unit, dims)
+
+
+@pytest.mark.parametrize("quote,unit,want", [
+    ("8 mms", "mm", 8.0), ("8 millimetres", "mm", 8.0), ("8 millimeter", "mm", 8.0), ("180 cubic mm", "mm3", 180.0),
+    ("180 cu mm", "mm3", 180.0), ("180 cubic  millimetres", "mm3", 180.0), ("45 H.U.", "HU", 45.0),
+    ("45 Hounsfield units", "HU", 45.0)])
+def test_further_unit_spellings_read(quote, unit, want):
+    assert Q.readings(quote, unit) == [want]
