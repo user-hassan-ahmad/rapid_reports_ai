@@ -131,5 +131,29 @@ def test_session_rules_cover_fixed_lines_and_examples():
 
 def test_stack_terminology_applies_only_to_sheet_wording():
     from rapid_reports_ai.global_style_guide import GLOBAL_STYLE_GUIDE_STACK, TEMPLATE_SHEET_HEADER_STACK
-    assert "a term in the FINDINGS input is kept as the radiologist said it" in GLOBAL_STYLE_GUIDE_STACK
+    assert "a term in the FINDINGS input or the confirmed conclusion" in GLOBAL_STYLE_GUIDE_STACK
     assert "suppression rules" not in TEMPLATE_SHEET_HEADER_STACK.split("were taken out")[0]
+
+
+def test_fixed_lines_never_contradict_the_input():
+    b = stack_brief("", "C.", [])
+    assert "a FIXED line never contradicts the input or its values" in b
+    assert "written only when that RULE applies" in b
+    assert "gives every slot's value" in b
+
+
+def test_stack_terminology_keeps_the_conclusion_wording():
+    assert "a term in the FINDINGS input or the confirmed conclusion is kept as the radiologist said it" \
+        in g.GLOBAL_STYLE_GUIDE_STACK
+    assert "the wording the report adds" in g.GLOBAL_STYLE_GUIDE_STACK
+
+
+async def test_session_rules_reach_the_generation_system_prompt(capture):
+    cfg = {"generation_mode": "skill_sheet_guided", "skill_sheet": LEAN, "scan_type": "CMR"}
+    await TemplateManager().generate_report_from_config(
+        cfg, {"FINDINGS": "Left ventricle: dilated.", "CLINICAL_HISTORY": "SOB"}, None,
+        stack={"conclusion": "Dilated left ventricle.", "declined": []})
+    sp = next(k for k in capture if k["output_type"] is str)["system_prompt"]
+    for s in ("**Fixed lines:**", "a FIXED line never contradicts the input or its values",
+              "**Examples are wording only:**", "the wording the report adds"):
+        assert s in sp

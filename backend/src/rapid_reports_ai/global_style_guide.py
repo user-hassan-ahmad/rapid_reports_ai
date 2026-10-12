@@ -483,8 +483,9 @@ recommendations must be specific"""),
 commit. Reserve hedging for genuine clinical ambiguity.""", ""),
     ("Apply preferred/suppressed term pairs from the skill sheet across ALL sections\nincluding the impression. "
      "If a term is suppressed, it must never appear anywhere.",
-     "Apply preferred/suppressed term pairs from the skill sheet to the wording the skill sheet supplies; a term in "
-     "the FINDINGS input is kept as the radiologist said it."),
+     "Apply preferred/suppressed term pairs from the skill sheet to the wording the report adds (the skill sheet's "
+     "wording, joining words, the impression's phrasing); a term in the FINDINGS input or the confirmed conclusion "
+     "is kept as the radiologist said it."),
 )
 
 PRE_WRITING_ANALYSIS_STACK = _swaps(
