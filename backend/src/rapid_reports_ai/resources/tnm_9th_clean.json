@@ -4,7 +4,7 @@
   "effective": "1 January 2026",
   "isbn": "9781394216857",
   "tumour_count": 59,
-  "cleanup_version": "2.1",
+  "cleanup_version": "2.2",
   "cleanup_notes": [
     "Re-parsed from raw_text with single-space regex fix",
     "Stripped c/p prefixes from keys",
@@ -16,7 +16,8 @@
     "v2.1: removed FIGO stage labels, 'N/A' cells and page headers that bled into category text",
     "v2.1: moved inline categories out of neighbouring text (Lung/Breast T1mi, Vulva N1mi/N1c, Endometrium T3/T4, GTN M1a/M1b, Retinoblastoma T3e); dropped Retinoblastoma pTNM block from M1b",
     "v2.1: added universal TX/NX/N0/M0 rows where a table lost them (Uterine Sarcomas TX, Nasal Cavity NX/N0, Unknown Primary NX/N0, GTN M0)",
-    "v2.1: the record labelled 'Bone & Soft Tissues' was GIST (its rules name GIST): moved to the GIST key; its stage grouping needs the mitotic rate and site, which the table lost, so it is dropped"
+    "v2.1: the record labelled 'Bone & Soft Tissues' was GIST (its rules name GIST): moved to the GIST key; its stage grouping needs the mitotic rate and site, which the table lost, so it is dropped",
+    "v2.2 (2026-10-12): clinical stage tables rebuilt from the raw extraction with continuation rows (stage_tables, hand-checked); stage_grouping kept for compatibility"
   ],
   "tumours": {
     "Oral Cavity and Mucosal Lip": {
@@ -96,6 +97,140 @@
           "T": "Any T",
           "N": "Any N",
           "M": "M1"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T4a"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T1",
+                "T2",
+                "T3",
+                "T4a"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N3"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "T4b"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVC",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -256,6 +391,140 @@
           "N": "Any N",
           "M": "M1"
         }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T4a"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T1",
+                "T2",
+                "T3",
+                "T4a"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "T4b"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N3"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVC",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
+        }
       ]
     },
     "Nasal Cavity and Paranasal Sinuses": {
@@ -335,6 +604,140 @@
           "T": "Any T",
           "N": "Any N",
           "M": "M1"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T4a"
+              ],
+              "N": [
+                "N0",
+                "N1",
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "T4b"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N3"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVC",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -444,6 +847,75 @@
           "N": "Any N",
           "M": "M1"
         }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage III",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T4a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T3",
+                "T4a"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "T4b"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVC",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
+        }
       ]
     },
     "Salivary Glands": {
@@ -512,6 +984,115 @@
           "T": "Any T",
           "N": "Any N",
           "M": "M1"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T3",
+                "T4"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T1",
+                "T2"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T1",
+                "T2"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T3",
+                "T4"
+              ],
+              "N": [
+                "N1",
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -712,7 +1293,265 @@
           "M1": "Distant metastasis"
         }
       },
-      "stage_grouping": []
+      "stage_grouping": [],
+      "stage_tables": [
+        {
+          "variant": "Squamous cell carcinoma",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T1",
+                "T2"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N1",
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T4a",
+                "T4b"
+              ],
+              "N": [
+                "N0",
+                "N1",
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N3"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
+        },
+        {
+          "variant": "Adenocarcinoma",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIA",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T3",
+                "T4a"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T1",
+                "T1a",
+                "T1b",
+                "T2",
+                "T3",
+                "T4a"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T4b"
+              ],
+              "N": [
+                "N0",
+                "N1",
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N3"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
+        }
+      ]
     },
     "Stomach": {
       "tumour": "Stomach",
@@ -750,7 +1589,107 @@
           "M1": "Distant metastasis"
         }
       },
-      "stage_grouping": []
+      "stage_grouping": [],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1",
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIA",
+              "T": [
+                "T1",
+                "T2"
+              ],
+              "N": [
+                "N1",
+                "N2",
+                "N3"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T3",
+                "T4a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T3",
+                "T4a"
+              ],
+              "N": [
+                "N1",
+                "N2",
+                "N3"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T4b"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
+        }
+      ]
     },
     "Small Intestine": {
       "tumour": "Small Intestine",
@@ -825,6 +1764,99 @@
           "T": "Any T",
           "N": "Any N",
           "M": "M1"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1",
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIA",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -1028,6 +2060,251 @@
           "N": "Any N",
           "M": "M1c"
         }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1",
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T3",
+                "T4"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIA",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T4a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIC",
+              "T": [
+                "T4b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N1",
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T1",
+                "T2"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N2a"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T1",
+                "T2"
+              ],
+              "N": [
+                "N2b"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N2a"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T3",
+                "T4a"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIC",
+              "T": [
+                "T3",
+                "T4a"
+              ],
+              "N": [
+                "N2b"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIC",
+              "T": [
+                "T4a"
+              ],
+              "N": [
+                "N2a"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIC",
+              "T": [
+                "T4b"
+              ],
+              "N": [
+                "N1",
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1a"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1b"
+              ]
+            },
+            {
+              "stage": "Stage IVC",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1c"
+              ]
+            }
+          ]
+        }
       ]
     },
     "Anal Canal and Perianal Skin": {
@@ -1110,6 +2387,112 @@
           "N": "Any N",
           "M": "M1"
         }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIA",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T1",
+                "T2"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIC",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
+        }
       ]
     },
     "Liver": {
@@ -1182,6 +2565,98 @@
           "T": "Any T",
           "N": "Any N",
           "M": "M1"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage IA",
+              "T": [
+                "T1a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IB",
+              "T": [
+                "T1b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -1263,6 +2738,122 @@
           "T": "Any T",
           "N": "Any N",
           "M": "M1"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IA",
+              "T": [
+                "T1a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IB",
+              "T": [
+                "T1b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -1354,6 +2945,137 @@
           "N": "N2",
           "M": "M0"
         }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IA",
+              "T": [
+                "T1a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IB",
+              "T": [
+                "T1b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIA",
+              "T": [
+                "T2a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T2b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
+        }
       ]
     },
     "Perihilar Bile Ducts": {
@@ -1435,6 +3157,111 @@
           "N": "Any N",
           "M": "M1"
         }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2a",
+                "T2b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIC",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
+        }
       ]
     },
     "Distal Extrahepatic Bile Duct": {
@@ -1508,6 +3335,125 @@
           "T": "Any T",
           "N": "Any N",
           "M": "M1"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIA",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIA",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -1598,6 +3544,126 @@
           "N": "Any N",
           "M": "M1"
         }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IA",
+              "T": [
+                "T1a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IB",
+              "T": [
+                "T1b",
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIA",
+              "T": [
+                "T3a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T3b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T1a",
+                "T1b",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
+        }
       ]
     },
     "Pancreas": {
@@ -1674,6 +3740,114 @@
           "T": "Any T",
           "N": "Any N",
           "M": "M1"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IA",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IB",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIA",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -1799,6 +3973,297 @@
           "N": "Any N",
           "M": "M1c1, M1c2"
         }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Occult carcinoma",
+              "T": [
+                "TX"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IA1",
+              "T": [
+                "T1mi"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IA1",
+              "T": [
+                "T1a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IA2",
+              "T": [
+                "T1b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IA3",
+              "T": [
+                "T1c"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IB",
+              "T": [
+                "T2a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIA",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIA",
+              "T": [
+                "T2b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N2a"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N2b"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N2a"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N1",
+                "N2a"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N3"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N2b",
+                "N3"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N2b"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "N2a",
+                "N2b"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIC",
+              "T": [
+                "T3",
+                "T4"
+              ],
+              "N": [
+                "N3"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1a",
+                "M1b"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1c1",
+                "M1c2"
+              ]
+            }
+          ]
+        }
       ]
     },
     "Pleural Mesothelioma": {
@@ -1859,6 +4324,111 @@
           "T": "Any T",
           "N": "Any N",
           "M": "M1"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N1",
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -1930,6 +4500,113 @@
           "T": "Any T",
           "N": "N2",
           "M": "M0, M1a"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1a",
+                "T1b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M1a"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0",
+                "M1a"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1b"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -2195,6 +4872,115 @@
           "N": "Any N",
           "M": "M1"
         }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N2",
+                "N3"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
+        }
       ]
     },
     "Carcinoma of Skin of the Head and Neck Region": {
@@ -2268,6 +5054,115 @@
           "T": "Any T",
           "N": "Any N",
           "M": "M1"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N2",
+                "N3"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -2360,6 +5255,112 @@
           "N": "Any N",
           "M": "M1"
         }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IA",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IB",
+              "T": [
+                "T2a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIA",
+              "T": [
+                "T2b",
+                "T2c",
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
+        }
       ]
     },
     "Melanoma of Skin": {
@@ -2449,7 +5450,90 @@
           "M1c": "Other site(s)"
         }
       },
-      "stage_grouping": []
+      "stage_grouping": [],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIA",
+              "T": [
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N1",
+                "N2",
+                "N3"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
+        }
+      ]
     },
     "Breast Tumours": {
       "tumour": "Breast Tumours",
@@ -2590,6 +5674,180 @@
           "N": "Any N",
           "M": "M1"
         }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IA",
+              "T": [
+                "T1a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IB",
+              "T": [
+                "T1b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "TX",
+                "T0",
+                "Tis",
+                "T1",
+                "T1a",
+                "T1b",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N1a",
+                "N1mi"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "TX",
+                "T0",
+                "Tis",
+                "T1",
+                "T1a",
+                "T1b",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N1b"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIC",
+              "T": [
+                "TX",
+                "T0",
+                "Tis",
+                "T1",
+                "T1a",
+                "T1b",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N1c"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
+        }
       ]
     },
     "Vagina": {
@@ -2661,6 +5919,100 @@
           "T": "Any T",
           "N": "Any N",
           "M": "M1"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -2928,6 +6280,138 @@
           "N": "Any N",
           "M": "M1"
         }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IA",
+              "T": [
+                "T1a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IB",
+              "T": [
+                "T1b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T3a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T3b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIC1",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIC2",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
+        }
       ]
     },
     "Uterine Sarcomas": {
@@ -3177,6 +6661,186 @@
           "N": "Any N",
           "M": "M1b"
         }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IA",
+              "T": [
+                "T1a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IB",
+              "T": [
+                "T1b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IC",
+              "T": [
+                "T1c"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIA",
+              "T": [
+                "T2a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T2b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA1",
+              "T": [
+                "T1",
+                "T2"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA2",
+              "T": [
+                "T3a"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T3b"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIC",
+              "T": [
+                "T3c"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1a"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1b"
+              ]
+            }
+          ]
+        }
       ]
     },
     "Gestational Trophoblastic Neoplasms": {
@@ -3283,6 +6947,139 @@
           "T": "T4",
           "N": "Any N",
           "M": "M0"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage 0",
+              "T": [
+                "Ta"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIA",
+              "T": [
+                "T1b",
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIB",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N3"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -3419,6 +7216,88 @@
           "N": "Any N",
           "M": "M0"
         }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
+        }
       ]
     },
     "Renal Pelvis and Ureter": {
@@ -3487,6 +7366,111 @@
           "T": "T4",
           "N": "N0",
           "M": "M0"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0a",
+              "T": [
+                "Ta"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage 0is",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N1",
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -3577,6 +7561,144 @@
           "N": "Any N",
           "M": "M1b"
         }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0a",
+              "T": [
+                "Ta"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage 0is",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2a",
+                "T2b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T3a",
+                "T3b",
+                "T4a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIA",
+              "T": [
+                "T1",
+                "T2",
+                "T3",
+                "T4a"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IIIB",
+              "T": [
+                "T1",
+                "T2",
+                "T3",
+                "T4a"
+              ],
+              "N": [
+                "N2",
+                "N3"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "T4b"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IVA",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1a"
+              ]
+            },
+            {
+              "stage": "Stage IVB",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1b"
+              ]
+            }
+          ]
+        }
       ]
     },
     "Urethra": {
@@ -3646,6 +7768,125 @@
           "N": "N0, N1",
           "M": "M0"
         }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage 0a",
+              "T": [
+                "Ta"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage 0is",
+              "T": [
+                "Tis"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T1",
+                "T2"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "T4"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N2"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
+        }
       ]
     },
     "Adrenal Cortex": {
@@ -3699,6 +7940,77 @@
           "T": "Any T",
           "N": "Any N",
           "M": "M1"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T1",
+                "T2"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T3",
+                "T4"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -3755,6 +8067,76 @@
           "T": "Any T",
           "N": "Any N",
           "M": "M1"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T2"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T1",
+                "T2"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T3"
+              ],
+              "N": [
+                "N0",
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
         }
       ]
     },
@@ -3969,6 +8351,76 @@
           "T": "Any T",
           "N": "N1",
           "M": "M0"
+        }
+      ],
+      "stage_tables": [
+        {
+          "variant": "",
+          "verified": true,
+          "rows": [
+            {
+              "stage": "Stage I",
+              "T": [
+                "T1",
+                "T2",
+                "T3"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage II",
+              "T": [
+                "T4a"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "T4b"
+              ],
+              "N": [
+                "N0"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage III",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "N1"
+              ],
+              "M": [
+                "M0"
+              ]
+            },
+            {
+              "stage": "Stage IV",
+              "T": [
+                "Any"
+              ],
+              "N": [
+                "Any"
+              ],
+              "M": [
+                "M1"
+              ]
+            }
+          ]
         }
       ]
     },
