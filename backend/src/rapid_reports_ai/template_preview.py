@@ -2,7 +2,7 @@
 the dictation, assume the template's normals, build the findings block as the scratchpad does, and generate on the
 template stack path. Used by the creator's preview and the labs.
 
-The block functions are ports of frontend/src/lib/hybrid-stack/regionState.ts (effectiveItems, regionStates,
+The block functions are ports of frontend/src/lib/hybrid-stack/regionState.ts (effectiveItems, regionStates, regionText,
 findingsText, buildFindingsBlock) and items.ts (assumedFrom); the frontend is the reference. A preview has no
 checklist rows, so no answered rows or "Answered by the radiologist" lines; every assumed normal counts as
 confirmed. Units are duck-typed (StackUnit or anything with text/group/heading, optionally abnormal/parts/covers)."""
@@ -11,16 +11,11 @@ from __future__ import annotations
 from typing import Optional
 
 from .hybrid_stack.schemas import CONCLUSION, GENERAL, OTHER, TECHNIQUE
+from .hybrid_stack.template import norm_key
 from .template_sheet_grammar import parse_sheet
 
 ASSUMED = "Assumed normal (confirmed by the radiologist):"
 _FIXED = {TECHNIQUE, GENERAL, CONCLUSION}
-
-
-def _norm(s: str) -> str:
-    """items.ts norm: case, spacing and a final full stop ignored."""
-    s = s.strip().lower()
-    return " ".join((s[:-1] if s.endswith(".") else s).split())
 
 
 def _parts(u) -> list:
@@ -58,13 +53,23 @@ def region_states(units, pill_regions: list[str]) -> tuple[list[str], list[str],
 
 def confirmed_assumed(assumed: dict, abnormal: list[str], untouched: list[str], removed: list[str]) -> dict:
     """assumedFrom: the assumed normals of the abnormal then the untouched regions, minus removed sentences."""
-    gone = {_norm(x) for x in removed}
+    gone = {norm_key(x) for x in removed}
     out = {}
     for r in [*abnormal, *untouched]:
-        kept = [x for x in assumed.get(r) or [] if _norm(x) not in gone]
+        kept = [x for x in assumed.get(r) or [] if norm_key(x) not in gone]
         if kept:
             out[r] = kept
     return out
+
+
+def region_text(units) -> dict[str, str]:
+    """regionText: each findings region's own grouped sentences (or split parts), joined; Technique, General,
+    Conclusion and unplaced units give nothing. A normal is covered only by its own region's text (Task A3b)."""
+    out: dict[str, list[str]] = {}
+    for _, t, g, _ in _items(units):
+        if g not in _FIXED:
+            out.setdefault(g, []).append(t)
+    return {g: " ".join(ts) for g, ts in out.items()}
 
 
 def conclusion_text(units) -> str:
@@ -145,7 +150,7 @@ async def preview_report(sheet: str, scan_type: str, history: str, dictation: st
     abnormal, dictated_normal, untouched = region_states(g.units, [r.name for r in regions if r.name != OTHER])
     a = await normals_mod.assumed(dictation, normals, abnormal, dictated_normal, declined,
                                   suppressions=template_suppressions(st), clinical_history=history,
-                                  labels=template_normal_labels(st))
+                                  labels=template_normal_labels(st), region_text=region_text(g.units))
     kept = confirmed_assumed(a.assumed, abnormal, untouched, declined)
     conclusion = conclusion.strip() or conclusion_text(g.units)
     block = findings_block(g.units, regions, kept, conclusion, declined)

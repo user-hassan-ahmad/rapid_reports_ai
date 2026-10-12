@@ -10,8 +10,8 @@ import time
 
 from pydantic import BaseModel
 
-from .jev_stack import (CONDITION_MIN, CONTRA_MIN, GLOBAL_NORMAL_MIN, HEDGED_MIN, REMOVED_MIN, STATED_MIN,
-                        ask_conditions, ask_global_normal, ask_rows, normal_assumed)
+from .jev_stack import (CONDITION_MIN, CONTRA_MIN, REMOVED_MIN, STATED_MIN, RowCheck, ask_conditions, ask_rows,
+                        normal_assumed)
 from .template import jev_text, norm_key
 
 logger = logging.getLogger(__name__)
@@ -27,10 +27,27 @@ class AssumedResult(BaseModel):
 BATCH = 15   # sentences per Jev call; batches run in parallel (one call over every sentence timed out)
 
 
-async def _ask(dictation: str, sentences: list[str], gone: list[str]):
+async def _ask(dictation: str, sentences: list[str], gone: list[str], **parts):
     chunks = [sentences[i:i + BATCH] for i in range(0, len(sentences), BATCH)]
-    parts = await asyncio.gather(*(ask_rows(dictation, c, gone) for c in chunks))
-    return [c for part in parts for c in part]
+    got = await asyncio.gather(*(ask_rows(dictation, c, gone, **parts) for c in chunks))
+    return [c for part in got for c in part]
+
+
+async def _ask_by_region(dictation: str, asked: list[tuple[str, str]], texts: list[str], gone: list[str],
+                         region_text: dict[str, str]) -> list[RowCheck]:
+    """Task A3b: a normal is covered or hedged only by the sentences grouped in its own region (one stated call per
+    region with text, in parallel; a region with none is covered by nothing); contradicted (and the same as a
+    removed sentence) by the whole dictation, conclusion included."""
+    regions = list(dict.fromkeys(r for r, _ in asked if (region_text.get(r) or "").strip()))
+    idx = {r: [i for i, (ar, _) in enumerate(asked) if ar == r] for r in regions}
+    whole, *per_region = await asyncio.gather(
+        _ask(dictation, texts, gone, stated=False),
+        *(_ask(region_text[r], [texts[i] for i in idx[r]], [], contra=False) for r in regions))
+    stated = [0.0] * len(asked)
+    for r, checks in zip(regions, per_region):
+        for i, c in zip(idx[r], checks):
+            stated[i] = c.stated
+    return [RowCheck(s, c.contra, c.removed) for s, c in zip(stated, whole)]
 
 
 def _reason(c) -> str:
@@ -44,11 +61,6 @@ def _reason(c) -> str:
     return "hedged"
 
 
-def _covered_only(c) -> bool:
-    """A bare global "normal" covers every normal; it neither contradicts nor removes one (Task A3)."""
-    return c.contra < HEDGED_MIN and c.removed < REMOVED_MIN
-
-
 async def _no_conditions():
     return []
 
@@ -56,7 +68,8 @@ async def _no_conditions():
 async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal: list[str],
                   dictated_normal: list[str], removed: list[str], owned: list[str] | None = None,
                   touched: list[str] | None = None, suppressions: list[tuple[str, str]] | None = None,
-                  clinical_history: str = "", labels: dict[str, str] | None = None) -> AssumedResult:
+                  clinical_history: str = "", labels: dict[str, str] | None = None,
+                  region_text: dict[str, str] | None = None) -> AssumedResult:
     """Every region of the sheet is answered (an empty list: nothing assumed), so the caller never falls back to
     the raw sheet. Every sentence is checked against the dictation, untouched regions included: a finding the
     grouper filed under another region leaves its own region looking untouched (side review 2026-10-12: "The spleen
@@ -66,8 +79,11 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     dictation) hides its sentence. Every sentence not assumed is in `dropped` with its reason. `labels` (sentence ->
     structure label, template_normal_labels) names a subject-less sentence for the Jev check only; what is returned
     is always the template's own sentence. Labels are keyed by sentence: one sentence in two regions takes the first
-    label (acceptable: the same words under two labels is rare and both labels name the sentence's structure). On a
-    Jev failure nothing is assumed. `touched` is accepted for compatibility; every sentence is asked now."""
+    label (acceptable: the same words under two labels is rare and both labels name the sentence's structure).
+    `region_text` (region -> its grouped sentences; Technique, General, Conclusion and unplaced excluded): a normal
+    is covered or hedged only by its own region's sentences, so a conclusion or a bare "normal" covers nothing;
+    contradiction is still asked on the whole dictation. None: the whole dictation answers both (older callers). On
+    a Jev failure nothing is assumed. `touched` is accepted for compatibility; every sentence is asked now."""
     t0 = time.perf_counter()
     gone = list(dict.fromkeys(r for r in [*removed, *(owned or [])] if r.strip()))
     said = set(dictated_normal)
@@ -80,15 +96,16 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
         try:
             conds = list(dict.fromkeys(c for c, _ in suppressions or []))
             ctx = f"CLINICAL HISTORY:\n{clinical_history or '(not given)'}\nDICTATED FINDINGS:\n{dictation}"
-            checks, met, global_normal = await asyncio.gather(
-                _ask(dictation, [jev_text(s, labels[s]) if s in labels else s for _, s in asked], gone),
-                ask_conditions(ctx, conds) if conds else _no_conditions(),
-                ask_global_normal(dictation))
+            texts = [jev_text(s, labels[s]) if s in labels else s for _, s in asked]
+            checks, met = await asyncio.gather(
+                _ask(dictation, texts, gone) if region_text is None
+                else _ask_by_region(dictation, asked, texts, gone, region_text),
+                ask_conditions(ctx, conds) if conds else _no_conditions())
             hidden = {norm_key(s) for c, s in suppressions or [] if met[conds.index(c)] >= CONDITION_MIN}
             for (region, s), c in zip(asked, checks):
                 if norm_key(s) in hidden:
                     dropped[region].append({"sentence": s, "reason": "rule"})
-                elif normal_assumed(c) or (global_normal >= GLOBAL_NORMAL_MIN and _covered_only(c)):
+                elif normal_assumed(c):
                     out[region].append(s)
                 else:
                     dropped[region].append({"sentence": s, "reason": _reason(c)})

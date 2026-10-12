@@ -7,7 +7,7 @@ from rapid_reports_ai import template_preview
 from rapid_reports_ai.auth import get_current_user
 from rapid_reports_ai.database.models import User
 from rapid_reports_ai.main import app
-from rapid_reports_ai.template_preview import confirmed_assumed, findings_block, region_states
+from rapid_reports_ai.template_preview import confirmed_assumed, findings_block, region_states, region_text
 
 R = [NS(name="Liver"), NS(name="Kidneys")]
 A = "Assumed normal (confirmed by the radiologist):"
@@ -86,6 +86,16 @@ NEGATIVE "No biliary dilatation."
 """
 
 
+def test_region_text_is_each_findings_regions_own_sentences():
+    units = [U("CT with contrast.", "Technique"), U("Normal study.", "General"), U("No acute abnormality.", "Conclusion"),
+             U("Liver cyst.", "Liver", abnormal=True), U("Unplaced.", None), U("Liver:", "Liver", heading=True),
+             U("Fatty liver and normal kidneys.", "Liver",
+               parts=[P("Fatty liver", "Liver", True), P("normal kidneys.", "Kidneys")]),
+             U("No hydronephrosis.", "Kidneys")]
+    assert region_text(units) == {"Liver": "Liver cyst. Fatty liver", "Kidneys": "normal kidneys. No hydronephrosis."}
+    assert region_text([U("normal", "General")]) == {}
+
+
 async def test_preview_report_wires_the_scratchpad_path(monkeypatch):
     from rapid_reports_ai.hybrid_stack import normals, service
     from rapid_reports_ai import template_manager
@@ -96,9 +106,9 @@ async def test_preview_report_wires_the_scratchpad_path(monkeypatch):
         return NS(units=[U("Gallstones.", regions[0].name, abnormal=True), U("Appendicitis.", "Conclusion")])
 
     async def fake_assumed(dictation, region_normals, abnormal, dictated_normal, removed, owned=None, touched=None,
-                           suppressions=None, clinical_history="", labels=None):
+                           suppressions=None, clinical_history="", labels=None, region_text=None):
         seen.update(normals=region_normals, abnormal=abnormal, dictated_normal=dictated_normal, removed=removed,
-                    history=clinical_history, labels=labels)
+                    history=clinical_history, labels=labels, region_text=region_text)
         return NS(assumed={r: list(s) for r, s in region_normals.items()}, dropped={}, error=None)
 
     class FakeTM:
@@ -115,7 +125,7 @@ async def test_preview_report_wires_the_scratchpad_path(monkeypatch):
     assert out["usable"] and out["report_content"] == "REPORT"
     liver = seen["regions"][0]
     assert seen["abnormal"] == [liver] and seen["dictated_normal"] == [] and seen["history"] == "Pain."
-    assert seen["removed"] == ["x."]
+    assert seen["removed"] == ["x."] and seen["region_text"] == {liver: "Gallstones."}
     assert out["findings_block"].startswith(f"{liver}: Gallstones. {A} ")
     assert out["findings_block"].endswith("DO NOT ASSERT (removed by the radiologist): x.")
     assert "Conclusion (confirmed by the radiologist): Appendicitis." in out["findings_block"]

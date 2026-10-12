@@ -55,10 +55,6 @@ async def test_failure_assumes_nothing(monkeypatch):
     assert out.assumed == {"Liver": [], "Kidneys": [], "Pelvic organs": []} and "RuntimeError" in out.error
 
 
-async def _zero(*a, **k):
-    return 0.0
-
-
 async def test_a_met_context_condition_drops_its_target(monkeypatch):
     async def rows(dictation, sentences, removed, transport=None):
         return [J.RowCheck(0.0, 0.0, 0.0) for _ in sentences]
@@ -70,7 +66,6 @@ async def test_a_met_context_condition_drops_its_target(monkeypatch):
 
     monkeypatch.setattr(N, "ask_rows", rows)
     monkeypatch.setattr(N, "ask_conditions", conds)
-    monkeypatch.setattr(N, "ask_global_normal", _zero)
     out = await N.assumed(
         "No previous MRI.", {"Brain": ["No other interval changes compared with the previous MRI.",
                                        "The ventricles are normal in size."]}, [], [], [],
@@ -88,7 +83,6 @@ async def test_an_unmet_context_condition_keeps_its_target(monkeypatch):
 
     monkeypatch.setattr(N, "ask_rows", _checks({}))
     monkeypatch.setattr(N, "ask_conditions", conds)
-    monkeypatch.setattr(N, "ask_global_normal", _zero)
     out = await N.assumed("Stable since the previous MRI.", {"Brain": ["No other interval changes."]}, [], [], [],
                           suppressions=[("no previous study is available", "No other interval changes.")])
     assert out.assumed == {"Brain": ["No other interval changes."]} and out.dropped == {"Brain": []}
@@ -122,7 +116,6 @@ async def test_a_condition_check_failure_assumes_nothing(monkeypatch):
 
     monkeypatch.setattr(N, "ask_rows", _checks({}))
     monkeypatch.setattr(N, "ask_conditions", boom)
-    monkeypatch.setattr(N, "ask_global_normal", _zero)
     out = await N.assumed("x", NORMALS, [], [], [], suppressions=[("no prior study", "The liver is normal.")])
     assert out.assumed == {r: [] for r in NORMALS} and out.dropped == {r: [] for r in NORMALS}
     assert out.error and "jev down" in out.error
@@ -132,3 +125,86 @@ def test_one_normaliser_matches_suppressions():
     from rapid_reports_ai.hybrid_stack import template as T
     assert N.norm_key is T.norm_key
     assert T.norm_key("  No  other changes. ") == T.norm_key("no other changes")
+
+
+# ── Coverage only from the normal's own region (Task A3b) ──────────────────────────────────────────────────────
+def _by_dictation(table, calls):
+    """Jev as a table keyed by (dictation state, sentence); honours the stated/contra split."""
+    async def fake(dictation, sentences, removed, *, stated=True, contra=True):
+        calls.append({"dictation": dictation, "sentences": list(sentences), "removed": list(removed),
+                      "stated": stated, "contra": contra})
+        out = []
+        for s in sentences:
+            st, co, rm = table.get((dictation, s), (0.0, 0.0, 0.0))
+            out.append(J.RowCheck(st if stated else 0.0, co if contra else 0.0, rm if removed else 0.0))
+        return out
+    return fake
+
+
+BRAIN = {"Brain": ["The ventricles are normal in size.", "No intracranial haemorrhage."],
+         "Lungs": ["No pneumothorax.", "The lungs are clear."]}
+
+
+async def test_a_conclusion_only_dictation_keeps_the_region_normals(monkeypatch):
+    calls = []
+    d = "No acute intracranial abnormality."   # grouped Conclusion: no region text
+    monkeypatch.setattr(N, "ask_rows", _by_dictation({(d, "No intracranial haemorrhage."): (0.9, 0.0, 0.0),
+                                                       (d, "The ventricles are normal in size."): (0.5, 0.0, 0.0)},
+                                                      calls))
+    out = await N.assumed(d, BRAIN, [], [], [], region_text={})
+    assert out.assumed == BRAIN and out.dropped == {"Brain": [], "Lungs": []}
+    assert all(not c["stated"] for c in calls)   # nothing in any region: no coverage question asked
+    assert all(c["dictation"] == d and c["contra"] for c in calls)
+
+
+async def test_a_same_region_sentence_still_covers_its_normal(monkeypatch):
+    calls = []
+    d = "No pneumothorax.\nNo acute intracranial abnormality."
+    table = {("No pneumothorax.", "No pneumothorax."): (0.95, 0.0, 0.0),
+             (d, "The ventricles are normal in size."): (0.9, 0.0, 0.0)}   # the conclusion would cover it
+    monkeypatch.setattr(N, "ask_rows", _by_dictation(table, calls))
+    out = await N.assumed(d, BRAIN, ["Lungs"], [], [], region_text={"Lungs": "No pneumothorax."})
+    assert out.assumed == {"Brain": BRAIN["Brain"], "Lungs": ["The lungs are clear."]}
+    assert out.dropped["Lungs"] == [{"sentence": "No pneumothorax.", "reason": "covered"}]
+    stated = [c for c in calls if c["stated"]]
+    assert stated == [{"dictation": "No pneumothorax.", "sentences": BRAIN["Lungs"], "removed": [],
+                       "stated": True, "contra": False}]
+
+
+async def test_a_conclusion_that_contradicts_a_normal_still_drops_it(monkeypatch):
+    calls = []
+    d = "Acute right MCA infarct."
+    monkeypatch.setattr(N, "ask_rows", _by_dictation({(d, "The ventricles are normal in size."): (0.0, 0.2, 0.0),
+                                                       (d, "No intracranial haemorrhage."): (0.0, 0.85, 0.0)}, calls))
+    out = await N.assumed(d, BRAIN, [], [], [], region_text={})
+    assert out.dropped["Brain"] == [{"sentence": "No intracranial haemorrhage.", "reason": "contradicted"}]
+    assert out.assumed["Brain"] == ["The ventricles are normal in size."]
+
+
+async def test_a_general_normal_study_covers_nothing(monkeypatch):
+    calls = []
+    d = "Normal study."   # grouped General: no region text
+    table = {(d, s): (0.85, 0.0, 0.0) for ss in BRAIN.values() for s in ss}
+    monkeypatch.setattr(N, "ask_rows", _by_dictation(table, calls))
+    out = await N.assumed(d, BRAIN, [], [], [], region_text={})
+    assert out.assumed == BRAIN
+
+
+async def test_region_mode_asks_removed_once_over_the_whole_dictation(monkeypatch):
+    calls = []
+    d = "Lungs clear. Brain fine."
+    table = {(d, "The lungs are clear."): (0.0, 0.0, 0.8)}
+    monkeypatch.setattr(N, "ask_rows", _by_dictation(table, calls))
+    out = await N.assumed(d, BRAIN, [], [], ["Clear lungs."], region_text={"Lungs": "Lungs clear.", "Brain": ""})
+    assert out.dropped["Lungs"] == [{"sentence": "The lungs are clear.", "reason": "removed"}]
+    contra = [c for c in calls if c["contra"]]
+    assert len(contra) == 1 and contra[0]["removed"] == ["Clear lungs."] and not contra[0]["stated"]
+    assert [c["dictation"] for c in calls if c["stated"]] == ["Lungs clear."]   # an empty region asks nothing
+
+
+async def test_region_mode_failure_assumes_nothing(monkeypatch):
+    async def boom(*a, **k):
+        raise RuntimeError("down")
+    monkeypatch.setattr(N, "ask_rows", boom)
+    out = await N.assumed("x", BRAIN, [], [], [], region_text={"Lungs": "x"})
+    assert out.assumed == {"Brain": [], "Lungs": []} and "RuntimeError" in out.error

@@ -294,3 +294,21 @@ def test_assumed_applies_the_templates_context_rules_and_labels(authed, monkeypa
     assert seen["labels"] == {"Unremarkable.": "ventricles"} and seen["clinical_history"] == "Headache."
     authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"Brain": ["Unremarkable."]}})
     assert seen["suppressions"] == [] and seen["labels"] == {}
+
+
+def test_assumed_passes_the_region_text_capped(authed, monkeypatch):
+    from rapid_reports_ai.hybrid_stack.normals import AssumedResult
+    seen = {}
+
+    async def fake_assumed(dictation, normals, *a, **k):
+        seen.update(k)
+        return AssumedResult(assumed={r: [] for r in normals})
+
+    monkeypatch.setattr(R, "assumed_normals", fake_assumed)
+    texts = {f"R{i}": "No pneumothorax. " * 400 for i in range(50)}
+    r = authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"R0": ["Normal."]},
+                                                       "region_text": texts})
+    assert r.status_code == 200
+    assert len(seen["region_text"]) == 40 and all(len(t) <= R.MAX_REGION_TEXT for t in seen["region_text"].values())
+    authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"R0": ["Normal."]}})
+    assert seen["region_text"] == {}   # nothing grouped in a region: no region covers anything

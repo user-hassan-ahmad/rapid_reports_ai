@@ -23,6 +23,15 @@ export function effectiveItems(units: StackUnit[]): Item[] {
 	return out;
 }
 
+/** Each findings region's own grouped sentences (or split parts), joined: what may cover that region's assumed
+ *  normals (Task A3b). Technique, General, Conclusion and unplaced units cover nothing, so a conclusion or a bare
+ *  "normal" leaves the template's normals offered. */
+export function regionText(units: StackUnit[]): Record<string, string> {
+	const out: Record<string, string[]> = {};
+	for (const i of effectiveItems(units)) if (!FIXED.has(i.group)) (out[i.group] ??= []).push(i.text);
+	return Object.fromEntries(Object.entries(out).map(([g, ts]) => [g, ts.join(' ')]));
+}
+
 /** pillRegions: the schema's regions except the catch-all (the tray). */
 export function regionStates(units: StackUnit[], pillRegions: string[]): RegionStates {
 	const items = effectiveItems(units);

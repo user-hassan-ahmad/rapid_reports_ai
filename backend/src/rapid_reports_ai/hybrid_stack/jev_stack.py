@@ -181,15 +181,19 @@ def removed_question(sentence: str) -> dict[str, Any]:
         f"in any wording. STATEMENT: {sentence}")}
 
 
-async def ask_rows(dictation: str, sentences: list[str], removed: list[str], transport=None) -> list[RowCheck]:
+async def ask_rows(dictation: str, sentences: list[str], removed: list[str], transport=None, *,
+                   stated: bool = True, contra: bool = True) -> list[RowCheck]:
     """Stated, contradicted and (when the radiologist removed anything) the same as a removed sentence, per
-    sentence, in one Jev call."""
+    sentence, in one Jev call. `stated=False` / `contra=False` leave that question out (its score is 0): the
+    assumed normals ask coverage on a region's own text and contradiction on the whole dictation (Task A3b)."""
     if not sentences:
         return []
     qs: dict[str, dict[str, Any]] = {}
     for i, s in enumerate(sentences):
-        qs[f"stated_{i}"] = stated_question(s)
-        qs[contra_key(i)] = contra_question(s)
+        if stated:
+            qs[f"stated_{i}"] = stated_question(s)
+        if contra:
+            qs[contra_key(i)] = contra_question(s)
         if removed:
             qs[removed_key(i)] = removed_question(s)
     state = f"DICTATION:\n{dictation}"
@@ -199,7 +203,7 @@ async def ask_rows(dictation: str, sentences: list[str], removed: list[str], tra
                        os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
     r.raise_for_status()
     ans = r.json().get("answers") or {}
-    score = lambda k: float((ans.get(k) or {}).get("noul") or 0.0)
+    score = lambda k: float((ans.get(k) or {}).get("noul") or 0.0) if k in qs else 0.0   # an unasked part: 0
     return [RowCheck(score(f"stated_{i}"), score(contra_key(i)), score(removed_key(i))) for i in range(len(sentences))]
 
 
@@ -286,7 +290,7 @@ async def ask_unfinished(sentences: list[str], transport=None) -> list[float]:
     return [x for p in parts for x in p]
 
 
-# ── Assumed normals: context rules and a bare global normal (conversion lab 2026-10-12) ─────────────────────────
+# ── Assumed normals: context rules (conversion lab 2026-10-12) ─────────────────────────
 CONDITION_MIN = 0.5   # = template_brief.MET: one cut-off for every rule condition; silence is not met
 
 
@@ -302,12 +306,3 @@ async def ask_conditions(state: str, conditions: list[str], transport=None) -> l
     r.raise_for_status()
     ans = r.json().get("answers") or {}
     return [float((ans.get(f"cond_{i}") or {}).get("noul") or 0.0) for i in range(len(conditions))]
-
-
-GLOBAL_NORMAL_MIN = 1.1   # off: Task A3 (a bare "normal" keeps the template's normals) awaits a Jev wording with a
-                          # clean gap; wording lab 2026-10-12 found none in two wordings
-
-
-async def ask_global_normal(dictation: str, transport=None) -> float:
-    """Stub until Task A3 lands: no dictation is read as a bare global normal."""
-    return 0.0

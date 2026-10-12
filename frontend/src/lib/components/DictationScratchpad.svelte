@@ -41,7 +41,7 @@
 	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDebug, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit, similar } from '$lib/hybrid-stack/stackState';
 	import { abnormalAll, assumedFrom, openCount, rowSentences, type AssumedSnap } from '$lib/hybrid-stack/items';
-	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates } from '$lib/hybrid-stack/regionState';
+	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
 	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
@@ -1812,7 +1812,8 @@
 		try {
 			const res = await postAssumed($token, { dictation: snap.dictation, region_normals: stackRegionNormals, abnormal: snap.abnormal,
 				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences, owned: ownedNow(),
-				touched: touchedRegions(), template_id: stackTemplateId, clinical_history: clinicalHistory });
+				touched: touchedRegions(), template_id: stackTemplateId, clinical_history: clinicalHistory,
+				region_text: regionText(stackUnits) }); // a normal is covered only by its own region's sentences
 			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed };
 		} catch {
 			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {} }; // nothing assumed

@@ -171,6 +171,20 @@ async def test_ask_rows_without_removed_asks_two_questions(monkeypatch):
     assert await J.ask_rows("x", [], ["y"]) == []
 
 
+async def test_ask_rows_can_ask_the_stated_or_the_contra_part_only(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    asked = []
+
+    def handler(req):
+        asked.append(set(json.loads(req.content)["questions"]))
+        return httpx.Response(200, json={"answers": {"stated_0": {"noul": 0.9}, "contra_0": {"noul": 0.8},
+                                                     "removed_0": {"noul": 0.7}}})
+    t = httpx.MockTransport(handler)
+    assert await J.ask_rows("x", ["No ascites."], [], transport=t, contra=False) == [J.RowCheck(0.9, 0.0, 0.0)]
+    assert await J.ask_rows("x", ["No ascites."], ["y"], transport=t, stated=False) == [J.RowCheck(0.0, 0.8, 0.7)]
+    assert asked == [{"stated_0"}, {"contra_0", "removed_0"}]
+
+
 async def test_a_sentence_with_a_measurement_is_never_offered(monkeypatch):
     _setup(monkeypatch, _raw({**CYST, "negatives": ["A 5 mm intrauterine gestational sac is seen.", "No free fluid."]}))
     out = await I.update("US pelvis", "?ectopic", ["Uterus"], "A fibroid.", ["A fibroid."])
