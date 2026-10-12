@@ -86,7 +86,11 @@ def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = ()) -> st
         "of the radiologist's wording. Copy their phrasing for what the input states; never their content: no finding, "
         "descriptor, value, grade, code, time window or interpretation from an example appears unless the input "
         "states it. The same holds for a style note or logic line that says the report states such content: it "
-        "applies only when the input states it.")
+        "applies only when the input states it.\n"
+        "- **Scores, grades and values:** a sheet instruction to state a score, grade, classification, time window, "
+        "measurement, value, image coordinate or recommendation applies only when the FINDINGS input or the "
+        "confirmed conclusion supplies it, even where the sheet calls it mandatory or always stated; otherwise "
+        "leave it out — never estimate, infer or fill one in.")
     removed = [t.strip() for t in declined if t.strip()]
     if removed:
         parts.append("## Removed by the Radiologist\n" + "\n".join(f'- DO NOT ASSERT: "{t}"' for t in removed))

@@ -157,3 +157,21 @@ async def test_session_rules_reach_the_generation_system_prompt(capture):
     for s in ("**Fixed lines:**", "a FIXED line never contradicts the input, the clinical history",
               "**Examples are wording only:**", "the wording the report adds"):
         assert s in sp
+
+
+def test_scores_and_values_only_when_supplied():
+    b = stack_brief("", "C.", [])
+    assert "**Scores, grades and values:**" in b
+    for s in ("score, grade, classification, time window, measurement, value, image coordinate or recommendation",
+              "only when the FINDINGS input or the confirmed conclusion supplies it",
+              "never estimate, infer or fill one in"):
+        assert s in b
+
+
+async def test_scores_rule_reaches_the_generation_system_prompt(capture):
+    cfg = {"generation_mode": "skill_sheet_guided", "skill_sheet": LEAN, "scan_type": "CMR"}
+    await TemplateManager().generate_report_from_config(
+        cfg, {"FINDINGS": "Left ventricle: dilated.", "CLINICAL_HISTORY": "SOB"}, None,
+        stack={"conclusion": "Dilated left ventricle.", "declined": []})
+    sp = next(k for k in capture if k["output_type"] is str)["system_prompt"]
+    assert "**Scores, grades and values:**" in sp and "never estimate, infer or fill one in" in sp

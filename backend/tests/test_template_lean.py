@@ -310,3 +310,22 @@ def test_option_section_matches_a_paragraph_by_shared_words_before_the_implicit_
     secs = tl.report_sections("No previous study.\n\nHead and C-spine:\nX.\n\nCAP:\nY.\n\nConclusion:\nZ.", "")
     assert tl.option_section({"kind": "finding_negative", "section": "CHEST (within CAP or separate)"}, secs) == "CAP"
     assert tl.option_section({"kind": "finding_negative", "section": "Unrelated"}, secs) == "HEAD AND C-SPINE"
+
+
+async def test_undictated_numbers_are_review_flags_and_never_edit_the_report(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    report = ("Findings:\nA 2 cm lesion of the primary organ, within the first 4.5 hours. Fazekas grade 2.\n\n"
+              "Conclusion:\n1. A 2 cm lesion of the primary organ.")
+
+    async def gen(self, template_config, user_inputs, user_signature=None, model_override=None,
+                  brief_text=None, history_supplied=False, stack=None):
+        return {"report_content": report, "model_used": "q", "description": "d", "scan_type": "CT"}
+    monkeypatch.setattr(tl.TemplateManager, "_generate_report_skill_sheet_guided", gen)
+    out = await tl.generate_template_report_lean(
+        sheet=OLD_SHEET, scan_type="CT", findings="A 2 cm lesion.", history="?lesion", case=None,
+        signature="Dr A", stack={"conclusion": "Lesion. Fazekas grade 2 change.", "declined": []})
+    out["options_job"].cancel()
+    review = out["quality_check"]["review"]
+    assert [r["text"] for r in review if r["kind"] == "undictated_number"] == ["4.5"]
+    assert out["report_content"] == report + "\nCHECKED\n\nDr A"   # flagged, never edited

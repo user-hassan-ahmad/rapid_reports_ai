@@ -25,6 +25,7 @@ from . import report_reconcile as rc
 from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model
 from .report_reconcile import write_options
 from .report_review import CONTRA_FLAG, Q_CONTRA, ReportSection, run_quality_check
+from .template_number_check import undictated_numbers
 from .template_brief import _scores
 from .template_manager import TemplateManager
 from .template_sheet_structure import _key
@@ -479,6 +480,11 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         vet_t.cancel()
         opts_t.cancel()
         raise
+    # Numbers the writer added that no source supplies (a sheet's score/grade/time window): review flags only
+    numbers = undictated_numbers(final, [findings, history, (stack or {}).get("conclusion")], sheet)
+    if numbers:
+        quality = {**(quality or {})}
+        quality["review"] = [*(quality.get("review") or []), *numbers]
     if signature:
         final = final.rstrip() + "\n\n" + signature
     rec["lat"]["generate_s"] = round(time.time() - t_start, 1)
