@@ -110,7 +110,7 @@ def _verbatim(quote: str, findings: str, history: str) -> bool:
     return len(q) >= 2 and any(f" {q} " in f" {J._flat(t)} " for t in (findings, history) if t)
 
 
-async def _check(model: dict[str, Settled], b: Branch, findings: str, history: str) -> set[str]:
+async def confirm_quotes(model: dict[str, Settled], findings: str, history: str) -> set[str]:
     """The model-settled inputs whose quoted evidence is confirmed: by code when the quote is verbatim in the
     dictation, else by Jev. No quote, no confirmation; a Jev failure confirms none of the quotes it was asked about
     (ask, never assume)."""
@@ -126,6 +126,10 @@ async def _check(model: dict[str, Settled], b: Branch, findings: str, history: s
                     type(ex).__name__, len(ask))
         return confirmed
     return confirmed | {i for n, i in enumerate(ask) if scores.get(f"s{n}", 0.0) >= SETTLED_MIN}
+
+
+async def _check(model: dict[str, Settled], b: Branch, findings: str, history: str) -> set[str]:
+    return await confirm_quotes(model, findings, history)
 
 
 def validate(raw: RawPreview, e: Entry, b: Branch, answered: dict[str, str], confirmed: set[str] | None = None

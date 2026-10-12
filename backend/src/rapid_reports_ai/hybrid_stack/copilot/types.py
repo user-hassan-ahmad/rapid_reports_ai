@@ -2,7 +2,7 @@
 how it applied to a case except Preview, which is never stored."""
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -97,6 +97,7 @@ class Card(BaseModel):
     publication: Publication = Field(default_factory=Publication)
     known: bool = False           # already in the registry
     status: Literal["draft", "verified", "new"] = "new"
+    siblings: list[str] = Field(default_factory=list)   # library packs: other bodies' packs on the same topic
 
     @property
     def id(self) -> str:
@@ -119,3 +120,5 @@ class Preview(BaseModel):
     settled: list[Settled] = Field(default_factory=list)
     missing: list[str] = Field(default_factory=list)
     proposal: Proposal | None = None
+    possible: list[str] = Field(default_factory=list)   # library packs: outcomes still possible, rendered
+    trace: dict[str, Any] | None = None                 # library packs: the engine trace behind the proposal
