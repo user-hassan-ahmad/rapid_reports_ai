@@ -1,0 +1,117 @@
+"""Types shared by the Copilot's modules and routes (spec §5). The registry caches a guideline; nothing here holds
+how it applied to a case except Preview, which is never stored."""
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
+BranchState = Literal["checked", "not_available", "pending"]
+
+
+class Input(BaseModel):
+    id: str
+    question: str
+    options: list[str] = Field(default_factory=list)
+    settled_by: str = ""
+
+
+class Output(BaseModel):
+    when: str = ""
+    classification: str = ""
+    recommendation: str = ""
+    quote: str = ""               # verbatim evidence from the fetched chunks
+
+
+class Branch(BaseModel):
+    name: str
+    state: BranchState = "pending"
+    inputs: list[Input] = Field(default_factory=list)
+    rule: str = ""
+    outputs: list[Output] = Field(default_factory=list)
+
+
+class Supplement(BaseModel):
+    question: str
+    answer: str
+    quote: str = ""
+    url: str = ""
+
+
+class GuidelineContent(BaseModel):
+    applies_to: str = ""
+    summary: str = ""
+    branches: list[Branch] = Field(default_factory=list)
+    supplements: list[Supplement] = Field(default_factory=list)
+
+    def branch(self, name: str) -> Branch | None:
+        return next((b for b in self.branches if b.name == name), None)
+
+    def checked(self) -> list[Branch]:
+        return [b for b in self.branches if b.state == "checked"]
+
+
+class Publication(BaseModel):
+    title: str = ""
+    body: str = ""
+    year: str = ""
+
+
+class Source(BaseModel):
+    url: str
+    title: str = ""
+    tier: int = 3
+    fetched_at: str = ""
+
+
+class Chunk(BaseModel):
+    url: str
+    text: str
+    branch: str = ""              # the branch whose query found it ("" for the publication query)
+
+
+class Entry(BaseModel):
+    """The API view of one registry row."""
+    key: str
+    name: str
+    version: str = ""
+    locale: str = "uk"
+    publication: Publication = Field(default_factory=Publication)
+    status: Literal["draft", "verified"] = "draft"
+    content: GuidelineContent = Field(default_factory=GuidelineContent)
+    sources: list[Source] = Field(default_factory=list)
+
+
+class Card(BaseModel):
+    key: str
+    name: str
+    version: str = ""
+    finding_id: str               # the abnormal item it applies to (frontend id: "u<unit>" or "u<unit>.<part>")
+    why: str = ""
+    branch: str = ""              # the skeleton branch this finding falls into
+    skeleton: list[str] = Field(default_factory=list)
+    publication: Publication = Field(default_factory=Publication)
+    known: bool = False           # already in the registry
+    status: Literal["draft", "verified", "new"] = "new"
+
+    @property
+    def id(self) -> str:
+        return f"{self.key}|{self.finding_id}"
+
+
+class Settled(BaseModel):
+    input: str
+    value: str
+    quote: str = ""
+
+
+class Proposal(BaseModel):
+    classification: str
+    line: str
+    recommendation: str = ""
+
+
+class Preview(BaseModel):
+    settled: list[Settled] = Field(default_factory=list)
+    missing: list[str] = Field(default_factory=list)
+    proposal: Proposal | None = None
