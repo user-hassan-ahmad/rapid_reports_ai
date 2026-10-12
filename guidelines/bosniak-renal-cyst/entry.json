@@ -341,6 +341,35 @@
                 "eq": "no"
               },
               {
+                "ref": "contents_enhancement",
+                "eq": "present"
+              }
+            ]
+          },
+          "result": "not_cystic",
+          "locator": {
+            "source": "S1",
+            "page": null,
+            "section": "Bosniak Classification, Version 2019: a cystic renal mass is one in which less than approximately 25% of the mass is composed of enhancing tissue",
+            "table": ""
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "too_small",
+                "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "ref": "contents_enhancement",
+                    "eq": "present"
+                  }
+                ]
+              },
+              {
                 "all": [
                   {
                     "ref": "technique",
@@ -368,6 +397,14 @@
               {
                 "ref": "too_small",
                 "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "ref": "contents_enhancement",
+                    "eq": "present"
+                  }
+                ]
               },
               {
                 "none": [
@@ -425,6 +462,14 @@
               {
                 "ref": "too_small",
                 "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "ref": "contents_enhancement",
+                    "eq": "present"
+                  }
+                ]
               },
               {
                 "none": [
@@ -509,6 +554,14 @@
               {
                 "ref": "too_small",
                 "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "ref": "contents_enhancement",
+                    "eq": "present"
+                  }
+                ]
               },
               {
                 "none": [
@@ -632,6 +685,14 @@
               {
                 "none": [
                   {
+                    "ref": "contents_enhancement",
+                    "eq": "present"
+                  }
+                ]
+              },
+              {
+                "none": [
+                  {
                     "any": [
                       {
                         "ref": "protrusion",
@@ -684,6 +745,14 @@
               {
                 "ref": "too_small",
                 "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "ref": "contents_enhancement",
+                    "eq": "present"
+                  }
+                ]
               },
               {
                 "none": [
@@ -756,65 +825,10 @@
               {
                 "none": [
                   {
-                    "any": [
-                      {
-                        "ref": "protrusion",
-                        "in": [
-                          "irregular_thickening",
-                          "nodule",
-                          "not_enhancing"
-                        ]
-                      },
-                      {
-                        "none": [
-                          {
-                            "ref": "wall",
-                            "eq": "thin"
-                          }
-                        ]
-                      },
-                      {
-                        "none": [
-                          {
-                            "ref": "septa",
-                            "in": [
-                              "none",
-                              "few_thin"
-                            ]
-                          }
-                        ]
-                      }
-                    ]
+                    "ref": "contents_enhancement",
+                    "eq": "present"
                   }
                 ]
-              },
-              {
-                "ref": "margin",
-                "eq": "well_defined"
-              },
-              {
-                "ref": "septa",
-                "eq": "few_thin"
-              },
-              {
-                "ref": "contents_enhancement",
-                "eq": "present"
-              }
-            ]
-          },
-          "result": "unclassifiable",
-          "locator": {
-            "source": "S1",
-            "page": null,
-            "section": "General Points"
-          }
-        },
-        {
-          "when": {
-            "all": [
-              {
-                "ref": "too_small",
-                "eq": "no"
               },
               {
                 "none": [
@@ -911,6 +925,14 @@
               {
                 "none": [
                   {
+                    "ref": "contents_enhancement",
+                    "eq": "present"
+                  }
+                ]
+              },
+              {
+                "none": [
+                  {
                     "any": [
                       {
                         "ref": "protrusion",
@@ -987,6 +1009,14 @@
               {
                 "ref": "too_small",
                 "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "ref": "contents_enhancement",
+                    "eq": "present"
+                  }
+                ]
               },
               {
                 "none": [
@@ -1075,6 +1105,14 @@
               {
                 "none": [
                   {
+                    "ref": "contents_enhancement",
+                    "eq": "present"
+                  }
+                ]
+              },
+              {
+                "none": [
+                  {
                     "any": [
                       {
                         "ref": "protrusion",
@@ -1147,6 +1185,14 @@
               {
                 "ref": "too_small",
                 "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "ref": "contents_enhancement",
+                    "eq": "present"
+                  }
+                ]
               },
               {
                 "none": [
@@ -1235,6 +1281,14 @@
               {
                 "none": [
                   {
+                    "ref": "contents_enhancement",
+                    "eq": "present"
+                  }
+                ]
+              },
+              {
+                "none": [
+                  {
                     "any": [
                       {
                         "ref": "protrusion",
@@ -1307,6 +1361,14 @@
               {
                 "ref": "too_small",
                 "eq": "no"
+              },
+              {
+                "none": [
+                  {
+                    "ref": "contents_enhancement",
+                    "eq": "present"
+                  }
+                ]
               },
               {
                 "none": [
@@ -1576,6 +1638,20 @@
         "page": null,
         "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
         "table": "2"
+      }
+    },
+    {
+      "id": "not_cystic",
+      "classification": "Enhancing contents on renal mass protocol CT: not a cystic renal mass, so outside the Bosniak classification.",
+      "recommendation": "Manage as a solid renal mass.",
+      "caveats": [
+        "Bosniak 2019 treats a mass with about 25% or more enhancing tissue as solid, whatever its cystic pattern."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": null,
+        "section": "Bosniak Classification, Version 2019: a cystic renal mass is one in which less than approximately 25% of the mass is composed of enhancing tissue",
+        "table": ""
       }
     }
   ],

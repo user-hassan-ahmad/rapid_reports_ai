@@ -6,7 +6,8 @@
       "inputs": {
         "nodule_type": "ground-glass",
         "count": "multiple",
-        "diameter_mm": 10
+        "diameter_mm": 10,
+        "exclusion": false
       },
       "outcome": "subsolid_multiple_ge6",
       "steps": {
@@ -20,7 +21,8 @@
         "nodule_type": "solid",
         "count": "single",
         "diameter_mm": 4,
-        "risk": "low"
+        "risk": "low",
+        "exclusion": false
       },
       "outcome": "solid_single_lt6_low",
       "steps": {
@@ -34,7 +36,8 @@
         "nodule_type": "solid",
         "count": "single",
         "diameter_mm": 5.4,
-        "risk": "high"
+        "risk": "high",
+        "exclusion": false
       },
       "outcome": "solid_single_lt6_high",
       "steps": {
@@ -48,7 +51,8 @@
         "nodule_type": "solid",
         "count": "single",
         "diameter_mm": 5.5,
-        "risk": "low"
+        "risk": "low",
+        "exclusion": false
       },
       "outcome": "solid_single_6to8_low",
       "steps": {
@@ -62,7 +66,8 @@
         "nodule_type": "solid",
         "count": "single",
         "diameter_mm": 8.4,
-        "risk": "high"
+        "risk": "high",
+        "exclusion": false
       },
       "outcome": "solid_single_6to8_high",
       "steps": {
@@ -76,7 +81,8 @@
         "nodule_type": "solid",
         "count": "single",
         "diameter_mm": 8.5,
-        "risk": "low"
+        "risk": "low",
+        "exclusion": false
       },
       "outcome": "solid_single_gt8",
       "steps": {
@@ -90,7 +96,8 @@
         "nodule_type": "solid",
         "count": "single",
         "diameter_mm": 12,
-        "risk": "high"
+        "risk": "high",
+        "exclusion": false
       },
       "outcome": "solid_single_gt8",
       "steps": {
@@ -103,7 +110,8 @@
       "inputs": {
         "nodule_type": "solid",
         "count": "single",
-        "diameter_mm": 12
+        "diameter_mm": 12,
+        "exclusion": false
       },
       "outcome": "solid_single_gt8",
       "steps": {
@@ -117,7 +125,8 @@
         "nodule_type": "solid",
         "count": "multiple",
         "diameter_mm": 3,
-        "risk": "low"
+        "risk": "low",
+        "exclusion": false
       },
       "outcome": "solid_multiple_lt6_low",
       "steps": {
@@ -131,7 +140,8 @@
         "nodule_type": "solid",
         "count": "multiple",
         "diameter_mm": 5,
-        "risk": "high"
+        "risk": "high",
+        "exclusion": false
       },
       "outcome": "solid_multiple_lt6_high",
       "steps": {
@@ -145,7 +155,8 @@
         "nodule_type": "solid",
         "count": "multiple",
         "diameter_mm": 7,
-        "risk": "low"
+        "risk": "low",
+        "exclusion": false
       },
       "outcome": "solid_multiple_ge6_low",
       "steps": {
@@ -159,7 +170,8 @@
         "nodule_type": "solid",
         "count": "multiple",
         "diameter_mm": 15,
-        "risk": "low"
+        "risk": "low",
+        "exclusion": false
       },
       "outcome": "solid_multiple_ge6_low",
       "steps": {
@@ -173,7 +185,8 @@
         "nodule_type": "solid",
         "count": "multiple",
         "diameter_mm": 6,
-        "risk": "high"
+        "risk": "high",
+        "exclusion": false
       },
       "outcome": "solid_multiple_ge6_high",
       "steps": {
@@ -187,7 +200,8 @@
         "nodule_type": "solid",
         "count": "multiple",
         "diameter_mm": 8.5,
-        "risk": "high"
+        "risk": "high",
+        "exclusion": false
       },
       "outcome": "solid_multiple_ge6_high",
       "steps": {
@@ -200,7 +214,8 @@
       "inputs": {
         "nodule_type": "ground-glass",
         "count": "single",
-        "diameter_mm": 5.4
+        "diameter_mm": 5.4,
+        "exclusion": false
       },
       "outcome": "ggn_single_lt6",
       "steps": {
@@ -213,7 +228,8 @@
       "inputs": {
         "nodule_type": "ground-glass",
         "count": "single",
-        "diameter_mm": 5.5
+        "diameter_mm": 5.5,
+        "exclusion": false
       },
       "outcome": "ggn_single_ge6",
       "steps": {
@@ -227,7 +243,8 @@
         "nodule_type": "ground-glass",
         "count": "single",
         "diameter_mm": 8.5,
-        "risk": "high"
+        "risk": "high",
+        "exclusion": false
       },
       "outcome": "ggn_single_ge6",
       "steps": {
@@ -240,7 +257,8 @@
       "inputs": {
         "nodule_type": "part-solid",
         "count": "single",
-        "diameter_mm": 4
+        "diameter_mm": 4,
+        "exclusion": false
       },
       "outcome": "psn_single_lt6",
       "steps": {
@@ -253,7 +271,8 @@
       "inputs": {
         "nodule_type": "part-solid",
         "count": "single",
-        "diameter_mm": 9
+        "diameter_mm": 9,
+        "exclusion": false
       },
       "outcome": "psn_single_ge6",
       "steps": {
@@ -266,7 +285,8 @@
       "inputs": {
         "nodule_type": "part-solid",
         "count": "single",
-        "diameter_mm": 8.4
+        "diameter_mm": 8.4,
+        "exclusion": false
       },
       "outcome": "psn_single_ge6",
       "steps": {
@@ -279,7 +299,8 @@
       "inputs": {
         "nodule_type": "part-solid",
         "count": "multiple",
-        "diameter_mm": 5.4
+        "diameter_mm": 5.4,
+        "exclusion": false
       },
       "outcome": "subsolid_multiple_lt6",
       "steps": {
@@ -292,7 +313,8 @@
       "inputs": {
         "nodule_type": "ground-glass",
         "count": "multiple",
-        "diameter_mm": 2
+        "diameter_mm": 2,
+        "exclusion": false
       },
       "outcome": "subsolid_multiple_lt6",
       "steps": {
@@ -305,7 +327,8 @@
       "inputs": {
         "nodule_type": "part-solid",
         "count": "multiple",
-        "diameter_mm": 6
+        "diameter_mm": 6,
+        "exclusion": false
       },
       "outcome": "subsolid_multiple_ge6",
       "steps": {
@@ -318,7 +341,8 @@
       "inputs": {
         "nodule_type": "solid",
         "count": "single",
-        "diameter_mm": 7
+        "diameter_mm": 7,
+        "exclusion": false
       },
       "outcome": null,
       "needed": [
@@ -330,7 +354,8 @@
       "origin": "ours",
       "inputs": {
         "nodule_type": "ground-glass",
-        "count": "single"
+        "count": "single",
+        "exclusion": false
       },
       "outcome": null,
       "needed": [
@@ -343,7 +368,8 @@
       "inputs": {
         "nodule_type": "solid",
         "diameter_mm": 4,
-        "risk": "low"
+        "risk": "low",
+        "exclusion": false
       },
       "outcome": null,
       "needed": [
@@ -355,12 +381,50 @@
       "origin": "ours",
       "inputs": {
         "count": "single",
-        "diameter_mm": 7
+        "diameter_mm": 7,
+        "exclusion": false
       },
       "outcome": null,
       "needed": [
         "nodule_type",
         "risk"
+      ]
+    },
+    {
+      "name": "exclusion stated (known primary cancer), nodule details not stated",
+      "origin": "ours",
+      "inputs": {
+        "exclusion": true
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "exclusion stated with a full solid nodule description",
+      "origin": "ours",
+      "inputs": {
+        "exclusion": true,
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 9,
+        "risk": "high"
+      },
+      "outcome": "does_not_apply",
+      "steps": {
+        "size_band": "gt8"
+      }
+    },
+    {
+      "name": "solid single 4 mm low risk, exclusion not stated",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 4,
+        "risk": "low"
+      },
+      "outcome": null,
+      "needed": [
+        "exclusion"
       ]
     }
   ]

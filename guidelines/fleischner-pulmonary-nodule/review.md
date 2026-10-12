@@ -74,7 +74,7 @@ incl. a 10-mm ground-glass nodule, "initial follow-up would be appropriate in 3â
 
 1. **Exclusions are pitfalls plus a caveat on every outcome, not inputs** (as the brief asked): screening, age under 35,
    immunocompromise, known primary cancer are never asked on the card, so the pack will answer for an excluded patient
-   and rely on the caveat.
+   and rely on the caveat. **Superseded by Hassan's verdict A (F1), fix wave 2:** now a patient-scope input (see below).
 2. **Outcomes split where the table's comments differ.** "No routine follow-up" is four outcomes (solid single low,
    solid multiple low, single GGN, single part-solid) and "Optional CT at 12 months" two, because each row carries a
    different comment. 15 outcomes, not one per distinct recommendation string.
@@ -86,6 +86,7 @@ incl. a 10-mm ground-glass nodule, "initial follow-up would be appropriate in 3â
 5. **Mixed solid and subsolid multiple nodules have no table row.** The radiologist picks the type of the most
    suspicious nodule.
 6. **Rounding half up:** 5.5 mm falls in 6â€“8 mm and 8.5 mm in >8 mm. The source says only "nearest millimetre".
+   **Decided by Hassan (F6, 2026-10-12): keep half-up rounding.**
 7. **Engine behaviour seen:** a solid single >8 mm nodule with risk unknown returns no outcome (`possible` =
    [solid_single_gt8], `needed` = []), because a table step waits for every key. The host should treat a single
    possible outcome as settled, or the engine could. **Resolved:** the engine now settles a single possible outcome
@@ -95,3 +96,20 @@ incl. a 10-mm ground-glass nodule, "initial follow-up would be appropriate in 3â
    if you have institutional access.
 9. **Figure 14 as the source case:** its most suspicious lesion is a part-solid nodule of unstated size, so the case
    uses the stated 10-mm ground-glass nodule; the outcome is the same for either type.
+
+## Fix wave 2 (2026-10-12): Hassan's verdicts
+
+- **F1, exclusion input.** New boolean input `exclusion` (first input, patient scope): "any Fleischner exclusion (lung
+  cancer screening, age under 35, immunocompromised, known primary cancer)". `how_stated` tells the model to settle it
+  from the clinical history when the history states it, and to leave it unset otherwise. Locator: S1 p2, Implications
+  for Patient Care (the under-35, immunocompromised and cancer exclusions; screening follows Lung-RADS). A new result
+  step `applies` (rules) reads it: `exclusion = yes` gives the new outcome `does_not_apply` ("Fleischner 2017 does not
+  apply ... manage per the clinical context"; locator S1 p3 table note); `exclusion = no` passes the table's outcome
+  through unchanged (one case per table result, each citing the table). The generic exclusion caveat is removed from
+  the 15 table outcomes, since the input now carries it.
+  Consequence: a card asks the exclusion question whenever the history does not state it (it changes the outcome).
+- **F6.** Half-up rounding kept, decided by Hassan.
+- Golden cases: every earlier case now states `exclusion: false`; three new cases (exclusion alone â†’ does_not_apply;
+  exclusion with a full solid description â†’ does_not_apply; exclusion not stated â†’ needed [exclusion]). Gates 1-4 pass.
+- Gate 5 re-run (evidence.md): applies.case0 0.81, outcome.does_not_apply 0.84; the pass-through cases restate table
+  rows (checked by hand against the table, p3). 13 items below 0.5, all earlier items or pass-through restatements.

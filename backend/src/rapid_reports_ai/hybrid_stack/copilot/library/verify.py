@@ -148,10 +148,32 @@ def _txt(v) -> str:
     return str(v.value) if v.state == "present" else f"@{v.state}"
 
 
+def _enumerated_inputs(e: Entry) -> list:
+    """The discrete inputs the enumeration needs: those the result reaches without passing through a band step (every
+    band step is overridden with each band id, so what feeds it cannot matter), the inputs their prerequisites name,
+    and any input an outcome placeholder names. Brock's risk factors, for example, reach the result only through the
+    banded score, so enumerating them would only multiply identical combinations."""
+    need, todo = set(), [e.result]
+    todo += [m.group(1) for o in e.outcomes for t in (o.classification, o.recommendation, *o.caveats)
+             for m in PH.finditer(t)]
+    while todo:
+        k = todo.pop()
+        if k in need:
+            continue
+        need.add(k)
+        s, i = e.step(k), e.input(k)
+        if s is not None and not isinstance(s, BandStep):
+            todo += s.refs()
+        if i is not None:
+            todo += [c.ref for p in i.prerequisites for c in conds(p)]
+    return [i for i in e.inputs if i.type != "number" and i.id in need]
+
+
 def _enumerate(e: Entry) -> list[str]:
     """Gate 2: every combination of discrete inputs and band ids gives exactly one outcome, and fills every
-    placeholder in it. Numbers are not enumerated: their band steps are overridden with each band id instead."""
-    free = [("in", i.id, domain(e, i)) for i in e.inputs if i.type != "number"]
+    placeholder in it. Numbers are not enumerated: their band steps are overridden with each band id instead, and
+    inputs that reach the result only through a band step are left unknown (_enumerated_inputs)."""
+    free = [("in", i.id, domain(e, i)) for i in _enumerated_inputs(e)]
     free += [("step", s.id, [V(value=b.id) for b in s.bands] + [V(state=x) for x in sorted(_reach(e, s.ref))])
              for s in e.logic if isinstance(s, BandStep)]
     total = math.prod(len(d) for _, _, d in free)

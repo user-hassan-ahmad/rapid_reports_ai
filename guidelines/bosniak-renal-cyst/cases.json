@@ -236,7 +236,7 @@
         "contents_enhancement": "present",
         "hu": 45
       },
-      "outcome": "unclassifiable"
+      "outcome": "not_cystic"
     },
     {
       "name": "RMP 10 HU, mass enhances",
@@ -253,7 +253,7 @@
         "contents_enhancement": "present",
         "hu": 10
       },
-      "outcome": "unclassifiable"
+      "outcome": "not_cystic"
     },
     {
       "name": "RMP, few thin septa, mass contents enhance",
@@ -270,7 +270,7 @@
         "contents_enhancement": "present",
         "hu": 30
       },
-      "outcome": "unclassifiable"
+      "outcome": "not_cystic"
     },
     {
       "name": "nodule on portal venous only",
@@ -758,6 +758,60 @@
       "needed": [
         "septa"
       ]
+    },
+    {
+      "name": "III pattern with enhancing contents on RMP (B7): not a cystic mass",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "thick_enhancing",
+        "protrusion": "none",
+        "calcification": "none",
+        "contents": "uniform",
+        "contents_enhancement": "present",
+        "hu": 10
+      },
+      "outcome": "not_cystic",
+      "steps": {}
+    },
+    {
+      "name": "IIF pattern with enhancing contents on RMP (B7): not a cystic mass",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "many_thin_enhancing",
+        "protrusion": "none",
+        "calcification": "none",
+        "contents": "uniform",
+        "contents_enhancement": "present",
+        "hu": 10
+      },
+      "outcome": "not_cystic",
+      "steps": {}
+    },
+    {
+      "name": "IV pattern with enhancing contents on RMP (B7): not a cystic mass",
+      "origin": "ours",
+      "inputs": {
+        "too_small": "no",
+        "technique": "renal_mass_protocol",
+        "margin": "well_defined",
+        "wall": "thin",
+        "septa": "none",
+        "protrusion": "nodule",
+        "calcification": "none",
+        "contents": "uniform",
+        "contents_enhancement": "present",
+        "hu": 10
+      },
+      "outcome": "not_cystic",
+      "steps": {}
     }
   ]
 }

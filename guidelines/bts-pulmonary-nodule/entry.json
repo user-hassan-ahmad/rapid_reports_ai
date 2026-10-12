@@ -160,6 +160,54 @@
    }
   },
   {
+   "id": "resolved",
+   "label": "Nodule resolved",
+   "type": "boolean",
+   "how_stated": "true when a nodule seen on an earlier CT is no longer visible on this CT; false whenever the nodule is seen and described on this CT",
+   "prerequisites": [
+    {
+     "ref": "prior_study",
+     "eq": true
+    }
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 26,
+    "section": "Imaging follow-up: evidence statements (stable, shrunken or resolved nodules)"
+   }
+  },
+  {
+   "id": "growth",
+   "label": "Growth assessment against the baseline CT",
+   "type": "enum",
+   "options": [
+    "volumetry",
+    "diameter_stable",
+    "diameter_clear_growth",
+    "diameter_indeterminate"
+   ],
+   "how_stated": "volumetry when nodule volumes (mm3) from volumetry software are compared with the baseline CT; otherwise growth judged on diameter (2D) measurement or comparison: diameter_stable when unchanged in diameter, diameter_clear_growth when clearly larger, diameter_indeterminate for any other change such as a small or equivocal increase or a decrease (BTS gives no 2D growth threshold)",
+   "prerequisites": [
+    {
+     "ref": "prior_study",
+     "eq": true
+    },
+    {
+     "none": [
+      {
+       "ref": "resolved",
+       "eq": true
+      }
+     ]
+    }
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 9,
+    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: baseline volumetric analysis, or diameter measurement if volumetry is not available; stable on basis of 2D non-automated diameter value; clear evidence of growth"
+   }
+  },
+  {
    "id": "prior_volume_mm3",
    "label": "Baseline volume",
    "type": "number",
@@ -169,6 +217,10 @@
     {
      "ref": "prior_study",
      "eq": true
+    },
+    {
+     "ref": "growth",
+     "eq": "volumetry"
     }
    ],
    "locator": {
@@ -184,11 +236,15 @@
    "label": "Current volume",
    "type": "number",
    "unit": "mm3",
-   "how_stated": "nodule volume on this CT in cubic millimetres, measured with the same volumetry software; always above 0 (a resolved nodule has no volume: leave this unset)",
+   "how_stated": "nodule volume on this CT in cubic millimetres, measured with the same volumetry software; always above 0 (for a nodule no longer visible, use the resolved input instead)",
    "prerequisites": [
     {
      "ref": "prior_study",
      "eq": true
+    },
+    {
+     "ref": "growth",
+     "eq": "volumetry"
     }
    ],
    "locator": {
@@ -209,6 +265,14 @@
     {
      "ref": "prior_study",
      "eq": true
+    },
+    {
+     "none": [
+      {
+       "ref": "resolved",
+       "eq": true
+      }
+     ]
     }
    ],
    "locator": {
@@ -499,7 +563,7 @@
    "locator": {
     "source": "S1",
     "page": 9,
-    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: CT 1 year after baseline"
+    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: CT 1 year after baseline; 2D arm: CT 2 years after baseline"
    },
    "bands": [
     {
@@ -508,9 +572,15 @@
      "max": 365
     },
     {
-     "id": "ge1y",
-     "label": "1 year or more from baseline",
-     "min": 365
+     "id": "1to2y",
+     "label": "1 year to under 2 years from baseline",
+     "min": 365,
+     "max": 730
+    },
+    {
+     "id": "ge2y",
+     "label": "2 years or more from baseline",
+     "min": 730
     }
    ]
   },
@@ -580,8 +650,20 @@
    "cases": [
     {
      "when": {
-      "ref": "benign_features",
-      "eq": true
+      "all": [
+       {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
+       {
+        "ref": "benign_features",
+        "eq": true
+       }
+      ]
      },
      "result": "discharge_benign",
      "locator": {
@@ -593,6 +675,14 @@
     {
      "when": {
       "all": [
+       {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
        {
         "ref": "benign_features",
         "eq": false
@@ -616,6 +706,14 @@
     {
      "when": {
       "all": [
+       {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
        {
         "ref": "benign_features",
         "eq": false
@@ -641,6 +739,14 @@
      "when": {
       "all": [
        {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
+       {
         "ref": "benign_features",
         "eq": false
        },
@@ -655,6 +761,18 @@
        {
         "ref": "vdt_band",
         "state": "not_applicable"
+       },
+       {
+        "none": [
+         {
+          "ref": "growth",
+          "in": [
+           "diameter_stable",
+           "diameter_clear_growth",
+           "diameter_indeterminate"
+          ]
+         }
+        ]
        }
       ]
      },
@@ -668,6 +786,14 @@
     {
      "when": {
       "all": [
+       {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
        {
         "ref": "benign_features",
         "eq": false
@@ -683,6 +809,18 @@
        {
         "ref": "vdt_band",
         "state": "not_applicable"
+       },
+       {
+        "none": [
+         {
+          "ref": "growth",
+          "in": [
+           "diameter_stable",
+           "diameter_clear_growth",
+           "diameter_indeterminate"
+          ]
+         }
+        ]
        }
       ]
      },
@@ -696,6 +834,14 @@
     {
      "when": {
       "all": [
+       {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
        {
         "ref": "benign_features",
         "eq": false
@@ -715,6 +861,18 @@
        {
         "ref": "brock_band",
         "eq": "lt10"
+       },
+       {
+        "none": [
+         {
+          "ref": "growth",
+          "in": [
+           "diameter_stable",
+           "diameter_clear_growth",
+           "diameter_indeterminate"
+          ]
+         }
+        ]
        }
       ]
      },
@@ -728,6 +886,14 @@
     {
      "when": {
       "all": [
+       {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
        {
         "ref": "benign_features",
         "eq": false
@@ -747,6 +913,18 @@
        {
         "ref": "brock_band",
         "eq": "ge10"
+       },
+       {
+        "none": [
+         {
+          "ref": "growth",
+          "in": [
+           "diameter_stable",
+           "diameter_clear_growth",
+           "diameter_indeterminate"
+          ]
+         }
+        ]
        }
       ]
      },
@@ -760,6 +938,14 @@
     {
      "when": {
       "all": [
+       {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
        {
         "ref": "benign_features",
         "eq": false
@@ -805,6 +991,14 @@
      "when": {
       "all": [
        {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
+       {
         "ref": "benign_features",
         "eq": false
        },
@@ -848,7 +1042,10 @@
         "none": [
          {
           "ref": "interval_band",
-          "eq": "ge1y"
+          "in": [
+           "1to2y",
+           "ge2y"
+          ]
          }
         ]
        },
@@ -876,6 +1073,14 @@
      "when": {
       "all": [
        {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
+       {
         "ref": "benign_features",
         "eq": false
        },
@@ -919,7 +1124,10 @@
         "none": [
          {
           "ref": "interval_band",
-          "eq": "ge1y"
+          "in": [
+           "1to2y",
+           "ge2y"
+          ]
          }
         ]
        },
@@ -955,6 +1163,14 @@
      "when": {
       "all": [
        {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
+       {
         "ref": "benign_features",
         "eq": false
        },
@@ -980,7 +1196,10 @@
        },
        {
         "ref": "interval_band",
-        "eq": "ge1y"
+        "in": [
+         "1to2y",
+         "ge2y"
+        ]
        },
        {
         "ref": "change_band",
@@ -1003,6 +1222,14 @@
      "when": {
       "all": [
        {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
+       {
         "ref": "benign_features",
         "eq": false
        },
@@ -1028,7 +1255,10 @@
        },
        {
         "ref": "interval_band",
-        "eq": "ge1y"
+        "in": [
+         "1to2y",
+         "ge2y"
+        ]
        },
        {
         "ref": "change_band",
@@ -1051,6 +1281,14 @@
      "when": {
       "all": [
        {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
+       {
         "ref": "benign_features",
         "eq": false
        },
@@ -1076,7 +1314,10 @@
        },
        {
         "ref": "interval_band",
-        "eq": "ge1y"
+        "in": [
+         "1to2y",
+         "ge2y"
+        ]
        },
        {
         "none": [
@@ -1103,6 +1344,14 @@
      "when": {
       "all": [
        {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
+       {
         "ref": "benign_features",
         "eq": false
        },
@@ -1128,7 +1377,10 @@
        },
        {
         "ref": "interval_band",
-        "eq": "ge1y"
+        "in": [
+         "1to2y",
+         "ge2y"
+        ]
        },
        {
         "ref": "vdt_band",
@@ -1141,6 +1393,277 @@
       "source": "S1",
       "page": 26,
       "section": "Imaging follow-up: evidence statements (stable, shrunken or resolved nodules)"
+     }
+    },
+    {
+     "when": {
+      "ref": "resolved",
+      "eq": true
+     },
+     "result": "resolved",
+     "locator": {
+      "source": "S1",
+      "page": 26,
+      "section": "Imaging follow-up: evidence statements (stable, shrunken or resolved nodules)"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "in": [
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
+       },
+       {
+        "ref": "prior_study",
+        "eq": true
+       },
+       {
+        "ref": "vdt_band",
+        "state": "not_applicable"
+       },
+       {
+        "ref": "growth",
+        "eq": "diameter_clear_growth"
+       }
+      ]
+     },
+     "result": "growth_workup_2d",
+     "locator": {
+      "source": "S1",
+      "page": 9,
+      "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: VDT 400 days or less or clear evidence of growth: further work up"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "in": [
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
+       },
+       {
+        "ref": "prior_study",
+        "eq": true
+       },
+       {
+        "ref": "vdt_band",
+        "state": "not_applicable"
+       },
+       {
+        "ref": "growth",
+        "eq": "diameter_stable"
+       },
+       {
+        "none": [
+         {
+          "ref": "interval_band",
+          "in": [
+           "1to2y",
+           "ge2y"
+          ]
+         }
+        ]
+       }
+      ]
+     },
+     "result": "continue_no_growth",
+     "locator": {
+      "source": "S1",
+      "page": 9,
+      "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: no clear evidence of growth: CT 1 year after baseline"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "in": [
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
+       },
+       {
+        "ref": "prior_study",
+        "eq": true
+       },
+       {
+        "ref": "vdt_band",
+        "state": "not_applicable"
+       },
+       {
+        "ref": "growth",
+        "eq": "diameter_stable"
+       },
+       {
+        "ref": "interval_band",
+        "eq": "1to2y"
+       }
+      ]
+     },
+     "result": "ct_2yr_2d",
+     "locator": {
+      "source": "S1",
+      "page": 9,
+      "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: stable on basis of 2D non-automated diameter value: CT 2 years after baseline"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "in": [
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
+       },
+       {
+        "ref": "prior_study",
+        "eq": true
+       },
+       {
+        "ref": "vdt_band",
+        "state": "not_applicable"
+       },
+       {
+        "ref": "growth",
+        "eq": "diameter_stable"
+       },
+       {
+        "ref": "interval_band",
+        "eq": "ge2y"
+       }
+      ]
+     },
+     "result": "stable_2d_discharge",
+     "locator": {
+      "source": "S1",
+      "page": 9,
+      "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: CT 2 years after baseline: discharge if stable"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
+       {
+        "ref": "benign_features",
+        "eq": false
+       },
+       {
+        "ref": "nodule_type",
+        "eq": "solid"
+       },
+       {
+        "ref": "diameter_band",
+        "in": [
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
+       },
+       {
+        "ref": "prior_study",
+        "eq": true
+       },
+       {
+        "ref": "vdt_band",
+        "state": "not_applicable"
+       },
+       {
+        "ref": "growth",
+        "eq": "diameter_indeterminate"
+       }
+      ]
+     },
+     "result": "volumetry_advised",
+     "locator": {
+      "source": "S1",
+      "page": 8,
+      "section": "Summary of recommendations: imaging follow-up (assess growth using interval CT with automated volumetric analysis)"
      }
     }
    ]
@@ -1336,6 +1859,71 @@
     "page": 26,
     "section": "Imaging follow-up: evidence review (stable, shrunken or resolved nodules)"
    }
+  },
+  {
+   "id": "resolved",
+   "classification": "Previously seen nodule has resolved on this CT.",
+   "recommendation": "No further nodule follow-up.",
+   "caveats": [
+    "Library addition, not BTS text: BTS gives no step for a resolved nodule; its evidence review reports a low probability of cancer for resolved or shrunken nodules."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 26,
+    "section": "Imaging follow-up: evidence statements (stable, shrunken or resolved nodules)"
+   }
+  },
+  {
+   "id": "growth_workup_2d",
+   "classification": "Solid nodule {diameter_band} with clear growth on diameter measurement.",
+   "recommendation": "Further investigation (biopsy, imaging or resection) and consideration of definitive management.",
+   "caveats": [
+    "With a known extrapulmonary primary cancer, interpret growth in the context of the primary and its treatment."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 9,
+    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: VDT 400 days or less or clear evidence of growth: further work up"
+   }
+  },
+  {
+   "id": "ct_2yr_2d",
+   "classification": "Solid nodule {diameter_band}, stable on 2D diameter measurement at 1 year or more from baseline.",
+   "recommendation": "Repeat CT 2 years after baseline, then assess volume doubling time; discharge if stable.",
+   "caveats": [
+    "Growth judged on 2D diameters needs CT follow-up for a total of 2 years (BTS)."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 9,
+    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: stable on basis of 2D non-automated diameter value: CT 2 years after baseline"
+   }
+  },
+  {
+   "id": "stable_2d_discharge",
+   "classification": "Solid nodule {diameter_band}, stable on 2D diameter measurement at 2 years or more from baseline.",
+   "recommendation": "Discharge from nodule follow-up.",
+   "caveats": [
+    "BTS asks for a volume doubling time assessment at the 2-year CT; discharge applies when the nodule is stable."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 9,
+    "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: CT 2 years after baseline: discharge if stable"
+   }
+  },
+  {
+   "id": "volumetry_advised",
+   "classification": "Solid nodule {diameter_band}: diameter change since baseline not clearly growth or stability.",
+   "recommendation": "Assess growth by volumetry (volume doubling time) where available.",
+   "caveats": [
+    "Library routing, not a BTS step: BTS defines significant growth by volume (25% or more) and gives no diameter growth threshold."
+   ],
+   "locator": {
+    "source": "S1",
+    "page": 8,
+    "section": "Summary of recommendations: imaging follow-up (assess growth using interval CT with automated volumetric analysis)"
+   }
   }
  ],
  "reference": {
@@ -1497,7 +2085,7 @@
    },
    {
     "id": "pit.resolved",
-    "text": "A nodule that has resolved has no volume, so VDT cannot be calculated; this entry has no resolved-nodule route and asks for the volume instead.",
+    "text": "BTS gives no step for a resolved nodule; this entry's 'resolved' route (no further follow-up) is a library addition based on the evidence review's low cancer probability for resolved nodules.",
     "locator": {
      "source": "S1",
      "page": 26,
@@ -1506,7 +2094,7 @@
    },
    {
     "id": "pit.2d",
-    "text": "Growth judged only on diameters (no volumetry) is not encoded: BTS then advises CT 2 years after baseline (Figure 2).",
+    "text": "Growth judged on diameters only (no volumetry): stable at 1 year goes to CT 2 years after baseline, then discharge if stable; clear growth goes to work-up. BTS sets no 2D growth threshold, so other changes are routed to volumetry.",
     "locator": {
      "source": "S1",
      "page": 9,

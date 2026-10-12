@@ -141,7 +141,7 @@ Jev scored 28 of 55 facts below 0.5 (re-run in revision 3). Because the locators
 4. **Calcification without septa is class II,** following the text: calcification of any type is a II feature. II types 2, 4 and 5 therefore allow calcification; class I does not.
 5. **"Not enhancing" and "not assessable" are merged** in the wall, septa and protrusion options, to stay under the gate cap. Both lead to unclassifiable with MRI advised.
 6. **One septa value per mass,** taken from the highest-class enhancing septum. A mix such as a non-enhancing thick septum alongside enhancing thin septa is reported by the enhancing one; the class II caveat then points to MRI for non-enhancing septa 3 mm or thicker (footnote †).
-7. **On RMP, a mass that itself enhances is unclassifiable,** because the source does not count it as a cystic mass. This holds on every path, including II type 1 (few thin septa), and even at ≥70 HU. On unenhanced-only CT, ≥70 HU stays II type 2 as the source says.
+7. **(Superseded by B7, fix wave 2: now `not_cystic` for every class pattern.) On RMP, a mass that itself enhances is unclassifiable,** because the source does not count it as a cystic mass. This holds on every path, including II type 1 (few thin septa), and even at ≥70 HU. On unenhanced-only CT, ≥70 HU stays II type 2 as the source says.
 8. **These undefined combinations go to unclassifiable:**
    - too small to characterise, but not homogeneous low attenuation;
    - complex structure without an enhancing feature on RMP, or on any single-phase CT;
@@ -156,3 +156,18 @@ Jev scored 28 of 55 facts below 0.5 (re-run in revision 3). Because the locators
    The source's "may warrant IIF" is kept as a caveat only, not mapped to IIF.
 9. **II type 1 (few thin septa) leaves attenuation and contents free,** as the source does, except that the mass contents must not enhance on RMP (item 7).
 10. **Issuer** is "Society of Abdominal Radiology (Silverman et al.)", the society the source names as endorsing the update.
+
+## Fix wave 2 (2026-10-12): Hassan's verdicts
+
+- **B7.** Enhancing contents on renal mass protocol CT now give the new outcome `not_cystic` ("not a cystic renal mass,
+  so outside the Bosniak classification; manage as a solid renal mass") for **every** class pattern, IIF, III and IV
+  included. One case placed third in `class` (`too_small = no` and `contents_enhancement = present`), and every other
+  `too_small = no` case gains "contents do not enhance", so the cases stay exclusive. The former few-thin-septa +
+  enhancing-contents → unclassifiable case is removed (covered). Locator: the source's definition of a cystic mass
+  (under about 25% enhancing tissue), Bosniak Classification, Version 2019. Caveat: Bosniak 2019 treats a mass with
+  about 25% or more enhancing tissue as solid, whatever its cystic pattern.
+- Golden cases: the three cases that pinned enhancing contents as unclassifiable now expect `not_cystic`; three new
+  cases (IIF, III and IV patterns from the source examples, with enhancing contents) expect `not_cystic`. Gates 1-4 pass.
+- **B8.** Undefined combinations stay unclassifiable, decided by Hassan.
+- Gate 5 re-run (evidence.md): class.case2 and outcome.not_cystic score low (0.08; the definition sits in General
+  Points, page-less HTML), the caveat 0.64. Checked by hand against the 25% definition.

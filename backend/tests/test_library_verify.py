@@ -1,5 +1,6 @@
 import pytest
 
+from rapid_reports_ai.hybrid_stack.copilot.library import verify as V
 from rapid_reports_ai.hybrid_stack.copilot.library.schema import Cases, Entry
 from rapid_reports_ai.hybrid_stack.copilot.library.verify import check
 
@@ -108,3 +109,20 @@ def test_a_formula_safe_across_its_range_passes_and_unranged_inputs_are_skipped(
     toy2 = _ln_entry(__import__("copy").deepcopy(toy))
     toy2["inputs"][-1] = {"id": "v", "label": "Volume", "type": "number"}       # no range: not checked
     assert not any("fails inside" in x for x in _check(toy2, manifest, cases))
+
+
+def test_enumeration_skips_inputs_that_only_feed_a_banded_formula():
+    """The gate overrides every band step with each band id, so an input reaching the result only through a band step
+    (Brock's sex, family history, emphysema, upper lobe, spiculation) cannot change what the enumeration sees; it is
+    left out. An input a rule reads directly (nodule type) or a prerequisite names (prior study) is kept."""
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+    e = Entry.model_validate_json((LB.guidelines_root() / "bts-pulmonary-nodule" / "entry.json").read_text())
+    ids = {i.id for i in V._enumerated_inputs(e)}
+    assert not ids & {"sex", "family_history", "emphysema", "upper_lobe", "spiculation"}
+    assert {"benign_features", "nodule_type", "prior_study"} <= ids
+
+
+def test_enumeration_keeps_an_input_an_outcome_placeholder_names(toy, manifest, cases):
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
+    e = Entry.model_validate(toy)
+    assert "risk" in {i.id for i in V._enumerated_inputs(e)} and "margin" not in {i.id for i in V._enumerated_inputs(e)}

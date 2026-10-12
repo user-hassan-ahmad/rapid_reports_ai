@@ -10,7 +10,8 @@
     "age": 70,
     "sex": "female",
     "upper_lobe": true,
-    "spiculation": false
+    "spiculation": false,
+    "resolved": false
    },
    "outcome": "discharge_small"
   },
@@ -359,6 +360,8 @@
    "outcome": null,
    "needed": [
     "prior_study",
+    "resolved",
+    "growth",
     "prior_volume_mm3",
     "current_volume_mm3",
     "interval_days"
@@ -380,7 +383,9 @@
     "diameter_mm": 7,
     "prior_study": true,
     "prior_volume_mm3": 100,
-    "current_volume_mm3": 150
+    "current_volume_mm3": 150,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": null,
    "needed": [
@@ -404,7 +409,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 150,
-    "interval_days": 91
+    "interval_days": 91,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "growth_workup",
    "steps": {
@@ -429,7 +436,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 120,
-    "interval_days": 91
+    "interval_days": 91,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "continue_no_growth",
    "steps": {
@@ -454,7 +463,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 125,
-    "interval_days": 91
+    "interval_days": 91,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "growth_workup",
    "steps": {
@@ -479,7 +490,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 124.9,
-    "interval_days": 91
+    "interval_days": 91,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "continue_no_growth",
    "steps": {
@@ -503,7 +516,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 130,
-    "interval_days": 182
+    "interval_days": 182,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "continue_slow_growth",
    "steps": {
@@ -527,7 +542,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 125,
-    "interval_days": 200
+    "interval_days": 200,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "continue_slow_growth",
    "steps": {
@@ -551,7 +568,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 200,
-    "interval_days": 400
+    "interval_days": 400,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "growth_workup",
    "steps": {
@@ -575,7 +594,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 200,
-    "interval_days": 401
+    "interval_days": 401,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "vdt_400_600",
    "steps": {
@@ -599,7 +620,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 200,
-    "interval_days": 600
+    "interval_days": 600,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "vdt_400_600",
    "steps": {
@@ -623,7 +646,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 200,
-    "interval_days": 601
+    "interval_days": 601,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "vdt_gt600",
    "steps": {
@@ -647,7 +672,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 150,
-    "interval_days": 365
+    "interval_days": 365,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "vdt_gt600",
    "steps": {
@@ -671,7 +698,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 110,
-    "interval_days": 365
+    "interval_days": 365,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "stable_discharge",
    "steps": {
@@ -695,7 +724,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 110,
-    "interval_days": 364
+    "interval_days": 364,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "continue_no_growth"
   },
@@ -716,7 +747,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 80,
-    "interval_days": 91
+    "interval_days": 91,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "continue_no_growth",
    "steps": {
@@ -741,7 +774,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 80,
-    "interval_days": 365
+    "interval_days": 365,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "smaller_discharge",
    "steps": {
@@ -765,7 +800,9 @@
     "prior_study": true,
     "prior_volume_mm3": 30,
     "current_volume_mm3": 33,
-    "interval_days": 365
+    "interval_days": 365,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "stable_discharge"
   },
@@ -786,7 +823,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 100,
-    "interval_days": 365
+    "interval_days": 365,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "stable_discharge",
    "steps": {
@@ -811,7 +850,9 @@
     "prior_study": true,
     "prior_volume_mm3": 100,
     "current_volume_mm3": 100,
-    "interval_days": 91
+    "interval_days": 91,
+    "resolved": false,
+    "growth": "volumetry"
    },
    "outcome": "continue_no_growth",
    "steps": {
@@ -836,6 +877,261 @@
     "prior_study": false
    },
    "outcome": "ct_3m"
+  },
+  {
+   "name": "2D: 3 months, stable diameter: CT at 1 year",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_stable",
+    "interval_days": 91
+   },
+   "outcome": "continue_no_growth",
+   "steps": {
+    "interval_band": "lt1y"
+   }
+  },
+  {
+   "name": "2D: 1 year exactly, stable diameter: CT at 2 years",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_stable",
+    "interval_days": 365
+   },
+   "outcome": "ct_2yr_2d",
+   "steps": {
+    "interval_band": "1to2y"
+   }
+  },
+  {
+   "name": "2D: 729 days, stable diameter: still CT at 2 years",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_stable",
+    "interval_days": 729
+   },
+   "outcome": "ct_2yr_2d",
+   "steps": {
+    "interval_band": "1to2y"
+   }
+  },
+  {
+   "name": "2D: 2 years exactly, stable diameter: discharge",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_stable",
+    "interval_days": 730
+   },
+   "outcome": "stable_2d_discharge",
+   "steps": {
+    "interval_band": "ge2y"
+   }
+  },
+  {
+   "name": "2D: 3 months, clear growth: work-up",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_clear_growth",
+    "interval_days": 91
+   },
+   "outcome": "growth_workup_2d"
+  },
+  {
+   "name": "2D: clear growth, interval not stated: still work-up",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_clear_growth"
+   },
+   "outcome": "growth_workup_2d"
+  },
+  {
+   "name": "2D: 1 year, equivocal diameter change: volumetry advised",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_indeterminate",
+    "interval_days": 365
+   },
+   "outcome": "volumetry_advised"
+  },
+  {
+   "name": "2D: stable diameter, interval not stated",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_stable"
+   },
+   "outcome": null,
+   "needed": [
+    "interval_days"
+   ]
+  },
+  {
+   "name": "2D: 4 mm with prior CT: discharge on size alone",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 4,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_stable",
+    "interval_days": 365
+   },
+   "outcome": "discharge_small"
+  },
+  {
+   "name": "resolved nodule on follow-up CT (library addition)",
+   "origin": "ours",
+   "inputs": {
+    "prior_study": true,
+    "resolved": true
+   },
+   "outcome": "resolved"
+  },
+  {
+   "name": "resolved, with the earlier nodule's features given",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": true
+   },
+   "outcome": "resolved"
+  },
+  {
+   "name": "volumes compared, interval not stated, volumes not given: method stated as volumetry",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "volumetry",
+    "interval_days": 365
+   },
+   "outcome": null,
+   "needed": [
+    "prior_volume_mm3",
+    "current_volume_mm3"
+   ]
   }
  ]
 }

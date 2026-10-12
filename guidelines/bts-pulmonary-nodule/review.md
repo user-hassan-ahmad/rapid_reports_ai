@@ -117,10 +117,47 @@ is refused as a value and the volume is asked.
     1 year goes to CT at 1 year, not work-up. Reason: at 1 year every ≥25% growth with VDT over 400 days falls in
     the 400-600 or >600 arms, so "clear growth" cannot simply mean ≥25%. A radiologist's visual "clear growth" call
     is not an input.
-12. **No growth route without volumetry**: with diameters only, the pack asks for volumes; Fig 2's 2D arm (CT at 2
+12. **(Done in fix wave 2, T12.) No growth route without volumetry**: with diameters only, the pack asks for volumes; Fig 2's 2D arm (CT at 2
     years) is a caveat and pitfall only. UK practice often lacks volumetry.
 13. **Lingula**: S2 compares the upper lobes with the rest and never mentions the lingula; how_stated says to treat it
     as left upper lobe (anatomical, our call).
-14. **Resolved nodule**: no route (volume 0 is refused, the volume is asked). A boolean `resolved` input leading to
+14. **(Done in fix wave 2, T14.) Resolved nodule**: no route (volume 0 is refused, the volume is asked). A boolean `resolved` input leading to
     discharge would be the fuller shape (reviewer suggestion); BTS p26 supports a low risk but gives no step.
 15. **Age range 18-110**: 18 from the guideline's scope; 110 is a plausibility bound of ours.
+
+## Fix wave 2 (2026-10-12): Hassan's verdicts T12 and T14
+
+Read again side by side with S1 p8 (Summary of recommendations, imaging follow-up) and Figure 2 (PDF page 9, viewed
+as an image).
+
+- **T12, the diameter (2D) route.** What the source states: Figure 2 starts from "baseline volumetric analysis (or
+  diameter measurement if volumetry not available/technically possible)"; at 3 months, "VDT ≤400 days or clear
+  evidence of growth?" yes → further work-up, no → CT 1 year after baseline; at 1 year, "stable on basis of 2D
+  non-automated diameter value" → CT 2 years after baseline → "VDT assessment and manage as per VDT categories at 1
+  year. Discharge if stable"; p8: "If two-dimensional diameter measurements are used to assess growth, follow-up with
+  CT for a total of 2 years" (Grade D). The source gives **no diameter growth threshold**.
+  Encoded: a new input `growth` (prerequisite: prior CT, not resolved) with options `volumetry`, `diameter_stable`,
+  `diameter_clear_growth`, `diameter_indeterminate` (one input, not method plus change, to keep the enumeration under
+  its cap); the volumes now require `growth = volumetry`. The interval band gains a 2-year edge (under 1 year; 1 to
+  under 2 years; 2 years or more); the volumetric cases read "1 year or more" as the last two bands. New cases:
+  clear growth → `growth_workup_2d` (any interval); stable before 1 year → `continue_no_growth` (CT at 1 year);
+  stable at 1 to under 2 years → `ct_2yr_2d`; stable at 2 years or more → `stable_2d_discharge`; any other diameter
+  change (small or equivocal increase, or a decrease) → `volumetry_advised`, an explicit library routing labelled in
+  its caveat as not a BTS step. The no-prior cases (ct_1yr, ct_3m, Brock) now also require "growth not by diameter",
+  and the 2D cases require the VDT band to be not applicable, so the cases stay exclusive under the gate's band
+  overrides.
+- **T14, resolved.** New boolean input `resolved` (prerequisite: prior CT) → outcome `resolved` ("Previously seen
+  nodule has resolved on this CT; no further nodule follow-up"), its caveat labelling it a library addition, not BTS
+  text (p26 evidence review: low cancer probability for resolved or shrunken nodules). Every other case requires "not
+  resolved". `how_stated` makes a described nodule `resolved = false`, so the model settles it from the description.
+  pit.resolved and pit.2d rewritten to match.
+- **Engine change behind T12:** a formula step blocked by both an unknown and a not-applicable input now takes
+  not_applicable (it can never compute), so a 2D case with the interval unknown still reaches its outcome.
+- **Gate change behind T12:** the enumeration leaves out inputs that reach the result only through a band step (the
+  band is overridden with each id anyway): Brock's sex, family history, emphysema, upper lobe and spiculation.
+- Golden cases: earlier prior-CT cases state `resolved: false, growth: volumetry`; the source worked example states
+  `resolved: false` (the nodule is described); "7 mm, prior imaging not stated" now needs prior_study, resolved,
+  growth, both volumes and the interval; 12 new cases cover every 2D arm, both interval edges (365, 729, 730 days),
+  resolved, and needed lists. Gates 1-4 pass.
+- Gate 5 re-run (evidence.md): the new Figure 2 facts score low as before (image-only); volumetry_advised 0.43 and
+  case 0.57; resolved items low (a library addition, labelled). Each checked by hand against Figure 2 and p8/p26.

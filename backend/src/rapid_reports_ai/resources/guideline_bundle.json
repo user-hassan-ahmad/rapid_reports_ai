@@ -366,6 +366,26 @@
        },
        {
         "locator": {
+         "section": "Bosniak Classification, Version 2019: a cystic renal mass is one in which less than approximately 25% of the mass is composed of enhancing tissue",
+         "source": "S1",
+         "table": ""
+        },
+        "result": "not_cystic",
+        "when": {
+         "all": [
+          {
+           "eq": "no",
+           "ref": "too_small"
+          },
+          {
+           "eq": "present",
+           "ref": "contents_enhancement"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
          "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
          "source": "S1",
          "table": "2"
@@ -376,6 +396,14 @@
           {
            "eq": "no",
            "ref": "too_small"
+          },
+          {
+           "none": [
+            {
+             "eq": "present",
+             "ref": "contents_enhancement"
+            }
+           ]
           },
           {
            "all": [
@@ -404,6 +432,14 @@
           {
            "eq": "no",
            "ref": "too_small"
+          },
+          {
+           "none": [
+            {
+             "eq": "present",
+             "ref": "contents_enhancement"
+            }
+           ]
           },
           {
            "none": [
@@ -460,6 +496,14 @@
           {
            "eq": "no",
            "ref": "too_small"
+          },
+          {
+           "none": [
+            {
+             "eq": "present",
+             "ref": "contents_enhancement"
+            }
+           ]
           },
           {
            "none": [
@@ -543,6 +587,14 @@
           {
            "eq": "no",
            "ref": "too_small"
+          },
+          {
+           "none": [
+            {
+             "eq": "present",
+             "ref": "contents_enhancement"
+            }
+           ]
           },
           {
            "none": [
@@ -665,6 +717,14 @@
           {
            "none": [
             {
+             "eq": "present",
+             "ref": "contents_enhancement"
+            }
+           ]
+          },
+          {
+           "none": [
+            {
              "any": [
               {
                "in": [
@@ -716,6 +776,14 @@
           {
            "eq": "no",
            "ref": "too_small"
+          },
+          {
+           "none": [
+            {
+             "eq": "present",
+             "ref": "contents_enhancement"
+            }
+           ]
           },
           {
            "none": [
@@ -773,69 +841,6 @@
        },
        {
         "locator": {
-         "section": "General Points",
-         "source": "S1",
-         "table": ""
-        },
-        "result": "unclassifiable",
-        "when": {
-         "all": [
-          {
-           "eq": "no",
-           "ref": "too_small"
-          },
-          {
-           "none": [
-            {
-             "any": [
-              {
-               "in": [
-                "irregular_thickening",
-                "nodule",
-                "not_enhancing"
-               ],
-               "ref": "protrusion"
-              },
-              {
-               "none": [
-                {
-                 "eq": "thin",
-                 "ref": "wall"
-                }
-               ]
-              },
-              {
-               "none": [
-                {
-                 "in": [
-                  "none",
-                  "few_thin"
-                 ],
-                 "ref": "septa"
-                }
-               ]
-              }
-             ]
-            }
-           ]
-          },
-          {
-           "eq": "well_defined",
-           "ref": "margin"
-          },
-          {
-           "eq": "few_thin",
-           "ref": "septa"
-          },
-          {
-           "eq": "present",
-           "ref": "contents_enhancement"
-          }
-         ]
-        }
-       },
-       {
-        "locator": {
          "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
          "source": "S1",
          "table": "2"
@@ -846,6 +851,14 @@
           {
            "eq": "no",
            "ref": "too_small"
+          },
+          {
+           "none": [
+            {
+             "eq": "present",
+             "ref": "contents_enhancement"
+            }
+           ]
           },
           {
            "none": [
@@ -941,6 +954,14 @@
           {
            "none": [
             {
+             "eq": "present",
+             "ref": "contents_enhancement"
+            }
+           ]
+          },
+          {
+           "none": [
+            {
              "any": [
               {
                "in": [
@@ -1016,6 +1037,14 @@
           {
            "eq": "no",
            "ref": "too_small"
+          },
+          {
+           "none": [
+            {
+             "eq": "present",
+             "ref": "contents_enhancement"
+            }
+           ]
           },
           {
            "none": [
@@ -1103,6 +1132,14 @@
           {
            "none": [
             {
+             "eq": "present",
+             "ref": "contents_enhancement"
+            }
+           ]
+          },
+          {
+           "none": [
+            {
              "any": [
               {
                "in": [
@@ -1174,6 +1211,14 @@
           {
            "eq": "no",
            "ref": "too_small"
+          },
+          {
+           "none": [
+            {
+             "eq": "present",
+             "ref": "contents_enhancement"
+            }
+           ]
           },
           {
            "none": [
@@ -1261,6 +1306,14 @@
           {
            "none": [
             {
+             "eq": "present",
+             "ref": "contents_enhancement"
+            }
+           ]
+          },
+          {
+           "none": [
+            {
              "any": [
               {
                "in": [
@@ -1332,6 +1385,14 @@
           {
            "eq": "no",
            "ref": "too_small"
+          },
+          {
+           "none": [
+            {
+             "eq": "present",
+             "ref": "contents_enhancement"
+            }
+           ]
           },
           {
            "none": [
@@ -1590,6 +1651,19 @@
        "table": "2"
       },
       "recommendation": "Consider dedicated renal mass protocol CT or MRI (with subtraction) to look for enhancing elements before assigning a class."
+     },
+     {
+      "caveats": [
+       "Bosniak 2019 treats a mass with about 25% or more enhancing tissue as solid, whatever its cystic pattern."
+      ],
+      "classification": "Enhancing contents on renal mass protocol CT: not a cystic renal mass, so outside the Bosniak classification.",
+      "id": "not_cystic",
+      "locator": {
+       "section": "Bosniak Classification, Version 2019: a cystic renal mass is one in which less than approximately 25% of the mass is composed of enhancing tissue",
+       "source": "S1",
+       "table": ""
+      },
+      "recommendation": "Manage as a solid renal mass."
      }
     ],
     "reference": {
@@ -2045,6 +2119,65 @@
       "unit": ""
      },
      {
+      "how_stated": "true when a nodule seen on an earlier CT is no longer visible on this CT; false whenever the nodule is seen and described on this CT",
+      "id": "resolved",
+      "label": "Nodule resolved",
+      "locator": {
+       "page": 26,
+       "section": "Imaging follow-up: evidence statements (stable, shrunken or resolved nodules)",
+       "source": "S1",
+       "table": ""
+      },
+      "max_inclusive": true,
+      "min_inclusive": true,
+      "options": [],
+      "prerequisites": [
+       {
+        "eq": true,
+        "ref": "prior_study"
+       }
+      ],
+      "states": [],
+      "type": "boolean",
+      "unit": ""
+     },
+     {
+      "how_stated": "volumetry when nodule volumes (mm3) from volumetry software are compared with the baseline CT; otherwise growth judged on diameter (2D) measurement or comparison: diameter_stable when unchanged in diameter, diameter_clear_growth when clearly larger, diameter_indeterminate for any other change such as a small or equivocal increase or a decrease (BTS gives no 2D growth threshold)",
+      "id": "growth",
+      "label": "Growth assessment against the baseline CT",
+      "locator": {
+       "page": 9,
+       "section": "",
+       "source": "S1",
+       "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: baseline volumetric analysis, or diameter measurement if volumetry is not available; stable on basis of 2D non-automated diameter value; clear evidence of growth"
+      },
+      "max_inclusive": true,
+      "min_inclusive": true,
+      "options": [
+       "volumetry",
+       "diameter_stable",
+       "diameter_clear_growth",
+       "diameter_indeterminate"
+      ],
+      "prerequisites": [
+       {
+        "eq": true,
+        "ref": "prior_study"
+       },
+       {
+        "none": [
+         {
+          "eq": true,
+          "ref": "resolved"
+         }
+        ]
+       }
+      ],
+      "states": [],
+      "type": "enum",
+      "unit": ""
+     },
+     {
       "how_stated": "nodule volume on the baseline (first) CT in cubic millimetres, from volumetry software; always above 0",
       "id": "prior_volume_mm3",
       "label": "Baseline volume",
@@ -2062,6 +2195,10 @@
        {
         "eq": true,
         "ref": "prior_study"
+       },
+       {
+        "eq": "volumetry",
+        "ref": "growth"
        }
       ],
       "states": [],
@@ -2069,7 +2206,7 @@
       "unit": "mm3"
      },
      {
-      "how_stated": "nodule volume on this CT in cubic millimetres, measured with the same volumetry software; always above 0 (a resolved nodule has no volume: leave this unset)",
+      "how_stated": "nodule volume on this CT in cubic millimetres, measured with the same volumetry software; always above 0 (for a nodule no longer visible, use the resolved input instead)",
       "id": "current_volume_mm3",
       "label": "Current volume",
       "locator": {
@@ -2086,6 +2223,10 @@
        {
         "eq": true,
         "ref": "prior_study"
+       },
+       {
+        "eq": "volumetry",
+        "ref": "growth"
        }
       ],
       "states": [],
@@ -2110,6 +2251,14 @@
        {
         "eq": true,
         "ref": "prior_study"
+       },
+       {
+        "none": [
+         {
+          "eq": true,
+          "ref": "resolved"
+         }
+        ]
        }
       ],
       "states": [],
@@ -2436,10 +2585,18 @@
         "min_inclusive": true
        },
        {
-        "id": "ge1y",
-        "label": "1 year or more from baseline",
+        "id": "1to2y",
+        "label": "1 year to under 2 years from baseline",
+        "max": 730.0,
         "max_inclusive": false,
         "min": 365.0,
+        "min_inclusive": true
+       },
+       {
+        "id": "ge2y",
+        "label": "2 years or more from baseline",
+        "max_inclusive": false,
+        "min": 730.0,
         "min_inclusive": true
        }
       ],
@@ -2448,7 +2605,7 @@
        "page": 9,
        "section": "",
        "source": "S1",
-       "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: CT 1 year after baseline"
+       "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: CT 1 year after baseline; 2D arm: CT 2 years after baseline"
       },
       "ref": "interval_days",
       "step": "band"
@@ -2534,8 +2691,20 @@
         },
         "result": "discharge_benign",
         "when": {
-         "eq": true,
-         "ref": "benign_features"
+         "all": [
+          {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
+          {
+           "eq": true,
+           "ref": "benign_features"
+          }
+         ]
         }
        },
        {
@@ -2548,6 +2717,14 @@
         "result": "subsolid",
         "when": {
          "all": [
+          {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
           {
            "eq": false,
            "ref": "benign_features"
@@ -2572,6 +2749,14 @@
         "result": "discharge_small",
         "when": {
          "all": [
+          {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
           {
            "eq": false,
            "ref": "benign_features"
@@ -2598,6 +2783,14 @@
         "when": {
          "all": [
           {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
+          {
            "eq": false,
            "ref": "benign_features"
           },
@@ -2612,6 +2805,18 @@
           {
            "ref": "vdt_band",
            "state": "not_applicable"
+          },
+          {
+           "none": [
+            {
+             "in": [
+              "diameter_stable",
+              "diameter_clear_growth",
+              "diameter_indeterminate"
+             ],
+             "ref": "growth"
+            }
+           ]
           }
          ]
         }
@@ -2627,6 +2832,14 @@
         "when": {
          "all": [
           {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
+          {
            "eq": false,
            "ref": "benign_features"
           },
@@ -2641,6 +2854,18 @@
           {
            "ref": "vdt_band",
            "state": "not_applicable"
+          },
+          {
+           "none": [
+            {
+             "in": [
+              "diameter_stable",
+              "diameter_clear_growth",
+              "diameter_indeterminate"
+             ],
+             "ref": "growth"
+            }
+           ]
           }
          ]
         }
@@ -2655,6 +2880,14 @@
         "result": "brock_low",
         "when": {
          "all": [
+          {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
           {
            "eq": false,
            "ref": "benign_features"
@@ -2674,6 +2907,18 @@
           {
            "eq": "lt10",
            "ref": "brock_band"
+          },
+          {
+           "none": [
+            {
+             "in": [
+              "diameter_stable",
+              "diameter_clear_growth",
+              "diameter_indeterminate"
+             ],
+             "ref": "growth"
+            }
+           ]
           }
          ]
         }
@@ -2688,6 +2933,14 @@
         "result": "pet_ct",
         "when": {
          "all": [
+          {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
           {
            "eq": false,
            "ref": "benign_features"
@@ -2707,6 +2960,18 @@
           {
            "eq": "ge10",
            "ref": "brock_band"
+          },
+          {
+           "none": [
+            {
+             "in": [
+              "diameter_stable",
+              "diameter_clear_growth",
+              "diameter_indeterminate"
+             ],
+             "ref": "growth"
+            }
+           ]
           }
          ]
         }
@@ -2721,6 +2986,14 @@
         "result": "growth_workup",
         "when": {
          "all": [
+          {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
           {
            "eq": false,
            "ref": "benign_features"
@@ -2767,6 +3040,14 @@
         "when": {
          "all": [
           {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
+          {
            "eq": false,
            "ref": "benign_features"
           },
@@ -2809,7 +3090,10 @@
           {
            "none": [
             {
-             "eq": "ge1y",
+             "in": [
+              "1to2y",
+              "ge2y"
+             ],
              "ref": "interval_band"
             }
            ]
@@ -2839,6 +3123,14 @@
         "when": {
          "all": [
           {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
+          {
            "eq": false,
            "ref": "benign_features"
           },
@@ -2881,7 +3173,10 @@
           {
            "none": [
             {
-             "eq": "ge1y",
+             "in": [
+              "1to2y",
+              "ge2y"
+             ],
              "ref": "interval_band"
             }
            ]
@@ -2919,6 +3214,14 @@
         "when": {
          "all": [
           {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
+          {
            "eq": false,
            "ref": "benign_features"
           },
@@ -2943,7 +3246,10 @@
            ]
           },
           {
-           "eq": "ge1y",
+           "in": [
+            "1to2y",
+            "ge2y"
+           ],
            "ref": "interval_band"
           },
           {
@@ -2968,6 +3274,14 @@
         "when": {
          "all": [
           {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
+          {
            "eq": false,
            "ref": "benign_features"
           },
@@ -2992,7 +3306,10 @@
            ]
           },
           {
-           "eq": "ge1y",
+           "in": [
+            "1to2y",
+            "ge2y"
+           ],
            "ref": "interval_band"
           },
           {
@@ -3017,6 +3334,14 @@
         "when": {
          "all": [
           {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
+          {
            "eq": false,
            "ref": "benign_features"
           },
@@ -3041,7 +3366,10 @@
            ]
           },
           {
-           "eq": "ge1y",
+           "in": [
+            "1to2y",
+            "ge2y"
+           ],
            "ref": "interval_band"
           },
           {
@@ -3070,6 +3398,14 @@
         "when": {
          "all": [
           {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
+          {
            "eq": false,
            "ref": "benign_features"
           },
@@ -3094,12 +3430,292 @@
            ]
           },
           {
-           "eq": "ge1y",
+           "in": [
+            "1to2y",
+            "ge2y"
+           ],
            "ref": "interval_band"
           },
           {
            "eq": "neg",
            "ref": "vdt_band"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 26,
+         "section": "Imaging follow-up: evidence statements (stable, shrunken or resolved nodules)",
+         "source": "S1",
+         "table": ""
+        },
+        "result": "resolved",
+        "when": {
+         "eq": true,
+         "ref": "resolved"
+        }
+       },
+       {
+        "locator": {
+         "page": 9,
+         "section": "",
+         "source": "S1",
+         "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: VDT 400 days or less or clear evidence of growth: further work up"
+        },
+        "result": "growth_workup_2d",
+        "when": {
+         "all": [
+          {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
+          {
+           "eq": false,
+           "ref": "benign_features"
+          },
+          {
+           "eq": "solid",
+           "ref": "nodule_type"
+          },
+          {
+           "in": [
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
+          },
+          {
+           "eq": true,
+           "ref": "prior_study"
+          },
+          {
+           "ref": "vdt_band",
+           "state": "not_applicable"
+          },
+          {
+           "eq": "diameter_clear_growth",
+           "ref": "growth"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 9,
+         "section": "",
+         "source": "S1",
+         "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: no clear evidence of growth: CT 1 year after baseline"
+        },
+        "result": "continue_no_growth",
+        "when": {
+         "all": [
+          {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
+          {
+           "eq": false,
+           "ref": "benign_features"
+          },
+          {
+           "eq": "solid",
+           "ref": "nodule_type"
+          },
+          {
+           "in": [
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
+          },
+          {
+           "eq": true,
+           "ref": "prior_study"
+          },
+          {
+           "ref": "vdt_band",
+           "state": "not_applicable"
+          },
+          {
+           "eq": "diameter_stable",
+           "ref": "growth"
+          },
+          {
+           "none": [
+            {
+             "in": [
+              "1to2y",
+              "ge2y"
+             ],
+             "ref": "interval_band"
+            }
+           ]
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 9,
+         "section": "",
+         "source": "S1",
+         "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: stable on basis of 2D non-automated diameter value: CT 2 years after baseline"
+        },
+        "result": "ct_2yr_2d",
+        "when": {
+         "all": [
+          {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
+          {
+           "eq": false,
+           "ref": "benign_features"
+          },
+          {
+           "eq": "solid",
+           "ref": "nodule_type"
+          },
+          {
+           "in": [
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
+          },
+          {
+           "eq": true,
+           "ref": "prior_study"
+          },
+          {
+           "ref": "vdt_band",
+           "state": "not_applicable"
+          },
+          {
+           "eq": "diameter_stable",
+           "ref": "growth"
+          },
+          {
+           "eq": "1to2y",
+           "ref": "interval_band"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 9,
+         "section": "",
+         "source": "S1",
+         "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: CT 2 years after baseline: discharge if stable"
+        },
+        "result": "stable_2d_discharge",
+        "when": {
+         "all": [
+          {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
+          {
+           "eq": false,
+           "ref": "benign_features"
+          },
+          {
+           "eq": "solid",
+           "ref": "nodule_type"
+          },
+          {
+           "in": [
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
+          },
+          {
+           "eq": true,
+           "ref": "prior_study"
+          },
+          {
+           "ref": "vdt_band",
+           "state": "not_applicable"
+          },
+          {
+           "eq": "diameter_stable",
+           "ref": "growth"
+          },
+          {
+           "eq": "ge2y",
+           "ref": "interval_band"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 8,
+         "section": "Summary of recommendations: imaging follow-up (assess growth using interval CT with automated volumetric analysis)",
+         "source": "S1",
+         "table": ""
+        },
+        "result": "volumetry_advised",
+        "when": {
+         "all": [
+          {
+           "none": [
+            {
+             "eq": true,
+             "ref": "resolved"
+            }
+           ]
+          },
+          {
+           "eq": false,
+           "ref": "benign_features"
+          },
+          {
+           "eq": "solid",
+           "ref": "nodule_type"
+          },
+          {
+           "in": [
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
+          },
+          {
+           "eq": true,
+           "ref": "prior_study"
+          },
+          {
+           "ref": "vdt_band",
+           "state": "not_applicable"
+          },
+          {
+           "eq": "diameter_indeterminate",
+           "ref": "growth"
           }
          ]
         }
@@ -3312,6 +3928,76 @@
        "table": ""
       },
       "recommendation": "No growth at 1 year: discharge as for a stable nodule."
+     },
+     {
+      "caveats": [
+       "Library addition, not BTS text: BTS gives no step for a resolved nodule; its evidence review reports a low probability of cancer for resolved or shrunken nodules."
+      ],
+      "classification": "Previously seen nodule has resolved on this CT.",
+      "id": "resolved",
+      "locator": {
+       "page": 26,
+       "section": "Imaging follow-up: evidence statements (stable, shrunken or resolved nodules)",
+       "source": "S1",
+       "table": ""
+      },
+      "recommendation": "No further nodule follow-up."
+     },
+     {
+      "caveats": [
+       "With a known extrapulmonary primary cancer, interpret growth in the context of the primary and its treatment."
+      ],
+      "classification": "Solid nodule {diameter_band} with clear growth on diameter measurement.",
+      "id": "growth_workup_2d",
+      "locator": {
+       "page": 9,
+       "section": "",
+       "source": "S1",
+       "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: VDT 400 days or less or clear evidence of growth: further work up"
+      },
+      "recommendation": "Further investigation (biopsy, imaging or resection) and consideration of definitive management."
+     },
+     {
+      "caveats": [
+       "Growth judged on 2D diameters needs CT follow-up for a total of 2 years (BTS)."
+      ],
+      "classification": "Solid nodule {diameter_band}, stable on 2D diameter measurement at 1 year or more from baseline.",
+      "id": "ct_2yr_2d",
+      "locator": {
+       "page": 9,
+       "section": "",
+       "source": "S1",
+       "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: stable on basis of 2D non-automated diameter value: CT 2 years after baseline"
+      },
+      "recommendation": "Repeat CT 2 years after baseline, then assess volume doubling time; discharge if stable."
+     },
+     {
+      "caveats": [
+       "BTS asks for a volume doubling time assessment at the 2-year CT; discharge applies when the nodule is stable."
+      ],
+      "classification": "Solid nodule {diameter_band}, stable on 2D diameter measurement at 2 years or more from baseline.",
+      "id": "stable_2d_discharge",
+      "locator": {
+       "page": 9,
+       "section": "",
+       "source": "S1",
+       "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: CT 2 years after baseline: discharge if stable"
+      },
+      "recommendation": "Discharge from nodule follow-up."
+     },
+     {
+      "caveats": [
+       "Library routing, not a BTS step: BTS defines significant growth by volume (25% or more) and gives no diameter growth threshold."
+      ],
+      "classification": "Solid nodule {diameter_band}: diameter change since baseline not clearly growth or stability.",
+      "id": "volumetry_advised",
+      "locator": {
+       "page": 8,
+       "section": "Summary of recommendations: imaging follow-up (assess growth using interval CT with automated volumetric analysis)",
+       "source": "S1",
+       "table": ""
+      },
+      "recommendation": "Assess growth by volumetry (volume doubling time) where available."
      }
     ],
     "reference": {
@@ -3455,7 +4141,7 @@
         "source": "S1",
         "table": ""
        },
-       "text": "A nodule that has resolved has no volume, so VDT cannot be calculated; this entry has no resolved-nodule route and asks for the volume instead."
+       "text": "BTS gives no step for a resolved nodule; this entry's 'resolved' route (no further follow-up) is a library addition based on the evidence review's low cancer probability for resolved nodules."
       },
       {
        "id": "pit.2d",
@@ -3465,7 +4151,7 @@
         "source": "S1",
         "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: 2D diameter arm"
        },
-       "text": "Growth judged only on diameters (no volumetry) is not encoded: BTS then advises CT 2 years after baseline (Figure 2)."
+       "text": "Growth judged on diameters only (no volumetry): stable at 1 year goes to CT 2 years after baseline, then discharge if stable; clear growth goes to work-up. BTS sets no 2D growth threshold, so other changes are routed to volumetry."
       }
      ],
      "summary": [
@@ -3572,6 +4258,24 @@
     "edition": "2017",
     "id": "fleischner-pulmonary-nodule",
     "inputs": [
+     {
+      "how_stated": "patient-level, usually from the clinical history or request: true when the scan is a lung cancer screening CT, the patient is under 35, is immunocompromised (e.g. transplant, chemotherapy, HIV) or has a known primary cancer; false when the history states an adult aged 35 or over with none of these. Leave it unset when the history does not say.",
+      "id": "exclusion",
+      "label": "Any Fleischner exclusion (lung cancer screening, age under 35, immunocompromised, known primary cancer)",
+      "locator": {
+       "page": 2,
+       "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system",
+       "source": "S1",
+       "table": ""
+      },
+      "max_inclusive": true,
+      "min_inclusive": true,
+      "options": [],
+      "prerequisites": [],
+      "states": [],
+      "type": "boolean",
+      "unit": ""
+     },
      {
       "how_stated": "solid; ground-glass (pure ground-glass, non-solid); or part-solid (subsolid with a solid component). For multiple nodules, the type of the most suspicious one.",
       "id": "nodule_type",
@@ -3930,13 +4634,346 @@
        }
       ],
       "step": "table"
+     },
+     {
+      "cases": [
+       {
+        "locator": {
+         "page": 3,
+         "section": "",
+         "source": "S1",
+         "table": "Table note: recommendations do not apply to lung cancer screening, patients with immunosuppression, or patients with known primary cancer"
+        },
+        "result": "does_not_apply",
+        "when": {
+         "eq": true,
+         "ref": "exclusion"
+        }
+       },
+       {
+        "locator": {
+         "page": 3,
+         "section": "",
+         "source": "S1",
+         "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+        },
+        "result": "solid_single_lt6_low",
+        "when": {
+         "all": [
+          {
+           "eq": false,
+           "ref": "exclusion"
+          },
+          {
+           "eq": "solid_single_lt6_low",
+           "ref": "management"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 3,
+         "section": "",
+         "source": "S1",
+         "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+        },
+        "result": "solid_single_lt6_high",
+        "when": {
+         "all": [
+          {
+           "eq": false,
+           "ref": "exclusion"
+          },
+          {
+           "eq": "solid_single_lt6_high",
+           "ref": "management"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 3,
+         "section": "",
+         "source": "S1",
+         "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+        },
+        "result": "solid_single_6to8_low",
+        "when": {
+         "all": [
+          {
+           "eq": false,
+           "ref": "exclusion"
+          },
+          {
+           "eq": "solid_single_6to8_low",
+           "ref": "management"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 3,
+         "section": "",
+         "source": "S1",
+         "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+        },
+        "result": "solid_single_6to8_high",
+        "when": {
+         "all": [
+          {
+           "eq": false,
+           "ref": "exclusion"
+          },
+          {
+           "eq": "solid_single_6to8_high",
+           "ref": "management"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 3,
+         "section": "",
+         "source": "S1",
+         "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+        },
+        "result": "solid_single_gt8",
+        "when": {
+         "all": [
+          {
+           "eq": false,
+           "ref": "exclusion"
+          },
+          {
+           "eq": "solid_single_gt8",
+           "ref": "management"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 3,
+         "section": "",
+         "source": "S1",
+         "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+        },
+        "result": "solid_multiple_lt6_low",
+        "when": {
+         "all": [
+          {
+           "eq": false,
+           "ref": "exclusion"
+          },
+          {
+           "eq": "solid_multiple_lt6_low",
+           "ref": "management"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 3,
+         "section": "",
+         "source": "S1",
+         "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+        },
+        "result": "solid_multiple_lt6_high",
+        "when": {
+         "all": [
+          {
+           "eq": false,
+           "ref": "exclusion"
+          },
+          {
+           "eq": "solid_multiple_lt6_high",
+           "ref": "management"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 3,
+         "section": "",
+         "source": "S1",
+         "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+        },
+        "result": "solid_multiple_ge6_low",
+        "when": {
+         "all": [
+          {
+           "eq": false,
+           "ref": "exclusion"
+          },
+          {
+           "eq": "solid_multiple_ge6_low",
+           "ref": "management"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 3,
+         "section": "",
+         "source": "S1",
+         "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+        },
+        "result": "solid_multiple_ge6_high",
+        "when": {
+         "all": [
+          {
+           "eq": false,
+           "ref": "exclusion"
+          },
+          {
+           "eq": "solid_multiple_ge6_high",
+           "ref": "management"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 3,
+         "section": "",
+         "source": "S1",
+         "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+        },
+        "result": "ggn_single_lt6",
+        "when": {
+         "all": [
+          {
+           "eq": false,
+           "ref": "exclusion"
+          },
+          {
+           "eq": "ggn_single_lt6",
+           "ref": "management"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 3,
+         "section": "",
+         "source": "S1",
+         "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+        },
+        "result": "ggn_single_ge6",
+        "when": {
+         "all": [
+          {
+           "eq": false,
+           "ref": "exclusion"
+          },
+          {
+           "eq": "ggn_single_ge6",
+           "ref": "management"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 3,
+         "section": "",
+         "source": "S1",
+         "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+        },
+        "result": "subsolid_multiple_lt6",
+        "when": {
+         "all": [
+          {
+           "eq": false,
+           "ref": "exclusion"
+          },
+          {
+           "eq": "subsolid_multiple_lt6",
+           "ref": "management"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 3,
+         "section": "",
+         "source": "S1",
+         "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+        },
+        "result": "subsolid_multiple_ge6",
+        "when": {
+         "all": [
+          {
+           "eq": false,
+           "ref": "exclusion"
+          },
+          {
+           "eq": "subsolid_multiple_ge6",
+           "ref": "management"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 3,
+         "section": "",
+         "source": "S1",
+         "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+        },
+        "result": "psn_single_lt6",
+        "when": {
+         "all": [
+          {
+           "eq": false,
+           "ref": "exclusion"
+          },
+          {
+           "eq": "psn_single_lt6",
+           "ref": "management"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 3,
+         "section": "",
+         "source": "S1",
+         "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+        },
+        "result": "psn_single_ge6",
+        "when": {
+         "all": [
+          {
+           "eq": false,
+           "ref": "exclusion"
+          },
+          {
+           "eq": "psn_single_ge6",
+           "ref": "management"
+          }
+         ]
+        }
+       }
+      ],
+      "id": "applies",
+      "step": "rules"
      }
     ],
     "outcomes": [
      {
       "caveats": [
-       "Some high-risk patients with suspicious morphology, an upper lobe nodule, or both may warrant CT at 12 months.",
-       "Does not apply to lung cancer screening, patients under 35, immunocompromised patients or known primary cancer."
+       "Some high-risk patients with suspicious morphology, an upper lobe nodule, or both may warrant CT at 12 months."
       ],
       "classification": "Single solid nodule <6 mm in a low-risk patient.",
       "id": "solid_single_lt6_low",
@@ -3950,8 +4987,7 @@
      },
      {
       "caveats": [
-       "Some high-risk patients with suspicious morphology, an upper lobe nodule, or both may warrant CT at 12 months.",
-       "Does not apply to lung cancer screening, patients under 35, immunocompromised patients or known primary cancer."
+       "Some high-risk patients with suspicious morphology, an upper lobe nodule, or both may warrant CT at 12 months."
       ],
       "classification": "Single solid nodule <6 mm in a high-risk patient.",
       "id": "solid_single_lt6_high",
@@ -3964,9 +5000,7 @@
       "recommendation": "Optional CT at 12 months."
      },
      {
-      "caveats": [
-       "Does not apply to lung cancer screening, patients under 35, immunocompromised patients or known primary cancer."
-      ],
+      "caveats": [],
       "classification": "Single solid nodule 6–8 mm in a low-risk patient.",
       "id": "solid_single_6to8_low",
       "locator": {
@@ -3978,9 +5012,7 @@
       "recommendation": "CT at 6–12 months, then consider CT at 18–24 months."
      },
      {
-      "caveats": [
-       "Does not apply to lung cancer screening, patients under 35, immunocompromised patients or known primary cancer."
-      ],
+      "caveats": [],
       "classification": "Single solid nodule 6–8 mm in a high-risk patient.",
       "id": "solid_single_6to8_high",
       "locator": {
@@ -3992,9 +5024,7 @@
       "recommendation": "CT at 6–12 months, then CT at 18–24 months."
      },
      {
-      "caveats": [
-       "Does not apply to lung cancer screening, patients under 35, immunocompromised patients or known primary cancer."
-      ],
+      "caveats": [],
       "classification": "Single solid nodule >8 mm.",
       "id": "solid_single_gt8",
       "locator": {
@@ -4007,8 +5037,7 @@
      },
      {
       "caveats": [
-       "Use the most suspicious nodule to guide management; intervals may vary with size and risk.",
-       "Does not apply to lung cancer screening, patients under 35, immunocompromised patients or known primary cancer."
+       "Use the most suspicious nodule to guide management; intervals may vary with size and risk."
       ],
       "classification": "Multiple solid nodules, the most suspicious <6 mm, in a low-risk patient.",
       "id": "solid_multiple_lt6_low",
@@ -4022,8 +5051,7 @@
      },
      {
       "caveats": [
-       "Use the most suspicious nodule to guide management; intervals may vary with size and risk.",
-       "Does not apply to lung cancer screening, patients under 35, immunocompromised patients or known primary cancer."
+       "Use the most suspicious nodule to guide management; intervals may vary with size and risk."
       ],
       "classification": "Multiple solid nodules, the most suspicious <6 mm, in a high-risk patient.",
       "id": "solid_multiple_lt6_high",
@@ -4037,8 +5065,7 @@
      },
      {
       "caveats": [
-       "Use the most suspicious nodule to guide management; intervals may vary with size and risk.",
-       "Does not apply to lung cancer screening, patients under 35, immunocompromised patients or known primary cancer."
+       "Use the most suspicious nodule to guide management; intervals may vary with size and risk."
       ],
       "classification": "Multiple solid nodules, the most suspicious 6 mm or larger, in a low-risk patient.",
       "id": "solid_multiple_ge6_low",
@@ -4052,8 +5079,7 @@
      },
      {
       "caveats": [
-       "Use the most suspicious nodule to guide management; intervals may vary with size and risk.",
-       "Does not apply to lung cancer screening, patients under 35, immunocompromised patients or known primary cancer."
+       "Use the most suspicious nodule to guide management; intervals may vary with size and risk."
       ],
       "classification": "Multiple solid nodules, the most suspicious 6 mm or larger, in a high-risk patient.",
       "id": "solid_multiple_ge6_high",
@@ -4068,8 +5094,7 @@
      {
       "caveats": [
        "For certain suspicious nodules <6 mm, consider CT at 2 and 4 years.",
-       "If a solid component or growth develops, consider resection.",
-       "Does not apply to lung cancer screening, patients under 35, immunocompromised patients or known primary cancer."
+       "If a solid component or growth develops, consider resection."
       ],
       "classification": "Single pure ground-glass nodule <6 mm.",
       "id": "ggn_single_lt6",
@@ -4083,8 +5108,7 @@
      },
      {
       "caveats": [
-       "If a solid component or growth develops, consider resection.",
-       "Does not apply to lung cancer screening, patients under 35, immunocompromised patients or known primary cancer."
+       "If a solid component or growth develops, consider resection."
       ],
       "classification": "Single pure ground-glass nodule 6 mm or larger.",
       "id": "ggn_single_ge6",
@@ -4098,8 +5122,7 @@
      },
      {
       "caveats": [
-       "In practice a nodule cannot be called part-solid until it is 6 mm or larger; nodules <6 mm usually need no follow-up.",
-       "Does not apply to lung cancer screening, patients under 35, immunocompromised patients or known primary cancer."
+       "In practice a nodule cannot be called part-solid until it is 6 mm or larger; nodules <6 mm usually need no follow-up."
       ],
       "classification": "Single part-solid nodule <6 mm.",
       "id": "psn_single_lt6",
@@ -4113,8 +5136,7 @@
      },
      {
       "caveats": [
-       "A persistent part-solid nodule with a solid component of 6 mm or more should be considered highly suspicious.",
-       "Does not apply to lung cancer screening, patients under 35, immunocompromised patients or known primary cancer."
+       "A persistent part-solid nodule with a solid component of 6 mm or more should be considered highly suspicious."
       ],
       "classification": "Single part-solid nodule 6 mm or larger.",
       "id": "psn_single_ge6",
@@ -4128,8 +5150,7 @@
      },
      {
       "caveats": [
-       "Multiple pure ground-glass nodules <6 mm are usually benign; consider 2- and 4-year follow-up in selected high-risk patients.",
-       "Does not apply to lung cancer screening, patients under 35, immunocompromised patients or known primary cancer."
+       "Multiple pure ground-glass nodules <6 mm are usually benign; consider 2- and 4-year follow-up in selected high-risk patients."
       ],
       "classification": "Multiple subsolid nodules, the most suspicious <6 mm.",
       "id": "subsolid_multiple_lt6",
@@ -4142,9 +5163,7 @@
       "recommendation": "CT at 3–6 months; if stable, consider CT at 2 and 4 years."
      },
      {
-      "caveats": [
-       "Does not apply to lung cancer screening, patients under 35, immunocompromised patients or known primary cancer."
-      ],
+      "caveats": [],
       "classification": "Multiple subsolid nodules, the most suspicious 6 mm or larger.",
       "id": "subsolid_multiple_ge6",
       "locator": {
@@ -4154,6 +5173,20 @@
        "table": "B Subsolid Nodules: Multiple, >=6 mm"
       },
       "recommendation": "CT at 3–6 months; base further management on the most suspicious nodule(s)."
+     },
+     {
+      "caveats": [
+       "The Fleischner Society advises the ACR Lung-RADS system for lung cancer screening CT."
+      ],
+      "classification": "Fleischner 2017 does not apply: lung cancer screening, age under 35, immunocompromised patient or known primary cancer.",
+      "id": "does_not_apply",
+      "locator": {
+       "page": 3,
+       "section": "",
+       "source": "S1",
+       "table": "Table note: recommendations do not apply to lung cancer screening, patients with immunosuppression, or patients with known primary cancer"
+      },
+      "recommendation": "Manage per the clinical context (screening programme protocol, or the patient's oncology or immunosuppression care)."
      }
     ],
     "reference": {
@@ -4345,7 +5378,7 @@
      ],
      "tables": []
     },
-    "result": "management",
+    "result": "applies",
     "status": "current",
     "system": "Fleischner Society guidelines for incidentally detected pulmonary nodules on CT",
     "tier": 1,
@@ -4364,5 +5397,5 @@
    ]
   }
  },
- "version": "b8b4ffb1621d"
+ "version": "aaa70dd72261"
 }
