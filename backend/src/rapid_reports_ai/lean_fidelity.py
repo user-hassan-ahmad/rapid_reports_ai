@@ -63,18 +63,49 @@ def has_cue(span: str, new: str) -> bool:
     return bool(CORRECTION_CUE.search(new or "") or CORRECTION_CUE.search(last))
 
 
+def _ordered(text: str) -> list[str]:
+    return _WORD.findall((text or "").lower())
+
+
 def moved_into_earlier(span: str, new: str, out: str) -> bool:
-    """The new words were placed before text already dictated: an output statement after the
-    first one holding new words is span text only (live 2026-10-12: "of the right kidney"
-    went onto the stranding sentence instead of the calculus it followed). Code detects, Jev
-    decides whether the move changed what a finding says (polish_attachment)."""
-    span_words = set(_WORD.findall((span or "").lower()))
-    fresh = set(_WORD.findall((new or "").lower())) - span_words
-    if not fresh:
-        return False
-    stmts = [set(_WORD.findall(s.lower())) for s in _statements(out)]
-    first = next((i for i, w in enumerate(stmts) if w & fresh), None)
-    return first is not None and any(not (w & fresh) and (w & span_words) for w in stmts[first + 1:])
+    """Whether the output may have moved words onto another finding: a trigger for the Jev
+    question (polish_attachment), never a verdict. Any of:
+    (A) new words placed before text already dictated: an output statement after the first one
+        holding new words is span text only (live 2026-10-12: "of the right kidney" went onto
+        the stranding sentence instead of the calculus it followed);
+    (B) new words out of the order they were said (a new sentence's tail moved back onto the
+        previous sentence: "...lower lobe with air bronchograms" -> "effusion with air bronchograms");
+    (C) a side or number shifting between statements already dictated (counts unchanged, so the
+        count check passes a swap);
+    (D) a new sentence after a finished one, merged into another ("The liver is normal.
+        The mass encases the SMA." -> "The liver is normal and encases the SMA"). Joins of related
+        findings also trigger it; Jev clears those."""
+    span_words = set(_ordered(span))
+    new_order = [w for w in _ordered(new) if w not in span_words]
+    fresh = set(new_order)
+    stmts = _statements(out)
+    words = [set(_ordered(s)) for s in stmts]
+    if fresh:
+        first = next((i for i, w in enumerate(words) if w & fresh), None)
+        if first is not None and any(not (w & fresh) and (w & span_words) for w in words[first + 1:]):
+            return True                                                            # (A)
+        out_words = _ordered(out)
+        kept = set(out_words)
+        if [w for w in new_order if w in kept] != [w for w in out_words if w in fresh]:
+            return True                                                            # (B)
+        opens = (span or "").rstrip()[-1:] in ".?!" and (new or "").lstrip()[:1].isupper()
+        if opens and len(stmts) < len(_statements(span)) + len(_statements(new)):
+            return True                                                            # (D)
+    for st in _statements(span):                                                   # (C)
+        sw = set(_ordered(st))
+        if not sw:
+            continue
+        k = max(range(len(words)), key=lambda i: len(sw & words[i]) / len(sw), default=None)
+        if k is None:
+            return False
+        if _lost(_count(_SIDE, st), _count(_SIDE, stmts[k])) or _lost(_count(_NUMBER, st), _count(_NUMBER, stmts[k])):
+            return True
+    return False
 
 
 def fidelity_violation(span: str, new: str, out: str, committed_edits: list) -> str | None:

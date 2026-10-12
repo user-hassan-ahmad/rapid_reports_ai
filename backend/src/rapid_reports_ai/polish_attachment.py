@@ -1,11 +1,17 @@
 """Did the polish move words onto another finding? One Jev question, asked only when the code
-detector (lean_fidelity.moved_into_earlier) sees new words placed before text already dictated.
+detector (lean_fidelity.moved_into_earlier) fires: new words placed before dictated text, new words
+out of spoken order, a side or number shifting between dictated sentences, or a new sentence merged.
 
 Lab 2026-10-12 (24 hand-written pairs, scratchpad_v2_labs.py attach on feat/hybrid-stack):
 moved side/location/size/descriptor 12/12 at >= 0.3 (live case 0.63, lowest 0.39); tidying,
 joined fragments, joined related findings, spoken corrections and a descriptor naming its own
 structure 0/12 (highest 0.16). A flag keeps the span and appends the words as said, so the
 threshold leans low; a failure counts as moved.
+
+Whole guard (detector then Jev, 28 pairs incl. 3 swaps with no new words): moved 15/15, same meaning
+0/13 flagged (the detector fires on 8 joins; Jev clears them, highest 0.17). Replay of 111 real lean
+polishes over 20 dictations: 0 fires. Jev sits near the line on two pairs (live case ~0.55, a moved
+"with a distal stone" ~0.39); one earlier run dipped one pair under 0.3.
 """
 from __future__ import annotations
 

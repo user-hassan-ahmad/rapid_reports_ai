@@ -107,3 +107,21 @@ def test_moved_into_earlier_detects_new_words_placed_before_dictated_text():
     assert not moved_into_earlier("The liver is normal. The spleen is normal.", "The pancreas is normal.",
                                   "The liver, spleen and pancreas are normal.")   # joined into one statement
     assert not moved_into_earlier(span, new, span + " Of the right kidney with no associated.")
+
+
+def test_the_detector_sees_reorders_swaps_and_merged_sentences_but_not_continuations():
+    # (B) a new sentence's tail moved back onto the previous sentence
+    assert moved_into_earlier("Small left pleural effusion.", "Consolidation in the right lower lobe with air bronchograms.",
+                              "Small left pleural effusion with air bronchograms. Consolidation in the right lower lobe.")
+    # (C) sides swapped between sentences already dictated, no new words involved
+    assert moved_into_earlier("Small left pleural effusion. Right lower lobe consolidation.", "No pneumothorax.",
+                              "Small right pleural effusion. Left lower lobe consolidation. No pneumothorax.")
+    # (D) a new sentence merged into the finished one before it
+    assert moved_into_earlier("A 3 cm mass in the pancreatic head. The liver is normal.", "The mass encases the superior mesenteric artery.",
+                              "A 3 cm mass in the pancreatic head. The liver is normal and encases the superior mesenteric artery.")
+    # continuations and repeated words are not moves
+    assert not moved_into_earlier("Dilated small bowel loops up to 4 cm with a transition point in the right",
+                                  "lower quadrant, likely due to an adhesion.",
+                                  "Dilated small bowel loops up to 4 cm with a transition point in the right lower quadrant, likely due to an adhesion.")
+    assert not moved_into_earlier("A 3 cm mass with dilatation of the pancreatic", "duct to 6 mm and the common bile duct to 14 mm.",
+                                  "A 3 cm mass with dilatation of the pancreatic duct to 6 mm and the common bile duct to 14 mm.")

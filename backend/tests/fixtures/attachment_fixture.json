@@ -142,5 +142,29 @@
   "cleaned": "Acute left subdural haematoma measuring 8 mm with 4 mm midline shift to the right.",
   "gold": false,
   "kind": "related finding joined"
+ },
+ {
+  "spoken": "Small left pleural effusion. Right lower lobe consolidation. No pneumothorax.",
+  "cleaned": "Small right pleural effusion. Left lower lobe consolidation. No pneumothorax.",
+  "gold": true,
+  "kind": "side swap, no new words"
+ },
+ {
+  "spoken": "A 6 mm calculus in the left kidney. A 12 mm cyst in the right kidney. No hydronephrosis.",
+  "cleaned": "A 12 mm calculus in the left kidney. A 6 mm cyst in the right kidney. No hydronephrosis.",
+  "gold": true,
+  "kind": "number swap, no new words"
+ },
+ {
+  "spoken": "Left adrenal nodule. Right renal cyst. The liver is normal.",
+  "cleaned": "Right adrenal nodule. Left renal cyst. The liver is normal.",
+  "gold": true,
+  "kind": "side swap, no new words"
+ },
+ {
+  "spoken": "Left renal cyst. Right renal calculus. No hydronephrosis.",
+  "cleaned": "Left renal cyst and right renal calculus. No hydronephrosis.",
+  "gold": false,
+  "kind": "related findings joined"
  }
 ]
