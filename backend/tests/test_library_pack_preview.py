@@ -57,7 +57,7 @@ async def test_settled_inputs_reach_a_proposal_copied_from_the_entry(toy_entry, 
     assert out.missing == [] and out.proposal.recommendation == "CT at 6 months"
     assert out.proposal.classification == "Toy 2020 · solid nodule 6-8 mm, high risk"
     assert out.proposal.line == "Toy 2020: solid nodule 6-8 mm, high risk."
-    assert out.trace["outcome"] == "ct6" and jev["calls"] == 2       # one batched value check per scope
+    assert out.trace["outcome"] == "ct6" and jev["calls"] == 3     # the lesion batch, then one per enum quote
 
 
 async def test_missing_input_shows_possible_outcomes(toy_entry, monkeypatch, jev):
@@ -310,11 +310,49 @@ async def test_every_value_is_put_to_jev_with_its_scope_as_state(toy_entry, monk
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
     await PP.preview_pack(toy_entry, TWO, "Smoker.", {}, finding=FINDING)
     by_state = {p["state"]: [q["instructions"] for q in p["questions"].values()] for p in jev["payloads"]}
-    assert by_state[f"FINDING:\n{FINDING}"] == ["The FINDING states Nodule type: solid",
-                                                 "The FINDING states Diameter: 7 mm",
-                                                 PP.ONE_LESION]
-    patient = next(s for s in by_state if s.startswith("CLINICAL HISTORY"))
-    assert TWO in patient and by_state[patient] == ["The CLINICAL HISTORY or DICTATION state Patient risk: high"]
+    assert by_state[f"FINDING:\n{FINDING}"] == ["The FINDING states Diameter: 7 mm", PP.ONE_LESION]
+    quotes = {s: c for s, c in by_state.items() if s.startswith("QUOTE")}
+    assert sorted(c[0] for c in quotes.values()) == ["The QUOTE states Nodule type: solid",
+                                                      "The QUOTE states Patient risk: high"]
+    assert not any(s.startswith("CLINICAL HISTORY") for s in by_state)     # no patient number: no patient batch
+
+
+# lab fix round item 2: an enum or boolean settles only when its quote, alone, states it
+async def test_an_enum_or_boolean_is_checked_against_its_quote_alone(toy_entry, monkeypatch, jev):
+    _model(monkeypatch, KIND, {"input": "risk", "value": "high", "quote": "smoker"})
+    await PP.preview_pack(toy_entry, TWO, "Smoker.", {}, finding=FINDING)
+    kind = next(p["state"] for p in jev["payloads"] if "Nodule type: solid" in str(p["questions"]))
+    assert kind.startswith("QUOTE (a verbatim phrase from a radiology report about one lesion; the only evidence):\nsolid")
+    assert "DEFINITION of Nodule type (not part of the quote)" in kind and "right upper lobe" not in kind
+    risk = next(p["state"] for p in jev["payloads"] if "Patient risk: high" in str(p["questions"]))
+    assert "\nsmoker\n" in risk and "Smoker." not in risk and "about the patient or the examination" in risk
+
+
+@pytest.mark.parametrize("verdict,settles", [(0.79, False), (0.8, True)])
+async def test_a_quote_claim_settles_at_point_eight(toy_entry, monkeypatch, jev, verdict, settles):
+    jev["scores"] = {"The QUOTE states Nodule type": verdict}
+    _model(monkeypatch, KIND)
+    out = await PP.preview_pack(toy_entry, FINDING, "", {}, finding=FINDING)
+    assert ("kind" in {x.input for x in out.settled}) is settles
+
+
+@pytest.mark.parametrize("key,finding,inp,value,quote,claim", [
+    # lab #29: proven_malignant = No from a quote that says nothing of histology (live Jev 0.57/0.62: asked)
+    ("bts-pulmonary-nodule", "6 mm smooth triangular nodule abutting the right horizontal fissure, typical of an "
+     "intrapulmonary lymph node.", "proven_malignant", False, "typical of an intrapulmonary lymph node",
+     "The QUOTE states Nodule already proven to be lung cancer or a metastasis: No"),
+    # lab #13: too_small = no from a quote that is not the size
+    ("bosniak-renal-cyst", "4 cm well-defined cyst in the right lower pole with a single thin (1 mm) septum and a "
+     "fleck of calcification.", "too_small", "no", "a single thin (1 mm) septum and a fleck of calcification",
+     "The QUOTE states Too small to characterise: no")])
+async def test_lab_weak_quote_settles_are_asked_when_the_quote_does_not_state_them(monkeypatch, jev, key, finding,
+                                                                                  inp, value, quote, claim):
+    jev["scores"] = {claim: 0.6}
+    _model(monkeypatch, {"input": inp, "value": value, "quote": quote})
+    out = await PP.preview_pack(_pack(key), finding, "", {}, finding=finding)
+    assert inp not in {x.input for x in out.settled} and inp in out.missing
+    state = next(p["state"] for p in jev["payloads"] if claim in str(p["questions"]))
+    assert state.split("\n")[1] == quote                       # the quote alone is the evidence, not the finding
 
 
 async def test_a_value_jev_does_not_find_stated_is_asked(toy_entry, monkeypatch, jev):
@@ -325,7 +363,7 @@ async def test_a_value_jev_does_not_find_stated_is_asked(toy_entry, monkeypatch,
 
 
 async def test_a_jev_failure_on_one_scope_asks_only_that_scopes_values(toy_entry, monkeypatch, jev):
-    jev["fail_if"] = "CLINICAL HISTORY"
+    jev["fail_if"] = "DEFINITION of Patient risk"
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
     out = await PP.preview_pack(toy_entry, FINDING, "Smoker.", {}, finding=FINDING)
     assert {s.input for s in out.settled} == {"kind", "size"} and out.missing == ["risk"] and out.degraded is True
@@ -581,9 +619,10 @@ async def test_one_lesion_still_settles_its_number(monkeypatch, jev, key, findin
 
 async def test_the_one_lesion_claim_rides_in_the_lesion_batch(monkeypatch, jev):
     out = await _fleischner(monkeypatch, "Solitary 8 mm solid nodule.", "8 mm", 8)
-    assert jev["calls"] == 1 and "diameter_mm" in {x.input for x in out.settled}
-    claims = [q["instructions"] for q in jev["payloads"][0]["questions"].values()]
-    assert PP.ONE_LESION in claims
+    assert jev["calls"] == 2 and "diameter_mm" in {x.input for x in out.settled}     # the batch and one quote
+    lesion = next(p for p in jev["payloads"] if p["state"].startswith("FINDING"))
+    assert [q["instructions"] for q in lesion["questions"].values()] == ["The FINDING states Nodule diameter: 8 mm",
+                                                                         PP.ONE_LESION]
 
 
 def test_the_one_lesion_claim_names_a_lesion_of_any_kind_not_the_packs_noun():

@@ -2,8 +2,8 @@
 verbatim span that settles it, and only from that input's scope: a lesion input from the card's own finding unit, a
 patient input from the clinical history or the whole dictation; with no finding unit, lesion inputs are asked. Code
 reads every number and its unit from the whole measurement its quote sits in (the model's number must agree); one
-batched Jev call per scope checks every value, numbers included, as stated, and a lesion number also needs the
-finding to hold no other number. Every lesion input, of any type, also needs the finding to describe one lesion of
+batched Jev call per scope checks every number as stated for its scope, and a lesion number also needs the finding
+to hold no other number; each enum or boolean value is checked by Jev against its quote alone (the quote must state it). Every lesion input, of any type, also needs the finding to describe one lesion of
 any kind (no multiplicity word, and Jev's one-lesion claim): another lesion's lobe, type or size is never lent to
 this one. The radiologist's answers win; the engine evaluates. Every word of the proposal comes from the entry. Any failure leaves
 the input asked, never assumed."""
@@ -37,6 +37,9 @@ ONE_LESION_MIN = 0.8      # Jev ONE_LESION: below it, every lesion input on the 
 ONE_LESION = "The FINDING describes only one lesion of any kind (nodule, granuloma, mass, cyst, scar or other)"
 _STATE_LABEL = {"absent": "Absent", "not_assessable": "Not assessable"}
 _LEAD = {"lesion": "The FINDING states", "patient": "The CLINICAL HISTORY or DICTATION state"}
+QUOTE_MIN = 0.8           # Jev "The QUOTE states <label>: <value>" on the quote alone: below it, an enum or boolean is asked
+_QUOTE_OF = {"lesion": "a verbatim phrase from a radiology report about one lesion",
+             "patient": "a verbatim phrase from a radiology request or report about the patient or the examination"}
 
 SETTLE_SYS = """You settle the inputs of one published radiology classification system for ONE finding. INPUTS lists each open input's id, scope, type and allowed values: use nothing else.
 An input's scope decides where it may be settled from:
@@ -298,36 +301,66 @@ def _nouns(e: Entry) -> list[str]:
     return [t for t in e.applies_to.finding_type if t.strip()] or ["lesion"]
 
 
-async def _confirm(e: Entry, pending: dict[str, InputValue], finding: str, findings: str,
+def _quote_state(i: InputDef, quote: str) -> str:
+    """The quote alone as evidence, with the input's definition beside it (not part of it): the value must be in the
+    quote's own words, never in the rest of the finding or in what is usual."""
+    return (f"QUOTE ({_QUOTE_OF[i.scope]}; the only evidence):\n{quote}\n\n"
+            f"DEFINITION of {i.label} (not part of the quote): {i.how_stated or i.label}\n\n"
+            "A value is stated only when the QUOTE's own words give it; a value that is merely not contradicted, "
+            "usual or assumed is not stated.")
+
+
+def _quote_claim(e: Entry, i: InputDef, v: InputValue) -> str:
+    return f"The QUOTE states {i.label}: {_show(e, i, v).replace('_', ' ')}"
+
+
+async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding: str, findings: str,
                    history: str) -> tuple[set[str], bool]:
-    """(confirmed ids, whether a Jev call failed). One batched Jev call per scope, run together: "The FINDING states
-    <label>: <value>" with the finding unit alone as state (lesion), or the same of the history and the dictation
-    (patient). Below SETTLED_MIN, or a failed call, leaves the input asked."""
+    """(confirmed ids, whether a Jev call failed). Run together:
+    - per scope, one batched call for the numbers: "The FINDING states <label>: <value>" with the finding unit alone
+      as state (lesion), or the same of the history and the dictation (patient); SETTLED_MIN. The lesion batch also
+      carries ONE_LESION whenever any lesion input is pending: below ONE_LESION_MIN every lesion input is asked;
+    - per enum or boolean value, one call on its QUOTE alone: "The QUOTE states <label>: <value>"; QUOTE_MIN.
+    A failed call leaves its inputs asked (the lesion batch: every lesion input)."""
     states = {"lesion": f"FINDING:\n{finding}",
               "patient": f"CLINICAL HISTORY:\n{history or 'none given'}\n\nDICTATION:\n{findings}"}
 
-    async def one(scope: str) -> tuple[set[str], bool]:
-        ids = [k for k in pending if e.input(k).scope == scope]
-        if not ids:
-            return set(), False
-        claims = [f"{_LEAD[scope]} {e.input(k).label}: {_show(e, e.input(k), pending[k]).replace('_', ' ')}"
+    async def numbers(scope: str) -> tuple[set[str], bool, bool]:
+        """(confirmed numbers, one lesion, failed)"""
+        ids = [k for k in pending if e.input(k).scope == scope and e.input(k).type == "number"]
+        one_lesion = scope == "lesion" and any(e.input(k).scope == "lesion" for k in pending)
+        if not ids and not one_lesion:
+            return set(), True, False
+        claims = [f"{_LEAD[scope]} {e.input(k).label}: {_show(e, e.input(k), pending[k][0]).replace('_', ' ')}"
                   for k in ids]
-        one_lesion = scope == "lesion"     # one lesion or several is a question of meaning: Jev, in the same batch
-        if one_lesion:
+        if one_lesion:                 # one lesion or several is a question of meaning: Jev, in the same batch
             claims.append(ONE_LESION)
         try:
             got = await _jev(claims, states[scope])
         except Exception as ex:
-            logger.info("[library.preview] value check failed (%s): %d value(s) asked", type(ex).__name__, len(ids))
-            return set(), True
-        ok = {k for k, s in zip(ids, got) if s >= P.SETTLED_MIN}
+            logger.info("[library.preview] %s value check failed (%s)", scope, type(ex).__name__)
+            return set(), False, True
         if one_lesion and got[-1] < ONE_LESION_MIN:
             logger.info("[library.preview] %s: finding not one lesion (%.2f); lesion inputs asked", e.key, got[-1])
-            ok = set()
-        return ok, False
+        return ({k for k, s in zip(ids, got) if s >= P.SETTLED_MIN},
+                not one_lesion or got[-1] >= ONE_LESION_MIN, False)
 
-    (a, fa), (b, fb) = await asyncio.gather(one("lesion"), one("patient"))
-    return a | b, fa or fb
+    async def quote(k: str) -> tuple[str, float | None]:
+        i = e.input(k)
+        v, q = pending[k]
+        try:
+            return k, (await _jev([_quote_claim(e, i, v)], _quote_state(i, q)))[0]
+        except Exception as ex:
+            logger.info("[library.preview] quote check failed (%s)", type(ex).__name__)
+            return k, None
+
+    choices = [k for k in pending if e.input(k).type != "number"]
+    (a, one, fa), (b, _, fb), *qs = await asyncio.gather(numbers("lesion"), numbers("patient"),
+                                                        *(quote(k) for k in choices))
+    ok = a | b | {k for k, s in qs if s is not None and s >= QUOTE_MIN}
+    if not one or fa:
+        ok = {k for k in ok if e.input(k).scope != "lesion"}
+    return ok, fa or fb or any(s is None for _, s in qs)
 
 
 def _outcome_text(e: Entry, t: engine.Trace, sources: list[dict]) -> Proposal | None:
@@ -383,9 +416,9 @@ async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str
     if no_unit:
         logger.info("[library.preview] %s: no finding unit; lesion inputs asked", e.key)
     model, degraded = await _settle(e, given, finding, findings, history)
-    # every value, numbers included (read by code from the quote), is put to Jev as stated for its scope: this
-    # catches a number of the wrong time point or the wrong role ("was 5 mm, now 9 mm"; swapped volumes)
-    pending = {k: v for k, (v, _) in model.items()}
+    # every number (read by code from the quote) is put to Jev as stated for its scope: this catches a number of the
+    # wrong time point or role ("was 5 mm, now 9 mm"; swapped volumes); every enum or boolean, as stated by its quote
+    pending = {k: (v, st.quote) for k, (v, st) in model.items()}
     confirmed, jev_failed = await _confirm(e, pending, finding, findings, history) if pending else (set(), False)
     keep = [k for k in model if k in confirmed]
     given.update({k: model[k][0] for k in keep})
