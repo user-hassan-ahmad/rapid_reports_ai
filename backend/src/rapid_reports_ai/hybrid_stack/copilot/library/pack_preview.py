@@ -2,7 +2,8 @@
 verbatim span that settles it, and only from that input's scope: a lesion input from the card's own finding unit, a
 patient input from the clinical history or the whole dictation; with no finding unit, lesion inputs are asked. Code
 reads every number and its unit from the whole measurement its quote sits in (the model's number must agree); one
-batched Jev call per scope checks every value, numbers included, as stated; the radiologist's answers win; the engine
+batched Jev call per scope checks every value, numbers included, as stated, and a lesion number also needs the
+finding to describe one lesion (no other number, no multiplicity word, and Jev's one-lesion claim); the radiologist's answers win; the engine
 evaluates. Every word of the proposal comes from the entry. Any failure leaves
 the input asked, never assumed."""
 from __future__ import annotations
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 PACK_BRANCH = "Pack"
 REFERENCE_BRANCH = "Reference"
 TIMEOUT_S = 10.0
+ONE_LESION_MIN = 0.8      # Jev "the FINDING describes only one <lesion>": below it, every lesion number is asked
 _STATE_LABEL = {"absent": "Absent", "not_assessable": "Not assessable"}
 _LEAD = {"lesion": "The FINDING states", "patient": "The CLINICAL HISTORY or DICTATION state"}
 
@@ -271,6 +273,8 @@ async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings
         if i is None or i.id not in ids or not q or not _in_scope(i, q, finding, findings, history):
             continue
         v = _value(i, item, [finding] if i.scope == "lesion" else [findings, history])
+        if v is not None and i.type == "number" and i.scope == "lesion" and Q.many(finding, _nouns(e)):
+            continue                 # the finding names other lesions: which one's number is meant is asked
         if v is not None:
             out[i.id] = (v, Settled(input=i.id, value=_show(e, i, v), quote=q))
     return out, False
@@ -283,6 +287,15 @@ async def _jev(claims: list[str], state: str) -> list[float]:
     r.raise_for_status()
     s = J.scores(r.json(), qs)        # malformed raises: an outage, never a low score
     return [s[f"v{n}"] for n in range(len(claims))]
+
+
+def _nouns(e: Entry) -> list[str]:
+    """The pack's lesion nouns, from the finding types it applies to."""
+    return [t for t in e.applies_to.finding_type if t.strip()] or ["lesion"]
+
+
+def _one_claim(e: Entry) -> str:
+    return f"The FINDING describes only one {' or '.join(_nouns(e))}"
 
 
 async def _confirm(e: Entry, pending: dict[str, InputValue], finding: str, findings: str,
@@ -299,12 +312,19 @@ async def _confirm(e: Entry, pending: dict[str, InputValue], finding: str, findi
             return set(), False
         claims = [f"{_LEAD[scope]} {e.input(k).label}: {_show(e, e.input(k), pending[k]).replace('_', ' ')}"
                   for k in ids]
+        nums = {k for k in ids if e.input(k).type == "number"} if scope == "lesion" else set()
+        if nums:                     # one lesion or several is a question of meaning: Jev, in the same batch
+            claims.append(_one_claim(e))
         try:
             got = await _jev(claims, states[scope])
         except Exception as ex:
             logger.info("[library.preview] value check failed (%s): %d value(s) asked", type(ex).__name__, len(ids))
             return set(), True
-        return {k for k, s in zip(ids, got) if s >= P.SETTLED_MIN}, False
+        ok = {k for k, s in zip(ids, got) if s >= P.SETTLED_MIN}
+        if nums and got[-1] < ONE_LESION_MIN:
+            logger.info("[library.preview] %s: finding not one lesion (%.2f); lesion numbers asked", e.key, got[-1])
+            ok -= nums
+        return ok, False
 
     (a, fa), (b, fb) = await asyncio.gather(one("lesion"), one("patient"))
     return a | b, fa or fb

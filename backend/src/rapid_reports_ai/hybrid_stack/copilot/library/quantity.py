@@ -127,9 +127,15 @@ def _agrees(r: float, model: float | None, unit: str) -> bool:
     return any(abs(r - model * f) < 1e-6 for f in (1.0, *(f for (_, b), f in CONVERT.items() if b == want)))
 
 
+_RUN_ON = re.compile(r"\d\s+[-−+]?\d")    # "8 4 mm": a bare number run into the measurement is another number
+
+
 def _widen(text: str, s: int, e: int) -> tuple[int, int]:
-    """The whole measurement expression around text[s:e]: adjacent numbers, units, x/by, ranges, bounds and signs."""
-    toks = [(m.start(), m.end()) for m in _TOK.finditer(text)]
+    """The whole measurement expression around text[s:e]: adjacent numbers, units, x/by, ranges, bounds and signs.
+    An image reference or anatomical label ("segment 6", "image 45") is never part of it."""
+    labels = [(m.start(), m.end()) for rx in (_LABEL, _IMAGE) for m in rx.finditer(text)]
+    toks = [(m.start(), m.end()) for m in _TOK.finditer(text)
+            if not any(a <= m.start() and m.end() <= b for a, b in labels)]
     changed = True
     while changed:
         changed = False
@@ -201,8 +207,8 @@ def alone(text: str, quote: str, value: float, unit: str, dims: str | None = Non
     if canon(unit) == "count":
         return True
     at = _at(quote, text)
-    if not at or any(re.search(r"\d\s+[-−+]?\d", text[s:e]) for s, e in at):
-        return False                                # "8 4 mm": a bare number widened in with the quote is another
+    if not at:
+        return False
     rest = list(text)
     for s, e in at:
         rest[s:e] = " " * (e - s)
@@ -223,6 +229,22 @@ def alone(text: str, quote: str, value: float, unit: str, dims: str | None = Non
     return _NUMBER.search(rest) is None
 
 
+# a finding that names more than one lesion without a number for it (fix round 5): the backstop to Jev's one-lesion check
+_MANY_WORDS = ("further|other|others|another|additional|second|scattered|numerous|few|couple|several|multiple|bilateral"
+               "|bilaterally|lesions")
+
+
+def _plural(noun: str) -> str:
+    w = noun.split()[-1].lower()
+    return w + "es" if re.search(r"(?:s|x|z|ch|sh)$", w) else w + "s"
+
+
+def many(text: str, nouns: list[str]) -> bool:
+    """The text has a multiplicity word, or the plural of one of the lesion nouns ("pulmonary nodule" -> nodules)."""
+    words = "|".join([_MANY_WORDS, *(re.escape(_plural(n)) for n in nouns if n.strip())])
+    return re.search(rf"\b(?:{words})\b", text or "", re.I) is not None
+
+
 def settle(quote: str, texts: list[str], unit: str, dims: str | None = None,
            model: float | None = None) -> float | None:
     """The value a quote settles, read from the whole measurement it sits in. None (asked) when the quote is not in
@@ -233,7 +255,7 @@ def settle(quote: str, texts: list[str], unit: str, dims: str | None = None,
     if not found:
         return None
     for w in found:
-        if any(g.search(w) for g in _GUARDS):
+        if any(g.search(w) for g in _GUARDS) or _RUN_ON.search(w):
             return None
         rs = readings(w, unit, dims)
         if len(rs) != 1:

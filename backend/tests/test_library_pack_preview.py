@@ -21,15 +21,19 @@ class _Resp:
 
 @pytest.fixture
 def jev(monkeypatch):
-    st = {"score": 0.9, "fail": False, "fail_if": None, "deny": [], "calls": 0, "payloads": []}
+    st = {"score": 0.9, "fail": False, "fail_if": None, "deny": [], "scores": {}, "calls": 0, "payloads": []}
+
+    def score(text):
+        if any(d in text for d in st["deny"]):
+            return 0.1
+        return next((v for k, v in st["scores"].items() if k in text), st["score"])
 
     async def post(payload, key, timeout, transport=None):
         st["calls"] += 1
         st["payloads"].append(payload)
         if st["fail"] or (st["fail_if"] and st["fail_if"] in payload["state"]):
             raise TimeoutError("jev slow")
-        return _Resp({"answers": {k: {"noul": 0.1 if any(d in q["instructions"] for d in st["deny"]) else st["score"]}
-                                  for k, q in payload["questions"].items()}})
+        return _Resp({"answers": {k: {"noul": score(q["instructions"])} for k, q in payload["questions"].items()}})
     monkeypatch.setattr(P, "jev_post", post)
     return st
 
@@ -307,7 +311,8 @@ async def test_every_value_is_put_to_jev_with_its_scope_as_state(toy_entry, monk
     await PP.preview_pack(toy_entry, TWO, "Smoker.", {}, finding=FINDING)
     by_state = {p["state"]: [q["instructions"] for q in p["questions"].values()] for p in jev["payloads"]}
     assert by_state[f"FINDING:\n{FINDING}"] == ["The FINDING states Nodule type: solid",
-                                                 "The FINDING states Diameter: 7 mm"]
+                                                 "The FINDING states Diameter: 7 mm",
+                                                 "The FINDING describes only one nodule"]
     patient = next(s for s in by_state if s.startswith("CLINICAL HISTORY"))
     assert TWO in patient and by_state[patient] == ["The CLINICAL HISTORY or DICTATION state Patient risk: high"]
 
@@ -517,3 +522,81 @@ async def test_bts_with_eligibility_unknown_is_check_first_with_only_eligibility
                                                                   "benign_features": "Yes", "prior_study": "No"},
                                 finding="7 mm solid nodule.")
     assert out.state == "check_first" and out.proposal is None and out.missing == ["age", "proven_malignant"]
+
+
+# fix round 5: a lesion number settles only for a finding that describes one lesion
+MANY = ["4 mm solid nodule in the right upper lobe; a further larger nodule in the left lower lobe.",
+        "4 mm solid nodule in the right upper lobe. Further subcentimetre nodules bilaterally.",
+        "Scattered solid pulmonary nodules, the index nodule measuring 4 mm.",
+        "4 mm solid nodule in the right upper lobe. Other nodules are larger."]
+ONE_CLAIM = "describes only one"
+
+
+def _pack(key):
+    import json
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+    return LB.Library(json.loads(LB.BUNDLE.read_text())).lookup(key)
+
+
+async def _fleischner(monkeypatch, finding, quote, value):
+    _model(monkeypatch, {"input": "nodule_type", "value": "solid", "quote": "solid"} if "solid" in finding.lower()
+           else {"input": "nodule_type", "value": "solid", "quote": "nodule"},
+           {"input": "diameter_mm", "value": value, "quote": quote})
+    return await PP.preview_pack(_pack("fleischner-pulmonary-nodule"), finding, "", {}, finding=finding)
+
+
+@pytest.mark.parametrize("finding", MANY)
+@pytest.mark.parametrize("verdict", [0.1, 0.7])                      # Jev says no, or is unsure
+async def test_a_finding_with_several_lesions_asks_its_size(monkeypatch, jev, finding, verdict):
+    jev["scores"] = {ONE_CLAIM: verdict}
+    out = await _fleischner(monkeypatch, finding, "4 mm", 4)
+    assert "diameter_mm" not in {x.input for x in out.settled} and "diameter_mm" in out.missing
+
+
+@pytest.mark.parametrize("finding", MANY)
+async def test_the_multiplicity_backstop_asks_even_when_jev_says_one(monkeypatch, jev, finding):
+    jev["scores"] = {ONE_CLAIM: 0.95}
+    out = await _fleischner(monkeypatch, finding, "4 mm", 4)
+    assert "diameter_mm" not in {x.input for x in out.settled}
+    assert "nodule_type" in {x.input for x in out.settled}             # enum lesion inputs are unchanged
+
+
+@pytest.mark.parametrize("verdict,settles", [(0.95, True), (0.8, True), (0.79, False), (0.1, False)])
+async def test_jev_decides_one_lesion_when_no_backstop_word_is_there(monkeypatch, jev, verdict, settles):
+    finding = "4 mm solid nodule in the right upper lobe and a bigger nodular opacity at the left base."
+    jev["scores"] = {ONE_CLAIM: verdict}
+    out = await _fleischner(monkeypatch, finding, "4 mm", 4)
+    assert ("diameter_mm" in {x.input for x in out.settled}) is settles
+
+
+@pytest.mark.parametrize("key,finding,inp,quote,value,want", [
+    ("fleischner-pulmonary-nodule", "Solitary 8 mm nodule.", "diameter_mm", "8 mm", 8, "8 mm"),
+    ("fleischner-pulmonary-nodule", "8 mm nodule in segment 6.", "diameter_mm", "8 mm", 8, "8 mm"),
+    ("fleischner-pulmonary-nodule", "12 x 7 mm nodule.", "diameter_mm", "12 x 7 mm", 9.5, "9.5 mm"),
+    ("bosniak-renal-cyst", "Left renal cyst of -20 HU.", "hu", "-20 HU", -20, "-20 HU")])
+async def test_one_lesion_still_settles_its_number(monkeypatch, jev, key, finding, inp, quote, value, want):
+    _model(monkeypatch, {"input": inp, "value": value, "quote": quote})
+    out = await PP.preview_pack(_pack(key), finding, "", {}, finding=finding)
+    assert {x.input: x.value for x in out.settled}.get(inp) == want
+
+
+async def test_the_one_lesion_claim_rides_in_the_lesion_batch(monkeypatch, jev):
+    out = await _fleischner(monkeypatch, "Solitary 8 mm solid nodule.", "8 mm", 8)
+    assert jev["calls"] == 1 and "diameter_mm" in {x.input for x in out.settled}
+    claims = [q["instructions"] for q in jev["payloads"][0]["questions"].values()]
+    assert "The FINDING describes only one pulmonary nodule" in claims
+
+
+async def test_no_one_lesion_claim_without_a_lesion_number(monkeypatch, jev):
+    _model(monkeypatch, {"input": "nodule_type", "value": "solid", "quote": "solid"})
+    out = await PP.preview_pack(_pack("fleischner-pulmonary-nodule"), "Scattered solid nodules.", "", {},
+                                finding="Scattered solid nodules.")
+    claims = [q["instructions"] for p in jev["payloads"] for q in p["questions"].values()]
+    assert not any(ONE_CLAIM in c for c in claims) and "nodule_type" in {x.input for x in out.settled}
+
+
+@pytest.mark.parametrize("finding", ["Renal cysts, the largest -20 HU.", "Cystic renal masses, the dominant -20 HU."])
+async def test_the_plural_comes_from_the_packs_finding_types(monkeypatch, jev, finding):
+    _model(monkeypatch, {"input": "hu", "value": -20, "quote": "-20 HU"})
+    out = await PP.preview_pack(_pack("bosniak-renal-cyst"), finding, "", {}, finding=finding)
+    assert "hu" not in {x.input for x in out.settled}

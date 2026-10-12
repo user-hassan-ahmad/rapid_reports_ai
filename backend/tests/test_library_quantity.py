@@ -215,3 +215,13 @@ def test_a_finding_with_only_its_measurement_and_the_allowed_numbers_is_alone(te
     ("45 Hounsfield units", "HU", 45.0)])
 def test_further_unit_spellings_read(quote, unit, want):
     assert Q.readings(quote, unit) == [want]
+
+
+def test_a_bare_number_run_into_the_measurement_gives_no_reading_for_any_scope():
+    assert Q.settle("4 mm", ["Nodules 8 4 mm."], "mm") is None
+    assert Q.settle("65 years", ["Aged 3 65 years."], "years") is None
+
+
+@pytest.mark.parametrize("text,quote", [("Segment 6 8 mm lesion.", "8 mm"), ("Image 45 8 mm nodule.", "8 mm")])
+def test_a_label_number_before_the_measurement_is_not_widened_in(text, quote):
+    assert Q.settle(quote, [text], "mm") == 8 and Q.alone(text, quote, 8, "mm")
