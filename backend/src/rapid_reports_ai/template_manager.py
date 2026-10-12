@@ -3272,22 +3272,27 @@ Return a JSON object: {{"sections": ["LIVER", "BILIARY SYSTEM", ...]}}"""
         """
         Extract a JSON object from a GLM string response.
         Handles markdown code fences and stray leading/trailing text.
+
+        Decodes in place from each '{' rather than regex-slicing: the skill
+        sheet itself contains ``` fences and {placeholder} slots, which a
+        fence/brace regex mistakes for the envelope.
         """
-        import json, re
+        import json
 
-        # Strip markdown code fences (```json ... ``` or ``` ... ```)
-        fence_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', raw)
-        candidate = fence_match.group(1).strip() if fence_match else raw.strip()
-
-        # Try direct parse first
-        try:
-            parsed = json.loads(candidate)
-        except json.JSONDecodeError:
-            # Find the outermost { ... } block
-            brace_match = re.search(r'\{[\s\S]*\}', candidate)
-            if not brace_match:
-                raise ValueError(f"No JSON object found in model response. Raw: {raw[:300]}")
-            parsed = json.loads(brace_match.group())
+        decoder = json.JSONDecoder()
+        parsed = None
+        start = raw.find("{")
+        while start != -1:
+            try:
+                obj, _ = decoder.raw_decode(raw, start)
+            except json.JSONDecodeError:
+                obj = None
+            if isinstance(obj, dict):
+                parsed = obj
+                break
+            start = raw.find("{", start + 1)
+        if parsed is None:
+            raise ValueError(f"No JSON object found in model response. Raw: {raw[:300]}")
 
         # Validate expected keys are present
         missing = [k for k in keys if k not in parsed]
