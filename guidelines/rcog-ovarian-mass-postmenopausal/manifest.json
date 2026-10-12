@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "The Management of Ovarian Cysts in Postmenopausal Women (RCOG Green-top Guideline No. 34, July 2016, minor update December 2025)",
+      "issuer": "Royal College of Obstetricians and Gynaecologists",
+      "edition": "2016 (minor update December 2025)",
+      "url": "https://www.rcog.org.uk/media/4v3ncfib/gtg_34.pdf",
+      "sha256": "75e2aad56253024ff36771dc63265def24897f10439994406724ac94474c6130",
+      "file": "sources/75e2aad56253024ff36771dc63265def24897f10439994406724ac94474c6130.pdf",
+      "text_file": "sources/75e2aad56253024ff36771dc63265def24897f10439994406724ac94474c6130.txt",
+      "retrieved": "2026-10-12"
+    }
+  ]
+}
