@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "Fracture and Dislocation Classification Compendium - 2018 (Meinberg EG, Agel J, Roberts CS, Karam MD, Kellam JF. J Orthop Trauma 2018;32 Suppl 1:S1-S170), malleolar segment 44, pp S65-S69 and Appendix pp S168-S169",
+      "issuer": "AO Foundation and Orthopaedic Trauma Association",
+      "edition": "2018",
+      "url": "https://doi.org/10.1097/BOT.0000000000001073",
+      "sha256": "8e3ec455c41378ef0b9d9692d9702cfbd52ca03b74fece718f95955d69d729d1",
+      "file": "sources/8e3ec455c41378ef0b9d9692d9702cfbd52ca03b74fece718f95955d69d729d1.pdf",
+      "text_file": "sources/8e3ec455c41378ef0b9d9692d9702cfbd52ca03b74fece718f95955d69d729d1.txt",
+      "retrieved": "2026-10-12"
+    }
+  ]
+}

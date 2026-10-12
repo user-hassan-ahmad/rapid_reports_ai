@@ -1,0 +1,392 @@
+{
+  "id": "weber-ankle",
+  "version": "2018.1",
+  "topic": "ankle-fracture",
+  "issuer": "AO Foundation and Orthopaedic Trauma Association",
+  "system": "AO/OTA Fracture and Dislocation Classification Compendium 2018: malleolar segment 44 (types A, B, C by the level of the fibular injury relative to the syndesmosis)",
+  "display": "AO/OTA 2018 ankle fracture (44A/B/C)",
+  "edition": "2018",
+  "tier": 2,
+  "status": "current",
+  "applies_to": {
+    "region": [
+      "ankle"
+    ],
+    "modality": [
+      "XR"
+    ],
+    "finding_type": [
+      "ankle fracture"
+    ],
+    "context": []
+  },
+  "aliases": [
+    "Weber",
+    "Weber classification",
+    "Weber A",
+    "Weber B",
+    "Weber C",
+    "Weber A/B/C",
+    "Danis-Weber",
+    "Danis Weber",
+    "Danis-Weber classification",
+    "AO ankle",
+    "AO/OTA 44",
+    "AO 44",
+    "OTA 44",
+    "44A",
+    "44B",
+    "44C"
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.0",
+        "text": "This card is the AO/OTA 2018 classification (malleolar segment 44). The compendium does not state a correspondence to the Danis-Weber classification; the Weber names are search aliases only.",
+        "locator": {
+          "source": "S1",
+          "page": 68,
+          "section": "Malleolar segment 44, pp S65-S69 (the source does not mention Weber or Danis-Weber)"
+        }
+      },
+      {
+        "id": "sum.1",
+        "text": "The AO/OTA 2018 malleolar segment (44) classifies an ankle fracture into type A, B or C by the level of the fibular injury relative to the syndesmosis: infrasyndesmotic, transsyndesmotic or suprasyndesmotic.",
+        "locator": {
+          "source": "S1",
+          "page": 68,
+          "section": "Malleolar segment, Types 44A, 44B, 44C"
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "Each type divides into three groups and each group into three subgroups, by the medial and posterior injury and by the fibular fracture pattern; qualifications are optional lower-case suffixes.",
+        "locator": {
+          "source": "S1",
+          "page": 68,
+          "section": "Malleolar segment, Groups, Subgroups and Qualifications note"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "The malleolar pages give morphology and codes only; they state no management or prognosis for any type.",
+        "locator": {
+          "source": "S1",
+          "page": 68,
+          "section": "Malleolar segment 44, pp S65-S69 (PDF pages 68-72)"
+        }
+      },
+      {
+        "id": "sum.4",
+        "text": "The card lists classification codes, not what plain film can show: several subgroups are ligament ruptures and the syndesmosis qualifiers are not imaging methods, and the source gives no imaging method.",
+        "locator": {
+          "source": "S1",
+          "page": 68,
+          "section": "Malleolar segment 44, pp S65-S69 (PDF pages 68-72)"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.44a",
+        "text": "44A, infrasyndesmotic fibula injury: a rupture of the lateral collateral ligament, an avulsion of the lateral malleolar tip or a transverse lateral malleolar fracture, alone or with a medial or posteromedial injury.",
+        "locator": {
+          "source": "S1",
+          "page": 68,
+          "section": "44A (Types, Groups 44A1-44A3)"
+        }
+      },
+      {
+        "id": "def.44b",
+        "text": "44B, transsyndesmotic fibula fracture: isolated (44B1), with a medial injury (44B2), or with a medial injury and a fracture of the posterolateral rim, Volkmann's fragment (44B3).",
+        "locator": {
+          "source": "S1",
+          "page": 70,
+          "section": "44B (Types, Groups 44B1-44B3)"
+        }
+      },
+      {
+        "id": "def.44c",
+        "text": "44C, suprasyndesmotic fibula injury: a simple or wedge or multifragmentary diaphyseal fibula fracture (44C1, 44C2) or a proximal fibula injury (44C3).",
+        "locator": {
+          "source": "S1",
+          "page": 71,
+          "section": "44C (Types, Groups 44C1-44C3)"
+        }
+      },
+      {
+        "id": "def.qualifications",
+        "text": "Qualifications are optional descriptive terms, written as a lower-case letter in brackets in place of the asterisk of a code; more than one can be applied, separated by a comma.",
+        "locator": {
+          "source": "S1",
+          "page": 68,
+          "section": "Qualifications note (foot of page S65)"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "tab.types",
+        "title": "Malleolar segment types (44A, 44B, 44C)",
+        "columns": [
+          "Type",
+          "Name",
+          "Location"
+        ],
+        "rows": [
+          [
+            "44A",
+            "Infrasyndesmotic fibula injury",
+            "Tibia/fibula, malleolar segment"
+          ],
+          [
+            "44B",
+            "Transsyndesmotic fibula fracture",
+            "Tibia/fibula, malleolar segment"
+          ],
+          [
+            "44C",
+            "Suprasyndesmotic fibula fracture",
+            "Tibia/fibula, malleolar segment"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 68,
+          "section": "Malleolar segment, Types"
+        }
+      },
+      {
+        "id": "tab.groups",
+        "title": "Malleolar segment groups (nine)",
+        "columns": [
+          "Group",
+          "Description"
+        ],
+        "rows": [
+          [
+            "44A1",
+            "Infrasyndesmotic: isolated fibula injury"
+          ],
+          [
+            "44A2",
+            "Infrasyndesmotic: fibula injury with a medial malleolar fracture"
+          ],
+          [
+            "44A3",
+            "Infrasyndesmotic: fibula injury with a posteromedial fracture"
+          ],
+          [
+            "44B1",
+            "Transsyndesmotic: isolated fibula fracture"
+          ],
+          [
+            "44B2",
+            "Transsyndesmotic: fibula fracture with a medial injury"
+          ],
+          [
+            "44B3",
+            "Transsyndesmotic: fibula fracture with a medial injury and a fracture of the posterolateral rim (Volkmann's fragment)"
+          ],
+          [
+            "44C1",
+            "Suprasyndesmotic: simple diaphyseal fibula fracture"
+          ],
+          [
+            "44C2",
+            "Suprasyndesmotic: wedge or multifragmentary diaphyseal fibula fracture"
+          ],
+          [
+            "44C3",
+            "Suprasyndesmotic: proximal fibula injury"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 68,
+          "section": "Groups 44A1-44C3, pp S65-S69 (PDF pages 68-72)"
+        }
+      },
+      {
+        "id": "tab.subgroups",
+        "title": "Malleolar segment subgroups (27) and the qualifications shown with them",
+        "columns": [
+          "Subgroup",
+          "Description",
+          "Qualifications"
+        ],
+        "rows": [
+          [
+            "44A1.1",
+            "Rupture of the lateral collateral ligament",
+            "none shown"
+          ],
+          [
+            "44A1.2",
+            "Avulsion fracture of the tip of the lateral malleolus",
+            "none shown"
+          ],
+          [
+            "44A1.3",
+            "Transverse fracture of the lateral malleolus",
+            "none shown"
+          ],
+          [
+            "44A2.1",
+            "Rupture of the lateral collateral ligament, with a medial malleolar fracture",
+            "none shown"
+          ],
+          [
+            "44A2.2",
+            "Avulsion fracture of the tip of the lateral malleolus, with a medial malleolar fracture",
+            "none shown"
+          ],
+          [
+            "44A2.3",
+            "Transverse fracture of the lateral malleolus, with a medial malleolar fracture",
+            "none shown"
+          ],
+          [
+            "44A3.1",
+            "Rupture of the lateral collateral ligament with a posteromedial fracture",
+            "none shown"
+          ],
+          [
+            "44A3.2",
+            "Avulsion fracture of the tip of the lateral malleolus with a posteromedial fracture",
+            "none shown"
+          ],
+          [
+            "44A3.3",
+            "Transverse fracture of the lateral malleolus with a posteromedial fracture",
+            "none shown"
+          ],
+          [
+            "44B1.1",
+            "Simple fibula fracture",
+            "n Tillaux-Chaput tubercle fracture; o Wagstaffe-Le Fort avulsion fracture; u syndesmosis unstable"
+          ],
+          [
+            "44B1.2",
+            "Fibula fracture with a rupture of the anterior syndesmosis",
+            "n Tillaux-Chaput tubercle fracture; o Wagstaffe-Le Fort avulsion fracture; u syndesmosis unstable"
+          ],
+          [
+            "44B1.3",
+            "Wedge or multifragmentary fibula fracture",
+            "n Tillaux-Chaput tubercle fracture; o Wagstaffe-Le Fort avulsion fracture; u syndesmosis unstable"
+          ],
+          [
+            "44B2.1",
+            "With a rupture of the deltoid ligament and anterior syndesmosis",
+            "n Tillaux-Chaput tubercle fracture; o Wagstaffe-Le Fort avulsion fracture; u syndesmosis unstable"
+          ],
+          [
+            "44B2.2",
+            "With a medial malleolus fracture and a rupture of the anterior syndesmosis",
+            "n Tillaux-Chaput tubercle fracture; o Wagstaffe-Le Fort avulsion fracture; u syndesmosis unstable"
+          ],
+          [
+            "44B2.3",
+            "Wedge or multifragmentary fibula fracture with medial injury",
+            "r rupture of deltoid ligament; s fracture of medial malleolus; u syndesmosis unstable"
+          ],
+          [
+            "44B3.1",
+            "Simple, with a deltoid ligament rupture",
+            "n Tillaux-Chaput tubercle fracture; o Wagstaffe-Le Fort avulsion fracture; u syndesmosis unstable"
+          ],
+          [
+            "44B3.2",
+            "Simple medial malleolus fracture",
+            "n Tillaux-Chaput tubercle fracture; o Wagstaffe-Le Fort avulsion fracture; u syndesmosis unstable"
+          ],
+          [
+            "44B3.3",
+            "Wedge or multifragmentary fibular fracture with a fracture of the medial malleolus",
+            "n Tillaux-Chaput tubercle fracture; o Wagstaffe-Le Fort avulsion fracture; u syndesmosis unstable"
+          ],
+          [
+            "44C1.1",
+            "With a rupture of the deltoid ligament",
+            "t syndesmosis stable; u syndesmosis unstable"
+          ],
+          [
+            "44C1.2",
+            "With a fracture of the medial malleolus",
+            "t syndesmosis stable; u syndesmosis unstable"
+          ],
+          [
+            "44C1.3",
+            "With a medial and a posterior malleolus fracture",
+            "t syndesmosis stable; u syndesmosis unstable"
+          ],
+          [
+            "44C2.1",
+            "With a rupture of the deltoid ligament",
+            "t syndesmosis stable; u syndesmosis unstable"
+          ],
+          [
+            "44C2.2",
+            "With a fracture of the medial malleolus",
+            "t syndesmosis stable; u syndesmosis unstable"
+          ],
+          [
+            "44C2.3",
+            "With a fracture of the medial malleolus and posterior malleolus",
+            "t syndesmosis stable; u syndesmosis unstable"
+          ],
+          [
+            "44C3.1",
+            "With a medial side injury",
+            "p fibula neck fracture; q proximal tibio-fibular joint dislocation; r rupture of deltoid ligament; s fracture of medial malleolus"
+          ],
+          [
+            "44C3.2",
+            "With shortening and a medial side injury",
+            "p fibula neck fracture; q proximal tibio-fibular joint dislocation; r rupture of deltoid ligament; s fracture of medial malleolus"
+          ],
+          [
+            "44C3.3",
+            "With a medial side injury and a posterior malleolus fracture",
+            "p fibula neck fracture; q proximal tibio-fibular joint dislocation; r rupture of deltoid ligament; s fracture of medial malleolus"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 68,
+          "section": "Subgroups 44A1.1-44C3.3, pp S65-S69 (PDF pages 68-72)"
+        }
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.isolated_medial",
+        "text": "An isolated medial malleolar fracture is not a 44: it is coded as a tibial distal end segment partial articular fracture (43B1.2 or 43B2.2). With a lateral-side ankle injury it is a 44.",
+        "locator": {
+          "source": "S1",
+          "page": 172,
+          "section": "Appendix, Malleolar segment"
+        }
+      },
+      {
+        "id": "pit.posterior_margin",
+        "text": "A fracture of the posterior articular margin (Volkmann) without a lesion of the fibula is a distal tibial end segment fracture (43B1.1 or 43B2.1), not a 44.",
+        "locator": {
+          "source": "S1",
+          "page": 172,
+          "section": "Appendix, Malleolar segment"
+        }
+      },
+      {
+        "id": "pit.fibula_code",
+        "text": "A fibula fracture that is part of an ankle fracture is coded 44. The separate fibula code (4F) is for fibular fractures not associated with an ankle fracture.",
+        "locator": {
+          "source": "S1",
+          "page": 171,
+          "section": "Fibula; Appendix, Malleolar segment (p S169)"
+        }
+      }
+    ]
+  }
+}
