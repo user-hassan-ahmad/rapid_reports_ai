@@ -1,0 +1,81 @@
+{
+  "cases": [
+    {
+      "name": "Salter-Harris type I: sh1_separation",
+      "origin": "ours",
+      "inputs": {
+        "sh_type": "I"
+      },
+      "outcome": "sh1_separation",
+      "steps": {
+        "type": "sh1_separation"
+      }
+    },
+    {
+      "name": "Salter-Harris type II: sh2_fracture_separation",
+      "origin": "ours",
+      "inputs": {
+        "sh_type": "II"
+      },
+      "outcome": "sh2_fracture_separation",
+      "steps": {
+        "type": "sh2_fracture_separation"
+      }
+    },
+    {
+      "name": "Salter-Harris type III: sh3_partial_epiphysis",
+      "origin": "ours",
+      "inputs": {
+        "sh_type": "III"
+      },
+      "outcome": "sh3_partial_epiphysis",
+      "steps": {
+        "type": "sh3_partial_epiphysis"
+      }
+    },
+    {
+      "name": "Salter-Harris type IV: sh4_through_plate",
+      "origin": "ours",
+      "inputs": {
+        "sh_type": "IV"
+      },
+      "outcome": "sh4_through_plate",
+      "steps": {
+        "type": "sh4_through_plate"
+      }
+    },
+    {
+      "name": "Salter-Harris type V: sh5_crush",
+      "origin": "ours",
+      "inputs": {
+        "sh_type": "V"
+      },
+      "outcome": "sh5_crush",
+      "steps": {
+        "type": "sh5_crush"
+      }
+    },
+    {
+      "name": "Type not stated: ask for it",
+      "origin": "ours",
+      "inputs": {},
+      "outcome": null,
+      "needed": [
+        "sh_type"
+      ]
+    },
+    {
+      "name": "Type explicitly unknown: ask for it",
+      "origin": "ours",
+      "inputs": {
+        "sh_type": {
+          "state": "unknown"
+        }
+      },
+      "outcome": null,
+      "needed": [
+        "sh_type"
+      ]
+    }
+  ]
+}
