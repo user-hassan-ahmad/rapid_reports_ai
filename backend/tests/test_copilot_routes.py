@@ -12,7 +12,7 @@ from rapid_reports_ai.hybrid_stack.copilot import routes as CR
 from rapid_reports_ai.hybrid_stack.copilot import tnm
 from rapid_reports_ai.hybrid_stack.copilot.ask import AskResult
 from rapid_reports_ai.hybrid_stack.copilot.recs import RecsResult
-from rapid_reports_ai.hybrid_stack.copilot.types import Branch, Card, GuidelineContent, Preview, Supplement
+from rapid_reports_ai.hybrid_stack.copilot.types import Branch, Card, GuidelineContent, Input, Preview, Supplement
 from rapid_reports_ai.main import app
 
 
@@ -43,7 +43,8 @@ def authed(client, user, monkeypatch):
 
 def _seed(db, key="k@1", branches=None, supplements=None):
     Reg.upsert(db, key=key, name="K", version="1", aliases=[], publication=None,
-               content=GuidelineContent(branches=branches or [Branch(name="B", state="checked")],
+               content=GuidelineContent(branches=branches or [Branch(name="B", state="checked",
+                                                                     inputs=[Input(id="risk", question="Risk")])],
                                         supplements=supplements or []), sources=[], chunks=[])
 
 
@@ -93,7 +94,7 @@ def test_open_route_returns_entry_and_preview(authed, monkeypatch):
     monkeypatch.setattr(CR, "preview", prev)
     d = authed.post("/api/canvas/stack/guidelines/open", json={
         "card": {"key": "k@1", "name": "K", "version": "1", "finding_id": "u1", "branch": "B"},
-        "findings": "x", "clinical_history": "", "answered": {"risk": "High"}}).json()
+        "findings": "x", "clinical_history": "", "answered": {"risk": "High", "bogus": "x"}}).json()
     assert d["entry"]["key"] == "k@1" and d["preview"]["missing"] == ["risk"] and d["error"] is None
     assert d["branch"] == "B" and seen == {"branch": "B", "answered": {"risk": "High"}}
 
@@ -157,7 +158,7 @@ def test_open_route_fetch_failure(authed, monkeypatch):
         return None
     monkeypatch.setattr(CR, "resolve_guideline", resolve)
     d = authed.post("/api/canvas/stack/guidelines/open", json={
-        "card": {"key": "k@1", "name": "K", "finding_id": "u1"}, "findings": "x"}).json()
+        "card": {"key": "k@1", "name": "K", "version": "1", "finding_id": "u1"}, "findings": "x"}).json()
     assert d["entry"] is None and d["error"] == "unavailable"
 
 
@@ -171,7 +172,7 @@ def test_open_preview_failure_still_returns_the_entry(authed, monkeypatch):
     monkeypatch.setattr(CR, "resolve_guideline", resolve)
     monkeypatch.setattr(CR, "preview", prev)
     d = authed.post("/api/canvas/stack/guidelines/open", json={
-        "card": {"key": "k@1", "name": "K", "finding_id": "u1", "branch": "B"}, "findings": "x"}).json()
+        "card": {"key": "k@1", "name": "K", "version": "1", "finding_id": "u1", "branch": "B"}, "findings": "x"}).json()
     assert d["entry"]["key"] == "k@1" and d["preview"] == {"settled": [], "missing": [], "proposal": None}
 
 
@@ -183,8 +184,8 @@ async def test_open_timeout_keeps_the_fetch_going(db_session, user, monkeypatch)
         _seed(db)
         return Reg.entry(Reg.by_key(db, "k@1"))
     monkeypatch.setattr(CR, "resolve_guideline", resolve)
-    req = CR.OpenRequest(card=Card(key="k@1", name="K", finding_id="u1", branch="B"), findings="x")
-    out = await CR.copilot_open(req, user, db_session)
+    req = CR.OpenRequest(card=CR.CardIn(key="k@1", name="K", version="1", finding_id="u1", branch="B"), findings="x")
+    out = await CR.copilot_open(req, user)
     assert out.entry is None and out.error == "loading"
     await _drain()
     assert Reg.by_key(db_session, "k@1") is not None   # the fetch finished in its own session
@@ -211,7 +212,7 @@ def test_preview_is_registry_only(authed, db_session, monkeypatch):
 def test_ask_route(authed, monkeypatch):
     seen = {}
 
-    async def fake(db, question, key, ctx, history, finding_id=""):
+    async def fake(db, question, key, ctx, history, finding_id="", abandoned=None):
         seen.update(question=question, key=key, findings=ctx.findings, n=len(history), finding_id=finding_id)
         return AskResult(kind="card", key=key, answer="a")
     monkeypatch.setattr(CR, "ask", fake)
@@ -230,12 +231,12 @@ def test_ask_on_an_unresolved_listed_card_resolves_it_first(authed, db_session, 
         _seed(db)
         return Reg.entry(Reg.by_key(db, "k@1"))
 
-    async def fake(db, question, key, ctx, history, finding_id=""):
+    async def fake(db, question, key, ctx, history, finding_id="", abandoned=None):
         order.append(("ask", Reg.by_key(db, key) is not None))
         return AskResult(kind="card", key=key, answer="a")
     monkeypatch.setattr(CR, "resolve_guideline", resolve)
     monkeypatch.setattr(CR, "ask", fake)
-    card = {"key": "k@1", "name": "K", "finding_id": "u1"}
+    card = {"key": "k@1", "name": "K", "version": "1", "finding_id": "u1"}
     authed.post("/api/canvas/stack/guidelines/ask", json={"question": "why", "key": "k@1", "card": card})
     assert order == [("resolve", "k@1"), ("ask", True)]
     order.clear()
@@ -247,7 +248,7 @@ async def test_ask_timeout_answers_generally_and_keeps_resolving(db_session, use
     monkeypatch.setattr(CR, "ASK_TIMEOUT_S", 0.05)
     done = []
 
-    async def fake(db, question, key, ctx, history, finding_id=""):
+    async def fake(db, question, key, ctx, history, finding_id="", abandoned=None):
         await asyncio.sleep(0.2)
         _seed(db)
         done.append(True)
@@ -257,7 +258,7 @@ async def test_ask_timeout_answers_generally_and_keeps_resolving(db_session, use
         return "Usually so."
     monkeypatch.setattr(CR, "ask", fake)
     monkeypatch.setattr(A, "_general_answer", general)
-    out = await CR.copilot_ask(CR.AskRequest(question="why"), user, db_session)
+    out = await CR.copilot_ask(CR.AskRequest(question="why"), user)
     assert out.kind == "general" and out.loading and not out.supported
     assert out.answer == f"{CR.STILL_LOADING} {A.FROM_GENERAL} Usually so."
     await _drain()
@@ -267,7 +268,7 @@ async def test_ask_timeout_answers_generally_and_keeps_resolving(db_session, use
 async def test_ask_timeout_general_failure_still_says_loading(db_session, user, monkeypatch):
     monkeypatch.setattr(CR, "ASK_TIMEOUT_S", 0.01)
 
-    async def fake(db, question, key, ctx, history, finding_id=""):
+    async def fake(db, question, key, ctx, history, finding_id="", abandoned=None):
         await asyncio.sleep(0.05)
         return AskResult(kind="general", answer="late")
 
@@ -275,7 +276,7 @@ async def test_ask_timeout_general_failure_still_says_loading(db_session, user, 
         raise TimeoutError
     monkeypatch.setattr(CR, "ask", fake)
     monkeypatch.setattr(A, "_general_answer", general)
-    out = await CR.copilot_ask(CR.AskRequest(question="why", key="k@1"), user, db_session)
+    out = await CR.copilot_ask(CR.AskRequest(question="why", key="k@1"), user)
     assert out.loading and out.answer == CR.STILL_LOADING and out.key == "k@1"
     await _drain()
 
@@ -328,3 +329,142 @@ def test_log_accepts_copilot(authed, db_session):
     row = db_session.query(DictationStackLog).filter_by(session_id="s1").first()
     db_session.refresh(row)
     assert row.copilot == {"applied": ["k@1"]} and row.report_id == "r"
+
+
+def _stub_preview(monkeypatch):
+    async def prev(entry, branch, findings, history, answered):
+        return Preview()
+    monkeypatch.setattr(CR, "preview", prev)
+
+
+def test_supplements_never_leave_for_non_reviewers(authed, db_session, monkeypatch):
+    monkeypatch.setenv("RR_STACK_REVIEWERS", "rad@nhs.net")
+    _seed(db_session, supplements=[Supplement(question="phrase", url="https://s")])
+
+    async def resolve(db, card):
+        return Reg.entry(Reg.by_key(db, "k@1"))
+
+    async def fake(db, question, key, ctx, history, finding_id="", abandoned=None):
+        return AskResult(kind="card", key=key, answer="a", entry=Reg.entry(Reg.by_key(db, key)))
+    monkeypatch.setattr(CR, "resolve_guideline", resolve)
+    monkeypatch.setattr(CR, "ask", fake)
+    _stub_preview(monkeypatch)
+    card = {"key": "k@1", "name": "K", "version": "1", "finding_id": "u1", "branch": "B"}
+    for path in ("open", "preview"):
+        d = authed.post(f"/api/canvas/stack/guidelines/{path}", json={"card": card, "findings": "x"}).json()
+        assert d["entry"]["content"]["supplements"] == []
+    d = authed.post("/api/canvas/stack/guidelines/ask", json={"question": "q", "key": "k@1"}).json()
+    assert d["entry"]["content"]["supplements"] == []
+    listed = authed.get("/api/canvas/stack/guidelines/registry").json()[0]
+    assert listed["content"]["supplements"][0]["question"] == "phrase" and "chunks" not in listed
+    one = authed.get("/api/canvas/stack/guidelines/registry/k@1").json()
+    assert one["chunks"] == [] and one["content"]["supplements"][0]["url"] == "https://s"
+    assert authed.get("/api/canvas/stack/guidelines/registry/nope@1").status_code == 404
+
+
+def test_ask_ignores_a_card_for_another_key(authed, monkeypatch):
+    async def resolve(db, card):
+        raise AssertionError("never resolved")
+
+    async def fake(db, question, key, ctx, history, finding_id="", abandoned=None):
+        return AskResult(kind="general", key=key, answer="a")
+    monkeypatch.setattr(CR, "resolve_guideline", resolve)
+    monkeypatch.setattr(CR, "ask", fake)
+    card = {"key": "other@1", "name": "Other", "version": "1", "finding_id": "u1"}
+    for body in ({"question": "q", "key": "k@1", "card": card}, {"question": "q", "card": card}):
+        assert authed.post("/api/canvas/stack/guidelines/ask", json=body).json()["answer"] == "a"
+
+
+@pytest.mark.parametrize("card,code", [
+    ({"key": "K@1", "name": "K", "version": "1"}, 400),                       # not a slug
+    ({"key": "k@1/../x", "name": "K", "version": "1"}, 400),
+    ({"key": "anything@1", "name": "K", "version": "1"}, 400),                # not its name's key, not held
+    ({"key": "k@1", "name": "K" * 121, "version": "1"}, 422),
+    ({"key": "k@1", "name": "K", "version": "1" * 25}, 422),
+    ({"key": "k@1", "name": "K", "version": "1", "skeleton": ["s"] * 13}, 422),
+    ({"key": "k@1", "name": "K", "version": "1", "why": "w" * 301}, 422),
+    ({"key": "k@1", "name": "K", "version": "1", "publication": {"title": "t" * 301}}, 422),
+    ({"key": "k@1", "name": "K", "version": "1", "publication": {"year": "123456789"}}, 422),
+])
+def test_open_validates_the_client_card(authed, monkeypatch, card, code):
+    async def resolve(db, card):
+        raise AssertionError("never resolved")
+    monkeypatch.setattr(CR, "resolve_guideline", resolve)
+    r = authed.post("/api/canvas/stack/guidelines/open", json={"card": {"finding_id": "u1", **card}, "findings": "x"})
+    assert r.status_code == code
+
+
+def test_open_accepts_a_held_key_and_tnm(authed, db_session, monkeypatch):
+    _seed(db_session, key="held@2")   # held under a key its name would not make: still openable
+
+    async def resolve(db, card):
+        return Reg.entry(Reg.by_key(db, card.key))
+    monkeypatch.setattr(CR, "resolve_guideline", resolve)
+    _stub_preview(monkeypatch)
+    d = authed.post("/api/canvas/stack/guidelines/open", json={
+        "card": {"key": "held@2", "name": "Something else", "finding_id": "u1"}, "findings": "x"}).json()
+    assert d["entry"]["key"] == "held@2"
+
+
+@pytest.mark.parametrize("path,body", [
+    ("open", {"card": {"key": "k@1", "name": "K", "version": "1", "finding_id": "u1"},
+              "answered": {f"i{n}": "v" for n in range(21)}}),
+    ("open", {"card": {"key": "k@1", "name": "K", "version": "1", "finding_id": "u1"}, "answered": {"i": "v" * 201}}),
+    ("open", {"card": {"key": "k@1", "name": "K", "version": "1", "finding_id": "u1"}, "answered": {"i" * 61: "v"}}),
+    ("open", {"card": {"key": "k@1", "name": "K", "version": "1", "finding_id": "f" * 41}}),
+    ("ask", {"question": "q" * 1001}),
+    ("ask", {"question": "q", "history": [{"question": "q", "answer": "a"}] * 7}),
+    ("ask", {"question": "q", "history": [{"question": "q" * 2001, "answer": "a"}]}),
+    ("match", {"findings": [{"id": "u", "text": "t" * 1001}]}),
+    ("match", {"findings": [{"id": "u" * 41, "text": "t"}]}),
+    ("match", {"findings": [{"id": f"u{n}", "text": "t"} for n in range(21)]}),
+    ("recommendations", {"applied": ["a"] * 11}),
+    ("recommendations", {"applied": ["a" * 301]}),
+])
+def test_request_caps_reject(authed, path, body):
+    assert authed.post(f"/api/canvas/stack/guidelines/{path}", json=body).status_code == 422
+
+
+async def test_preview_is_bounded_and_fails_open(db_session, user, monkeypatch):
+    monkeypatch.setattr(CR, "PREVIEW_TIMEOUT_S", 0.05)
+    _seed(db_session, branches=[Branch(name="Overview", state="checked"), Branch(name="B", state="checked")])
+
+    async def pick(finding, entry, history=""):
+        await asyncio.sleep(1)
+    monkeypatch.setattr(CR.M, "pick_branch", pick)
+    req = CR.OpenRequest(card=CR.CardIn(key="k@1", name="K", version="1", finding_id="q"), findings="x")
+    out = await CR.copilot_preview(req, user, db_session)
+    assert out.branch == "Overview" and out.preview == Preview() and out.entry.key == "k@1"
+
+
+async def test_ask_timeout_abandons_the_rest_of_the_job(db_session, user, monkeypatch):
+    monkeypatch.setattr(CR, "ASK_TIMEOUT_S", 0.05)
+    seen = []
+
+    async def fake(db, question, key, ctx, history, finding_id="", abandoned=None):
+        await asyncio.sleep(0.2)
+        seen.append(abandoned.is_set())
+        return AskResult(kind="card", key=key, answer="late")
+
+    async def general(question, ctx, history):
+        return "G."
+    monkeypatch.setattr(CR, "ask", fake)
+    monkeypatch.setattr(A, "_general_answer", general)
+    out = await CR.copilot_ask(CR.AskRequest(question="q", key="k@1"), user)
+    assert out.loading and out.kind == "card"   # a scoped ask stays filed under its card
+    await _drain()
+    assert seen == [True]
+
+
+def test_open_resolve_crash_fails_open(authed, monkeypatch):
+    async def resolve(db, card):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(CR, "resolve_guideline", resolve)
+    d = authed.post("/api/canvas/stack/guidelines/open", json={
+        "card": {"key": "k@1", "name": "K", "version": "1", "finding_id": "u1"}, "findings": "x"}).json()
+    assert d["error"] == "unavailable"
+
+
+def test_log_rejects_an_oversized_copilot_record(authed):
+    big = {"threads": ["x" * 70000]}
+    assert authed.post("/api/canvas/stack/log", json={"session_id": "s9", "copilot": big}).status_code == 413

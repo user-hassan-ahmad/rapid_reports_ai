@@ -3,6 +3,7 @@ switch RR_HYBRID_STACK is not "0" (default on). Reviewers (RR_STACK_REVIEWERS, c
 emails) approve, edit or reject reconciled families."""
 from __future__ import annotations
 
+import json
 import os
 from typing import Literal, Mapping
 
@@ -109,6 +110,9 @@ class DraftRequest(BaseModel):
 class CloseRequest(BaseModel):
     units: list[StackUnit]
     regions: list[Region]
+
+
+LOG_COPILOT_MAX = 64 * 1024   # bytes of the Copilot session record, as JSON
 
 
 class LogRequest(BaseModel):
@@ -249,6 +253,8 @@ async def stack_debug(payload: dict, user: User = Depends(get_current_user)):
 @router.post("/log")
 async def stack_log(req: LogRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _require()
+    if req.copilot is not None and len(json.dumps(req.copilot, ensure_ascii=False).encode()) > LOG_COPILOT_MAX:
+        raise HTTPException(status_code=413, detail="Copilot record too large")
     row = db.query(DictationStackLog).filter_by(user_id=user.id, session_id=req.session_id).first()
     if row is None:
         row = DictationStackLog(user_id=user.id, session_id=req.session_id)
