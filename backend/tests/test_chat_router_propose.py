@@ -28,22 +28,27 @@ def no_unit_checks(monkeypatch):
 def stub(monkeypatch):
     """proposal: what the propose call returns; claim_scores: claim -> P(asked); cover / habit: scores."""
     state = {"proposal": P.Proposal(), "claim_scores": {}, "cover": 0.1, "habit": 0.1, "verify_calls": [],
-             "requires": {}, "edit_calls": [], "edit_scores": {}, "contexts": []}
+             "requires": {}, "edit_calls": [], "edit_scores": {}, "contexts": [], "cover_calls": []}
 
     async def propose(sheet, ledger, instruction, context="", rejection=None):
         if isinstance(state["proposal"], Exception):
             raise state["proposal"]
         return state["proposal"]
 
-    async def verify(scan, instruction, claims, context="", transport=None):
+    async def verify(scan, instruction, claims, context="", cover=None, transport=None):
         state["verify_calls"].append(list(claims))
         state["contexts"].append(context)
-        return [state["claim_scores"].get(c, 0.9) for c in claims], state["cover"], state["habit"]
+        state["cover_calls"].append(cover)
+        return [state["claim_scores"].get(c, 0.9) for c in claims], (state["cover"] if cover is not None else None)
+
+    async def screen(scan, instruction, context="", transport=None):
+        return {"habit": state["habit"], "undo": state.get("undo", 0.0)}
 
     async def requires(lines, transport=None):
         return [state["requires"].get(l, 0.0) for l in lines]
     monkeypatch.setattr(P, "_propose", propose)
     monkeypatch.setattr(P, "verify", verify)
+    monkeypatch.setattr(P, "screen", screen)
     monkeypatch.setattr(J, "requires", requires)
 
     async def verify_edits(edits, transport=None):
@@ -204,7 +209,7 @@ async def test_propose_uses_qwen_then_gpt_oss_with_prompted_output(monkeypatch):
     assert "INSTRUCTION:\ndrop width" in seen[0][2] and "VALUES:" in seen[0][2] and "PROSE BLOCKS:" in seen[0][2]
 
 
-async def test_verify_asks_v1_per_claim_with_habit_and_c1_on_the_changes_state():
+async def test_verify_asks_v1_per_claim_and_c1_on_the_changes_state():
     seen = []
 
     def handler(request):
@@ -212,17 +217,65 @@ async def test_verify_asks_v1_per_claim_with_habit_and_c1_on_the_changes_state()
         seen.append(body)
         return httpx.Response(200, json={"answers": {k: {"noul": 0.8} for k in body["questions"]}})
     t = httpx.MockTransport(handler)
-    scores, cover, habit = await P.verify("CT", "drop width", ["Width is no longer required."], transport=t)
-    assert scores == [0.8] and cover == 0.8 and habit == 0.8 and len(seen) == 2
+    scores, cover = await P.verify("CT", "drop width", ["Width is no longer required."],
+                                   cover=["Width is no longer required.", "Asked: which section?"], transport=t)
+    assert scores == [0.8] and cover == 0.8 and len(seen) == 2
     claims_call = next(b for b in seen if "c0" in b["questions"])
-    assert claims_call["questions"]["c0"] == {"type": "noul", "instructions":
-                                              'Does the INSTRUCTION ask for this change: "Width is no longer required."?'}
-    assert claims_call["questions"]["habit"] == J.QUESTIONS["habit"]
+    assert claims_call["questions"] == {"c0": {"type": "noul", "instructions":
+                                               'Does the INSTRUCTION ask for this change: "Width is no longer required."?'}}
     assert claims_call["state"] == "SCAN TYPE: CT\n\nINSTRUCTION:\ndrop width"
     cover_call = next(b for b in seen if "C1" in b["questions"])
     assert cover_call["questions"]["C1"] == {"type": "noul", "instructions":
                                              "Does the INSTRUCTION ask for anything that is not covered by the CHANGES listed?"}
-    assert cover_call["state"].endswith("\n\nCHANGES:\n- Width is no longer required.")
+    assert cover_call["state"].endswith("\n\nCHANGES:\n- Width is no longer required.\n- Asked: which section?")
+    seen.clear()
+    assert await P.verify("CT", "x", [], cover=None, transport=t) == ([], None) and seen == []
+
+
+async def test_screen_asks_the_habit_and_undo_questions_in_one_call():
+    seen = []
+
+    def handler(request):
+        body = json.loads(request.content)
+        seen.append(body)
+        return httpx.Response(200, json={"answers": {k: {"noul": 0.3} for k in body["questions"]}})
+    out = await P.screen("CT", "put it back", context="PREVIOUS REPLY (context only):\nX",
+                         transport=httpx.MockTransport(handler))
+    assert out == {"habit": 0.3, "undo": 0.3} and len(seen) == 1
+    assert seen[0]["questions"]["habit"] == J.QUESTIONS["habit"]
+    assert seen[0]["questions"]["undo"] == {"type": "noul",
+                                            "instructions": "The INSTRUCTION asks to undo the previous change."}
+    assert "PREVIOUS REPLY (context only):\nX" in seen[0]["state"]
+
+
+# ── item 5: C1 lists what is already handled, and is skipped when nothing is left to cover ──────────────────────
+async def test_c1_lists_cards_asks_and_the_parked_habit(stub):
+    stub["habit"] = 0.9
+    stub["claim_scores"] = {'"Axial images were acquired." is no longer printed.': 0.2}
+    stub["proposal"] = _proposal(
+        _change("fixed", "The technique line is removed.", to="remove", line="Axial images were acquired."),
+        _change("normal", "A collection negative is added.", paragraph="Upper", negative="No collection.", to="add",
+                text="No collection."),
+        _change("normal", "Nowhere is reworded.", paragraph="Nowhere", structure="x", to="reword", text="X."))
+    await P.propose_turn(ROUTER_SHEET, [], "with a collection say no collection; drop the technique line")
+    (cover,) = stub["cover_calls"]
+    assert '"Axial images were acquired." is no longer printed.' in cover
+    assert any(c.startswith("Saved as a habit to set up:") for c in cover)
+    assert any(c.startswith("Asked: ") for c in cover)
+
+
+async def test_a_question_only_turn_skips_c1(stub):
+    stub["proposal"] = _proposal(question="Which section did you mean?")
+    stub["cover"] = 0.9
+    t = await P.propose_turn(ROUTER_SHEET, [], "fix the thing")
+    assert stub["cover_calls"] == [None] and P.PART_NOT_APPLIED not in t.reply and "Which section" in t.reply
+
+
+async def test_a_complete_turn_shows_no_coverage_line(stub):
+    stub["proposal"] = _proposal(_change("value", "Width is no longer required.", name="Width", to="not_needed"))
+    stub["cover"] = 0.2
+    t = await P.propose_turn(ROUTER_SHEET, [], "drop width")
+    assert t.reply == "Width is no longer required." and stub["cover_calls"] == [["Width is no longer required."]]
 
 
 async def test_arm_2_with_the_habit_guard_does_not_reroute_a_flagged_line(stub, monkeypatch):
@@ -305,7 +358,7 @@ async def test_v1_and_c1_both_carry_the_context():
         seen.append(body)
         return httpx.Response(200, json={"answers": {k: {"noul": 0.8} for k in body["questions"]}})
     await P.verify("CT", "and depth too", ["Depth is no longer required."], context="PREVIOUS REPLY (context only):\nX",
-                   transport=httpx.MockTransport(handler))
+                   cover=["Depth is no longer required."], transport=httpx.MockTransport(handler))
     assert all("PREVIOUS REPLY (context only):\nX" in b["state"] for b in seen) and len(seen) == 2
 
 

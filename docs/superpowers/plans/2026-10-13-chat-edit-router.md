@@ -93,6 +93,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
     - V1 and C1 read the chat context: the last assistant reply and the last turn's applied claims.
     - One claim per field: a concept change touching several fields gets a code-written claim for each, and each is verified. Only the verified fields are applied; the whole proposal is carded for the rest.
     - The habit guard is narrowed. It blocks only a change that makes something new unconditional: a normal or negative add, a fixed add or "always", or a value set to "every". Rewordings, removals and conditional concept wording pass.
+    - C1 is gated. Its CHANGES list every part already handled: applied or carded claims, asks, and the parked habit. It is skipped when nothing was proposed (the question is the reply). The habit guard (and the undo question) move to one cheap Jev screen before proposing.
     - The proposal schema is flat, with one list per kind (style has its own list). Identifier fields are required, and a change whose identifier is empty is dropped, not asked about.
 16. **Prose the style call never sees:** `## Scan Context` and `## Report Structure` (the fit check reads the scan context, and the structure block is layout).
 

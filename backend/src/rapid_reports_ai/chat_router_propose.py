@@ -262,28 +262,43 @@ def chat_context(context: str = "", last_changes: Optional[List[dict]] = None) -
     return "\n\n".join(parts)
 
 
-async def verify(scan_type: str, instruction: str, claims: List[str], context: str = "",
-                 transport=None) -> Tuple[List[float], float, float]:
-    """(V1 score per claim, C1 coverage score, habit-guard score). Two Jev calls in parallel: the claims and the habit
-    guard on the instruction's state, and C1 on the state with the CHANGES listed (each as the verify lab asked it).
-    Raises on failure."""
+UNDO_Q = {"type": "noul", "instructions": "The INSTRUCTION asks to undo the previous change."}
+
+
+def _state(scan_type: str, instruction: str, context: str = "") -> str:
     base = f"SCAN TYPE: {scan_type or 'not given'}\n\nINSTRUCTION:\n{(instruction or '').strip()}"
-    if context:
-        base += f"\n\n{context}"
-    key = os.environ.get("OPENROUTER_API_KEY", "")
-    qs = {f"c{i}": _v1(c) for i, c in enumerate(claims)}
-    qs["habit"] = dict(J.QUESTIONS["habit"])
-    cover_state = base + "\n\nCHANGES:\n" + "\n".join(f"- {c}" for c in claims)
+    return base + (f"\n\n{context}" if context else "")
 
-    async def post(state: str, questions: dict) -> dict:
-        r = await jev_post({"model": JEV_MODEL, "state": state, "questions": questions}, key, VERIFY_TIMEOUT_S,
-                           transport)
-        r.raise_for_status()
-        return r.json().get("answers") or {}
 
-    a, b = await asyncio.gather(post(base, qs), post(cover_state, {"C1": dict(C1)}))
-    return ([J._score(a, f"c{i}") for i in range(len(claims))], J._score(b, "C1"), J._score(a, "habit"))
+async def _post(state: str, questions: dict, transport=None) -> dict:
+    r = await jev_post({"model": JEV_MODEL, "state": state, "questions": questions},
+                       os.environ.get("OPENROUTER_API_KEY", ""), VERIFY_TIMEOUT_S, transport)
+    r.raise_for_status()
+    return r.json().get("answers") or {}
 
+
+async def screen(scan_type: str, instruction: str, context: str = "", transport=None) -> dict:
+    """One cheap Jev call before proposing: the habit guard and "undo the previous change" (validated in the next
+    lab). Raises on failure."""
+    a = await _post(_state(scan_type, instruction, context),
+                    {"habit": dict(J.QUESTIONS["habit"]), "undo": dict(UNDO_Q)}, transport)
+    return {"habit": J._score(a, "habit"), "undo": J._score(a, "undo")}
+
+
+async def verify(scan_type: str, instruction: str, claims: List[str], context: str = "",
+                 cover: Optional[List[str]] = None, transport=None) -> Tuple[List[float], Optional[float]]:
+    """(V1 score per claim, C1 coverage score or None). V1 on the instruction's state (all claims in one call); C1 on
+    the state with every handled part listed as CHANGES (applied, carded, asked or parked), skipped when `cover` is
+    None (nothing left to cover). Both read the chat context. Raises on failure."""
+    base = _state(scan_type, instruction, context)
+
+    async def none():
+        return {}
+    a, b = await asyncio.gather(
+        _post(base, {f"c{i}": J.v1(c) for i, c in enumerate(claims)}, transport) if claims else none(),
+        _post(base + "\n\nCHANGES:\n" + "\n".join(f"- {c}" for c in cover), {"C1": dict(C1)}, transport)
+        if cover is not None else none())
+    return [J._score(a, f"c{i}") for i in range(len(claims))], (J._score(b, "C1") if cover is not None else None)
 
 async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, context: str = "",
                        rejection: Optional[dict] = None, last_changes: Optional[List[dict]] = None) -> R.Turn:
@@ -291,11 +306,18 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
     scan = sh.scan_type(sheet)
     ledger = L.clean(ledger)
     try:
+        screened = await screen(scan, instruction, chat_context(context, last_changes))
+    except Exception as e:
+        logger.warning("[chat-router.propose] screen failed: %s", type(e).__name__)
+        raise R.Fallback(f"screen_{type(e).__name__}") from e
+    habit = screened["habit"]
+    try:
         proposal = await _propose(sheet, ledger, instruction, context, rejection)
     except Exception as e:
         logger.warning("[chat-router.propose] propose failed: %s", type(e).__name__)
         raise R.Fallback(f"propose_{type(e).__name__}") from e
     changes, unidentified = items(proposal)
+    ctx_text = chat_context(context, last_changes)
     truncated = max(0, len(changes) - MAX_CHANGES)
     changes = changes[:MAX_CHANGES]
     wording = instruction + ("\n" + (rejection.get("original_instruction") or "") if rejection else "")
@@ -329,8 +351,16 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
         pairs.append((c, v))
     applicable = [(c, v) for c, v in pairs if v.action in ("ledger", "edit")]
     claims = [v.claim or c.claim for c, v in applicable] + [c.claim for c in style_blocks]
+    habit_card, habit_line, habit_ev = (R._park_habit(instruction, habit) if habit >= J.HABIT_MIN
+                                        else (None, "", None))
+    handled = [f"Asked: {v.reason}" for _, v in pairs if v.action in ("ask", "reject") and v.reason]
+    if habit_card:
+        handled.append(habit_card["title"])
+    if (proposal.question or "").strip():
+        handled.append(f"Asked: {proposal.question.strip()}")
+    cover_list = (claims + handled) if changes else None      # nothing proposed: the question is the reply
     try:
-        scores, cover, habit = await verify(scan, instruction, claims, context=chat_context(context, last_changes))
+        scores, cover = await verify(scan, instruction, claims, context=ctx_text, cover=cover_list)
     except Exception as e:
         logger.warning("[chat-router.propose] verify failed: %s", type(e).__name__)
         raise R.Fallback(f"verify_{type(e).__name__}") from e
@@ -338,10 +368,9 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
 
     ev = {"version": PROPOSE_VERSION, "route": "propose", "proposed": len(changes) + unidentified,
           "unidentified": unidentified, "truncated": truncated,
-          "coverage": round(cover, 3), "claims": []}
-    habit_card, habit_line = None, ""
-    if habit >= J.HABIT_MIN:
-        habit_card, habit_line, ev["habit"] = R._park_habit(instruction, habit)
+          "coverage": round(cover, 3) if cover is not None else None, "claims": []}
+    if habit_ev:
+        ev["habit"] = habit_ev
 
     verdicts: List[CH.Verdict] = [v for _, v in pairs if v.action not in ("ledger", "edit")]
     dropped: List[str] = []
@@ -394,7 +423,7 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
     if dropped:   # name what the habit guard left out (never silent)
         ev["habit_dropped"] = dropped
         habit_line = "\n".join([habit_line] + [R.HABIT_DROPPED.format(label=R.KIND_LABEL[k]) for k in dropped])
-    if cover >= COVER_MIN:
+    if cover is not None and cover >= COVER_MIN:
         asks.append(PART_NOT_APPLIED)
     if (proposal.question or "").strip():
         asks.append(proposal.question.strip())
