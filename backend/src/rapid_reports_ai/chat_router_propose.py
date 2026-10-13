@@ -47,20 +47,117 @@ PART_NOT_APPLIED = "Part of your message wasn't applied: could you say what else
 STYLE_UNVERIFIED = R.STYLE_UNVERIFIED
 
 
-class ProposedChange(BaseModel):
-    kind: Literal["value", "concept", "fixed", "normal", "layout", "style"]
-    claim: str                                   # one specific plain sentence: what reports will do differently
-    value: Optional[CH.ValueChange] = None
-    concept: Optional[CH.ConceptChange] = None
-    fixed: Optional[CH.FixedChange] = None
-    normal: Optional[CH.NormalChange] = None
-    layout: Optional[CH.LayoutChange] = None
-    style: Optional[CH.StyleBlock] = None        # a prose block by id, with its complete new text
+# ── the proposal: flat lists, one per kind, identifiers REQUIRED (Qwen dropped nested optional sub-objects whose
+# identifiers defaulted to ""; 2026-10-13). A change whose identifier is still empty is dropped by code, never
+# turned into an empty-target ask. Style has its own list; each style claim names its block.
+class PValue(BaseModel):
+    name: str
+    to: Literal["every", "relevant", "not_needed"]
+    claim: str
+    sure: bool = True
+
+
+class PConcept(BaseModel):
+    concept: str
+    state: Optional[Literal["used", "dictated", "not_used"]] = None
+    default: Optional[str] = None
+    when_met: Optional[str] = None
+    condition: Optional[str] = None
+    claim: str
+    sure: bool = True
+
+
+class PFixed(BaseModel):
+    to: Literal["always", "dictated", "remove", "reword", "add"]
+    line: str          # the current sentence (empty only for "add")
+    text: str          # the new wording (reword, add); empty otherwise
+    paragraph: str     # where a new sentence goes (add); empty otherwise
+    claim: str
+    sure: bool = True
+
+
+class PNormal(BaseModel):
+    paragraph: str
+    to: Literal["reword", "removed", "add"]
+    structure: str     # a NORMAL line's structure, or empty for a negative
+    negative: str      # a NEGATIVE line's current text, or empty for a normal
+    text: str
+    claim: str
+    sure: bool = True
+
+
+class PLayout(BaseModel):
+    op: Literal["rename_paragraph", "move_paragraph", "remove_paragraph", "add_paragraph", "rename_section",
+                "move_section", "remove_section", "add_section"]
+    target: str        # the existing paragraph or section (empty only for add_paragraph / add_section)
+    name: str = ""
+    section: str = ""
+    role: str = ""
+    covers: List[str] = []
+    before: str = ""
+    after: str = ""
+    claim: str
+    sure: bool = True
+
+
+class PStyle(BaseModel):
+    block: str         # the block id from the OUTLINE
+    text: str          # the complete new text of that block
+    claim: str         # names the block (its heading or id) and what changed
 
 
 class Proposal(BaseModel):
-    changes: List[ProposedChange] = []
+    values: List[PValue] = []
+    concepts: List[PConcept] = []
+    fixed: List[PFixed] = []
+    normals: List[PNormal] = []
+    layout: List[PLayout] = []
+    style: List[PStyle] = []
     question: str = ""
+
+
+def identified(kind: str, p) -> bool:
+    """The change names what it changes (the identifiers its kind needs)."""
+    if kind == "value":
+        return bool(p.name.strip())
+    if kind == "concept":
+        return bool(p.concept.strip())
+    if kind == "fixed":
+        return bool(p.text.strip() and p.paragraph.strip()) if p.to == "add" else bool(p.line.strip())
+    if kind == "normal":
+        return bool(p.paragraph.strip()) and bool(p.structure.strip() or p.negative.strip()
+                                                  or (p.to == "add" and p.text.strip()))
+    if kind == "layout":
+        if p.op == "add_paragraph":
+            return bool(p.name.strip() and p.section.strip())
+        return bool(p.name.strip()) if p.op == "add_section" else bool(p.target.strip())
+    return bool(p.block.strip() and p.text.strip())
+
+
+def to_change(kind: str, p):
+    """The existing change model for a proposed item (validated by chat_router_changes)."""
+    fields = p.model_dump(exclude={"claim"})
+    if kind == "style":
+        return CH.StyleBlock(id=p.block, text=p.text, claim=p.claim)
+    model = {"value": CH.ValueChange, "concept": CH.ConceptChange, "fixed": CH.FixedChange,
+             "normal": CH.NormalChange, "layout": CH.LayoutChange}[kind]
+    return model(**fields)
+
+
+LISTS = (("value", "values"), ("concept", "concepts"), ("fixed", "fixed"), ("normal", "normals"),
+         ("layout", "layout"), ("style", "style"))
+
+
+def items(proposal: Proposal) -> Tuple[List[Tuple[str, object]], int]:
+    """(kind, item) for every identified change, in a stable order, and the number dropped as unidentified."""
+    out, dropped = [], 0
+    for kind, attr in LISTS:
+        for p in getattr(proposal, attr):
+            if identified(kind, p):
+                out.append((kind, p))
+            else:
+                dropped += 1
+    return out, dropped
 
 
 SYSTEM = (
@@ -69,21 +166,24 @@ SYSTEM = (
     "You get the template as an OUTLINE: the values every report must state, the study-level statements, the "
     "sentences printed in every report, the normal findings by paragraph, the sections and paragraphs, and the prose "
     "blocks (each with a block id).\n"
-    "Return only the changes the INSTRUCTION asks for, nothing it does not ask for. Each change has a kind and the "
-    "matching field:\n"
-    '- value: {"name", "to": "every" | "relevant" | "not_needed"}\n'
-    '- concept: {"concept" (its key from the OUTLINE), "state", "default", "when_met", "condition"} (null keeps a '
-    "field)\n"
-    '- fixed: {"to": "always" | "dictated" | "remove" | "reword" | "add", "line", "text", "paragraph"}\n'
-    '- normal: {"paragraph", "structure" or "negative", "to": "reword" | "removed" | "add", "text"}\n'
-    '- layout: {"op", "target", "name", "section", "role", "covers", "before", "after"}\n'
-    '- style: {"id" (the block id), "text" (the complete new text of that prose block)}; only for style, tone, length '
-    "or phrasing, never to make reports state something.\n"
-    "Use only names shown in the OUTLINE, copied exactly. Copy new wording exactly as the INSTRUCTION gives it; if "
-    "it does not give the exact wording, write your best wording and set sure to false.\n"
+    "Return only the changes the INSTRUCTION asks for, nothing it does not ask for, each in its own list. Every field "
+    "that names a target is required: copy it exactly from the OUTLINE.\n"
+    '- values: {"name", "to": "every" | "relevant" | "not_needed", "claim"}\n'
+    '- concepts: {"concept" (its key from the OUTLINE), "state", "default", "when_met", "condition", "claim"} (null '
+    "keeps a field)\n"
+    '- fixed: {"to": "always" | "dictated" | "remove" | "reword" | "add", "line" (the current sentence; empty only '
+    'for add), "text" (the new wording for reword or add), "paragraph" (for add), "claim"}\n'
+    '- normals: {"paragraph", "to": "reword" | "removed" | "add", "structure" (a normal line\'s structure) or '
+    '"negative" (a negative line\'s current text), "text", "claim"}\n'
+    '- layout: {"op", "target" (the existing paragraph or section; empty only when adding one), "name", "section", '
+    '"role", "covers", "before", "after", "claim"}\n'
+    '- style: {"block" (the block id), "text" (the complete new text of that prose block), "claim"}: only for style, '
+    "tone, length or phrasing, never to make reports state something; change only what the INSTRUCTION asks for.\n"
+    "Copy new wording exactly as the INSTRUCTION gives it; if it does not give the exact wording, write your best "
+    "wording and set sure to false.\n"
     'Each change has a "claim": one specific plain sentence naming the item and what changes, in report terms (for '
-    'example "<value name> is no longer required." or "The <paragraph> paragraph is renamed to <new name>."), never '
-    'a vague one such as "the wording changes".\n'
+    'example "<value name> is no longer required." or "In <block heading>: sentences are shorter."), never a vague '
+    'one such as "the wording changes". A style claim names its block\'s heading.\n'
     'If you cannot tell what the INSTRUCTION asks, return no changes and one short question in "question".')
 
 
@@ -151,10 +251,6 @@ async def verify(scan_type: str, instruction: str, claims: List[str],
     return ([J._score(a, f"c{i}") for i in range(len(claims))], J._score(b, "C1"), J._score(a, "habit"))
 
 
-def _changes(p: ProposedChange):
-    return getattr(p, p.kind)
-
-
 async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, context: str = "",
                        rejection: Optional[dict] = None) -> R.Turn:
     t0 = time.monotonic()
@@ -165,20 +261,20 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
     except Exception as e:
         logger.warning("[chat-router.propose] propose failed: %s", type(e).__name__)
         raise R.Fallback(f"propose_{type(e).__name__}") from e
-    changes = [c for c in proposal.changes if _changes(c) is not None]
+    changes, unidentified = items(proposal)
     truncated = max(0, len(changes) - MAX_CHANGES)
     changes = changes[:MAX_CHANGES]
     wording = instruction + ("\n" + (rejection.get("original_instruction") or "") if rejection else "")
     ctx = CH.Ctx(sheet, ledger, wording)
 
     # validate: the existing gates, per change (style blocks go through the router's own style path)
-    pairs: List[Tuple[ProposedChange, CH.Verdict]] = []
-    style_blocks = [c for c in changes if c.kind == "style"]
+    pairs: List[Tuple[object, CH.Verdict]] = []
+    style_blocks = [p for k, p in changes if k == "style"]
     blocks_by_id = {b.id: b for b in sh.prose_blocks(sheet)}
-    for c in changes:
-        if c.kind == "style":
+    for kind, c in changes:
+        if kind == "style":
             continue
-        v = CH.validate(c.kind, _changes(c), ctx)
+        v = CH.validate(kind, to_change(kind, c), ctx)
         if v.action == "edit" and v.op:   # client-shaped re-check: forward ops only, slots, a dry run
             checked = CH.check_proposal(CH.proposal_card(v)["apply"], sheet)
             if checked.action == "reject":
@@ -193,7 +289,8 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
         raise R.Fallback(f"verify_{type(e).__name__}") from e
     by_claim = dict(zip(range(len(claims)), scores))
 
-    ev = {"version": PROPOSE_VERSION, "route": "propose", "proposed": len(proposal.changes), "truncated": truncated,
+    ev = {"version": PROPOSE_VERSION, "route": "propose", "proposed": len(changes) + unidentified,
+          "unidentified": unidentified, "truncated": truncated,
           "coverage": round(cover, 3), "claims": []}
     habit_card, habit_line = None, ""
     if habit >= J.HABIT_MIN:
@@ -214,13 +311,13 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
     verified_blocks = []
     for j, c in enumerate(style_blocks):
         s = by_claim[len(applicable) + j]
-        if c.style.id not in blocks_by_id or not R.specific_claim(c.claim, blocks_by_id[c.style.id],
-                                                                  blocks_by_id.values()):
+        if c.block not in blocks_by_id or not R.specific_claim(c.claim, blocks_by_id[c.block],
+                                                               blocks_by_id.values()):
             s = 0.0                                    # a claim that names no block: unverified, whatever Jev said
         ev["claims"].append({"kind": "style", "claim": c.claim, "proposed": c.claim, "score": round(s, 3),
                              "verified": s >= VERIFY_MIN})
         if s >= VERIFY_MIN:
-            verified_blocks.append(c.style.model_copy(update={"claim": c.claim}))
+            verified_blocks.append(to_change("style", c))
         else:
             asks.append(STYLE_UNVERIFIED.format(claim=c.claim))
     styled, style_rec, style_lines, style_ev = sheet, None, [], {}

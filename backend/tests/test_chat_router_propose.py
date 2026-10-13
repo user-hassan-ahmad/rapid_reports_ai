@@ -52,14 +52,28 @@ def stub(monkeypatch):
     return state
 
 
+_DEFAULTS = {"fixed": {"line": "", "text": "", "paragraph": ""}, "normal": {"structure": "", "negative": "", "text": ""},
+             "layout": {"target": ""}}
+_MODEL = {"value": "PValue", "concept": "PConcept", "fixed": "PFixed", "normal": "PNormal", "layout": "PLayout",
+          "style": "PStyle"}
+_LIST = dict(P.LISTS)
+
+
 def _change(kind, claim, **fields):
-    model = {"value": CH.ValueChange, "concept": CH.ConceptChange, "fixed": CH.FixedChange,
-             "normal": CH.NormalChange, "layout": CH.LayoutChange, "style": CH.StyleBlock}[kind]
-    return P.ProposedChange(kind=kind, claim=claim, **{kind: model(**fields)})
+    if kind == "style":
+        fields = {"block": fields.pop("id"), **fields}
+    return kind, getattr(P, _MODEL[kind])(claim=claim, **{**_DEFAULTS.get(kind, {}), **fields})
+
+
+def _proposal(*changes, question=""):
+    lists = {}
+    for kind, item in changes:
+        lists.setdefault(_LIST[kind], []).append(item)
+    return P.Proposal(question=question, **lists)
 
 
 async def test_a_verified_change_is_applied_named_and_undoable(stub):
-    stub["proposal"] = P.Proposal(changes=[_change("value", "Width is no longer required.", name="Width",
+    stub["proposal"] = _proposal(*[_change("value", "Width is no longer required.", name="Width",
                                                    to="not_needed")])
     t = await P.propose_turn(ROUTER_SHEET, [], "drop width")
     assert t.applied and 'LIST_MISSING ["Depth"]' in t.sheet and t.reply == "Width is no longer required."
@@ -73,7 +87,7 @@ async def test_a_verified_change_is_applied_named_and_undoable(stub):
 
 
 async def test_an_unverified_change_becomes_a_card(stub):
-    stub["proposal"] = P.Proposal(changes=[
+    stub["proposal"] = _proposal(*[
         _change("value", "Width is no longer required.", name="Width", to="not_needed"),
         _change("fixed", "The technique line is removed.", to="remove", line="Axial images were acquired.")])
     stub["claim_scores"] = {'"Axial images were acquired." is no longer printed.': 0.2}
@@ -83,7 +97,7 @@ async def test_an_unverified_change_becomes_a_card(stub):
 
 
 async def test_a_coverage_yes_adds_an_ask_line(stub):
-    stub["proposal"] = P.Proposal(changes=[_change("value", "Width is no longer required.", name="Width",
+    stub["proposal"] = _proposal(*[_change("value", "Width is no longer required.", name="Width",
                                                    to="not_needed")])
     stub["cover"] = 0.7
     t = await P.propose_turn(ROUTER_SHEET, [], "drop width and add a line about the margins")
@@ -94,7 +108,7 @@ async def test_a_coverage_yes_adds_an_ask_line(stub):
 
 
 async def test_validation_runs_first_invented_wording_is_a_card_even_if_verified(stub):
-    stub["proposal"] = P.Proposal(changes=[_change("normal", "The alpha normal line is reworded.", paragraph="Upper",
+    stub["proposal"] = _proposal(*[_change("normal", "The alpha normal line is reworded.", paragraph="Upper",
                                                    structure="alpha", to="reword", text="Alpha looks fine.")])
     t = await P.propose_turn(ROUTER_SHEET, [], "make the alpha normal friendlier")
     assert not t.applied and t.cards[0]["ledger_kind"] == "normal" and stub["verify_calls"] == [[]]
@@ -102,7 +116,7 @@ async def test_validation_runs_first_invented_wording_is_a_card_even_if_verified
 
 
 async def test_the_habit_guard_drops_value_normal_and_fixed_changes(stub):
-    stub["proposal"] = P.Proposal(changes=[_change("normal", "A collection negative is added.", paragraph="Upper",
+    stub["proposal"] = _proposal(*[_change("normal", "A collection negative is added.", paragraph="Upper",
                                                    negative="No collection.", to="add", text="No collection.")])
     stub["habit"] = 0.9
     t = await P.propose_turn(ROUTER_SHEET, [], "with diverticulitis always comment on collection")
@@ -112,10 +126,10 @@ async def test_the_habit_guard_drops_value_normal_and_fixed_changes(stub):
 
 async def test_a_style_block_is_verified_and_the_prose_deletion_check_applies(stub):
     new = "Lead with the main finding in one sentence."
-    stub["proposal"] = P.Proposal(changes=[_change("style", "The Impression Construction guidance is shorter.", id="b4", text=new)])
+    stub["proposal"] = _proposal(*[_change("style", "The Impression Construction guidance is shorter.", id="b4", text=new)])
     t = await P.propose_turn(ROUTER_SHEET, [], "make the impression more concise")
     assert t.applied and new in t.sheet and stub["verify_calls"] == [["The Impression Construction guidance is shorter."]]
-    stub["proposal"] = P.Proposal(changes=[
+    stub["proposal"] = _proposal(*[
         _change("value", "Width is no longer required.", name="Width", to="not_needed"),
         _change("style", 'In Impression Construction, the line "Keep it brief." is removed.', id="b4", text="Lead with the most important finding.")])
     stub["claim_scores"] = {'In Impression Construction, the line "Keep it brief." is removed.': 0.1}
@@ -125,7 +139,7 @@ async def test_a_style_block_is_verified_and_the_prose_deletion_check_applies(st
 
 
 async def test_an_unverified_style_block_is_not_applied(stub):
-    stub["proposal"] = P.Proposal(changes=[_change("style", "The Impression Construction guidance is shorter.", id="b4",
+    stub["proposal"] = _proposal(*[_change("style", "The Impression Construction guidance is shorter.", id="b4",
                                                    text="Lead with the main finding in one sentence.")])
     stub["claim_scores"] = {"The Impression Construction guidance is shorter.": 0.1}
     t = await P.propose_turn(ROUTER_SHEET, [], "make the impression more concise")
@@ -133,7 +147,7 @@ async def test_an_unverified_style_block_is_not_applied(stub):
 
 
 async def test_arm_2_refuses_a_vague_style_claim_whatever_jev_says(stub):
-    stub["proposal"] = P.Proposal(changes=[_change("style", "Style updated.", id="b4",
+    stub["proposal"] = _proposal(*[_change("style", "Style updated.", id="b4",
                                                    text="Lead with the main finding in one sentence.")])
     t = await P.propose_turn(ROUTER_SHEET, [], "make the impression more concise")
     assert not t.applied and "Keep it brief." in t.sheet and R.STYLE_UNVERIFIED.format(claim="Style updated.") in t.reply
@@ -146,7 +160,7 @@ async def test_arm_2_verifies_style_claims_once(stub, monkeypatch):
         calls.append(a)
         return []
     monkeypatch.setattr(J, "verify_claims", verify_claims)
-    stub["proposal"] = P.Proposal(changes=[_change("style", "The Impression Construction guidance is shorter.", id="b4",
+    stub["proposal"] = _proposal(*[_change("style", "The Impression Construction guidance is shorter.", id="b4",
                                                    text="Lead with the main finding in one sentence.")])
     t = await P.propose_turn(ROUTER_SHEET, [], "make the impression more concise")
     assert t.applied and calls == []           # its own verify call already asked V1 for the block's claim
@@ -160,8 +174,8 @@ async def test_a_failed_proposal_falls_back(stub):
 
 async def test_changes_per_proposal_are_capped(stub):
     names = [f"Size {i}" for i in range(14)]
-    stub["proposal"] = P.Proposal(changes=[_change("value", f"{n} is required in every report.", name=n, to="every")
-                                           for n in names])
+    stub["proposal"] = _proposal(*[_change("value", f"{n} is required in every report.", name=n, to="every")
+                                   for n in names])
     t = await P.propose_turn(ROUTER_SHEET, [], "always give " + ", ".join(names))
     assert len(t.evidence["claims"]) == P.MAX_CHANGES == 10 and t.evidence["truncated"] == 4
 
@@ -217,7 +231,7 @@ async def test_arm_2_with_the_habit_guard_does_not_reroute_a_flagged_line(stub, 
         raise AssertionError("no re-route call under the habit guard")
     monkeypatch.setattr(C, "call_kind", no_call)
     hidden = "Always comment on a collection."
-    stub["proposal"] = P.Proposal(changes=[_change("style", "The Impression Construction guidance is shorter.", id="b4",
+    stub["proposal"] = _proposal(*[_change("style", "The Impression Construction guidance is shorter.", id="b4",
                                                    text=f"Lead with the main finding.\n{hidden}")])
     stub["habit"], stub["requires"] = 0.9, {hidden: 0.9}
     t = await P.propose_turn(ROUTER_SHEET, [], "with a collection always comment on it; shorter impression")
@@ -225,7 +239,7 @@ async def test_arm_2_with_the_habit_guard_does_not_reroute_a_flagged_line(stub, 
 
 
 async def test_arm_2_names_the_parts_the_habit_guard_drops(stub):
-    stub["proposal"] = P.Proposal(changes=[
+    stub["proposal"] = _proposal(*[
         _change("normal", "A collection negative is added.", paragraph="Upper", negative="No collection.", to="add",
                 text="No collection."),
         _change("style", "The Impression Construction guidance is shorter.", id="b4", text="Lead with the main finding.")])
@@ -237,7 +251,29 @@ async def test_arm_2_names_the_parts_the_habit_guard_drops(stub):
 
 async def test_arm_2_checks_the_claim_against_the_edit(stub):
     claim = "In Impression Construction: sentences are shorter."
-    stub["proposal"] = P.Proposal(changes=[_change("style", claim, id="b4", text="Lead with the key finding.")])
+    stub["proposal"] = _proposal(*[_change("style", claim, id="b4", text="Lead with the key finding.")])
     stub["edit_scores"] = {claim: 0.1}
     t = await P.propose_turn(ROUTER_SHEET, [], "make the impression more concise")
     assert not t.applied and stub["edit_calls"] == [[claim]] and R.STYLE_EDIT_MISMATCH.format(claim=claim) in t.reply
+
+
+# ── items 1 and 8: a flat schema with required identifiers; style in its own list ───────────────────────────────
+def test_identifiers_are_required_in_the_schema_and_style_has_its_own_list():
+    req = {name: set(getattr(P, name).model_json_schema().get("required", [])) for name in
+           ("PValue", "PConcept", "PFixed", "PNormal", "PLayout", "PStyle")}
+    assert {"name", "to", "claim"} <= req["PValue"] and {"concept", "claim"} <= req["PConcept"]
+    assert {"to", "line", "text", "paragraph", "claim"} <= req["PFixed"]
+    assert {"paragraph", "to", "structure", "negative", "text", "claim"} <= req["PNormal"]
+    assert {"op", "target", "claim"} <= req["PLayout"] and {"block", "text", "claim"} <= req["PStyle"]
+    assert set(P.Proposal.model_fields) == {"values", "concepts", "fixed", "normals", "layout", "style", "question"}
+
+
+async def test_a_change_missing_its_identifier_is_dropped_not_asked(stub):
+    stub["proposal"] = _proposal(
+        _change("fixed", "A line is removed.", to="remove", line=""),
+        _change("normal", "A normal is reworded.", paragraph="", structure="alpha", to="reword", text="Alpha is fine."),
+        _change("layout", "A paragraph is renamed.", op="rename_paragraph", target="", name="Top"),
+        _change("value", "Width is no longer required.", name="Width", to="not_needed"))
+    t = await P.propose_turn(ROUTER_SHEET, [], "drop width")
+    assert t.applied and t.reply == "Width is no longer required." and not t.cards
+    assert t.evidence["unidentified"] == 3 and stub["verify_calls"] == [["Width is no longer required."]]
