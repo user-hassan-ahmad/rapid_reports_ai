@@ -429,6 +429,7 @@
 			skillSheet = target.preMutationSkillSheet;
 		}
 		if (Array.isArray(target.preMutationDecisions)) decisions = target.preMutationDecisions;
+		chatCards = [];   // they asked about the rejected edit
 
 		// Mark this turn as rejected; also mark the triggering user turn if present.
 		// Index-0 case (no preceding user message) shouldn't happen in the refine
@@ -460,12 +461,12 @@
 	}
 
 	async function sendAnswer(/** @type {string} */ msg) {
-		if (!msg.trim() || !skillSheet) return;
+		if (!msg.trim() || !skillSheet || chatCardsBusy) return;
 		chatInput = '';
 		const fullMsg = msg;
 
-		// Verification-loop metadata only applies in the refine stage.
-		// Questions-stage messages stay unadorned so no banner renders for them.
+		// Verification-loop metadata only applies in the refine stage; a message sent from any other stage stays
+		// unadorned so no banner renders for it.
 		const isRefineTurn = stage === 'refine';
 		const preMutationSkillSheet = isRefineTurn ? skillSheet : null;
 		const preMutationDecisions = isRefineTurn ? decisions : null;
@@ -532,6 +533,7 @@
 
 	/** A card a refine turn returned, answered: recorded on the ledger and applied to the sheet by code. */
 	async function applyChatCards(/** @type {import('$lib/template-rules/types').DecisionChange[]} */ changes) {
+		if (loading) return;
 		if (!changes.length) { chatCards = []; return; }
 		chatCardsBusy = true; error = '';
 		try {
@@ -612,7 +614,7 @@
 	}
 
 	async function saveAsTemplate() {
-		if (!templateName.trim() || !skillSheet) return;
+		if (!templateName.trim() || !skillSheet || chatCardsBusy) return;
 		// Saving is itself a confirmation of every still-pending refine turn.
 		chatHistory = chatHistory.map((m) =>
 			m.status === 'pending' ? { ...m, status: 'confirmed' } : m
@@ -790,9 +792,9 @@
 		</div>
 		<h3 class="text-lg text-white">Check your rules</h3>
 		{#if rulesLoading}
-			<p class="text-sm text-gray-400 flex items-center gap-2"><span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>Checking your examples…</p>
+			<p class="text-sm text-gray-400 flex items-center gap-2" role="status"><span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>Checking your examples…</p>
 		{:else if loading}
-			<p class="text-sm text-gray-400 flex items-center gap-2"><span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>Building your template…</p>
+			<p class="text-sm text-gray-400 flex items-center gap-2" role="status"><span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>Building your template…</p>
 		{:else if error}
 			<p class="text-sm text-red-400">{error}</p>
 			<button class="btn-primary text-sm" on:click={() => buildTemplate(lastChanges)}>Try again</button>
@@ -846,7 +848,7 @@
 				{#if stage === 'summary'}
 					<div class="flex-1 flex flex-col min-h-0" in:fly={{ x: -20, duration: 200 }}>
 						<p class="text-sm text-gray-400 px-5 pt-4 pb-3 shrink-0">{stageDescriptions.summary}</p>
-						{#if sheetNotice}<p class="text-xs text-gray-400 px-5 pb-3 shrink-0">{sheetNotice}</p>{/if}
+						{#if sheetNotice}<p class="text-xs text-gray-400 px-5 pb-3 shrink-0" role="status">{sheetNotice}</p>{/if}
 						<div class="flex-1 overflow-y-auto overflow-x-hidden min-w-0 px-5 pb-4">
 							{#if summary}
 								<div class="space-y-7 pt-1">
@@ -973,7 +975,7 @@
 							{#if chatCards.length}
 								<div class="pb-3 mb-3 border-b border-white/[0.06]">
 									{#key chatCards}
-										<RulesStep cards={chatCards} mode="review" busy={chatCardsBusy} onContinue={applyChatCards} />
+										<RulesStep cards={chatCards} mode="review" busy={chatCardsBusy || loading} onContinue={applyChatCards} />
 									{/key}
 								</div>
 							{/if}
@@ -1074,7 +1076,7 @@
 						<div class="px-5 py-3 border-t border-white/[0.06] shrink-0 space-y-2">
 							<div class="flex gap-2">
 								<input bind:this={chatInputEl} class="input-dark !py-2 !text-sm" bind:value={chatInput} on:keydown={handleChatKey} placeholder="Add a rule or correction..." disabled={loading} />
-								<button class="btn-accent !px-3.5 !py-2" on:click={() => sendAnswer(chatInput)} disabled={loading || !chatInput.trim()}>&uarr;</button>
+								<button class="btn-accent !px-3.5 !py-2" on:click={() => sendAnswer(chatInput)} disabled={loading || chatCardsBusy || !chatInput.trim()}>&uarr;</button>
 							</div>
 							{#if hasGenerated}
 								<button
@@ -1237,7 +1239,7 @@
 				{:else if !showSaveDialog}
 					<div class="flex items-center justify-between">
 						<p class="text-xs text-gray-500">Refine on the left, regenerate to check.</p>
-						<button class="btn-primary" on:click={openSaveDialog}>Save as template</button>
+						<button class="btn-primary" on:click={openSaveDialog} disabled={chatCardsBusy}>Save as template</button>
 					</div>
 				{:else}
 					<div class="space-y-2.5">
@@ -1289,7 +1291,7 @@
 						</div>
 						<div class="flex items-center justify-end gap-2 pt-0.5">
 							<button class="btn-ghost text-xs" on:click={() => (showSaveDialog = false)}>Cancel</button>
-							<button class="btn-primary !px-5 flex items-center gap-2" on:click={saveAsTemplate} disabled={saving || !templateName.trim()}>
+							<button class="btn-primary !px-5 flex items-center gap-2" on:click={saveAsTemplate} disabled={saving || chatCardsBusy || !templateName.trim()}>
 								{#if saving}<span class="inline-block w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>{/if}
 								Save
 							</button>

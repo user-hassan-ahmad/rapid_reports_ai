@@ -58,7 +58,7 @@ describe('template-rules cards', () => {
 		expect(evidenceLine({ reports: [], source: 'setup', quote: 'CT abdomen with contrast' })).toBe(
 			"From the study setup: 'CT abdomen with contrast'"
 		);
-		expect(evidenceLine({ reports: [], source: 'setup', quote: null })).toBe('study setup: stated');
+		expect(evidenceLine({ reports: [], source: 'setup', quote: null })).toBe('From the study setup');
 	});
 
 	it('records a tapped choice, and edited wording only when written', () => {

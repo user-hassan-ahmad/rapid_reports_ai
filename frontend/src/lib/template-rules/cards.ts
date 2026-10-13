@@ -10,7 +10,7 @@ export interface Answer {
 
 /** "reports 1, 2, 4: 'ECV 28%'" or "report 3: not stated" (never percentages); the study setup is named as such. */
 export function evidenceLine(e: Evidence): string {
-	if (e.source === 'setup') return e.quote ? `From the study setup: '${e.quote}'` : 'study setup: stated';
+	if (e.source === 'setup') return e.quote ? `From the study setup: '${e.quote}'` : 'From the study setup';
 	const nums = [...new Set(e.reports)].sort((a, b) => a - b);
 	const head = (nums.length === 1 ? 'report ' : 'reports ') + nums.join(', ');
 	return `${head}: ${e.quote ? `'${e.quote}'` : 'not stated'}`;

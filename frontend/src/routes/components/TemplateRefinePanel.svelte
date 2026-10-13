@@ -43,6 +43,7 @@
 	let reviewLoading = false;
 	let reviewBusy = false;
 	let reviewDone = false;
+	let reviewChanged = false;
 	let reviewOpen = false;
 	let reviewKey = 0;
 
@@ -84,16 +85,19 @@
 	}
 
 	async function applyReview(/** @type {import('$lib/template-rules/types').DecisionChange[]} */ changes) {
-		if (!changes.length) { reviewDone = true; return; }
+		if (loading) return;
+		if (!changes.length) { reviewChanged = false; reviewDone = true; return; }
 		reviewBusy = true;
 		error = '';
 		try {
 			const r = await postApplyDecisions($token, { skill_sheet: skillSheet, decisions, changes, source: 'first_use_review' });
 			if (!r.success) throw new Error(r.error || 'Could not apply that choice');
+			reviewChanged = r.skill_sheet !== skillSheet || JSON.stringify(r.decisions) !== JSON.stringify(decisions);
 			skillSheet = r.skill_sheet;
 			decisions = r.decisions;
-			if (review?.ran) rulesStep = { ...(review.run ?? {}), reviewed_at: new Date().toISOString() };
-			hasChanges = true;
+			// the server stamped this record with first_use when the run returned; the saved copy keeps it
+			if (review?.ran) rulesStep = { ...(review.run ?? {}), first_use: true, reviewed_at: new Date().toISOString() };
+			if (reviewChanged) hasChanges = true;
 			reviewDone = true;
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -118,7 +122,7 @@
 	}
 
 	async function sendMessage() {
-		if (!chatInput.trim() || !skillSheet || loading) return;
+		if (!chatInput.trim() || !skillSheet || loading || reviewBusy) return;
 		const msg = chatInput.trim();
 		chatInput = '';
 
@@ -157,7 +161,7 @@
 	}
 
 	async function saveChanges() {
-		if (!hasChanges || !template?.id) return;
+		if (!hasChanges || !template?.id || reviewBusy) return;
 		saving = true;
 		error = '';
 		saveError = '';
@@ -237,7 +241,7 @@
 					<button
 						class="px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600/80 hover:bg-purple-600 text-white transition-colors disabled:opacity-40 flex items-center gap-1.5"
 						on:click={saveChanges}
-						disabled={saving}>
+						disabled={saving || reviewBusy}>
 						{#if saving}
 							<div class="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
 						{/if}
@@ -255,7 +259,7 @@
 		{#if saveError || saveNotice}
 			<div class="px-5 pt-2 text-right shrink-0">
 				{#if saveError}<p class="text-xs text-amber-400">{saveError}</p>{/if}
-				{#if saveNotice}<p class="text-xs text-gray-400">{saveNotice}</p>{/if}
+				{#if saveNotice}<p class="text-xs text-gray-400" role="status">{saveNotice}</p>{/if}
 			</div>
 		{/if}
 
@@ -263,16 +267,18 @@
 		<!-- Chat messages -->
 		<div class="flex-1 overflow-y-auto px-5 py-4 space-y-3" bind:this={chatScrollEl}>
 			{#if reviewLoading}
-				<p class="text-xs text-gray-500">Checking your template's rules…</p>
+				<p class="text-xs text-gray-500" role="status">Checking your template's rules…</p>
 			{:else if reviewDone}
-				<p class="text-xs text-gray-400">Rules updated. Save to apply them to future reports.</p>
+				<p class="text-xs text-gray-400" role="status">
+					{reviewChanged ? 'Rules updated. Save to apply them to future reports.' : 'No changes'}
+				</p>
 			{:else if review && (review.cards.length || review.more.length || review.kept.length)}
 				<details class="rounded-lg border border-white/10 p-3" open={review.ran || reviewOpen}>
 					<summary class="text-sm text-gray-200 cursor-pointer">Your template's rules</summary>
 					<div class="pt-3">
 						{#key reviewKey}
 							<RulesStep cards={review.cards} more={review.more} kept={review.kept} defaults={review.defaults}
-								notice={review.notice} mode="review" busy={reviewBusy} onContinue={applyReview} />
+								notice={review.notice} mode="review" busy={reviewBusy || loading} onContinue={applyReview} />
 						{/key}
 					</div>
 				</details>
@@ -339,7 +345,7 @@
 				<button
 					class="px-4 py-2 rounded-lg text-sm font-medium bg-purple-600/80 hover:bg-purple-600 text-white transition-colors disabled:opacity-40"
 					on:click={sendMessage}
-					disabled={loading || !chatInput.trim()}>
+					disabled={loading || reviewBusy || !chatInput.trim()}>
 					Send
 				</button>
 			</div>

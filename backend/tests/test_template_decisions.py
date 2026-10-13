@@ -153,3 +153,10 @@ def test_clean_ledger_drops_what_code_cannot_apply():
 def test_a_quoted_structure_label_is_not_a_negative_key():
     assert td.normal_key("Shoulder", '"ROTATOR CUFF"') == "Shoulder :: ROTATOR CUFF"
     assert td.split_normal_key(td.normal_key("Shoulder", '"ROTATOR CUFF"')) == ("Shoulder", "ROTATOR CUFF", False)
+
+
+def test_a_forget_change_removes_the_entry():
+    led, _ = td.ledger_from_changes([{"kind": "fixed", "key": "A line.", "choice": {"keep": "always"}},
+                                     {"kind": "value", "key": "LVEF", "choice": {"need": "every"}}])
+    out, errors = td.ledger_from_changes([{"kind": "fixed", "key": "A line.", "choice": dict(td.FORGET)}], base=led)
+    assert errors == [] and [e["key"] for e in out] == ["LVEF"]

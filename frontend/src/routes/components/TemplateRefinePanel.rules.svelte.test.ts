@@ -94,4 +94,47 @@ describe('TemplateRefinePanel rules review', () => {
 		await expect.element(page.getByText(KEPT)).toBeInTheDocument();
 		await expect.element(page.getByRole('button', { name: 'LVEF: Not needed' })).toBeInTheDocument();
 	});
+
+	it('says No changes when Apply changes nothing', async () => {
+		const calls: Call[] = [];
+		vi.stubGlobal('fetch', routes(calls));
+		render(TemplateRefinePanel, { template });
+		await page.getByText("Your template's rules").click();
+		await page.getByRole('button', { name: 'Apply' }).click();
+		await expect.element(page.getByRole('status').filter({ hasText: 'No changes' })).toBeInTheDocument();
+		await expect.element(page.getByText('Rules updated', { exact: false })).not.toBeInTheDocument();
+		expect(calls.some((c) => c.url.endsWith('/apply-decisions'))).toBe(false);
+	});
+
+	it('blocks Apply while a refine turn is in flight, and Send and Save while an Apply runs', async () => {
+		const calls: Call[] = [];
+		let finishRefine: (r: Response) => void = () => {};
+		const base = routes(calls);
+		vi.stubGlobal('fetch', vi.fn((url: string, init: RequestInit) => {
+			if (url.endsWith('/skill-sheet/refine')) return new Promise<Response>((res) => (finishRefine = res));
+			return base(url, init);
+		}));
+		render(TemplateRefinePanel, { template });
+		await page.getByText("Your template's rules").click();
+		await userEvent.fill(page.getByPlaceholder('e.g. Always mention', { exact: false }), 'tidy it');
+		await page.getByRole('button', { name: 'Send' }).click();
+		await expect.element(page.getByRole('button', { name: 'Apply' })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: 'LVEF: Not needed' })).toBeDisabled();
+		finishRefine(new Response(JSON.stringify({ success: true, skill_sheet: 'SHEET', response: 'Done.', applied: true })));
+		await expect.element(page.getByRole('button', { name: 'Apply' })).not.toBeDisabled();
+		// now an Apply that has not returned yet: no chat send, no save
+		let finishApply: () => void = () => {};
+		const held = new Promise<void>((res) => (finishApply = res));
+		vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+			if (url.endsWith('/apply-decisions')) await held;
+			return base(url, init);
+		}));
+		await page.getByRole('button', { name: 'LVEF: Not needed' }).click();
+		await page.getByRole('button', { name: 'Apply' }).click();
+		await userEvent.fill(page.getByPlaceholder('e.g. Always mention', { exact: false }), 'more');
+		await expect.element(page.getByRole('button', { name: 'Send' })).toBeDisabled();
+		await expect.element(page.getByRole('button', { name: 'Save' })).toBeDisabled();
+		finishApply();
+		await expect.element(page.getByText('Rules updated. Save to apply them to future reports.')).toBeInTheDocument();
+	});
 });

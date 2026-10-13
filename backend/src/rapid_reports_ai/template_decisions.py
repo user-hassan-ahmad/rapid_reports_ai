@@ -286,14 +286,21 @@ def undo_change(ledger: List[Entry], change: Change) -> List[Entry]:
     return [dict(change["old"]) if e is cur else e for e in ledger]
 
 
+FORGET = {"forget": True}   # a card answer that removes the ledger entry (an unmatched entry's "Forget this decision")
+
+
 def ledger_from_changes(changes: List[dict], base: Optional[List[Entry]] = None,
                         source: str = "creation") -> Tuple[List[Entry], List[str]]:
     """Record card answers [{"kind", "key", "choice", "source"?}] on `base`. A change with source "default" is
-    recorded as by "code". Returns (ledger, one message per change code could not apply; those are skipped)."""
+    recorded as by "code"; a change whose choice is FORGET removes the entry. Returns (ledger, one message per change
+    code could not apply; those are skipped)."""
     ledger: List[Entry] = list(base or [])
     errors: List[str] = []
     for c in changes or []:
         src = c.get("source") or source
+        if c.get("choice") == FORGET:
+            ledger = remove_decision(ledger, c.get("kind", ""), c.get("key", ""))
+            continue
         try:
             ledger, _ = set_decision(ledger, c.get("kind", ""), c.get("key", ""), c.get("choice") or {},
                                      source=src, by="code" if src == "default" else "radiologist")

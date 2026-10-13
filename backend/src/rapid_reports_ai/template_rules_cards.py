@@ -35,7 +35,7 @@ def evidence_line(e: dict) -> str:
     """"reports 1, 2, 4: 'ECV 28%'" or "report 3: not stated" (never percentages); the study setup is named as
     such, never as a report number."""
     if e.get("source") == "setup":
-        return f"From the study setup: '{e['quote']}'" if e.get("quote") else "study setup: stated"
+        return f"From the study setup: '{e['quote']}'" if e.get("quote") else "From the study setup"
     return f"{_reports(e['reports'])}: " + (f"'{e['quote']}'" if e.get("quote") else "not stated")
 
 
@@ -158,6 +158,9 @@ def unmatched_cards(entries) -> List[dict]:
             c = card_for_change(e["kind"], e["key"], e["choice"])
         except (td.DecisionError, KeyError, TypeError):
             continue
+        if c["kind"] == "fixed":   # "Always the same" again would only be unmatched again (Hassan, 2026-10-13)
+            c = {**c, "choices": [x for x in c["choices"] if x["id"] != "always"]
+                 + [_choice("forget", "Forget this decision", dict(td.FORGET))]}
         out.append({**c, "step": "review", "note": UNMATCHED_NOTE})
     return out
 

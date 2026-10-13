@@ -128,6 +128,17 @@ describe('RulesStep', () => {
 			choice: { use: true, default: 'Non-contrast.', when_met: 'Post contrast.', condition: GIVEN, dictated: false } }]);
 	});
 
+	it('Edit wording moves focus into the fields; empty wording cannot be used', async () => {
+		render(RulesStep, { cards: [concept()], notice: 'Heads up.', onContinue: vi.fn() });
+		await expect.element(page.getByRole('status')).toHaveTextContent('Heads up.');
+		await page.getByRole('button', { name: 'Comparison with previous imaging: Edit wording' }).click();
+		await expect.element(page.getByLabelText('Usually')).toHaveFocus();
+		const use = page.getByRole('button', { name: 'Use this wording' });
+		await expect.element(use).not.toBeDisabled();
+		await userEvent.clear(page.getByLabelText('Usually'));
+		await expect.element(use).toBeDisabled();
+	});
+
 	it('adds a required value', async () => {
 		const onContinue = vi.fn();
 		render(RulesStep, { cards: [value('ECV')], onContinue });

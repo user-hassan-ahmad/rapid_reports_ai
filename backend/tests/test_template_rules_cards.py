@@ -263,7 +263,7 @@ def test_a_concept_stated_in_the_setup_is_evidence_never_a_report_number():
     run.setup = {"comparison": {"state": None, "quote": None}}
     card = C.build_cards(run, 3)["cards"][0]
     assert card["evidence"][0] == {"reports": [], "source": "setup", "quote": None}
-    assert C.evidence_line(card["evidence"][0]) == "study setup: stated"
+    assert C.evidence_line(card["evidence"][0]) == "From the study setup"
 
 
 def test_unmatched_entries_become_review_cards_with_a_note():
@@ -274,3 +274,10 @@ def test_unmatched_entries_become_review_cards_with_a_note():
     assert [c["key"] for c in cards] == ["A line the sheet lacks."]
     assert cards[0]["step"] == "review" and cards[0]["note"] == trc.UNMATCHED_NOTE and cards[0]["selected"] is None
     assert trc.unmatched_cards(None) == [] and trc.unmatched_cards("x") == []
+
+
+def test_an_unmatched_fixed_line_is_never_offered_always_again():
+    from rapid_reports_ai import template_rules_cards as trc
+    c = trc.unmatched_cards([{"kind": "fixed", "key": "A line the sheet lacks.", "choice": {"keep": "always"}}])[0]
+    assert [(x["id"], x["choice"]) for x in c["choices"]] == [
+        ("dictated", {"keep": "dictated"}), ("remove", {"keep": "remove"}), ("forget", td.FORGET)]
