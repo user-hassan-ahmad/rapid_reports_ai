@@ -22,7 +22,8 @@ from .case_keyterms import KEYTERM_SYSTEM_PROMPT, KEYTERM_USER_TEMPLATE, filter_
 from .fast_append import clean_verbatim, code_route, route_bundle
 from .spoken_format import format_heading_lines, opens_with_heading, resolve_colon
 from .dictation_v2 import v2_allowed
-from .lean_fidelity import fidelity_violation, verbatim_append
+from .lean_fidelity import fidelity_violation, has_cue, moved_into_earlier, verbatim_append
+from .polish_attachment import MOVED_MIN, moved_score
 from .lean_polish import LEAN_SYSTEM_PROMPT, LEAN_USER_TEMPLATE
 from .jev_questions import FAST_APPEND_BANDS, QSET_VERSION
 from .utterance_bundle import BundleDecision, BundleState, get_jev_bundle
@@ -1344,13 +1345,21 @@ async def polish_span(request: PolishSpanRequest, current_user: User = Depends(g
     # violation keep the span and append the new words as said (lean_fidelity).
     fidelity = fidelity_violation(request.span, request.new, out.active_scratchpad,
                                   out.committed_edits or []) if out is not None else None
+    # New words placed before text already dictated: Jev decides whether the move changed which
+    # finding a side, location, size or descriptor belongs to (polish_attachment). Only on a move.
+    attach = None
+    if (out is not None and not fidelity and not has_cue(request.span, request.new)
+            and moved_into_earlier(request.span, request.new, out.active_scratchpad)):
+        attach = await moved_score(f"{request.span} {new_for_model}".strip(), out.active_scratchpad)
+        if attach is None or attach >= MOVED_MIN:
+            fidelity = "moved_attachment"
     logger.info("[canvas.polish_span] %s", json.dumps({
         "event": "canvas.polish_span", "latency_ms": latency_ms, "error": err,
         "context_len": len(request.context), "span_len": len(request.span), "new_len": len(request.new),
         "out_len": len(out.active_scratchpad) if out else None,
         "committed_edits": len(out.committed_edits) if out else None,
         "model": usage.get("model"), "input_tokens": usage.get("input_tokens"), "output_tokens": usage.get("output_tokens"),
-        "fidelity": fidelity,
+        "fidelity": fidelity, "attach_score": attach,
     }))
     if out is None:
         return PolishSpanResponse(error=err, latency_ms=latency_ms, usage=usage or None)

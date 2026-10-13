@@ -1,0 +1,170 @@
+[
+ {
+  "spoken": "Extensive perinephric stranding. A tiny non obstructing 2 mm calculus is also noted in the lower pole of the right kidney with no associated hydronephrosis.",
+  "cleaned": "Extensive perinephric stranding of the right kidney with no associated hydronephrosis. A tiny non-obstructing 2 mm calculus is also noted in the lower pole.",
+  "gold": true,
+  "kind": "side moved (live)"
+ },
+ {
+  "spoken": "Small left pleural effusion. Consolidation in the right lower lobe with air bronchograms.",
+  "cleaned": "Small left pleural effusion with air bronchograms. Consolidation in the right lower lobe.",
+  "gold": true,
+  "kind": "descriptor moved"
+ },
+ {
+  "spoken": "Right renal calculus. Left hydronephrosis measuring 6 mm.",
+  "cleaned": "Right renal calculus measuring 6 mm. Left hydronephrosis.",
+  "gold": true,
+  "kind": "size moved"
+ },
+ {
+  "spoken": "Gallstones. The common bile duct is dilated to 9 mm with a distal stone.",
+  "cleaned": "Gallstones with a distal stone. The common bile duct is dilated to 9 mm.",
+  "gold": true,
+  "kind": "descriptor moved"
+ },
+ {
+  "spoken": "Fracture of the left seventh rib. Right pneumothorax, small.",
+  "cleaned": "Small fracture of the left seventh rib. Right pneumothorax.",
+  "gold": true,
+  "kind": "size word moved"
+ },
+ {
+  "spoken": "A 3 cm mass in the pancreatic head. The liver is normal. The mass encases the superior mesenteric artery.",
+  "cleaned": "A 3 cm mass in the pancreatic head. The liver is normal and encases the superior mesenteric artery.",
+  "gold": true,
+  "kind": "relationship moved"
+ },
+ {
+  "spoken": "Simple cyst in the left kidney. Hydronephrosis on the right.",
+  "cleaned": "Simple cyst in the left kidney on the right. Hydronephrosis.",
+  "gold": true,
+  "kind": "side moved"
+ },
+ {
+  "spoken": "Thickened gallbladder wall. A 12 mm polyp in the gallbladder fundus. Liver segment 4 lesion, hypoenhancing.",
+  "cleaned": "Thickened gallbladder wall. A hypoenhancing 12 mm polyp in the gallbladder fundus. Liver segment 4 lesion.",
+  "gold": true,
+  "kind": "descriptor moved"
+ },
+ {
+  "spoken": "Acute left subdural haematoma. Old right frontal infarct with 4 mm midline shift.",
+  "cleaned": "Acute left subdural haematoma with 4 mm midline shift. Old right frontal infarct.",
+  "gold": true,
+  "kind": "complication moved"
+ },
+ {
+  "spoken": "A 2 cm lesion in segment 6. A second lesion in segment 8, arterially enhancing.",
+  "cleaned": "A 2 cm arterially enhancing lesion in segment 6. A second lesion in segment 8.",
+  "gold": true,
+  "kind": "descriptor moved"
+ },
+ {
+  "spoken": "Bilateral pleural effusions. Right lower lobe collapse, complete.",
+  "cleaned": "Bilateral complete pleural effusions. Right lower lobe collapse.",
+  "gold": true,
+  "kind": "descriptor moved"
+ },
+ {
+  "spoken": "Mild left hydronephrosis. Right ureteric calculus at the pelvic brim.",
+  "cleaned": "Mild left hydronephrosis at the pelvic brim. Right ureteric calculus.",
+  "gold": true,
+  "kind": "location moved"
+ },
+ {
+  "spoken": "There is a 4 mm obstructing calculus at the left vesicoureteric junction accompanied by moderate proximal hydroureteronephrosis.",
+  "cleaned": "There is a 4 mm obstructing calculus at the left vesicoureteric junction with moderate proximal hydroureteronephrosis.",
+  "gold": false,
+  "kind": "tidy"
+ },
+ {
+  "spoken": "A tiny non obstructing 2 mm calculus is noted in the lower palm of the right kidney.",
+  "cleaned": "A tiny non-obstructing 2 mm calculus is noted in the lower pole of the right kidney.",
+  "gold": false,
+  "kind": "ASR fix"
+ },
+ {
+  "spoken": "The liver is normal. The spleen is normal. The pancreas is normal.",
+  "cleaned": "The liver, spleen and pancreas are normal.",
+  "gold": false,
+  "kind": "normals joined"
+ },
+ {
+  "spoken": "Um there is a so a 5 mm nodule in the right lower lobe.",
+  "cleaned": "There is a 5 mm nodule in the right lower lobe.",
+  "gold": false,
+  "kind": "fillers"
+ },
+ {
+  "spoken": "A 5 mm nodule in the right lower lobe. Sorry, left lower lobe.",
+  "cleaned": "A 5 mm nodule in the left lower lobe.",
+  "gold": false,
+  "kind": "spoken correction"
+ },
+ {
+  "spoken": "Appendix dilated to 9 mm. Free fluid in the pelvis. With periappendiceal fat stranding.",
+  "cleaned": "Appendix dilated to 9 mm with periappendiceal fat stranding. Free fluid in the pelvis.",
+  "gold": false,
+  "kind": "descriptor names its structure"
+ },
+ {
+  "spoken": "Right renal calculus. Left hydronephrosis measuring 6 mm.",
+  "cleaned": "Right renal calculus. Left hydronephrosis, measuring 6 mm.",
+  "gold": false,
+  "kind": "punctuation"
+ },
+ {
+  "spoken": "Sigmoid diverticulitis. Pericolic abscess measuring 3 cm. Small volume free fluid.",
+  "cleaned": "Sigmoid diverticulitis with a 3 cm pericolic abscess. Small volume free fluid.",
+  "gold": false,
+  "kind": "related finding joined"
+ },
+ {
+  "spoken": "Gallstones. The common bile duct is normal calibre. No intrahepatic duct dilatation.",
+  "cleaned": "Gallstones. The common bile duct is of normal calibre with no intrahepatic duct dilatation.",
+  "gold": false,
+  "kind": "normals joined"
+ },
+ {
+  "spoken": "A 3 cm mass in the pancreatic head. Double duct dilatation. The mass abuts the superior mesenteric vein.",
+  "cleaned": "A 3 cm mass in the pancreatic head abutting the superior mesenteric vein, with double duct dilatation.",
+  "gold": false,
+  "kind": "related finding joined"
+ },
+ {
+  "spoken": "Small left pleural effusion. Left basal atelectasis.",
+  "cleaned": "Small left pleural effusion with adjacent left basal atelectasis.",
+  "gold": false,
+  "kind": "related finding joined"
+ },
+ {
+  "spoken": "Acute left subdural haematoma 8 mm. Midline shift 4 mm to the right.",
+  "cleaned": "Acute left subdural haematoma measuring 8 mm with 4 mm midline shift to the right.",
+  "gold": false,
+  "kind": "related finding joined"
+ },
+ {
+  "spoken": "Small left pleural effusion. Right lower lobe consolidation. No pneumothorax.",
+  "cleaned": "Small right pleural effusion. Left lower lobe consolidation. No pneumothorax.",
+  "gold": true,
+  "kind": "side swap, no new words"
+ },
+ {
+  "spoken": "A 6 mm calculus in the left kidney. A 12 mm cyst in the right kidney. No hydronephrosis.",
+  "cleaned": "A 12 mm calculus in the left kidney. A 6 mm cyst in the right kidney. No hydronephrosis.",
+  "gold": true,
+  "kind": "number swap, no new words"
+ },
+ {
+  "spoken": "Left adrenal nodule. Right renal cyst. The liver is normal.",
+  "cleaned": "Right adrenal nodule. Left renal cyst. The liver is normal.",
+  "gold": true,
+  "kind": "side swap, no new words"
+ },
+ {
+  "spoken": "Left renal cyst. Right renal calculus. No hydronephrosis.",
+  "cleaned": "Left renal cyst and right renal calculus. No hydronephrosis.",
+  "gold": false,
+  "kind": "related findings joined"
+ }
+]
