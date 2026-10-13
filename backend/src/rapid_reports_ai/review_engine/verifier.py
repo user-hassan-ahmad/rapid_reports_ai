@@ -1039,7 +1039,7 @@ def _preapply_removal(report: str, edit: Edit, dictation: str, code_built: bool,
         return fails + ["anchor_not_unique"]
     i = report.index(edit.find)
     j = i + len(edit.find)
-    if _section_of(report, i, names) not in ("findings", "impression"):
+    if _section_of(report, i, names) not in ("findings", "impression", "conclusion"):
         fails.append("outside_findings")         # never TECHNIQUE, HISTORY, COMPARISON or an unheaded report
     whole = _whole_sentences(report, i, j, names)
     cover = [(s, e) for s, e in _sentence_spans(report, names) if s < j and i < e] or [(i, j)]
@@ -1183,7 +1183,7 @@ def preapply_failures(report: str, edit: Optional[Edit], kind: str, dictation: s
                       line_context: Optional[dict] = None) -> List[str]:
     """Binding correction 12 (spec §9): [] only when `edit` may be applied before the radiologist sees the report.
     Only code-built edits qualify:
-    - removal (`kind` in REMOVAL_KINDS): `code_built`, inside FINDINGS or IMPRESSION, mode `remove` of whole sentence(s) or list
+    - removal (`kind` in REMOVAL_KINDS): `code_built`, inside FINDINGS or IMPRESSION / CONCLUSION, mode `remove` of whole sentence(s) or list
       item(s) of plain negatives (or `_negative_fix`'s pure-deletion replace dropping exactly one list item);
       nothing dictated removed, no dictated negative or normal statement sharing a content word / acronym with the
       removed text, no ungrounded contradiction beside a dictated normal statement and no side mismatch with the

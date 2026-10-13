@@ -68,6 +68,11 @@ def test_preapply_removal_code_built_negative_ok():
     assert PA(rpt, rem("There is no hydronephrosis."), "contradicted", d="Mild left hydronephrosis.") == []
 
 
+def test_preapply_removal_inside_conclusion_ok():
+    rpt = "FINDINGS:\nSmall left effusion. Liver normal.\nCONCLUSION:\nSmall left effusion. No pneumothorax."
+    assert PA(rpt, rem("No pneumothorax."), "contradicted", d="Small left pneumothorax.") == []
+
+
 def test_preapply_removal_requires_code_built():
     rpt = R("Small left effusion. No pneumothorax. Liver normal.")
     assert PA(rpt, rem("No pneumothorax."), "contradicted", d="Small pneumothorax.", code_built=False)

@@ -142,16 +142,24 @@ REPAIR_MODEL = rc.QWEN
 # ── units ────────────────────────────────────────────────────────────────────
 
 _HEADER = re.compile(r"^([A-Z][A-Z /&()-]{2,}):\s*$", re.M)
+# The impression's heading: IMPRESSION, or CONCLUSION (library and slim sheets, consultant house style). IMPRESSION
+# wins when a report has both, so an IMPRESSION report reads exactly as before.
+IMPRESSION_HEADINGS = ("IMPRESSION", "CONCLUSION")
+
+
+def _impression_heading(names) -> str:
+    """The heading holding the impression among `names` (IMPRESSION first); IMPRESSION when neither is there."""
+    return next((h for h in IMPRESSION_HEADINGS if h in names), IMPRESSION_HEADINGS[0])
 
 
 def report_sections(report: str) -> Tuple[str, str]:
-    """FINDINGS and IMPRESSION text, the impression whole (a numbered impression may have blank lines between its
-    items). The post-generation check reads the report before the signature is appended; a reader of the FINAL
-    report passes `report_body(report, signature)` so the signature block is not read as impression."""
+    """FINDINGS and IMPRESSION (or CONCLUSION) text, the impression whole (a numbered impression may have blank lines
+    between its items). The post-generation check reads the report before the signature is appended; a reader of the
+    FINAL report passes `report_body(report, signature)` so the signature block is not read as impression."""
     parts, marks = {}, list(_HEADER.finditer(report))
     for m, nxt in zip(marks, marks[1:] + [None]):
         parts[m.group(1)] = report[m.end():nxt.start() if nxt else len(report)].strip()
-    return parts.get("FINDINGS", ""), parts.get("IMPRESSION", "").strip()
+    return parts.get("FINDINGS", ""), parts.get(_impression_heading(parts), "").strip()
 
 
 _PARA_BREAK = re.compile(r"\n[ \t]*\r?\n")
@@ -807,7 +815,7 @@ def _regions(report: str, sections: Optional[List[ReportSection]]) -> List[Tuple
         return _checked_spans(report, sections)
     marks = {m.group(1): m.end() for m in _HEADER.finditer(report)}
     out: List[Tuple[int, int]] = []
-    for name, t in zip(("FINDINGS", "IMPRESSION"), report_sections(report)):
+    for name, t in zip(("FINDINGS", _impression_heading(marks)), report_sections(report)):
         if t and name in marks and (i := report.find(t, marks[name])) >= 0:
             out.append((i, i + len(t)))
     return out

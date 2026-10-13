@@ -70,6 +70,23 @@ def test_quick_default_is_unchanged():
     assert rr.checked_clauses(quick, None) == list(dict.fromkeys(rr.clauses(fnd) + rr.clauses(imp)))
 
 
+def test_conclusion_heading_reads_as_the_impression():
+    quick = "FINDINGS:\nNo ascites, no collection.\n\nCONCLUSION:\nNo acute abnormality. No free air.\n\nDr A"
+    fnd, imp = rr.report_sections(quick)
+    assert fnd == "No ascites, no collection."
+    assert imp.startswith("No acute abnormality. No free air.")
+    assert rr.checked_clauses(quick, None) == list(dict.fromkeys(rr.clauses(fnd) + rr.clauses(imp)))
+    # removals reach the CONCLUSION exactly as they reach an IMPRESSION
+    out = rr.remove_negative_clause(quick, "No free air.")
+    assert out.startswith("FINDINGS:\nNo ascites, no collection.\n\nCONCLUSION:\nNo acute abnormality.")
+    assert "free air" not in out
+
+
+def test_impression_wins_when_both_headings_are_present():
+    both = "FINDINGS:\nLiver normal.\n\nIMPRESSION:\nNormal liver.\n\nCONCLUSION:\nOther."
+    assert rr.report_sections(both) == ("Liver normal.", "Normal liver.")
+
+
 def test_omission_state_drops_the_history_text():
     assert "Abdominal pain" not in rr.without(REPORT, ["67F. Abdominal pain. ?Appendicitis."])
 
