@@ -165,12 +165,14 @@ def without_habits(sheet: str) -> Tuple[str, int]:
     return "\n".join(kept), len(lines) - len(kept)
 
 
-def condition_state(scan_type: str, history: str, findings: str) -> str:
-    """The one Jev state every context condition is asked on (resolve_context_rules and the checklist's template
-    suppressions): the scan type when given, the clinical history, and the dictated findings without what the
-    radiologist did not dictate (jev_findings)."""
+def condition_state(scan_type: str, history: Optional[str], findings: str) -> str:
+    """The one Jev state every condition is asked on (resolve_context_rules, the checklist's template suppressions and
+    the findings-triggered habits): the scan type when given, the clinical history, and the dictated findings without
+    what the radiologist did not dictate (jev_findings). history None leaves the history block out: a habit trigger
+    reads the dictation and the scan type only (Hassan H1, 2026-10-13)."""
     head = f"SCAN TYPE:\n{scan_type}\n" if (scan_type or "").strip() else ""
-    return head + f"CLINICAL HISTORY:\n{history or '(not given)'}\nDICTATED FINDINGS:\n{jev_findings(findings)}"
+    hist = "" if history is None else f"CLINICAL HISTORY:\n{history or '(not given)'}\n"
+    return head + hist + f"DICTATED FINDINGS:\n{jev_findings(findings)}"
 
 
 Ask = Callable[[str, List[str]], Awaitable[List[float]]]
@@ -218,7 +220,7 @@ async def resolve_context_rules(sheet: str, history: str, findings: str, ask: Op
         rec["asked"] = len(conds)
         scores: List[float] = []
         if conds:
-            state = condition_state(scan_type, history, findings)
+            state = condition_state(scan_type, history or "", findings)
             scores = await (ask or ask_conditions)(state, conds)
         if len(scores) != len(conds):
             rec["error"] = "jev: answer count mismatch"

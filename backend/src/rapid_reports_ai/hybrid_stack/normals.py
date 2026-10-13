@@ -114,7 +114,7 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     conds = list(dict.fromkeys(c for c, _ in suppressions or []))
     if asked:
         try:
-            ctx = condition_state(scan_type, clinical_history, dictation)
+            ctx = condition_state(scan_type, clinical_history or "", dictation)
             texts = [jev_text(s, labels[s]) if s in labels else s for _, s in asked]
             checks, met = await asyncio.gather(
                 _ask(dictation, texts, gone) if region_text is None

@@ -45,6 +45,21 @@ def template_regions(st: SheetStructure) -> list[Region]:
     return out
 
 
+def paragraph_regions(st: SheetStructure) -> dict[str, str]:
+    """Findings paragraph id -> its region name, exactly as template_regions names it (the region a habit row sits
+    in and its required statement joins)."""
+    order = {sec.name: sec.order for sec in st.sections}
+    findings = {sec.name for sec in st.sections if sec.role == "findings"}
+    paras = sorted((p for p in st.paragraphs if p.section in findings), key=lambda p: order.get(p.section, 0))
+    out: dict[str, str] = {}
+    seen: set[str] = set()
+    for p in paras:
+        name = p.name if p.name.lower() not in seen else f"{p.name} ({p.section.title()})"
+        seen.add(name.lower())
+        out[p.id] = name
+    return out
+
+
 _WORD = re.compile(r"[a-z]+")
 _STOP = {"and", "of", "the", "with", "in", "on", "to", "a", "an", "or", "both"}
 
