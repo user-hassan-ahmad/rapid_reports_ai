@@ -164,3 +164,33 @@ def test_to_card_and_claim_for():
     assert CH.claim_for("fixed", "A line.", {"keep": "dictated"}) == '"A line." is now printed only when dictated.'
     assert CH.claim_for("normal", L.normal_key("Upper", "alpha"), {"text": ""}) == (
         "Upper: alpha is no longer stated when normal.")
+
+
+# ── review fixes (foundation) ─────────────────────────────────────────────────────────────────────────────────────
+def test_the_slot_check_runs_even_for_a_confirmed_change():
+    v = CH.validate("fixed", CH.FixedChange(to="add", paragraph="Technique", text="See {reason}."),
+                    _ctx("", confirmed=True))
+    assert v.action == "reject" and "{reason}" in v.reason
+
+
+def test_a_proposal_from_the_client_is_checked_before_it_is_applied():
+    ok = CH.check_proposal({"kind": "fixed", "key": "A new line.", "choice": {"keep": "always"},
+                            "op": {"op": "fixed_add", "paragraph": "Technique", "text": "A new line."},
+                            "claim": "Every report now prints it."}, ROUTER_SHEET)
+    assert ok.action == "edit" and ok.op["op"] == "fixed_add"
+    drop = CH.check_proposal({"kind": "fixed", "key": "x", "choice": None,
+                              "op": {"op": "unit_drop", "keyword": "FIXED", "text": "Axial images were acquired."},
+                              "claim": "x"}, ROUTER_SHEET)
+    assert drop.action == "reject" and drop.reason == CH.REJECT.format(label=CH.KIND_LABEL["fixed"])
+    slot = CH.check_proposal({"kind": "fixed", "key": "See {reason}.", "choice": {"keep": "always"},
+                              "op": {"op": "fixed_add", "paragraph": "Technique", "text": "See {reason}."},
+                              "claim": "x"}, ROUTER_SHEET)
+    assert slot.action == "reject"
+    concept = CH.check_proposal({"kind": "concept", "key": "comparison", "op": None, "claim": "c",
+                                 "choice": {"use": True, "default": "", "when_met": "Seen on {when}.",
+                                            "condition": "", "dictated": False}}, ROUTER_SHEET)
+    assert concept.action == "reject"
+    ledger = CH.check_proposal({"kind": "value", "key": "Width", "choice": {"need": "relevant"}, "op": None,
+                                "claim": "Width is now stated only when relevant."}, ROUTER_SHEET)
+    assert ledger.action == "ledger" and ledger.choice == {"need": "relevant"}
+    assert CH.check_proposal({"kind": "nonsense", "op": None, "choice": {}}, ROUTER_SHEET).action == "reject"

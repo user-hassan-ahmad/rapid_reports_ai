@@ -250,3 +250,10 @@ async def test_an_unsure_style_tag_is_decided_by_the_call(fake):
     fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=NEW_IC)], summary="Shorter impression.")
     t = await R.route_turn(ROUTER_SHEET, [], "maybe shorter")
     assert t.applied and NEW_IC in t.sheet and t.records[0]["route"] == "llm_unsure"
+
+
+async def test_a_style_edit_with_a_miscased_unit_line_is_rejected_by_the_grammar_guard(fake):
+    fake["tags"] = tags(style=0.9)
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b1", text='Normal [alpha] "Alpha is fine."')])
+    t = await R.route_turn(ROUTER_SHEET, [], "tone it down")
+    assert not t.applied and t.sheet == ROUTER_SHEET and t.reply == R.STYLE_TOUCHED_RULES

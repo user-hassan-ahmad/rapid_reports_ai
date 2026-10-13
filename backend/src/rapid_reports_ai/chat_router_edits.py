@@ -16,7 +16,21 @@ class EditError(ValueError):
     """The edit cannot be made as asked (no such target, or it would break the sheet)."""
 
 
-_PLAIN = re.compile(r'^[^"“”{}\[\]|]+$')
+_PLAIN = re.compile(r'^[^"“”\[\]|]+$')
+_SLOT = re.compile(r"\{[^{}\n]*\}")
+STANDARD_SLOTS = frozenset({"{study}", "{date}"})
+
+# Ops a proposal card (client-sent) may run forward. unit_drop / covers_drop / insert_block / insert_section_line are
+# inverse-only: they undo an add or a removal and have no inverse of their own, so they never run forward.
+FORWARD_OPS = frozenset({"fixed_reword", "fixed_add", "normal_add", "negative_add", "rename_paragraph",
+                         "move_paragraph", "remove_paragraph", "add_paragraph", "rename_section", "move_section",
+                         "remove_section", "add_section"})
+
+
+def bad_slots(text: str, sheet: str) -> List[str]:
+    """{slots} in `text` that are neither standard ({study}, {date}) nor already used by the sheet."""
+    allowed = STANDARD_SLOTS | set(_SLOT.findall(sheet or ""))
+    return [s for s in _SLOT.findall(text or "") if s not in allowed]
 _BRACKET = re.compile(r"\[([^\]]+)\]")
 _ITEM = re.compile(r'"([^"]+)"')
 
@@ -33,10 +47,16 @@ def guarded(before: str, after: str) -> str:
     return after
 
 
-def plain(t: str, what: str) -> str:
+def plain(t: str, what: str, slots_from: Optional[str] = None) -> str:
+    """Plain wording: no quotes, brackets or bars. {slots}: none, unless `slots_from` (the sheet) is given, then only
+    the slots bad_slots allows (the same rule the change validation uses)."""
     t = " ".join((t or "").split())
     if not t or not _PLAIN.match(t):
-        raise EditError(f"{what}: plain wording expected (no quotes, brackets, bars or {{slots}})")
+        raise EditError(f"{what}: plain wording expected (no quotes, brackets or bars)")
+    if (slots_from is None and _SLOT.search(t)) or "{" in _SLOT.sub("", t) or "}" in _SLOT.sub("", t):
+        raise EditError(f"{what}: no value to fill in")
+    if slots_from is not None and bad_slots(t, slots_from):
+        raise EditError(f"{what}: a value this template cannot fill")
     return t
 
 
@@ -86,19 +106,24 @@ def _replace(sheet: str, i: int, line: Optional[str]) -> str:
 
 
 # ── operations: (sheet, **args) -> (sheet, inverse ops) ──────────────────────────────────────────────────────────
-def fixed_reword(sheet: str, line: str, text: str):
-    l = _unit(sheet, "FIXED", line)
-    old, new = sh.quoted(l.text), plain(text, "new wording")
-    return _replace(sheet, l.i, l.text.replace(f'"{old}"', f'"{new}"', 1)), [
-        {"op": "fixed_reword", "line": new, "text": old}]
+def fixed_reword(sheet: str, line: str, text: str, paragraph: str = ""):
+    l = _unit(sheet, "FIXED", line, paragraph)
+    old, new = sh.quoted(l.text), plain(text, "new wording", slots_from=sheet)
+    if any(x.keyword == "FIXED" and x.i != l.i and norm_key(sh.quoted(x.text)) == norm_key(new)
+           for x in sh.walk(sheet)):
+        raise EditError("that sentence is already printed")
+    inverse = {"op": "fixed_reword", "line": new, "text": old}
+    if paragraph:
+        inverse["paragraph"] = paragraph
+    return _replace(sheet, l.i, l.text.replace(f'"{old}"', f'"{new}"', 1)), [inverse]
 
 
 def fixed_add(sheet: str, paragraph: str, text: str):
-    t = plain(text, "sentence")
+    t = plain(text, "sentence", slots_from=sheet)
     if any(l.keyword == "FIXED" and norm_key(sh.quoted(l.text)) == norm_key(t) for l in sh.walk(sheet)):
         raise EditError("that sentence is already printed")
     return _insert_after(sheet, _last_unit(sheet, paragraph), f'FIXED "{t}"'), [
-        {"op": "unit_drop", "keyword": "FIXED", "text": t}]
+        {"op": "unit_drop", "keyword": "FIXED", "text": t, "paragraph": paragraph}]
 
 
 def normal_add(sheet: str, paragraph: str, structure: str, text: str):
@@ -135,6 +160,8 @@ def unit_drop(sheet: str, keyword: str, text: str, paragraph: str = ""):
 
 
 def covers_drop(sheet: str, paragraph: str, structure: str):
+    # The COVERS line is rewritten in canonical form (COVERS ["a" | "b"]): an undo is byte-exact only when the line
+    # was canonical to begin with; otherwise the items come back with canonical spacing.
     cov = _covers(sheet, paragraph)
     if cov is None:
         raise EditError(f"{paragraph} has no COVERS line")

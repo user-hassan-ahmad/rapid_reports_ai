@@ -299,3 +299,8 @@ def test_a_fragment_wording_is_never_offered_and_the_concept_falls_back_to_dicta
         td.validate("concept", "comparison", ch)                    # every offered choice is applicable
     assert card["selected"] is None
     assert any(e.get("quote") == "Compared with CT of 01/01/2020." for e in card["evidence"])
+
+
+def test_usual_question_is_public():
+    assert C.usual_question("contrast") == "Is contrast usually given for this scan?"
+    assert C.usual_question("comparison") == "Which is usual: comparison with previous imaging?"

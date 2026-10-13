@@ -85,6 +85,12 @@ def disagree_card(concept: str, options: List[dict], other: str, role: str, evid
             "ledger_kind": "concept", "key": concept, "choices": choices, "selected": None, "rank": _RANK["disagree"]}
 
 
+def usual_question(concept: str) -> str:
+    """The question for a concept with no base state whose usual state is unknown (the usual card's title; the
+    chat-edit router asks it too)."""
+    return _USUAL.get(concept, (f"Which is usual: {td.CONCEPTS[concept].label.lower()}?", {}))[0]
+
+
 def usual_card(concept: str, wordings: Dict[str, str], evidence: List[dict]) -> dict:
     """A concept with no base state whose examples show no clear majority: which state is usual? Each choice makes
     that state's wording the default and the other state's wording the replacement under the other state's

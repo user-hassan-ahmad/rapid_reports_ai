@@ -134,8 +134,8 @@ class Ctx:
     confirmed: bool = False         # a tapped card: the wording and sureness checks are skipped
 
 
-_SLOT = re.compile(r"\{[^{}\n]*\}")
-STANDARD_SLOTS = frozenset({"{study}", "{date}"})
+STANDARD_SLOTS = E.STANDARD_SLOTS
+bad_slots = E.bad_slots   # one slot rule for validation and for the edits themselves
 KIND_LABEL = {"value": "the required values", "concept": "the study-level statements",
               "fixed": "the sentences printed in every report", "normal": "the normal findings",
               "layout": "the sections and paragraphs", "style": "the style"}
@@ -154,11 +154,6 @@ def in_instruction(text: str, instruction: str) -> bool:
 
 def in_sheet(text: str, sheet: str) -> bool:
     return any(l.keyword and norm_key(sh.quoted(l.text)) == norm_key(text) for l in sh.walk(sheet) if text)
-
-
-def bad_slots(text: str, sheet: str) -> List[str]:
-    allowed = STANDARD_SLOTS | set(_SLOT.findall(sheet or ""))
-    return [s for s in _SLOT.findall(text or "") if s not in allowed]
 
 
 _NEED_CLAIM = {"every": "{name} is now required in every report.",
@@ -209,14 +204,21 @@ def _ask(kind: str, reason: str) -> Verdict:
     return Verdict(kind, "ask", reason=reason)
 
 
-def _gate(v: Verdict, texts: List[str], sure: bool, ctx: Ctx) -> Verdict:
-    if ctx.confirmed:
-        return v
+def _slot_reject(v: Verdict, texts: List[str], sheet: str) -> Optional[Verdict]:
     for t in texts:
-        bad = bad_slots(t, ctx.sheet)
+        bad = bad_slots(t, sheet)
         if bad:
             return Verdict(v.kind, "reject", key=v.key,
                            reason=f'"{t}" uses {", ".join(bad)}, which this template cannot fill.')
+    return None
+
+
+def _gate(v: Verdict, texts: List[str], sure: bool, ctx: Ctx) -> Verdict:
+    bad = _slot_reject(v, texts, ctx.sheet)   # before the confirmed shortcut: a tap never writes an unknown slot
+    if bad:
+        return bad
+    if ctx.confirmed:
+        return v
     new = [t for t in texts if t and not in_instruction(t, ctx.instruction) and not in_sheet(t, ctx.sheet)]
     if not new and sure:
         return v
@@ -398,6 +400,35 @@ def validate(kind: str, change: BaseModel, ctx: Ctx) -> Verdict:
         v = Verdict(kind, "reject", reason=REJECT.format(label=KIND_LABEL[kind]), detail=str(e)[:300])
     v.change = {"kind": kind, **change.model_dump()}
     return v
+
+
+def _texts_of(choice: Optional[dict], op: Optional[dict]) -> List[str]:
+    out = [str(x) for x in (choice or {}).values() if isinstance(x, str)]
+    out += [str(x) for k, x in (op or {}).items() if k != "op" and isinstance(x, str)]
+    return out
+
+
+def check_proposal(apply: dict, sheet: str) -> Verdict:
+    """A proposal card's `apply`, sent back by the client: re-checked by code before it runs. Only FORWARD_OPS, a
+    known kind, a ledger choice code accepts, and slots from the allowed set; a dry run proves the edit applies.
+    The wording check is skipped (the radiologist tapped Apply). Rejections carry no internal text."""
+    kind = (apply or {}).get("kind") or ""
+    if kind not in KIND_LABEL or kind == "style":
+        return Verdict(kind or "layout", "reject", reason=REJECT.format(label="the template"), detail="unknown kind")
+    op, choice, key = apply.get("op"), apply.get("choice"), apply.get("key") or ""
+    v = Verdict(kind, "edit" if op else "ledger", key=key, choice=choice, op=op, claim=apply.get("claim") or "")
+    try:
+        if op is not None:
+            if not isinstance(op, dict) or op.get("op") not in E.FORWARD_OPS:
+                raise L.Rejected("not a forward op")
+            E.apply_op(sheet, op)
+        if choice is not None:
+            v.key, v.choice = L.check(kind, key, choice)
+        elif op is None:
+            raise L.Rejected("nothing to apply")
+    except (L.Rejected, E.EditError) as e:
+        return Verdict(kind, "reject", reason=REJECT.format(label=KIND_LABEL[kind]), detail=str(e)[:300])
+    return _slot_reject(v, _texts_of(choice, op), sheet) or v
 
 
 def parse_change(kind: str, data: dict) -> BaseModel:

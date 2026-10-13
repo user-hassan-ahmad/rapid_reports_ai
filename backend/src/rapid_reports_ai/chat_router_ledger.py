@@ -116,7 +116,7 @@ def concept_state(choice: Optional[dict]) -> Tuple[str, str, str, str]:
 
 def usual_question(name: str) -> str:
     """The Rules step's own question for a concept with no base state whose usual state is unknown (contrast)."""
-    return trc._USUAL.get(name, (f"Which is usual: {CONCEPTS[name].lower()}?", {}))[0]
+    return trc.usual_question(name)
 
 
 def concept_owner(sheet: str, ledger: List[dict], text: str) -> Optional[str]:

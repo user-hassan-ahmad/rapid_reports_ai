@@ -65,3 +65,38 @@ def test_unknown_ops_and_bad_arguments_are_edit_errors():
         E.apply_op(ROUTER_SHEET, {"op": "rewrite_everything"})
     with pytest.raises(E.EditError):
         E.apply_op(ROUTER_SHEET, {"op": "fixed_add", "nonsense": 1})
+
+
+# ── review fixes (foundation) ─────────────────────────────────────────────────────────────────────────────────────
+def test_fixed_wording_may_carry_the_standard_or_the_sheets_own_slots():
+    out, inv = E.apply_op(ROUTER_SHEET, {"op": "fixed_add", "paragraph": "Technique",
+                                         "text": "Compared with the {study} of {date}."})
+    assert 'FIXED "Compared with the {study} of {date}."' in out and _undo(out, inv) == ROUTER_SHEET
+    with pytest.raises(E.EditError):
+        E.apply_op(ROUTER_SHEET, {"op": "fixed_add", "paragraph": "Technique", "text": "See {reason}."})
+    sheet = ROUTER_SHEET.replace('FIXED "Axial images were acquired."', 'FIXED "Axial images, {count} series."')
+    out, _ = E.apply_op(sheet, {"op": "fixed_reword", "line": "Axial images, {count} series.",
+                                "text": "Axial images in {count} series."})
+    assert 'FIXED "Axial images in {count} series."' in out
+    assert E.bad_slots("Compared with {study} on {when}.", ROUTER_SHEET) == ["{when}"]
+
+
+def test_fixed_reword_refuses_to_duplicate_a_line_and_respects_the_paragraph():
+    with pytest.raises(E.EditError):
+        E.apply_op(ROUTER_SHEET, {"op": "fixed_reword", "line": "Axial images were acquired.",
+                                  "text": "No previous imaging available."})
+    with pytest.raises(E.EditError):
+        E.apply_op(ROUTER_SHEET, {"op": "fixed_reword", "line": "Axial images were acquired.", "paragraph": "Upper",
+                                  "text": "Axial and coronal images were acquired."})
+    out, inv = E.apply_op(ROUTER_SHEET, {"op": "fixed_reword", "line": "Axial images were acquired.",
+                                         "paragraph": "Technique", "text": "Axial and coronal images were acquired."})
+    assert inv == [{"op": "fixed_reword", "line": "Axial and coronal images were acquired.",
+                    "text": "Axial images were acquired.", "paragraph": "Technique"}]
+    assert _undo(out, inv) == ROUTER_SHEET
+    out, inv = E.apply_op(ROUTER_SHEET, {"op": "fixed_add", "paragraph": "Technique", "text": "A new line."})
+    assert inv == [{"op": "unit_drop", "keyword": "FIXED", "text": "A new line.", "paragraph": "Technique"}]
+
+
+def test_only_forward_ops_are_accepted_from_a_proposal():
+    assert "unit_drop" not in E.FORWARD_OPS and "covers_drop" not in E.FORWARD_OPS
+    assert "insert_block" not in E.FORWARD_OPS and "fixed_add" in E.FORWARD_OPS and "rename_paragraph" in E.FORWARD_OPS

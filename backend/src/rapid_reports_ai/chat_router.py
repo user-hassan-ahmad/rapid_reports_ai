@@ -169,7 +169,11 @@ async def _style(sheet: str, out: CH.StyleOut, ctx: CH.Ctx):
              if b.id in blocks and b.text.strip("\n") != blocks[b.id].text}
     if not edits:
         return sheet, None, [], [], {}
-    if not sh.units_unchanged(sheet, sh.splice(sheet, edits)):
+    try:   # unit lines untouched, and no new grammar error (a miscased unit-like line such as Normal [x] "...")
+        if not sh.units_unchanged(sheet, sh.splice(sheet, edits)):
+            raise E.EditError("unit line changed")
+        E.guarded(sheet, sh.splice(sheet, edits))
+    except E.EditError:
         return sheet, None, [STYLE_TOUCHED_RULES], [], {"style": "unit_line_changed"}
     new = [l for b, t in edits.items() for l in sh.new_lines(blocks[b].text, t)]
     try:
