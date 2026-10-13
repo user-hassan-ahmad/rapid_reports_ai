@@ -133,11 +133,13 @@ async def generate_quick_report(
     declined: Sequence[str] = (),
     conclusion: str = "",
     stack_sheet: str = "",
+    check_findings: str | None = None,
 ) -> dict:
     """Write one quick report from a compiled brief (the sheet reconciled with this dictation),
     or from the raw sheet with the full prompts if the brief cannot be compiled. Falls back
     once to QUICK_REPORT_GENERATOR_FALLBACK when the configured primary raises; an override
     naming a different model is an explicit comparison and does not fall back."""
+    check_text = check_findings if check_findings is not None else findings
     brief = None
     if stack:
         # A scratchpad session (checklist spec §7): the findings are the radiologist's answers, so the brief carries
@@ -179,13 +181,15 @@ async def generate_quick_report(
             return await _write(model_name)
 
     result, description, options = await asyncio.gather(
-        _write_with_fallback(), _describe(findings, clinical_history, scan_type),
+        _write_with_fallback(), _describe(check_text, clinical_history, scan_type),
         _write_options(brief.decisions.get("options", []) if brief else [], findings, scan_type))
     report = result.output if hasattr(result, "output") else str(result)
     # Jev checks every clause and option against the dictation; one focal Qwen call repairs what
     # it flags before the report ships (spec 2026-09-30-post-generation-check-design).
-    report, options, quality = await run_quality_check(report, findings, scan_type, options,
-                                                       brief_decisions=brief.decisions if brief else None)
+    # A stack session's check reads the plain statements (no labels, no removed sentence) and always records edits
+    report, options, quality = await run_quality_check(report, check_text, scan_type, options,
+                                                       brief_decisions=None if stack else (brief.decisions if brief else None),
+                                                       **({"record_edits": True} if stack else {}))
     if user_signature:
         report = report.rstrip() + "\n\n" + user_signature
     return {"report_content": report, "description": description, "scan_type": scan_type,
