@@ -265,8 +265,7 @@ describe('CopilotCards', () => {
 		expect(titleRow.textContent).toContain('ESE adrenal incidentaloma');
 		expect(titleRow.querySelector('.cp-pill')!.getAttribute('data-category')).toBe('none');
 		const second = document.querySelector('.cp-headchips')!;
-		// flagged values are never capped away: pre-filled 8 HU and the assumed "Known cancer: No" are kept first
-		expect([...second.querySelectorAll('.cp-vchip')].map((e) => e.textContent!.trim())).toEqual(['2.2 cm', '8 HU', 'Homogeneous', 'Known cancer: No']);
+		expect([...second.querySelectorAll('.cp-vchip')].map((e) => e.textContent!.trim())).toEqual(['2.2 cm', '8 HU', 'Homogeneous']); // assumed: only the ⚠ chip
 		expect(second.querySelector('.cp-vchip--prefilled')!.textContent!.trim()).toBe('8 HU');
 		expect(second.textContent).toContain('⚠ 1 assumed');
 		// the card's left strip takes the category colour
@@ -426,6 +425,17 @@ describe('CopilotCards', () => {
 		expect(region.element().textContent).toContain('2 outcomes possible: CT surveillance; PET-CT');
 		await r.rerender({ views: { [cardRef(c)]: v(result(c, pv), { open: true, calc: { loading: false, error: null, result: { ...base, possible: [], needed: [], exclusion: outcome({ classification: 'Not for under 35s' }) } } }) } });
 		await expect.element(page.getByRole('region', { name: 'Calculated' })).toHaveTextContent('Does not apply');
+	});
+
+	it('B2: Calculate is disabled while the card re-previews; a failed edit shows its note', async () => {
+		const c = card({ finding: finding.text });
+		const pv = preview({ proposal: null, draft_outcome: outcome(), draft: [draft({ input: 'size', label: 'Size', state: 'read', value: '2.2 cm' })] });
+		const r = render(CopilotCards, { ...single(c, v(result(c, pv), { open: true, loading: true })), onEdit: vi.fn(), onCalculate: vi.fn() });
+		await expect.element(page.getByRole('button', { name: 'Calculate' })).toBeDisabled();
+		await expect.element(page.getByText('updating the card…')).toBeInTheDocument();
+		await r.rerender({ views: { [cardRef(c)]: v(result(c, pv), { open: true, editError: "Couldn't apply that change; it was undone" }) } });
+		await expect.element(page.getByRole('alert')).toHaveTextContent('it was undone');
+		await expect.element(page.getByRole('button', { name: 'Calculate' })).toBeEnabled();
 	});
 
 	it('PackCard takes an assumptions list directly (B1 feeds Task 3)', async () => {

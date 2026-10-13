@@ -83,6 +83,8 @@
 			onEdit={onEdit ? (input, value) => onEdit(ref, input, value) : null}
 			onCalculate={onCalculate ? () => onCalculate(ref) : null}
 			calc={view.calc ?? null}
+			busy={view.loading}
+			editError={view.editError ?? null}
 		/>
 	{/if}
 {/snippet}

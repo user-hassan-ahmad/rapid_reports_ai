@@ -4,7 +4,7 @@
 	import { untrack } from 'svelte';
 	import CopilotCards from '$lib/copilot/cards/CopilotCards.svelte';
 	import CopilotRail from '$lib/copilot/cards/CopilotRail.svelte';
-	import { closedView, type CardView } from '$lib/copilot/cards/view';
+	import { closedView, type CardView, type ColumnView } from '$lib/copilot/cards/view';
 	import { cardRef, norm, type Group } from '$lib/copilot/state';
 	import type { Section } from './gallery';
 
@@ -20,6 +20,25 @@
 		views[ref] = { ...(views[ref] ?? closedView), ...p };
 	};
 
+	type Slot = { get: () => (CardView | ColumnView) | undefined; set: (p: Partial<CardView & ColumnView>) => void };
+	function target(ref: string): Slot | null {
+		const i = ref.lastIndexOf('#');
+		if (i >= 0 && views[ref.slice(0, i)]?.columns) {
+			const base = ref.slice(0, i);
+			const key = ref.slice(i + 1);
+			return {
+				get: () => views[base]?.columns?.[key],
+				set: (p) => {
+					const v = views[base];
+					const cols = { ...(v.columns ?? {}) };
+					cols[key] = { ...(cols[key] ?? { loading: false, error: null, result: null }), ...p };
+					views[base] = { ...v, columns: cols };
+				}
+			};
+		}
+		return views[ref] ? { get: () => views[ref], set: (p) => patch(ref, p) } : null;
+	}
+
 	const handlers = {
 		onOpen: (ref: string) => patch(ref, { open: true }),
 		onClose: (ref: string) => patch(ref, { open: false }),
@@ -29,21 +48,23 @@
 			patch(base, { loading: true, error: null });
 			later(() => patch(base, { loading: false, error: was === 'loading' ? null : 'timeout' }));
 		},
-		// Slice B2, faked: an edit changes the drafted value in place (as the re-preview would) and clears Calculate
+		// Slice B2, faked: an edit changes the drafted value in place (as the re-preview would) and clears Calculate.
+		// A ref "<cardRef>#<key>" is one sibling column.
 		onEdit: (ref: string, input: string, value: string) => {
-			const v = views[ref];
+			const t = target(ref);
+			const v = t?.get();
 			const p = v?.result?.preview;
-			if (!v?.result || !p?.draft) return;
+			if (!t || !v?.result || !p?.draft) return;
 			const draftRows = p.draft.map((d) => (d.input === input ? { ...d, value: value === 'Not stated' ? '' : value, state: value === 'Not stated' ? ('asked' as const) : d.state === 'asked' ? ('answered' as const) : ('edited' as const), quote: '', why: [] } : d));
-			views[ref] = { ...v, edits: { ...(v.edits ?? {}), [input]: value }, calc: undefined, result: { ...v.result, preview: { ...p, draft: draftRows } } };
+			t.set({ edits: { ...(v.edits ?? {}), [input]: value }, calc: undefined, result: { ...v.result, preview: { ...p, draft: draftRows } } });
 		},
 		onCalculate: (ref: string) => {
-			const v = views[ref];
-			const p = v?.result?.preview;
-			if (!p) return;
-			patch(ref, { calc: { loading: true, error: null, result: null } });
+			const t = target(ref);
+			const p = t?.get()?.result?.preview;
+			if (!t || !p) return;
+			t.set({ calc: { loading: true, error: null, result: null } });
 			later(() =>
-				patch(ref, {
+				t.set({
 					calc: {
 						loading: false,
 						error: null,

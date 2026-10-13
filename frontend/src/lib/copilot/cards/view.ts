@@ -3,9 +3,18 @@ import type { OpenResult } from '../types';
 
 import type { Calculation } from '../types';
 
-export type ColumnView = { loading: boolean; error: string | null; result: OpenResult | null };
 /** A Calculate on the card (Slice B2): cleared by any later edit. */
 export type CalcView = { loading: boolean; error: string | null; result: Calculation | null };
+/** One sibling column: its own preview, answers and Calculate (B2 follow-up). */
+export type ColumnView = {
+	loading: boolean;
+	error: string | null;
+	result: OpenResult | null;
+	edits?: Record<string, string>;
+	calc?: CalcView;
+	/** A re-preview after an edit failed: the edit was reverted and the last preview kept. */
+	editError?: string | null;
+};
 export type CardView = {
 	open: boolean;
 	loading: boolean;
@@ -18,6 +27,7 @@ export type CardView = {
 	/** The radiologist's answers on this card, by input id (display form; "Not stated" clears): sent as `answered`. */
 	edits?: Record<string, string>;
 	calc?: CalcView;
+	editError?: string | null;
 };
 export const closedView: CardView = { open: false, loading: false, error: null, result: null };
 

@@ -55,7 +55,7 @@ describe('sources', () => {
 });
 
 describe('headChips and decidingQuestion', () => {
-	it('values as chips: a Yes as its label, a No and N/A left out, kinds kept, at most four', () => {
+	it('values as chips: assumed only via the ⚠ chip, pre-filled first, a Yes as its label, an unflagged No and N/A left out', () => {
 		const r = result(card(), preview({
 			proposal: null,
 			draft: [
@@ -69,12 +69,15 @@ describe('headChips and decidingQuestion', () => {
 			]
 		}));
 		const h = headChips(r);
-		// flagged first (pre-filled 8 HU, assumed "Known cancer: No" and "Adult"), then read ones, in card order; +2 more
-		expect(h.chips.map((c) => [c.text, c.kind])).toEqual([['2.2 cm', 'read'], ['8 HU', 'prefilled'], ['Known cancer: No', 'assumed'], ['Adult', 'assumed']]);
-		expect(h.more).toBe(2);
-		const few = headChips(r, 8).chips.map((c) => c.text);
-		expect(few).toEqual(['2.2 cm', '8 HU', 'Unenhanced', 'Homogeneous', 'Known cancer: No', 'Adult']); // an unflagged No / N/A never
+		// assumed values never become chips (the "⚠ N assumed" chip stands for them); pre-filled first, then read, in order
+		expect(h.chips.map((c) => [c.text, c.kind])).toEqual([['2.2 cm', 'read'], ['8 HU', 'prefilled'], ['Unenhanced', 'exam'], ['Homogeneous', 'read']]);
+		expect(h.more).toBe(0);
+		const capped = headChips(r, 2).chips.map((c) => c.text);
+		expect(capped).toEqual(['2.2 cm', '8 HU']); // the pre-filled 8 HU is kept before later read values
+		const flaggedNo = result(card(), preview({ proposal: null, draft: [draft({ input: 'a', label: 'A', state: 'read', value: '1' }), draft({ input: 'pre', label: 'Mass effect', state: 'prefilled', value: 'No' })] }));
+		expect(headChips(flaggedNo, 1).chips.map((c) => c.text)).toEqual(['Mass effect: No']);
 	});
+
 	it('decidingQuestion: the deciding input label, else the first needed open question; empty with no branches', () => {
 		const base = { proposal: null, draft: [draft({ input: 'brock', label: 'Brock risk', state: 'asked', needed: true }), draft({ input: 'x', label: 'Other', state: 'asked' })] };
 		expect(decidingQuestion(preview({ ...base, deciding: [{ answer: 'a', headline: 'h' }], deciding_input: 'x' }))).toBe('Other');

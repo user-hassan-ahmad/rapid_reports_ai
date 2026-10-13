@@ -65,7 +65,7 @@
 		<QuietLine card={c} result={v.result} />
 	{:else if kind === 'exam' || kind === 'finding'}
 		{#if c.siblings.length}
-			<SiblingColumns card={c} view={v} {other} layout={siblingLayout} {...handlers} />
+			<SiblingColumns card={c} view={v} {other} layout={siblingLayout} {onEdit} {onCalculate} {...handlers} />
 		{:else}
 			<PackCard card={c} view={v} {other} {onEdit} {onCalculate} {...handlers} />
 		{/if}

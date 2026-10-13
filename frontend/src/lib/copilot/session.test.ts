@@ -516,6 +516,8 @@ describe('session: edits, shared patient answers and Calculate (Slice B2)', () =
 		expect(api.calls.preview[0].body.answered).toEqual({ hu: '12 HU' });
 		s.edit(cardRef(adrenal), 'size', 'Not stated');
 		expect(api.calls.preview[1].body.answered).toEqual({ hu: '12 HU', size: 'Not stated' });
+		api.calls.preview[1].resolve(drafted(adrenal));
+		await flush();
 		s.calculate(cardRef(adrenal));
 		expect(api.calls.calculate[0].body.values).toEqual({ size: 'Not stated', hu: '12 HU', cancer: 'No' });
 		expect(api.calls.calculate[0].body.answered).toEqual({ hu: '12 HU', size: 'Not stated' });
@@ -529,6 +531,8 @@ describe('session: edits, shared patient answers and Calculate (Slice B2)', () =
 		expect(state().views[cardRef(adrenal)].calc?.result).not.toBeNull();
 		s.edit(cardRef(adrenal), 'hu', '9 HU');
 		expect(state().views[cardRef(adrenal)].calc).toBeUndefined();
+		api.calls.preview[0].resolve(drafted(adrenal));
+		await flush();
 		s.calculate(cardRef(adrenal));
 		s.edit(cardRef(adrenal), 'hu', '10 HU');
 		api.calls.calculate[1].resolve({ calculation: calc(), ms: 4, error: null });
@@ -542,6 +546,8 @@ describe('session: edits, shared patient answers and Calculate (Slice B2)', () =
 		expect(api.calls.preview.map((c) => c.body.card.key)).toEqual([adrenal.key, other.key]);
 		expect(api.calls.preview[1].body.patient).toEqual({ age: '45' });
 		expect(api.calls.preview[1].body.answered).toEqual({}); // the other card's own answers are untouched
+		api.calls.preview[1].resolve(drafted(other));
+		await flush();
 		// later requests carry the patient map too
 		s.calculate(cardRef(other));
 		expect(api.calls.calculate[0].body.patient).toEqual({ age: '45' });
@@ -559,5 +565,67 @@ describe('session: edits, shared patient answers and Calculate (Slice B2)', () =
 		api.calls.calculate[1].reject(new CopilotError('timeout'));
 		await flush();
 		expect(state().views[cardRef(adrenal)].calc).toMatchObject({ error: 'timeout' });
+	});
+
+	it('Calculate waits while the card re-previews after an edit (it would send stale values)', async () => {
+		await opened();
+		s.edit(cardRef(adrenal), 'hu', '12 HU');
+		expect(state().views[cardRef(adrenal)].loading).toBe(true);
+		s.calculate(cardRef(adrenal));
+		expect(api.calls.calculate).toHaveLength(0);
+		api.calls.preview[0].resolve(drafted(adrenal));
+		await flush();
+		s.calculate(cardRef(adrenal));
+		expect(api.calls.calculate).toHaveLength(1);
+	});
+
+	it('a failed re-preview reverts the edit and says so; the last preview stays', async () => {
+		await opened();
+		s.edit(cardRef(adrenal), 'hu', '12 HU');
+		api.calls.preview[0].reject(new CopilotError('timeout'));
+		await flush();
+		const v = state().views[cardRef(adrenal)];
+		expect(v.edits).toEqual({});
+		expect(v.editError).toContain('undone');
+		expect(v.result?.preview?.draft?.length).toBeGreaterThan(0);
+		expect(v.error).toBeNull();
+	});
+
+	it('a context change resets the shared patient answers', async () => {
+		await opened();
+		s.edit(cardRef(adrenal), 'age', '45');
+		s.setContext({ scanType: 'CT chest', history: 'new' });
+		await vi.advanceTimersByTimeAsync(CONTEXT_DEBOUNCE_MS);
+		expect(api.calls.match.at(-1)!.body.patient).toEqual({});
+	});
+
+	it('sibling columns: each answers and calculates on its own; a patient answer reaches every column', async () => {
+		const sib = card({ finding_id: 'u1', finding: A, siblings: ['bts-pulmonary-nodule'] });
+		await matchA([sib]);
+		s.open(cardRef(sib));
+		api.calls.open[0].resolve(drafted(sib));
+		api.calls.open[1].resolve(drafted(card({ key: 'bts-pulmonary-nodule', finding: A })));
+		await flush();
+		const col = `${cardRef(sib)}#bts-pulmonary-nodule`;
+		s.edit(col, 'hu', '20 HU');
+		expect(api.calls.preview).toHaveLength(1);
+		expect(api.calls.preview[0].body.card.key).toBe('bts-pulmonary-nodule');
+		expect(api.calls.preview[0].body.answered).toEqual({ hu: '20 HU' });
+		expect(state().views[cardRef(sib)].columns!['bts-pulmonary-nodule'].edits).toEqual({ hu: '20 HU' });
+		expect(state().views[cardRef(sib)].columns![sib.key].edits).toBeUndefined(); // the other column is untouched
+		api.calls.preview[0].resolve(drafted(card({ key: 'bts-pulmonary-nodule', finding: A })));
+		await flush();
+		s.calculate(col);
+		expect(api.calls.calculate[0].body.card.key).toBe('bts-pulmonary-nodule');
+		expect(api.calls.calculate[0].body.values.hu).toBe('20 HU');
+		api.calls.calculate[0].resolve({ calculation: calc(), ms: 3, error: null });
+		await flush();
+		expect(state().views[cardRef(sib)].columns!['bts-pulmonary-nodule'].calc?.result).not.toBeNull();
+		expect(state().views[cardRef(sib)].columns![sib.key].calc).toBeUndefined();
+		// a patient answer in the primary column re-previews the sibling column too
+		s.edit(`${cardRef(sib)}#${sib.key}`, 'age', '60');
+		expect(api.calls.preview.slice(1).map((c) => c.body.card.key)).toEqual([sib.key, 'bts-pulmonary-nodule']);
+		expect(api.calls.preview[2].body.patient).toEqual({ age: '60' });
+		expect(state().views[cardRef(sib)].columns!['bts-pulmonary-nodule'].calc).toBeUndefined(); // its result cleared
 	});
 });

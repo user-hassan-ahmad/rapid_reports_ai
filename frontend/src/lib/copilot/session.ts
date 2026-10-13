@@ -178,12 +178,12 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		dictation: text,
 		patient: { ...patient }
 	});
-	const openBody = (card: Card): OpenBody => ({
+	const openBody = (card: Card, edits: Record<string, string> = views[cardRef(card)]?.edits ?? {}): OpenBody => ({
 		card, // echoed whole: needs_modality and siblings intact (the server trusts them)
 		finding: card.finding_id === 'exam' ? text : card.finding,
 		findings: text,
 		clinical_history: ctx.history,
-		answered: { ...(views[cardRef(card)]?.edits ?? {}) },
+		answered: { ...edits },
 		patient: { ...patient }
 	});
 
@@ -289,41 +289,111 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	}
 
 	// ── Slice B2: edits, shared patient answers, Calculate ──
-	/** Re-preview a card after an edit or a patient answer: the engine only, over its answers (no new settle). */
-	function repreview(card: Card) {
-		const ref = cardRef(card);
-		return request(ref, openBody(card), (p) => patch(ref, p), 'preview');
+	// A target is a single card, or one sibling column (`<cardRef>#<pack key>`): each has its own answers, preview
+	// and Calculate result; the case's patient answers flow to all of them.
+	interface Target {
+		seqKey: string;
+		card: Card; // the card the request echoes (a column's key swapped in)
+		get(): CardView | ColumnView | undefined;
+		set(p: Partial<CardView & ColumnView>): void;
 	}
-	/** Any edit clears the card's Calculate result, and an answer still in flight is dropped. */
-	function dropCalc(ref: string) {
-		const key = `${ref}@calc`;
+	function targetOf(ref: string): Target | null {
+		const i = ref.lastIndexOf('#');
+		if (i >= 0) {
+			const base = ref.slice(0, i);
+			const key = ref.slice(i + 1);
+			const card = find(base);
+			if (card && columnKeys(card).includes(key)) {
+				const colCard = key === card.key ? card : { ...card, key, name: key };
+				// an exam card's primary column lives in the top-level view until a column entry exists
+				const fallback = (): ColumnView | undefined => {
+					const v = views[base];
+					return key === card.key && v?.result ? { loading: v.loading, error: v.error, result: v.result } : undefined;
+				};
+				return {
+					seqKey: `${base}#${key}`,
+					card: colCard,
+					get: () => views[base]?.columns?.[key] ?? fallback(),
+					set: (p) => {
+						if (!views[base]?.columns?.[key]) patchCol(base, key, fallback() ?? {});
+						patchCol(base, key, p);
+					}
+				};
+			}
+		}
+		const card = find(ref);
+		return card ? { seqKey: ref, card, get: () => views[ref], set: (p) => patch(ref, p) } : null;
+	}
+	/** Every card and sibling column that has a preview (patient answers re-preview these). */
+	function allTargets(): Target[] {
+		const out: Target[] = [];
+		for (const c of all()) {
+			if (c.needs_modality) continue;
+			const keys = c.siblings.length ? columnKeys(c).map((k) => `${cardRef(c)}#${k}`) : [cardRef(c)];
+			for (const k of keys) {
+				const t = targetOf(k);
+				if (t?.get()?.result) out.push(t);
+			}
+		}
+		return out;
+	}
+	/** Re-preview after an edit or a patient answer: the engine only, over the target's answers (no new settle). The
+	 *  last preview stays on screen while it runs. If it fails, the edit is reverted (`revert`: the answers before it)
+	 *  and the card says so, rather than silently keeping an answer the card does not reflect. */
+	async function repreview(t: Target, revert: Record<string, string> | null) {
+		openAc.get(t.seqKey)?.abort();
+		const seq = ++openCounter;
+		openSeq.set(t.seqKey, seq);
+		const ac = new AbortController();
+		openAc.set(t.seqKey, ac);
+		t.set({ loading: true, editError: null });
+		publish();
+		try {
+			const res = await api.preview(openBody(t.card, t.get()?.edits ?? {}), ac.signal);
+			if (openSeq.get(t.seqKey) !== seq || !live()) return;
+			t.set({ loading: false, error: null, result: res, editError: null });
+		} catch (e) {
+			if (openSeq.get(t.seqKey) === seq && failed(e)) {
+				t.set({
+					loading: false,
+					...(revert ? { edits: revert } : {}),
+					editError: revert ? "Couldn't apply that change; it was undone" : "Couldn't update for the patient answer"
+				});
+				fail(`${t.card.key}:preview`);
+			}
+		} finally {
+			if (openAc.get(t.seqKey) === ac) openAc.delete(t.seqKey);
+			publish();
+		}
+	}
+	/** Any edit clears the target's Calculate result, and an answer still in flight is dropped. */
+	function dropCalc(t: Target) {
+		const key = `${t.seqKey}@calc`;
 		openAc.get(key)?.abort();
 		openAc.delete(key);
 		openSeq.set(key, ++openCounter);
-		if (views[ref]?.calc) patch(ref, { calc: undefined });
+		if (t.get()?.calc) t.set({ calc: undefined });
 	}
-	const draftOf = (ref: string) => views[ref]?.result?.preview?.draft ?? [];
+	const draftOf = (t: Target) => t.get()?.result?.preview?.draft ?? [];
 
 	function editValue(ref: string, input: string, value: string) {
 		if (!live()) return;
-		const card = find(ref);
-		if (!card || card.needs_modality) return;
-		const row = draftOf(ref).find((d) => d.input === input);
+		const t = targetOf(ref);
+		if (!t || t.card.needs_modality) return;
+		const row = draftOf(t).find((d) => d.input === input);
 		if (!row || row.state === 'not_applicable') return;
-		const v = views[ref] ?? closedView;
-		dropCalc(ref);
-		patch(ref, { edits: { ...(v.edits ?? {}), [input]: value } });
-		void repreview(card);
-		// a shared patient fact (age, sex, history): one answer per case, every card that carries it follows
+		dropCalc(t);
+		const before = { ...(t.get()?.edits ?? {}) };
+		t.set({ edits: { ...before, [input]: value } });
+		void repreview(t, before);
+		// a shared patient fact (age, sex, history): one answer per case, every card and column that carries it follows
 		if (row.fact) {
 			if (value === NOT_STATED) delete patient[row.fact];
 			else patient[row.fact] = value;
-			for (const c of all()) {
-				const r = cardRef(c);
-				if (r === ref || c.needs_modality || !views[r]?.result) continue;
-				if (!draftOf(r).some((d) => d.fact === row.fact)) continue;
-				dropCalc(r);
-				void repreview(c);
+			for (const o of allTargets()) {
+				if (o.seqKey === t.seqKey || !draftOf(o).some((d) => d.fact === row.fact)) continue;
+				dropCalc(o);
+				void repreview(o, null);
 			}
 		}
 		publish();
@@ -331,27 +401,28 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 
 	async function calculateCard(ref: string) {
 		if (!live()) return;
-		const card = find(ref);
-		const v = views[ref];
-		if (!card || card.needs_modality || !v?.result?.preview) return;
-		const key = `${ref}@calc`;
+		const t = targetOf(ref);
+		const v = t?.get();
+		// never on a stale card: a re-preview after an edit must land first (its values are what Calculate sends)
+		if (!t || t.card.needs_modality || !v?.result?.preview || v.loading) return;
+		const key = `${t.seqKey}@calc`;
 		openAc.get(key)?.abort();
 		const seq = ++openCounter;
 		openSeq.set(key, seq);
 		const ac = new AbortController();
 		openAc.set(key, ac);
-		const body: CalculateBody = { ...openBody(card), values: valuesShown(v.result.preview, v.edits) };
-		patch(ref, { calc: { loading: true, error: null, result: null } });
+		const body: CalculateBody = { ...openBody(t.card, v.edits ?? {}), values: valuesShown(v.result.preview, v.edits) };
+		t.set({ calc: { loading: true, error: null, result: null } });
 		publish();
 		try {
 			const res = await api.calculate(body, ac.signal);
 			if (openSeq.get(key) !== seq || !live()) return;
-			patch(ref, { calc: { loading: false, error: res.error, result: res.calculation } });
-			log.ms[`${card.key}:calc`] = res.ms;
+			t.set({ calc: { loading: false, error: res.error, result: res.calculation } });
+			log.ms[`${t.card.key}:calc`] = res.ms;
 		} catch (e) {
 			if (openSeq.get(key) === seq && failed(e)) {
-				patch(ref, { calc: { loading: false, error: reason(e), result: null } });
-				fail(`${card.key}:calc`);
+				t.set({ calc: { loading: false, error: reason(e), result: null } });
+				fail(`${t.card.key}:calc`);
 			}
 		} finally {
 			if (openAc.get(key) === ac) openAc.delete(key);
@@ -363,7 +434,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	function fetchColumn(card: Card, key: string) {
 		const ref = cardRef(card);
 		const colCard = key === card.key ? card : { ...card, key, name: key };
-		return request(`${ref}#${key}`, openBody(colCard), (p) => patchCol(ref, key, p));
+		return request(`${ref}#${key}`, openBody(colCard, views[ref]?.columns?.[key]?.edits ?? {}), (p) => patchCol(ref, key, p));
 	}
 
 	/** The sibling columns still worth a request: not loading and no result. An exam card's primary column is its
@@ -406,7 +477,8 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	function applyContext(next: CopilotContext) {
 		if (!live()) return;
 		ctx = { ...next };
-		backoffUntil = 0; // a new context is a new chance, even after a failed /match
+		backoffUntil = 0;
+		for (const k of Object.keys(patient)) delete patient[k]; // a new case context starts without its answers // a new context is a new chance, even after a failed /match
 		abortAll();
 		sent = new Set();
 		sentCtx = null;

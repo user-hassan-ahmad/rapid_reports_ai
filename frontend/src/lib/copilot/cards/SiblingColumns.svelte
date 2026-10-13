@@ -21,6 +21,8 @@
 		view,
 		other = false,
 		layout = 'auto',
+		onEdit = undefined,
+		onCalculate = undefined,
 		onOpen,
 		onClose,
 		onRetry
@@ -34,6 +36,9 @@
 		onClose: (ref: string) => void;
 		/** Called with columnRef(card, key) (`<cardRef>#<pack key>`), so one failed column is retried. */
 		onRetry: (ref: string) => void;
+		/** B2: each column answers and calculates on its own (ref = columnRef(card, key)). */
+		onEdit?: (ref: string, input: string, value: string) => void;
+		onCalculate?: (ref: string) => void;
 	} = $props();
 
 	const ref = $derived(cardRef(card));
@@ -78,7 +83,15 @@
 		{/if}
 		<CardStatus loading={cv.loading && !cv.result} error={err} onRetry={() => onRetry(columnRef(card, c.key))} />
 		{#if !err && cv.result}
-			<PackBody result={cv.result} compact={!full && !stacked} />
+			<PackBody
+				result={cv.result}
+				compact={!full && !stacked}
+				onEdit={onEdit && (full || stacked) ? (input, value) => onEdit(columnRef(card, c.key), input, value) : null}
+				onCalculate={onCalculate && (full || stacked) ? () => onCalculate(columnRef(card, c.key)) : null}
+				calc={cv.calc ?? null}
+				busy={cv.loading}
+				editError={cv.editError ?? null}
+			/>
 		{/if}
 	</div>
 {/snippet}

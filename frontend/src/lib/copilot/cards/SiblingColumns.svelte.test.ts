@@ -73,6 +73,24 @@ describe('SiblingColumns', () => {
 		host.style.width = '480px'; // wide enough for two readable columns
 		await expect.element(page.getByRole('button', { name: 'BTS 2015', exact: true })).toBeInTheDocument();
 		await expect.poll(() => document.querySelectorAll('.cp-col--stacked').length).toBe(0);
-		host.remove();
+	});
+
+	it('B2: each stacked column has its own Change and Calculate, called with its column ref', async () => {
+		const withDraft = (key: string) =>
+			result(card({ key, name: key }), preview({ proposal: null, draft_outcome: null, draft: [{ input: 'size', label: 'Size', role: 'clinical', scope: 'lesion', fact: '', state: 'read', value: '7 mm', quote: '', why: [], by: '', needed: false, waiting: false, options: [] }] }));
+		const v = view({ columns: { [c.key]: { loading: false, error: null, result: withDraft(c.key) }, [bts.key]: { loading: true, error: null, result: withDraft(bts.key) } } });
+		const onEdit = vi.fn();
+		const onCalculate = vi.fn();
+		render(SiblingColumns, { ...base({ view: v }), layout: 'stacked', onEdit, onCalculate });
+		const calcs = page.getByRole('button', { name: 'Calculate' });
+		await expect.element(calcs.first()).toBeInTheDocument();
+		expect(calcs.elements()).toHaveLength(2);
+		expect((calcs.elements()[1] as HTMLButtonElement).disabled).toBe(true); // the BTS column is re-previewing
+		await calcs.first().click();
+		expect(onCalculate).toHaveBeenCalledWith(columnRef(c, c.key));
+		await page.getByRole('button', { name: 'Change Size' }).first().click();
+		await page.getByRole('textbox', { name: 'Answer for Size' }).fill('8 mm');
+		await page.getByRole('button', { name: 'Save' }).click();
+		expect(onEdit).toHaveBeenCalledWith(columnRef(c, c.key), 'size', '8 mm');
 	});
 });

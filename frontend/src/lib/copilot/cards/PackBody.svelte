@@ -29,7 +29,9 @@
 		verdict = undefined,
 		onEdit = null,
 		onCalculate = null,
-		calc = null
+		calc = null,
+		busy = false,
+		editError = null
 	}: {
 		result: OpenResult;
 		compact?: boolean;
@@ -42,6 +44,9 @@
 		/** Slice B2: Calculate over the values shown. Absent: no Calculate button. Apply is never offered. */
 		onCalculate?: (() => void) | null;
 		calc?: CalcView | null;
+		/** The card is re-previewing after an edit: Calculate waits (it would send stale values). */
+		busy?: boolean;
+		editError?: string | null;
 	} = $props();
 
 	const p = $derived(result.preview);
@@ -161,6 +166,7 @@
 					{/if}
 				</section>
 			{/if}
+		{#if editError}<p class="cp-p cp-edit-error" role="alert">{editError}</p>{/if}
 		{#if rows.length}
 			<section class="cp-values" aria-label="Values">
 				<div class="cp-label">Values</div>
@@ -262,8 +268,8 @@
 		{/if}
 		{#if onCalculate && p.draft?.length && !compact}
 			<div class="cp-calc-row">
-				<button type="button" class="rv-btn cp-calc-btn" disabled={!!calc?.loading} onclick={() => onCalculate?.()}>Calculate</button>
-				<span class="cp-muted cp-calc-hint">on the values shown</span>
+				<button type="button" class="rv-btn cp-calc-btn" disabled={!!calc?.loading || busy} onclick={() => onCalculate?.()}>Calculate</button>
+				<span class="cp-muted cp-calc-hint" aria-live="polite">{busy ? 'updating the card…' : 'on the values shown'}</span>
 			</div>
 			{#if calc}<CalcResult {calc} labels={calcLabels} />{/if}
 		{/if}
@@ -509,6 +515,10 @@
 	.cp-assumed-change {
 		margin-left: 6px;
 		font-size: 0.75rem;
+	}
+	.cp-edit-error {
+		font-size: 0.8125rem;
+		color: var(--rv-red-text);
 	}
 	.cp-calc-row {
 		display: flex;

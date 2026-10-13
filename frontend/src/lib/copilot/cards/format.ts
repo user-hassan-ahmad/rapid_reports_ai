@@ -217,25 +217,26 @@ export function sourcesOf(cs: Citation[]): { short: string; more: number; full: 
 
 export type ChipKind = 'read' | 'prefilled' | 'assumed' | 'exam' | 'set';
 export interface HeadChip { input: string; text: string; title: string; kind: ChipKind }
-/** The head's key values as compact chips. A cap never hides a flag: pre-filled and assumed values are chosen first
- *  (shown even as "Label: No" / "Label: Not stated", where the label carries the meaning), then the rest; the chips
- *  keep the card's order and the remainder is "+N". A plain "Yes" shows as its label; an unflagged "No",
- *  "Not stated" or N/A is left out (noise without the label). */
+/** The head's key values as compact chips (controller ruling 2026-10-13): assumed values are represented ONLY by
+ *  the "⚠ N assumed" chip, never as chips of their own; pre-filled values come first (flagged, and never capped
+ *  away; shown even as "Label: No" / "Label: Not stated"), then read and set values; the chips keep the card's
+ *  order and the remainder is "+N". A plain "Yes" shows as its label; an unflagged "No", "Not stated" or N/A is
+ *  left out (noise without the label). */
 export function headChips(r: OpenResult, max = 4): { chips: HeadChip[]; more: number } {
 	const p = r.preview;
 	if (!p) return { chips: [], more: 0 };
 	const kind = (v: ValueRow): ChipKind => (v.byExam ? 'exam' : v.state === 'prefilled' ? 'prefilled' : v.state === 'read' ? 'read' : 'set');
 	const all: (HeadChip & { flagged: boolean; i: number })[] = [];
-	const push = (input: string, label: string, value: string, k: ChipKind) => {
-		const v = value.trim();
-		const flagged = k === 'prefilled' || k === 'assumed';
-		const empty = !v || /^(no|not stated)$/i.test(v);
-		if (empty && !(flagged && v)) return;
-		const text = /^yes$/i.test(v) ? label : empty ? `${label}: ${v}` : v;
-		all.push({ input, text: text.length > 28 ? `${text.slice(0, 27)}…` : text, title: `${label}: ${v}`, kind: k, flagged, i: all.length });
-	};
-	for (const v of valueRows(r)) if (v.state !== 'not_applicable') push(v.input, v.label, v.value, kind(v));
-	for (const v of rowsOf(p).assumed) push(v.input, v.label, v.value, 'assumed');
+	for (const v of valueRows(r)) {
+		if (v.state === 'not_applicable') continue;
+		const k = kind(v);
+		const val = v.value.trim();
+		const flagged = k === 'prefilled';
+		const empty = !val || /^(no|not stated)$/i.test(val);
+		if (empty && !(flagged && val)) continue;
+		const text = /^yes$/i.test(val) ? v.label : empty ? `${v.label}: ${val}` : val;
+		all.push({ input: v.input, text: text.length > 28 ? `${text.slice(0, 27)}…` : text, title: `${v.label}: ${val}`, kind: k, flagged, i: all.length });
+	}
 	const pick = [...all.filter((c) => c.flagged), ...all.filter((c) => !c.flagged)].slice(0, max).sort((a, b) => a.i - b.i);
 	return { chips: pick.map(({ input, text, title, kind }) => ({ input, text, title, kind })), more: all.length - pick.length };
 }
