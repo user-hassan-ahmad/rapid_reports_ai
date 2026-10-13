@@ -203,3 +203,112 @@ def validate(kind: str, key: str, choice: dict) -> Tuple[str, dict]:
         return key, {"keep": choice["keep"]}
     split_normal_key(key)
     return key, {"text": _text(choice.get("text", ""), "normal wording", allow_slots=False)}
+
+
+def find(ledger: List[Entry], kind: str, key: str) -> Optional[Entry]:
+    k = match_key(kind, key)
+    return next((e for e in ledger or [] if e.get("kind") == kind and match_key(kind, e["key"]) == k), None)
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def set_decision(ledger: List[Entry], kind: str, key: str, choice: dict, *, source: str,
+                 by: str = "radiologist", at: Optional[str] = None) -> Tuple[List[Entry], Optional[Change]]:
+    """The ledger with (kind, key) set to `choice`, and the change (None when the choice is unchanged; a
+    re-confirmation still updates source, by and at). Never mutates `ledger`. DecisionError when invalid."""
+    if source not in SOURCES:
+        raise DecisionError(f"unknown source {source!r}")
+    if by not in BY:
+        raise DecisionError(f"unknown by {by!r}")
+    key, choice = validate(kind, key, choice)
+    if kind == "fixed" and norm_key(key) in concept_texts(ledger):
+        raise DecisionError("this line belongs to a study-level wording; change it there")
+    old = find(ledger, kind, key)
+    entry: Entry = {"kind": kind, "key": old["key"] if old else key, "choice": choice, "by": by,
+                    "at": at or _now(), "source": source}
+    out = [entry if e is old else e for e in ledger] if old else [*(ledger or []), entry]
+    if old and old["choice"] == choice:
+        return out, None
+    return out, Change(kind=kind, key=entry["key"], old=dict(old) if old else None, new=choice, source=source,
+                       confirmed=bool(old) and old.get("source") != "default")
+
+
+def concept_texts(ledger: List[Entry]) -> set:
+    """norm_key of every wording a decided concept owns (its lines are the concept's, never a fixed entry's)."""
+    return {norm_key(t) for e in ledger or [] if e.get("kind") == "concept"
+            for t in ((e.get("choice") or {}).get("default", ""), (e.get("choice") or {}).get("when_met", "")) if t}
+
+
+def remove_decision(ledger: List[Entry], kind: str, key: str) -> List[Entry]:
+    """The ledger without (kind, key)."""
+    old = find(ledger, kind, key)
+    return [e for e in ledger if e is not old]
+
+
+def undo_change(ledger: List[Entry], change: Change) -> List[Entry]:
+    """Reverse one change (a rejected router change): the old entry back whole (choice, by, at, source), or the entry
+    removed when the change added it."""
+    if change["old"] is None:
+        return remove_decision(ledger, change["kind"], change["key"])
+    cur = find(ledger, change["kind"], change["key"])
+    if cur is None:
+        return [*ledger, dict(change["old"])]
+    return [dict(change["old"]) if e is cur else e for e in ledger]
+
+
+def ledger_from_changes(changes: List[dict], base: Optional[List[Entry]] = None,
+                        source: str = "creation") -> Tuple[List[Entry], List[str]]:
+    """Record card answers [{"kind", "key", "choice", "source"?}] on `base`. A change with source "default" is
+    recorded as by "code". Returns (ledger, one message per change code could not apply; those are skipped)."""
+    ledger: List[Entry] = list(base or [])
+    errors: List[str] = []
+    for c in changes or []:
+        src = c.get("source") or source
+        try:
+            ledger, _ = set_decision(ledger, c.get("kind", ""), c.get("key", ""), c.get("choice") or {},
+                                     source=src, by="code" if src == "default" else "radiologist")
+        except DecisionError as e:
+            errors.append(f"{c.get('kind')} {c.get('key')!r}: {e}")
+    if errors:
+        logger.warning("[ledger] %d change(s) not recorded: %s", len(errors), errors[:5])
+    return ledger, errors
+
+
+_NEED = {"every": "every report", "relevant": "only when relevant", "not_needed": "not needed"}
+_KEEP = {"always": "always printed", "dictated": "only when dictated", "remove": "removed"}
+
+
+def item_label(kind: str, key: str) -> str:
+    if kind == "concept":
+        return CONCEPTS[key].label if key in CONCEPTS else key
+    if kind == "fixed":
+        return f'"{key}"'
+    if kind == "normal":
+        para, label, neg = split_normal_key(key)
+        return f'{para}: "{label}"' if neg else f"{para}: {label}"
+    return key
+
+
+def state_label(kind: str, choice: Optional[dict]) -> str:
+    if choice is None:
+        return "not set"
+    if kind == "value":
+        return _NEED.get(choice.get("need"), "not set")
+    if kind == "fixed":
+        return _KEEP.get(choice.get("keep"), "not set")
+    if kind == "concept":
+        if not choice.get("use"):
+            return "whichever is dictated" if choice.get("dictated") else "not used"
+        return f'"{choice.get("default") or choice.get("when_met")}"'
+    return f'"{choice.get("text")}"' if choice.get("text") else "removed"
+
+
+def describe_change(change: Change) -> str:
+    """The reply line for a change to a confirmed item; "" for a new or default item."""
+    if not change.get("confirmed"):
+        return ""
+    k = change["kind"]
+    return (f"This changes something you confirmed: {item_label(k, change['key'])} "
+            f"{state_label(k, change['old']['choice'])} → {state_label(k, change['new'])}.")

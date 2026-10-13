@@ -64,3 +64,76 @@ def test_validate_canonicalises():
                        )[1]["condition"] == "the dictation states a contrast agent was given"
     assert td.validate("normal", "Liver :: liver", {"text": " The liver  is normal. "}) == (
         "Liver :: liver", {"text": "The liver is normal."})
+
+
+def test_set_decision_adds_then_changes_and_reports_the_change():
+    led, ch = td.set_decision([], "value", "LVEF", {"need": "every"}, source="creation", at="t0")
+    assert led == [{"kind": "value", "key": "LVEF", "choice": {"need": "every"}, "by": "radiologist", "at": "t0",
+                    "source": "creation"}]
+    assert ch == {"kind": "value", "key": "LVEF", "old": None, "new": {"need": "every"}, "source": "creation",
+                  "confirmed": False}
+    led2, ch2 = td.set_decision(led, "value", "lvef", {"need": "not_needed"}, source="chat", at="t1")
+    assert len(led2) == 1 and led2[0]["key"] == "LVEF" and led2[0]["source"] == "chat"
+    assert ch2["old"] == led[0] and ch2["confirmed"] is True             # the old entry whole
+    assert led[0]["choice"] == {"need": "every"}          # never mutates the input
+
+
+def test_same_choice_is_no_change_but_a_reconfirmation_updates_the_source():
+    led, _ = td.set_decision([], "value", "LVEF", {"need": "every"}, source="default", by="code")
+    led2, ch = td.set_decision(led, "value", "LVEF", {"need": "every"}, source="creation")
+    assert ch is None and led2[0]["source"] == "creation" and led2[0]["by"] == "radiologist"
+
+
+def test_a_change_to_a_default_is_not_a_confirmed_change():
+    led, _ = td.set_decision([], "fixed", "Line.", {"keep": "always"}, source="default", by="code")
+    _, ch = td.set_decision(led, "fixed", "Line.", {"keep": "remove"}, source="chat")
+    assert ch["confirmed"] is False and td.describe_change(ch) == ""
+
+
+def test_remove_decision_undoes_an_entry():
+    led, _ = td.set_decision([], "value", "LVEF", {"need": "every"}, source="chat")
+    assert td.remove_decision(led, "value", "lvef") == []
+
+
+def test_unknown_source_or_by_is_refused():
+    with pytest.raises(td.DecisionError):
+        td.set_decision([], "value", "LVEF", {"need": "every"}, source="writer")
+    with pytest.raises(td.DecisionError):
+        td.set_decision([], "value", "LVEF", {"need": "every"}, source="chat", by="someone")
+
+
+def test_ledger_from_changes_records_valid_changes_and_lists_invalid_ones():
+    led, errors = td.ledger_from_changes([
+        {"kind": "value", "key": "LVEF", "choice": {"need": "every"}},
+        {"kind": "value", "key": "ECV", "choice": {"need": "relevant"}, "source": "default"},
+        {"kind": "concept", "key": "nonsense", "choice": {"use": False}},
+    ], source="creation")
+    assert [(e["key"], e["source"], e["by"]) for e in led] == [("LVEF", "creation", "radiologist"),
+                                                               ("ECV", "default", "code")]
+    assert len(errors) == 1 and "nonsense" in errors[0]
+
+
+def test_describe_change_words_a_confirmed_change():
+    led, _ = td.set_decision([], "concept", "comparison",
+                             {"use": True, "default": "No previous imaging.", "when_met": "Compared with {date}."},
+                             source="creation")
+    _, ch = td.set_decision(led, "concept", "comparison", {"use": False}, source="chat")
+    assert td.describe_change(ch) == ('This changes something you confirmed: Comparison with previous imaging '
+                                      '"No previous imaging." → not used.')
+    _, ch = td.set_decision(led, "concept", "comparison", {"use": False, "dictated": True}, source="chat")
+    assert td.describe_change(ch).endswith("→ whichever is dictated.")
+
+
+def test_undo_change_restores_the_old_entry_whole():
+    led, _ = td.set_decision([], "value", "LVEF", {"need": "every"}, source="creation", at="t0")
+    led2, ch = td.set_decision(led, "value", "LVEF", {"need": "not_needed"}, source="chat", at="t1")
+    assert td.undo_change(led2, ch) == led                               # source, by and at come back too
+    led3, ch_new = td.set_decision(led, "value", "ECV", {"need": "every"}, source="chat")
+    assert td.undo_change(led3, ch_new) == led
+
+
+def test_a_fixed_entry_on_a_concepts_wording_is_refused():
+    led, _ = td.set_decision([], "concept", "comparison", {"use": True, "default": "No previous imaging.",
+                                                           "when_met": ""}, source="creation")
+    with pytest.raises(td.DecisionError):
+        td.set_decision(led, "fixed", "No previous imaging", {"keep": "remove"}, source="creation")
