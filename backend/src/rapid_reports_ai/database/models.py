@@ -1,7 +1,6 @@
 """SQLAlchemy models for Rapid Reports AI"""
 
-from sqlalchemy import func
-from sqlalchemy import Column, String, Text, Boolean, DateTime, JSON, ForeignKey, Integer, Float, UniqueConstraint, Index, ARRAY
+from sqlalchemy import func, true, Column, String, Text, Boolean, DateTime, JSON, ForeignKey, Integer, Float, UniqueConstraint, Index, ARRAY
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, deferred
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TSVECTOR
@@ -936,8 +935,8 @@ class TemplateExample(Base):
     template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="CASCADE"), nullable=False, index=True)
     text = Column(Text, nullable=False)
     sha256 = Column(String(64), nullable=False)
-    source = Column(String(16), nullable=False, default="pasted")
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    source = Column(String(16), nullable=False, default="pasted", server_default="pasted")
+    created_at = Column(DateTime, default=_now, server_default=func.now(), nullable=False)
 
 
 class TemplateChatTurn(Base):
@@ -947,7 +946,7 @@ class TemplateChatTurn(Base):
     template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="CASCADE"), nullable=False, index=True)
     instruction = Column(Text, nullable=False)
     response = Column(Text, nullable=True)
-    applied = Column(Boolean, nullable=False, default=True)
+    applied = Column(Boolean, nullable=False, default=True, server_default=true())
     sheet_hash_before = Column(String(64), nullable=True)
     sheet_hash_after = Column(String(64), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    created_at = Column(DateTime, default=_now, server_default=func.now(), nullable=False)

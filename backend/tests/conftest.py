@@ -37,6 +37,8 @@ from rapid_reports_ai.database.models import (  # noqa: E402
     ReportReviewItem,
     ReportChatMessage,
     StackSchemaFamily,
+    TemplateExample,
+    TemplateChatTurn,
     DictationStackLog,
     StackSlimSheet,
 )
@@ -61,6 +63,8 @@ _TEST_TABLES = [
     StackSchemaFamily.__table__,
     DictationStackLog.__table__,
     StackSlimSheet.__table__,
+    TemplateExample.__table__,
+    TemplateChatTurn.__table__,
 ]
 
 

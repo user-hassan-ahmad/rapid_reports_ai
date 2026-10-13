@@ -27,7 +27,7 @@ def upgrade() -> None:
         sa.Column("text", sa.Text(), nullable=False),
         sa.Column("sha256", sa.String(64), nullable=False),
         sa.Column("source", sa.String(16), nullable=False, server_default="pasted"),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
     )
     op.create_table(
         "template_chat_turns",
@@ -38,7 +38,7 @@ def upgrade() -> None:
         sa.Column("applied", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column("sheet_hash_before", sa.String(64), nullable=True),
         sa.Column("sheet_hash_after", sa.String(64), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
     )
     op.add_column("reports", sa.Column("generation_stamp", json_type(), nullable=True))
     op.add_column("dictation_stack_logs", sa.Column("template_id", sa.String(64), nullable=True))
