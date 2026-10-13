@@ -207,3 +207,19 @@ def test_a_slot_placeholder_sentence_is_never_offered():
     assert st.usable
     assert not any("{" in s for ss in template_region_normals(st).values() for s in ss)
     assert "The spleen is normal in size." in template_region_normals(st)["Liver"]
+
+
+def test_the_prompt_carries_the_standard_section_order_and_rules():
+    assert SL.PROMPT_VERSION == "slim-6"   # bumped so cached free-text sheets regenerate
+    assert "- **Sections:** exactly: Comparison; Technique; Limitations (only when applicable); Findings; Impression" \
+        in SL.SLIM_SYS
+    rules = next(ln for ln in SL.SLIM_SYS.splitlines() if ln.startswith("- **Section rules:**"))
+    for needle in ("no prior imaging is available for comparison", "Modality line in Scan Context",
+                   "never the not-assessable list", "Never a clinical history"):
+        assert needle in rules
+
+
+def test_a_generated_sheet_with_the_standard_sections_still_parses():
+    md = SHEET.replace("TECHNIQUE, FINDINGS, IMPRESSION",
+                       "Comparison; Technique; Limitations (only when applicable); Findings; Impression")
+    assert SL.parse_slim(md, [r.name for r in REGIONS]) == SL.parse_slim(SHEET, [r.name for r in REGIONS])
