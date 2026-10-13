@@ -112,9 +112,7 @@
 		{#each c.choices as ch (ch.id)}
 			<button
 				type="button"
-				class="text-xs px-2.5 py-1 rounded-full border transition-colors {selectedOf(c) === ch.id
-					? 'border-purple-400 bg-purple-500/20 text-white'
-					: 'border-white/10 text-gray-400 hover:text-gray-200'}"
+				class="choice-chip {selectedOf(c) === ch.id ? 'choice-chip-on' : ''}"
 				aria-pressed={selectedOf(c) === ch.id}
 				aria-label="{c.title}: {ch.label}"
 				onclick={() => choose(c, ch.id)}
@@ -126,78 +124,78 @@
 
 {#snippet evidence(c: DecisionCard)}
 	{#each c.evidence as e, i (i)}
-		<p class="text-xs text-gray-500">{evidenceLine(e)}</p>
+		<p class="evidence-quote">{evidenceLine(e)}</p>
 	{/each}
 {/snippet}
 
 {#snippet card(c: DecisionCard)}
-	<section class="rounded-lg border border-white/10 p-3 space-y-2" aria-label={c.title}>
-		<h4 class="text-sm text-gray-200">{c.title}</h4>
+	<section class="panel-card space-y-2.5" aria-label={c.title}>
+		<h4 class="card-title">{c.title}</h4>
 		{#if c.note}<p class="text-xs text-amber-300/80">{c.note}</p>{/if}
 		{@render evidence(c)}
 		{#if c.usual}
 			{#each Object.entries(c.usual) as [state, text] (state)}
-				{#if text}<p class="text-xs text-gray-300">{stateLabel(state)}: “{text}”</p>{/if}
+				{#if text}<p class="card-body">{stateLabel(state)}: “{text}”</p>{/if}
 			{/each}
 		{:else if c.wording && c.kind === 'concept'}
-			{#if c.wording.default}<p class="text-xs text-gray-300">Usually: “{c.wording.default}”</p>{/if}
+			{#if c.wording.default}<p class="card-body">Usually: “{c.wording.default}”</p>{/if}
 			{#if c.wording.when_met}
-				<p class="text-xs text-gray-300">When {c.wording.condition || 'it applies'}: “{c.wording.when_met}”</p>
+				<p class="card-body">When {c.wording.condition || 'it applies'}: “{c.wording.when_met}”</p>
 			{:else if c.wording.default && c.wording.condition}
-				<p class="text-xs text-gray-400">Left out when {c.wording.condition}.</p>
+				<p class="card-note">Left out when {c.wording.condition}.</p>
 			{/if}
 		{:else if c.kind === 'habit' && c.habit}
-			{#if c.habit.question}<p class="text-xs text-gray-300">Ask: “{c.habit.question}”</p>{/if}
+			{#if c.habit.question}<p class="card-body">Ask: “{c.habit.question}”</p>{/if}
 			{#if c.habit.yes}
-				<p class="text-xs text-gray-400">Yes: “{c.habit.yes}” · No: “{c.habit.no}”</p>
+				<p class="card-note">Yes: “{c.habit.yes}” · No: “{c.habit.no}”</p>
 			{:else}
-				<p class="text-xs text-gray-400">State: “{c.habit.no}”</p>
+				<p class="card-note">State: “{c.habit.no}”</p>
 			{/if}
 		{:else if c.wording?.text}
-			<p class="text-xs text-gray-300">“{c.wording.text}”</p>
+			<p class="card-body">“{c.wording.text}”</p>
 		{/if}
 		{@render chips(c)}
 		{#if editing === c.id}
 			{@const editChoice = c.choices.find((x) => x.choice === null)?.id ?? 'edit'}
-			<div class="space-y-1.5">
+			<div class="space-y-2.5 border-t border-white/[0.06] pt-3">
 				{#if c.ledger_kind === 'concept'}
-					<label class="block text-xs text-gray-400"
+					<label class="field-label"
 						>Usually
-						<input class="input w-full text-sm" bind:value={draft.default} use:focusOnOpen />
+						<input class="input-dark input-compact mt-1 w-full normal-case tracking-normal" bind:value={draft.default} use:focusOnOpen />
 					</label>
-					<label class="block text-xs text-gray-400"
+					<label class="field-label"
 						>When it applies
-						<input class="input w-full text-sm" bind:value={draft.when_met} />
+						<input class="input-dark input-compact mt-1 w-full normal-case tracking-normal" bind:value={draft.when_met} />
 					</label>
-					{#if draft.condition}<p class="text-xs text-gray-500">It applies when {draft.condition}.</p>{/if}
+					{#if draft.condition}<p class="card-note">It applies when {draft.condition}.</p>{/if}
 				{:else if c.ledger_kind === 'habit'}
-					<label class="block text-xs text-gray-400"
+					<label class="field-label"
 						>When this is reported
-						<input class="input w-full text-sm" bind:value={draft.condition} use:focusOnOpen />
+						<input class="input-dark input-compact mt-1 w-full normal-case tracking-normal" bind:value={draft.condition} use:focusOnOpen />
 					</label>
-					<p class="text-xs text-gray-500">{HABIT_WHERE_HINT}</p>
-					<label class="block text-xs text-gray-400"
+					<p class="card-note">{HABIT_WHERE_HINT}</p>
+					<label class="field-label"
 						>Question
-						<input class="input w-full text-sm" bind:value={draft.question} />
+						<input class="input-dark input-compact mt-1 w-full normal-case tracking-normal" bind:value={draft.question} />
 					</label>
-					<label class="block text-xs text-gray-400"
+					<label class="field-label"
 						>Yes writes
-						<input class="input w-full text-sm" bind:value={draft.yes} />
+						<input class="input-dark input-compact mt-1 w-full normal-case tracking-normal" bind:value={draft.yes} />
 					</label>
-					<label class="block text-xs text-gray-400"
+					<label class="field-label"
 						>No writes
-						<input class="input w-full text-sm" bind:value={draft.no} />
+						<input class="input-dark input-compact mt-1 w-full normal-case tracking-normal" bind:value={draft.no} />
 					</label>
 				{:else}
-					<label class="block text-xs text-gray-400"
+					<label class="field-label"
 						>Wording
-						<input class="input w-full text-sm" bind:value={draft.text} use:focusOnOpen />
+						<input class="input-dark input-compact mt-1 w-full normal-case tracking-normal" bind:value={draft.text} use:focusOnOpen />
 					</label>
 				{/if}
 				{#if wordingProblem(c, draft)}<p class="text-xs text-amber-300/80" role="status">{wordingProblem(c, draft)}</p>{/if}
 				<button
 					type="button"
-					class="btn-primary text-xs"
+					class="btn-primary btn-compact"
 					onclick={() => useWording(c, editChoice)}
 					disabled={busy || !changeFor(c, { choiceId: editChoice, edited: draft }, source)}>Use this wording</button
 				>
@@ -208,10 +206,10 @@
 
 {#snippet entry(c: DecisionCard)}
 	{#if c.kind === 'group'}
-		<div class="rounded-lg border border-white/5 p-2 space-y-2">
+		<div class="panel-card-quiet space-y-3">
 			<button
 				type="button"
-				class="text-xs text-gray-400 hover:text-gray-200 text-left"
+				class="focus-ring rounded-md text-left text-xs font-medium text-gray-300 transition-colors hover:text-white"
 				aria-expanded={openGroups.includes(c.id)}
 				onclick={() => toggleGroup(c.id)}>{c.title}</button
 			>
@@ -226,26 +224,26 @@
 	{/if}
 {/snippet}
 
-<div class="space-y-3">
+<div class="space-y-4">
 	{#if notice}<p class="text-xs text-amber-300/80" role="status">{notice}</p>{/if}
 
 	{#if valueCards.length || mode === 'review' || added.length}
-		<section class="rounded-lg border border-white/10 p-3 space-y-3" aria-label="Required values">
-			<h4 class="text-sm text-gray-200">Required values</h4>
+		<section class="panel-card space-y-4" aria-label="Required values">
+			<div class="flex items-center gap-2"><h4 class="section-label">Required values</h4><div class="h-px flex-1 bg-white/[0.06]"></div></div>
 			{#each valueCards as c (c.id)}
-				<div class="space-y-1">
-					<p class="text-sm text-gray-300">{c.title}</p>
+				<div class="space-y-2">
+					<p class="card-title">{c.title}</p>
 					{#if c.note}<p class="text-xs text-amber-300/80">{c.note}</p>{/if}
 					{@render evidence(c)}
 					{@render chips(c)}
 				</div>
 			{/each}
 			{#each added as name (name)}
-				<p class="text-sm text-gray-300">{name} <span class="text-xs text-gray-500">(every report)</span></p>
+				<p class="card-title">{name} <span class="text-xs font-normal text-gray-500">(every report)</span></p>
 			{/each}
 			<div class="flex gap-2">
 				<input
-					class="input flex-1 text-sm"
+					class="input-dark input-compact flex-1"
 					placeholder="Add a value"
 					aria-label="Add a value"
 					bind:value={newValue}
@@ -256,7 +254,7 @@
 						}
 					}}
 				/>
-				<button type="button" class="btn-ghost text-xs" onclick={addValue} disabled={!validValueName(newValue)}>+ Add</button>
+				<button type="button" class="btn-secondary btn-compact" onclick={addValue} disabled={!validValueName(newValue)}>+ Add</button>
 			</div>
 		</section>
 	{/if}
@@ -268,7 +266,7 @@
 	{#if moreCount}
 		<button
 			type="button"
-			class="text-xs text-gray-400 hover:text-gray-200"
+			class="focus-ring rounded-md text-xs font-medium text-purple-300/80 transition-colors hover:text-purple-200"
 			aria-expanded={showMore}
 			onclick={() => (showMore = !showMore)}
 		>
@@ -284,7 +282,7 @@
 	{#if keptLeft.length}
 		<button
 			type="button"
-			class="text-xs text-gray-400 hover:text-gray-200"
+			class="focus-ring rounded-md text-xs font-medium text-purple-300/80 transition-colors hover:text-purple-200"
 			aria-expanded={showKept}
 			onclick={() => (showKept = !showKept)}
 		>
@@ -293,11 +291,11 @@
 		{#if showKept}
 			<ul class="space-y-1">
 				{#each keptLeft as c (c.id)}
-					<li class="flex items-center justify-between text-xs text-gray-400">
+					<li class="flex items-center justify-between rounded-md px-2 py-1 text-xs text-gray-400 hover:bg-white/[0.03]">
 						<span>{c.title}: {c.choices.find((x) => x.id === c.selected)?.label}</span>
 						<button
 							type="button"
-							class="text-gray-500 hover:text-gray-200"
+							class="focus-ring rounded text-purple-300/80 hover:text-purple-200"
 							aria-label="Change {c.title}"
 							onclick={() => (promoted = [...promoted, c.id])}>Change</button
 						>
@@ -307,11 +305,11 @@
 		{/if}
 	{/if}
 
-	<div class="flex justify-end gap-2 pt-2">
+	<div class="flex justify-end gap-2 border-t border-white/[0.06] pt-4">
 		{#if onSkip}
-			<button type="button" class="btn-ghost text-sm" onclick={() => onSkip?.(changesOnSkip(defaults))} disabled={busy}>Skip</button>
+			<button type="button" class="btn-ghost" onclick={() => onSkip?.(changesOnSkip(defaults))} disabled={busy}>Skip</button>
 		{/if}
-		<button type="button" class="btn-primary text-sm" onclick={finish} disabled={busy}>
+		<button type="button" class="btn-primary" onclick={finish} disabled={busy}>
 			{mode === 'review' ? 'Apply' : 'Continue'}
 		</button>
 	</div>

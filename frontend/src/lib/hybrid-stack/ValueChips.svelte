@@ -55,12 +55,12 @@
 	});
 	const openCount = $derived(values.filter((v) => v.state === 'open').length);
 	const tone: Record<ValueChip['state'], string> = {
-		filled: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200',
-		picked: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200',
-		entered: 'border-sky-400/30 bg-sky-500/10 text-sky-200',
-		na: 'border-white/10 bg-white/[0.03] text-gray-500',
-		open: 'border-amber-400/50 bg-amber-500/10 text-amber-200',
-		check: 'border-orange-400/50 bg-orange-500/10 text-orange-200',
+		filled: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/15',
+		picked: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/15',
+		entered: 'border-purple-400/40 bg-purple-500/15 text-purple-100 hover:bg-purple-500/20',
+		na: 'border-white/10 bg-white/[0.03] text-gray-500 hover:text-gray-300',
+		open: 'border-amber-400/50 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15',
+		check: 'border-orange-400/50 bg-orange-500/10 text-orange-200 hover:bg-orange-500/15',
 		filling: 'border-white/10 bg-white/[0.03] text-gray-400 animate-pulse'
 	};
 	const ring = (v: ValueChip) => (current === `value:${v.item}` ? 'ring-2 ring-orange-400/60' : '');
@@ -134,47 +134,47 @@
 
 {#if values.length}
 	<section aria-label="Required values" data-testid="value-cluster"
-		class="flex flex-wrap items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.02] px-2.5 py-2 text-xs">
-		<span class="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Required values</span>
+		class="flex flex-wrap items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-xs backdrop-blur-sm">
+		<span class="section-label mr-1">Required values</span>
 		{#each values as v (v.item)}
 			{#if editing === v.item}
-				<span class="flex items-center gap-1 rounded {ring(v)}" data-testid="value-editor" data-stop={`value:${v.item}`}>
-					<span class="text-gray-300">{v.item}</span>
+				<span class="flex items-center gap-1 rounded-full border border-purple-400/40 bg-purple-500/10 py-0.5 pl-3 pr-1 {ring(v)}" data-testid="value-editor" data-stop={`value:${v.item}`}>
+					<span class="font-medium text-gray-200">{v.item}</span>
 					<input bind:this={input} data-testid="value-input" aria-label={`Value for ${v.item}`} bind:value={text} onkeydown={key}
-						class="w-24 rounded border border-white/15 bg-black/30 px-1.5 py-0.5 text-gray-100" />
-					<button type="button" class="rounded border border-white/15 px-1.5 py-0.5 text-gray-300 hover:bg-white/[0.06]" onclick={save}>Save</button>
+						class="w-24 rounded-full border border-white/15 bg-black/60 px-2.5 py-0.5 text-gray-100 placeholder:text-gray-500 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50" />
+					<button type="button" class="focus-ring rounded-full bg-purple-700 px-2.5 py-0.5 font-medium text-white hover:bg-purple-600" onclick={save}>Save</button>
 					{#if v.state === 'check' && !v.value}
-						<button type="button" class="rounded border border-white/15 px-1.5 py-0.5 text-emerald-200 hover:bg-white/[0.06]" onclick={keep}>Stated ✓</button>
+						<button type="button" class="focus-ring rounded-full border border-emerald-400/30 px-2.5 py-0.5 text-emerald-200 hover:bg-emerald-500/10" onclick={keep}>Stated ✓</button>
 					{/if}
-					<button type="button" class="rounded border border-white/15 px-1.5 py-0.5 text-gray-400 hover:bg-white/[0.06]" onclick={na}>N/A</button>
+					<button type="button" class="focus-ring rounded-full px-2.5 py-0.5 text-gray-400 hover:bg-white/[0.06] hover:text-gray-200" onclick={na}>N/A</button>
 				</span>
 				{@const choices = pickFrom ? [pickFrom] : v.state === 'check' && v.picks?.length ? v.picks : null}
 				{#if choices}
-					<span class="flex basis-full flex-col gap-1 pl-1" data-testid="value-numbers">
+					<span class="flex basis-full flex-col gap-1.5 py-1 pl-1" data-testid="value-numbers">
 						{#each choices as ch, j (j)}
-							<span class="flex flex-wrap items-center gap-1">
+							<span class="flex flex-wrap items-center gap-1.5">
 								{#each ch.value ? [ch.value] : ch.numbers as n, i (i)}
-									<button type="button" class="rounded border border-sky-400/30 px-1.5 py-0.5 text-sky-200 hover:bg-sky-500/10" onclick={() => choose(n, ch.clause)}>{n}</button>
+									<button type="button" class="choice-chip" onclick={() => choose(n, ch.clause)}>{n}</button>
 								{/each}
-								<span class="text-gray-400">"{ch.clause}"</span>
+								<span class="evidence-quote">"{ch.clause}"</span>
 							</span>
 						{/each}
 					</span>
 				{:else if v.state === 'open' && v.picks?.length}
-					<span class="flex basis-full flex-wrap items-center gap-1 pl-1" data-testid="value-picks">
-						<span class="text-gray-500">From the dictation:</span>
+					<span class="flex basis-full flex-wrap items-center gap-1.5 py-1 pl-1" data-testid="value-picks">
+						<span class="section-label mr-1">From the dictation</span>
 						{#each v.picks as p, i (i)}
-							<button type="button" class="max-w-full truncate rounded border border-white/15 px-1.5 py-0.5 text-gray-300 hover:bg-white/[0.06]" title={p.clause} onclick={() => pickClause(p)}>{p.clause}</button>
+							<button type="button" class="choice-chip max-w-full truncate font-normal" title={p.clause} onclick={() => pickClause(p)}>{p.clause}</button>
 						{/each}
 					</span>
 				{/if}
 			{:else}
-				<button type="button" class="rounded border px-1.5 py-0.5 {tone[v.state]} {ring(v)}" data-state={v.state} data-stop={`value:${v.item}`}
+				<button type="button" class="focus-ring rounded-full border px-2.5 py-0.5 font-medium transition-colors {tone[v.state]} {ring(v)}" data-state={v.state} data-stop={`value:${v.item}`}
 					bind:this={chipEls[v.item]} aria-label={ariaLabel(v)} title={title(v)} onclick={() => edit(v)}>{chipLabel(v)}</button>
 			{/if}
 		{/each}
 		{#if openCount}
-			<button type="button" class="ml-auto rounded border border-white/15 px-1.5 py-0.5 text-gray-400 hover:bg-white/[0.06]" onclick={onRestNa}>Mark rest N/A</button>
+			<button type="button" class="focus-ring ml-auto rounded-full px-2.5 py-0.5 text-gray-400 transition-colors hover:bg-white/[0.06] hover:text-gray-200" onclick={onRestNa}>Mark rest N/A</button>
 		{/if}
 	</section>
 {/if}

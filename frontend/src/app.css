@@ -591,3 +591,53 @@ details[open] .advanced-settings {
 .page-line-medium {
 	width: 75%;
 }
+
+/* ── Decision cards (Rules / Style steps, chat cards, value chips) ─────────────────────────────
+   Built only from the app's existing tokens: white-alpha panels, purple accents, the creator's
+   mono uppercase section labels. Defined last so the compact sizes win over .btn-* / .input-dark. */
+.section-label {
+  @apply text-[10px] font-mono uppercase tracking-[0.25em] text-gray-500;
+}
+.field-label {
+  @apply block text-[11px] font-medium uppercase tracking-wider text-gray-400;
+}
+.panel-card {
+  @apply rounded-xl border border-white/[0.08] bg-white/[0.03] p-4 backdrop-blur-sm transition-colors duration-200;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 4px 16px rgba(0, 0, 0, 0.25);
+}
+.panel-card:hover {
+  @apply border-white/[0.12];
+}
+.panel-card-quiet {
+  @apply rounded-xl border border-white/[0.06] bg-white/[0.015] p-3;
+}
+.card-title {
+  @apply text-sm font-semibold leading-snug text-white;
+}
+.card-body {
+  @apply text-xs leading-relaxed text-gray-300;
+}
+.card-note {
+  @apply text-xs leading-relaxed text-gray-500;
+}
+.evidence-quote {
+  @apply border-l-2 border-purple-400/30 pl-2.5 text-xs italic leading-relaxed text-gray-400;
+}
+.choice-chip {
+  @apply inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-medium text-gray-300;
+  @apply transition-all duration-150 hover:border-purple-400/40 hover:bg-purple-500/10 hover:text-white;
+  @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 focus-visible:ring-offset-1 focus-visible:ring-offset-black;
+  @apply disabled:cursor-not-allowed disabled:opacity-40;
+}
+.choice-chip-on {
+  @apply border-purple-400/60 bg-purple-600/25 text-purple-100 shadow-sm shadow-purple-500/20;
+}
+.btn-compact {
+  @apply px-3 py-1.5 text-xs;
+}
+.input-compact {
+  @apply px-3 py-1.5 text-sm;
+}
+.focus-ring {
+  @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500/60 focus-visible:ring-offset-1 focus-visible:ring-offset-black;
+}

@@ -46,49 +46,49 @@
 	}
 </script>
 
-<div class="space-y-2">
+<div class="space-y-2.5">
 	{#each cards as card (card.id)}
-		<div class="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-gray-200">
-			<p>{card.title}</p>
+		<div class="panel-card space-y-2.5 p-3.5">
+			<p class="card-title">{card.title}</p>
 			{#if isHabit(card)}
-				<p class="text-xs text-gray-400 mt-1">Nothing in the template changed for it.</p>
+				<p class="card-note">Nothing in the template changed for it.</p>
 			{:else if done[card.id]}
-				<p class="text-xs text-gray-400 mt-1">{done[card.id]}</p>
+				<p class="card-note">{done[card.id]}</p>
 			{:else if isProposal(card)}
-				<div class="flex gap-2 mt-2">
+				<div class="flex gap-2">
 					<button type="button" disabled={busy} onclick={() => apply(asProposal(card))}
-						class="px-2.5 py-1 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-emerald-200 text-xs disabled:opacity-40">
+						class="btn-primary btn-compact">
 						Apply
 					</button>
 					<button type="button" disabled={busy} onclick={() => (done[card.id] = 'Left as is')}
-						class="px-2.5 py-1 rounded-md bg-white/[0.04] border border-white/10 text-gray-400 text-xs disabled:opacity-40">
+						class="btn-ghost btn-compact">
 						Leave as is
 					</button>
 				</div>
 			{:else if writing[card.id]}
 				{@const d = asDecision(card)}
-				<div class="mt-2 space-y-2">
+				<div class="space-y-2 border-t border-white/[0.06] pt-3">
 					{#if d.ledger_kind === 'concept'}
 						<input aria-label="Usual wording" bind:value={writing[card.id].wording.default}
-							class="w-full rounded-md bg-white/[0.04] border border-white/10 px-2 py-1 text-xs text-gray-200" />
+							class="input-dark input-compact w-full" />
 						<input aria-label="Wording when it applies" bind:value={writing[card.id].wording.when_met}
-							class="w-full rounded-md bg-white/[0.04] border border-white/10 px-2 py-1 text-xs text-gray-200" />
+							class="input-dark input-compact w-full" />
 					{:else}
 						<input aria-label="Wording" bind:value={writing[card.id].wording.text}
-							class="w-full rounded-md bg-white/[0.04] border border-white/10 px-2 py-1 text-xs text-gray-200" />
+							class="input-dark input-compact w-full" />
 					{/if}
-					{#if problem[card.id]}<p class="text-xs text-amber-300">{problem[card.id]}</p>{/if}
+					{#if problem[card.id]}<p class="text-xs text-amber-300/80">{problem[card.id]}</p>{/if}
 					<button type="button" disabled={busy}
 						onclick={() => send(d, { choiceId: writing[card.id].choiceId, edited: writing[card.id].wording })}
-						class="px-2.5 py-1 rounded-md bg-purple-500/15 border border-purple-500/30 text-purple-200 text-xs disabled:opacity-40">
+						class="btn-primary btn-compact">
 						Use this wording
 					</button>
 				</div>
 			{:else}
-				<div class="flex flex-wrap gap-2 mt-2">
+				<div class="flex flex-wrap gap-1.5">
 					{#each asDecision(card).choices as c (c.id)}
 						<button type="button" disabled={busy} onclick={() => pick(asDecision(card), c.id)}
-							class="px-2.5 py-1 rounded-md bg-white/[0.04] border border-white/10 text-gray-300 text-xs hover:border-purple-500/40 disabled:opacity-40">
+							class="choice-chip">
 							{c.label}
 						</button>
 					{/each}

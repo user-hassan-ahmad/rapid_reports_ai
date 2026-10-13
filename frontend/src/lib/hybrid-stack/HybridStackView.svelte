@@ -627,16 +627,16 @@
 	{:else if it.kind === 'template' && actionsReady}
 		<!-- A template row (a findings-triggered habit): the template's own question. Yes / No add the template's own
 		     sentence for that answer; Not assessed states nothing. -->
-		<div class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border-l-2 border-amber-400/80 bg-amber-500/[0.07] px-2 py-1.5" data-row="template" transition:fade={{ duration: ms }}>
+		<div class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border-l-2 border-amber-400/80 bg-amber-500/[0.07] px-2.5 py-1.5" data-row="template" transition:fade={{ duration: ms }}>
 			{#if label}<span class="text-[10px] font-semibold uppercase tracking-wide text-amber-300/90">{label}</span>{/if}
 			<span class="text-sm font-medium text-amber-100">{it.question}</span>
 			{#if it.why}<span class="cursor-help text-xs text-gray-500" title={it.why} aria-label="Why: {it.why}">ⓘ</span>{/if}
 			<span class="ml-auto flex gap-1">
-				<button type="button" class="rounded-md border border-amber-300/40 bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-100 hover:bg-amber-400/25"
+				<button type="button" class="focus-ring rounded-md border border-amber-300/40 bg-amber-400/15 px-2.5 py-0.5 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-400/25"
 					title="Add: {it.yes}" onclick={() => onAnswerTemplate(it.id, 'yes')}>Yes</button>
-				<button type="button" class="rounded-md border border-amber-300/40 bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-100 hover:bg-amber-400/25"
+				<button type="button" class="focus-ring rounded-md border border-amber-300/40 bg-amber-400/15 px-2.5 py-0.5 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-400/25"
 					title="Add: {it.no}" onclick={() => onAnswerTemplate(it.id, 'no')}>No</button>
-				<button type="button" class="rounded-md px-2 py-0.5 text-xs text-gray-500 hover:text-gray-300" title="Nothing is stated"
+				<button type="button" class="focus-ring rounded-md px-2 py-0.5 text-xs text-gray-500 transition-colors hover:bg-white/[0.04] hover:text-gray-300" title="Nothing is stated"
 					onclick={() => onSkip(it.id)}>Not assessed</button>
 			</span>
 		</div>
