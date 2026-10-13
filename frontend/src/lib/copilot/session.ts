@@ -110,6 +110,10 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	let others: Card[] = [];
 	let views: Record<string, CardView> = {};
 	const patient: Record<string, string> = {}; // case-level shared patient answers by fact (§7.4 "once per case")
+	// What a revert goes back to: per card/column, the answers its last successful preview carried; per fact, the
+	// patient answer a successful preview confirmed (a second edit during a flight never becomes the fallback).
+	const previewed = new Map<string, Record<string, string>>();
+	const patientConfirmed: Record<string, string> = {};
 	let matching = false;
 	let matchFailed = false;
 	let otherState: OtherState = 'idle';
@@ -262,6 +266,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 			const res = await api[route](body, ac.signal);
 			if (openSeq.get(seqKey) !== seq || !live()) return null;
 			set({ loading: false, error: null, result: res });
+			previewed.set(seqKey, { ...body.answered });
 			log.ms[body.card.key] = res.ms ?? Date.now() - t0;
 			if (!log.opened.includes(body.card.key)) log.opened.push(body.card.key);
 			return res;
@@ -338,9 +343,11 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		return out;
 	}
 	/** Re-preview after an edit or a patient answer: the engine only, over the target's answers (no new settle). The
-	 *  last preview stays on screen while it runs. If it fails, the edit is reverted (`revert`: the answers before it)
-	 *  and the card says so, rather than silently keeping an answer the card does not reflect. */
-	async function repreview(t: Target, revert: Record<string, string> | null) {
+	 *  last preview stays on screen while it runs. If an edit's re-preview fails (`edit`), the answers go back to the
+	 *  last ones previewed, a shared patient fact it set goes back to the last confirmed answer (and the other cards
+	 *  that received it are re-previewed), and the card says so, rather than silently keeping an answer the card
+	 *  does not reflect. */
+	async function repreview(t: Target, edit: { fact: string | null } | null) {
 		openAc.get(t.seqKey)?.abort();
 		const seq = ++openCounter;
 		openSeq.set(t.seqKey, seq);
@@ -348,22 +355,42 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		openAc.set(t.seqKey, ac);
 		t.set({ loading: true, editError: null });
 		publish();
+		const body = openBody(t.card, t.get()?.edits ?? {});
+		const sentFact = edit?.fact ? body.patient[edit.fact] : undefined;
 		try {
-			const res = await api.preview(openBody(t.card, t.get()?.edits ?? {}), ac.signal);
+			const res = await api.preview(body, ac.signal);
 			if (openSeq.get(t.seqKey) !== seq || !live()) return;
 			t.set({ loading: false, error: null, result: res, editError: null });
+			previewed.set(t.seqKey, { ...body.answered });
+			if (edit?.fact) {
+				if (sentFact === undefined) delete patientConfirmed[edit.fact];
+				else patientConfirmed[edit.fact] = sentFact;
+			}
 		} catch (e) {
 			if (openSeq.get(t.seqKey) === seq && failed(e)) {
 				t.set({
 					loading: false,
-					...(revert ? { edits: revert } : {}),
-					editError: revert ? "Couldn't apply that change; it was undone" : "Couldn't update for the patient answer"
+					...(edit ? { edits: { ...(previewed.get(t.seqKey) ?? {}) } } : {}),
+					editError: edit ? "Couldn't apply that change; it was undone" : "Couldn't update for the patient answer"
 				});
 				fail(`${t.card.key}:preview`);
+				if (edit?.fact) rollbackFact(edit.fact, t.seqKey);
 			}
 		} finally {
 			if (openAc.get(t.seqKey) === ac) openAc.delete(t.seqKey);
 			publish();
+		}
+	}
+	/** A shared patient answer whose edit failed goes back to the last confirmed one; every other card and column
+	 *  carrying the fact re-previews with it. */
+	function rollbackFact(fact: string, from: string) {
+		if (patient[fact] === patientConfirmed[fact]) return;
+		if (fact in patientConfirmed) patient[fact] = patientConfirmed[fact];
+		else delete patient[fact];
+		for (const o of allTargets()) {
+			if (o.seqKey === from || !draftOf(o).some((d) => d.fact === fact)) continue;
+			dropCalc(o);
+			void repreview(o, null);
 		}
 	}
 	/** Any edit clears the target's Calculate result, and an answer still in flight is dropped. */
@@ -383,13 +410,14 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		const row = draftOf(t).find((d) => d.input === input);
 		if (!row || row.state === 'not_applicable') return;
 		dropCalc(t);
-		const before = { ...(t.get()?.edits ?? {}) };
-		t.set({ edits: { ...before, [input]: value } });
-		void repreview(t, before);
+		t.set({ edits: { ...(t.get()?.edits ?? {}), [input]: value } });
 		// a shared patient fact (age, sex, history): one answer per case, every card and column that carries it follows
 		if (row.fact) {
 			if (value === NOT_STATED) delete patient[row.fact];
 			else patient[row.fact] = value;
+		}
+		void repreview(t, { fact: row.fact || null });
+		if (row.fact) {
 			for (const o of allTargets()) {
 				if (o.seqKey === t.seqKey || !draftOf(o).some((d) => d.fact === row.fact)) continue;
 				dropCalc(o);
@@ -477,8 +505,11 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	function applyContext(next: CopilotContext) {
 		if (!live()) return;
 		ctx = { ...next };
-		backoffUntil = 0;
-		for (const k of Object.keys(patient)) delete patient[k]; // a new case context starts without its answers // a new context is a new chance, even after a failed /match
+		backoffUntil = 0; // a new context is a new chance, even after a failed /match
+		// a new case context starts without its answers
+		for (const k of Object.keys(patient)) delete patient[k];
+		for (const k of Object.keys(patientConfirmed)) delete patientConfirmed[k];
+		previewed.clear();
 		abortAll();
 		sent = new Set();
 		sentCtx = null;

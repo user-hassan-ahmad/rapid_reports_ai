@@ -628,4 +628,54 @@ describe('session: edits, shared patient answers and Calculate (Slice B2)', () =
 		expect(api.calls.preview[2].body.patient).toEqual({ age: '60' });
 		expect(state().views[cardRef(sib)].columns!['bts-pulmonary-nodule'].calc).toBeUndefined(); // its result cleared
 	});
+
+	it('a reverted patient answer rolls back the shared fact and re-previews the cards that received it', async () => {
+		await opened([adrenal, other]);
+		s.edit(cardRef(adrenal), 'age', '45');
+		expect(api.calls.preview.map((c) => [c.body.card.key, c.body.patient])).toEqual([
+			[adrenal.key, { age: '45' }],
+			[other.key, { age: '45' }]
+		]);
+		api.calls.preview[0].reject(new CopilotError('timeout'));
+		await flush();
+		expect(state().views[cardRef(adrenal)].edits).toEqual({});
+		// the other card is asked again without the answer that never took
+		expect(api.calls.preview).toHaveLength(3);
+		expect(api.calls.preview[2].body.card.key).toBe(other.key);
+		expect(api.calls.preview[2].body.patient).toEqual({});
+		s.calculate(cardRef(adrenal));
+		expect(api.calls.calculate[0].body.patient).toEqual({});
+	});
+
+	it('a confirmed patient answer is what a later failed one rolls back to', async () => {
+		await opened([adrenal, other]);
+		s.edit(cardRef(adrenal), 'age', '45');
+		api.calls.preview[0].resolve(drafted(adrenal));
+		api.calls.preview[1].resolve(drafted(other));
+		await flush();
+		s.edit(cardRef(adrenal), 'age', '50');
+		api.calls.preview[2].reject(new CopilotError('timeout'));
+		await flush();
+		expect(state().views[cardRef(adrenal)].edits).toEqual({ age: '45' });
+		expect(api.calls.preview.at(-1)!.body.patient).toEqual({ age: '45' });
+	});
+
+	it('a second edit during an in-flight re-preview reverts to the last previewed answers, not the unconfirmed first edit', async () => {
+		await opened();
+		s.edit(cardRef(adrenal), 'hu', '12 HU');
+		s.edit(cardRef(adrenal), 'size', '3 cm');
+		expect(api.calls.preview[1].body.answered).toEqual({ hu: '12 HU', size: '3 cm' });
+		api.calls.preview[0].resolve(drafted(adrenal)); // superseded: dropped
+		api.calls.preview[1].reject(new CopilotError('timeout'));
+		await flush();
+		expect(state().views[cardRef(adrenal)].edits).toEqual({});
+		// once an edit has been previewed, a later failure keeps it
+		s.edit(cardRef(adrenal), 'hu', '12 HU');
+		api.calls.preview[2].resolve(drafted(adrenal));
+		await flush();
+		s.edit(cardRef(adrenal), 'size', '3 cm');
+		api.calls.preview[3].reject(new CopilotError('timeout'));
+		await flush();
+		expect(state().views[cardRef(adrenal)].edits).toEqual({ hu: '12 HU' });
+	});
 });
