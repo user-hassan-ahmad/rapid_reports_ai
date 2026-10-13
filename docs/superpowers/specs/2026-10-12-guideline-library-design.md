@@ -279,8 +279,9 @@ found 67/184 expected topics; one Jev choice per finding found 169/184). Hassan 
   for chronic rhinosinusitis, the NHS AAA Screening Programme on a programme aortic ultrasound). The study's identity
   binds them, whatever is dictated, and a normal study settles to its normal outcome (e.g. CAD-RADS 0). A pack may carry
   both triggers (CAC-DRS: exam-level on a calcium-score study, finding-triggered for coronary calcification seen on any
-  other CT). NHS AAA is exam-level only: an aneurysm seen on an ordinary scan gets no card. PI-RADS scores
-  lesions and defines no study-level normal outcome, so it is finding-triggered (2026-10-13 clinical review).
+  other CT). NHS AAA is exam-level only: an aneurysm seen on an ordinary scan gets no card. PI-RADS is
+  finding-triggered for now: its source does define an exam result (no finding above category 1 → overall PI-RADS 1),
+  but the pack's lesion inputs cannot settle a gland with no lesion (2026-10-13 review; exam-level pending Hassan).
 - An exam-level entry may carry `exam_presets`: input values its exam implies (NHS AAA: programme scan, male, not
   treated). Only the exam card gets them; they are the one pre-fill without a quote, shown on the card as set by the
   exam (`Settled.by = "exam"`), and a value the dictation states, or an answer, overrides them (§7.10).
