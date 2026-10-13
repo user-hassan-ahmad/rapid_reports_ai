@@ -217,3 +217,13 @@ async def test_arm_2_with_the_habit_guard_does_not_reroute_a_flagged_line(stub, 
     stub["habit"], stub["requires"] = 0.9, {hidden: 0.9}
     t = await P.propose_turn(ROUTER_SHEET, [], "with a collection always comment on it; shorter impression")
     assert hidden not in t.sheet and [c["kind"] for c in t.cards] == ["habit"]
+
+
+async def test_arm_2_names_the_parts_the_habit_guard_drops(stub):
+    stub["proposal"] = P.Proposal(changes=[
+        _change("normal", "A collection negative is added.", paragraph="Upper", negative="No collection.", to="add",
+                text="No collection."),
+        _change("style", "The impression guidance is shorter.", id="b4", text="Lead with the main finding.")])
+    stub["habit"] = 0.9
+    t = await P.propose_turn(ROUTER_SHEET, [], "with a collection say no collection, and a shorter impression")
+    assert t.applied and R.HABIT_DROPPED.format(label=R.KIND_LABEL["normal"]) in t.reply

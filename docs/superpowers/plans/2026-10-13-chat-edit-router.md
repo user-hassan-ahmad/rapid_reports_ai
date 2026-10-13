@@ -88,6 +88,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
     - A block that fails is not applied and gets an ask line. The unit-line and grammar guards stay.
     - This applies in both arm 1's style path and arm 2.
 18. **2026-10-13 (Hassan): the habit guard covers the style path.** When it fires, a prose line flagged as requiring content is left out and is not re-routed, so it cannot become a normal or fixed card.
+19. **2026-10-13 (Hassan): no silent drops.** When the habit guard leaves out the value, normal or always-printed part of a mixed message, the reply names each part ("I didn't change the <kind> part; …"), in both arms.
 16. **Prose the style call never sees:** `## Scan Context` and `## Report Structure` (the fit check reads the scan context, and the structure block is layout).
 
 ## File map

@@ -617,3 +617,15 @@ async def test_with_the_habit_guard_a_flagged_prose_line_is_not_rerouted(fake):
     assert hidden not in t.sheet and NEW_IC in t.sheet
     assert [k for k, _ in fake["seen"]] == ["style"]                 # no normal / fixed re-route call
     assert [c["kind"] for c in t.cards] == ["habit"]
+
+
+async def test_parts_the_habit_guard_drops_are_named_in_the_reply(fake):
+    fake["tags"] = {**tags(normal=0.9, value=0.8, style=0.9), "habit": 0.8}
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=NEW_IC,
+                                                               claim="The impression guidance is shorter.")])
+    t = await R.route_turn(ROUTER_SHEET, [], "when there is a mass give its size, and keep the impression short")
+    assert t.applied
+    assert R.HABIT_DROPPED.format(label=R.KIND_LABEL["normal"]) in t.reply
+    assert R.HABIT_DROPPED.format(label=R.KIND_LABEL["value"]) in t.reply
+    assert R.HABIT_DROPPED.format(label=R.KIND_LABEL["fixed"]) not in t.reply      # not asked for: not named
+    assert t.evidence["habit_dropped"] == ["value", "normal"]

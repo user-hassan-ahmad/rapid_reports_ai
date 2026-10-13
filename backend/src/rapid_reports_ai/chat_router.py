@@ -44,6 +44,8 @@ UNMATCHED_LINE = ("Some decisions no longer match a line in the template; they w
 HABIT_KINDS = ("value", "normal", "fixed")   # never written for a finding-triggered habit (until item 5)
 HABIT_LINE = ("That reads as a habit for when a particular finding is present. I've saved it to set up later; nothing "
               "in the template changed for it.")
+HABIT_DROPPED = ("I didn't change the {label} part; it reads as a habit for when a particular finding is present, "
+                 "so it is saved to set up later.")
 HABIT_ASK = ("That reads as a habit for when a particular finding is present. Which finding should it apply to? I've "
              "saved it to set up later; nothing in the template changed for it.")
 _HABIT_LEAD = re.compile(r"^\s*(?:with|when|whenever|if|in)\s+(?P<cond>[^,;]+?)\s*[,;]?\s+(?P<rest>(?:always|please|"
@@ -301,6 +303,9 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
     habit_card, habit_line = None, ""
     if tags.get("habit", 0.0) >= J.HABIT_MIN:   # parked, never written as a rule line (until item 5)
         habit_card, habit_line, ev["habit"] = _park_habit(instruction, tags["habit"])
+        dropped = [k for k in yes if k in HABIT_KINDS]
+        ev["habit_dropped"] = dropped
+        habit_line = "\n".join([habit_line] + [HABIT_DROPPED.format(label=KIND_LABEL[k]) for k in dropped])
         yes = [k for k in yes if k not in HABIT_KINDS]
         if not yes:
             ev.update(applied=0, ms=_ms(t0))

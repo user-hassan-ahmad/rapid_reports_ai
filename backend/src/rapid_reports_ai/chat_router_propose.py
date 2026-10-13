@@ -200,12 +200,14 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
         habit_card, habit_line, ev["habit"] = R._park_habit(instruction, habit)
 
     verdicts: List[CH.Verdict] = [v for _, v in pairs if v.action not in ("ledger", "edit")]
+    dropped: List[str] = []
     for i, (c, v) in enumerate(applicable):
         ok = by_claim[i] >= VERIFY_MIN
         ev["claims"].append({"kind": v.kind, "claim": v.claim or c.claim, "proposed": c.claim,
                              "score": round(by_claim[i], 3), "verified": ok})
         if habit_card and v.kind in R.HABIT_KINDS:
-            continue                                   # parked: never written as a rule line (until item 5)
+            dropped.append(v.kind)                     # parked: never written as a rule line (until item 5)
+            continue
         verdicts.append(v if ok else CH.to_card(v))
 
     asks: List[str] = []
@@ -226,6 +228,10 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
         styled, style_rec, style_lines, extra, style_ev = await R._style(sheet, out, ctx, scan=scan, verified=True,
                                                                          habit=bool(habit_card))
         verdicts += extra
+    dropped = list(dict.fromkeys(dropped))
+    if dropped:   # name what the habit guard left out (never silent)
+        ev["habit_dropped"] = dropped
+        habit_line = "\n".join([habit_line] + [R.HABIT_DROPPED.format(label=R.KIND_LABEL[k]) for k in dropped])
     if cover >= COVER_MIN:
         asks.append(PART_NOT_APPLIED)
     if (proposal.question or "").strip():
