@@ -145,6 +145,21 @@ def card_for_change(kind: str, key: str, proposed: dict) -> dict:
     return normal_card(key, proposed.get("text", ""), step="chat")
 
 
+def duplicate_card(text: str, concept_label: str, ledger_kind: str = "fixed", key: str = "") -> dict:
+    """A line that may state a decided study-level concept a second time (Style step). A FIXED line (or a rule's
+    sentence) is recorded as a fixed entry; a NEGATIVE as its normal-kind entry (key td.negative_key), where an
+    empty text removes it."""
+    key = key or text
+    if ledger_kind == "normal":
+        choices = [_choice("remove", "Remove this line", {"text": ""}), _choice("keep", "Keep both", {"text": text})]
+    else:
+        choices = [_choice("remove", "Remove this line", {"keep": "remove"}),
+                   _choice("keep", "Keep both", {"keep": "always"})]
+    return {"id": f"duplicate:{td.match_key(ledger_kind, key)}", "kind": "duplicate", "step": "style",
+            "title": text, "evidence": [], "note": f"May be stated twice: {concept_label}", "ledger_kind": ledger_kind,
+            "key": key, "choices": choices, "selected": None, "rank": _RANK["fixed"]}
+
+
 UNMATCHED_NOTE = "This rule couldn't be placed in your template when it was last saved. Choose again or remove it."
 
 

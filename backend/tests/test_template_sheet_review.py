@@ -1,0 +1,142 @@
+"""Style-step sheet checks (Rules-step spec, step 5)."""
+import httpx
+
+from rapid_reports_ai import template_decisions as td
+from rapid_reports_ai import template_ledger_apply as tla
+from rapid_reports_ai import template_sheet_grammar as tsg
+from rapid_reports_ai import template_sheet_review as V
+from tests.template_sheet_fixtures import LEDGER_SHEET
+
+
+def _st(sheet=LEDGER_SHEET):
+    return tsg.parse_sheet(sheet).structure
+
+
+def _jev(score):
+    def handler(request):
+        import json
+        qs = json.loads(request.content)["questions"]
+        return httpx.Response(200, json={"answers": {k: {"noul": score} for k in qs}})
+    return httpx.MockTransport(handler)
+
+
+def test_fixed_candidates_skip_targeted_and_decided_lines():
+    assert V.fixed_candidates(_st(), []) == ["Axial images were acquired.", "No previous imaging available."]
+    led, _ = td.set_decision([], "concept", "comparison", {"use": True, "default": "No previous imaging available.",
+                                                           "when_met": "Compared with {date}."}, source="creation")
+    sheet = tla.apply_ledger(LEDGER_SHEET, led).sheet
+    assert V.fixed_candidates(_st(sheet), led) == ["Axial images were acquired."]     # the default has its rule
+    led2, _ = td.set_decision([], "fixed", "Axial images were acquired.", {"keep": "always"}, source="creation")
+    assert V.fixed_candidates(_st(), led2) == ["No previous imaging available."]
+
+
+def test_an_undecided_concepts_default_is_still_checked():
+    sheet = LEDGER_SHEET.replace(
+        'FIXED "No previous imaging available."\n',
+        'FIXED "No previous imaging available."\nRULE WHEN [context: the dictation names a previous imaging study for '
+        'comparison] REPLACE "No previous imaging available." WITH "Compared with {date}."\n')
+    assert "No previous imaging available." in V.fixed_candidates(_st(sheet), [])   # polarity stays checkable
+
+
+async def test_the_absence_backstop_skips_a_line_a_context_rule_targets():
+    sheet = LEDGER_SHEET.replace(
+        'FIXED "No previous imaging available."\n',
+        'FIXED "No previous imaging available."\nRULE WHEN [context: the dictation names a previous imaging study for '
+        'comparison] REPLACE "No previous imaging available." WITH "Compared with {date}."\n')
+    assert await V.fixed_flags(_st(sheet), [], transport=_jev(0.1)) == []
+    assert await V.fixed_flags(_st(sheet), [], transport=_jev(0.9)) == ["Axial images were acquired.",
+                                                                         "No previous imaging available."]
+
+
+async def test_absence_worded_lines_are_flagged_by_code_the_rest_by_jev():
+    assert await V.fixed_flags(_st(), [], transport=_jev(0.1)) == ["No previous imaging available."]
+    assert await V.fixed_flags(_st(), [], transport=_jev(0.9)) == ["Axial images were acquired.",
+                                                                    "No previous imaging available."]
+
+
+def test_the_normal_report_is_built_in_section_and_sheet_order():
+    rep = V.normal_report(LEDGER_SHEET, _st())
+    assert rep == [{"section": "FINDINGS", "header": "Findings:", "sentences": [
+        {"key": "Liver :: liver", "text": "The liver is normal in size.", "kind": "normal", "paragraph": "Liver"},
+        {"key": 'Liver :: "No focal liver lesion."', "text": "No focal liver lesion.", "kind": "negative",
+         "paragraph": "Liver"}]}]
+
+
+def test_uncovered_lists_covered_structures_without_a_normal():
+    assert [(c["title"], c["key"]) for c in V.uncovered(_st())] == [("Liver: gallbladder", "Liver :: gallbladder")]
+
+
+async def test_sheet_checks_is_fail_soft_and_reports_unmatched_entries():
+    led, _ = td.set_decision([], "normal", "Spleen :: spleen", {"text": "The spleen is normal."}, source="creation")
+    out = await V.sheet_checks(LEDGER_SHEET, led, transport=httpx.MockTransport(lambda r: httpx.Response(500)))
+    assert out["errors"] == ["fixed"] and out["fixed_cards"] == []
+    assert [c["key"] for c in out["unmatched_cards"]] == ["Spleen :: spleen"]
+    assert out["normal_report"] and out["uncovered_cards"]
+    assert (await V.sheet_checks("# free", []))["errors"] == ["parse"]
+
+
+def _jev_on(word):
+    def handler(request):
+        import json
+        qs = json.loads(request.content)["questions"]
+        return httpx.Response(200, json={"answers": {
+            k: {"noul": 0.9 if word in q["instructions"].split("REPORT: ")[-1].lower() else 0.1} for k, q in qs.items()}})
+    return httpx.MockTransport(handler)
+
+
+async def test_a_line_that_may_state_a_decided_concept_twice_is_a_card():
+    led, _ = td.set_decision([], "concept", "comparison", {"use": True, "default": "No previous imaging available.",
+                                                           "when_met": "Compared with {date}."}, source="creation")
+    sheet = tla.apply_ledger(LEDGER_SHEET, led).sheet.replace(
+        'FIXED "Axial images were acquired."\n', 'FIXED "Axial images were acquired."\nFIXED "There is no prior study."\n')
+    out = await V.sheet_checks(sheet, led, transport=_jev_on("prior"))
+    assert [(c["key"], c["note"]) for c in out["duplicate_cards"]] == [
+        ("There is no prior study.", "May be stated twice: Comparison with previous imaging")]
+    assert "There is no prior study." not in [c["key"] for c in out["fixed_cards"]]   # one card per line
+    assert await V.concept_duplicates(_st(LEDGER_SHEET), [], transport=_jev_on("prior")) == []   # nothing decided
+
+
+# ── realistic cases ──────────────────────────────────────────────────────────────────────────────────────────────
+
+BREATH = "The patient was able to hold their breath for the study."
+LIMITED = "the dictation states a technical limitation of the study"
+# a patient-specific line written as the default of a study-level concept (limitation), with its context rule
+BREATH_SHEET = LEDGER_SHEET.replace(
+    'FIXED "Axial images were acquired."\n',
+    f'FIXED "Axial images were acquired."\nFIXED "{BREATH}"\n'
+    f'RULE WHEN [context: {LIMITED}] REPLACE "{BREATH}" WITH "Breath-holding was limited."\n')
+
+
+def _jev_if(word):
+    """Jev stub: high only for the question about a sentence containing `word`."""
+    def handler(request):
+        import json
+        qs = json.loads(request.content)["questions"]
+        return httpx.Response(200, json={"answers": {
+            k: {"noul": 0.9 if word in q["instructions"].lower() else 0.1} for k, q in qs.items()}})
+    return httpx.MockTransport(handler)
+
+
+async def test_a_patient_specific_concept_default_is_surfaced_by_the_fixed_check():
+    st = _st(BREATH_SHEET)
+    assert BREATH in V.fixed_candidates(st, [])          # an undecided concept's default is still a candidate
+    assert await V.fixed_flags(st, [], transport=_jev_if("breath")) == [BREATH, "No previous imaging available."]
+    out = await V.sheet_checks(BREATH_SHEET, [], transport=_jev_if("breath"))
+    assert BREATH in [c["key"] for c in out["fixed_cards"]]
+
+
+def test_the_fixed_question_is_case_agnostic():
+    q = V.FIXED_QUESTION.lower()
+    for word in ("contrast", "liver", "breath", "ct", "mri"):
+        assert f" {word} " not in f" {q} "
+
+
+async def test_a_negative_that_may_state_a_decided_concept_twice_is_a_card_on_that_negative():
+    led, _ = td.set_decision([], "concept", "comparison", {"use": True, "default": "No previous imaging available.",
+                                                           "when_met": "Compared with {date}."}, source="creation")
+    sheet = tla.apply_ledger(LEDGER_SHEET, led).sheet.replace(
+        'NEGATIVE "No focal liver lesion."\n', 'NEGATIVE "No focal liver lesion."\nNEGATIVE "No prior study for comparison."\n')
+    cards = await V.concept_duplicates(_st(sheet), led, transport=_jev_on("prior"))
+    assert [(c["ledger_kind"], c["key"], c["title"]) for c in cards] == [
+        ("normal", td.negative_key("Liver", "No prior study for comparison."), "No prior study for comparison.")]
+    assert [x["choice"] for x in cards[0]["choices"]] == [{"text": ""}, {"text": "No prior study for comparison."}]
