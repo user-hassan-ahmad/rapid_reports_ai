@@ -69,3 +69,26 @@ Every branch had independent reviews per phase and whole-branch, and every findi
 - **Worktrees to remove after the merge:** hybrid-stack, context-rules, context-rules-fix, value-cluster, value-cluster-lab, rules-step, rules-step-lab, chat-router, chat-router-lab, triggered-rows, triggered-rows-lab.
 - **Hassan's spot-checks, still open:** `synthetic/rules_step/REALISM_REVIEW.md`, `ANSWERS_SPOTCHECK.md`.
 - **Labs and private data:** `~/Code/rr-template-conversion-private/synthetic/{value_cluster,rules_step,triggered_rows,chat_router}/`.
+
+## Review record
+
+- **Per-branch reviews:** each phase and each whole branch was reviewed independently by an Opus reviewer, and every finding was fixed and re-reviewed. The details are in the session transcript.
+- **Whole-diff integration review of feat/template-integration at 7b00b41a: PASSED** ("ready to merge"). It checked:
+  - the conflict resolutions (template_lean `gen()` order: context rules → `without_habits` → `apply_required_values` → decided block; DictationScratchpad gateKey and both payloads; the `types.ts` ItemsResult) against both parents with `--remerge-diff`;
+  - all five ledger kinds in one `apply_ledger`, with a second run changing nothing;
+  - habits together with values;
+  - a single migration head;
+  - the router fully dark when `RR_CHAT_ROUTER` is unset (no Jev or router calls);
+  - templates without the new features unchanged.
+  
+  One minor point was noted: `/refine/undo` and `/refine/card` don't check `enabled()`, but the UI can't reach them while the router is dark.
+- **Fixes after the integration review, each reviewed independently** (all found in the browser run of 2026-10-14):
+  - 17865cb5: the Style "mentioned but no normal sentence" list is Jev-checked against the normal report (it had 19 noisy items);
+  - ee9936c3: the card restyle, using the app's existing tokens; CSS and markup only;
+  - 77ce140e and 3647ecc0: code owns the missing-values line on every lean path. The creator's Test now runs the lean path, and an incomplete Jev reply fails closed with a `value_check_unavailable` flag;
+  - the "Values not provided" line placement: pending, to be reviewed before the tip is handed over.
+- **Browser run (local, `RR_DICTATION_V2=1`):** template creation through the Rules and Style steps, a Test report, save, a scratchpad session with the value chips (8/11 filled, Mark rest N/A), Confirm and Generate. The comparison rule filled from the dictation, and "Values not provided" was written. Habit rows and refine were not exercised.
+- **Trial merge into integrate/scratchpad-stack** (`trial/deploy-with-templates`, d0c480bb):
+  - conflicts in conftest.py and the import lines only;
+  - backend 5675 passed, vitest 1048/1049, svelte-check 1190;
+  - our 20261014090000 re-parented after 20261012150000 (one head).
