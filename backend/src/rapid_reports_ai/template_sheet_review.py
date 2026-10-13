@@ -246,6 +246,11 @@ def uncovered(st: tss.SheetStructure) -> List[dict]:
     return out
 
 
+def _unanswered(cards: List[dict], ledger: List[dict]) -> List[dict]:
+    """Cards whose ledger item has no entry yet ("Leave unmentioned" records an empty normal: it stays answered)."""
+    return [c for c in cards if td.find(ledger, c["ledger_kind"], c["key"]) is None]
+
+
 async def sheet_checks(sheet: str, ledger: List[dict], transport=None) -> dict:
     """Everything the Style step shows. Fail-soft per part: a part that fails is empty and named in "errors"."""
     out = {"fixed_cards": [], "duplicate_cards": [], "normal_report": [], "uncovered_cards": [], "unmatched_cards": [],
@@ -262,7 +267,7 @@ async def sheet_checks(sheet: str, ledger: List[dict], transport=None) -> dict:
     except Exception as e:
         logger.warning("[sheet-checks] ledger check failed: %s", type(e).__name__)
         out["errors"].append("ledger")
-    for name, part in (("normal_report", lambda: normal_report(sheet, st)), ("uncovered_cards", lambda: uncovered(st))):
+    for name, part in (("normal_report", lambda: normal_report(sheet, st)), ("uncovered_cards", lambda: _unanswered(uncovered(st), ledger))):
         try:
             out[name] = part()
         except Exception as e:

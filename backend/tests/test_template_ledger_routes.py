@@ -246,3 +246,48 @@ def test_decide_shows_a_saved_templates_unmatched_entries_as_cards(client, auth_
     fixed = [c for c in r["cards"] if c["ledger_kind"] == "fixed"]
     assert [c["key"] for c in fixed] == [MISSING] and fixed[0]["step"] == "review" and fixed[0]["note"]
     assert [c["id"] for c in r["cards"] if c["kind"] == "value"] == ["value:width"]
+
+
+SHEET_CHECKS = "/api/templates/skill-sheet/sheet-checks"
+
+
+def test_sheet_checks_returns_the_style_step_cards(client, auth_headers, monkeypatch):
+    from rapid_reports_ai import template_sheet_review as V
+    from tests.template_sheet_fixtures import LEDGER_SHEET
+
+    async def scores(texts, transport=None):
+        return [0.9 for _ in texts]
+    monkeypatch.setattr(V, "_jev_scores", scores)
+    r = client.post(SHEET_CHECKS, headers=auth_headers, json={"skill_sheet": LEDGER_SHEET, "decisions": []}).json()
+    assert r["success"] and r["errors"] == [] and r["duplicate_cards"] == []      # nothing decided yet
+    assert [c["key"] for c in r["fixed_cards"]] == ["Axial images were acquired.", "No previous imaging available."]
+    assert r["normal_report"][0]["sentences"][0]["text"] == "The liver is normal in size."
+    assert [c["key"] for c in r["uncovered_cards"]] == ["Liver :: gallbladder"]
+
+
+def test_sheet_checks_leave_out_a_structure_already_answered(client, auth_headers, monkeypatch):
+    from rapid_reports_ai import template_sheet_review as V
+    from tests.template_sheet_fixtures import LEDGER_SHEET
+
+    async def scores(texts, transport=None):
+        return [0.1 for _ in texts]
+    monkeypatch.setattr(V, "_jev_scores", scores)
+    led, _ = td.set_decision([], "normal", "Liver :: gallbladder", {"text": ""}, source="creation", at="t")
+    r = client.post(SHEET_CHECKS, headers=auth_headers, json={"skill_sheet": LEDGER_SHEET, "decisions": led}).json()
+    assert r["success"] and r["uncovered_cards"] == []      # "Leave unmentioned" stays answered
+
+
+def test_sheet_checks_never_fails_the_request(client, auth_headers, monkeypatch):
+    from rapid_reports_ai import template_sheet_review as V
+
+    async def boom(sheet, ledger, transport=None):
+        raise RuntimeError("x")
+    monkeypatch.setattr(V, "sheet_checks", boom)
+    r = client.post(SHEET_CHECKS, headers=auth_headers, json={"skill_sheet": "x"}).json()
+    assert r["success"] and r["errors"] == ["all"] and r["fixed_cards"] == [] and r["duplicate_cards"] == []
+
+
+def test_sheet_checks_need_a_login_and_cap_their_inputs(client, auth_headers):
+    assert client.post(SHEET_CHECKS, json={"skill_sheet": "x"}).status_code in (401, 403)
+    r = client.post(SHEET_CHECKS, headers=auth_headers, json={"skill_sheet": "x" * 200_001})
+    assert r.status_code == 422

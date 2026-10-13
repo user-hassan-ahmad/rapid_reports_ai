@@ -2920,6 +2920,31 @@ async def skill_sheet_decide_endpoint(
         return {**empty, "notice": NO_PRECHECK}
 
 
+class SkillSheetChecksRequest(BaseModel):
+    skill_sheet: str = Field(max_length=SKILL_SHEET_MAX_CHARS)
+    decisions: List[Dict[str, Any]] = Field(default=[], max_length=LEDGER_MAX_ITEMS)
+
+
+SHEET_CHECKS_FAILED = {"fixed_cards": [], "duplicate_cards": [], "normal_report": [], "uncovered_cards": [],
+                       "unmatched_cards": [], "stale_quotes": [], "errors": ["all"]}
+
+
+@app.post("/api/templates/skill-sheet/sheet-checks")
+async def skill_sheet_checks_endpoint(
+    request: SkillSheetChecksRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """The Style step's checks: always-printed lines (Jev), lines that may state a decided concept twice (Jev), the
+    normal report, covered structures without a normal, and ledger entries to review. Fail-soft: a part that fails
+    is empty and named in "errors"; nothing here blocks the Style step."""
+    from . import template_sheet_review as tsr
+    try:
+        return {"success": True, **(await tsr.sheet_checks(request.skill_sheet, request.decisions))}
+    except Exception as e:
+        logger.warning("sheet checks failed: %s", type(e).__name__)
+        return {"success": True, **{k: list(v) for k, v in SHEET_CHECKS_FAILED.items()}}
+
+
 @app.post("/api/templates/skill-sheet/test-generate")
 async def skill_sheet_test_generate_endpoint(
     request: SkillSheetTestGenerateRequest,
