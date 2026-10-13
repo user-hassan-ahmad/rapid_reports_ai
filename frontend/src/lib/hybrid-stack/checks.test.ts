@@ -32,6 +32,12 @@ describe('dictation checks on the scratchpad', () => {
 		expect(replaced(t, c)).toBe('Upstream dilatation of the pancreatic duct.');
 		expect(checkLabel(c.kind)).toBe('Possible dictation error');
 	});
+	it('a side conflict always blocks Confirm, labelled as a question', () => {
+		const at = text.indexOf('left VUJ');
+		const [c] = toChecks(text, [{ kind: 'laterality_conflict', severity: 'medium', excerpt: 'left VUJ', message: 'Left or right?', start: at, end: at + 8, blocking: false }], units);
+		expect(c).toMatchObject({ blocking: true, tier: 2, quote: 'left VUJ', unitId: 0 });
+		expect(checkLabel(c.kind)).toBe('Sides as intended?');
+	});
 	it('cuts a line into plain runs and underlined runs, both halves of a conflict included', () => {
 		const t = 'A left renal cyst; the right kidney is normal.';
 		const c = { key: 'k', kind: 'laterality_conflict', blocking: true, tier: 2 as const, message: '', quote: 'right kidney', other: 'left renal cyst', suggestion: '', unitId: 0 };

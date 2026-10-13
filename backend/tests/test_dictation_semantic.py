@@ -210,3 +210,14 @@ def test_a_plain_garble_keeps_its_suggestion():
     issue = SemanticIssue(kind="garbled_phrase", quote="duck", message="m", suggestion="duct", changes_meaning=False)
     f = _locate_flags(text, SemanticFindings(issues=[issue]))[0]
     assert not f.blocking and f.suggestion == "duct"
+
+
+def test_side_conflicts_cover_compartments_and_the_picked_side_and_are_asked():
+    """A side within one structure counts, the scan type's side is compared, and a true but unexpected side is asked."""
+    from rapid_reports_ai.dictation_semantic import SEMANTIC_SYSTEM_PROMPT as P
+    line = next(l for l in P.split("\n") if l.startswith("- laterality_conflict:"))
+    for words in ("medial or lateral", "anterior or posterior", "superior or inferior", "quadrant", "scan type may carry the side",
+                  "unexpected side", "as a question", "bilateral findings", "part of a structure's name"):
+        assert words in line, words
+    # case-agnostic: no single worked example in the definition
+    assert "knee" not in line.lower() and "meniscus" not in line.lower()

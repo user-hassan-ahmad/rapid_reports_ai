@@ -48,3 +48,22 @@ async def test_default_analyser_runs_on_the_request_loop(monkeypatch):
     assert len(flags) == 1
     assert FINDINGS[flags[0].start:flags[0].end] == "left ankle mortise"
     assert flags[0].kind == "laterality_conflict"
+
+
+async def test_the_picked_side_in_the_scan_type_line_is_in_the_model_prompt(monkeypatch):
+    """A library pick's scan type line ("MRI Knee (left)") is what the model compares a dictated side against."""
+    seen = {}
+
+    class _Result:
+        output = SemanticFindings(issues=[])
+
+    async def _stub_run(**kwargs):
+        seen.update(kwargs)
+        return _Result()
+
+    monkeypatch.setattr(eu, "_run_agent_with_model", _stub_run)
+    monkeypatch.setattr(eu, "_get_api_key_for_provider", lambda provider: "test-key")
+    monkeypatch.setattr(eu, "_get_model_provider", lambda model: "cerebras")
+
+    await check_semantic("MRI Knee (left)", "", "Right knee. Small joint effusion.")
+    assert "Scan type: MRI Knee (left)" in seen["user_prompt"]
