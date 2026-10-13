@@ -40,10 +40,12 @@ export function caseDirty(now: CaseIdentity, built: CaseIdentity): boolean {
 	return now.scanType.trim() !== built.scanType || now.history.trim() !== built.history || pickKey(now.pick) !== pickKey(built.pick);
 }
 
-/** Pills in schema order: every non-quiet pill, plus a quiet region once something has been placed there. */
+/** Pills in schema order: every non-quiet pill, plus a quiet region once something has been placed there. A quiet
+ *  region among `pills` is dropped unless placed (the scratchpad passes every stack region). */
 export function visiblePills(groups: string[], pills: string[], quiet: string[], placed: Set<string>): string[] {
 	if (!quiet.length) return pills;
-	const show = new Set([...pills, ...quiet.filter((q) => placed.has(q))]);
+	const isQuiet = new Set(quiet);
+	const show = new Set([...pills.filter((p) => !isQuiet.has(p)), ...quiet.filter((q) => placed.has(q))]);
 	return groups.filter((g) => show.has(g));
 }
 
@@ -77,4 +79,32 @@ export function withoutRemoved(assumed: Record<string, string[]>, removed: strin
 		if (kept.length) out[r] = kept;
 	}
 	return out;
+}
+
+/** The region normals the /assumed check sees: every region but the segments. A segment's normal is decided here
+ *  (E1, e2e 2026-10-13): the check read the segment line against the whole dictation, with no notion of which levels
+ *  are the segment's, and dropped all three segments once any level was dictated. */
+export function withoutSegments(normals: Record<string, string[]>, levelGroups: Record<string, string[]>): Record<string, string[]> {
+	const out: Record<string, string[]> = {};
+	for (const [r, xs] of Object.entries(normals)) if (!(r in levelGroups)) out[r] = xs;
+	return out;
+}
+
+/** The checked normals plus each segment's sheet line while its own region is untouched (nothing placed there).
+ *  A segment never takes its line from the check, even from a stale answer. */
+export function withSegmentNormals(
+	checked: Record<string, string[]>, normals: Record<string, string[]>, levelGroups: Record<string, string[]>, untouched: string[]
+): Record<string, string[]> {
+	const out = withoutSegments(checked, levelGroups);
+	for (const seg of Object.keys(levelGroups)) if (normals[seg]?.length && untouched.includes(seg)) out[seg] = normals[seg];
+	return out;
+}
+
+/** What the tray, the counts and the gate's `assumed` record hold: the checked normals and the untouched segments'
+ *  lines, a segment reading "Elsewhere, …" once one of its levels has something placed, minus every removal. */
+export function shownNormals(
+	checked: Record<string, string[]>, normals: Record<string, string[]>, levelGroups: Record<string, string[]>,
+	untouched: string[], placed: Set<string>, removed: string[]
+): Record<string, string[]> {
+	return withoutRemoved(withElsewhere(withSegmentNormals(checked, normals, levelGroups, untouched), levelGroups, placed), removed);
 }

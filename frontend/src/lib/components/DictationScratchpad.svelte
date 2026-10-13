@@ -44,7 +44,7 @@
 	import { abnormalAll, assumedFrom, moreLine, openCount, rowSentences, splitReply, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
-	import { assumedKey, pickBody, pickKey, visiblePills, withElsewhere, withoutRemoved, type ProtocolPick } from '$lib/hybrid-stack/protocol';
+	import { assumedKey, pickBody, pickKey, shownNormals, visiblePills, withoutSegments, type ProtocolPick } from '$lib/hybrid-stack/protocol';
 	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
@@ -341,8 +341,9 @@
 	let stackLevelGroups: Record<string, string[]> = {};
 	$: placedGroups = new Set(stackUnits.map((u) => u.group).filter((g): g is string => !!g));
 	$: shownPills = visiblePills(stackGroups, pillRegions, stackQuiet, placedGroups);
-	// × or an edit on an "Elsewhere, …" line removes it in either form (the reply may carry the raw sheet sentence).
-	$: shownAssumed = withoutRemoved(withElsewhere(confirmedAssumed, stackLevelGroups, placedGroups), removedSentences);
+	// A segment's normal comes from the sheet while its own region is untouched, never from /assumed (E1); × or an
+	// edit on an "Elsewhere, …" line removes it in either form.
+	$: shownAssumed = shownNormals(confirmedAssumed, stackRegionNormals, stackLevelGroups, regionView.assumedNormal, placedGroups, removedSentences);
 	$: assumedBehind = Object.keys(stackRegionNormals).length > 0 && (assumedSnap === null || assumedSnap.dictation !== verbatimNow);
 	// Regions are confirmed by name only when no sheet exists for this session (v2 behaviour); with a sheet, a region
 	// with no sentence left assumes nothing. An abnormal region's remainder is never named (review 2026-10-12).
@@ -377,7 +378,7 @@
 	}
 	$: gateKey = [verbatimNow, JSON.stringify(checks.map((c) => c.key)), JSON.stringify(checkAnswers), findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
 		regionView.remainder.join('|'), String(rowsOpen), Object.keys(tappedRows).join('|'), Object.keys(skippedRows).join('|'), removedSentences.join('|'),
-		JSON.stringify(confirmedAssumed)].join('\u0003');
+		JSON.stringify(shownAssumed)].join('\u0003');
 	$: if (stackGate && stackGate.units_hash !== gateKey) {
 		stackGate = null;
 		onStackGate(null, '');
@@ -1835,9 +1836,9 @@
 	async function refreshAssumed(): Promise<void> {
 		if (!Object.keys(stackRegionNormals).length) return;
 		const seq = ++assumedSeq;
-		// A segment with a dictated level is checked as its "Elsewhere, …" sentence: the raw segment line would read as
-		// contradicted by the dictated level and be dropped.
-		const offered = withElsewhere(stackRegionNormals, stackLevelGroups, placedGroups);
+		// Segments are never checked (E1): the check reads a segment line against the whole dictation and dropped every
+		// segment once any level was dictated. `shownNormals` offers them from the sheet.
+		const offered = withoutSegments(stackRegionNormals, stackLevelGroups);
 		const snap = { offered, dictation: verbatimNow, abnormal: [...regionView.abnormal], untouched: [...regionView.assumedNormal] };
 		try {
 			const res = await postAssumed($token, { dictation: snap.dictation, region_normals: offered, abnormal: snap.abnormal,

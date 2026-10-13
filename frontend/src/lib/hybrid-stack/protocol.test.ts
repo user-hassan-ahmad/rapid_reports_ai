@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { assumedKey, backToLibrary, caseDirty, needsFreeText, pickBody, pickKey, pickSummary, visiblePills, withElsewhere, withoutRemoved, type ProtocolPick } from './protocol';
+import { assumedKey, backToLibrary, caseDirty, needsFreeText, pickBody, pickKey, pickSummary, shownNormals, visiblePills, withElsewhere, withoutRemoved, withoutSegments, withSegmentNormals, type ProtocolPick } from './protocol';
 import { buildFindingsBlock, regionStates } from './regionState';
 import type { GateRecord, StackUnit } from './types';
+
+const u = (id: number, text: string, group: string | null, abnormal = false): StackUnit => ({
+	id, text, group, structure: null, attach_to: null, parts: null, covers: [], abnormal, pinned: false, heading: false
+});
+const gate = (assumedNormal: string[]): GateRecord => ({
+	confirmed_at: 't', conclusion_text: '', conclusion_source: 'draft', assumed_normal: assumedNormal, remainder_normal: [],
+	dictated_normal: [], units_hash: 'h', items: [], assumed: {}, removed: [], capped: []
+});
 
 describe('visiblePills', () => {
 	const groups = ['Technique', 'Right breast', 'Implants', 'Other findings', 'General', 'Conclusion'];
@@ -11,6 +19,60 @@ describe('visiblePills', () => {
 	});
 	it('without quiet regions returns the pills unchanged', () => {
 		expect(visiblePills(groups, ['Right breast'], [], new Set(['Implants']))).toEqual(['Right breast']);
+	});
+	it('drops a quiet region the pills carry unless something is placed there (the scratchpad passes every region)', () => {
+		const spine = ['Technique', 'Cord', 'Cervical levels', 'C2/3', 'C3/4', 'Lumbar levels', 'L4/5', 'L5/S1', 'Other findings'];
+		const pills = spine.filter((g) => g !== 'Other findings'); // pillRegions: every stack region but Other
+		const quiet = ['C2/3', 'C3/4', 'L4/5', 'L5/S1'];
+		expect(visiblePills(spine, pills, quiet, new Set())).toEqual(['Technique', 'Cord', 'Cervical levels', 'Lumbar levels']);
+		expect(visiblePills(spine, pills, quiet, new Set(['L4/5']))).toEqual(['Technique', 'Cord', 'Cervical levels', 'Lumbar levels', 'L4/5']);
+		const view = regionStates([u(0, 'Broad-based disc bulge at L4/5.', 'L4/5', true)], visiblePills(spine, pills, quiet, new Set(['L4/5'])));
+		expect(view.assumedNormal).toEqual(['Technique', 'Cord', 'Cervical levels', 'Lumbar levels']);
+	});
+});
+
+describe('segment normals (E1: decided here, never by the /assumed check)', () => {
+	const levelGroups = { 'Cervical levels': ['C2/3', 'C3/4'], 'Lumbar levels': ['L4/5', 'L5/S1'] };
+	const cervical = 'The cervical discs, spinal canal and exit foramina are normal throughout.';
+	const lumbar = 'The lumbar discs, spinal canal and exit foramina are normal throughout.';
+	const normals = { Cord: ['Normal cord signal.'], 'Cervical levels': [cervical], 'Lumbar levels': [lumbar] };
+	const untouched = ['Cord', 'Cervical levels', 'Lumbar levels'];
+	it('the /assumed body carries no segment region', () => {
+		expect(withoutSegments(normals, levelGroups)).toEqual({ Cord: ['Normal cord signal.'] });
+		expect(withoutSegments(normals, {})).toEqual(normals);
+	});
+	it('an untouched segment is offered from the sheet, beside the checked normals', () => {
+		expect(withSegmentNormals({ Cord: ['Normal cord signal.'] }, normals, levelGroups, untouched)).toEqual(normals);
+	});
+	it('a segment with something placed in its own region offers nothing', () => {
+		expect(withSegmentNormals({}, normals, levelGroups, ['Cord', 'Cervical levels'])).toEqual({ 'Cervical levels': [cervical] });
+	});
+	it('a stale checked answer for a segment never wins over the sheet', () => {
+		expect(withSegmentNormals({ 'Lumbar levels': [] }, normals, levelGroups, untouched)['Lumbar levels']).toEqual([lumbar]);
+		expect(withSegmentNormals({ 'Lumbar levels': ['x'] }, normals, levelGroups, ['Cord'])['Lumbar levels']).toBeUndefined();
+	});
+	it('the live repro: a dictated L4/5 keeps every segment, the lumbar one as "Elsewhere, …"', () => {
+		const shown = shownNormals({ Cord: ['Normal cord signal.'] }, normals, levelGroups, untouched, new Set(['L4/5']), []);
+		expect(shown).toEqual({
+			Cord: ['Normal cord signal.'],
+			'Cervical levels': [cervical],
+			'Lumbar levels': ['Elsewhere, the lumbar discs, spinal canal and exit foramina are normal throughout.']
+		});
+	});
+	it('× on either form removes the segment line; a removed checked normal stays removed', () => {
+		const placed = new Set(['L4/5']);
+		const elsewhere = shownNormals({}, normals, levelGroups, untouched, placed, [])['Lumbar levels'][0];
+		expect(shownNormals({}, normals, levelGroups, untouched, placed, [elsewhere])['Lumbar levels']).toBeUndefined();
+		expect(shownNormals({}, normals, levelGroups, untouched, placed, [lumbar])['Lumbar levels']).toBeUndefined();
+		expect(shownNormals({ Cord: ['Normal cord signal.'] }, normals, levelGroups, untouched, placed, ['Normal cord signal.']).Cord).toBeUndefined();
+	});
+	it('reaches the gate record: the findings block states the segment lines', () => {
+		const shown = shownNormals({}, normals, levelGroups, ['Cervical levels', 'Lumbar levels'], new Set(['L4/5']), []);
+		const groups = ['Cervical levels', 'Lumbar levels', 'L4/5'];
+		const units = [u(0, 'Broad-based disc bulge at L4/5.', 'L4/5', true)];
+		const block = buildFindingsBlock(units, groups, { ...gate([]), assumed: shown });
+		expect(block).toContain(cervical);
+		expect(block).toContain('Elsewhere, the lumbar discs');
 	});
 });
 
@@ -83,14 +145,7 @@ describe('caseDirty', () => {
 });
 
 describe('quiet regions in the gate', () => {
-	const u = (id: number, text: string, group: string | null): StackUnit => ({
-		id, text, group, structure: null, attach_to: null, parts: null, covers: [], abnormal: false, pinned: false, heading: false
-	});
 	const groups = ['Technique', 'Right breast', 'Implants', 'Other findings', 'General', 'Conclusion'];
-	const gate = (assumedNormal: string[]): GateRecord => ({
-		confirmed_at: 't', conclusion_text: '', conclusion_source: 'draft', assumed_normal: assumedNormal, remainder_normal: [],
-		dictated_normal: [], units_hash: 'h', items: [], assumed: {}, removed: [], capped: []
-	});
 	it('an undictated quiet region is never named as confirmed normal (regionView from the shown pills)', () => {
 		const units = [u(0, 'No suspicious enhancement.', 'Right breast')];
 		const shown = visiblePills(groups, ['Right breast'], ['Implants'], new Set(['Right breast']));
@@ -131,10 +186,11 @@ describe('removing and editing an "Elsewhere, …" line', () => {
 		expect(withElsewhere(once, groups, new Set(['L4/5']))).toEqual(once);
 		expect(withoutRemoved(withoutRemoved(once, [raw]), [raw])).toEqual(withoutRemoved(once, [raw]));
 	});
-	it('what /assumed is sent: the "Elsewhere, …" sentence for a segment with a dictated level, raw otherwise', () => {
+	it('the segment line reads "Elsewhere, …" with a dictated level, raw otherwise; /assumed never sees it', () => {
 		expect(withElsewhere(assumed, groups, new Set(['L4/5']))['Lumbar levels']).toEqual([
 			'Elsewhere, no disc protrusion or neural compromise throughout the lumbar spine.']);
 		expect(withElsewhere(assumed, groups, new Set())['Lumbar levels']).toEqual([raw]);
+		expect(withoutSegments(assumed, groups)).toEqual({ Cord: ['Normal cord.'] });
 	});
 });
 
