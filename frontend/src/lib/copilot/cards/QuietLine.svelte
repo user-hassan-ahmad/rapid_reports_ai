@@ -37,9 +37,9 @@
 		align-items: center;
 		gap: 6px;
 		width: 100%;
-		padding: 5px 10px;
+		padding: 8px 12px;
 		font: inherit;
-		font-size: 0.75rem;
+		font-size: 0.8125rem;
 		text-align: left;
 		color: var(--rv-muted);
 		background: none;
@@ -64,7 +64,7 @@
 		transform: rotate(180deg);
 	}
 	.cp-quiet-body {
-		padding: 4px 10px 10px;
+		padding: 6px 12px 12px;
 		border-top: 1px solid var(--rv-border);
 	}
 </style>

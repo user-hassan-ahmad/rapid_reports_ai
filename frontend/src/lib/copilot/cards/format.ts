@@ -32,12 +32,41 @@ export function missingLabels(p: Preview): string[] {
 	return p.missing.map((m) => byInput.get(m)?.label || m);
 }
 
+const isEligibility = (p: Preview, input: string) => p.asks.some((a) => a.input === input && a.role === 'eligibility');
+
+/** Eligibility checks the card assumes rather than asks (B0, Hassan 2026-10-13: never lead with them). Task 3's
+ *  `preview.assumptions` when sent; until then the missing eligibility inputs' labels. */
+export function assumptionsOf(p: Preview | null | undefined): string[] {
+	if (!p) return [];
+	if (p.assumptions) return p.assumptions;
+	const labels = new Map(p.asks.map((a) => [a.input, a.label]));
+	return p.missing.filter((m) => isEligibility(p, m)).map((m) => labels.get(m) || m);
+}
+
+/** The still-open questions that are not eligibility checks, in `missing` order (shown last, quietly). */
+export function openQuestions(p: Preview): string[] {
+	const labels = new Map(p.asks.map((a) => [a.input, a.label]));
+	return p.missing.filter((m) => !isEligibility(p, m)).map((m) => labels.get(m) || m);
+}
+
+const humanise = (id: string) => (id.charAt(0).toUpperCase() + id.slice(1)).replace(/_/g, ' ');
+export interface ValueRow { input: string; label: string; value: string; quote: string; byExam: boolean }
+/** The values read from the dictation (preview.settled), labelled from the entry's inputs, else the ask, else the id. */
+export function valueRows(r: OpenResult): ValueRow[] {
+	const p = r.preview;
+	if (!p) return [];
+	const labels = new Map<string, string>();
+	for (const b of r.entry?.content.branches ?? []) for (const i of b.inputs ?? []) if (i.question) labels.set(i.id, i.question);
+	for (const a of p.asks) if (!labels.has(a.input) && a.label) labels.set(a.input, a.label);
+	return p.settled.map((s) => ({ input: s.input, label: labels.get(s.input) ?? humanise(s.input), value: s.value, quote: s.quote, byExam: s.by === 'exam' }));
+}
+
 export type Badge = { text: string; variant: 'v' | 'a' };
 /** The collapsed head's state badge, once a preview exists. */
 export function stateBadge(p: Preview | null | undefined): Badge | null {
 	if (!p) return null;
 	if (p.state === 'applies') return { text: 'applies', variant: 'v' };
-	if (p.state === 'check_first') return { text: 'check first', variant: 'a' };
+	if (p.state === 'check_first') return null; // rendered as if eligible; the assumed checks are a chip (B0)
 	if (p.state === 'does_not_apply') return { text: 'does not apply', variant: 'v' };
 	return { text: 'which lesion?', variant: 'a' };
 }

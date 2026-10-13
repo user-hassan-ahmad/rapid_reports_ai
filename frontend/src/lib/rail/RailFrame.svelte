@@ -19,6 +19,7 @@
 		stripCount,
 		stripExtra,
 		expanded = false,
+		width = 340,
 		narrow = $bindable(false),
 		overlayOpen = $bindable(false),
 		el = $bindable(null),
@@ -38,6 +39,8 @@
 		stripExtra?: Snippet;
 		/** Widen the wide rail (560 px); ignored when narrow. */
 		expanded?: boolean;
+		/** The wide rail's width in px (review rail 340; the Copilot rail is wider, B0). */
+		width?: number;
 		/** Read-out: the rail is currently a strip. */
 		narrow?: boolean;
 		/** The narrow overlay is open; hosts open it to reveal something. */
@@ -74,6 +77,7 @@
 	class:rv-narrow={isNarrow}
 	class:rv-expanded={expanded && !isNarrow}
 	data-theme={theme}
+	style:--rv-rail-w={`${width}px`}
 	bind:this={el}
 	data-testid={testid}
 	aria-label={ariaLabel}
@@ -111,9 +115,9 @@
 		display: flex;
 		flex-direction: column;
 		flex: none;
-		width: 340px;
-		min-width: 340px;
-		max-width: 340px;
+		width: var(--rv-rail-w, 340px);
+		min-width: var(--rv-rail-w, 340px);
+		max-width: var(--rv-rail-w, 340px);
 		height: 100%;
 		max-height: 100%;
 		box-sizing: border-box;
@@ -165,7 +169,7 @@
 		top: 0;
 		right: 0;
 		bottom: 0;
-		width: min(360px, 100vw);
+		width: min(calc(var(--rv-rail-w, 340px) + 20px), 100vw);
 		display: flex;
 		flex-direction: column;
 		background: var(--rv-overlay);

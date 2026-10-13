@@ -44,6 +44,44 @@ const bts = card({ key: 'bts-pulmonary-nodule', name: 'BTS 2015', version: '2015
 const flSib = card({ finding: nodule.text, siblings: ['bts-pulmonary-nodule'], sibling_names: ['BTS 2015'] });
 const bosniak = card({ key: 'bosniak-renal-cyst', name: 'Bosniak 2019', version: '2019', finding_id: 'u4', finding: cyst.text });
 const bta = card({ key: 'bta-thyroid-u-grading', name: 'BTA U grading', version: '2014', finding_id: 'u2', finding: thyroid.text, needs_modality: 'US' });
+const adrenal = f(6, '2.2 cm left adrenal nodule', 'ADRENALS');
+const ese = card({ key: 'ese-adrenal-incidentaloma', name: 'ESE adrenal incidentaloma', version: '2023', finding_id: 'u6', finding: adrenal.text });
+// check_first with values read from the dictation (the live adrenal case, Hassan 2026-10-13: the card showed only questions)
+const eseCheck = (() => {
+	const r = result(
+		ese,
+		preview({
+			state: 'check_first',
+			proposal: outcome({ classification: 'Benign adenoma (unenhanced ≤ 10 HU)', recommendation: 'No further imaging for this nodule.', caveats: [] }),
+			settled: [
+				{ input: 'size', value: '2.2 cm', quote: '2.2 cm left adrenal nodule', fact: '', by: '' },
+				{ input: 'unenhanced_hu', value: '8 HU', quote: 'measuring 8 HU on the unenhanced images', fact: '', by: '' },
+				{ input: 'age', value: '65', quote: '65 year old', fact: 'age', by: '' },
+				{ input: 'phase', value: 'unenhanced CT', quote: '', fact: '', by: 'exam' }
+			],
+			missing: ['known_cancer', 'hormone_excess', 'bilateral', 'prior_imaging'],
+			asks: [
+				{ input: 'known_cancer', label: 'Known extra-adrenal cancer', role: 'eligibility' },
+				{ input: 'hormone_excess', label: 'Clinical signs of hormone excess', role: 'eligibility' },
+				{ input: 'bilateral', label: 'Bilateral adrenal masses', role: 'eligibility' },
+				{ input: 'prior_imaging', label: 'Growth on prior imaging', role: 'clinical' }
+			]
+		})
+	);
+	r.entry!.content.branches = [
+		{
+			name: 'Pack',
+			rule: '',
+			inputs: [
+				{ id: 'size', question: 'Size', options: [] },
+				{ id: 'unenhanced_hu', question: 'Unenhanced attenuation', options: [] },
+				{ id: 'age', question: 'Age', options: [] },
+				{ id: 'phase', question: 'Phase', options: [] }
+			]
+		}
+	];
+	return r;
+})();
 const tnm = card({ key: 'tnm-lung', name: 'TNM 9 · Lung', version: '9', finding_id: 'u3', finding: mass.text });
 const tier2 = card({ key: 'fazekas', name: 'Fazekas scale', version: '1987', finding_id: 'u5', finding: white.text, reference: true });
 
@@ -78,6 +116,7 @@ export const sections: Section[] = [
 	{ id: 'exam-set', title: 'Exam card, set by the exam', ...one(null, cad, view(cadExam)) },
 	{ id: 'applies', title: 'Pack, applies (open)', ...one(nodule, fl, view(flApplies, { open: true })) },
 	{ id: 'possible', title: 'Pack, applies with no outcome yet', ...one(nodule, fl, view(result(fl, preview({ proposal: null, possible: ['Category A', 'Category B'] })), { open: true })) },
+	{ id: 'check-first-values', title: 'Check first, with values read', ...one(adrenal, ese, view(eseCheck, { open: true })) },
 	{
 		id: 'check-first',
 		title: 'Pack, check first',
@@ -131,6 +170,7 @@ export const wholeCase: Pick<Section, 'groups' | 'views'> = {
 		{ finding: thyroid, cards: [bta] },
 		{ finding: mass, cards: [tnm] },
 		{ finding: cyst, cards: [bosniak] },
+		{ finding: adrenal, cards: [ese] },
 		{ finding: white, cards: [tier2] }
 	],
 	views: {
@@ -143,6 +183,7 @@ export const wholeCase: Pick<Section, 'groups' | 'views'> = {
 		}),
 		[cardRef(tnm)]: view(tnmResult),
 		[cardRef(bosniak)]: view(result(bosniak, preview({ state: 'check_first', proposal: null, missing: ['enhancement'], asks: [{ input: 'enhancement', label: 'Measurable enhancement' }] }))),
-		[cardRef(tier2)]: view(result(tier2, null, { reference }))
+		[cardRef(tier2)]: view(result(tier2, null, { reference })),
+		[cardRef(ese)]: view(eseCheck, { open: true })
 	}
 };

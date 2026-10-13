@@ -81,6 +81,7 @@
 		<GlCard
 			title={card.name}
 			{hint}
+			roomy
 			bind:open={() => view.open, (v) => (v ? onOpen(ref) : onClose(ref))}
 			{controls}
 			{body}
@@ -94,11 +95,11 @@
 		flex-wrap: wrap;
 		align-items: baseline;
 		gap: 4px 6px;
-		padding: 7px 11px 7px 12px;
+		padding: 10px 13px 10px 14px;
 		border-left: 3px solid var(--rv-border-strong);
 		border-radius: 6px;
 		background: var(--rv-surface);
-		font-size: 0.75rem;
+		font-size: 0.8125rem;
 	}
 	.cp-needs-name {
 		font-weight: 600;

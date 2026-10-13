@@ -15,7 +15,9 @@ const { sections } = await import('./gallery');
 
 const SHOTS = import.meta.env.VITE_COPILOT_SHOTS as string | undefined;
 const shot = async (el: HTMLElement, name: string) => {
-	if (SHOTS) await page.screenshot({ element: el, path: `${SHOTS}/${name}.png` });
+	if (!SHOTS) return;
+	await page.viewport(470, 1000); // just wide enough for a 420 px column (a wider viewport is scaled down in the runner)
+	await page.screenshot({ element: el, path: `${SHOTS}/${name}.png` });
 };
 
 afterEach(() => {
@@ -75,7 +77,7 @@ describe('/dev/copilot', () => {
 		await expect.element(rail.getByText('CAD-RADS 2.0 · CAD-RADS 0')).toBeInTheDocument();
 		await shot(rail.element() as HTMLElement, 'rail-wide');
 		await page.getByRole('radio', { name: 'Rail, narrow' }).click();
-		const strip = page.getByRole('button', { name: 'Copilot: 6 guidelines' });
+		const strip = page.getByRole('button', { name: 'Copilot: 7 guidelines' });
 		await expect.element(strip).toBeInTheDocument();
 		await shot(page.getByTestId('copilot-rail').element() as HTMLElement, 'rail-narrow-strip');
 		await strip.click();

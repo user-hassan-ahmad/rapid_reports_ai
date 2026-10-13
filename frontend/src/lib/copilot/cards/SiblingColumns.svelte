@@ -2,7 +2,7 @@
 	/**
 	 * A finding with sibling packs (other bodies' guidelines on the same topic, §7.1): one GlCard whose body holds
 	 * two (at most three) equal columns, the primary card's first, neither preselected. A column shows the outcome
-	 * only; its title expands it to the full body at full width (plan Q5). Narrower than 300 px the columns stack
+	 * only; its title expands it to the full body at full width (plan Q5). Unless each column gets ~200 px (B0) they stack
 	 * behind a switcher, again with nothing chosen until the radiologist picks.
 	 */
 	import GlCard from '$lib/rail/GlCard.svelte';
@@ -25,7 +25,7 @@
 		card: Card;
 		view: CardView;
 		other?: boolean;
-		/** `auto` stacks when the card (the list's width) is under 300 px; tests and the gallery can pin it. */
+		/** `auto` stacks unless each column gets MIN_COLUMN_PX of the card's width; tests and the gallery can pin it. */
 		layout?: 'auto' | 'columns' | 'stacked';
 		onOpen: (ref: string) => void;
 		onClose: (ref: string) => void;
@@ -41,7 +41,11 @@
 	);
 	let width = $state(0);
 	let chosen = $state<string | null>(null);
-	const stacked = $derived(layout === 'stacked' || (layout === 'auto' && width > 0 && width < 300));
+	// Two readable columns need ~200 px each (B0, Hassan 2026-10-13); the 420 px rail's cards (~394 px, ~360 px of
+	// body after the card's padding) are under that for two, so they stack there and sit side by side only when wider.
+	const MIN_COLUMN_PX = 200;
+	const CARD_CHROME_PX = 34; // the GlCard body's left and right padding
+	const stacked = $derived(layout === 'stacked' || (layout === 'auto' && width > 0 && (width - CARD_CHROME_PX) / cols.length < MIN_COLUMN_PX));
 	const shown = $derived(chosen ? cols.filter((c) => c.key === chosen) : stacked ? [] : cols);
 </script>
 
@@ -93,6 +97,7 @@
 	<GlCard
 		title={cols.map((c) => c.title).join(' · ')}
 		hint={`${cols.length} guidelines on this finding`}
+		roomy
 		bind:open={() => view.open, (v) => (v ? onOpen(ref) : onClose(ref))}
 		{controls}
 		{body}

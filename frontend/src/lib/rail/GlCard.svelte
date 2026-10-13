@@ -25,6 +25,7 @@
 		accent = null,
 		open = $bindable(false),
 		dim = false,
+		roomy = false,
 		controls,
 		body
 	}: {
@@ -36,6 +37,8 @@
 		accent?: string | null;
 		open?: boolean;
 		dim?: boolean;
+		/** Larger type and padding (the Copilot rail, B0); the review rail keeps the default. */
+		roomy?: boolean;
 		/** Buttons in the head; their clicks should stop propagation so they do not toggle the card. */
 		controls?: Snippet;
 		body?: Snippet;
@@ -47,6 +50,7 @@
 <div
 	class="gl-card"
 	class:gl-card--dim={dim}
+	class:gl-card--roomy={roomy}
 	aria-disabled={dim || undefined}
 	style={accent ? `--gl-accent: ${accent}; --gl-action-color: ${accent}` : undefined}
 >
@@ -175,6 +179,13 @@
 	}
 	.gl-chevron { transition: transform 0.2s; color: #52525b; flex-shrink: 0; }
 	.gl-chevron.open { transform: rotate(180deg); color: #a1a1aa; }
+
+	/* ── Roomy (Copilot rail): larger type, more air; same structure ── */
+	.gl-card--roomy .gl-head { padding: 12px 13px 12px 17px; gap: 10px; }
+	.gl-card--roomy .gl-title { font-size: 14.5px; line-height: 1.35; }
+	.gl-card--roomy .gl-action-hint { font-size: 12.5px; margin-top: 5px; line-height: 1.4; }
+	.gl-card--roomy .gl-grade-badge { font-size: 10.5px; padding: 2px 8px; }
+	.gl-card--roomy .gl-body { padding: 12px 14px 14px 17px; gap: 12px; }
 
 	/* ── Expanded body ── */
 	.gl-body {

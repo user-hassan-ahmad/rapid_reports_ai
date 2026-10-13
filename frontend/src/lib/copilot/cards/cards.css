@@ -4,9 +4,9 @@
 .cp-cards {
 	display: flex;
 	flex-direction: column;
-	gap: 6px;
+	gap: 8px;
 	color: var(--rv-text);
-	font-size: 0.8125rem;
+	font-size: 0.875rem; /* 14 px (B0: the 13 px rail read cramped) */
 	line-height: 1.45;
 }
 .cp-cards .rv-btn {
@@ -50,7 +50,7 @@
 	color: var(--rv-muted);
 }
 .cp-cards .cp-label {
-	font-size: 9px;
+	font-size: 10px;
 	font-weight: 700;
 	text-transform: uppercase;
 	letter-spacing: 0.1em;
@@ -59,13 +59,19 @@
 /* neutral chips: "set by the exam", "other" */
 .cp-cards .cp-chip {
 	flex-shrink: 0;
-	font-size: 9px;
+	font-size: 10.5px;
 	font-weight: 600;
 	padding: 1px 6px;
 	border-radius: 20px;
 	border: 1px solid var(--rv-border);
 	color: var(--rv-muted);
 	white-space: nowrap;
+}
+.cp-cards .cp-chip-warn {
+	color: var(--rv-amber-line);
+	border-color: color-mix(in srgb, var(--rv-amber-line) 45%, transparent);
+	background: var(--rv-amber-bg);
+	cursor: help;
 }
 .cp-cards .cp-skel-line {
 	height: 10px;
@@ -87,7 +93,7 @@
 	margin: 0;
 	padding: 0;
 	list-style: none;
-	font-size: 0.6875rem;
+	font-size: 0.75rem;
 	color: var(--rv-muted);
 }
 .cp-cards .cp-list {

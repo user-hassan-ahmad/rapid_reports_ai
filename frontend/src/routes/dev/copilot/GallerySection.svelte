@@ -72,7 +72,7 @@
 		margin: 0 0 6px;
 	}
 	.dv-col {
-		width: 340px;
+		width: 420px; /* the Copilot rail's width (B0) */
 		box-sizing: border-box;
 		padding: 10px 12px;
 		border: 1px solid rgba(255, 255, 255, 0.1);

@@ -13,6 +13,9 @@
 		...cards
 	}: CardsProps & { theme?: 'dark' | 'light'; layout?: 'auto' | 'wide' | 'narrow' } = $props();
 
+	// Wider than the review rail's 340 px (B0, Hassan 2026-10-13: the cards read cramped); the strip still takes
+	// over below 1100 px.
+	const COPILOT_RAIL_W = 420;
 	const tabs = [{ id: 'guidelines' as const, label: 'Guidelines' }];
 	let tab = $state<'guidelines'>('guidelines');
 	const count = $derived(cards.groups.reduce((n, g) => n + g.cards.length, 0));
@@ -30,4 +33,4 @@
 	</div>
 {/snippet}
 
-<RailFrame {theme} {layout} ariaLabel="Copilot" testid="copilot-rail" stripLabel={count === 1 ? 'guideline' : 'guidelines'} stripCount={count} {head} {body} />
+<RailFrame {theme} {layout} width={COPILOT_RAIL_W} ariaLabel="Copilot" testid="copilot-rail" stripLabel={count === 1 ? 'guideline' : 'guidelines'} stripCount={count} {head} {body} />

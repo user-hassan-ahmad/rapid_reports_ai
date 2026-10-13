@@ -65,7 +65,7 @@
 	}
 	.dv-grid {
 		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 340px));
+		grid-template-columns: repeat(auto-fill, minmax(min(420px, 100%), 420px));
 		gap: 20px;
 		align-items: start;
 	}

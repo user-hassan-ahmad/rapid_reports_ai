@@ -54,13 +54,13 @@ describe('SiblingColumns', () => {
 		await expect.element(page.getByText("Couldn't open")).toBeInTheDocument();
 	});
 
-	it('auto stacks below 300 px of card width and returns to columns above it', async () => {
+	it('auto stacks unless each column gets ~200 px, and returns to columns when wide enough', async () => {
 		const host = document.createElement('div');
-		host.style.width = '260px';
+		host.style.width = '394px'; // the 420 px Copilot rail's list width: two columns would be ~180 px
 		document.body.appendChild(host);
 		render(SiblingColumns, { target: host, props: base() });
 		await expect.element(page.getByRole('tab').first()).toBeInTheDocument();
-		host.style.width = '316px'; // the 340 px rail's list width: side by side
+		host.style.width = '480px'; // wide enough for two readable columns
 		await expect.element(page.getByRole('button', { name: 'BTS 2015', exact: true })).toBeInTheDocument();
 		await expect.poll(() => document.querySelectorAll('[role="tab"]').length).toBe(0);
 		host.remove();

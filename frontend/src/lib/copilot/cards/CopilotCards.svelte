@@ -84,7 +84,7 @@
 			<section class="cp-group" aria-label={g.finding ? g.finding.text : 'This exam'}>
 				{#if g.finding}
 					<div class="gl-inline-label cp-group-head" title={g.finding.text}>
-						<span class="cp-label cp-group-text">{g.finding.text}</span>
+						<span class="cp-group-text">{g.finding.text}</span>
 					</div>
 				{/if}
 				{#each g.cards as c (cardRef(c))}
@@ -116,7 +116,7 @@
 		gap: 6px;
 	}
 	.cp-group + .cp-group {
-		margin-top: 6px;
+		margin-top: 10px;
 	}
 	.cp-group-head {
 		display: flex;
@@ -124,20 +124,23 @@
 		margin: 2px 0 0;
 	}
 	.cp-group-text {
+		font-size: 0.8125rem;
+		font-weight: 600;
+		color: var(--rv-muted);
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 	.cp-empty {
 		margin: 4px 0;
-		font-size: 0.75rem;
+		font-size: 0.8125rem;
 	}
 	.cp-foot {
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		margin-top: 8px;
-		font-size: 0.75rem;
+		margin-top: 10px;
+		font-size: 0.8125rem;
 	}
 	.cp-other-done {
 		font-size: 0.6875rem;

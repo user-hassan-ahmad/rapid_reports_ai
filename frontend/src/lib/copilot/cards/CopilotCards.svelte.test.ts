@@ -99,7 +99,7 @@ describe('CopilotCards', () => {
 		const bts = card({ key: 'bts-pulmonary-nodule', name: 'BTS 2015' });
 		render(
 			CopilotCards,
-			single(c, v(null, { open: true, columns: { [c.key]: { loading: false, error: null, result: result(c, preview()) }, [bts.key]: { loading: true, error: null, result: null } } }), finding)
+			{ ...single(c, v(null, { open: true, columns: { [c.key]: { loading: false, error: null, result: result(c, preview()) }, [bts.key]: { loading: true, error: null, result: null } } }), finding), siblingLayout: 'columns' as const }
 		);
 		const heads = page.getByRole('button', { pressed: false }).elements().filter((e) => e.classList.contains('cp-col-head'));
 		await expect.element(page.getByRole('button', { name: 'Fleischner 2017', exact: true })).toBeInTheDocument();
@@ -120,13 +120,53 @@ describe('CopilotCards', () => {
 		expect(text()).toContain('does not apply');
 	});
 
-	it('check_first: the eligibility line and the missing labels, read-only', async () => {
+	it('check_first (B0): values read first, then the outcome, then the open questions; eligibility only as an assumed chip', async () => {
 		const c = card({ finding: finding.text });
-		const pv = preview({ state: 'check_first', proposal: null, missing: ['e'], asks: [{ input: 'e', label: 'Measurable enhancement' }] });
-		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
-		await expect.element(page.getByText('Some eligibility questions need an answer before this applies')).toBeInTheDocument();
-		await expect.element(page.getByText('Measurable enhancement')).toBeInTheDocument();
-		expect(text()).toContain('check first');
+		const r = result(c, preview({
+			state: 'check_first',
+			proposal: outcome({ classification: 'Benign adenoma', recommendation: 'No further imaging.' }),
+			settled: [
+				{ input: 'size', value: '2.2 cm', quote: '2.2 cm left adrenal nodule', fact: '', by: '' },
+				{ input: 'phase', value: 'unenhanced', quote: '', fact: '', by: 'exam' }
+			],
+			missing: ['cancer', 'hormones', 'growth'],
+			asks: [
+				{ input: 'cancer', label: 'Known extra-adrenal cancer', role: 'eligibility' },
+				{ input: 'hormones', label: 'Signs of hormone excess', role: 'eligibility' },
+				{ input: 'growth', label: 'Growth on prior imaging', role: 'clinical' }
+			]
+		}));
+		r.entry!.content.branches = [{ name: 'Pack', rule: '', inputs: [{ id: 'size', question: 'Size', options: [] }, { id: 'phase', question: 'Phase', options: [] }] }];
+		render(CopilotCards, single(c, v(r, { open: true })));
+		const chip = page.getByText('⚠ 2 checks assumed');
+		await expect.element(chip).toBeInTheDocument();
+		expect(chip.element().getAttribute('title')).toContain('Known extra-adrenal cancer');
+		expect(text()).not.toContain('check first');
+		expect(text()).not.toContain('Some eligibility questions');
+		// order: values, outcome, open questions; the eligibility list stays collapsed
+		const body = text();
+		const at = (s: string) => body.indexOf(s);
+		expect(at('Read from the report')).toBeGreaterThan(-1);
+		expect(at('2.2 cm')).toBeLessThan(at('Benign adenoma'));
+		expect(at('Benign adenoma')).toBeLessThan(at('Growth on prior imaging'));
+		await expect.element(page.getByText('Known extra-adrenal cancer')).not.toBeInTheDocument();
+		await expect.element(page.getByText('set by the exam')).toBeInTheDocument();
+		// the quote shows on focus
+		const quote = page.getByText('“2.2 cm left adrenal nodule”');
+		await expect.element(quote).not.toBeVisible();
+		(document.querySelector('.cp-val[tabindex]') as HTMLElement).focus();
+		await expect.element(quote).toBeVisible();
+		// the assumed checks expand on request
+		await page.getByRole('button', { name: /Assumed eligible: 2 checks/ }).click();
+		await expect.element(page.getByText('Known extra-adrenal cancer')).toBeInTheDocument();
+		await expect.element(page.getByText('Signs of hormone excess')).toBeInTheDocument();
+	});
+
+	it('PackCard takes an assumptions list directly (B1 feeds Task 3)', async () => {
+		const { default: PackCard } = await import('./PackCard.svelte');
+		const c = card({ finding: finding.text });
+		render(PackCard, { card: c, view: v(result(c, preview()), { open: true }), assumptions: ['Not pregnant'], onOpen: vi.fn(), onClose: vi.fn(), onRetry: vi.fn() });
+		await expect.element(page.getByText('⚠ 1 check assumed')).toBeInTheDocument();
 	});
 
 	it('applies with no outcome lists the possible outcomes; degraded shows its note', async () => {
