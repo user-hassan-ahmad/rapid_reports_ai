@@ -252,6 +252,19 @@
 			.map(({ role, content }) => ({ role, content }));
 	}
 
+	/** Each real instruction paired with the reply that followed it (the evidence stored with the new template). */
+	function toChatTurns(/** @type {any[]} */ history) {
+		/** @type {{instruction: string, response: string}[]} */
+		const turns = [];
+		for (let i = 0; i < history.length - 1; i++) {
+			const m = history[i], next = history[i + 1];
+			if (m?.role === 'user' && m.content?.trim() && next?.role === 'assistant') {
+				turns.push({ instruction: m.content, response: next.content || '' });
+			}
+		}
+		return turns;
+	}
+
 	/** @param {string} path @param {Record<string, unknown>} body */
 	async function postJson(path, body) {
 		/** @type {Record<string, string>} */
@@ -570,7 +583,8 @@
 				template_name: templateName.trim(),
 				tags,
 				analyser_version: analyserVersion,
-				examples: examples.filter((e) => e.content.trim())
+				examples: examples.filter((e) => e.content.trim()),
+				chat_turns: toChatTurns(chatHistory)
 			});
 			if (!data.success) throw new Error(data.error || 'Save failed');
 			showSaveDialog = false; saved = true;

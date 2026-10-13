@@ -111,3 +111,99 @@ async def test_refine_prompt_carries_the_grammar(monkeypatch):
     assert "INTERPRET" in s and "behavioral_claim" in s  # three-phase behaviour and the claim are kept
     assert "does not clearly cover" in s and "unchanged" in s  # fit check: ask, don't edit
     assert "orig ask" in seen["user"] and "bad claim" in seen["user"]
+
+
+# ── chat turns stored with the template (Task D5) ─────────────────────────────────────────────────────────────────
+def _turns(db_session):
+    from rapid_reports_ai.database.models import TemplateChatTurn
+    db_session.expire_all()
+    return db_session.query(TemplateChatTurn).all()
+
+
+def test_refine_with_a_template_records_the_turn(client, auth_headers, guided_template, db_session, monkeypatch,
+                                                 refine_returns):
+    sheet = guided_template.template_config["skill_sheet"]
+    refine_returns({"skill_sheet": sheet, "response": "No change needed", "behavioral_claim": ""})
+
+    async def vet(sheet, origin, previous=""):
+        return S.VetOutcome("unchanged", sheet, "")
+    monkeypatch.setattr(S, "vet_sheet", vet)
+    client.post(URL, headers=auth_headers, json={"skill_sheet": sheet, "message": "keep it short",
+                                                 "template_id": str(guided_template.id)})
+    (turn,) = _turns(db_session)
+    assert turn.instruction == "keep it short" and turn.applied is True and turn.response
+    assert turn.sheet_hash_before == turn.sheet_hash_after and turn.template_id == guided_template.id
+
+
+def test_refused_write_records_applied_false_with_equal_hashes(client, auth_headers, guided_template, db_session,
+                                                               monkeypatch, refine_returns):
+    refine_returns({"skill_sheet": EDITED, "response": "Done", "behavioral_claim": "c"})
+
+    async def vet(sheet, origin, previous=""):
+        return S.VetOutcome("refused", previous, "Couldn't apply that.")
+    monkeypatch.setattr(S, "vet_sheet", vet)
+    client.post(URL, headers=auth_headers, json={"skill_sheet": GOOD, "message": "m",
+                                                 "template_id": str(guided_template.id)})
+    (turn,) = _turns(db_session)
+    assert turn.applied is False and turn.sheet_hash_after == turn.sheet_hash_before
+    assert turn.response == "Couldn't apply that."
+
+
+def test_applied_edit_records_changed_hash(client, auth_headers, guided_template, db_session, monkeypatch,
+                                           refine_returns):
+    refine_returns({"skill_sheet": EDITED, "response": "Done", "behavioral_claim": "c"})
+
+    async def vet(sheet, origin, previous=""):
+        return S.VetOutcome("saved", sheet, "")
+    monkeypatch.setattr(S, "vet_sheet", vet)
+    client.post(URL, headers=auth_headers, json={"skill_sheet": GOOD, "message": "m",
+                                                 "template_id": str(guided_template.id)})
+    (turn,) = _turns(db_session)
+    assert turn.applied is True and turn.sheet_hash_after != turn.sheet_hash_before
+
+
+def test_refine_without_a_template_records_nothing(client, auth_headers, db_session, monkeypatch, refine_returns):
+    refine_returns({"skill_sheet": GOOD, "response": "ok", "behavioral_claim": ""})
+
+    async def vet(sheet, origin, previous=""):
+        return S.VetOutcome("saved", sheet, "")
+    monkeypatch.setattr(S, "vet_sheet", vet)
+    assert client.post(URL, headers=auth_headers, json={"skill_sheet": GOOD, "message": "m"}).json()["success"]
+    assert _turns(db_session) == []
+
+
+def test_refine_on_another_users_template_records_nothing(client, auth_headers, db_session, monkeypatch,
+                                                          refine_returns):
+    import uuid
+    from rapid_reports_ai.database.models import Template, User
+    other = User(id=uuid.uuid4(), email=f"{uuid.uuid4()}@nhs.net", password_hash="x", full_name="O",
+                 is_active=True, is_verified=True, is_approved=True)
+    db_session.add(other)
+    db_session.commit()
+    t = Template(name="Theirs", template_config={"skill_sheet": GOOD}, user_id=other.id, tags=[], is_active=True)
+    db_session.add(t)
+    db_session.commit()
+    refine_returns({"skill_sheet": GOOD, "response": "ok", "behavioral_claim": ""})
+
+    async def vet(sheet, origin, previous=""):
+        return S.VetOutcome("saved", sheet, "")
+    monkeypatch.setattr(S, "vet_sheet", vet)
+    assert client.post(URL, headers=auth_headers, json={"skill_sheet": GOOD, "message": "m",
+                                                        "template_id": str(t.id)}).json()["success"]
+    assert _turns(db_session) == []
+
+
+def test_a_db_failure_while_recording_never_fails_the_refine(client, auth_headers, guided_template, monkeypatch,
+                                                             refine_returns):
+    refine_returns({"skill_sheet": GOOD, "response": "ok", "behavioral_claim": ""})
+
+    async def vet(sheet, origin, previous=""):
+        return S.VetOutcome("saved", sheet, "")
+    monkeypatch.setattr(S, "vet_sheet", vet)
+
+    def boom(self, *a, **k):
+        raise RuntimeError("db gone")
+    monkeypatch.setattr("sqlalchemy.orm.Session.commit", boom)
+    r = client.post(URL, headers=auth_headers, json={"skill_sheet": GOOD, "message": "m",
+                                                     "template_id": str(guided_template.id)}).json()
+    assert r["success"] is True and r["applied"] is True

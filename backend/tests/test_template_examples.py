@@ -163,3 +163,15 @@ def test_save_succeeds_when_storing_examples_raises(client, auth_headers, quiet_
         "skill_sheet": GOOD, "scan_type": "MRI knee", "template_name": "Knee",
         "examples": [{"content": "Normal knee."}]}).json()
     assert r["success"] and r["template_id"]
+
+
+def test_save_stores_the_creator_chat_turns(client, auth_headers, quiet_save, db_session):
+    turns = [{"instruction": "shorter", "response": "Done"}, {"instruction": "  ", "response": "x"},
+             {"instruction": "i" * 9000, "response": "r"}]
+    r = client.post("/api/templates/skill-sheet/save", headers=auth_headers, json={
+        "skill_sheet": GOOD, "scan_type": "MRI knee", "template_name": "Knee", "chat_turns": turns}).json()
+    assert r["success"]
+    db_session.expire_all()
+    rows = db_session.query(TemplateChatTurn).order_by(TemplateChatTurn.instruction).all()
+    assert len(rows) == 2 and all(t.applied for t in rows) and str(rows[0].template_id) == r["template_id"]
+    assert {t.instruction[:3] for t in rows} == {"iii", "sho"} and max(len(t.instruction) for t in rows) == 4000

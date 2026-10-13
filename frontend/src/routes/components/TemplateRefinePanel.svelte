@@ -19,6 +19,7 @@
 			.map(({ role, content }) => ({ role, content }));
 	}
 
+	/** @type {any} */
 	export let template = null;
 
 	let skillSheet = '';
@@ -67,7 +68,8 @@
 			const data = await postJson('/api/templates/skill-sheet/refine', {
 				skill_sheet: skillSheet,
 				message: msg,
-				chat_history: toWireChatHistory(chatHistory.slice(0, -1))
+				chat_history: toWireChatHistory(chatHistory.slice(0, -1)),
+				template_id: template?.id ?? null
 			});
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;

@@ -74,6 +74,7 @@ from .generation_artifacts import GenerationArtifacts
 from . import template_sheet_grammar as tsg
 from . import template_sheet_save as tsave
 from . import template_examples
+from . import template_chat_turns
 from .auth import (
     verify_password,
     get_password_hash,
@@ -747,6 +748,7 @@ class SkillSheetRefineRequest(BaseModel):
     message: str
     chat_history: Optional[List[SkillSheetChatMessage]] = None
     rejection_context: Optional[SkillSheetRejectionContext] = None
+    template_id: Optional[str] = None   # the saved template this chat edits (None in the creator): the turn is recorded
 
 class SkillSheetTestGenerateRequest(BaseModel):
     skill_sheet: str
@@ -2674,7 +2676,8 @@ async def skill_sheet_generate_test_case_endpoint(
 @app.post("/api/templates/skill-sheet/refine")
 async def skill_sheet_refine_endpoint(
     request: SkillSheetRefineRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Refine a skill sheet via one chat turn."""
     try:
@@ -2715,17 +2718,28 @@ async def skill_sheet_refine_endpoint(
         v = await tsave.vet_sheet(result.get("skill_sheet", ""), origin="chat", previous=request.skill_sheet)
         logger.info("  vet: %s %s", v.status, v.message[:300])
         if v.status == "refused":
-            return {"success": True, "skill_sheet": request.skill_sheet, "response": v.message,
-                    "behavioral_claim": "", "applied": False}
-        if v.status == "unchanged":
+            out = {"success": True, "skill_sheet": request.skill_sheet, "response": v.message,
+                   "behavioral_claim": "", "applied": False}
+        elif v.status == "unchanged":
             # nothing changed: the model's reply stands only when it asks or clarifies, never a claimed change
             reply = (result.get("response") or "").strip()
-            return {"success": True, "skill_sheet": v.sheet, "applied": False, "behavioral_claim": "",
-                    "response": reply if "?" in reply else "No change was needed."}
-        out = {"success": True, **result, "skill_sheet": v.sheet, "applied": True}
-        if v.message:  # ADJUSTED: saved, with a small repair
-            out["notice"] = v.message
-            out["response"] = f"{result.get('response', '').rstrip()} {v.message}".strip()
+            out = {"success": True, "skill_sheet": v.sheet, "applied": False, "behavioral_claim": "",
+                   "response": reply if "?" in reply else "No change was needed."}
+        else:
+            out = {"success": True, **result, "skill_sheet": v.sheet, "applied": True}
+            if v.message:  # ADJUSTED: saved, with a small repair
+                out["notice"] = v.message
+                out["response"] = f"{result.get('response', '').rstrip()} {v.message}".strip()
+        if request.template_id:   # evidence: the turn is stored with the template (never fails the reply)
+            try:
+                owned = get_template(db, request.template_id, user_id=str(current_user.id))
+            except Exception as e:
+                db.rollback()
+                owned = None
+                logger.warning("chat turn template lookup failed: %s", type(e).__name__)
+            if owned:
+                template_chat_turns.record_turn(db, owned.id, request.message, out["response"],
+                                                v.status != "refused", request.skill_sheet, out["skill_sheet"])
         return out
     except Exception as e:
         logger.exception("skill sheet refine failed: %s", e)
@@ -2803,6 +2817,7 @@ async def skill_sheet_save_endpoint(
                 await template_examples.store_examples(db, template.id, [e.content for e in request.examples])
             except Exception as e:   # evidence only: never fails the save
                 logger.warning("template examples not stored for %s: %s", template.id, type(e).__name__)  # no str(e): it can carry example text
+        template_chat_turns.store_creator_turns(db, template.id, request.chat_turns)
         return {"success": True, "template_id": str(template.id)}
     except Exception as e:
         import traceback
