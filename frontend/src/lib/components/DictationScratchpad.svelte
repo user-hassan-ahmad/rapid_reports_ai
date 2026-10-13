@@ -39,6 +39,7 @@
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
 	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
+	import { chooseTemplate, templateKey, unmetTemplate, withChosen, withRequired } from '$lib/hybrid-stack/templateRows';
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
 	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
 	import { abnormalAll, assumedFrom, moreLine, openCount, rowSentences, splitReply, type AssumedSnap } from '$lib/hybrid-stack/items';
@@ -303,6 +304,7 @@
 	let shownSentences: string[] = []; // every row sentence shown this session (a row owns its check)
 	// The session's referral rows: the first /items reply's, fixed so they never drift (null until it answers).
 	let fixedReferrals: { question: string; region: string; sentences: string[] }[] | null = null;
+	let templateRequired: Record<string, string[]> = {}; // the template's required statements met at the last review
 	let itemsSeq = 0;
 	let assumedSeq = 0;
 	let draft: { text: string; hash: string; edited: boolean; typed: boolean } | null = null;
@@ -321,7 +323,7 @@
 	// Rows over the caps wait behind one quiet line at the end (E1b); a tapped one stays there, green.
 	$: moreView = moreLine(stackCapped, stackItems, Object.keys(tappedRows), removedSentences, Object.keys(skippedRows));
 	$: if (!moreView.show && moreOpen) moreOpen = false; // nothing left behind the line: it closes
-	$: viewItems = [...stackItems, ...Object.values(tappedRows).filter((t) => !stackItems.some((i) => i.id === t.id) && !moreView.rows.some((c) => c.id === t.id))];
+	$: viewItems = withChosen([...stackItems, ...Object.values(tappedRows).filter((t) => !stackItems.some((i) => i.id === t.id) && !moreView.rows.some((c) => c.id === t.id))], tappedRows);
 	$: stripNow = stackView ? liveTail(verbatimNow, stackUnits) : [];
 	$: rowsOpen = openCount(viewItems, Object.keys(tappedRows), removedSentences, Object.keys(skippedRows));
 	// Confirm waits for the review of what is on screen; a failed review counts as done (nothing new is asked).
@@ -364,7 +366,7 @@
 	}
 	$: gateKey = [verbatimNow, JSON.stringify(checks.map((c) => c.key)), JSON.stringify(checkAnswers), findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
 		regionView.remainder.join('|'), String(rowsOpen), Object.keys(tappedRows).join('|'), Object.keys(skippedRows).join('|'), removedSentences.join('|'),
-		JSON.stringify(confirmedAssumed)].join('\u0003');
+		JSON.stringify(confirmedAssumed), templateKey(tappedRows, templateRequired)].join('\u0003');
 	$: if (stackGate && stackGate.units_hash !== gateKey) {
 		stackGate = null;
 		onStackGate(null, '');
@@ -1706,7 +1708,7 @@
 		try {
 			const res = await postItems($token, { scan_type: scanType, clinical_history: clinicalHistory, regions: pillRegions,
 				dictation: text, abnormal, not_assessable: stackNotAssessable, removed: removedSentences,
-				tapped: Object.values(tappedRows).flatMap((r) => r.sentences), referrals: fixedReferrals, review });
+				tapped: Object.values(tappedRows).flatMap((r) => r.sentences), referrals: fixedReferrals, review, template_id: stackTemplateId });
 			if (seq !== itemsSeq) return; // superseded while in flight
 			if (review) {
 				reviewedFor = text;
@@ -1714,6 +1716,17 @@
 			}
 			if (res.error) return; // the writer failed: what is on screen stays
 			if (review) reviewedAbnormal = abnormal;
+			if (review && !res.trigger_error) {
+				// The template's habits for this dictation: its met required statements, and answers to rows whose condition
+				// is no longer met dropped (a failed trigger changes nothing on screen).
+				templateRequired = res.required ?? {};
+				const skippedItems = Object.fromEntries(Object.entries(skippedRows).map(([k, v]) => [k, v.item]));
+				const gone = new Set([...unmetTemplate(tappedRows, res), ...unmetTemplate(skippedItems, res)]);
+				if (gone.size) {
+					tappedRows = Object.fromEntries(Object.entries(tappedRows).filter(([k]) => !gone.has(k)));
+					skippedRows = Object.fromEntries(Object.entries(skippedRows).filter(([k]) => !gone.has(k)));
+				}
+			}
 			if (fixedReferrals === null)
 				fixedReferrals = res.items.filter((i) => i.kind === 'referral').map((i) => ({ question: i.question, region: i.region, sentences: i.sentences }));
 			applyRows(res, false);
@@ -1778,7 +1791,7 @@
 	function skipRow(id: string): void {
 		const it = findRow(id);
 		if (!it || tappedRows[id]) return;
-		skippedRows = { ...skippedRows, [id]: { item: it, how: it.kind === 'referral' ? 'not_assessed' : 'skip' } };
+		skippedRows = { ...skippedRows, [id]: { item: it, how: it.kind === 'finding' ? 'skip' : 'not_assessed' } };
 	}
 	/** Every row sentence ever shown, capped ones included: a region normal saying the same is never assumed. The
 	 *  current rows and the tapped answers go first (the server keeps the first 100). */
@@ -1810,11 +1823,12 @@
 	/** Which region normals stay assumed, given the dictation (spec §5). The answer is kept with the dictation and
 	 *  region states it was computed for; a failure assumes nothing (and lets Confirm through). */
 	async function refreshAssumed(): Promise<void> {
-		if (!Object.keys(stackRegionNormals).length) return;
+		const offered = withRequired(stackRegionNormals, templateRequired); // the template's met required statements first
+		if (!Object.keys(offered).length) return;
 		const seq = ++assumedSeq;
-		const snap = { offered: { ...stackRegionNormals }, dictation: verbatimNow, abnormal: [...regionView.abnormal], untouched: [...regionView.assumedNormal] };
+		const snap = { offered, dictation: verbatimNow, abnormal: [...regionView.abnormal], untouched: [...regionView.assumedNormal] };
 		try {
-			const res = await postAssumed($token, { dictation: snap.dictation, region_normals: stackRegionNormals, abnormal: snap.abnormal,
+			const res = await postAssumed($token, { dictation: snap.dictation, region_normals: offered, abnormal: snap.abnormal,
 				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences, owned: ownedNow(),
 				touched: touchedRegions(), template_id: stackTemplateId, clinical_history: clinicalHistory,
 				region_text: regionText(stackUnits) }); // a normal is covered only by its own region's sentences
@@ -1858,8 +1872,15 @@
 	/** A tap (or voice "answer …"): the row's listed sentences become the radiologist's answer. */
 	function answerRow(id: string): void {
 		const it = findRow(id);
-		if (!it || !isOpenRow(id)) return;
+		if (!it || it.kind === 'template' || !isOpenRow(id)) return; // a template row needs Yes or No
 		tappedRows = { ...tappedRows, [id]: { ...it, sentences: rowSentences(it, removedSentences) } };
+		if (moreView.rows.some((c) => c.id === id) && !cappedTapped.includes(id)) cappedTapped = [...cappedTapped, id];
+	}
+	/** Yes or No on a template row: the template's own sentence for that answer becomes the radiologist's answer. */
+	function answerTemplateRow(id: string, which: 'yes' | 'no'): void {
+		const it = findRow(id);
+		if (!it || it.kind !== 'template' || !isOpenRow(id)) return;
+		tappedRows = { ...tappedRows, [id]: chooseTemplate(it, which) };
 		if (moreView.rows.some((c) => c.id === id) && !cappedTapped.includes(id)) cappedTapped = [...cappedTapped, id];
 	}
 	/** × on a row sentence or an assumed normal: never stated, never offered again. */
@@ -1871,7 +1892,7 @@
 	}
 	/** The open rows as the voice command sees them: the question and the sentences "accept" would add. */
 	function openItemsForVoice(): { id: string; text: string }[] {
-		return [...stackItems, ...(moreOpen ? moreView.rows : [])].filter((i) => isOpenRow(i.id))
+		return [...stackItems, ...(moreOpen ? moreView.rows : [])].filter((i) => isOpenRow(i.id) && i.kind !== 'template')
 			.map((i) => ({ id: i.id, text: `${i.question} ${rowSentences(i, removedSentences).join(' ')}` }));
 	}
 	/** A line edited in the view: exactly that sentence (or part) changes in the verbatim text. */
@@ -2635,7 +2656,7 @@
 							checks={placedChecks} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
-							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
+							onAnswer={answerRow} onAnswerTemplate={answerTemplateRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
 							onConfirm={stackConfirm} onConfirmGenerate={onStackGenerate ? () => { stackConfirm(); onStackGenerate?.(); } : null} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
 							syncing={assumedBehind || checksBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
 					{/if}
