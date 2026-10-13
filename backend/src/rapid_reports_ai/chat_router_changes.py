@@ -185,6 +185,19 @@ def claim_for(kind: str, key: str, choice: dict) -> str:
             else f"{para}: {label} is no longer stated when normal.")
 
 
+def concept_field_claim(concept: str, field: str, value: str) -> str:
+    """The claim for ONE field of a concept change (one claim per field, each verified on its own)."""
+    label = L.CONCEPTS.get(concept, concept)
+    if field == "state":
+        return {"not_used": f"{label}: no longer stated.",
+                "dictated": f"{label}: reports now use whichever wording is dictated.",
+                "used": f"{label}: now stated."}.get(value or "", f"{label}: changed.")
+    if field == "default":
+        return f'{label}: the usual wording is now "{value}".' if value else f"{label}: the usual wording is removed."
+    return (f'{label}: when it applies, reports now say "{value}".' if value
+            else f"{label}: the wording for when it applies is removed.")
+
+
 def proposal_card(v: Verdict) -> dict:
     """A one-tap card for a change with no ledger card (plan decision 5); Apply sends `apply` back unchanged."""
     apply = {"kind": v.kind, "key": v.key, "choice": v.choice, "op": v.op, "claim": v.claim}

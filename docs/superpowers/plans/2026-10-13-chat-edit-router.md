@@ -91,6 +91,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
 19. **2026-10-13 (Hassan): no silent drops.** When the habit guard leaves out the value, normal or always-printed part of a mixed message, the reply names each part ("I didn't change the <kind> part; …"), in both arms.
 20. **2026-10-13 (Hassan): the hybrid is the router.** After the head-to-head, arm 2 (propose, verify, apply, plus cards) becomes the router and tag-then-route is retired. Today's whole-sheet refine stays only as the failure fallback.
     - V1 and C1 read the chat context: the last assistant reply and the last turn's applied claims.
+    - One claim per field: a concept change touching several fields gets a code-written claim for each, and each is verified. Only the verified fields are applied; the whole proposal is carded for the rest.
     - The proposal schema is flat, with one list per kind (style has its own list). Identifier fields are required, and a change whose identifier is empty is dropped, not asked about.
 16. **Prose the style call never sees:** `## Scan Context` and `## Report Structure` (the fit check reads the scan context, and the structure block is layout).
 

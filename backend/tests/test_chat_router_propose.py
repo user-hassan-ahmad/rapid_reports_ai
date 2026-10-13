@@ -307,3 +307,37 @@ async def test_v1_and_c1_both_carry_the_context():
     await P.verify("CT", "and depth too", ["Depth is no longer required."], context="PREVIOUS REPLY (context only):\nX",
                    transport=httpx.MockTransport(handler))
     assert all("PREVIOUS REPLY (context only):\nX" in b["state"] for b in seen) and len(seen) == 2
+
+
+# ── item 3: one claim per field ────────────────────────────────────────────────────────────────────────────────
+NO_PRIOR, COMPARED = "No previous imaging available.", "Compared with the {study} of {date}."
+
+
+async def test_a_two_field_concept_change_is_verified_field_by_field(stub):
+    instr = f'say "{NO_PRIOR}" usually and "{COMPARED}" when there is a prior'
+    stub["proposal"] = _proposal(_change("concept", "Comparison wording set.", concept="comparison",
+                                         default=NO_PRIOR, when_met=COMPARED))
+    t = await P.propose_turn(ROUTER_SHEET, [], instr)
+    d_claim = CH.concept_field_claim("comparison", "default", NO_PRIOR)
+    w_claim = CH.concept_field_claim("comparison", "when_met", COMPARED)
+    assert stub["verify_calls"] == [[d_claim, w_claim]]
+    assert L.concept_state(L.entry(t.ledger, "concept", "comparison")["choice"])[:3] == ("used", NO_PRIOR, COMPARED)
+
+
+async def test_only_the_verified_field_is_applied_and_the_rest_is_carded(stub):
+    instr = f'say "{NO_PRIOR}" usually and "{COMPARED}" when there is a prior'
+    stub["proposal"] = _proposal(_change("concept", "Comparison wording set.", concept="comparison",
+                                         default=NO_PRIOR, when_met=COMPARED))
+    stub["claim_scores"] = {CH.concept_field_claim("comparison", "when_met", COMPARED): 0.1}
+    t = await P.propose_turn(ROUTER_SHEET, [], instr)
+    assert L.concept_state(L.entry(t.ledger, "concept", "comparison")["choice"])[:3] == ("used", NO_PRIOR, "")
+    card = next(c for c in t.cards if c.get("ledger_kind") == "concept")
+    assert card["wording"]["when_met"] == COMPARED                    # prefilled with the whole proposal
+
+
+def test_field_claims_are_specific():
+    assert CH.concept_field_claim("comparison", "default", NO_PRIOR) == (
+        f'{L.CONCEPTS["comparison"]}: the usual wording is now "{NO_PRIOR}".')
+    assert CH.concept_field_claim("comparison", "when_met", "") == (
+        f'{L.CONCEPTS["comparison"]}: the wording for when it applies is removed.')
+    assert CH.concept_field_claim("comparison", "state", "not_used") == f'{L.CONCEPTS["comparison"]}: no longer stated.'

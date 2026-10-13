@@ -144,6 +144,18 @@ def to_change(kind: str, p):
     return model(**fields)
 
 
+CONCEPT_FIELDS = ("state", "default", "when_met")
+
+
+def concept_fields(p: PConcept) -> List[str]:
+    return [f for f in CONCEPT_FIELDS if getattr(p, f) is not None]
+
+
+def single_field(p: PConcept, field: str) -> PConcept:
+    """The concept change narrowed to one field (its condition travels with it)."""
+    return PConcept(concept=p.concept, claim=p.claim, sure=p.sure, condition=p.condition, **{field: getattr(p, field)})
+
+
 LISTS = (("value", "values"), ("concept", "concepts"), ("fixed", "fixed"), ("normal", "normals"),
          ("layout", "layout"), ("style", "style"))
 
@@ -283,12 +295,25 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
 
     # validate: the existing gates, per change (style blocks go through the router's own style path)
     pairs: List[Tuple[object, CH.Verdict]] = []
+    group_of: dict = {}            # id(split item) -> the original multi-field concept change (one claim per field)
     style_blocks = [p for k, p in changes if k == "style"]
     blocks_by_id = {b.id: b for b in sh.prose_blocks(sheet)}
+    expanded = []
     for kind, c in changes:
+        if kind == "concept" and len(concept_fields(c)) > 1:
+            for f in concept_fields(c):
+                one = single_field(c, f)
+                group_of[id(one)] = (c, f)
+                expanded.append((kind, one))
+        else:
+            expanded.append((kind, c))
+    for kind, c in expanded:
         if kind == "style":
             continue
         v = CH.validate(kind, to_change(kind, c), ctx)
+        if id(c) in group_of and v.action in ("ledger", "edit"):
+            orig, f = group_of[id(c)]
+            v.claim = CH.concept_field_claim(orig.concept, f, getattr(orig, f))
         if v.action == "edit" and v.op:   # client-shaped re-check: forward ops only, slots, a dry run
             checked = CH.check_proposal(CH.proposal_card(v)["apply"], sheet)
             if checked.action == "reject":
@@ -312,14 +337,31 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
 
     verdicts: List[CH.Verdict] = [v for _, v in pairs if v.action not in ("ledger", "edit")]
     dropped: List[str] = []
+    groups: dict = {}              # id(original concept change) -> (original, {field: verified})
     for i, (c, v) in enumerate(applicable):
         ok = by_claim[i] >= VERIFY_MIN
         ev["claims"].append({"kind": v.kind, "claim": v.claim or c.claim, "proposed": c.claim,
                              "score": round(by_claim[i], 3), "verified": ok})
+        if id(c) in group_of:
+            orig, f = group_of[id(c)]
+            groups.setdefault(id(orig), (orig, {}))[1][f] = ok
+            continue
         if habit_card and v.kind in R.HABIT_KINDS:
             dropped.append(v.kind)                     # parked: never written as a rule line (until item 5)
             continue
         verdicts.append(v if ok else CH.to_card(v))
+    for orig, oks in groups.values():   # apply only the verified fields; card the whole proposal for the rest
+        good = [f for f in CONCEPT_FIELDS if oks.get(f)]
+        if good:
+            merged = PConcept(concept=orig.concept, claim=orig.claim, sure=orig.sure, condition=orig.condition,
+                              **{f: getattr(orig, f) for f in good})
+            mv = CH.validate("concept", to_change("concept", merged), CH.Ctx(sheet, ledger, wording, confirmed=True))
+            if mv.action == "ledger":
+                mv.claim = " ".join(CH.concept_field_claim(orig.concept, f, getattr(orig, f)) for f in good)
+            verdicts.append(mv)
+        if len(good) < len(oks):
+            full = CH.validate("concept", to_change("concept", orig), CH.Ctx(sheet, ledger, wording, confirmed=True))
+            verdicts.append(CH.to_card(full) if full.action == "ledger" else full)
 
     asks: List[str] = []
     verified_blocks = []
