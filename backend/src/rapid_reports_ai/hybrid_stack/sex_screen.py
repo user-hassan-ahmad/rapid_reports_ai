@@ -35,7 +35,11 @@ async def _score(s: str, transport=None) -> float | None:
                                 "questions": {"q": {"type": "noul", "instructions": SEX_Q}}},
                                os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
             r.raise_for_status()
-            return float(((r.json().get("answers") or {}).get("q") or {}).get("noul") or 0.0)
+            p = ((r.json().get("answers") or {}).get("q") or {}).get("noul")
+            if isinstance(p, bool) or not isinstance(p, (int, float)):
+                logger.warning("[stack.sex_screen] malformed reply: noul is %s", type(p).__name__)
+                return None  # a malformed 200 falls to the regex backstop, as a failed call does
+            return float(p)
         except Exception as e:
             logger.warning("[stack.sex_screen] %s: %s", type(e).__name__, str(e)[:200])
             return None

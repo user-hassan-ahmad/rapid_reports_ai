@@ -38,3 +38,17 @@ def test_clean_sentences_no_longer_screens_sex_terms():
     from rapid_reports_ai.hybrid_stack.slim_sheet import clean_sentences
     assert clean_sentences(["No cervical lymphadenopathy", "The prostate is normal."]) == [
         "No cervical lymphadenopathy.", "The prostate is normal."]
+
+
+async def test_malformed_200_reply_uses_backstop(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    bodies = {"The uterus is normal.": {"answers": {}},
+              "The prostate is normal.": {"answers": {"q": {"noul": "high"}}},
+              "No cervical lymphadenopathy.": {"answers": {"q": {}}},
+              "The ovaries are normal.": {}}
+
+    def handler(req):
+        return httpx.Response(200, json=bodies[json.loads(req.content)["state"].removeprefix("SENTENCE: ")])
+    r = await X.screen(list(bodies), transport=httpx.MockTransport(handler))
+    assert r.dropped == ["The uterus is normal.", "The prostate is normal.", "The ovaries are normal."]
+    assert r.kept == ["No cervical lymphadenopathy."] and r.flagged == []
