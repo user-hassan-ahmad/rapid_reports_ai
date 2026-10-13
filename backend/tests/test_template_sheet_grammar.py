@@ -998,3 +998,13 @@ def test_fixed_unit_keeps_its_sheet_line():
     # the extractor's JSON schema never sees it
     from rapid_reports_ai import template_sheet_structure as tss
     assert "source_line" not in tss.StructureDraft.model_json_schema()["$defs"]["FixedBlock"]["properties"]
+
+
+def test_habit_forms_round_trip_and_bump_the_structure_version():
+    s = g.parse_sheet(in_paragraph(HABIT_ASK + "\n" + HABIT_STATE)).structure
+    (ask,) = [x for x in s.rules if x.effect == "ask"]
+    (neg,) = [n for n in s.negatives if n.condition]
+    assert g.render_rule(ask) == HABIT_ASK and g.render_negative(neg) == HABIT_STATE
+    assert tss.STRUCTURE_VERSION == 3
+    assert "question" not in tss.DraftRule.model_json_schema()["properties"]
+    assert "else_text" not in tss.DraftRule.model_json_schema()["properties"]

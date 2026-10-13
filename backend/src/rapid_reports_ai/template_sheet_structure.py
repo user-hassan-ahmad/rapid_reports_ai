@@ -34,7 +34,7 @@ from .report_review import is_negative
 
 logger = logging.getLogger(__name__)
 
-STRUCTURE_VERSION = 2  # 2: lean template grammar + case units (spec 2026-10-01-template-two-phase)
+STRUCTURE_VERSION = 3  # 2: lean template grammar + case units; 3: findings-triggered habits (ASK, NEGATIVE … WHEN)
 RETRY_AFTER_S = 3600  # a failed structuring attempt for the same sheet is retried after this long
 Role = Literal["history", "technique", "comparison", "findings", "impression", "other"]
 LineRef = Union[int, str]  # the model cites a sheet line by its number; build_structure stores the line itself

@@ -189,3 +189,16 @@ def test_fixed_line_rule_names_the_decided_block_exception():
     from rapid_reports_ai.template_context_rules import DECIDED_HEADING
     from rapid_reports_ai.template_stack import stack_brief
     assert DECIDED_HEADING.lstrip("# ") in stack_brief("", "", ())
+
+
+def test_habit_lines_never_reach_the_generator():
+    sheet = ('## Report Structure\nSECTION FINDINGS | header: "Findings:" | role: findings\n'
+             'SECTION IMPRESSION | header: "Impression:" | role: impression\n\n'
+             '## Paragraph: Upper (FINDINGS)\nCOVERS ["alpha"]\nNORMAL [alpha] "Alpha is normal."\n'
+             'RULE WHEN [findings: an alpha abnormality is reported] ASK "Extension beyond alpha?" '
+             'YES "The abnormality extends beyond alpha." NO "No extension beyond alpha."\n'
+             '  - NEGATIVE "No beta extension." WHEN [findings: an alpha abnormality is reported]\n\n'
+             '## Report-wide\nRULE WHEN [findings: any listed value is not stated] LIST_MISSING ["Width"] AT TOP\n')
+    b = stack_brief(sheet, "", [])
+    assert "ASK" not in b and "No beta extension" not in b and "Extension beyond alpha" not in b
+    assert "LIST_MISSING" in b and "COVERS [" in b

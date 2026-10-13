@@ -20,6 +20,9 @@ from .template_sheet_grammar import _BULLET
 # Units that state or decide content (the grammar's keywords; optional indentation and "- " bullet, as it parses)
 _CONTENT_UNITS = ("NORMAL", "NEGATIVE", "IF_PRESENT", "RECOMMEND", "DIFFERENTIAL", "QUESTION")
 _CONTENT_UNIT = re.compile(rf"(?:{'|'.join(_CONTENT_UNITS)})\b")
+# A habit question (spec 2026-10-13-findings-triggered-rows-design) is asked in the scratchpad, never by the generator:
+# its answer reaches the FINDINGS input as "Answered by the radiologist". (Its required-statement twin is a NEGATIVE.)
+_HABIT_RULE = re.compile(r"RULE\s+WHEN\s*\[\s*findings\s*:[^\]]*\]\s*ASK\b")
 _INTERPRETIVE = re.compile(r"(?i)interpretive phrasing\s*:")
 # Blocks that decide content: "#"/"##" headings (a grammar context) and the "###" inclusion logic prose
 _DROP_SECTION = re.compile(r"(?i)^(?:case deliberation|open questions)\b")
@@ -44,7 +47,7 @@ def _strip(sheet: str) -> List[str]:
         if skip_level:
             continue
         body = line[_BULLET.match(line).end():]
-        if _CONTENT_UNIT.match(body) or _INTERPRETIVE.match(body):
+        if _CONTENT_UNIT.match(body) or _INTERPRETIVE.match(body) or _HABIT_RULE.match(body):
             continue
         out.append(line)
     return out

@@ -821,6 +821,7 @@ def render_rule(rule: tss.Rule) -> str:
         "suppress_section": lambda: f"SUPPRESS_SECTION {rule.target}",
         "suppress_headers": lambda: "SUPPRESS_HEADERS",
         "order": lambda: f"ORDER {(rule.position or 'first').upper()}",
+        "ask": lambda: f'ASK "{rule.question}" YES "{rule.then_text}" NO "{rule.else_text}"',
     }[e]()
     return f"RULE {render_condition(rule.condition_source, rule.condition)} {effect}"
 
