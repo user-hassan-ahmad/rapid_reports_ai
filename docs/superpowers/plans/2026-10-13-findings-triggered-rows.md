@@ -17,7 +17,7 @@
 - Worktree: `/Users/hassan/Code/rapid_reports_ai/.claude/worktrees/triggered-rows`, branch `feat/triggered-rows`. It was cut from `feat/rules-step` at `ada8980e`; **Task 0 brings it up to the latest `feat/rules-step` after the controller has merged `feat/context-rules` into it.** Never push, never `git stash`, never touch another worktree.
 - **Locating code.** Line numbers in this plan were read at `ada8980e` and are hints only. Every step locates code by function name and by the exact text it quotes ("replace … with …"); when a quoted anchor is not found after Task 0, find the same function by name, read it, and apply the same change to its current text.
 - Backend commands run from `backend/`: one file `.venv/bin/python -m pytest <path> -q`. Full suite: `.venv/bin/python -m pytest -q --deselect tests/test_provider_key_routing.py` (baseline about 4046 passed; the count must not fall).
-- Baselines are recorded by Task 0 (they replace the counts below for every later check).
+- **Baselines after Task 0 (merge 65fa9008, 2026-10-13):** backend 4119 passed (`--deselect tests/test_provider_key_routing.py`); vitest 772 passed / 1 failed (the known `page.svelte.spec` h1 test) of 773; svelte-check 1193 errors, 194 warnings. They replace the counts below for every later check.
 - Frontend commands run from `frontend/`: a node test `npx vitest run --project server <path>`; a component test `npx vitest run <path>`; full suite `npx vitest run`; `npm run check` (svelte-check baseline: 1194 problems; the count must not rise).
 - Commit after every task with these trailer lines:
 
