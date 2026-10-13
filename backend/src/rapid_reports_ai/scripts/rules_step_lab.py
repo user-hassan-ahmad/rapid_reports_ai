@@ -2,7 +2,8 @@
 prints tables and writes JSON under the private folder; Hassan decides.
 
     .venv/bin/python -m rapid_reports_ai.scripts.rules_step_lab decide --root <dir> [--run 1|2] [--only slug,...]
-    .venv/bin/python -m rapid_reports_ai.scripts.rules_step_lab report --root <dir> --stage decide
+    .venv/bin/python -m rapid_reports_ai.scripts.rules_step_lab write --root <dir> [--run 1] [--arms A,B,C]
+    .venv/bin/python -m rapid_reports_ai.scripts.rules_step_lab report --root <dir> --stage decide|write
 
 <dir> is ~/Code/rr-template-conversion-private/synthetic/rules_step (never the repo). Sets: <dir>/sets/*.json (format
 in the plan, Task 19). Outputs: <dir>/runs/<stage>/run<k>/<slug>.json and <dir>/REPORT_<stage>.md. The generator of
@@ -12,6 +13,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
+import time
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -105,20 +108,101 @@ async def decide(root: Path, run_no: int, only: Optional[List[str]]) -> None:
         print(s["slug"], json.dumps(payload["score"]))
 
 
+# ── writer arms (Task 30): with and without the decisions, two temperatures ────────────────────────────────────
+# Every arm uses the writer's next prompts (template_sheet_lab_prompts.analyser_system_prompt / writer_user_prompt:
+# slot wording, no questions); A has no decisions. write_sheet keeps today's prompts until Task 31.
+
+ARMS = {"A": (False, 0.8), "B": (True, 0.8), "C": (True, 0.4)}   # (decided, temperature)
+
+
+def score_sheet(s: dict, sheet: str, gold: Optional[str] = None) -> dict:
+    """One written sheet against the set's planted truth and (when given) the curated production sheet."""
+    from rapid_reports_ai import template_decisions as td
+    from rapid_reports_ai import template_ledger_apply as tla
+    from rapid_reports_ai import template_sheet_grammar as tsg
+    from rapid_reports_ai.hybrid_stack.template import norm_key
+    base = {"slug": s["slug"], "kind": s.get("kind", "base")}
+    if not tsg.is_grammar_sheet(sheet or ""):
+        return {**base, "usable": 0}
+    st = tsg.parse_sheet(sheet, mode="template").structure
+    truth = s.get("truth") or {}
+    normals = [td._name(n.structure) for n in st.normals]
+    items = {td._name(x) for r in st.rules if r.effect == "list_missing" for x in r.items}
+    every = [v for v in truth.get("values", []) if v.get("need") == "every"]
+    out = {**base, "usable": int(st.usable),
+           "duplicate_normals": len(normals) - len(set(normals)),
+           "multi_structure_normals": sum(1 for n in st.normals if re.search(r"\band\b|/|,", n.structure)),
+           "patient_fixed_present": sum(1 for t in truth.get("patient_specific_fixed", [])
+                                        if any(norm_key(f.text) == norm_key(t) for f in st.fixed_blocks)),
+           "comparison_rule": int(tla.observe(st, "concept", "comparison")["use"]),
+           "context_rules": sum(1 for r in st.rules if r.condition_source == "context"),
+           "required_values_listed": sum(1 for v in every if items & _value_names(v)),
+           "required_values_total": len(every),
+           "extra_values_listed": sum(1 for x in items
+                                      if not any(x in _value_names(v) for v in truth.get("values", [])))}
+    if gold:
+        gold_n = {td._name(n.structure) for n in tsg.parse_sheet(gold, mode="template").structure.normals}
+        out.update(gold_normals_hit=len(gold_n & set(normals)), gold_normals_total=len(gold_n))
+    return out
+
+
+async def _write_one(s: dict, answers: List[dict], decided: bool, temperature: float) -> dict:
+    from rapid_reports_ai import template_decisions as td
+    from rapid_reports_ai import template_sheet_lab_prompts as P
+    from rapid_reports_ai import template_sheet_model, template_sheet_save
+    ledger = td.ledger_from_changes(answers, source="creation")[0] if decided else []
+    ex = [{"label": "", "content": e} for e in s["examples"]]
+    t0 = time.monotonic()
+    raw = await template_sheet_model.model_call(
+        P.analyser_system_prompt(decided),
+        P.writer_user_prompt(ex, s.get("scan_type", ""), "", decisions=ledger or None),
+        {**P.ANALYSER_SETTINGS, "temperature": temperature})
+    ans = P.split_answer(raw)
+    v = await template_sheet_save.vet_sheet(ans["skill_sheet"] or "", origin="analyser", ledger=ledger or None)
+    return {"status": v.status, "sheet": v.sheet if v.status == "saved" else (ans["skill_sheet"] or ""),
+            "drift": v.ledger_drift, "ms": int((time.monotonic() - t0) * 1000)}
+
+
+async def write(root: Path, run_no: int, arms: List[str], only: Optional[List[str]], gold_dir: Path) -> None:
+    for arm in arms:
+        decided, temperature = ARMS[arm]
+        out_dir = root / "runs" / "write" / f"run{run_no}" / arm
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for s in load_sets(root, only):
+            ans_path = root / "answers" / f"{s['slug']}.json"
+            if decided and not ans_path.exists():
+                continue
+            answers = json.loads(ans_path.read_text()) if ans_path.exists() else []
+            res = await _write_one(s, answers, decided, temperature)
+            gold_path = gold_dir / f"{s.get('seed', '')}.final.md"
+            res["score"] = {**score_sheet(s, res["sheet"], gold_path.read_text() if gold_path.exists() else None),
+                            "arm": arm, "drift": res["drift"], "refused": int(res["status"] != "saved")}
+            (out_dir / f"{s['slug']}.json").write_text(json.dumps(res, indent=1))
+            print(arm, s["slug"], json.dumps(res["score"]))
+
+
 FIELDS = {"decide": ["values_found", "values_total", "values_extra", "every_kept", "partial_carded", "concept_cells",
-                     "concept_correct", "disagreements_found", "disagreements_total", "polarity_correct", "polarity_total",
-                     "cards", "dropped_quotes"]}
+                     "concept_correct", "disagreements_found", "disagreements_total", "polarity_correct",
+                     "polarity_total", "cards", "dropped_quotes"],
+          "write": ["usable", "refused", "drift", "required_values_listed", "required_values_total",
+                    "extra_values_listed", "patient_fixed_present", "comparison_rule", "context_rules",
+                    "duplicate_normals", "multi_structure_normals", "gold_normals_hit", "gold_normals_total",
+                    "concept_duplicates"]}
 
 
 def report(root: Path, stage: str) -> str:
+    """Tables per run; totals by kind (writer: by arm and kind). Synthetic and real are reported apart."""
     lines = [f"# Rules-step lab: {stage}", ""]
     for run_dir in sorted((root / "runs" / stage).glob("run*")):
-        rows = [json.loads(p.read_text())["score"] for p in sorted(run_dir.glob("*.json"))]
+        rows = [json.loads(p.read_text())["score"] for p in sorted(run_dir.rglob("*.json"))]
+        for r in rows:
+            if r.get("arm"):
+                r["kind"] = f"{r['arm']}:{r['kind'].split(':')[-1]}"
         lines += [f"## {run_dir.name}", "", "| slug | kind | " + " | ".join(FIELDS[stage]) + " |",
                   "|---|---|" + "---|" * len(FIELDS[stage])]
-        lines += [f"| {r['slug']} | {r['kind']} | " + " | ".join(str(r.get(f)) for f in FIELDS[stage]) + " |"
+        lines += [f"| {r['slug']} | {r['kind']} | " + " | ".join(str(r.get(f, "")) for f in FIELDS[stage]) + " |"
                   for r in rows]
-        lines += ["", "Totals by kind (synthetic and real reported apart):", ""]
+        lines += ["", "Totals by kind:", ""]
         for kind, agg in summarise(rows, FIELDS[stage]).items():
             lines.append(f"- {kind}: " + ", ".join(f"{k} {v}" for k, v in agg.items()))
         lines.append("")
@@ -129,15 +213,19 @@ def report(root: Path, stage: str) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["decide", "report"])
+    ap.add_argument("stage", choices=["decide", "write", "report"])
     ap.add_argument("--root", type=Path, required=True)
     ap.add_argument("--run", type=int, default=1)
     ap.add_argument("--only", default="")
+    ap.add_argument("--arms", default="A,B,C")
+    ap.add_argument("--gold-dir", type=Path, default=Path.home() / "Code/rr-template-conversion-private/final")
     ap.add_argument("--stage", dest="report_stage", default="decide")
     a = ap.parse_args()
     only = [x for x in a.only.split(",") if x] or None
     if a.stage == "decide":
         asyncio.run(decide(a.root, a.run, only))
+    elif a.stage == "write":
+        asyncio.run(write(a.root, a.run, [x for x in a.arms.split(",") if x], only, a.gold_dir))
     else:
         print(report(a.root, a.report_stage))
 

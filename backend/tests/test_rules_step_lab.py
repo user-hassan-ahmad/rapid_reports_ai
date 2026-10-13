@@ -43,3 +43,49 @@ def test_score_decide_reads_values_inside_a_more_group():
              "cards": [_card("value:ecv")]}
     s = L.score_decide(SET, {"cards": [], "more": [group], "kept": [], "states": {}})
     assert s["values_found"] == 1
+
+
+def test_score_sheet_counts_values_patient_lines_and_gold_normals():
+    from rapid_reports_ai import template_decisions as td
+    from rapid_reports_ai import template_ledger_apply as tla
+    from tests.template_sheet_fixtures import LEDGER_SHEET
+    led, _ = td.set_decision([], "value", "LVEF", {"need": "every"}, source="creation")
+    led, _ = td.set_decision(led, "value", "Other", {"need": "every"}, source="creation")
+    sheet = tla.apply_ledger(LEDGER_SHEET, led).sheet
+    s = {"slug": "s", "kind": "base", "truth": {
+        "values": [{"name": "LVEF", "aliases": [], "reports": [1], "need": "every"},
+                   {"name": "RVEF", "aliases": [], "reports": [1], "need": "every"}],
+        "patient_specific_fixed": ["No previous imaging available."]}}
+    out = L.score_sheet(s, sheet, gold=LEDGER_SHEET)
+    assert out["usable"] == 1 and out["required_values_listed"] == 1 and out["required_values_total"] == 2
+    assert out["extra_values_listed"] == 1 and out["patient_fixed_present"] == 1
+    assert out["gold_normals_hit"] == 1 and out["gold_normals_total"] == 1 and out["duplicate_normals"] == 0
+    assert out["comparison_rule"] == 0 and out["context_rules"] == 0 and out["multi_structure_normals"] == 0
+    assert L.score_sheet(s, "# free")["usable"] == 0
+
+
+def test_writer_arms_use_the_next_prompts_and_the_decisions_only_when_decided(monkeypatch):
+    import asyncio
+    from rapid_reports_ai import template_sheet_lab_prompts as P
+    from rapid_reports_ai import template_sheet_model, template_sheet_save
+    from rapid_reports_ai.template_sheet_save import VetOutcome
+    from tests.template_sheet_fixtures import LEDGER_SHEET
+    seen = []
+
+    async def call(system, user, settings):
+        seen.append((system, user, settings["temperature"]))
+        return f"{P.SHEET_OPEN}\n{LEDGER_SHEET}\n{P.SHEET_CLOSE}\n" + '{"summary": {}}'
+
+    async def vet(sheet, origin, previous="", ledger=None):
+        return VetOutcome("saved", sheet, ledger=list(ledger or []), ledger_drift=len(ledger or []))
+    monkeypatch.setattr(template_sheet_model, "model_call", call)
+    monkeypatch.setattr(template_sheet_save, "vet_sheet", vet)
+    s = {"slug": "s", "examples": ["r1"], "scan_type": "<scan>"}
+    answers = [{"kind": "value", "key": "Value A", "choice": {"need": "every"}}]
+    a = asyncio.run(L._write_one(s, answers, *L.ARMS["A"]))
+    c = asyncio.run(L._write_one(s, answers, *L.ARMS["C"]))
+    (sys_a, user_a, t_a), (sys_c, user_c, t_c) = seen
+    assert sys_a == P.analyser_system_prompt(False) and P.DECIDED_HEADING not in user_a and t_a == 0.8
+    assert sys_c == P.analyser_system_prompt(True) and P.DECIDED_HEADING in user_c and t_c == 0.4
+    assert '"questions"' not in user_a + user_c
+    assert a["status"] == "saved" and a["drift"] == 0 and c["drift"] == 1 and c["sheet"] == LEDGER_SHEET.strip()
