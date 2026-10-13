@@ -304,3 +304,21 @@ def test_card_for_change_makes_a_habit_card_never_preticked():
         ("ask", "Ask every time", "ask"), ("state", "Always state", "state"), ("removed", "Not needed", "removed")]
     assert c["habit"] == {"condition": "an alpha abnormality is reported", "question": "Extension beyond alpha?",
                           "yes": "The abnormality extends beyond alpha.", "no": "No extension beyond alpha."}
+
+
+def test_pending_habit_cards_ask_about_habit_lines_nobody_confirmed():
+    from tests.template_sheet_fixtures import HABIT_SHEET
+    ask = ('RULE WHEN [findings: a focal liver abnormality is reported] ASK "Extension into the gallbladder?" '
+           'YES "The abnormality extends into the gallbladder." NO "No extension into the gallbladder."')
+    state = 'NEGATIVE "No delta extension." WHEN [findings: a focal delta abnormality is reported]'
+    sheet = (HABIT_SHEET.replace('NEGATIVE "No focal liver lesion."\n', 'NEGATIVE "No focal liver lesion."\n' + ask + "\n")
+             .replace('NORMAL [delta] "Delta is normal."\n', 'NORMAL [delta] "Delta is normal."\n' + state + "\n"))
+    cards = C.pending_habit_cards(sheet, [])
+    assert [(c["kind"], c["key"], c["step"], c["note"], c["selected"]) for c in cards] == [
+        ("habit", "Liver :: a focal liver abnormality is reported", "review", C.PENDING_HABIT_NOTE, None),
+        ("habit", "Lower :: a focal delta abnormality is reported", "review", C.PENDING_HABIT_NOTE, None)]
+    assert [x["id"] for x in cards[0]["choices"]] == ["ask", "state", "removed"]
+    assert [x["id"] for x in cards[1]["choices"]] == ["state", "removed"]   # a required statement has no question
+    led, _ = td.set_decision([], "habit", cards[0]["key"], cards[0]["choices"][0]["choice"], source="first_use_review")
+    assert [c["key"] for c in C.pending_habit_cards(sheet, led)] == [cards[1]["key"]]
+    assert C.pending_habit_cards("# Not a grammar sheet", []) == []

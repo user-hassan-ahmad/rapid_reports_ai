@@ -2,6 +2,7 @@
 import pytest
 
 from rapid_reports_ai import template_decisions as td
+from rapid_reports_ai import template_rules_cards as trc
 from rapid_reports_ai import template_sheet_save as S
 from tests.template_sheet_fixtures import GOOD
 from tests.test_template_sheet_save_routes import _get, _guided, _version_with
@@ -343,3 +344,16 @@ def test_refine_that_breaks_a_decided_wording_keeps_it_and_returns_the_card(clie
 ])
 def test_ledger_lists_are_capped_everywhere(client, auth_headers, url, body):
     assert client.post(url, headers=auth_headers, json=body).status_code == 422
+
+
+def test_decide_asks_about_a_habit_line_nobody_confirmed(client, auth_headers):
+    t = _guided(client, auth_headers)["template"]
+    cfg = t["template_config"]
+    line = 'NEGATIVE "No meniscal extrusion." WHEN [findings: a meniscal tear is reported]'
+    r = _put(client, auth_headers, t, {**cfg, "skill_sheet": cfg["skill_sheet"].rstrip("\n") + "\n" + line + "\n"})
+    assert r["success"], r
+    assert line in _get(client, auth_headers, t["id"])["template_config"]["skill_sheet"]   # kept, not stripped
+    d = client.post("/api/templates/skill-sheet/decide", headers=auth_headers, json={"template_id": t["id"]}).json()
+    (c,) = [c for c in d["cards"] if c["kind"] == "habit"]
+    assert c["key"] == "Knee :: a meniscal tear is reported" and c["note"] == trc.PENDING_HABIT_NOTE
+    assert c["selected"] is None and [x["id"] for x in c["choices"]] == ["state", "removed"]

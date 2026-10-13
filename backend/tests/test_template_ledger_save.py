@@ -213,3 +213,15 @@ async def test_a_restated_line_is_a_short_notice():
     out = await S.vet_sheet(RESTATED, origin="analyser", ledger=COMPARISON)
     assert S.LEDGER_RESTATED in S.ledger_notes(out)
     assert S.ledger_notes(await S.vet_sheet(LEDGER_SHEET, origin="analyser", ledger=COMPARISON)) == []
+
+
+async def test_habit_lines_nobody_confirmed_are_kept_inactive_and_reported():
+    from tests.template_sheet_fixtures import HABIT_SHEET
+    line = 'NEGATIVE "No extension into the gallbladder." WHEN [findings: a focal liver abnormality is reported]'
+    stray = HABIT_SHEET.replace('NEGATIVE "No focal liver lesion."\n', 'NEGATIVE "No focal liver lesion."\n' + line + "\n")
+    for ledger in (None, []):
+        out = await S.vet_sheet(stray, origin="analyser", ledger=ledger)
+        assert out.status == "saved" and line in out.sheet, ledger
+        assert [e["key"] for e in out.habits_pending] == ["Liver :: a focal liver abnormality is reported"], ledger
+    plain = await S.vet_sheet(HABIT_SHEET, origin="analyser")
+    assert plain.sheet == HABIT_SHEET and plain.habits_pending == []

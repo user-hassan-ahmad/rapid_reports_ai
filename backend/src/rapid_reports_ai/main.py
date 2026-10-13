@@ -2892,6 +2892,11 @@ async def skill_sheet_decide_endpoint(
             have_ids = {c["id"] for c in current}
             # ledger entries the sheet could not take at the last save (stored by _vet_config) come back as cards
             current += [c for c in trc.unmatched_cards(cfg.get("ledger_unmatched")) if c["id"] not in have_ids]
+            # habit lines nobody confirmed (the writer or a whole-sheet chat edit): inactive until a card answers them
+            have_ids = {c["id"] for c in current}
+            current += [c for c in trc.pending_habit_cards(cfg.get("skill_sheet") or "",
+                                                           td.clean_ledger(cfg.get("decisions")))
+                        if c["id"] not in have_ids]
             scan_type = scan_type or cfg.get("scan_type") or ""
             name = name or owned.name or ""
             protocol = protocol or owned.description or ""
@@ -2919,7 +2924,8 @@ async def skill_sheet_decide_endpoint(
         out = {"cards": open_[:trc.MAX_CARDS],
                "more": trc.group_more([*open_[trc.MAX_CARDS:],
                                        *(c for c in trc.flat(built["more"]) if c["id"] not in have)]), "kept": kept}
-        record = tdr.evidence(run, out)
+        record = {**tdr.evidence(run, out),
+                  "habits_pending": sum(1 for c in current if c.get("note") == trc.PENDING_HABIT_NOTE)}
         if request.template_id:   # first-use review: stamped once the cards exist, so it never runs twice
             tdr.stamp_review(db, request.template_id, record)
         return {"success": True, "ran": True, **out, "defaults": trc.defaults_of(kept), "notice": "",

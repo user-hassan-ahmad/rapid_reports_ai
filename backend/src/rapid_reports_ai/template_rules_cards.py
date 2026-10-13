@@ -198,6 +198,29 @@ def unmatched_cards(entries) -> List[dict]:
     return out
 
 
+PENDING_HABIT_NOTE = "Your template has this habit, but it is not active until you choose."
+
+
+def pending_habit_cards(sheet: str, ledger: List[dict]) -> List[dict]:
+    """A review card for each habit line the ledger does not hold (written by the writer or a whole-sheet chat edit;
+    Hassan H3): "When <condition>: Ask every time / Always state / Not needed", never pre-ticked. The habit stays
+    inactive until a choice is recorded; "Not needed" removes its line at the next save. A required statement read
+    from the sheet has no question, so it is offered "Always state" or "Not needed" only."""
+    from . import template_ledger_apply as tla
+    from . import template_sheet_grammar as tsg
+    if not tsg.is_grammar_sheet(sheet or ""):
+        return []
+    out = []
+    for e in tla.pending_habits(tsg.parse_sheet(sheet, mode="template").structure, ledger):
+        para, cond = td.split_habit_key(e["key"])
+        c = e["choice"]
+        card = habit_card(para, cond, c["question"], c["yes"], c["no"], [], step="review")
+        if not c["question"]:
+            card["choices"] = [x for x in card["choices"] if x["id"] != "ask"]
+        out.append({**card, "note": PENDING_HABIT_NOTE})
+    return out
+
+
 def defaults_of(cards: List[dict]) -> List[dict]:
     """The pre-ticked choice of each card, as a change [{kind, key, choice}]."""
     out = []
