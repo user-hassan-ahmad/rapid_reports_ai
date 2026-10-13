@@ -54,6 +54,7 @@ _HABIT_TAIL = re.compile(r"^(?P<rest>.+?)\s*,?\s+(?:when(?:ever)?|if)\s+(?P<cond
 _HABIT_MID = re.compile(r"^\s*(?:when(?:ever)?|if)\s+(?P<cond>.+?)\s+(?P<rest>(?:say|mention|comment|state|add|ask|"
                         r"report|describe|note)\b.*)$", re.I)
 STYLE_UNVERIFIED = "I wasn't sure you asked for this, so I left it out: {claim}"
+STYLE_EDIT_MISMATCH = "I left out a wording change that went further than it said: {claim}"
 _LABEL_WORD = re.compile(r"[a-z][a-z0-9]{3,}")
 
 
@@ -248,21 +249,32 @@ async def _style(sheet: str, out: CH.StyleOut, ctx: CH.Ctx, *, scan: str = "", v
     vague = [b for b in edits if not specific_claim(claims[b], blocks[b])] if not verified else []
     asked = [b for b in edits if b not in vague] if not verified else []
 
-    async def no_claims():
+    checked = [b for b in edits if b not in vague]   # the claim against the edit itself (OLD -> NEW), both arms
+
+    async def none():
         return []
-    try:   # the line questions and the block claims together (the claims in one call)
-        scores, claim_scores = await asyncio.gather(
+    try:   # the line questions, the block claims (one call) and the edit checks (one call), together
+        scores, claim_scores, edit_scores = await asyncio.gather(
             J.requires(new),
-            J.verify_claims(scan, ctx.instruction, [claims[b] for b in asked]) if asked else no_claims())
+            J.verify_claims(scan, ctx.instruction, [claims[b] for b in asked]) if asked else none(),
+            J.verify_edits([(blocks[b].text, edits[b], claims[b]) for b in checked]) if checked else none())
     except Exception as e:
         logger.warning("[chat-router] style checks failed: %s", type(e).__name__)
         return sheet, None, [REQUIRES_FAILED], [], {"style": "requires_failed"}
-    claim_of = dict(zip(asked, claim_scores))
-    style_claims = [{"block": b, "claim": claims[b], "score": round(claim_of[b], 3) if b in claim_of else None,
-                     "verified": verified or claim_of.get(b, 0.0) >= J.CLAIM_MIN, **({"vague": True} if b in vague else {})}
-                    for b in edits]
+    claim_of, edit_of = dict(zip(asked, claim_scores)), dict(zip(checked, edit_scores))
+    style_claims = []
+    for b in edits:
+        claim_ok = verified or claim_of.get(b, 0.0) >= J.CLAIM_MIN
+        edit_ok = edit_of.get(b, 0.0) >= J.EDIT_MIN
+        style_claims.append({"block": b, "claim": claims[b],
+                             "score": round(claim_of[b], 3) if b in claim_of else None,
+                             "edit_score": round(edit_of[b], 3) if b in edit_of else None,
+                             "verified": b not in vague and claim_ok and edit_ok,
+                             **({"vague": True} if b in vague else {})})
     refused = [c for c in style_claims if not c["verified"]]
-    claim_lines = [STYLE_UNVERIFIED.format(claim=c["claim"] or "a change of wording") for c in refused]
+    claim_lines = [(STYLE_EDIT_MISMATCH if (c["edit_score"] is not None and c["edit_score"] < J.EDIT_MIN
+                                            and (c["score"] is None or c["score"] >= J.CLAIM_MIN))
+                    else STYLE_UNVERIFIED).format(claim=c["claim"] or "a change of wording") for c in refused]
     edits = {b: t for b, t in edits.items() if b not in {c["block"] for c in refused}}
     flagged = [l for l, s in zip(new, scores) if s >= J.REQUIRES_MIN]
     ev = {"style": "applied", "disguise": [{"line": l[:200], "score": round(s, 3)} for l, s in zip(new, scores)],

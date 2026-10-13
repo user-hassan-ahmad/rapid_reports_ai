@@ -133,7 +133,7 @@ def test_arm_record_scores_a_turn_against_the_truth():
     rec = lab.arm_record(item, t, qwen_calls=2, start="S", touches=None)
     assert rec == {"id": "i1", "set": "synthetic", "fallback": None, "applied_claims": ["W", "D"], "cards": 1,
                    "correct": 1, "unrequested": 1, "missing": 0, "invented": 1, "qwen_calls": 2, "ms": 120,
-                   "unrelated": None}
+                   "unrelated": None, "style_checks": []}
     fb = lab.arm_record(item, None, qwen_calls=0, start="S", touches=None, fallback="no_tag")
     assert fb["fallback"] == "no_tag" and fb["applied_claims"] == [] and fb["missing"] == 1
 
@@ -168,3 +168,13 @@ def test_qwen_calls_are_counted_per_item_task():
         finally:
             eu._run_agent_with_model = orig
     assert asyncio.run(main()) == [3, 3]
+
+
+
+def test_the_edit_check_is_scored_against_hand_labels():
+    rows = {"i1": {"arms": {"arm1": {"style_checks": [{"block": "b4", "edit_score": 0.9}, {"block": "b1", "edit_score": 0.2}]},
+                            "arm2": {"style_checks": [{"block": "b4", "edit_score": 0.7}]}}}}
+    labels = {"i1:arm1:b4": 1, "i1:arm1:b1": 1, "i1:arm2:b4": 0}
+    out = lab.edit_check_prf(rows, labels)
+    assert (out["tp"], out["fp"], out["fn"], out["n"]) == (1, 1, 1, 3)      # honest = edit_score >= 0.5
+    assert lab.edit_check_prf(rows, {})["n"] == 0

@@ -101,3 +101,21 @@ async def test_verify_claims_asks_v1_per_claim_in_one_call():
         "type": "noul", "instructions": 'Does the INSTRUCTION ask for this change: "B is shorter."?'}
     assert await J.verify_claims("CT", "x", [], transport=t) == [] and len(seen) == 1
     assert J.CLAIM_MIN == 0.5
+
+
+
+async def test_verify_edits_asks_one_question_per_block_in_one_call():
+    seen = []
+    t = _transport(lambda body: {k: {"noul": 0.7} for k in body["questions"]}, seen)
+    out = await J.verify_edits([("Keep it brief.", "Be brief.", "In Voice: shorter."),
+                                ("A.\nB.", "A.", "In Impression Construction: B removed.")], transport=t)
+    assert out == [0.7, 0.7] and len(seen) == 1
+    assert "BLOCK 1\nOLD:\nKeep it brief.\nNEW:\nBe brief." in seen[0]["state"]
+    assert "BLOCK 2\nOLD:\nA.\nB.\nNEW:\nA." in seen[0]["state"]
+    assert seen[0]["questions"]["e1"] == {
+        "type": "noul",
+        "instructions": 'For BLOCK 2: Does the change from OLD to NEW consist only of what this claim describes: '
+                        '"In Impression Construction: B removed."?',
+        "criteria": {"true": "every removed, added or reworded line is covered by the claim",
+                     "false": "a line was removed, added or its meaning changed beyond the claim"}}
+    assert await J.verify_edits([], transport=t) == [] and len(seen) == 1

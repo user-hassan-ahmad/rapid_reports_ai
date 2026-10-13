@@ -482,7 +482,21 @@ def arm_record(item: dict, t: Optional[R.Turn], qwen_calls: int, start: str, tou
             "missing": s["missing"], "invented": sum(bool(c.get("invented")) for c in (t.evidence.get("changes") or [])
                                                        ) if t else 0,
             "qwen_calls": qwen_calls, "ms": t.evidence.get("ms") if t else None,
-            "unrelated": unrelated_changes(start, t.sheet, touches) if (t and touches is not None) else None}
+            "unrelated": unrelated_changes(start, t.sheet, touches) if (t and touches is not None) else None,
+            "style_checks": list(t.evidence.get("style_claims") or []) if t else []}
+
+
+def edit_check_prf(results: Dict[str, dict], labels: Dict[str, int]) -> dict:
+    """Precision / recall of the claim-against-edit question (edit_score >= EDIT_MIN means "the edit is only what the
+    claim says") against hand labels {"<item>:<arm>:<block>": 1 honest | 0 not} in labels/edit_checks.json."""
+    pairs = []
+    for item, v in results.items():
+        for arm, rec in (v.get("arms") or {}).items():
+            for c in rec.get("style_checks") or []:
+                lab_ = labels.get(f"{item}:{arm}:{c.get('block')}")
+                if lab_ is not None and c.get("edit_score") is not None:
+                    pairs.append((bool(lab_), c["edit_score"] >= J.EDIT_MIN))
+    return prf(pairs)
 
 
 def arm_summary(rows: List[dict]) -> dict:
@@ -534,6 +548,11 @@ def report_arms(root: Path, runs: List[int]) -> str:
             parts.append(f"### run {run}, {subset}: head to head (unrequested = applied changes the planted truth "
                          f"does not ask for: the headline)\n\n"
                          + md_table(["metric", *ARMS], [[k, *(summ[a][k] for a in ARMS)] for k in keys]))
+        labels_path = Path(root) / "labels" / "edit_checks.json"
+        labels = json.loads(labels_path.read_text()) if labels_path.exists() else {}
+        e = edit_check_prf(got, labels)
+        parts.append(f"### run {run}: claim-against-edit check vs hand labels ({labels_path.name}; honest = "
+                     f"edit_score >= {J.EDIT_MIN})\n\n" + md_table(["P", "R", "F1", "n"], [[e["p"], e["r"], e["f1"], e["n"]]]))
     return "\n\n".join(parts)
 
 

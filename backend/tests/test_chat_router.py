@@ -24,7 +24,8 @@ def tags(**scores):
 
 @pytest.fixture
 def fake(monkeypatch):
-    state = {"tags": tags(), "calls": {}, "requires": {}, "seen": [], "claim_calls": [], "claim_scores": {}}
+    state = {"tags": tags(), "calls": {}, "requires": {}, "seen": [], "claim_calls": [], "claim_scores": {},
+             "edit_calls": [], "edit_scores": {}}
 
     async def tag(instruction, scan_type="", context="", transport=None):
         if isinstance(state["tags"], Exception):
@@ -37,6 +38,10 @@ def fake(monkeypatch):
         if isinstance(r, Exception):
             raise r
         return r if r is not None else CH.OUTPUTS[kind]()
+
+    async def verify_edits(edits, transport=None):
+        state["edit_calls"].append([c for _, _, c in edits])
+        return [state["edit_scores"].get(c, 0.9) for _, _, c in edits]
 
     async def verify_claims(scan_type, instruction, claims, transport=None):
         state["claim_calls"].append(list(claims))
@@ -53,6 +58,7 @@ def fake(monkeypatch):
     monkeypatch.setattr(C, "call_kind", call_kind)
     monkeypatch.setattr(J, "requires", requires)
     monkeypatch.setattr(J, "verify_claims", verify_claims)
+    monkeypatch.setattr(J, "verify_edits", verify_edits)
     return state
 
 
@@ -558,7 +564,8 @@ async def test_a_stray_deletion_with_a_failing_claim_is_refused(fake):
     assert t.applied and 'LIST_MISSING ["Depth"]' in t.sheet and "Keep it brief." in t.sheet
     assert R.STYLE_UNVERIFIED.format(claim='In Impression Construction, the line "Keep it brief." is removed.') in t.reply
     assert not any(r["type"] == "style" for r in t.records) and t.evidence["style_claims"] == [
-        {"block": "b4", "claim": 'In Impression Construction, the line "Keep it brief." is removed.', "score": 0.1, "verified": False}]
+        {"block": "b4", "claim": 'In Impression Construction, the line "Keep it brief." is removed.', "score": 0.1, "edit_score": 0.9,
+         "verified": False}]
 
 
 async def test_all_block_claims_are_verified_in_one_call(fake):
@@ -629,3 +636,35 @@ async def test_parts_the_habit_guard_drops_are_named_in_the_reply(fake):
     assert R.HABIT_DROPPED.format(label=R.KIND_LABEL["value"]) in t.reply
     assert R.HABIT_DROPPED.format(label=R.KIND_LABEL["fixed"]) not in t.reply      # not asked for: not named
     assert t.evidence["habit_dropped"] == ["value", "normal"]
+
+
+
+# ── the claim checked against the edit itself (OLD -> NEW) ──────────────────────────────────────────────────────
+async def test_an_honest_shortening_passes_both_checks(fake):
+    claim = "In Impression Construction: the guidance is shorter."
+    fake["tags"] = tags(style=0.9)
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text="Lead with the key finding.\nKeep it brief.",
+                                                               claim=claim)])
+    t = await R.route_turn(ROUTER_SHEET, [], "make the reports more concise")
+    assert t.applied and "Lead with the key finding." in t.sheet
+    assert fake["edit_calls"] == [[claim]] and t.evidence["style_claims"][0]["edit_score"] == 0.9
+
+
+async def test_a_claim_that_hides_a_dropped_line_fails_the_edit_check(fake):
+    claim = "In Impression Construction: sentences are shorter."
+    fake["tags"] = tags(style=0.9)
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text="Lead with the key finding.", claim=claim)])
+    fake["edit_scores"] = {claim: 0.2}                     # "Keep it brief." was dropped: beyond the claim
+    t = await R.route_turn(ROUTER_SHEET, [], "make the reports more concise")
+    assert not t.applied and "Keep it brief." in t.sheet and R.STYLE_EDIT_MISMATCH.format(claim=claim) in t.reply
+    assert t.evidence["style_claims"][0] == {"block": "b4", "claim": claim, "score": 0.9, "edit_score": 0.2,
+                                             "verified": False}
+
+
+async def test_edit_checks_are_one_call_beside_the_claim_call_and_skip_vague_claims(fake):
+    fake["tags"] = tags(style=0.9)
+    fake["calls"]["style"] = CH.StyleOut(blocks=[
+        CH.StyleBlock(id="b1", text="Sentences are short.", claim="In Voice: shorter."),
+        CH.StyleBlock(id="b4", text="Lead with the key finding.", claim="The wording is changed.")])
+    await R.route_turn(ROUTER_SHEET, [], "make the reports more concise")
+    assert fake["edit_calls"] == [["In Voice: shorter."]] and fake["claim_calls"] == [["In Voice: shorter."]]

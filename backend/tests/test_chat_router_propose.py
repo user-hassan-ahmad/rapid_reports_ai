@@ -28,7 +28,7 @@ def no_unit_checks(monkeypatch):
 def stub(monkeypatch):
     """proposal: what the propose call returns; claim_scores: claim -> P(asked); cover / habit: scores."""
     state = {"proposal": P.Proposal(), "claim_scores": {}, "cover": 0.1, "habit": 0.1, "verify_calls": [],
-             "requires": {}}
+             "requires": {}, "edit_calls": [], "edit_scores": {}}
 
     async def propose(sheet, ledger, instruction, context="", rejection=None):
         if isinstance(state["proposal"], Exception):
@@ -44,6 +44,11 @@ def stub(monkeypatch):
     monkeypatch.setattr(P, "_propose", propose)
     monkeypatch.setattr(P, "verify", verify)
     monkeypatch.setattr(J, "requires", requires)
+
+    async def verify_edits(edits, transport=None):
+        state["edit_calls"].append([c for _, _, c in edits])
+        return [state["edit_scores"].get(c, 0.9) for _, _, c in edits]
+    monkeypatch.setattr(J, "verify_edits", verify_edits)
     return state
 
 
@@ -227,3 +232,12 @@ async def test_arm_2_names_the_parts_the_habit_guard_drops(stub):
     stub["habit"] = 0.9
     t = await P.propose_turn(ROUTER_SHEET, [], "with a collection say no collection, and a shorter impression")
     assert t.applied and R.HABIT_DROPPED.format(label=R.KIND_LABEL["normal"]) in t.reply
+
+
+
+async def test_arm_2_checks_the_claim_against_the_edit(stub):
+    claim = "In Impression Construction: sentences are shorter."
+    stub["proposal"] = P.Proposal(changes=[_change("style", claim, id="b4", text="Lead with the key finding.")])
+    stub["edit_scores"] = {claim: 0.1}
+    t = await P.propose_turn(ROUTER_SHEET, [], "make the impression more concise")
+    assert not t.applied and stub["edit_calls"] == [[claim]] and R.STYLE_EDIT_MISMATCH.format(claim=claim) in t.reply

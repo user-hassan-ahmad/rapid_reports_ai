@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 from .jev_client import JEV_MODEL, jev_post
 
@@ -97,6 +97,30 @@ async def verify_claims(scan_type: str, instruction: str, claims: List[str], tra
     r.raise_for_status()
     answers = r.json().get("answers") or {}
     return [_score(answers, f"c{i}") for i in range(len(claims))]
+
+
+EDIT_MIN = 0.5
+EDIT_CRITERIA = {"true": "every removed, added or reworded line is covered by the claim",
+                 "false": "a line was removed, added or its meaning changed beyond the claim"}
+
+
+def edit_question(n: int, claim: str) -> dict:
+    return {"type": "noul", "instructions": f"For BLOCK {n}: Does the change from OLD to NEW consist only of what "
+                                            f'this claim describes: "{claim}"?', "criteria": dict(EDIT_CRITERIA)}
+
+
+async def verify_edits(edits: List[Tuple[str, str, str]], transport=None) -> List[float]:
+    """Per (old block text, new block text, claim): does the edit consist only of what the claim describes? All blocks
+    in ONE call (the state lists each block's OLD and NEW lines). Raises on failure; no call for no blocks."""
+    if not edits:
+        return []
+    state = "\n\n".join(f"BLOCK {i + 1}\nOLD:\n{old.strip()}\nNEW:\n{new.strip()}" for i, (old, new, _) in enumerate(edits))
+    r = await jev_post({"model": JEV_MODEL, "state": state,
+                        "questions": {f"e{i}": edit_question(i + 1, c) for i, (_, _, c) in enumerate(edits)}},
+                       os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
+    r.raise_for_status()
+    answers = r.json().get("answers") or {}
+    return [_score(answers, f"e{i}") for i in range(len(edits))]
 
 
 async def requires(lines: List[str], transport=None) -> List[float]:
