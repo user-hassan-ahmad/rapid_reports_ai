@@ -425,3 +425,70 @@ async def test_legacy_sheet_keeps_literal_section_names(monkeypatch):
                                                  case=CASE, signature=None)
     await out["options_job"]
     assert seen["findings_section"] == "FINDINGS" and seen["impression_section"] == "IMPRESSION"
+
+
+from rapid_reports_ai import template_context_rules as cr
+from rapid_reports_ai import template_pipeline as tp
+
+RULED = '''## Report Structure
+SECTION COMPARISON | header: "Comparison:" | role: technique
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION CONCLUSION | header: "Conclusion:" | role: impression
+
+## Report-wide
+FIXED "No previous imaging available for comparison." | section: COMPARISON
+RULE WHEN [context: the dictation names a previous imaging study for comparison] REPLACE "No previous imaging available for comparison." WITH "Comparison made with previous {study} dated {date}." | section: COMPARISON
+
+## Paragraph: Liver (FINDINGS)
+COVERS ["liver"]
+'''
+
+
+def _met(score):
+    async def ask(state, conditions):
+        return [score for _ in conditions]
+    return ask
+
+
+async def test_both_paths_give_the_generator_the_resolved_sheet_and_record_it(monkeypatch):
+    for stack in (None, {"conclusion": "Normal.", "declined": []}):
+        calls = {}
+        _gen_fakes(monkeypatch, calls)
+        monkeypatch.setattr(cr, "ask_conditions", _met(0.9))
+        out = await tl.generate_template_report_lean(sheet=RULED, scan_type="CT", findings="Compared with CT 02/12/2025.",
+                                                     history="", case=CASE, signature=None, stack=stack)
+        sent = calls["gen"]["sheet"]
+        assert "RULE WHEN" not in sent and "No previous imaging available" not in sent
+        assert 'FIXED "Comparison made with previous {study} dated {date}."' in sent
+        assert sent.rstrip().endswith('- "Comparison made with previous {study} dated {date}."')
+        assert out["context_rules"]["rules"][0]["outcome"] == "applied" and "rules_s" in out["lat"]
+        if out.get("options_job") is not None:
+            await out["options_job"]
+
+
+async def test_a_slot_left_in_the_generated_report_is_removed_and_counted(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+
+    async def gen(self, template_config, user_inputs, stack=None, **kw):
+        return {"report_content": "Comparison: Comparison made with previous CT dated {date}.\n\nFindings: Normal.",
+                "model_used": "q", "description": "d", "scan_type": "CT"}
+    monkeypatch.setattr(tl.TemplateManager, "_generate_report_skill_sheet_guided", gen)
+    monkeypatch.setattr(cr, "ask_conditions", _met(0.9))
+    out = await tl.generate_template_report_lean(sheet=RULED, scan_type="CT", findings="Previous CT.", history="",
+                                                 case=None, signature=None, stack={"conclusion": "", "declined": []})
+    assert "{date}" not in out["report_content"] and "{date}" not in out["report_generated"]
+    assert out["context_rules"]["slot_leaks"] == 1
+
+
+async def test_the_stack_brief_of_the_resolved_sheet_has_the_decision_not_the_rule():
+    from rapid_reports_ai.template_stack import stack_brief
+    res = await cr.resolve_context_rules(RULED, "", "Compared with CT 02/12/2025.", ask=_met(0.9), stack=True)
+    brief = stack_brief(res.sheet + "\n\n" + cr.decided_block(res.decided), "", ())
+    assert "RULE WHEN [context: the dictation names" not in brief
+    assert "## Decided for This Case" in brief
+
+
+def test_candidate_record_carries_context_rules():
+    rec = tp.candidate_record({"report_content": "x", "context_rules": {"asked": 1}}, 10)
+    assert rec["context_rules"] == {"asked": 1}

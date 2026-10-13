@@ -27,6 +27,7 @@ from .report_reconcile import write_options
 from .report_review import CONTRA_FLAG, Q_CONTRA, ReportSection, run_quality_check
 from .template_number_check import undictated_numbers
 from .template_brief import _scores
+from .template_context_rules import decided_block, resolve_context_rules, sheet_headers, strip_slot_sentences
 from .template_manager import TemplateManager
 from .template_sheet_structure import _key
 
@@ -412,7 +413,9 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
     `case` is the stored Phase 1 case_result (template_pipeline.phase1_record), None, or an async callable
     returning it: then Phase 1 is resolved inside the options job (no prepare: Phase 1 runs on and is stored).
     With `stack` there is no options job at all (`options_job` None, `options_pending` False) and `case` is
-    never touched: the scratchpad checklist already decided what Phase 1 would offer."""
+    never touched: the scratchpad checklist already decided what Phase 1 would offer.
+    Context rules are resolved before the generator (template_context_rules) and any {slot} left in the report
+    is removed."""
     rec: dict = {"lat": {}}
     t_start = time.time()
     style = "\n".join(x for x in (_block(sheet, "Impression Construction Rules") or _block(sheet, "Impression Construction"),
@@ -434,10 +437,18 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
 
     async def gen():
         t0 = time.time()
+        # Context rules settled by Jev and applied by code (spec 2026-10-13-context-rules-resolved-design): the
+        # generator reads one decided line where the sheet had a default plus a rule. Fail-soft: stored sheet.
+        resolved = await resolve_context_rules(sheet, history, findings, stack=stack is not None)
+        rec["context_rules"] = resolved.record
+        block = decided_block(resolved.decided)
+        gen_sheet = resolved.sheet + ("\n\n" + block if block else "")
+        rec["lat"]["rules_s"] = round(time.time() - t0, 1)
+        t1 = time.time()
         out = await TemplateManager()._generate_report_skill_sheet_guided(
-            template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": sheet, "scan_type": scan_type},
+            template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": gen_sheet, "scan_type": scan_type},
             user_inputs={"FINDINGS": findings, "CLINICAL_HISTORY": history}, stack=stack)
-        rec["lat"]["generator_s"] = round(time.time() - t0, 1)
+        rec["lat"]["generator_s"] = round(time.time() - t1, 1)
         return out
 
     job: dict = {"phase1_used": False, "lat": {}}   # the options job's own record (never the report's)
@@ -465,7 +476,11 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         if opts_t is not None:
             opts_t.cancel()
         raise
-    report = out["report_content"]
+    # No {slot} ever reaches a report: a sentence still holding one is removed (and counted)
+    report, leaks = strip_slot_sentences(out["report_content"], sheet_headers(sheet))
+    rec["context_rules"]["slot_leaks"] = leaks
+    if leaks:
+        logger.warning("[template.context_rules] slot_leaks=%d removed from the generated report", leaks)
     rec["report_generated"] = report
 
     # Sections come from the generated report; options are placed in its findings / impression sections

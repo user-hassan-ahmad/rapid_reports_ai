@@ -81,7 +81,7 @@ def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = ()) -> st
         "or their values (side, contrast, sequence, dates). Where they give different values, adapt the line's "
         "values; where the line asserts something they contradict, leave it out. A FIXED line that is a RULE's replacement (WITH) text is written only when that "
         "RULE applies. A FIXED line with {slots} is written only when the input gives every slot's value; otherwise "
-        "it is left out.\n"
+        "it is left out, except a line listed under Decided for This Case, which is written as that block says.\n"
         "- **Examples are wording only:** quoted Opening, Order, Abnormal pattern and Measurement lines are examples "
         "of the radiologist's wording. Copy their phrasing for what the input states; never their content: no finding, "
         "descriptor, value, grade, code, time window or interpretation from an example appears unless the input "

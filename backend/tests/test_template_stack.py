@@ -183,3 +183,9 @@ def test_labelled_openings_reach_the_brief_as_written():
     sheet = '## Paragraph: Left ventricle (FINDINGS)\nCOVERS ["left ventricle"]\n' + "\n".join(lines)
     b = stack_brief(sheet, "", [])
     assert all(l in b.splitlines() for l in lines)
+
+
+def test_fixed_line_rule_names_the_decided_block_exception():
+    from rapid_reports_ai.template_context_rules import DECIDED_HEADING
+    from rapid_reports_ai.template_stack import stack_brief
+    assert DECIDED_HEADING.lstrip("# ") in stack_brief("", "", ())
