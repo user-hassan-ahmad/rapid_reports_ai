@@ -65,12 +65,20 @@ def confirmed_assumed(assumed: dict, abnormal: list[str], untouched: list[str], 
 
 
 def region_text(units) -> dict[str, str]:
-    """regionText: each findings region's own grouped sentences (or split parts), joined; Technique, General,
-    Conclusion and unplaced units give nothing. A normal is covered only by its own region's text (Task A3b)."""
+    """regionText: each findings region's own grouped sentences (or split parts), joined, then every non-heading,
+    non-abnormal sentence that names the region in its covers (a collective normal, review round 1), once each;
+    Technique, General, Conclusion and unplaced units give nothing of their own. A normal is covered only by its
+    own region's text (Task A3b)."""
     out: dict[str, list[str]] = {}
     for _, t, g, _ in _items(units):
         if g not in _FIXED:
             out.setdefault(g, []).append(t)
+    for u in units:
+        if getattr(u, "heading", False) or getattr(u, "abnormal", False):
+            continue
+        for g in getattr(u, "covers", None) or []:
+            if g not in _FIXED and u.text not in out.get(g, []):
+                out.setdefault(g, []).append(u.text)
     return {g: " ".join(ts) for g, ts in out.items()}
 
 

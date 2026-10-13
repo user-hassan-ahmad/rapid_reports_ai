@@ -20,7 +20,22 @@ describe('regionText', () => {
 			}),
 			u(7, 'No hydronephrosis.', 'Kidneys')
 		];
-		expect(regionText(units)).toEqual({ Liver: 'Liver cyst. Fatty liver', Kidneys: 'normal kidneys. No hydronephrosis.' });
+		// "Normal study." names Liver in its covers: it is said of Liver, so it may cover Liver's normals (round 1)
+		expect(regionText(units)).toEqual({ Liver: 'Liver cyst. Fatty liver Normal study.', Kidneys: 'normal kidneys. No hydronephrosis.' });
+	});
+
+	it('a collective normal reaches every region it covers, once (round 1: no duplicate of a dictated normal)', () => {
+		const units = [
+			u(0, 'Solid organs unremarkable.', 'General', { covers: ['Spleen', 'Pancreas'] }),
+			u(1, 'Liver, spleen and pancreas normal.', 'Liver', { covers: ['Liver', 'Spleen', 'Pancreas'] }),
+			u(2, 'A splenic cyst.', 'Spleen', { abnormal: true, covers: ['Kidneys'] }), // abnormal: covers nothing
+			u(3, 'Kidneys:', 'Kidneys', { heading: true, covers: ['Kidneys'] })
+		];
+		expect(regionText(units)).toEqual({
+			Liver: 'Liver, spleen and pancreas normal.',
+			Spleen: 'A splenic cyst. Solid organs unremarkable. Liver, spleen and pancreas normal.',
+			Pancreas: 'Solid organs unremarkable. Liver, spleen and pancreas normal.'
+		});
 	});
 
 	it('a bare normal grouped General covers no region', () => {

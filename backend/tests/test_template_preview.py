@@ -250,3 +250,56 @@ async def test_preview_with_empty_findings_hides_a_suppressed_sentence(monkeypat
     assert "The ventricles are normal in size." in out["findings_block"]
     assert {"sentence": "No other interval changes compared with the previous MRI.", "reason": "rule"} in \
         sum(out["dropped"].values(), [])
+
+
+def test_region_text_adds_a_collective_normal_to_every_region_it_covers():
+    # review round 1: a region dictated normal by a collective sentence has that sentence as its text
+    units = [U("Solid organs unremarkable.", "General", covers=["Spleen", "Pancreas"]),
+             U("Liver, spleen and pancreas normal.", "Liver", covers=["Liver", "Spleen", "Pancreas"]),
+             U("A splenic cyst.", "Spleen", abnormal=True, covers=["Kidneys"]),
+             U("Kidneys:", "Kidneys", heading=True, covers=["Kidneys"])]
+    assert region_text(units) == {
+        "Liver": "Liver, spleen and pancreas normal.",
+        "Spleen": "A splenic cyst. Solid organs unremarkable. Liver, spleen and pancreas normal.",
+        "Pancreas": "Solid organs unremarkable. Liver, spleen and pancreas normal."}
+
+
+_SOLID = """## Report Structure
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION CONCLUSION | header: "Conclusion:" | role: impression
+
+## Paragraph: Liver (FINDINGS)
+COVERS ["liver"]
+NORMAL [liver] "The liver is normal."
+
+## Paragraph: Spleen (FINDINGS)
+COVERS ["spleen"]
+NORMAL [spleen] "The spleen is normal in size."
+"""
+
+
+async def test_preview_a_collective_dictated_normal_covers_its_regions_sheet_sentence(monkeypatch):
+    # through the Jev path: a text-sensitive fake covers the spleen sentence only when the spleen's text says so
+    from rapid_reports_ai.hybrid_stack import jev_stack as J, normals, service
+    from rapid_reports_ai import template_manager
+    said = "Solid organs unremarkable."
+
+    async def fake_group(scan_type, text, regions, previous):
+        spleen = next(r.name for r in regions if "pleen" in r.name)
+        return NS(units=[U("Gallstones.", regions[0].name, abnormal=True), U(said, "General", covers=[spleen])])
+
+    async def rows(dictation, sentences, removed, *, stated=True, contra=True):
+        return [J.RowCheck(0.95 if stated and said in dictation and "spleen" in s.lower() else 0.0, 0.0, 0.0)
+                for s in sentences]
+
+    class FakeTM:
+        async def generate_report_from_config(self, cfg, inputs, sig, stack=None):
+            return {"report_content": "REPORT", "model_used": "m"}
+
+    monkeypatch.setattr(service, "group_update", fake_group)
+    monkeypatch.setattr(normals, "ask_rows", rows)
+    monkeypatch.setattr(template_manager, "TemplateManager", FakeTM)
+    out = await template_preview.preview_report(_SOLID, "CT", "Pain.", f"Gallstones. {said}")
+    assert out["usable"] and out["assumed_error"] is None
+    assert "The spleen is normal in size." not in out["findings_block"]
+    assert {"sentence": "The spleen is normal in size.", "reason": "covered"} in sum(out["dropped"].values(), [])
