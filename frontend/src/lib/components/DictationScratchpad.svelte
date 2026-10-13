@@ -41,7 +41,7 @@
 	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
 	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
-	import { abnormalAll, addedAtConfirm, assumedFrom, assumedStale, confirmReady, flaggedFrom, keepRules, moreLine, openCount, rowSentences, splitReply, rulesToSend, type AssumedSnap, type SessionRules } from '$lib/hybrid-stack/items';
+	import { abnormalAll, addedAtConfirm, assumedFrom, assumedStale, confirmReady, confirmRecheckFailed, flaggedFrom, gateKeyOf, keepRules, moreLine, openCount, rowSentences, splitReply, rulesToSend, type AssumedSnap, type SessionRules } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { backstopRun, checkKey, toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
 	import { asTailUnits, assumedKey, blockedSegments, pickBody, pickKey, placedRegions, shownNormals, visiblePills, withoutSegments, type ProtocolPick } from '$lib/hybrid-stack/protocol';
@@ -396,9 +396,9 @@
 			if (checksBehind && !reviewBehind && !isRecording && run !== 'none') void runChecks(verbatimNow, run === 'semantic');
 		}, 1500);
 	}
-	$: gateKey = [verbatimNow, JSON.stringify(checks.map((c) => c.key)), JSON.stringify(checkAnswers), findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
+	$: gateKey = gateKeyOf(scanType, [verbatimNow, JSON.stringify(checks.map((c) => c.key)), JSON.stringify(checkAnswers), findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
 		regionView.remainder.join('|'), String(rowsOpen), Object.keys(tappedRows).join('|'), Object.keys(skippedRows).join('|'), removedSentences.join('|'),
-		JSON.stringify(shownAssumed)].join('\u0003');
+		JSON.stringify(shownAssumed)]);
 	$: if (confirmNote && !confirming) {
 		void gateKey;
 		if (confirmNoteKey === null) confirmNoteKey = gateKey;
@@ -2031,6 +2031,7 @@
 			confirming = true;
 			confirmNote = confirmNoteKey = null;
 			const before = { assumed: shownAssumed, flagged: flaggedNow };
+			const live = assumedSnap;
 			try {
 				await refreshAssumed(true);
 				await tick(); // the tray, counts and gate key follow the Confirm answer before the gate is recorded
@@ -2040,6 +2041,12 @@
 			if (!confirmReady(assumedSnap, verbatimNow)) {
 				confirmNote = 'The dictation changed while the rules were checked: confirm again.';
 				confirmNoteKey = null; // pinned to the state it is shown for, below
+				return false;
+			}
+			if (confirmRecheckFailed(live, assumedSnap)) {
+				assumedSnap = live; // the tray the radiologist saw, not the failure's empty one; the next press re-asks
+				confirmNote = 'Rules could not be re-checked: confirm again.';
+				confirmNoteKey = null;
 				return false;
 			}
 			// Never gate a sentence the radiologist has not seen (round 1): anything the Confirm answer adds is shown

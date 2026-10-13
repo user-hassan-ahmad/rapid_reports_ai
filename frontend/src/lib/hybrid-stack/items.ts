@@ -145,6 +145,17 @@ export function confirmReady(snap: AssumedSnap | null, dictation: string): boole
 	return !!snap?.confirmed && snap.dictation === dictation;
 }
 
+/** The Confirm re-ask failed where the live answer it replaced had not (re-review minor): Confirm must not gate the
+ *  emptied tray a failure leaves; the live answer is kept and the radiologist confirms again. */
+export function confirmRecheckFailed(live: AssumedSnap | null, after: AssumedSnap | null): boolean {
+	return !!after?.confirmed && !!after.check_failed && !live?.check_failed;
+}
+
+/** The key a recorded gate is valid for: the scan type first, so a gate never survives a scan-type change. */
+export function gateKeyOf(scanType: string, parts: string[]): string {
+	return [scanType, ...parts].join('\u0003');
+}
+
 /** Rows over the writer's caps (E1b): shown behind one quiet "N more checks" line instead of vanishing. `rows`: the
  *  capped rows to show there (not already among the open rows, not skipped); `waiting`: N, the ones still asked;
  *  `show`: the line is shown while any is asked or a tapped answer sits behind it. */

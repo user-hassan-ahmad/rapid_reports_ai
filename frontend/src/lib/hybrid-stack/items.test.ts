@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abnormalAll, anchorRegion, answerLabel, assumedFrom, assumedStale, addedAtConfirm, confirmReady, flaggedFrom, isFlagged, keepRules, moreLine, openCount, quietLine, rowSentences, rulesToSend, splitReply, unansweredChecks } from './items';
+import { abnormalAll, anchorRegion, answerLabel, assumedFrom, assumedStale, addedAtConfirm, confirmReady, confirmRecheckFailed, flaggedFrom, gateKeyOf, isFlagged, keepRules, moreLine, openCount, quietLine, rowSentences, rulesToSend, splitReply, unansweredChecks } from './items';
 import type { StackItem, StackUnit } from './types';
 
 const item = (id: string, sentences: string[], extra: Partial<StackItem> = {}): StackItem => ({
@@ -152,6 +152,25 @@ describe('Confirm gates only on a Confirm answer for this dictation (round 1)', 
 		expect(confirmReady(snap, 'A liver cyst.')).toBe(false);
 		expect(confirmReady({ ...snap, confirmed: true }, 'A liver cyst. Gallstones.')).toBe(false);
 		expect(confirmReady({ ...snap, confirmed: true }, 'A liver cyst.')).toBe(true);
+	});
+});
+
+describe('Confirm re-ask failure and the gate key (re-review minors)', () => {
+	const live = { offered: {}, dictation: 'A liver cyst.', abnormal: ['Liver'], untouched: [], assumed: { Liver: ['No biliary dilatation.'] } };
+	it('a Confirm re-ask that failed where the live answer had not stops Confirm', () => {
+		const failed = { ...live, assumed: {}, check_failed: true, confirmed: true };
+		expect(confirmRecheckFailed(live, failed)).toBe(true);
+		expect(confirmRecheckFailed(live, { ...live, confirmed: true })).toBe(false);
+		// the live answer had failed too: the failure fails open, as before
+		expect(confirmRecheckFailed({ ...live, assumed: {}, check_failed: true }, failed)).toBe(false);
+		// a failed live refresh is not a Confirm answer
+		expect(confirmRecheckFailed(live, { ...failed, confirmed: false })).toBe(false);
+	});
+	it('the gate key changes with the scan type, so a recorded gate never survives a scan-type change', () => {
+		const parts = ['A liver cyst.', '[]', '{}'];
+		expect(gateKeyOf('CT abdomen', parts)).toBe(gateKeyOf('CT abdomen', [...parts]));
+		expect(gateKeyOf('CT abdomen', parts)).not.toBe(gateKeyOf('MRI abdomen', parts));
+		expect(gateKeyOf('', ['a', 'b'])).not.toBe(gateKeyOf('a', ['b']));
 	});
 });
 
