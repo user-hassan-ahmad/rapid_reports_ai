@@ -187,6 +187,17 @@ describe('session: matching', () => {
 		expect(api.calls.match).toHaveLength(2);
 	});
 
+	it('a context change bypasses the failed-match backoff', async () => {
+		await matchA();
+		s.round([unit(1, A), unit(2, B)], false, `${A} ${B}`);
+		api.calls.match[2].reject(new CopilotError('network'));
+		await flush();
+		s.setContext({ scanType: 'CT chest', history: 'new history' });
+		await vi.advanceTimersByTimeAsync(CONTEXT_DEBOUNCE_MS);
+		expect(api.calls.match).toHaveLength(4);
+		expect(api.calls.match[3].body.clinical_history).toBe('new history');
+	});
+
 	it('a context typed back to its old value cancels the pending reset', async () => {
 		await matchA();
 		s.setContext({ scanType: 'CT chest', history: 'coughs' });

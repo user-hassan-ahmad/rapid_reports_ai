@@ -320,6 +320,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	function applyContext(next: CopilotContext) {
 		if (!live()) return;
 		ctx = { ...next };
+		backoffUntil = 0; // a new context is a new chance, even after a failed /match
 		abortAll();
 		sent = new Set();
 		sentCtx = null;

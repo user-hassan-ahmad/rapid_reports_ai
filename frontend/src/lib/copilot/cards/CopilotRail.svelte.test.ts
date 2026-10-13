@@ -37,4 +37,10 @@ describe('CopilotRail', () => {
 		await expect.element(page.getByRole('dialog', { name: 'Copilot' })).toBeInTheDocument();
 		await expect.element(page.getByText('Fleischner 2017')).toBeInTheDocument();
 	});
+
+	it('the strip label is singular for one card', async () => {
+		const p = props('narrow');
+		render(CopilotRail, { ...p, groups: [{ ...p.groups[0], cards: [p.groups[0].cards[0]] }] });
+		await expect.element(page.getByRole('button', { name: 'Copilot: 1 guideline', exact: true })).toBeInTheDocument();
+	});
 });

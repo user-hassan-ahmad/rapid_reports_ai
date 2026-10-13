@@ -39,7 +39,8 @@
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
 	import CopilotRail from '$lib/copilot/cards/CopilotRail.svelte';
-	import { createCopilotSession, type CopilotSession, type CopilotState } from '$lib/copilot/session';
+	import type { CopilotSession, CopilotState } from '$lib/copilot/session';
+	import { mountCopilot } from '$lib/copilot/mount';
 	import { readable, type Readable } from 'svelte/store';
 	import { postAssumed, postChanged, postDictationCheck, postClose, postConclusionCheck, postDebug, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit, similar } from '$lib/hybrid-stack/stackState';
@@ -321,11 +322,10 @@
 	$: if (copilotActive && !copilot) startCopilot();
 	else if (!copilotActive && copilot) stopCopilot();
 	$: copilot?.setContext({ scanType, history: clinicalHistory });
-	function startCopilot(): void {
-		copilot = createCopilotSession();
+	/** `units`: what the new session starts from; resetStack passes none (a clear must not re-match the old text). */
+	function startCopilot(units: StackUnit[] = stackUnits): void {
+		copilot = mountCopilot({ scanType, history: clinicalHistory }, units, isRecording, findingsText(units, stackGroups));
 		copilotState = copilot.state;
-		copilot.setContext({ scanType, history: clinicalHistory });
-		if (stackUnits.length) copilot.round(stackUnits, isRecording, findingsText(stackUnits, stackGroups));
 	}
 	function stopCopilot(): void {
 		copilot?.destroy();
@@ -2021,11 +2021,11 @@
 	/** A cleared scratchpad ends the stack session: log it, then start a new one. */
 	function resetStack(): void {
 		void sendStackLog();
-		if (copilot) {
-			stopCopilot(); // a cleared scratchpad starts a fresh Copilot session too
-			if (copilotActive) startCopilot();
-		}
 		stackUnits = [];
+		if (copilot) {
+			stopCopilot(); // a cleared scratchpad starts a fresh, empty Copilot session (after the log above read it)
+			if (copilotActive) startCopilot([]);
+		}
 		onStackPills([]);
 		stackSessionId = crypto.randomUUID();
 		stackManualMoves = 0;

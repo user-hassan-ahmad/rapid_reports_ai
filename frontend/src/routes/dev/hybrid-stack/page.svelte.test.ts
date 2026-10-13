@@ -55,7 +55,7 @@ describe('/dev/hybrid-stack Copilot', () => {
 		expect(cp.match.mock.calls[1][0].findings).toEqual([{ id: 'u1', text: NODULE }]);
 		expect(cp.match.mock.calls[1][0].scan_type).toBe('CT abdomen and pelvis with contrast');
 		// the test viewport is under 1100 px, so the rail is the strip; it opens the overlay
-		const strip = page.getByRole('button', { name: 'Copilot: 1 guidelines' });
+		const strip = page.getByRole('button', { name: 'Copilot: 1 guideline', exact: true });
 		await expect.element(strip).toBeInTheDocument();
 		await strip.click();
 		await expect.element(page.getByRole('dialog', { name: 'Copilot' }).getByText('Fleischner 2017')).toBeInTheDocument();

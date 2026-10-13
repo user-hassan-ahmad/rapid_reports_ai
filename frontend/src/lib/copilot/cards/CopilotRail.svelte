@@ -30,4 +30,4 @@
 	</div>
 {/snippet}
 
-<RailFrame {theme} {layout} ariaLabel="Copilot" testid="copilot-rail" stripLabel="guidelines" stripCount={count} {head} {body} />
+<RailFrame {theme} {layout} ariaLabel="Copilot" testid="copilot-rail" stripLabel={count === 1 ? 'guideline' : 'guidelines'} stripCount={count} {head} {body} />
