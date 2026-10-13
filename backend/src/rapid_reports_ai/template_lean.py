@@ -448,13 +448,22 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         # (a confirmed "state" habit is not written there in this release: findings-triggered rows plan, decision 14)
         stripped, rec["habit_lines_stripped"] = without_habits(resolved.sheet)
         base, gen_stack = stripped, stack
-        if stack is not None and stack.get("values_na") is not None:
-            # The value cluster (requirements spec 2026-10-12 part 1): code takes the LIST_MISSING lines out and writes
-            # the N/A line itself after the check. Only a clean apply tells the generator; otherwise today's sheet.
-            text, rec["required_values"] = apply_required_values(stripped, stack["values_na"])
-            ok = values_applied(rec["required_values"])
+        cluster = stack is not None and stack.get("values_na") is not None
+        # The value cluster (requirements spec 2026-10-12 part 1): code takes the LIST_MISSING lines out and writes
+        # the N/A line itself after the check. Without a cluster this session (the creator's Test, a session without
+        # it, the straight path) code owns the list too: nothing was marked N/A and Jev checks every item against the
+        # report (the backstop), since the generator does not write the line reliably. Only a clean apply tells the
+        # generator; otherwise today's sheet.
+        text, vrec = apply_required_values(stripped, stack["values_na"] if cluster else [])
+        if cluster or vrec.get("lists"):
+            ok = values_applied(vrec)
+            vrec["source"] = "cluster" if cluster else "code"
+            if not cluster:
+                vrec["check"] = list(dict.fromkeys(x for e in vrec["lists"] for x in e["items"]))
+            rec["required_values"] = vrec
             base = text if ok else stripped
-            gen_stack = {**stack, "values_decided": ok}
+            if stack is not None:
+                gen_stack = {**stack, "values_decided": ok}
         block = decided_block(resolved.decided, resolved.kept)
         gen_sheet = base + ("\n\n" + block if block else "")
         rec["lat"]["rules_s"] = round(time.time() - t0, 1)
@@ -528,8 +537,8 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
     # The value cluster's backstop, beside the check: a filled value the report does not state is listed and flagged
     vrec = rec.get("required_values")
     values_on = vrec is not None and values_applied(vrec)
-    bs_t = (asyncio.ensure_future(backstop(report, vrec["lists"], (stack or {}).get("values_filled") or []))
-            if values_on else None)
+    filled = vrec.get("check") if values_on and "check" in vrec else (stack or {}).get("values_filled") or []
+    bs_t = asyncio.ensure_future(backstop(report, vrec["lists"], filled)) if values_on else None
     try:
         final, checked_opts, quality = await checked()
     except BaseException:

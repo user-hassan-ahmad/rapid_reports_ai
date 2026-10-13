@@ -688,16 +688,39 @@ async def test_values_not_applied_leave_the_sheet_and_the_generator_as_today(mon
     assert out["required_values"]["skipped"] == "parse" and "Values not provided" not in out["report_content"]
 
 
-async def test_a_stack_session_without_values_leaves_the_list_as_today(monkeypatch):
+async def test_without_a_value_cluster_code_owns_the_list_and_checks_every_item(monkeypatch):
+    """No value cluster this session (the creator's Test, a scratchpad without it, the straight path): the generator
+    never sees the LIST_MISSING line; Jev checks every item against the report and code writes the line."""
+    from rapid_reports_ai import template_required_values as trv
     for stack in ({"conclusion": "", "declined": []}, None):
-        calls = {}
+        calls, seen = {}, {}
         _gen_fakes(monkeypatch, calls)
+        _values_gen(monkeypatch, calls, "Findings:\nNormal aortic root.\nLVEF 45%.\n\nConclusion:\nNormal.")
+
+        async def ask(report, items):
+            seen["items"] = items
+            return [0.9, 0.1]
+        monkeypatch.setattr(trv, "ask_report_values", ask)
         out = await tl.generate_template_report_lean(sheet=VALUES, scan_type="CMR", findings="LVEF 45%.", history="",
                                                      case=CASE, signature=None, stack=stack)
-        assert 'LIST_MISSING ["LVEF" | "RVEF"] AT TOP' in calls["gen"]["sheet"]
-        assert "values_decided" not in (calls["gen"]["stack"] or {}) and "required_values" not in out
+        assert "LIST_MISSING" not in calls["gen"]["sheet"]
+        if stack is not None:
+            assert calls["gen"]["stack"]["values_decided"] is True
+        assert seen["items"] == ["LVEF", "RVEF"]
+        assert "Findings:\nValues not provided: RVEF.\nNormal aortic root." in out["report_content"]
+        assert out["required_values"]["source"] == "code" and out["required_values"]["backstop"]["missing"] == ["RVEF"]
         if out.get("options_job") is not None:
             await out["options_job"]
+
+
+async def test_without_a_list_and_without_a_cluster_nothing_changes(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    plain = VALUES.replace('## Report-wide\nRULE WHEN [findings: any listed value is not stated] LIST_MISSING '
+                           '["LVEF" | "RVEF"] AT TOP\n', "")
+    out = await tl.generate_template_report_lean(sheet=plain, scan_type="CMR", findings="LV normal.", history="",
+                                                 case=None, signature=None, stack={"conclusion": "", "declined": []})
+    assert "values_decided" not in calls["gen"]["stack"] and "required_values" not in out
 
 
 def test_candidate_record_carries_required_values():

@@ -139,7 +139,6 @@ async def preview_report(sheet: str, scan_type: str, history: str, dictation: st
     from .hybrid_stack.routes import MAX_NORMALS_PER_REGION
     from .hybrid_stack.template import (template_normal_labels, template_region_normals, template_regions,
                                         template_suppressions)
-    from . import template_manager
     declined = list(declined or [])
     st = parse_sheet(sheet, mode="template").structure
     if not st.usable:
@@ -154,10 +153,12 @@ async def preview_report(sheet: str, scan_type: str, history: str, dictation: st
     kept = confirmed_assumed(a.assumed, abnormal, untouched, declined)
     conclusion = conclusion.strip() or conclusion_text(g.units)
     block = findings_block(g.units, regions, kept, conclusion, declined)
-    cfg = {"generation_mode": "skill_sheet_guided", "skill_sheet": sheet, "scan_type": scan_type}
-    gen = await template_manager.TemplateManager().generate_report_from_config(
-        cfg, {"FINDINGS": block, "CLINICAL_HISTORY": history}, None,
-        stack={"conclusion": conclusion, "declined": declined})
+    # the scratchpad's own Generate path (context rules, required values, slot strip, check), never the bare
+    # generator: a preview that skips them shows a report the template would not produce
+    from . import template_lean
+    gen = await template_lean.generate_template_report_lean(
+        sheet=sheet, scan_type=scan_type, findings=block, history=history, case=None, signature=None,
+        declined=declined, stack={"conclusion": conclusion, "declined": declined})
     from . import template_number_check
     flags = template_number_check.undictated_numbers(gen["report_content"], [block, history, conclusion], sheet)
     return {"usable": True, "regions": [r.name for r in regions], "assumed": kept, "dropped": a.dropped,

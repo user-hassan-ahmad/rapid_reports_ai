@@ -28,10 +28,11 @@ _INTERPRETIVE = re.compile(r"(?i)interpretive phrasing\s*:")
 _DROP_SECTION = re.compile(r"(?i)^(?:case deliberation|open questions)\b")
 _DROP_SUBSECTION = re.compile(r"(?i)^inclusion logic\b")
 _HEADING = re.compile(r"^(#{1,3})\s+(.*)$")
-# The value cluster settled the template's required values in the scratchpad: code removed LIST_MISSING from this
-# sheet and writes the "Values not provided" line itself (template_required_values), so the generator writes none.
+# Code owns the template's required values (the value cluster's answers, or with no cluster a Jev check of every item):
+# it removed LIST_MISSING from this sheet and writes the "Values not provided" line itself (template_required_values),
+# so the generator writes none.
 MISSING_VALUES_RULE = (
-    "\n- **Missing values:** the radiologist settled this template's required values in the scratchpad, and code "
+    "\n- **Missing values:** this template's required values are handled outside the report, and code "
     "adds the \"Values not provided\" line itself: write no list of missing or unprovided values, and no "
     "placeholder for one.")
 
