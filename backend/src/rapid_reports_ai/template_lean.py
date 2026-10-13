@@ -440,7 +440,8 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         t0 = time.time()
         # Context rules settled by Jev and applied by code (spec 2026-10-13-context-rules-resolved-design): the
         # generator reads one decided line where the sheet had a default plus a rule. Fail-soft: stored sheet.
-        resolved = await resolve_context_rules(sheet, history, findings, stack=stack is not None)
+        resolved = await resolve_context_rules(sheet, history, findings, stack=stack is not None,
+                                                scan_type=scan_type)
         rec["context_rules"] = resolved.record
         base, gen_stack = resolved.sheet, stack
         if stack is not None and stack.get("values_na") is not None:
@@ -450,7 +451,7 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
             ok = values_applied(rec["required_values"])
             base = text if ok else resolved.sheet
             gen_stack = {**stack, "values_decided": ok}
-        block = decided_block(resolved.decided)
+        block = decided_block(resolved.decided, resolved.kept)
         gen_sheet = base + ("\n\n" + block if block else "")
         rec["lat"]["rules_s"] = round(time.time() - t0, 1)
         t1 = time.time()

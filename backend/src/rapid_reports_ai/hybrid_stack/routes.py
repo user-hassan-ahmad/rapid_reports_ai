@@ -258,15 +258,18 @@ async def stack_assumed(req: AssumedRequest, user: User = Depends(get_current_us
     owned = list(dict.fromkeys(o for o in req.owned if o.strip()))[:100]   # the client sends current rows first
     suppressions: list[tuple[str, str]] = []
     labels: dict[str, str] = {}
+    scan_type = ""
     if req.template_id:
         t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
         st = template_structure(t.template_config) if t is not None else None
         if st is not None:
             suppressions, labels = template_suppressions(st), template_normal_labels(st)
+        if t is not None and isinstance(t.template_config, dict):
+            scan_type = str(t.template_config.get("scan_type") or "")[:300]
     return await assumed_normals(req.dictation, normals, req.abnormal, req.dictated_normal, req.removed[:50],
                                  owned, req.touched[:40], suppressions=suppressions,
                                  clinical_history=req.clinical_history[:2000], labels=labels,
-                                 region_text=None if req.region_text is None else
+                                 scan_type=scan_type, region_text=None if req.region_text is None else
                                  {r: t[:MAX_REGION_TEXT] for r, t in list(req.region_text.items())[:40]})
 
 

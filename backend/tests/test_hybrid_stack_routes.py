@@ -284,6 +284,12 @@ def test_assumed_applies_the_templates_context_rules_and_labels(authed, monkeypa
     assert seen["suppressions"] == [("no previous study is available",
                                      "No other interval changes compared with the previous MRI.")]
     assert seen["labels"] == {"Unremarkable.": "ventricles"} and seen["clinical_history"] == "Headache."
+    assert seen["scan_type"] == ""   # this template stores no scan type
+    t.template_config = {**t.template_config, "scan_type": "MRI brain with contrast"}
+    db_session.commit()
+    authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"Brain": ["Unremarkable."]},
+                                                   "template_id": str(t.id)})
+    assert seen["scan_type"] == "MRI brain with contrast"
     authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"Brain": ["Unremarkable."]}})
     assert seen["suppressions"] == [] and seen["labels"] == {}
 
