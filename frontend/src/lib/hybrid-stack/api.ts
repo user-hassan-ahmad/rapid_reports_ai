@@ -1,5 +1,6 @@
 import { API_URL } from '$lib/config.js';
 import type { IntegrityFlag } from './checks';
+import type { ProtocolSearch } from './protocol';
 import type { AssumedResult, DraftResult, GateRecord, GroupResult, ItemsResult, Region, SlimSheet, StackItem, StackSchema, StackUnit } from './types';
 
 async function post<T>(token: string | null, path: string, body: unknown, keepalive = false): Promise<T> {
@@ -10,8 +11,16 @@ async function post<T>(token: string | null, path: string, body: unknown, keepal
 	return (await res.json()) as T;
 }
 
-export const fetchSchema = (token: string | null, body: { scan_type: string; clinical_history: string; template_id?: string | null }) =>
+type PickFields = { protocol_id?: string; phases?: string[]; laterality?: string | null };
+
+export const fetchSchema = (token: string | null, body: { scan_type: string; clinical_history: string; template_id?: string | null } & PickFields) =>
 	post<StackSchema>(token, 'schema', body);
+
+export const searchProtocols = (token: string | null, body: { q: string; rerank: boolean }) =>
+	post<ProtocolSearch>(token, 'protocols/search', body);
+
+export const postNotListed = (token: string | null, body: { q: string }) =>
+	post<{ ok: boolean }>(token, 'protocols/not-listed', body);
 
 export const postGroup = (token: string | null, body: { scan_type: string; text: string; regions: Region[]; previous: StackUnit[] }) =>
 	post<GroupResult>(token, 'group', body);
@@ -63,7 +72,7 @@ export async function postDictationCheck(token: string | null, body: { findings:
 /** Unfinished sentences, judged by Jev: the scratchpad's only check for them (flags shaped as the dictation check's). */
 export const postUnfinished = (token: string | null, body: { text: string }) => post<{ flags: IntegrityFlag[] }>(token, 'unfinished', body);
 
-export const postSlimSheet = (token: string | null, body: { scan_type: string; clinical_history: string; template_id?: string | null }) =>
+export const postSlimSheet = (token: string | null, body: { scan_type: string; clinical_history: string; template_id?: string | null } & PickFields) =>
 	post<SlimSheet>(token, 'slim-sheet', body);
 
 export const postDraft = (token: string | null, body: { scan_type: string; clinical_history: string; findings: string }) =>

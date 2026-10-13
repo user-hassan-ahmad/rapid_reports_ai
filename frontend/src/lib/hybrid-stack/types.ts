@@ -21,6 +21,8 @@ export interface StackSchema {
 	family: string | null;
 	key: string;
 	provisional: boolean;
+	quiet?: string[];
+	protocol?: { id: string; display_name: string; scan_type_line: string; phases: string[]; laterality: string | null } | null;
 }
 export interface GroupResult {
 	units: StackUnit[];
@@ -56,7 +58,7 @@ export interface StackItem {
 	answered: boolean; // the dictation answered every sentence: the row folds
 }
 export interface ItemsResult { items: StackItem[]; capped: StackItem[]; contradicted: string[]; cached: boolean; ms: number; error: string | null }
-export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean }
+export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean; level_groups?: Record<string, string[]> }
 /** Region -> normals the assumed-normal check dropped, with why. */
 export type Dropped = Record<string, { sentence: string; reason: string }[]>;
 export interface AssumedResult {
