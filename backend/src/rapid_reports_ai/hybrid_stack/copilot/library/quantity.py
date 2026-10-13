@@ -3,8 +3,8 @@ trusted: it must agree with the one reading, or choose between several. `settle`
 measurement it sits in before reading it, so a sub-span of a bound, range or dimension set is never read alone. One conversion table; a spoken unit that is neither
 the input's unit nor converts to it by that table gives no reading, so the input is asked. A range ("6-8 mm") or a
 fraction ("3/12") or a bound ("under 5 mm") gives no reading either: which value is meant is a judgement, so it is
-asked. A lesion number also needs its finding to hold no other number (`alone`, an allow list), so a sibling, a prior
-or a count of lesions asks the size."""
+asked. A lesion number whose finding holds another number (`alone`, an allow list: a sibling, a prior, a count of
+lesions) is still drafted, but pre-filled rather than read (spec §7.5, WHY_OTHER_NUMBER)."""
 from __future__ import annotations
 
 import re
@@ -256,7 +256,8 @@ def alone(text: str, quote: str, value: float, unit: str, dims: str | None = Non
     return _NUMBER.search(rest) is None
 
 
-# a finding that names more than one lesion without a number for it (fix round 5): the backstop to Jev's one-lesion check
+# a finding that names more than one lesion: a reason a lesion value is pre-filled, never read (spec §7.5, WHY_SEVERAL;
+# Task 4 review M1), beside Jev's one-lesion claim
 _MANY_WORDS = ("further|other|others|another|additional|second|scattered|numerous|few|couple|several|multiple|bilateral"
                "|bilaterally|lesions")
 
@@ -277,8 +278,8 @@ _CLAUSE = re.compile(r"[^.;,:\n]+(?:[.,](?=\d)[^.;,:\n]*)*")      # split at . ;
 def many(text: str, nouns: list[str]) -> bool:
     """The text has a multiplicity word, or the plural of one of the lesion nouns ("pulmonary nodule" -> nodules).
     An unqualified negation ending its clause ("No other pulmonary nodules.", "no further nodules or masses are seen"),
-    with at most an organ word before the noun, is left out; any other word there keeps it; one with a qualifier (new, enlarging, changed, apart from, …) is not. Jev's one-lesion check still
-    guards every finding."""
+    with at most an organ word before the noun, is left out; any other word there keeps it; one with a qualifier (new, enlarging, changed, apart from, …) is not. A True makes every lesion
+    value of the card pre-filled (WHY_SEVERAL), never dropped; Jev's one-lesion claim does the same."""
     plurals = "|".join(["lesions", *(re.escape(_plural(n)) for n in nouns if n.strip())])
     words = "|".join([_MANY_WORDS, plurals])
     organs = "|".join([*_ORGANS, *(re.escape(w.lower()) for n in nouns for w in n.split()[:-1])])

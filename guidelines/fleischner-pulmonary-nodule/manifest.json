@@ -11,6 +11,18 @@
       "file": "sources/3088119d5acb01602818a00e21ca6085e5d3647e737281414d1bfa8b2a31087f.pdf",
       "text_file": "sources/3088119d5acb01602818a00e21ca6085e5d3647e737281414d1bfa8b2a31087f.txt",
       "retrieved": "2026-10-12"
+    },
+    {
+      "id": "S2",
+      "role": "primary",
+      "title": "Fleischner Society: Glossary of Terms for Thoracic Imaging (Hansell DM, et al. Radiology 2008;246(3):697-722)",
+      "issuer": "Fleischner Society",
+      "edition": "2008",
+      "url": "https://doi.org/10.1148/radiol.2462070712",
+      "sha256": "a0029823c690cb59aa1a66ef922a14bdfa9515f4dac14ce0fcfe7e86b7c9e57a",
+      "file": "sources/a0029823c690cb59aa1a66ef922a14bdfa9515f4dac14ce0fcfe7e86b7c9e57a.pdf",
+      "text_file": "sources/a0029823c690cb59aa1a66ef922a14bdfa9515f4dac14ce0fcfe7e86b7c9e57a.txt",
+      "retrieved": "2026-10-13"
     }
   ]
 }

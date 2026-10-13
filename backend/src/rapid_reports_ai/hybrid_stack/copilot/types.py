@@ -154,6 +154,7 @@ class Calculation(BaseModel):
     possible: list[str] = Field(default_factory=list)
     needed: list[str] = Field(default_factory=list)
     values: list[DraftValue] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)   # inputs sent back at the draft's assumed in-scope value
     trace: dict[str, Any] | None = None
     pack: str = ""                     # pack_id@version
     bundle: str = ""                   # the bundle version
@@ -166,6 +167,10 @@ class Preview(BaseModel):
     assumptions: list[str] = Field(default_factory=list)   # library packs: eligibility inputs assumed in scope (their
                                                            # draft values have state "assumed"), in pack order
     assumed_eligible: bool = False   # library packs: the draft rests on assumptions; the card shows a warning
+    scope_doubt: list[str] = Field(default_factory=list)   # library packs: pre-filled values (any role: eligibility,
+    # or clinical such as a diameter over 3 cm) that would exclude; never an exclusion until confirmed (only a read,
+    # answered or stated value excludes). The card shows them prominently (check_first); the draft is computed
+    # without them (an eligibility one assumed in scope)
     missing: list[str] = Field(default_factory=list)
     waiting: list[str] = Field(default_factory=list)   # library packs: inputs behind a prerequisite still unknown
     proposal: Proposal | None = None      # never set for library packs: Apply writes only a Calculation's result

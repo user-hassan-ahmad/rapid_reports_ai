@@ -347,8 +347,9 @@ def _off_modality(card: Card):
 
 async def _settlement(e, req: OpenRequest, opened: bool, start: bool = True) -> Settlement:
     """The card's settlement: the cached task (started by /match) or, when `start`, a new one. Bounded; any error or a
-    timeout gives a failed settlement. Without `start` (Calculate) a cold cache gives an empty settlement: no model
-    or Jev call is ever made, and the sent values are only labelled answered."""
+    timeout gives a failed settlement. Without `start` (Calculate) a cold cache, or a settle still running, gives an
+    empty settlement: no model or Jev call is ever made, nothing is waited on, and the sent values are only labelled
+    answered."""
     findings, history = req.findings[:M.DICTATION_MAX], req.clinical_history[:2000]
     finding = req.finding or req.card.finding     # the unit sent with the request, else the one /match gave the card
     k = PC.key(e.key, finding, findings, history)
@@ -359,7 +360,7 @@ async def _settlement(e, req: OpenRequest, opened: bool, start: bool = True) -> 
                             fallback=lambda: Settlement(failed=True))
         else:
             task = PC.peek(k)
-            if task is None:
+            if task is None or not task.done():    # labels only: never wait on an in-flight settle (review M1)
                 return Settlement()
         return await asyncio.wait_for(asyncio.shield(task), PREVIEW_TIMEOUT_S)
     except Exception as ex:   # TimeoutError included

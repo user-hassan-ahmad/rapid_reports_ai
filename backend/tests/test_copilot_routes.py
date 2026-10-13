@@ -213,7 +213,7 @@ def test_open_preview_failure_still_returns_the_entry(authed, monkeypatch):
     monkeypatch.setattr(CR, "preview", prev)
     d = authed.post("/api/canvas/stack/guidelines/open", json={
         "card": {"key": "k@1", "name": "K", "version": "1", "finding_id": "u1", "branch": "B"}, "findings": "x"}).json()
-    assert d["entry"]["key"] == "k@1" and d["preview"] == {"settled": [], "draft": [], "draft_outcome": None, "assumptions": [], "assumed_eligible": False, "missing": [], "waiting": [], "proposal": None, "possible": [], "bounded": True, "asks": [], "trace": None, "degraded": False,
+    assert d["entry"]["key"] == "k@1" and d["preview"] == {"settled": [], "draft": [], "draft_outcome": None, "assumptions": [], "assumed_eligible": False, "scope_doubt": [], "missing": [], "waiting": [], "proposal": None, "possible": [], "bounded": True, "asks": [], "trace": None, "degraded": False,
                                                               "state": "applies", "exclusion": None}
 
 
@@ -985,3 +985,20 @@ def test_calculate_refuses_a_needs_modality_card_and_a_non_pack(authed, toy_lib,
     assert d["calculation"] is None and d["error"] == "not a pack"
     bad = authed.post(url, json={"card": PACK_CARD, "values": {f"i{n}": "x" for n in range(41)}})
     assert bad.status_code == 422
+
+
+async def test_calculate_never_waits_on_a_settle_still_running(user, toy_lib, monkeypatch):
+    from rapid_reports_ai.hybrid_stack.copilot.library import preview_cache as PC
+    gate = asyncio.Event()
+
+    async def slow():
+        await gate.wait()
+        return PP.Settlement()
+    finding = "7 mm solid nodule."
+    PC.start(PC.key("toy-nodule@1.0", finding, finding, ""), slow, prewarm=True)
+    req = CR.CalculateRequest(card=CR.CardIn(**PACK_CARD), finding=finding, findings=finding,
+                              values={"kind": "solid", "size": "7 mm", "risk": "low"})
+    c = (await asyncio.wait_for(CR.copilot_calculate(req, user=user), 1.0)).calculation
+    assert c.outcome == "ct12" and {v.input: v.state for v in c.values}["kind"] == "answered"
+    gate.set()
+    await asyncio.gather(*list(PC._RUNNING))

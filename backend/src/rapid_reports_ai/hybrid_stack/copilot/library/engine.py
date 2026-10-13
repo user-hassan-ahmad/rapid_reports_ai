@@ -401,16 +401,23 @@ def _over(entry: Entry, given: dict[str, InputValue], env: dict[str, V], names: 
     return sorted(out)
 
 
+def _excluded_whatever(entry: Entry, given: dict[str, InputValue], elig: list[InputDef]) -> bool:
+    """Every value of the unknown eligibility inputs leads to a does_not_apply case that holds, so the card is excluded
+    whatever they are (BTS: a 38 mm opacity is outside the nodule definition at any age). Nothing need be asked."""
+    return _non_excluding(entry, given, elig, excluded=True)
+
+
 def _non_excluding(entry: Entry, given: dict[str, InputValue],
-                   elig: list[InputDef]) -> tuple[dict[str, InputValue], dict[str, V]]:
+                   elig: list[InputDef], excluded: bool = False):
     """For each unknown eligibility input, its one value that cannot lead to does_not_apply, worked out from the entry:
     the candidate values (a choice or yes/no, or a number's band ids on the band steps that read it) for which every
     rules case reaching does_not_apply is false. An input with no such single value stays unknown. Returns (input
     values, band-step overrides): a number is held out through its band, never given a made-up value, so a formula it
-    also feeds stays unknown."""
+    also feeds stays unknown. With `excluded`, returns instead whether every candidate value excludes
+    (_excluded_whatever)."""
     dna = [c.when for s in entry.logic if isinstance(s, RulesStep) for c in s.cases if c.result == DOES_NOT_APPLY]
     if not dna:
-        return {}, {}
+        return False if excluded else ({}, {})
     slots: list[tuple[str, str, list]] = []          # (kind, id, candidates)
     for i in elig:
         if i.type in ("enum", "boolean"):
@@ -419,8 +426,9 @@ def _non_excluding(entry: Entry, given: dict[str, InputValue],
             for b in (s for s in entry.logic if isinstance(s, BandStep) and s.ref == i.id):
                 slots.append(("step", b.id, [V(value=x.id) for x in b.bands]))
     if not slots or math.prod(len(c) for _, _, c in slots) > MAX_COMBOS:
-        return {}, {}
+        return False if excluded else ({}, {})
     ok: list[tuple] = []
+    every_excluded = True
     for combo in product(*(c for _, _, c in slots)):
         g = {**given, **{n: v for (k, n, _), v in zip(slots, combo) if k == "in"}}
         o = {n: v for (k, n, _), v in zip(slots, combo) if k == "step"}
@@ -428,9 +436,16 @@ def _non_excluding(entry: Entry, given: dict[str, InputValue],
         try:
             run(entry, env, o)
         except EvaluationError:
+            every_excluded = False
             continue
-        if all(truth(w, env) is False for w in dna):
+        out = env[entry.result]               # the entry's own result, so rule order and intermediate steps count
+        every_excluded = every_excluded and out.state == "present" and out.value == DOES_NOT_APPLY
+        # a does_not_apply case that also reads a clinical input still unknown (BTS: an opacity over 3 cm is a mass)
+        # cannot be ruled out here: the eligibility value is in scope when no exclusion holds for it
+        if all(truth(w, env) is not True for w in dna):
             ok.append(combo)
+    if excluded:
+        return every_excluded
     fill, over = {}, {}
     for n, (k, name, _) in enumerate(slots):
         vals = {(v.state, v.value, getattr(v, "band", None)) for v in (c[n] for c in ok)}
@@ -457,7 +472,10 @@ def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V], fixe
     # enumerated prerequisite allows it, so only the prerequisite is asked
     held = {k for k, v in given.items() if v.state != "unknown"}
     unknown = [i for i in entry.inputs if env[i.id].state == "unknown" and i.id not in held]
-    elig = [i for i in unknown if i.role == "eligibility"]
+    # an eligibility number assumed through its band (pinned in `fixed`) is not held out again: it is assumed
+    elig = [i for i in unknown if i.role == "eligibility" and not _pinned(entry, i.id, fixed)]
+    if hold_out and elig and _excluded_whatever(entry, given, elig):
+        return [DOES_NOT_APPLY], True, [], {}
     if hold_out and elig:
         # the clinical asks are worked out as for an eligible patient; the unknown eligibility inputs are asked first,
         # and does_not_apply stays possible (no outcome, so no proposal) until each is settled
@@ -512,11 +530,17 @@ def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V], fixe
 def _assume(entry: Entry, given: dict[str, InputValue]) -> tuple[dict[str, InputValue], dict[str, V],
                                                                   dict[str, InputValue]]:
     """(input values, band-step overrides, input -> the value assumed) for every unknown eligibility input that has
-    one in-scope value (_non_excluding); one without stays unknown and is enumerated like any other input."""
+    one in-scope value (_non_excluding) the radiologist could answer back: a choice, yes/no, or a number's band when
+    band steps alone read it. A number that also feeds a formula (BTS age, in Brock) has no answerable band, so it is
+    never assumed: it stays unknown and is asked like any other input (review I1)."""
     elig = [i for i in entry.inputs if i.role == "eligibility" and i.id not in given]
     if not elig:
         return {}, {}, {}
     fill, over = _non_excluding(entry, given, elig)
+
+    def answerable(input_id: str) -> bool:
+        return all(isinstance(s, BandStep) for s in entry.logic if input_id in s.refs())
+    over = {k: v for k, v in over.items() if answerable(entry.step(k).ref)}
     assumed = dict(fill)
     for s in entry.logic:
         if isinstance(s, BandStep) and s.id in over:
@@ -548,7 +572,9 @@ def evaluate(entry: Entry, given: dict[str, Any], assume_eligible: bool = False)
         return Trace(outcome=out.value, possible=[out.value], inputs=inputs, steps=steps, assumed=assumed)
     if out.state != "unknown":
         raise EvaluationError(f"result step {entry.result} ended {out.state}")
-    possible, bounded, needed, decides = _partial(entry, given, env, fixed, hold_out=not assume_eligible)
+    # an eligibility input left unassumed (no answerable in-scope value) is held out as without assume_eligible: asked
+    # first, the clinical asks worked out for an eligible patient
+    possible, bounded, needed, decides = _partial(entry, given, env, fixed)
     if bounded and len(possible) == 1:      # the unknown inputs cannot change the outcome: it is settled
         return Trace(outcome=possible[0], possible=possible, bounded=True, needed=[], inputs=inputs, steps=steps,
                      assumed=assumed)

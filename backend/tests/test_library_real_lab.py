@@ -463,3 +463,65 @@ def test_spot_rows_and_run_use_the_cards_presets(monkeypatch, tmp_path):
     out = json.loads(asyncio.run(RL.run(p, tmp_path)).read_text())
     assert out[0]["missing"] == ["prior_programme_scan"] and out[0]["presets"] == dict(e.exam_presets)
     assert set(out[0]["drafts"]) == {"diameter_cm"}
+
+
+@pytest.mark.parametrize("pack,inp,value,truth,same", [
+    ("ese-adrenal-incidentaloma", "size_cm", 0.9, "under 1 cm", True),           # quote "9 mm"
+    ("ese-adrenal-incidentaloma", "size_cm", 1.4, "1 cm to under 4 cm", True),
+    ("ese-adrenal-incidentaloma", "size_cm", 4.0, "1 cm to under 4 cm", False),  # the edge: a genuine mismatch
+    ("ese-adrenal-incidentaloma", "age", 67.0, "40 years or more", True),
+    ("fleischner-pulmonary-nodule", "age", 67.0, "35 years or over", True),
+    ("fleischner-pulmonary-nodule", "age", 30.0, "35 years or over", False),
+    ("fleischner-pulmonary-nodule", "diameter_mm", 14.0, ">8 mm", True),         # an older band label: a bound
+    ("fleischner-pulmonary-nodule", "diameter_mm", 5.0, "<6 mm", True),
+    ("fleischner-pulmonary-nodule", "diameter_mm", 7.0, "<6 mm", False),
+    ("rcog-ovarian-mass-postmenopausal", "size_cm", 2.8, "3 cm or less", True),
+    ("rcog-ovarian-mass-premenopausal", "size_mm", 28.0, "under 50 mm", True),
+    ("fleischner-pulmonary-nodule", "diameter_mm", 9.0, "9 mm", True),           # both numbers
+    ("fleischner-pulmonary-nodule", "diameter_mm", 9.0, "0.9 cm", True),         # unit-normalised
+    ("fleischner-pulmonary-nodule", "diameter_mm", 9.0, "8 mm", False)])
+def test_a_read_number_is_compared_with_a_band_or_bound_truth_as_the_engine_bands_it(pack, inp, value, truth, same):
+    import json
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+    e = LB.Library(json.loads(LB.BUNDLE.read_text())).lookup(pack)
+    assert RL._same(e, inp, InputValue(value=value), truth) is same
+
+
+def test_a_band_or_bound_label_for_a_number_is_kept_as_a_value_and_a_read_inside_it_is_ok():
+    import json
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+    e = LB.Library(json.loads(LB.BUNDLE.read_text())).lookup("fleischner-pulmonary-nodule")
+    raw = {"inputs": [{"input": "diameter_mm", "stated": True, "value": ">8 mm", "quote": "14mm", "locator": "S1 p3",
+                       "assumed": None, "boundary": False, "note": ""},
+                      {"input": "age", "stated": True, "value": "35 years or over", "quote": "67-year-old",
+                       "locator": "S1 p2", "assumed": None, "boundary": False, "note": ""}],
+           "lesions": [], "category": None}
+    lab = RL.parse_label(e, raw, "claude-opus-5-5 subagent")
+    assert lab["inputs"]["diameter_mm"]["value"] == ">8 mm" and lab["inputs"]["diameter_mm"]["boundary"] is False
+    s = Settlement(values={"diameter_mm": Drafted(InputValue(value=14.0), "14mm", "read"),
+                           "age": Drafted(InputValue(value=67.0), "67-year-old", "read")})
+    v = RL.verdicts(e, s, lab)
+    assert v["diameter_mm"] == "ok" and v["age"] == "ok"
+    s = Settlement(values={"diameter_mm": Drafted(InputValue(value=7.0), "7mm", "read")})
+    assert RL.verdicts(e, s, lab)["diameter_mm"] == "wrong"                     # a genuine mismatch stays wrong
+
+
+def test_a_scope_doubt_the_truth_agrees_with_excludes_at_the_calculate_tap():
+    """A pre-filled excluding eligibility value never excludes the draft; the radiologist confirms it at Calculate, so
+    taps' outcome is Calculate's over the shown values."""
+    import json
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+    e = LB.Library(json.loads(LB.BUNDLE.read_text())).lookup("rcog-ovarian-mass-premenopausal")
+    s = Settlement(values={"pregnant_or_acute": Drafted(InputValue(value=True), "Pelvic pain", "prefilled", ["x"])})
+    lab = _label(**{i.id: (None, None) for i in e.inputs})
+    lab["inputs"]["pregnant_or_acute"].update(stated=True, value="Yes")
+    assert RL.taps(e, s, lab, {})[1] == "does_not_apply"
+
+
+def test_a_number_right_only_by_its_band_is_tagged_apart():
+    import json
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+    e = LB.Library(json.loads(LB.BUNDLE.read_text())).lookup("fleischner-pulmonary-nodule")
+    assert RL._agrees_by_band(e, "diameter_mm", InputValue(value=14.0), ">8 mm")
+    assert not RL._agrees_by_band(e, "diameter_mm", InputValue(value=9.0), "9 mm")          # equal: verified
+    assert not RL._agrees_by_band(e, "diameter_mm", InputValue(value=7.0), "<6 mm")         # wrong: not ok at all

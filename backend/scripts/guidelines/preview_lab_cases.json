@@ -1085,7 +1085,15 @@
     "proven_malignant"
    ],
    "expect_missing": [
-    "prior_study"
+    "prior_study",
+    "nodule_type",
+    "diameter_mm",
+    "sex",
+    "family_history",
+    "emphysema",
+    "upper_lobe",
+    "nodule_count",
+    "spiculation"
    ],
    "expect_outcome": null,
    "expect_state": "applies",

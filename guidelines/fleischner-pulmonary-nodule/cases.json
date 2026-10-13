@@ -519,6 +519,89 @@
         "age": 34
       },
       "outcome": "does_not_apply"
+    },
+    {
+      "name": "30 mm edge: still a nodule (glossary: up to 3 cm)",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "risk": "low",
+        "exclusion": false,
+        "age": 60,
+        "diameter_mm": 30
+      },
+      "outcome": "solid_single_gt8",
+      "steps": {
+        "size_band": "gt8"
+      }
+    },
+    {
+      "name": "30.5 mm: over 3 cm, a mass, not a nodule",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "risk": "low",
+        "exclusion": false,
+        "age": 60,
+        "diameter_mm": 30.5
+      },
+      "outcome": "does_not_apply",
+      "steps": {
+        "size_band": "gt30"
+      }
+    },
+    {
+      "name": "38 mm solid opacity: a mass, outside the guideline",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "risk": "low",
+        "exclusion": false,
+        "age": 60,
+        "diameter_mm": 38
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "38 mm part-solid opacity: a mass, outside the guideline",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "part-solid",
+        "count": "single",
+        "exclusion": false,
+        "age": 60,
+        "diameter_mm": 38
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "over 30 mm answered as the band: a mass",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "risk": "low",
+        "exclusion": false,
+        "age": 60,
+        "diameter_mm": {
+          "band": "gt30"
+        }
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "38 mm solid opacity, eligibility not stated: excluded whatever the eligibility (nothing asked)",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 38
+      },
+      "outcome": "does_not_apply",
+      "needed": []
     }
   ]
 }

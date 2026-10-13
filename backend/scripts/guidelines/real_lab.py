@@ -29,6 +29,7 @@ import importlib.util
 import json
 import os
 import random
+import re
 import statistics
 import sys
 import time
@@ -44,8 +45,10 @@ load_dotenv("/Users/hassan/Code/rapid_reports_ai/backend/.env")
 from rapid_reports_ai.hybrid_stack.copilot import matcher as M  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot import tnm  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB  # noqa: E402
+from rapid_reports_ai.hybrid_stack.copilot.library import quantity as Q  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library.pack_preview import (  # noqa: E402
-    EXAM_CARD, Drafted, _answer, _show, display_options, exam_presets, finish, preset_values, settle_pack, Settlement)
+    EXAM_CARD, Drafted, _answer, _show, calculate, display_options, exam_presets, finish, preset_values, settle_pack,
+    Settlement)
 from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry, InputValue  # noqa: E402
 
 MAX_FILL = 10
@@ -354,14 +357,16 @@ def write_brief(lib, cards: list[dict], cards_path: Path, labels_path: Path) -> 
 
 def parse_label(e: Entry, raw: dict, served_by: str) -> dict:
     """The label keyed by input; every pack input present (an unlabelled one: not stated, boundary); a value the
-    pack cannot take becomes a boundary item with no value."""
+    pack cannot take becomes a boundary item with no value. A number labelled as a band or bound ("under 1 cm",
+    ">8 mm") is a value: _same compares a drafted number with it as the engine bands it."""
     got = {x["input"]: x for x in raw.get("inputs", []) if e.input(x["input"]) is not None}
     out = {}
     for i in e.inputs:
         x = dict(got.get(i.id) or {"stated": False, "value": None, "quote": "", "locator": "", "assumed": None,
                                    "boundary": True, "note": "not labelled"})
         for k in ("value", "assumed"):
-            if x.get(k) is not None and _answer(e, i, str(x[k])) is None:
+            if (x.get(k) is not None and _answer(e, i, str(x[k])) is None
+                    and not (i.type == "number" and _interval(e, i, str(x[k])) is not None)):
                 x["boundary"], x["note"], x[k] = True, f"{k} {x[k]!r} is not a value of the pack", None
         if x["value"] is None:
             x["stated"] = False
@@ -414,11 +419,88 @@ def drafts(s, e: Entry | None = None, presets: dict[str, str] | None = None) -> 
     return out
 
 
+# a labeller's band or bound for a number ("under 1 cm", "35 years or over", ">8 mm", "1 cm to under 4 cm"): an interval
+_BOUNDS = [(re.compile(r"^(?:under|below|less than|<)\s*(.+)$"), "lt"),
+           (re.compile(r"^(?:up to|at most|≤|<=)\s*(.+)$"), "le"),
+           (re.compile(r"^(.+?)\s*or (?:less|under|below|smaller)$"), "le"),
+           (re.compile(r"^(?:over|above|more than|greater than|>)\s*(.+)$"), "gt"),
+           (re.compile(r"^(?:at least|≥|>=)\s*(.+)$"), "ge"),
+           (re.compile(r"^(.+?)\s*or (?:over|more|above|greater|older)$"), "ge")]
+_SPAN = re.compile(r"^(.+?)\s*(to under|to less than|to|-|–|—)\s*(.+)$")
+
+
+def _norm_label(s: str) -> str:
+    return " ".join(s.lower().replace("–", "-").replace("—", "-").split())
+
+
+def _reading(i, text: str, unit_hint: str = "") -> float | None:
+    """One number from a label part, in the input's unit (a bare number borrows the other part's unit, else the
+    input's own)."""
+    xs = Q.readings(text, i.unit, i.dims)
+    if not xs and re.fullmatch(r"\s*\d+(?:\.\d+)?\s*", text):
+        xs = Q.readings(f"{text.strip()} {unit_hint or i.unit}", i.unit, i.dims)
+    return xs[0] if len(xs) == 1 else None
+
+
+def _interval(e: Entry, i, label: str):
+    """(lo, lo_inclusive, hi, hi_inclusive) for a band label of this input on any band step, or a bound or span the
+    labeller wrote; None when the label is neither."""
+    n = _norm_label(label)
+    for s in e.logic:
+        if getattr(s, "ref", None) == i.id and hasattr(s, "bands"):
+            for b in s.bands:
+                if _norm_label(b.label) == n:
+                    return (b.min, b.min_inclusive, b.max, b.max_inclusive)
+    for rx, kind in _BOUNDS:
+        m = rx.match(n)
+        if m and (x := _reading(i, m.group(1))) is not None:
+            return {"lt": (None, True, x, False), "le": (None, True, x, True),
+                    "gt": (x, False, None, False), "ge": (x, True, None, False)}[kind]
+    m = _SPAN.match(n)
+    if m:
+        unit = re.sub(r"[\d.\s]", "", m.group(3)) or ""
+        lo, hi = _reading(i, m.group(1), unit), _reading(i, m.group(3))
+        if lo is not None and hi is not None:
+            return (lo, True, hi, m.group(2) not in ("to under", "to less than"))
+    return None
+
+
+def _inside(x: float, iv) -> bool:
+    lo, lo_inc, hi, hi_inc = iv
+    ok_lo = lo is None or (x >= lo - 1e-9 if lo_inc else x > lo + 1e-9)
+    ok_hi = hi is None or (x <= hi + 1e-9 if hi_inc else x < hi - 1e-9)
+    return ok_lo and ok_hi
+
+
 def _same(e: Entry, k: str, v: InputValue, label_value: str | None) -> bool:
+    """The drafted value agrees with the label. A number is compared numerically in the input's unit; against a band
+    label (the pack's own, from any band step reading it) or a labeller's bound or span, it agrees when it falls inside
+    that interval, as the engine would band it. A genuine mismatch stays a mismatch."""
     if label_value is None:
         return False
-    t = _answer(e, e.input(k), label_value)
-    return t is not None and _show(e, e.input(k), t) == _show(e, e.input(k), v)
+    i = e.input(k)
+    t = _answer(e, i, label_value)
+    if t is not None and _show(e, i, t) == _show(e, i, v):
+        return True
+    if i.type != "number" or v.state != "present" or v.value is None:
+        return False
+    x = float(v.value)
+    if t is not None and t.state == "present" and t.value is not None:
+        return abs(float(t.value) - x) <= 1e-9 * max(1.0, abs(x))
+    iv = _interval(e, i, label_value)
+    return iv is not None and _inside(x, iv)
+
+
+def _agrees_by_band(e: Entry, k: str, v: InputValue, label_value: str | None) -> bool:
+    """_same holds only because the number falls inside a band or bound, not because it equals the truth: reported
+    apart, since a number that also feeds a formula is not verified by its band (review M-b)."""
+    if label_value is None:
+        return False
+    i = e.input(k)
+    t = _answer(e, i, label_value)
+    if t is not None and (_show(e, i, t) == _show(e, i, v) or (t.state == "present" and t.value is not None)):
+        return False
+    return _same(e, k, v, label_value)
 
 
 def _truth(label: dict) -> dict[str, str | None]:
@@ -465,7 +547,10 @@ def taps(e: Entry, s, label: dict, patient: dict, picked: bool = False,
         answered.update(new)
         n += len(new)
         p = finish(e, s, answered, patient, presets=presets)
-    return n, (p.trace or {}).get("outcome")
+    # the Calculate tap: the engine over every value the card shows (a pre-filled scope doubt the truth agrees with is
+    # confirmed by it and excludes, as live Calculate would)
+    shown = {d.input: d.value for d in p.draft if d.value}
+    return n, calculate(e, s, shown, patient, [], "", presets=presets).outcome
 
 
 def spot_rows(e: Entry, card: dict, s, label: dict) -> list[dict]:
@@ -643,6 +728,12 @@ def sheet(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path) -> Path
     return path
 
 
+def _draft_now(e: Entry, s, presets: dict[str, str]) -> str | None:
+    """The draft outcome the card shows today over the stored settlement (the engine is deterministic), so a score-only
+    re-run measures the current card rules, not those of the day the settler ran. None when there is no outcome."""
+    return (finish(e, s, {}, presets=presets).trace or {}).get("outcome")
+
+
 def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdicts_csv: Path | None = None) -> Path:
     lib, cards, labels, st = _load(cards_p, labels_p, settler_p)
     overrides, op = _apply_overrides(lib, cards, labels, verdicts_csv)
@@ -657,10 +748,14 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
         pre = card_presets(e, c)
         n, outcome = taps(e, s, lab, {}, presets=pre)
         d = drafts(s, e, pre)
+        ver = verdicts(e, s, lab, pre)
+        by_band = [k for k, (val, _, tier) in d.items() if ver[k] == "ok" and _agrees_by_band(
+            e, k, val, _truth(lab)[k] if tier == "prefilled" else lab["inputs"][k]["value"])]
         rows.append({"card": c["id"], "pack": c["pack"], "source": c.get("source", "prod"),
-                     "sibling": bool(c.get("via_sibling_of")), "ms": st[c["id"]]["ms"], "taps": n, "verdicts": verdicts(e, s, lab, pre),
+                     "sibling": bool(c.get("via_sibling_of")), "ms": st[c["id"]]["ms"], "taps": n, "verdicts": ver, "agrees_by_band": by_band,
                      "tiers": {k: t for k, (_, _, t) in d.items()}, "degraded": st[c["id"]]["degraded"],
-                     "outcome": outcome, "draft_outcome": st[c["id"]].get("draft_outcome_id")})
+                     "outcome": outcome, "draft_outcome": _draft_now(e, s, pre),
+                     "draft_outcome_stored": st[c["id"]].get("draft_outcome_id")})
     errored = [k for k, r in st.items() if "error" in r]
     if skipped:
         print(f"skipped {len(skipped)} unlabelled, unsettled or errored cards: {', '.join(skipped)}", file=sys.stderr)
@@ -670,6 +765,11 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
     q = statistics.quantiles(ms, n=20) if len(ms) > 1 else ms * 2
     result = {**metrics(head), "headline_sources": list(HEADLINE_SOURCES), "outcome_agreement": outcome_agreement(head),
               "wrong_prefill_total": wrong_prefill_total(head), "by_source": by_source(rows),
+              "agrees_by_band": [f"{r['card']}:{k}" for r in head for k in r["agrees_by_band"]],
+              "notes": ["taps outcome = the Calculate result over every value the card shows",
+                        "outcome agreement uses the draft outcome recomputed under today's card rules over the stored "
+                        "settlement (draft_outcome); the settler-time one is draft_outcome_stored per row"],
+              "rows": rows,
               "card_kinds_by_source": card_kinds(rows), "category_dictated_by_pack": dict(cats),
               "hassan_overrides": overrides, "override_problems": op, "skipped_cards": skipped,
               "errored_cards": errored, "latency_ms": {"p50": statistics.median(ms) if ms else None,
@@ -687,11 +787,13 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
         print(f"| median taps to Calculate | {result['median_taps']} | <= 2 |")
         print(f"| taps distribution | {result['taps_distribution']} | |")
         print(f"| wrong pre-filled values | {result['wrong_prefill_total']} | |")
+        print(f"| numbers right only by band (reported apart) | {len(result['agrees_by_band'])} | |")
         print(f"| outcome agreement | {result['outcome_agreement']} | |")
         print(f"| errored / skipped cards | {len(errored)} / {len(skipped)} | |")
         print(f"| degraded cards | {len(result['degraded'])} | |")
         print(f"| latency p50 / p95 ms | {result['latency_ms']['p50']} / {result['latency_ms']['p95']} | |")
         print("| time to first paint | not measured offline | |\n| checker, lesions | n/a | |")
+        print("\n".join(f"note: {x}" for x in result["notes"]))
     print(f"\ncards by source (hit / sibling): {result['card_kinds_by_source']}")
     for src, m in result["by_source"].items():
         print(f"\n### source: {src}\n| metric | measured |\n|---|---|")

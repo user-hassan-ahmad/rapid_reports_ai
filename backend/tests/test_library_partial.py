@@ -272,7 +272,31 @@ def test_assume_eligible_drafts_for_an_eligible_patient_and_a_stated_value_wins(
     fl = next(e for e in _packs() if e.id == "fleischner-pulmonary-nodule")
     t = E.evaluate(fl, {}, assume_eligible=True)
     assert set(t.assumed) == {"age", "exclusion"} and t.assumed["age"].band == "ge35"      # a number: by its band
-    assert not {"age", "exclusion"} & set(t.needed) and "does_not_apply" not in t.possible
+    assert not {"age", "exclusion"} & set(t.needed) and "diameter_mm" in t.needed
+    assert "does_not_apply" in t.possible                  # only through the size: an opacity over 3 cm is a mass
     t = E.evaluate(fl, {"age": 30}, assume_eligible=True)                                 # stated: excludes
     assert t.outcome == "does_not_apply" and "age" not in t.assumed
     assert E.evaluate(fl, {}).assumed == {}                                               # off by default
+
+
+def test_an_exclusion_reading_an_unknown_clinical_input_does_not_block_the_in_scope_assumption():
+    """BTS: an opacity over 3 cm is a mass (does_not_apply reads diameter_mm). With the size unknown, the eligible
+    value of proven_malignant is still the in-scope one; with a 38 mm size the card is excluded."""
+    e = _bts()
+    t = E.evaluate(e, {"nodule_type": "solid"}, assume_eligible=True)
+    assert t.assumed["proven_malignant"].value is False and "diameter_mm" in t.needed
+    assert E.evaluate(e, {"nodule_type": "solid", "diameter_mm": 38, "age": 60, "proven_malignant": False,
+                          "prior_study": False}).outcome == "does_not_apply"
+
+
+def test_an_opacity_over_3_cm_excludes_before_any_other_input_is_asked():
+    """Task 4 review M2: with no previous imaging stated (prior_study No: nothing resolved), a 38 mm opacity is
+    excluded whatever the eligibility; nothing is asked. With prior imaging unknown, BTS asks only what could still make
+    it `resolved` (Hassan 2026-10-13: the diameter is needed for every outcome but resolved)."""
+    e = _bts()
+    for ae in (False, True):
+        t = E.evaluate(e, {"nodule_type": "solid", "diameter_mm": 38, "prior_study": False}, assume_eligible=ae)
+        assert t.outcome == "does_not_apply" and t.needed == []
+    fl = next(x for x in _packs() if x.id == "fleischner-pulmonary-nodule")
+    t = E.evaluate(fl, {"diameter_mm": 38}, assume_eligible=True)
+    assert t.outcome == "does_not_apply" and t.needed == []                 # Fleischner: no resolved branch at all

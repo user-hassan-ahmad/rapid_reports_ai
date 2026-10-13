@@ -49,7 +49,8 @@ def test_a_bosniak_mimic_does_not_apply():
     assert E.evaluate(k, {"mimic": True}).outcome == DOES_NOT_APPLY
 
 
-def test_bts_comparison_inputs_are_per_nodule():
-    """An earlier CT and its interval belong to this nodule: another lesion's comparison never settles them."""
+def test_bts_prior_study_is_a_whole_study_fact_and_the_interval_is_per_nodule():
+    """Hassan 2026-10-13: "No previous imaging" anywhere in the study settles prior_study (patient scope); the
+    interval still belongs to this nodule: another lesion's comparison never settles it."""
     b = _lib().lookup("bts-pulmonary-nodule")
-    assert b.input("prior_study").scope == b.input("interval_days").scope == "lesion"
+    assert b.input("prior_study").scope == "patient" and b.input("interval_days").scope == "lesion"
