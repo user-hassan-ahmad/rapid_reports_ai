@@ -50,17 +50,17 @@ describe('SiblingColumns', () => {
 			result: result(bts, preview({ state: 'check_first', proposal: null, missing: ['e'], asks: [{ input: 'e', label: 'Known cancer', role: 'eligibility' }] }))
 		};
 		render(SiblingColumns, { ...base({ view: v }), layout: 'stacked' });
-		await expect.element(page.getByText('BTS guideline 2015', { exact: true })).toBeInTheDocument();
+		await expect.element(page.getByText('BTS guideline 2015', { exact: true }).first()).toBeInTheDocument();
 		expect(document.querySelectorAll('[role="tab"]').length).toBe(0);
 		expect(document.body.textContent).not.toContain('Choose a guideline');
 		const cols = [...document.querySelectorAll('.cp-col--stacked')];
 		expect(cols).toHaveLength(2);
 		expect(cols.map((c) => c.querySelector('.cp-col-name')!.textContent)).toEqual(['Fleischner 2017', 'BTS guideline 2015']);
-		expect(cols[0].querySelector('.cp-col-line')!.textContent).toContain('applies');
-		expect(cols[1].querySelector('.cp-col-line')!.textContent).toContain('⚠ 1 check assumed');
+		expect(cols[0].querySelector('.cp-col-line .cp-pill')).not.toBeNull(); // each guideline with its own verdict pill
+		expect(cols[1].querySelector('.cp-col-line')!.textContent).toContain('⚠ 1 assumed');
 		expect(document.querySelectorAll('[aria-pressed="true"], [aria-selected="true"]').length).toBe(0);
 		// full bodies, not the outcome-only column
-		await expect.element(page.getByText('Follow-up as per the guideline table.')).toBeInTheDocument();
+		await expect.element(page.getByText('Follow-up as per the guideline table').first()).toBeInTheDocument();
 		await expect.element(page.getByText('Guideline (2017), p. 3')).toBeInTheDocument();
 	});
 

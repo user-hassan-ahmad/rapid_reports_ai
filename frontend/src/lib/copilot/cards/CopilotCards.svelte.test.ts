@@ -41,12 +41,12 @@ describe('CopilotCards', () => {
 	it('quiet exam card: one line "<name> · <outcome>", no header, and the chevron expands the full card', async () => {
 		const p = single(exam, v(result(exam, preview({ proposal: outcome({ classification: 'CAD-RADS 0', normal: true }) }))), null);
 		render(CopilotCards, p);
-		const line = page.getByRole('button', { name: 'CAD-RADS 2.0 · CAD-RADS 0' });
+		const line = page.getByRole('button', { name: /CAD-RADS 2\.0.*CAD-RADS 0/ });
 		await expect.element(line).toBeInTheDocument();
 		expect(document.querySelector('.cp-group-head')).toBeNull();
 		expect(text()).not.toContain('Follow-up as per');
 		await line.click();
-		await expect.element(page.getByText('Follow-up as per the guideline table.')).toBeInTheDocument();
+		await expect.element(page.getByText('Follow-up as per the guideline table').first()).toBeInTheDocument();
 		expect(line.element().getAttribute('aria-expanded')).toBe('true');
 		expect(p.onOpen).not.toHaveBeenCalled();
 		expect(Object.values(api).every((f) => !f.mock.calls.length)).toBe(true);
@@ -56,7 +56,8 @@ describe('CopilotCards', () => {
 		const pv = preview({ proposal: outcome({ classification: 'CAD-RADS 3', normal: false }), settled: [{ input: 'm', value: 'x', quote: '', fact: '', by: 'exam' }] });
 		render(CopilotCards, single(exam, v(result(exam, pv)), null));
 		await expect.element(page.getByText('set by the exam')).toBeInTheDocument();
-		await expect.element(page.getByText('on these values · CAD-RADS 3')).toBeInTheDocument();
+		// the verdict pill: the action (the recommendation's first sentence until the backend sends one)
+		await expect.element(page.getByTitle('Follow-up as per the guideline table')).toBeInTheDocument();
 	});
 
 	it('needs-modality: "<name> needs ultrasound to grade", no chevron, and onOpen is never called', async () => {
@@ -116,11 +117,12 @@ describe('CopilotCards', () => {
 		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
 		await expect.element(page.getByTestId('cp-exclusion')).toHaveTextContent('Not for patients under 35');
 		expect(document.querySelector('.gl-card')!.getAttribute('aria-disabled')).toBe('true');
-		expect(text()).toContain('Guideline, p. 2');
-		expect(text()).toContain('does not apply');
+		expect(text()).toContain('Guideline, p. 2'); // the full source, behind its one-line summary
+		expect(document.querySelector('.cp-pill')!.textContent).toContain('Does not apply');
+		expect(document.querySelector('.cp-pill')!.getAttribute('data-category')).toBe('not_applicable');
 	});
 
-	it('check_first (B0): values read first, then the outcome, then the open questions; eligibility only as an assumed chip', async () => {
+	it('check_first: the verdict first, then the values, then the open questions; eligibility only as an assumed chip', async () => {
 		const c = card({ finding: finding.text });
 		const r = result(c, preview({
 			state: 'check_first',
@@ -138,25 +140,25 @@ describe('CopilotCards', () => {
 		}));
 		r.entry!.content.branches = [{ name: 'Pack', rule: '', inputs: [{ id: 'size', question: 'Size', options: [] }, { id: 'phase', question: 'Phase', options: [] }] }];
 		render(CopilotCards, single(c, v(r, { open: true })));
-		const chip = page.getByText('⚠ 2 checks assumed');
+		const chip = page.getByText('⚠ 2 assumed');
 		await expect.element(chip).toBeInTheDocument();
 		expect(chip.element().getAttribute('title')).toContain('Known extra-adrenal cancer');
 		// screen readers get the checks in the head's name, not only from the tooltip
 		expect(chip.element().querySelector('.cp-sr-only')!.textContent).toContain('Known extra-adrenal cancer; Signs of hormone excess');
-		expect(chip.element().closest('[role="button"]')!.textContent).toContain('checks assumed: Known extra-adrenal cancer');
+		expect(chip.element().closest('[role="button"]')!.textContent).toContain('assumed eligibility checks: Known extra-adrenal cancer');
 		expect(text()).not.toContain('check first');
 		expect(text()).not.toContain('Some eligibility questions');
-		// order: values, outcome, open questions; the eligibility list stays collapsed
-		const body = text();
+		// order in the body: the verdict, then the values, then the open questions; the eligibility list stays collapsed
+		const body = document.querySelector('.gl-body')!.textContent!;
 		const at = (s: string) => body.indexOf(s);
-		expect(at('Values')).toBeGreaterThan(-1);
-		expect(at('2.2 cm')).toBeLessThan(at('Benign adenoma'));
-		expect(at('Benign adenoma')).toBeLessThan(at('Growth on prior imaging'));
+		expect(at('Benign adenoma')).toBeLessThan(at('Values'));
+		expect(at('Values')).toBeLessThan(at('2.2 cm'));
+		expect(at('2.2 cm')).toBeLessThan(at('Growth on prior imaging'));
 		const toggle = page.getByRole('button', { name: /Assumed eligible: 2 checks/ });
 		const list = document.getElementById(toggle.element().getAttribute('aria-controls')!)!;
 		expect(list.hidden).toBe(true); // in the DOM, collapsed
 		expect(toggle.element().getAttribute('aria-expanded')).toBe('false');
-		await expect.element(page.getByText('set by the exam')).toBeInTheDocument();
+		await expect.element(page.getByText('set by the exam').first()).toBeInTheDocument();
 		// the quote shows on focus
 		const quote = page.getByText('“2.2 cm left adrenal nodule”');
 		await expect.element(quote).not.toBeVisible();
@@ -172,7 +174,7 @@ describe('CopilotCards', () => {
 		expect(list.textContent).toContain('Signs of hormone excess');
 	});
 
-	it('Task 3 draft card: values, then draft_outcome "on these values", then Still open; assumed under the chip; waiting hidden; no Apply', async () => {
+	it('Task 3 draft card: draft_outcome verdict, then values, then Still open; assumed under the chip; waiting hidden; no Apply', async () => {
 		const c = card({ finding: finding.text });
 		const pv = preview({
 			state: 'check_first',
@@ -189,11 +191,11 @@ describe('CopilotCards', () => {
 			assumed_eligible: true
 		});
 		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
-		await expect.element(page.getByText('⚠ 1 check assumed')).toBeInTheDocument();
-		const body = text();
+		await expect.element(page.getByText('⚠ 1 assumed')).toBeInTheDocument();
+		const body = document.querySelector('.gl-body')!.textContent!;
 		const at = (x: string) => body.indexOf(x);
-		expect(at('2.2 cm')).toBeLessThan(at('Benign adenoma'));
-		expect(at('Benign adenoma')).toBeLessThan(at('Growth on prior imaging'));
+		expect(at('Benign adenoma')).toBeLessThan(at('2.2 cm'));
+		expect(at('2.2 cm')).toBeLessThan(at('Growth on prior imaging'));
 		expect(body).toContain('On these values');
 		expect(body).not.toContain('Growth rate'); // waiting: hidden
 		expect(document.querySelector('.cp-prefill')!.textContent).toBe('8 HU');
@@ -208,9 +210,9 @@ describe('CopilotCards', () => {
 	it('the quiet exam line follows draft_outcome.normal (proposal is always null for packs)', async () => {
 		const quietPv = preview({ proposal: null, draft_outcome: outcome({ classification: 'CAD-RADS 0', normal: true }) });
 		const r = render(CopilotCards, single(exam, v(result(exam, quietPv)), null));
-		await expect.element(page.getByRole('button', { name: 'CAD-RADS 2.0 · CAD-RADS 0' })).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: /CAD-RADS 2\.0.*CAD-RADS 0/ })).toBeInTheDocument();
 		await r.rerender({ views: { [cardRef(exam)]: v(result(exam, preview({ proposal: null, draft_outcome: outcome({ classification: 'CAD-RADS 3', normal: false }) }))) } });
-		await expect.element(page.getByText('on these values · CAD-RADS 3')).toBeInTheDocument();
+		await expect.element(page.getByTitle('Follow-up as per the guideline table')).toBeInTheDocument(); // a full card's pill
 		expect(document.querySelector('[data-testid="cp-quiet"]')).toBeNull();
 	});
 
@@ -223,11 +225,11 @@ describe('CopilotCards', () => {
 			assumed_eligible: true
 		});
 		render(CopilotCards, single(exam, v(result(exam, pv)), null));
-		await expect.element(page.getByRole('button', { name: 'CAD-RADS 2.0 · CAD-RADS 0' })).toBeInTheDocument(); // still one line
-		const chip = page.getByRole('button', { name: /1 check assumed/ });
+		await expect.element(page.getByRole('button', { name: /CAD-RADS 2\.0.*CAD-RADS 0/ })).toBeInTheDocument(); // still one line
+		const chip = page.getByRole('button', { name: /1 assumed/ });
 		await expect.element(chip).toHaveAttribute('aria-expanded', 'false');
 		// the list is in the button's text for screen readers (visually hidden), not only in a tooltip
-		expect(chip.element().querySelector('.cp-sr-only')!.textContent).toBe(': Stable symptoms: Yes');
+		expect(chip.element().querySelector('.cp-sr-only')!.textContent).toBe(' eligibility check: Stable symptoms: Yes');
 		const list = document.getElementById(chip.element().getAttribute('aria-controls')!)!;
 		expect(list.hidden).toBe(true);
 		(chip.element() as HTMLElement).focus();
@@ -240,24 +242,123 @@ describe('CopilotCards', () => {
 	it('a quiet line with assumed_eligible but no assumed rows still shows a cue', async () => {
 		const pv = preview({ proposal: null, draft_outcome: outcome({ classification: 'CAD-RADS 0', normal: true }), assumed_eligible: true });
 		render(CopilotCards, single(exam, v(result(exam, pv)), null));
-		await expect.element(page.getByRole('button', { name: /checks assumed/ })).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: /⚠\s*assumed/ })).toBeInTheDocument();
 	});
 
-	it('the version sits on its own line under the name; the assumed chip stays on the first line', async () => {
+	it('head: name and verdict pill on the first line; value chips and the assumed cue on the second', async () => {
 		const c = card({ name: 'ESE adrenal incidentaloma', version: '2023', finding: finding.text });
-		const pv = preview({ state: 'check_first', missing: ['e'], asks: [{ input: 'e', label: 'Known cancer', role: 'eligibility' }] });
+		const pv = preview({
+			state: 'check_first',
+			proposal: null,
+			draft_outcome: outcome({ classification: 'Benign: lipid-rich adenoma', recommendation: 'No further imaging required.', category: 'none' }),
+			draft: [
+				draft({ input: 'size', label: 'Size', state: 'read', value: '2.2 cm', quote: '2.2 cm' }),
+				draft({ input: 'hu', label: 'HU', state: 'prefilled', value: '8 HU', why: ['x'] }),
+				draft({ input: 'homog', label: 'Homogeneous', state: 'read', value: 'Yes', quote: 'homogeneous' }),
+				draft({ input: 'cancer', label: 'Known cancer', role: 'eligibility', state: 'assumed', value: 'No' })
+			]
+		});
 		render(CopilotCards, single(c, v(result(c, pv))));
-		await expect.element(page.getByText('2023')).toBeInTheDocument();
-		expect(document.querySelector('.gl-subtitle')!.textContent).toBe('2023');
-		expect(document.querySelector('.gl-controls')!.textContent).toContain('⚠ 1 check assumed');
-		expect(document.querySelector('.gl-controls')!.textContent).not.toContain('2023');
+		const titleRow = document.querySelector('.gl-title-row')!;
+		await expect.element(page.getByTitle('No further imaging required')).toBeInTheDocument();
+		expect(titleRow.textContent).toContain('ESE adrenal incidentaloma');
+		expect(titleRow.querySelector('.cp-pill')!.getAttribute('data-category')).toBe('none');
+		const second = document.querySelector('.cp-headchips')!;
+		expect([...second.querySelectorAll('.cp-vchip')].map((e) => e.textContent!.trim())).toEqual(['2.2 cm', '8 HU', 'Homogeneous']); // "Yes" as its label, "No" left out
+		expect(second.querySelector('.cp-vchip--prefilled')!.textContent!.trim()).toBe('8 HU');
+		expect(second.textContent).toContain('⚠ 1 assumed');
+		// the card's left strip takes the category colour
+		expect((document.querySelector('.gl-card') as HTMLElement).style.getPropertyValue('--gl-accent')).toBe('var(--rv-green-line)');
+	});
+
+	it('ESE benign (checkpoint 3): verdict, then "5 notes" and ONE source line, each expandable by keyboard', async () => {
+		const c = card({ name: 'ESE adrenal incidentaloma', finding: finding.text });
+		const src = { title: 'ESE guidelines on adrenal incidentalomas', issuer: 'European Society of Endocrinology', edition: '2023' };
+		const long = 'Homogeneous adrenal mass of 10 HU or less on unenhanced CT: consistent with a benign (lipid-rich) lesion, whatever its size.';
+		const pv = preview({
+			proposal: null,
+			draft_outcome: outcome({
+				classification: long,
+				recommendation: 'No further imaging required.',
+				headline: 'Benign adrenal adenoma',
+				action: 'No further imaging',
+				category: 'none',
+				caveats: ['Note one is long enough to clamp in a narrow rail column for sure.', 'Note two.', 'Note three.', 'Note four.', 'Note five.'],
+				citations: [{ ...src, page: 18, section: 'Figure 5' }, { ...src, page: 17, section: 'Figure 4' }, { ...src, page: 18, section: 'Figure 5' }]
+			})
+		});
+		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
+		const verdict = page.getByRole('region', { name: 'Verdict' });
+		await expect.element(verdict).toHaveTextContent('Benign adrenal adenoma');
+		expect(verdict.element().textContent).toContain('No further imaging');
+		// the classification is there in full, clamped, with "more"
+		const more = page.getByRole('button', { name: 'more' });
+		await expect.element(more).toHaveAttribute('aria-expanded', 'false');
+		const cls = document.getElementById(more.element().getAttribute('aria-controls')!)!;
+		expect(cls.classList.contains('cp-clamp')).toBe(true);
+		await more.click();
+		await expect.element(page.getByRole('button', { name: 'less' })).toHaveAttribute('aria-expanded', 'true');
+		expect(cls.classList.contains('cp-clamp')).toBe(false);
+		// notes: one line, collapsed
+		const notes = page.getByRole('button', { name: /5 notes/ });
+		const noteList = document.getElementById(notes.element().getAttribute('aria-controls')!)!;
+		expect(noteList.hidden).toBe(true);
+		(notes.element() as HTMLElement).focus();
+		await userEvent.keyboard('{Enter}');
+		expect(noteList.hidden).toBe(false);
+		const first = page.getByRole('button', { name: /Note one/ });
+		await expect.element(first).toHaveAttribute('aria-expanded', 'false');
+		await first.click();
+		await expect.element(first).toHaveAttribute('aria-expanded', 'true');
+		// source: one short line for two distinct citations (identical ones merged), the full list on request
+		const source = page.getByRole('button', { name: /ESE 2023 · Fig 5, p\. 18/ });
+		await expect.element(source).toHaveTextContent('+1');
+		const srcList = document.getElementById(source.element().getAttribute('aria-controls')!)!;
+		expect(srcList.hidden).toBe(true);
+		expect(srcList.querySelectorAll('li')).toHaveLength(2);
+		await source.click();
+		expect(srcList.hidden).toBe(false);
+	});
+
+	it('no outcome yet: "Most likely" (category-coloured, under assumptions), "Depends on" with at most three branches, "show all"', async () => {
+		const c = card({ finding: finding.text });
+		const pv = preview({
+			proposal: null,
+			most_likely: { headline: 'CT surveillance', category: 'surveillance' },
+			deciding_input: 'brock',
+			deciding: [
+				{ answer: '< 10%', headline: 'CT surveillance', category: 'surveillance' },
+				{ answer: '10–70%', headline: 'PET-CT', category: 'workup' },
+				{ answer: '> 70%', headline: 'Biopsy', category: 'refer' },
+				{ answer: 'unknown', headline: 'Fourth branch', category: 'info' }
+			],
+			possible: ['a', 'b', 'c', 'd', 'e'],
+			draft: [draft({ input: 'brock', label: 'Brock risk', state: 'asked', needed: true }), draft({ input: 'adult', label: 'Adult', role: 'eligibility', state: 'assumed', value: 'Yes' })],
+			assumed_eligible: true
+		});
+		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
+		await expect.element(page.getByText('CT surveillance', { exact: true }).first()).toBeInTheDocument();
+		const likely = page.getByRole('region', { name: 'Most likely' }).element();
+		expect(likely.textContent).toContain('Most likely: CT surveillance');
+		expect(likely.textContent).toContain('under assumptions');
+		expect(likely.textContent).toContain('Depends on Brock risk');
+		expect(likely.querySelectorAll('.cp-branches li')).toHaveLength(3);
+		expect(likely.textContent).not.toContain('Fourth branch');
+		expect(document.querySelector('.cp-pill')!.textContent).toContain('Likely: CT surveillance');
+		expect(document.querySelector('.cp-pill')!.classList.contains('cp-pill--tentative')).toBe(true);
+		const all = page.getByRole('button', { name: 'show all 5' });
+		const list = document.getElementById(all.element().getAttribute('aria-controls')!)!;
+		expect(list.hidden).toBe(true);
+		await all.click();
+		expect(list.hidden).toBe(false);
+		expect(document.body.textContent).not.toContain('outcomes still possible');
 	});
 
 	it('PackCard takes an assumptions list directly (B1 feeds Task 3)', async () => {
 		const { default: PackCard } = await import('./PackCard.svelte');
 		const c = card({ finding: finding.text });
 		render(PackCard, { card: c, view: v(result(c, preview()), { open: true }), assumptions: ['Not pregnant'], onOpen: vi.fn(), onClose: vi.fn(), onRetry: vi.fn() });
-		await expect.element(page.getByText('⚠ 1 check assumed')).toBeInTheDocument();
+		await expect.element(page.getByText('⚠ 1 assumed')).toBeInTheDocument();
 	});
 
 	it('no outcome: "Still open" first, then one collapsed "N outcomes still possible" line; degraded shows its note', async () => {
@@ -299,7 +400,7 @@ describe('CopilotCards', () => {
 		await userEvent.keyboard('{Enter}');
 		expect(p.onOpen).toHaveBeenCalledWith(cardRef(c));
 		await r.rerender({ views: { [cardRef(c)]: v(result(c, preview()), { open: true }) } });
-		await expect.element(page.getByText('Follow-up as per the guideline table.')).toBeInTheDocument();
+		await expect.element(page.getByText('Follow-up as per the guideline table').first()).toBeInTheDocument();
 		await userEvent.keyboard(' ');
 		expect(p.onClose).toHaveBeenCalledWith(cardRef(c));
 	});
@@ -328,7 +429,7 @@ describe('CopilotCards', () => {
 	it('a card reloading with a result keeps the result on screen (no skeleton flicker)', async () => {
 		const pv = preview({ proposal: outcome({ classification: 'CAD-RADS 3', normal: false }) });
 		render(CopilotCards, single(exam, v(result(exam, pv), { open: true, loading: true }), null));
-		await expect.element(page.getByText('Follow-up as per the guideline table.')).toBeInTheDocument();
+		await expect.element(page.getByText('Follow-up as per the guideline table').first()).toBeInTheDocument();
 		expect(document.querySelector('[data-testid="cp-card-loading"]')).toBeNull();
 	});
 

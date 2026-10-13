@@ -28,7 +28,15 @@ export interface Proposal {
 	caveats: string[];
 	citations: Citation[];
 	normal?: boolean; // R3: the outcome is the guideline's normal one (backend default false); quiet prefers it
+	// Planned backend fields (card redesign): until sent, the UI derives fallbacks (cards/format.ts verdictOf).
+	// Not in contract.json yet: the backend does not have them.
+	headline?: string; // a short verdict, <= ~8 words
+	action?: string; // a short imperative, e.g. "No further imaging"
+	category?: ActionCategory;
 }
+export interface OutcomeBrief { headline: string; action?: string; category?: ActionCategory }
+export interface DecidingBranch { answer: string; headline: string; category?: ActionCategory }
+export type ActionCategory = 'none' | 'surveillance' | 'workup' | 'refer' | 'info' | 'not_applicable'; // info: no management stated
 export interface Settled { input: string; value: string; quote: string; fact: string; by: '' | 'exam' }
 /** pack_preview._asks: one per missing input (A5 reads input + label; the rest is for Slice B). */
 export interface Ask { input: string; label: string; role?: string; [k: string]: unknown } // role: 'eligibility' | 'clinical' | …
@@ -72,6 +80,11 @@ export interface Preview {
 	waiting?: string[]; // Task 1
 	assumptions?: string[]; // Task 3: eligibility input ids assumed in scope (pack order); labels come from draft
 	assumed_eligible?: boolean; // Task 3: the draft rests on assumptions (state stays check_first)
+	// Planned backend fields (no outcome yet): the likeliest outcome and, when one question genuinely decides it, its
+	// branches. Names per the controller (2026-10-13); not in contract.json until the backend has them.
+	most_likely?: OutcomeBrief | null;
+	deciding?: DecidingBranch[];
+	deciding_input?: string; // the input whose answer decides (its label is the "Depends on" question)
 	draft?: DraftValue[]; // Task 3
 	draft_outcome?: Proposal | null; // Task 3
 	checker?: Checker | null; // Task 7

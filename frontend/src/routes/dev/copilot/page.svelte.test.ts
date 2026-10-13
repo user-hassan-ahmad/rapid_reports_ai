@@ -40,7 +40,7 @@ describe('/dev/copilot', () => {
 		render(DevCopilot);
 		for (const s of sections) await expect.element(page.getByTestId(`dv-${s.id}`)).toBeInTheDocument();
 		const t = (id: string) => document.querySelector(`[data-testid="dv-${id}"]`)!.textContent!.replace(/\s+/g, ' ');
-		expect(t('quiet')).toContain('CAD-RADS 2.0 · CAD-RADS 0');
+		expect(t('quiet')).toMatch(/CAD-RADS 2\.0\s*·\s*CAD-RADS 0/);
 		expect(t('exam-set')).toContain('set by the exam');
 		expect(t('needs-modality')).toContain('BTA U grading needs ultrasound to grade');
 		expect(t('match-failed')).toContain("Couldn't check guidelines");
@@ -49,6 +49,11 @@ describe('/dev/copilot', () => {
 		const names = [...document.querySelectorAll('button, [role="button"]')].map((b) => (b.textContent ?? '').trim());
 		expect(names.some((n) => /^(apply|calculate)\b/i.test(n))).toBe(false);
 		for (const s of sections) await shot(document.querySelector(`[data-testid="dv-${s.id}"]`)!, `section-${s.id}`);
+		if (SHOTS) {
+			await page.getByRole('radio', { name: 'Light' }).click();
+			for (const s of sections) await shot(document.querySelector(`[data-testid="dv-${s.id}"]`)!, `light-section-${s.id}`);
+			await page.getByRole('radio', { name: 'Dark' }).click();
+		}
 		window.removeEventListener('error', onErr);
 		expect(errors).toEqual([]);
 		expect(Object.values(api).every((f) => !f.mock.calls.length)).toBe(true);
@@ -74,7 +79,7 @@ describe('/dev/copilot', () => {
 		await page.getByRole('radio', { name: 'Rail, wide' }).click();
 		const rail = page.getByTestId('copilot-rail');
 		await expect.element(rail.getByRole('tab', { name: 'Guidelines' })).toBeInTheDocument();
-		await expect.element(rail.getByText('CAD-RADS 2.0 · CAD-RADS 0')).toBeInTheDocument();
+		await expect.element(rail.getByRole('button', { name: /CAD-RADS 2\.0.*CAD-RADS 0/ })).toBeInTheDocument();
 		await shot(rail.element() as HTMLElement, 'rail-wide');
 		await page.getByRole('radio', { name: 'Rail, narrow' }).click();
 		const strip = page.getByRole('button', { name: 'Copilot: 7 guidelines' });

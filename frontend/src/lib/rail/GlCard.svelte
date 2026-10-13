@@ -27,6 +27,8 @@
 		open = $bindable(false),
 		dim = false,
 		roomy = false,
+		meta,
+		aside,
 		controls,
 		body
 	}: {
@@ -42,6 +44,10 @@
 		dim?: boolean;
 		/** Larger type and padding (the Copilot rail, B0); the review rail keeps the default. */
 		roomy?: boolean;
+		/** A second head line, always shown (the Copilot's value chips). */
+		meta?: Snippet;
+		/** The title row's right end, in place of the badge (the Copilot's verdict pill). */
+		aside?: Snippet;
 		/** Buttons in the head; their clicks should stop propagation so they do not toggle the card. */
 		controls?: Snippet;
 		body?: Snippet;
@@ -73,13 +79,16 @@
 		<div class="gl-meta">
 			<div class="gl-title-row">
 				<span class="gl-title">{title}</span>
-				{#if badge}
+				{#if aside}
+					{@render aside()}
+				{:else if badge}
 					<span class="gl-grade-badge ch-{badge.variant}">{badge.text}</span>
 				{/if}
 			</div>
 			{#if subtitle}
 				<div class="gl-subtitle">{subtitle}</div>
 			{/if}
+			{@render meta?.()}
 			{#if !open && hint}
 				<div class="gl-action-hint">→ {hint}</div>
 			{/if}
@@ -195,6 +204,14 @@
 	.gl-chevron.open { transform: rotate(180deg); color: #a1a1aa; }
 
 	/* ── Roomy (Copilot rail): larger type, more air; same structure ── */
+	/* the roomy (Copilot) card takes the rail's theme tokens, so it follows light and dark; the default card keeps the
+	   review rail's fixed dark look */
+	.gl-card--roomy { background: var(--rv-surface); border-color: var(--rv-border); }
+	.gl-card--roomy:hover { background: var(--rv-surface); border-color: var(--rv-border-strong); }
+	.gl-card--roomy .gl-title { color: var(--rv-text); }
+	.gl-card--roomy .gl-chevron { color: var(--rv-muted); }
+	.gl-card--roomy .gl-body { border-top-color: var(--rv-border); }
+	.gl-card--roomy .gl-subtitle { color: var(--rv-muted); }
 	.gl-card--roomy .gl-head { padding: 12px 13px 12px 17px; gap: 10px; }
 	.gl-card--roomy .gl-title { font-size: 14.5px; line-height: 1.35; }
 	.gl-card--roomy .gl-action-hint { font-size: 12.5px; margin-top: 5px; line-height: 1.4; }

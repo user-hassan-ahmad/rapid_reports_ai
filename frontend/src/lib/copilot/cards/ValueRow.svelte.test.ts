@@ -39,7 +39,8 @@ describe('ValueRow', () => {
 		await expect.element(page.getByText('pre-filled', { exact: true })).toBeInTheDocument();
 		expect(li().querySelector('.cp-prefill')!.textContent).toBe('7 mm');
 		expect(getComputedStyle(li().querySelector('.cp-prefill')!).backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
-		expect(page.getByText('pre-filled', { exact: true }).element().getAttribute('title')).toBe('another number in this finding');
+		// no native title anywhere on the row: the bubble is the one tooltip (a title showed the quote twice)
+		expect(li().querySelectorAll('[title]').length + (li().hasAttribute('title') ? 1 : 0)).toBe(0);
 		const desc = document.getElementById(li().getAttribute('aria-describedby')!)!.textContent!;
 		expect(desc).toContain('“7 mm solid nodule”');
 		expect(desc).toContain('Pre-filled: another number in this finding');

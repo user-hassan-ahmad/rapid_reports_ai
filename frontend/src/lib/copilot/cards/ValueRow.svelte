@@ -26,7 +26,6 @@
 	class="cp-val"
 	data-state={row.state}
 	tabindex={described ? 0 : undefined}
-	title={row.quote ? `“${row.quote}”` : undefined}
 	aria-describedby={described ? descId : undefined}
 >
 	<span class="cp-val-label">{row.label}</span>
@@ -44,7 +43,8 @@
 			<span class="cp-chip cp-val-chip">set by the exam</span>
 		{/if}
 		{#if prefilled}
-			<span class="cp-chip cp-val-chip cp-chip-why" title={why.length ? why.join('\n') : 'Not read with certainty'}>pre-filled</span>
+			<!-- no native title: the row's own bubble shows the reasons (a title showed them twice, Hassan 2026-10-13) -->
+			<span class="cp-chip cp-val-chip cp-chip-why">pre-filled</span>
 		{/if}
 	</span>
 	{#if described}

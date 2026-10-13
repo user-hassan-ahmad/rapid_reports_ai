@@ -6,6 +6,7 @@
 	import GallerySection from './GallerySection.svelte';
 
 	let mode = $state<'gallery' | 'wide' | 'narrow'>('gallery');
+	let theme = $state<'dark' | 'light'>('dark');
 	const modes = [
 		{ id: 'gallery', label: 'Gallery' },
 		{ id: 'wide', label: 'Rail, wide' },
@@ -15,7 +16,7 @@
 
 <svelte:head><title>Copilot cards (dev)</title></svelte:head>
 
-<main class="dv">
+<main class="dv" class:dv--light={theme === 'light'}>
 	<header class="dv-head">
 		<h1>Copilot cards</h1>
 		<div class="dv-modes" role="radiogroup" aria-label="View">
@@ -23,16 +24,20 @@
 				<label><input type="radio" name="mode" value={m.id} bind:group={mode} /> {m.label}</label>
 			{/each}
 		</div>
+		<div class="dv-modes" role="radiogroup" aria-label="Theme">
+			<label><input type="radio" name="theme" value="dark" bind:group={theme} /> Dark</label>
+			<label><input type="radio" name="theme" value="light" bind:group={theme} /> Light</label>
+		</div>
 	</header>
 	{#if mode === 'gallery'}
 		<div class="dv-grid">
 			{#each sections as s (s.id)}
-				<GallerySection section={s} />
+				<GallerySection section={s} {theme} />
 			{/each}
 		</div>
 	{:else}
 		{#key mode}
-			<GallerySection section={{ id: 'case', title: 'Whole case', ...wholeCase }} rail={mode} />
+			<GallerySection section={{ id: 'case', title: 'Whole case', ...wholeCase }} rail={mode} {theme} />
 		{/key}
 	{/if}
 </main>
@@ -47,6 +52,10 @@
 		background: #06060a;
 		color: #e5e7eb;
 		font-family: 'DM Sans', 'IBM Plex Sans', system-ui, sans-serif;
+	}
+	.dv--light {
+		background: #f3f4f6;
+		color: #1f2937;
 	}
 	.dv-head {
 		display: flex;

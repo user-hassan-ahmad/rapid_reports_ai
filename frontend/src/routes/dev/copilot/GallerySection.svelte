@@ -8,7 +8,7 @@
 	import { cardRef, norm, type Group } from '$lib/copilot/state';
 	import type { Section } from './gallery';
 
-	let { section, rail = null }: { section: Section; rail?: 'wide' | 'narrow' | null } = $props();
+	let { section, rail = null, theme = 'dark' }: { section: Section; rail?: 'wide' | 'narrow' | null; theme?: 'dark' | 'light' } = $props();
 	const init = untrack(() => section);
 	let groups = $state<Group[]>(structuredClone(init.groups));
 	let views = $state<Record<string, CardView>>(structuredClone(init.views));
@@ -53,12 +53,12 @@
 {#if rail}
 	<div class="dv-rail-row" class:narrow={rail === 'narrow'}>
 		<div class="dv-pad">Scratchpad (stand-in)</div>
-		<CopilotRail layout={rail} {groups} {views} {matching} {matchFailed} {otherState} {...handlers} />
+		<CopilotRail layout={rail} {theme} {groups} {views} {matching} {matchFailed} {otherState} {...handlers} />
 	</div>
 {:else}
 	<section class="dv-section" data-testid="dv-{section.id}" aria-label={section.title}>
 		<h2>{section.title}</h2>
-		<div class="rv-rail dv-col" data-theme="dark">
+		<div class="rv-rail dv-col" data-theme={theme}>
 			<CopilotCards {groups} {views} {matching} {matchFailed} {otherState} {...handlers} />
 		</div>
 	</section>
@@ -72,6 +72,8 @@
 		margin: 0 0 6px;
 	}
 	.dv-col {
+		background: var(--rv-panel);
+		color: var(--rv-text);
 		width: 420px; /* the Copilot rail's width (B0) */
 		box-sizing: border-box;
 		padding: 10px 12px;

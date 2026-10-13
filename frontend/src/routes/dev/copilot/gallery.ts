@@ -86,6 +86,109 @@ const flDraft = result(
 		]
 	})
 );
+// Hassan's checkpoint-3 screenshot case: ESE benign, with the pack's real outcome text, five caveats and four
+// near-identical citations (one source, several locators). headline/action/category are the planned backend fields.
+const eseSource = { source: 'S1', title: 'European Society of Endocrinology clinical practice guidelines on the management of adrenal incidentalomas', issuer: 'European Society of Endocrinology', edition: '2023' };
+const eseBenign = result(
+	ese,
+	preview({
+		state: 'check_first',
+		proposal: null,
+		draft_outcome: outcome({
+			classification: 'Homogeneous adrenal mass of 10 HU or less on unenhanced CT: consistent with a benign (lipid-rich) lesion, whatever its size.',
+			recommendation: 'No further imaging required.',
+			headline: 'Benign adrenal adenoma',
+			action: 'No further imaging',
+			category: 'none',
+			caveats: [
+				'Clinical and hormonal assessment is still recommended: 1 mg overnight dexamethasone suppression test, and aldosterone/renin ratio if there is hypertension or unexplained hypokalaemia.',
+				'Metanephrines are needed only when unenhanced attenuation is over 10 HU.',
+				'Surgery is not recommended for an asymptomatic, non-functioning unilateral mass with obvious benign imaging features.',
+				'In very young patients ESE would consider one follow-up scan at 12 months even for a presumably benign mass.',
+				'Under 40 years (or in pregnancy), ESE recommends urgent assessment of any adrenal mass.'
+			],
+			citations: [
+				{ ...eseSource, page: 18, section: 'Figure 5' },
+				{ ...eseSource, page: 17, section: 'Figure 4 note 3' },
+				{ ...eseSource, page: 18, section: 'Figure 5' },
+				{ ...eseSource, page: 24, section: 'R.4.2' }
+			]
+		}),
+		draft: [
+			draft({ input: 'size_cm', label: 'Adrenal mass maximum diameter', state: 'read', value: '2.2 cm', quote: '2.2 cm left adrenal nodule' }),
+			draft({ input: 'appearance', label: 'Appearance of the mass', state: 'read', value: 'Homogeneous', quote: 'homogeneous' }),
+			draft({ input: 'unenhanced_hu', label: 'Attenuation on unenhanced CT', state: 'read', value: '8 HU', quote: 'measuring 8 HU on the unenhanced images' }),
+			draft({ input: 'age', label: 'Age', scope: 'patient', fact: 'age', state: 'read', value: '65', quote: '65 year old' }),
+			draft({ input: 'known_primary_cancer', label: 'History of extra-adrenal malignancy', role: 'eligibility', state: 'assumed', value: 'No' }),
+			draft({ input: 'not_incidentaloma', label: 'Imaging for suspected adrenal disease', role: 'eligibility', state: 'assumed', value: 'No' })
+		],
+		assumptions: ['known_primary_cancer', 'not_incidentaloma'],
+		assumed_eligible: true
+	})
+);
+const btsSurv = result(
+	bts,
+	preview({
+		proposal: null,
+		draft_outcome: outcome({
+			classification: 'Solid nodule 5 to 8 mm (Brock risk under 10%): CT surveillance.',
+			recommendation: 'CT surveillance at 3 months, then 1 year and 2 years if stable.',
+			headline: 'Solid nodule, low risk',
+			action: 'CT at 3 months',
+			category: 'surveillance',
+			caveats: ['Use volumetry where available.'],
+			citations: [{ title: 'BTS guidelines for the investigation and management of pulmonary nodules', issuer: 'British Thoracic Society', edition: '2015', page: 12, section: 'Algorithm 1' }]
+		}),
+		draft: [
+			draft({ input: 'size', label: 'Mean diameter', state: 'read', value: '7 mm', quote: '7 mm solid nodule' }),
+			draft({ input: 'type', label: 'Nodule type', state: 'read', value: 'Solid', quote: 'solid' }),
+			draft({ input: 'brock', label: 'Brock risk', state: 'prefilled', value: '< 10%', why: ['the check did not run'] })
+		]
+	})
+);
+// no outcome yet, with the planned most_likely / deciding fields (BTS: Brock risk decides)
+const btsLikely = result(
+	bts,
+	preview({
+		proposal: null,
+		draft_outcome: null,
+		most_likely: { headline: 'CT surveillance', category: 'surveillance' },
+		deciding_input: 'brock',
+		deciding: [
+			{ answer: 'Brock < 10%', headline: 'CT surveillance', category: 'surveillance' },
+			{ answer: '10–70%', headline: 'PET-CT', category: 'workup' },
+			{ answer: '> 70%', headline: 'Biopsy or excision', category: 'refer' }
+		],
+		possible: ['No follow-up', 'CT at 3 months', 'CT at 1 year', 'CT surveillance', 'PET-CT', 'Image-guided biopsy', 'Excision', 'Volumetry', 'Repeat CT', 'Discharge', 'MDT', 'Clinical review'],
+		draft: [
+			draft({ input: 'size', label: 'Mean diameter', state: 'read', value: '9 mm', quote: '9 mm solid nodule' }),
+			draft({ input: 'type', label: 'Nodule type', state: 'read', value: 'Solid', quote: 'solid' }),
+			draft({ input: 'age_ok', label: 'Age 18 or over', role: 'eligibility', state: 'assumed', value: 'Yes' }),
+			draft({ input: 'brock', label: 'Brock risk', state: 'asked', needed: true })
+		],
+		assumptions: ['age_ok'],
+		assumed_eligible: true
+	})
+);
+const bosniakRefer = result(
+	bosniak,
+	preview({
+		proposal: null,
+		draft_outcome: outcome({
+			classification: 'Bosniak IV: cystic mass with one or more enhancing nodular components.',
+			recommendation: 'Refer to the urology MDT; surgical management is usually advised.',
+			headline: 'Bosniak IV cystic mass',
+			action: 'Refer · urology MDT',
+			category: 'refer',
+			caveats: [],
+			citations: [{ title: 'Bosniak Classification of Cystic Renal Masses, Version 2019', issuer: 'Society of Abdominal Radiology', edition: '2019', page: 5, table: 'Table 1' }]
+		}),
+		draft: [
+			draft({ input: 'nodule', label: 'Enhancing nodule', state: 'read', value: 'Yes', quote: 'enhancing mural nodule' }),
+			draft({ input: 'size', label: 'Size', state: 'read', value: '3 cm', quote: '3 cm cystic lesion' })
+		]
+	})
+);
 const tnm = card({ key: 'tnm-lung', name: 'TNM 9 · Lung', version: '9', finding_id: 'u3', finding: mass.text });
 const tier2 = card({ key: 'fazekas', name: 'Fazekas scale', version: '1987', finding_id: 'u5', finding: white.text, reference: true });
 
@@ -113,6 +216,10 @@ const tnmResult = result(tnm, null, {
 const flApplies = result(fl, preview({ proposal: outcome({ classification: 'Optional CT at 12 months', caveats: ['A generic caveat.'] }) }), { reference });
 
 export const sections: Section[] = [
+	{ id: 'ese-benign', title: 'ESE benign (checkpoint 3 case)', ...one(adrenal, ese, view(eseBenign, { open: true })) },
+	{ id: 'bts-surveillance', title: 'BTS surveillance', ...one(nodule, bts, view(btsSurv, { open: true })) },
+	{ id: 'refer', title: 'Refer', ...one(cyst, bosniak, view(bosniakRefer, { open: true })) },
+	{ id: 'most-likely', title: 'No outcome yet: most likely, and what decides it', ...one(nodule, bts, view(btsLikely, { open: true })) },
 	{ id: 'matching', title: 'First match in flight', groups: [], views: {}, matching: true },
 	{ id: 'match-failed', title: 'Match failed', groups: [], views: {}, matchFailed: true },
 	{ id: 'empty', title: 'No guideline applies yet', groups: [], views: {} },
@@ -144,7 +251,7 @@ export const sections: Section[] = [
 				open: true,
 				columns: {
 					[fl.key]: { loading: false, error: null, result: flApplies },
-					[bts.key]: { loading: false, error: null, result: result(bts, preview({ state: 'check_first', proposal: null, missing: ['risk'], asks: [{ input: 'risk', label: 'Risk score' }] })) }
+					[bts.key]: { loading: false, error: null, result: btsSurv }
 				}
 			})
 		)
@@ -183,12 +290,12 @@ export const wholeCase: Pick<Section, 'groups' | 'views'> = {
 		[cardRef(flSib)]: view(null, {
 			columns: {
 				[fl.key]: { loading: false, error: null, result: flApplies },
-				[bts.key]: { loading: false, error: null, result: result(bts, preview()) }
+				[bts.key]: { loading: false, error: null, result: btsSurv }
 			}
 		}),
 		[cardRef(tnm)]: view(tnmResult),
 		[cardRef(bosniak)]: view(result(bosniak, preview({ state: 'check_first', proposal: null, missing: ['enhancement'], asks: [{ input: 'enhancement', label: 'Measurable enhancement' }] }))),
 		[cardRef(tier2)]: view(result(tier2, null, { reference })),
-		[cardRef(ese)]: view(eseCheck, { open: true })
+		[cardRef(ese)]: view(eseBenign, { open: true })
 	}
 };

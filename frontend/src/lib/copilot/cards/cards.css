@@ -50,10 +50,8 @@
 	color: var(--rv-muted);
 }
 .cp-cards .cp-label {
-	font-size: 10px;
-	font-weight: 700;
-	text-transform: uppercase;
-	letter-spacing: 0.1em;
+	font-size: 12px;
+	font-weight: 500;
 	color: var(--rv-muted);
 }
 /* neutral chips: "set by the exam", "other" */
@@ -83,6 +81,10 @@
 	clip: rect(0, 0, 0, 0);
 	white-space: nowrap;
 	border: 0;
+}
+/* `hidden` wins over any component's display rule (collapsed lists stay in the DOM for aria-controls) */
+.cp-cards [hidden] {
+	display: none !important;
 }
 .cp-cards .cp-skel-line {
 	height: 10px;

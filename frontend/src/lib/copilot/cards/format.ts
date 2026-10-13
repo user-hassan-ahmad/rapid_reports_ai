@@ -1,6 +1,6 @@
 // Small text helpers the card components share. Pure, so they are unit-tested apart from the markup.
 import { cardRef, outcomeOf, rowsOf } from '../state';
-import type { Ask, Card, Citation, OpenResult, Preview, ValueState } from '../types';
+import type { ActionCategory, Ask, Card, Citation, OpenResult, Preview, ValueState } from '../types';
 
 /** One short citation line, as the backend's describe.cite_text: title (edition), p. N, section, table. */
 export function citeText(c: Citation | null | undefined): string {
@@ -45,6 +45,15 @@ export function assumptionsOf(p: Preview | null | undefined): string[] {
 	const labels = new Map(p.asks.map((a) => [a.input, a.label]));
 	if (p.assumptions?.length) return p.assumptions.map((id) => labels.get(id) || id);
 	return p.missing.filter((m) => isEligibility(p, m)).map((m) => labels.get(m) || m);
+}
+
+/** "Depends on <question>": the deciding input's label (from the draft), else the first still-open question that can
+ *  change the outcome. Empty when nothing is said to decide it. */
+export function decidingQuestion(p: Preview): string {
+	if (!p.deciding?.length) return '';
+	const rows = p.draft ?? [];
+	const named = p.deciding_input ? rows.find((v) => v.input === p.deciding_input)?.label : '';
+	return named || rowsOf(p).asked.find((v) => v.needed)?.label || openQuestions(p)[0] || '';
 }
 
 /** The still-open questions shown last, quietly: the draft's asked rows (eligibility first in check_first, then
@@ -109,3 +118,130 @@ export const setByExam = (p: Preview | null | undefined) => !!p?.settled.some((s
 
 /** The column ref a SiblingColumns retry names: the card ref plus the pack key, so A6 retries one column. */
 export const columnRef = (card: Card, key: string) => `${cardRef(card)}#${key}`;
+
+// ── Card redesign (B-design, Hassan after checkpoint 3): judgement first ──
+
+export type VerdictCategory = ActionCategory | 'neutral' | 'open';
+export interface Verdict {
+	category: VerdictCategory;
+	/** The pill's text: the action, else the headline, else the open state. */
+	pill: string;
+	/** No outcome yet, but a likeliest one (planned `most_likely`): coloured, drawn dashed. */
+	tentative?: boolean;
+	headline: string;
+	action: string;
+	classification: string;
+	caveats: string[];
+	citations: Citation[];
+}
+export interface VerdictOverride { headline?: string | null; action?: string | null; category?: ActionCategory | null }
+
+const words = (s: string, n: number) => {
+	const w = s.trim().split(/\s+/);
+	return w.length > n ? `${w.slice(0, n).join(' ')}…` : w.join(' ');
+};
+const unstop = (s: string) => s.trim().replace(/[.;:,]+$/, '');
+/** Fallback headline until the backend sends one: the classification's first clause (before ":"), ≤ 8 words. */
+export const headlineOf = (classification: string) => words(unstop(classification.split(':')[0] ?? ''), 8);
+/** Fallback action: the recommendation's first sentence. */
+export const actionOf = (recommendation: string) => unstop(recommendation.split(/(?<=[.;])\s/)[0] ?? '');
+
+/** What the card leads with. The backend's planned per-outcome `headline` / `action` / `category` win (and props
+ *  override both); until then category is not_applicable for does_not_apply, none for a normal outcome, else
+ *  neutral, and the headline and action come from the classification and recommendation. With no outcome yet the
+ *  pill counts what is still open. */
+export function verdictOf(p: Preview | null | undefined, o: VerdictOverride = {}): Verdict | null {
+	if (!p) return null;
+	if (p.state === 'does_not_apply') {
+		const x = p.exclusion;
+		return {
+			category: 'not_applicable',
+			pill: 'Does not apply',
+			headline: o.headline ?? x?.headline ?? (x ? headlineOf(x.classification) : 'Does not apply'),
+			action: '',
+			classification: x?.classification ?? '',
+			caveats: x?.caveats ?? [],
+			citations: x?.citations ?? []
+		};
+	}
+	const out = outcomeOf(p);
+	if (!out && p.most_likely?.headline) {
+		const m = p.most_likely;
+		return { category: m.category ?? 'neutral', pill: `Likely: ${m.headline}`, headline: m.headline, action: m.action ?? '', classification: '', caveats: [], citations: [], tentative: true };
+	}
+	if (!out) {
+		const n = openQuestions(p).length;
+		const pill = n ? `${n} ${n === 1 ? 'question' : 'questions'} open` : p.possible.length > 1 ? `${p.possible.length} outcomes possible` : 'No outcome yet';
+		return { category: 'open', pill, headline: '', action: '', classification: '', caveats: [], citations: [] };
+	}
+	const headline = o.headline ?? out.headline ?? headlineOf(out.classification);
+	const action = o.action ?? out.action ?? actionOf(out.recommendation);
+	return {
+		category: o.category ?? out.category ?? (out.normal ? 'none' : 'neutral'),
+		pill: action || headline,
+		headline,
+		action,
+		classification: out.classification,
+		caveats: out.caveats,
+		citations: out.citations
+	};
+}
+
+const STOP = new Set(['of', 'the', 'and', 'for', 'in', 'on', 'de', 'la', 'et']);
+/** "European Society of Endocrinology" → "ESE"; an abbreviation in brackets wins; one word stays as it is. */
+export function issuerShort(issuer: string): string {
+	const bracket = issuer.match(/\(([A-Z][A-Za-z0-9-]{1,9})\)/);
+	if (bracket) return bracket[1];
+	const w = issuer.split(/[\s,]+/).filter((x) => x && !STOP.has(x.toLowerCase()) && /^[A-Za-z]/.test(x));
+	return w.length > 1 ? w.map((x) => x[0].toUpperCase()).join('') : (w[0] ?? '');
+}
+/** One short source line: issuer + year + locator, e.g. "ESE 2023 · Fig 5, p. 18". */
+export function citeShort(c: Citation): string {
+	const who = c.issuer ? issuerShort(c.issuer) : (c.title ?? c.source ?? '').split(/\s+/).slice(0, 3).join(' ');
+	const year = (c.edition ?? '').match(/\d{4}/)?.[0] ?? '';
+	const where = (c.table || c.section || '').replace(/\bFigure\b/g, 'Fig').replace(/\bTable\b/g, 'Table');
+	const loc = [where.length > 24 ? `${where.slice(0, 23)}…` : where, c.page ? `p. ${c.page}` : ''].filter(Boolean).join(', ');
+	return [[who, year].filter(Boolean).join(' '), loc].filter(Boolean).join(' · ');
+}
+/** Citations deduplicated (identical full lines show once), as one short line plus the full list. */
+export function sourcesOf(cs: Citation[]): { short: string; more: number; full: string[] } {
+	const seen = new Map<string, Citation>();
+	for (const c of cs) {
+		const t = citeText(c);
+		if (t && !seen.has(t)) seen.set(t, c);
+	}
+	const list = [...seen.values()];
+	return { short: list.length ? citeShort(list[0]) : '', more: Math.max(0, list.length - 1), full: [...seen.keys()] };
+}
+
+export type ChipKind = 'read' | 'prefilled' | 'assumed' | 'exam' | 'set';
+export interface HeadChip { input: string; text: string; title: string; kind: ChipKind }
+/** The head's key values as compact chips: a value as itself, a "Yes" as its label, a "No" or N/A left out (they
+ *  read as noise without the label); at most `max`, plus how many more. */
+export function headChips(r: OpenResult, max = 4): { chips: HeadChip[]; more: number } {
+	const p = r.preview;
+	if (!p) return { chips: [], more: 0 };
+	const kind = (v: ValueRow): ChipKind => (v.byExam ? 'exam' : v.state === 'prefilled' ? 'prefilled' : v.state === 'read' ? 'read' : 'set');
+	const all: HeadChip[] = [];
+	const push = (input: string, label: string, value: string, k: ChipKind) => {
+		const v = value.trim();
+		if (!v || /^no$/i.test(v) || /^not stated$/i.test(v)) return;
+		all.push({ input, text: /^yes$/i.test(v) ? label : v, title: `${label}: ${v}`, kind: k });
+	};
+	for (const v of valueRows(r)) if (v.state !== 'not_applicable') push(v.input, v.label, v.value, kind(v));
+	for (const v of rowsOf(p).assumed) push(v.input, v.label, v.value, 'assumed');
+	return { chips: all.slice(0, max), more: Math.max(0, all.length - max) };
+}
+
+/** The category's colour token (the card's left strip and the pill). */
+export const categoryColor = (c: VerdictCategory) =>
+	({
+		none: 'var(--rv-green-line)',
+		surveillance: 'var(--rv-blue-line)',
+		workup: 'var(--rv-amber-line)',
+		refer: 'var(--rv-red-line)',
+		info: 'var(--rv-muted)',
+		not_applicable: 'var(--rv-muted)',
+		neutral: 'var(--rv-border-strong)', // not categorised yet (no backend category): no colour claim
+		open: 'var(--rv-muted)'
+	})[c];

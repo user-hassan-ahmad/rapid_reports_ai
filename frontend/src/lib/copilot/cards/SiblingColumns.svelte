@@ -11,7 +11,8 @@
 	import type { Card } from '../types';
 	import AssumedChip from './AssumedChip.svelte';
 	import CardStatus from './CardStatus.svelte';
-	import { assumptionsOf, columnRef, columnTitles, stateBadge } from './format';
+	import { assumptionsOf, columnRef, columnTitles, verdictOf } from './format';
+	import VerdictPill from './VerdictPill.svelte';
 	import PackBody from './PackBody.svelte';
 	import { closedView, errorOf, type CardView, type ColumnView } from './view';
 
@@ -58,15 +59,13 @@
 	<div class="cp-col" class:cp-col--stacked={stacked} data-key={c.key}>
 		{#if stacked}
 			{@const p = cv.result?.preview ?? null}
-			{@const badge = stateBadge(p)}
 			{@const assumed = assumptionsOf(p)}
 			<div class="cp-col-line">
 				<span class="cp-col-name">{c.title}</span>
-				{#if assumed.length || p?.state === 'check_first'}
-					<AssumedChip {assumed} checkFirst />
-				{:else if badge}
-					<span class="cp-chip">{badge.text}</span>
-				{/if}
+				<span class="cp-col-marks">
+					{#if verdictOf(p)}<VerdictPill verdict={verdictOf(p)!} />{/if}
+					<AssumedChip {assumed} checkFirst={p?.state === 'check_first'} />
+				</span>
 			</div>
 		{:else}
 			<button
@@ -94,6 +93,16 @@
 	</div>
 {/snippet}
 
+{#snippet meta()}
+	<!-- collapsed: each guideline's verdict at a glance; open, each column's own line carries it -->
+	<div class="cp-sib-pills" hidden={view.open}>
+		{#each cols as c (c.key)}
+			{@const vd = verdictOf(colView(c.key).result?.preview ?? null)}
+			<span class="cp-sib-pill"><span class="cp-muted">{c.title}</span>{#if vd}<VerdictPill verdict={vd} />{/if}</span>
+		{/each}
+	</div>
+{/snippet}
+
 {#snippet controls()}
 	{#if other}<span class="cp-chip">other</span>{/if}
 {/snippet}
@@ -101,10 +110,10 @@
 <div class="cp-card" data-ref={ref} bind:clientWidth={width}>
 	<GlCard
 		title={cols.map((c) => c.title).join(' · ')}
-		hint={`${cols.length} guidelines on this finding`}
 		roomy
 		bind:open={() => view.open, (v) => (v ? onOpen(ref) : onClose(ref))}
 		{controls}
+		{meta}
 		{body}
 	/>
 </div>
@@ -140,6 +149,25 @@
 		justify-content: space-between;
 		gap: 8px;
 		margin-bottom: 2px;
+	}
+	.cp-sib-pills {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px 12px;
+		margin-top: 6px;
+	}
+	.cp-sib-pill {
+		white-space: nowrap;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 12px;
+	}
+	.cp-col-marks {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		flex-shrink: 0;
 	}
 	.cp-col-name {
 		font-weight: 600;
