@@ -36,3 +36,10 @@ def test_summarise_totals_by_kind():
     out = L.summarise(rows, ["values_found", "values_total", "cards"])
     assert out["base"] == {"n": 2, "values_found": 3, "values_total": 4, "cards": 12}
     assert out["real"]["n"] == 1
+
+
+def test_score_decide_reads_values_inside_a_more_group():
+    group = {"id": "group:one_report", "kind": "group", "key": "", "evidence": [],
+             "cards": [_card("value:ecv")]}
+    s = L.score_decide(SET, {"cards": [], "more": [group], "kept": [], "states": {}})
+    assert s["values_found"] == 1

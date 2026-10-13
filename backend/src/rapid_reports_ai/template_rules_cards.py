@@ -18,6 +18,7 @@ from . import template_decisions as td
 from .template_decision_run import DecisionRun
 
 MAX_CARDS = 8
+MAX_MORE = 5       # entries under "More" (a card or a collapsed group); concept cards sit outside the cap
 MAJORITY_MIN = 2   # a concept with no base state (contrast) takes the usual state from the examples only when at least
                    # this many state it and more than state the other; otherwise the card asks (after the lab, 2026-10-13)
 _USUAL = {"contrast": ("Is contrast usually given for this scan?",
@@ -227,14 +228,45 @@ def build_cards(run: DecisionRun, n_examples: int) -> dict:
     open_ = sorted((c for c in every if c["selected"] is None),
                    key=lambda c: (c["rank"], -_stated_in(c)))
     # a value seen in only one report waits under "More" (after the lab, 2026-10-13), never in the main cards
-    single = [c for c in open_ if c["kind"] == "value" and _stated_in(c) <= 1 and n_examples > 1]
+    single = [c for c in open_ if _single(c) and n_examples > 1]
     main = [c for c in open_ if c not in single]
-    return {"cards": main[:MAX_CARDS], "more": [*main[MAX_CARDS:], *single], "kept": kept,
+    return {"cards": main[:MAX_CARDS], "more": group_more([*main[MAX_CARDS:], *single]), "kept": kept,
             "defaults": defaults_of(kept)}
 
 
 def _stated_in(card: dict) -> int:
     return sum(len(e["reports"]) for e in card["evidence"] if e.get("quote"))
+
+
+def _single(card: dict) -> bool:
+    """A value card whose evidence quotes one report (a stored template's current values have no evidence)."""
+    return card["kind"] == "value" and bool(card["evidence"]) and _stated_in(card) <= 1
+
+
+def _group(gid: str, prefix: str, cards: List[dict]) -> dict:
+    return {"id": f"group:{gid}", "kind": "group", "step": cards[0].get("step", "rules"),
+            "title": f"{prefix}: " + ", ".join(c["title"] for c in cards), "collapsed": True, "evidence": [],
+            "ledger_kind": "", "key": "", "cards": cards, "choices": [], "selected": None, "rank": _RANK["value"]}
+
+
+def flat(cards: List[dict]) -> List[dict]:
+    """Cards with each group expanded into its own cards."""
+    return [x for c in cards for x in (c["cards"] if c.get("kind") == "group" else [c])]
+
+
+def group_more(cards: List[dict]) -> List[dict]:
+    """The "More" list (follow-up lab, 2026-10-13): concept cards first and outside the cap; then at most MAX_MORE
+    entries, where values seen in one report are one collapsed group ("Seen in one report: ...") and any other
+    values past the cap are a second collapsed group. Every card stays choosable inside its group."""
+    cards = flat(cards)
+    concepts = [c for c in cards if c["kind"] in ("concept", "disagree")]
+    singles = [c for c in cards if _single(c)]
+    others = [c for c in cards if c not in concepts and c not in singles]
+    room = MAX_MORE - (1 if singles else 0)
+    if len(others) > room:
+        shown, rest = others[:room - 1], others[room - 1:]
+        others = [*shown, _group("more_values", "More values", rest)]
+    return [*concepts, *others, *([_group("one_report", "Seen in one report", singles)] if singles else [])]
 
 
 def current_value_cards(sheet: str, ledger: List[dict]) -> List[dict]:

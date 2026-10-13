@@ -199,4 +199,5 @@ def test_a_value_seen_in_one_report_stays_under_more_with_room_in_the_cards(clie
     run.values.append(R.ValueCandidate(name="Heart rate", quotes=[R.Quote(report=2, text="LVEF 60%")]))
     set_run(run)
     r = client.post(URL, headers=auth_headers, json={"scan_type": "<scan>", "examples": EX}).json()
-    assert [c["id"] for c in r["cards"]] == ["value:ecv"] and [c["id"] for c in r["more"]] == ["value:heart rate"]
+    assert [c["id"] for c in r["cards"]] == ["value:ecv"] and [c["kind"] for c in r["more"]] == ["group"]
+    assert [c["id"] for c in r["more"][0]["cards"]] == ["value:heart rate"]

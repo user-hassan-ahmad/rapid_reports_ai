@@ -33,7 +33,8 @@ def score_decide(s: dict, payload: dict) -> dict:
     """One set's decision-run result against its planted truth."""
     truth = s["truth"]
     n = len(s["examples"])
-    cards = payload.get("cards", []) + payload.get("more", [])
+    from rapid_reports_ai.template_rules_cards import flat
+    cards = flat(payload.get("cards", []) + payload.get("more", []))
     value_cards = {_n(c["key"]): c for c in cards + payload.get("kept", []) if c["id"].startswith("value:")}
     kept_ids = {c["id"] for c in payload.get("kept", [])}
     found = every_kept = partial_carded = 0

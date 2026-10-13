@@ -180,4 +180,39 @@ def test_one_report_stating_contrast_is_not_a_majority():
 def test_values_seen_in_one_report_go_under_more():
     one = R.ValueCandidate(name="Heart rate", quotes=[_q(2, "LVEF 60%")])
     out = C.build_cards(_run([ECV, one], states=ALL), 3)
-    assert [c["id"] for c in out["cards"]] == ["value:ecv"] and [c["id"] for c in out["more"]] == ["value:heart rate"]
+    assert [c["id"] for c in out["cards"]] == ["value:ecv"] and [c["id"] for c in C.flat(out["more"])] == ["value:heart rate"]
+
+
+# ── follow-up lab (2026-10-13): More capped at MAX_MORE, one-report values grouped ─────────────────────────────
+
+def _two(i):
+    return R.ValueCandidate(name=f"Value {i}", quotes=[_q(1, "LVEF 55%"), _q(3, "LVEF 50%")])
+
+
+def _one(i):
+    return R.ValueCandidate(name=f"Single {i}", quotes=[_q(2, "LVEF 60%")])
+
+
+def test_eight_single_report_values_are_one_collapsed_group():
+    out = C.build_cards(_run([ECV, *(_one(i) for i in range(8))], states=ALL), 3)
+    assert [c["id"] for c in out["cards"]] == ["value:ecv"]
+    assert len(out["more"]) == 1
+    group = out["more"][0]
+    assert group["kind"] == "group" and group["collapsed"] is True
+    assert group["title"] == "Seen in one report: " + ", ".join(f"Single {i}" for i in range(8))
+    assert [c["id"] for c in group["cards"]] == [f"value:single {i}" for i in range(8)]
+    assert all(c["choices"] and c["selected"] is None for c in group["cards"])   # each still choosable
+    assert [c["id"] for c in C.flat(out["more"])] == [f"value:single {i}" for i in range(8)]
+
+
+def test_more_is_capped_and_concept_cards_sit_outside_the_cap():
+    out = C.build_cards(_run([*(_two(i) for i in range(15)), *(_one(i) for i in range(2))], [NO_PRIOR, PRIOR],
+                             states=ALL), 3)
+    assert len(out["cards"]) == C.MAX_CARDS
+    concepts = [c for c in out["more"] if c["kind"] == "concept"]
+    capped = [c for c in out["more"] if c["kind"] != "concept"]
+    assert [c["id"] for c in concepts] == ["concept:comparison"]
+    assert len(capped) == C.MAX_MORE
+    assert [c["kind"] for c in capped][-2:] == ["group", "group"]
+    flat_ids = {c["id"] for c in C.flat(out["more"])}
+    assert len(flat_ids) == 15 - C.MAX_CARDS + 2 + 1          # nothing lost: 7 values, 2 singles, 1 concept

@@ -2883,7 +2883,8 @@ async def skill_sheet_decide_endpoint(
         # "more" (overflow and values seen in one report) stays under "More" even when there is room.
         open_ = [*current, *(c for c in built["cards"] if c["id"] not in have)]
         out = {"cards": open_[:trc.MAX_CARDS],
-               "more": [*open_[trc.MAX_CARDS:], *(c for c in built["more"] if c["id"] not in have)], "kept": kept}
+               "more": trc.group_more([*open_[trc.MAX_CARDS:],
+                                       *(c for c in trc.flat(built["more"]) if c["id"] not in have)]), "kept": kept}
         record = tdr.evidence(run, out)
         if request.template_id:   # first-use review: stamped once the cards exist, so it never runs twice
             tdr.stamp_review(db, request.template_id, record)

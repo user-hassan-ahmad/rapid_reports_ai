@@ -145,8 +145,12 @@ def test_the_prompt_counts_one_sentence_for_one_concept_and_asks_for_the_shortes
 
 
 def test_sequences_and_limitation_questions_ask_whether_the_report_mentions_the_concept_at_all():
-    for name in ("comparison", "contrast", "sequences", "limitation"):
+    for name in ("comparison", "contrast", "limitation"):
         assert "whether" in td.CONCEPTS[name].question.lower(), name
+    # the follow-up lab's arm b: the report lists the acquisitions, or says the protocol was complete or incomplete
+    assert td.CONCEPTS["sequences"].question == (
+        "Does this report list the acquisitions performed (sequences, series, phases or views), or say the planned "
+        "protocol was complete or incomplete?")
     for word in CLINICAL:
         if word == "contrast":
             continue
