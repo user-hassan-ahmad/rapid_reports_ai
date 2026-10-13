@@ -38,8 +38,8 @@
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
-	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDebug, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
-	import { appendSentence, heldBack, lineChange, liveTail, moveUnit, similar } from '$lib/hybrid-stack/stackState';
+	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
+	import { appendSentence, heldBack, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
 	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
 	import { abnormalAll, assumedFrom, moreLine, openCount, rowSentences, splitReply, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
@@ -322,22 +322,7 @@
 	$: moreView = moreLine(stackCapped, stackItems, Object.keys(tappedRows), removedSentences, Object.keys(skippedRows));
 	$: if (!moreView.show && moreOpen) moreOpen = false; // nothing left behind the line: it closes
 	$: viewItems = [...stackItems, ...Object.values(tappedRows).filter((t) => !stackItems.some((i) => i.id === t.id) && !moreView.rows.some((c) => c.id === t.id))];
-	// Debug trace (local only): a sentence already placed this session showing in the live strip again.
-	let placedTexts = new Set<string>();
-	let lastDebugKey = '';
 	$: stripNow = stackView ? liveTail(verbatimNow, stackUnits) : [];
-	$: {
-		for (const u of stackUnits) if (u.group !== null && !u.heading) placedTexts.add(u.text);
-		const back = stripNow.filter((t) => [...placedTexts].some((p) => p === t || similar(p, t)));
-		const key = back.join('|');
-		if (back.length && key !== lastDebugKey) {
-			lastDebugKey = key;
-			void postDebug($token, { kind: 'strip_returned', at: new Date().toISOString(), returned: back, strip: stripNow,
-				verbatim: verbatimNow, units: stackUnits.map((u) => ({ id: u.id, group: u.group, text: u.text })),
-				recording: isRecording, busy: stackBusy, timer: stackTimer !== null, pendingPolish: structureBusy(),
-				groupFailures, placed: [...placedTexts].slice(-40) });
-		}
-	}
 	$: rowsOpen = openCount(viewItems, Object.keys(tappedRows), removedSentences, Object.keys(skippedRows));
 	// Confirm waits for the review of what is on screen; a failed review counts as done (nothing new is asked).
 	$: reviewBehind = stackView && !!verbatimNow.trim() && reviewedFor !== verbatimNow;

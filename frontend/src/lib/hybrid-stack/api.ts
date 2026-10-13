@@ -72,7 +72,3 @@ export const postDraft = (token: string | null, body: { scan_type: string; clini
 /** After Generate: link the report to the stack session (only the id; everything else is already logged). */
 export const postReportId = (token: string | null, session_id: string, report_id: string) =>
 	post<{ ok: boolean }>(token, 'log', { session_id, report_id }, true);
-
-/** Local debugging only (the server answers 404 unless RR_STACK_DEBUG=1): a snapshot of an anomaly. */
-export const postDebug = (token: string | null, body: Record<string, unknown>) =>
-	post<{ ok: boolean }>(token, 'debug', body).catch(() => ({ ok: false }));

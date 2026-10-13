@@ -163,14 +163,6 @@ def test_slim_sheet_route_and_review(authed, monkeypatch, db_session, user):
     assert row.status == "discarded"
 
 
-def test_debug_route_only_with_the_flag(authed, monkeypatch):
-    monkeypatch.delenv("RR_STACK_DEBUG", raising=False)
-    assert authed.post("/api/canvas/stack/debug", json={"kind": "x"}).status_code == 404
-    monkeypatch.setenv("RR_STACK_DEBUG", "1")
-    assert authed.post("/api/canvas/stack/debug", json={"kind": "x"}).json() == {"ok": True}
-
-
-
 def test_changed_recheck_and_conclusion_check_routes(authed, monkeypatch):
     from rapid_reports_ai.hybrid_stack.items import ItemsResult
 
