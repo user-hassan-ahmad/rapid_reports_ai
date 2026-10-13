@@ -61,6 +61,7 @@ WHY_SEVERAL = "the finding may describe more than one lesion"
 WHY_NO_CHECK = "the check did not run"
 WHY_EXAM = "set by the exam"   # an exam preset: the one pre-fill with no quote (spec §5.1, §7.10)
 WHY_ASSUMED = "assumed: not stated, so taken as within the guideline's scope"   # an assumed eligibility input
+WHY_WOULD_EXCLUDE = "this pre-filled value would make the guideline not apply: confirm it"   # a scope doubt
 SETTLE_SYS = """You settle the inputs of one published radiology classification system for ONE finding. INPUTS lists each open input's id, scope, type and allowed values: use nothing else.
 An input's scope decides where it may be settled from:
 - [lesion]: the FINDING only, never another lesion in the dictation, even one of the same kind;
@@ -70,7 +71,8 @@ For each input its scope states, return one item:
 - state: "present" when the value is given; "absent" when the feature is said not to be there and the input lists absent; "not_assessable" when it is said that it cannot be assessed and the input lists not_assessable;
 - value: when present, for an enum exactly one of its options, for a boolean true or false, for a number the number as dictated; otherwise null;
 - quote: the shortest span, copied verbatim from the FINDING ([lesion]) or from the CLINICAL HISTORY or DICTATION ([patient]), that settles it; a number's quote is the whole measurement as dictated, with its unit.
-Leave out every input that is not stated: never settle a value from what is usual or likely, and never invent an input, option or state."""
+Leave out every input that is not stated: never settle a value from what is usual or likely, and never invent an input, option or state.
+A patient fact (a known cancer, a condition, a treatment) is present only when it is stated as established. A suspected, possible or differential diagnosis, about this lesion or any other, never settles it as present: leave it out."""
 
 
 class RawItem(BaseModel):
@@ -216,6 +218,18 @@ def _modified(quote: str, texts: list[str]) -> bool:
     return any(_MODIFIER.search(t[:m.start()]) for t in texts if t for m in pat.finditer(t))
 
 
+# a suspicion is never a known cancer (Hassan 2026-10-13: "suspicious for RCC" about another lesion pre-filled "known
+# primary cancer: yes"): the backstop to the settle prompt's rule, for the shared fact alone
+_HEDGE = re.compile(r"\b(?:suspicious|suspected|suspect|suspicion|possible|possibly|probable|probably|likely|query"
+                    r"|queried|equivocal|indeterminate|concerning|worrying|differential|cannot\s+be\s+excluded"
+                    r"|not\s+excluded)\b|\?", re.I)
+
+
+def _hedged_cancer(i: InputDef, v: InputValue, quote: str) -> bool:
+    """A "known primary cancer: yes" whose quote hedges: dropped, so the input is asked."""
+    return i.fact == "known_primary_cancer" and v.value is True and bool(_HEDGE.search(quote))
+
+
 async def _call(system: str, prompt: str) -> RawSettle:
     r = await asyncio.wait_for(_run_agent_with_model(
         model_name=QWEN, output_type=RawSettle, system_prompt=system, user_prompt=prompt, api_key="",
@@ -314,6 +328,8 @@ async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings
         if i is None or i.id not in ids or not q or not _in_scope(i, q, finding, findings, history):
             continue
         v = _value(i, item, _texts(i, finding, findings, history))
+        if v is not None and _hedged_cancer(i, v, q):
+            continue                 # a suspicion, about this lesion or another, is never a known cancer: asked
         if v is not None:
             out[i.id] = (v, Settled(input=i.id, value=_show(e, i, v), quote=q))
     return out, False
@@ -475,7 +491,8 @@ def _possible(e: Entry, t: engine.Trace) -> list[str]:
 
 
 def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict[str, str], sources: list[dict],
-           degraded: bool, preset: frozenset[str] = frozenset(), draft: list[DraftValue] | None = None) -> Preview:
+           degraded: bool, preset: frozenset[str] = frozenset(), draft: list[DraftValue] | None = None,
+           doubt: list[str] | None = None) -> Preview:
     """The card (spec §7.4): eligibility asks first; the state worked out in code; the reached outcome is a draft
     "on these values" (never a proposal, so never Applied); a does_not_apply outcome is shown as an exclusion."""
     elig = [i.id for i in e.inputs if i.role == "eligibility"]
@@ -489,11 +506,12 @@ def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict
         logger.info("[library.preview] %s does not apply (eligibility given: %s)", e.key,
                     ", ".join(k for k in elig if k in given) or "none")
     else:          # check_first stays honest: an assumed or still-unknown eligibility input (the UI's warning)
-        state = "check_first" if t.assumed or set(elig) & set(needed) else "applies"
+        state = "check_first" if t.assumed or doubt or set(elig) & set(needed) else "applies"
         draft_outcome, exclusion = text, None
-    assumptions = [i.id for i in e.inputs if i.id in t.assumed] if t.outcome != DOES_NOT_APPLY else []
+    assumptions = ([i.id for i in e.inputs if i.id in t.assumed and i.id not in (doubt or [])]
+                   if t.outcome != DOES_NOT_APPLY else [])
     return Preview(settled=settled, draft=draft or [], draft_outcome=draft_outcome, missing=needed, proposal=None,
-                   assumptions=assumptions, assumed_eligible=bool(assumptions),
+                   assumptions=assumptions, assumed_eligible=bool(assumptions), scope_doubt=list(doubt or []),
                    exclusion=exclusion, state=state, possible=_possible(e, t), bounded=t.bounded,
                    asks=_asks(e, t, sources, needed), waiting=list(t.waiting),
                    trace=t.model_dump(mode="json") if t.outcome is not None else None, degraded=degraded)
@@ -573,6 +591,7 @@ def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str,
             preset.add(k)
     try:      # the draft never leads with eligibility: an unknown one is assumed in scope, visibly (Hassan 2026-10-13)
         t = engine.evaluate(e, _known(given), assume_eligible=True)
+        t, doubt = _no_prefilled_exclusion(e, t, s, answers, given)
     except (engine.EvaluationError, ValueError) as ex:
         logger.error("[library.preview] %s cannot be evaluated: %s", e.key, ex)
         return failed(e)
@@ -593,8 +612,33 @@ def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str,
             st, g = "assumed", t.assumed[i.id]
         else:
             st = "asked"
-        draft.append(_draft_value(e, i, t, st, g, d if a is None else None, "exam" if i.id in preset else ""))
-    return _build(e, t, given, quotes, sources or [], s.failed or s.no_unit, frozenset(preset), draft)
+        dv = _draft_value(e, i, t, st, g, d if a is None else None, "exam" if i.id in preset else "")
+        if i.id in doubt:
+            dv.why.append(WHY_WOULD_EXCLUDE)
+        draft.append(dv)
+    return _build(e, t, given, quotes, sources or [], s.failed or s.no_unit, frozenset(preset), draft, doubt)
+
+
+def _no_prefilled_exclusion(e: Entry, t: engine.Trace, s: Settlement, answers: dict[str, InputValue],
+                            given: dict[str, InputValue]) -> tuple[engine.Trace, list[str]]:
+    """Only a read, answered or stated eligibility value may exclude (Hassan 2026-10-13). When the draft excludes and
+    pre-filled eligibility values are behind it, the draft is computed with those values assumed in scope instead, and
+    the ones that alone would exclude are returned as the scope doubt: shown pre-filled, with WHY_WOULD_EXCLUDE, and
+    the card stays check_first. Calculate still takes such a value as sent once the radiologist confirms it."""
+    if t.outcome != DOES_NOT_APPLY:
+        return t, []
+    pre = [k for k, d in s.values.items() if d.tier == "prefilled" and k not in answers
+           and e.input(k) is not None and e.input(k).role == "eligibility"]
+    if not pre:
+        return t, []
+    rest = {k: v for k, v in _known(given).items() if k not in pre}
+    t2 = engine.evaluate(e, rest, assume_eligible=True)
+    if t2.outcome == DOES_NOT_APPLY:                   # excluded anyway, by a read or answered value
+        return t, []
+    doubt = [k for k in pre
+             if engine.evaluate(e, {**rest, k: given[k]}, assume_eligible=True).outcome == DOES_NOT_APPLY]
+    logger.info("[library.preview] %s: a pre-filled eligibility value would exclude; drafted in scope", e.key)
+    return t2, doubt or pre
 
 
 def _same_shown(e: Entry, i: InputDef, v: InputValue | None, g: InputValue) -> bool:

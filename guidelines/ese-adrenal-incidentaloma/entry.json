@@ -36,7 +36,7 @@
       "scope": "patient",
       "role": "eligibility",
       "fact": "known_primary_cancer",
-      "how_stated": "true when the clinical details or dictation state a current or previous cancer outside the adrenal (e.g. staging or follow-up CT for lung cancer); false when no cancer history is given and the scan is for another reason",
+      "how_stated": "true when the clinical details or dictation state a current or previous cancer outside the adrenal (e.g. staging or follow-up CT for lung cancer); false when no cancer history is given and the scan is for another reason; a lesion only suspected of being cancer (\"suspicious for\", \"possible\", \"cannot be excluded\"), here or elsewhere, is not a known cancer",
       "locator": {
         "source": "S1",
         "page": 4,

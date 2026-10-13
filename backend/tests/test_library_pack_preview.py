@@ -455,8 +455,11 @@ async def test_a_read_eligibility_value_is_never_an_assumption(toy, monkeypatch,
             "size": PP.Drafted(PP.InputValue(value=7.0), "7 mm", "read")}
     excluded = PP.finish(e, PP.Settlement(values={**base, "known_cancer": PP.Drafted(
         PP.InputValue(value=True), "known lung cancer", "prefilled", [PP.WHY_KIND])}), {"risk": "high"})
-    assert excluded.state == "does_not_apply" and excluded.assumptions == [] and excluded.draft_outcome is None
-    assert excluded.exclusion is not None and _states(excluded)["kind"] == "read"     # the read values stay
+    # a pre-filled excluding value is a scope doubt, never an exclusion (Hassan 2026-10-13); answered, it excludes
+    assert excluded.state == "check_first" and excluded.scope_doubt == ["known_cancer"] and excluded.exclusion is None
+    assert excluded.draft_outcome.recommendation == "CT at 6 months" and _states(excluded)["kind"] == "read"
+    answered = PP.finish(e, PP.Settlement(values=base), {"risk": "high", "known_cancer": "Yes"})
+    assert answered.state == "does_not_apply" and answered.assumptions == [] and answered.exclusion is not None
     eligible = PP.finish(e, PP.Settlement(values={**base, "known_cancer": PP.Drafted(
         PP.InputValue(value=False), "no history of cancer", "prefilled", [PP.WHY_KIND])}), {"risk": "high"})
     assert eligible.state == "applies" and eligible.assumptions == [] and eligible.assumed_eligible is False

@@ -158,3 +158,49 @@ def test_the_reviewers_bts_repro_reaches_the_same_answer_in_the_draft_and_in_cal
     shown = {d.input: d.value for d in p.draft if d.value}
     c = PP.calculate(e, s, shown, None, [], "b1")
     assert c.outcome == (p.trace or {}).get("outcome") and c.needed == p.missing and "age" in p.missing
+
+
+# Hassan 2026-10-13: only a read, answered or stated eligibility value may exclude; a pre-filled one is a scope doubt
+def test_a_prefilled_excluding_eligibility_value_is_a_scope_doubt_not_an_exclusion():
+    e = next(x for x in _tier1() if x.id == "rcog-ovarian-mass-premenopausal")
+    s = PP.Settlement(values={"pregnant_or_acute": PP.Drafted(InputValue(value=True), "Pelvic pain", "prefilled",
+                                                              [PP.WHY_KIND, PP.WHY_UNCONFIRMED])})
+    p = PP.finish(e, s, {}, None, [])
+    assert p.state == "check_first" and p.exclusion is None and p.scope_doubt == ["pregnant_or_acute"]
+    assert (p.trace or {}).get("outcome") != "does_not_apply"
+    d = next(x for x in p.draft if x.input == "pregnant_or_acute")
+    assert (d.state, d.value, d.quote) == ("prefilled", "Yes", "Pelvic pain") and PP.WHY_WOULD_EXCLUDE in d.why
+    assert "pregnant_or_acute" not in p.assumptions
+    c = PP.calculate(e, s, {"pregnant_or_acute": "Yes"}, None, [], "b1")       # confirmed by the radiologist
+    assert c.outcome == "does_not_apply" and c.exclusion is not None
+
+
+def test_a_prefilled_known_cancer_never_excludes_and_a_suspicion_is_never_drafted(monkeypatch):
+    e = next(x for x in _tier1() if x.id == "ese-adrenal-incidentaloma")
+    s = PP.Settlement(values={"known_primary_cancer": PP.Drafted(InputValue(value=True), "renal cancer", "prefilled",
+                                                                 [PP.WHY_KIND])})
+    p = PP.finish(e, s, {}, None, [])
+    assert p.state == "check_first" and p.exclusion is None and p.scope_doubt == ["known_primary_cancer"]
+    i = e.input("known_primary_cancer")
+    assert PP._hedged_cancer(i, InputValue(value=True), "suspicious for RCC")
+    assert not PP._hedged_cancer(i, InputValue(value=True), "known renal cell carcinoma")
+    assert not PP._hedged_cancer(i, InputValue(value=False), "suspicious for RCC")
+    assert "suspected, possible or differential diagnosis" in PP.SETTLE_SYS
+
+
+async def test_the_settler_never_drafts_known_cancer_from_a_suspicion_about_another_lesion(monkeypatch, jev):
+    e = next(x for x in _tier1() if x.id == "ese-adrenal-incidentaloma")
+    finding = "1.4 cm left adrenal nodule."
+    dictation = f"{finding} Separate 3 cm right renal mass, suspicious for RCC."
+    _model(monkeypatch, {"input": "known_primary_cancer", "value": True, "quote": "suspicious for RCC"})
+    s = await PP.settle_pack(e, dictation, "", finding=finding)
+    assert "known_primary_cancer" not in s.values                       # asked, never pre-filled yes
+
+
+def test_a_read_excluding_eligibility_value_still_excludes():
+    e = next(x for x in _tier1() if x.id == "fleischner-pulmonary-nodule")
+    s = PP.Settlement(values={"age": PP.Drafted(InputValue(value=30.0), "30-year-old", "read")})
+    p = PP.finish(e, s, {}, None, [])
+    assert p.state == "does_not_apply" and p.exclusion is not None and p.scope_doubt == []
+    p = PP.finish(e, PP.Settlement(), {"exclusion": "Yes"}, None, [])                # answered: excludes too
+    assert p.state == "does_not_apply"

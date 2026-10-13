@@ -167,6 +167,9 @@ class Preview(BaseModel):
     assumptions: list[str] = Field(default_factory=list)   # library packs: eligibility inputs assumed in scope (their
                                                            # draft values have state "assumed"), in pack order
     assumed_eligible: bool = False   # library packs: the draft rests on assumptions; the card shows a warning
+    scope_doubt: list[str] = Field(default_factory=list)   # library packs: pre-filled eligibility values that would
+    # exclude; never applied as an exclusion until confirmed (only a read or answered value excludes). The card shows
+    # them prominently (check_first); the draft is computed with them assumed in scope
     missing: list[str] = Field(default_factory=list)
     waiting: list[str] = Field(default_factory=list)   # library packs: inputs behind a prerequisite still unknown
     proposal: Proposal | None = None      # never set for library packs: Apply writes only a Calculation's result

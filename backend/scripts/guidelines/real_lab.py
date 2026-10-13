@@ -47,7 +47,8 @@ from rapid_reports_ai.hybrid_stack.copilot import tnm  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library import quantity as Q  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library.pack_preview import (  # noqa: E402
-    EXAM_CARD, Drafted, _answer, _show, display_options, exam_presets, finish, preset_values, settle_pack, Settlement)
+    EXAM_CARD, Drafted, _answer, _show, calculate, display_options, exam_presets, finish, preset_values, settle_pack,
+    Settlement)
 from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry, InputValue  # noqa: E402
 
 MAX_FILL = 10
@@ -534,7 +535,10 @@ def taps(e: Entry, s, label: dict, patient: dict, picked: bool = False,
         answered.update(new)
         n += len(new)
         p = finish(e, s, answered, patient, presets=presets)
-    return n, (p.trace or {}).get("outcome")
+    # the Calculate tap: the engine over every value the card shows (a pre-filled scope doubt the truth agrees with is
+    # confirmed by it and excludes, as live Calculate would)
+    shown = {d.input: d.value for d in p.draft if d.value}
+    return n, calculate(e, s, shown, patient, [], "", presets=presets).outcome
 
 
 def spot_rows(e: Entry, card: dict, s, label: dict) -> list[dict]:

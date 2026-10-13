@@ -504,3 +504,15 @@ def test_a_band_or_bound_label_for_a_number_is_kept_as_a_value_and_a_read_inside
     assert v["diameter_mm"] == "ok" and v["age"] == "ok"
     s = Settlement(values={"diameter_mm": Drafted(InputValue(value=7.0), "7mm", "read")})
     assert RL.verdicts(e, s, lab)["diameter_mm"] == "wrong"                     # a genuine mismatch stays wrong
+
+
+def test_a_scope_doubt_the_truth_agrees_with_excludes_at_the_calculate_tap():
+    """A pre-filled excluding eligibility value never excludes the draft; the radiologist confirms it at Calculate, so
+    taps' outcome is Calculate's over the shown values."""
+    import json
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+    e = LB.Library(json.loads(LB.BUNDLE.read_text())).lookup("rcog-ovarian-mass-premenopausal")
+    s = Settlement(values={"pregnant_or_acute": Drafted(InputValue(value=True), "Pelvic pain", "prefilled", ["x"])})
+    lab = _label(**{i.id: (None, None) for i in e.inputs})
+    lab["inputs"]["pregnant_or_acute"].update(stated=True, value="Yes")
+    assert RL.taps(e, s, lab, {})[1] == "does_not_apply"

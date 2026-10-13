@@ -213,7 +213,7 @@ def test_open_preview_failure_still_returns_the_entry(authed, monkeypatch):
     monkeypatch.setattr(CR, "preview", prev)
     d = authed.post("/api/canvas/stack/guidelines/open", json={
         "card": {"key": "k@1", "name": "K", "version": "1", "finding_id": "u1", "branch": "B"}, "findings": "x"}).json()
-    assert d["entry"]["key"] == "k@1" and d["preview"] == {"settled": [], "draft": [], "draft_outcome": None, "assumptions": [], "assumed_eligible": False, "missing": [], "waiting": [], "proposal": None, "possible": [], "bounded": True, "asks": [], "trace": None, "degraded": False,
+    assert d["entry"]["key"] == "k@1" and d["preview"] == {"settled": [], "draft": [], "draft_outcome": None, "assumptions": [], "assumed_eligible": False, "scope_doubt": [], "missing": [], "waiting": [], "proposal": None, "possible": [], "bounded": True, "asks": [], "trace": None, "degraded": False,
                                                               "state": "applies", "exclusion": None}
 
 
