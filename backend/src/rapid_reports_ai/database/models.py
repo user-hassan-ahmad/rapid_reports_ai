@@ -1,5 +1,6 @@
 """SQLAlchemy models for Rapid Reports AI"""
 
+from sqlalchemy import func
 from sqlalchemy import Column, String, Text, Boolean, DateTime, JSON, ForeignKey, Integer, Float, UniqueConstraint, Index, ARRAY
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, deferred
@@ -412,6 +413,7 @@ class Report(Base):
     # migration 20261003120000, which production has applied (L-58); left unmapped until then (0f1a8a3) because
     # even a deferred() column is INSERTed. Deferred so ordinary report queries never select it.
     workspace_state = deferred(Column(JSONBType(), nullable=True))
+    generation_stamp = Column(JSONBType(), nullable=True)  # which sheet/prompt wrote this report (migration 20261013090000)
 
     # Foreign keys
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -921,5 +923,31 @@ class DictationStackLog(Base):
     latency_ms = Column(JSONBType(), nullable=True)
     gate = Column(JSONBType(), nullable=True)            # v2: what the radiologist confirmed before Generate
     report_id = Column(String(64), nullable=True)        # v2: the report generated from this session
+    template_id = Column(String(64), nullable=True)      # template-evidence: template used, if any
+    stamp = Column(JSONBType(), nullable=True)           # template-evidence: generation stamp
     created_at = Column(DateTime, default=_now, nullable=False)
     updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+
+class TemplateExample(Base):
+    """An example report stored with a template (evidence for the learning loop)."""
+    __tablename__ = "template_examples"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    text = Column(Text, nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    source = Column(String(16), nullable=False, default="pasted")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class TemplateChatTurn(Base):
+    """One chat-to-edit turn on a template."""
+    __tablename__ = "template_chat_turns"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    instruction = Column(Text, nullable=False)
+    response = Column(Text, nullable=True)
+    applied = Column(Boolean, nullable=False, default=True)
+    sheet_hash_before = Column(String(64), nullable=True)
+    sheet_hash_after = Column(String(64), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
