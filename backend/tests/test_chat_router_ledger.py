@@ -146,3 +146,12 @@ async def test_save_applies_the_ledger_and_reports_unmatched_and_cards():
     assert saved.status == "saved" and 'LIST_MISSING ["Depth"]' in saved.sheet
     assert L.entry(saved.ledger, "value", "Width")["choice"] == {"need": "not_needed"}
     assert saved.cards == [] and saved.unmatched == []
+
+
+def test_forget_removes_an_entry_and_undo_restores_it_whole():
+    led, _ = L.set_choice([], "value", "Width", {"need": "relevant"}, route="llm_unsure")
+    out, change = L.forget(led, "value", "width")
+    assert out == [] and change["new"] is None and change["old"]["route"] == "llm_unsure"
+    assert L.undo(out, change) == led
+    assert L.forget([], "value", "Width") == ([], None)
+    assert L.FORGET == {"forget": True}

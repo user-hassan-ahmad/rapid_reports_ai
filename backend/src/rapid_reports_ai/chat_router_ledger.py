@@ -192,10 +192,26 @@ def set_choice(ledger: List[dict], kind: str, key: str, choice: dict,
     return out, (dict(change) if change else None)
 
 
+FORGET = dict(td.FORGET)   # a card answer that removes the entry ("Forget this decision")
+
+
+def forget(ledger: List[dict], kind: str, key: str) -> Tuple[List[dict], Optional[dict]]:
+    """The ledger without (kind, key), and a change undo can reverse (new None, the old entry whole); (ledger, None)
+    when nothing is decided."""
+    e = entry(ledger, kind, key)
+    if e is None:
+        return list(ledger or []), None
+    return (td.remove_decision(list(ledger), kind, key),
+            {"kind": kind, "key": e["key"], "old": dict(e), "new": None, "source": "chat",
+             "confirmed": e.get("source") != "default"})
+
+
 def undo(ledger: List[dict], change: dict) -> List[dict]:
     """Reverse one change this router made (td.undo_change), only while its entry still holds it: a later turn's
-    change is never undone."""
+    change is never undone. A forget (new None) is reversed only while the entry is still gone."""
     e = entry(ledger, change["kind"], change["key"])
+    if change.get("new") is None:
+        return td.undo_change(list(ledger or []), change) if e is None and change.get("old") else list(ledger or [])
     if e is None or e.get("choice") != change.get("new"):
         return list(ledger or [])
     return td.undo_change(list(ledger), change)

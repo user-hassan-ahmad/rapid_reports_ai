@@ -281,3 +281,137 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
                 len(cards), failed, ev["ms"])
     return Turn(saved.sheet, saved.ledger, True, "\n".join(lines), claim=" ".join(claims), records=records,
                 cards=cards, notice=saved.message, unmatched=saved.unmatched, evidence=ev)
+
+
+CARD_REJECTED = "I couldn't apply that choice. Could you tell me in the chat what you want instead?"
+
+
+def enabled() -> bool:
+    """The kill switch (plan decision 1, D-R3): off unless RR_CHAT_ROUTER=1 and a Jev key is set; off sends every
+    turn down today's path."""
+    return os.environ.get("RR_CHAT_ROUTER", "0") == "1" and bool(os.environ.get("OPENROUTER_API_KEY"))
+
+
+def response(turn: Turn) -> dict:
+    """The /skill-sheet/refine (and /undo, /card) response for a router turn."""
+    out = {"success": True, "skill_sheet": turn.sheet, "response": turn.reply,
+           "behavioral_claim": turn.claim if turn.applied else "", "applied": turn.applied, "route": "router",
+           "changes": turn.records, "cards": turn.cards, "decisions": turn.ledger, "unmatched": turn.unmatched}
+    if turn.notice:
+        out["notice"] = turn.notice
+    return out
+
+
+async def undo_turn(sheet: str, ledger: List[dict], records: List[dict]) -> Turn:
+    """Reverse a turn's records, newest first (plan decision 10): a ledger write only while its entry still holds
+    the turn's value; a code edit by its inverse ops; a style block only while its edited text is still there.
+    Anything a later turn changed is left alone and counted as skipped."""
+    t0 = time.monotonic()
+    original = L.clean(ledger)
+    led, cur = list(original), sheet
+    undone: List[str] = []
+    skipped = 0
+    for rec in reversed(records or []):
+        try:
+            kind = rec.get("type")
+            if kind == "ledger":
+                before = led
+                led = L.undo(led, rec["change"])
+                if led == before:
+                    skipped += 1
+                    continue
+            elif kind == "edit":
+                for inv in reversed(rec.get("inverse") or []):
+                    prev = cur
+                    cur, _ = E.apply_op(cur, inv)
+                    led, _, _ = _ledger_for_edit(led, prev, inv, {}, undoing=True)
+                for e in rec.get("dropped") or []:   # client-sent: validated before it goes back (L.restore)
+                    try:
+                        led = L.restore(led, e)
+                    except L.Rejected as err:
+                        logger.info("[chat-router] undo refused a dropped entry: %s", err)
+            elif kind == "style":
+                hit = False
+                for b in rec.get("blocks") or []:
+                    if b.get("after") and b["after"] in cur:
+                        cur, hit = cur.replace(b["after"], b["before"], 1), True
+                if not hit:
+                    skipped += 1
+                    continue
+            else:
+                continue
+            if rec.get("claim"):
+                undone.append(rec["claim"])
+        except (E.EditError, L.Rejected, KeyError) as e:
+            logger.info("[chat-router] undo skipped a %s record: %s", rec.get("type"), e)
+            skipped += 1
+    ev = {"version": ROUTER_VERSION, "route": "undo", "records": len(records or []), "skipped": skipped}
+    if cur == sheet and led == original:
+        ev["ms"] = _ms(t0)
+        return Turn(sheet, original, False, "Nothing to undo: it has changed since.", evidence=ev)
+    saved = await L.save(cur, sheet, led)
+    ev["ms"] = _ms(t0)
+    if saved.status == "refused":
+        return Turn(sheet, original, False, saved.message, refused=True, evidence={**ev, "refused": True})
+    reply = "\n".join(f"Undone: {c}" for c in undone) or "Undone."
+    if skipped:
+        reply += "\nPart of it had changed since, so I left that part as it is."
+    return Turn(saved.sheet, saved.ledger, True, reply, notice=saved.message, unmatched=saved.unmatched, evidence=ev)
+
+
+async def answer_card(sheet: str, ledger: List[dict], answer: dict) -> Turn:
+    """Apply a tapped card (plan decision 11): {"kind", "key", "choice"} for a ledger card, or {"proposal": <the
+    card's apply>} for a proposal card. Written as source "chat"; the wording check is skipped (the radiologist
+    chose it); code still validates and the save function still vets."""
+    t0 = time.monotonic()
+    ledger = L.clean(ledger)
+    answer = answer or {}
+    p = answer.get("proposal")
+    if not p and answer.get("choice") == L.FORGET:   # "Forget this decision" (an unmatched entry's card)
+        return await _forget(sheet, ledger, answer.get("kind", ""), answer.get("key", ""), t0)
+    if p:
+        v = CH.check_proposal(p, sheet)   # client-sent: forward ops only, allowed slots, a dry run (review fix)
+        if v.action == "reject":
+            return Turn(sheet, ledger, False, CARD_REJECTED,
+                        evidence={"version": ROUTER_VERSION, "route": "card", "detail": v.detail})
+    else:
+        try:
+            key, choice = L.check((answer or {}).get("kind", ""), (answer or {}).get("key", ""),
+                                  (answer or {}).get("choice") or {})
+        except L.Rejected as e:   # internal text stays in the evidence (decision 15)
+            return Turn(sheet, ledger, False, CARD_REJECTED,
+                        evidence={"version": ROUTER_VERSION, "route": "card", "detail": str(e)[:300]})
+        v = CH.Verdict(answer["kind"], "ledger", key=key, choice=choice, claim=CH.claim_for(answer["kind"], key, choice))
+    new_sheet, new_ledger, records, claims, notes, problems, detail = _apply(sheet, ledger, [v])
+    ev = {"version": ROUTER_VERSION, "route": "card", "kind": v.kind, "proposal": bool(p), "applied": len(records),
+          "detail": "; ".join(detail)}
+    if not records:
+        ev["ms"] = _ms(t0)
+        return Turn(sheet, ledger, False, "\n".join(problems) or "No change was needed.", evidence=ev)
+    saved = await L.save(new_sheet, sheet, new_ledger)
+    ev["ms"] = _ms(t0)
+    if saved.status == "refused":
+        return Turn(sheet, ledger, False, saved.message, refused=True, evidence={**ev, "refused": True})
+    notes += [n for n in (L.note(c) for c in saved.ledger_changes) if n]
+    if saved.sheet == sheet and saved.ledger == ledger:
+        return Turn(sheet, ledger, False, "No change was needed.", evidence=ev)
+    return Turn(saved.sheet, saved.ledger, True, "\n".join(claims + notes + ([UNMATCHED_LINE] if saved.unmatched else [])
+                                                              + ([saved.message] if saved.message else [])),
+                claim=" ".join(claims), records=records, cards=saved.cards, notice=saved.message,
+                unmatched=saved.unmatched, evidence=ev)
+
+
+async def _forget(sheet: str, ledger: List[dict], kind: str, key: str, t0: float) -> Turn:
+    led, change = L.forget(ledger, kind, key)
+    ev = {"version": ROUTER_VERSION, "route": "card", "kind": kind, "forget": True, "applied": int(bool(change))}
+    if change is None:
+        ev["ms"] = _ms(t0)
+        return Turn(sheet, ledger, False, "No change was needed.", evidence=ev)
+    claim = f"Forgot this decision: {change['key']}."
+    saved = await L.save(sheet, sheet, led)
+    ev["ms"] = _ms(t0)
+    if saved.status == "refused":
+        return Turn(sheet, ledger, False, saved.message, refused=True, evidence={**ev, "refused": True})
+    return Turn(saved.sheet, saved.ledger, True, claim, claim=claim,
+                records=[{"type": "ledger", "change": change, "claim": claim, "route": ""}],
+                notice=saved.message, unmatched=saved.unmatched, evidence=ev)

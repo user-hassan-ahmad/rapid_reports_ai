@@ -257,3 +257,124 @@ async def test_a_style_edit_with_a_miscased_unit_line_is_rejected_by_the_grammar
     fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b1", text='Normal [alpha] "Alpha is fine."')])
     t = await R.route_turn(ROUTER_SHEET, [], "tone it down")
     assert not t.applied and t.sheet == ROUTER_SHEET and t.reply == R.STYLE_TOUCHED_RULES
+
+
+async def _turn(fake, kind, out, instruction, ledger=None):
+    fake["tags"] = tags(**{kind: 0.9})
+    fake["calls"][kind] = out
+    return await R.route_turn(ROUTER_SHEET, ledger or [], instruction)
+
+
+async def test_undo_reverses_a_ledger_turn(fake):
+    t = await _turn(fake, "value", CH.ValueOut(changes=[CH.ValueChange(name="Width", to="not_needed")]), "drop width")
+    u = await R.undo_turn(t.sheet, t.ledger, t.records)
+    listed = L.listed_values(u.sheet)   # apply_ledger appends a value that comes back after the kept ones
+    assert u.applied and sorted(listed) == ["Depth", "Width"]
+    assert L.entry(u.ledger, "value", "Width")["choice"] == {"need": "every"}
+    assert u.reply == "Undone: Width is no longer required." and u.evidence["route"] == "undo"
+
+
+async def test_undo_reverses_a_layout_edit_and_its_rekey(fake):
+    led, _ = L.set_choice([], "normal", L.normal_key("Upper", "alpha"), {"text": "Alpha is normal."})
+    t = await _turn(fake, "layout", CH.LayoutOut(changes=[CH.LayoutChange(op="rename_paragraph", target="Upper",
+                                                                           name="Top")]), "call it Top", led)
+    u = await R.undo_turn(t.sheet, t.ledger, t.records)
+    assert "## Paragraph: Upper (FINDINGS)" in u.sheet and L.entry(u.ledger, "normal", L.normal_key("Upper", "alpha"))
+
+
+async def test_undo_reverses_a_fixed_reword_and_its_decided_entry(fake):
+    led, _ = L.set_choice([], "fixed", "Axial images were acquired.", {"keep": "always"})
+    t = await _turn(fake, "fixed", CH.FixedOut(changes=[CH.FixedChange(
+        to="reword", line="Axial images were acquired.", text="Axial and coronal images were acquired.")]),
+        "say Axial and coronal images were acquired.", led)
+    assert L.entry(t.ledger, "fixed", "Axial and coronal images were acquired.") is not None
+    assert [r["type"] for r in t.records] == ["edit", "ledger"]
+    u = await R.undo_turn(t.sheet, t.ledger, t.records)
+    assert 'FIXED "Axial images were acquired."' in u.sheet
+    assert L.entry(u.ledger, "fixed", "Axial images were acquired.")["choice"] == {"keep": "always"}
+    assert L.entry(u.ledger, "fixed", "Axial and coronal images were acquired.") is None
+
+
+async def test_undo_puts_back_validated_dropped_entries_only(fake):
+    # a ledger consistent with the sheet (the save function applies it on every save)
+    led, _ = L.set_choice([], "normal", L.normal_key("Lower", "gamma"), {"text": "Gamma is normal."})
+    t = await _turn(fake, "layout", CH.LayoutOut(changes=[CH.LayoutChange(op="remove_paragraph", target="Lower")]),
+                    "remove the lower paragraph", led)
+    assert L.entry(t.ledger, "normal", L.normal_key("Lower", "gamma")) is None
+    tampered = [{**t.records[0], "dropped": [*t.records[0]["dropped"],
+                                             {"kind": "value", "key": 'a "b"', "choice": {"need": "every"}}]}]
+    u = await R.undo_turn(t.sheet, t.ledger, tampered)
+    assert "## Paragraph: Lower (FINDINGS)" in u.sheet
+    restored = L.entry(u.ledger, "normal", L.normal_key("Lower", "gamma"))
+    assert restored["choice"] == {"text": "Gamma is normal."} and restored["source"] == "chat"
+    assert not any(e["kind"] == "value" for e in u.ledger)
+
+
+async def test_undo_restores_the_previous_prose(fake):
+    fake["requires"] = {}
+    t = await _turn(fake, "style", CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=NEW_IC)], summary="Shorter."),
+                    "shorter")
+    u = await R.undo_turn(t.sheet, t.ledger, t.records)
+    assert "Keep it brief." in u.sheet and NEW_IC not in u.sheet
+
+
+async def test_undo_leaves_what_a_later_turn_changed(fake):
+    t = await _turn(fake, "value", CH.ValueOut(changes=[CH.ValueChange(name="Width", to="not_needed")]), "drop width")
+    led, _ = L.set_choice(t.ledger, "value", "Width", {"need": "relevant"})
+    u = await R.undo_turn(t.sheet, led, t.records)
+    assert not u.applied and u.reply.startswith("Nothing to undo") and u.evidence["skipped"] == 1
+
+
+async def test_answer_card_writes_the_ledger_as_chat():
+    t = await R.answer_card(ROUTER_SHEET, [], {"kind": "value", "key": "Width", "choice": {"need": "not_needed"}})
+    assert t.applied and 'LIST_MISSING ["Depth"]' in t.sheet and t.reply == "Width is no longer required."
+    assert L.entry(t.ledger, "value", "Width")["source"] == "chat" and t.evidence["route"] == "card"
+
+
+async def test_answer_card_applies_a_proposal():
+    apply = {"kind": "fixed", "key": "Axial images were obtained.", "choice": None,
+             "op": {"op": "fixed_reword", "line": "Axial images were acquired.", "text": "Axial images were obtained."},
+             "claim": '"Axial images were acquired." now reads "Axial images were obtained."'}
+    t = await R.answer_card(ROUTER_SHEET, [], {"proposal": apply})
+    assert t.applied and 'FIXED "Axial images were obtained."' in t.sheet and t.records[0]["type"] == "edit"
+
+
+async def test_answer_card_refuses_what_code_cannot_apply_without_internal_text():
+    t = await R.answer_card(ROUTER_SHEET, [], {"kind": "value", "key": 'a "bad" name', "choice": {"need": "every"}})
+    assert not t.applied and t.sheet == ROUTER_SHEET and t.reply == R.CARD_REJECTED
+    assert "short plain name" in t.evidence["detail"]
+
+
+def test_response_and_the_kill_switch_defaults_off(monkeypatch):
+    t = R.Turn("S", [{"kind": "value"}], True, "Done.", claim="c", records=[{"type": "ledger"}], cards=[{"id": "x"}])
+    assert R.response(t) == {"success": True, "skill_sheet": "S", "response": "Done.", "behavioral_claim": "c",
+                             "applied": True, "route": "router", "changes": [{"type": "ledger"}],
+                             "cards": [{"id": "x"}], "decisions": [{"kind": "value"}], "unmatched": []}
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    monkeypatch.delenv("RR_CHAT_ROUTER", raising=False)
+    assert not R.enabled()                                  # D-R3: off unless switched on
+    monkeypatch.setenv("RR_CHAT_ROUTER", "1")
+    assert R.enabled()
+    monkeypatch.setenv("RR_CHAT_ROUTER", "0")
+    assert not R.enabled()
+    monkeypatch.setenv("RR_CHAT_ROUTER", "1")
+    monkeypatch.delenv("OPENROUTER_API_KEY")
+    assert not R.enabled()
+
+
+async def test_a_forget_card_removes_the_entry_and_undo_puts_it_back():
+    led, _ = L.set_choice([], "normal", L.normal_key("Gone", "x"), {"text": "X is normal."})
+    t = await R.answer_card(ROUTER_SHEET, led, {"kind": "normal", "key": L.normal_key("Gone", "x"), "choice": L.FORGET})
+    assert t.applied and L.entry(t.ledger, "normal", L.normal_key("Gone", "x")) is None
+    assert t.reply == f"Forgot this decision: {L.normal_key('Gone', 'x')}."
+    u = await R.undo_turn(t.sheet, t.ledger, t.records)
+    assert L.entry(u.ledger, "normal", L.normal_key("Gone", "x"))["choice"] == {"text": "X is normal."}
+    none = await R.answer_card(ROUTER_SHEET, [], {"kind": "value", "key": "Width", "choice": L.FORGET})
+    assert not none.applied and none.reply == "No change was needed."
+
+
+async def test_answer_card_checks_a_client_sent_proposal():
+    t = await R.answer_card(ROUTER_SHEET, [], {"proposal": {
+        "kind": "fixed", "key": "x", "choice": None, "claim": "x",
+        "op": {"op": "unit_drop", "keyword": "FIXED", "text": "Axial images were acquired."}}})
+    assert not t.applied and t.sheet == ROUTER_SHEET and "unit_drop" not in t.reply
