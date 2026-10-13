@@ -1087,8 +1087,15 @@ def test_a_dictated_value_or_an_answer_overrides_the_preset():
         assert p.state == "does_not_apply" and p.proposal is None
 
 
+def _both_triggers():
+    """The AAA pack as if it carried both triggers (the library has none with presets today): a toy for the rule."""
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
+    return Entry.model_validate({**_aaa().model_dump(mode="json", by_alias=True, exclude_none=True),
+                                 "trigger": ["exam", "finding"]})
+
+
 def test_a_finding_card_gets_no_presets():
-    e = _aaa()
+    e = _both_triggers()
     assert PP.exam_presets(e, "u1") == {} and PP.exam_presets(e, PP.EXAM_CARD) == dict(e.exam_presets)
     p = PP.finish(e, PP.Settlement(values=_DIAMETER), {}, presets=PP.exam_presets(e, "u1"))
     assert [x.input for x in p.settled] == ["diameter_cm"] and all(x.by == "" for x in p.settled)

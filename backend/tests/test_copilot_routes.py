@@ -594,8 +594,9 @@ def test_only_an_exam_card_gets_its_packs_exam_presets(authed, monkeypatch):
     from pathlib import Path
     src = Path(__file__).resolve().parents[2] / "guidelines" / "nhs-aaa-surveillance" / "entry.json"
     import json as _json
-    lib = L.Library({"version": "v1", "entries": {"nhs-aaa-surveillance@2025.1": {
-        "entry": _json.loads(src.read_text()), "sources": TOY_SOURCES}}})
+    both = {**_json.loads(src.read_text()), "trigger": ["exam", "finding"]}     # a toy: both triggers, with presets
+    lib = L.Library({"version": "v1", "entries": {"nhs-aaa-surveillance@2025.1": {"entry": both,
+                                                                                   "sources": TOY_SOURCES}}})
     monkeypatch.setattr(L, "get", lambda: lib)
 
     async def fake_settle(e, findings, history, finding=""):

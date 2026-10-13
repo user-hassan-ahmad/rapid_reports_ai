@@ -539,6 +539,17 @@ def exam_presets(e: Entry, finding_id: str) -> dict[str, str]:
     return dict(e.exam_presets) if finding_id == EXAM_CARD and "exam" in e.trigger else {}
 
 
+def preset_values(e: Entry, presets: dict[str, str] | None) -> dict[str, InputValue]:
+    """The presets as engine values (the entry's validator already refused any the input cannot take)."""
+    out = {}
+    for k, x in (presets or {}).items():
+        i = e.input(k)
+        v = preset_value(i, x) if i is not None else None
+        if v is not None:
+            out[k] = v
+    return out
+
+
 def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str, str] | None = None,
            sources: list[dict] | None = None, presets: dict[str, str] | None = None) -> Preview:
     """The card from a settlement and the radiologist's answers, by the engine alone: no model, no Jev. An answer
@@ -552,10 +563,8 @@ def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str,
         if k not in given:
             given[k], quotes[k] = v, q
     preset = set()
-    for k, x in (presets or {}).items():
-        i = e.input(k)
-        v = preset_value(i, x) if i is not None else None
-        if v is not None and k not in given:
+    for k, v in preset_values(e, presets).items():
+        if k not in given:
             given[k] = v
             preset.add(k)
     try:

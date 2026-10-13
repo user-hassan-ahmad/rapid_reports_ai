@@ -45,7 +45,7 @@ from rapid_reports_ai.hybrid_stack.copilot import matcher as M  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot import tnm  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library.pack_preview import (  # noqa: E402
-    _answer, _show, display_options, finish, settle_pack, Settlement)
+    EXAM_CARD, _answer, _show, display_options, exam_presets, finish, preset_values, settle_pack, Settlement)
 from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry, InputValue  # noqa: E402
 
 MAX_FILL = 10
@@ -401,14 +401,22 @@ def load_labels(lib, cards: list[dict], raw: dict) -> tuple[dict[str, dict], lis
 
 # ── run / score ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-def drafts(s) -> dict[str, tuple[InputValue, str, str]]:
-    """input -> (value, quote, tier). Today's settler has no tiers: every settled value is shown as read."""
+def card_presets(e: Entry, card: dict) -> dict[str, str]:
+    """The exam presets live gives this card: an exam card's (finding_id EXAM_CARD), else none (same helper)."""
+    return exam_presets(e, EXAM_CARD if card.get("trigger") == "exam" else "")
+
+
+def drafts(s, e: Entry | None = None, presets: dict[str, str] | None = None) -> dict[str, tuple[InputValue, str, str]]:
+    """input -> (value, quote, tier). Today's settler has no tiers: every settled value is shown as read. An exam
+    preset the settlement leaves open is pre-filled (no quote), exactly as live `finish` fills it."""
     out = {}
     for k, v in s.values.items():
         if isinstance(v, tuple):
             out[k] = (v[0], v[1], "read")
         else:                                   # the later Drafted shape
             out[k] = (v.value, v.quote, v.tier)
+    for k, v in (preset_values(e, presets) if e is not None else {}).items():
+        out.setdefault(k, (v, "", "prefilled"))
     return out
 
 
@@ -419,47 +427,53 @@ def _same(e: Entry, k: str, v: InputValue, label_value: str | None) -> bool:
     return t is not None and _show(e, e.input(k), t) == _show(e, e.input(k), v)
 
 
-def verdicts(e: Entry, s, label: dict) -> dict[str, str]:
-    """ok: drafted and true; wrong: drafted but not stated, or not what was stated; asked: not drafted."""
-    d = drafts(s)
-    out = {}
-    for i in e.inputs:
-        lab = label["inputs"][i.id]
-        if i.id not in d:
-            out[i.id] = "asked"
-        else:
-            out[i.id] = "ok" if lab["stated"] and _same(e, i.id, d[i.id][0], lab["value"]) else "wrong"
-    return out
-
-
 def _truth(label: dict) -> dict[str, str | None]:
     return {k: (x["value"] if x["stated"] else x["assumed"]) for k, x in label["inputs"].items()}
 
 
-def taps(e: Entry, s, label: dict, patient: dict, picked: bool = False) -> tuple[int, str | None]:
+def _right(e: Entry, k: str, v: InputValue, tier: str, label: dict) -> bool:
+    """A read draft must be stated and match; an exam preset claims no quote, so it must match the truth (stated,
+    else assumed)."""
+    lab = label["inputs"][k]
+    if tier == "prefilled":
+        return _same(e, k, v, _truth(label)[k])
+    return lab["stated"] and _same(e, k, v, lab["value"])
+
+
+def verdicts(e: Entry, s, label: dict, presets: dict[str, str] | None = None) -> dict[str, str]:
+    """ok: drafted and true; wrong: drafted but not stated, or not what was stated (a preset: not the truth); asked:
+    not drafted."""
+    d = drafts(s, e, presets)
+    return {i.id: "asked" if i.id not in d else "ok" if _right(e, i.id, d[i.id][0], d[i.id][2], label) else "wrong"
+            for i in e.inputs}
+
+
+def taps(e: Entry, s, label: dict, patient: dict, picked: bool = False,
+         presets: dict[str, str] | None = None) -> tuple[int, str | None]:
     """Taps to an outcome (spec §12): one per asked input the engine needs (truth, else assumed), one per wrong
     drafted value (corrected to truth), one for the lesion pick if shown. Calculate is not counted. A wrong draft is
     dropped from a copy of the settlement, so the engine never sees it; the original is untouched."""
-    truth, d = _truth(label), drafts(s)
-    wrong = [k for k, (v, _, _) in d.items()
-             if not (label["inputs"][k]["stated"] and _same(e, k, v, label["inputs"][k]["value"]))]
+    truth, d = _truth(label), drafts(s, e, presets)
+    wrong = [k for k, (v, _, t) in d.items() if not _right(e, k, v, t, label)]
     s = dataclasses.replace(s, values={k: v for k, v in s.values.items() if k not in wrong})
+    presets = {k: x for k, x in (presets or {}).items() if k not in wrong}
     answered: dict[str, str] = {k: truth[k] for k in wrong if truth[k] is not None}
     n = (1 if picked else 0) + len(wrong)
-    p = finish(e, s, answered, patient)
+    p = finish(e, s, answered, patient, presets=presets)
     for _ in range(MAX_FILL):
         new = {k: truth[k] for k in p.missing if k not in answered and truth.get(k) is not None}
         if not new:
             break
         answered.update(new)
         n += len(new)
-        p = finish(e, s, answered, patient)
+        p = finish(e, s, answered, patient, presets=presets)
     return n, (p.trace or {}).get("outcome")
 
 
 def spot_rows(e: Entry, card: dict, s, label: dict) -> list[dict]:
     """Boundary items for Hassan: the labeller's own flags and every disagreement with the settler."""
-    d, v = drafts(s), verdicts(e, s, label)
+    pre = card_presets(e, card)
+    d, v = drafts(s, e, pre), verdicts(e, s, label, pre)
     rows = []
     for i in e.inputs:
         lab = label["inputs"][i.id]
@@ -553,14 +567,16 @@ async def run(cards_path: Path, out_dir: Path) -> Path:
             t0 = time.perf_counter()
             s = await settle_pack(e, c["findings"], c["clinical_history"], c["finding"])      # cold: no cache
             ms = round((time.perf_counter() - t0) * 1000)
-            p = finish(e, s, {})
+            pre = card_presets(e, c)
+            p = finish(e, s, {}, presets=pre)
             do = _draft_outcome(p)
             out.append({"card": c["id"], "ms": ms, "degraded": bool(getattr(s, "failed", False)),
                         "missing": p.missing,
                         "draft_outcome": do.model_dump(mode="json") if do is not None else None,
                         "draft_outcome_id": (p.trace or {}).get("outcome"),
                         "drafts": {k: {"value": v.model_dump(mode="json"), "quote": q, "tier": t}
-                                   for k, (v, q, t) in drafts(s).items()}})
+                                   for k, (v, q, t) in drafts(s).items()},     # settled only: score re-adds
+                        "presets": pre})                                           # the card's presets live's way
         except Exception as ex:                       # one bad card must not lose the run; type only, no text
             print(f"card {c['id']} errored: {type(ex).__name__}", file=sys.stderr)
             out.append({"card": c["id"], "error": type(ex).__name__})
@@ -639,10 +655,11 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
             skipped.append(c["id"])
             continue
         e, s, lab = lib.lookup(c["pack"]), _settlement(st[c["id"]]), labels[c["id"]]
-        n, outcome = taps(e, s, lab, {})
-        d = drafts(s)
+        pre = card_presets(e, c)
+        n, outcome = taps(e, s, lab, {}, presets=pre)
+        d = drafts(s, e, pre)
         rows.append({"card": c["id"], "pack": c["pack"], "source": c.get("source", "prod"),
-                     "sibling": bool(c.get("via_sibling_of")), "ms": st[c["id"]]["ms"], "taps": n, "verdicts": verdicts(e, s, lab),
+                     "sibling": bool(c.get("via_sibling_of")), "ms": st[c["id"]]["ms"], "taps": n, "verdicts": verdicts(e, s, lab, pre),
                      "tiers": {k: t for k, (_, _, t) in d.items()}, "degraded": st[c["id"]]["degraded"],
                      "outcome": outcome, "draft_outcome": st[c["id"]].get("draft_outcome_id")})
     errored = [k for k, r in st.items() if "error" in r]

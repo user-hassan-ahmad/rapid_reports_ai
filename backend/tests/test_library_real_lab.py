@@ -349,3 +349,49 @@ def test_cards_for_runs_the_live_library_path_through_the_shared_builder(monkeyp
         ("c:F1:nod-b@1.0", "nod-b@1.0", "finding", "t1", "nod-a@1.0"),   # tier 1 sibling once; tier 2 sibling dropped
     ]
     assert [c["pack"] for c in RL.settleable(out)] == ["ex@1.0", "nod-a@1.0", "nod-b@1.0"]
+
+
+def _aaa():
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
+    src = Path(__file__).resolve().parents[2] / "guidelines" / "nhs-aaa-surveillance" / "entry.json"
+    return Entry.model_validate_json(src.read_text())
+
+
+def _aaa_label(sex="male"):
+    return _label(screening_programme=(None, "Yes"), sex=(None, sex), previous_aaa_treatment=(None, "No"),
+                  diameter_cm=("2.4", None), prior_programme_scan=(None, "No"), growth_12m_cm=(None, None))
+
+
+def test_an_exam_card_gets_live_presets_and_they_count_as_prefilled_not_asked():
+    e, s = _aaa(), Settlement(values={"diameter_cm": (InputValue(value=2.4), "aorta 2.4 cm")})
+    exam, finding = {"id": "c:exam:aaa", "pack": e.key, "trigger": "exam"}, {"id": "c:u1:aaa", "trigger": "finding"}
+    pre = RL.card_presets(e, exam)
+    assert pre == dict(e.exam_presets) and RL.card_presets(e, finding) == {}
+    tiers = {k: t for k, (_, _, t) in RL.drafts(s, e, pre).items()}
+    assert tiers == {"diameter_cm": "read", "screening_programme": "prefilled", "sex": "prefilled",
+                     "previous_aaa_treatment": "prefilled"}
+    v = RL.verdicts(e, s, _aaa_label(), pre)
+    assert {k: v[k] for k in ("screening_programme", "sex", "previous_aaa_treatment")} == dict.fromkeys(
+        ("screening_programme", "sex", "previous_aaa_treatment"), "ok")
+    assert RL.taps(e, s, _aaa_label(), {}, presets=pre) == (1, "no_aaa")       # only prior_programme_scan answered
+    assert RL.taps(e, s, _aaa_label(), {}) == (4, "no_aaa")                    # no presets: the 3 asked as well
+    assert RL.verdicts(e, s, _aaa_label(sex="female"), pre)["sex"] == "wrong"   # a preset the truth contradicts
+    assert RL.taps(e, s, _aaa_label(sex="female"), {}, presets=pre) == (1, "does_not_apply")  # correct sex; excluded
+
+
+def test_spot_rows_and_run_use_the_cards_presets(monkeypatch, tmp_path):
+    import asyncio
+    import json
+    e = _aaa()
+
+    async def settle(e_, findings, history, finding=""):
+        return Settlement(values={"diameter_cm": (InputValue(value=2.4), "aorta 2.4 cm")})
+    monkeypatch.setattr(RL, "settle_pack", settle)
+    monkeypatch.setattr(RL, "_lib", lambda: _lib_with(e))
+    cards = [{"id": "c:exam:aaa", "pack": e.key, "trigger": "exam", "findings": "Aorta 2.4 cm.",
+              "clinical_history": "", "finding": "Aorta 2.4 cm."}]
+    p = tmp_path / "cards.json"
+    p.write_text(json.dumps(cards))
+    out = json.loads(asyncio.run(RL.run(p, tmp_path)).read_text())
+    assert out[0]["missing"] == ["prior_programme_scan"] and out[0]["presets"] == dict(e.exam_presets)
+    assert set(out[0]["drafts"]) == {"diameter_cm"}

@@ -14009,8 +14009,7 @@
     "tier": 1,
     "topic": "abdominal-aortic-aneurysm",
     "trigger": [
-     "exam",
-     "finding"
+     "exam"
     ],
     "version": "2025.1"
    },
@@ -20216,5 +20215,5 @@
    ]
   }
  },
- "version": "9327550e7a27"
+ "version": "f007702aa269"
 }

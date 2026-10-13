@@ -3,7 +3,7 @@
   "version": "2025.1",
   "topic": "abdominal-aortic-aneurysm",
   "purpose": "Gives screening results, surveillance intervals and referral for an abdominal aortic aneurysm measured on ultrasound within the NHS AAA Screening Programme.",
-  "trigger": ["exam", "finding"],
+  "trigger": ["exam"],
   "exam": "NHS AAA Screening Programme abdominal aortic ultrasound",
   "exam_presets": {"screening_programme": "true", "sex": "male", "previous_aaa_treatment": "false"},
   "issuer": "NHS England (NHS Abdominal Aortic Aneurysm Screening Programme)",
