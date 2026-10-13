@@ -225,12 +225,13 @@ _HEDGE = re.compile(r"\b(?:suspicious|suspected|suspect|suspicion|possible|possi
                     r"|not\s+excluded)\b|\?", re.I)
 
 
-_SENTENCE_END = re.compile(r"[.;\n]")
+_SENTENCE_END = re.compile(r"(?<!\d)\.(?!\d)|[;\n]")      # never inside a decimal ("3.5 cm")
 
 
 def _hedged_cancer(i: InputDef, v: InputValue, quote: str, texts: list[str] | None = None) -> bool:
-    """A "known primary cancer: yes" whose quote, or the sentence around it in its scope's texts ("suspicious for RCC"
-    quoted as "RCC"), hedges: dropped, so the input is asked."""
+    """A "known primary cancer: yes" hedged by its quote or by the words before the quote in its sentence ("suspicious
+    for RCC" quoted as "RCC", "?primary"): dropped, so the input is asked. A hedge after the quote is about something
+    else ("Breast ca ?liver mets": the cancer is stated, the metastases are not), so it is not read (review I-d)."""
     if i.fact != "known_primary_cancer" or v.value is not True:
         return False
     if _HEDGE.search(quote):
@@ -239,8 +240,7 @@ def _hedged_cancer(i: InputDef, v: InputValue, quote: str, texts: list[str] | No
         n = (t or "").find(quote)
         while n >= 0:
             start = max((m.end() for m in _SENTENCE_END.finditer(t, 0, n)), default=0)
-            end = (m.start() if (m := _SENTENCE_END.search(t, n + len(quote))) else len(t))
-            if _HEDGE.search(t[start:end]):
+            if _HEDGE.search(t[start:n]):
                 return True
             n = t.find(quote, n + 1)
     return False

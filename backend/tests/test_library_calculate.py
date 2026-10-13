@@ -246,3 +246,15 @@ def test_the_hedge_backstop_reads_the_sentence_around_a_short_quote():
     texts = ["1.4 cm left adrenal nodule. Separate 3 cm right renal mass, suspicious for RCC.", ""]
     assert PP._hedged_cancer(i, InputValue(value=True), "RCC", texts)
     assert not PP._hedged_cancer(i, InputValue(value=True), "RCC", ["Known metastatic RCC on treatment.", ""])
+
+
+@pytest.mark.parametrize("text,quote,hedged", [
+    ("Breast ca ?liver mets.", "Breast ca", False),                     # the cancer is stated; the mets are queried
+    ("Lung ca ?mets.", "Lung ca", False),
+    ("Colorectal cancer, likely nodal recurrence.", "Colorectal cancer", False),
+    ("Renal mass 3.5 cm, suspicious for RCC.", "RCC", True),            # a decimal never cuts the sentence
+    ("Liver lesions ?primary.", "primary", True),
+    ("Known metastatic RCC on treatment.", "RCC", False)])
+def test_the_hedge_backstop_reads_only_the_quote_and_the_words_before_it(text, quote, hedged):
+    e = next(x for x in _tier1() if x.id == "ese-adrenal-incidentaloma")
+    assert PP._hedged_cancer(e.input("known_primary_cancer"), InputValue(value=True), quote, [text, ""]) is hedged
