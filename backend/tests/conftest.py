@@ -310,6 +310,8 @@ def _empty_guideline_library(monkeypatch):
 def web_fetch_on(monkeypatch):
     """The runtime web path (registry cards, targeted fetch, gap search) on: it is off by default (RR_COPILOT_WEB_FETCH)."""
     monkeypatch.setenv("RR_COPILOT_WEB_FETCH", "1")
+
+
 @pytest.fixture(autouse=True)
 def _chat_router_off(monkeypatch):
     """The chat-edit router calls Jev and Qwen. It is off by default (D-R3), and pinned off here in case a developer's
