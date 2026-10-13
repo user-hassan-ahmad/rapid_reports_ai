@@ -35,6 +35,9 @@ def store_creator_turns(db, template_id, turns: list[dict]) -> int:
     """The creator's turns, sent with the first save (the template did not exist while they happened)."""
     try:
         template_id = uuid.UUID(str(template_id))
+    except ValueError:
+        return 0
+    try:
         rows = []
         for t in (turns or [])[:MAX_CREATOR_TURNS]:
             t = t or {}
