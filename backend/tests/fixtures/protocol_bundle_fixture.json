@@ -1,0 +1,58 @@
+{"version": "fixture-1", "generated_at": "2026-10-13T00:00:00+00:00",
+ "entries": [
+  {"id": "TCTH", "display_name": "CT Head", "aliases": ["ct head", "cth", "ct brain"], "modality": "CT", "laterality": "none",
+   "agent": "none", "phases_default": [], "phase_variants": [], "coverage": "Skull base to vertex.",
+   "not_assessable": ["enhancement (non-contrast)"], "sheet_key": "ct_head_t", "contrast_class": "none", "tier": "high", "focus": null},
+  {"id": "TCAP", "display_name": "CT Abdomen and Pelvis with contrast", "aliases": ["ctap", "ct ap", "ct abdo pelvis"],
+   "modality": "CT", "laterality": "none", "agent": "iv_iodinated", "phases_default": ["portal_venous"],
+   "phase_variants": [["arterial", "portal_venous"]], "coverage": "Diaphragm to symphysis.",
+   "not_assessable": ["arterial enhancement (no arterial phase)"], "sheet_key": "ct_ap_t", "contrast_class": "iv", "tier": "high", "focus": null},
+  {"id": "TCAPT", "display_name": "CT Abdomen and Pelvis triple phase", "aliases": ["triple phase ct ap"], "modality": "CT",
+   "laterality": "none", "agent": "iv_iodinated", "phases_default": ["non_contrast", "arterial", "portal_venous"],
+   "phase_variants": [], "coverage": "Diaphragm to symphysis.", "not_assessable": ["urothelial lesions (no excretory phase)"],
+   "sheet_key": "ct_ap_t", "contrast_class": "iv", "tier": "medium", "focus": null},
+  {"id": "TMWS", "display_name": "MRI Whole spine", "aliases": ["mri whole spine", "mri ws"], "modality": "MR", "laterality": "none",
+   "agent": "none", "phases_default": [], "phase_variants": [], "coverage": "Craniocervical junction to sacrum.",
+   "not_assessable": ["enhancement (non-contrast)"], "sheet_key": "mr_spine_t", "contrast_class": "none", "tier": "high", "focus": null},
+  {"id": "TMBR", "display_name": "MRI Breast", "aliases": ["mri breast", "breast mri"], "modality": "MR", "laterality": "none",
+   "agent": "gadolinium", "phases_default": ["dce"], "phase_variants": [], "coverage": "Both breasts and axillae.",
+   "not_assessable": [], "sheet_key": "mr_breast_t", "contrast_class": "iv", "tier": "medium", "focus": "breast"},
+  {"id": "TMKN", "display_name": "MRI Knee", "aliases": ["mri knee", "mr knee"], "modality": "MR", "laterality": "required",
+   "agent": "none", "phases_default": [], "phase_variants": [], "coverage": "Distal femur to proximal tibia.",
+   "not_assessable": ["enhancement (non-contrast)"], "sheet_key": "mr_knee_t", "contrast_class": "none", "tier": "high", "focus": "knee"}
+ ],
+ "keys": {
+  "ct_head_t": {"modality": "CT", "level_groups": {}, "regions": [
+    {"name": "Brain parenchyma", "includes": "grey and white matter"}, {"name": "Skull", "includes": "calvarium, skull base"},
+    {"name": "Other findings", "includes": "anything else"}]},
+  "ct_ap_t": {"modality": "CT", "level_groups": {}, "regions": [
+    {"name": "Liver", "includes": "liver parenchyma"}, {"name": "Vessels", "includes": "aorta, IVC, mesenteric vessels"},
+    {"name": "Other findings", "includes": "anything else"}]},
+  "mr_spine_t": {"modality": "MR", "level_groups": {"Lumbar levels": ["L4/5", "L5/S1"]}, "regions": [
+    {"name": "Alignment and vertebrae", "includes": "alignment, vertebral bodies"},
+    {"name": "Lumbar levels", "includes": "every lumbar level together"},
+    {"name": "L4/5", "includes": "disc, canal, foramina at this level", "quiet": true, "level_group": "Lumbar levels"},
+    {"name": "L5/S1", "includes": "disc, canal, foramina at this level", "quiet": true, "level_group": "Lumbar levels"},
+    {"name": "Other findings", "includes": "anything else"}]},
+  "mr_breast_t": {"modality": "MR", "level_groups": {}, "regions": [
+    {"name": "Right breast", "includes": "right breast"}, {"name": "Implants", "includes": "implant integrity", "quiet": true},
+    {"name": "Other findings", "includes": "anything else"}]},
+  "mr_knee_t": {"modality": "MR", "level_groups": {}, "regions": [
+    {"name": "Menisci", "includes": "medial and lateral menisci"}, {"name": "Other findings", "includes": "anything else"}]}
+ },
+ "base_sheets": {
+  "ct_head_t|none": {"markdown": "## Scan Context\n- **Modality:** CT head\n## Report Flow\n- **Macro-structure:** FLAT\n## Region Normals\n- **Brain parenchyma:** \"Normal grey-white differentiation.\"\n", "region_normals": {"Brain parenchyma": ["Normal grey-white differentiation."], "Skull": ["The skull is intact."]}, "not_assessable": "enhancement", "status": "reviewed"},
+  "ct_ap_t|iv": {"markdown": "## Scan Context\n- **Modality:** placeholder\n- **Imaged volume:** placeholder\n- **Not assessable on this scan:** placeholder\n## Report Flow\n- **Macro-structure:** FLAT\n", "region_normals": {"Liver": ["The liver is normal."], "Vessels": ["The aorta, IVC and mesenteric vessels are normal."]}, "not_assessable": "", "status": "reviewed"},
+  "mr_spine_t|none": {"markdown": "## Scan Context\n- **Modality:** MRI\n## Report Flow\n- **Macro-structure:** FLAT\n", "region_normals": {"Alignment and vertebrae": ["Alignment is normal."], "Lumbar levels": ["No disc protrusion or neural compromise throughout the lumbar spine."]}, "not_assessable": "", "status": "reviewed"},
+  "mr_breast_t|iv": {"markdown": "## Scan Context\n- **Modality:** MRI breast\n## Report Flow\n- **Macro-structure:** HEADED\n", "region_normals": {"Right breast": ["No suspicious enhancement in the right breast."]}, "not_assessable": "", "status": "reviewed"},
+  "mr_knee_t|none": {"markdown": "## Scan Context\n- **Modality:** MRI knee\n## Report Flow\n- **Macro-structure:** FLAT\n", "region_normals": {"Menisci": ["Both menisci are intact."]}, "not_assessable": "", "status": "reviewed"}
+ },
+ "phase_sheets": {
+  "TCTH|none": {"scan_context": {"not assessable on this scan": "enhancement (non-contrast)"}, "changed_normals": {}, "status": "reviewed"},
+  "TCAP|portal_venous": {"scan_context": {"not assessable on this scan": "arterial enhancement (no arterial phase)"}, "changed_normals": {}, "status": "reviewed"},
+  "TCAP|arterial+portal_venous": {"scan_context": {"not assessable on this scan": "urothelial lesions (no excretory phase)"}, "changed_normals": {"Vessels": ["The aorta and mesenteric vessels are patent on the arterial phase."]}, "status": "reviewed"},
+  "TCAPT|non_contrast+arterial+portal_venous": {"scan_context": {"not assessable on this scan": "urothelial lesions (no excretory phase)"}, "changed_normals": {"Liver": ["The liver is normal.", "No arterially enhancing focal liver lesion."]}, "status": "reviewed"},
+  "TMWS|none": {"scan_context": {}, "changed_normals": {}, "status": "reviewed"},
+  "TMBR|dce": {"scan_context": {}, "changed_normals": {}, "status": "reviewed"},
+  "TMKN|none": {"scan_context": {}, "changed_normals": {"Menisci": []}, "status": "reviewed"}
+ }}
