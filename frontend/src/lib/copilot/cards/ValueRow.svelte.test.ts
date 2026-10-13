@@ -53,6 +53,27 @@ describe('ValueRow', () => {
 		expect(li().hasAttribute('tabindex')).toBe(false);
 	});
 
+	it('a pre-filled row with no quote or reasons is still focusable, and says why', async () => {
+		show(row({ state: 'prefilled', quote: '', why: [] }));
+		await expect.element(page.getByText('pre-filled', { exact: true })).toBeInTheDocument();
+		expect(li().getAttribute('tabindex')).toBe('0');
+		expect(document.getElementById(li().getAttribute('aria-describedby')!)!.textContent).toContain('Pre-filled: not read with certainty');
+	});
+
+	it('an exam-set row that also has a real reason shows both chips and the reason', async () => {
+		show(row({ state: 'prefilled', byExam: true, value: 'unenhanced CT', why: ['set by the exam', 'the check did not run'] }));
+		await expect.element(page.getByText('set by the exam')).toBeInTheDocument();
+		await expect.element(page.getByText('pre-filled', { exact: true })).toBeInTheDocument();
+		expect(document.getElementById(li().getAttribute('aria-describedby')!)!.textContent).toContain('Pre-filled: the check did not run');
+		expect(document.getElementById(li().getAttribute('aria-describedby')!)!.textContent).not.toContain('set by the exam');
+	});
+
+	it('a state this UI does not know shows as a neutral row', async () => {
+		show(row({ state: 'reviewed' as never, value: '' }));
+		await expect.element(page.getByText('reviewed')).toBeInTheDocument();
+		expect(li().querySelector('.cp-prefill')).toBeNull();
+	});
+
 	it('answered and edited render as set; not_applicable reads "N/A"', async () => {
 		const r = show(row({ state: 'answered', value: 'Yes' }));
 		await expect.element(page.getByText('Yes', { exact: true })).toBeInTheDocument();

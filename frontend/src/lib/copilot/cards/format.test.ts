@@ -89,12 +89,14 @@ describe('card text helpers', () => {
 				dv({ input: 'washout', label: 'Washout', state: 'asked', needed: true }),
 				dv({ input: 'hormones', label: 'Hormone excess', role: 'eligibility', state: 'asked', needed: true }),
 				dv({ input: 'later', label: 'Behind a prerequisite', state: 'asked', waiting: true }),
-				dv({ input: 'side', label: 'Side', state: 'not_applicable' })
+				dv({ input: 'side', label: 'Side', state: 'not_applicable' }),
+				dv({ input: 'future', label: 'Future', state: 'reviewed' as never, value: 'x' })
 			],
 			assumptions: ['cancer'],
 			assumed_eligible: true
 		});
-		expect(valueRows(result(c, p)).map((r) => [r.input, r.state])).toEqual([['size', 'read'], ['hu', 'prefilled'], ['side', 'not_applicable']]);
+		// an unknown state shows as a value rather than vanishing
+		expect(valueRows(result(c, p)).map((r) => [r.input, r.state])).toEqual([['size', 'read'], ['hu', 'prefilled'], ['side', 'not_applicable'], ['future', 'reviewed']]);
 		expect(assumptionsOf(p)).toEqual(['Known cancer: No']);
 		expect(openQuestions(p)).toEqual(['Hormone excess', 'Washout', 'Growth']); // eligibility first, then needed
 	});

@@ -122,7 +122,8 @@ export function rowsOf(p: Preview | null): DraftRows {
 	const shown = (p?.draft ?? []).filter((v) => !v.waiting);
 	const rank = (v: DraftValue) => (p?.state === 'check_first' && v.role === 'eligibility' ? 0 : 2) + (v.needed ? 0 : 1);
 	return {
-		values: shown.filter((v) => SHOWN_AS_VALUE.has(v.state)),
+		// a state this UI does not know yet shows as a plain value rather than vanishing
+		values: shown.filter((v) => SHOWN_AS_VALUE.has(v.state) || !['assumed', 'asked'].includes(v.state)),
 		assumed: shown.filter((v) => v.state === 'assumed'),
 		asked: shown
 			.map((v, i) => ({ v, i }))

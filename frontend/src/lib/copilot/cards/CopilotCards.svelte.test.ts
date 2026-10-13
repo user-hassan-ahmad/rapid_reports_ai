@@ -214,6 +214,35 @@ describe('CopilotCards', () => {
 		expect(document.querySelector('[data-testid="cp-quiet"]')).toBeNull();
 	});
 
+	it('a quiet normal exam line resting on assumed checks shows the accessible "⚠ N checks assumed" cue', async () => {
+		const pv = preview({
+			proposal: null,
+			draft_outcome: outcome({ classification: 'CAD-RADS 0', normal: true }),
+			draft: [draft({ input: 'symptoms', label: 'Stable symptoms', role: 'eligibility', state: 'assumed', value: 'Yes' })],
+			assumptions: ['symptoms'],
+			assumed_eligible: true
+		});
+		render(CopilotCards, single(exam, v(result(exam, pv)), null));
+		await expect.element(page.getByRole('button', { name: 'CAD-RADS 2.0 · CAD-RADS 0' })).toBeInTheDocument(); // still one line
+		const chip = page.getByRole('button', { name: /1 check assumed/ });
+		await expect.element(chip).toHaveAttribute('aria-expanded', 'false');
+		// the list is in the button's text for screen readers (visually hidden), not only in a tooltip
+		expect(chip.element().querySelector('.cp-sr-only')!.textContent).toBe(': Stable symptoms: Yes');
+		const list = document.getElementById(chip.element().getAttribute('aria-controls')!)!;
+		expect(list.hidden).toBe(true);
+		(chip.element() as HTMLElement).focus();
+		await userEvent.keyboard('{Enter}');
+		await expect.element(chip).toHaveAttribute('aria-expanded', 'true');
+		expect(list.hidden).toBe(false);
+		expect(list.textContent).toContain('Stable symptoms: Yes');
+	});
+
+	it('a quiet line with assumed_eligible but no assumed rows still shows a cue', async () => {
+		const pv = preview({ proposal: null, draft_outcome: outcome({ classification: 'CAD-RADS 0', normal: true }), assumed_eligible: true });
+		render(CopilotCards, single(exam, v(result(exam, pv)), null));
+		await expect.element(page.getByRole('button', { name: /checks assumed/ })).toBeInTheDocument();
+	});
+
 	it('the version sits on its own line under the name; the assumed chip stays on the first line', async () => {
 		const c = card({ name: 'ESE adrenal incidentaloma', version: '2023', finding: finding.text });
 		const pv = preview({ state: 'check_first', missing: ['e'], asks: [{ input: 'e', label: 'Known cancer', role: 'eligibility' }] });
