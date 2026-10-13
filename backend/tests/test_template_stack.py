@@ -202,3 +202,15 @@ def test_habit_lines_never_reach_the_generator():
     b = stack_brief(sheet, "", [])
     assert "ASK" not in b and "No beta extension" not in b and "Extension beyond alpha" not in b
     assert "LIST_MISSING" in b and "COVERS [" in b
+
+
+@pytest.mark.parametrize("stack", [None, {"conclusion": "C.", "declined": []}])
+async def test_the_fallback_path_never_shows_a_habit_line_to_the_generator(capture, stack):
+    # today's path (the lean mirror failed or is not on) reads the stored sheet: habit lines are stripped there too
+    habits = ('\nRULE WHEN [findings: an alpha abnormality is reported] ASK "Extension beyond alpha?" '
+              'YES "The abnormality extends beyond alpha." NO "No extension beyond alpha."\n'
+              'NEGATIVE "No delta extension." WHEN [findings: a delta abnormality is reported]\n')
+    cfg = {"generation_mode": "skill_sheet_guided", "skill_sheet": LEAN + habits, "scan_type": "CMR"}
+    await TemplateManager().generate_report_from_config(cfg, {"FINDINGS": "f"}, None, stack=stack)
+    gen = next(k for k in capture if k["output_type"] is str)
+    assert "Extension beyond alpha" not in gen["system_prompt"] and "No delta extension" not in gen["system_prompt"]

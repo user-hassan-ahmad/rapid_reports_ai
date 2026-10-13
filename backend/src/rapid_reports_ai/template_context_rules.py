@@ -151,6 +151,20 @@ def jev_findings(findings: str) -> str:
     return "\n".join(out)
 
 
+# The two findings-triggered habit forms (spec 2026-10-13-findings-triggered-rows-design), with the grammar's optional
+# indentation and "- " bullet. Habits are resolved only in the scratchpad (asked rows, assumed statements): the
+# generator never reads one, on either Generate path.
+_HABIT_LINE = re.compile(r'^\s*(?:-\s+)?(?:RULE\s+WHEN\s*\[\s*findings\s*:[^\]]*\]\s*ASK\b'
+                         r'|NEGATIVE\s*"[^"]*"\s+WHEN\s*\[\s*findings\s*:)')
+
+
+def without_habits(sheet: str) -> Tuple[str, int]:
+    """(the sheet without its habit lines, how many were removed). Every other line is kept byte for byte."""
+    lines = (sheet or "").split("\n")
+    kept = [ln for ln in lines if not _HABIT_LINE.match(ln)]
+    return "\n".join(kept), len(lines) - len(kept)
+
+
 def condition_state(scan_type: str, history: str, findings: str) -> str:
     """The one Jev state every context condition is asked on (resolve_context_rules and the checklist's template
     suppressions): the scan type when given, the clinical history, and the dictated findings without what the

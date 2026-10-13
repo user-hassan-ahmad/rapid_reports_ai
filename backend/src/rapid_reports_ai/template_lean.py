@@ -27,7 +27,8 @@ from .report_reconcile import write_options
 from .report_review import CONTRA_FLAG, Q_CONTRA, ReportSection, run_quality_check
 from .template_number_check import undictated_numbers
 from .template_brief import _scores
-from .template_context_rules import decided_block, resolve_context_rules, sheet_headers, strip_slot_sentences
+from .template_context_rules import (decided_block, resolve_context_rules, sheet_headers, strip_slot_sentences,
+                                     without_habits)
 from .template_manager import TemplateManager
 from .template_sheet_structure import _key
 
@@ -443,7 +444,10 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
                                                 scan_type=scan_type)
         rec["context_rules"] = resolved.record
         block = decided_block(resolved.decided, resolved.kept)
-        gen_sheet = resolved.sheet + ("\n\n" + block if block else "")
+        # habits are resolved only in the scratchpad; on the straight path nothing is asked, so nothing is written
+        # (a confirmed "state" habit is not written there in this release: findings-triggered rows plan, decision 14)
+        base, rec["habit_lines_stripped"] = without_habits(resolved.sheet)
+        gen_sheet = base + ("\n\n" + block if block else "")
         rec["lat"]["rules_s"] = round(time.time() - t0, 1)
         t1 = time.time()
         out = await TemplateManager()._generate_report_skill_sheet_guided(

@@ -2763,8 +2763,12 @@ Findings: {findings_input}{history_note}
 
         # ── Skill-sheet-guided early exit ──────────────────────────────────
         if template_config.get("generation_mode") == "skill_sheet_guided":
+            # today's (fallback) path reads the stored sheet: habit lines are resolved only in the scratchpad, so the
+            # generator never sees one here either (findings-triggered rows plan, Task 5b)
+            from .template_context_rules import without_habits
+            sheet, _ = without_habits(template_config.get("skill_sheet") or "")
             return await self._generate_report_skill_sheet_guided(
-                template_config, user_inputs, user_signature,
+                {**template_config, "skill_sheet": sheet}, user_inputs, user_signature,
                 model_override=model_override, stack=stack,
             )
 
