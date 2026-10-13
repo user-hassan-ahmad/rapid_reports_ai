@@ -7,6 +7,8 @@
 	import RulesStep from '$lib/template-rules/RulesStep.svelte';
 	import StyleChecks from '$lib/template-rules/StyleChecks.svelte';
 	import { postApplyDecisions, postDecide, postSheetChecks } from '$lib/template-rules/api';
+	import ChatCards from '$lib/chat-router/ChatCards.svelte';
+	import { postRouterCard, postRouterUndo } from '$lib/chat-router/api';
 	import { createChecksLoader } from '$lib/template-rules/checksLoader';
 
 	const dispatch = createEventDispatcher();
@@ -27,6 +29,7 @@
 	export let template = null;
 
 	let skillSheet = '';
+	/** @type {any[]} */
 	let chatHistory = [];
 	let chatInput = '';
 	let loading = false;
@@ -171,6 +174,11 @@
 		const msg = chatInput.trim();
 		chatInput = '';
 
+		// the rejection loop (chat-edit router): a message after an undone turn carries what was rejected
+		const lastAssistant = [...chatHistory].reverse().find((/** @type {any} */ m) => m.role === 'assistant');
+		const rejectionContext = lastAssistant?.status === 'rejected'
+			? { original_instruction: lastAssistant.originalInstruction || '', rejected_claim: lastAssistant.behavioralClaim || '' }
+			: null;
 		chatHistory = [...chatHistory, { role: 'user', content: msg }];
 		loading = true;
 		error = '';
@@ -181,19 +189,74 @@
 				message: msg,
 				chat_history: toWireChatHistory(chatHistory.slice(0, -1)),
 				template_id: template?.id ?? null,
-				decisions
+				decisions,
+				rejection_context: rejectionContext
 			});
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
 			if (Array.isArray(data.decisions)) decisions = data.decisions;
-			showKeptCards(data.cards);
+			const routed = data.route === 'router';
+			if (!routed) showKeptCards(data.cards);   // the whole-sheet refine's kept cards (D3) go to the review
 			if (data.applied !== false) loadChecks();
-			chatHistory = [...chatHistory, { role: 'assistant', content: data.response }];
+			chatHistory = [...chatHistory, {
+				role: 'assistant', content: data.response, route: data.route, changes: data.changes || [],
+				cards: routed ? data.cards || [] : [], behavioralClaim: data.behavioral_claim || '', originalInstruction: msg,
+				status: routed && data.applied !== false && (data.changes || []).length ? 'pending' : null
+			}];
 			// a refused edit keeps the sheet and explains why (data.response); nothing changed to save
 			if (data.applied !== false) hasChanges = true;
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 			chatHistory = chatHistory.slice(0, -1);
+		} finally {
+			loading = false;
+		}
+	}
+
+	/** One-tap Undo on a router turn (D-R1): the backend reverses that turn's own changes. */
+	async function rejectTurn(/** @type {number} */ i) {
+		const target = chatHistory[i];
+		if (!target || target.status !== 'pending' || loading) return;
+		loading = true;
+		error = '';
+		try {
+			const r = await postRouterUndo($token, { skill_sheet: skillSheet, decisions, changes: target.changes,
+				template_id: template?.id ?? null });
+			if (!r.success) throw new Error(r.error);
+			skillSheet = r.skill_sheet;
+			if (Array.isArray(r.decisions)) decisions = r.decisions;
+			// the undo reply stays on the rejected turn, so that turn remains the last assistant message and the next
+			// message carries its rejection context
+			const updated = [...chatHistory];
+			updated[i] = { ...target, status: 'rejected', undone: r.response };
+			chatHistory = updated;
+			hasChanges = true;
+			loadChecks();
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+		} finally {
+			loading = false;
+		}
+	}
+
+	/** A router card tapped in the chat: applied by code on the backend (source "chat"). */
+	async function answerCard(/** @type {import('$lib/chat-router/types').CardAnswer} */ answer) {
+		if (loading) return;
+		loading = true;
+		error = '';
+		try {
+			const r = await postRouterCard($token, { skill_sheet: skillSheet, decisions, answer,
+				template_id: template?.id ?? null });
+			if (!r.success) throw new Error(r.error);
+			skillSheet = r.skill_sheet;
+			if (Array.isArray(r.decisions)) decisions = r.decisions;
+			chatHistory = [...chatHistory, { role: 'assistant', content: r.response, cards: r.cards || [] }];
+			if (r.applied) {
+				hasChanges = true;
+				loadChecks();
+			}
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
 		} finally {
 			loading = false;
 		}
@@ -356,13 +419,25 @@
 				</div>
 			{/if}
 
-			{#each chatHistory as msg}
+			{#each chatHistory as msg, i}
 				<div class="flex {msg.role === 'user' ? 'justify-end' : 'justify-start'}">
-					<div class="max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm
+					<div class="max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm space-y-2
 						{msg.role === 'user'
 							? 'bg-purple-600/20 border border-purple-500/20 text-purple-100'
 							: 'bg-white/[0.04] border border-white/[0.06] text-gray-300'}">
-						{msg.content}
+						<p class={msg.status === 'rejected' ? 'line-through opacity-60' : ''} style="white-space: pre-wrap;">{msg.content}</p>
+						{#if msg.undone}
+							<p class="text-xs text-amber-200/80" style="white-space: pre-wrap;">{msg.undone}</p>
+						{/if}
+						{#if msg.cards?.length}
+							<ChatCards cards={msg.cards} busy={loading} onAnswer={answerCard} />
+						{/if}
+						{#if msg.status === 'pending'}
+							<button class="px-2.5 py-1 rounded-md bg-white/[0.04] hover:bg-amber-500/15 border border-white/10 hover:border-amber-500/40 text-gray-400 hover:text-amber-200 text-xs transition-colors disabled:opacity-40"
+								on:click={() => rejectTurn(i)} disabled={loading}>
+								Undo
+							</button>
+						{/if}
 					</div>
 				</div>
 			{/each}
