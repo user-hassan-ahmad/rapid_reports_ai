@@ -12,6 +12,10 @@ SIZE = {"input": "size", "value": 7, "quote": "7 mm"}
 RISK = {"input": "risk", "value": "high", "quote": "smoker"}
 
 
+def _ids(assumptions) -> list[str]:
+    return [a.input for a in assumptions]
+
+
 def _lib(key):
     return LB.Library(json.loads(LB.BUNDLE.read_text())).lookup(key)
 
@@ -129,12 +133,12 @@ def test_every_assumed_value_round_trips_through_calculate_on_every_pack():
         for presets in ({}, PP.exam_presets(e, PP.EXAM_CARD)):
             p = PP.finish(e, PP.Settlement(), {}, None, [], presets=presets)
             assumed = {d.input for d in p.draft if d.state == "assumed"}
-            assert assumed == set(p.assumptions) and not assumed & set(p.missing), e.key
+            assert assumed == set(_ids(p.assumptions)) and not assumed & set(p.missing), e.key
             assert all(d.value for d in p.draft if d.state == "assumed"), e.key
             shown = {d.input: d.value for d in p.draft if d.value}
             c = PP.calculate(e, PP.Settlement(), shown, None, [], "b1", presets=presets)
             states = {v.input: v.state for v in c.values}
-            assert all(states[k] == "assumed" for k in assumed) and set(c.assumptions) == assumed, e.key
+            assert all(states[k] == "assumed" for k in assumed) and set(_ids(c.assumptions)) == assumed, e.key
             assert c.outcome == (p.trace or {}).get("outcome") and c.needed == p.missing, e.key
             seen += len(assumed)
     assert seen                                                       # some pack assumes something
@@ -144,7 +148,7 @@ def test_bts_age_feeds_brock_so_it_is_asked_never_assumed():
     e = next(x for x in _tier1() if x.id == "bts-pulmonary-nodule")
     p = PP.finish(e, PP.Settlement(), {}, None, [])
     by = {d.input: d for d in p.draft}
-    assert by["age"].state == "asked" and "age" in p.missing and "age" not in p.assumptions
+    assert by["age"].state == "asked" and "age" in p.missing and "age" not in _ids(p.assumptions)
     assert by["proven_malignant"].state == "assumed"
 
 
@@ -170,7 +174,7 @@ def test_a_prefilled_excluding_eligibility_value_is_a_scope_doubt_not_an_exclusi
     assert (p.trace or {}).get("outcome") != "does_not_apply"
     d = next(x for x in p.draft if x.input == "pregnant_or_acute")
     assert (d.state, d.value, d.quote) == ("prefilled", "Yes", "Pelvic pain") and PP.WHY_WOULD_EXCLUDE in d.why
-    assert "pregnant_or_acute" not in p.assumptions
+    assert "pregnant_or_acute" not in _ids(p.assumptions)
     c = PP.calculate(e, s, {"pregnant_or_acute": "Yes"}, None, [], "b1")       # confirmed by the radiologist
     assert c.outcome == "does_not_apply" and c.exclusion is not None
 
@@ -293,13 +297,13 @@ def test_an_unstated_visible_sign_is_assumed_absent_and_the_most_likely_outcome_
     p = PP.finish(e, s, {}, None, [])
     by = {d.input: d for d in p.draft}
     assert (by["benign_features"].state, by["benign_features"].value) == ("assumed", "No")
-    assert by["benign_features"].why == [PP.WHY_ASSUMED_ABSENT] and "benign_features" in p.assumptions
+    assert by["benign_features"].why == [PP.WHY_ASSUMED_ABSENT] and "benign_features" in _ids(p.assumptions)
     assert p.draft_outcome.category == "surveillance" and p.most_likely.category == "surveillance"
     assert p.most_likely.headline == p.draft_outcome.headline and p.deciding == [] and p.deciding_input is None
     assert len(p.possible) == 2                                    # "show all": benign discharge is still possible
     assert p.assumed_eligible is True and p.state == "check_first"  # proven_malignant; the signs are not eligibility
     stated = PP.finish(e, s, {"benign_features": "Yes"}, None, [])  # a stated value wins over the assumption
-    assert "benign_features" not in stated.assumptions and stated.most_likely.category == "none"
+    assert "benign_features" not in _ids(stated.assumptions) and stated.most_likely.category == "none"
 
 
 def test_with_several_outcomes_left_the_deciding_question_splits_them():
@@ -325,7 +329,7 @@ def test_ese_and_bosniak_deciding_and_signs():
     b = next(x for x in _tier1() if x.id == "bosniak-renal-cyst")
     p = PP.finish(b, PP.Settlement(), {}, None, [])
     shown = {d.input: (d.state, d.value) for d in p.draft}
-    assert shown["calcification"] == ("assumed", "none") and "calcification" in p.assumptions
+    assert shown["calcification"] == ("assumed", "none") and "calcification" in _ids(p.assumptions)
     assert shown["septa"][0] == shown["protrusion"][0] == "asked"     # review I-1: septa and protrusion stay asked
 
 
@@ -347,7 +351,7 @@ def test_not_stated_on_a_visible_sign_asks_it_and_never_re_assumes_it():
     e, s = _bts6(prior_study=PP.Drafted(InputValue(value=False), "no previous imaging", "prefilled", [PP.WHY_KIND]))
     p = PP.finish(e, s, {"benign_features": PP.NOT_STATED}, None, [])
     d = next(x for x in p.draft if x.input == "benign_features")
-    assert d.state == "asked" and "benign_features" not in p.assumptions and "benign_features" in p.missing
+    assert d.state == "asked" and "benign_features" not in _ids(p.assumptions) and "benign_features" in p.missing
 
 
 def test_a_papillary_mention_without_a_count_is_unknown_never_assumed_no():
@@ -356,8 +360,8 @@ def test_a_papillary_mention_without_a_count_is_unknown_never_assumed_no():
     assert not e.input("m3_four_papillary").visible_sign
     p = PP.finish(e, PP.Settlement(), {}, None, [])
     assert next(x for x in p.draft if x.input == "m3_four_papillary").state != "assumed"
-    assert "m3_four_papillary" not in p.assumptions
-    assert {"m2_ascites", "b3_acoustic_shadowing"} <= set(p.assumptions)
+    assert "m3_four_papillary" not in _ids(p.assumptions)
+    assert {"m2_ascites", "b3_acoustic_shadowing"} <= set(_ids(p.assumptions))
 
 
 def test_the_bts_answer_path_with_prior_ct_unknown_stays_fast():
@@ -414,3 +418,32 @@ def test_an_eligibility_exclusion_names_its_input_and_an_open_card_has_none():
     p = PP.finish(e, PP.Settlement(), {"pregnant_or_acute": "Yes"}, None, [])
     assert p.state == "does_not_apply" and p.exclusion_reason.input == "pregnant_or_acute"
     assert PP.finish(e, PP.Settlement(), {}, None, []).exclusion_reason is None
+
+
+# Hassan 2026-10-13: which assumptions are decisive (only those are confirmed at Apply)
+def test_each_assumption_says_whether_it_is_decisive():
+    e, s = _bts6(prior_study=PP.Drafted(InputValue(value=False), "no previous imaging", "prefilled", [PP.WHY_KIND]))
+    p = PP.finish(e, s, {}, None, [])
+    a = {x.input: x for x in p.assumptions}
+    assert (a["benign_features"].kind, a["benign_features"].decisive, a["benign_features"].value) == ("sign", True, "No")
+    assert (a["spiculation"].kind, a["spiculation"].decisive) == ("sign", False)     # 6 mm: Brock is never read
+    assert (a["proven_malignant"].kind, a["proven_malignant"].decisive) == ("eligibility", True)
+    by = {d.input: d for d in p.draft}
+    assert by["benign_features"].decisive is True and by["spiculation"].decisive is False
+    assert by["diameter_mm"].decisive is None                                          # not assumed
+    assert a["benign_features"].label == e.input("benign_features").label
+
+
+def test_an_unbounded_draft_leaves_decisive_unweighed():
+    e, s = _bts6()                                         # prior CT unknown: unbounded
+    p = PP.finish(e, s, {}, None, [])
+    assert p.assumptions and all(x.decisive is None for x in p.assumptions)
+
+
+def test_calculate_weighs_the_assumptions_sent_back():
+    e, s = _bts6()
+    sent = {"diameter_mm": "6 mm", "nodule_type": "solid", "age": "65", "benign_features": "No",
+            "spiculation": "No", "prior_study": "No", "proven_malignant": "No"}
+    c = PP.calculate(e, s, sent, None, [], "b1")
+    a = {x.input: x for x in c.assumptions}
+    assert a["benign_features"].decisive is True and a["spiculation"].decisive is False and c.outcome is not None

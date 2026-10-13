@@ -20,6 +20,10 @@ class _Resp:
         return self._body
 
 
+def _ids(assumptions) -> list[str]:
+    return [a.input for a in assumptions]
+
+
 @pytest.fixture
 def jev(monkeypatch):
     st = {"score": 0.9, "fail": False, "fail_if": None, "deny": [], "scores": {}, "calls": 0, "payloads": []}
@@ -197,7 +201,7 @@ async def test_an_unbounded_preview_says_so_and_asks_every_reaching_input(monkey
     out = await PP.preview_pack(e, "10 mm solid nodule, no benign features, no prior imaging.", "", {}, finding="10 mm solid nodule, no benign features, no prior imaging.")
     signs = {"spiculation"}                              # visible signs: assumed absent when unstated (silence policy)
     assert out.draft_outcome is None and out.bounded is False and BTS_BROCK - signs <= set(out.missing)
-    assert signs <= set(out.assumptions) and not signs & set(out.missing)
+    assert signs <= set(_ids(out.assumptions)) and not signs & set(out.missing)
 
 
 async def test_the_preview_carries_the_waiting_inputs(toy_entry, monkeypatch, jev):
@@ -437,7 +441,7 @@ async def test_an_unknown_eligibility_input_is_assumed_in_scope_and_the_draft_ou
     """Hassan 2026-10-13: the card never leads with eligibility; it drafts for an eligible patient, visibly."""
     _model(monkeypatch, KIND, SIZE)
     out = await PP.preview_pack(_elig(toy), FINDING, "", {"risk": "high"}, finding=FINDING)
-    assert out.state == "check_first" and out.assumed_eligible is True and out.assumptions == ["known_cancer"]
+    assert out.state == "check_first" and out.assumed_eligible is True and _ids(out.assumptions) == ["known_cancer"]
     assert out.draft_outcome.recommendation == "CT at 6 months" and out.missing == [] and out.proposal is None
     d = next(x for x in out.draft if x.input == "known_cancer")
     assert (d.state, d.value, d.why, d.quote) == ("assumed", "No", [PP.WHY_ASSUMED], "")
@@ -449,7 +453,7 @@ async def test_an_assumed_eligibility_input_is_not_asked_and_the_clinical_asks_r
     _model(monkeypatch, KIND, SIZE)
     out = await PP.preview_pack(_elig(toy), FINDING, "", {}, finding=FINDING)
     assert out.missing == ["risk"] and [a["input"] for a in out.asks] == out.missing
-    assert out.assumptions == ["known_cancer"] and out.state == "check_first"
+    assert _ids(out.assumptions) == ["known_cancer"] and out.state == "check_first"
 
 
 async def test_a_read_eligibility_value_is_never_an_assumption(toy, monkeypatch, jev):
@@ -462,10 +466,10 @@ async def test_a_read_eligibility_value_is_never_an_assumption(toy, monkeypatch,
     assert excluded.state == "check_first" and excluded.scope_doubt == ["known_cancer"] and excluded.exclusion is None
     assert excluded.draft_outcome.recommendation == "CT at 6 months" and _states(excluded)["kind"] == "read"
     answered = PP.finish(e, PP.Settlement(values=base), {"risk": "high", "known_cancer": "Yes"})
-    assert answered.state == "does_not_apply" and answered.assumptions == [] and answered.exclusion is not None
+    assert answered.state == "does_not_apply" and _ids(answered.assumptions) == [] and answered.exclusion is not None
     eligible = PP.finish(e, PP.Settlement(values={**base, "known_cancer": PP.Drafted(
         PP.InputValue(value=False), "no history of cancer", "prefilled", [PP.WHY_KIND])}), {"risk": "high"})
-    assert eligible.state == "applies" and eligible.assumptions == [] and eligible.assumed_eligible is False
+    assert eligible.state == "applies" and _ids(eligible.assumptions) == [] and eligible.assumed_eligible is False
     assert _states(eligible)["known_cancer"] == "prefilled" and eligible.draft_outcome.recommendation == "CT at 6 months"
 
 
@@ -508,7 +512,7 @@ async def test_a_patient_answer_the_pack_cannot_take_is_ignored(toy, monkeypatch
     _model(monkeypatch, KIND, SIZE)
     out = await PP.preview_pack(_elig(toy), FINDING, "", {"risk": "high"}, finding=FINDING,
                                 patient={"known_primary_cancer": "seventy", "age_years": "60"})
-    assert out.state == "check_first" and out.assumptions == ["known_cancer"] and out.missing == []
+    assert out.state == "check_first" and _ids(out.assumptions) == ["known_cancer"] and out.missing == []
 
 
 @pytest.mark.parametrize("finding,quote", [("Nodule measuring under 5 mm, solid.", "5 mm"),
@@ -564,7 +568,7 @@ async def test_a_degraded_settle_still_assumes_eligibility_visibly(toy, monkeypa
         raise TimeoutError("slow")
     monkeypatch.setattr(PP, "_call", boom)
     out = await PP.preview_pack(_elig(toy), FINDING, "", {}, finding=FINDING)
-    assert out.degraded is True and out.state == "check_first" and out.assumptions == ["known_cancer"]
+    assert out.degraded is True and out.state == "check_first" and _ids(out.assumptions) == ["known_cancer"]
 
 
 @pytest.mark.parametrize("finding,quote,unit,dims", OTHER_NUMBER)
@@ -616,13 +620,13 @@ async def test_bts_with_eligibility_unknown_drafts_under_assumptions(monkeypatch
                                                                   "benign_features": "Yes", "prior_study": "No"},
                                 finding="7 mm solid nodule.")
     assert out.state == "check_first" and out.missing == ["age"]
-    assert out.assumptions == ["proven_malignant", "spiculation"]     # eligibility, then the visible sign
+    assert _ids(out.assumptions) == ["proven_malignant", "spiculation"]     # eligibility, then the visible sign
     assert _states(out)["proven_malignant"] == "assumed" and _states(out)["age"] == "asked"
     # review I1: age also feeds Brock, so no band of it can be answered back: it is asked, never assumed
     out = await PP.preview_pack(_bts(), "7 mm solid nodule.", "", {"nodule_type": "solid", "diameter_mm": "7",
                                                                   "benign_features": "Yes", "prior_study": "No",
                                                                   "age": "60"}, finding="7 mm solid nodule.")
-    assert out.assumptions == ["proven_malignant", "spiculation"] and out.draft_outcome is not None
+    assert _ids(out.assumptions) == ["proven_malignant", "spiculation"] and out.draft_outcome is not None
     assert out.missing == []
 
 
@@ -1061,7 +1065,7 @@ def test_a_finding_card_gets_no_presets():
     p = PP.finish(e, PP.Settlement(values=_DIAMETER), {}, presets=PP.exam_presets(e, "u1"))
     assert [x.input for x in p.settled] == ["diameter_cm"] and all(x.by == "" for x in p.settled)
     assert all(d.by == "" and d.state in ("read", "asked", "assumed") for d in p.draft)
-    assert p.state == "check_first" and set(_PRESET_IDS) <= set(p.assumptions) | set(p.missing)
+    assert p.state == "check_first" and set(_PRESET_IDS) <= set(_ids(p.assumptions)) | set(p.missing)
 
 
 def test_presets_need_an_exam_level_entry(toy_entry):

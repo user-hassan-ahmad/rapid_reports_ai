@@ -540,7 +540,7 @@ def taps(e: Entry, s, label: dict, patient: dict, picked: bool = False,
     for _ in range(MAX_FILL):
         new = {k: truth[k] for k in p.missing if k not in answered and truth.get(k) is not None}
         shown = {d.input: d.value for d in p.draft}
-        new.update({k: truth[k] for k in p.assumptions if k not in answered and truth.get(k) is not None
+        new.update({k: truth[k] for k in (a.input for a in p.assumptions) if k not in answered and truth.get(k) is not None
                     and not _same(e, k, _answer(e, e.input(k), shown[k]) or InputValue(state="unknown"), truth[k])})
         if not new:
             break

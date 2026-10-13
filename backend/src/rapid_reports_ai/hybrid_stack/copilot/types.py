@@ -146,6 +146,8 @@ class DraftValue(BaseModel):
     by: str = ""                       # "exam" when the exam binding preset it (pre-filled, no quote); else ""
     needed: bool = False               # in `needed`: can still change the outcome
     waiting: bool = False              # behind a prerequisite still unknown: not asked yet
+    decisive: bool | None = None       # assumed: flipping it alone changes the outcome (confirm at Apply); None when
+                                       # not assumed or not weighed
     options: list[str] = Field(default_factory=list)  # display_options + "Not stated" (spec §7.6)
 
 
@@ -171,6 +173,15 @@ class ExclusionReason(BaseModel):
     value: str
 
 
+class Assumption(BaseModel):
+    """A value the draft assumes (never stated): an eligibility input in scope, or a visible sign absent."""
+    input: str
+    label: str
+    value: str
+    decisive: bool | None = None       # flipping it alone changes the outcome; None when not weighed (unbounded, cap)
+    kind: Literal["eligibility", "sign"]
+
+
 class DecidingInput(BaseModel):
     input: str
     label: str
@@ -184,7 +195,7 @@ class Calculation(BaseModel):
     possible: list[str] = Field(default_factory=list)
     needed: list[str] = Field(default_factory=list)
     values: list[DraftValue] = Field(default_factory=list)
-    assumptions: list[str] = Field(default_factory=list)   # inputs sent back at the draft's assumed in-scope value
+    assumptions: list[Assumption] = Field(default_factory=list)   # values sent back at the draft's assumption
     exclusion_reason: ExclusionReason | None = None   # does_not_apply: the one value behind it; None if not one input
     most_likely: OutcomeBrief | None = None    # the outcome reached, in short; None while several remain
     deciding_input: DecidingInput | None = None   # several remain: the one unknown input whose answer splits them most
@@ -198,8 +209,8 @@ class Preview(BaseModel):
     settled: list[Settled] = Field(default_factory=list)
     draft: list[DraftValue] = Field(default_factory=list)    # library packs: every input with its value state
     draft_outcome: Proposal | None = None   # library packs: the outcome "on these values"; never Apply-able (§7.7)
-    assumptions: list[str] = Field(default_factory=list)   # library packs: eligibility inputs assumed in scope (their
-                                                           # draft values have state "assumed"), in pack order
+    assumptions: list[Assumption] = Field(default_factory=list)   # library packs: every assumed draft value, in pack
+                                                                  # order (eligibility in scope, visible signs absent)
     assumed_eligible: bool = False   # library packs: the draft rests on assumptions; the card shows a warning
     exclusion_reason: ExclusionReason | None = None   # library packs, does_not_apply: the one read or answered value
     # behind the exclusion; None when it is not attributable to one input

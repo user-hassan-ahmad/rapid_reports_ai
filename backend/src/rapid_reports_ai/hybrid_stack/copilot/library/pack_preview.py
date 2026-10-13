@@ -30,7 +30,7 @@ from ....report_reconcile import QWEN
 from .. import jev as J
 from .. import preview as P
 from .. import registry as R
-from ..types import (Branch, Calculation, DecidingAnswer, DecidingInput, DraftValue, Entry as CardEntry,
+from ..types import (Assumption, Branch, Calculation, DecidingAnswer, DecidingInput, DraftValue, Entry as CardEntry,
                      ExclusionReason, GuidelineContent, Input, OutcomeBrief, Preview, Proposal, Publication, Settled,
                      Source)
 from . import engine
@@ -65,7 +65,7 @@ WHY_ASSUMED = "assumed: not stated, so taken as within the guideline's scope"   
 WHY_ASSUMED_ABSENT = "assumed absent: a visible sign the report does not mention"   # silence policy
 MAX_DECIDING = 3
 DECIDING_CANDIDATES = 3   # the first unknown inputs, in `needed` order, tried as the deciding question
-EVAL_CAP = 16             # engine evaluations one preview or Calculate may spend on most_likely, deciding and the like
+EVAL_CAP = 32             # engine evaluations one preview or Calculate may spend on most_likely, deciding and the like
 
 
 class _Evals:
@@ -535,7 +535,7 @@ def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict
            degraded: bool, preset: frozenset[str] = frozenset(), draft: list[DraftValue] | None = None,
            doubt: list[str] | None = None, signs: dict[str, InputValue] | None = None,
            possible: list[str] | None = None, likely: tuple | None = None,
-           reason: ExclusionReason | None = None) -> Preview:
+           reason: ExclusionReason | None = None, assumed: list[Assumption] | None = None) -> Preview:
     """The card (spec §7.4): eligibility asks first; the state worked out in code; the reached outcome is a draft
     "on these values" (never a proposal, so never Applied); a does_not_apply outcome is shown as an exclusion."""
     elig = [i.id for i in e.inputs if i.role == "eligibility"]
@@ -551,14 +551,12 @@ def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict
     else:          # check_first stays honest: an assumed or still-unknown eligibility input (the UI's warning)
         state = "check_first" if t.assumed or doubt or set(elig) & set(needed) else "applies"
         draft_outcome, exclusion = text, None
-    elig_assumed = ([i.id for i in e.inputs if i.id in t.assumed and i.id not in (doubt or [])]
-                    if t.outcome != DOES_NOT_APPLY else [])
-    assumptions = [i.id for i in e.inputs if i.id in elig_assumed or i.id in (signs or {})]
+    elig_assumed = [a for a in (assumed or []) if a.kind == "eligibility"]
     most_likely, deciding_input, deciding = likely or (None, None, [])
     if possible is None:
         possible = _possible(e, t)
     return Preview(settled=settled, draft=draft or [], draft_outcome=draft_outcome, missing=needed, proposal=None,
-                   assumptions=assumptions, assumed_eligible=bool(elig_assumed), scope_doubt=list(doubt or []),
+                   assumptions=list(assumed or []), assumed_eligible=bool(elig_assumed), scope_doubt=list(doubt or []),
                    most_likely=most_likely, deciding_input=deciding_input, deciding=deciding,
                    exclusion_reason=reason if t.outcome == DOES_NOT_APPLY else None,
                    exclusion=exclusion, state=state, possible=possible, bounded=t.bounded,
@@ -681,8 +679,36 @@ def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str,
         if i.id in doubt:
             dv.why.append(WHY_WOULD_EXCLUDE)
         draft.append(dv)
+    assumed = []
+    if t.outcome != DOES_NOT_APPLY:
+        base = _known(drafted)
+        for dv in draft:
+            if dv.state == "assumed" and dv.input not in doubt:
+                dv.decisive = _decisive(e, t, base, dv.input, signs.get(dv.input) or t.assumed[dv.input], ev, True)
+                assumed.append(Assumption(input=dv.input, label=dv.label, value=dv.value, decisive=dv.decisive,
+                                          kind="sign" if dv.input in signs else "eligibility"))
     return _build(e, t, given, quotes, sources or [], s.failed or s.no_unit, frozenset(preset), draft, doubt, signs,
-                  possible, likely, reason)
+                  possible, likely, reason, assumed)
+
+
+def _decisive(e: Entry, t: engine.Trace, base: dict[str, InputValue], k: str, cur: InputValue, ev: "_Evals",
+              assume: bool) -> bool | None:
+    """Whether flipping this one assumed value to any other answer changes the outcome (so it must be confirmed at
+    Apply; a non-decisive assumption needs no confirmation). None when not weighed: an unbounded result, or over the
+    evaluation cap."""
+    if not t.bounded:
+        return None
+    i = e.input(k)
+    for label in display_options(e, i):
+        v = _answer(e, i, label)
+        if v is None or _same_shown(e, i, v, cur):
+            continue
+        r = ev({**base, k: v}, assume)
+        if r is None:
+            return None
+        if r.outcome != t.outcome:
+            return True
+    return False
 
 
 def _exclusion_reason(e: Entry, t: engine.Trace, known: dict[str, InputValue],
@@ -787,6 +813,20 @@ def _no_prefilled_exclusion(e: Entry, t: engine.Trace, s: Settlement, answers: d
     return t2, doubt
 
 
+def _calc_assumed(e: Entry, t: engine.Trace, given: dict[str, InputValue], used: list[DraftValue],
+                  ev: "_Evals") -> list[Assumption]:
+    """Calculate's assumed values (sent back unchanged from an assumption), each weighed as in the preview."""
+    out = []
+    for v in used:
+        if v.state != "assumed":
+            continue
+        rest = {k: x for k, x in _known(given).items() if k != v.input}
+        v.decisive = _decisive(e, t, rest, v.input, given[v.input], ev, False)
+        out.append(Assumption(input=v.input, label=v.label, value=v.value, decisive=v.decisive,
+                              kind="eligibility" if e.input(v.input).role == "eligibility" else "sign"))
+    return out
+
+
 def _same_shown(e: Entry, i: InputDef, v: InputValue | None, g: InputValue) -> bool:
     """The two values show alike on the card."""
     return v is not None and _show(e, i, v) == _show(e, i, g)
@@ -838,7 +878,7 @@ def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str
     most_likely, deciding_input, deciding = _likely(e, t, _known(given), sources, assume=False, ev=ev)
     return Calculation(outcome=t.outcome, result=None if excluded else text, exclusion=text if excluded else None,
                        possible=_possible(e, t), needed=list(t.needed), values=used,
-                       assumptions=[v.input for v in used if v.state == "assumed"],
+                       assumptions=_calc_assumed(e, t, given, used, ev),
                        most_likely=most_likely, deciding_input=deciding_input, deciding=deciding,
                        exclusion_reason=_exclusion_reason(e, t, _known(given), ev),
                        trace=t.model_dump(mode="json") if t.outcome is not None else None,
