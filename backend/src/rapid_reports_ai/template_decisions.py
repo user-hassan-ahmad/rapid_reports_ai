@@ -27,6 +27,7 @@ full stop ignored for sentence keys), never by free-text similarity."""
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, TypedDict
@@ -159,11 +160,31 @@ def match_key(kind: str, key: str) -> str:
     return _name(key)
 
 
+_ACRONYM_START = re.compile(r"[a-z]+[A-Z]")   # a lowercase-led word that holds a capital ("eGFR", "pH" is not)
+
+
 def is_sentence(text: str) -> bool:
-    """A full sentence: starts with a capital letter or a {slot}, ends with "." or ":". A wording that replaces a line
-    or is printed on its own (REPLACE ... WITH, USE) must be one; a fragment would print mid-sentence."""
+    """A full sentence, the shape a wording that replaces a line or prints on its own (REPLACE ... WITH, USE) must
+    have, since a fragment would print mid-sentence. The rule:
+    - it starts with a capital letter, a {slot}, a digit ("3 phases were acquired."), or a lowercase-led word that
+      holds a capital (an acronym such as "eGFR ...");
+    - it ends with "." or ":". A wording that ends on a bare slot ("... of {date}") or with no full stop is a
+      fragment.
+    Only the edges are checked; the words between them are the radiologist's."""
     t = (text or "").strip()
-    return bool(t) and (t[0].isupper() or t[0] == "{") and t[-1] in ".:"
+    if not t or t[-1] not in ".:":
+        return False
+    return t[0].isupper() or t[0] == "{" or t[0].isdigit() or bool(_ACRONYM_START.match(t))
+
+
+def fragment_wording(entry: dict) -> Optional[str]:
+    """The wording of a stored used concept whose replacement / printed wording is not a full sentence (kept in the
+    ledger, never applied as a rule: apply_ledger writes no line for it and returns it as unmatched, a review card)."""
+    choice = (entry or {}).get("choice") or {}
+    if entry.get("kind") != "concept" or not choice.get("use"):
+        return None
+    when_met = choice.get("when_met") or ""
+    return when_met if when_met and not is_sentence(when_met) else None
 
 
 def _text(v, what: str, allow_slots: bool = True) -> str:
@@ -177,8 +198,10 @@ def _text(v, what: str, allow_slots: bool = True) -> str:
     return t
 
 
-def validate(kind: str, key: str, choice: dict) -> Tuple[str, dict]:
-    """(key, choice) in canonical form; DecisionError when code cannot apply it."""
+def validate(kind: str, key: str, choice: dict, strict: bool = True) -> Tuple[str, dict]:
+    """(key, choice) in canonical form; DecisionError when code cannot apply it. `strict` False (stored entries,
+    clean_ledger) lets a concept wording that is not a full sentence through, so it can be asked about again
+    (fragment_wording); a new choice is always strict."""
     if kind not in KINDS:
         raise DecisionError(f"unknown kind {kind!r}")
     if not isinstance(choice, dict):
@@ -203,7 +226,7 @@ def validate(kind: str, key: str, choice: dict) -> Tuple[str, dict]:
         when_met = _text(choice.get("when_met", ""), "concept wording")
         if not (default or when_met):
             raise DecisionError("concept: a used concept needs wording")
-        if when_met and not is_sentence(when_met):
+        if strict and when_met and not is_sentence(when_met):
             raise DecisionError("concept wording: a full sentence (a capital or a {slot} first, '.' or ':' last)")
         if default and when_met and norm_key(default) == norm_key(when_met):
             raise DecisionError("concept: the two wordings are the same")
@@ -374,7 +397,7 @@ def clean_ledger(entries) -> List[Entry]:
         try:
             if not isinstance(e, dict):
                 raise DecisionError("entry: object expected")
-            key, choice = validate(e.get("kind", ""), e.get("key", ""), e.get("choice") or {})
+            key, choice = validate(e.get("kind", ""), e.get("key", ""), e.get("choice") or {}, strict=False)
         except DecisionError as err:
             logger.warning("[ledger] stored entry dropped: %s", err)
             continue

@@ -170,6 +170,16 @@ def unmatched_cards(entries) -> List[dict]:
     An entry code cannot read is skipped."""
     out = []
     for e in entries if isinstance(entries, list) else []:
+        frag = td.fragment_wording(e) if isinstance(e, dict) else None
+        if frag and e.get("key") in td.CONCEPTS:   # a stored wording that is not a full sentence: reword or dictated
+            c = concept_card(e["key"], e["choice"].get("default", ""), "", [], e["choice"].get("condition", ""))
+            out.append({**c, "title": f"Your wording '{frag}' can't be used as a full sentence",
+                        "choices": [_choice("edit", "Edit wording", None),
+                                    _choice("dictated", "Use whichever is dictated",
+                                            {"use": False, "default": "", "when_met": "", "condition": "",
+                                             "dictated": True})],
+                        "step": "review", "note": UNMATCHED_NOTE})
+            continue
         try:
             c = card_for_change(e["kind"], e["key"], e["choice"])
         except (td.DecisionError, KeyError, TypeError):

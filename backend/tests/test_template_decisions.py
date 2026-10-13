@@ -175,9 +175,22 @@ def test_a_replacement_or_use_wording_must_be_a_full_sentence():
     for ok in ("Assessment is limited by {limitation}.", "{Limitation} limits assessment.", "Limitations:"):
         td.validate("concept", "limitation", {"use": True, "default": "", "when_met": ok})
     assert td.is_sentence("No previous imaging.") and not td.is_sentence("no previous imaging.")
-    # a stored fragment is dropped, so it never becomes a rule
+    # a stored fragment is kept (it becomes a review card at save) but is never a rule
     stored = [{"kind": "concept", "key": "limitation", "by": "radiologist", "at": "t", "source": "creation",
                "choice": {"use": True, "default": "", "when_met": "assessment is limited by {limitation}"}}]
-    assert td.clean_ledger(stored) == []
+    kept = td.clean_ledger(stored)
+    assert len(kept) == 1 and td.fragment_wording(kept[0]) == "assessment is limited by {limitation}"
     from rapid_reports_ai import template_sheet_lab_prompts as P
-    assert "assessment is limited" not in P.decided_block(stored)
+    block = P.decided_block(stored)
+    assert "assessment is limited" not in block and "Technical limitation: whichever is dictated." in block
+
+
+def test_full_sentence_edges():
+    """Starts with a capital, a {slot}, a digit, or a lowercase-led acronym (a word holding a capital); ends with
+    "." or ":". A wording ending on a bare slot is a fragment."""
+    for ok in ("3 phases were acquired.", "eGFR was {value} at the time of the study.", "{Count} phases were acquired.",
+               "Compared with the study of {date}.", "Technique:"):
+        assert td.is_sentence(ok), ok
+    for bad in ("assessment is limited.", "phases were acquired", "Compared with the study of {date}",
+                "egfr was {value}.", "", "  .", "- Compared."):
+        assert not td.is_sentence(bad), bad

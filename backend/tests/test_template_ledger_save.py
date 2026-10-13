@@ -141,3 +141,27 @@ async def test_prose_quoting_a_decided_concepts_line_is_a_non_blocking_warning()
     assert (await S.vet_sheet(RESTATED, origin="analyser", ledger=LVEF)).ledger_warnings == []
     assert (await S.vet_sheet(RESTATED, origin="analyser")).ledger_warnings == []
     assert tla.apply_ledger(RESTATED, COMPARISON).restated[0]["detail"] == _PRIOR
+
+
+_FRAG = "assessment is limited by {limitation}"
+FRAGMENT = [{"kind": "concept", "key": "limitation", "by": "radiologist", "at": "t", "source": "creation",
+             "choice": {"use": True, "default": "", "when_met": _FRAG,
+                        "condition": "the dictation states a technical limitation of the study"}}]
+
+
+async def test_a_stored_fragment_wording_is_never_a_rule_and_comes_back_as_a_card():
+    from rapid_reports_ai import template_rules_cards as trc
+    cond = "the dictation states a technical limitation of the study"
+    with_rule = LEDGER_SHEET.replace('FIXED "Axial images were acquired."\n',
+                                     f'FIXED "Axial images were acquired."\nRULE WHEN [context: {cond}] USE "{_FRAG}"\n', 1)
+    for sheet in (LEDGER_SHEET, with_rule):
+        out = await S.vet_sheet(sheet, origin="analyser", ledger=FRAGMENT)
+        assert out.status == "saved" and _FRAG not in out.sheet and cond not in out.sheet
+        assert out.ledger == FRAGMENT and len(td.clean_ledger(out.ledger)) == 1     # never silently forgotten
+        assert [e["key"] for e in out.ledger_unmatched] == ["limitation"]
+        cards = trc.unmatched_cards(out.ledger_unmatched)
+        assert len(cards) == 1 and cards[0]["step"] == "review"
+        assert cards[0]["title"] == f"Your wording '{_FRAG}' can't be used as a full sentence"
+        assert [c["id"] for c in cards[0]["choices"]] == ["edit", "dictated"]
+        assert cards[0]["choices"][1]["choice"] == {"use": False, "default": "", "when_met": "", "condition": "",
+                                                    "dictated": True}

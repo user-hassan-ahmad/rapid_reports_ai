@@ -548,7 +548,7 @@ def decided_block(decisions: List[dict]) -> str:
         if lines:
             out.append(f"{c.label}: write these lines at the end of the paragraph of the section that says how the "
                        "study was done (else the first findings paragraph):\n" + "\n".join(lines))
-        elif e["choice"].get("dictated"):
+        elif e["choice"].get("dictated") or td.fragment_wording(e):
             out.append(f"{c.label}: whichever is dictated. Write no line and no rule about it.")
         else:
             out.append(f"{c.label}: not used. Write no line and no rule about it.")

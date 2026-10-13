@@ -381,6 +381,11 @@ def apply_ledger(sheet: str, ledger: List[dict], before: str = "") -> LedgerResu
                 res.applied.append({"kind": "fixed", "key": e["key"], "action": "kept"})
                 continue
             steps.append((functools.partial(op, added=added) if op is _concept else op, e, [e]))
+    # a stored concept whose wording is not a full sentence is never a rule: its lines are removed (as "whichever is
+    # dictated") and the entry is returned as unmatched, a review card (template_rules_cards.unmatched_cards)
+    fragments = [e for e in ledger if td.fragment_wording(e)]
+    steps = [(op, ({**arg, "choice": dict(_DICTATED)} if isinstance(arg, dict) and td.fragment_wording(arg) else arg),
+              entries) for op, arg, entries in steps]
     stale: List[str] = []
     for op, arg, entries in steps:
         before_errors = _err_keys(res.sheet)
@@ -401,10 +406,12 @@ def apply_ledger(sheet: str, ledger: List[dict], before: str = "") -> LedgerResu
         stale += olds
     prose = _free_prose_lines(res.sheet.split("\n"))
     res.stale_quotes = sorted({t for t in stale if t and any(f'"{t}"' in ln for ln in prose)})
+    res.unmatched += [e for e in fragments if e not in res.failed]
     res.restated = restated_quotes(res.sheet, ledger)
     return res
 
 
+_DICTATED = {"use": False, "default": "", "when_met": "", "condition": "", "dictated": True}
 RESTATED = "prose quotes a decided standard line"
 _EXAMPLE_PROSE = re.compile(r"^\s*(?:-\s+)?(?:Opening|Order|Measurement)\b")
 _QUOTED = re.compile(r'"([^"]*)"')
@@ -414,7 +421,8 @@ def restated_quotes(sheet: str, ledger: List[dict]) -> List[dict]:
     """Lint warnings (never blocking): an Opening, Order or Measurement line of a paragraph whose quote holds a used
     decided concept's FIXED line word for word. The line prints itself, so the writer would state it twice."""
     owned = {" ".join(e["choice"]["default"].split()) for e in td.clean_ledger(ledger)
-             if e["kind"] == "concept" and e["choice"]["use"] and e["choice"]["default"]}
+             if e["kind"] == "concept" and e["choice"]["use"] and e["choice"]["default"]
+             and not td.fragment_wording(e)}
     if not owned:
         return []
     lines = sheet.split("\n")
@@ -556,4 +564,6 @@ def render_list_missing(items: List[str]) -> str:
 
 def render_concept(name: str, choice: dict) -> List[str]:
     """A concept's lines inside a paragraph ([] for "not used" and "whichever is dictated")."""
-    return _concept_lines(td.validate("concept", name, choice)[1]) if choice.get("use") else []
+    if not choice.get("use") or td.fragment_wording({"kind": "concept", "choice": choice}):
+        return []
+    return _concept_lines(td.validate("concept", name, choice)[1])
