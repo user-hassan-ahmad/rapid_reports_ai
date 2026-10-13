@@ -228,7 +228,99 @@ def _concept(lines, st, entry):
     return out, [{**row, "action": action}], [], [t for t in olds if norm_key(t) not in keep]
 
 
-_OPS: List[Tuple[str, Callable]] = [("concept", _concept)]
+def _uses(st: tss.SheetStructure, key: str) -> List[tss.Rule]:
+    """Context USE rules writing this sentence (a line printed when its condition is met)."""
+    return [r for r in st.rules if r.condition_source == "context" and r.effect == "use" and norm_key(r.then_text) == key]
+
+
+def _fixed(lines, st, entry):
+    key = norm_key(entry["key"])
+    found = [f for f in st.fixed_blocks if norm_key(f.text) == key]
+    uses = _uses(st, key)
+    row = {"kind": "fixed", "key": entry["key"], "action": "kept"}
+    if entry["choice"]["keep"] == "always":
+        return (lines, [row], [], []) if found or uses else (lines, [], [entry], [])
+    if not found and not uses:
+        return lines, [row], [], []
+    drop: Set[int] = set()
+    raws = [f.source_line for f in found] + [r.source_lines[0] for r in [*_targeting(st, {key}), *uses]]
+    for raw in raws:
+        i = _index(lines, raw, drop)
+        if i is not None:
+            drop.add(i)
+    out = [ln for i, ln in enumerate(lines) if i not in drop]
+    return out, [{**row, "action": "removed"}], [], [found[0].text if found else uses[0].then_text]
+
+
+def _paragraph(st: tss.SheetStructure, name: str) -> Optional[tss.Paragraph]:
+    """The one paragraph with this name; None when there is none or more than one (never guessed)."""
+    hits = [p for p in st.paragraphs if td._name(p.name) == td._name(name)]
+    return hits[0] if len(hits) == 1 else None
+
+
+def _normal(lines, st, entry):
+    para_name, label, neg = td.split_normal_key(entry["key"])
+    text = entry["choice"]["text"]
+    row = {"kind": "normal", "key": entry["key"], "action": "kept"}
+    para = _paragraph(st, para_name)
+    if para is None:
+        return lines, [], [entry], []
+    if neg:
+        keys = {norm_key(label)} | ({norm_key(text)} if text else set())
+        units = [n for n in st.negatives if n.paragraph == para.id and n.origin == "template" and not n.condition
+                 and norm_key(n.text) in keys]
+        raws = [n.source_lines[0] for n in units]
+    else:
+        units = [n for n in st.normals if n.paragraph == para.id and td._name(n.structure) == td._name(label)]
+        raws = [n.source_line for n in units]
+    if not units:
+        if not text:
+            return lines, [row], [], []
+        if neg:   # a negative is keyed by its own wording: when neither wording is found, ask (never insert)
+            return lines, [], [entry], []
+        span = _paragraph_span(lines, para.id)
+        if span is None:
+            return lines, [], [entry], []
+        at = _block_end(lines, *span)
+        out = list(lines)
+        out[at:at] = [f'NORMAL [{label}] "{text}"']
+        return out, [{**row, "action": "inserted"}], [], []
+    idx: List[int] = []
+    for raw in raws:
+        i = _index(lines, raw, set(idx))
+        if i is not None:
+            idx.append(i)
+    if not idx:
+        return lines, [], [entry], []
+    if text and len(idx) == 1 and units[0].text == text:
+        return lines, [row], [], []
+    olds = [u.text for u in units]
+    old_keys = {norm_key(t) for t in olds}
+    out2: List[Optional[str]] = list(lines)
+    for i in idx[1:]:
+        out2[i] = None
+    rules = _targeting(st, old_keys)
+    if text:
+        first = lines[idx[0]]
+        body = f'NEGATIVE "{text}"' if neg else f'NORMAL [{units[0].structure}] "{text}"'
+        out2[idx[0]] = _prefix(first) + body + _suffix(first)
+        for r in rules:   # a context rule on the old wording follows it
+            i = _index(lines, r.source_lines[0])
+            if i is not None:
+                out2[i] = _prefix(lines[i]) + tsg.render_rule(r.model_copy(update={"target": text})) + _suffix(lines[i])
+        action = "rewritten"
+    else:
+        out2[idx[0]] = None
+        for r in rules:
+            i = _index(lines, r.source_lines[0])
+            if i is not None:
+                out2[i] = None
+        action = "removed"
+    stale = [t for t in olds if norm_key(t) != norm_key(text)]
+    return [x for x in out2 if x is not None], [{**row, "action": action}], [], stale
+
+
+_OPS: List[Tuple[str, Callable]] = [("concept", _concept), ("fixed", _fixed), ("normal", _normal)]
 
 
 def apply_ledger(sheet: str, ledger: List[dict]) -> LedgerResult:

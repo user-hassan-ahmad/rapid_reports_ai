@@ -183,3 +183,102 @@ def test_concepts_are_idempotent():
     once = tla.apply_ledger(LEDGER_SHEET, led).sheet
     again = tla.apply_ledger(once, led)
     assert again.sheet == once and again.changed == 0
+
+
+def test_fixed_remove_and_dictated_drop_the_line_and_rules_on_it():
+    sheet = LEDGER_SHEET.replace(
+        'FIXED "Axial images were acquired."\n',
+        'FIXED "Axial images were acquired."\n'
+        'RULE WHEN [context: the coronal series was not acquired] SUPPRESS "Axial images were acquired."\n')
+    _clean(sheet)
+    for keep in ("remove", "dictated"):
+        res = tla.apply_ledger(sheet, _led(("fixed", "Axial images were acquired.", {"keep": keep})))
+        st = _clean(res.sheet)
+        assert "Axial images were acquired." not in [f.text for f in st.fixed_blocks]
+        assert not [r for r in st.rules if r.condition_source == "context"]
+        assert 'Opening: "Axial images were acquired."' in res.sheet       # prose is never rewritten
+
+
+def test_fixed_always_on_a_missing_line_is_unmatched_not_guessed():
+    res = tla.apply_ledger(LEDGER_SHEET, _led(("fixed", "A line the sheet lacks.", {"keep": "always"})))
+    assert res.sheet == LEDGER_SHEET and [e["key"] for e in res.unmatched] == ["A line the sheet lacks."]
+
+
+def test_normal_rewrite_insert_and_remove():
+    led = _led(("normal", td.normal_key("Liver", "liver"), {"text": "The liver is unremarkable."}),
+               ("normal", td.normal_key("Liver", "gallbladder"), {"text": "The gallbladder is unremarkable."}),
+               ("normal", td.negative_key("Liver", "No focal liver lesion."), {"text": ""}))
+    res = tla.apply_ledger(LEDGER_SHEET, led)
+    st = _clean(res.sheet)
+    assert {(n.structure, n.text) for n in st.normals} == {("liver", "The liver is unremarkable."),
+                                                           ("gallbladder", "The gallbladder is unremarkable.")}
+    assert not st.negatives
+    assert [a["action"] for a in res.applied] == ["rewritten", "inserted", "removed"]
+    assert res.stale_quotes == ["The liver is normal in size."]      # the Voice block still quotes the old normal
+
+
+def test_a_reworded_negative_stays_matched():
+    key = td.negative_key("Liver", "No focal liver lesion.")
+    led = _led(("normal", key, {"text": "No focal hepatic lesion."}))
+    once = tla.apply_ledger(LEDGER_SHEET, led).sheet
+    again = tla.apply_ledger(once, led)
+    assert again.sheet == once and [n.text for n in _clean(once).negatives] == ["No focal hepatic lesion."]
+
+
+def test_a_normal_in_a_missing_paragraph_is_unmatched():
+    res = tla.apply_ledger(LEDGER_SHEET, _led(("normal", "Spleen :: spleen", {"text": "The spleen is normal."})))
+    assert res.sheet == LEDGER_SHEET and len(res.unmatched) == 1
+
+
+def test_an_edit_that_would_break_the_sheet_is_not_applied(monkeypatch):
+    def broken(lines, st, entry):
+        return [*lines, "NORMAL broken"], [{"kind": "normal", "key": entry["key"], "action": "inserted"}], [], []
+    monkeypatch.setattr(tla, "_OPS", [("normal", broken)])
+    res = tla.apply_ledger(LEDGER_SHEET, _led(("normal", "Liver :: liver", {"text": "The liver is fine."})))
+    assert res.sheet == LEDGER_SHEET and len(res.failed) == 1 and not res.applied
+
+
+def test_everything_together_is_idempotent_and_clean():
+    led = _led(("value", "LVEF", {"need": "every"}), ("concept", "comparison", COMPARISON),
+               ("fixed", "Axial images were acquired.", {"keep": "remove"}),
+               ("normal", td.normal_key("Liver", "gallbladder"), {"text": "The gallbladder is unremarkable."}))
+    once = tla.apply_ledger(LEDGER_SHEET, led)
+    _clean(once.sheet)
+    assert not once.failed and not once.unmatched
+    assert tla.apply_ledger(once.sheet, led).sheet == once.sheet
+
+
+def test_a_negative_whose_wordings_are_both_gone_is_a_card_never_inserted():
+    gone = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."\n', "")
+    reword = _led(("normal", td.negative_key("Liver", "No focal liver lesion."), {"text": "No focal hepatic lesion."}))
+    res = tla.apply_ledger(gone, reword)
+    assert res.sheet == gone and [e["key"] for e in res.unmatched] == ['Liver :: "No focal liver lesion."']
+    remove = _led(("normal", td.negative_key("Liver", "No focal liver lesion."), {"text": ""}))
+    res = tla.apply_ledger(gone, remove)                                   # already gone: nothing to do, nothing added
+    assert res.sheet == gone and not res.unmatched and res.changed == 0
+
+
+def test_a_paragraph_name_used_twice_is_never_guessed():
+    twice = LEDGER_SHEET.replace("## Paragraph: Impression (IMPRESSION)", "## Paragraph: Liver (IMPRESSION)")
+    _clean(twice)
+    res = tla.apply_ledger(twice, _led(("normal", "Liver :: liver", {"text": "The liver is unremarkable."})))
+    assert res.sheet == twice and len(res.unmatched) == 1
+
+
+def test_a_fixed_entry_on_a_concepts_line_is_skipped_not_fought_over():
+    led = _led(("concept", "comparison", COMPARISON))
+    led.append({"kind": "fixed", "key": "No previous imaging available.", "choice": {"keep": "remove"}, "by": "code",
+                "at": "", "source": "default"})                       # a stored ledger from before the refusal
+    once = tla.apply_ledger(LEDGER_SHEET, led)
+    again = tla.apply_ledger(once.sheet, led)
+    assert 'FIXED "No previous imaging available."' in once.sheet and again.sheet == once.sheet and again.changed == 0
+
+
+def test_removing_a_fixed_entry_also_removes_a_use_rule_writing_it():
+    sheet = LEDGER_SHEET.replace(
+        'FIXED "Axial images were acquired."\n',
+        'FIXED "Axial images were acquired."\nRULE WHEN [context: the coronal series was not acquired] USE '
+        '"Coronal images were not acquired."\n')
+    _clean(sheet)
+    res = tla.apply_ledger(sheet, _led(("fixed", "Coronal images were not acquired.", {"keep": "remove"})))
+    assert "Coronal images were not acquired." not in res.sheet and res.applied[0]["action"] == "removed"
