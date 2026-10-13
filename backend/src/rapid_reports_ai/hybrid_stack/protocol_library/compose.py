@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..schemas import Region
 from .bundle import Bundle, Entry, phase_id
-from .match import agent_words, phase_words
+from .match import PHASE_WORDS, agent_words, phase_words
 
 LATERALITY = ("left", "right", "bilateral")
 
@@ -72,6 +72,69 @@ def modality_line(e: Entry, phases: list[str]) -> str:
     return f"{head}: {words}" if words else head
 
 
+_CONTRAST_WORDS = {"none": "without contrast", "iv_iodinated": "with intravenous contrast",
+                   "gadolinium": "with intravenous gadolinium contrast",
+                   "gadolinium_hepatobiliary": "with intravenous hepatobiliary gadolinium contrast",
+                   "oral_only": "with oral contrast", "iv_and_oral": "with intravenous and oral contrast",
+                   "intra_articular": "with intra-articular contrast", "intrathecal": "with intrathecal contrast",
+                   "rectal_or_luminal": "with luminal contrast", "air": "with air insufflation"}
+# A display name that begins with the procedure rather than the region ("MR Arthrogram hip", "CT Angiogram aorta"):
+# kept as written, never "of the arthrogram hip".
+_PROCEDURE_FIRST = re.compile(r"(?i)^(?:low\b|dual\b|perfusion\b|cardiac\b|abbreviated\b)|\b(?:angio\w*|\w*gram|\w*graphy|mra|cta|mrcp)\b")
+_NAME_TAIL = re.compile(r"(?i)\s+(?:(?:with|without)\s+(?:[\w-]+\s+){0,2}contrast(?:\s*\([^)]*\))?"
+                        r"|(?:two|three|triple|four|multi)[\s-]?phase)$")
+
+
+def _lower_title(words: str) -> str:
+    """"Abdomen and Pelvis" -> "abdomen and pelvis"; "T2*" or "MRI" keep their capitals."""
+    return " ".join(w if any(c.isupper() for c in w[1:]) else w.lower() for w in words.split())
+
+
+def technique_statement(e: Entry, phases: list[str], laterality: str | None = None) -> str:
+    """One sentence, e.g. "CT of the abdomen and pelvis with intravenous contrast in the unenhanced, arterial and portal
+    venous phases." (spec 2026-10-13, sections fix): the generator writes TECHNIQUE from this, never from a guess."""
+    mod = "MRI" if e.modality.upper() in ("MR", "MRI") else e.modality
+    name = _NAME_TAIL.sub("", e.display_name.strip())
+    rest = re.sub(r"(?i)^(?:ct|mri|mr)\s+", "", name)
+    if rest != name and rest and not _PROCEDURE_FIRST.search(rest):
+        side = f"{laterality} " if laterality else ""
+        subject = f"{mod} of the {side}{_lower_title(rest)}"
+    else:
+        subject = re.sub(r"(?i)^mr\b", "MRI", name) + (f" ({laterality})" if laterality else "")
+    words = [PHASE_WORDS.get(p, p.replace("_", " ")) for p in phases]
+    listed = words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1] if words else ""
+    unit = "sequences" if mod == "MRI" else "phases"
+    if len(words) == 1:
+        unit = unit[:-1]
+    when = f" in the {listed} {unit}" if listed else ""
+    return f"{subject} {_CONTRAST_WORDS.get(e.agent, 'without contrast')}{when}."
+
+
+STANDARD_SECTIONS = "Comparison; Technique; Limitations (only when applicable); Findings; Impression"
+SECTION_RULES = (
+    "COMPARISON comes first: carry a prior study if one is dictated; acknowledge comparison generically when the "
+    "findings use comparison language (new, stable, unchanged, increased, resolved and the like); otherwise state "
+    "that no prior imaging is available for comparison. TECHNIQUE is the protocol description only: modality, "
+    "region, contrast and phases or sequences, written from the Technique statement in Scan Context, with no "
+    "assessment or limitation wording. LIMITATIONS appears only when the radiologist dictates a limitation or a "
+    "genuine study-specific degradation is stated; it is never the not-assessable list. Never a clinical history "
+    "section.")
+_STRUCTURAL = re.compile(r"^##\s+Structural Pattern\s*$([\s\S]*?)(?=^##\s|\Z)", re.M | re.I)
+_SECTIONS_BULLET = re.compile(r"^\s*-\s+\*\*Sections:\*\*.*$\n?", re.M | re.I)
+_RULES_BULLET = re.compile(r"^\s*-\s+\*\*Section rules:\*\*.*$\n?", re.M | re.I)
+
+
+def _standard_sections(md: str) -> str:
+    """The Structural Pattern's section list is composed in code for every library sheet, as the Scan Context is:
+    177 of 185 base sheets said "Findings, Impression", so reports lost COMPARISON and TECHNIQUE."""
+    head = f"- **Sections:** {STANDARD_SECTIONS}\n- **Section rules:** {SECTION_RULES}\n"
+    m = _STRUCTURAL.search(md)
+    if not m:
+        return md.rstrip("\n") + f"\n\n## Structural Pattern\n{head}"
+    body = _RULES_BULLET.sub("", _SECTIONS_BULLET.sub("", m.group(1))).lstrip("\n")
+    return md[:m.start()] + f"## Structural Pattern\n{head}{body}" + md[m.end():]
+
+
 _SCAN_CONTEXT = re.compile(r"^##\s+Scan Context\s*$[\s\S]*?(?=^##\s|\Z)", re.M | re.I)
 
 
@@ -90,9 +153,11 @@ def compose_sheet(bundle: Bundle, res: Resolution) -> ComposedSheet:
     # One source for every phase set, default included: the reviewed phase sheet; the entry's list only if it is empty.
     na = phase.scan_context.get("not assessable on this scan", "") or "; ".join(e.not_assessable)
     ctx = (f"## Scan Context\n- **Modality:** {modality_line(e, res.phases)}\n"
+           f"- **Technique statement:** {technique_statement(e, res.phases, res.laterality)}\n"
            f"- **Imaged volume:** {e.coverage}\n- **Not assessable on this scan:** {na or 'none stated'}\n\n")
     md = _SCAN_CONTEXT.sub(lambda _m: ctx, base.markdown, count=1) if _SCAN_CONTEXT.search(base.markdown) \
         else ctx + base.markdown
+    md = _standard_sections(md)
     return ComposedSheet(id=res.sheet_id, markdown=md, region_normals=normals, not_assessable=na,
                          level_groups=res.level_groups)
 

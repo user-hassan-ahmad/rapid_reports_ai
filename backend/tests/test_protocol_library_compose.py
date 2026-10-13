@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 import pytest
@@ -101,3 +102,72 @@ def test_sheet_from_id_round_trip_and_garbage(b):
     assert C.sheet_from_id(b, r.sheet_id).region_normals == C.compose_sheet(b, r).region_normals
     assert C.sheet_from_id(b, "lib:NOPE|none|-|x") is None
     assert C.sheet_from_id(b, "lib:garbage") is None
+
+
+STANDARD_SECTIONS = "- **Sections:** Comparison; Technique; Limitations (only when applicable); Findings; Impression"
+
+
+def _bullets(md, heading, label):
+    sec = re.search(rf"^##\s+{heading}\s*$([\s\S]*?)(?=^##\s|\Z)", md, re.M)
+    return [ln for ln in (sec.group(1) if sec else "").splitlines() if ln.startswith(f"- **{label}:**")]
+
+
+def test_technique_statement_is_composed_from_the_entry_and_phases(b):
+    def tech(entry, phases=None, lat=None):
+        return _bullets(C.compose_sheet(b, C.resolve(b, entry, phases, lat)).markdown, "Scan Context",
+                        "Technique statement")
+    assert tech("TCAPT") == ["- **Technique statement:** CT of the abdomen and pelvis with intravenous contrast "
+                             "in the unenhanced, arterial and portal venous phases."]
+    assert tech("TCAP", ["portal_venous"]) == ["- **Technique statement:** CT of the abdomen and pelvis with "
+                                               "intravenous contrast in the portal venous phase."]
+    assert tech("TMWS") == ["- **Technique statement:** MRI of the whole spine without contrast."]
+    assert tech("TCTH") == ["- **Technique statement:** CT of the head without contrast."]
+    assert tech("TMKN", None, "left") == ["- **Technique statement:** MRI of the left knee without contrast."]
+    assert tech("TMBR") == ["- **Technique statement:** MRI of the breast with intravenous gadolinium contrast "
+                            "in the DCE sequence."]
+
+
+def test_technique_statement_keeps_a_procedure_name_that_is_not_a_region(b):
+    e = b.entry("TMKN").model_copy(update={"display_name": "MR Arthrogram hip", "agent": "intra_articular"})
+    assert C.technique_statement(e, ["post_contrast"], "right") == \
+        "MRI Arthrogram hip (right) with intra-articular contrast in the post-contrast sequence."
+
+
+def test_standard_sections_and_rules_replace_the_sheets_own_list(b):
+    base = b.base_sheets["ct_ap_t|iv"]
+    base.markdown += ("\n## Structural Pattern\n- **Sections:** Findings, Impression\n- **Sweep order:** Liver, Vessels\n"
+                      "- **Macro-structure:** FLAT\n\n## Style Exemplars\n- **Mass:** \"A mass.\"\n")
+    md = C.compose_sheet(b, C.resolve(b, "TCAP", None, None)).markdown
+    assert _bullets(md, "Structural Pattern", "Sections") == [STANDARD_SECTIONS]
+    rules = _bullets(md, "Structural Pattern", "Section rules")
+    assert len(rules) == 1
+    for needle in ("COMPARISON", "no prior imaging is available for comparison", "TECHNIQUE", "Technique statement",
+                   "LIMITATIONS", "not-assessable", "clinical history"):
+        assert needle in rules[0]
+    assert _bullets(md, "Structural Pattern", "Sweep order") == ["- **Sweep order:** Liver, Vessels"]
+    assert md.count("Findings, Impression") == 0 and md.count("## Structural Pattern") == 1
+
+
+def test_a_sheet_without_a_structural_pattern_gets_one(b):
+    for key in ("TCTH", "TMKN"):
+        md = C.compose_sheet(b, C.resolve(b, key, None, "left" if key == "TMKN" else None)).markdown
+        assert md.count("## Structural Pattern") == 1
+        assert _bullets(md, "Structural Pattern", "Sections") == [STANDARD_SECTIONS]
+        assert len(_bullets(md, "Structural Pattern", "Section rules")) == 1
+
+
+def test_a_structural_pattern_with_no_sections_bullet_gains_one(b):
+    b.base_sheets["ct_head_t|none"].markdown += "\n## Structural Pattern\n- **Macro-structure:** FLAT\n"
+    md = C.compose_sheet(b, C.resolve(b, "TCTH", None, None)).markdown
+    assert md.count("## Structural Pattern") == 1
+    assert _bullets(md, "Structural Pattern", "Sections") == [STANDARD_SECTIONS]
+    assert _bullets(md, "Structural Pattern", "Macro-structure") == ["- **Macro-structure:** FLAT"]
+
+
+def test_the_generator_brief_keeps_the_sections_rules_and_technique_statement(b):
+    # stack_fallback drops DROP_TOP_BULLETS / STACK_DROP_BULLETS / history sections: none may take the new bullets
+    from rapid_reports_ai.quick_report_brief import stack_fallback
+    text = stack_fallback(C.compose_sheet(b, C.resolve(b, "TCAPT", None, None)).markdown, "").text
+    assert STANDARD_SECTIONS in text
+    assert "Section rules" in text and "no prior imaging is available for comparison" in text
+    assert "Technique statement" in text and "in the unenhanced, arterial and portal venous phases." in text

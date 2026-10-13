@@ -6,6 +6,7 @@ import pytest
 from rapid_reports_ai.hybrid_stack.protocol_library import bundle as PB
 from rapid_reports_ai.hybrid_stack.protocol_library import compose as C
 from rapid_reports_ai.hybrid_stack.protocol_library import match as M
+from rapid_reports_ai.hybrid_stack.protocol_library.compose import STANDARD_SECTIONS
 from rapid_reports_ai.quick_report_brief import stack_fallback
 
 pytestmark = pytest.mark.skipif(not os.environ.get("RR_PROTOCOL_LIBRARY_PATH"), reason="private bundle not available")
@@ -31,7 +32,11 @@ def test_every_pick_resolves_and_composes(b):
                        and r.name not in s.region_normals and r.name not in SEX_ONLY]
             if missing and len(missing) > len(res.regions) // 2:
                 bad.append((e.id, ph, missing[:4]))
-            assert stack_fallback(s.markdown, "", []) is not None
+            brief = stack_fallback(s.markdown, "", []).text
+            assert STANDARD_SECTIONS in brief and "Section rules" in brief and "Technique statement" in brief, e.id
+            assert f"- **Sections:** {STANDARD_SECTIONS}" in s.markdown.splitlines(), (e.id, ph)
+            assert s.markdown.count("## Structural Pattern") == 1 and "- **Section rules:**" in s.markdown
+            assert "- **Technique statement:**" in s.markdown
     assert not bad, bad[:10]
 
 
