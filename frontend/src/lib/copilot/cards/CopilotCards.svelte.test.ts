@@ -115,7 +115,10 @@ describe('CopilotCards', () => {
 		const pv = preview({ state: 'does_not_apply', proposal: null, exclusion: outcome({ classification: 'Not for patients under 35', citations: [{ title: 'Guideline', page: 2 }] }) });
 		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
 		await expect.element(page.getByTestId('cp-exclusion')).toHaveTextContent('Not for patients under 35');
-		expect(document.querySelector('.gl-card')!.getAttribute('aria-disabled')).toBe('true');
+		expect(document.querySelector('.gl-card')!.classList.contains('gl-card--dim')).toBe(true);
+		expect(document.querySelector('.gl-card')!.hasAttribute('aria-disabled')).toBe(false); // its buttons stay usable
+		const headEl = document.querySelector('.gl-head')!;
+		expect(document.getElementById(headEl.getAttribute('aria-describedby')!)!.textContent).toBe('Does not apply');
 		expect(text()).toContain('Guideline, p. 2'); // the full source, behind its one-line summary
 		expect(document.querySelector('.cp-pill')!.textContent).toContain('Does not apply');
 		expect(document.querySelector('.cp-pill')!.getAttribute('data-category')).toBe('not_applicable');
@@ -397,7 +400,7 @@ describe('CopilotCards', () => {
 		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
 		await expect.element(page.getByRole('region', { name: 'Verdict' })).toHaveTextContent('Not cystic');
 		expect(document.querySelector('.cp-pill')!.textContent).toContain('Manage as solid renal mass');
-		expect(document.querySelector('.gl-card')!.getAttribute('aria-disabled')).toBeNull();
+		expect(document.querySelector('.gl-card')!.classList.contains('gl-card--dim')).toBe(false);
 		expect(document.body.textContent).not.toContain('Does not apply');
 		expect(document.querySelector('.cp-pill')!.classList.contains('cp-pill--excluded')).toBe(false);
 		expect(document.querySelector('[data-testid="cp-exclusion"]')).toBeNull();
@@ -433,15 +436,13 @@ describe('CopilotCards', () => {
 		expect(verdict.querySelector('.cp-headline')!.textContent).toBe('Age 28');
 		const cls = verdict.querySelector('.cp-classification') as HTMLElement;
 		expect(cls.hidden).toBe(true);
-		// the dimmed card carries aria-disabled (GlCard), which Playwright's actionability treats as disabling the
-		// buttons inside, so these toggles are clicked through the DOM
-		(page.getByRole('button', { name: 'full reason' }).element() as HTMLElement).click();
-		await expect.poll(() => cls.hidden).toBe(false);
+		await page.getByRole('button', { name: 'full reason' }).click();
+		expect(cls.hidden).toBe(false);
 		const valuesToggle = page.getByRole('button', { name: /^values/ });
 		const list = document.getElementById(valuesToggle.element().getAttribute('aria-controls')!)!;
 		expect(list.hidden).toBe(true);
-		(valuesToggle.element() as HTMLElement).click();
-		await expect.poll(() => list.hidden).toBe(false);
+		await valuesToggle.click();
+		expect(list.hidden).toBe(false);
 	});
 
 	it('PackCard takes an assumptions list directly (B1 feeds Task 3)', async () => {

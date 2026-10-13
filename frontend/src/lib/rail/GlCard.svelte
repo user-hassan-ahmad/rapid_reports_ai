@@ -13,7 +13,9 @@
 	 * "set by the exam" is a neutral chip; emerald for normals; rose for the radiologist's additions. Badge
 	 * variants: `v` violet (grade), `c` cyan (modality), `a` amber, `r` rose.
 	 *
-	 * `dim` (a pack that does not apply) fades the card and marks it `aria-disabled`; it still opens, so its
+	 * `dim` (a pack that does not apply) fades the card and gives its head an accessible description (`dimLabel`,
+	 * "Does not apply"). It never sets aria-disabled: that would disable the buttons inside for assistive technology.
+	 * It still opens, so its
 	 * reason stays readable.
 	 */
 	import type { Snippet } from 'svelte';
@@ -26,6 +28,7 @@
 		accent = null,
 		open = $bindable(false),
 		dim = false,
+		dimLabel = 'Does not apply',
 		roomy = false,
 		meta,
 		aside,
@@ -42,6 +45,8 @@
 		accent?: string | null;
 		open?: boolean;
 		dim?: boolean;
+		/** What a dimmed card's head is described as, for assistive technology. */
+		dimLabel?: string;
 		/** Larger type and padding (the Copilot rail, B0); the review rail keeps the default. */
 		roomy?: boolean;
 		/** A second head line, always shown (the Copilot's value chips). */
@@ -54,13 +59,13 @@
 	} = $props();
 
 	const toggle = () => (open = !open);
+	const dimId = $props.id();
 </script>
 
 <div
 	class="gl-card"
 	class:gl-card--dim={dim}
 	class:gl-card--roomy={roomy}
-	aria-disabled={dim || undefined}
 	style={accent ? `--gl-accent: ${accent}; --gl-action-color: ${accent}` : undefined}
 >
 	<!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
@@ -68,6 +73,7 @@
 		class="gl-head {open ? 'gl-head--open' : ''}"
 		role="button"
 		tabindex="0"
+		aria-describedby={dim ? dimId : undefined}
 		onclick={toggle}
 		onkeydown={(e) => {
 			if (e.key === 'Enter' || e.key === ' ') {
@@ -99,6 +105,7 @@
 		</div>
 	</div>
 
+	{#if dim}<span class="gl-sr-only" id={dimId}>{dimLabel}</span>{/if}
 	{#if open && body}
 		<div class="gl-body">{@render body()}</div>
 	{/if}
@@ -125,6 +132,17 @@
 	.gl-card:hover {
 		border-color: rgba(255,255,255,0.13);
 		background: #101018;
+	}
+	.gl-sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
 	}
 	.gl-card--dim {
 		opacity: 0.6;

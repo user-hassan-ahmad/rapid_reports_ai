@@ -48,10 +48,11 @@ describe('GlCard', () => {
 		expect(card().querySelector('.gl-controls button')).not.toBeNull();
 	});
 
-	it('dim sets aria-disabled and still opens', async () => {
+	it('dim fades the card and describes its head (never aria-disabled, which would disable its buttons); it still opens', async () => {
 		render(GlCard, { title: 'Synthetic nodule', dim: true, body });
-		expect(card().getAttribute('aria-disabled')).toBe('true');
+		expect(card().hasAttribute('aria-disabled')).toBe(false);
 		expect(card().classList.contains('gl-card--dim')).toBe(true);
+		expect(document.getElementById(head().getAttribute('aria-describedby')!)!.textContent).toBe('Does not apply');
 		head().click();
 		await expect.element(page.getByText('Card body')).toBeInTheDocument();
 	});
