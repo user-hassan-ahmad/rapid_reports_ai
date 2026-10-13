@@ -117,8 +117,11 @@ describe('segment backstop for misfiled findings (errs toward omission)', () => 
 	it('a normal mention withholds nothing ("normal cervical lordosis")', () => {
 		expect(blocked([u(0, 'Normal cervical lordosis.', 'Alignment')])).toEqual([]);
 	});
-	it('an ungrouped tail unit and a split part count when abnormal', () => {
+	it('an ungrouped tail unit counts whatever its flag (its state is not known yet); a split part counts when abnormal', () => {
 		expect(blocked([u(0, 'Lumbar canal stenosis.', null, true)])).toEqual(['Lumbar levels']);
+		expect(blocked([u(0, 'Lumbar canal stenosis at L4/5.', null)])).toEqual(['Lumbar levels']);
+		expect(blocked([u(0, 'Normal cervical lordosis.', null)])).toEqual(['Cervical levels']);
+		expect(blocked([u(0, 'Normal cervical lordosis.', 'Alignment')])).toEqual([]);
 		const split: StackUnit = { ...u(1, 'Normal cord; T12/L1 disc extrusion.', 'Cord'),
 			parts: [{ text: 'Normal cord', group: 'Cord' }, { text: 'T12/L1 disc extrusion.', group: 'Cord', abnormal: true }] };
 		expect(blocked([split])).toEqual(['Thoracic levels']);
@@ -130,6 +133,11 @@ describe('segment backstop for misfiled findings (errs toward omission)', () => 
 		expect(segmentBlocked('Lumbar levels', ['L5/S1'], [{ group: 'Cord', text: 'L5-S1 annular fissure' }])).toBe(true);
 		expect(segmentBlocked('Lumbar levels', ['L4/5'], [{ group: 'Cord', text: 'lumbosacral junction transitional anomaly' }])).toBe(true);
 		expect(segmentBlocked('Thoracic levels', ['T12/L1'], [{ group: 'Cord', text: 'T12-L1 disc' }])).toBe(true);
+	});
+	it('"thoracolumbar" names thoracic and lumbar, "cervicothoracic" cervical and thoracic, as whole words in any case', () => {
+		expect(blocked([u(0, 'Thoracolumbar junction kyphosis.', 'Alignment', true)])).toEqual(['Lumbar levels', 'Thoracic levels']);
+		expect(blocked([u(0, 'CERVICOTHORACIC scoliosis.', 'Alignment', true)])).toEqual(['Cervical levels', 'Thoracic levels']);
+		expect(blocked([u(0, 'Subthoracolumbarish artefact.', 'Alignment', true)])).toEqual([]);
 	});
 	it('a sentence inside the segment\'s own regions does not withhold it, except "multilevel"', () => {
 		expect(segmentBlocked('Lumbar levels', ['L4/5'], [{ group: 'L4/5', text: 'Lumbar disc bulge at L4/5.' }])).toBe(false);

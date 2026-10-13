@@ -131,30 +131,38 @@ function levelPattern(label: string): RegExp {
 	return new RegExp(`(?<![A-Za-z0-9])${a}\\s*${n1}\\s*[/\\-\u2013\u2014]\\s*${second}${n2}(?![0-9])`, 'i');
 }
 
-/** The segment named in prose: "Cervical levels" → cervical; lumbar also as lumbosacral. */
+/** The junction words that name two segments each (ruling): thoracolumbar, cervicothoracic, and lumbosacral. */
+const SEGMENT_WORDS: Record<string, string[]> = {
+	cervical: ['cervical', 'cervicothoracic'],
+	thoracic: ['thoracic', 'cervicothoracic', 'thoracolumbar'],
+	lumbar: ['lumbar', 'lumbosacral', 'thoracolumbar']
+};
+
+/** The segment named in prose, as whole words in any case: "Cervical levels" → cervical or cervicothoracic. */
 function segmentWords(segment: string): RegExp {
 	const word = segment.trim().split(/\s+/)[0].toLowerCase();
-	const words = word === 'lumbar' ? ['lumbar', 'lumbosacral'] : [word];
+	const words = SEGMENT_WORDS[word] ?? [word];
 	return new RegExp(`\\b(?:${words.map(esc).join('|')})\\b`, 'i');
 }
 
 /** Misfiled-finding backstop for a segment's sheet line (controller ruling, re-review of 74eab7ec): withheld when an
  *  abnormal sentence placed outside the segment's own regions names one of its levels or the segment itself, or when
- *  any abnormal sentence says "multilevel". Deterministic and errs toward omission; `abnormal` holds abnormal
- *  sentences only, so a normal mention ("normal cervical lordosis") never withholds the line. */
+ *  any abnormal sentence says "multilevel". Deterministic and errs toward omission; `abnormal` holds abnormal (or not
+ *  yet grouped) sentences only, so a placed normal mention ("normal cervical lordosis") never withholds the line. */
 export function segmentBlocked(segment: string, levels: string[], abnormal: { group: string | null; text: string }[]): boolean {
 	const own = new Set([segment, ...levels]);
 	const pats = [segmentWords(segment), ...levels.map(levelPattern)];
 	return abnormal.some(({ group, text }) => MULTILEVEL.test(text) || (!(group !== null && own.has(group)) && pats.some((p) => p.test(text))));
 }
 
-/** The segments whose sheet line is withheld, from every abnormal sentence: split parts, General, Other findings and
- *  ungrouped tail units included. */
+/** The segments whose sheet line is withheld, from every abnormal sentence (split parts, General, Other findings) and
+ *  every ungrouped tail unit whatever its flag (ruling: its state is not known yet). */
 export function blockedSegments(levelGroups: Record<string, string[]>, units: StackUnit[]): Set<string> {
 	const abnormal: { group: string | null; text: string }[] = [];
 	for (const u of units) {
 		if (u.heading) continue;
-		if (u.parts && u.parts.length > 1) for (const p of u.parts) { if (p.abnormal) abnormal.push({ group: p.group, text: p.text }); }
+		if (u.group === null) abnormal.push({ group: null, text: u.text });
+		else if (u.parts && u.parts.length > 1) for (const p of u.parts) { if (p.abnormal) abnormal.push({ group: p.group, text: p.text }); }
 		else if (u.abnormal) abnormal.push({ group: u.group, text: u.text });
 	}
 	if (!abnormal.length) return new Set();
