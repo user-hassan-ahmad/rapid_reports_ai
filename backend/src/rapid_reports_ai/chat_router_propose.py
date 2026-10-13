@@ -262,6 +262,8 @@ def chat_context(context: str = "", last_changes: Optional[List[dict]] = None) -
     return "\n\n".join(parts)
 
 
+UNDO_MIN = 0.5      # validated in the next lab
+NOTHING_TO_UNDO = "There's no recent change of mine to undo. What should change?"
 UNDO_Q = {"type": "noul", "instructions": "The INSTRUCTION asks to undo the previous change."}
 
 
@@ -311,6 +313,14 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
         logger.warning("[chat-router.propose] screen failed: %s", type(e).__name__)
         raise R.Fallback(f"screen_{type(e).__name__}") from e
     habit = screened["habit"]
+    if screened.get("undo", 0.0) >= UNDO_MIN:   # "undo that" / "put it back": the last turn's own records
+        if not last_changes:
+            return R.Turn(sheet, ledger, False, NOTHING_TO_UNDO,
+                          evidence={"version": PROPOSE_VERSION, "route": "undo", "undo": round(screened["undo"], 3),
+                                    "applied": 0, "ms": R._ms(t0)})
+        u = await R.undo_turn(sheet, ledger, last_changes)
+        u.evidence.update(version=PROPOSE_VERSION, route="undo", undo=round(screened["undo"], 3), ms=R._ms(t0))
+        return u
     try:
         proposal = await _propose(sheet, ledger, instruction, context, rejection)
     except Exception as e:

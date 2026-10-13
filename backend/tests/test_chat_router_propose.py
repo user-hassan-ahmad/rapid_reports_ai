@@ -458,3 +458,28 @@ def test_style_block_op_checks_the_block_is_unchanged():
     with pytest.raises(E.EditError):
         E.apply_op(ROUTER_SHEET, {**op, "text": 'NORMAL [alpha] "x"'})
     assert "style_block" in E.FORWARD_OPS
+
+
+# ── item 7: "undo that" reverses the last turn's records, never the proposer ────────────────────────────────────
+async def test_an_undo_instruction_reverses_the_last_turn_without_proposing(stub):
+    stub["proposal"] = _proposal(_change("value", "Width is no longer required.", name="Width", to="not_needed"))
+    t = await P.propose_turn(ROUTER_SHEET, [], "drop width")
+    stub["undo"] = 0.9
+    stub["proposal"] = RuntimeError("the proposer must not run")
+    u = await P.propose_turn(t.sheet, t.ledger, "put it back", last_changes=t.records)
+    assert u.applied and 'LIST_MISSING ["Width" | "Depth"]' in u.sheet and u.evidence["route"] == "undo"
+    assert u.reply.startswith("Undone: Width is no longer required.")
+
+
+async def test_an_undo_with_nothing_to_undo_says_so(stub):
+    stub["undo"] = 0.9
+    stub["proposal"] = RuntimeError("the proposer must not run")
+    t = await P.propose_turn(ROUTER_SHEET, [], "revert")
+    assert not t.applied and t.reply == P.NOTHING_TO_UNDO and t.evidence["route"] == "undo"
+
+
+async def test_below_the_threshold_the_proposer_runs(stub):
+    stub["undo"] = 0.3
+    stub["proposal"] = _proposal(_change("value", "Width is no longer required.", name="Width", to="not_needed"))
+    t = await P.propose_turn(ROUTER_SHEET, [], "drop width", last_changes=[{"type": "ledger", "claim": "x"}])
+    assert t.applied and t.evidence["route"] == "propose"
