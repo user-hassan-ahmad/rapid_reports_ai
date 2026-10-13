@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "Injuries involving the epiphyseal plate (Salter RB, Harris WR. J Bone Joint Surg Am 1963;45(3):587-622)",
+      "issuer": "Salter and Harris (Hospital for Sick Children and Toronto General Hospital); American Academy of Orthopaedic Surgeons instructional course lecture",
+      "edition": "1963",
+      "url": "https://doi.org/10.2106/00004623-196345030-00019",
+      "sha256": "57a9f1a224a429b73c6dead36e3afd3a8b6ab1b3cb1d7a5b79fc13e7e6ca4eee",
+      "file": "sources/57a9f1a224a429b73c6dead36e3afd3a8b6ab1b3cb1d7a5b79fc13e7e6ca4eee.pdf",
+      "text_file": "sources/57a9f1a224a429b73c6dead36e3afd3a8b6ab1b3cb1d7a5b79fc13e7e6ca4eee.txt",
+      "retrieved": "2026-10-12"
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 import { API_URL } from '$lib/config.js';
 import type { IntegrityFlag } from './checks';
 import type { ProtocolSearch } from './protocol';
-import type { AssumedResult, DraftResult, GateRecord, GroupResult, ItemsResult, Region, SlimSheet, StackItem, StackSchema, StackUnit } from './types';
+import type { AssumedResult, DraftResult, GateRecord, GroupResult, ItemsResult, Region, SlimSheet, StackItem, StackSchema, StackUnit, ValuesResult } from './types';
 
 async function post<T>(token: string | null, path: string, body: unknown, keepalive = false, timeoutMs?: number): Promise<T> {
 	const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -37,6 +37,8 @@ export interface StackLog {
 	units: StackUnit[]; pills_derived: string[]; pills_jev: string[]; sections: string[]; structured_text: string;
 	manual_moves: number; latency_ms: Record<string, number>; gate?: GateRecord | null; report_id?: string | null;
 	template_id?: string | null; // template sessions: the server stamps the sheet (null: quick)
+	/** Copilot session record (copilot/session log()): keys, kinds, counts and ms only, never text; capped server-side. */
+	copilot?: Record<string, unknown>;
 }
 export const postLog = (token: string | null, body: StackLog) => post<{ ok: boolean }>(token, 'log', body, true);
 
@@ -44,6 +46,7 @@ export const postItems = (token: string | null, body: {
 	scan_type: string; clinical_history: string; regions: string[]; dictation: string; abnormal: string[]; not_assessable?: string; removed?: string[]; tapped?: string[];
 	referrals?: { question: string; region: string; sentences: string[] }[] | null;
 	review?: boolean;
+	template_id?: string | null;
 }) => post<ItemsResult>(token, 'items', body);
 
 export const postAssumed = (token: string | null, body: {
@@ -81,6 +84,9 @@ export const postUnfinished = (token: string | null, body: { text: string }) =>
 
 export const postSlimSheet = (token: string | null, body: { scan_type: string; clinical_history: string; template_id?: string | null } & PickFields) =>
 	post<SlimSheet>(token, 'slim-sheet', body);
+/** The value cluster's smart fill: the template's required values filled from the dictation or open (fails open). */
+export const postValues = (token: string | null, body: { dictation: string; template_id: string | null }) =>
+	post<ValuesResult>(token, 'values', body);
 
 export const postDraft = (token: string | null, body: { scan_type: string; clinical_history: string; findings: string }) =>
 	post<DraftResult>(token, 'draft', body);

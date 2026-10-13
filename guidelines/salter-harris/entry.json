@@ -1,0 +1,446 @@
+{
+  "id": "salter-harris",
+  "version": "1963.1",
+  "topic": "physeal-fracture",
+  "purpose": "Classifies an injury of the growth (epiphyseal) plate in a child by its pattern, to indicate the prognosis for growth disturbance and guide treatment.",
+  "issuer": "Salter and Harris (American Academy of Orthopaedic Surgeons instructional course lecture)",
+  "system": "Salter-Harris classification of epiphyseal-plate injuries, types I to V",
+  "display": "Salter-Harris 1963",
+  "edition": "1963",
+  "tier": 1,
+  "status": "current",
+  "applies_to": {
+    "region": [
+      "shoulder",
+      "elbow",
+      "wrist",
+      "hand",
+      "hip",
+      "knee",
+      "ankle"
+    ],
+    "modality": [
+      "XR",
+      "CT",
+      "MRI"
+    ],
+    "finding_type": [
+      "physeal fracture"
+    ],
+    "context": []
+  },
+  "aliases": [
+    "Salter-Harris",
+    "Salter Harris",
+    "Salter-Harris classification",
+    "SH classification",
+    "SH type",
+    "SH fracture",
+    "Salter-Harris fracture",
+    "physeal fracture",
+    "growth plate fracture",
+    "epiphyseal plate injury"
+  ],
+  "inputs": [
+    {
+      "id": "sh_type",
+      "label": "Salter-Harris type",
+      "type": "enum",
+      "options": [
+        "I",
+        "II",
+        "III",
+        "IV",
+        "V"
+      ],
+      "how_stated": "the Salter-Harris type as dictated, I to V, in Roman or Arabic numerals (for example 'Salter-Harris II', 'SH type 2'). Do not infer the type from a description of the fracture line.",
+      "locator": {
+        "source": "S1",
+        "page": 15,
+        "section": "Classification of Epiphyseal-Plate Injuries, Types I to V (journal p.601-607)"
+      },
+      "scope": "lesion"
+    }
+  ],
+  "logic": [
+    {
+      "step": "table",
+      "id": "type",
+      "keys": [
+        "sh_type"
+      ],
+      "rows": [
+        {
+          "match": [
+            "I"
+          ],
+          "result": "sh1_separation"
+        },
+        {
+          "match": [
+            "II"
+          ],
+          "result": "sh2_fracture_separation"
+        },
+        {
+          "match": [
+            "III"
+          ],
+          "result": "sh3_partial_epiphysis"
+        },
+        {
+          "match": [
+            "IV"
+          ],
+          "result": "sh4_through_plate"
+        },
+        {
+          "match": [
+            "V"
+          ],
+          "result": "sh5_crush"
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 15,
+        "section": "Classification of Epiphyseal-Plate Injuries: one prognosis and management account per type (journal p.601-608)"
+      }
+    }
+  ],
+  "result": "type",
+  "outcomes": [
+    {
+      "id": "sh1_separation",
+      "headline": "Salter-Harris type I",
+      "action": "No management stated",
+      "category": "info",
+      "classification": "Salter-Harris type I: complete separation of the epiphysis from the metaphysis through the plate, with no bone fracture.",
+      "recommendation": "Growth prognosis (1963): excellent, except where the epiphysis is entirely covered by cartilage (for example the upper femur), where the blood supply is frequently damaged.",
+      "caveats": [
+        "Caused by a shearing or avulsion force. More common in birth injuries and early childhood, when the plate is relatively thick, and in pathological separations (scurvy, rickets, osteomyelitis, endocrine imbalance).",
+        "Wide displacement is uncommon because the periosteal attachment is usually intact.",
+        "Where the epiphysis is entirely covered by cartilage, the blood supply is frequently damaged and the plate closes prematurely.",
+        "Library caveat on currency: this is the 1963 prognosis; site-specific risk may differ, and later evidence of growth disturbance after type I and II injuries at some sites is not held in this pack.",
+        "Scope: growing physes only. Traction apophyses, such as the medial epicondyle of the humerus, do not contribute to longitudinal growth, so this growth prognosis does not apply to them (Types of Epiphyses, journal p.587).",
+        "Age at injury modifies the prognosis: the younger the child, the more serious any growth disturbance, and a serious injury in the last year of growth will not produce significant deformity (Factors in Prognosis, journal p.609)."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 15,
+        "section": "Classification of Epiphyseal-Plate Injuries, Type I (journal p.601-602, Fig. 13)"
+      }
+    },
+    {
+      "id": "sh2_fracture_separation",
+      "headline": "Salter-Harris type II",
+      "action": "No management stated",
+      "category": "info",
+      "classification": "Salter-Harris type II: fracture-separation; the line runs along the plate, then out through the metaphysis, leaving a triangular metaphyseal fragment (Thurston Holland sign).",
+      "recommendation": "Growth prognosis (1963): excellent if the circulation to the epiphysis is intact, as it nearly always is.",
+      "caveats": [
+        "The commonest type; usually in children over ten years old, from a shearing or avulsion force. The periosteum is torn on the convex side of the angulation and intact on the concave side, where the metaphyseal fragment lies.",
+        "The blood supply is particularly vulnerable in the head of the femur and the head of the radius.",
+        "Library caveat on currency: this is the 1963 prognosis; site-specific risk may differ, and later evidence of growth disturbance after type I and II injuries at some sites is not held in this pack.",
+        "Scope: growing physes only. Traction apophyses, such as the medial epicondyle of the humerus, do not contribute to longitudinal growth, so this growth prognosis does not apply to them (Types of Epiphyses, journal p.587).",
+        "Age at injury modifies the prognosis: the younger the child, the more serious any growth disturbance, and a serious injury in the last year of growth will not produce significant deformity (Factors in Prognosis, journal p.609)."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 16,
+        "section": "Classification of Epiphyseal-Plate Injuries, Type II (journal p.602-603, Fig. 19); Factors in Prognosis, type of injury (p.608)"
+      }
+    },
+    {
+      "id": "sh3_partial_epiphysis",
+      "headline": "Salter-Harris type III",
+      "action": "No management stated",
+      "category": "info",
+      "classification": "Salter-Harris type III: intra-articular fracture from the joint surface to the weak zone of the plate, then along the plate to its periphery.",
+      "recommendation": "Growth prognosis (1963): good if the blood supply to the separated portion of the epiphysis is intact.",
+      "caveats": [
+        "Uncommon; usually in the upper or lower tibial epiphysis, from an intra-articular shearing force.",
+        "The blood supply is particularly vulnerable in the head of the femur and the head of the radius.",
+        "Library caveat on currency: this is the 1963 prognosis; site-specific risk may differ, and later evidence of growth disturbance after type I and II injuries at some sites is not held in this pack.",
+        "Scope: growing physes only. Traction apophyses, such as the medial epicondyle of the humerus, do not contribute to longitudinal growth, so this growth prognosis does not apply to them (Types of Epiphyses, journal p.587).",
+        "Age at injury modifies the prognosis: the younger the child, the more serious any growth disturbance, and a serious injury in the last year of growth will not produce significant deformity (Factors in Prognosis, journal p.609)."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 18,
+        "section": "Classification of Epiphyseal-Plate Injuries, Type III (journal p.604, Fig. 22); Factors in Prognosis (p.608)"
+      }
+    },
+    {
+      "id": "sh4_through_plate",
+      "headline": "Salter-Harris type IV",
+      "action": "No management stated",
+      "category": "info",
+      "classification": "Salter-Harris type IV: intra-articular fracture from the joint surface through the epiphysis, the full thickness of the plate and part of the metaphysis.",
+      "recommendation": "Growth prognosis (1963): bad unless the epiphyseal plate is completely realigned.",
+      "caveats": [
+        "The commonest example is fracture of the lateral condyle of the humerus.",
+        "Without accurate realignment, bone union across the plate produces local premature cessation of growth.",
+        "Library caveat on currency: this is the 1963 prognosis; site-specific risk may differ, and later evidence of growth disturbance after type I and II injuries at some sites is not held in this pack.",
+        "Scope: growing physes only. Traction apophyses, such as the medial epicondyle of the humerus, do not contribute to longitudinal growth, so this growth prognosis does not apply to them (Types of Epiphyses, journal p.587).",
+        "Age at injury modifies the prognosis: the younger the child, the more serious any growth disturbance, and a serious injury in the last year of growth will not produce significant deformity (Factors in Prognosis, journal p.609)."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 20,
+        "section": "Classification of Epiphyseal-Plate Injuries, Type IV (journal p.604-606, Fig. 25); Factors in Prognosis (p.608-609)"
+      }
+    },
+    {
+      "id": "sh5_crush",
+      "headline": "Salter-Harris type V",
+      "action": "No management stated",
+      "category": "info",
+      "classification": "Salter-Harris type V: crush injury of the epiphyseal plate from a very severe force applied through the epiphysis to one area of the plate.",
+      "recommendation": "Growth prognosis (1963): decidedly poor, the worst of the types; premature cessation of growth is almost inevitable.",
+      "caveats": [
+        "Uncommon; occurs in joints that move in one plane only, such as the ankle or knee, after a severe abduction or adduction injury.",
+        "Displacement of the epiphysis is unusual and the first radiograph gives little indication of the seriousness of the injury, which may be dismissed as a sprain.",
+        "The lower tibial epiphysis is the commonest site, usually from a severe varus force at the ankle; with little displacement the true nature may not be suspected until premature cessation of growth is established (Specific Epiphyseal-Plate Injuries, journal p.617).",
+        "Library caveat on currency: this is the 1963 prognosis; site-specific risk may differ, and later evidence of growth disturbance after type I and II injuries at some sites is not held in this pack.",
+        "Scope: growing physes only. Traction apophyses, such as the medial epicondyle of the humerus, do not contribute to longitudinal growth, so this growth prognosis does not apply to them (Types of Epiphyses, journal p.587).",
+        "Age at injury modifies the prognosis: the younger the child, the more serious any growth disturbance, and a serious injury in the last year of growth will not produce significant deformity (Factors in Prognosis, journal p.609)."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 21,
+        "section": "Classification of Epiphyseal-Plate Injuries, Type V (journal p.606-608, Fig. 28); Factors in Prognosis (p.609)"
+      }
+    }
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "The Salter-Harris classification groups injuries of the growth (epiphyseal) plate into five types, I to V, by the mechanism of injury and the relationship of the fracture line to the growing cells of the plate.",
+        "locator": {
+          "source": "S1",
+          "page": 15,
+          "section": "Classification of Epiphyseal-Plate Injuries, introduction (journal p.601)"
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "The classification is correlated with the prognosis for growth disturbance: types I, II and III generally do well if the epiphyseal blood supply is intact, type IV does badly unless the plate is completely realigned, and type V has the worst prognosis.",
+        "locator": {
+          "source": "S1",
+          "page": 22,
+          "section": "Prognosis Concerning Disturbance of Growth, Factors in Prognosis (journal p.608-609)"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "Significant growth disturbance follows about 10 per cent of epiphyseal-plate injuries, and minor disturbance follows a higher percentage. The prognosis in an individual child cannot be given with absolute accuracy.",
+        "locator": {
+          "source": "S1",
+          "page": 22,
+          "section": "Prognosis Concerning Disturbance of Growth (journal p.608)"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.t1",
+        "text": "Salter-Harris type I: complete separation of the epiphysis from the metaphysis through the plate, with no bone fracture.",
+        "locator": {
+          "source": "S1",
+          "page": 15,
+          "section": "Classification of Epiphyseal-Plate Injuries, Type I (journal p.601-602, Fig. 13)"
+        }
+      },
+      {
+        "id": "def.t2",
+        "text": "Salter-Harris type II: fracture-separation; the line runs along the plate, then out through the metaphysis, leaving a triangular metaphyseal fragment (Thurston Holland sign).",
+        "locator": {
+          "source": "S1",
+          "page": 16,
+          "section": "Classification of Epiphyseal-Plate Injuries, Type II (journal p.602-603, Fig. 19); Factors in Prognosis, type of injury (p.608)"
+        }
+      },
+      {
+        "id": "def.t3",
+        "text": "Salter-Harris type III: intra-articular fracture from the joint surface to the weak zone of the plate, then along the plate to its periphery.",
+        "locator": {
+          "source": "S1",
+          "page": 18,
+          "section": "Classification of Epiphyseal-Plate Injuries, Type III (journal p.604, Fig. 22); Factors in Prognosis (p.608)"
+        }
+      },
+      {
+        "id": "def.t4",
+        "text": "Salter-Harris type IV: intra-articular fracture from the joint surface through the epiphysis, the full thickness of the plate and part of the metaphysis.",
+        "locator": {
+          "source": "S1",
+          "page": 20,
+          "section": "Classification of Epiphyseal-Plate Injuries, Type IV (journal p.604-606, Fig. 25); Factors in Prognosis (p.608-609)"
+        }
+      },
+      {
+        "id": "def.t5",
+        "text": "Salter-Harris type V: crush injury of the epiphyseal plate from a very severe force applied through the epiphysis to one area of the plate.",
+        "locator": {
+          "source": "S1",
+          "page": 21,
+          "section": "Classification of Epiphyseal-Plate Injuries, Type V (journal p.606-608, Fig. 28); Factors in Prognosis (p.609)"
+        }
+      },
+      {
+        "id": "def.factors",
+        "text": "Prognostic factors named in the paper: the type of injury, the age of the child (the younger the child, the more serious any growth disturbance), the blood supply to the epiphysis, the method of reduction, and whether the injury is open or closed.",
+        "locator": {
+          "source": "S1",
+          "page": 22,
+          "section": "Factors in Prognosis (journal p.608-611)"
+        }
+      },
+      {
+        "id": "def.followup",
+        "text": "Follow-up scheme from the paper (reference only, not a recommendation of this pack): growth disturbance may appear late, so one year is the minimum period of observation. At six months, the injured bone and its opposite number are examined radiographically; if the normal bone has grown little in that time, a further six months must pass.",
+        "locator": {
+          "source": "S1",
+          "page": 26,
+          "section": "Follow-up observation (journal p.612)"
+        }
+      },
+      {
+        "id": "def.arrest",
+        "text": "Growth arrest may be delayed for six months or longer, and growth may be retarded before it stops. If the whole plate stops growing, the result is progressive shortening without angulation; if part of the plate stops, progressive angular deformity follows.",
+        "locator": {
+          "source": "S1",
+          "page": 15,
+          "section": "Consequences of injury to the epiphyseal plate (journal p.600-601)"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "tbl.types",
+        "title": "Salter-Harris types I to V: fracture and prognosis as the paper states them",
+        "columns": [
+          "Type",
+          "Fracture",
+          "Growth prognosis"
+        ],
+        "rows": [
+          [
+            "I",
+            "Complete separation of the epiphysis from the metaphysis without bone fracture",
+            "Excellent, except an epiphysis entirely covered by cartilage (upper femur), where the blood supply is frequently damaged"
+          ],
+          [
+            "II",
+            "Line runs along the plate then out through the metaphysis (triangular metaphyseal fragment)",
+            "Excellent if the circulation to the epiphysis is intact, as it nearly always is"
+          ],
+          [
+            "III",
+            "Intra-articular; joint surface to the weak zone of the plate, then along the plate to its periphery",
+            "Good if the blood supply to the separated portion of the epiphysis is intact"
+          ],
+          [
+            "IV",
+            "Intra-articular; joint surface through the epiphysis, the full thickness of the plate and part of the metaphysis",
+            "Bad unless the plate is completely realigned"
+          ],
+          [
+            "V",
+            "Crush of the plate from a very severe force applied through the epiphysis to one area",
+            "Decidedly poor; the worst"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 15,
+          "section": "Classification of Epiphyseal-Plate Injuries, Types I to V (journal p.601-608); Factors in Prognosis (p.608-609)"
+        }
+      },
+      {
+        "id": "tbl.management",
+        "title": "1963 treatment lines from the paper, for reference only and not for the report",
+        "columns": [
+          "Type",
+          "Reduction and treatment"
+        ],
+        "rows": [
+          [
+            "I",
+            "Reduction is not difficult. Vast majority readily reduced by closed means."
+          ],
+          [
+            "II",
+            "Reduction relatively easy to obtain and maintain; overreduction cannot occur because of the intact periosteal hinge and the metaphyseal fragment. Vast majority readily reduced by closed means."
+          ],
+          [
+            "III",
+            "Accurate reduction is essential for the joint surface; open operation may be necessary. Delayed reduction, though not desirable, is preferable to leaving the intra-articular fragment displaced."
+          ],
+          [
+            "IV",
+            "Perfect reduction is essential; as for type III, delayed reduction is preferable to leaving the intra-articular fragment displaced. Unless undisplaced, open reduction is always necessary. If metal fixation is needed, preferably across the metaphysis; fine smooth Kirschner wires across the plate for a few weeks do not interfere with growth."
+          ],
+          [
+            "V",
+            "Weight-bearing must be avoided for three weeks in the hope of preventing the almost inevitable premature cessation of growth (the paper's wording)."
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 17,
+          "section": "Classification, Types I to V (journal p.602-608); Principles of Treatment (p.611-612)"
+        }
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.five",
+        "text": "The paper describes five types, I to V, and no other. A type outside I to V, or a fracture that fits none of them, is not covered by this source.",
+        "locator": {
+          "source": "S1",
+          "page": 15,
+          "section": "Classification of Epiphyseal-Plate Injuries (journal p.601-608)"
+        }
+      },
+      {
+        "id": "pit.blood",
+        "text": "The good prognosis for types I, II and III depends on the epiphyseal blood supply being intact; it is particularly vulnerable in the head of the femur and the head of the radius.",
+        "locator": {
+          "source": "S1",
+          "page": 22,
+          "section": "Factors in Prognosis, type of injury (journal p.608)"
+        }
+      },
+      {
+        "id": "pit.v",
+        "text": "A type V injury may show little or no displacement and may look like a sprain on the first radiograph; the paper advises suspecting crushing of the plate after a severe abduction or adduction injury to a joint that moves in one plane.",
+        "locator": {
+          "source": "S1",
+          "page": 21,
+          "section": "Classification, Type V (journal p.607-608)"
+        }
+      },
+      {
+        "id": "pit.estimate",
+        "text": "The prognosis is an estimate: age at injury, blood supply, method of reduction and open or closed injury all modify it.",
+        "locator": {
+          "source": "S1",
+          "page": 22,
+          "section": "Factors in Prognosis (journal p.608-611)"
+        }
+      },
+      {
+        "id": "pit.scope",
+        "text": "The paper is written about injuries of the growing skeleton (a child's epiphyseal plate). It also separates pressure epiphyses from traction epiphyses, which do not contribute to longitudinal growth; it gives no age limit for use of the types.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Applied Anatomy and Histology, Types of Epiphyses (journal p.587)"
+        }
+      }
+    ]
+  }
+}

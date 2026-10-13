@@ -1,0 +1,601 @@
+{
+  "id": "sins",
+  "version": "2010.1",
+  "topic": "spinal-instability-neoplastic",
+  "purpose": "Scores spinal instability caused by a neoplastic (e.g. metastatic) spinal lesion from clinical and imaging criteria, to help identify patients with spinal tumours who may benefit from surgical consultation.",
+  "issuer": "Spine Oncology Study Group (Fisher CG et al.)",
+  "system": "Spinal Instability Neoplastic Score (SINS): six scored components summed to 0 to 18, banded as stable, indeterminate (possibly impending) instability or unstable",
+  "display": "Spinal Instability Neoplastic Score, SINS (2010)",
+  "edition": "2010",
+  "tier": 1,
+  "status": "current",
+  "applies_to": {
+    "region": [
+      "spine"
+    ],
+    "modality": [
+      "CT",
+      "MRI",
+      "XR"
+    ],
+    "finding_type": [
+      "neoplastic vertebral lesion"
+    ],
+    "context": []
+  },
+  "aliases": [
+    "SINS",
+    "SINS score",
+    "Spinal Instability Neoplastic Score",
+    "spinal instability neoplastic score",
+    "Spine Instability Neoplastic Score",
+    "Fisher SINS",
+    "SOSG SINS",
+    "neoplastic spinal instability score",
+    "SINS stable",
+    "SINS indeterminate",
+    "SINS unstable"
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "Six components (location, pain, bone lesion quality, alignment, vertebral body collapse, posterolateral involvement) are scored and summed to give 0 to 18 for a neoplastic spinal lesion.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Scoring paragraph after Table 7: sum of 6 components, 0 to 18, bands and surgical consultation (journal E1224)"
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "Bands: 0 to 6 stability; 7 to 12 indeterminate (possibly impending) instability; 13 to 18 instability. Scores of 7 to 18 warrant surgical consultation.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Scoring paragraph after Table 7: sum of 6 components, 0 to 18, bands and surgical consultation (journal E1224)"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "The authors stress SINS is one component of the work-up. Surgery is indicated regardless of score with neurological deficit or high-grade cord compression; modifying factors it omits must also be weighed.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Discussion (journal E1228-E1229)"
+        }
+      },
+      {
+        "id": "sum.4",
+        "text": "Each lesion or region is scored separately; scores are not summed across lesions. The authors call for further validation and reliability testing of the score.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Discussion and Conclusion (journal E1228-E1229)"
+        }
+      },
+      {
+        "id": "sum.5",
+        "text": "NICE NG234 (2023) says to consider a validated spinal stability scoring system such as SINS alongside clinical assessment, and to use scoring only within a full clinical assessment. It gives no SINS score thresholds.",
+        "locator": {
+          "source": "S2",
+          "section": "1.9 Tools for assessing spinal stability and prognosis, recommendations 1.9.1 and 1.9.3"
+        }
+      },
+      {
+        "id": "sum.6",
+        "text": "NG234 also says to consider multiplanar viewing or 3-plane reconstruction of recent or new CT in spinal metastases or MSCC to assess spinal stability and plan vertebroplasty, kyphoplasty or spinal surgery.",
+        "locator": {
+          "source": "S2",
+          "section": "1.5 Imaging investigations, recommendation 1.5.10"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.location",
+        "text": "Spine location: junctional (occiput to C2, C7 to T2, T11 to L1, L5 to S1) 3; mobile (C3 to C6, L2 to L4) 2; semi-rigid (T3 to T10) 1; rigid (S2 to S5) 0.",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Table 2: SINS component score for spine location"
+        }
+      },
+      {
+        "id": "def.pain",
+        "text": "Pain: pain with movement, upright posture or loading of the spine, and/or relieved by recumbency, 3; occasional pain that is not mechanical 1; pain-free lesion 0.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Table 3 and Mechanical Pain text (journal E1224)"
+        }
+      },
+      {
+        "id": "def.bone",
+        "text": "Bone lesion quality: lytic 2; mixed lytic/blastic 1; blastic 0. The authors note CT is the best modality for defining this.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Table 4 and Bone Lesion Quality text (journal E1224)"
+        }
+      },
+      {
+        "id": "def.alignment",
+        "text": "Radiographic alignment of the motion segments affected by tumour: subluxation or translation 4; de novo kyphosis or scoliosis 2; normal 0. De novo deformity needs prior imaging or upright versus supine comparison.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Table 5 and Spinal Alignment text (journal E1224)"
+        }
+      },
+      {
+        "id": "def.collapse",
+        "text": "Vertebral body collapse: more than 50% collapse 3; less than 50% collapse 2; no collapse but more than 50% of the body involved 1; none of these 0.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Table 6 and Vertebral Body Collapse text (journal E1224)"
+        }
+      },
+      {
+        "id": "def.posterior",
+        "text": "Posterolateral involvement (facet, pedicle or costovertebral joint fracture or replacement by tumour): bilateral 3; unilateral 1; none 0.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "Table 7 and Posterolateral Involvement text (journal E1224-E1225)"
+        }
+      },
+      {
+        "id": "def.total",
+        "text": "Total SINS is the sum of the six component scores; the text gives a range of 0 to 18.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Scoring paragraph after Table 7: sum of 6 components, 0 to 18, bands and surgical consultation (journal E1224)"
+        }
+      },
+      {
+        "id": "def.instability",
+        "text": "Authors' working definition: loss of spinal integrity from a neoplastic process, associated with movement-related pain, symptomatic or progressive deformity and/or neural compromise under physiologic loads.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "Discussion: definition of spine instability (journal E1226-E1227)"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "tab.components",
+        "title": "SINS component scores",
+        "columns": [
+          "Component",
+          "Finding",
+          "Score"
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Table 8: summary table including all elements of the SINS (journal E1228)"
+        },
+        "rows": [
+          [
+            "Location",
+            "Junctional (occiput-C2, C7-T2, T11-L1, L5-S1)",
+            "3"
+          ],
+          [
+            "Location",
+            "Mobile spine (C3-C6, L2-L4)",
+            "2"
+          ],
+          [
+            "Location",
+            "Semi-rigid (T3-T10)",
+            "1"
+          ],
+          [
+            "Location",
+            "Rigid (S2-S5)",
+            "0"
+          ],
+          [
+            "Pain",
+            "Relief with recumbence and/or pain with movement or loading of the spine",
+            "3"
+          ],
+          [
+            "Pain",
+            "No (occasional pain but not mechanical)",
+            "1"
+          ],
+          [
+            "Pain",
+            "Pain-free lesion",
+            "0"
+          ],
+          [
+            "Bone lesion",
+            "Lytic",
+            "2"
+          ],
+          [
+            "Bone lesion",
+            "Mixed lytic/blastic",
+            "1"
+          ],
+          [
+            "Bone lesion",
+            "Blastic",
+            "0"
+          ],
+          [
+            "Radiographic alignment",
+            "Subluxation/translation present",
+            "4"
+          ],
+          [
+            "Radiographic alignment",
+            "De novo deformity (kyphosis/scoliosis)",
+            "2"
+          ],
+          [
+            "Radiographic alignment",
+            "Normal alignment",
+            "0"
+          ],
+          [
+            "Vertebral body collapse",
+            "More than 50% collapse",
+            "3"
+          ],
+          [
+            "Vertebral body collapse",
+            "Less than 50% collapse",
+            "2"
+          ],
+          [
+            "Vertebral body collapse",
+            "No collapse with more than 50% of body involved",
+            "1"
+          ],
+          [
+            "Vertebral body collapse",
+            "None of the above",
+            "0"
+          ],
+          [
+            "Posterolateral involvement",
+            "Bilateral",
+            "3"
+          ],
+          [
+            "Posterolateral involvement",
+            "Unilateral",
+            "1"
+          ],
+          [
+            "Posterolateral involvement",
+            "None of the above",
+            "0"
+          ]
+        ]
+      },
+      {
+        "id": "tab.bands",
+        "title": "Total SINS band and what the source attaches to it",
+        "columns": [
+          "Total score",
+          "Source label",
+          "Surgical consultation"
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Scoring paragraph after Table 7: sum of 6 components, 0 to 18, bands and surgical consultation (journal E1224)"
+        },
+        "rows": [
+          [
+            "0 to 6",
+            "Stability",
+            "Not stated as warranted (consultation is stated for 7 to 18)"
+          ],
+          [
+            "7 to 12",
+            "Indeterminate (possibly impending) instability",
+            "Warrants surgical consultation"
+          ],
+          [
+            "13 to 18",
+            "Instability",
+            "Warrants surgical consultation"
+          ]
+        ]
+      },
+      {
+        "id": "tab.cases",
+        "title": "The paper's worked cases",
+        "columns": [
+          "Case",
+          "Components (location, pain, bone, alignment, collapse, posterolateral)",
+          "Total",
+          "Source reading"
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Cases 1 to 3 (journal E1224-E1226; PDF p4-p5)"
+        },
+        "rows": [
+          [
+            "1 (T10)",
+            "1 + 3 + 2 + 2 + 3 + 3",
+            "14",
+            "Indeterminate instability; within the range that warrants surgical consultation"
+          ],
+          [
+            "2 (C1-C2)",
+            "3 + 3 + 2 + 4 + 1 + 1",
+            "14",
+            "Unstable situation"
+          ],
+          [
+            "3 (T10)",
+            "1 + 1 + 2 + 0 + 1 + 1",
+            "6",
+            "Stable lesion; the authors add that surgical decisions are not based on stability alone"
+          ]
+        ]
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.band1318",
+        "text": "At a total of 14 the paper is inconsistent: the band text labels 13 to 18 instability and case 2 (14) is unstable, but case 1 (also 14) is read as indeterminate instability. Both 14s sit in the 13 to 18 band; this pack follows the band text.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Scoring paragraph versus Case 1 and Case 2 (PDF p4-p5)"
+        }
+      },
+      {
+        "id": "pit.min",
+        "text": "The scoring paragraph gives a minimum of 0; the Discussion says a minimum of 2. Component tables allow 0 for every component, so 0 is possible.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Discussion: 'minimum score of 2 and a maximum score of 18' (journal E1228)"
+        }
+      },
+      {
+        "id": "pit.multi",
+        "text": "Not summed across lesions: each lesion or region is scored separately. The score gives no global spinal score and does not predict interaction between multiple lesions.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Discussion (journal E1228)"
+        }
+      },
+      {
+        "id": "pit.notalone",
+        "text": "Not a decision rule on its own. With neurological deficit or high-grade cord compression surgery is indicated regardless of score; histology, prognosis, health, neurology and patient choice also bear on treatment.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Discussion and Conclusion (journal E1228-E1229)"
+        }
+      },
+      {
+        "id": "pit.unscored",
+        "text": "Not scored: contiguous multilevel and noncontiguous disease, prior laminectomy or surgery, prior radiation, diffuse bony involvement or poor bone quality, body weight and activity level. The authors say these are qualifiers.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Discussion (journal E1228)"
+        }
+      },
+      {
+        "id": "pit.collapse",
+        "text": "Vertebral body collapse of exactly 50% is not defined (more than 50% scores 3, less than 50% scores 2). Table 6 scores 'none of the above' as 0 while the text scores 0 only for no body involvement, so involvement of 50% or less without collapse is not explicitly scored.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Table 6 (journal E1224)"
+        }
+      },
+      {
+        "id": "pit.alignment",
+        "text": "De novo deformity needs knowledge of prior imaging or upright versus supine radiographs; alignment is judged between the motion segments affected by tumour.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Table 5 and Spinal Alignment text (journal E1224)"
+        }
+      },
+      {
+        "id": "pit.rigid",
+        "text": "Rigid segments are S2 to S5 in Table 2 but S2 to S4 in its footnote.",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Table 2: SINS component score for spine location"
+        }
+      },
+      {
+        "id": "pit.status",
+        "text": "Authors describe content validity from a Delphi consensus and say further validation and reliability testing are needed.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Conclusion (journal E1229)"
+        }
+      },
+      {
+        "id": "pit.ng234",
+        "text": "NG234 recommends SINS only as a 'consider' option alongside clinical assessment and attaches no action to a score band. Its surgery recommendations are also 'consider' options within a multidisciplinary treatment plan (1.11.1, 1.11.7), unlike the paper's 'indicated regardless of score'. The 7 to 18 surgical consultation line is the paper's, not NICE's.",
+        "locator": {
+          "source": "S2",
+          "section": "1.9 Tools for assessing spinal stability and prognosis, recommendations 1.9.1 and 1.9.3"
+        }
+      },
+      {
+        "id": "pit.blastic",
+        "text": "The Bone Lesion Quality text says blastic lesions score 1 and lytic 2 with no mixed category; Tables 4 and 8 give blastic 0, mixed 1, lytic 2. The pack follows the tables.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Bone Lesion Quality text versus Table 4 (journal E1224)"
+        }
+      },
+      {
+        "id": "pit.integer",
+        "text": "SINS totals are whole numbers, but the schema has no integer constraint on the input, so a fractional total such as 6.5 would band into 7 to 12. Dictate and read only whole totals.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Scoring paragraph: sum of six component scores (journal E1224)"
+        }
+      }
+    ]
+  },
+  "inputs": [
+    {
+      "id": "sins_total",
+      "label": "SINS total",
+      "type": "number",
+      "unit": "points",
+      "how_stated": "the SINS total as dictated (e.g. 'SINS 9'); never computed from components",
+      "locator": {
+        "source": "S1",
+        "page": 4,
+        "section": "Scoring paragraph after Table 7: sum of 6 components, 0 to 18, bands and surgical consultation (journal E1224)"
+      },
+      "min_value": 0,
+      "max_value": 18,
+      "scope": "lesion"
+    }
+  ],
+  "logic": [
+    {
+      "step": "band",
+      "id": "sins_band",
+      "ref": "sins_total",
+      "locator": {
+        "source": "S1",
+        "page": 4,
+        "section": "Scoring paragraph after Table 7: sum of 6 components, 0 to 18, bands and surgical consultation (journal E1224)"
+      },
+      "bands": [
+        {
+          "id": "b0_6",
+          "label": "0 to 6 (stability)",
+          "max": 6,
+          "max_inclusive": true
+        },
+        {
+          "id": "b7_12",
+          "label": "7 to 12 (indeterminate, possibly impending, instability)",
+          "min": 6,
+          "min_inclusive": false,
+          "max": 12,
+          "max_inclusive": true
+        },
+        {
+          "id": "b13_18",
+          "label": "13 to 18 (instability)",
+          "min": 12,
+          "min_inclusive": false
+        }
+      ]
+    },
+    {
+      "step": "table",
+      "id": "sins_outcome",
+      "keys": [
+        "sins_band"
+      ],
+      "rows": [
+        {
+          "match": [
+            "b0_6"
+          ],
+          "result": "b0_6"
+        },
+        {
+          "match": [
+            "b7_12"
+          ],
+          "result": "b7_12"
+        },
+        {
+          "match": [
+            "b13_18"
+          ],
+          "result": "b13_18"
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 4,
+        "section": "Scoring paragraph after Table 7: sum of 6 components, 0 to 18, bands and surgical consultation (journal E1224)"
+      }
+    }
+  ],
+  "result": "sins_outcome",
+  "outcomes": [
+    {
+      "id": "b0_6",
+      "headline": "SINS 0–6: stable",
+      "action": "No management stated",
+      "category": "info",
+      "classification": "SINS 0 to 6: the paper's 'stability' band.",
+      "recommendation": "",
+      "locator": {
+        "source": "S1",
+        "page": 4,
+        "section": "Scoring paragraph after Table 7: sum of 6 components, 0 to 18, bands and surgical consultation (journal E1224)"
+      },
+      "caveats": [
+        "This card does not compute SINS: the six components are not scored here, and the total is taken as dictated.",
+        "The paper states surgical consultation only for 7 to 18 and gives no management for this band.",
+        "The authors present SINS as one component of the work-up, not a decision rule; neurological deficit or high-grade cord compression indicate surgery regardless of score."
+      ]
+    },
+    {
+      "id": "b7_12",
+      "headline": "SINS 7–12: indeterminate instability",
+      "action": "Surgical consultation",
+      "category": "refer",
+      "classification": "SINS 7 to 12: 'indeterminate (possibly impending) instability'.",
+      "recommendation": "Patients with SINS 7 to 18 warrant surgical consultation.",
+      "locator": {
+        "source": "S1",
+        "page": 4,
+        "section": "Scoring paragraph after Table 7: sum of 6 components, 0 to 18, bands and surgical consultation (journal E1224)"
+      },
+      "caveats": [
+        "This card does not compute SINS: the six components are not scored here, and the total is taken as dictated.",
+        "The authors present SINS as one component of the work-up, not a decision rule; neurological deficit or high-grade cord compression indicate surgery regardless of score."
+      ]
+    },
+    {
+      "id": "b13_18",
+      "headline": "SINS 13–18: unstable",
+      "action": "Surgical consultation",
+      "category": "refer",
+      "classification": "SINS 13 to 18: the paper's 'instability' band.",
+      "recommendation": "Patients with SINS 7 to 18 warrant surgical consultation.",
+      "locator": {
+        "source": "S1",
+        "page": 4,
+        "section": "Scoring paragraph after Table 7: sum of 6 components, 0 to 18, bands and surgical consultation (journal E1224)"
+      },
+      "caveats": [
+        "This card does not compute SINS: the six components are not scored here, and the total is taken as dictated.",
+        "The authors present SINS as one component of the work-up, not a decision rule; neurological deficit or high-grade cord compression indicate surgery regardless of score.",
+        "At a total of 14 the paper is inconsistent: case 1 (14) is read as indeterminate instability, case 2 (14) as unstable. This pack follows the band text. Library addition: quote the number as well as the label."
+      ]
+    }
+  ]
+}

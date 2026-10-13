@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "Meniscal tears: pathologic correlation with MR imaging (Stoller DW, Martin C, Crues JV III, Kaplan L, Mink JH. Radiology 1987;163:731-735)",
+      "issuer": "Stoller DW et al., University of California San Francisco and Cedars-Sinai Medical Center (published by the Radiological Society of North America)",
+      "edition": "1987",
+      "url": "https://doi.org/10.1148/radiology.163.3.3575724",
+      "sha256": "e32fd8b7516e1946167ab27ee13c8a2c329eba0cbbcc339a79ad927d16dec36c",
+      "file": "sources/e32fd8b7516e1946167ab27ee13c8a2c329eba0cbbcc339a79ad927d16dec36c.pdf",
+      "text_file": "sources/e32fd8b7516e1946167ab27ee13c8a2c329eba0cbbcc339a79ad927d16dec36c.txt",
+      "retrieved": "2026-10-12"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "PI-RADS Prostate Imaging - Reporting and Data System, 2019, Version 2.1 (American College of Radiology, ESUR and AdMeTech Foundation steering committee) - the full 76-page ACR document; filed from a third-party mirror of the ACR PDF (Word 2016 export dated 27 March 2019)",
+      "issuer": "American College of Radiology (PI-RADS Steering Committee: ACR, ESUR, AdMeTech Foundation)",
+      "edition": "2019 (v2.1)",
+      "url": "https://www.acr.org/-/media/ACR/Files/RADS/Pi-RADS/PIRADS-V2-1.pdf",
+      "sha256": "a160ada8ca4ca8ad32409c2bd86bdd95c014b9c1feeaf5ca78f30af64fc8184d",
+      "file": "sources/a160ada8ca4ca8ad32409c2bd86bdd95c014b9c1feeaf5ca78f30af64fc8184d.pdf",
+      "text_file": "sources/a160ada8ca4ca8ad32409c2bd86bdd95c014b9c1feeaf5ca78f30af64fc8184d.txt",
+      "retrieved": "2026-10-12 (controller fetch, scratchpad sources3/pi-rads-v2-1; third-party mirror, sha256 not yet compared with the ACR live PDF)"
+    }
+  ]
+}

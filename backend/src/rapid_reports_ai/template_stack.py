@@ -20,11 +20,21 @@ from .template_sheet_grammar import _BULLET
 # Units that state or decide content (the grammar's keywords; optional indentation and "- " bullet, as it parses)
 _CONTENT_UNITS = ("NORMAL", "NEGATIVE", "IF_PRESENT", "RECOMMEND", "DIFFERENTIAL", "QUESTION")
 _CONTENT_UNIT = re.compile(rf"(?:{'|'.join(_CONTENT_UNITS)})\b")
+# A habit question (spec 2026-10-13-findings-triggered-rows-design) is asked in the scratchpad, never by the generator:
+# its answer reaches the FINDINGS input as "Answered by the radiologist". (Its required-statement twin is a NEGATIVE.)
+_HABIT_RULE = re.compile(r"RULE\s+WHEN\s*\[\s*findings\s*:[^\]]*\]\s*ASK\b")
 _INTERPRETIVE = re.compile(r"(?i)interpretive phrasing\s*:")
 # Blocks that decide content: "#"/"##" headings (a grammar context) and the "###" inclusion logic prose
 _DROP_SECTION = re.compile(r"(?i)^(?:case deliberation|open questions)\b")
 _DROP_SUBSECTION = re.compile(r"(?i)^inclusion logic\b")
 _HEADING = re.compile(r"^(#{1,3})\s+(.*)$")
+# Code owns the template's required values (the value cluster's answers, or with no cluster a Jev check of every item):
+# it removed LIST_MISSING from this sheet and writes the "Values not provided" line itself (template_required_values),
+# so the generator writes none.
+MISSING_VALUES_RULE = (
+    "\n- **Missing values:** this template's required values are handled outside the report, and code "
+    "adds the \"Values not provided\" line itself: write no list of missing or unprovided values, and no "
+    "placeholder for one.")
 
 
 def _strip(sheet: str) -> List[str]:
@@ -44,13 +54,13 @@ def _strip(sheet: str) -> List[str]:
         if skip_level:
             continue
         body = line[_BULLET.match(line).end():]
-        if _CONTENT_UNIT.match(body) or _INTERPRETIVE.match(body):
+        if _CONTENT_UNIT.match(body) or _INTERPRETIVE.match(body) or _HABIT_RULE.match(body):
             continue
         out.append(line)
     return out
 
 
-def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = ()) -> str:
+def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = (), values_decided: bool = False) -> str:
     """The template's grammar sheet as structure and style, then the scratchpad's session rules, the removed
     sentences (DO NOT ASSERT) and the confirmed conclusion."""
     try:
@@ -59,7 +69,7 @@ def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = ()) -> st
         lines = []
     text = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
     parts = [text] if text else []
-    parts.append(
+    session = (
         "## Scratchpad Session\n"
         "These rules outrank every other rule in this sheet and in the Global Style Guide.\n"
         "- **Content and flow:** the FINDINGS input is the radiologist's confirmed statements, grouped by scratchpad "
@@ -81,7 +91,7 @@ def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = ()) -> st
         "or their values (side, contrast, sequence, dates). Where they give different values, adapt the line's "
         "values; where the line asserts something they contradict, leave it out. A FIXED line that is a RULE's replacement (WITH) text is written only when that "
         "RULE applies. A FIXED line with {slots} is written only when the input gives every slot's value; otherwise "
-        "it is left out.\n"
+        "it is left out, except a line listed under Decided for This Case, which is written as that block says.\n"
         "- **Examples are wording only:** quoted Opening, Order, Abnormal pattern and Measurement lines are examples "
         "of the radiologist's wording. Copy their phrasing for what the input states; never their content: no finding, "
         "descriptor, value, grade, code, time window or interpretation from an example appears unless the input "
@@ -91,6 +101,9 @@ def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = ()) -> st
         "measurement, value, image coordinate or recommendation applies only when the FINDINGS input or the "
         "confirmed conclusion supplies it, even where the sheet calls it mandatory or always stated; otherwise "
         "leave it out — never estimate, infer or fill one in.")
+    if values_decided:
+        session += MISSING_VALUES_RULE
+    parts.append(session)
     removed = [t.strip() for t in declined if t.strip()]
     if removed:
         parts.append("## Removed by the Radiologist\n" + "\n".join(f'- DO NOT ASSERT: "{t}"' for t in removed))

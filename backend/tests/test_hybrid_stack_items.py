@@ -303,3 +303,93 @@ def test_referral_rows_are_never_capped():
     items, capped = I._limit(I._rows(raw))
     assert [r.kind for r in items].count("referral") == 2
     assert capped and all(r.kind == "finding" for r in capped)
+
+
+# ── template rows (spec 2026-10-13-findings-triggered-rows-design) ──
+from rapid_reports_ai.hybrid_stack.habits import Habit
+
+TASK = Habit(region="Pelvic organs", condition="an adnexal mass is reported", mode="ask", question="Mass vascularity?",
+             yes="The mass is vascular.", no="No internal vascularity.")
+TSTATE = Habit(region="Pelvic organs", condition="an adnexal mass is reported", mode="state", no="No free fluid")
+
+
+def test_template_rows_and_required_statements_from_met_habits():
+    (row,) = I.template_rows([TASK, TSTATE])
+    assert (row.kind, row.region, row.question, row.sentences, row.yes, row.no) == (
+        "template", "Pelvic organs", "Mass vascularity?", ["The mass is vascular.", "No internal vascularity."],
+        "The mass is vascular.", "No internal vascularity.")
+    assert row.id == I._id("template", "Pelvic organs", "Mass vascularity?")
+    assert row.why == "Your template asks this when an adnexal mass is reported."
+    assert I.template_required([TASK, TSTATE]) == {"Pelvic organs": ["No free fluid."]}
+
+
+def test_template_rows_rank_after_referrals_before_findings_and_share_the_caps():
+    def r(kind, i, region):
+        return I.Item(id=f"{kind}{i}", kind=kind, region=region, question="q?", sentences=["s."])
+    rows = [r("finding", 0, "A"), r("finding", 1, "A"), r("finding", 2, "B"), r("referral", 0, ""), r("template", 0, "A"),
+            r("template", 1, "C")]
+    shown, capped = I._limit(rows)
+    assert [x.id for x in shown] == ["referral0", "template0", "template1", "finding0"]
+    assert [x.id for x in capped] == ["finding1", "finding2"]
+
+
+async def _met_all(habits, scan_type, findings, ask=None):
+    assert scan_type == "CT"   # the scan type reaches the trigger (Hassan H1: never the history)
+    return list(habits), None
+
+
+async def test_a_template_row_folds_when_either_sentence_is_stated_and_is_never_split(monkeypatch):
+    splits = []
+
+    async def split(negs):
+        splits.append(list(negs))
+        return [[n] for n in negs]
+    _setup(monkeypatch, _raw(CYST), _checks({"No internal vascularity.": (0.9, 0.0, 0.0)}), split=split)
+    monkeypatch.setattr(I, "met_habits", _met_all)
+    res = await I.update("CT", "", ["Pelvic organs"], "Adnexal mass, no internal vascularity.", ["Adnexal mass."],
+                         review=True, habits=[TASK])
+    (t,) = [x for x in res.items if x.kind == "template"]
+    assert t.answered and t.sentences == ["The mass is vascular.", "No internal vascularity."]
+    assert all("The mass is vascular." not in part for part in splits)
+
+
+async def test_an_open_template_row_keeps_both_sentences_and_wins_over_a_generic_duplicate(monkeypatch):
+    _setup(monkeypatch, _raw({**CYST, "negatives": ["No internal vascularity."]}),
+           _checks({"The mass is vascular.": (0.0, 0.9, 0.0)}))   # a contradiction never edits a template row
+    monkeypatch.setattr(I, "met_habits", _met_all)
+    res = await I.update("CT", "", ["Pelvic organs"], "Adnexal mass.", ["Adnexal mass."], review=True, habits=[TASK])
+    assert [x.kind for x in res.items] == ["template"]
+    assert res.items[0].sentences == ["The mass is vascular.", "No internal vascularity."] and not res.items[0].answered
+
+
+async def test_required_statements_come_back_and_a_failed_trigger_leaves_generic_rows(monkeypatch):
+    _setup(monkeypatch, _raw(CYST))
+    monkeypatch.setattr(I, "met_habits", _met_all)
+    res = await I.update("CT", "", ["Pelvic organs"], "Adnexal mass.", ["Adnexal mass."], review=True, habits=[TSTATE])
+    assert res.required == {"Pelvic organs": ["No free fluid."]} and res.trigger_error is None
+
+    async def failed(habits, scan_type, findings, ask=None):
+        return [], "RuntimeError: jev down"
+    monkeypatch.setattr(I, "met_habits", failed)
+    res = await I.update("CT", "", ["Pelvic organs"], "Adnexal mass.", ["Adnexal mass."], review=True, habits=[TASK])
+    assert [x.kind for x in res.items] == ["finding"] and res.required == {}
+    assert res.trigger_error == "RuntimeError: jev down"
+
+
+async def test_no_trigger_without_dictation_or_habits(monkeypatch):
+    calls = []
+
+    async def met(habits, scan_type, findings, ask=None):
+        calls.append(findings)
+        return [], None
+    _setup(monkeypatch, _raw(CYST))
+    monkeypatch.setattr(I, "met_habits", met)
+    await I.update("CT", "", ["Pelvic organs"], "", [], habits=[TASK])
+    await I.update("CT", "", ["Pelvic organs"], "Adnexal mass.", ["Adnexal mass."], review=True)
+    assert calls == []
+
+
+async def test_recheck_folds_a_template_row_the_dictation_now_answers(monkeypatch):
+    _setup(monkeypatch, _raw(), _checks({"The mass is vascular.": (0.9, 0.0, 0.0)}))
+    res = await I.recheck("Vascular adnexal mass.", I.template_rows([TASK]))
+    assert res.items[0].answered and res.items[0].kind == "template"

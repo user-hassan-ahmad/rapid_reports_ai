@@ -59,12 +59,12 @@ def _is_legacy(t: Optional[Template]) -> bool:
     return t is not None and bool(t.is_active) and not (t.template_config or {}).get("generation_mode")
 
 
-async def _already_written(current: str, new_sheet: str) -> bool:
+async def _already_written(current: str, new_sheet: str, ledger=None) -> bool:
     """Whether the stored sheet is what this entry writes: the new sheet itself or its vetted form (a re-run)."""
     if tss.sheet_hash(current) == tss.sheet_hash(new_sheet):
         return True
     try:
-        out = await tsave.vet_sheet(new_sheet, origin=ORIGIN, previous="")
+        out = await tsave.vet_sheet(new_sheet, origin=ORIGIN, previous="", ledger=ledger)
     except Exception:  # noqa: BLE001 -- a re-run check only; stale is the safe answer
         return False
     return out.status != "refused" and tss.sheet_hash(current) == tss.sheet_hash(out.sheet)
@@ -83,9 +83,11 @@ async def _plan_entry(db, entry: dict, analyser_version: Optional[str] = None) -
     cfg = dict(t.template_config or {})
     if cfg.get("generation_mode") != GUIDED:
         return {"template_id": tid, "action": "skipped-mode"}
+    from rapid_reports_ai import template_decisions as td
+    ledger = td.clean_ledger(cfg.get("decisions")) or None   # the decision ledger applies on every origin
     current = cfg.get("skill_sheet") or ""
     if tss.sheet_hash(current) != entry.get("old_sheet_hash"):
-        written = await _already_written(current, entry.get("new_sheet") or "")
+        written = await _already_written(current, entry.get("new_sheet") or "", ledger)
         return {"template_id": tid, "action": "already-written" if written else "skipped-stale"}
     # The same steps as a sheet save (PUT /api/templates: _carry_structure then _vet_config's guided branch): drop
     # the stored structure, carry analyser_version, vet the sheet, store the vetted sheet + coverage_sections.
@@ -94,14 +96,18 @@ async def _plan_entry(db, entry: dict, analyser_version: Optional[str] = None) -
         new_cfg["analyser_version"] = analyser_version
     if not new_cfg["skill_sheet"]:
         return {"template_id": tid, "action": "skipped-refused", "reason": tsave.LOST_STRUCTURE}
-    out = await tsave.vet_sheet(new_cfg["skill_sheet"], origin=ORIGIN, previous=current)
+    out = await tsave.vet_sheet(new_cfg["skill_sheet"], origin=ORIGIN, previous=current, ledger=ledger)
     if out.status == "refused":
         return {"template_id": tid, "action": "skipped-refused", "reason": out.message or "refused"}
     if out.status == "unchanged":
         return {"template_id": tid, "action": "skipped-unchanged"}
     vetted = {**new_cfg, "skill_sheet": out.sheet, "coverage_sections": out.coverage_sections}
+    if ledger:   # as main._vet_config: entries the sheet could not take are cards at the next review
+        vetted["ledger_unmatched"] = out.ledger_unmatched
     row = {"template_id": tid, "action": "written", "config": vetted, "old_config": cfg,
            "old_sheet_hash": entry.get("old_sheet_hash"), "dropped_units": len(out.dropped)}
+    if ledger:   # ledger lines the upgrade sheet had wrong and code rewrote
+        row["ledger_drift"] = out.ledger_drift
     if out.message:   # the repair reworded a unit: reported, never silent
         row["notice"] = out.message
     return row
@@ -223,7 +229,7 @@ async def _run(manifest_path: Path, apply: bool, db) -> dict:
                 r.pop("structure_stored", None)
 
     out = [{k: v for k, v in r.items() if k in ("template_id", "action", "reason", "dropped_units",
-                                                   "notice", "structure_stored")} for r in rows]
+                                                   "notice", "structure_stored", "ledger_drift")} for r in rows]
     totals: dict = {}
     for r in out:
         totals[r["action"]] = totals.get(r["action"], 0) + 1

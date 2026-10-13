@@ -1,0 +1,28 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "A Novel Classification System for Spinal Instability in Neoplastic Disease: An Evidence-Based Approach and Expert Consensus From the Spine Oncology Study Group (Fisher CG et al. Spine 2010;35:E1221-E1229)",
+      "issuer": "Spine Oncology Study Group (published in Spine)",
+      "edition": "2010",
+      "url": "https://doi.org/10.1097/BRS.0b013e3181e16ae2",
+      "sha256": "73125e5ef00b8b1a1c83eb2d1e87d35ae8e38cb0fab9397c3de1d52cb69d4133",
+      "file": "sources/73125e5ef00b8b1a1c83eb2d1e87d35ae8e38cb0fab9397c3de1d52cb69d4133.pdf",
+      "text_file": "sources/73125e5ef00b8b1a1c83eb2d1e87d35ae8e38cb0fab9397c3de1d52cb69d4133.txt",
+      "retrieved": "2026-10-12"
+    },
+    {
+      "id": "S2",
+      "role": "explanatory",
+      "title": "Spinal metastases and metastatic spinal cord compression (NICE guideline NG234), Recommendations chapter",
+      "issuer": "National Institute for Health and Care Excellence (NICE)",
+      "edition": "2023 (published 06 September 2023)",
+      "url": "https://www.nice.org.uk/guidance/ng234",
+      "sha256": "7a6b88060749d772bbd45663355758654bfa75ad6a8f5e1d7bd5c2a1234789cf",
+      "file": "sources/7a6b88060749d772bbd45663355758654bfa75ad6a8f5e1d7bd5c2a1234789cf.html",
+      "text_file": "sources/7a6b88060749d772bbd45663355758654bfa75ad6a8f5e1d7bd5c2a1234789cf.txt",
+      "retrieved": "2026-10-12"
+    }
+  ]
+}

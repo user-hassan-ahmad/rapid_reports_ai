@@ -573,3 +573,17 @@ def test_generation_stamp_is_total():
     assert generation_stamp("t", {"skill_sheet": "x", "analyser_version": "v" * 99}, "scratchpad") == {
         "template_id": "t", "sheet_hash": sheet_hash("x"), "grammar_version": STRUCTURE_VERSION,
         "analyser_version": "v" * 64, "path": "scratchpad"}
+
+
+async def test_stack_session_passes_the_values_marked_na(aclient, auth_headers, mirror_template, stubs, monkeypatch):
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+    body = {"user_inputs": {"FINDINGS": "LV normal.", "CLINICAL_HISTORY": "?HCM"}, "stack": True,
+            "stack_conclusion": "Normal cardiac MRI.", "stack_declined": [], "stack_values_na": ["RVEF", " ", 3]}
+    r = (await aclient.post(f"/api/templates/{mirror_template.id}/generate", headers=auth_headers, json=body))
+    assert r.status_code == 422   # a non-string item is rejected by the request model
+    body["stack_values_na"] = ["RVEF", " "]
+    body["stack_values_filled"] = ["LVEF"]
+    r = (await aclient.post(f"/api/templates/{mirror_template.id}/generate", headers=auth_headers, json=body)).json()
+    assert r["success"] and stubs["mirror"][0]["stack"]["values_na"] == ["RVEF"]
+    assert stubs["mirror"][0]["stack"]["values_filled"] == ["LVEF"]
+    await _drain_options()

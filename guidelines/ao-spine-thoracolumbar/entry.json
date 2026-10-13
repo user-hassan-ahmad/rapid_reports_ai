@@ -1,0 +1,538 @@
+{
+  "id": "ao-spine-thoracolumbar",
+  "version": "2013.1",
+  "topic": "thoracolumbar-spine-injury-classification",
+  "purpose": "Classifies an acute thoracolumbar spine injury by fracture morphology, with neurological status and case-specific modifiers, in spinal trauma; designed mainly around features seen on CT. Not for chronic fractures or low-energy osteoporotic insufficiency fractures.",
+  "issuer": "AOSpine Spinal Cord Injury & Trauma Knowledge Forum (Vaccaro AR et al.)",
+  "system": "AOSpine thoracolumbar spine injury classification: morphologic type A, B, C with subtypes, neurological status N0 to N4 and NX, and modifiers M1 and M2",
+  "display": "AOSpine thoracolumbar injury classification (2013 consensus paper)",
+  "edition": "2013",
+  "tier": 2,
+  "status": "current",
+  "applies_to": {
+    "region": [
+      "spine"
+    ],
+    "modality": [
+      "CT",
+      "MRI",
+      "XR"
+    ],
+    "finding_type": [
+      "thoracolumbar fracture"
+    ],
+    "context": []
+  },
+  "aliases": [
+    "AOSpine",
+    "AO Spine",
+    "AOSpine thoracolumbar",
+    "AO Spine thoracolumbar classification",
+    "AOSpine thoracolumbar injury classification",
+    "AOSpine TL classification",
+    "AO Spine classification",
+    "AO fracture type",
+    "AO type A fracture",
+    "AO type B injury",
+    "AO type C injury"
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "The system describes a thoracolumbar injury with three parts: a morphologic type (A, B or C, with subtypes), a neurological status (N0 to N4, or NX) and, only when relevant, case-specific modifiers (M1, M2).",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Results: opening list of 3 basic parameters (journal p2030)"
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "Morphology is graded by the mode of failure of the spinal column: A compression, B failure of the posterior or anterior tension band without gross translation, C failure of all elements with displacement. Successive types indicate ascending severity.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Results: Morphologic Classification (journal p2030)"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "The scheme is built around features seen on CT. MRI may show tension band disruption (making the injury at least type B) or a disrupted posterior hinge (making an extension-distraction injury type C); the authors note poor reliability of MRI for posterior ligamentous complex injury.",
+        "locator": {
+          "source": "S1",
+          "page": 9,
+          "section": "Discussion (journal p2035-2036)"
+        }
+      },
+      {
+        "id": "sum.4",
+        "text": "The paper gives no treatment rule or score per grade. The Spine Injury Score is left to be developed, and the authors state that no absolute recommendations on when surgery is mandatory can be given. Attributed expectations: M1 is meant to give greater consideration to surgery when the posterior ligamentous complex is indeterminate; an extension injury in an ankylosed spine is highly unstable; type C injuries and extension-distraction injuries in an ankylosed spine would mostly be expected to be treated with surgical stabilization.",
+        "locator": {
+          "source": "S1",
+          "page": 10,
+          "section": "Conclusion (journal p2036); also Spine Injury Score (journal p2034)"
+        }
+      },
+      {
+        "id": "sum.5",
+        "text": "Reliability was tested on 40 cases graded by 9 spine surgeons: interobserver kappa 0.72 for injury type (A/B/C) and 0.64 overall including subtypes (level of evidence 4). The authors call for prospective validation.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Results: Final Evaluation Session; Interobserver Reliability (journal p2034)"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.A",
+        "text": "Type A: compression injury of the vertebral body (anterior elements, vertebral body and/or disc) with the tension band intact and no translation; may be an isolated single-vertebra injury or occur with type B or C injuries.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Results: Type A Injuries (journal p2030-2031)"
+        }
+      },
+      {
+        "id": "def.A0",
+        "text": "A0: no vertebral fracture, or a clinically insignificant fracture such as of a spinous or transverse process; no concern for mechanical instability or neurological deficit.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Results: Type A Injuries (journal p2030-2031)"
+        }
+      },
+      {
+        "id": "def.A1",
+        "text": "A1: wedge compression or impaction fracture of a single endplate, without involvement of the posterior wall of the vertebral body; the vertebral canal is intact.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "Results: Type A Injuries (journal p2030-2031)"
+        }
+      },
+      {
+        "id": "def.A2",
+        "text": "A2: split or pincer-type fracture with the fracture line through both endplates, without involvement of the posterior vertebral wall.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "Results: Type A Injuries (journal p2030-2031)"
+        }
+      },
+      {
+        "id": "def.A3",
+        "text": "A3: incomplete burst, a vertebral fracture of a single endplate with any involvement of the posterior vertebral wall and the spinal canal. A vertical lamina fracture is usually present and does not indicate tension band failure.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "Results: Type A Injuries (journal p2030-2031); Figure 6 legend"
+        }
+      },
+      {
+        "id": "def.A4",
+        "text": "A4: complete burst, a vertebral body fracture of both endplates with any involvement of the posterior wall; split fractures that also involve the posterior wall are included. A vertical lamina fracture does not indicate tension band failure.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "Results: Type A Injuries (journal p2030-2031); Figure 7 legend"
+        }
+      },
+      {
+        "id": "def.B",
+        "text": "Type B: failure of the posterior or anterior tension band without gross translation or the potential for gross translation; may be seen with a type A vertebral body fracture.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "Results: Type B Injuries: Tension Band Injury (journal p2032-2033)"
+        }
+      },
+      {
+        "id": "def.B1",
+        "text": "B1: monosegmental osseous (transosseous) failure of the posterior tension band extending into the vertebral body, the classical 'chance' fracture; it affects a single vertebral level.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "Results: Type B Injuries: Tension Band Injury (journal p2032-2033)"
+        }
+      },
+      {
+        "id": "def.B2",
+        "text": "B2: disruption of the posterior tension band, bony and/or ligamentous, always at an intervertebral level; any associated vertebral body fracture is specified separately by its type A subtype.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "Results: Type B Injuries: Tension Band Injury (journal p2032-2033)"
+        }
+      },
+      {
+        "id": "def.B3",
+        "text": "B3: disruption of the anterior longitudinal ligament (the anterior tension band) through the disc or the vertebral body, with an intact posterior element hinge that prevents gross displacement; typically a hyperextension injury, notably in ankylosed spines.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "Results: Type B Injuries: Tension Band Injury (journal p2032-2033)"
+        }
+      },
+      {
+        "id": "def.C",
+        "text": "Type C: displacement beyond the physiological range of the cranial and caudal parts of the spinal column in any plane, or distraction of anterior and posterior elements with no intact structure remaining, or complete disruption of the posterior hinge even without translation. No subtypes.",
+        "locator": {
+          "source": "S1",
+          "page": 7,
+          "section": "Results: Type C Injuries: Displacement/Translational Injury (journal p2033)"
+        }
+      },
+      {
+        "id": "def.coding",
+        "text": "Coding by level: A and B1 injuries are coded by the single vertebral level (e.g. L2); B2, B3 and C injuries affect a motion segment and are coded by it (e.g. T12-L1). The colloquial term (burst, chance, etc.) may follow the alphanumeric code.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Results: Grading of Injuries (journal p2030-2031)"
+        }
+      },
+      {
+        "id": "def.multi",
+        "text": "Multilevel injuries are classified separately and listed in declining severity; injuries of the same subtype are listed from cranial to caudal.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Results: Grading of Injuries (journal p2030-2031)"
+        }
+      },
+      {
+        "id": "def.N0",
+        "text": "N0: neurologically intact.",
+        "locator": {
+          "source": "S1",
+          "page": 7,
+          "section": "Results: Grading of Neurological Deficits (journal p2033-2034)"
+        }
+      },
+      {
+        "id": "def.N1",
+        "text": "N1: transient neurological deficit, no longer present.",
+        "locator": {
+          "source": "S1",
+          "page": 7,
+          "section": "Results: Grading of Neurological Deficits (journal p2033-2034)"
+        }
+      },
+      {
+        "id": "def.N2",
+        "text": "N2: symptoms or signs of radiculopathy.",
+        "locator": {
+          "source": "S1",
+          "page": 7,
+          "section": "Results: Grading of Neurological Deficits (journal p2033-2034)"
+        }
+      },
+      {
+        "id": "def.N3",
+        "text": "N3: incomplete spinal cord injury, or cauda equina injury.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Results: Grading of Neurological Deficits (journal p2033-2034)"
+        }
+      },
+      {
+        "id": "def.N4",
+        "text": "N4: complete spinal cord injury (American Spinal Injury Association grade A).",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Results: Grading of Neurological Deficits (journal p2033-2034)"
+        }
+      },
+      {
+        "id": "def.NX",
+        "text": "NX: patient who cannot be examined (head injury, intoxication, multiple trauma, intubation or sedation, or another condition preventing a neurological examination).",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Results: Grading of Neurological Deficits (journal p2033-2034)"
+        }
+      },
+      {
+        "id": "def.M1",
+        "text": "M1: fracture that seems stable from a bony standpoint but has an indeterminate injury to the tension band on spinal imaging such as MRI, or on clinical examination; the source says ligamentous insufficiency may then help decide whether operative stabilization is considered.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Results: Case-Specific Modifiers (journal p2034)"
+        }
+      },
+      {
+        "id": "def.M2",
+        "text": "M2: a patient-specific comorbidity that might argue for or against surgery where there are relative indications; examples include ankylosing spondylitis, rheumatological conditions, DISH, osteopenia or osteoporosis, or burns over the injured spine.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Results: Case-Specific Modifiers (journal p2034)"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "tab.morph",
+        "title": "Morphologic type and subtype (ascending severity)",
+        "columns": [
+          "Type / subtype",
+          "Failure pattern",
+          "Coded by"
+        ],
+        "rows": [
+          [
+            "A0",
+            "No fracture, or clinically insignificant process fracture (spinous or transverse process)",
+            "Single vertebral level"
+          ],
+          [
+            "A1",
+            "Wedge compression or impaction: single endplate, posterior wall not involved",
+            "Single vertebral level"
+          ],
+          [
+            "A2",
+            "Split or pincer: both endplates, posterior wall not involved",
+            "Single vertebral level"
+          ],
+          [
+            "A3",
+            "Incomplete burst: single endplate, any posterior wall involvement",
+            "Single vertebral level"
+          ],
+          [
+            "A4",
+            "Complete burst: both endplates, any posterior wall involvement",
+            "Single vertebral level"
+          ],
+          [
+            "B1",
+            "Monosegmental transosseous posterior tension band failure (chance fracture)",
+            "Single vertebral level"
+          ],
+          [
+            "B2",
+            "Posterior tension band disruption, bony and/or ligamentous",
+            "Motion segment"
+          ],
+          [
+            "B3",
+            "Anterior tension band (ALL) disruption with intact posterior hinge (hyperextension)",
+            "Motion segment"
+          ],
+          [
+            "C",
+            "Displacement or translation in any plane, or loss of the posterior hinge; no subtypes",
+            "Motion segment"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Results: Grading of Injuries (journal p2030-2031); Results: Type A Injuries (journal p2030-2031); Results: Type B Injuries: Tension Band Injury (journal p2032-2033); Results: Type C Injuries: Displacement/Translational Injury (journal p2033)"
+        }
+      },
+      {
+        "id": "tab.neuro",
+        "title": "Neurological status modifier",
+        "columns": [
+          "Grade",
+          "Meaning"
+        ],
+        "rows": [
+          [
+            "N0",
+            "Neurologically intact"
+          ],
+          [
+            "N1",
+            "Transient neurological deficit, no longer present"
+          ],
+          [
+            "N2",
+            "Symptoms or signs of radiculopathy"
+          ],
+          [
+            "N3",
+            "Incomplete spinal cord injury or cauda equina injury"
+          ],
+          [
+            "N4",
+            "Complete spinal cord injury (ASIA grade A)"
+          ],
+          [
+            "NX",
+            "Cannot be examined (e.g. head injury, intoxication, multiple trauma, sedation)"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 7,
+          "section": "Results: Grading of Neurological Deficits (journal p2033-2034)"
+        }
+      },
+      {
+        "id": "tab.mod",
+        "title": "Case-specific modifiers (used as needed)",
+        "columns": [
+          "Modifier",
+          "Meaning"
+        ],
+        "rows": [
+          [
+            "M1",
+            "Seems stable from a bony standpoint, but tension band injury is indeterminate on imaging (e.g. MRI) or clinical examination"
+          ],
+          [
+            "M2",
+            "Patient-specific comorbidity that may argue for or against surgery"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Results: Case-Specific Modifiers (journal p2034)"
+        }
+      },
+      {
+        "id": "tab.kappa",
+        "title": "Interobserver reliability by injury type (kappa, 9 raters; type A subtypes come from single-vertebra type A cases only, B and C from the whole case series, so not like-for-like)",
+        "columns": [
+          "Type / subtype",
+          "Kappa"
+        ],
+        "rows": [
+          [
+            "A0",
+            "1.0"
+          ],
+          [
+            "A1",
+            "0.59"
+          ],
+          [
+            "A2",
+            "0.50"
+          ],
+          [
+            "A3",
+            "0.45"
+          ],
+          [
+            "A4",
+            "0.58"
+          ],
+          [
+            "Overall type A",
+            "0.72"
+          ],
+          [
+            "B1",
+            "0.65"
+          ],
+          [
+            "B2",
+            "0.34"
+          ],
+          [
+            "B3",
+            "0.41"
+          ],
+          [
+            "Overall type B",
+            "0.58"
+          ],
+          [
+            "Overall type C",
+            "0.70"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "Results: Final Evaluation Session; TABLE 1 (journal p2034)",
+          "table": "Table 1"
+        }
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.nomgmt",
+        "text": "The paper gives no treatment rule or score per grade, and the Spine Injury Score it mentions is not defined. The authors only state expectations (M1 to give greater consideration to surgery; C injuries and extension-distraction injuries in an ankylosed spine expected to need stabilization). A grade should not be turned into a recommendation from this source.",
+        "locator": {
+          "source": "S1",
+          "page": 10,
+          "section": "Conclusion (journal p2036); Spine Injury Score (journal p2034)"
+        }
+      },
+      {
+        "id": "pit.posterior",
+        "text": "A3 or A4 morphology with ligamentous disruption of the posterior tension band is primarily classified B2, with the A3 or A4 body injury specified separately. A3 or A4 with a horizontal axial-plane fracture through the posterior elements is a type B injury.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "Results: Type A Injuries (journal p2030-2031); Results: Type B Injuries: Tension Band Injury (journal p2032-2033)"
+        }
+      },
+      {
+        "id": "pit.lamina",
+        "text": "A vertical (greenstick-like) lamina fracture with a burst fracture does not by itself indicate tension band failure.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "Results: Type A Injuries (journal p2030-2031); Figures 6 and 7 legends"
+        }
+      },
+      {
+        "id": "pit.hinge",
+        "text": "If the posterior hinge is clearly and completely disrupted, the injury is type C with a B descriptor even without displacement at the time of injury. An extension injury in an ankylosed spine without displacement was graded B3 by some observers and C by others.",
+        "locator": {
+          "source": "S1",
+          "page": 7,
+          "section": "Results: Type B Injuries: Tension Band Injury (journal p2032-2033); Results: Type C Injuries: Displacement/Translational Injury (journal p2033); Discussion (journal p2036)"
+        }
+      },
+      {
+        "id": "pit.sep",
+        "text": "With a type B injury, an associated vertebral body fracture is specified separately by its type A subtype (e.g. T12-L1 B2 with T12 A4). With a type C injury, an associated body fracture and, if possible, any associated tension band injury (B1 to B3) are specified separately.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "Results: Type B Injuries: Tension Band Injury (journal p2032-2033); Figure 9 legend; Results: Type C Injuries: Displacement/Translational Injury (journal p2033)"
+        }
+      },
+      {
+        "id": "pit.mri",
+        "text": "B2 and B3 had the lowest subtype agreement (kappa 0.34 and 0.41), and the authors note that MRI identification of posterior ligamentous complex injury is poorly reliable. B1 versus B2 depends on a ligamentous component and may not be easy to make.",
+        "locator": {
+          "source": "S1",
+          "page": 9,
+          "section": "Results: Interobserver Reliability (journal p2035); Discussion (journal p2036)"
+        }
+      },
+      {
+        "id": "pit.region",
+        "text": "The paper classifies the thoracolumbar spine only; the upper cervical, lower cervical and sacral regions are described separately and are not covered here.",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Materials and Methods (journal p2029)"
+        }
+      },
+      {
+        "id": "pit.validation",
+        "text": "This is the consensus paper with a 40-case reliability study (level of evidence 4); the authors state that broad prospective validation is still needed before it informs surgical decision making.",
+        "locator": {
+          "source": "S1",
+          "page": 10,
+          "section": "Conclusion (journal p2036)"
+        }
+      }
+    ]
+  }
+}

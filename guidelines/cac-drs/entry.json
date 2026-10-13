@@ -1,0 +1,565 @@
+{
+  "id": "cac-drs",
+  "version": "2018.1",
+  "topic": "coronary-artery-calcium",
+  "match_topic": "coronary",
+  "purpose": "Standardises reporting of coronary artery calcium, with a risk statement and management recommendations, on dedicated calcium-score scans and on any non-contrast chest CT, whatever the indication.",
+  "trigger": ["exam", "finding"],
+  "exam": "dedicated ECG-gated CT coronary artery calcium scoring scan",
+  "issuer": "Society of Cardiovascular Computed Tomography (SCCT)",
+  "system": "CAC-DRS: Coronary Artery Calcium Data and Reporting System",
+  "display": "CAC-DRS (SCCT 2018)",
+  "edition": "2018",
+  "tier": 1,
+  "status": "current",
+  "applies_to": {
+    "region": [
+      "heart"
+    ],
+    "modality": [
+      "CT"
+    ],
+    "finding_type": [
+      "coronary calcification"
+    ],
+    "context": []
+  },
+  "aliases": [
+    "CAC-DRS",
+    "CAC DRS",
+    "CACDRS",
+    "coronary artery calcium data and reporting system",
+    "CAC score category",
+    "Agatston score category"
+  ],
+  "inputs": [
+    {
+      "id": "agatston",
+      "label": "Agatston score",
+      "type": "number",
+      "unit": "score",
+      "min_value": 0,
+      "states": [
+        "not_assessable"
+      ],
+      "how_stated": "the total coronary Agatston calcium score as a number, e.g. 'Agatston score 450'. not_assessable when no Agatston score is available (visual estimate only, or only the category dictated).",
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "section": "3.1 Agatston scoring; Table 1a"
+      },
+      "scope": "lesion"
+    },
+    {
+      "id": "cac_drs",
+      "label": "CAC-DRS category",
+      "type": "enum",
+      "options": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "how_stated": "the category digit 0 to 3 as dictated, e.g. 'CAC-DRS 2' or 'CAC-DRS V2/N3' (the digit after the A or V scoring-system letter; ignore the /N vessel count). Used when no Agatston score is available.",
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "table": "Table 1; section 3 (categories 0-3)"
+      },
+      "scope": "lesion"
+    }
+  ],
+  "logic": [
+    {
+      "step": "band",
+      "id": "agatston_band",
+      "ref": "agatston",
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "section": "3.1 Agatston scoring; Table 1a (integer bands; edges at .5 are a library rounding choice)"
+      },
+      "bands": [
+        {
+          "id": "s0",
+          "label": "0",
+          "max": 0.5,
+          "max_inclusive": false
+        },
+        {
+          "id": "s1",
+          "label": "1-99",
+          "min": 0.5,
+          "min_inclusive": true,
+          "max": 99.5,
+          "max_inclusive": false
+        },
+        {
+          "id": "s2",
+          "label": "100-299",
+          "min": 99.5,
+          "min_inclusive": true,
+          "max": 299.5,
+          "max_inclusive": false
+        },
+        {
+          "id": "s3",
+          "label": "300 or above",
+          "min": 299.5,
+          "min_inclusive": true
+        }
+      ]
+    },
+    {
+      "step": "rules",
+      "id": "category",
+      "cases": [
+        {
+          "when": {
+            "ref": "agatston_band",
+            "eq": "s0"
+          },
+          "result": "cac_drs_0",
+          "locator": {
+            "source": "S1",
+            "page": 2,
+            "table": "Table 1 a. Agatston Score; b. Visual Score"
+          }
+        },
+        {
+          "when": {
+            "ref": "agatston_band",
+            "eq": "s1"
+          },
+          "result": "cac_drs_1",
+          "locator": {
+            "source": "S1",
+            "page": 2,
+            "table": "Table 1 a. Agatston Score; b. Visual Score"
+          }
+        },
+        {
+          "when": {
+            "ref": "agatston_band",
+            "eq": "s2"
+          },
+          "result": "cac_drs_2",
+          "locator": {
+            "source": "S1",
+            "page": 2,
+            "table": "Table 1 a. Agatston Score; b. Visual Score"
+          }
+        },
+        {
+          "when": {
+            "ref": "agatston_band",
+            "eq": "s3"
+          },
+          "result": "cac_drs_3",
+          "locator": {
+            "source": "S1",
+            "page": 2,
+            "table": "Table 1 a. Agatston Score; b. Visual Score"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "agatston_band",
+                "state": "not_assessable"
+              },
+              {
+                "ref": "cac_drs",
+                "eq": "0"
+              }
+            ]
+          },
+          "result": "cac_drs_0",
+          "locator": {
+            "source": "S1",
+            "page": 2,
+            "table": "Table 1 a. Agatston Score; b. Visual Score"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "agatston_band",
+                "state": "not_assessable"
+              },
+              {
+                "ref": "cac_drs",
+                "eq": "1"
+              }
+            ]
+          },
+          "result": "cac_drs_1",
+          "locator": {
+            "source": "S1",
+            "page": 2,
+            "table": "Table 1 a. Agatston Score; b. Visual Score"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "agatston_band",
+                "state": "not_assessable"
+              },
+              {
+                "ref": "cac_drs",
+                "eq": "2"
+              }
+            ]
+          },
+          "result": "cac_drs_2",
+          "locator": {
+            "source": "S1",
+            "page": 2,
+            "table": "Table 1 a. Agatston Score; b. Visual Score"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "agatston_band",
+                "state": "not_assessable"
+              },
+              {
+                "ref": "cac_drs",
+                "eq": "3"
+              }
+            ]
+          },
+          "result": "cac_drs_3",
+          "locator": {
+            "source": "S1",
+            "page": 2,
+            "table": "Table 1 a. Agatston Score; b. Visual Score"
+          }
+        }
+      ]
+    }
+  ],
+  "result": "category",
+  "outcomes": [
+    {
+      "id": "cac_drs_0",
+      "headline": "CAC-DRS 0: very low risk",
+      "action": "Discuss preventive therapy",
+      "category": "info",
+      "normal": true,
+      "classification": "CAC-DRS 0: Agatston 0 / visual none; very low risk.",
+      "recommendation": "Document the scoring system (A for Agatston, V for visual). CAC informs a clinician-patient discussion of preventive therapy.",
+      "caveats": [
+        "The vessel-number modifier N is not used for category 0.",
+        "In the source, CAC informs a clinician-patient discussion of the likelihood of net benefit from preventive therapy; it is not an instruction."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "table": "Table 1 a. Agatston Score; b. Visual Score"
+      }
+    },
+    {
+      "id": "cac_drs_1",
+      "headline": "CAC-DRS 1: mildly increased risk",
+      "action": "Discuss preventive therapy",
+      "category": "info",
+      "classification": "CAC-DRS 1: Agatston 1-99 / visual mild; mildly increased risk.",
+      "recommendation": "Document the scoring system (A for Agatston, V for visual) and the number of vessels with calcium (N). CAC informs a clinician-patient discussion of preventive therapy.",
+      "caveats": [
+        "The vessel count N (1-4) is prognostically additive to the total CAC, particularly in the 1-300 range. The source finds insufficient data to change the category on it, but it may influence how aggressively management is pursued, and it should be reported.",
+        "In the source, CAC informs a clinician-patient discussion of the likelihood of net benefit from preventive therapy; it is not an instruction."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "table": "Table 1 a. Agatston Score; b. Visual Score"
+      }
+    },
+    {
+      "id": "cac_drs_2",
+      "headline": "CAC-DRS 2: moderately increased risk",
+      "action": "Discuss preventive therapy",
+      "category": "info",
+      "classification": "CAC-DRS 2: Agatston 100-299 / visual moderate; moderately increased risk.",
+      "recommendation": "Document the scoring system (A for Agatston, V for visual) and the number of vessels with calcium (N). CAC informs a clinician-patient discussion of preventive therapy.",
+      "caveats": [
+        "The vessel count N (1-4) is prognostically additive to the total CAC, particularly in the 1-300 range. The source finds insufficient data to change the category on it, but it may influence how aggressively management is pursued, and it should be reported.",
+        "In the source, CAC informs a clinician-patient discussion of the likelihood of net benefit from preventive therapy; it is not an instruction."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "table": "Table 1 a. Agatston Score; b. Visual Score"
+      }
+    },
+    {
+      "id": "cac_drs_3",
+      "headline": "CAC-DRS 3: moderately to severely increased risk",
+      "action": "Discuss preventive therapy",
+      "category": "info",
+      "classification": "CAC-DRS 3: Agatston 300 or above (printed '> 300') / visual severe; moderately to severely increased risk.",
+      "recommendation": "Document the scoring system (A for Agatston, V for visual) and the number of vessels with calcium (N). CAC informs a clinician-patient discussion of preventive therapy.",
+      "caveats": [
+        "The vessel count N (1-4) is prognostically additive to the total CAC, particularly in the 1-300 range. The source finds insufficient data to change the category on it, but it may influence how aggressively management is pursued, and it should be reported.",
+        "In the source, CAC informs a clinician-patient discussion of the likelihood of net benefit from preventive therapy; it is not an instruction.",
+        "Agatston 300 to 1000 and above 1000 share one category because their management is the same."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "table": "Table 1 a. Agatston Score; b. Visual Score"
+      }
+    }
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "CAC-DRS is the SCCT 2018 consensus reporting system for coronary artery calcium on non-contrast CT. It applies to all dedicated CAC scans and to all non-gated non-contrast chest CT, irrespective of the indication, and gives one category from 0 to 3 per patient with a risk statement.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Abstract; 1. Introduction"
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "The category comes from the total Agatston score, or from a visual none/mild/moderate/severe estimate on non-gated scans. The category carries the same meaning either way, but the scoring system used should be documented.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "3.1, 3.2; 4.1 Scoring system"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "Two modifiers are reported: A (Agatston) or V (visual), and N, the number of vessels with calcium (1 to 4). N is prognostically additive to the total score, but data are insufficient to change the category on it; it may influence how aggressively management is pursued. N is not used for category 0.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "4.2 Number of involved vessels"
+        }
+      },
+      {
+        "id": "sum.4",
+        "text": "Examples are written CAC-DRS A0, A1/N3, A2/N3, A3/N4 and V0, V1/N3, V2/N3, V3/N4.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "5. Examples"
+        }
+      },
+      {
+        "id": "sum.5",
+        "text": "In the source, CAC is used to inform a discussion between clinician and patient about the likelihood of net benefit from preventive therapy. The management lines in the US reference table below are general recommendations of that discussion, not instructions.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "2. Clinical value of coronary artery calcium"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.g0",
+        "text": "Category 0: no coronary calcium (Agatston 0; visual none). Very low risk.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "table": "Table 1 a. Agatston Score; b. Visual Score"
+        }
+      },
+      {
+        "id": "def.g1",
+        "text": "Category 1: Agatston 1-99, or visual mild. Mildly increased risk.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "table": "Table 1 a. Agatston Score; b. Visual Score"
+        }
+      },
+      {
+        "id": "def.g2",
+        "text": "Category 2: Agatston 100-299, or visual moderate. Moderately increased risk.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "table": "Table 1 a. Agatston Score; b. Visual Score"
+        }
+      },
+      {
+        "id": "def.g3",
+        "text": "Category 3: Agatston 300 or above (printed '> 300'; the text gives 300-1000 and above 1000 as one combined category), or visual severe. Moderately to severely increased risk.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Table 1a; 3.1 Agatston scoring"
+        }
+      },
+      {
+        "id": "def.agatston",
+        "text": "The Agatston score is a summed score from calcified plaque area and the peak density of each calcified lesion. It may be applied to gated and non-gated studies acquired at 120 kV with 2.5-3 mm slices; age, sex and ethnicity percentiles are also routinely reported.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "3.1 Agatston scoring"
+        }
+      },
+      {
+        "id": "def.visual",
+        "text": "Visual score: 0 none, 1 mild, 2 moderate, 3 severe. It is based on estimating the extent of calcium in each artery, may be used on non-contrast non-gated studies, and gives the same categories 0 to 3.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "3.2 Visual estimation"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "tbl.bands",
+        "title": "Table 1. Category bands and risk statements (Agatston and visual)",
+        "columns": [
+          "Category",
+          "Agatston score",
+          "Visual score",
+          "Risk"
+        ],
+        "rows": [
+          [
+            "CAC-DRS 0",
+            "0",
+            "0 (none)",
+            "Very low"
+          ],
+          [
+            "CAC-DRS 1",
+            "1-99",
+            "1 (mild)",
+            "Mildly increased"
+          ],
+          [
+            "CAC-DRS 2",
+            "100-299",
+            "2 (moderate)",
+            "Moderately increased"
+          ],
+          [
+            "CAC-DRS 3",
+            "300 or above (printed '> 300')",
+            "3 (severe)",
+            "Moderately to severely increased"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "table": "Table 1 a. Agatston Score; b. Visual Score"
+        }
+      },
+      {
+        "id": "tbl.us",
+        "title": "SCCT 2018 (US) management, for reference only, not UK guidance",
+        "columns": [
+          "Category",
+          "Management stated in Table 1"
+        ],
+        "rows": [
+          [
+            "CAC-DRS 0",
+            "Statin generally not recommended (Table 1a); statin not recommended (Table 1b); excluding familial hypercholesterolaemia"
+          ],
+          [
+            "CAC-DRS 1",
+            "Moderate-intensity statin"
+          ],
+          [
+            "CAC-DRS 2",
+            "Moderate- to high-intensity statin + aspirin 81 mg"
+          ],
+          [
+            "CAC-DRS 3",
+            "High-intensity statin + aspirin 81 mg"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "table": "Table 1a and 1b; source frames these as the output of a clinician-patient discussion of likely net benefit (section 2)"
+        }
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.gap300",
+        "text": "The Agatston bands are printed as 100-299 and '> 300', which leaves exactly 300 unstated; the text's 300-1000 range puts a score of 300 in category 3.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Table 1a; 3.1"
+        }
+      },
+      {
+        "id": "pit.visual",
+        "text": "Visual estimation may be used on non-gated non-contrast CT but should not be applied to gated CAC scans.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "3.2 Visual estimation"
+        }
+      },
+      {
+        "id": "pit.n0",
+        "text": "The vessel modifier N should not be used with category 0.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "4.2 Number of involved vessels"
+        }
+      },
+      {
+        "id": "pit.other",
+        "text": "Aortic, aortic valve, mitral annular and pericardial calcification are reported as none, mild, moderate or severe but are not part of CAC-DRS scoring.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "6. Other cardiac and non-cardiac findings"
+        }
+      },
+      {
+        "id": "pit.scope",
+        "text": "The source frames CAC as ASCVD risk assessment and its management lines as preventive therapy, but states the system applies to all dedicated CAC scans and all non-gated non-contrast chest CT irrespective of indication. It gives no exclusion for known coronary disease or prior infarction, so the pack asks no eligibility question.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Abstract; 1. Introduction; 2. Clinical value of coronary artery calcium"
+        }
+      },
+      {
+        "id": "pit.cadrads",
+        "text": "Library addition, not from the source: contrast-enhanced coronary CT angiography is reported with CAD-RADS, not this system.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "1. Introduction (names CAD-RADS as a sibling system; the CAD-RADS claim itself is not in the source)"
+        }
+      },
+      {
+        "id": "pit.uk",
+        "text": "Library note, not from the source: UK practice for routine non-gated chest CT is covered by a separate UK consensus (planned pack).",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "1. Introduction (scope: all non-gated non-contrast chest CT); the UK statement is not in the source"
+        }
+      }
+    ]
+  }
+}

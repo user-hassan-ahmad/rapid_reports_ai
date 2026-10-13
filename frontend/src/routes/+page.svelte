@@ -47,6 +47,7 @@ import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 		hybrid_stack?: boolean; // the hybrid dictation stack is on (RR_HYBRID_STACK, with the dictation package)
 		hybrid_stack_shadow_rate?: number; // share of sessions that build the old Structured text in shadow
 		protocol_library?: boolean; // quick reports pick a curated protocol (RR_PROTOCOL_LIBRARY, with the hybrid stack)
+		stack_copilot?: boolean; // the server allows the guideline Copilot (RR_STACK_COPILOT, with the stack)
 	};
 	type HistoryModalInput = {
 		variables?: Record<string, string>;
@@ -360,7 +361,8 @@ let templatedModel = 'claude'; // Track model for template editor
 						dictation_v2: data.dictation_v2 === true,
 						hybrid_stack: data.hybrid_stack === true,
 						protocol_library: data.protocol_library === true,
-						hybrid_stack_shadow_rate: typeof data.hybrid_stack_shadow_rate === 'number' ? data.hybrid_stack_shadow_rate : 0.25
+						hybrid_stack_shadow_rate: typeof data.hybrid_stack_shadow_rate === 'number' ? data.hybrid_stack_shadow_rate : 0.25,
+						stack_copilot: data.stack_copilot === true
 					};
 				}
 			} else {

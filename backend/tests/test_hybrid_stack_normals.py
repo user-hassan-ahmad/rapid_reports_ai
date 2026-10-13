@@ -2,6 +2,7 @@ import pytest
 
 from rapid_reports_ai.hybrid_stack import jev_stack as J
 from rapid_reports_ai.hybrid_stack import normals as N
+from rapid_reports_ai.template_context_rules import condition_state
 
 NORMALS = {"Liver": ["The liver is normal."], "Kidneys": ["The kidneys are normal."],
            "Pelvic organs": ["The uterus is normal.", "The ovaries are normal.", "No adnexal mass."]}
@@ -341,7 +342,9 @@ async def test_an_empty_dictation_applies_the_sessions_suppressions(monkeypatch)
     assert out.assumed == {"Brain": ["The ventricles are normal in size."]}
     assert out.dropped["Brain"] == [{"sentence": PRIOR, "reason": "rule"}]
     assert out.rules == {NO_PRIOR: 0.9} and out.error is None
-    assert calls == [{"state": "CLINICAL HISTORY:\nFirst scan.", "conditions": [NO_PRIOR]}]
+    # seam 21: the session decision is condition_state's on the history, nothing dictated
+    assert calls == [{"state": condition_state("", "First scan.", ""), "conditions": [NO_PRIOR]}]
+    assert calls[0]["state"] == "CLINICAL HISTORY:\nFirst scan.\nDICTATED FINDINGS:\n"
     # the cached decision: no call at all
     calls.clear()
     out = await N.assumed("", BRAIN_R, [], [], suppressions=[(NO_PRIOR, PRIOR)], clinical_history="First scan.",
@@ -377,9 +380,28 @@ async def test_confirm_re_asks_every_condition_with_the_dictation(monkeypatch):
                           confirm=True)
     assert calls == [{"state": f"CLINICAL HISTORY:\nHeadache.\nDICTATED FINDINGS:\n{d}",
                       "conditions": [NO_PRIOR, NAMES_PRIOR]}]
+    assert calls[0]["state"] == condition_state("", "Headache.", d)
     assert out.assumed == {"Brain": [PRIOR]}
     assert out.dropped["Brain"] == [{"sentence": "The ventricles are normal in size.", "reason": "rule"}]
     assert out.rules == rules     # the session's decision is unchanged
+
+
+async def test_every_rule_decision_is_condition_states_on_the_scan_type(monkeypatch):
+    # Seam 21 (Hassan 2026-10-13): condition_state is the one decider; the session cache (history, nothing dictated)
+    # and the Confirm re-decision (history + dictation, the state template Generate asks on) both go through it
+    calls = []
+    monkeypatch.setattr(N, "ask_rows", _checks({}))
+    monkeypatch.setattr(N, "ask_conditions", _conds({NO_PRIOR: 0.1}, calls))
+    sup = [(NO_PRIOR, PRIOR)]
+    d = "Stable meningioma."
+    first = await N.assumed(d, BRAIN_R, ["Brain"], [], suppressions=sup, clinical_history="Headache.",
+                            scan_type="MRI head")
+    assert [c["state"] for c in calls] == [condition_state("MRI head", "Headache.", "")]
+    assert calls[0]["state"].startswith("SCAN TYPE:\nMRI head\nCLINICAL HISTORY:\nHeadache.\n")
+    calls.clear()
+    await N.assumed(d, BRAIN_R, ["Brain"], [], suppressions=sup, clinical_history="Headache.", rules=first.rules,
+                    confirm=True, scan_type="MRI head")
+    assert [c["state"] for c in calls] == [condition_state("MRI head", "Headache.", d)]
 
 
 ASCITES = "ascites is present"

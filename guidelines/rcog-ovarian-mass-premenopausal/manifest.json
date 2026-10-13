@@ -1,0 +1,28 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "Management of Suspected Ovarian Masses in Premenopausal Women (RCOG/BSGE Joint Guideline, Green-top Guideline No. 62, November 2011)",
+      "issuer": "Royal College of Obstetricians and Gynaecologists",
+      "edition": "2011 (first edition)",
+      "url": "https://www.rcog.org.uk/media/yhujmdvr/gtg_62-1.pdf",
+      "sha256": "76bdf691407d27c069b02c7316ef0866d0637ac773bf6fd55e907391d7c9e386",
+      "file": "sources/76bdf691407d27c069b02c7316ef0866d0637ac773bf6fd55e907391d7c9e386.pdf",
+      "text_file": "sources/76bdf691407d27c069b02c7316ef0866d0637ac773bf6fd55e907391d7c9e386.txt",
+      "retrieved": "2026-10-12"
+    },
+    {
+      "id": "S2",
+      "role": "primary",
+      "title": "Simple ultrasound-based rules for the diagnosis of ovarian cancer (Timmerman D, et al. Ultrasound Obstet Gynecol 2008;31:681-690), Table 9: the IOTA simple rules adopted by RCOG GTG 62 section 5.2 (cited there as reference 26); Firecrawl text capture of the publisher full text",
+      "issuer": "International Ovarian Tumor Analysis (IOTA) Group, rules adopted by RCOG",
+      "edition": "2008",
+      "url": "https://doi.org/10.1002/uog.5365",
+      "sha256": "38dee6eb531193004fd45e03bfb859ea342dc5c8d254341d0e60f91b2fac5de2",
+      "file": "sources/38dee6eb531193004fd45e03bfb859ea342dc5c8d254341d0e60f91b2fac5de2.md",
+      "text_file": "sources/38dee6eb531193004fd45e03bfb859ea342dc5c8d254341d0e60f91b2fac5de2.md",
+      "retrieved": "2026-10-12"
+    }
+  ]
+}

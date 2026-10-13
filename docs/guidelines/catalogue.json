@@ -1,0 +1,2558 @@
+{
+ "systems": [
+  {
+   "id": "bts-pulmonary-nodules",
+   "issuer": "British Thoracic Society",
+   "system": "Guideline for the investigation and management of pulmonary nodules",
+   "edition": "2015 (Callister et al., Thorax 70 Suppl 2); BTS page lists it as the current guideline",
+   "year": 2015,
+   "url": "https://www.brit-thoracic.org.uk/clinical-resources/guidelines/pulmonary-nodules/",
+   "uk_body": true,
+   "topic": "Incidental and screen-detected pulmonary nodules: size, volume, growth, Brock risk, follow-up CT intervals",
+   "finding_types": [
+    "solid nodule",
+    "subsolid nodule",
+    "ground-glass nodule",
+    "nodule growth"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Open access (Thorax); BTS site hosts full text; reuse terms not stated",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Pulmonary nodules in roughly 1 in 3 chest CTs in published series (Gould, Chest 2007; MacMahon, Radiology 2017)",
+   "verified": true
+  },
+  {
+   "id": "bts-pleural-disease",
+   "issuer": "British Thoracic Society",
+   "system": "BTS Pleural Disease Guideline",
+   "edition": "July 2023 (Roberts et al., Thorax 78 Suppl 3)",
+   "year": 2023,
+   "url": "https://www.brit-thoracic.org.uk/clinical-resources/guidelines/pleural-disease/",
+   "uk_body": true,
+   "topic": "Pleural effusion, pleural infection, pneumothorax, malignant effusion, image-guided pleural procedures",
+   "finding_types": [
+    "pleural effusion",
+    "pneumothorax",
+    "empyema",
+    "pleural thickening"
+   ],
+   "modalities": [
+    "CXR",
+    "CT",
+    "US"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Open access (Thorax); reuse terms not stated",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Pleural effusion and pneumothorax are routine CXR/CT findings; explicit reasoned basis, no single incidence paper",
+   "verified": true
+  },
+  {
+   "id": "bts-pneumothorax-size",
+   "issuer": "British Thoracic Society",
+   "system": "BTS pneumothorax size and management thresholds (within BTS Pleural Disease Guideline)",
+   "edition": "July 2023 (within BTS Guideline for Pleural Disease)",
+   "year": 2023,
+   "url": "https://www.brit-thoracic.org.uk/clinical-resources/guidelines/pleural-disease/",
+   "uk_body": true,
+   "topic": "Primary and secondary spontaneous pneumothorax, size (2 cm rim) and intervention thresholds",
+   "finding_types": [
+    "pneumothorax"
+   ],
+   "modalities": [
+    "CXR",
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Same document as bts-pleural-disease (pneumothorax section); reuse terms not stated",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: Primary spontaneous pneumothorax incidence about 7-18 per 100,000 per year in men (Gupta, Chest 2000), plus iatrogenic and traumatic",
+   "verified": true
+  },
+  {
+   "id": "bts-cap",
+   "issuer": "British Thoracic Society",
+   "system": "BTS Guidelines for the management of community-acquired pneumonia in adults",
+   "edition": "2009 (Lim et al., Thorax 64 Suppl 3)",
+   "year": 2009,
+   "url": "https://www.brit-thoracic.org.uk/quality-improvement/guidelines/pneumonia-adults/",
+   "uk_body": true,
+   "topic": "Pneumonia consolidation and follow-up chest radiograph advice",
+   "finding_types": [
+    "consolidation",
+    "parapneumonic effusion"
+   ],
+   "modalities": [
+    "CXR"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "Reuse terms not stated on the page checked",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Pneumonia admissions are high-volume UK inpatient presentations (NHS Digital hospital episode data); reasoned basis",
+   "verified": true
+  },
+  {
+   "id": "bts-pe-outpatient",
+   "issuer": "British Thoracic Society",
+   "system": "BTS Guideline for the initial outpatient management of pulmonary embolism",
+   "edition": "2018 (Howard et al., BMJ Open Respir Res 5:e000281; also Thorax 73 Suppl)",
+   "year": 2018,
+   "url": "https://doi.org/10.1136/bmjresp-2018-000281",
+   "uk_body": true,
+   "topic": "PE severity stratification (RV strain on CTPA) for outpatient suitability",
+   "finding_types": [
+    "pulmonary embolism",
+    "RV strain"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "Open-access journal article; reuse per publisher licence (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: CTPA is a high-volume examination; PE positivity about 10-15 percent (Wiener, Arch Intern Med 2011)",
+   "verified": true
+  },
+  {
+   "id": "rcr-irefer",
+   "issuer": "Royal College of Radiologists",
+   "system": "iRefer: making the best use of clinical radiology",
+   "edition": "8th edition, 2017 (not confirmed on the live site)",
+   "year": 2017,
+   "url": "https://www.irefer.org.uk/",
+   "uk_body": true,
+   "topic": "Referral guidelines: appropriate imaging modality by clinical scenario, radiation dose categories",
+   "finding_types": [
+    "referral appropriateness"
+   ],
+   "modalities": [
+    "CXR",
+    "CT",
+    "MRI",
+    "US",
+    "NM",
+    "plain film"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "Registered/subscription access; reuse terms not stated",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Underpins IR(ME)R justification for all imaging referrals; explicit reasoned basis",
+   "verified": false
+  },
+  {
+   "id": "rcr-standards-reporting-3rd",
+   "issuer": "Royal College of Radiologists",
+   "system": "Standards for interpretation and reporting of imaging investigations, third edition",
+   "edition": "Third edition, 6 Oct 2025 (replaces second edition, 2018)",
+   "year": 2025,
+   "url": "https://www.rcr.ac.uk/our-services/all-our-publications/clinical-radiology-publications/standards-for-interpretation-and-reporting-of-imaging-investigations-third-edition/",
+   "uk_body": true,
+   "topic": "Report structure, communication of urgent and unexpected findings, recommendations",
+   "finding_types": [
+    "report structure",
+    "urgent finding communication"
+   ],
+   "modalities": [
+    "all"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "RCR publication; free to download; reuse terms not stated; derive logic only",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Applies to every report; explicit reasoned basis",
+   "verified": true
+  },
+  {
+   "id": "rcr-cross-sectional-cancer",
+   "issuer": "Royal College of Radiologists",
+   "system": "Recommendations for cross-sectional imaging in cancer management",
+   "edition": "3rd edition (RCR page; replaces 2nd edition)",
+   "year": 2022,
+   "url": "https://www.rcr.ac.uk/our-services/all-our-publications/clinical-radiology-publications/recommendations-for-cross-sectional-imaging-in-cancer-management-third-edition/",
+   "uk_body": true,
+   "topic": "Staging and follow-up imaging protocols by tumour site",
+   "finding_types": [
+    "tumour staging",
+    "restaging"
+   ],
+   "modalities": [
+    "CT",
+    "MRI",
+    "PET-CT"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "Sections free to download from RCR; reuse terms not stated",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Cancer imaging is a large share of CT/MRI workload (NHS Diagnostic Imaging Dataset); reasoned basis",
+   "verified": true
+  },
+  {
+   "id": "rcr-contrast-guidance",
+   "issuer": "Royal College of Radiologists",
+   "system": "Guidance on gadolinium-based contrast agent administration to adult patients (replaces Standards for intravascular contrast administration, 3rd ed)",
+   "edition": "Replacement guidance page seen live; its publication date not confirmed. Archived predecessor: 3rd edition 2015",
+   "year": 2015,
+   "url": "https://www.rcr.ac.uk/our-services/all-our-publications/clinical-radiology-publications/guidance-on-gadolinium-based-contrast-agent-administration-to-adult-patients/",
+   "uk_body": true,
+   "topic": "eGFR thresholds, contrast reaction management, AKI risk",
+   "finding_types": [
+    "contrast risk",
+    "AKI risk"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "RCR publication; free to download; reuse terms not stated. Date of replacement iodinated-contrast guidance not located",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Contrast administered in a large share of CTs; explicit reasoned basis",
+   "verified": false
+  },
+  {
+   "id": "rcr-ct-colonography",
+   "issuer": "Royal College of Radiologists",
+   "system": "Standards of practice for computed tomography colonography (CTC)",
+   "edition": "2021 (not confirmed)",
+   "year": 2021,
+   "url": "",
+   "uk_body": true,
+   "topic": "CTC reporting standards, polyp size reporting, extracolonic findings",
+   "finding_types": [
+    "colonic polyp",
+    "colorectal cancer",
+    "extracolonic finding"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "URL not yet located (BSGAR page is an index, not the document). RCR publication; reuse terms not stated",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: CTC volume in UK reached tens of thousands per year after 2020 (NHS Diagnostic Imaging Dataset); reasoned basis",
+   "verified": false
+  },
+  {
+   "id": "rcr-nai-skeletal-survey",
+   "issuer": "Royal College of Radiologists",
+   "system": "The radiological investigation of suspected physical abuse in children",
+   "edition": "2017, revised edition December 2018",
+   "year": 2018,
+   "url": "https://www.rcr.ac.uk/our-services/all-our-publications/clinical-radiology-publications/the-radiological-investigation-of-suspected-physical-abuse-in-children/",
+   "uk_body": true,
+   "topic": "Skeletal survey, fracture patterns, repeat survey, head imaging",
+   "finding_types": [
+    "non-accidental fracture",
+    "metaphyseal lesion",
+    "rib fractures"
+   ],
+   "modalities": [
+    "plain film",
+    "MRI",
+    "CT"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "Co-published with the Society and College of Radiographers; RCR publication; reuse terms not stated",
+   "frequency": "low",
+   "frequency_basis": "Estimate: Specialist paediatric safeguarding work; explicit reasoned basis",
+   "verified": true
+  },
+  {
+   "id": "nice-ng232-head-injury",
+   "issuer": "NICE",
+   "system": "NG232 Head injury: assessment and early management (CT criteria)",
+   "edition": "Published 18 May 2023",
+   "year": 2023,
+   "url": "https://www.nice.org.uk/guidance/ng232",
+   "uk_body": true,
+   "topic": "CT head criteria for adults and children after head injury",
+   "finding_types": [
+    "intracranial haemorrhage",
+    "skull fracture"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "NICE content under NICE UK Open Content Licence (non-commercial reuse; commercial use needs permission)",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Head injury about 1 million UK A&E attendances per year (NICE NG232 evidence); CT head is a top-volume examination",
+   "verified": true
+  },
+  {
+   "id": "nice-ng12",
+   "issuer": "NICE",
+   "system": "NG12 Suspected cancer: recognition and referral",
+   "edition": "Published 23 Jun 2015; last updated 15 Apr 2026",
+   "year": 2026,
+   "url": "https://www.nice.org.uk/guidance/ng12",
+   "uk_body": true,
+   "topic": "Imaging thresholds for suspected cancer pathways, e.g. urgent CXR, direct-access imaging",
+   "finding_types": [
+    "suspected malignancy"
+   ],
+   "modalities": [
+    "CXR",
+    "CT",
+    "US",
+    "MRI"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "NICE content under NICE UK Open Content Licence (non-commercial reuse; commercial use needs permission)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Drives 2-week-wait imaging referrals; explicit reasoned basis",
+   "verified": true
+  },
+  {
+   "id": "nice-ng122",
+   "issuer": "NICE",
+   "system": "NG122 Lung cancer: diagnosis and management",
+   "edition": "Published 28 Mar 2019; last updated 8 Mar 2024",
+   "year": 2024,
+   "url": "https://www.nice.org.uk/guidance/ng122",
+   "uk_body": true,
+   "topic": "CT staging, PET-CT, nodule follow-up pathways for suspected lung cancer",
+   "finding_types": [
+    "lung mass",
+    "mediastinal nodes"
+   ],
+   "modalities": [
+    "CT",
+    "PET-CT"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "NICE content under NICE UK Open Content Licence (non-commercial reuse; commercial use needs permission)",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Lung cancer is among the most common UK cancers (about 49,000 per year, CRUK)",
+   "verified": true
+  },
+  {
+   "id": "nice-ng59",
+   "issuer": "NICE",
+   "system": "NG59 Low back pain and sciatica in over 16s",
+   "edition": "Published 30 Nov 2016; last updated 29 Jul 2026",
+   "year": 2026,
+   "url": "https://www.nice.org.uk/guidance/ng59",
+   "uk_body": true,
+   "topic": "MRI use for back pain and sciatica; red flags",
+   "finding_types": [
+    "disc herniation",
+    "spinal stenosis"
+   ],
+   "modalities": [
+    "MRI",
+    "CT"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "NICE content under NICE UK Open Content Licence (non-commercial reuse; commercial use needs permission)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Back pain is a leading cause of MRI referral; GBD prevalence data",
+   "verified": true
+  },
+  {
+   "id": "nice-ng128",
+   "issuer": "NICE",
+   "system": "NG128 Stroke and transient ischaemic attack in over 16s",
+   "edition": "Published 1 May 2019; last updated 13 Apr 2022",
+   "year": 2022,
+   "url": "https://www.nice.org.uk/guidance/ng128",
+   "uk_body": true,
+   "topic": "CT and MR imaging timing, thrombolysis and thrombectomy imaging selection",
+   "finding_types": [
+    "acute ischaemic stroke",
+    "intracranial haemorrhage",
+    "large vessel occlusion"
+   ],
+   "modalities": [
+    "CT",
+    "CTA",
+    "MRI"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "NICE content under NICE UK Open Content Licence (non-commercial reuse; commercial use needs permission)",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: About 100,000 UK strokes per year (Stroke Association); acute CT head and CTA are high volume",
+   "verified": true
+  },
+  {
+   "id": "nice-ng126",
+   "issuer": "NICE",
+   "system": "NG126 Ectopic pregnancy and miscarriage",
+   "edition": "Published 17 Apr 2019; last updated 17 Jun 2026",
+   "year": 2026,
+   "url": "https://www.nice.org.uk/guidance/ng126",
+   "uk_body": true,
+   "topic": "Ultrasound criteria for pregnancy of unknown location, miscarriage and ectopic pregnancy",
+   "finding_types": [
+    "ectopic pregnancy",
+    "miscarriage"
+   ],
+   "modalities": [
+    "US"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "NICE content under NICE UK Open Content Licence (non-commercial reuse; commercial use needs permission)",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: About 1 in 5 pregnancies end in miscarriage (NICE); early pregnancy US is high volume",
+   "verified": true
+  },
+  {
+   "id": "nice-ng131",
+   "issuer": "NICE",
+   "system": "NG131 Prostate cancer: diagnosis and management",
+   "edition": "Published 9 May 2019; last updated 15 Dec 2021",
+   "year": 2021,
+   "url": "https://www.nice.org.uk/guidance/ng131",
+   "uk_body": true,
+   "topic": "Multiparametric MRI before biopsy, Likert/PI-RADS scoring",
+   "finding_types": [
+    "prostate lesion"
+   ],
+   "modalities": [
+    "MRI"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "NICE content under NICE UK Open Content Licence (non-commercial reuse; commercial use needs permission)",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Prostate cancer is the most common UK male cancer (about 55,000 per year, CRUK)",
+   "verified": true
+  },
+  {
+   "id": "nice-cg188",
+   "issuer": "NICE",
+   "system": "CG188 Gallstone disease",
+   "edition": "Published 29 Oct 2014",
+   "year": 2014,
+   "url": "https://www.nice.org.uk/guidance/cg188",
+   "uk_body": true,
+   "topic": "Ultrasound and MRCP for gallstones and common bile duct stones",
+   "finding_types": [
+    "gallstone",
+    "CBD stone",
+    "cholecystitis"
+   ],
+   "modalities": [
+    "US",
+    "MRCP"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "NICE content under NICE UK Open Content Licence (non-commercial reuse; commercial use needs permission)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Gallstones in about 10-15 percent of UK adults; abdominal US is high volume",
+   "verified": true
+  },
+  {
+   "id": "nice-ng158",
+   "issuer": "NICE",
+   "system": "NG158 Venous thromboembolic diseases",
+   "edition": "Published 26 Mar 2020; last updated 2 Aug 2023",
+   "year": 2023,
+   "url": "https://www.nice.org.uk/guidance/ng158",
+   "uk_body": true,
+   "topic": "Compression ultrasound and CTPA in suspected DVT and PE",
+   "finding_types": [
+    "DVT",
+    "pulmonary embolism"
+   ],
+   "modalities": [
+    "US",
+    "CT"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "NICE content under NICE UK Open Content Licence (non-commercial reuse; commercial use needs permission)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: VTE about 1-2 per 1,000 per year; DVT and CTPA are high-volume",
+   "verified": true
+  },
+  {
+   "id": "nice-cg95",
+   "issuer": "NICE",
+   "system": "CG95 Chest pain of recent onset",
+   "edition": "Published 24 Mar 2010; last updated 30 Nov 2016",
+   "year": 2016,
+   "url": "https://www.nice.org.uk/guidance/cg95",
+   "uk_body": true,
+   "topic": "CT coronary angiography and calcium score for suspected angina",
+   "finding_types": [
+    "coronary stenosis",
+    "coronary calcification"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "NICE content under NICE UK Open Content Licence (non-commercial reuse; commercial use needs permission)",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: CTCA volume rising in the UK following 2016 NICE update; reasoned basis",
+   "verified": true
+  },
+  {
+   "id": "nice-ng230-thyroid",
+   "issuer": "NICE",
+   "system": "NG230 Thyroid cancer: assessment and management",
+   "edition": "Published 19 Dec 2022",
+   "year": 2022,
+   "url": "https://www.nice.org.uk/guidance/ng230",
+   "uk_body": true,
+   "topic": "Thyroid cancer assessment (NG230 thyroid cancer, Dec 2022); references BTA U1-U5",
+   "finding_types": [
+    "thyroid nodule"
+   ],
+   "modalities": [
+    "US"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "NICE content under NICE UK Open Content Licence (non-commercial reuse; commercial use needs permission)",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: Thyroid nodules in about 20-70 percent of adults on US (Guth, Eur J Clin Invest 2009)",
+   "verified": true
+  },
+  {
+   "id": "bta-thyroid-us",
+   "issuer": "British Thyroid Association",
+   "system": "BTA guidelines for the management of thyroid cancer: US classification U1-U5",
+   "edition": "2014 (Perros et al., Clin Endocrinol 81 Suppl 1)",
+   "year": 2014,
+   "url": "https://pubmed.ncbi.nlm.nih.gov/24989897/",
+   "uk_body": true,
+   "topic": "Thyroid nodule ultrasound U1-U5 scoring and Thy cytology",
+   "finding_types": [
+    "thyroid nodule"
+   ],
+   "modalities": [
+    "US"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Open access (Clin Endocrinol); reuse terms not stated",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Thyroid nodules in about 20-70 percent of adults on US (Guth 2009); UK head and neck US volume",
+   "verified": true
+  },
+  {
+   "id": "ukhsa-aaa-programme-guidance",
+   "issuer": "UK Health Security Agency",
+   "system": "AAA screening: programme guidance (NHS AAA Screening Programme)",
+   "edition": "Published 23 May 2025",
+   "year": 2025,
+   "url": "https://www.gov.uk/government/publications/aaa-screening-standard-operating-procedures/aaa-screening-programme-guidance",
+   "uk_body": true,
+   "topic": "Aortic diameter thresholds (small 3.0-4.4, medium 4.5-5.4, large 5.5 cm+), referral, surveillance",
+   "finding_types": [
+    "abdominal aortic aneurysm"
+   ],
+   "modalities": [
+    "US"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "UK government publication; Open Government Licence v3.0 unless otherwise stated on the page",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: About 270,000 men screened each year in England (NAAASP annual report)",
+   "verified": true
+  },
+  {
+   "id": "ukhsa-breast-image-reading",
+   "issuer": "UK Health Security Agency",
+   "system": "Breast screening: guidance for image reading (NHS Breast Screening Programme)",
+   "edition": "Published 16 Feb 2023; modified 27 Sep 2024",
+   "year": 2024,
+   "url": "https://www.gov.uk/government/publications/breast-screening-guidance-for-image-reading/breast-screening-guidance-for-image-reading",
+   "uk_body": true,
+   "topic": "Screen reading, 1-5 grading (normal to malignant), assessment, QA standards",
+   "finding_types": [
+    "mass",
+    "calcification",
+    "architectural distortion"
+   ],
+   "modalities": [
+    "mammography",
+    "US",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "UK government publication; Open Government Licence v3.0 unless otherwise stated on the page",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: About 1.7 million women screened per year in England (NHS Digital)",
+   "verified": true
+  },
+  {
+   "id": "bsg-post-polypectomy-surveillance-2020",
+   "issuer": "British Society of Gastroenterology",
+   "system": "Post-polypectomy and post-colorectal cancer resection surveillance guideline (BSG/ACPGBI/PHE)",
+   "edition": "2020 (Rutter et al., Gut 69:201)",
+   "year": 2020,
+   "url": "https://doi.org/10.1136/gutjnl-2019-319858",
+   "uk_body": true,
+   "topic": "Polyp number/size surveillance intervals used in bowel screening and CTC reporting",
+   "finding_types": [
+    "colonic polyp",
+    "colorectal cancer"
+   ],
+   "modalities": [
+    "CT",
+    "colonoscopy"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Open access (Gut); endorsed by ACPGBI and Public Health England; reuse terms not stated",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: About 5 million FIT kits returned per year (NHS Digital); CTC uptake moderate",
+   "verified": true
+  },
+  {
+   "id": "nhs-lung-screening",
+   "issuer": "NHS England",
+   "system": "Standard protocol for the Lung Cancer Screening Programme (nodule pathways A, B1-B4, C; Brock risk; volumetry)",
+   "edition": "Standard protocol: first version January 2019; this document has since been revised (revision date not shown in the extract read)",
+   "year": 2019,
+   "url": "https://www.england.nhs.uk/wp-content/uploads/2019/02/2502-B1646-standard-protocol-prepared-for-the-lung-cancer-screening-programme.pdf",
+   "uk_body": true,
+   "topic": "Screen-detected nodule volume thresholds (80, 300 mm3), 3-month/12-month/24-month CT",
+   "finding_types": [
+    "solid nodule",
+    "subsolid nodule",
+    "emphysema",
+    "coronary calcification"
+   ],
+   "modalities": [
+    "LDCT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "UK government/NHS publication; Open Government Licence v3.0 where stated on the page",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: National rollout to 100 percent coverage by 2029; hundreds of thousands of scans per year predicted (NHS England)",
+   "verified": true
+  },
+  {
+   "id": "nhs-lung-screening-incidental",
+   "issuer": "NHS England",
+   "system": "Incidental findings reporting in lung screening LDCT (emphysema, coronary calcium, etc.)",
+   "edition": "Within the standard protocol (section on incidental findings)",
+   "year": 2019,
+   "url": "https://www.england.nhs.uk/wp-content/uploads/2019/02/2502-B1646-standard-protocol-prepared-for-the-lung-cancer-screening-programme.pdf",
+   "uk_body": true,
+   "topic": "Which incidental findings to report on screening CT",
+   "finding_types": [
+    "emphysema",
+    "coronary calcification",
+    "incidental mass"
+   ],
+   "modalities": [
+    "LDCT"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "Same document as nhs-lung-screening; Open Government Licence v3.0 where stated on the page",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: Incidental findings in about 20-50 percent of LDCT screens (Priola, Lung Cancer 2017)",
+   "verified": true
+  },
+  {
+   "id": "rcog-gtg62-premenopausal-ovarian",
+   "issuer": "Royal College of Obstetricians and Gynaecologists",
+   "system": "Green-top Guideline No. 62: Management of suspected ovarian masses in premenopausal women (RMI context)",
+   "edition": "2011 (Green-top Guideline No. 62; page last reviewed Dec 2011)",
+   "year": 2011,
+   "url": "https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/ovarian-masses-in-premenopausal-women-management-of-suspected-green-top-guideline-no-62/",
+   "uk_body": true,
+   "topic": "Risk of malignancy index using US features, CA125, menopausal status",
+   "finding_types": [
+    "adnexal mass"
+   ],
+   "modalities": [
+    "US"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "RCOG; free to view; reuse terms not stated",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Adnexal masses in about 5-10 percent of women (RCOG guideline)",
+   "verified": true
+  },
+  {
+   "id": "rcog-gtg-postmenopausal",
+   "issuer": "Royal College of Obstetricians and Gynaecologists",
+   "system": "Green-top Guideline No. 34: Ovarian cysts in postmenopausal women",
+   "edition": "July 2016, minor update December 2025 (Green-top Guideline No. 34); PDF fetched",
+   "year": 2016,
+   "url": "https://www.rcog.org.uk/guidance/browse-all-guidance/green-top-guidelines/ovarian-cysts-in-postmenopausal-women-green-top-guideline-no-34/",
+   "uk_body": true,
+   "topic": "Simple cyst thresholds (5 cm), RMI, follow-up",
+   "finding_types": [
+    "ovarian cyst"
+   ],
+   "modalities": [
+    "US"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "RCOG; free to view; reuse terms not stated",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Simple ovarian cysts in 15-18 percent of postmenopausal women on US (RCOG GTG 34)",
+   "verified": true
+  },
+  {
+   "id": "nice-ng224-paed-uti",
+   "issuer": "NICE",
+   "system": "NICE NG224 Urinary tract infection in under 16s: imaging (US, DMSA)",
+   "edition": "Published 27 Jul 2022",
+   "year": 2022,
+   "url": "https://www.nice.org.uk/guidance/ng224",
+   "uk_body": true,
+   "topic": "Renal US and DMSA indications in children",
+   "finding_types": [
+    "hydronephrosis",
+    "renal scarring"
+   ],
+   "modalities": [
+    "US",
+    "NM"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "NICE content under NICE UK Open Content Licence (non-commercial reuse; commercial use needs permission)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: UTI about 3-7 percent of febrile infants; reasoned basis",
+   "verified": true
+  },
+  {
+   "id": "ukhsa-breast-assessment-guidance",
+   "issuer": "UK Health Security Agency",
+   "system": "Clinical guidance for breast cancer screening assessment (NHS Breast Screening Programme)",
+   "edition": "Published 22 Jan 2026",
+   "year": 2026,
+   "url": "https://www.gov.uk/government/publications/breast-screening-clinical-guidelines-for-screening-management/clinical-guidance-for-breast-cancer-screening-assessment",
+   "uk_body": true,
+   "topic": "Assessment of screen-detected abnormalities, recall and biopsy standards",
+   "finding_types": [
+    "mass",
+    "calcification",
+    "architectural distortion"
+   ],
+   "modalities": [
+    "mammography",
+    "US",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "UK government publication; Open Government Licence v3.0 unless otherwise stated on the page",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: About 1.7 million women screened per year in England (NHS Digital)",
+   "verified": true
+  },
+  {
+   "id": "bgcs-uterine-pmb-endometrial-thickness",
+   "issuer": "British Gynaecological Cancer Society",
+   "system": "BGCS uterine cancer guidelines: recommendations for practice (postmenopausal bleeding, endometrial thickness cut-off)",
+   "edition": "2022 (Morrison et al., Eur J Obstet Gynecol Reprod Biol 270:50-89; guideline dated 2021)",
+   "year": 2022,
+   "url": "https://doi.org/10.1016/j.ejogrb.2021.11.423",
+   "uk_body": true,
+   "topic": "Postmenopausal bleeding: transvaginal ultrasound endometrial thickness threshold (4 mm) for further investigation. Checked: NICE NG12 gives referral criteria but no thickness threshold; RCOG GTG 67 covers hyperplasia management, not a PMB thickness cut-off. No RCOG or NICE source states the threshold; BGCS is the UK source (4 mm figure seen via GIRFT/BMS summaries, BGCS text itself not read in this task)",
+   "finding_types": [
+    "endometrial thickness",
+    "postmenopausal bleeding",
+    "endometrial thickening"
+   ],
+   "modalities": [
+    "Ultrasound"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article (EJOGRB); reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: postmenopausal pelvic ultrasound is a routine request; thickness is reported on most",
+   "verified": true
+  },
+  {
+   "id": "bms-unscheduled-bleeding-hrt",
+   "issuer": "British Menopause Society",
+   "system": "Management of unscheduled bleeding on hormone replacement therapy (endometrial thickness 4 mm continuous combined / 7 mm sequential HRT)",
+   "edition": "BMS guideline FAQ, September 2026 (as on thebms.org.uk); GIRFT summary guide June 2024 cites BGCS 2021",
+   "year": 2026,
+   "url": "https://thebms.org.uk/wp-content/uploads/2026/09/02-NEW-BMS-GUIDELINE-FAQs-Management-of-unscheduled-bleeding-HRT-SEPT2026-A.pdf",
+   "uk_body": true,
+   "topic": "Endometrial thickness thresholds for women on HRT with unscheduled bleeding or asymptomatic with risk factors",
+   "finding_types": [
+    "endometrial thickness",
+    "HRT bleeding"
+   ],
+   "modalities": [
+    "Ultrasound"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "Society PDF; reuse terms not stated",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: HRT users are a minority of postmenopausal scans",
+   "verified": false
+  },
+  {
+   "id": "fleischner-2017",
+   "issuer": "Fleischner Society",
+   "system": "Guidelines for management of incidentally detected pulmonary nodules in adults",
+   "edition": "2017 (MacMahon et al., Radiology 284:228-243)",
+   "year": 2017,
+   "url": "https://doi.org/10.1148/radiol.2017161659",
+   "uk_body": false,
+   "topic": "Solid, subsolid nodules by size and risk; follow-up CT intervals",
+   "finding_types": [
+    "solid nodule",
+    "subsolid nodule"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Pulmonary nodules in roughly 1 in 3 chest CTs (Gould, Chest 2007)",
+   "verified": true
+  },
+  {
+   "id": "fleischner-ila-2020",
+   "issuer": "Fleischner Society",
+   "system": "Interstitial lung abnormalities detected incidentally on CT: Fleischner Society position paper",
+   "edition": "2020 (Hatabu et al., Lancet Respir Med 8:726-737)",
+   "year": 2020,
+   "url": "https://doi.org/10.1016/s2213-2600(20)30168-5",
+   "uk_body": false,
+   "topic": "ILA classification (non-subpleural, subpleural non-fibrotic, subpleural fibrotic)",
+   "finding_types": [
+    "interstitial lung abnormality"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: ILA on 4-9 percent of CTs (Hatabu, Lancet Respir Med 2020)",
+   "verified": true
+  },
+  {
+   "id": "ats-ipf-2022",
+   "issuer": "American Thoracic Society",
+   "system": "Idiopathic pulmonary fibrosis (an update) and progressive pulmonary fibrosis in adults: ATS/ERS/JRS/ALAT guideline",
+   "edition": "2022 (Raghu et al., Am J Respir Crit Care Med 205:e18-e47)",
+   "year": 2022,
+   "url": "https://doi.org/10.1164/rccm.202202-0399ST",
+   "uk_body": false,
+   "topic": "HRCT pattern categories for fibrosis",
+   "finding_types": [
+    "UIP pattern"
+   ],
+   "modalities": [
+    "HRCT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Endorsed by ERS, JRS, ALAT; Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: IPF prevalence about 15-30 per 100,000; fibrotic ILD common in referral clinics",
+   "verified": true
+  },
+  {
+   "id": "fleischner-glossary-2008",
+   "issuer": "Fleischner Society",
+   "system": "Fleischner Society: glossary of terms for thoracic imaging",
+   "edition": "2008 (Hansell et al., Radiology 246:697-722)",
+   "year": 2008,
+   "url": "https://doi.org/10.1148/radiol.2462070712",
+   "uk_body": false,
+   "topic": "Standard terminology for chest CT findings",
+   "finding_types": [
+    "terminology"
+   ],
+   "modalities": [
+    "CT",
+    "CXR"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Standard chest CT report vocabulary; reasoned basis",
+   "verified": true
+  },
+  {
+   "id": "lung-rads-2022",
+   "issuer": "American College of Radiology",
+   "system": "Lung-RADS",
+   "edition": "v2022",
+   "year": 2022,
+   "url": "https://www.acr.org/Clinical-Resources/Clinical-Tools-and-Reference/Reporting-and-Data-Systems/Lung-RADS",
+   "uk_body": false,
+   "topic": "Screening CT nodule categories 1-4X, S modifier",
+   "finding_types": [
+    "solid nodule",
+    "subsolid nodule"
+   ],
+   "modalities": [
+    "LDCT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "ACR-copyrighted; page free to view; reproducing tables needs ACR permission; derive logic only",
+   "frequency": "high",
+   "frequency_basis": "Estimate: US screening volume; UK programmes use own protocol, so used as comparator",
+   "verified": true
+  },
+  {
+   "id": "ti-rads-2017",
+   "issuer": "American College of Radiology",
+   "system": "ACR TI-RADS",
+   "edition": "2017 white paper (Tessler et al., JACR 14:587-595)",
+   "year": 2017,
+   "url": "https://www.acr.org/Clinical-Resources/Clinical-Tools-and-Reference/Reporting-and-Data-Systems/TI-RADS",
+   "uk_body": false,
+   "topic": "Thyroid nodule features scoring TR1-TR5 with FNA thresholds",
+   "finding_types": [
+    "thyroid nodule"
+   ],
+   "modalities": [
+    "US"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "ACR-copyrighted; page free to view; reproducing tables needs ACR permission; derive logic only",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Thyroid nodules in 20-70 percent of adults on US (Guth 2009)",
+   "verified": true
+  },
+  {
+   "id": "li-rads-2018",
+   "issuer": "American College of Radiology",
+   "system": "LI-RADS CT/MRI",
+   "edition": "CT/MRI v2018 (ACR page also lists v2024 core releases)",
+   "year": 2018,
+   "url": "https://www.acr.org/Clinical-Resources/Clinical-Tools-and-Reference/Reporting-and-Data-Systems/LI-RADS",
+   "uk_body": false,
+   "topic": "HCC risk categories LR-1 to LR-5, LR-M, LR-TIV",
+   "finding_types": [
+    "HCC",
+    "cirrhotic nodule"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "ACR-copyrighted; page free to view; reproducing tables needs ACR permission; derive logic only",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: Cirrhosis surveillance population; UK HCC about 6,000 cases per year (CRUK)",
+   "verified": true
+  },
+  {
+   "id": "li-rads-us",
+   "issuer": "American College of Radiology",
+   "system": "LI-RADS Ultrasound Surveillance",
+   "edition": "US Surveillance v2024",
+   "year": 2024,
+   "url": "https://www.acr.org/Clinical-Resources/Clinical-Tools-and-Reference/Reporting-and-Data-Systems/LI-RADS",
+   "uk_body": false,
+   "topic": "US-1 to US-3 surveillance categories",
+   "finding_types": [
+    "liver nodule"
+   ],
+   "modalities": [
+    "US"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "ACR-copyrighted; page free to view; reproducing tables needs ACR permission; derive logic only. Same ACR page as li-rads-2018 (one page lists all LI-RADS components)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: HCC surveillance by 6-monthly US in cirrhosis; reasoned basis",
+   "verified": true
+  },
+  {
+   "id": "o-rads-us",
+   "issuer": "American College of Radiology",
+   "system": "O-RADS US risk stratification and management",
+   "edition": "US v2022",
+   "year": 2022,
+   "url": "https://www.acr.org/Clinical-Resources/Clinical-Tools-and-Reference/Reporting-and-Data-Systems/O-RADS",
+   "uk_body": false,
+   "topic": "Adnexal lesion categories 0-5 with management",
+   "finding_types": [
+    "adnexal mass"
+   ],
+   "modalities": [
+    "US"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "ACR-copyrighted; page free to view; reproducing tables needs ACR permission; derive logic only",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Adnexal masses common; pelvic US high volume",
+   "verified": true
+  },
+  {
+   "id": "o-rads-mri",
+   "issuer": "American College of Radiology",
+   "system": "O-RADS MRI risk score",
+   "edition": "MRI risk score (version year not confirmed on page)",
+   "year": 2020,
+   "url": "https://www.acr.org/Clinical-Resources/Clinical-Tools-and-Reference/Reporting-and-Data-Systems/O-RADS",
+   "uk_body": false,
+   "topic": "Adnexal MRI score 1-5 with DCE",
+   "finding_types": [
+    "adnexal mass"
+   ],
+   "modalities": [
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "ACR-copyrighted; page free to view; reproducing tables needs ACR permission; derive logic only. Same ACR page as o-rads-us",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: Problem-solving after indeterminate US; lower volume",
+   "verified": false
+  },
+  {
+   "id": "pi-rads-v2-1",
+   "issuer": "American College of Radiology",
+   "system": "PI-RADS",
+   "edition": "v2.1, 2019 (Turkbey et al., Eur Urol 76:340-351)",
+   "year": 2019,
+   "url": "https://www.acr.org/Clinical-Resources/Clinical-Tools-and-Reference/Reporting-and-Data-Systems/PI-RADS",
+   "uk_body": false,
+   "topic": "Prostate MRI lesion scoring 1-5, zonal anatomy, extraprostatic extension",
+   "finding_types": [
+    "prostate lesion"
+   ],
+   "modalities": [
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "ACR-copyrighted; page free to view; reproducing tables needs ACR permission; derive logic only; developed with ESUR and AdMeTech Foundation",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Pre-biopsy MRI for suspected prostate cancer (NICE NG131); about 55,000 UK cases/yr",
+   "verified": true
+  },
+  {
+   "id": "bi-rads-5th",
+   "issuer": "American College of Radiology",
+   "system": "BI-RADS Atlas",
+   "edition": "v2025 manual (extension of the 5th edition Atlas, 2013)",
+   "year": 2025,
+   "url": "https://www.acr.org/Clinical-Resources/Clinical-Tools-and-Reference/Reporting-and-Data-Systems/BI-RADS",
+   "uk_body": false,
+   "topic": "Mammography, US and MRI breast assessment categories 0-6",
+   "finding_types": [
+    "mass",
+    "calcification",
+    "architectural distortion"
+   ],
+   "modalities": [
+    "mammography",
+    "US",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "ACR-copyrighted; page free to view; reproducing tables needs ACR permission; derive logic only; Atlas is a paid product",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Symptomatic breast clinic and screening volume; UK uses R/U/M scales alongside",
+   "verified": true
+  },
+  {
+   "id": "c-rads",
+   "issuer": "American College of Radiology",
+   "system": "C-RADS CT colonography reporting",
+   "edition": "CT colonography C-RADS (v2023 summary of changes listed on ACR page; original 2005)",
+   "year": 2023,
+   "url": "https://www.acr.org/Clinical-Resources/Clinical-Tools-and-Reference/Reporting-and-Data-Systems/C-RADS",
+   "uk_body": false,
+   "topic": "Polyp category C0-C4, extracolonic E0-E4",
+   "finding_types": [
+    "colonic polyp",
+    "extracolonic finding"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "ACR-copyrighted; page free to view; reproducing tables needs ACR permission; derive logic only",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: CTC volume in UK; reasoned basis",
+   "verified": true
+  },
+  {
+   "id": "ni-rads",
+   "issuer": "American College of Radiology",
+   "system": "NI-RADS (head and neck cancer surveillance)",
+   "edition": "2018 white paper (Aiken et al., JACR)",
+   "year": 2018,
+   "url": "https://www.acr.org/Clinical-Resources/Clinical-Tools-and-Reference/Reporting-and-Data-Systems/NI-RADS",
+   "uk_body": false,
+   "topic": "Post-treatment neck imaging categories 1-4",
+   "finding_types": [
+    "recurrent head and neck cancer"
+   ],
+   "modalities": [
+    "CT",
+    "PET-CT",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "ACR-copyrighted; page free to view; reproducing tables needs ACR permission; derive logic only",
+   "frequency": "low",
+   "frequency_basis": "Estimate: Head and neck surveillance is a small share of volume",
+   "verified": true
+  },
+  {
+   "id": "bone-rads",
+   "issuer": "American College of Radiology",
+   "system": "Bone-RADS",
+   "edition": "ACR page lists v2023 assessment categories",
+   "year": 2023,
+   "url": "https://www.acr.org/Clinical-Resources/Clinical-Tools-and-Reference/Reporting-and-Data-Systems/Bone-RADS",
+   "uk_body": false,
+   "topic": "Incidental bone lesion management on CT (pending final version)",
+   "finding_types": [
+    "incidental bone lesion"
+   ],
+   "modalities": [
+    "CT",
+    "plain film"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "ACR-copyrighted; page free to view; reproducing tables needs ACR permission; derive logic only",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: Incidental bone lesions are common on CT and plain film; reasoned basis",
+   "verified": true
+  },
+  {
+   "id": "cad-rads-2",
+   "issuer": "Society of Cardiovascular Computed Tomography",
+   "system": "CAD-RADS 2.0",
+   "edition": "2.0, 2022 (Cury et al., JACR 19:1185)",
+   "year": 2022,
+   "url": "",
+   "uk_body": false,
+   "topic": "Coronary stenosis categories 0-5, plaque burden, modifiers",
+   "finding_types": [
+    "coronary stenosis"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Endorsed by ACR, RSNA, NASCI. URL not yet located",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: CTCA volume increasing in UK after NICE CG95 update",
+   "verified": false
+  },
+  {
+   "id": "cac-drs-2018",
+   "issuer": "Society of Cardiovascular Computed Tomography",
+   "system": "CAC-DRS: Coronary Artery Calcium Data and Reporting System",
+   "edition": "2018 expert consensus (Hecht et al., J Cardiovasc Comput Tomogr 12:185-191)",
+   "year": 2018,
+   "url": "https://doi.org/10.1016/j.jcct.2018.03.008",
+   "uk_body": false,
+   "topic": "Coronary calcium on routine chest CT",
+   "finding_types": [
+    "coronary calcification"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Coronary calcium is visible on many chest CTs; reasoned basis",
+   "verified": true
+  },
+  {
+   "id": "acr-adrenal-2017",
+   "issuer": "American College of Radiology",
+   "system": "White paper: Management of incidental adrenal masses (Mayo-Smith)",
+   "edition": "2017 (Mayo-Smith et al., JACR 14:1038-1044)",
+   "year": 2017,
+   "url": "https://doi.org/10.1016/j.jacr.2017.05.001",
+   "uk_body": false,
+   "topic": "Adrenal mass size, HU, washout, follow-up",
+   "finding_types": [
+    "adrenal nodule"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked); ACR Incidental Findings Committee",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Adrenal incidentalomas in about 3-7 percent of adults on CT (Mansmann, Endocr Rev 2004)",
+   "verified": true
+  },
+  {
+   "id": "acr-renal-2018",
+   "issuer": "American College of Radiology",
+   "system": "White paper: Management of incidental renal masses (Herts)",
+   "edition": "2018 (Herts et al., JACR 15:264-273)",
+   "year": 2018,
+   "url": "https://doi.org/10.1016/j.jacr.2017.04.028",
+   "uk_body": false,
+   "topic": "Incidental renal mass management",
+   "finding_types": [
+    "renal mass",
+    "renal cyst"
+   ],
+   "modalities": [
+    "CT",
+    "MRI",
+    "US"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked); ACR Incidental Findings Committee",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Renal cysts and masses are common incidental findings; renal cysts about 20-30 percent over 50",
+   "verified": true
+  },
+  {
+   "id": "acr-pancreas-cyst-2017",
+   "issuer": "American College of Radiology",
+   "system": "White paper: Managing incidental pancreatic cysts (Megibow)",
+   "edition": "2017 (Megibow et al., JACR 14:911-923)",
+   "year": 2017,
+   "url": "https://doi.org/10.1016/j.jacr.2017.03.010",
+   "uk_body": false,
+   "topic": "Pancreatic cyst size, worrisome and high-risk features, follow-up",
+   "finding_types": [
+    "pancreatic cyst"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked); ACR Incidental Findings Committee",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Pancreatic cysts on 2.5-45 percent of imaging (Kromrey 2018)",
+   "verified": true
+  },
+  {
+   "id": "acr-thyroid-2015",
+   "issuer": "American College of Radiology",
+   "system": "White paper: Incidental thyroid nodules on CT/MRI/PET (Hoang)",
+   "edition": "2015 (Hoang et al., JACR 12:143-150)",
+   "year": 2015,
+   "url": "https://doi.org/10.1016/j.jacr.2014.09.038",
+   "uk_body": false,
+   "topic": "Incidental thyroid nodule management on non-US imaging",
+   "finding_types": [
+    "thyroid nodule"
+   ],
+   "modalities": [
+    "CT",
+    "MRI",
+    "PET-CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked); ACR Incidental Findings Committee",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Incidental thyroid nodules on 16 percent of neck CT/MRI (Yoon, Radiology 2008)",
+   "verified": true
+  },
+  {
+   "id": "acr-vascular-2013",
+   "issuer": "American College of Radiology",
+   "system": "White paper: Managing incidental findings on abdominal and pelvic CT and MRI, part 2: vascular findings",
+   "edition": "2013 (Khosa et al., JACR 10:789-794)",
+   "year": 2013,
+   "url": "https://doi.org/10.1016/j.jacr.2013.05.021",
+   "uk_body": false,
+   "topic": "Incidental aortic and visceral aneurysm management",
+   "finding_types": [
+    "aortic aneurysm",
+    "visceral aneurysm"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked); ACR Incidental Findings Committee II",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Aortic dilatation and aneurysm common in older adults; reasoned basis",
+   "verified": true
+  },
+  {
+   "id": "acr-adnexal-2013",
+   "issuer": "American College of Radiology",
+   "system": "White paper: Managing incidental findings on abdominal and pelvic CT and MRI, part 1: adnexal findings",
+   "edition": "2013 (Patel et al., JACR 10:675-681)",
+   "year": 2013,
+   "url": "https://doi.org/10.1016/j.jacr.2013.05.023",
+   "uk_body": false,
+   "topic": "Incidental adnexal cyst/mass management",
+   "finding_types": [
+    "adnexal cyst",
+    "adnexal mass"
+   ],
+   "modalities": [
+    "CT",
+    "MRI",
+    "US"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked); ACR Incidental Findings Committee II",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Adnexal findings common on pelvic imaging; reasoned basis",
+   "verified": true
+  },
+  {
+   "id": "esur-contrast-2018",
+   "issuer": "European Society of Urogenital Radiology",
+   "system": "ESUR Guidelines on contrast agents",
+   "edition": "v10.0, 2018",
+   "year": 2018,
+   "url": "https://www.esur.org/esur-guidelines-on-contrast-agents/",
+   "uk_body": false,
+   "topic": "Contrast nephropathy risk, gadolinium and iodine safety",
+   "finding_types": [
+    "contrast risk"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "Free to view; ESUR; reuse terms not stated on the page checked",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Contrast used in a large share of CT/MRI; reasoned basis",
+   "verified": true
+  },
+  {
+   "id": "esgar-ctc-2013",
+   "issuer": "European Society of Gastrointestinal and Abdominal Radiology",
+   "system": "Second ESGAR consensus statement on CT colonography",
+   "edition": "2013 (Neri et al., Eur Radiol 23:720-729)",
+   "year": 2013,
+   "url": "https://doi.org/10.1007/s00330-012-2632-x",
+   "uk_body": false,
+   "topic": "CTC technique and reporting",
+   "finding_types": [
+    "colonic polyp"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "Endorsed by ESGE where stated in the paper; Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: CTC volume; reasoned basis",
+   "verified": true
+  },
+  {
+   "id": "esgar-rectal",
+   "issuer": "ESGAR",
+   "system": "MRI for clinical management of rectal cancer: updated recommendations from the 2016 ESGAR consensus meeting",
+   "edition": "2016 meeting; published Beets-Tan et al., Eur Radiol 28:1465-1475 (2018)",
+   "year": 2018,
+   "url": "https://doi.org/10.1007/s00330-017-5026-2",
+   "uk_body": false,
+   "topic": "MRI rectal staging reporting",
+   "finding_types": [
+    "rectal cancer"
+   ],
+   "modalities": [
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: About 14,000 UK rectal cancers per year (CRUK)",
+   "verified": true
+  },
+  {
+   "id": "ecco-esgar-ibd-imaging",
+   "issuer": "European Crohn's and Colitis Organisation",
+   "system": "ECCO-ESGAR guideline for diagnostic assessment in IBD, part 1 (initial diagnosis, monitoring, complications)",
+   "edition": "Maaser et al., J Crohns Colitis 13:144-164 (2019; online 2018)",
+   "year": 2019,
+   "url": "https://doi.org/10.1093/ecco-jcc/jjy113",
+   "uk_body": false,
+   "topic": "MR enterography reporting in Crohn disease",
+   "finding_types": [
+    "Crohn disease",
+    "stricture"
+   ],
+   "modalities": [
+    "MRI",
+    "US"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "Joint with ESGAR; Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: IBD prevalence about 1 in 123 in UK (Crohn's and Colitis UK)",
+   "verified": true
+  },
+  {
+   "id": "ese-adrenal-2023",
+   "issuer": "European Society of Endocrinology",
+   "system": "ESE clinical practice guidelines on the management of adrenal incidentalomas (with ENSAT)",
+   "edition": "2023 (Fassnacht et al., Eur J Endocrinol 189:G1-G42)",
+   "year": 2023,
+   "url": "https://doi.org/10.1093/ejendo/lvad066",
+   "uk_body": false,
+   "topic": "Unenhanced HU thresholds (10 HU), size 4 cm, follow-up",
+   "finding_types": [
+    "adrenal nodule"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Joint with ENSAT; Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Adrenal incidentalomas in about 3-7 percent of adults on CT (Mansmann 2004)",
+   "verified": true
+  },
+  {
+   "id": "who-tb-cxr",
+   "issuer": "World Health Organization",
+   "system": "WHO consolidated guidelines on tuberculosis: screening (chest radiography, CAD)",
+   "edition": "Module 2: screening, 2021 update",
+   "year": 2021,
+   "url": "https://www.who.int/publications/i/item/9789240022676",
+   "uk_body": false,
+   "topic": "CXR as TB screening tool; CAD thresholds",
+   "finding_types": [
+    "tuberculosis"
+   ],
+   "modalities": [
+    "CXR"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "CC BY-NC-SA 3.0 IGO (per WHO publications)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: UK TB incidence about 5-8 per 100,000, concentrated in migrant screening cohorts",
+   "verified": true
+  },
+  {
+   "id": "bosniak-2019",
+   "issuer": "Bosniak Renal Cyst Working Group",
+   "system": "Bosniak classification of cystic renal masses, version 2019",
+   "edition": "2019 (Silverman et al., Radiology 292:475-488)",
+   "year": 2019,
+   "url": "https://doi.org/10.1148/radiol.2019182646",
+   "uk_body": false,
+   "topic": "Cystic renal mass classes I, II, IIF, III, IV",
+   "finding_types": [
+    "renal cyst",
+    "complex cyst"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Renal cysts about 20-30 percent of adults over 50",
+   "verified": true
+  },
+  {
+   "id": "kl-grade",
+   "issuer": "Kellgren and Lawrence",
+   "system": "Kellgren-Lawrence radiographic osteoarthritis grade",
+   "edition": "1957 (Kellgren and Lawrence, Ann Rheum Dis 16:494-502)",
+   "year": 1957,
+   "url": "https://doi.org/10.1136/ard.16.4.494",
+   "uk_body": false,
+   "topic": "Joint osteoarthritis grade 0-4",
+   "finding_types": [
+    "osteoarthritis"
+   ],
+   "modalities": [
+    "plain film"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Knee OA affects about 1 in 5 adults over 45 in UK; very high film volume",
+   "verified": true
+  },
+  {
+   "id": "weber-ao",
+   "issuer": "AO Foundation",
+   "system": "Weber classification of ankle fractures",
+   "edition": "Danis-Weber classification, 1972 (AO/OTA compendium 2018); not confirmed",
+   "year": 1972,
+   "url": "",
+   "uk_body": false,
+   "topic": "Ankle fracture type A, B, C",
+   "finding_types": [
+    "ankle fracture"
+   ],
+   "modalities": [
+    "plain film"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "URL not yet located (AO site root is not the document)",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Ankle fracture incidence about 100-200 per 100,000 per year (Court-Brown, Injury 2006)",
+   "verified": false
+  },
+  {
+   "id": "lauge-hansen",
+   "issuer": "Lauge-Hansen",
+   "system": "Lauge-Hansen ankle fracture mechanism",
+   "edition": "1950 (Lauge-Hansen, Arch Surg 60:957)",
+   "year": 1950,
+   "url": "https://doi.org/10.1001/archsurg.1950.01250010980011",
+   "uk_body": false,
+   "topic": "Supination-adduction, supination-external rotation, pronation-abduction, pronation-external rotation",
+   "finding_types": [
+    "ankle fracture"
+   ],
+   "modalities": [
+    "plain film"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: Ankle fractures common; Lauge-Hansen used by trauma radiologists less than Weber",
+   "verified": true
+  },
+  {
+   "id": "garden-hip",
+   "issuer": "Garden",
+   "system": "Garden classification of femoral neck fractures",
+   "edition": "1961 (Garden, J Bone Joint Surg Br 43-B:647-663)",
+   "year": 1961,
+   "url": "https://doi.org/10.1302/0301-620x.43b4.647",
+   "uk_body": false,
+   "topic": "Garden I-IV",
+   "finding_types": [
+    "femoral neck fracture"
+   ],
+   "modalities": [
+    "plain film"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: About 75,000 UK hip fractures per year (NHFD)",
+   "verified": true
+  },
+  {
+   "id": "schatzker",
+   "issuer": "Schatzker et al.",
+   "system": "Schatzker classification of tibial plateau fractures",
+   "edition": "1979 (Clin Orthop Relat Res 138:94); not confirmed",
+   "year": 1979,
+   "url": "",
+   "uk_body": false,
+   "topic": "Schatzker types I-VI",
+   "finding_types": [
+    "tibial plateau fracture"
+   ],
+   "modalities": [
+    "plain film",
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "URL not yet located",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: Tibial plateau fractures about 1 percent of fractures",
+   "verified": false
+  },
+  {
+   "id": "ao-ota-2018",
+   "issuer": "AO Foundation",
+   "system": "AO/OTA Fracture and Dislocation Classification",
+   "edition": "2018 (Meinberg et al., J Orthop Trauma 32 Suppl 1:S1-S170); AO PDF fetched",
+   "year": 2018,
+   "url": "https://doi.org/10.1097/BOT.0000000000001063",
+   "uk_body": false,
+   "topic": "Alphanumeric fracture coding for long bones and spine",
+   "finding_types": [
+    "fracture"
+   ],
+   "modalities": [
+    "plain film",
+    "CT"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "URL not yet located (earlier page returned 404). Developed with the Orthopaedic Trauma Association",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Fractures are very high volume; used selectively in reports",
+   "verified": true
+  },
+  {
+   "id": "salter-harris",
+   "issuer": "Salter and Harris",
+   "system": "Salter-Harris classification of physeal fractures",
+   "edition": "1963 (Salter and Harris, J Bone Joint Surg Am 45:587-622)",
+   "year": 1963,
+   "url": "https://doi.org/10.2106/00004623-196345030-00019",
+   "uk_body": false,
+   "topic": "Types I-V",
+   "finding_types": [
+    "physeal fracture"
+   ],
+   "modalities": [
+    "plain film"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Paediatric fractures: physeal injuries about 15-30 percent of paediatric fractures (Mann, 1990)",
+   "verified": true
+  },
+  {
+   "id": "mirels",
+   "issuer": "Mirels",
+   "system": "Mirels score for pathological long bone fracture risk",
+   "edition": "1989 (Mirels, Clin Orthop Relat Res 249:256-264)",
+   "year": 1989,
+   "url": "https://doi.org/10.1097/00003086-198912000-00027",
+   "uk_body": false,
+   "topic": "Site, pain, lesion type, size scores",
+   "finding_types": [
+    "lytic metastasis"
+   ],
+   "modalities": [
+    "plain film"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "low",
+   "frequency_basis": "Estimate: Specialist MDT context",
+   "verified": true
+  },
+  {
+   "id": "balthazar-ctsi",
+   "issuer": "Balthazar",
+   "system": "Balthazar CT severity index (acute pancreatitis)",
+   "edition": "1990 (Balthazar et al., Radiology 174:331-336); modified CTSI 2004 not separately verified",
+   "year": 1990,
+   "url": "https://doi.org/10.1148/radiology.174.2.2296641",
+   "uk_body": false,
+   "topic": "Grades A-E and necrosis percentage",
+   "finding_types": [
+    "acute pancreatitis",
+    "necrosis"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: Acute pancreatitis about 56 per 100,000 per year in UK (Roberts, Pancreatology 2013)",
+   "verified": true
+  },
+  {
+   "id": "revised-atlanta",
+   "issuer": "Atlanta Working Group",
+   "system": "Revised Atlanta classification of acute pancreatitis",
+   "edition": "2012 (Banks et al., Gut 62:102-111)",
+   "year": 2012,
+   "url": "https://gut.bmj.com/content/62/1/102",
+   "uk_body": false,
+   "topic": "Interstitial vs necrotising pancreatitis, collections (APFC, ANC, pseudocyst, WON)",
+   "finding_types": [
+    "peripancreatic collection",
+    "necrosis"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Open access (Gut); reuse terms not stated",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: Acute pancreatitis about 56 per 100,000 per year in UK",
+   "verified": true
+  },
+  {
+   "id": "hinchey-diverticulitis",
+   "issuer": "Hinchey et al.",
+   "system": "Hinchey classification of perforated diverticulitis (modified Wasvary)",
+   "edition": "1978 (Adv Surg 12:85-109); not confirmed",
+   "year": 1978,
+   "url": "",
+   "uk_body": false,
+   "topic": "Stages I-IV; CT-modified Hinchey",
+   "finding_types": [
+    "diverticulitis",
+    "abscess"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "URL not yet located",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Diverticular disease in about 50 percent of over-60s; acute diverticulitis common",
+   "verified": false
+  },
+  {
+   "id": "aast-organ-injury",
+   "issuer": "American Association for the Surgery of Trauma",
+   "system": "AAST Organ Injury Scale (liver, spleen, kidney, pancreas and others)",
+   "edition": "2018 revision (Kozar et al., J Trauma Acute Care Surg); AAST page seen live",
+   "year": 2018,
+   "url": "https://www.aast.org/resources-detail/injury-scoring-scale",
+   "uk_body": false,
+   "topic": "Grades I-V for solid organ injuries",
+   "finding_types": [
+    "liver laceration",
+    "splenic laceration",
+    "renal laceration"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "AAST page free to view; reuse terms not stated",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: Major trauma CT in UK (TARN): about 15,000-20,000 cases/yr",
+   "verified": true
+  },
+  {
+   "id": "recist-1-1",
+   "issuer": "EORTC",
+   "system": "RECIST 1.1",
+   "edition": "1.1, 2009 (Eisenhauer et al., Eur J Cancer 45:228-247)",
+   "year": 2009,
+   "url": "https://doi.org/10.1016/j.ejca.2008.10.026",
+   "uk_body": false,
+   "topic": "Target lesion measurement, CR/PR/SD/PD",
+   "finding_types": [
+    "target lesion",
+    "progressive disease"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Developed with NCI and CTEP; Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Oncology response reports are a large share of CT workload",
+   "verified": true
+  },
+  {
+   "id": "mrecist",
+   "issuer": "American Association for the Study of Liver Diseases",
+   "system": "mRECIST for HCC",
+   "edition": "2010 (Lencioni and Llovet, Semin Liver Dis 30:52-60)",
+   "year": 2010,
+   "url": "https://doi.org/10.1055/s-0030-1247132",
+   "uk_body": false,
+   "topic": "Viable enhancing tumour measurement",
+   "finding_types": [
+    "HCC",
+    "viable tumour"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "low",
+   "frequency_basis": "Estimate: HCC after locoregional therapy; small subset",
+   "verified": true
+  },
+  {
+   "id": "lugano-2014",
+   "issuer": "Lugano Classification Working Group",
+   "system": "Lugano classification for lymphoma staging and response (Deauville 5-point scale)",
+   "edition": "2014 (Cheson et al., J Clin Oncol 32:3059-3067)",
+   "year": 2014,
+   "url": "https://doi.org/10.1200/jco.2013.54.8800",
+   "uk_body": false,
+   "topic": "Ann Arbor stages, Deauville scores 1-5, response categories",
+   "finding_types": [
+    "lymphoma",
+    "FDG avidity"
+   ],
+   "modalities": [
+    "PET-CT",
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: Lymphoma about 14,000 UK cases per year (CRUK)",
+   "verified": true
+  },
+  {
+   "id": "choi-gist",
+   "issuer": "Choi et al.",
+   "system": "Choi criteria for GIST response",
+   "edition": "2007 (Choi et al., J Clin Oncol 25:1753-1759)",
+   "year": 2007,
+   "url": "https://doi.org/10.1200/jco.2006.07.3049",
+   "uk_body": false,
+   "topic": "Size/attenuation-based response",
+   "finding_types": [
+    "GIST"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "low",
+   "frequency_basis": "Estimate: GIST is rare (about 900 UK cases per year)",
+   "verified": true
+  },
+  {
+   "id": "irecist-2017",
+   "issuer": "RECIST Working Group",
+   "system": "iRECIST for immunotherapy trials",
+   "edition": "2017 (Seymour et al., Lancet Oncol 18:e143-e152)",
+   "year": 2017,
+   "url": "https://doi.org/10.1016/s1470-2045(17)30074-8",
+   "uk_body": false,
+   "topic": "iUPD, iCPD, iSD",
+   "finding_types": [
+    "pseudoprogression"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "low",
+   "frequency_basis": "Estimate: Trial and immunotherapy follow-up use",
+   "verified": true
+  },
+  {
+   "id": "pet-deauville",
+   "issuer": "International Conference on Malignant Lymphomas Imaging Working Group",
+   "system": "Deauville five-point scale",
+   "edition": "2014 (Barrington et al., J Clin Oncol 32:3048-3058)",
+   "year": 2014,
+   "url": "https://doi.org/10.1200/jco.2013.53.5229",
+   "uk_body": false,
+   "topic": "Uptake score 1-5 compared with mediastinum and liver",
+   "finding_types": [
+    "FDG avidity"
+   ],
+   "modalities": [
+    "PET-CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: Lymphoma PET reporting",
+   "verified": true
+  },
+  {
+   "id": "tnm-9",
+   "issuer": "UICC",
+   "system": "TNM Classification of Malignant Tumours (9th edition)",
+   "edition": "9th edition (2025); not confirmed",
+   "year": 2025,
+   "url": "",
+   "uk_body": false,
+   "topic": "T, N, M staging by tumour site",
+   "finding_types": [
+    "tumour staging"
+   ],
+   "modalities": [
+    "CT",
+    "MRI",
+    "PET-CT"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "UICC; Wiley publication; URL not yet located (earlier UICC link returned 404)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Used in every cancer staging report",
+   "verified": false
+  },
+  {
+   "id": "figo-cervix-2018",
+   "issuer": "FIGO",
+   "system": "FIGO staging of carcinoma of the cervix uteri (2018 revision)",
+   "edition": "2018 revision (Bhatla et al., Int J Gynaecol Obstet 145:129-135, 2019)",
+   "year": 2018,
+   "url": "https://doi.org/10.1002/ijgo.12749",
+   "uk_body": false,
+   "topic": "Stage I-IV, MRI role",
+   "finding_types": [
+    "cervical cancer"
+   ],
+   "modalities": [
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: Cervical cancer about 3,200 UK cases per year (CRUK)",
+   "verified": true
+  },
+  {
+   "id": "figo-endometrial-2023",
+   "issuer": "FIGO",
+   "system": "FIGO 2023 endometrial cancer staging",
+   "edition": "2023 (Berek et al., Int J Gynaecol Obstet 162:383-394)",
+   "year": 2023,
+   "url": "https://doi.org/10.1002/ijgo.14923",
+   "uk_body": false,
+   "topic": "Stages incl. molecular classification",
+   "finding_types": [
+    "endometrial cancer"
+   ],
+   "modalities": [
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: Endometrial cancer about 9,700 UK cases per year (CRUK)",
+   "verified": true
+  },
+  {
+   "id": "figo-ovarian",
+   "issuer": "FIGO",
+   "system": "FIGO ovarian cancer staging",
+   "edition": "2014 (Prat, Int J Gynaecol Obstet 124:1-5)",
+   "year": 2014,
+   "url": "https://doi.org/10.1016/j.ijgo.2013.10.001",
+   "uk_body": false,
+   "topic": "Stages I-IV",
+   "finding_types": [
+    "ovarian cancer"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: Ovarian cancer about 7,500 UK cases per year (CRUK)",
+   "verified": true
+  },
+  {
+   "id": "fazekas",
+   "issuer": "Fazekas et al.",
+   "system": "Fazekas scale for white matter hyperintensities",
+   "edition": "1987 (AJR 149:351-356)",
+   "year": 1987,
+   "url": "https://doi.org/10.2214/ajr.149.2.351",
+   "uk_body": false,
+   "topic": "Periventricular and deep WMH grade 0-3",
+   "finding_types": [
+    "white matter hyperintensity",
+    "small vessel disease"
+   ],
+   "modalities": [
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: WMH common in older adults, up to 90 percent over 60; MRI brain volume",
+   "verified": true
+  },
+  {
+   "id": "aspects",
+   "issuer": "Barber et al.",
+   "system": "ASPECTS (Alberta Stroke Programme Early CT Score)",
+   "edition": "2000 (Lancet 355:1670-1674)",
+   "year": 2000,
+   "url": "https://doi.org/10.1016/s0140-6736(00)02237-6",
+   "uk_body": false,
+   "topic": "10-point CT score for MCA stroke",
+   "finding_types": [
+    "acute ischaemic stroke"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Acute stroke CT is high volume in UK hyperacute pathways",
+   "verified": true
+  },
+  {
+   "id": "spetzler-martin",
+   "issuer": "Spetzler and Martin",
+   "system": "Spetzler-Martin AVM grading",
+   "edition": "1986 (J Neurosurg 65:476-483)",
+   "year": 1986,
+   "url": "https://doi.org/10.3171/jns.1986.65.4.0476",
+   "uk_body": false,
+   "topic": "Size, eloquence, venous drainage grade I-V",
+   "finding_types": [
+    "AVM"
+   ],
+   "modalities": [
+    "MRI",
+    "DSA"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "low",
+   "frequency_basis": "Estimate: AVM prevalence about 0.1 percent",
+   "verified": true
+  },
+  {
+   "id": "fisher-scale",
+   "issuer": "Frontera et al.",
+   "system": "Modified Fisher scale for subarachnoid haemorrhage vasospasm risk",
+   "edition": "2006 (Frontera et al., Neurosurgery 59:21-27); original Fisher scale 1980",
+   "year": 2006,
+   "url": "https://doi.org/10.1227/01.neu.0000243277.86222.6c",
+   "uk_body": false,
+   "topic": "SAH grade 0-4",
+   "finding_types": [
+    "subarachnoid haemorrhage"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: SAH about 9 per 100,000 per year; CT head volume",
+   "verified": true
+  },
+  {
+   "id": "mcdonald-2017",
+   "issuer": "International Panel on Diagnosis of Multiple Sclerosis",
+   "system": "McDonald criteria 2017 (MRI dissemination in space and time)",
+   "edition": "2017 revisions (Thompson et al., Lancet Neurol 17:162-173, 2018)",
+   "year": 2017,
+   "url": "https://doi.org/10.1016/s1474-4422(17)30470-2",
+   "uk_body": false,
+   "topic": "MS lesion locations required for DIS and DIT",
+   "finding_types": [
+    "demyelinating lesion"
+   ],
+   "modalities": [
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked); a 2024 revision exists but was not checked",
+   "frequency": "medium",
+   "frequency_basis": "Cited, not checked: MS prevalence about 190 per 100,000 in UK (MS Society)",
+   "verified": true
+  },
+  {
+   "id": "evans-index",
+   "issuer": "Evans",
+   "system": "Evans index for ventriculomegaly",
+   "edition": "1942 (Evans, Arch Neurol Psychiatry 47:931)",
+   "year": 1942,
+   "url": "https://doi.org/10.1001/archneurpsyc.1942.02290060069004",
+   "uk_body": false,
+   "topic": "Frontal horn ratio",
+   "finding_types": [
+    "hydrocephalus"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: Hydrocephalus assessments common in neuro-reporting",
+   "verified": true
+  },
+  {
+   "id": "mta-scheltens",
+   "issuer": "Scheltens et al.",
+   "system": "Medial temporal lobe atrophy (MTA) score",
+   "edition": "1992 (J Neurol Neurosurg Psychiatry 55:967-972)",
+   "year": 1992,
+   "url": "https://doi.org/10.1136/jnnp.55.10.967",
+   "uk_body": false,
+   "topic": "MTA grade 0-4",
+   "finding_types": [
+    "hippocampal atrophy"
+   ],
+   "modalities": [
+    "MRI",
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: Dementia work-up MRI/CT volume",
+   "verified": true
+  },
+  {
+   "id": "koedam-pca",
+   "issuer": "Koedam et al.",
+   "system": "Posterior cortical atrophy (PCA) scale",
+   "edition": "2011 (Eur Radiol 21:2618-2625)",
+   "year": 2011,
+   "url": "https://doi.org/10.1007/s00330-011-2205-4",
+   "uk_body": false,
+   "topic": "PCA grade 0-3",
+   "finding_types": [
+    "cortical atrophy"
+   ],
+   "modalities": [
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "low",
+   "frequency_basis": "Estimate: Used in specialist dementia reporting",
+   "verified": true
+  },
+  {
+   "id": "esc-pe-2019-rv-lv",
+   "issuer": "European Society of Cardiology",
+   "system": "2019 ESC guidelines for acute pulmonary embolism (CTPA RV/LV ratio and severity)",
+   "edition": "2019 (Konstantinides et al., Eur Heart J 41:543-603)",
+   "year": 2019,
+   "url": "https://doi.org/10.1093/eurheartj/ehz405",
+   "uk_body": false,
+   "topic": "RV/LV ratio, septal bowing, reflux of contrast",
+   "finding_types": [
+    "pulmonary embolism",
+    "RV strain"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 2,
+   "licence_notes": "Open-access journal article; reuse per publisher licence (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: CTPA volume high in UK",
+   "verified": true
+  },
+  {
+   "id": "tirads-eu",
+   "issuer": "European Thyroid Association",
+   "system": "EU-TIRADS European thyroid US risk stratification",
+   "edition": "2017 (Russ et al., Eur Thyroid J 6:225-237)",
+   "year": 2017,
+   "url": "https://doi.org/10.1159/000478927",
+   "uk_body": false,
+   "topic": "EU-TIRADS 1-5",
+   "finding_types": [
+    "thyroid nodule"
+   ],
+   "modalities": [
+    "US"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Open-access journal article; reuse per publisher licence (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Thyroid nodules common",
+   "verified": true
+  },
+  {
+   "id": "ata-thyroid",
+   "issuer": "American Thyroid Association",
+   "system": "ATA thyroid nodule US pattern risk",
+   "edition": "2015 guidelines, published Thyroid 26:1-133 (2016)",
+   "year": 2015,
+   "url": "https://doi.org/10.1089/thy.2015.0020",
+   "uk_body": false,
+   "topic": "Five-category sonographic patterns",
+   "finding_types": [
+    "thyroid nodule"
+   ],
+   "modalities": [
+    "US"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: Alternate to TI-RADS",
+   "verified": true
+  },
+  {
+   "id": "sru-gallbladder-polyp",
+   "issuer": "Society of Radiologists in Ultrasound",
+   "system": "SRU gallbladder polyp consensus",
+   "edition": "2022 (Kamaya et al., Radiology 305:277-289)",
+   "year": 2022,
+   "url": "https://doi.org/10.1148/radiol.213079",
+   "uk_body": false,
+   "topic": "Polyp size thresholds for surveillance",
+   "finding_types": [
+    "gallbladder polyp"
+   ],
+   "modalities": [
+    "US"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: Gallbladder polyps common on US",
+   "verified": true
+  },
+  {
+   "id": "sru-ovarian-cyst",
+   "issuer": "Society of Radiologists in Ultrasound",
+   "system": "SRU consensus on simple and minimally complex ovarian cysts",
+   "edition": "2019 update (Levine et al., Radiology 293:359-371); original 2010 consensus Radiology 256:943-954",
+   "year": 2019,
+   "url": "https://doi.org/10.1148/radiol.2019191354",
+   "uk_body": false,
+   "topic": "Management of cysts by size and menopausal status",
+   "finding_types": [
+    "ovarian cyst"
+   ],
+   "modalities": [
+    "US"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked); original 2010 DOI 10.1148/radiol.10100213",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Ovarian cysts very common on pelvic US",
+   "verified": true
+  },
+  {
+   "id": "outerbridge",
+   "issuer": "Outerbridge",
+   "system": "Outerbridge cartilage grading",
+   "edition": "1961 (Outerbridge, J Bone Joint Surg Br 43-B:752-757)",
+   "year": 1961,
+   "url": "https://doi.org/10.1302/0301-620x.43b4.752",
+   "uk_body": false,
+   "topic": "Grades 0-4",
+   "finding_types": [
+    "cartilage defect"
+   ],
+   "modalities": [
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: Knee MRI volume",
+   "verified": true
+  },
+  {
+   "id": "goutallier",
+   "issuer": "Goutallier",
+   "system": "Goutallier fatty infiltration grade (rotator cuff)",
+   "edition": "1994 (Goutallier et al., Clin Orthop Relat Res 304:78-83)",
+   "year": 1994,
+   "url": "https://doi.org/10.1097/00003086-199407000-00014",
+   "uk_body": false,
+   "topic": "Grades 0-4",
+   "finding_types": [
+    "rotator cuff tear"
+   ],
+   "modalities": [
+    "MRI",
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: Shoulder MRI volume",
+   "verified": true
+  },
+  {
+   "id": "pfirrmann",
+   "issuer": "Pfirrmann",
+   "system": "Pfirrmann disc degeneration grading",
+   "edition": "2001 (Pfirrmann et al., Spine 26:1873-1878)",
+   "year": 2001,
+   "url": "https://doi.org/10.1097/00007632-200109010-00011",
+   "uk_body": false,
+   "topic": "Grades I-V",
+   "finding_types": [
+    "disc degeneration"
+   ],
+   "modalities": [
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Lumbar MRI volume",
+   "verified": true
+  },
+  {
+   "id": "modic",
+   "issuer": "Modic",
+   "system": "Modic endplate changes",
+   "edition": "1988 (Modic et al., Radiology 166:193-199)",
+   "year": 1988,
+   "url": "https://doi.org/10.1148/radiology.166.1.3336678",
+   "uk_body": false,
+   "topic": "Types 1-3",
+   "finding_types": [
+    "endplate change"
+   ],
+   "modalities": [
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Lumbar MRI volume",
+   "verified": true
+  },
+  {
+   "id": "meyerding",
+   "issuer": "Meyerding",
+   "system": "Meyerding spondylolisthesis grade",
+   "edition": "1932 (Meyerding); not confirmed",
+   "year": 1932,
+   "url": "",
+   "uk_body": false,
+   "topic": "Grades I-V",
+   "finding_types": [
+    "spondylolisthesis"
+   ],
+   "modalities": [
+    "plain film",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "URL not yet located",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Spine imaging volume",
+   "verified": false
+  },
+  {
+   "id": "lumbar-stenosis",
+   "issuer": "Schizas",
+   "system": "Schizas lumbar canal stenosis grade",
+   "edition": "2010 (Schizas et al., Spine 35:1919-1924)",
+   "year": 2010,
+   "url": "https://doi.org/10.1097/brs.0b013e3181d359bd",
+   "uk_body": false,
+   "topic": "Grades A-D",
+   "finding_types": [
+    "spinal stenosis"
+   ],
+   "modalities": [
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: Lumbar MRI volume",
+   "verified": true
+  },
+  {
+   "id": "sinus-lund-mackay",
+   "issuer": "Lund and Mackay",
+   "system": "Lund-Mackay CT sinus staging",
+   "edition": "1993 (Lund and Mackay, Rhinology 31:183); not confirmed",
+   "year": 1993,
+   "url": "",
+   "uk_body": false,
+   "topic": "0-2 per sinus",
+   "finding_types": [
+    "sinus opacification"
+   ],
+   "modalities": [
+    "CT"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "URL not yet located",
+   "frequency": "low",
+   "frequency_basis": "Estimate: Sinus CT lower volume",
+   "verified": false
+  },
+  {
+   "id": "ecr-pancreatic-cystic-neoplasms-2018",
+   "issuer": "European Study Group on Cystic Tumours of the Pancreas",
+   "system": "European evidence-based guidelines on pancreatic cystic neoplasms",
+   "edition": "2018 (Gut 67:789-804)",
+   "year": 2018,
+   "url": "https://gut.bmj.com/content/67/5/789",
+   "uk_body": false,
+   "topic": "Pancreatic cyst surveillance and resection triggers",
+   "finding_types": [
+    "pancreatic cyst",
+    "IPMN"
+   ],
+   "modalities": [
+    "MRI",
+    "MRCP",
+    "CT",
+    "EUS"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Open access (Gut); joint with UEG, EPC, E-AHPBA, EDS, ESGE; reuse terms not stated",
+   "frequency": "high",
+   "frequency_basis": "Cited, not checked: Pancreatic cysts on 2.5-45% of cross-sectional studies (Kromrey, Gut 2018)",
+   "verified": true
+  },
+  {
+   "id": "acr-splenic-nodal-2013",
+   "issuer": "American College of Radiology",
+   "system": "White paper: Managing incidental findings on abdominal and pelvic CT and MRI, part 3: splenic and nodal findings",
+   "edition": "2013 (Heller et al., JACR 10:833-839)",
+   "year": 2013,
+   "url": "https://doi.org/10.1016/j.jacr.2013.05.020",
+   "uk_body": false,
+   "topic": "Incidental splenic lesions and lymph nodes",
+   "finding_types": [
+    "splenic lesion",
+    "lymphadenopathy"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked); ACR Incidental Findings Committee II",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: splenic lesions and nodes are common incidental findings on abdominal CT",
+   "verified": true
+  },
+  {
+   "id": "acr-gallbladder-biliary-2013",
+   "issuer": "American College of Radiology",
+   "system": "White paper: Managing incidental findings on abdominal and pelvic CT and MRI, part 4: gallbladder and biliary findings",
+   "edition": "2013 (Sebastian et al., JACR 10:953-956)",
+   "year": 2013,
+   "url": "https://doi.org/10.1016/j.jacr.2013.05.022",
+   "uk_body": false,
+   "topic": "Incidental gallbladder and biliary findings",
+   "finding_types": [
+    "gallbladder polyp",
+    "wall thickening",
+    "biliary dilatation"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked); ACR Incidental Findings Committee II",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: gallbladder and biliary incidentals are frequent on abdominal CT",
+   "verified": true
+  },
+  {
+   "id": "esgar-gallbladder-polyps-2022",
+   "issuer": "ESGAR, EAES, EFISDS and ESGE (joint)",
+   "system": "Management and follow-up of gallbladder polyps: updated joint guidelines",
+   "edition": "2022 (Foley et al., Eur Radiol 32:3358-3368; published online Dec 2021)",
+   "year": 2022,
+   "url": "https://doi.org/10.1007/s00330-021-08384-w",
+   "uk_body": false,
+   "topic": "Gallbladder polyp size-based follow-up and cholecystectomy thresholds on ultrasound (replaces the 2017 joint guideline)",
+   "finding_types": [
+    "gallbladder polyp"
+   ],
+   "modalities": [
+    "Ultrasound"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: gallbladder polyps are a common incidental ultrasound finding",
+   "verified": true
+  },
+  {
+   "id": "esur-testicular-microlithiasis-2015",
+   "issuer": "European Society of Urogenital Radiology (scrotal imaging subcommittee)",
+   "system": "Testicular microlithiasis imaging and follow-up: ESUR scrotal imaging subcommittee guidelines",
+   "edition": "2015 (Richenberg et al., Eur Radiol 25:323-330). No NICE/RCR/BAUS guidance found; UK practice follows ESUR",
+   "year": 2015,
+   "url": "https://doi.org/10.1007/s00330-014-3437-x",
+   "uk_body": false,
+   "topic": "Testicular microlithiasis: classic vs limited, no follow-up in isolation, risk factors that prompt surveillance",
+   "finding_types": [
+    "testicular microlithiasis"
+   ],
+   "modalities": [
+    "Ultrasound"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: seen in a few percent of scrotal ultrasounds",
+   "verified": true
+  },
+  {
+   "id": "aospine-thoracolumbar-2013",
+   "issuer": "AO Spine",
+   "system": "AOSpine Thoracolumbar Spine Injury Classification System",
+   "edition": "2013 (Vaccaro et al., Spine 38:2028-2037)",
+   "year": 2013,
+   "url": "https://doi.org/10.1097/BRS.0b013e3182a8a381",
+   "uk_body": false,
+   "topic": "Thoracolumbar fracture morphology types A/B/C with neurological and modifier subscores",
+   "finding_types": [
+    "vertebral fracture",
+    "burst fracture",
+    "thoracolumbar injury"
+   ],
+   "modalities": [
+    "CT",
+    "MRI",
+    "X-ray"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: trauma spinal CT volume",
+   "verified": true
+  },
+  {
+   "id": "sins-2010",
+   "issuer": "Spine Oncology Study Group",
+   "system": "Spinal Instability Neoplastic Score (SINS)",
+   "edition": "2010 (Fisher et al., Spine 35:E1221-E1229)",
+   "year": 2010,
+   "url": "https://doi.org/10.1097/BRS.0b013e3181e16ae2",
+   "uk_body": false,
+   "topic": "Six-component score (location, pain, bone lesion quality, alignment, collapse, posterolateral involvement) for metastatic spinal instability",
+   "finding_types": [
+    "spinal metastasis",
+    "pathological vertebral fracture"
+   ],
+   "modalities": [
+    "CT",
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "medium",
+   "frequency_basis": "Estimate: spinal metastases are a common oncology imaging finding",
+   "verified": true
+  },
+  {
+   "id": "stoller-meniscal",
+   "issuer": "Stoller et al.",
+   "system": "Stoller MRI grading of meniscal signal (grades 0-3)",
+   "edition": "1987 (Stoller et al., Radiology 163:731-735)",
+   "year": 1987,
+   "url": "https://doi.org/10.1148/radiology.163.3.3575724",
+   "uk_body": false,
+   "topic": "Meniscal signal grades 1-3 correlated with pathology; grade 3 reaches the articular surface",
+   "finding_types": [
+    "meniscal tear",
+    "meniscal degeneration"
+   ],
+   "modalities": [
+    "MRI"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; reuse per publisher terms (not checked)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: knee MRI volume",
+   "verified": true
+  },
+  {
+   "id": "iota-simple-rules-2008",
+   "issuer": "International Ovarian Tumor Analysis group",
+   "system": "IOTA simple ultrasound-based rules for adnexal masses",
+   "edition": "2008 (Timmerman et al., Ultrasound Obstet Gynecol 31:681-690); adopted by RCOG GTG 62 and GTG 34",
+   "year": 2008,
+   "url": "https://doi.org/10.1002/uog.5365",
+   "uk_body": false,
+   "topic": "Ten ultrasound features (five benign B-rules, five malignant M-rules) classify adnexal masses as benign, malignant or inconclusive",
+   "finding_types": [
+    "adnexal mass",
+    "ovarian cyst"
+   ],
+   "modalities": [
+    "Ultrasound"
+   ],
+   "tier_candidate": 1,
+   "licence_notes": "Journal article; paywalled, primary PDF not obtained (Wiley bot wall)",
+   "frequency": "high",
+   "frequency_basis": "Estimate: adnexal masses are common on pelvic ultrasound",
+   "verified": true
+  }
+ ]
+}

@@ -1,0 +1,1070 @@
+{
+  "id": "rcog-ovarian-mass-postmenopausal",
+  "version": "2016.1",
+  "topic": "ovarian-mass",
+  "purpose": "Assesses the risk of malignancy of an ovarian cyst in a postmenopausal woman using ultrasound and CA125 (the RMI), to decide between general gynaecological care and referral to gynaecological oncology.",
+  "issuer": "Royal College of Obstetricians and Gynaecologists",
+  "system": "RCOG Green-top Guideline No. 34: the management of ovarian cysts in postmenopausal women (RMI I pathway)",
+  "display": "RCOG GTG 34 (2016, updated 2025)",
+  "edition": "2016 (minor update December 2025)",
+  "tier": 1,
+  "status": "current",
+  "applies_to": {
+    "region": [
+      "pelvis"
+    ],
+    "modality": [
+      "US"
+    ],
+    "finding_type": [
+      "ovarian mass"
+    ]
+  },
+  "off_modality": "redirect",
+  "aliases": [
+    "rcog gtg 34",
+    "gtg 34",
+    "green-top guideline 34",
+    "green-top guideline no. 34",
+    "rcog postmenopausal ovarian cyst guideline",
+    "rcog ovarian cysts in postmenopausal women"
+  ],
+  "inputs": [
+    {
+      "id": "postmenopausal",
+      "label": "Postmenopausal",
+      "type": "boolean",
+      "scope": "patient",
+      "role": "eligibility",
+      "how_stated": "true when the clinical details or dictation state the woman is postmenopausal (postmenopausal bleeding counts); false when she is stated to be premenopausal. Age alone does not settle it.",
+      "locator": {
+        "source": "S1",
+        "page": 7,
+        "section": "1. Purpose and scope"
+      }
+    },
+    {
+      "id": "malignancy_confirmed",
+      "label": "Ovarian malignancy already confirmed",
+      "type": "boolean",
+      "scope": "lesion",
+      "role": "eligibility",
+      "how_stated": "true only when this ovarian mass is already confirmed as ovarian cancer (histology or cytology); false when it is undiagnosed. A mass merely suspected of malignancy on imaging is false.",
+      "locator": {
+        "source": "S1",
+        "page": 7,
+        "section": "1. Purpose and scope: management of confirmed ovarian malignancy is outside the remit"
+      }
+    },
+    {
+      "id": "morphology",
+      "label": "Cyst morphology on ultrasound",
+      "type": "enum",
+      "options": [
+        "simple",
+        "unilocular_non_simple",
+        "multilocular",
+        "solid_areas",
+        "multilocular_solid"
+      ],
+      "scope": "lesion",
+      "how_stated": "simple: round or oval, thin or imperceptible wall, posterior acoustic enhancement, anechoic fluid, no septations or nodules. unilocular_non_simple: one locule, no solid areas, but not all simple features (e.g. echogenic contents, thick wall, incomplete septum). multilocular: complete septation, no solid areas. solid_areas: solid areas (solid nodules, papillary projections or solid component) without complete septation, including mainly solid masses. multilocular_solid: complete septation and solid areas.",
+      "locator": {
+        "source": "S1",
+        "page": 12,
+        "section": "4.4.1: simple cyst (five features) and complex cyst (septation, solid nodules, papillary projections)"
+      }
+    },
+    {
+      "id": "bilateral",
+      "label": "Bilateral lesions",
+      "type": "boolean",
+      "scope": "patient",
+      "how_stated": "true when both ovaries have a cyst or mass; false when the other ovary is normal or not involved. A contralateral simple, unilocular cyst of 3 cm or less does not count (RCOG: not clinically significant).",
+      "locator": {
+        "source": "S1",
+        "page": 16,
+        "section": "5.1.1 Calculation of the RMI I: bilateral lesions"
+      }
+    },
+    {
+      "id": "ascites",
+      "visible_sign": true,
+      "label": "Ascites",
+      "type": "boolean",
+      "scope": "patient",
+      "how_stated": "true when the dictation says ascites, or describes more than a small amount of free fluid; false when no ascites or free fluid is reported, or only a small amount of pelvic free fluid (not ascites, by Hassan's ruling of 2026-10-13)",
+      "locator": {
+        "source": "S1",
+        "page": 16,
+        "section": "5.1.1 Calculation of the RMI I: ascites"
+      }
+    },
+    {
+      "id": "metastases",
+      "label": "Metastases on imaging",
+      "type": "boolean",
+      "scope": "patient",
+      "how_stated": "true when the imaging shows metastatic disease (e.g. peritoneal or omental deposits, liver metastases); false when none is described",
+      "locator": {
+        "source": "S1",
+        "page": 16,
+        "section": "5.1.1 Calculation of the RMI I: metastases"
+      }
+    },
+    {
+      "id": "size_cm",
+      "label": "Cyst maximum diameter",
+      "type": "number",
+      "unit": "cm",
+      "dims": "max",
+      "scope": "lesion",
+      "min_value": 0,
+      "min_inclusive": false,
+      "how_stated": "maximum diameter of the cyst in centimetres (millimetres convert), e.g. '4.2 cm simple cyst' or '42 x 30 mm'; for bilateral cysts, the larger",
+      "locator": {
+        "source": "S1",
+        "page": 19,
+        "section": "6.1.1: cysts of 3 cm or less; more than 3 cm but less than or equal to 5 cm"
+      }
+    },
+    {
+      "id": "symptomatic",
+      "label": "Symptomatic",
+      "type": "boolean",
+      "scope": "patient",
+      "how_stated": "true when the woman has symptoms attributed to the cyst or adnexa, or persistent or frequent symptoms suggesting ovarian cancer (e.g. persistent abdominal distension, feeling full or loss of appetite, pelvic or abdominal pain, urinary urgency or frequency); false when the cyst is incidental and she is asymptomatic. The scan indication alone (e.g. 'abdominal pain') is not enough.",
+      "locator": {
+        "source": "S1",
+        "page": 19,
+        "section": "6.1.1: if a woman is symptomatic, further surgical evaluation is necessary; 4.2 p9: symptoms experienced persistently or on a frequent basis"
+      }
+    },
+    {
+      "id": "ca125",
+      "label": "Serum CA125",
+      "type": "number",
+      "unit": "iu/ml",
+      "scope": "patient",
+      "min_value": 0,
+      "how_stated": "serum CA125 in iu/ml (U/ml and kU/L are the same), from the clinical details or results, e.g. 'CA125 48'",
+      "locator": {
+        "source": "S1",
+        "page": 16,
+        "section": "5.1.1 Calculation of the RMI I: serum CA125 in iu/ml"
+      }
+    }
+  ],
+  "logic": [
+    {
+      "step": "score",
+      "id": "feature_count",
+      "kind": "linear",
+      "intercept": 0,
+      "terms": [
+        {
+          "ref": "morphology",
+          "coef": 1,
+          "eq": "multilocular"
+        },
+        {
+          "ref": "morphology",
+          "coef": 2,
+          "eq": "multilocular_solid"
+        },
+        {
+          "ref": "morphology",
+          "coef": 1,
+          "eq": "solid_areas"
+        },
+        {
+          "ref": "bilateral",
+          "coef": 1
+        },
+        {
+          "ref": "ascites",
+          "coef": 1
+        },
+        {
+          "ref": "metastases",
+          "coef": 1
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 16,
+        "section": "5.1.1 Calculation of the RMI I: 1 point each for multilocular cysts, solid areas, metastases, ascites and bilateral lesions"
+      }
+    },
+    {
+      "step": "band",
+      "id": "u_band",
+      "ref": "feature_count",
+      "locator": {
+        "source": "S1",
+        "page": 16,
+        "section": "5.1.1 Calculation of the RMI I: U = 0, 1 or 3"
+      },
+      "bands": [
+        {
+          "id": "u0",
+          "label": "ultrasound score 0 (U = 0)",
+          "max": 1
+        },
+        {
+          "id": "u1",
+          "label": "ultrasound score 1 (U = 1)",
+          "min": 1,
+          "max": 2
+        },
+        {
+          "id": "u3",
+          "label": "ultrasound score 2 to 5 (U = 3)",
+          "min": 2
+        }
+      ]
+    },
+    {
+      "step": "score",
+      "id": "u_score",
+      "kind": "linear",
+      "intercept": 0,
+      "terms": [
+        {
+          "ref": "u_band",
+          "coef": 1,
+          "eq": "u1"
+        },
+        {
+          "ref": "u_band",
+          "coef": 3,
+          "eq": "u3"
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 16,
+        "section": "5.1.1 Calculation of the RMI I: U = 0 for a score of 0, 1 for 1, 3 for 2-5"
+      }
+    },
+    {
+      "step": "derive",
+      "id": "rmi",
+      "unit": "",
+      "expr": {
+        "op": "mul",
+        "args": [
+          {
+            "ref": "u_score"
+          },
+          {
+            "const": 3
+          },
+          {
+            "ref": "ca125"
+          }
+        ]
+      },
+      "locator": {
+        "source": "S1",
+        "page": 16,
+        "section": "5.1.1 Calculation of the RMI I: RMI = U x M x CA125, M = 3 for all postmenopausal women"
+      }
+    },
+    {
+      "step": "band",
+      "id": "rmi_band",
+      "ref": "rmi",
+      "locator": {
+        "source": "S1",
+        "page": 6,
+        "table": "Clinical algorithm: RMI I < 200 / RMI I >= 200"
+      },
+      "bands": [
+        {
+          "id": "lt200",
+          "label": "RMI I under 200 (low risk of malignancy)",
+          "max": 200
+        },
+        {
+          "id": "ge200",
+          "label": "RMI I 200 or more (increased risk of malignancy)",
+          "min": 200
+        }
+      ]
+    },
+    {
+      "step": "band",
+      "id": "size_band",
+      "ref": "size_cm",
+      "locator": {
+        "source": "S1",
+        "page": 19,
+        "section": "6.1.1: 3 cm or less; more than 3 cm but less than or equal to 5 cm"
+      },
+      "bands": [
+        {
+          "id": "le3",
+          "label": "3 cm or less",
+          "max": 3,
+          "max_inclusive": true
+        },
+        {
+          "id": "gt3_le5",
+          "label": "over 3 cm and up to 5 cm",
+          "min": 3,
+          "min_inclusive": false,
+          "max": 5,
+          "max_inclusive": true
+        },
+        {
+          "id": "gt5",
+          "label": "over 5 cm",
+          "min": 5,
+          "min_inclusive": false
+        }
+      ]
+    },
+    {
+      "step": "band",
+      "id": "ca125_band",
+      "ref": "ca125",
+      "locator": {
+        "source": "S1",
+        "page": 10,
+        "section": "4.3.1 CA125: routinely used cut-off value of 35 iu/ml"
+      },
+      "bands": [
+        {
+          "id": "normal",
+          "label": "35 iu/ml or less (normal)",
+          "max": 35,
+          "max_inclusive": true
+        },
+        {
+          "id": "raised",
+          "label": "over 35 iu/ml (raised)",
+          "min": 35,
+          "min_inclusive": false
+        }
+      ]
+    },
+    {
+      "step": "rules",
+      "id": "pathway",
+      "cases": [
+        {
+          "when": {
+            "any": [
+              {
+                "ref": "postmenopausal",
+                "eq": false
+              },
+              {
+                "ref": "malignancy_confirmed",
+                "eq": true
+              }
+            ]
+          },
+          "result": "does_not_apply",
+          "locator": {
+            "source": "S1",
+            "page": 7,
+            "section": "1. Purpose and scope: postmenopausal women; confirmed ovarian malignancy outside the remit"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "postmenopausal",
+                "eq": true
+              },
+              {
+                "ref": "malignancy_confirmed",
+                "eq": false
+              },
+              {
+                "ref": "morphology",
+                "eq": "simple"
+              },
+              {
+                "ref": "bilateral",
+                "eq": false
+              },
+              {
+                "ref": "ascites",
+                "eq": false
+              },
+              {
+                "ref": "metastases",
+                "eq": false
+              },
+              {
+                "ref": "size_band",
+                "eq": "le3"
+              }
+            ]
+          },
+          "result": "no_follow_up",
+          "locator": {
+            "source": "S1",
+            "page": 7,
+            "section": "Section 2 (December 2025 update, p1 note): simple, unilateral, unilocular cystic lesions of 3 cm or less are clinically inconsequential and need no follow-up"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "postmenopausal",
+                "eq": true
+              },
+              {
+                "ref": "malignancy_confirmed",
+                "eq": false
+              },
+              {
+                "any": [
+                  {
+                    "any": [
+                      {
+                        "ref": "ascites",
+                        "eq": true
+                      },
+                      {
+                        "ref": "metastases",
+                        "eq": true
+                      }
+                    ]
+                  },
+                  {
+                    "all": [
+                      {
+                        "any": [
+                          {
+                            "ref": "morphology",
+                            "in": [
+                              "multilocular",
+                              "solid_areas",
+                              "multilocular_solid"
+                            ]
+                          },
+                          {
+                            "ref": "bilateral",
+                            "eq": true
+                          },
+                          {
+                            "ref": "ascites",
+                            "eq": true
+                          },
+                          {
+                            "ref": "metastases",
+                            "eq": true
+                          }
+                        ]
+                      },
+                      {
+                        "ref": "rmi_band",
+                        "eq": "ge200"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "ct_mdt",
+          "locator": {
+            "source": "S1",
+            "page": 16,
+            "section": "5.1: CT abdomen and pelvis and gynaecological oncology MDT for RMI I >= 200; 4.4.3.1 p14: the same when ultrasound findings suggest malignancy"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "postmenopausal",
+                "eq": true
+              },
+              {
+                "ref": "malignancy_confirmed",
+                "eq": false
+              },
+              {
+                "none": [
+                  {
+                    "any": [
+                      {
+                        "ref": "ascites",
+                        "eq": true
+                      },
+                      {
+                        "ref": "metastases",
+                        "eq": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "any": [
+                  {
+                    "none": [
+                      {
+                        "any": [
+                          {
+                            "ref": "morphology",
+                            "in": [
+                              "multilocular",
+                              "solid_areas",
+                              "multilocular_solid"
+                            ]
+                          },
+                          {
+                            "ref": "bilateral",
+                            "eq": true
+                          },
+                          {
+                            "ref": "ascites",
+                            "eq": true
+                          },
+                          {
+                            "ref": "metastases",
+                            "eq": true
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "all": [
+                      {
+                        "any": [
+                          {
+                            "ref": "morphology",
+                            "in": [
+                              "multilocular",
+                              "solid_areas",
+                              "multilocular_solid"
+                            ]
+                          },
+                          {
+                            "ref": "bilateral",
+                            "eq": true
+                          },
+                          {
+                            "ref": "ascites",
+                            "eq": true
+                          },
+                          {
+                            "ref": "metastases",
+                            "eq": true
+                          }
+                        ]
+                      },
+                      {
+                        "ref": "rmi_band",
+                        "eq": "lt200"
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "any": [
+                  {
+                    "ref": "symptomatic",
+                    "eq": true
+                  },
+                  {
+                    "ref": "morphology",
+                    "in": [
+                      "unilocular_non_simple",
+                      "multilocular",
+                      "solid_areas",
+                      "multilocular_solid"
+                    ]
+                  },
+                  {
+                    "ref": "size_band",
+                    "eq": "gt5"
+                  },
+                  {
+                    "ref": "bilateral",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "none": [
+                  {
+                    "all": [
+                      {
+                        "ref": "morphology",
+                        "eq": "simple"
+                      },
+                      {
+                        "ref": "bilateral",
+                        "eq": false
+                      },
+                      {
+                        "ref": "ascites",
+                        "eq": false
+                      },
+                      {
+                        "ref": "metastases",
+                        "eq": false
+                      },
+                      {
+                        "ref": "size_band",
+                        "eq": "le3"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "consider_surgery",
+          "locator": {
+            "source": "S1",
+            "page": 6,
+            "table": "Clinical algorithm: RMI I < 200, cysts with ANY of symptomatic, non-simple features, > 5 cm, multilocular, bilateral"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "postmenopausal",
+                "eq": true
+              },
+              {
+                "ref": "malignancy_confirmed",
+                "eq": false
+              },
+              {
+                "ref": "morphology",
+                "eq": "simple"
+              },
+              {
+                "ref": "bilateral",
+                "eq": false
+              },
+              {
+                "ref": "ascites",
+                "eq": false
+              },
+              {
+                "ref": "metastases",
+                "eq": false
+              },
+              {
+                "ref": "symptomatic",
+                "eq": false
+              },
+              {
+                "ref": "size_band",
+                "eq": "gt3_le5"
+              },
+              {
+                "ref": "ca125_band",
+                "eq": "normal"
+              }
+            ]
+          },
+          "result": "conservative",
+          "locator": {
+            "source": "S1",
+            "page": 19,
+            "section": "6.1.1: asymptomatic, simple, unilateral, unilocular cysts over 3 cm and up to 5 cm with normal CA125"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "postmenopausal",
+                "eq": true
+              },
+              {
+                "ref": "malignancy_confirmed",
+                "eq": false
+              },
+              {
+                "ref": "morphology",
+                "eq": "simple"
+              },
+              {
+                "ref": "bilateral",
+                "eq": false
+              },
+              {
+                "ref": "ascites",
+                "eq": false
+              },
+              {
+                "ref": "metastases",
+                "eq": false
+              },
+              {
+                "ref": "symptomatic",
+                "eq": false
+              },
+              {
+                "ref": "size_band",
+                "eq": "gt3_le5"
+              },
+              {
+                "ref": "ca125_band",
+                "eq": "raised"
+              }
+            ]
+          },
+          "result": "surgery_raised_ca125",
+          "locator": {
+            "source": "S1",
+            "page": 20,
+            "section": "6.1.2: women who do not fit the criteria for conservative management should be offered surgical treatment"
+          }
+        }
+      ]
+    }
+  ],
+  "result": "pathway",
+  "outcomes": [
+    {
+      "id": "no_follow_up",
+      "headline": "Simple cyst 3 cm or less",
+      "action": "No imaging follow-up",
+      "category": "none",
+      "classification": "Simple, unilateral, unilocular ovarian cyst of 3 cm or less in a postmenopausal woman: clinically inconsequential.",
+      "recommendation": "No imaging follow-up required (RCOG GTG 34, Dec 2025). If symptomatic, clinical assessment is advised.",
+      "caveats": [
+        "Whether to mention such a cyst in the report is at the reporting clinician's discretion (RCOG).",
+        "The clinical-assessment clause rests on RCOG's statement that a symptomatic woman needs further evaluation; this route applies whatever the symptoms (Hassan's ruling, 2026-10-13).",
+        "With ascites or metastases the CT and MDT route applies instead (library routing; RCOG's 3 cm statement does not address them)."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 7,
+        "section": "Section 2 (December 2025 update; p1 update note); 6.1.1 p19 for the symptomatic clause"
+      }
+    },
+    {
+      "id": "ct_mdt",
+      "headline": "Increased risk of malignancy",
+      "action": "CT; refer to gynae-oncology MDT",
+      "category": "refer",
+      "classification": "Postmenopausal ovarian cyst with RMI I of 200 or more, or with ascites or metastases on imaging: increased risk of malignancy.",
+      "recommendation": "CT abdomen and pelvis, and referral to the gynaecological oncology MDT.",
+      "caveats": [
+        "With ascites or metastases this route applies whatever the RMI I, as malignancy is suspected from the ultrasound findings (library routing of RCOG's text).",
+        "Further surgery (staging laparotomy or pelvic clearance) and its setting follow the MDT's view of how likely malignancy is.",
+        "Some centres use an RMI I threshold of 250 in local protocols; RCOG's pathway uses 200.",
+        "RMI I is a triage tool: benign conditions can raise it and early cancer may not."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 16,
+        "section": "5.1 Which RMI should be used?; 4.4.3.1 p14; Clinical algorithm p6"
+      }
+    },
+    {
+      "id": "consider_surgery",
+      "headline": "Low RMI, conservative management excluded",
+      "action": "Consider salpingo-oophorectomy",
+      "category": "refer",
+      "classification": "Postmenopausal ovarian cyst, RMI I under 200 (low risk), with a feature excluding conservative management: symptoms, non-simple features, over 5 cm, multilocular or bilateral.",
+      "recommendation": "Consider surgery: salpingo-oophorectomy, usually bilateral.",
+      "caveats": [
+        "RCOG: women with RMI I under 200 are suitable for laparoscopic management, unless the clinical picture, ultrasound or tumour markers suggest malignancy; then CT abdomen and pelvis with gynaecological oncology MDT referral.",
+        "RCOG advises discussing the pros and cons of conservative versus surgical management at RMI I under 200.",
+        "MRI is the second-line test when ultrasound is inconclusive for an indeterminate cyst.",
+        "Where surgical risk is high, repeat imaging is often safer than immediate surgery."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 6,
+        "table": "Clinical algorithm: RMI I < 200, ANY box, consider surgery salpingo-oophorectomy (usually bilateral)"
+      }
+    },
+    {
+      "id": "conservative",
+      "headline": "Low-risk simple cyst, normal CA125",
+      "action": "CA125 and TVUS in 4–6 months",
+      "category": "surveillance",
+      "classification": "Asymptomatic simple, unilateral, unilocular ovarian cyst over 3 cm and up to 5 cm with normal CA125: low risk of malignancy.",
+      "recommendation": "Consider conservative management: repeat CA125 and transvaginal ultrasound in 4-6 months.",
+      "caveats": [
+        "If resolved at repeat: discharge. If unchanged: repeat in another 4-6 months, then individualise treatment after discussion with the woman. If features change: consider intervention.",
+        "Discharge after 1 year is reasonable if the cyst is unchanged or smaller with normal CA125, considering the woman's wishes and surgical fitness.",
+        "Normal CA125 is read here as 35 iu/ml or less, the routinely used cut-off (library reading)."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 19,
+        "section": "6.1.1; Clinical algorithm p6: consider conservative management, repeat assessment in 4-6 months"
+      }
+    },
+    {
+      "id": "surgery_raised_ca125",
+      "headline": "Simple cyst with raised CA125",
+      "action": "Offer surgical treatment",
+      "category": "refer",
+      "classification": "Asymptomatic simple, unilateral, unilocular cyst over 3 cm and up to 5 cm with raised CA125 (over 35 iu/ml): does not meet RCOG criteria for conservative management.",
+      "recommendation": "Offer surgical treatment, with the setting and surgeon guided by the RMI.",
+      "caveats": [
+        "The RMI I is 0 here (ultrasound score 0) whatever the CA125, so the RMI does not flag this cyst; the conservative criteria require a normal CA125.",
+        "RCOG advises discussing the pros and cons of conservative versus surgical management in women at low risk (RMI I under 200).",
+        "CA125 is raised by benign conditions (e.g. endometriosis, fibroids, peritoneal irritation) and should not be used alone to decide if a cyst is malignant.",
+        "The clinical algorithm lists the conservative criteria without CA125; the text requires a normal CA125 and is followed here."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 20,
+        "section": "6.1.2 What are the available surgical options?; 6.1.1 p19 (normal CA125 required)"
+      }
+    },
+    {
+      "id": "does_not_apply",
+      "headline": "Outside RCOG GTG 34",
+      "action": "Manage per clinical context",
+      "category": "not_applicable",
+      "classification": "RCOG GTG 34 does not apply: it covers ovarian cysts in postmenopausal women, not premenopausal women or confirmed ovarian malignancy.",
+      "recommendation": "Manage per the clinical context.",
+      "locator": {
+        "source": "S1",
+        "page": 7,
+        "section": "1. Purpose and scope"
+      }
+    }
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "Every postmenopausal ovarian cyst is assessed with serum CA125 and transvaginal ultrasound (with transabdominal as needed), and the RMI I is calculated.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "table": "Clinical algorithm"
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "RMI I 200 or more: CT abdomen and pelvis and gynaecological oncology MDT referral. Under 200: low risk; a general gynaecologist may manage these women.",
+        "locator": {
+          "source": "S1",
+          "page": 16,
+          "section": "5.1 Which RMI should be used?"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "Asymptomatic simple, unilateral, unilocular cysts: 3 cm or less need no follow-up (December 2025 update); over 3 cm up to 5 cm with normal CA125 may be managed conservatively with repeat assessment in 4-6 months.",
+        "locator": {
+          "source": "S1",
+          "page": 19,
+          "section": "6.1.1"
+        }
+      },
+      {
+        "id": "sum.4",
+        "text": "Symptomatic women and cysts that are non-simple, over 5 cm, multilocular or bilateral (RMI I under 200): consider salpingo-oophorectomy, usually bilateral; laparoscopic management is suitable.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "table": "Clinical algorithm"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.simple",
+        "text": "Simple cyst (transvaginal ultrasound): round or oval, thin or imperceptible wall, posterior acoustic enhancement, anechoic fluid, and no septations or nodules. It indicates a benign process in 95-99% of postmenopausal women.",
+        "locator": {
+          "source": "S1",
+          "page": 12,
+          "section": "4.4.1"
+        }
+      },
+      {
+        "id": "def.complex",
+        "text": "Complex cyst: one or more of complete septation (multilocular cyst), solid nodules or papillary projections.",
+        "locator": {
+          "source": "S1",
+          "page": 12,
+          "section": "4.4.1"
+        }
+      },
+      {
+        "id": "def.rmi",
+        "text": "RMI I = U x M x CA125 (iu/ml). U: 1 point each for multilocular cyst, solid areas, metastases, ascites and bilateral lesions; U = 0 for 0 points, 1 for 1 point, 3 for 2-5 points. M = 3 for every postmenopausal woman.",
+        "locator": {
+          "source": "S1",
+          "page": 16,
+          "section": "5.1.1 Calculation of the RMI I"
+        }
+      },
+      {
+        "id": "def.ca125",
+        "text": "CA125: a routinely used cut-off is 35 iu/ml; lower levels (about 20 iu/ml) are found in healthy postmenopausal women. A normal value does not exclude ovarian cancer.",
+        "locator": {
+          "source": "S1",
+          "page": 10,
+          "section": "4.3.1 CA125"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "tab.u",
+        "title": "RMI I ultrasound score (U)",
+        "columns": [
+          "Ultrasound features present",
+          "U"
+        ],
+        "rows": [
+          [
+            "0",
+            "0"
+          ],
+          [
+            "1",
+            "1"
+          ],
+          [
+            "2-5",
+            "3"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 16,
+          "section": "5.1.1 Calculation of the RMI I"
+        }
+      },
+      {
+        "id": "tab.rmi_risk",
+        "title": "RMI I and approximate risk of cancer for counselling (historical validation data)",
+        "columns": [
+          "RMI I",
+          "Risk of cancer"
+        ],
+        "rows": [
+          [
+            "less than 25",
+            "less than 3%"
+          ],
+          [
+            "25 to 250",
+            "around 20%"
+          ],
+          [
+            "greater than 250",
+            "around 75%"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 17,
+          "section": "5.1.1"
+        }
+      },
+      {
+        "id": "tab.iota",
+        "title": "IOTA simple ultrasound rules (as reproduced by RCOG)",
+        "columns": [
+          "B-rules",
+          "M-rules"
+        ],
+        "rows": [
+          [
+            "Unilocular cysts",
+            "Irregular solid tumour"
+          ],
+          [
+            "Presence of solid components where the largest solid component < 7 mm",
+            "Ascites"
+          ],
+          [
+            "Presence of acoustic shadowing",
+            "At least four papillary structures"
+          ],
+          [
+            "Smooth multilocular tumour with largest diameter < 100 mm",
+            "Irregular multilocular solid tumour with largest diameter >= 100 mm"
+          ],
+          [
+            "No blood flow on colour Doppler",
+            "Prominent blood flow on colour Doppler"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 18,
+          "table": "Table 1. IOTA group simple ultrasound rules"
+        }
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.scope",
+        "text": "Not for premenopausal women or for the management of confirmed ovarian malignancy.",
+        "locator": {
+          "source": "S1",
+          "page": 7,
+          "section": "1. Purpose and scope"
+        }
+      },
+      {
+        "id": "pit.ct_first",
+        "text": "A cyst first seen on CT needs an ultrasound to calculate the RMI, unless the CT clearly shows ovarian malignancy with widespread intra-abdominal disease.",
+        "locator": {
+          "source": "S1",
+          "page": 8,
+          "section": "4.1"
+        }
+      },
+      {
+        "id": "pit.cross_sectional",
+        "text": "CT, MRI and PET-CT are not recommended for initial evaluation; MRI is second-line when ultrasound is inconclusive.",
+        "locator": {
+          "source": "S1",
+          "page": 14,
+          "section": "4.4.3"
+        }
+      },
+      {
+        "id": "pit.threshold",
+        "text": "Some centres use an RMI I threshold of 250 (NICE); this entry uses RCOG's 200.",
+        "locator": {
+          "source": "S1",
+          "page": 17,
+          "section": "5.1.1"
+        }
+      },
+      {
+        "id": "pit.iota",
+        "text": "RCOG accepts the IOTA classification as an alternative to the RMI for experienced operators; any M-rule feature warrants gynaecological oncology referral. IOTA is not encoded in this pathway.",
+        "locator": {
+          "source": "S1",
+          "page": 18,
+          "section": "5.2.1 IOTA group simple ultrasound rules"
+        }
+      },
+      {
+        "id": "pit.doppler",
+        "text": "Colour Doppler is not essential for routine initial assessment, and spectral Doppler indices should not be used routinely.",
+        "locator": {
+          "source": "S1",
+          "page": 13,
+          "section": "4.4.2"
+        }
+      }
+    ]
+  }
+}

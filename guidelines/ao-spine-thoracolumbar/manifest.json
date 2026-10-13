@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "AOSpine Thoracolumbar Spine Injury Classification System: Fracture Description, Neurological Status, and Key Modifiers (Vaccaro AR, Oner C, Kepler CK, Dvorak M, Schnake K, Bellabarba C, Reinhold M, Aarabi B, Kandziora F, Chapman J, Shanmuganathan R, Fehlings M, Vialle L. Spine 2013;38(23):2028-2037)",
+      "issuer": "AOSpine Spinal Cord Injury & Trauma Knowledge Forum (AO Foundation); published by Lippincott Williams & Wilkins",
+      "edition": "2013",
+      "url": "https://doi.org/10.1097/BRS.0b013e3182a8a381",
+      "sha256": "6e9b89055fee080a0bcf7894ac782fb0d365504d0dd07f43ab20dee5c5f0b10b",
+      "file": "sources/6e9b89055fee080a0bcf7894ac782fb0d365504d0dd07f43ab20dee5c5f0b10b.pdf",
+      "text_file": "sources/6e9b89055fee080a0bcf7894ac782fb0d365504d0dd07f43ab20dee5c5f0b10b.txt",
+      "retrieved": "2026-10-12"
+    }
+  ]
+}

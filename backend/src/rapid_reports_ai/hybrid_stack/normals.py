@@ -4,7 +4,9 @@ neither covers nor contradicts (Jev): a dictated-normal region keeps the radiolo
 other structures (review R2 2026-10-13: "ACL intact" kept the PCL sentence). A sentence in a region whose
 dictation hedges or limits its assessment, or that the dictation may contradict (contra between 0.3 and its bar), is
 kept and flagged for the radiologist (review R1, hedge question 2026-10-13). Sentences the
-radiologist removed never return; a template's context rules, decided once per session, hide their sentences."""
+radiologist removed never return; a template's context rules hide their sentences. Seam 21 (Hassan 2026-10-13):
+template_context_rules.condition_state is the one state every context rule is decided on, here as at Generate; the
+once-per-session decision below is only a cache of its answer on the history."""
 from __future__ import annotations
 
 import asyncio
@@ -15,6 +17,7 @@ from pydantic import BaseModel
 
 from .jev_stack import CONDITION_MIN, RowCheck, ask_conditions, ask_rows, normal_fate
 from .template import jev_text, norm_key
+from ..template_context_rules import condition_state
 
 logger = logging.getLogger(__name__)
 
@@ -79,26 +82,24 @@ async def _ask_by_region(dictation: str, asked: list[tuple[str, str]], texts: li
     return [RowCheck(s, c.contra, c.removed, h) for s, h, c in zip(stated, hedge, whole)]
 
 
-def _history_state(history: str) -> str:
-    return f"CLINICAL HISTORY:\n{history or '(not given)'}"
-
-
-async def _session_rules(conds: list[str], history: str, rules: dict[str, float] | None) -> dict[str, float]:
-    """The session's decision, condition -> P(met), from the clinical history alone (review R5): a cached one is
-    reused as is; only conditions it lacks are asked, in one call."""
+async def _session_rules(conds: list[str], scan_type: str, history: str,
+                         rules: dict[str, float] | None) -> dict[str, float]:
+    """The session's decision, condition -> P(met): condition_state on the scan type and the clinical history, with
+    nothing dictated yet (review R5; seam 21). This is a cache of condition_state's answer, never a second decider:
+    a cached one is reused as is; only conditions it lacks are asked, in one call."""
     cached = rules or {}
     todo = [c for c in conds if c not in cached]
-    got = dict(zip(todo, await ask_conditions(_history_state(history), todo))) if todo else {}
+    got = dict(zip(todo, await ask_conditions(condition_state(scan_type, history, ""), todo))) if todo else {}
     return {c: got[c] if c in got else float(cached[c]) for c in conds}
 
 
-async def _confirm_rules(conds: list[str], history: str, dictation: str) -> dict[str, float]:
-    """At Confirm only: every condition, asked on the history and the dictation (one call). Hassan 2026-10-13: no
-    word filter decides which rule the dictation can settle ("if ascites is present" names no finding word)."""
+async def _confirm_rules(conds: list[str], scan_type: str, history: str, dictation: str) -> dict[str, float]:
+    """At Confirm only: every condition, re-decided by condition_state on the scan type, the history and the
+    dictation (one call, never cached), the same state template Generate decides on. Hassan 2026-10-13: no word
+    filter decides which rule the dictation can settle ("if ascites is present" names no finding word)."""
     if not conds or not dictation.strip():
         return {}
-    state = f"{_history_state(history)}\nDICTATED FINDINGS:\n{dictation}"
-    return dict(zip(conds, await ask_conditions(state, conds)))
+    return dict(zip(conds, await ask_conditions(condition_state(scan_type, history, dictation), conds)))
 
 
 async def _nothing():
@@ -114,7 +115,7 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
                   suppressions: list[tuple[str, str]] | None = None,
                   clinical_history: str = "", labels: dict[str, str] | None = None,
                   region_text: dict[str, str] | None = None, rules: dict[str, float] | None = None,
-                  confirm: bool = False) -> AssumedResult:
+                  confirm: bool = False, scan_type: str = "") -> AssumedResult:
     """Every region of the sheet is answered (an empty list: nothing assumed), so the caller never falls back to
     the raw sheet. Every sentence is checked for contradiction against the whole dictation, untouched regions
     included: a finding the grouper filed under another region leaves its own region looking untouched (side review
@@ -131,10 +132,11 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     contradiction is still asked on the whole dictation. None: the whole dictation answers both (older callers).
 
     A template's context rule (`suppressions`: condition, sentence) whose condition is met hides its sentence,
-    empty dictation included (review R5). The conditions are decided once per session from the clinical history:
-    `rules` is that decision as an earlier reply returned it (None: decide now, one call), and the reply's `rules`
-    is what the caller keeps. `confirm`: at Confirm, every condition is re-asked on the history and the dictation,
-    for this reply only. On a Jev failure nothing is assumed and no rules are returned.
+    empty dictation included (review R5). Every decision is condition_state's (seam 21), on the scan type: once per
+    session on the clinical history alone, where `rules` is that decision as an earlier reply returned it (None:
+    decide now, one call) and the reply's `rules` is what the caller keeps; `confirm`: at Confirm, every condition
+    is re-decided on the history and the dictation, for this reply only. On a Jev failure nothing is assumed and no
+    rules are returned.
     Every sentence is asked, a dictated-normal region's included."""
     t0 = time.perf_counter()
     gone = list(dict.fromkeys(r for r in [*removed, *(owned or [])] if r.strip()))
@@ -159,8 +161,8 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
             rows = _no_rows() if blank else (_ask(dictation, texts, gone) if region_text is None
                                              else _ask_by_region(dictation, asked, texts, gone, region_text))
             session, late, checks = await asyncio.gather(
-                _session_rules(conds, clinical_history, rules),
-                _confirm_rules(conds, clinical_history, dictation) if confirm else _nothing(), rows)
+                _session_rules(conds, scan_type, clinical_history, rules),
+                _confirm_rules(conds, scan_type, clinical_history, dictation) if confirm else _nothing(), rows)
             met = {**session, **late}
             hidden = {norm_key(s) for c, s in suppressions or [] if met.get(c, 0.0) >= CONDITION_MIN}
             gone_keys = {norm_key(r) for r in gone}

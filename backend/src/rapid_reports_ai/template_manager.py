@@ -2580,7 +2580,8 @@ No user input provided. Omit this section entirely from output.
         if stack is not None:
             # Scratchpad session: the radiologist confirmed the content; the sheet keeps structure and style only
             pre_writing, checklist = PRE_WRITING_ANALYSIS_STACK, VERIFICATION_CHECKLIST_STACK
-            brief = stack_brief(skill_sheet, stack.get("conclusion") or "", stack.get("declined") or ())
+            brief = stack_brief(skill_sheet, stack.get("conclusion") or "", stack.get("declined") or (),
+                                values_decided=stack.get("values_decided") is True)
             system_prompt = (
                 f"{SYSTEM_PREAMBLE}\n\n{GLOBAL_STYLE_GUIDE_STACK}\n\n"
                 f"{TEMPLATE_SHEET_HEADER_STACK}\n\n{brief}"
@@ -2763,8 +2764,12 @@ Findings: {findings_input}{history_note}
 
         # ── Skill-sheet-guided early exit ──────────────────────────────────
         if template_config.get("generation_mode") == "skill_sheet_guided":
+            # today's (fallback) path reads the stored sheet: habit lines are resolved only in the scratchpad, so the
+            # generator never sees one here either (findings-triggered rows plan, Task 5b)
+            from .template_context_rules import without_habits
+            sheet, _ = without_habits(template_config.get("skill_sheet") or "")
             return await self._generate_report_skill_sheet_guided(
-                template_config, user_inputs, user_signature,
+                {**template_config, "skill_sheet": sheet}, user_inputs, user_signature,
                 model_override=model_override, stack=stack,
             )
 
@@ -3247,30 +3252,37 @@ Generate the report now as valid JSON.
     @staticmethod
     def _parse_skill_sheet_json(raw: str, keys: List[str]) -> Dict:
         """
-        Extract a JSON object from a GLM string response.
-        Handles markdown code fences and stray leading/trailing text.
+        Extract the JSON object carrying `keys` from a model's string response.
+
+        Decodes in place from each '{' rather than regex-slicing: the skill
+        sheet itself contains ``` fences and {placeholder} slots, which a
+        fence/brace regex mistakes for the envelope. Stray objects before the
+        envelope (prose, leaked reasoning) are skipped until one has all keys.
         """
-        import json, re
+        import json
 
-        # Strip markdown code fences (```json ... ``` or ``` ... ```)
-        fence_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', raw)
-        candidate = fence_match.group(1).strip() if fence_match else raw.strip()
+        decoder = json.JSONDecoder()
+        first_dict = None
+        start = raw.find("{")
+        while start != -1:
+            try:
+                obj, _ = decoder.raw_decode(raw, start)
+            except json.JSONDecodeError:
+                obj = None
+            if isinstance(obj, dict):
+                if all(k in obj for k in keys):
+                    return obj
+                if first_dict is None:
+                    first_dict = obj
+            start = raw.find("{", start + 1)
 
-        # Try direct parse first
-        try:
-            parsed = json.loads(candidate)
-        except json.JSONDecodeError:
-            # Find the outermost { ... } block
-            brace_match = re.search(r'\{[\s\S]*\}', candidate)
-            if not brace_match:
-                raise ValueError(f"No JSON object found in model response. Raw: {raw[:300]}")
-            parsed = json.loads(brace_match.group())
-
-        # Validate expected keys are present
-        missing = [k for k in keys if k not in parsed]
-        if missing:
-            raise ValueError(f"Model response missing keys {missing}. Got: {list(parsed.keys())}")
-        return parsed
+        if first_dict is None:
+            raise ValueError(f"No JSON object found in model response. Raw: {raw[:300]}")
+        missing = [k for k in keys if k not in first_dict]
+        raise ValueError(
+            f"Model response missing keys {missing} (output may be truncated). "
+            f"Got: {list(first_dict.keys())}"
+        )
 
     async def analyze_reports_and_generate_config(
         self,

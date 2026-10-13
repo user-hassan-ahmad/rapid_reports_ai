@@ -19,7 +19,9 @@ MAX_EXAMPLES = 10      # the creator takes 1-5; a bound on Jev calls per save
 TIMEOUT_S = 5.0        # one Jev call per example, all in parallel (~0.5-1 s for 10 in the lab); the save waits on it
 REMOVED = "[removed]"
 
-_MONTH = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
+# Month names whole, never a word that starts like one ("septal 1070 ms", "marked 1200 ms")
+_MONTH = (r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|"
+          r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\.?")
 _PATTERNS = [
     # a labelled identifier line ("Name: …", "DOB: …", "NHS No: …") goes whole
     re.compile(r"(?im)^[ \t]*(?:name|patient name|patient|pt name|dob|d\.o\.b\.?|date of birth|nhs(?: no\.?| number)?|"
@@ -110,3 +112,16 @@ async def store_examples(db, template_id, texts: list[str]) -> int:
         raise
     logger.info("template examples %s: stored=%d held_back=%d", tid, len(kept), held)
     return len(kept)
+
+
+def stored_texts(db, template_id, limit: int = MAX_EXAMPLES) -> list[str]:
+    """The template's stored (scrubbed) example reports, newest first; [] on any error (the first-use review then
+    shows only the Style-step cards)."""
+    try:
+        tid = template_id if isinstance(template_id, uuid.UUID) else uuid.UUID(str(template_id))
+        rows = (db.query(TemplateExample.text).filter(TemplateExample.template_id == tid)
+                .order_by(TemplateExample.created_at.desc()).limit(limit).all())
+        return [t for (t,) in rows if t]
+    except Exception as e:
+        logger.warning("template examples not read for %s: %s", template_id, type(e).__name__)
+        return []

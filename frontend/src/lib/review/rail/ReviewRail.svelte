@@ -29,6 +29,9 @@
 	import ItemRow, { type RailCommand } from './ItemRow.svelte';
 		import Legend from './Legend.svelte';
 	import ChatThread from './ChatThread.svelte';
+	import RailFrame from '$lib/rail/RailFrame.svelte';
+	import RailTabs from '$lib/rail/RailTabs.svelte';
+	import RailSkeleton from '$lib/rail/RailSkeleton.svelte';
 	import { compactOpenItems, type RailChat } from '../chat';
 	import { isSuggestion } from '../editor/field';
 	import { isEnginePreApplied } from '../types';
@@ -164,17 +167,12 @@
 	const nothingYet = $derived(!sections.length);
 	const skeleton = $derived(firstLoad || (reviewing && nothingYet));
 
-	// Below ~1100 px the rail is a strip; `layout` pins it either way.
-	let narrowViewport = $state(false);
-	$effect(() => {
-		if (layout !== 'auto' || typeof window === 'undefined' || !window.matchMedia) return;
-		const mq = window.matchMedia('(max-width: 1099.98px)');
-		narrowViewport = mq.matches;
-		const on = (e: MediaQueryListEvent) => (narrowViewport = e.matches);
-		mq.addEventListener('change', on);
-		return () => mq.removeEventListener('change', on);
-	});
-	const narrow = $derived(layout === 'narrow' || (layout === 'auto' && narrowViewport));
+	// RailFrame owns the viewport check (a strip below 1100 px); showItem reads it back to open the overlay.
+	let narrow = $state(false);
+	const tabs = $derived([
+		{ id: 'review' as const, label: 'Review' },
+		...(guidelines ? [{ id: 'guidelines' as const, label: 'Guidelines' }] : [])
+	]);
 
 	const variantOf = (i: ReviewItem) =>
 		i.status === 'pre_applied' ? 'preapplied' : i.cls === 'action' ? 'card' : 'row';
@@ -194,14 +192,14 @@
 	{/if}
 {/snippet}
 
-{#snippet panel()}
+{#snippet head(ctx: { narrow: boolean })}
 	{#if inChat}
 		<div class="rv-head rv-chat-head" data-rv-chat-head>
 			<button type="button" class="rv-chat-link rv-back" onclick={() => (view = 'review')}
 				>← Review · {openCount} open</button
 			>
 			<span class="rv-spacer"></span>
-			{#if !narrow}
+			{#if !ctx.narrow}
 				<button
 					type="button"
 					class="rv-icon-btn"
@@ -221,22 +219,7 @@
 	{:else}
 	<div class="rv-head">
 		<div class="rv-tabs-row">
-			<div class="rv-tabs" role="tablist" aria-label="Rail">
-				<button
-					type="button"
-					role="tab"
-					aria-selected={tab === 'review'}
-					onclick={() => (tab = 'review')}>Review</button
-				>
-				{#if guidelines}
-					<button
-						type="button"
-						role="tab"
-						aria-selected={tab === 'guidelines'}
-						onclick={() => (tab = 'guidelines')}>Guidelines</button
-					>
-				{/if}
-			</div>
+			<RailTabs {tabs} bind:active={tab} />
 			<span class="rv-spacer"></span>
 			{#if chat && hasThread}
 				<button type="button" class="rv-btn" onclick={() => (view = 'chat')}>Chat</button>
@@ -272,7 +255,9 @@
 	</div>
 
 	{/if}
+{/snippet}
 
+{#snippet body()}
 	{#if inChat}
 		<!-- the thread renders inside ChatThread below -->
 	{:else if tab === 'guidelines' && guidelines}
@@ -280,15 +265,7 @@
 	{:else}
 		<div class="rv-body" role="tabpanel" aria-label="Review">
 			{#if skeleton}
-				<div data-testid="rv-skeleton" aria-label="Loading review" aria-busy="true">
-					{#each [0, 1, 2] as n (n)}
-						<div class="rv-skel-card">
-							<div class="rv-skel rv-skel-title"></div>
-							<div class="rv-skel"></div>
-							<div class="rv-skel rv-skel-short"></div>
-						</div>
-					{/each}
-				</div>
+				<RailSkeleton />
 			{:else}
 				<div class="rv-items">
 					{#each sections as g (g.section)}
@@ -324,119 +301,32 @@
 	{/if}
 {/snippet}
 
+{#snippet stripExtra()}
+	{#if reviewing}<span class="rv-muted">…</span>{/if}
+	{#if failed}<span aria-hidden="true">⚠</span>{/if}
+{/snippet}
+
 {#if visible}
-	<aside
-		class="rv-rail"
-		class:rv-narrow={narrow}
-		class:rv-expanded={inChat && expanded && !narrow}
-		data-theme={theme}
-		bind:this={railEl}
-		data-testid="review-rail"
-		aria-label="Review"
-	>
-		{#if narrow}
-			<button
-				type="button"
-				class="rv-strip"
-				aria-expanded={overlayOpen}
-				aria-label={`Review: ${openCount} open`}
-				onclick={() => (overlayOpen = !overlayOpen)}
-			>
-				<span class="rv-strip-count">{openCount}</span>
-				<span>open</span>
-				{#if reviewing}<span class="rv-muted">…</span>{/if}
-				{#if failed}<span aria-hidden="true">⚠</span>{/if}
-			</button>
-			{#if overlayOpen}
-				<div class="rv-overlay" role="dialog" aria-label="Review">
-					<button
-						type="button"
-						class="rv-btn rv-close"
-						aria-label="Close review"
-						onclick={() => (overlayOpen = false)}>×</button
-					>
-					{@render panel()}
-				</div>
-			{/if}
-		{:else}
-			{@render panel()}
-		{/if}
-	</aside>
+	<RailFrame
+		{theme}
+		{layout}
+		ariaLabel="Review"
+		testid="review-rail"
+		stripLabel="open"
+		stripCount={openCount}
+		{stripExtra}
+		expanded={inChat && expanded}
+		bind:narrow
+		bind:overlayOpen
+		bind:el={railEl}
+		{head}
+		{body}
+	/>
 {/if}
 
 <style>
-	/* The app's look (app.css card-dark / btn-sm, the Report Editor card's segmented control): a dark glass panel
-	   with white/10 borders, rounded-lg, gray-200 text, purple-600 accent. Mark colours match the editor marks
-	   (editor/theme.ts) so a rail icon and its underline read the same. The app is dark-only; `light` exists for
-	   the dev page and follows the same structure. */
-	.rv-rail {
-		--rv-surface: rgba(255, 255, 255, 0.03);
-		--rv-surface-hover: rgba(255, 255, 255, 0.07);
-		--rv-panel: rgba(255, 255, 255, 0.02);
-		--rv-overlay: rgba(6, 6, 10, 0.98);
-		--rv-text: #e5e7eb;
-		--rv-muted: #9ca3af;
-		--rv-border: rgba(255, 255, 255, 0.1);
-		--rv-border-strong: rgba(255, 255, 255, 0.2);
-		--rv-accent: #9333ea;
-		--rv-accent-hover: #a855f7;
-		--rv-accent-soft: rgba(147, 51, 234, 0.15);
-		--rv-focus: #a855f7;
-		--rv-segment: rgba(31, 41, 55, 0.6);
-		--rv-green-line: #5cc285;
-		--rv-amber-line: #e3a94a;
-		--rv-amber-bg: rgba(227, 169, 74, 0.12);
-		--rv-red-line: #ff7a7a;
-		--rv-red-bg: rgba(239, 68, 68, 0.1);
-		--rv-blue-line: #7ea6f0;
-		--rv-del: #ff8c80;
-		--rv-ins: #6fd394;
-		display: flex;
-		flex-direction: column;
-		flex: none;
-		width: 340px;
-		min-width: 340px;
-		max-width: 340px;
-		height: 100%;
-		max-height: 100%;
-		box-sizing: border-box;
-		background: var(--rv-panel);
-		color: var(--rv-text);
-		border: 1px solid var(--rv-border);
-		border-radius: 0.5rem;
-		overflow: hidden;
-		font-family: 'DM Sans', 'IBM Plex Sans', system-ui, sans-serif;
-		font-size: 0.8125rem;
-		line-height: 1.45;
-	}
-	.rv-rail[data-theme='light'] {
-		--rv-surface: #ffffff;
-		--rv-surface-hover: #f5f3ff;
-		--rv-panel: #fafafa;
-		--rv-overlay: #ffffff;
-		--rv-text: #1f2937;
-		--rv-muted: #6b7280;
-		--rv-border: #e5e7eb;
-		--rv-border-strong: #d1d5db;
-		--rv-accent: #9333ea;
-		--rv-accent-hover: #7e22ce;
-		--rv-accent-soft: rgba(147, 51, 234, 0.1);
-		--rv-focus: #9333ea;
-		--rv-segment: #f3f4f6;
-		--rv-green-line: #3f9a5d;
-		--rv-amber-line: #b7791f;
-		--rv-amber-bg: #fcebc7;
-		--rv-red-line: #cf3b3b;
-		--rv-red-bg: #fde2e2;
-		--rv-blue-line: #3b6fcf;
-		--rv-del: #b42318;
-		--rv-ins: #1f7a3f;
-	}
-	.rv-rail.rv-expanded {
-		width: 560px;
-		min-width: 560px;
-		max-width: 560px;
-	}
+	/* The frame (aside, theme tokens, strip, overlay), the head / body layout, the tabs and the skeleton live in
+	   lib/rail (RailFrame, rail.css, RailTabs, RailSkeleton); what follows styles this rail's own head and body. */
 	/* the chat's header: one compact row, "← Review · N open" left, the expand icon right */
 	.rv-head.rv-chat-head {
 		flex-direction: row;
@@ -481,60 +371,10 @@
 		outline: 1px solid color-mix(in srgb, var(--rv-focus) 70%, transparent);
 		outline-offset: 0;
 	}
-	.rv-rail.rv-narrow {
-		width: auto;
-		min-width: 0;
-		max-width: none;
-		border: 0;
-		border-radius: 0;
-		background: transparent;
-	}
-	.rv-head {
-		display: flex;
-		flex-direction: column;
-		gap: 8px;
-		padding: 10px 12px 8px;
-		border-bottom: 1px solid var(--rv-border);
-		flex: none;
-	}
 	.rv-tabs-row {
 		display: flex;
 		align-items: center;
 		gap: 6px;
-	}
-	/* the Report Editor card's Report / History segmented control */
-	.rv-tabs {
-		display: inline-flex;
-		align-items: center;
-		gap: 2px;
-		padding: 2px;
-		border-radius: 0.5rem;
-		background: var(--rv-segment);
-	}
-	.rv-tabs [role='tab'] {
-		font: inherit;
-		font-size: 0.75rem;
-		font-weight: 500;
-		background: none;
-		border: 0;
-		border-radius: 0.375rem;
-		padding: 4px 10px;
-		color: #d1d5db;
-		cursor: pointer;
-		transition: background-color 0.15s, color 0.15s;
-	}
-	.rv-rail[data-theme='light'] .rv-tabs [role='tab'] {
-		color: var(--rv-muted);
-	}
-	.rv-tabs [role='tab']:hover {
-		color: #fff;
-	}
-	.rv-tabs [role='tab'][aria-selected='true'] {
-		background: var(--rv-accent);
-		color: #fff;
-	}
-	.rv-spacer {
-		flex: 1;
 	}
 	.rv-urgency {
 		border: 1px solid var(--rv-red-line);
@@ -573,12 +413,6 @@
 		color: var(--rv-amber-line);
 		font-weight: 600;
 	}
-	.rv-body {
-		overflow-y: auto;
-		padding: 8px 12px 12px;
-		flex: 1;
-		min-height: 0;
-	}
 	.rv-group {
 		margin-bottom: 12px;
 	}
@@ -613,27 +447,6 @@
 		padding: 12px 0;
 		text-align: center;
 	}
-	.rv-skel-card {
-		border: 1px solid var(--rv-border);
-		border-radius: 0.5rem;
-		padding: 10px 12px;
-		margin: 6px 0 8px;
-		background: var(--rv-surface);
-	}
-	.rv-skel {
-		height: 10px;
-		margin: 6px 0;
-		border-radius: 4px;
-		background: var(--rv-surface-hover);
-		animation: rv-pulse 1.6s ease-in-out infinite;
-	}
-	.rv-skel-title {
-		width: 60%;
-		height: 12px;
-	}
-	.rv-skel-short {
-		width: 40%;
-	}
 	.rv-btn {
 		font: inherit;
 		font-size: 0.75rem;
@@ -654,59 +467,6 @@
 	.rv-btn:disabled {
 		opacity: 0.5;
 		cursor: default;
-	}
-	.rv-strip {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		gap: 2px;
-		width: 44px;
-		padding: 8px 0;
-		font: inherit;
-		font-size: 0.72rem;
-		background: var(--rv-panel);
-		color: var(--rv-text);
-		border: 1px solid var(--rv-border);
-		border-radius: 0.5rem;
-		cursor: pointer;
-		height: 100%;
-	}
-	.rv-strip-count {
-		font-size: 1rem;
-		font-weight: 700;
-		color: var(--rv-accent-hover);
-	}
-	.rv-overlay {
-		position: fixed;
-		top: 0;
-		right: 0;
-		bottom: 0;
-		width: min(360px, 100vw);
-		display: flex;
-		flex-direction: column;
-		background: var(--rv-overlay);
-		border-left: 1px solid var(--rv-border);
-		box-shadow: -8px 0 24px rgba(0, 0, 0, 0.45);
-		z-index: 50;
-	}
-	.rv-close {
-		align-self: flex-end;
-		margin: 6px 8px 0;
-	}
-	/* the chip's "›": the card it points at glows purple, then settles */
-	@keyframes rv-reveal {
-		0%,
-		60% {
-			box-shadow: 0 0 0 2px var(--rv-accent-hover);
-			background-color: var(--rv-accent-soft);
-		}
-		100% {
-			box-shadow: 0 0 0 0 transparent;
-		}
-	}
-	.rv-rail :global(.rv-revealed) {
-		animation: rv-reveal 1.5s ease-out;
-		border-radius: 0.5rem;
 	}
 	button:focus-visible {
 		outline: 2px solid var(--rv-focus);

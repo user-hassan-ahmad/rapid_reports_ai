@@ -1,0 +1,602 @@
+"""Matching (spec §5.2). /match: library cards from Jev, one case request (modality, exam binding) and one topic
+pick per finding (library_cards, via library_match). /match/other and ask: the older on-demand path, which systems
+apply to each finding from model knowledge (gpt-oss), with each system's publication and skeleton (branch names,
+never thresholds) and the branch this finding falls into; library hits there are gated and follow /match's trigger
+and modality rules.
+
+Caches (_CACHE, _GATE, _PICK, _BRANCH) hold normalised clinical text (finding, history) in their keys, at most
+_CACHE_MAX (512) entries each; they are process-local, never persisted, and never logged."""
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+import re
+from collections import OrderedDict
+
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session, defer
+
+from ...database.models import GuidelineRegistry
+from ...enhancement_utils import MODEL_CONFIG, _run_agent_with_model
+from ...jev_client import JEV_MODEL, jev_post
+from ..schemas import scan_key
+from . import jev as J
+from . import library_match as LM
+from . import registry as R
+from . import tnm
+from .library import bundle as L
+from .library.pack_preview import EXAM_CARD, PACK_BRANCH, REFERENCE_BRANCH
+from .types import Card, Publication
+
+logger = logging.getLogger(__name__)
+
+TNM_GATE_MIN = 0.7   # provisional: Jev "a primary malignancy of this site that would be staged"; set by the Task 13 lab
+PACK_GATE_MIN = TNM_GATE_MIN   # Jev "the FINDING is the kind of finding this pack applies to" (pack_question)
+MAX_PER_FINDING = 2
+MAX_PER_CASE = 6
+DICTATION_MAX = 6000  # chars of the whole dictation: an exam card's finding, the /match and /open cache key
+CANDIDATES_PER_FINDING = 3   # resolved per finding (a candidate may resolve to nothing; the next one fills in)
+TIMEOUT_S = 8.0
+JEV_TIMEOUT_S = 4.0  # the edition pick and the TNM / pack gates; all fail closed (no pick, no card)
+PICK_MIN = 0.6
+KNOWN_MAX = 200      # registry rows offered to the model, verified first then most recent
+_CACHE_MAX = 512
+_CACHE: "OrderedDict[tuple, list]" = OrderedDict()        # (scan, history, finding) -> the model's systems
+_GATE: "OrderedDict[tuple, float]" = OrderedDict()        # (history, finding, site or pack key) -> Jev score (successes only)
+_PICK: "OrderedDict[tuple, str | None]" = OrderedDict()   # (finding, history, name, row keys) -> picked key (successes only)
+_BRANCH: "OrderedDict[tuple, str | None]" = OrderedDict()  # (finding, row key, model branch) -> registry branch (successes only)
+
+MATCH_SYS = """You recognise which published radiology classification systems, scoring systems, staging systems or management guidelines apply to findings a radiologist has dictated. Practice is in the UK: where several systems exist for the same finding, prefer the one used in UK radiology.
+
+For each FINDING, list 0-2 systems a radiologist would apply to THAT finding on THIS scan, most useful first:
+- only a system that classifies, scores, stages or sets the management of this finding as described: the finding already has the features the system works on (a size, a morphology, a density or signal, an enhancement pattern, a location), or is the kind of finding the system exists for;
+- never a system for a different finding, for a diagnosis the dictation does not make, or a general reporting standard;
+- most findings have none: return an empty list for them.
+Each system:
+- key: when KNOWN SYSTEMS lists the system, its key exactly as listed (choose a listed system by its scope and the finding, not by remembering its name); else ""
+- name: its usual name, without the version; when KNOWN SYSTEMS lists it, exactly that name
+- version: the edition or year ("" if it has none); when KNOWN SYSTEMS lists it, that version
+- why: one short clause, what about the finding makes it apply
+- publication: the defining publication's title, issuing body and year, as best you know them (never a URL)
+- skeleton: the system's branches or categories by name only (the groups its rules are organised by), never thresholds or intervals; when KNOWN SYSTEMS lists branches for it, exactly those names
+- branch: the skeleton branch this finding falls into, spelled exactly as in skeleton ("" when the finding does not yet say enough to tell)
+- site: "" except for TNM staging
+TNM STAGING: for a primary malignant tumour (known or suspected) that would be staged, list name "TNM", version "9", site = exactly one name from TNM SITES, skeleton ["Staging"], branch "Staging". Never TNM for a metastasis, a benign lesion or an indeterminate incidental finding."""
+
+
+class Finding(BaseModel):
+    id: str
+    text: str
+
+
+class RawSystem(BaseModel):
+    key: str = ""        # a KNOWN SYSTEMS key, as listed ("" when the system is not listed)
+    name: str = ""
+    version: str = ""
+    site: str = ""
+    why: str = ""
+    publication: Publication = Field(default_factory=Publication)
+    skeleton: list[str] = Field(default_factory=list)
+    branch: str = ""
+
+
+class RawFinding(BaseModel):
+    id: str
+    systems: list[RawSystem] = Field(default_factory=list)
+
+
+class RawMatch(BaseModel):
+    findings: list[RawFinding] = Field(default_factory=list)
+
+
+def clear_cache() -> None:
+    _CACHE.clear()
+    _GATE.clear()
+    _PICK.clear()
+    _BRANCH.clear()
+    LM.clear_cache()
+
+
+def _put(cache: OrderedDict, k, v) -> None:
+    cache[k] = v
+    cache.move_to_end(k)
+    while len(cache) > _CACHE_MAX:
+        cache.popitem(last=False)
+
+
+def _get(cache: OrderedDict, k):
+    if k in cache:
+        cache.move_to_end(k)
+        return True, cache[k]
+    return False, None
+
+
+# --- the registry, loaded once per match() -------------------------------------------------------------------------
+
+def _vnum(v: str) -> tuple:
+    return tuple(int(x) for x in re.findall(r"\d+", v or ""))
+
+
+def _nv(v: str) -> str:
+    """A version compared loosely: "v2019" = "2019", "2nd edition" = "2nd"."""
+    v = re.sub(r"\bedition\b", "", R.norm(v))
+    return re.sub(r"[^0-9a-z.]+", "", v).lstrip("v")
+
+
+class _Rows:
+    """Every registry row (chunks deferred), so one match() reads the table once and resolves candidates in memory
+    (and concurrently, without sharing the session across tasks)."""
+
+    def __init__(self, db: Session):
+        rows = db.query(GuidelineRegistry).options(defer(GuidelineRegistry.chunks)).all()
+        rows.sort(key=lambda r: (r.status != "verified", -(r.updated_at.timestamp() if r.updated_at else 0)))
+        self.rows = rows
+        self.by_key = {r.key: r for r in rows}
+        # Detach the loaded rows (nothing later reads a deferred column: chunks are never used here), then release
+        # the pooled connection before the model and Jev awaits. The caller has no pending writes (ask/routes contract).
+        db.expunge_all()
+        db.rollback()
+
+    def alias(self, name: str) -> list[GuidelineRegistry]:
+        """As registry.by_alias: name, alias or key slug, with a trailing version token stripped too."""
+        n = R.norm(name)
+        if not n:
+            return []
+        ns = R._strip_version(n)
+        return [r for r in self.rows if R.alias_hit(r, n, ns)]
+
+    def known_text(self) -> str:
+        if len(self.rows) > KNOWN_MAX:
+            logger.info("[copilot.match] registry has %d rows; offering the first %d", len(self.rows), KNOWN_MAX)
+        lines = []
+        for r in self.rows[:KNOWN_MAX]:
+            branches = [b.get("name", "") for b in (r.content or {}).get("branches") or [] if b.get("name")]
+            tail = f" [branches: {' | '.join(branches)}]" if branches else ""
+            lines.append(f"- {r.key}: {r.name} {r.version or ''}".rstrip() + tail)
+        return "\n".join(lines)
+
+
+def _latest(rows: list[GuidelineRegistry]) -> GuidelineRegistry:
+    return sorted(rows, key=lambda r: (r.status == "verified", _vnum(r.version)), reverse=True)[0]
+
+
+def _prompt(scan_type: str, history: str, findings: list[Finding], known: str) -> str:
+    s = f"SCAN TYPE: {scan_type}\nCLINICAL HISTORY: {history or 'none given'}\n\nFINDINGS:\n"
+    s += "\n".join(f"- [{f.id}] {f.text}" for f in findings)
+    if known:
+        s += "\n\nKNOWN SYSTEMS (key: name version [branches], or key: name [aliases] (scope)):\n" + known
+    s += "\n\nTNM SITES:\n" + "\n".join(f"- {x}" for x in tnm.sites())
+    return s
+
+
+async def _call(prompt: str) -> RawMatch:
+    r = await asyncio.wait_for(_run_agent_with_model(
+        model_name=MODEL_CONFIG["GUIDELINE_PREFETCH"], output_type=RawMatch, system_prompt=MATCH_SYS,
+        user_prompt=prompt, api_key="", model_settings={"temperature": 0, "max_tokens": 4000,
+                                                        "reasoning_effort": "low"}), TIMEOUT_S)
+    return r.output
+
+
+def _state(finding: str, history: str) -> str:
+    return f"CLINICAL HISTORY:\n{history or 'none given'}\n\nFINDING:\n{finding}"
+
+
+async def _jev_pick(finding: str, name: str, rows, history: str = "") -> str | None:
+    """Several registry versions of one system: Jev chooses between distinct entries, or none. Choice keys are
+    neutral (ed_0, ed_1, ...) and mapped back to row keys."""
+    ids = {f"ed_{i}": r.key for i, r in enumerate(rows)}
+    crit = {}
+    for cid, r in zip(ids, rows):
+        applies = ((r.content or {}).get("applies_to") or "").strip()
+        year = ((r.publication or {}).get("year") or "").strip()
+        crit[cid] = f"{r.name} {r.version}".strip() + (f" — {applies}" if applies else "") + (f" ({year})" if year else "")
+    crit["none"] = "None of these editions applies."
+    q = {"type": "choice", "instructions": f"Which edition of {name} should be applied to the FINDING?", "criteria": crit}
+    r = await jev_post({"model": JEV_MODEL, "state": _state(finding, history), "questions": {"pick": q}},
+                       os.environ.get("OPENROUTER_API_KEY", ""), JEV_TIMEOUT_S)
+    r.raise_for_status()
+    c, conf = J.choice(r.json(), "pick")   # malformed raises: a failure, never cached as "none"
+    return ids[c] if c in ids and conf >= PICK_MIN else None
+
+
+async def _pick(finding: str, name: str, rows, history: str) -> str | None:
+    k = (R.norm(finding), R.norm(history), R.norm(name), tuple(r.key for r in rows))
+    hit, v = _get(_PICK, k)
+    if hit:
+        return v
+    try:
+        v = await _jev_pick(finding, name, rows, history)
+    except Exception as e:
+        logger.info("[copilot.match] edition pick failed (%s): %s", name, type(e).__name__)
+        return None
+    _put(_PICK, k, v)
+    return v
+
+
+def _same_branch(branch: str, skeleton: list[str]) -> str:
+    """The registry's own name for the model's branch: exact, or the same once normalised; else the model's name
+    (a new branch, fetched on open). No containment: "Part-solid" is not "Solid" or "Subsolid"."""
+    if branch in skeleton:
+        return branch
+    nb = R.norm(branch)
+    same = [b for b in skeleton if nb and R.norm(b) == nb]
+    return same[0] if len(same) == 1 else branch
+
+
+async def _jev_branch(finding: str, name: str, skeleton: list[str], model_branch: str, history: str = "") -> str | None:
+    """Which of the registry's existing branches this finding falls into, or none. Choice keys are neutral (br_0,
+    br_1, ...) and mapped back to the branch names. No model branch (ask's pick_branch): the finding alone."""
+    ids = {f"br_{i}": b for i, b in enumerate(skeleton)}
+    crit = {**ids, "none": "None of these branches fits the FINDING."}
+    q = {"type": "choice", "instructions": f"Which branch of {name} does the FINDING fall into?", "criteria": crit}
+    state = (_state(finding, history) if history else f"FINDING:\n{finding}") + \
+        (f"\n\nMODEL BRANCH: {model_branch}" if model_branch else "")
+    r = await jev_post({"model": JEV_MODEL, "state": state,
+                        "questions": {"branch": q}}, os.environ.get("OPENROUTER_API_KEY", ""), JEV_TIMEOUT_S)
+    r.raise_for_status()
+    c, conf = J.choice(r.json(), "branch")
+    return ids[c] if c in ids and conf >= PICK_MIN else None
+
+
+async def _branch(finding: str, row_key: str, name: str, skeleton: list[str], model_branch: str) -> str:
+    """The registry's branch for the model's: exact or normalised; else Jev chooses among the registry's branches;
+    "none" or a Jev failure keeps the model's name (a new branch, fetched on open). Successes are cached."""
+    same = _same_branch(model_branch, skeleton)
+    if same in skeleton or not model_branch.strip():
+        return same
+    k = (R.norm(finding), row_key, model_branch)
+    hit, v = _get(_BRANCH, k)
+    if not hit:
+        try:
+            v = await _jev_branch(finding, name, skeleton, model_branch)
+        except Exception as e:
+            logger.info("[copilot.match] branch pick failed (%s): %s", row_key, type(e).__name__)
+            return model_branch
+        _put(_BRANCH, k, v)
+    return v or model_branch
+
+
+async def pick_branch(finding: str, entry, history: str = "") -> str | None:
+    """The entry's checked branch this finding falls into, chosen by Jev with no model branch to start from (ask's
+    no-card path, a branchless open: the route names a guideline, not a branch). Only checked branches are offered:
+    a pending or not_available one has nothing to preview. None on "none", no checked branch or a Jev failure;
+    successes are cached."""
+    names = [b.name for b in entry.content.checked()]
+    if not names:
+        return None
+    k = (R.norm(finding), entry.key, "", R.norm(history), tuple(names))   # a branch checked later re-asks
+    hit, v = _get(_BRANCH, k)
+    if hit:
+        return v
+    try:
+        v = await _jev_branch(finding, entry.name, names, "", history)
+    except Exception as e:
+        logger.info("[copilot.match] branch pick failed (%s): %s", entry.key, type(e).__name__)
+        return None
+    _put(_BRANCH, k, v)
+    return v
+
+
+async def _tnm_gate(finding: str, site: str, history: str = "") -> float:
+    q = {"type": "noul", "instructions": (f"The FINDING describes a primary malignant tumour (known or suspected) of this "
+                                          f"site that would be staged: {site}")}
+    r = await jev_post({"model": JEV_MODEL, "state": _state(finding, history), "questions": {"q": q}},
+                       os.environ.get("OPENROUTER_API_KEY", ""), JEV_TIMEOUT_S)
+    r.raise_for_status()
+    return J.scores(r.json(), ["q"])["q"]   # malformed raises: the gate fails closed and caches nothing
+
+
+async def _cached_gate(k: tuple, ask, label: str) -> float | None:
+    """A Jev gate score through the _GATE cache: successes are cached; a failure is None (the caller fails closed)
+    and caches nothing."""
+    hit, v = _get(_GATE, k)
+    if hit:
+        return v
+    try:
+        v = await ask()
+    except Exception as e:
+        logger.info("[copilot.match] %s gate failed closed: %s", label, type(e).__name__)
+        return None
+    _put(_GATE, k, v)
+    return v
+
+
+async def _gate(finding: str, site: str, history: str) -> float | None:
+    return await _cached_gate((R.norm(history), R.norm(finding), site),
+                              lambda: _tnm_gate(finding, site, history), f"TNM ({site})")
+
+
+def _a(phrase: str) -> str:
+    return ("an " if phrase[:1].lower() in "aeiou" else "a ") + phrase
+
+
+def pack_question(pack) -> str:
+    """The pack gate's yes/no question, built from the pack's own applies_to and display only (case-agnostic)."""
+    a = pack.applies_to
+    kinds = " or ".join(a.finding_type) or pack.topic
+    lead = " ".join([*a.context, kinds]).strip()
+    where = f" of the {' or '.join(a.region)}" if a.region else ""
+    return f"The FINDING describes {_a(lead)}{where} that {pack.display} applies to."
+
+
+async def _pack_gate(finding: str, pack, history: str = "") -> float:
+    q = {"type": "noul", "instructions": pack_question(pack)}
+    r = await jev_post({"model": JEV_MODEL, "state": _state(finding, history), "questions": {"q": q}},
+                       os.environ.get("OPENROUTER_API_KEY", ""), JEV_TIMEOUT_S)
+    r.raise_for_status()
+    return J.scores(r.json(), ["q"])["q"]   # malformed raises: the gate fails closed and caches nothing
+
+
+async def _pgate(finding: str, pack, history: str) -> float | None:
+    return await _cached_gate((R.norm(history), R.norm(finding), pack.key),
+                              lambda: _pack_gate(finding, pack, history), f"pack ({pack.key})")
+
+
+async def _tnm_card(f: Finding, s: RawSystem, history: str, gate: bool = True) -> Card | None:
+    """A TNM candidate: the site must be on the closed list (matched normalised) and pass the Jev gate (fails
+    closed: no card). `gate=False` only for an explicit staging question (ask), where no finding need match."""
+    site = {R.norm(x): x for x in tnm.sites()}.get(R.norm(s.site))
+    if site is None:
+        return None
+    if gate:
+        score = await _gate(f.text, site, history)
+        if score is None or score < TNM_GATE_MIN:
+            return None
+    e = tnm.entry(site)
+    return Card(key=e.key, name=e.name, version="9", finding_id=f.id, why=s.why, branch="Staging",
+                skeleton=["Staging"], publication=e.publication, known=True, status="verified")
+
+
+async def _resolve(rows: _Rows, f: Finding, s: RawSystem, history: str) -> GuidelineRegistry | None:
+    """The registry row this candidate is: exact key; else an alias row of the same version; else (one unversioned
+    row) that row; else Jev picks between editions; a versionless candidate with several rows and no pick takes the
+    latest (verified first), never a new unversioned key."""
+    row = rows.by_key.get(R.make_key(s.name, s.version))
+    if row is not None:
+        return row
+    cands = rows.alias(s.name)
+    if not cands:
+        return None
+    if s.version:
+        same = [r for r in cands if _nv(r.version) == _nv(s.version)]
+        if same:
+            return same[0]
+        if len(cands) == 1:
+            return cands[0] if not cands[0].version else None
+    elif len(cands) == 1:
+        return cands[0]
+    picked = await _pick(f.text, s.name, cands, history)
+    if picked:
+        return rows.by_key.get(picked)
+    return None if s.version else _latest(cands)
+
+
+def library_pack(lib, s: RawSystem):
+    """The library entry a candidate is: its listed key when that is a current entry; else its name (and version)
+    through find. The caller still gates the hit. Serves /match/other and ask only (/match uses library_cards)."""
+    if s.key.strip():
+        e = lib.lookup(s.key.strip())
+        if e is not None and e.status == "current":
+            return e
+    return (lib.find(s.name, s.version) or lib.find(s.name)) if s.name.strip() else None
+
+
+_NO_FILTER = object()   # _card's modality when the caller applies no modality rule (ask's pinned path)
+
+
+async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool = True,
+                modality=_NO_FILTER) -> Card | None:
+    if not s.name.strip() and not s.key.strip():
+        return None
+    if s.name.strip().upper() == "TNM":
+        return await _tnm_card(f, s, history, gate)
+    lib = L.get()
+    pack = library_pack(lib, s)
+    if pack is not None:
+        # matching v2's rules hold here too (final review I4): an exam-level pack is never a finding card (NHS AAA from
+        # an aneurysm on an ordinary CT), and the case's modality filters the pack (a redirect pack becomes a
+        # read-only card naming the modality it needs). No card, never a fall-through to the registry.
+        if "finding" not in getattr(pack, "trigger", ["finding"]):
+            return None
+        needs = ""
+        if modality is not _NO_FILTER and not LM.modality_ok(pack, modality):
+            if getattr(pack, "off_modality", "") != "redirect":
+                return None
+            needs = LM.needs_modality(pack)
+        # A name hit is not applicability: Jev must agree the finding is the kind this entry is for (fails closed: no
+        # card, never a fall-through to the registry). Siblings share topic and applies_to: gated once, on the hit.
+        if gate:
+            score = await _pgate(f.text, pack, history)
+            if score is None or score < PACK_GATE_MIN:
+                return None
+        branch = PACK_BRANCH if pack.tier == 1 else REFERENCE_BRANCH
+        return Card(key=pack.key, name=pack.display, version=pack.edition, finding_id=f.id, why=s.why,
+                    branch=branch, skeleton=[branch], publication=Publication(body=pack.issuer, year=pack.edition),
+                    known=True, status="verified", siblings=[x.key for x in lib.siblings(pack)],
+                    sibling_names=[x.display for x in lib.siblings(pack)], reference=pack.tier == 2, finding=f.text,
+                    needs_modality=needs)
+    if not s.name.strip():   # a key outside the library and no name: nothing to resolve
+        return None
+    if not R.web_fetch_on():   # spec §5: outside the library, no card; the name is logged as demand
+        logger.info("[copilot.match] outside the library, no card (demand): %r %r", s.name.strip()[:120],
+                    s.version.strip()[:24])
+        return None
+    row = await _resolve(rows, f, s, history)
+    if row is not None:
+        e = R.entry(row)
+        known = [b.name for b in e.content.branches]
+        skeleton = known or s.skeleton
+        branch = await _branch(f.text, e.key, e.name, known, s.branch) if known else _same_branch(s.branch, skeleton)
+        return Card(key=e.key, name=e.name, version=e.version, finding_id=f.id, why=s.why, branch=branch,
+                    skeleton=skeleton, publication=e.publication if e.publication.title else s.publication,
+                    known=True, status=e.status)
+    return Card(key=R.make_key(s.name, s.version), name=s.name.strip(), version=s.version.strip(), finding_id=f.id,
+                why=s.why, branch=s.branch, skeleton=s.skeleton, publication=s.publication, known=False, status="new")
+
+
+async def _safe_card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool = True,
+                     modality=_NO_FILTER) -> Card | None:
+    try:
+        return await _card(rows, f, s, history, gate, modality)
+    except Exception as e:   # one candidate that fails to resolve is skipped, not the whole match
+        logger.warning("[copilot.match] candidate %r skipped: %s", s.name, type(e).__name__)
+        return None
+
+
+async def card_for(db: Session, name: str, version: str, finding_id: str, finding_text: str, history: str = "",
+                   site: str = "", gate: bool = True) -> Card | None:
+    """One named system as a card through the matcher's own normalisation (exact key, alias, Jev edition pick, else a
+    new key; "TNM" via the closed site list and, unless `gate=False`, the Jev gate; a library pack, unless `gate=False`,
+    via the pack gate). For ask's no-card path. Never
+    raises: None on any failure."""
+    try:
+        rows = _Rows(db)
+    except Exception as e:
+        logger.warning("[copilot.match] registry read failed: %s", type(e).__name__)
+        return None
+    return await _safe_card(rows, Finding(id=finding_id, text=finding_text),
+                            RawSystem(name=name, version=version, site=site), history, gate)
+
+
+def _rid(s: str) -> str:
+    return s.strip().strip("[]").strip()
+
+
+def _pack_card(lib, e, finding_id: str, finding: str) -> Card:
+    branch = PACK_BRANCH if e.tier == 1 else REFERENCE_BRANCH
+    return Card(key=e.key, name=e.display, version=e.edition, finding_id=finding_id, why="", branch=branch,
+                skeleton=[branch], publication=Publication(body=e.issuer, year=e.edition), known=True,
+                status="verified", siblings=[x.key for x in lib.siblings(e)],
+                sibling_names=[x.display for x in lib.siblings(e)], reference=e.tier == 2, finding=finding)
+
+
+def _rank_capped(cards: list[Card], per_finding: list[list[Card]]) -> list[Card]:
+    """Caps in rank order after `cards`: every finding's first card before any finding's second."""
+    for rank in range(MAX_PER_FINDING):
+        for ranked in per_finding:
+            if rank < len(ranked) and len(cards) < MAX_PER_CASE and all(x.id != ranked[rank].id for x in cards):
+                cards.append(ranked[rank])
+    return cards
+
+
+async def build_cards(facts, picks: list[tuple[Finding, tuple | None]], history: str, dictation: str = "",
+                      lib=None) -> list[Card]:
+    """The library path's cards (spec §5.2) from the case facts (None: the case request failed) and each finding's
+    pick ((entries, tnm_site), or None: its request failed). Shared by match() and real_lab, so the lab cannot drift.
+
+    Exam cards first (each bound exam-level entry; settled from the whole dictation; never modality-filtered). Then
+    per finding: a TNM card (site confirmed by the existing site gate) ranked first, then the picked topic's first
+    entry the modality allows; when none does, its first "redirect" entry as a read-only card marked needs_modality
+    (a "drop" topic gives no card). One TNM card per site per case: a later finding of a staged site adds none. An
+    exam-level framework owns its topic on that study: a picked topic whose matcher_topic equals a bound exam
+    entry's merges into that exam card (no finding card). Caps as match_other."""
+    lib = lib or L.get()
+    text = dictation or "\n".join(f.text for f, _ in picks)
+    exam = [_pack_card(lib, e, EXAM_CARD, text) for e in LM.exam_entries(lib) if facts and e.key in facts.exams]
+    owned = {e.matcher_topic for e in LM.exam_entries(lib) if facts and e.key in facts.exams}
+    modality = facts.modality if facts else None
+
+    async def one(f: Finding, got) -> list[Card]:
+        if got is None:
+            return []
+        entries, site = got
+        out: list[Card] = []
+        if site:
+            try:
+                c = await _tnm_card(f, RawSystem(name="TNM", site=site), history)
+            except Exception as e:   # a failed confirm: no TNM card; the library card is unaffected
+                logger.info("[copilot.match] TNM card failed: %s", type(e).__name__)
+                c = None
+            if c is not None:
+                out.append(c)
+        if entries and not any(e.matcher_topic in owned for e in entries):
+            ok = [e for e in entries if LM.modality_ok(e, modality)]
+            redirect = [e for e in entries if e.off_modality == "redirect"]
+            if ok:
+                out.append(_pack_card(lib, ok[0], f.id, f.text))
+            elif redirect:   # off-modality but defined on another: a read-only card naming the modality it needs
+                c = _pack_card(lib, redirect[0], f.id, f.text)
+                c.needs_modality = LM.needs_modality(redirect[0])
+                out.append(c)
+        return out
+    per_finding = list(await asyncio.gather(*(one(f, got) for f, got in picks)))
+    staged: set[str] = set()   # one TNM card per site per case: the first in rank order (TNM ranks first per finding)
+    for ranked in per_finding:
+        for c in [c for c in ranked if tnm.is_tnm(c.key)]:
+            if c.key in staged:
+                ranked.remove(c)
+            staged.add(c.key)
+    return _rank_capped(exam[:MAX_PER_CASE], per_finding)
+
+
+async def library_cards(scan_type: str, history: str, findings: list[Finding], dictation: str = "") -> list[Card]:
+    """Library cards for this case and its findings (spec §5.2): one Jev case request (modality, exam binding) and one
+    Jev request per finding (topic choice, TNM), concurrently, then build_cards. No gpt-oss, no pack gate. A failed
+    case request gives no exam cards and no modality filter; a failed finding request gives no card for that finding.
+    real_lab calls this too, so the lab runs exactly the live path."""
+    async def facts():
+        try:
+            return await LM.case_facts(scan_type, history)
+        except Exception as e:
+            logger.info("[copilot.match] case facts failed: %s", type(e).__name__)
+            return None
+
+    async def one(f: Finding):
+        try:
+            return await LM.pick(scan_type, history, f.text)
+        except Exception as e:
+            logger.info("[copilot.match] finding pick failed: %s", type(e).__name__)
+            return None
+    got = await asyncio.gather(facts(), *(one(f) for f in findings))
+    text = (dictation or "\n".join(f.text for f in findings))[:DICTATION_MAX]
+    try:
+        return await build_cards(got[0], list(zip(findings, got[1:])), history, text)
+    except Exception as e:   # fail open: an unreadable bundle or a builder error is no library card, never a 500
+        logger.warning("[copilot.match] library cards failed: %s", type(e).__name__)
+        return []
+
+
+async def match(db: Session, scan_type: str, history: str, findings: list[Finding], dictation: str = "") -> list[Card]:
+    """The /match path: library cards only (library_cards). `db` is unused (the signature matches match_other)."""
+    return await library_cards(scan_type, history, findings, dictation)
+
+
+async def match_other(db: Session, scan_type: str, history: str, findings: list[Finding]) -> list[Card]:
+    """The on-demand "other guidelines" path (gpt-oss: registry systems from model knowledge, TNM, library by name
+    through the pack gate). Cards for these findings, ranked and capped. Only findings the cache has not seen (with
+    this scan type and history) call the model; a model failure caches nothing and still returns the cached findings'
+    cards."""
+    sk, hk = scan_key(scan_type), R.norm(history)
+    keyf = lambda f: (sk, hk, R.norm(f.text))
+    try:
+        rows = _Rows(db)
+    except Exception as e:
+        logger.warning("[copilot.match] registry read failed: %s", type(e).__name__)
+        return []
+    todo = [f for f in findings if keyf(f) not in _CACHE]
+    if todo:
+        try:
+            reg = rows.known_text() if R.web_fetch_on() else ""
+            known = "\n".join(x for x in (reg, L.get().known_text()) if x)
+            raw = await _call(_prompt(scan_type, history, todo, known))
+            got = {_rid(rf.id): rf.systems for rf in raw.findings}
+            if any(_rid(f.id) in got for f in todo):
+                for f in todo:
+                    _put(_CACHE, keyf(f), got.get(_rid(f.id), []))
+            else:
+                logger.warning("[copilot.match] none of %d finding ids came back; nothing cached", len(todo))
+        except Exception as e:
+            logger.warning("[copilot.match] %s: %s", type(e).__name__, str(e)[:200])
+    plan = [(f, s) for f in findings for s in (_CACHE.get(keyf(f)) or [])[:CANDIDATES_PER_FINDING]]
+    try:        # the case's modality, as /match reads it (cached); a failed request filters nothing, as on /match
+        modality = (await LM.case_facts(scan_type, history)).modality if plan else None
+    except Exception as e:
+        logger.warning("[copilot.match] case facts %s: no modality filter", type(e).__name__)
+        modality = None
+    resolved = await asyncio.gather(*(_safe_card(rows, f, s, history, modality=modality) for f, s in plan))
+    per_finding: dict[str, list[Card]] = {f.id: [] for f in findings}
+    for (f, _), c in zip(plan, resolved):
+        if c is not None and all(x.id != c.id for x in per_finding[f.id]):
+            per_finding[f.id].append(c)
+    return _rank_capped([], [per_finding.get(f.id) or [] for f in findings])

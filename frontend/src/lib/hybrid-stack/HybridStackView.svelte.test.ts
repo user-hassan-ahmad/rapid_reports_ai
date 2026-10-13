@@ -15,6 +15,30 @@ const row = (id: string, sentences: string[], extra: Partial<StackItem> = {}): S
 });
 
 describe('HybridStackView v2', () => {
+	it('a template row asks the template question: Yes / No write its sentence, Not assessed writes nothing', async () => {
+		const props = { ...base(), onAnswerTemplate: vi.fn(), onSkip: vi.fn(), onAnswer: vi.fn() };
+		const tpl = row('t', ['The cyst is septated.', 'No septation.'], {
+			kind: 'template', question: 'Septation?', why: 'Your template asks this when a liver cyst is reported.',
+			yes: 'The cyst is septated.', no: 'No septation.'
+		});
+		render(HybridStackView, { ...props, units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true, covers: ['Liver'] })], items: [tpl] });
+		await expect.element(page.getByText('Septation?')).toBeInTheDocument();
+		await page.getByRole('button', { name: 'No', exact: true }).click();
+		expect(props.onAnswerTemplate).toHaveBeenCalledWith('t', 'no');
+		await page.getByRole('button', { name: 'Yes', exact: true }).click();
+		expect(props.onAnswerTemplate).toHaveBeenCalledWith('t', 'yes');
+		await page.getByRole('button', { name: 'Not assessed' }).click();
+		expect(props.onSkip).toHaveBeenCalledWith('t');
+		expect(props.onAnswer).not.toHaveBeenCalled();
+	});
+
+	it('an answered template row shows the sentence chosen', async () => {
+		render(HybridStackView, {
+			...base(), units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true, covers: ['Liver'] })], tapped: ['t'],
+			items: [row('t', ['No septation.'], { kind: 'template', question: 'Septation?', yes: 'The cyst is septated.', no: 'No septation.' })]
+		});
+		await expect.element(page.getByText('✓ No septation.')).toBeInTheDocument();
+	});
 	it('abnormal regions in the scratchpad, normals in the tray, rows asked with the sentence on the button', async () => {
 		const props = { ...base(), onAnswer: vi.fn() };
 		render(HybridStackView, {
@@ -428,5 +452,68 @@ describe('HybridStackView v2', () => {
 		r.rerender({ ...props, units, conclusion: { kind: 'dictated' }, items: [], more, moreWaiting: 1, moreOpen: true, tapped: ['c1'], namedNormals: true });
 		await expect.element(page.getByRole('button', { name: '▾ 1 more check' })).toBeInTheDocument();   // N: still asked
 		await expect.element(page.getByText('✓ No splenic lesion.')).toBeInTheDocument();   // green, still behind the line
+	});
+
+	it('open and "stated?" required values block Confirm and are walked to, ringed; resolving them frees Confirm', async () => {
+		const onEnterValue = vi.fn();
+		const onKeepValue = vi.fn();
+		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })];
+		const values = [
+			{ item: 'LVEF', state: 'filled' as const, value: '45%', quote: 'LVEF 45%.' },
+			{ item: 'RVEF', state: 'open' as const, value: null, quote: null },
+			{ item: 'Conus level', state: 'check' as const, value: null, quote: null }
+		];
+		const props = { ...base(), units, onEnterValue, onKeepValue, conclusion: { kind: 'draft', text: 'Liver cyst.', edited: false } as const, namedNormals: true };
+		const r = render(HybridStackView, { ...props, values });
+		await expect.element(page.getByTestId('value-cluster')).toBeInTheDocument();
+		await expect.element(page.getByText('2 required values to resolve')).toBeInTheDocument();
+		await page.getByRole('button', { name: 'Confirm · 2 to resolve' }).click();
+		await expect.element(page.getByTestId('walkthrough')).toHaveTextContent('Checking 1 of 2 · Required value');
+		await expect.element(page.getByLabelText('Value for RVEF')).toHaveFocus(); // the stop opens the chip to type
+		await expect.element(page.getByTestId('value-editor')).toHaveClass('ring-2');
+		await page.getByLabelText('Value for RVEF').fill('50%');
+		await userEvent.keyboard('{Enter}');
+		expect(onEnterValue).toHaveBeenCalledWith('RVEF', '50%');
+		const typed = [values[0], { item: 'RVEF', state: 'entered' as const, value: '50%', quote: null }, values[2]];
+		r.rerender({ ...props, values: typed });
+		await expect.element(page.getByTestId('walkthrough')).toHaveTextContent('Checking 2 of 2 · Required value · needs a look');
+		await page.getByRole('button', { name: 'Stated ✓' }).click();
+		expect(onKeepValue).toHaveBeenCalledWith('Conus level');
+		r.rerender({ ...props, values: [typed[0], typed[1], { item: 'Conus level', state: 'filled' as const, value: null, quote: null, kept: true }] });
+		await expect.element(page.getByTestId('walkthrough')).toHaveTextContent('All checked');
+		await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+		expect(props.onConfirm).toHaveBeenCalled();
+	});
+
+	it('the walkthrough offers one step to mark every open value not provided ("stated?" still needs a look)', async () => {
+		const onValuesRestNa = vi.fn();
+		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })];
+		const values = [
+			{ item: 'LVEF', state: 'open' as const, value: null, quote: null },
+			{ item: 'RVEF', state: 'open' as const, value: null, quote: null },
+			{ item: 'Conus level', state: 'check' as const, value: null, quote: null }
+		];
+		const props = { ...base(), units, onValuesRestNa, conclusion: { kind: 'draft', text: 'Liver cyst.', edited: false } as const, namedNormals: true };
+		const r = render(HybridStackView, { ...props, values });
+		await expect.element(page.getByRole('button', { name: 'Mark 2 not provided' })).not.toBeInTheDocument();
+		await page.getByRole('button', { name: 'Confirm · 3 to resolve' }).click();
+		await page.getByRole('button', { name: 'Mark 2 not provided' }).click();
+		expect(onValuesRestNa).toHaveBeenCalledOnce();
+		r.rerender({ ...props, values: [{ ...values[0], state: 'na' as const }, { ...values[1], state: 'na' as const }, values[2]] });
+		await expect.element(page.getByTestId('walkthrough')).toHaveTextContent('Required value · needs a look');
+		await expect.element(page.getByRole('button', { name: /not provided/ })).not.toBeInTheDocument();
+	});
+
+	it('a required-value editor holding unsaved text holds Confirm', async () => {
+		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })];
+		const values = [{ item: 'LVEF', state: 'entered' as const, value: '45%', quote: null }];
+		render(HybridStackView, { ...base(), units, values, conclusion: { kind: 'draft', text: 'Liver cyst.', edited: false } as const, namedNormals: true });
+		const confirm = page.getByRole('button', { name: 'Confirm', exact: true });
+		await expect.element(confirm).toBeEnabled();
+		await page.getByRole('button', { name: 'LVEF 45%' }).click();
+		await page.getByLabelText('Value for LVEF').fill('46%');
+		await expect.element(confirm).toBeDisabled();
+		await userEvent.keyboard('{Escape}');
+		await expect.element(confirm).toBeEnabled();
 	});
 });

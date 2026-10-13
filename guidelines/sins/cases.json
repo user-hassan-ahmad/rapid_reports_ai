@@ -1,0 +1,114 @@
+{
+  "cases": [
+    {
+      "name": "SINS 0, lowest",
+      "origin": "ours",
+      "inputs": {
+        "sins_total": 0
+      },
+      "outcome": "b0_6"
+    },
+    {
+      "name": "SINS 3",
+      "origin": "ours",
+      "inputs": {
+        "sins_total": 3
+      },
+      "outcome": "b0_6"
+    },
+    {
+      "name": "edge: SINS 6, top of stability",
+      "origin": "ours",
+      "inputs": {
+        "sins_total": 6
+      },
+      "outcome": "b0_6"
+    },
+    {
+      "name": "edge: SINS 7, bottom of indeterminate",
+      "origin": "ours",
+      "inputs": {
+        "sins_total": 7
+      },
+      "outcome": "b7_12"
+    },
+    {
+      "name": "SINS 9",
+      "origin": "ours",
+      "inputs": {
+        "sins_total": 9
+      },
+      "outcome": "b7_12"
+    },
+    {
+      "name": "edge: SINS 12, top of indeterminate",
+      "origin": "ours",
+      "inputs": {
+        "sins_total": 12
+      },
+      "outcome": "b7_12"
+    },
+    {
+      "name": "edge: SINS 13, bottom of instability",
+      "origin": "ours",
+      "inputs": {
+        "sins_total": 13
+      },
+      "outcome": "b13_18"
+    },
+    {
+      "name": "SINS 18, highest",
+      "origin": "ours",
+      "inputs": {
+        "sins_total": 18
+      },
+      "outcome": "b13_18"
+    },
+    {
+      "name": "paper case 1: total 14 (band text, not the paper's 'indeterminate' reading)",
+      "origin": "source",
+      "inputs": {
+        "sins_total": 14
+      },
+      "outcome": "b13_18"
+    },
+    {
+      "name": "paper case 2: total 14",
+      "origin": "source",
+      "inputs": {
+        "sins_total": 14
+      },
+      "outcome": "b13_18"
+    },
+    {
+      "name": "paper case 3: total 6",
+      "origin": "source",
+      "inputs": {
+        "sins_total": 6
+      },
+      "outcome": "b0_6"
+    },
+    {
+      "name": "total not stated: ask for it",
+      "origin": "ours",
+      "inputs": {},
+      "outcome": null,
+      "needed": [
+        "sins_total"
+      ]
+    },
+    {
+      "name": "total explicitly unknown: ask for it",
+      "origin": "ours",
+      "inputs": {
+        "sins_total": {
+          "state": "unknown"
+        }
+      },
+      "outcome": null,
+      "needed": [
+        "sins_total"
+      ]
+    }
+  ]
+}

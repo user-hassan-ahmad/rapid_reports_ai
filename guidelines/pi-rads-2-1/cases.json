@@ -1,0 +1,687 @@
+{
+ "cases": [
+  {
+   "name": "Figure 7: normal central zone 1/1/negative is 1 (PZ table)",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "t2w": "1",
+    "dwi": "1",
+    "dce": "negative"
+   },
+   "outcome": "pirads_1"
+  },
+  {
+   "name": "Figure 7: normal central zone 1/1/negative is 1 (TZ table)",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "1",
+    "dwi": "1",
+    "dce": "negative"
+   },
+   "outcome": "pirads_1"
+  },
+  {
+   "name": "Figure 8: central zone cancer 5/5/positive is 5 (PZ table)",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "t2w": "5",
+    "dwi": "5",
+    "dce": "positive"
+   },
+   "outcome": "pirads_5"
+  },
+  {
+   "name": "Figure 8: central zone cancer 5/5/positive is 5 (TZ table)",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "5",
+    "dwi": "5",
+    "dce": "positive"
+   },
+   "outcome": "pirads_5"
+  },
+  {
+   "name": "Figure 9: normal AFMS 1/1/negative is 1 (PZ table)",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "t2w": "1",
+    "dwi": "1",
+    "dce": "negative"
+   },
+   "outcome": "pirads_1"
+  },
+  {
+   "name": "Figure 9: normal AFMS 1/1/negative is 1 (TZ table)",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "1",
+    "dwi": "1",
+    "dce": "negative"
+   },
+   "outcome": "pirads_1"
+  },
+  {
+   "name": "Figure 10: AFMS cancer scored with TZ criteria 5/5/positive is 5",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "5",
+    "dwi": "5",
+    "dce": "positive"
+   },
+   "outcome": "pirads_5"
+  },
+  {
+   "name": "Figure 11: typical TZ BPH 1/1/negative is 1",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "1",
+    "dwi": "1",
+    "dce": "negative"
+   },
+   "outcome": "pirads_1"
+  },
+  {
+   "name": "Figure 12: atypical TZ nodule T2W 2, DWI 4, DCE positive is 3",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "2",
+    "dwi": "4",
+    "dce": "positive"
+   },
+   "outcome": "pirads_3"
+  },
+  {
+   "name": "Appendix I lesion 1: TZ T2 5, DWI 5, DCE positive is 5",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "5",
+    "dwi": "5",
+    "dce": "positive"
+   },
+   "outcome": "pirads_5"
+  },
+  {
+   "name": "Appendix I lesion 2: PZ T2 4, DWI 3, DCE positive is 4",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "t2w": "4",
+    "dwi": "3",
+    "dce": "positive"
+   },
+   "outcome": "pirads_4"
+  },
+  {
+   "name": "p21 caveat: PZ DWI 4 with T2W 2 is 4",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "t2w": "2",
+    "dwi": "4"
+   },
+   "outcome": "pirads_4"
+  },
+  {
+   "name": "p21 caveat: TZ T2W 4 with DWI 2 is 4",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "4",
+    "dwi": "2"
+   },
+   "outcome": "pirads_4"
+  },
+  {
+   "name": "p21 text: TZ T2W 2 is not upgraded by DWI 3",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "2",
+    "dwi": "3"
+   },
+   "outcome": "pirads_2"
+  },
+  {
+   "name": "p21 text: TZ T2W 1 is not upgraded by DWI 3",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "1",
+    "dwi": "3"
+   },
+   "outcome": "pirads_1"
+  },
+  {
+   "name": "p31 bpMRI: PZ DWI 3 without DCE is not upgraded",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "dwi": "3",
+    "dce": {
+     "state": "not_assessable"
+    }
+   },
+   "outcome": "pirads_3"
+  },
+  {
+   "name": "p31 bpMRI: TZ assessment unchanged without DCE (T2W 3, DWI 5 is 4)",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "3",
+    "dwi": "5",
+    "dce": {
+     "state": "not_assessable"
+    }
+   },
+   "outcome": "pirads_4"
+  },
+  {
+   "name": "Figure 14: TZ T2W 1 is 1 (DWI any; 3 used)",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "1",
+    "dwi": "3"
+   },
+   "outcome": "pirads_1"
+  },
+  {
+   "name": "Figure 14: TZ T2W 2 with DWI 1 is 2",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "2",
+    "dwi": "1"
+   },
+   "outcome": "pirads_2"
+  },
+  {
+   "name": "Figure 14: TZ T2W 2 with DWI 2 is 2",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "2",
+    "dwi": "2"
+   },
+   "outcome": "pirads_2"
+  },
+  {
+   "name": "Figure 14: TZ T2W 2 with DWI 3 is 2",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "2",
+    "dwi": "3"
+   },
+   "outcome": "pirads_2"
+  },
+  {
+   "name": "Figure 14: TZ T2W 2 with DWI 4 is 3",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "2",
+    "dwi": "4"
+   },
+   "outcome": "pirads_3"
+  },
+  {
+   "name": "Figure 14: TZ T2W 2 with DWI 5 is 3",
+   "origin": "source",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "2",
+    "dwi": "5"
+   },
+   "outcome": "pirads_3"
+  },
+  {
+   "name": "PZ DWI 2 is 2 whatever T2W",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "t2w": "5",
+    "dwi": "2"
+   },
+   "outcome": "pirads_2"
+  },
+  {
+   "name": "PZ DWI 3 DCE negative is 3",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "t2w": "3",
+    "dwi": "3",
+    "dce": "negative"
+   },
+   "outcome": "pirads_3"
+  },
+  {
+   "name": "PZ DWI 5 is 5 whatever DCE",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "dwi": "5",
+    "dce": "negative"
+   },
+   "outcome": "pirads_5"
+  },
+  {
+   "name": "PZ DWI 1 is 1",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "dwi": "1"
+   },
+   "outcome": "pirads_1"
+  },
+  {
+   "name": "TZ T2W 2 DWI 5 is 3",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "2",
+    "dwi": "5"
+   },
+   "outcome": "pirads_3"
+  },
+  {
+   "name": "TZ T2W 3 DWI 4 is 3",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "3",
+    "dwi": "4"
+   },
+   "outcome": "pirads_3"
+  },
+  {
+   "name": "TZ T2W 3 DWI 5 is 4",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "3",
+    "dwi": "5"
+   },
+   "outcome": "pirads_4"
+  },
+  {
+   "name": "TZ T2W 3 DWI 1 is 3",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "3",
+    "dwi": "1"
+   },
+   "outcome": "pirads_3"
+  },
+  {
+   "name": "TZ T2W 5 DWI 1 is 5",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "t2w": "5",
+    "dwi": "1"
+   },
+   "outcome": "pirads_5"
+  },
+  {
+   "name": "DWI X, PZ, T2W 3, DCE positive is 4",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "dwi": {
+     "state": "not_assessable"
+    },
+    "t2w": "3",
+    "dce": "positive"
+   },
+   "outcome": "pirads_4"
+  },
+  {
+   "name": "DWI X, TZ, T2W 3, DCE positive is 4 (no-DWI table, not TZ table)",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "dwi": {
+     "state": "not_assessable"
+    },
+    "t2w": "3",
+    "dce": "positive"
+   },
+   "outcome": "pirads_4"
+  },
+  {
+   "name": "DWI X, PZ, T2W 3, DCE negative is 3",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "dwi": {
+     "state": "not_assessable"
+    },
+    "t2w": "3",
+    "dce": "negative"
+   },
+   "outcome": "pirads_3"
+  },
+  {
+   "name": "DWI X, T2W 1, DCE positive is 1",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "dwi": {
+     "state": "not_assessable"
+    },
+    "t2w": "1",
+    "dce": "positive"
+   },
+   "outcome": "pirads_1"
+  },
+  {
+   "name": "DWI X, T2W 2, DCE positive is 2",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "dwi": {
+     "state": "not_assessable"
+    },
+    "t2w": "2",
+    "dce": "positive"
+   },
+   "outcome": "pirads_2"
+  },
+  {
+   "name": "DWI X, T2W 4, DCE negative is 4",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "dwi": {
+     "state": "not_assessable"
+    },
+    "t2w": "4",
+    "dce": "negative"
+   },
+   "outcome": "pirads_4"
+  },
+  {
+   "name": "DWI X, T2W 5, DCE negative is 5",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "dwi": {
+     "state": "not_assessable"
+    },
+    "t2w": "5",
+    "dce": "negative"
+   },
+   "outcome": "pirads_5"
+  },
+  {
+   "name": "DWI and DCE both X: staging only",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "dwi": {
+     "state": "not_assessable"
+    },
+    "t2w": "4",
+    "dce": {
+     "state": "not_assessable"
+    }
+   },
+   "outcome": "staging_only"
+  },
+  {
+   "name": "TZ T2W X: does not fit a category",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "dwi": "4",
+    "t2w": {
+     "state": "not_assessable"
+    }
+   },
+   "outcome": "not_categorised"
+  },
+  {
+   "name": "DWI X and T2W X, DCE positive: does not fit a category",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "dwi": {
+     "state": "not_assessable"
+    },
+    "t2w": {
+     "state": "not_assessable"
+    },
+    "dce": "positive"
+   },
+   "outcome": "not_categorised"
+  },
+  {
+   "name": "PZ T2W X does not matter when DWI is adequate",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "dwi": "4",
+    "t2w": {
+     "state": "not_assessable"
+    }
+   },
+   "outcome": "pirads_4"
+  },
+  {
+   "name": "treated prostate cancer: does not apply",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": true,
+    "zone": "peripheral",
+    "dwi": "4"
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "PZ DWI 3, DCE not stated: DCE needed",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "dwi": "3"
+   },
+   "outcome": null,
+   "needed": [
+    "dce"
+   ]
+  },
+  {
+   "name": "TZ DWI 4, T2W not stated: T2W needed",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "treated_cancer": false,
+    "zone": "transition",
+    "dwi": "4"
+   },
+   "outcome": null,
+   "needed": [
+    "t2w"
+   ]
+  },
+  {
+   "name": "eligibility not stated: treatment history needed",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": true,
+    "zone": "peripheral",
+    "dwi": "5"
+   },
+   "outcome": null,
+   "needed": [
+    "treated_cancer"
+   ]
+  },
+  {
+   "name": "no finding above category 1: the exam is PI-RADS 1 overall (p 20)",
+   "origin": "ours",
+   "inputs": {
+    "treated_cancer": false,
+    "finding_above_1": false
+   },
+   "outcome": "pirads_1_exam"
+  },
+  {
+   "name": "normal gland, treatment history not stated: treatment history needed",
+   "origin": "ours",
+   "inputs": {
+    "finding_above_1": false
+   },
+   "outcome": null,
+   "needed": [
+    "treated_cancer"
+   ]
+  },
+  {
+   "name": "normal gland after treatment: PI-RADS does not apply",
+   "origin": "ours",
+   "inputs": {
+    "treated_cancer": true,
+    "finding_above_1": false
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "a PZ lesion DWI 4: per-lesion outcome unchanged",
+   "origin": "ours",
+   "inputs": {
+    "treated_cancer": false,
+    "finding_above_1": true,
+    "zone": "peripheral",
+    "dwi": "4"
+   },
+   "outcome": "pirads_4"
+  },
+  {
+   "name": "lesion scores given but whether a finding is reported not settled: asked",
+   "origin": "ours",
+   "inputs": {
+    "treated_cancer": false,
+    "zone": "peripheral",
+    "dwi": "4"
+   },
+   "outcome": null,
+   "needed": [
+    "finding_above_1"
+   ]
+  },
+  {
+   "name": "two lesions dictated (TZ T2W 3 DWI 3; PZ DWI 4 with EPE): values from the index PZ lesion (p 19) give 4",
+   "origin": "ours",
+   "inputs": {
+    "treated_cancer": false,
+    "finding_above_1": true,
+    "zone": "peripheral",
+    "dwi": "4"
+   },
+   "outcome": "pirads_4"
+  }
+ ]
+}

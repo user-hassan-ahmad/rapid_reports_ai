@@ -1,0 +1,304 @@
+{
+  "id": "aspects",
+  "version": "2000.1",
+  "topic": "acute-ischaemic-stroke-ct",
+  "purpose": "Scores early ischaemic change in the middle cerebral artery territory on non-contrast CT in hyperacute ischaemic stroke, as part of the pre-treatment CT assessment before thrombolysis.",
+  "trigger": ["exam"],
+  "exam": "non-contrast CT head for hyperacute ischaemic stroke, before thrombolytic treatment",
+  "issuer": "ASPECTS Study Group (Alberta Stroke Programme)",
+  "system": "Alberta Stroke Program Early CT Score (ASPECTS) for early ischaemic change in the MCA territory on non-contrast CT",
+  "display": "ASPECTS (Barber 2000)",
+  "edition": "2000",
+  "tier": 2,
+  "status": "current",
+  "applies_to": {
+    "region": [
+      "head"
+    ],
+    "modality": [
+      "CT"
+    ],
+    "finding_type": [
+      "acute ischaemic stroke"
+    ],
+    "context": []
+  },
+  "aliases": [
+    "ASPECTS",
+    "ASPECTS score",
+    "Alberta Stroke Program Early CT Score",
+    "Alberta Stroke Programme Early CT Score",
+    "MCA ASPECTS",
+    "ASPECTS MCA",
+    "ASPECT score",
+    "early ischaemic change score"
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "ASPECTS scores early ischaemic change in the middle-cerebral-artery territory on two axial non-contrast CT levels: 10 points, minus one for each of ten regions showing it.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods, Procedures: ASPECTS allots the middle-cerebral-artery territory 10 points; one point is subtracted for early ischaemic change in each defined region; a normal CT scores 10 and 0 indicates diffuse ischaemia throughout the territory (journal p1671)",
+          "table": "Figure 1: ASPECTS study form"
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "A score of 10 means no early ischaemic change in the ten scored regions; 0 means change throughout the MCA territory. Lower scores mean more extensive early change.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods, Procedures: ASPECTS allots the middle-cerebral-artery territory 10 points; one point is subtracted for early ischaemic change in each defined region; a normal CT scores 10 and 0 indicates diffuse ischaemia throughout the territory (journal p1671)",
+          "table": "Figure 1: ASPECTS study form"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "Cohort: 156 patients treated with intravenous alteplase alone within 3 hours of stroke onset at two North American hospitals, March 1996 to May 1999; non-contrast CT on 10 mm slices. These are the only figures below; they are not a general prognosis and not for thrombectomy selection.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods, Patients and Procedures; Results (journal p1671-1672)"
+        }
+      },
+      {
+        "id": "sum.4",
+        "text": "In that cohort a baseline score of 7 or less was associated with dependence or death at 3 months and with more symptomatic intracerebral haemorrhage than a score above 7 (scores 8 to 10 together).",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Statistics (journal p1671-1672): a score of 7 or less versus more than 7 discriminated independence from dependence and death; Results (journal p1672)",
+          "table": "Table 1; Figure 2"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.regions_subcortical",
+        "text": "Subcortical structures score 3 points: caudate, lentiform nucleus and internal capsule.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods, Procedures: ASPECTS allots the middle-cerebral-artery territory 10 points; one point is subtracted for early ischaemic change in each defined region; a normal CT scores 10 and 0 indicates diffuse ischaemia throughout the territory (journal p1671)",
+          "table": "Figure 1: ASPECTS study form"
+        }
+      },
+      {
+        "id": "def.regions_cortical",
+        "text": "MCA cortex scores 7 points: insular ribbon plus M1 to M6 (M1 anterior, M2 lateral to the insula, M3 posterior; M4 to M6 the corresponding territories just above the basal ganglia).",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods, Procedures: ASPECTS allots the middle-cerebral-artery territory 10 points; one point is subtracted for early ischaemic change in each defined region; a normal CT scores 10 and 0 indicates diffuse ischaemia throughout the territory (journal p1671)",
+          "table": "Figure 1: ASPECTS study form"
+        }
+      },
+      {
+        "id": "def.change",
+        "text": "Early ischaemic change means focal brain swelling or parenchymal hypoattenuation; hypoattenuation is abnormally low attenuation relative to other parts of the same structure or the contralateral hemisphere.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods, Procedures (journal p1671)"
+        }
+      },
+      {
+        "id": "def.levels",
+        "text": "The score is read from two standard axial CT cuts: one at the level of the thalamus and basal ganglia, and one just rostral to the ganglionic structures.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods, Procedures (journal p1671)"
+        }
+      },
+      {
+        "id": "def.10",
+        "text": "ASPECTS 10: no early ischaemic change in any of the ten scored MCA regions.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods, Procedures: ASPECTS allots the middle-cerebral-artery territory 10 points; one point is subtracted for early ischaemic change in each defined region; a normal CT scores 10 and 0 indicates diffuse ischaemia throughout the territory (journal p1671)",
+          "table": "Figure 1: ASPECTS study form"
+        }
+      },
+      {
+        "id": "def.0",
+        "text": "ASPECTS 0: early ischaemic change throughout the whole MCA territory (diffuse ischaemia).",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods, Procedures: ASPECTS allots the middle-cerebral-artery territory 10 points; one point is subtracted for early ischaemic change in each defined region; a normal CT scores 10 and 0 indicates diffuse ischaemia throughout the territory (journal p1671)",
+          "table": "Figure 1: ASPECTS study form"
+        }
+      },
+      {
+        "id": "def.8_10",
+        "text": "ASPECTS 8 to 10 (above 7): early ischaemic change in at most two of the ten regions.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods, Procedures: ASPECTS allots the middle-cerebral-artery territory 10 points; one point is subtracted for early ischaemic change in each defined region; a normal CT scores 10 and 0 indicates diffuse ischaemia throughout the territory (journal p1671)",
+          "table": "Figure 1: ASPECTS study form"
+        }
+      },
+      {
+        "id": "def.0_7",
+        "text": "ASPECTS 0 to 7 (7 or less): early ischaemic change in three or more of the ten regions.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods, Procedures: ASPECTS allots the middle-cerebral-artery territory 10 points; one point is subtracted for early ischaemic change in each defined region; a normal CT scores 10 and 0 indicates diffuse ischaemia throughout the territory (journal p1671)",
+          "table": "Figure 1: ASPECTS study form"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "tab.regions",
+        "title": "ASPECTS regions and points (Figure 1)",
+        "columns": [
+          "Group",
+          "Regions",
+          "Points"
+        ],
+        "rows": [
+          [
+            "Subcortical",
+            "Caudate (C), lentiform (L), internal capsule (IC)",
+            "3"
+          ],
+          [
+            "MCA cortex",
+            "Insular ribbon (I), M1, M2, M3, M4, M5, M6",
+            "7"
+          ],
+          [
+            "Total",
+            "All ten regions; one point subtracted per region with early ischaemic change",
+            "10"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods, Procedures: ASPECTS allots the middle-cerebral-artery territory 10 points; one point is subtracted for early ischaemic change in each defined region; a normal CT scores 10 and 0 indicates diffuse ischaemia throughout the territory (journal p1671)",
+          "table": "Figure 1: ASPECTS study form"
+        }
+      },
+      {
+        "id": "tab.discrimination",
+        "title": "Baseline ASPECTS 7 or less versus above 7, alteplase-treated cohort of 156 (Table 1 and text)",
+        "columns": [
+          "Outcome",
+          "Sensitivity",
+          "Specificity",
+          "Odds ratio (95% CI)",
+          "Events"
+        ],
+        "rows": [
+          [
+            "Dependence or death at 3 months",
+            "0.78",
+            "0.96",
+            "82 (23-290)",
+            "62 of 65 scoring 7 or less; 18 of 89 scoring above 7"
+          ],
+          [
+            "Symptomatic intracerebral haemorrhage",
+            "0.90",
+            "0.62",
+            "14 (1.8-117)",
+            "9 of 65 scoring 7 or less; 1 of 91 scoring above 7 (10 events in total)"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Results (journal p1672); counts follow the text and Figure 2 because Table 1's printed row labels are inverted; the 1 of 91 and 9 of 65 are read from Table 1 under the corrected labels",
+          "table": "Table 1"
+        }
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.cohort",
+        "text": "Cohort: 156 patients treated with intravenous alteplase alone within 3 hours of stroke onset at two North American hospitals, March 1996 to May 1999; non-contrast CT on 10 mm slices. It predates thrombectomy; the figures are not for patients considered for thrombectomy or any other treatment.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods, Procedures; Results (journal p1671-1672)"
+        }
+      },
+      {
+        "id": "pit.anterior",
+        "text": "ASPECTS was derived and tested in anterior-circulation (MCA territory) ischaemia; 23 posterior-circulation patients were not analysed. It is not pc-ASPECTS, which is a different posterior-circulation score not covered by this source.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods, Patients: only patients thought to have anterior-circulation ischaemia were included in the analysis (journal p1670-1671); Results: 23 patients with posterior-circulation ischaemia were not analysed (p1672)"
+        }
+      },
+      {
+        "id": "pit.ten",
+        "text": "A score of 10 means no early ischaemic change in the ten MCA regions only; it does not exclude haemorrhage, an old infarct, or ischaemia outside the MCA territory.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods, Procedures: ASPECTS allots the middle-cerebral-artery territory 10 points; one point is subtracted for early ischaemic change in each defined region; a normal CT scores 10 and 0 indicates diffuse ischaemia throughout the territory (journal p1671)",
+          "table": "Figure 1: ASPECTS study form"
+        }
+      },
+      {
+        "id": "pit.ci",
+        "text": "The odds ratio of 14 for symptomatic haemorrhage rests on 10 events in total (95% CI 1.8 to 117; the text gives 2 to 117). The 1% rate above 7 is 1 of 91, slightly above the 0.6% on placebo in the NINDS trial.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Discussion (journal p1673)",
+          "table": "Table 1"
+        }
+      },
+      {
+        "id": "pit.threshold",
+        "text": "The cut-off of 7 or less versus above 7 was suggested by a review of the study data, not set in advance.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Statistics (journal p1671)"
+        }
+      },
+      {
+        "id": "pit.limit",
+        "text": "Study limitation: it could not show how patients scoring 7 or less would have fared without treatment, and the authors called for validation in a randomised controlled study.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Discussion (journal p1673)"
+        }
+      },
+      {
+        "id": "pit.integer",
+        "text": "ASPECTS is scored in whole points from 0 to 10; the source defines no fractional score.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Methods, Procedures: ASPECTS allots the middle-cerebral-artery territory 10 points; one point is subtracted for early ischaemic change in each defined region; a normal CT scores 10 and 0 indicates diffuse ischaemia throughout the territory (journal p1671)",
+          "table": "Figure 1: ASPECTS study form"
+        }
+      },
+      {
+        "id": "pit.agreement",
+        "text": "Agreement between observers for 7 or less versus above 7 was poorer without knowledge of the affected side (kappa 0.39 to 0.69) than with it (0.71 to 0.89).",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Results (journal p1673)",
+          "table": "Table 2"
+        }
+      }
+    ]
+  }
+}

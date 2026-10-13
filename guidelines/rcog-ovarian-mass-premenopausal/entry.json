@@ -1,0 +1,1211 @@
+{
+  "id": "rcog-ovarian-mass-premenopausal",
+  "version": "2011.1",
+  "topic": "ovarian-mass",
+  "purpose": "Guides initial ultrasound assessment of a suspected ovarian mass in a premenopausal woman, to decide whether it can be managed in a benign gynaecology service or needs gynaecological oncology referral.",
+  "issuer": "Royal College of Obstetricians and Gynaecologists",
+  "system": "RCOG Green-top Guideline No. 62: management of suspected ovarian masses in premenopausal women (IOTA simple rules pathway)",
+  "display": "RCOG GTG 62 (2011)",
+  "edition": "2011 (first edition, RCOG/BSGE joint guideline; RCOG lists a second edition as in development, checked 2026-10-12)",
+  "tier": 1,
+  "status": "current",
+  "applies_to": {
+    "region": [
+      "pelvis"
+    ],
+    "modality": [
+      "US"
+    ],
+    "finding_type": [
+      "ovarian mass"
+    ]
+  },
+  "off_modality": "redirect",
+  "aliases": [
+    "rcog gtg 62",
+    "gtg 62",
+    "green-top guideline 62",
+    "green-top guideline no. 62",
+    "rcog premenopausal ovarian mass guideline",
+    "rcog ovarian masses in premenopausal women",
+    "iota simple rules",
+    "iota b-rules and m-rules"
+  ],
+  "inputs": [
+    {
+      "id": "premenopausal",
+      "label": "Premenopausal",
+      "type": "boolean",
+      "scope": "patient",
+      "role": "eligibility",
+      "how_stated": "true when an LMP, a cycle day, or premenopausal or menstruating status is stated in the clinical details or dictation; false when she is postmenopausal (no period for over a year, or over 50 with a hysterectomy). Otherwise leave unknown: age alone does not settle it.",
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "section": "1. Purpose and scope: suspected ovarian masses in the premenopausal woman; 5.1 p6 defines postmenopausal"
+      }
+    },
+    {
+      "id": "pregnant_or_acute",
+      "label": "Pregnant, or acute presentation of the cyst",
+      "type": "boolean",
+      "scope": "patient",
+      "role": "eligibility",
+      "how_stated": "true when the woman is pregnant, or the stated indication is an acute presentation of the cyst (suspected torsion, rupture or haemorrhage, or acute pain); false when she is not pregnant and the stated indication is non-acute or incidental. A pelvic ultrasound that describes the uterus without a pregnancy settles not pregnant; acute presentation settles only from the stated indication.",
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "section": "1. Purpose and scope: does not specifically address the acute presentation of ovarian cysts or ovarian cysts in pregnant women"
+      }
+    },
+    {
+      "id": "known_malignancy_or_borderline",
+      "label": "Known ovarian malignancy or borderline tumour",
+      "type": "boolean",
+      "scope": "lesion",
+      "role": "eligibility",
+      "how_stated": "true only when this mass is already diagnosed as an ovarian malignancy or a borderline ovarian tumour (histology or cytology); false when it is undiagnosed. A mass merely suspected on imaging is false.",
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "section": "1. Purpose and scope: ongoing management of borderline ovarian tumours, and laparoscopic management of known ovarian malignancies, are outside the remit"
+      }
+    },
+    {
+      "id": "m1_irregular_solid",
+      "label": "IOTA M1: irregular solid tumour",
+      "type": "boolean",
+      "how_stated": "true when the mass is a solid tumour with an irregular outline (e.g. 'irregular solid adnexal mass'); false when it is cystic or partly cystic, or a smooth solid mass, or no such tumour is described",
+      "locator": {
+        "source": "S1",
+        "page": 6,
+        "table": "Table 2. IOTA Group ultrasound rules: M-rules, irregular solid tumour"
+      }
+    },
+    {
+      "id": "m2_ascites",
+      "visible_sign": true,
+      "label": "IOTA M2: ascites",
+      "type": "boolean",
+      "scope": "patient",
+      "how_stated": "true when ascites is reported (IOTA: fluid outside the pouch of Douglas); false when no ascites is reported, or free fluid is confined to the pouch of Douglas",
+      "locator": {
+        "source": "S1",
+        "page": 6,
+        "table": "Table 2. IOTA Group ultrasound rules: M-rules, ascites"
+      }
+    },
+    {
+      "id": "m3_four_papillary",
+      "label": "IOTA M3: at least four papillary structures",
+      "type": "boolean",
+      "how_stated": "true when at least four papillary projections (papillary structures) are described in the mass; false when none, or a stated count under four, are described. Leave unknown when projections are described without a count (e.g. 'several' or 'multiple papillary projections').",
+      "locator": {
+        "source": "S1",
+        "page": 6,
+        "table": "Table 2. IOTA Group ultrasound rules: M-rules, at least four papillary structures"
+      }
+    },
+    {
+      "id": "m4_irregular_multilocular_solid",
+      "label": "IOTA M4: irregular multilocular-solid tumour (100 mm or more, from the maximum diameter)",
+      "type": "boolean",
+      "how_stated": "true when the mass is an irregular multilocular-solid tumour (septa and solid tissue, irregular); false when it is not multilocular-solid, or is smooth. Its size is read from the maximum diameter, not here.",
+      "locator": {
+        "source": "S1",
+        "page": 6,
+        "table": "Table 2. IOTA Group ultrasound rules: M-rules, irregular multilocular solid tumour with largest diameter >= 100 mm"
+      }
+    },
+    {
+      "id": "m5_very_strong_flow",
+      "label": "IOTA M5: very strong blood flow",
+      "type": "boolean",
+      "how_stated": "true when colour Doppler shows very strong blood flow in the mass (IOTA colour score 4); false when Doppler shows absent, minimal or moderate flow, or when the mass is a simple cyst (unilocular cysts carry a very low risk whatever their vascularity). Leave unknown when Doppler findings are not described for any other mass.",
+      "locator": {
+        "source": "S2",
+        "table": "Table 9 Ten simple rules: M5 very strong blood flow (color score 4)"
+      }
+    },
+    {
+      "id": "b1_unilocular",
+      "label": "IOTA B1: unilocular cyst",
+      "type": "boolean",
+      "how_stated": "true when the mass is a unilocular cyst: one locule, no septa and no solid component (e.g. a simple cyst); false when it has septa or any solid component, or is solid",
+      "locator": {
+        "source": "S1",
+        "page": 6,
+        "table": "Table 2. IOTA Group ultrasound rules: B-rules, unilocular cysts"
+      }
+    },
+    {
+      "id": "b2_small_solid",
+      "label": "IOTA B2: solid components, largest under 7 mm",
+      "type": "boolean",
+      "how_stated": "true when solid components are present and the largest measures under 7 mm in largest diameter; false when there is no solid component, or the largest is 7 mm or more",
+      "locator": {
+        "source": "S1",
+        "page": 6,
+        "table": "Table 2. IOTA Group ultrasound rules: B-rules, solid components where the largest solid component < 7 mm"
+      }
+    },
+    {
+      "id": "b3_acoustic_shadowing",
+      "visible_sign": true,
+      "label": "IOTA B3: acoustic shadowing",
+      "type": "boolean",
+      "how_stated": "true when acoustic shadowing from the mass is reported; false when none is reported",
+      "locator": {
+        "source": "S1",
+        "page": 6,
+        "table": "Table 2. IOTA Group ultrasound rules: B-rules, presence of acoustic shadowing"
+      }
+    },
+    {
+      "id": "b4_smooth_multilocular",
+      "label": "IOTA B4: smooth multilocular tumour (under 100 mm, from the maximum diameter)",
+      "type": "boolean",
+      "how_stated": "true when the mass is a smooth multilocular cyst (septa, no solid component); false when it is not multilocular, is irregular, or has solid tissue. Its size is read from the maximum diameter, not here.",
+      "locator": {
+        "source": "S1",
+        "page": 6,
+        "table": "Table 2. IOTA Group ultrasound rules: B-rules, smooth multilocular tumour with a largest diameter < 100 mm"
+      }
+    },
+    {
+      "id": "b5_no_flow",
+      "label": "IOTA B5: no blood flow",
+      "type": "boolean",
+      "how_stated": "true when colour Doppler shows no blood flow in the mass (IOTA colour score 1, e.g. 'no internal vascularity'); false when any flow is seen. Leave unknown when Doppler findings are not described.",
+      "locator": {
+        "source": "S2",
+        "table": "Table 9 Ten simple rules: B5 no blood flow (color score 1)"
+      }
+    },
+    {
+      "id": "simple_cyst",
+      "label": "Simple cyst",
+      "type": "boolean",
+      "how_stated": "true when the cyst is called simple, or described as anechoic and thin-walled with no internal structures; false when it has internal echoes, septa, nodules or a thick wall (e.g. an endometrioma or haemorrhagic cyst)",
+      "prerequisites": [
+        {
+          "ref": "b1_unilocular",
+          "eq": true
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "section": "2. Background: functional or simple ovarian cysts (thin-walled cysts without internal structures)"
+      }
+    },
+    {
+      "id": "size_mm",
+      "label": "Mass maximum diameter",
+      "type": "number",
+      "unit": "mm",
+      "dims": "max",
+      "min_value": 0,
+      "min_inclusive": false,
+      "how_stated": "maximum diameter of the mass or cyst in millimetres (centimetres convert), e.g. '45 mm simple left ovarian cyst' or '10.5 x 8 cm multilocular mass'",
+      "locator": {
+        "source": "S1",
+        "page": 7,
+        "section": "6.1: less than 50 mm; 50-70 mm; larger simple cysts; Table 2 p6: largest diameter < 100 mm / >= 100 mm"
+      }
+    }
+  ],
+  "logic": [
+    {
+      "step": "band",
+      "id": "size_band",
+      "ref": "size_mm",
+      "locator": {
+        "source": "S1",
+        "page": 7,
+        "section": "6.1: less than 50 mm; 50-70 mm; larger (more than 70 mm); Table 2 p6: < 100 mm (B4) and >= 100 mm (M4)"
+      },
+      "bands": [
+        {
+          "id": "lt50",
+          "label": "under 50 mm",
+          "max": 50,
+          "max_inclusive": false
+        },
+        {
+          "id": "50to70",
+          "label": "50 to 70 mm",
+          "min": 50,
+          "min_inclusive": true,
+          "max": 70,
+          "max_inclusive": true
+        },
+        {
+          "id": "gt70_lt100",
+          "label": "over 70 mm and under 100 mm",
+          "min": 70,
+          "min_inclusive": false,
+          "max": 100,
+          "max_inclusive": false
+        },
+        {
+          "id": "ge100",
+          "label": "100 mm or more",
+          "min": 100,
+          "min_inclusive": true
+        }
+      ]
+    },
+    {
+      "step": "rules",
+      "id": "iota",
+      "cases": [
+        {
+          "when": {
+            "all": [
+              {
+                "any": [
+                  {
+                    "ref": "m1_irregular_solid",
+                    "eq": true
+                  },
+                  {
+                    "ref": "m2_ascites",
+                    "eq": true
+                  },
+                  {
+                    "ref": "m3_four_papillary",
+                    "eq": true
+                  },
+                  {
+                    "all": [
+                      {
+                        "ref": "m4_irregular_multilocular_solid",
+                        "eq": true
+                      },
+                      {
+                        "ref": "size_band",
+                        "eq": "ge100"
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "m5_very_strong_flow",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "none": [
+                  {
+                    "ref": "b1_unilocular",
+                    "eq": true
+                  },
+                  {
+                    "ref": "b2_small_solid",
+                    "eq": true
+                  },
+                  {
+                    "ref": "b3_acoustic_shadowing",
+                    "eq": true
+                  },
+                  {
+                    "all": [
+                      {
+                        "ref": "b4_smooth_multilocular",
+                        "eq": true
+                      },
+                      {
+                        "ref": "size_band",
+                        "in": [
+                          "lt50",
+                          "50to70",
+                          "gt70_lt100"
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "b5_no_flow",
+                    "eq": true
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "malignant",
+          "locator": {
+            "source": "S2",
+            "table": "Table 9 footnote: one or more M-rules in the absence of a B-rule, classified as malignant"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "any": [
+                  {
+                    "ref": "b1_unilocular",
+                    "eq": true
+                  },
+                  {
+                    "ref": "b2_small_solid",
+                    "eq": true
+                  },
+                  {
+                    "ref": "b3_acoustic_shadowing",
+                    "eq": true
+                  },
+                  {
+                    "all": [
+                      {
+                        "ref": "b4_smooth_multilocular",
+                        "eq": true
+                      },
+                      {
+                        "ref": "size_band",
+                        "in": [
+                          "lt50",
+                          "50to70",
+                          "gt70_lt100"
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "b5_no_flow",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "none": [
+                  {
+                    "ref": "m1_irregular_solid",
+                    "eq": true
+                  },
+                  {
+                    "ref": "m2_ascites",
+                    "eq": true
+                  },
+                  {
+                    "ref": "m3_four_papillary",
+                    "eq": true
+                  },
+                  {
+                    "all": [
+                      {
+                        "ref": "m4_irregular_multilocular_solid",
+                        "eq": true
+                      },
+                      {
+                        "ref": "size_band",
+                        "eq": "ge100"
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "m5_very_strong_flow",
+                    "eq": true
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "benign",
+          "locator": {
+            "source": "S2",
+            "table": "Table 9 footnote: one or more B-rules in the absence of an M-rule, classified as benign"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "any": [
+                  {
+                    "ref": "m1_irregular_solid",
+                    "eq": true
+                  },
+                  {
+                    "ref": "m2_ascites",
+                    "eq": true
+                  },
+                  {
+                    "ref": "m3_four_papillary",
+                    "eq": true
+                  },
+                  {
+                    "all": [
+                      {
+                        "ref": "m4_irregular_multilocular_solid",
+                        "eq": true
+                      },
+                      {
+                        "ref": "size_band",
+                        "eq": "ge100"
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "m5_very_strong_flow",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "any": [
+                  {
+                    "ref": "b1_unilocular",
+                    "eq": true
+                  },
+                  {
+                    "ref": "b2_small_solid",
+                    "eq": true
+                  },
+                  {
+                    "ref": "b3_acoustic_shadowing",
+                    "eq": true
+                  },
+                  {
+                    "all": [
+                      {
+                        "ref": "b4_smooth_multilocular",
+                        "eq": true
+                      },
+                      {
+                        "ref": "size_band",
+                        "in": [
+                          "lt50",
+                          "50to70",
+                          "gt70_lt100"
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "ref": "b5_no_flow",
+                    "eq": true
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "both",
+          "locator": {
+            "source": "S2",
+            "table": "Table 9 footnote: if both M-rules and B-rules apply, the mass cannot be classified"
+          }
+        },
+        {
+          "when": {
+            "none": [
+              {
+                "ref": "m1_irregular_solid",
+                "eq": true
+              },
+              {
+                "ref": "m2_ascites",
+                "eq": true
+              },
+              {
+                "ref": "m3_four_papillary",
+                "eq": true
+              },
+              {
+                "all": [
+                  {
+                    "ref": "m4_irregular_multilocular_solid",
+                    "eq": true
+                  },
+                  {
+                    "ref": "size_band",
+                    "eq": "ge100"
+                  }
+                ]
+              },
+              {
+                "ref": "m5_very_strong_flow",
+                "eq": true
+              },
+              {
+                "ref": "b1_unilocular",
+                "eq": true
+              },
+              {
+                "ref": "b2_small_solid",
+                "eq": true
+              },
+              {
+                "ref": "b3_acoustic_shadowing",
+                "eq": true
+              },
+              {
+                "all": [
+                  {
+                    "ref": "b4_smooth_multilocular",
+                    "eq": true
+                  },
+                  {
+                    "ref": "size_band",
+                    "in": [
+                      "lt50",
+                      "50to70",
+                      "gt70_lt100"
+                    ]
+                  }
+                ]
+              },
+              {
+                "ref": "b5_no_flow",
+                "eq": true
+              }
+            ]
+          },
+          "result": "no_rule",
+          "locator": {
+            "source": "S2",
+            "table": "Table 9 footnote: if no rule applies, the mass cannot be classified"
+          }
+        }
+      ]
+    },
+    {
+      "step": "rules",
+      "id": "pathway",
+      "cases": [
+        {
+          "when": {
+            "any": [
+              {
+                "ref": "premenopausal",
+                "eq": false
+              },
+              {
+                "ref": "pregnant_or_acute",
+                "eq": true
+              },
+              {
+                "ref": "known_malignancy_or_borderline",
+                "eq": true
+              }
+            ]
+          },
+          "result": "does_not_apply",
+          "locator": {
+            "source": "S1",
+            "page": 2,
+            "section": "1. Purpose and scope"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "premenopausal",
+                "eq": true
+              },
+              {
+                "ref": "pregnant_or_acute",
+                "eq": false
+              },
+              {
+                "ref": "known_malignancy_or_borderline",
+                "eq": false
+              },
+              {
+                "ref": "iota",
+                "eq": "malignant"
+              }
+            ]
+          },
+          "result": "refer_gynae_oncology",
+          "locator": {
+            "source": "S1",
+            "page": 7,
+            "section": "5.2: women with an ovarian mass with any of the M-rules ultrasound findings should be referred to a gynaecological oncological service"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "premenopausal",
+                "eq": true
+              },
+              {
+                "ref": "pregnant_or_acute",
+                "eq": false
+              },
+              {
+                "ref": "known_malignancy_or_borderline",
+                "eq": false
+              },
+              {
+                "ref": "iota",
+                "eq": "both"
+              }
+            ]
+          },
+          "result": "iota_both",
+          "locator": {
+            "source": "S1",
+            "page": 7,
+            "section": "5.2: any M-rules finding, refer to a gynaecological oncological service; p6: if not clearly classifiable, specialist in gynaecological ultrasound"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "premenopausal",
+                "eq": true
+              },
+              {
+                "ref": "pregnant_or_acute",
+                "eq": false
+              },
+              {
+                "ref": "known_malignancy_or_borderline",
+                "eq": false
+              },
+              {
+                "ref": "iota",
+                "eq": "no_rule"
+              }
+            ]
+          },
+          "result": "iota_unclassified",
+          "locator": {
+            "source": "S1",
+            "page": 6,
+            "section": "5.2: if not clearly classifiable from these rules, further investigation by a specialist in gynaecological ultrasound is appropriate"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "premenopausal",
+                "eq": true
+              },
+              {
+                "ref": "pregnant_or_acute",
+                "eq": false
+              },
+              {
+                "ref": "known_malignancy_or_borderline",
+                "eq": false
+              },
+              {
+                "ref": "iota",
+                "eq": "benign"
+              },
+              {
+                "ref": "simple_cyst",
+                "eq": true
+              },
+              {
+                "ref": "size_band",
+                "eq": "lt50"
+              }
+            ]
+          },
+          "result": "simple_lt50",
+          "locator": {
+            "source": "S1",
+            "page": 7,
+            "section": "6.1: small (less than 50 mm diameter) simple ovarian cysts generally do not require follow-up"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "premenopausal",
+                "eq": true
+              },
+              {
+                "ref": "pregnant_or_acute",
+                "eq": false
+              },
+              {
+                "ref": "known_malignancy_or_borderline",
+                "eq": false
+              },
+              {
+                "ref": "iota",
+                "eq": "benign"
+              },
+              {
+                "ref": "simple_cyst",
+                "eq": true
+              },
+              {
+                "ref": "size_band",
+                "eq": "50to70"
+              }
+            ]
+          },
+          "result": "simple_50_70",
+          "locator": {
+            "source": "S1",
+            "page": 7,
+            "section": "6.1: simple ovarian cysts of 50-70 mm in diameter should have yearly ultrasound follow-up"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "premenopausal",
+                "eq": true
+              },
+              {
+                "ref": "pregnant_or_acute",
+                "eq": false
+              },
+              {
+                "ref": "known_malignancy_or_borderline",
+                "eq": false
+              },
+              {
+                "ref": "iota",
+                "eq": "benign"
+              },
+              {
+                "ref": "simple_cyst",
+                "eq": true
+              },
+              {
+                "ref": "size_band",
+                "in": [
+                  "gt70_lt100",
+                  "ge100"
+                ]
+              }
+            ]
+          },
+          "result": "simple_gt70",
+          "locator": {
+            "source": "S1",
+            "page": 7,
+            "section": "6.1: larger simple cysts should be considered for either further imaging (MRI) or surgical intervention"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "premenopausal",
+                "eq": true
+              },
+              {
+                "ref": "pregnant_or_acute",
+                "eq": false
+              },
+              {
+                "ref": "known_malignancy_or_borderline",
+                "eq": false
+              },
+              {
+                "ref": "iota",
+                "eq": "benign"
+              },
+              {
+                "none": [
+                  {
+                    "ref": "simple_cyst",
+                    "eq": true
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "benign_not_simple",
+          "locator": {
+            "source": "S1",
+            "page": 2,
+            "section": "1. Purpose and scope: when ovarian masses can be managed within a benign gynaecological service; 6. pp7-9 masses presumed benign"
+          }
+        }
+      ]
+    }
+  ],
+  "result": "pathway",
+  "outcomes": [
+    {
+      "id": "refer_gynae_oncology",
+      "headline": "Malignant by IOTA simple rules",
+      "action": "Refer to gynaecological oncology",
+      "category": "refer",
+      "classification": "Ovarian mass with IOTA M-features and no B-features: malignant by the IOTA simple rules.",
+      "recommendation": "Referral to a gynaecological oncology service.",
+      "caveats": [
+        "Women under 40 with a complex ovarian mass should have LDH, alpha-fetoprotein and hCG measured, as germ cell tumour is possible.",
+        "CT and MRI are not routine for ovarian masses but have a place in evaluating more complex lesions."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 7,
+        "section": "5.2 (Table 2, p6); 4.2 p4; 4.3.2 p5"
+      }
+    },
+    {
+      "id": "iota_both",
+      "headline": "IOTA M- and B-features: unclassifiable",
+      "action": "Refer to gynaecological oncology",
+      "category": "refer",
+      "classification": "Ovarian mass with both IOTA M-features and B-features: the simple rules cannot classify it.",
+      "recommendation": "Referral to a gynaecological oncology service (any M-feature); further assessment by a specialist in gynaecological ultrasound is also appropriate.",
+      "caveats": [
+        "GTG 62 p7 refers a mass with any M-rule finding to gynaecological oncology (its literal text); IOTA calls this mass unclassifiable, and GTG 62 p6 sends such masses to a gynaecological ultrasound specialist, so both are given.",
+        "Women under 40 with a complex ovarian mass should have LDH, alpha-fetoprotein and hCG measured, as germ cell tumour is possible."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 7,
+        "section": "5.2 (p6 good practice point and p7 M-rules referral); 4.2 p4"
+      }
+    },
+    {
+      "id": "iota_unclassified",
+      "headline": "No IOTA simple-rule feature",
+      "action": "Specialist gynaecological ultrasound",
+      "category": "workup",
+      "classification": "No IOTA simple-rule feature applies: the ovarian mass cannot be classified by the simple rules.",
+      "recommendation": "Further investigation by a specialist in gynaecological ultrasound is appropriate.",
+      "caveats": [
+        "If the clinical picture and ultrasound findings make malignancy a possibility, onward referral to a gynaecological oncology MDT is appropriate.",
+        "Women under 40 with a complex ovarian mass should have LDH, alpha-fetoprotein and hCG measured, as germ cell tumour is possible."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 6,
+        "section": "5.2 (good practice point); 4.3.2 p5; 4.2 p4"
+      }
+    },
+    {
+      "id": "simple_lt50",
+      "headline": "Simple cyst under 50 mm",
+      "action": "No follow-up if asymptomatic",
+      "category": "none",
+      "classification": "Simple ovarian cyst under 50 mm in a premenopausal woman: very likely physiological.",
+      "recommendation": "If asymptomatic, generally no follow-up required (such cysts almost always resolve within 3 menstrual cycles); if symptomatic, clinical assessment is advised.",
+      "caveats": [
+        "Library wording: GTG 62 section 6.1 addresses asymptomatic women only; 'if symptomatic, clinical assessment is advised' follows Hassan's ruling for the postmenopausal pack.",
+        "Serum CA-125 is not necessary when ultrasound clearly shows a simple ovarian cyst.",
+        "A cyst that persists or enlarges over several cycles is unlikely to be functional and may warrant surgical management.",
+        "One generally accepted definition of an ovarian cyst is a fluid-containing structure more than 30 mm in diameter, so a smaller simple structure may not count as a cyst."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 7,
+        "section": "6.1; 6.2; 4.2 p4"
+      }
+    },
+    {
+      "id": "simple_50_70",
+      "headline": "Simple cyst 50–70 mm",
+      "action": "Yearly ultrasound if asymptomatic",
+      "category": "surveillance",
+      "classification": "Simple ovarian cyst of 50-70 mm in a premenopausal woman.",
+      "recommendation": "If asymptomatic, yearly ultrasound follow-up; if symptomatic, clinical assessment is advised.",
+      "caveats": [
+        "Library wording: GTG 62 section 6.1 addresses asymptomatic women only; 'if symptomatic, clinical assessment is advised' follows Hassan's ruling for the postmenopausal pack.",
+        "Serum CA-125 is not necessary when ultrasound clearly shows a simple ovarian cyst.",
+        "A cyst that persists or enlarges is unlikely to be functional and may warrant surgical management."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 7,
+        "section": "6.1; 6.2; 4.2 p4"
+      }
+    },
+    {
+      "id": "simple_gt70",
+      "headline": "Simple cyst over 70 mm",
+      "action": "Consider MRI or surgery",
+      "category": "workup",
+      "classification": "Simple ovarian cyst over 70 mm in a premenopausal woman.",
+      "recommendation": "If asymptomatic, consider further imaging (MRI) or surgical intervention; if symptomatic, clinical assessment is advised.",
+      "caveats": [
+        "Library wording: GTG 62 section 6.1 addresses asymptomatic women only; 'if symptomatic, clinical assessment is advised' follows Hassan's ruling for the postmenopausal pack.",
+        "Large cysts are difficult to examine completely at ultrasound (the reason given in the SRU consensus that GTG 62 cites).",
+        "If surgery is chosen, laparoscopy is preferred in suitable women; the cyst size above which laparotomy should be considered is controversial."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 7,
+        "section": "6.1; 6.4 p8"
+      }
+    },
+    {
+      "id": "benign_not_simple",
+      "headline": "Benign by IOTA simple rules",
+      "action": "No gynae-oncology referral indicated",
+      "category": "none",
+      "classification": "Ovarian mass with IOTA B-features and no M-features, not a simple cyst: benign by the IOTA simple rules.",
+      "recommendation": "Gynaecological oncology referral is not indicated on ultrasound grounds; any management needed sits within benign gynaecological care.",
+      "caveats": [
+        "Cysts that persist or enlarge over several cycles are unlikely to be functional and may warrant surgical management (dermoid cysts, for example, grow over time).",
+        "Women under 40 with a complex ovarian mass should have LDH, alpha-fetoprotein and hCG measured, as germ cell tumour is possible.",
+        "If serum CA-125 is over 200 units/ml, discussion with a gynaecological oncologist is recommended; many benign conditions (e.g. endometriosis, fibroids) raise it, so interpret a raised value cautiously.",
+        "If surgery is needed, laparoscopy is preferred in suitable women; laparotomy may be appropriate for large masses with solid components.",
+        "Repeating the ultrasound after menstruation may help in cases of doubt."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "section": "1. Purpose and scope (benign service versus gynaecological oncology referral); 6.2 p7; 4.2 p4; 6.4 p8; 4.3.1 p5"
+      }
+    },
+    {
+      "id": "does_not_apply",
+      "headline": "Outside RCOG GTG 62",
+      "action": "Manage per clinical context",
+      "category": "not_applicable",
+      "classification": "RCOG GTG 62 does not apply: it does not specifically address pregnancy or acute presentations, and excludes ongoing management of known borderline or malignant ovarian tumours.",
+      "recommendation": "Manage per the clinical context.",
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "section": "1. Purpose and scope"
+      }
+    }
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "Pelvic ultrasound, preferably transvaginal, is the single most effective way to evaluate an ovarian mass; routine CT or MRI adds no sensitivity or specificity.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "4.3.1; 4.3.2 p5"
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "Estimating the risk of malignancy is essential. RMI I is the most widely used model; the IOTA simple ultrasound rules, which need no CA-125, showed higher sensitivity and specificity.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "5. What is the best way to estimate the risk of malignancy?"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "Any IOTA M-rule feature: refer to a gynaecological oncology service. Not clearly classifiable by the rules: further investigation by a specialist in gynaecological ultrasound.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "5.2; p7"
+        }
+      },
+      {
+        "id": "sum.4",
+        "text": "Asymptomatic simple cysts: under 50 mm generally need no follow-up; 50-70 mm need yearly ultrasound; larger ones should be considered for MRI or surgery.",
+        "locator": {
+          "source": "S1",
+          "page": 7,
+          "section": "6.1"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.simple",
+        "text": "Functional or simple ovarian cyst: thin-walled, without internal structures. Those under 50 mm maximum diameter usually resolve over 2-3 menstrual cycles without intervention.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "2. Background and introduction"
+        }
+      },
+      {
+        "id": "def.cyst",
+        "text": "One generally accepted definition of an ovarian cyst: a fluid-containing structure more than 30 mm in diameter.",
+        "locator": {
+          "source": "S1",
+          "page": 7,
+          "section": "6.1"
+        }
+      },
+      {
+        "id": "def.postmenopausal",
+        "text": "Postmenopausal: no period for more than one year, or over the age of 50 with a hysterectomy.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "5.1 Calculation of the RMI I"
+        }
+      },
+      {
+        "id": "def.rmi",
+        "text": "RMI I = U x M x CA-125 (IU/ml). U: 1 point each for multilocular cyst, solid areas, metastases, ascites and bilateral lesions; U = 0 for 0 points, 1 for 1, 3 for 2-5. M = 1 premenopausal, 3 postmenopausal.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "5.1 Calculation of the RMI I"
+        }
+      },
+      {
+        "id": "def.iota_classes",
+        "text": "IOTA simple rules: benign when one or more B-rules apply and no M-rule; malignant when one or more M-rules apply and no B-rule; unclassifiable when both apply or none applies.",
+        "locator": {
+          "source": "S2",
+          "table": "Table 9 Ten simple rules for identifying a benign or malignant tumor"
+        }
+      },
+      {
+        "id": "def.iota_flow",
+        "text": "IOTA colour score: no blood flow is colour score 1 (B5); very strong blood flow is colour score 4 (M5).",
+        "locator": {
+          "source": "S2",
+          "table": "Table 9 Ten simple rules for identifying a benign or malignant tumor"
+        }
+      },
+      {
+        "id": "def.iota_ascites",
+        "text": "Ascites (IOTA): fluid outside the pouch of Douglas.",
+        "locator": {
+          "source": "S2",
+          "table": "Table 3 footnote"
+        }
+      },
+      {
+        "id": "def.unilocular_risk",
+        "text": "IOTA found a very low risk of malignancy in unilocular cysts, whatever their size, wall regularity or vascularisation.",
+        "locator": {
+          "source": "S2",
+          "section": "Discussion"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "tab.iota",
+        "title": "IOTA Group ultrasound rules to classify masses as benign (B-rules) or malignant (M-rules), as reproduced by RCOG",
+        "columns": [
+          "B-rules",
+          "M-rules"
+        ],
+        "rows": [
+          [
+            "Unilocular cysts",
+            "Irregular solid tumour"
+          ],
+          [
+            "Presence of solid components where the largest solid component < 7 mm",
+            "Ascites"
+          ],
+          [
+            "Presence of acoustic shadowing",
+            "At least four papillary structures"
+          ],
+          [
+            "Smooth multilocular tumour with a largest diameter < 100 mm",
+            "Irregular multilocular solid tumour with largest diameter >= 100 mm"
+          ],
+          [
+            "No blood flow",
+            "Very strong blood flow"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "table": "Table 2. IOTA Group ultrasound 'rules' to classify masses as benign (B-rules) or malignant (M-rules)"
+        }
+      },
+      {
+        "id": "tab.adnexal",
+        "title": "Types of adnexal masses",
+        "columns": [
+          "Group",
+          "Examples"
+        ],
+        "rows": [
+          [
+            "Benign ovarian",
+            "Functional cysts; endometriomas; serous cystadenoma; mucinous cystadenoma; mature teratoma"
+          ],
+          [
+            "Benign non-ovarian",
+            "Paratubal cyst; hydrosalpinges; tubo-ovarian abscess; peritoneal pseudocysts; appendiceal abscess; diverticular abscess; pelvic kidney"
+          ],
+          [
+            "Primary malignant ovarian",
+            "Germ cell tumour; epithelial carcinoma; sex-cord tumour"
+          ],
+          [
+            "Secondary malignant ovarian",
+            "Predominantly breast and gastrointestinal carcinoma"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "table": "Table 1. Types of adnexal masses"
+        }
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.scope",
+        "text": "Outside GTG 62: ongoing management of borderline tumours, laparoscopic management of highly suspicious or known malignancy, acute presentations of ovarian cysts, and cysts in pregnancy.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "1. Purpose and scope"
+        }
+      },
+      {
+        "id": "pit.ca125",
+        "text": "CA-125 is unreliable before the menopause: fibroids, endometriosis, adenomyosis and pelvic infection raise it, and it is raised in only 50% of early-stage epithelial cancer.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "4.2 What blood tests should be performed?"
+        }
+      },
+      {
+        "id": "pit.borderline",
+        "text": "Up to 20% of borderline ovarian tumours appear as simple cysts on ultrasound, though most have suspicious features.",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "2. Background and introduction"
+        }
+      },
+      {
+        "id": "pit.non_ovarian",
+        "text": "About 10% of suspected ovarian masses prove to be non-ovarian in origin (for example paratubal cyst, hydrosalpinx, abscess or pelvic kidney).",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "2. Background and introduction; Table 1 p3"
+        }
+      },
+      {
+        "id": "pit.rmi",
+        "text": "RMI is less useful before the menopause, as endometriomas, borderline and non-epithelial tumours raise CA-125; GTG 62 reports RMI I accuracy at 200 but sets no premenopausal action threshold.",
+        "locator": {
+          "source": "S1",
+          "page": 6,
+          "section": "5.1 Which RMI should be used? (pp5-6)"
+        }
+      },
+      {
+        "id": "pit.no_single_feature",
+        "text": "No single ultrasound finding separates benign from malignant ovarian masses categorically; a repeat scan after menstruation may help in cases of doubt.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "4.3.1"
+        }
+      }
+    ]
+  }
+}

@@ -42,6 +42,7 @@ from rapid_reports_ai.database.models import (  # noqa: E402
     DictationStackLog,
     StackSlimSheet,
     ReportVersion,
+    GuidelineRegistry,
 )
 from rapid_reports_ai.main import app  # noqa: E402
 
@@ -67,6 +68,7 @@ _TEST_TABLES = [
     StackSlimSheet.__table__,
     TemplateExample.__table__,
     TemplateChatTurn.__table__,
+    GuidelineRegistry.__table__,
 ]
 
 
@@ -180,3 +182,138 @@ def guided_template(db_session: Session, test_user: User) -> Template:
 def legacy_template(db_session: Session, test_user: User) -> Template:
     """A retired (section-based) template: hidden from lists, generation refused, never deleted."""
     return _make_template(db_session, test_user, "Legacy", {"sections": []}, tags=["legacy-tag"])
+
+
+# ── guideline library: a toy tier 1 entry shared by the test_library_* files ────────────────────────────────────
+import copy as _copy
+import json as _json
+
+_L1 = {"source": "S1", "page": 2}
+TOY_ENTRY = {
+    "id": "toy-nodule", "version": "1.0", "topic": "toy-nodule", "purpose": "Toy test entry.", "issuer": "TOY", "system": "Toy nodule guideline",
+    "display": "Toy 2020", "edition": "2020", "tier": 1,
+    "applies_to": {"region": ["chest"], "modality": ["CT"], "finding_type": ["nodule"], "context": ["incidental"]},
+    "aliases": ["toy nodule", "toy guideline"],
+    "inputs": [
+        {"id": "kind", "label": "Nodule type", "type": "enum", "options": ["solid", "subsolid"]},
+        {"id": "size", "label": "Diameter", "type": "number", "unit": "mm", "how_stated": "diameter in mm"},
+        {"id": "risk", "label": "Patient risk", "type": "enum", "options": ["low", "high"], "scope": "patient",
+         "prerequisites": [{"ref": "kind", "eq": "solid"}]},
+        {"id": "margin", "label": "Margin", "type": "enum", "options": ["smooth", "spiculated"],
+         "states": ["not_assessable"]},
+    ],
+    "logic": [
+        {"step": "band", "id": "size_band", "ref": "size", "locator": _L1, "bands": [
+            {"id": "lt6", "label": "<6 mm", "max": 6},
+            {"id": "6to8", "label": "6-8 mm", "min": 6, "max": 8, "max_inclusive": True},
+            {"id": "gt8", "label": ">8 mm", "min": 8, "min_inclusive": False}]},
+        {"step": "rules", "id": "plan", "cases": [
+            {"when": {"ref": "kind", "eq": "subsolid"}, "result": "subsolid", "locator": {"source": "S1", "page": 3}},
+            {"when": {"all": [{"ref": "kind", "eq": "solid"}, {"ref": "size_band", "eq": "lt6"}]},
+             "result": "none", "locator": {"source": "S1", "page": 3}},
+            {"when": {"all": [{"ref": "kind", "eq": "solid"}, {"ref": "size_band", "eq": "6to8"},
+                              {"ref": "risk", "eq": "low"}]}, "result": "ct12", "locator": {"source": "S1", "page": 3}},
+            {"when": {"all": [{"ref": "kind", "eq": "solid"}, {"ref": "size_band", "eq": "6to8"},
+                              {"ref": "risk", "eq": "high"}]}, "result": "ct6", "locator": {"source": "S1", "page": 3}},
+            {"when": {"all": [{"ref": "kind", "eq": "solid"}, {"ref": "size_band", "eq": "gt8"}]},
+             "result": "pet", "locator": {"source": "S1", "page": 3}}]},
+    ],
+    "result": "plan",
+    "outcomes": [
+        {"id": "subsolid", "headline": "Subsolid nodule", "action": "CT in 12 months", "category": "surveillance", "classification": "subsolid nodule", "recommendation": "CT in 12 months", "locator": _L1},
+        {"id": "none", "headline": "Small solid nodule", "action": "No follow-up", "category": "none", "classification": "solid nodule {size_band}", "recommendation": "No follow-up", "locator": _L1},
+        {"id": "ct12", "headline": "Solid nodule, low risk", "action": "CT at 12 months", "category": "surveillance", "classification": "solid nodule {size_band}, {risk} risk", "recommendation": "CT at 12 months",
+         "locator": _L1},
+        {"id": "ct6", "headline": "Solid nodule, high risk", "action": "CT at 6 months", "category": "surveillance", "classification": "solid nodule {size_band}, {risk} risk", "recommendation": "CT at 6 months",
+         "locator": _L1},
+        {"id": "pet", "headline": "Solid nodule over 8 mm", "action": "PET-CT", "category": "workup", "classification": "solid nodule {size_band}", "recommendation": "PET-CT", "locator": _L1},
+    ],
+    "reference": {"summary": [{"id": "sum.1", "text": "A toy guideline for tests.", "locator": {"source": "S2"}}]},
+}
+TOY_MANIFEST = {"sources": [
+    {"id": "S1", "role": "primary", "title": "Toy guideline", "issuer": "TOY", "edition": "2020",
+     "url": "https://example.org/toy", "file": "sources/abc.pdf", "text_file": "sources/abc.txt"},
+    {"id": "S2", "role": "explanatory", "title": "Toy review", "issuer": "Other", "edition": "2021"}]}
+TOY_CASES = {"cases": [
+    {"name": "subsolid", "origin": "ours", "inputs": {"kind": "subsolid", "size": 7}, "outcome": "subsolid"},
+    {"name": "solid small", "origin": "ours", "inputs": {"kind": "solid", "size": 5.9}, "outcome": "none"},
+    {"name": "edge 6 low", "origin": "ours", "inputs": {"kind": "solid", "size": 6, "risk": "low"}, "outcome": "ct12"},
+    {"name": "edge 8 high", "origin": "ours", "inputs": {"kind": "solid", "size": 8, "risk": "high"}, "outcome": "ct6"},
+    {"name": "just over 8", "origin": "ours", "inputs": {"kind": "solid", "size": 8.1}, "outcome": "pet"},
+    {"name": "risk unknown", "origin": "ours", "inputs": {"kind": "solid", "size": 7}, "outcome": None,
+     "needed": ["risk"]},
+]}
+TOY_REFERENCE = {
+    "id": "toy-grade", "version": "1.0", "topic": "toy-grade", "purpose": "Toy test entry.", "issuer": "TOY", "system": "Toy grading",
+    "display": "Toy grade 2020", "edition": "2020", "tier": 2,
+    "applies_to": {"region": ["knee"], "modality": ["MRI"], "finding_type": ["cartilage defect"], "context": []},
+    "aliases": ["toy grade"],
+    "reference": {
+        "summary": [{"id": "sum.1", "text": "A toy grading for tests.", "locator": {"source": "S1", "page": 1}}],
+        "definitions": [{"id": "def.g2", "text": "Grade 2: a partial-thickness defect.",
+                         "locator": {"source": "S1", "page": 2}}],
+        "tables": [{"id": "tab.grades", "title": "Grade table", "columns": ["Grade", "Meaning"],
+                    "rows": [["1", "softening"], ["2", "partial-thickness defect"]],
+                    "locator": {"source": "S1", "page": 2, "table": "1"}}],
+        "pitfalls": []}}
+
+
+@pytest.fixture
+def toy():
+    return _copy.deepcopy(TOY_ENTRY)
+
+
+@pytest.fixture
+def toy_reference():
+    return _copy.deepcopy(TOY_REFERENCE)
+
+
+@pytest.fixture
+def toy_entry(toy):
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
+    return Entry.model_validate(toy)
+
+
+@pytest.fixture
+def manifest():
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Manifest
+    return Manifest.model_validate(_copy.deepcopy(TOY_MANIFEST))
+
+
+@pytest.fixture
+def cases():
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Cases
+    return Cases.model_validate(_copy.deepcopy(TOY_CASES))
+
+
+@pytest.fixture
+def toy_dir(tmp_path, toy):
+    d = tmp_path / "guidelines" / "toy-nodule"
+    d.mkdir(parents=True)
+    (d / "entry.json").write_text(_json.dumps(toy))
+    (d / "manifest.json").write_text(_json.dumps(TOY_MANIFEST))
+    (d / "cases.json").write_text(_json.dumps(TOY_CASES))
+    return tmp_path / "guidelines"
+
+
+@pytest.fixture(autouse=True)
+def _empty_guideline_library(monkeypatch):
+    """Matcher and route tests must not depend on whichever packs the real bundle holds; a test that needs packs
+    sets L.get itself."""
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as L
+    monkeypatch.setattr(L, "get", lambda: L.Library({}))
+    from rapid_reports_ai.hybrid_stack.copilot.library import preview_cache as PC
+    PC.clear()
+
+
+@pytest.fixture
+def web_fetch_on(monkeypatch):
+    """The runtime web path (registry cards, targeted fetch, gap search) on: it is off by default (RR_COPILOT_WEB_FETCH)."""
+    monkeypatch.setenv("RR_COPILOT_WEB_FETCH", "1")
+
+
+@pytest.fixture(autouse=True)
+def _chat_router_off(monkeypatch):
+    """The chat-edit router calls Jev and Qwen. It is off by default (D-R3), and pinned off here in case a developer's
+    environment switches it on: a test that wants it sets RR_CHAT_ROUTER=1 itself."""
+    monkeypatch.setenv("RR_CHAT_ROUTER", "0")

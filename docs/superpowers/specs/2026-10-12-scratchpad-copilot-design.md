@@ -1,0 +1,518 @@
+# Scratchpad Copilot: guideline cards, card threads and recommendations, before Generate
+
+Date: 2026-10-12. Branch `feat/scratchpad-copilot`, cut from `feat/hybrid-stack` (PR #31). It ships as part of the new
+scratchpad layout.
+
+> **Superseded in part (2026-10-12): see `2026-10-12-guideline-library-design.md`.** The curated guideline library
+> replaces runtime web retrieval. Superseded: decisions 2–5 and 17–21, the parts of 15 that concern the registry,
+> §5.1 (registry), §5.3 (`resolve_guideline`), the gap search in §5.5, the review page, and lab 2 in §8. The
+> library spec (§4) also changes §5.4: the model settles inputs, code evaluates, and the output index is removed.
+> Everything else stands.
+
+## 1. Why
+
+Guideline and classification help comes after Generate today:
+- The prefetch starts at Generate. Synthesis runs in `/api/reports/{id}/enhance`.
+- The chat (`/api/reports/{id}/chat`) can only edit a finished report.
+
+Radiologists use guidelines while they read, not after. The scratchpad already asks for every clinical statement before
+Generate (the checklist model). The Copilot brings guideline knowledge into that same moment, in three ways:
+- It shows the guidelines that apply to what has been dictated.
+- It answers questions in the context of those guidelines.
+- It lets the radiologist **explicitly apply** a guideline's classification and recommendation to the report.
+
+Nothing reaches the report unless the radiologist presses Apply or ticks it.
+
+## 2. Decisions (agreed with Hassan, 2026-10-12)
+
+Decisions 2–5 and 17–21 are superseded by the guideline library spec. They are kept below for the record.
+
+1. **The core output is guideline cards**, not a free chat. The chat lives inside the card model (§4.3).
+2. **Two layers of knowledge.**
+   - *Recognising* the guideline that applies uses the model's own knowledge. It is fast and needs no search.
+   - *Detail* (criteria, thresholds, required inputs, recommendation wording) comes from a **normalised guideline
+     registry**. The registry is filled lazily: the first time a guideline is opened, a live search fetches it and the
+     result is cached. Later sessions take it from the registry.
+3. **The registry caches the guideline, never how it applies to a case.** Working out which inputs this case settles,
+   and what it would add, is a per-case call against the cached entry.
+4. **A registry entry's identity includes version and locale**: for example `fleischner@2017`, `bosniak@2019`, and BTA
+   U-grading rather than ACR TI-RADS for UK practice. Matching is by exact key or alias first. Jev only breaks ties
+   between distinct registry candidates.
+5. **An entry fetched for the first time is a `draft`.** Cards built from it carry an "unverified · sources" label.
+   Hassan verifies entries on a review page. The common systems are seeded and verified before release.
+6. **Opening a card is just for reading.** Opening one fetches the detail and shows a *proposed application*. Only the
+   **Apply** button puts content into the report. Often the radiologist only wants to read.
+7. **Missing inputs are asked inside the card**, with neutral choice buttons. They are never amber checklist rows:
+   amber means "the report needs your answer", a card means "here is what this guideline would add". Apply stays
+   disabled until the required inputs are answered.
+8. **An applied guideline renders as an enrichment line under its finding**, in its own style. It is distinct from
+   amber rows and from the rail's rose and violet.
+9. **Classification goes into the findings, not the conclusion.** The conclusion draft already reads only the findings
+   and keeps what changes management. So a staging line reaches the conclusion, while a Bosniak II line stays in the
+   findings. This needs no new conclusion rules.
+10. **Applying or removing an enrichment counts as a material change.**
+    - An unedited conclusion draft is redrawn.
+    - A conclusion the radiologist owns gets the existing quiet suggestion note.
+    - The recommendations list is redrawn.
+    - There is no stale or "review" state on enrichments. An enrichment is the radiologist's choice and stays as it is.
+      It is removed only with its finding, or with ×.
+11. **A Recommendations section sits under the conclusion, as a checklist.**
+    - Recommendations from applied guidelines start ticked.
+    - General suggestions from the findings and referral start unticked.
+    - Only ticked items enter the report. The rest are dropped.
+12. **The Copilot is a side panel next to the scratchpad.** The scratchpad shows only *resolved* output: enrichment
+    lines and the recommendations checklist.
+13. **One ask input, pinned at the bottom of the panel.**
+    - A question asked while a card is open goes into that card's thread.
+    - A question asked with no card open is about the whole case.
+    - A general question that resolves to a guideline acts like a tool call. It runs the same resolve pipeline as the
+      background matcher, and the Q&A lands in that guideline's card thread. The card is new if it wasn't listed, and
+      opens if it was.
+    - A question that involves no guideline gets a plain answer block in a "General" group.
+14. **Thread answers are only for reading.** They never change a card's proposal. Inputs do.
+15. **Threads last only for the session.** They are logged with the stack session for analysis and are never shared
+    across cases. Only registry content is shared, and it never carries case text: a supplement stores only the
+    case-free search phrase and the source URL, never the question or the answer. Supplements are shown only to
+    reviewers; every other response strips them.
+16. **Rollout is for all users, with no per-user gate.** It is tested in the lab and locally, then switched on by
+    default when the new scratchpad layout is deployed. A kill switch (`RR_STACK_COPILOT=0`) turns off the panel and
+    every background call.
+
+17. **The fetch is source first (option A).** Search, then extract, then structure, every claim backed by a quote.
+    A card never shows a number that hasn't been checked against a source, and a shown card never changes.
+18. **Queries use the guideline's own terms, never the case's.** The case picks which **branch** of the guideline is
+    fetched first. Query words are the guideline's name, version, publication and branch names, never dictated
+    words, which also keeps patient text away from the search API. Fitting the guideline to the case happens
+    afterwards, in the preview.
+    - One privacy choke point: every query's guideline identity goes through `search.safe_identity` (measurement
+      tokens and side/demographic words dropped from the name, the name capped at 8 words, the version kept). It is
+      a removal-only backstop: a name comes from a model that read the case.
+    - The ask gap phrase keeps only words found in the entry's own stored vocabulary (plus its name and version),
+      never a number other than the version, a unit, an age, a side or a demographic word.
+19. **The case's branch comes first; the rest fill in the background.** The card is ready once *its* branch is
+    checked. The other branches fill afterwards, so the registry holds the whole system for every later case.
+20. **Jev judges every evidence claim; code can only remove, never approve.**
+    - Branch coverage: "SOURCE states the criteria or management for X".
+    - Evidence: every output's claim, and the branch rule, goes to Jev in one batch — "The SOURCE states this for
+      exactly the guideline, edition and category named, with the same values (a statement the SOURCE makes only
+      about a different category, edition or guideline does not count): claim". There is no exact-match shortcut:
+      a verbatim quote can belong to a sibling branch, edition or guideline, and only Jev's strict wording can tell.
+      The exact match is still computed and logged alongside the score, as a signal for the seed lab, never as a
+      pass. Bar: 0.5 (lab 2026-10-12, 24 claims x 2 runs on real fetched sources: true min 0.73, false max 0.19,
+      wrong-branch max 0.08).
+    - Ask-time gaps: Jev decides whether the stored entry already answers a question, before any new search.
+    - A malformed or missing Jev answer is an outage, never a low score: a response without `answers`, without an
+      asked key or without a numeric score raises into the caller's failure path (one retry per source window
+      first); nothing is stored as `not_available` and no failure is cached.
+    - Other thresholds (branch coverage) remain provisional, set where false yes answers reach zero in the lab.
+21. **The registry grows where radiologists ask.** A question the entry can't answer runs one targeted query within
+    that guideline. The answer is grounded in the new chunks, which are added to the entry as supplementary evidence
+    (still a draft until verified). The supplement records only the case-free search phrase and the page URL (§2.15).
+
+22. **TNM staging uses the offline UICC TNM 9th edition data** (`resources/tnm_9th_clean.json`, cleaned to v2.1 on
+    2026-10-12), never a web fetch. TNM entries count as `verified` because of their source.
+23. **TNM follows the "X" convention.** An axis that can't be assessed is `TX`, `NX` or `MX`. UICC 9 defines TX and
+    NX; MX is offered as the reporting convention even though UICC no longer lists it. Any X axis means no stage group,
+    unless the table's row uses "Any" for that axis.
+24. **A TNM site is chosen from a closed list, then gated by Jev; there's no embedding search.** The prefetch's pgvector
+    hybrid search stays where it is. The Copilot path replaces it only once the lab (§8.5) shows the closed list plus
+    Jev picks the site at least as well, with no false staging cards.
+25. **Stage groups come from rebuilt, hand-checked tables.** The original parse lost rows from the stage tables. The
+    clinical tables were rebuilt from the raw extraction (data v2.2, `stage_tables`) for 36 sites, with oesophagus
+    split by histology. Sites whose stage needs more than T, N and M, or whose category table is incomplete, have no
+    table: their cards propose T, N and M only. For a site whose table varies by histology, the card asks for it.
+
+## 3. Layout
+
+```
+┌─ Scratchpad ─────────────────────────────┐ ┌─ Copilot ───────────────────────────────────┐
+│ KIDNEYS                                  │ │ ▸ Bosniak 2019 · left renal cyst            │
+│ 3.2 cm left renal cyst, one thin septum. │ │ ▾ Fleischner 2017 · 7 mm RLL nodule         │
+│  ┃📘 Bosniak 2019 · Bosniak II        ×   │ │    Solid · single · [Low risk] [High risk]  │
+│ LUNG BASES                               │ │    Proposed: CT at 6–12 m, then 18–24 m     │
+│ 7 mm solid RLL nodule.                   │ │                                  [Apply]    │
+│                                          │ │    ─ Does a perifissural shape change this? │
+├──────────────────────────────────────────┤ │      If typical perifissural, …             │
+│ CONCLUSION (drafted from findings)       │ │ ▸ Adrenal incidentaloma (ESE 2023)          │
+├──────────────────────────────────────────┤ │ General                                     │
+│ RECOMMENDATIONS                          │ │    ─ Normal CBD post-cholecystectomy? …     │
+│ ☑ CT chest 6–12 m · Fleischner 2017      │ │ ┌─────────────────────────────────────────┐ │
+│ ☐ Correlate with prior imaging           │ │ │ Ask…                                 🎤 │ │
+└──────────────────────────────────────────┘ │ └─────────────────────────────────────────┘ │
+                                             └─────────────────────────────────────────────┘
+```
+
+The final tint and spacing are settled with a mock-up before the frontend task. The enrichment style must not collide
+with amber (checklist), violet (rail tint) or rose (the radiologist's additions).
+
+## 4. Interaction model
+
+### 4.1 Card lifecycle
+
+| State | Trigger | Panel shows | Report effect |
+|---|---|---|---|
+| Matched | background matcher | name, version, the finding, one line on why it applies | none |
+| Opened | click | loading → criteria that apply, what the findings settle, missing inputs (choice buttons), proposed application | none |
+| Applied | **Apply** | "Applied ✓ · Undo" | enrichment line on the finding; the recommendation is ticked in the checklist |
+
+- Cards are grouped by finding. A staging system that draws on several findings (TNM) attaches to the primary finding.
+- Caps: 2 cards per finding and 6 per case. The matcher ranks them.
+- A finding that is deleted takes its cards and its enrichment with it.
+- A card built from a `draft` entry shows "unverified · sources", and the sources link out.
+- Answering an input re-runs the preview (§5.4). Apply is enabled only when the preview has a proposal.
+- Undo in the panel and × on the enrichment line do the same thing.
+
+### 4.2 Enrichment line
+
+- It sits under the finding and holds the guideline label and the classification line, e.g. "Bosniak 2019 · Bosniak II".
+- In the report it becomes a confirmed statement in that finding's paragraph (§6). Its recommendation goes to the
+  checklist, never into the line.
+
+### 4.3 Ask and threads
+
+| Question | Lands in |
+|---|---|
+| Asked with a card open | that card's thread |
+| General, and resolves to a guideline already listed | that card, which opens, with the Q&A in its thread |
+| General, and resolves to a new guideline | a new card marked "from your question", opened, with the Q&A as the first thread item |
+| General, no guideline | an answer block in the "General" group |
+
+- The input accepts dictation, using the same mic controls and hotkey model as the scratchpad's inline edits.
+- A thread collapses with its card and shows a count.
+- Answers are short, about two to four sentences. Any threshold an answer cites must come from the registry entry
+  when a card is in scope.
+
+### 4.4 Recommendations checklist
+
+- It sits under the conclusion in the scratchpad.
+- Items from applied enrichments are ticked and labelled with their guideline. Removing the enrichment removes the item.
+- General suggestions are unticked: specialist or MDT referral, correlation with prior imaging, further imaging the
+  findings point to. They are redrawn when the conclusion is redrawn or an enrichment changes. A tick or untick by the
+  radiologist survives a redraw when the item's text is unchanged.
+- The radiologist can type or dictate their own item, which starts ticked.
+- Confirm never waits on it. An empty or failed list means no Recommendations section.
+
+## 5. Backend
+
+All routes sit under `/api/canvas/stack/guidelines/`, in a new package `hybrid_stack/copilot/`.
+
+### 5.1 Registry (superseded by the guideline library spec)
+
+Table `guideline_registry`, with an alembic migration:
+
+| column | notes |
+|---|---|
+| `key` (pk) | canonical `slug@version`, e.g. `fleischner@2017` |
+| `name`, `version`, `locale` | display name, version string, `uk` by default |
+| `publication` | title, issuing body, year (the Q1 search key) |
+| `aliases` | JSON list of lower-cased names and abbreviations |
+| `status` | `draft` \| `verified` |
+| `content` | JSON (§5.1.1) |
+| `sources` | JSON list `{url, title, tier, fetched_at}` |
+| `chunks` | JSON list `{url, text, branch}`: the extracted evidence text, kept for ask-time grounding and review |
+| `created_at`, `updated_at`, `verified_by`, `verified_at` | |
+
+#### 5.1.1 `content` schema
+
+```json
+{
+  "applies_to": "one line: which findings this system classifies",
+  "summary": "two-sentence reference summary shown at the top of an opened card",
+  "branches": [
+    {"name": "Subsolid · single part-solid · ≥ 6 mm",
+     "state": "checked | not_available | pending",
+     "inputs": [{"id": "risk", "question": "Patient risk", "options": ["Low risk", "High risk"],
+                 "settled_by": "how a dictation would state it"}],
+     "rule": "the decision rule for this branch, citing thresholds as the source states them",
+     "outputs": [{"when": "condition over inputs", "classification": "label",
+                  "recommendation": "interval or action", "quote": "verbatim evidence from chunks"}]}
+  ],
+  "supplements": [{"question": "<the case-free search phrase>", "answer": "", "quote": "", "url": "…", "verified": false}]
+}
+```
+
+- Branches come from the skeleton (§5.2). Each branch has its own state, so a partly filled entry is usable for its
+  `checked` branches.
+- Only a `checked` branch can drive a proposal.
+
+**Seeds and review**
+- Seed set, fetched by the same pipeline and verified before release: Fleischner 2017, Bosniak 2019, ESE adrenal
+  incidentaloma 2023, BTA U-grading, O-RADS US, LI-RADS CT/MR, Kellgren–Lawrence. TNM comes from the offline
+  provider (§5.8), not the fetch. Hassan may change the list during plan review.
+- Review page `/stack-guidelines`. It is a production review page like `/stack-families`, not a dev route: the
+  entries live in the production database, and the server allows only `RR_STACK_REVIEWERS`.
+  - It lists entries and shows each branch with its quotes and sources.
+  - Hassan checks correctness and coverage, then verifies, edits the JSON, or discards (the next open re-fetches).
+
+### 5.2 Matcher (`POST /match`)
+
+- Input: scan type, referral, and the abnormal units `{id, text}` from `/group`.
+- It runs after `/group` settles (debounced) and is cached per (scan type, referral, unit text). A unit whose text is
+  unchanged is never re-matched; a model failure caches nothing.
+- One gpt-oss-120b call on Cerebras, about 1 s, with structured output. Per unit it returns ranked candidates
+  `{name, version, why, publication, skeleton[], branch}`:
+  - `publication`: title, issuing body and year, from model knowledge. Never a URL.
+  - `skeleton`: the system's branch names only, never thresholds.
+  - `branch`: the skeleton branch this finding falls into, the only case-aware output.
+- The prompt:
+  - carries the existing registry keys and names, so the model reuses them, plus the UK locale;
+  - is case-agnostic (structural form, multi-domain examples);
+  - treats "no guideline" as a valid answer, and the expected one for most findings.
+- Normalisation:
+  - the prompt's KNOWN SYSTEMS rows print each entry's branches, so the model reuses the registry's names;
+  - an exact key or alias hits the registry, and the registry's own branches replace the model's skeleton;
+  - the model's branch is matched to the registry's branches exactly, else once normalised; else Jev chooses among
+    the registry's branches (or "none"); "none" or a Jev failure keeps the model's name, a new branch fetched on
+    open;
+  - otherwise, a registry entry of the same system with a different version goes to Jev, which chooses between
+    distinct entries or "none"; a versionless candidate with several rows and no pick takes the latest row,
+    verified first (never a new unversioned key);
+  - otherwise the candidate becomes a new key, stored only when opened.
+- At most 3 candidates are resolved per finding; caps are applied after ranking, in rank order (every finding's
+  first card before any finding's second, §4.1).
+- The match, edition-pick, branch-pick and TNM-gate caches key on normalised text and include the history where
+  the answer depends on it; they hold successes only.
+
+### 5.3 `resolve_guideline(card)`: the targeted fetch (superseded; kept as the authoring tool, library spec §9.2)
+
+Shared by card open and by ask. The steps:
+
+1. **Registry hit with the card's branch `checked`:** return the entry, with no search.
+2. **First pass**, for a missing entry or an unchecked branch. Runs in parallel:
+   - Q1 `"<publication title>" <year>`
+   - Q2 `<name> <version> <branch name> criteria recommendations`
+   Then:
+   - Tavily search, basic depth, 5 results each, no domain filter.
+   - Code ranks the results by source tier: 1 = publisher or issuing society, 2 = PubMed Central full text,
+     3 = other reputable secondary summaries, 4 = abstract-only and landing pages (ranked last of the tiers).
+   - **Relevance gate (Jev).** One batched call over every candidate (title, URL, the first 600 characters of its
+     snippet), one question each: "Result [i] is about <name> <version> (<publication title>), not a different
+     guideline or topic." A result below the bar (0.5, provisional; the seed lab calibrates it) ranks last, after
+     tier 4. A Jev failure means no relevance reordering (tier and score only), logged.
+   - Results scoring below 0.3 are dropped first, unless none pass; known access-block pages fall back to their
+     search snippet; URLs are canonicalised before de-duplication.
+   - Tavily extract reads the top 4 URLs as full pages, each capped at one Jev window (so the first pass plus a
+     retry fit the window cap).
+   - **Refill:** a picked page whose extract is under 1,500 characters is offered the next ranked candidate in one
+     extra extract round (shorter timeout). The replacement is taken only if its extract reaches 1,500 characters
+     or is longer than the short one; an unreplaced short page keeps the longer of its extract and its search
+     snippet. No refill when the first extract call itself failed.
+3. **Coverage (Jev).** One call with one yes/no question per branch in scope: "SOURCE states the criteria or
+   management for: <branch>". If the case's branch is below the bar, one more query runs
+   (`<name> <version> <branch> recommendations`) over pages not already read, then extract and Jev again. Still below the bar → `not_available`.
+4. **Structure (gpt-oss).** The branch is filled (inputs, rule, outputs) from the chunks, with a quote per output.
+5. **Evidence.** Every output's claim, and the branch rule (riding in the same batch, with no quote of its own),
+   is judged by Jev — the strict wording from §2.20, bar 0.5. The exact-match check (whitespace, case, punctuation
+   and dash variants normalised, token boundaries, quote at least 4 tokens, every number in the claim present in
+   the quote) is still computed and logged alongside the Jev score, but it never approves a claim by itself: a
+   verbatim quote can belong to the wrong branch, edition or guideline. Unsupported outputs are dropped; a
+   low-scored rule is blanked without dropping the outputs. A branch with no supported outputs becomes
+   `not_available`.
+6. **Save:** an upsert as `draft`, merging branches. A `verified` entry is never overwritten. The card's preview runs
+   now.
+7. **Background fill:** steps 2–5 for each remaining skeleton branch, using Q3+ (one query per branch), saved as each
+   finishes. It is fire-and-forget: a failure leaves the branch `pending`, and the next open retries it.
+
+**Rules**
+- **Query text** comes only from the identity, the publication and branch names. No dictated words are ever sent. The
+  ask path's search phrase is model-written from the question; code replaces it with the bare identity if it
+  carries digits, sides or demographics.
+- **Jev source length:** long source text is split into windows on chunk boundaries and asked in parallel; the
+  highest score per question counts, since each one asks whether something exists.
+- **Locks:** one per key for the first pass, and one per branch for background fills, so concurrent opens share work.
+- **Failure:** the card shows "couldn't load guideline · retry", and nothing is stored for that branch.
+
+### 5.4 Preview (`POST /open` and `POST /preview`)
+
+- `open`: `resolve_guideline`, then the preview.
+- `preview`: the preview alone, when an input is answered.
+- **The model chooses, code copies.** One Qwen call on Cerebras with low reasoning and JSON output.
+  - Input: the card's one branch, with its outputs numbered, plus the current findings, the referral and the
+    answered inputs.
+  - Output: choices only.
+
+```json
+{"settled": [{"input": "risk", "value": "High risk", "quote": "smoker"}],
+ "not_needed": ["count"],
+ "output": 2,
+ "line": "…"}
+```
+
+- **Code builds the preview** (`{settled, missing, proposal}`):
+  - `settled` keeps only real options of real inputs; the radiologist's answers win.
+  - **Jev verifies the evidence, the model keeps the judgement.** Every model-settled value must carry its quote, the
+    shortest verbatim span of the findings or referral that settles it (for a TNM X value, the span stating the axis
+    cannot be assessed); an empty quote makes the input missing. Code confirms a quote that appears verbatim in the
+    findings or referral (both flattened: case, whitespace and punctuation runs; whole tokens; at least 2
+    characters; no minimum token count), a deterministic fact. Jev checks only the rest, in one batched call ("The
+    FINDINGS or CLINICAL HISTORY state this: <quote>"); the quote → option mapping stays Qwen's, read against the
+    entry's rule. A quote below the bar becomes missing, and when Jev fails, only the quotes code did not confirm
+    become missing: the input is asked, never assumed. Answered inputs are not checked.
+  - `missing` is computed in code: required inputs − settled − `not_needed`. A rejected or unconfirmed value is always
+    missing. TNM: required = the site's axes (+ histology where the stage table varies by it), and `not_needed` is
+    ignored.
+  - `proposal`, only when nothing is missing: `classification` = "<name> <version> · <output's category>" and
+    `recommendation` = the chosen output's recommendation, both copied verbatim. `line` is the model's sentence; when
+    it is empty or fails the code check below, code builds it as "<classification>." instead. An invalid or absent
+    output number, or a model value (a real option, compared normalised) that contradicts an answered input, gives no
+    proposal. TNM:
+    the proposal (and any stage) is assembled in code (§5.8).
+- The proposal is null while any required input is missing, or when the branch is not `checked`.
+- **Code check:** every number in `line` (number words mapped to digits) must appear in the branch's rule, outputs or
+  options, the entry's name or version, or the findings. Otherwise the model's line is replaced by the code-built
+  line; a proposal whose classification and recommendation were copied by code is never dropped for its wording.
+
+### 5.5 Ask (`POST /ask`)
+
+- Input: the question, the open card's key (or none), case context, and the last few Q&As in scope.
+- It works like a tool call, written as structured steps rather than native tool use (simpler to test, and the same
+  on every provider).
+- **Card in scope:**
+  1. Jev: "SOURCE contains the answer to: <question>", over the entry's summary, checked branches and source
+     chunks, one call per window. Supplement answers are model text and never material (only a supplement's quote
+     would be, and ask stores none).
+  2. At or above the bar: one Qwen call answers, grounded on the summary and checked branches plus the window Jev
+     scored highest (capped at one Jev window), so an answer late in a long source is never cut off.
+  3. Below the bar:
+     - one targeted query runs: `<name> <version> <question keywords from the guideline's vocabulary>`, reading 2 new
+       pages (URLs already stored are excluded);
+     - Qwen writes the search phrase from the question with no case details; code keeps only words in the entry's
+       stored vocabulary (§2.18);
+     - extract, then Jev checks again, scoped: "The SOURCE, which is about <name> <version>, contains…".
+     - If supported: answer from the best window, and append a draft supplement (`verified: false`, no quote, the
+       URL of the page in that window). It is case-free: `question` is the vocabulary-filtered search phrase and
+       `answer` is empty; the radiologist's question and the answer (both case-grounded) are never stored. A failure
+       to store it still returns the answer.
+     - If not: answer "The guideline does not address this.", plus brief general knowledge prefixed "From general
+       knowledge:".
+  - A TNM card is answered from the offline data, never gated or searched.
+- **No card in scope:** a first Qwen call returns `{guideline, version, site, answer}`. The prompt lists the
+  registry's known names and versions, to be reused exactly, and the TNM sites.
+  - No guideline: the answer becomes a General block.
+  - A name: the matcher's normalisation runs (`matcher.card_for`), so a listed card is reused, then
+    `resolve_guideline`, then the card-in-scope path. The response carries the card, and the frontend files the Q&A
+    under it.
+  - Any name with the token "TNM" is TNM. An explicit staging question skips the case gate (no finding need match);
+    the site must still be on the closed list.
+  - The card is made openable: its skeleton is the entry's branches, and with no branch from the route, Jev picks
+    one of the entry's branches (`matcher.pick_branch`), else the Overview when stored.
+- Answers are about two to four sentences, in British English.
+
+### 5.6 Recommendations (`POST /recommendations`)
+
+- Input: findings, referral, applied enrichments and the conclusion.
+- One Qwen call at low reasoning. It returns up to four general suggestions, each a short sentence, and never a
+  duplicate of an applied recommendation.
+- It is called with the conclusion draft and when an enrichment changes.
+
+### 5.7 Logging
+
+`DictationStackLog` gains a `copilot` JSON field holding:
+- cards matched, opened and applied (key, status)
+- thread Q&As
+- recommendations offered and ticked
+- latencies
+
+### 5.8 TNM provider (`copilot/tnm.py`)
+
+- **Data.**
+  - `resources/tnm_9th_clean.json` v2.1: 60 sites, each with structured T, N and M category dictionaries, the
+    `rules` text and a `stage_grouping` table. It is loaded once into memory, with no database and no network.
+  - Excluded, because they are not TNM-staged in practice or have no T/N/M table: Brain & Spinal Cord, Hodgkin
+    Lymphoma, Non-Hodgkin Lymphomas.
+- **Matcher.**
+  - The prompt carries the site names as a closed list. For a primary malignancy, known or suspected, the matcher
+    returns `name: "TNM"` and `site: <exact list name>`. Code rejects a site that isn't on the list.
+  - **Jev gate**, one yes/no per TNM candidate: "The FINDING describes a primary malignant tumour (known or suspected)
+    of <site> that would be staged." A card is made only at or above `TNM_GATE_MIN`, which the lab sets.
+  - The key is `tnm-<slug(site)>@9`.
+- **Entry.** Built on the fly, with no fetch and no registry row:
+  - one branch, "Staging", state `checked`;
+  - inputs `T`, `N` and `M`, whose options are the site's categories, with the X option added first when absent,
+    plus `histology` when the site's stage table varies by it;
+  - rule: the category definitions (the `format_tnm_evidence` text);
+  - outputs: the stage grouping rows;
+  - status `verified`; source "UICC TNM Classification of Malignant Tumours, 9th edition (offline)".
+- **Preview.**
+  - Qwen settles each axis it can from the findings, each with a quote. Unsettled axes are in-card choices.
+  - The proposal is assembled **in code**: classification `cT2b N1 M0 (UICC TNM 9th)`, and line "Staging (UICC TNM
+    9th): cT2b N1 M0."
+  - The stage group comes from the site's verified `stage_tables`, and only when the lookup gives exactly one stage:
+    - "Any" matches anything;
+    - X matches only "Any" or a cell that lists it;
+    - a category matches its parent row (T2b matches "T2");
+    - a substage beats its summary stage (IIA over II);
+    - when several rows still tie and disagree, no stage is given.
+  - There is no recommendation.
+- **Ask.** Material is the `format_tnm_evidence` text for the site. There is no gap search for TNM.
+
+## 6. Into the report
+
+- **Gate record** (`GateRecord` in `hybrid-stack/types.ts`) gains:
+  - `enrichments: {key, version, status, unit_id, region, line, recommendation}[]`
+  - `recommendations: {text, source: 'guideline' | 'suggested' | 'typed', key?, ticked}[]`
+- **Findings block:** each enrichment line is added as a confirmed statement under its finding's region. The generator
+  places it in that finding's paragraph, under the existing Scratchpad Session rule. The conclusion draft (`/draft`)
+  reads the same block, so it may name the classification (§2.9).
+- **Recommendations** travel in the findings block, as its last part: `Recommendations (selected by the radiologist):
+  <items>`. Both paths already send that block (quick as `findings`, template as `FINDINGS`), so no new request field
+  is needed.
+  - `stack_fallback` (quick path) adds one rule: when the findings carry that line, write a RECOMMENDATIONS section
+    after the impression, with exactly those items in report style and nothing else. With no line, there is no section.
+  - The Impression Plan's "no recommendation" rule stays. Recommendations live only in that section.
+  - The template path relies on the labelled line. Its placement gets checked in the local hand read.
+
+## 7. Failure behaviour
+
+Everything fails open, and dictation, Confirm and Generate never wait on the Copilot.
+
+| Failure | Result |
+|---|---|
+| Matcher fails | no cards |
+| Fetch fails | retry state on the card |
+| Preview fails | criteria only, no Apply |
+| Ask fails | an inline error with retry |
+| Recommendations fail | no suggestions (applied ones still show) |
+
+`RR_STACK_COPILOT=0` hides the panel and skips every background call.
+
+## 8. Testing
+
+**Labs.** Hand reads by Claude, two runs at most, outputs reused, pid in output filenames:
+1. **Matcher.** Prod stack dictations with guideline-bearing findings, plus negative controls. Measured:
+   - recall of the correct key;
+   - wrong or irrelevant cards (precision matters most);
+   - key normalisation.
+2. **Fetch and extraction.** The targeted fetch runs on the seed set and is checked by hand against the sources, for
+   correctness and branch coverage. This doubles as seed verification and supplies the Jev fixtures:
+   - covered and missing branches (coverage bar);
+   - true, reformatted and wrong quotes (evidence bar);
+   - questions the entry answers and questions it doesn't (ask-gap bar).
+
+   Each bar is set where false yes answers reach zero. First-open latency (card branch) and background-fill
+   completeness are recorded.
+5. **TNM site selection.** Primary tumours across common sites, plus metastases, benign masses and incidental lesions
+   as negative controls. Two arms are compared on site accuracy and false staging cards:
+   - (a) the closed list plus the Jev gate;
+   - (b) `hybrid_tnm_search` on the finding text.
+   Arm (a) replaces (b) on the Copilot path only if it is at least as accurate, with zero false cards at the chosen
+   bar.
+3. **Preview.** Seed entries × case findings. Measured: settled and missing inputs are correct, the proposal is
+   correct, and numbers come from the entry (the numeric check catches violations).
+4. **Ask routing.** Questions split into card-scoped, existing-guideline, new-guideline and general. Each must land in
+   the right place.
+
+**Code tests:**
+- key and alias normalisation, the per-key lock, the numeric check
+- the gate record fields
+- `stack_fallback` writing the Recommendations section only from ticked items
+- Apply and remove each trigger the conclusion redraw
+- fail-open paths
+- frontend component tests for the card states, the Apply gate, thread routing, the enrichment line and the checklist
+
+## 9. Out of scope
+
+- Applying guidelines after Generate. The post-generation rail and chat are unchanged.
+- Sharing threads across sessions.
+- Automatic re-verification of registry entries.
+- Version upgrades are manual: a new version is a new key.

@@ -1,0 +1,373 @@
+{
+ "cases": [
+  {
+   "name": "initial screen, aorta 2.4 cm",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 2.4,
+    "prior_programme_scan": false
+   },
+   "outcome": "no_aaa"
+  },
+  {
+   "name": "edge: 2.99 cm is less than 3.0, no AAA",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 2.99,
+    "prior_programme_scan": false
+   },
+   "outcome": "no_aaa"
+  },
+  {
+   "name": "edge: 2.95 cm is less than 3.0, no AAA",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 2.95,
+    "prior_programme_scan": false
+   },
+   "outcome": "no_aaa"
+  },
+  {
+   "name": "initial screen, 3.0 cm small AAA",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 3.0,
+    "prior_programme_scan": false
+   },
+   "outcome": "small_surveillance"
+  },
+  {
+   "name": "initial screen, 3.6 cm small AAA",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 3.6,
+    "prior_programme_scan": false
+   },
+   "outcome": "small_surveillance"
+  },
+  {
+   "name": "edge: 4.49 cm, small (gap read by the medium lower bound)",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 4.49,
+    "prior_programme_scan": false
+   },
+   "outcome": "small_surveillance"
+  },
+  {
+   "name": "edge: 4.5 cm, medium",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 4.5,
+    "prior_programme_scan": false
+   },
+   "outcome": "medium_surveillance"
+  },
+  {
+   "name": "initial screen, 5.0 cm medium AAA",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 5.0,
+    "prior_programme_scan": false
+   },
+   "outcome": "medium_surveillance"
+  },
+  {
+   "name": "edge: 5.49 cm, medium (gap read by the large lower bound)",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 5.49,
+    "prior_programme_scan": false
+   },
+   "outcome": "medium_surveillance"
+  },
+  {
+   "name": "edge: 5.5 cm, large",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 5.5,
+    "prior_programme_scan": false
+   },
+   "outcome": "large_refer"
+  },
+  {
+   "name": "initial screen, 6.2 cm large AAA",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 6.2,
+    "prior_programme_scan": false
+   },
+   "outcome": "large_refer"
+  },
+  {
+   "name": "large AAA on surveillance, growth not stated: growth not needed",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 5.6,
+    "prior_programme_scan": true
+   },
+   "outcome": "large_refer"
+  },
+  {
+   "name": "aorta not visualised",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": {
+     "state": "not_assessable"
+    }
+   },
+   "outcome": "non_visualised"
+  },
+  {
+   "name": "surveillance small AAA, grown 0.3 cm",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 3.8,
+    "prior_programme_scan": true,
+    "growth_12m_cm": 0.3
+   },
+   "outcome": "small_surveillance"
+  },
+  {
+   "name": "growth edge: 1.04 cm is more than 1 cm, refer",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 4.2,
+    "prior_programme_scan": true,
+    "growth_12m_cm": 1.04
+   },
+   "outcome": "growth_refer"
+  },
+  {
+   "name": "growth edge: 1.01 cm is more than 1 cm, refer",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 4.2,
+    "prior_programme_scan": true,
+    "growth_12m_cm": 1.01
+   },
+   "outcome": "growth_refer"
+  },
+  {
+   "name": "surveillance medium AAA, grown exactly 1.0 cm",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 5.3,
+    "prior_programme_scan": true,
+    "growth_12m_cm": 1.0
+   },
+   "outcome": "medium_surveillance"
+  },
+  {
+   "name": "surveillance medium AAA, grown 1.2 cm",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 5.3,
+    "prior_programme_scan": true,
+    "growth_12m_cm": 1.2
+   },
+   "outcome": "growth_refer"
+  },
+  {
+   "name": "surveillance medium AAA, smaller than last year",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 4.8,
+    "prior_programme_scan": true,
+    "growth_12m_cm": -0.2
+   },
+   "outcome": "medium_surveillance"
+  },
+  {
+   "name": "surveillance scan measures under 3.0 cm",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 2.8,
+    "prior_programme_scan": true
+   },
+   "outcome": "does_not_fit"
+  },
+  {
+   "name": "woman",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "female",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 3.5,
+    "prior_programme_scan": false
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "AAA already treated (EVAR)",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": true,
+    "diameter_cm": 5.8
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "aorta imaged outside the programme",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": false,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 4.0
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "diameter unknown",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "prior_programme_scan": false
+   },
+   "outcome": null,
+   "needed": [
+    "diameter_cm"
+   ]
+  },
+  {
+   "name": "surveillance small AAA, growth unknown",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 4.0,
+    "prior_programme_scan": true
+   },
+   "outcome": null,
+   "needed": [
+    "growth_12m_cm"
+   ]
+  },
+  {
+   "name": "small AAA, initial or surveillance unknown",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 4.0
+   },
+   "outcome": null,
+   "needed": [
+    "prior_programme_scan"
+   ],
+   "waiting": [
+    "growth_12m_cm"
+   ]
+  },
+  {
+   "name": "sex unknown",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "previous_aaa_treatment": false,
+    "diameter_cm": 4.0,
+    "prior_programme_scan": false
+   },
+   "outcome": null,
+   "needed": [
+    "sex"
+   ]
+  },
+  {
+   "name": "surveillance scan, aorta not visualised",
+   "origin": "ours",
+   "inputs": {
+    "screening_programme": true,
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": {
+     "state": "not_assessable"
+    },
+    "prior_programme_scan": true
+   },
+   "outcome": "non_visualised"
+  },
+  {
+   "name": "programme scan unknown: eligibility asked",
+   "origin": "ours",
+   "inputs": {
+    "sex": "male",
+    "previous_aaa_treatment": false,
+    "diameter_cm": 4.0,
+    "prior_programme_scan": false
+   },
+   "outcome": null,
+   "needed": [
+    "screening_programme"
+   ]
+  }
+ ]
+}

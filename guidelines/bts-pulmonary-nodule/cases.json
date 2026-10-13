@@ -1,0 +1,1434 @@
+{
+ "cases": [
+  {
+   "name": "BTS worked example (p ii16): non-spiculated 4 mm upper lobe nodule, 70-year-old woman; count, family history and emphysema not stated",
+   "origin": "source",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "diameter_mm": 4,
+    "age": 70,
+    "sex": "female",
+    "upper_lobe": true,
+    "spiculation": false,
+    "resolved": false,
+    "proven_malignant": false
+   },
+   "outcome": "discharge_small"
+  },
+  {
+   "name": "benign features, large nodule",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": true,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 12,
+    "proven_malignant": false
+   },
+   "outcome": "discharge_benign"
+  },
+  {
+   "name": "part-solid nodule 12 mm (Brock part-solid term checked)",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "part_solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 12,
+    "proven_malignant": false
+   },
+   "outcome": "subsolid",
+   "steps": {
+    "brock": 0.283837
+   }
+  },
+  {
+   "name": "pure ground-glass nodule 12 mm (Brock nonsolid term checked)",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "nonsolid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 12,
+    "proven_malignant": false
+   },
+   "outcome": "subsolid",
+   "steps": {
+    "brock": 0.193082
+   }
+  },
+  {
+   "name": "4.9 mm: just under 5 mm",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 4.9,
+    "proven_malignant": false
+   },
+   "outcome": "discharge_small"
+  },
+  {
+   "name": "5 mm edge, no prior imaging",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 5,
+    "proven_malignant": false
+   },
+   "outcome": "ct_1yr"
+  },
+  {
+   "name": "5.9 mm, no prior imaging",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 5.9,
+    "proven_malignant": false
+   },
+   "outcome": "ct_1yr"
+  },
+  {
+   "name": "6 mm edge, no prior imaging",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 6,
+    "proven_malignant": false
+   },
+   "outcome": "ct_3m"
+  },
+  {
+   "name": "7.9 mm, no prior imaging",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 7.9,
+    "proven_malignant": false
+   },
+   "outcome": "ct_3m"
+  },
+  {
+   "name": "8 mm edge, Brock 8.3%",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 8,
+    "proven_malignant": false
+   },
+   "outcome": "brock_low",
+   "steps": {
+    "size_term": -0.463105,
+    "age_term": 3,
+    "count_term": -3,
+    "brock": 0.082611
+   }
+  },
+  {
+   "name": "9 mm, Brock 11.3%",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 9,
+    "proven_malignant": false
+   },
+   "outcome": "pet_ct",
+   "steps": {
+    "size_term": -0.527046,
+    "age_term": 3,
+    "count_term": -3,
+    "brock": 0.112741
+   }
+  },
+  {
+   "name": "Brock just under 10%: 8.5 mm, age 66",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 66,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 8.5,
+    "proven_malignant": false
+   },
+   "outcome": "brock_low",
+   "steps": {
+    "age_term": 4,
+    "brock": 0.099847
+   }
+  },
+  {
+   "name": "Brock just over 10%: 8.5 mm, age 67",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 67,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 8.5,
+    "proven_malignant": false
+   },
+   "outcome": "pet_ct",
+   "steps": {
+    "age_term": 5,
+    "brock": 0.102457
+   }
+  },
+  {
+   "name": "low-risk man, 9 mm smooth lower lobe nodule",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "male",
+    "family_history": false,
+    "emphysema": false,
+    "upper_lobe": false,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 9,
+    "proven_malignant": false
+   },
+   "outcome": "brock_low",
+   "steps": {
+    "brock": 0.026147
+   }
+  },
+  {
+   "name": "high-risk woman, 15 mm spiculated upper lobe nodule",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 70,
+    "sex": "female",
+    "family_history": true,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": true,
+    "prior_study": false,
+    "diameter_mm": 15,
+    "proven_malignant": false
+   },
+   "outcome": "pet_ct",
+   "steps": {
+    "size_term": -0.764642,
+    "brock": 0.605636
+   }
+  },
+  {
+   "name": "10 mm, five nodules (count term above centre)",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 5,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 10,
+    "proven_malignant": false
+   },
+   "outcome": "pet_ct",
+   "steps": {
+    "count_term": 1,
+    "brock": 0.108967
+   }
+  },
+  {
+   "name": "8 mm, spiculation not stated: it decides the Brock band",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "prior_study": false,
+    "diameter_mm": 8,
+    "proven_malignant": false
+   },
+   "outcome": null,
+   "needed": [
+    "spiculation"
+   ]
+  },
+  {
+   "name": "7 mm, prior imaging not stated",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "proven_malignant": false
+   },
+   "outcome": null,
+   "needed": [
+    "prior_study"
+   ],
+   "waiting": [
+    "resolved",
+    "growth",
+    "prior_volume_mm3",
+    "current_volume_mm3",
+    "interval_days"
+   ]
+  },
+  {
+   "name": "prior CT, interval not stated",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 150,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": null,
+   "needed": [
+    "interval_days"
+   ]
+  },
+  {
+   "name": "3 months, 50% growth: VDT 156 days",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 150,
+    "interval_days": 91,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "growth_workup",
+   "steps": {
+    "vdt_days": 155.5655,
+    "volume_change_pct": 50
+   }
+  },
+  {
+   "name": "3 months, 20% growth: under the 25% threshold although VDT is 346 days",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 120,
+    "interval_days": 91,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "continue_no_growth",
+   "steps": {
+    "vdt_days": 345.9623,
+    "volume_change_pct": 20
+   }
+  },
+  {
+   "name": "3 months, exactly 25% growth",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 125,
+    "interval_days": 91,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "growth_workup",
+   "steps": {
+    "vdt_days": 282.6718,
+    "volume_change_pct": 25
+   }
+  },
+  {
+   "name": "3 months, 24.9% growth",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 124.9,
+    "interval_days": 91,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "continue_no_growth",
+   "steps": {
+    "volume_change_pct": 24.9
+   }
+  },
+  {
+   "name": "6 months, 30% growth, VDT 481 days",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 130,
+    "interval_days": 182,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "continue_slow_growth",
+   "steps": {
+    "vdt_days": 480.8307
+   }
+  },
+  {
+   "name": "200 days, 25% growth, VDT 621 days",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 125,
+    "interval_days": 200,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "continue_slow_growth",
+   "steps": {
+    "vdt_days": 621.2567
+   }
+  },
+  {
+   "name": "VDT exactly 400 days (doubled over 400 days)",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 200,
+    "interval_days": 400,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "growth_workup",
+   "steps": {
+    "vdt_days": 400
+   }
+  },
+  {
+   "name": "VDT 401 days",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 200,
+    "interval_days": 401,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "vdt_400_600",
+   "steps": {
+    "vdt_days": 401
+   }
+  },
+  {
+   "name": "VDT exactly 600 days",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 200,
+    "interval_days": 600,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "vdt_400_600",
+   "steps": {
+    "vdt_days": 600
+   }
+  },
+  {
+   "name": "VDT 601 days",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 200,
+    "interval_days": 601,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "vdt_gt600",
+   "steps": {
+    "vdt_days": 601
+   }
+  },
+  {
+   "name": "1 year, 50% growth: VDT 624 days",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 150,
+    "interval_days": 365,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "vdt_gt600",
+   "steps": {
+    "vdt_days": 623.9716
+   }
+  },
+  {
+   "name": "1 year exactly, 10% change: stable",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 110,
+    "interval_days": 365,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "stable_discharge",
+   "steps": {
+    "volume_change_pct": 10
+   }
+  },
+  {
+   "name": "364 days, 10% change: not yet 1 year",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 110,
+    "interval_days": 364,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "continue_no_growth"
+  },
+  {
+   "name": "3 months, nodule smaller",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 80,
+    "interval_days": 91,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "continue_no_growth",
+   "steps": {
+    "vdt_days": -282.6718,
+    "volume_change_pct": -20
+   }
+  },
+  {
+   "name": "1 year, nodule smaller",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 80,
+    "interval_days": 365,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "smaller_discharge",
+   "steps": {
+    "vdt_days": -1133.7936
+   }
+  },
+  {
+   "name": "5.5 mm with prior CT at 1 year, stable",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 5.5,
+    "prior_study": true,
+    "prior_volume_mm3": 30,
+    "current_volume_mm3": 33,
+    "interval_days": 365,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "stable_discharge"
+  },
+  {
+   "name": "1 year, equal volumes: VDT infinite, stable",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 100,
+    "interval_days": 365,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "stable_discharge",
+   "steps": {
+    "vdt_band": "gt600",
+    "volume_change_pct": 0
+   }
+  },
+  {
+   "name": "3 months, equal volumes: VDT infinite, CT at 1 year",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "prior_volume_mm3": 100,
+    "current_volume_mm3": 100,
+    "interval_days": 91,
+    "resolved": false,
+    "growth": "volumetry",
+    "proven_malignant": false
+   },
+   "outcome": "continue_no_growth",
+   "steps": {
+    "vdt_band": "gt600",
+    "volume_change_pct": 0
+   }
+  },
+  {
+   "name": "no prior CT: growth steps not applicable, 7 mm",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": false,
+    "proven_malignant": false
+   },
+   "outcome": "ct_3m"
+  },
+  {
+   "name": "2D: 3 months, stable diameter: CT at 1 year",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_stable",
+    "interval_days": 91,
+    "proven_malignant": false
+   },
+   "outcome": "continue_no_growth",
+   "steps": {
+    "interval_band": "lt1y"
+   }
+  },
+  {
+   "name": "2D: 1 year exactly, stable diameter: CT at 2 years",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_stable",
+    "interval_days": 365,
+    "proven_malignant": false
+   },
+   "outcome": "ct_2yr_2d",
+   "steps": {
+    "interval_band": "1to2y"
+   }
+  },
+  {
+   "name": "2D: 729 days, stable diameter: still CT at 2 years",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_stable",
+    "interval_days": 729,
+    "proven_malignant": false
+   },
+   "outcome": "ct_2yr_2d",
+   "steps": {
+    "interval_band": "1to2y"
+   }
+  },
+  {
+   "name": "2D: 2 years exactly, stable diameter: discharge",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_stable",
+    "interval_days": 730,
+    "proven_malignant": false
+   },
+   "outcome": "stable_2d_discharge",
+   "steps": {
+    "interval_band": "ge2y"
+   }
+  },
+  {
+   "name": "2D: 3 months, clear growth: work-up",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_clear_growth",
+    "interval_days": 91,
+    "proven_malignant": false
+   },
+   "outcome": "growth_workup_2d"
+  },
+  {
+   "name": "2D: clear growth, interval not stated: still work-up",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_clear_growth",
+    "proven_malignant": false
+   },
+   "outcome": "growth_workup_2d"
+  },
+  {
+   "name": "2D: 1 year, equivocal diameter change: volumetry advised",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_indeterminate",
+    "interval_days": 365,
+    "proven_malignant": false
+   },
+   "outcome": "volumetry_advised"
+  },
+  {
+   "name": "2D: stable diameter, interval not stated",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_stable",
+    "proven_malignant": false
+   },
+   "outcome": null,
+   "needed": [
+    "interval_days"
+   ]
+  },
+  {
+   "name": "2D: 4 mm with prior CT: discharge on size alone",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 4,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "diameter_stable",
+    "interval_days": 365,
+    "proven_malignant": false
+   },
+   "outcome": "discharge_small"
+  },
+  {
+   "name": "resolved nodule on follow-up CT (library addition), its last size given",
+   "origin": "ours",
+   "inputs": {
+    "prior_study": true,
+    "resolved": true,
+    "age": 65,
+    "proven_malignant": false,
+    "diameter_mm": 6
+   },
+   "outcome": "resolved"
+  },
+  {
+   "name": "resolved, with the earlier nodule's features given",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": true,
+    "proven_malignant": false
+   },
+   "outcome": "resolved"
+  },
+  {
+   "name": "volumes compared, interval not stated, volumes not given: method stated as volumetry",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "diameter_mm": 7,
+    "prior_study": true,
+    "resolved": false,
+    "growth": "volumetry",
+    "interval_days": 365,
+    "proven_malignant": false
+   },
+   "outcome": null,
+   "needed": [
+    "prior_volume_mm3",
+    "current_volume_mm3"
+   ]
+  },
+  {
+   "name": "age 17 is under 18: does not apply",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": true,
+    "nodule_type": "solid",
+    "age": 17,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 12,
+    "proven_malignant": false
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "age 18 is in scope",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": true,
+    "nodule_type": "solid",
+    "age": 18,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 12,
+    "proven_malignant": false
+   },
+   "outcome": "discharge_benign"
+  },
+  {
+   "name": "age not stated",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": true,
+    "nodule_type": "solid",
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 12,
+    "proven_malignant": false
+   },
+   "outcome": null,
+   "needed": [
+    "age"
+   ]
+  },
+  {
+   "name": "nodule proven to be a metastasis: does not apply",
+   "origin": "ours",
+   "inputs": {
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 12,
+    "benign_features": false,
+    "proven_malignant": true
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "proven lung cancer, age not stated: does not apply",
+   "origin": "ours",
+   "inputs": {
+    "proven_malignant": true
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "nodule not proven malignant is in scope",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": true,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 12,
+    "proven_malignant": false
+   },
+   "outcome": "discharge_benign"
+  },
+  {
+   "name": "proven malignancy not stated",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": true,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "diameter_mm": 12
+   },
+   "outcome": null,
+   "needed": [
+    "proven_malignant"
+   ]
+  },
+  {
+   "name": "30 mm edge: still a nodule (Table 1: up to 3 cm)",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "proven_malignant": false,
+    "diameter_mm": 30
+   },
+   "outcome": "pet_ct"
+  },
+  {
+   "name": "30.5 mm: over 3 cm, outside the BTS nodule definition",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "proven_malignant": false,
+    "diameter_mm": 30.5
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "38 mm solid opacity: outside the BTS nodule definition",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "proven_malignant": false,
+    "diameter_mm": 38
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "38 mm part-solid opacity: outside the BTS nodule definition",
+   "origin": "ours",
+   "inputs": {
+    "nodule_type": "part_solid",
+    "diameter_mm": 38,
+    "benign_features": false,
+    "age": 65,
+    "proven_malignant": false,
+    "prior_study": false
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "38 mm opacity, eligibility and prior imaging not stated: excluded, nothing asked (a measured nodule cannot be resolved)",
+   "origin": "ours",
+   "inputs": {
+    "nodule_type": "solid",
+    "diameter_mm": 38
+   },
+   "outcome": "does_not_apply",
+   "needed": []
+  },
+  {
+   "name": "38 mm opacity, no previous imaging, eligibility not stated: excluded, nothing asked",
+   "origin": "ours",
+   "inputs": {
+    "nodule_type": "solid",
+    "diameter_mm": 38,
+    "prior_study": false
+   },
+   "outcome": "does_not_apply",
+   "needed": []
+  },
+  {
+   "name": "38 mm opacity read, prior CT and resolution unknown: excluded (live checkpoint 3)",
+   "origin": "ours",
+   "inputs": {
+    "nodule_type": "solid",
+    "diameter_mm": 38,
+    "age": 65,
+    "proven_malignant": false
+   },
+   "outcome": "does_not_apply",
+   "needed": []
+  },
+  {
+   "name": "nodule resolved, its size not stated: the size is asked (a measured opacity over 3 cm excludes)",
+   "origin": "ours",
+   "inputs": {
+    "age": 65,
+    "proven_malignant": false,
+    "prior_study": true,
+    "resolved": true
+   },
+   "outcome": null,
+   "needed": [
+    "diameter_mm"
+   ]
+  }
+ ]
+}

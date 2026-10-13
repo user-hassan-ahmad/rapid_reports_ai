@@ -1,0 +1,1789 @@
+{
+  "id": "pi-rads-2-1",
+  "version": "2019.1",
+  "topic": "prostate-lesion-mri",
+  "purpose": "Assigns a likelihood of clinically significant cancer to a prostate lesion on multiparametric MRI, for detection, localisation and risk stratification in patients with suspected cancer in a treatment-naive prostate.",
+  "trigger": ["exam", "finding"],
+  "exam": "MRI of the prostate (multiparametric or biparametric)",
+  "issuer": "American College of Radiology (PI-RADS Steering Committee: ACR, ESUR, AdMeTech Foundation)",
+  "system": "PI-RADS Prostate Imaging - Reporting and Data System, Version 2.1",
+  "display": "PI-RADS v2.1",
+  "edition": "2019 (v2.1)",
+  "tier": 1,
+  "applies_to": {
+    "region": [
+      "pelvis"
+    ],
+    "modality": [
+      "MRI"
+    ],
+    "finding_type": [
+      "prostate lesion"
+    ],
+    "context": []
+  },
+  "aliases": [
+    "pi-rads",
+    "pirads",
+    "pi-rads v2.1",
+    "pirads 2.1",
+    "pi-rads 2.1",
+    "prostate imaging reporting and data system"
+  ],
+  "inputs": [
+    {
+      "id": "finding_above_1",
+      "label": "A finding with a PI-RADS category above 1 is reported",
+      "type": "boolean",
+      "scope": "lesion",
+      "how_stated": "true when any focal lesion, nodule or region of the gland is described for scoring (eg a PI-RADS 2 to 5 lesion, or a lesion given T2W, DWI or DCE scores); false when no such finding is reported, eg 'no focal lesion', 'no suspicious lesion', or only typical BPH change in the transition zone, which PI-RADS treats as a normal variant",
+      "locator": {
+        "source": "S1",
+        "page": 20,
+        "section": "Section III: Evaluation of the TZ (How to Score in the TZ: every MRI exam is assigned a category; with no finding above category 1 the exam is PI-RADS 1)"
+      }
+    },
+    {
+      "id": "treated_cancer",
+      "label": "Prostate cancer already treated (MRI for suspected recurrence)",
+      "type": "boolean",
+      "scope": "patient",
+      "role": "eligibility",
+      "how_stated": "true when the history gives prior treatment of prostate cancer (eg prostatectomy, radiotherapy, focal or ablative therapy) and the MRI looks for recurrence; false for a treatment-naive gland, including suspected cancer, a prior negative biopsy, or BPH treatment",
+      "locator": {
+        "source": "S1",
+        "page": 10,
+        "section": "Introduction: designed for suspected cancer in treatment naive prostate glands; does not address suspected recurrence following therapy"
+      }
+    },
+    {
+      "id": "zone",
+      "label": "Zone the lesion is scored in",
+      "type": "enum",
+      "options": [
+        "peripheral",
+        "transition"
+      ],
+      "scope": "lesion",
+      "how_stated": "peripheral for a PZ lesion, transition for a TZ lesion; a central zone or anterior fibromuscular stroma lesion takes the zone it appears to arise from (eg 'scored with TZ criteria'); if several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
+      "locator": {
+        "source": "S1",
+        "page": 21,
+        "section": "Section III: Evaluation of the anterior fibromuscular stroma; Caveats for Overall Assessment (dominant sequence by zone)"
+      }
+    },
+    {
+      "id": "dwi",
+      "label": "DWI score",
+      "type": "enum",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "states": [
+        "not_assessable"
+      ],
+      "scope": "lesion",
+      "how_stated": "the DWI (ADC and high b-value) score 1 to 5 as dictated, eg 'DWI 4', 'DWI 3/5'; not assessable when DWI is called X, technically inadequate, non-diagnostic or not performed; if several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
+      "locator": {
+        "source": "S1",
+        "page": 27,
+        "section": "Section IV B.2: PI-RADS Assessment of DWI",
+        "table": "DWI score, PZ or TZ"
+      }
+    },
+    {
+      "id": "t2w",
+      "label": "T2W score",
+      "type": "enum",
+      "options": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "states": [
+        "not_assessable"
+      ],
+      "scope": "lesion",
+      "prerequisites": [
+        {
+          "any": [
+            {
+              "ref": "zone",
+              "eq": "transition"
+            },
+            {
+              "ref": "dwi",
+              "state": "not_assessable"
+            }
+          ]
+        }
+      ],
+      "how_stated": "the T2-weighted score 1 to 5 as dictated, eg 'T2 4', 'T2W 2/5'; not assessable when T2W is called X, technically inadequate or not performed; if several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
+      "locator": {
+        "source": "S1",
+        "page": 25,
+        "section": "Section IV A.2: PI-RADS Assessment for T2W",
+        "table": "T2W score, PZ and TZ"
+      }
+    },
+    {
+      "id": "dce",
+      "label": "DCE",
+      "type": "enum",
+      "options": [
+        "positive",
+        "negative"
+      ],
+      "states": [
+        "not_assessable"
+      ],
+      "scope": "lesion",
+      "prerequisites": [
+        {
+          "any": [
+            {
+              "all": [
+                {
+                  "ref": "zone",
+                  "eq": "peripheral"
+                },
+                {
+                  "ref": "dwi",
+                  "eq": "3"
+                }
+              ]
+            },
+            {
+              "ref": "dwi",
+              "state": "not_assessable"
+            }
+          ]
+        }
+      ],
+      "how_stated": "positive for focal early (or contemporaneous) enhancement matching the T2W or DWI finding; negative for no early enhancement, diffuse enhancement, or enhancement of a BPH-type nodule; not assessable when DCE is X, inadequate or not given (biparametric MRI); if several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
+      "locator": {
+        "source": "S1",
+        "page": 29,
+        "section": "Section IV C.2: PI-RADS Assessment for DCE",
+        "table": "DCE score, PZ or TZ"
+      }
+    }
+  ],
+  "logic": [
+    {
+      "step": "rules",
+      "id": "category",
+      "cases": [
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": false
+              }
+            ]
+          },
+          "result": "pirads_1_exam",
+          "locator": {
+            "source": "S1",
+            "page": 20,
+            "section": "Section III: Evaluation of the TZ (How to Score in the TZ: every MRI exam is assigned a category; with no finding above category 1 the exam is PI-RADS 1)"
+          }
+        },
+        {
+          "when": {
+            "ref": "treated_cancer",
+            "eq": true
+          },
+          "result": "does_not_apply",
+          "locator": {
+            "source": "S1",
+            "page": 31,
+            "section": "Section IV C.3: Commentary on bi-parametric MRI (local recurrence after prior treatment, a setting in which current PI-RADS assessment criteria do not apply)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "dwi",
+                "state": "not_assessable"
+              },
+              {
+                "ref": "dce",
+                "state": "not_assessable"
+              }
+            ]
+          },
+          "result": "staging_only",
+          "locator": {
+            "source": "S1",
+            "page": 23,
+            "section": "Section III: Assessment Without Adequate DCE (if both DWI and DCE are inadequate or absent)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "t2w",
+                "state": "not_assessable"
+              },
+              {
+                "none": [
+                  {
+                    "all": [
+                      {
+                        "ref": "dwi",
+                        "state": "not_assessable"
+                      },
+                      {
+                        "ref": "dce",
+                        "state": "not_assessable"
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "not_categorised",
+          "locator": {
+            "source": "S1",
+            "page": 22,
+            "section": "Section III: Caveats for Overall Assessment (a technically inadequate component is X; tables are given only for X on DWI or DCE)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "zone",
+                "eq": "peripheral"
+              },
+              {
+                "ref": "dwi",
+                "eq": "1"
+              }
+            ]
+          },
+          "result": "pirads_1",
+          "locator": {
+            "source": "S1",
+            "page": 18,
+            "section": "Section III: PI-RADS Assessment",
+            "table": "Peripheral Zone (PZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "zone",
+                "eq": "peripheral"
+              },
+              {
+                "ref": "dwi",
+                "eq": "2"
+              }
+            ]
+          },
+          "result": "pirads_2",
+          "locator": {
+            "source": "S1",
+            "page": 18,
+            "section": "Section III: PI-RADS Assessment",
+            "table": "Peripheral Zone (PZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "zone",
+                "eq": "peripheral"
+              },
+              {
+                "ref": "dwi",
+                "eq": "3"
+              },
+              {
+                "ref": "dce",
+                "eq": "negative"
+              }
+            ]
+          },
+          "result": "pirads_3",
+          "locator": {
+            "source": "S1",
+            "page": 18,
+            "section": "Section III: PI-RADS Assessment",
+            "table": "Peripheral Zone (PZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "zone",
+                "eq": "peripheral"
+              },
+              {
+                "ref": "dwi",
+                "eq": "3"
+              },
+              {
+                "ref": "dce",
+                "eq": "positive"
+              }
+            ]
+          },
+          "result": "pirads_4",
+          "locator": {
+            "source": "S1",
+            "page": 18,
+            "section": "Section III: PI-RADS Assessment",
+            "table": "Peripheral Zone (PZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "zone",
+                "eq": "peripheral"
+              },
+              {
+                "ref": "dwi",
+                "eq": "3"
+              },
+              {
+                "ref": "dce",
+                "state": "not_assessable"
+              }
+            ]
+          },
+          "result": "pirads_3",
+          "locator": {
+            "source": "S1",
+            "page": 23,
+            "section": "Section III: Assessment Without Adequate DCE (PZ determined by DWI Assessment Category)",
+            "table": "Assessment Without Adequate DCE"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "zone",
+                "eq": "peripheral"
+              },
+              {
+                "ref": "dwi",
+                "eq": "4"
+              }
+            ]
+          },
+          "result": "pirads_4",
+          "locator": {
+            "source": "S1",
+            "page": 18,
+            "section": "Section III: PI-RADS Assessment",
+            "table": "Peripheral Zone (PZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "zone",
+                "eq": "peripheral"
+              },
+              {
+                "ref": "dwi",
+                "eq": "5"
+              }
+            ]
+          },
+          "result": "pirads_5",
+          "locator": {
+            "source": "S1",
+            "page": 18,
+            "section": "Section III: PI-RADS Assessment",
+            "table": "Peripheral Zone (PZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "zone",
+                "eq": "transition"
+              },
+              {
+                "ref": "dwi",
+                "in": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5"
+                ]
+              },
+              {
+                "ref": "t2w",
+                "eq": "1"
+              }
+            ]
+          },
+          "result": "pirads_1",
+          "locator": {
+            "source": "S1",
+            "page": 18,
+            "section": "Section III: PI-RADS Assessment",
+            "table": "Transition Zone (TZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "zone",
+                "eq": "transition"
+              },
+              {
+                "ref": "dwi",
+                "in": [
+                  "1",
+                  "2",
+                  "3"
+                ]
+              },
+              {
+                "ref": "t2w",
+                "eq": "2"
+              }
+            ]
+          },
+          "result": "pirads_2",
+          "locator": {
+            "source": "S1",
+            "page": 18,
+            "section": "Section III: PI-RADS Assessment",
+            "table": "Transition Zone (TZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "zone",
+                "eq": "transition"
+              },
+              {
+                "ref": "dwi",
+                "in": [
+                  "4",
+                  "5"
+                ]
+              },
+              {
+                "ref": "t2w",
+                "eq": "2"
+              }
+            ]
+          },
+          "result": "pirads_3",
+          "locator": {
+            "source": "S1",
+            "page": 18,
+            "section": "Section III: PI-RADS Assessment",
+            "table": "Transition Zone (TZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "zone",
+                "eq": "transition"
+              },
+              {
+                "ref": "dwi",
+                "in": [
+                  "1",
+                  "2",
+                  "3",
+                  "4"
+                ]
+              },
+              {
+                "ref": "t2w",
+                "eq": "3"
+              }
+            ]
+          },
+          "result": "pirads_3",
+          "locator": {
+            "source": "S1",
+            "page": 18,
+            "section": "Section III: PI-RADS Assessment",
+            "table": "Transition Zone (TZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "zone",
+                "eq": "transition"
+              },
+              {
+                "ref": "dwi",
+                "eq": "5"
+              },
+              {
+                "ref": "t2w",
+                "eq": "3"
+              }
+            ]
+          },
+          "result": "pirads_4",
+          "locator": {
+            "source": "S1",
+            "page": 18,
+            "section": "Section III: PI-RADS Assessment",
+            "table": "Transition Zone (TZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "zone",
+                "eq": "transition"
+              },
+              {
+                "ref": "dwi",
+                "in": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5"
+                ]
+              },
+              {
+                "ref": "t2w",
+                "eq": "4"
+              }
+            ]
+          },
+          "result": "pirads_4",
+          "locator": {
+            "source": "S1",
+            "page": 18,
+            "section": "Section III: PI-RADS Assessment",
+            "table": "Transition Zone (TZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "zone",
+                "eq": "transition"
+              },
+              {
+                "ref": "dwi",
+                "in": [
+                  "1",
+                  "2",
+                  "3",
+                  "4",
+                  "5"
+                ]
+              },
+              {
+                "ref": "t2w",
+                "eq": "5"
+              }
+            ]
+          },
+          "result": "pirads_5",
+          "locator": {
+            "source": "S1",
+            "page": 18,
+            "section": "Section III: PI-RADS Assessment",
+            "table": "Transition Zone (TZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "dwi",
+                "state": "not_assessable"
+              },
+              {
+                "ref": "dce",
+                "in": [
+                  "positive",
+                  "negative"
+                ]
+              },
+              {
+                "ref": "t2w",
+                "eq": "1"
+              }
+            ]
+          },
+          "result": "pirads_1",
+          "locator": {
+            "source": "S1",
+            "page": 23,
+            "section": "Section III: Assessment Without Adequate DWI",
+            "table": "Peripheral Zone (PZ) and Transition Zone (TZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "dwi",
+                "state": "not_assessable"
+              },
+              {
+                "ref": "dce",
+                "in": [
+                  "positive",
+                  "negative"
+                ]
+              },
+              {
+                "ref": "t2w",
+                "eq": "2"
+              }
+            ]
+          },
+          "result": "pirads_2",
+          "locator": {
+            "source": "S1",
+            "page": 23,
+            "section": "Section III: Assessment Without Adequate DWI",
+            "table": "Peripheral Zone (PZ) and Transition Zone (TZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "dwi",
+                "state": "not_assessable"
+              },
+              {
+                "ref": "dce",
+                "eq": "negative"
+              },
+              {
+                "ref": "t2w",
+                "eq": "3"
+              }
+            ]
+          },
+          "result": "pirads_3",
+          "locator": {
+            "source": "S1",
+            "page": 23,
+            "section": "Section III: Assessment Without Adequate DWI",
+            "table": "Peripheral Zone (PZ) and Transition Zone (TZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "dwi",
+                "state": "not_assessable"
+              },
+              {
+                "ref": "dce",
+                "eq": "positive"
+              },
+              {
+                "ref": "t2w",
+                "eq": "3"
+              }
+            ]
+          },
+          "result": "pirads_4",
+          "locator": {
+            "source": "S1",
+            "page": 23,
+            "section": "Section III: Assessment Without Adequate DWI",
+            "table": "Peripheral Zone (PZ) and Transition Zone (TZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "dwi",
+                "state": "not_assessable"
+              },
+              {
+                "ref": "dce",
+                "in": [
+                  "positive",
+                  "negative"
+                ]
+              },
+              {
+                "ref": "t2w",
+                "eq": "4"
+              }
+            ]
+          },
+          "result": "pirads_4",
+          "locator": {
+            "source": "S1",
+            "page": 23,
+            "section": "Section III: Assessment Without Adequate DWI",
+            "table": "Peripheral Zone (PZ) and Transition Zone (TZ)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
+                "ref": "dwi",
+                "state": "not_assessable"
+              },
+              {
+                "ref": "dce",
+                "in": [
+                  "positive",
+                  "negative"
+                ]
+              },
+              {
+                "ref": "t2w",
+                "eq": "5"
+              }
+            ]
+          },
+          "result": "pirads_5",
+          "locator": {
+            "source": "S1",
+            "page": 23,
+            "section": "Section III: Assessment Without Adequate DWI",
+            "table": "Peripheral Zone (PZ) and Transition Zone (TZ)"
+          }
+        }
+      ]
+    }
+  ],
+  "result": "category",
+  "outcomes": [
+    {
+      "id": "pirads_1_exam",
+      "headline": "PI-RADS 1 overall",
+      "action": "Do not consider biopsy",
+      "category": "none",
+      "normal": true,
+      "classification": "PI-RADS 1 overall for the examination: no finding above category 1; clinically significant cancer is highly unlikely.",
+      "recommendation": "PI-RADS states biopsy should not be considered for category 1; it gives no management, which rests on clinical factors and local practice.",
+      "caveats": [
+        "Every MRI exam is assigned a category; typical BPH nodules alone are a normal variant (T2W 1) and need not be reported separately.",
+        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
+        "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 20,
+        "section": "Section III: Evaluation of the TZ (How to Score in the TZ: with no finding above category 1 the exam is PI-RADS 1); the MRI-findings-only caveat from p 17 (Assessment and Reporting); the inadequate-DWI caveat from p 22 (Caveats for Overall Assessment)"
+      }
+    },
+    {
+      "id": "pirads_1",
+      "headline": "PI-RADS 1: very low",
+      "action": "Do not consider biopsy",
+      "category": "none",
+      "classification": "PI-RADS 1: very low; clinically significant cancer is highly unlikely to be present.",
+      "recommendation": "PI-RADS states biopsy should not be considered for category 1; it gives no management, which rests on clinical factors and local practice.",
+      "caveats": [
+        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
+        "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation.",
+        "With several lesions this scores the index lesion only (highest category; among equals the one with EPE, else the largest; S1 p 19)."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 17,
+        "section": "Section III: Assessment and Reporting; the index-lesion caveat from p 19 (Reporting: index lesion)",
+        "table": "PI-RADS v2.1 Assessment Categories"
+      }
+    },
+    {
+      "id": "pirads_2",
+      "headline": "PI-RADS 2: low",
+      "action": "Do not consider biopsy",
+      "category": "none",
+      "classification": "PI-RADS 2: low; clinically significant cancer is unlikely to be present.",
+      "recommendation": "PI-RADS states biopsy should not be considered for category 2; it gives no management, which rests on clinical factors and local practice.",
+      "caveats": [
+        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
+        "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation.",
+        "With several lesions this scores the index lesion only (highest category; among equals the one with EPE, else the largest; S1 p 19)."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 17,
+        "section": "Section III: Assessment and Reporting; the index-lesion caveat from p 19 (Reporting: index lesion)",
+        "table": "PI-RADS v2.1 Assessment Categories"
+      }
+    },
+    {
+      "id": "pirads_3",
+      "headline": "PI-RADS 3: intermediate",
+      "action": "Biopsy depends on non-MRI factors",
+      "category": "info",
+      "classification": "PI-RADS 3: intermediate; the presence of clinically significant cancer is equivocal.",
+      "recommendation": "Biopsy may or may not be appropriate, depending on factors other than the MRI; PI-RADS gives no management recommendation.",
+      "caveats": [
+        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
+        "In the PZ, a DWI 3 lesion without adequate DCE (eg biparametric MRI) stays category 3 and is not upgraded.",
+        "In the PZ or CZ, an encapsulated, circumscribed, round nodule is likely an extruded BPH nodule and should be category 2, even if hypointense on ADC.",
+        "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation.",
+        "With several lesions this scores the index lesion only (highest category; among equals the one with EPE, else the largest; S1 p 19)."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 17,
+        "section": "Section III: Assessment and Reporting; the index-lesion caveat from p 19 (Reporting: index lesion)",
+        "table": "PI-RADS v2.1 Assessment Categories"
+      }
+    },
+    {
+      "id": "pirads_4",
+      "headline": "PI-RADS 4: high",
+      "action": "Consider biopsy",
+      "category": "workup",
+      "classification": "PI-RADS 4: high; clinically significant cancer is likely to be present.",
+      "recommendation": "PI-RADS states biopsy should be considered; it gives no further management, which rests on clinical factors and local practice.",
+      "caveats": [
+        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
+        "In the PZ or CZ, an encapsulated, circumscribed, round nodule is likely an extruded BPH nodule and should be category 2, even if hypointense on ADC.",
+        "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation.",
+        "With several lesions this scores the index lesion only (highest category; among equals the one with EPE, else the largest; S1 p 19)."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 17,
+        "section": "Section III: Assessment and Reporting; the index-lesion caveat from p 19 (Reporting: index lesion)",
+        "table": "PI-RADS v2.1 Assessment Categories"
+      }
+    },
+    {
+      "id": "pirads_5",
+      "headline": "PI-RADS 5: very high",
+      "action": "Consider biopsy",
+      "category": "workup",
+      "classification": "PI-RADS 5: very high; clinically significant cancer is highly likely to be present.",
+      "recommendation": "PI-RADS states biopsy should be considered; it gives no further management, which rests on clinical factors and local practice.",
+      "caveats": [
+        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
+        "In the PZ or CZ, an encapsulated, circumscribed, round nodule is likely an extruded BPH nodule and should be category 2, even if hypointense on ADC.",
+        "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation.",
+        "With several lesions this scores the index lesion only (highest category; among equals the one with EPE, else the largest; S1 p 19)."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 17,
+        "section": "Section III: Assessment and Reporting; the index-lesion caveat from p 19 (Reporting: index lesion)",
+        "table": "PI-RADS v2.1 Assessment Categories"
+      }
+    },
+    {
+      "id": "staging_only",
+      "headline": "No PI-RADS category: staging only",
+      "action": "Stage only; state the limitation",
+      "category": "not_applicable",
+      "classification": "No PI-RADS category: DWI and DCE are both inadequate or absent, so assessment is limited to staging (extraprostatic extension).",
+      "recommendation": "Limit the assessment to staging for extraprostatic extension; state the limitation in the report.",
+      "caveats": [
+        "When DWI is inadequate, PI-RADS advises repeating it if the cause of failure can be remedied."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 23,
+        "section": "Section III: Assessment Without Adequate DCE (if both DWI and DCE are inadequate or absent)"
+      }
+    },
+    {
+      "id": "not_categorised",
+      "headline": "No PI-RADS category: inadequate T2W",
+      "action": "State inadequate T2W in report",
+      "category": "not_applicable",
+      "classification": "Does not fit a PI-RADS v2.1 category: T2W is inadequate (X), and the source gives no assessment table without T2W.",
+      "recommendation": "No category from the PI-RADS tables; state the inadequate T2W sequence in the report.",
+      "caveats": [
+        "Library addition: PI-RADS v2.1 gives assessment tables only for an inadequate DWI or DCE, not for an inadequate T2W."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 22,
+        "section": "Section III: Caveats for Overall Assessment (a technically inadequate component is X)"
+      }
+    },
+    {
+      "id": "does_not_apply",
+      "headline": "PI-RADS not applicable after treatment",
+      "action": "Do not assign PI-RADS category",
+      "category": "not_applicable",
+      "classification": "PI-RADS v2.1 does not apply: it is designed for treatment-naive glands, and its assessment criteria do not apply to suspected recurrence after treatment.",
+      "recommendation": "No PI-RADS category; v2.1 criteria do not apply to suspected recurrence after treatment.",
+      "locator": {
+        "source": "S1",
+        "page": 31,
+        "section": "Section IV C.3: Commentary on bi-parametric MRI (local recurrence after prior treatment, a setting in which current PI-RADS assessment criteria do not apply)"
+      }
+    }
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "PI-RADS v2.1 gives each prostate lesion a 5-point category for the likelihood that its T2W, DWI and DCE findings correspond to clinically significant cancer.",
+        "locator": {
+          "source": "S1",
+          "page": 17,
+          "section": "Section III: Assessment and Reporting"
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "DWI is the dominant sequence in the PZ and T2W in the TZ. DCE matters only to upgrade a PZ DWI 3 lesion to 4, or when DWI is inadequate.",
+        "locator": {
+          "source": "S1",
+          "page": 17,
+          "section": "Section III: Assessment and Reporting; Caveats for Overall Assessment (p 21)"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "In the TZ, an atypical nodule (T2W 2) is upgraded to 3 by DWI 4 or 5; T2W 1 or 2 is not upgraded by DWI 3.",
+        "locator": {
+          "source": "S1",
+          "page": 20,
+          "section": "Section III: Evaluation of the TZ (How to Score in the TZ)"
+        }
+      },
+      {
+        "id": "sum.4",
+        "text": "PI-RADS gives no management recommendations: biopsy should be considered for 4 or 5, not for 1 or 2, and may or may not suit a 3.",
+        "locator": {
+          "source": "S1",
+          "page": 17,
+          "section": "Section III: Assessment and Reporting"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.cspca",
+        "text": "Clinically significant cancer (for PI-RADS): on pathology, Gleason score > 7 as printed (including 3+4 with a prominent but not predominant Gleason 4 component), and/or volume > 0.5 cc, and/or extraprostatic extension.",
+        "locator": {
+          "source": "S1",
+          "page": 17,
+          "section": "Section III: Assessment and Reporting"
+        }
+      },
+      {
+        "id": "def.dce_pos",
+        "text": "Positive DCE: enhancement that is focal, earlier than or contemporaneous with adjacent normal prostate, and corresponds to a suspicious T2W and/or DWI finding.",
+        "locator": {
+          "source": "S1",
+          "page": 29,
+          "section": "Section IV C: Dynamic Contrast-Enhanced (DCE) MRI"
+        }
+      },
+      {
+        "id": "def.dce_neg",
+        "text": "Negative DCE: no early or contemporaneous enhancement; diffuse multifocal enhancement not matching a focal T2W or DWI finding; or focal enhancement of a lesion with BPH features on T2W (including extruded BPH in the PZ).",
+        "locator": {
+          "source": "S1",
+          "page": 29,
+          "section": "Section IV C.2: PI-RADS Assessment for DCE"
+        }
+      },
+      {
+        "id": "def.markedly",
+        "text": "'Markedly' (DWI category 4): a more pronounced signal change than any other focus in the same zone.",
+        "locator": {
+          "source": "S1",
+          "page": 28,
+          "section": "Section IV B.3: Caveats for DWI"
+        }
+      },
+      {
+        "id": "def.x",
+        "text": "Category X: a component (T2W, DWI or DCE) that is technically inadequate or was not performed.",
+        "locator": {
+          "source": "S1",
+          "page": 22,
+          "section": "Section III: Caveats for Overall Assessment"
+        }
+      },
+      {
+        "id": "def.index",
+        "text": "Index lesion: the lesion with the highest category; among equals, the one with extraprostatic extension, else the largest. Up to four lesions of category 3 to 5 may be reported.",
+        "locator": {
+          "source": "S1",
+          "page": 19,
+          "section": "Section III A: Reporting, Mapping Lesions"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "tab.categories",
+        "title": "PI-RADS v2.1 Assessment Categories",
+        "columns": [
+          "Category",
+          "Likelihood of clinically significant cancer"
+        ],
+        "rows": [
+          [
+            "PI-RADS 1: very low",
+            "highly unlikely to be present"
+          ],
+          [
+            "PI-RADS 2: low",
+            "unlikely to be present"
+          ],
+          [
+            "PI-RADS 3: intermediate",
+            "presence is equivocal"
+          ],
+          [
+            "PI-RADS 4: high",
+            "likely to be present"
+          ],
+          [
+            "PI-RADS 5: very high",
+            "highly likely to be present"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 17,
+          "section": "Section III: Assessment and Reporting",
+          "table": "PI-RADS v2.1 Assessment Categories"
+        }
+      },
+      {
+        "id": "tab.pz",
+        "title": "Peripheral zone (PZ) assessment",
+        "columns": [
+          "DWI",
+          "T2W",
+          "DCE",
+          "PI-RADS"
+        ],
+        "rows": [
+          [
+            "1",
+            "Any (1-5)",
+            "Any",
+            "1"
+          ],
+          [
+            "2",
+            "Any",
+            "Any",
+            "2"
+          ],
+          [
+            "3",
+            "Any",
+            "negative (-)",
+            "3"
+          ],
+          [
+            "3",
+            "Any",
+            "positive (+)",
+            "4"
+          ],
+          [
+            "4",
+            "Any",
+            "Any",
+            "4"
+          ],
+          [
+            "5",
+            "Any",
+            "Any",
+            "5"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 18,
+          "section": "Section III: PI-RADS Assessment",
+          "table": "Peripheral Zone (PZ)"
+        }
+      },
+      {
+        "id": "tab.tz",
+        "title": "Transition zone (TZ) assessment",
+        "columns": [
+          "T2W",
+          "DWI",
+          "DCE",
+          "PI-RADS"
+        ],
+        "rows": [
+          [
+            "1",
+            "Any (1-5)",
+            "Any",
+            "1"
+          ],
+          [
+            "2",
+            "3 or less",
+            "Any",
+            "2"
+          ],
+          [
+            "2",
+            "4 or more",
+            "Any",
+            "3"
+          ],
+          [
+            "3",
+            "4 or less",
+            "Any",
+            "3"
+          ],
+          [
+            "3",
+            "5",
+            "Any",
+            "4"
+          ],
+          [
+            "4",
+            "Any",
+            "Any",
+            "4"
+          ],
+          [
+            "5",
+            "Any",
+            "Any",
+            "5"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 18,
+          "section": "Section III: PI-RADS Assessment",
+          "table": "Transition Zone (TZ)"
+        }
+      },
+      {
+        "id": "tab.no_dwi",
+        "title": "Assessment without adequate DWI (PZ and TZ)",
+        "columns": [
+          "T2W",
+          "DWI",
+          "DCE",
+          "PI-RADS"
+        ],
+        "rows": [
+          [
+            "1",
+            "X",
+            "Any",
+            "1"
+          ],
+          [
+            "2",
+            "X",
+            "Any",
+            "2"
+          ],
+          [
+            "3",
+            "X",
+            "negative (-)",
+            "3"
+          ],
+          [
+            "3",
+            "X",
+            "positive (+)",
+            "4"
+          ],
+          [
+            "4",
+            "X",
+            "Any",
+            "4"
+          ],
+          [
+            "5",
+            "X",
+            "Any",
+            "5"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 23,
+          "section": "Section III: Assessment Without Adequate DWI",
+          "table": "Peripheral Zone (PZ) and Transition Zone (TZ)"
+        }
+      },
+      {
+        "id": "tab.no_dce",
+        "title": "Assessment without adequate DCE (PZ: determined by the DWI category; TZ below). If both DWI and DCE are inadequate or absent, assessment is limited to staging for EPE.",
+        "columns": [
+          "T2W",
+          "DWI",
+          "DCE",
+          "PI-RADS"
+        ],
+        "rows": [
+          [
+            "1",
+            "Any",
+            "X",
+            "1"
+          ],
+          [
+            "2",
+            "3 or less",
+            "X",
+            "2"
+          ],
+          [
+            "2",
+            "4 or more",
+            "X",
+            "3"
+          ],
+          [
+            "3",
+            "4 or less",
+            "X",
+            "3"
+          ],
+          [
+            "3",
+            "5",
+            "X",
+            "4"
+          ],
+          [
+            "4",
+            "Any",
+            "X",
+            "4"
+          ],
+          [
+            "5",
+            "Any",
+            "X",
+            "5"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 23,
+          "section": "Section III: Assessment Without Adequate DCE",
+          "table": "Transition Zone (TZ)"
+        }
+      },
+      {
+        "id": "tab.t2w_pz",
+        "title": "T2W score, peripheral zone",
+        "columns": [
+          "Score",
+          "Appearance"
+        ],
+        "rows": [
+          [
+            "1",
+            "Uniform hyperintense signal (normal)"
+          ],
+          [
+            "2",
+            "Linear or wedge-shaped hypointensity, or diffuse mild hypointensity, usually with an indistinct margin"
+          ],
+          [
+            "3",
+            "Heterogeneous signal, or non-circumscribed, rounded, moderate hypointensity; includes others not qualifying as 2, 4 or 5"
+          ],
+          [
+            "4",
+            "Circumscribed, homogeneous, moderately hypointense focus or mass confined to the prostate and under 1.5 cm in greatest dimension"
+          ],
+          [
+            "5",
+            "As 4 but 1.5 cm or more in greatest dimension, or definite extraprostatic extension or invasive behaviour"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 25,
+          "section": "Section IV A.2: PI-RADS Assessment for T2W",
+          "table": "Peripheral Zone (PZ)"
+        }
+      },
+      {
+        "id": "tab.t2w_tz",
+        "title": "T2W score, transition zone",
+        "columns": [
+          "Score",
+          "Appearance"
+        ],
+        "rows": [
+          [
+            "1",
+            "Normal-appearing TZ (rare) or a round, completely encapsulated nodule ('typical nodule')"
+          ],
+          [
+            "2",
+            "A mostly encapsulated nodule, or a homogeneous circumscribed nodule without encapsulation ('atypical nodule'), or a homogeneous mildly hypointense area between nodules"
+          ],
+          [
+            "3",
+            "Heterogeneous signal with obscured margins; includes others not qualifying as 2, 4 or 5"
+          ],
+          [
+            "4",
+            "Lenticular or non-circumscribed, homogeneous, moderately hypointense, and under 1.5 cm in greatest dimension"
+          ],
+          [
+            "5",
+            "As 4 but 1.5 cm or more in greatest dimension, or definite extraprostatic extension or invasive behaviour"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 25,
+          "section": "Section IV A.2: PI-RADS Assessment for T2W",
+          "table": "Transition Zone (TZ)"
+        }
+      },
+      {
+        "id": "tab.dwi",
+        "title": "DWI score, PZ or TZ",
+        "columns": [
+          "Score",
+          "Appearance"
+        ],
+        "rows": [
+          [
+            "1",
+            "No abnormality on ADC and high b-value DWI"
+          ],
+          [
+            "2",
+            "Linear or wedge-shaped hypointensity on ADC and/or linear or wedge-shaped hyperintensity on high b-value DWI"
+          ],
+          [
+            "3",
+            "Focal (discrete, different from background) hypointensity on ADC and/or focal hyperintensity on high b-value DWI; may be marked on ADC or on high b-value DWI, but not both"
+          ],
+          [
+            "4",
+            "Focal, markedly hypointense on ADC and markedly hyperintense on high b-value DWI; under 1.5 cm in greatest dimension"
+          ],
+          [
+            "5",
+            "As 4 but 1.5 cm or more in greatest dimension, or definite extraprostatic extension or invasive behaviour"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 27,
+          "section": "Section IV B.2: PI-RADS Assessment of DWI",
+          "table": "Peripheral Zone (PZ) or Transition Zone (TZ)"
+        }
+      },
+      {
+        "id": "tab.dce",
+        "title": "DCE score, PZ or TZ",
+        "columns": [
+          "Score",
+          "Appearance"
+        ],
+        "rows": [
+          [
+            "negative (-)",
+            "No early or contemporaneous enhancement; or diffuse multifocal enhancement not matching a focal T2W and/or DWI finding; or focal enhancement of a lesion with BPH features on T2W (including extruded BPH in the PZ)"
+          ],
+          [
+            "positive (+)",
+            "Focal, and earlier than or contemporaneous with enhancement of adjacent normal prostate, and matching a suspicious T2W and/or DWI finding"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 29,
+          "section": "Section IV C.2: PI-RADS Assessment for DCE",
+          "table": "Peripheral Zone (PZ) or Transition Zone (TZ)"
+        }
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.scope",
+        "text": "Not for suspected recurrence after prostate cancer treatment; the source also does not address progression during active surveillance.",
+        "locator": {
+          "source": "S1",
+          "page": 10,
+          "section": "Introduction"
+        }
+      },
+      {
+        "id": "pit.zone",
+        "text": "Zone decides the dominant sequence. A central zone or anterior fibromuscular stroma lesion is scored with the criteria of the zone it appears to arise from.",
+        "locator": {
+          "source": "S1",
+          "page": 21,
+          "section": "Section III: Evaluation of the anterior fibromuscular stroma; Caveats for Overall Assessment"
+        }
+      },
+      {
+        "id": "pit.extruded_bph",
+        "text": "An encapsulated, circumscribed, round nodule in the PZ or CZ is likely an extruded BPH nodule and should be category 2, even if hypointense on ADC.",
+        "locator": {
+          "source": "S1",
+          "page": 28,
+          "section": "Section IV B.3: Caveats for DWI"
+        }
+      },
+      {
+        "id": "pit.bph",
+        "text": "Typical TZ BPH nodules (round, circumscribed, encapsulated) are a normal variant, score T2W 1 and need no separate report, even if they restrict or enhance.",
+        "locator": {
+          "source": "S1",
+          "page": 20,
+          "section": "Section III: Evaluation of the TZ; Caveats for Overall Assessment (p 22)"
+        }
+      },
+      {
+        "id": "pit.mri_only",
+        "text": "Assign the category on MRI findings only; PSA, rectal examination, clinical history and planned treatment do not enter it.",
+        "locator": {
+          "source": "S1",
+          "page": 17,
+          "section": "Section III: Assessment and Reporting"
+        }
+      },
+      {
+        "id": "pit.prostatitis",
+        "text": "Prostatitis can change PZ signal on every sequence; mild T2W or DWI change that is indistinct, linear, lobar or diffuse rather than rounded is less likely malignant.",
+        "locator": {
+          "source": "S1",
+          "page": 21,
+          "section": "Section III: Caveats for Overall Assessment"
+        }
+      },
+      {
+        "id": "pit.dwi_x",
+        "text": "Inadequate or absent DWI should usually prompt a repeat of DWI if the cause can be remedied; otherwise assess without it and state the limitation clearly.",
+        "locator": {
+          "source": "S1",
+          "page": 22,
+          "section": "Section III: Caveats for Overall Assessment"
+        }
+      }
+    ]
+  }
+}

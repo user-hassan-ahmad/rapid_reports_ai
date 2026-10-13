@@ -216,3 +216,45 @@ def test_heading_colon_content_in_one_breath_is_formatted_by_code_before_the_mod
         "new": "Conclusion, colon, partial response."})
     user = lab[-1]["user"]
     assert "Conclusion: partial response." in user and "colon" not in user.split("NEW", 1)[-1]
+
+
+SPAN = "Extensive perinephric stranding. A tiny non-obstructing 2 mm calculus is also noted in the lower pole."
+NEW = "of the right kidney with no associated hydronephrosis."
+MOVED = ("Extensive perinephric stranding of the right kidney with no associated hydronephrosis. "
+         "A tiny non-obstructing 2 mm calculus is also noted in the lower pole.")
+
+
+def _moved_lab(monkeypatch, score):
+    monkeypatch.setenv("RR_TRIAGE_DEBUG", "1")
+    asked = []
+
+    async def fake(primary, fallback, *, output_type, **k):
+        return output_type(active_scratchpad=MOVED, committed_edits=[])
+
+    async def jev(spoken, cleaned):
+        asked.append((spoken, cleaned))
+        return score
+    monkeypatch.setattr(cr, "_run_canvas_with_fallback", fake)
+    monkeypatch.setattr(cr, "moved_score", jev)
+    return asked
+
+
+@pytest.mark.parametrize("score", [0.63, None])
+def test_words_moved_onto_another_finding_keep_the_span_and_append_as_said(authed_client, monkeypatch, score):
+    asked = _moved_lab(monkeypatch, score)                    # a Jev failure counts as moved
+    d = authed_client.post("/api/canvas/polish-span", json={"scan_type": "CT KUB", "context": "", "span": SPAN, "new": NEW}).json()
+    assert asked and asked[0][1] == MOVED
+    assert d["fidelity"] == "moved_attachment"
+    assert d["active_scratchpad"] == f"{SPAN} {NEW}"
+
+
+def test_a_move_jev_says_kept_the_meaning_is_used(authed_client, monkeypatch):
+    _moved_lab(monkeypatch, 0.1)
+    d = authed_client.post("/api/canvas/polish-span", json={"scan_type": "CT KUB", "context": "", "span": SPAN, "new": NEW}).json()
+    assert d["fidelity"] is None and d["active_scratchpad"] == MOVED
+
+
+def test_a_correction_cue_never_asks_jev(authed_client, monkeypatch):
+    asked = _moved_lab(monkeypatch, 0.9)
+    authed_client.post("/api/canvas/polish-span", json={"scan_type": "CT KUB", "context": "", "span": SPAN, "new": "Sorry, " + NEW})
+    assert asked == []

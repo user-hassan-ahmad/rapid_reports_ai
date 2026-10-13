@@ -1,0 +1,607 @@
+{
+  "cases": [
+    {
+      "name": "Figure 14: multiple subsolid nodules, including a 10-mm ground-glass nodule; initial follow-up at 3-6 months",
+      "origin": "source",
+      "inputs": {
+        "nodule_type": "ground-glass",
+        "count": "multiple",
+        "diameter_mm": 10,
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "subsolid_multiple_ge6",
+      "steps": {
+        "size_band": "gt8"
+      }
+    },
+    {
+      "name": "solid single 4 mm low risk",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 4,
+        "risk": "low",
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "solid_single_lt6_low",
+      "steps": {
+        "size_band": "lt6"
+      }
+    },
+    {
+      "name": "solid single 5.4 mm high risk (rounds to 5)",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 5.4,
+        "risk": "high",
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "solid_single_lt6_high",
+      "steps": {
+        "size_band": "lt6"
+      }
+    },
+    {
+      "name": "solid single 5.5 mm low risk (rounds to 6)",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 5.5,
+        "risk": "low",
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "solid_single_6to8_low",
+      "steps": {
+        "size_band": "6to8"
+      }
+    },
+    {
+      "name": "solid single 8.4 mm high risk (rounds to 8)",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 8.4,
+        "risk": "high",
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "solid_single_6to8_high",
+      "steps": {
+        "size_band": "6to8"
+      }
+    },
+    {
+      "name": "solid single 8.5 mm low risk (rounds to 9)",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 8.5,
+        "risk": "low",
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "solid_single_gt8",
+      "steps": {
+        "size_band": "gt8"
+      }
+    },
+    {
+      "name": "solid single 12 mm high risk",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 12,
+        "risk": "high",
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "solid_single_gt8",
+      "steps": {
+        "size_band": "gt8"
+      }
+    },
+    {
+      "name": "solid single 12 mm, risk not stated (only one possible outcome, so settled)",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 12,
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "solid_single_gt8",
+      "steps": {
+        "size_band": "gt8"
+      }
+    },
+    {
+      "name": "solid multiple 3 mm low risk",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "multiple",
+        "diameter_mm": 3,
+        "risk": "low",
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "solid_multiple_lt6_low",
+      "steps": {
+        "size_band": "lt6"
+      }
+    },
+    {
+      "name": "solid multiple 5 mm high risk",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "multiple",
+        "diameter_mm": 5,
+        "risk": "high",
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "solid_multiple_lt6_high",
+      "steps": {
+        "size_band": "lt6"
+      }
+    },
+    {
+      "name": "solid multiple 7 mm low risk",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "multiple",
+        "diameter_mm": 7,
+        "risk": "low",
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "solid_multiple_ge6_low",
+      "steps": {
+        "size_band": "6to8"
+      }
+    },
+    {
+      "name": "solid multiple 15 mm low risk",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "multiple",
+        "diameter_mm": 15,
+        "risk": "low",
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "solid_multiple_ge6_low",
+      "steps": {
+        "size_band": "gt8"
+      }
+    },
+    {
+      "name": "solid multiple 6 mm high risk",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "multiple",
+        "diameter_mm": 6,
+        "risk": "high",
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "solid_multiple_ge6_high",
+      "steps": {
+        "size_band": "6to8"
+      }
+    },
+    {
+      "name": "solid multiple 8.5 mm high risk",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "multiple",
+        "diameter_mm": 8.5,
+        "risk": "high",
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "solid_multiple_ge6_high",
+      "steps": {
+        "size_band": "gt8"
+      }
+    },
+    {
+      "name": "ground-glass single 5.4 mm",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "ground-glass",
+        "count": "single",
+        "diameter_mm": 5.4,
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "ggn_single_lt6",
+      "steps": {
+        "size_band": "lt6"
+      }
+    },
+    {
+      "name": "ground-glass single 5.5 mm",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "ground-glass",
+        "count": "single",
+        "diameter_mm": 5.5,
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "ggn_single_ge6",
+      "steps": {
+        "size_band": "6to8"
+      }
+    },
+    {
+      "name": "ground-glass single 8.5 mm, risk stated but not used",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "ground-glass",
+        "count": "single",
+        "diameter_mm": 8.5,
+        "risk": "high",
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "ggn_single_ge6",
+      "steps": {
+        "size_band": "gt8"
+      }
+    },
+    {
+      "name": "part-solid single 4 mm",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "part-solid",
+        "count": "single",
+        "diameter_mm": 4,
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "psn_single_lt6",
+      "steps": {
+        "size_band": "lt6"
+      }
+    },
+    {
+      "name": "part-solid single 9 mm",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "part-solid",
+        "count": "single",
+        "diameter_mm": 9,
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "psn_single_ge6",
+      "steps": {
+        "size_band": "gt8"
+      }
+    },
+    {
+      "name": "part-solid single 8.4 mm",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "part-solid",
+        "count": "single",
+        "diameter_mm": 8.4,
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "psn_single_ge6",
+      "steps": {
+        "size_band": "6to8"
+      }
+    },
+    {
+      "name": "part-solid multiple 5.4 mm",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "part-solid",
+        "count": "multiple",
+        "diameter_mm": 5.4,
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "subsolid_multiple_lt6",
+      "steps": {
+        "size_band": "lt6"
+      }
+    },
+    {
+      "name": "ground-glass multiple 2 mm",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "ground-glass",
+        "count": "multiple",
+        "diameter_mm": 2,
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "subsolid_multiple_lt6",
+      "steps": {
+        "size_band": "lt6"
+      }
+    },
+    {
+      "name": "part-solid multiple 6 mm",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "part-solid",
+        "count": "multiple",
+        "diameter_mm": 6,
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": "subsolid_multiple_ge6",
+      "steps": {
+        "size_band": "6to8"
+      }
+    },
+    {
+      "name": "solid single 7 mm, risk not stated",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 7,
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": null,
+      "needed": [
+        "risk"
+      ]
+    },
+    {
+      "name": "ground-glass single, size not stated",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "ground-glass",
+        "count": "single",
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": null,
+      "needed": [
+        "diameter_mm"
+      ]
+    },
+    {
+      "name": "solid 4 mm low risk, count not stated",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "diameter_mm": 4,
+        "risk": "low",
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": null,
+      "needed": [
+        "count"
+      ]
+    },
+    {
+      "name": "single 7 mm, type and risk not stated",
+      "origin": "ours",
+      "inputs": {
+        "count": "single",
+        "diameter_mm": 7,
+        "exclusion": false,
+        "age": 60
+      },
+      "outcome": null,
+      "needed": [
+        "nodule_type"
+      ],
+      "waiting": [
+        "risk"
+      ]
+    },
+    {
+      "name": "exclusion stated (known primary cancer), nodule details not stated",
+      "origin": "ours",
+      "inputs": {
+        "exclusion": true,
+        "age": 60
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "exclusion stated with a full solid nodule description",
+      "origin": "ours",
+      "inputs": {
+        "exclusion": true,
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 9,
+        "risk": "high",
+        "age": 60
+      },
+      "outcome": "does_not_apply",
+      "steps": {
+        "size_band": "gt8"
+      }
+    },
+    {
+      "name": "solid single 4 mm low risk, exclusion not stated",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 4,
+        "risk": "low",
+        "age": 60
+      },
+      "outcome": null,
+      "needed": [
+        "exclusion"
+      ]
+    },
+    {
+      "name": "age 34 is under 35: does not apply",
+      "origin": "ours",
+      "inputs": {
+        "exclusion": false,
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 7,
+        "risk": "low",
+        "age": 34
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "age 35 is in scope",
+      "origin": "ours",
+      "inputs": {
+        "exclusion": false,
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 7,
+        "risk": "low",
+        "age": 35
+      },
+      "outcome": "solid_single_6to8_low"
+    },
+    {
+      "name": "age not stated",
+      "origin": "ours",
+      "inputs": {
+        "exclusion": false,
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 7,
+        "risk": "low"
+      },
+      "outcome": null,
+      "needed": [
+        "age"
+      ]
+    },
+    {
+      "name": "excluded, age not stated",
+      "origin": "ours",
+      "inputs": {
+        "exclusion": true
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "age 34, exclusion not stated: does not apply",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 7,
+        "risk": "low",
+        "age": 34
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "30 mm edge: still a nodule (glossary: up to 3 cm)",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "risk": "low",
+        "exclusion": false,
+        "age": 60,
+        "diameter_mm": 30
+      },
+      "outcome": "solid_single_gt8",
+      "steps": {
+        "size_band": "gt8"
+      }
+    },
+    {
+      "name": "30.5 mm: over 3 cm, a mass, not a nodule",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "risk": "low",
+        "exclusion": false,
+        "age": 60,
+        "diameter_mm": 30.5
+      },
+      "outcome": "does_not_apply",
+      "steps": {
+        "size_band": "gt30"
+      }
+    },
+    {
+      "name": "38 mm solid opacity: a mass, outside the guideline",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "risk": "low",
+        "exclusion": false,
+        "age": 60,
+        "diameter_mm": 38
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "38 mm part-solid opacity: a mass, outside the guideline",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "part-solid",
+        "count": "single",
+        "exclusion": false,
+        "age": 60,
+        "diameter_mm": 38
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "over 30 mm answered as the band: a mass",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "risk": "low",
+        "exclusion": false,
+        "age": 60,
+        "diameter_mm": {
+          "band": "gt30"
+        }
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "38 mm solid opacity, eligibility not stated: excluded whatever the eligibility (nothing asked)",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 38
+      },
+      "outcome": "does_not_apply",
+      "needed": []
+    }
+  ]
+}

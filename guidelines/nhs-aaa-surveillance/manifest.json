@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "Abdominal aortic aneurysm screening pathway requirements (NHS AAA screening programme guidance, GOV.UK HTML, last updated 27 October 2025 for an organisational change; the filed copy shows the 25 September 2025 update, thresholds unchanged)",
+      "issuer": "NHS England (NHS Abdominal Aortic Aneurysm Screening Programme)",
+      "edition": "2025",
+      "url": "https://www.gov.uk/government/publications/abdominal-aortic-aneurysm-screening-pathway-requirements-specification/abdominal-aortic-aneurysm-screening-pathway-requirements-specification",
+      "sha256": "cc28f82c0df09a3ebfbbf15f6b539ec2fd00ee7839397eb00e49f7eaa22fbe9d",
+      "file": "sources/cc28f82c0df09a3ebfbbf15f6b539ec2fd00ee7839397eb00e49f7eaa22fbe9d.html",
+      "text_file": "sources/c2aaf9516257797bc1dde24025c805cb0a7dd1e511f4d2e9fce42891652a0b6c.txt",
+      "retrieved": "2026-10-12 (GOV.UK HTML page; the end-to-end pathway figure is an SVG not filed)"
+    }
+  ]
+}

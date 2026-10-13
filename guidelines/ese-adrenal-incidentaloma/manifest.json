@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "European Society of Endocrinology clinical practice guidelines on the management of adrenal incidentalomas, in collaboration with the European Network for the Study of Adrenal Tumors (Fassnacht M et al., Eur J Endocrinol 2023;189(1):G1-G42)",
+      "issuer": "European Society of Endocrinology",
+      "edition": "2023",
+      "url": "https://doi.org/10.1093/ejendo/lvad066",
+      "sha256": "faa7f56f3269807a36da4d89cd9437927ef8f9c827ff34b445bece6d8f74affe",
+      "file": "sources/faa7f56f3269807a36da4d89cd9437927ef8f9c827ff34b445bece6d8f74affe.pdf",
+      "text_file": "sources/faa7f56f3269807a36da4d89cd9437927ef8f9c827ff34b445bece6d8f74affe.txt",
+      "retrieved": "2026-10-12"
+    }
+  ]
+}

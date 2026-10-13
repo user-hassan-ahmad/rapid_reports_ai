@@ -49,16 +49,52 @@ export interface RegionStates {
 /** Checklist rows (spec 2026-10-11-scratchpad-checklist §2–§4): asked, never assumed. */
 export interface StackItem {
 	id: string;
-	kind: 'finding' | 'referral';
+	kind: 'finding' | 'referral' | 'template';
 	region: string;
 	source_text?: string; // the dictated phrase that set a finding check off
 	question: string;
 	why: string;
 	sentences: string[]; // still to be answered (at most 2)
 	answered: boolean; // the dictation answered every sentence: the row folds
+	/** kind 'template' (a findings-triggered habit of the template): the sentence a Yes writes, and a No */
+	yes?: string;
+	no?: string;
 }
-export interface ItemsResult { items: StackItem[]; capped: StackItem[]; contradicted: string[]; cached: boolean; ms: number; error: string | null }
-export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean; level_groups?: Record<string, string[]> }
+export interface ItemsResult {
+	items: StackItem[];
+	capped: StackItem[];
+	contradicted: string[];
+	cached: boolean;
+	ms: number;
+	error: string | null;
+	/** met template required statements, region -> sentences (offered in the assumed tray) */
+	required?: Record<string, string[]>;
+	/** the template trigger call failed: no template rows this review (what is on screen stays) */
+	trigger_error?: string | null;
+}
+export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean; level_groups?: Record<string, string[]>; required_values?: string[] }
+/** The value cluster (requirements spec 2026-10-12 part 1): a template's required value and how it was resolved.
+ *  check: needs a look (stated with no number, or two or more numbers); filling: a fill is running.
+ *  picked: a number the radiologist tapped from the dictation (resolved, backstop-checked, never stated as an answer);
+ *  entered: a value they typed (stated in FINDINGS). */
+export type ValueState = 'filled' | 'picked' | 'entered' | 'na' | 'open' | 'check' | 'filling';
+/** A number-bearing clause of the dictation offered on an open chip: one number (value) or several to choose from. */
+export interface ClausePick { clause: string; value: string | null; numbers: string[] }
+export interface ValueChip {
+	item: string;
+	state: ValueState;
+	value: string | null;
+	quote: string | null;
+	kept?: boolean;
+	/** Open: the dictation's number clauses to pick from. Check with a value: the numbers mapped to it, best first. */
+	picks?: ClausePick[];
+	/** Picked: the clause the number was tapped from (for a future alias store). */
+	picked_clause?: string;
+}
+/** The server's fill: filled (one number mapped, or stated with no number: value null), check (two or more numbers
+ *  mapped: the most confident, the others in picks) or open. */
+export interface ValueFill { item: string; state: 'filled' | 'check' | 'open'; value: string | null; quote: string | null; score?: number | null; picks?: ClausePick[] }
+export interface ValuesResult { values: ValueFill[]; ms: number; error: string | null }
 /** Region -> normals the assumed-normal check dropped, with why. */
 export type Dropped = Record<string, { sentence: string; reason: string }[]>;
 export interface AssumedResult {
@@ -98,6 +134,7 @@ export interface GateRecord {
 	assumed_check_failed?: boolean; // the assumed-normal check failed: nothing was dropped by it
 	// Dictation checks seen this session and how each ended: answered, skipped, edited away, or still open (advisory).
 	checks?: { kind: string; quote: string; other: string | null; answered_by: 'as_dictated' | 'skip' | 'replaced' | 'edited' | 'open' }[];
+	values?: ValueChip[]; // the value cluster at Confirm (absent: the template has no required values)
 	units_hash: string;
 }
 export interface StackCommand { action: 'dictate' | 'delete' | 'answer'; region: string | null; item: string | null; command: string | null; confidence: number | null }
