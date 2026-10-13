@@ -69,6 +69,7 @@
 	 * @typedef {{
 	 *   role: 'user'|'assistant',
 	 *   content: string,
+	 *   wireContent?: string,
 	 *   isRefineTurn?: boolean,
 	 *   behavioralClaim?: string,
 	 *   preMutationSkillSheet?: string | null,
@@ -259,7 +260,7 @@
 		for (let i = 0; i < history.length - 1; i++) {
 			const m = history[i], next = history[i + 1];
 			if (m?.role === 'user' && m.content?.trim() && next?.role === 'assistant') {
-				turns.push({ instruction: m.content, response: next.content || '' });
+				turns.push({ instruction: m.wireContent || m.content, response: next.content || '' });
 			}
 		}
 		return turns;
@@ -446,8 +447,8 @@
 
 		/** @type {ChatMessage} */
 		const userMsg = isRefineTurn
-			? { role: 'user', content: msg, status: null, isRefineTurn: true }
-			: { role: 'user', content: msg };
+			? { role: 'user', content: msg, wireContent: fullMsg, status: null, isRefineTurn: true }
+			: { role: 'user', content: msg, wireContent: fullMsg };
 		chatHistory = [...chatHistory, userMsg];
 		loading = true; error = '';
 		try {

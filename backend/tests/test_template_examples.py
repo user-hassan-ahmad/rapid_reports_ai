@@ -175,3 +175,13 @@ def test_save_stores_the_creator_chat_turns(client, auth_headers, quiet_save, db
     rows = db_session.query(TemplateChatTurn).order_by(TemplateChatTurn.instruction).all()
     assert len(rows) == 2 and all(t.applied for t in rows) and str(rows[0].template_id) == r["template_id"]
     assert {t.instruction[:3] for t in rows} == {"iii", "sho"} and max(len(t.instruction) for t in rows) == 4000
+
+
+def test_save_tolerates_null_chat_turn_fields(client, auth_headers, quiet_save, db_session):
+    r = client.post("/api/templates/skill-sheet/save", headers=auth_headers, json={
+        "skill_sheet": GOOD, "scan_type": "MRI knee", "template_name": "Knee",
+        "chat_turns": [{"instruction": "shorter", "response": None}, {"instruction": None, "response": "x"}]}).json()
+    assert r["success"]
+    db_session.expire_all()
+    (t,) = db_session.query(TemplateChatTurn).all()
+    assert t.instruction == "shorter" and t.response == ""

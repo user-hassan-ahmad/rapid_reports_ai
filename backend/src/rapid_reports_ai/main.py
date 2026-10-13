@@ -768,7 +768,7 @@ class SkillSheetSaveRequest(BaseModel):
     tags: List[str] = []
     analyser_version: str = ""  # the writer that produced the sheet (evidence stamp; "" when unknown)
     examples: List[SkillSheetExample] = []  # the pasted examples: stored de-identified with the template
-    chat_turns: List[Dict[str, str]] = []   # the creator's chat-to-edit turns (stored by D5)
+    chat_turns: List[Dict[str, Any]] = []   # the creator's chat-to-edit turns (stored by D5)
 
 
 # Quick Report Proto — ephemeral skill sheet pipeline
@@ -2738,6 +2738,8 @@ async def skill_sheet_refine_endpoint(
                 owned = None
                 logger.warning("chat turn template lookup failed: %s", type(e).__name__)
             if owned:
+                # applied = the save function accepted it (no-change and asks included); a sheet change is
+                # sheet_hash_before != sheet_hash_after
                 template_chat_turns.record_turn(db, owned.id, request.message, out["response"],
                                                 v.status != "refused", request.skill_sheet, out["skill_sheet"])
         return out
@@ -2811,14 +2813,15 @@ async def skill_sheet_save_endpoint(
             is_pinned=False,
             user_id=str(current_user.id),
         )
-        _queue_structure(str(template.id), template_config)
+        tid = str(template.id)   # read once: a rolled-back evidence write expires the instance
+        _queue_structure(tid, template_config)
         if request.examples:
             try:
-                await template_examples.store_examples(db, template.id, [e.content for e in request.examples])
+                await template_examples.store_examples(db, tid, [e.content for e in request.examples])
             except Exception as e:   # evidence only: never fails the save
-                logger.warning("template examples not stored for %s: %s", template.id, type(e).__name__)  # no str(e): it can carry example text
-        template_chat_turns.store_creator_turns(db, template.id, request.chat_turns)
-        return {"success": True, "template_id": str(template.id)}
+                logger.warning("template examples not stored for %s: %s", tid, type(e).__name__)  # no str(e): it can carry example text
+        template_chat_turns.store_creator_turns(db, tid, request.chat_turns)
+        return {"success": True, "template_id": tid}
     except Exception as e:
         import traceback
         traceback.print_exc()
