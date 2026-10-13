@@ -84,3 +84,22 @@ export interface ApplyResponse {
 	stale_quotes: string[];
 	error?: string;
 }
+
+export interface NormalSentence {
+	key: string;
+	text: string;
+	kind: 'normal' | 'negative';
+	paragraph: string;
+}
+
+/** /skill-sheet/sheet-checks: the Style step's checks. A part that failed is empty and named in `errors`. */
+export interface SheetChecksResponse {
+	success: boolean;
+	fixed_cards: DecisionCard[];
+	duplicate_cards: DecisionCard[];
+	normal_report: { section: string; header: string; sentences: NormalSentence[] }[];
+	uncovered_cards: DecisionCard[];
+	unmatched_cards: DecisionCard[];
+	stale_quotes: string[];
+	errors: string[];
+}

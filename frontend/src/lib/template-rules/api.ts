@@ -1,5 +1,5 @@
 import { API_URL } from '$lib/config.js';
-import type { ApplyResponse, DecideResponse, DecisionChange, LedgerEntry } from './types';
+import type { ApplyResponse, DecideResponse, DecisionChange, LedgerEntry, SheetChecksResponse } from './types';
 
 // The server's caps on /skill-sheet/decide (main.MAX_DECIDE_EXAMPLES, DECIDE_EXAMPLE_MAX_CHARS): the request is kept
 // inside them so a long paste never turns the decision run into a refusal.
@@ -39,3 +39,16 @@ export const postApplyDecisions = (
 	token: string | null,
 	body: { skill_sheet: string; decisions: LedgerEntry[]; changes: DecisionChange[]; source: 'creation' | 'first_use_review' }
 ) => post<ApplyResponse>(token, 'apply-decisions', body);
+
+const CHECK_PARTS = ['fixed_cards', 'duplicate_cards', 'normal_report', 'uncovered_cards', 'unmatched_cards', 'stale_quotes', 'errors'] as const;
+
+/** The Style step's checks; a part the server left out is an empty list (fail-soft, as a failed part). */
+export async function postSheetChecks(
+	token: string | null,
+	body: { skill_sheet: string; decisions: LedgerEntry[] }
+): Promise<SheetChecksResponse> {
+	const r = await post<Partial<SheetChecksResponse> & { success: boolean }>(token, 'sheet-checks', body);
+	const out = { ...r } as Record<string, unknown>;
+	for (const k of CHECK_PARTS) if (!Array.isArray(out[k])) out[k] = [];
+	return out as unknown as SheetChecksResponse;
+}
