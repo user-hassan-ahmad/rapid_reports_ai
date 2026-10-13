@@ -1,0 +1,1910 @@
+{
+ "cases": [
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "cm measurement, smoker",
+   "finding": "1.2 cm solid nodule in the left lower lobe.",
+   "findings": "1.2 cm solid nodule in the left lower lobe. No other pulmonary nodules.",
+   "history": "Ex-smoker, 40 pack-years.",
+   "answered": {
+    "exclusion": "No"
+   },
+   "patient": {
+    "age_years": "60"
+   },
+   "expect_settled": {
+    "nodule_type": "solid",
+    "diameter_mm": "12 mm",
+    "count": "single"
+   },
+   "expect_missing": [],
+   "expect_outcome": "solid_single_gt8",
+   "expect_state": "applies",
+   "truth": {
+    "age": "60 years",
+    "exclusion": "No",
+    "nodule_type": "solid",
+    "count": "single",
+    "diameter_mm": "12 mm",
+    "risk": "high"
+   },
+   "expect_final": "solid_single_gt8"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "edge: 6 mm sits in the 6-8 mm band",
+   "finding": "Solitary 6 mm solid nodule in the right middle lobe.",
+   "findings": "Solitary 6 mm solid nodule in the right middle lobe. The lungs are otherwise clear.",
+   "history": "Never smoker, no family history of lung cancer. Low risk.",
+   "answered": {
+    "exclusion": "No"
+   },
+   "patient": {
+    "age_years": "60"
+   },
+   "expect_settled": {
+    "nodule_type": "solid",
+    "diameter_mm": "6 mm",
+    "count": "single",
+    "risk": "low"
+   },
+   "expect_missing": [],
+   "expect_outcome": "solid_single_6to8_low",
+   "expect_state": "applies",
+   "truth": {
+    "age": "60 years",
+    "exclusion": "No",
+    "nodule_type": "solid",
+    "count": "single",
+    "diameter_mm": "6 mm",
+    "risk": "low"
+   },
+   "expect_final": "solid_single_6to8_low"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "negated feature: no solid component",
+   "finding": "8 mm pure ground-glass nodule in the right upper lobe with no solid component.",
+   "findings": "8 mm pure ground-glass nodule in the right upper lobe with no solid component. No other nodules.",
+   "history": "Incidental finding on CT abdomen.",
+   "answered": {
+    "exclusion": "No"
+   },
+   "patient": {
+    "age_years": "60"
+   },
+   "expect_settled": {
+    "nodule_type": "ground-glass",
+    "diameter_mm": "8 mm",
+    "count": "single"
+   },
+   "expect_missing": [],
+   "expect_outcome": "ggn_single_ge6",
+   "expect_state": "applies",
+   "truth": {
+    "age": "60 years",
+    "exclusion": "No",
+    "nodule_type": "ground-glass",
+    "count": "single",
+    "diameter_mm": "8 mm",
+    "risk": "low"
+   },
+   "expect_final": "ggn_single_ge6"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "multiple subsolid, largest in cm (pack has no not-assessable state)",
+   "finding": "Two ground-glass nodules: 1.5 cm in the right upper lobe and 6 mm in the left lower lobe.",
+   "findings": "Two ground-glass nodules: 1.5 cm in the right upper lobe and 6 mm in the left lower lobe. Neither has a solid component.",
+   "history": "",
+   "answered": {
+    "exclusion": "No"
+   },
+   "patient": {
+    "age_years": "60"
+   },
+   "expect_settled": {
+    "nodule_type": "ground-glass",
+    "count": "multiple"
+   },
+   "expect_missing": [
+    "diameter_mm"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "age": "60 years",
+    "exclusion": "No",
+    "nodule_type": "ground-glass",
+    "count": "multiple",
+    "diameter_mm": "15 mm",
+    "risk": "low"
+   },
+   "expect_final": "subsolid_multiple_ge6"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "unstated: risk",
+   "finding": "7 mm solid nodule in the left upper lobe.",
+   "findings": "7 mm solid nodule in the left upper lobe. No further pulmonary nodules.",
+   "history": "",
+   "answered": {
+    "exclusion": "No"
+   },
+   "patient": {
+    "age_years": "60"
+   },
+   "expect_settled": {
+    "nodule_type": "solid",
+    "diameter_mm": "7 mm",
+    "count": "single"
+   },
+   "expect_missing": [
+    "risk"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "age": "60 years",
+    "exclusion": "No",
+    "nodule_type": "solid",
+    "count": "single",
+    "diameter_mm": "7 mm",
+    "risk": "low"
+   },
+   "expect_final": "solid_single_6to8_low"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "distractor: adrenal adenoma size",
+   "finding": "Single 4 mm solid nodule in the right lower lobe.",
+   "findings": "Single 4 mm solid nodule in the right lower lobe. Incidental 3 cm left adrenal adenoma.",
+   "history": "Low risk, never smoked.",
+   "answered": {
+    "exclusion": "No"
+   },
+   "patient": {
+    "age_years": "60"
+   },
+   "expect_settled": {
+    "nodule_type": "solid",
+    "diameter_mm": "4 mm",
+    "count": "single",
+    "risk": "low"
+   },
+   "expect_missing": [],
+   "expect_outcome": "solid_single_lt6_low",
+   "expect_state": "applies",
+   "truth": {
+    "age": "60 years",
+    "exclusion": "No",
+    "nodule_type": "solid",
+    "count": "single",
+    "diameter_mm": "4 mm",
+    "risk": "low"
+   },
+   "expect_final": "solid_single_lt6_low"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "history settles risk: heavy smoker, family history",
+   "finding": "Two solid pulmonary nodules, the larger 5 mm in the right upper lobe and the other 3 mm in the left lower lobe.",
+   "findings": "Two solid pulmonary nodules, the larger 5 mm in the right upper lobe and the other 3 mm in the left lower lobe.",
+   "history": "Current smoker, 50 pack-years. Father had lung cancer. High risk.",
+   "answered": {
+    "exclusion": "No"
+   },
+   "patient": {
+    "age_years": "60"
+   },
+   "expect_settled": {
+    "nodule_type": "solid",
+    "count": "multiple",
+    "risk": "high"
+   },
+   "expect_missing": [
+    "diameter_mm"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "age": "60 years",
+    "exclusion": "No",
+    "nodule_type": "solid",
+    "count": "multiple",
+    "diameter_mm": "5 mm",
+    "risk": "high"
+   },
+   "expect_final": "solid_multiple_lt6_high"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "abbreviation heavy: RUL PSN",
+   "finding": "RUL 7mm PSN, solid component 3mm.",
+   "findings": "RUL 7mm PSN, solid component 3mm. No other nods.",
+   "history": "Ex-smoker.",
+   "answered": {
+    "exclusion": "No"
+   },
+   "patient": {
+    "age_years": "60"
+   },
+   "expect_settled": {
+    "nodule_type": "part-solid",
+    "count": "single"
+   },
+   "expect_missing": [
+    "diameter_mm"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "age": "60 years",
+    "exclusion": "No",
+    "nodule_type": "part-solid",
+    "count": "single",
+    "diameter_mm": "7 mm",
+    "risk": "high"
+   },
+   "expect_final": "psn_single_ge6"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "dictated differently: subsolid with a solid focus, mean diameter",
+   "finding": "Subsolid nodule in the lingula measuring 9 x 7 mm (mean 8 mm), predominantly ground-glass with a small solid focus.",
+   "findings": "Subsolid nodule in the lingula measuring 9 x 7 mm (mean 8 mm), predominantly ground-glass with a small solid focus. No other nodule seen.",
+   "history": "",
+   "answered": {
+    "exclusion": "No"
+   },
+   "patient": {
+    "age_years": "60"
+   },
+   "expect_settled": {
+    "nodule_type": "part-solid",
+    "diameter_mm": "8 mm",
+    "count": "single"
+   },
+   "expect_missing": [],
+   "expect_outcome": "psn_single_ge6",
+   "expect_state": "applies",
+   "truth": {
+    "age": "60 years",
+    "exclusion": "No",
+    "nodule_type": "part-solid",
+    "count": "single",
+    "diameter_mm": "8 mm",
+    "risk": "low"
+   },
+   "expect_final": "psn_single_ge6"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "dictated differently: scattered tiny nodules, largest 4 mm",
+   "finding": "Several scattered tiny solid pulmonary nodules, the largest 4 mm in the right middle lobe.",
+   "findings": "Several scattered tiny solid pulmonary nodules, the largest 4 mm in the right middle lobe.",
+   "history": "Non-smoker, low risk.",
+   "answered": {
+    "exclusion": "No"
+   },
+   "patient": {
+    "age_years": "60"
+   },
+   "expect_settled": {
+    "nodule_type": "solid",
+    "count": "multiple",
+    "risk": "low"
+   },
+   "expect_missing": [
+    "diameter_mm"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "age": "60 years",
+    "exclusion": "No",
+    "nodule_type": "solid",
+    "count": "multiple",
+    "diameter_mm": "4 mm",
+    "risk": "low"
+   },
+   "expect_final": "solid_multiple_lt6_low"
+  },
+  {
+   "pack": "bosniak-renal-cyst",
+   "name": "cm measurement, simple cyst",
+   "finding": "3.4 cm well-defined cyst in the interpolar left kidney with a thin smooth wall, no septa, no calcification and no solid component. Uniform fluid contents measuring 8 HU on the unenhanced series, with no enhancement after contrast.",
+   "findings": "Renal mass protocol CT. 3.4 cm well-defined cyst in the interpolar left kidney with a thin smooth wall, no septa, no calcification and no solid component. Uniform fluid contents measuring 8 HU on the unenhanced series, with no enhancement after contrast.",
+   "history": "Indeterminate left renal lesion on ultrasound.",
+   "answered": {
+    "mimic": "No"
+   },
+   "expect_settled": {
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "none",
+    "protrusion": "none",
+    "calcification": "none",
+    "contents": "uniform",
+    "contents_enhancement": "absent"
+   },
+   "expect_missing": [
+    "hu"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "mimic": "No",
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "none",
+    "protrusion": "none",
+    "calcification": "none",
+    "contents": "uniform",
+    "contents_enhancement": "absent",
+    "hu": "8 HU"
+   },
+   "expect_final": "class_i"
+  },
+  {
+   "pack": "bosniak-renal-cyst",
+   "name": "edge: 20 HU is in the -9 to 20 band",
+   "finding": "2.6 cm well-defined right lower pole cyst with a thin wall, no septa, calcification or nodularity. Homogeneous contents measuring 20 HU unenhanced, no enhancement on the nephrographic phase.",
+   "findings": "Renal mass protocol CT. 2.6 cm well-defined right lower pole cyst with a thin wall, no septa, calcification or nodularity. Homogeneous contents measuring 20 HU unenhanced, no enhancement on the nephrographic phase.",
+   "history": "",
+   "answered": {
+    "mimic": "No"
+   },
+   "expect_settled": {
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "none",
+    "protrusion": "none",
+    "calcification": "none",
+    "contents": "uniform",
+    "contents_enhancement": "absent"
+   },
+   "expect_missing": [
+    "hu"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "mimic": "No",
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "none",
+    "protrusion": "none",
+    "calcification": "none",
+    "contents": "uniform",
+    "contents_enhancement": "absent",
+    "hu": "20 HU"
+   },
+   "expect_final": "class_i"
+  },
+  {
+   "pack": "bosniak-renal-cyst",
+   "name": "negated feature: no nodularity, single thin septum",
+   "finding": "4 cm well-defined cyst in the right lower pole with a single thin (1 mm) septum and a fleck of calcification. No nodularity or wall thickening. Uniform contents of 12 HU, non-enhancing.",
+   "findings": "Renal mass protocol CT. 4 cm well-defined cyst in the right lower pole with a single thin (1 mm) septum and a fleck of calcification. No nodularity or wall thickening. Uniform contents of 12 HU, non-enhancing.",
+   "history": "",
+   "answered": {
+    "mimic": "No"
+   },
+   "expect_settled": {
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "few_thin",
+    "protrusion": "none",
+    "calcification": "present",
+    "contents": "uniform",
+    "contents_enhancement": "absent"
+   },
+   "expect_missing": [],
+   "expect_outcome": "class_ii",
+   "expect_state": "applies",
+   "truth": {
+    "mimic": "No",
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "few_thin",
+    "protrusion": "none",
+    "calcification": "present",
+    "contents": "uniform",
+    "contents_enhancement": "absent",
+    "hu": "12 HU"
+   },
+   "expect_final": "class_ii"
+  },
+  {
+   "pack": "bosniak-renal-cyst",
+   "name": "not assessable: protrusion enhancement on portal venous only",
+   "finding": "3 cm well-defined left renal cyst with a 2 mm soft tissue protrusion from the wall; whether it enhances cannot be assessed without an unenhanced series.",
+   "findings": "Portal venous phase CT only. 3 cm well-defined left renal cyst with a 2 mm soft tissue protrusion from the wall; whether it enhances cannot be assessed without an unenhanced series.",
+   "history": "Staging CT for colorectal cancer.",
+   "answered": {
+    "mimic": "No"
+   },
+   "expect_settled": {
+    "too_small": "no",
+    "technique": "portal_venous_only",
+    "margin": "well_defined",
+    "protrusion": "not_enhancing"
+   },
+   "expect_missing": [],
+   "expect_outcome": "unclassifiable",
+   "expect_state": "applies",
+   "truth": {
+    "mimic": "No",
+    "too_small": "no",
+    "technique": "portal_venous_only",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "none",
+    "protrusion": "not_enhancing",
+    "calcification": "none",
+    "contents": "uniform",
+    "contents_enhancement": "absent",
+    "hu": "20 HU"
+   },
+   "expect_final": "unclassifiable"
+  },
+  {
+   "pack": "bosniak-renal-cyst",
+   "name": "unstated: calcification",
+   "finding": "2.8 cm well-defined left renal cyst with a thin wall, no septa and no nodularity. Uniform contents of 10 HU unenhanced with no enhancement.",
+   "findings": "Renal mass protocol CT. 2.8 cm well-defined left renal cyst with a thin wall, no septa and no nodularity. Uniform contents of 10 HU unenhanced with no enhancement.",
+   "history": "",
+   "answered": {
+    "mimic": "No"
+   },
+   "expect_settled": {
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "none",
+    "protrusion": "none",
+    "contents": "uniform",
+    "contents_enhancement": "absent"
+   },
+   "expect_missing": [
+    "hu"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "mimic": "No",
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "none",
+    "protrusion": "none",
+    "calcification": "none",
+    "contents": "uniform",
+    "contents_enhancement": "absent",
+    "hu": "10 HU"
+   },
+   "expect_final": "class_i"
+  },
+  {
+   "pack": "bosniak-renal-cyst",
+   "name": "distractor: simple contralateral cyst",
+   "finding": "5 cm well-defined right upper pole cystic mass with a thick (5 mm) enhancing septum and no nodules.",
+   "findings": "Renal mass protocol CT. 5 cm well-defined right upper pole cystic mass with a thick (5 mm) enhancing septum and no nodules. Separate 1 cm simple cyst in the left kidney with no septa.",
+   "history": "",
+   "answered": {
+    "mimic": "No"
+   },
+   "expect_settled": {
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "septa": "thick_enhancing",
+    "protrusion": "none"
+   },
+   "expect_missing": [
+    "contents_enhancement"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "mimic": "No",
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "thick_enhancing",
+    "protrusion": "none",
+    "calcification": "none",
+    "contents": "uniform",
+    "contents_enhancement": "absent",
+    "hu": "10 HU"
+   },
+   "expect_final": "class_iii"
+  },
+  {
+   "pack": "bosniak-renal-cyst",
+   "name": "history settles technique: unenhanced CT KUB",
+   "finding": "1.8 cm well-defined homogeneous left renal lesion with a thin wall, no septa, calcification or nodularity, measuring 75 HU.",
+   "findings": "1.8 cm well-defined homogeneous left renal lesion with a thin wall, no septa, calcification or nodularity, measuring 75 HU.",
+   "history": "Unenhanced CT KUB for suspected renal colic.",
+   "answered": {
+    "mimic": "No"
+   },
+   "expect_settled": {
+    "too_small": "no",
+    "technique": "unenhanced_only",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "none",
+    "protrusion": "none",
+    "calcification": "none",
+    "contents": "uniform"
+   },
+   "expect_missing": [
+    "hu"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "mimic": "No",
+    "too_small": "no",
+    "technique": "unenhanced_only",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "none",
+    "protrusion": "none",
+    "calcification": "none",
+    "contents": "uniform",
+    "contents_enhancement": "absent",
+    "hu": "75 HU"
+   },
+   "expect_final": "class_ii"
+  },
+  {
+   "pack": "bosniak-renal-cyst",
+   "name": "abbreviation heavy: many thin enhancing septa",
+   "finding": "L kidney 2.5cm cyst, well-def, thin wall, 4+ thin enh septa, no nod/calc. Contents homog 15HU on NCCT, no enh.",
+   "findings": "CT RMP: L kidney 2.5cm cyst, well-def, thin wall, 4+ thin enh septa, no nod/calc. Contents homog 15HU on NCCT, no enh.",
+   "history": "",
+   "answered": {
+    "mimic": "No"
+   },
+   "expect_settled": {
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "many_thin_enhancing",
+    "protrusion": "none",
+    "calcification": "none",
+    "contents": "uniform",
+    "contents_enhancement": "absent"
+   },
+   "expect_missing": [],
+   "expect_outcome": "class_iif",
+   "expect_state": "applies",
+   "truth": {
+    "mimic": "No",
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "many_thin_enhancing",
+    "protrusion": "none",
+    "calcification": "none",
+    "contents": "uniform",
+    "contents_enhancement": "absent",
+    "hu": "15 HU"
+   },
+   "expect_final": "class_iif"
+  },
+  {
+   "pack": "bosniak-renal-cyst",
+   "name": "dictated differently: complex cystic lesion with mural nodule",
+   "finding": "Complex cystic lesion arising from the right kidney measuring 4.5 cm on renal mass protocol CT, with an enhancing 6 mm mural nodule forming acute margins with the wall.",
+   "findings": "Complex cystic lesion arising from the right kidney measuring 4.5 cm on renal mass protocol CT, with an enhancing 6 mm mural nodule forming acute margins with the wall.",
+   "history": "",
+   "answered": {
+    "mimic": "No"
+   },
+   "expect_settled": {
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "protrusion": "nodule"
+   },
+   "expect_missing": [
+    "contents_enhancement"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "mimic": "No",
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "none",
+    "protrusion": "nodule",
+    "calcification": "none",
+    "contents": "heterogeneous",
+    "contents_enhancement": "absent",
+    "hu": "20 HU"
+   },
+   "expect_final": "class_iv"
+  },
+  {
+   "pack": "bosniak-renal-cyst",
+   "name": "dictated differently: hyperdense non-enhancing cyst",
+   "finding": "4 cm right renal lesion, homogeneous, 45 HU unenhanced and 46 HU on the nephrographic phase, so not enhancing. Well-defined with an imperceptible wall, no septa, calcification or nodularity.",
+   "findings": "Renal mass protocol. 4 cm right renal lesion, homogeneous, 45 HU unenhanced and 46 HU on the nephrographic phase, so not enhancing. Well-defined with an imperceptible wall, no septa, calcification or nodularity.",
+   "history": "",
+   "answered": {
+    "mimic": "No"
+   },
+   "expect_settled": {
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "none",
+    "protrusion": "none",
+    "calcification": "none",
+    "contents": "uniform",
+    "contents_enhancement": "absent"
+   },
+   "expect_missing": [
+    "hu"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "mimic": "No",
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "none",
+    "protrusion": "none",
+    "calcification": "none",
+    "contents": "uniform",
+    "contents_enhancement": "absent",
+    "hu": "45 HU"
+   },
+   "expect_final": "class_ii"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "cm measurement, full Brock history",
+   "finding": "1.4 cm spiculated solid nodule in the right upper lobe. No calcification or fat.",
+   "findings": "1.4 cm spiculated solid nodule in the right upper lobe. No calcification or fat. Background centrilobular emphysema. No other pulmonary nodules. No previous imaging for comparison.",
+   "history": "68-year-old woman, current smoker. No family history of lung cancer.",
+   "expect_settled": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "14 mm",
+    "age": "68 years",
+    "proven_malignant": "No",
+    "sex": "female",
+    "family_history": "No",
+    "emphysema": "Yes",
+    "upper_lobe": "Yes",
+    "nodule_count": "1 count",
+    "spiculation": "Yes",
+    "prior_study": "No"
+   },
+   "accept_missing": [
+    "nodule_count",
+    "prior_study",
+    "proven_malignant"
+   ],
+   "expect_missing": [],
+   "expect_outcome": "pet_ct",
+   "expect_state": "applies",
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "14 mm",
+    "age": "68 years",
+    "proven_malignant": "No",
+    "sex": "female",
+    "family_history": "No",
+    "emphysema": "Yes",
+    "upper_lobe": "Yes",
+    "nodule_count": "1",
+    "spiculation": "Yes",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_final": "pet_ct"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "edge: 5 mm is in the 5 to under 6 mm band",
+   "finding": "5 mm solid nodule in the left lower lobe with no calcification.",
+   "findings": "5 mm solid nodule in the left lower lobe with no calcification. This is the first CT; no prior imaging.",
+   "history": "",
+   "patient": {
+    "age_years": "65"
+   },
+   "expect_settled": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "5 mm",
+    "proven_malignant": "No",
+    "upper_lobe": "No",
+    "prior_study": "No"
+   },
+   "accept_missing": [
+    "prior_study",
+    "proven_malignant"
+   ],
+   "expect_missing": [],
+   "expect_outcome": "ct_1yr",
+   "expect_state": "applies",
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "5 mm",
+    "age": "65 years",
+    "proven_malignant": "No",
+    "sex": "male",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "No",
+    "nodule_count": "1",
+    "spiculation": "No",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_final": "ct_1yr"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "negated features: no emphysema, smooth margin, 8 mm edge",
+   "finding": "8 mm smooth solid nodule in the right middle lobe. No calcification or fat.",
+   "findings": "8 mm smooth solid nodule in the right middle lobe. No calcification or fat. No emphysema. Solitary nodule. No prior CT.",
+   "history": "55-year-old man, ex-smoker. No family history of lung cancer.",
+   "expect_settled": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "8 mm",
+    "age": "55 years",
+    "proven_malignant": "No",
+    "sex": "male",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "No",
+    "nodule_count": "1 count",
+    "spiculation": "No",
+    "prior_study": "No"
+   },
+   "accept_missing": [
+    "prior_study",
+    "proven_malignant"
+   ],
+   "expect_missing": [],
+   "expect_outcome": "brock_low",
+   "expect_state": "applies",
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "8 mm",
+    "age": "55 years",
+    "proven_malignant": "No",
+    "sex": "male",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "No",
+    "nodule_count": "1",
+    "spiculation": "No",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_final": "brock_low"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "interval in months is not a verbatim day count (pack has no not-assessable state)",
+   "finding": "9 mm solid nodule in the right lower lobe, no calcification. Volumetry 210 mm3, previously 120 mm3 on the baseline CT 12 months ago.",
+   "findings": "9 mm solid nodule in the right lower lobe, no calcification. Volumetry 210 mm3, previously 120 mm3 on the baseline CT 12 months ago.",
+   "history": "",
+   "patient": {
+    "age_years": "65"
+   },
+   "expect_settled": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "proven_malignant": "No",
+    "prior_study": "Yes"
+   },
+   "accept_missing": [
+    "proven_malignant"
+   ],
+   "expect_missing": [
+    "resolved",
+    "diameter_mm",
+    "sex",
+    "family_history",
+    "emphysema",
+    "upper_lobe",
+    "nodule_count"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "9 mm",
+    "age": "65 years",
+    "proven_malignant": "No",
+    "sex": "male",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "No",
+    "nodule_count": "1",
+    "spiculation": "No",
+    "prior_study": "Yes",
+    "resolved": "No",
+    "growth": "volumetry",
+    "prior_volume_mm3": "120 mm3",
+    "current_volume_mm3": "210 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_final": "vdt_400_600"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "unstated: age",
+   "finding": "11 mm solid nodule in the left upper lobe with a smooth margin and no calcification.",
+   "findings": "11 mm solid nodule in the left upper lobe with a smooth margin and no calcification. No emphysema. No other nodules. No prior imaging.",
+   "history": "Male, never smoker, no family history of lung cancer.",
+   "expect_settled": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "11 mm",
+    "proven_malignant": "No",
+    "sex": "male",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "Yes",
+    "nodule_count": "1 count",
+    "spiculation": "No",
+    "prior_study": "No"
+   },
+   "accept_missing": [
+    "nodule_count",
+    "prior_study",
+    "proven_malignant"
+   ],
+   "expect_missing": [
+    "age"
+   ],
+   "expect_outcome": null,
+   "expect_state": "check_first",
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "11 mm",
+    "age": "60 years",
+    "proven_malignant": "No",
+    "sex": "male",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "Yes",
+    "nodule_count": "1",
+    "spiculation": "No",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_final": "brock_low"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "distractor: calcified granuloma elsewhere",
+   "finding": "6 mm solid nodule in the right lower lobe with no calcification.",
+   "findings": "6 mm solid nodule in the right lower lobe with no calcification. Separately, a 12 mm densely calcified granuloma in the left upper lobe. No previous imaging.",
+   "history": "",
+   "patient": {
+    "age_years": "65"
+   },
+   "expect_settled": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "6 mm",
+    "proven_malignant": "No",
+    "upper_lobe": "No",
+    "prior_study": "No"
+   },
+   "accept_missing": [
+    "prior_study",
+    "proven_malignant"
+   ],
+   "expect_missing": [],
+   "expect_outcome": "ct_3m",
+   "expect_state": "applies",
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "6 mm",
+    "age": "65 years",
+    "proven_malignant": "No",
+    "sex": "female",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "No",
+    "nodule_count": "2",
+    "spiculation": "No",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_final": "ct_3m"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "history settles family history, age and sex",
+   "finding": "Solitary 10 mm solid nodule in the right upper lobe with a lobulated margin, no calcification or fat.",
+   "findings": "Solitary 10 mm solid nodule in the right upper lobe with a lobulated margin, no calcification or fat. Mild paraseptal emphysema. No previous imaging available.",
+   "history": "72-year-old female, ex-smoker. Mother had lung cancer.",
+   "expect_settled": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "10 mm",
+    "age": "72 years",
+    "proven_malignant": "No",
+    "sex": "female",
+    "family_history": "Yes",
+    "emphysema": "Yes",
+    "upper_lobe": "Yes",
+    "nodule_count": "1 count",
+    "spiculation": "No",
+    "prior_study": "No"
+   },
+   "accept_missing": [
+    "prior_study",
+    "proven_malignant"
+   ],
+   "expect_missing": [],
+   "expect_outcome": "pet_ct",
+   "expect_state": "applies",
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "10 mm",
+    "age": "72 years",
+    "proven_malignant": "No",
+    "sex": "female",
+    "family_history": "Yes",
+    "emphysema": "Yes",
+    "upper_lobe": "Yes",
+    "nodule_count": "1",
+    "spiculation": "No",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_final": "pet_ct"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "abbreviation heavy: RML 4mm SN",
+   "finding": "RML 4mm SN, no calc.",
+   "findings": "RML 4mm SN, no calc. No prev CT.",
+   "history": "",
+   "patient": {
+    "age_years": "65"
+   },
+   "expect_settled": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "4 mm",
+    "proven_malignant": "No",
+    "prior_study": "No"
+   },
+   "accept_missing": [
+    "prior_study",
+    "proven_malignant"
+   ],
+   "expect_missing": [],
+   "expect_outcome": "discharge_small",
+   "expect_state": "applies",
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "4 mm",
+    "age": "65 years",
+    "proven_malignant": "No",
+    "sex": "male",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "No",
+    "nodule_count": "1",
+    "spiculation": "No",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_final": "discharge_small"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "dictated differently: intrapulmonary lymph node on the fissure",
+   "finding": "6 mm smooth triangular nodule abutting the right horizontal fissure, typical of an intrapulmonary lymph node.",
+   "findings": "6 mm smooth triangular nodule abutting the right horizontal fissure, typical of an intrapulmonary lymph node.",
+   "history": "",
+   "patient": {
+    "age_years": "65"
+   },
+   "expect_settled": {
+    "benign_features": "Yes",
+    "proven_malignant": "No"
+   },
+   "accept_missing": [
+    "proven_malignant"
+   ],
+   "expect_missing": [
+    "prior_study",
+    "nodule_type",
+    "diameter_mm",
+    "sex",
+    "family_history",
+    "emphysema",
+    "upper_lobe",
+    "nodule_count"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "benign_features": "Yes",
+    "nodule_type": "solid",
+    "diameter_mm": "6 mm",
+    "age": "65 years",
+    "proven_malignant": "No",
+    "sex": "male",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "No",
+    "nodule_count": "1",
+    "spiculation": "No",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_final": "discharge_benign"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "dictated differently: pure ground-glass opacity",
+   "finding": "15 mm pure ground-glass opacity in the LUL with no solid component and no calcification.",
+   "findings": "15 mm pure ground-glass opacity in the LUL with no solid component and no calcification.",
+   "history": "",
+   "patient": {
+    "age_years": "65"
+   },
+   "expect_settled": {
+    "benign_features": "No",
+    "nodule_type": "nonsolid",
+    "diameter_mm": "15 mm",
+    "proven_malignant": "No",
+    "upper_lobe": "Yes"
+   },
+   "accept_missing": [
+    "proven_malignant"
+   ],
+   "expect_missing": [
+    "prior_study"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "nonsolid",
+    "diameter_mm": "15 mm",
+    "age": "65 years",
+    "proven_malignant": "No",
+    "sex": "female",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "Yes",
+    "nodule_count": "1",
+    "spiculation": "No",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_final": "subsolid"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "history states every eligibility fact; per-finding",
+   "finding": "Solitary 7 mm solid nodule in the right middle lobe.",
+   "findings": "Solitary 7 mm solid nodule in the right middle lobe. Mild dependent atelectasis. No pleural effusion.",
+   "history": "68-year-old. High risk: ex-smoker, 30 pack-years. No history of cancer and not immunocompromised. Incidental finding, not a screening scan.",
+   "expect_settled": {
+    "age": "68 years",
+    "exclusion": "No",
+    "nodule_type": "solid",
+    "count": "single",
+    "diameter_mm": "7 mm",
+    "risk": "high"
+   },
+   "accept_missing": [
+    "exclusion"
+   ],
+   "expect_missing": [],
+   "expect_outcome": "solid_single_6to8_high",
+   "expect_state": "applies",
+   "truth": {
+    "age": "68 years",
+    "exclusion": "No",
+    "nodule_type": "solid",
+    "count": "single",
+    "diameter_mm": "7 mm",
+    "risk": "high"
+   },
+   "expect_final": "solid_single_6to8_high"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "eligibility exclusion in the history: known cancer",
+   "finding": "8 mm solid nodule in the left lower lobe.",
+   "findings": "8 mm solid nodule in the left lower lobe. No mediastinal lymphadenopathy.",
+   "history": "Known metastatic breast cancer; restaging CT.",
+   "expect_settled": {
+    "exclusion": "Yes",
+    "nodule_type": "solid",
+    "diameter_mm": "8 mm"
+   },
+   "accept_missing": [
+    "exclusion"
+   ],
+   "expect_missing": [],
+   "expect_outcome": "does_not_apply",
+   "expect_state": "does_not_apply",
+   "truth": {
+    "age": "60 years",
+    "exclusion": "Yes",
+    "nodule_type": "solid",
+    "count": "single",
+    "diameter_mm": "8 mm",
+    "risk": "high"
+   },
+   "expect_final": "does_not_apply"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "eligibility exclusion in the history: under 35",
+   "finding": "5 mm solid nodule in the right lower lobe.",
+   "findings": "5 mm solid nodule in the right lower lobe. The lungs are otherwise clear.",
+   "history": "28-year-old; incidental finding on CT abdomen.",
+   "expect_settled": {
+    "age": "28 years",
+    "nodule_type": "solid",
+    "diameter_mm": "5 mm"
+   },
+   "accept_missing": [
+    "age"
+   ],
+   "expect_missing": [],
+   "expect_outcome": "does_not_apply",
+   "expect_state": "does_not_apply",
+   "truth": {
+    "age": "28 years",
+    "exclusion": "No",
+    "nodule_type": "solid",
+    "count": "single",
+    "diameter_mm": "5 mm",
+    "risk": "low"
+   },
+   "expect_final": "does_not_apply"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "two lesions in one sentence",
+   "finding": "A 7 mm solid nodule in the right upper lobe and a 4 mm calcified granuloma in the left lower lobe.",
+   "findings": "A 7 mm solid nodule in the right upper lobe and a 4 mm calcified granuloma in the left lower lobe. No other nodules.",
+   "history": "70-year-old. High risk: current smoker. No history of cancer, not immunocompromised, not a screening scan.",
+   "expect_settled": {
+    "age": "70 years",
+    "exclusion": "No",
+    "count": "single",
+    "risk": "high"
+   },
+   "accept_missing": [
+    "exclusion",
+    "count"
+   ],
+   "expect_missing": [
+    "nodule_type",
+    "diameter_mm"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "age": "70 years",
+    "exclusion": "No",
+    "nodule_type": "solid",
+    "count": "single",
+    "diameter_mm": "7 mm",
+    "risk": "high"
+   },
+   "two_lesion": true,
+   "expect_final": "solid_single_6to8_high"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "eligibility unstated: check first",
+   "finding": "7 mm solid nodule in the left lower lobe.",
+   "findings": "7 mm solid nodule in the left lower lobe. No other nodules.",
+   "history": "",
+   "expect_settled": {
+    "nodule_type": "solid",
+    "diameter_mm": "7 mm",
+    "count": "single"
+   },
+   "accept_missing": [
+    "count"
+   ],
+   "expect_missing": [
+    "risk"
+   ],
+   "expect_outcome": null,
+   "expect_state": "check_first",
+   "truth": {
+    "age": "60 years",
+    "exclusion": "No",
+    "nodule_type": "solid",
+    "count": "single",
+    "diameter_mm": "7 mm",
+    "risk": "low"
+   },
+   "expect_final": "solid_single_6to8_low"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "two lesions in one sentence",
+   "finding": "6 mm solid nodule with no calcification in the right lower lobe and a 12 mm densely calcified granuloma in the left upper lobe.",
+   "findings": "6 mm solid nodule with no calcification in the right lower lobe and a 12 mm densely calcified granuloma in the left upper lobe. No previous imaging.",
+   "history": "64-year-old woman.",
+   "expect_settled": {
+    "age": "64 years",
+    "proven_malignant": "No",
+    "prior_study": "No"
+   },
+   "accept_missing": [
+    "prior_study",
+    "proven_malignant"
+   ],
+   "expect_missing": [
+    "nodule_type",
+    "diameter_mm",
+    "sex",
+    "family_history",
+    "emphysema",
+    "upper_lobe",
+    "nodule_count"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "6 mm",
+    "age": "64 years",
+    "proven_malignant": "No",
+    "sex": "female",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "No",
+    "nodule_count": "2",
+    "spiculation": "No",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "two_lesion": true,
+   "expect_final": "ct_3m"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "eligibility exclusion in the history: under 18",
+   "finding": "4 mm solid nodule in the left upper lobe.",
+   "findings": "4 mm solid nodule in the left upper lobe. No other abnormality.",
+   "history": "16-year-old; CT for trauma.",
+   "expect_settled": {
+    "age": "16 years"
+   },
+   "accept_missing": [
+    "age"
+   ],
+   "expect_missing": [],
+   "expect_outcome": "does_not_apply",
+   "expect_state": "does_not_apply",
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "4 mm",
+    "age": "16 years",
+    "proven_malignant": "No",
+    "sex": "male",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "Yes",
+    "nodule_count": "1",
+    "spiculation": "No",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_final": "does_not_apply"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "shared answer from a tap: age in the patient map",
+   "finding": "9 mm solid nodule in the right upper lobe.",
+   "findings": "9 mm solid nodule in the right upper lobe. No previous imaging. No emphysema.",
+   "history": "",
+   "patient": {
+    "age_years": "60"
+   },
+   "expect_settled": {
+    "age": "60 years",
+    "nodule_type": "solid",
+    "diameter_mm": "9 mm",
+    "proven_malignant": "No",
+    "upper_lobe": "Yes",
+    "emphysema": "No",
+    "prior_study": "No"
+   },
+   "accept_missing": [
+    "prior_study",
+    "proven_malignant"
+   ],
+   "expect_missing": [
+    "sex",
+    "family_history",
+    "nodule_count"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "9 mm",
+    "age": "60 years",
+    "proven_malignant": "No",
+    "sex": "male",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "Yes",
+    "nodule_count": "1",
+    "spiculation": "No",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_final": "brock_low"
+  },
+  {
+   "pack": "bosniak-renal-cyst",
+   "name": "eligibility exclusion in the finding: abscess",
+   "finding": "4 cm thick-walled rim-enhancing collection in the right kidney, in keeping with a renal abscess.",
+   "findings": "4 cm thick-walled rim-enhancing collection in the right kidney, in keeping with a renal abscess. Perinephric fat stranding.",
+   "history": "Fever and right loin pain.",
+   "expect_settled": {
+    "mimic": "Yes"
+   },
+   "accept_missing": [
+    "mimic"
+   ],
+   "expect_missing": [],
+   "expect_outcome": "does_not_apply",
+   "expect_state": "does_not_apply",
+   "truth": {
+    "mimic": "Yes",
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "ill_defined",
+    "wall": "thick_enhancing",
+    "septa": "none",
+    "protrusion": "none",
+    "calcification": "none",
+    "contents": "heterogeneous",
+    "contents_enhancement": "absent",
+    "hu": "20 HU"
+   },
+   "expect_final": "does_not_apply"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "shared age: source card",
+   "finding": "Solitary 6 mm solid nodule with no calcification or fat in the right upper lobe.",
+   "findings": "Solitary 6 mm solid nodule with no calcification or fat in the right upper lobe. No previous imaging.",
+   "history": "Age 72. Low risk: never smoker. No history of cancer, not immunocompromised; incidental finding.",
+   "expect_settled": {
+    "age": "72 years",
+    "exclusion": "No",
+    "nodule_type": "solid",
+    "count": "single",
+    "diameter_mm": "6 mm",
+    "risk": "low"
+   },
+   "accept_missing": [
+    "exclusion"
+   ],
+   "expect_missing": [],
+   "expect_outcome": "solid_single_6to8_low",
+   "expect_state": "applies",
+   "truth": {
+    "age": "72 years",
+    "exclusion": "No",
+    "nodule_type": "solid",
+    "count": "single",
+    "diameter_mm": "6 mm",
+    "risk": "low"
+   },
+   "expect_final": "solid_single_6to8_low"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "shared age: second card takes it from the first",
+   "finding": "Solitary 6 mm solid nodule with no calcification or fat in the right upper lobe.",
+   "findings": "Solitary 6 mm solid nodule with no calcification or fat in the right upper lobe. No previous imaging.",
+   "history": "",
+   "patient_from": "shared age: source card",
+   "expect_settled": {
+    "age": "72 years",
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "6 mm",
+    "proven_malignant": "No",
+    "prior_study": "No"
+   },
+   "accept_missing": [
+    "benign_features",
+    "prior_study",
+    "proven_malignant"
+   ],
+   "expect_missing": [],
+   "expect_outcome": "ct_3m",
+   "expect_state": "applies",
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "6 mm",
+    "age": "72 years",
+    "proven_malignant": "No",
+    "sex": "female",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "Yes",
+    "nodule_count": "1",
+    "spiculation": "No",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_final": "ct_3m"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "two lesions: nodule and bulla",
+   "two_lesion": true,
+   "finding": "8 mm part-solid nodule in the right upper lobe and a 3 cm bulla at the left apex.",
+   "findings": "8 mm part-solid nodule in the right upper lobe and a 3 cm bulla at the left apex.",
+   "history": "68-year-old. High risk: current smoker. No history of cancer, not immunocompromised, not a screening scan.",
+   "expect_settled": {
+    "age": "68 years",
+    "exclusion": "No",
+    "risk": "high"
+   },
+   "accept_missing": [],
+   "truth": {
+    "age": "68 years",
+    "exclusion": "No",
+    "nodule_type": "part-solid",
+    "count": "single",
+    "diameter_mm": "8 mm",
+    "risk": "high"
+   },
+   "expect_missing": [
+    "nodule_type",
+    "count",
+    "diameter_mm"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "expect_final": "psn_single_ge6"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "two lesions: nodule and scar",
+   "two_lesion": true,
+   "finding": "6 mm ground-glass nodule in the left lower lobe adjacent to an area of linear scarring in the lingula.",
+   "findings": "6 mm ground-glass nodule in the left lower lobe adjacent to an area of linear scarring in the lingula.",
+   "history": "70-year-old. Low risk, never smoked. No history of cancer, not immunocompromised, not a screening scan.",
+   "expect_settled": {
+    "age": "70 years",
+    "exclusion": "No",
+    "risk": "low"
+   },
+   "accept_missing": [],
+   "truth": {
+    "age": "70 years",
+    "exclusion": "No",
+    "nodule_type": "ground-glass",
+    "count": "single",
+    "diameter_mm": "6 mm",
+    "risk": "low"
+   },
+   "expect_missing": [
+    "nodule_type",
+    "count",
+    "diameter_mm"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "expect_final": "ggn_single_ge6"
+  },
+  {
+   "pack": "fleischner-pulmonary-nodule",
+   "name": "two lesions: nodule and lymph node",
+   "two_lesion": true,
+   "finding": "7 mm solid nodule in the right middle lobe and an enlarged 15 mm subcarinal lymph node.",
+   "findings": "7 mm solid nodule in the right middle lobe and an enlarged 15 mm subcarinal lymph node.",
+   "history": "66-year-old. High risk: ex-smoker. No history of cancer, not immunocompromised, not a screening scan.",
+   "expect_settled": {
+    "age": "66 years",
+    "exclusion": "No",
+    "risk": "high"
+   },
+   "accept_missing": [],
+   "truth": {
+    "age": "66 years",
+    "exclusion": "No",
+    "nodule_type": "solid",
+    "count": "single",
+    "diameter_mm": "7 mm",
+    "risk": "high"
+   },
+   "expect_missing": [
+    "nodule_type",
+    "count",
+    "diameter_mm"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "expect_final": "solid_single_6to8_high"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "two lesions: nodule and calcified granuloma (upper lobe lent)",
+   "two_lesion": true,
+   "finding": "7 mm spiculated solid nodule in the right lower lobe and a 5 mm calcified granuloma in the right upper lobe.",
+   "findings": "7 mm spiculated solid nodule in the right lower lobe and a 5 mm calcified granuloma in the right upper lobe.",
+   "history": "70-year-old man, current smoker. No family history of lung cancer.",
+   "expect_settled": {
+    "age": "70 years",
+    "sex": "male",
+    "family_history": "No"
+   },
+   "accept_missing": [],
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "7 mm",
+    "age": "70 years",
+    "proven_malignant": "No",
+    "sex": "male",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "No",
+    "nodule_count": "2",
+    "spiculation": "Yes",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_missing": [
+    "prior_study",
+    "nodule_type",
+    "diameter_mm",
+    "emphysema",
+    "upper_lobe",
+    "nodule_count"
+   ],
+   "expect_outcome": null,
+   "expect_state": "check_first",
+   "expect_final": "ct_3m"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "two lesions: ground-glass nodule and hamartoma (benign features lent)",
+   "two_lesion": true,
+   "finding": "9 mm pure ground-glass nodule in the left upper lobe and a 14 mm fat-containing hamartoma in the right lower lobe.",
+   "findings": "9 mm pure ground-glass nodule in the left upper lobe and a 14 mm fat-containing hamartoma in the right lower lobe.",
+   "history": "62-year-old woman, never smoker. No family history of lung cancer.",
+   "expect_settled": {
+    "age": "62 years",
+    "sex": "female",
+    "family_history": "No"
+   },
+   "accept_missing": [],
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "nonsolid",
+    "diameter_mm": "9 mm",
+    "age": "62 years",
+    "proven_malignant": "No",
+    "sex": "female",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "Yes",
+    "nodule_count": "2",
+    "spiculation": "No",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_missing": [
+    "prior_study",
+    "nodule_type",
+    "diameter_mm",
+    "emphysema",
+    "upper_lobe",
+    "nodule_count"
+   ],
+   "expect_outcome": null,
+   "expect_state": "check_first",
+   "expect_final": "subsolid"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "two lesions: nodule and perifissural lymph node (spiculation lent)",
+   "two_lesion": true,
+   "finding": "8 mm smooth solid nodule in the right upper lobe and a 4 mm triangular perifissural nodule along the left oblique fissure.",
+   "findings": "8 mm smooth solid nodule in the right upper lobe and a 4 mm triangular perifissural nodule along the left oblique fissure.",
+   "history": "58-year-old man, ex-smoker. No family history of lung cancer.",
+   "expect_settled": {
+    "age": "58 years",
+    "sex": "male",
+    "family_history": "No"
+   },
+   "accept_missing": [],
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "solid",
+    "diameter_mm": "8 mm",
+    "age": "58 years",
+    "proven_malignant": "No",
+    "sex": "male",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "Yes",
+    "nodule_count": "2",
+    "spiculation": "No",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_missing": [
+    "prior_study",
+    "nodule_type",
+    "diameter_mm",
+    "emphysema",
+    "upper_lobe",
+    "nodule_count"
+   ],
+   "expect_outcome": null,
+   "expect_state": "check_first",
+   "expect_final": "brock_low"
+  },
+  {
+   "pack": "bts-pulmonary-nodule",
+   "name": "two lesions: part-solid nodule and mass",
+   "two_lesion": true,
+   "finding": "12 mm part-solid nodule in the left lower lobe and a 4 cm spiculated mass in the right upper lobe.",
+   "findings": "12 mm part-solid nodule in the left lower lobe and a 4 cm spiculated mass in the right upper lobe.",
+   "history": "74-year-old woman, current smoker. No family history of lung cancer.",
+   "expect_settled": {
+    "age": "74 years",
+    "sex": "female",
+    "family_history": "No"
+   },
+   "accept_missing": [],
+   "truth": {
+    "benign_features": "No",
+    "nodule_type": "part_solid",
+    "diameter_mm": "12 mm",
+    "age": "74 years",
+    "proven_malignant": "No",
+    "sex": "female",
+    "family_history": "No",
+    "emphysema": "No",
+    "upper_lobe": "No",
+    "nodule_count": "2",
+    "spiculation": "No",
+    "prior_study": "No",
+    "resolved": "No",
+    "growth": "diameter_stable",
+    "prior_volume_mm3": "100 mm3",
+    "current_volume_mm3": "100 mm3",
+    "interval_days": "365 days"
+   },
+   "expect_missing": [
+    "prior_study",
+    "nodule_type",
+    "diameter_mm",
+    "emphysema",
+    "upper_lobe",
+    "nodule_count"
+   ],
+   "expect_outcome": null,
+   "expect_state": "check_first",
+   "expect_final": "subsolid"
+  },
+  {
+   "pack": "bosniak-renal-cyst",
+   "name": "two lesions: cyst and angiomyolipoma",
+   "two_lesion": true,
+   "finding": "Renal mass protocol CT. 3 cm well-defined left renal cyst with a thin wall, no septa, uniform contents of 10 HU unenhanced, and a 1.5 cm fat-containing heterogeneous angiomyolipoma in the right kidney.",
+   "findings": "Renal mass protocol CT. 3 cm well-defined left renal cyst with a thin wall, no septa, uniform contents of 10 HU unenhanced, and a 1.5 cm fat-containing heterogeneous angiomyolipoma in the right kidney.",
+   "history": "",
+   "expect_settled": {
+    "technique": "renal_mass_protocol",
+    "mimic": "No"
+   },
+   "accept_missing": [],
+   "truth": {
+    "mimic": "No",
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "none",
+    "protrusion": "none",
+    "calcification": "none",
+    "contents": "uniform",
+    "contents_enhancement": "absent",
+    "hu": "10 HU"
+   },
+   "expect_missing": [
+    "too_small"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "expect_final": "class_i"
+  },
+  {
+   "pack": "bosniak-renal-cyst",
+   "name": "two lesions: cyst and calculus",
+   "two_lesion": true,
+   "finding": "Renal mass protocol CT. 2.5 cm well-defined right renal cyst with a thin wall and a single thin septum, no nodularity, and a 6 mm calcified calculus in the lower pole of the same kidney.",
+   "findings": "Renal mass protocol CT. 2.5 cm well-defined right renal cyst with a thin wall and a single thin septum, no nodularity, and a 6 mm calcified calculus in the lower pole of the same kidney.",
+   "history": "",
+   "expect_settled": {
+    "technique": "renal_mass_protocol",
+    "mimic": "No"
+   },
+   "accept_missing": [],
+   "truth": {
+    "mimic": "No",
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "few_thin",
+    "protrusion": "none",
+    "calcification": "none",
+    "contents": "uniform",
+    "contents_enhancement": "absent",
+    "hu": "10 HU"
+   },
+   "expect_missing": [
+    "too_small"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "expect_final": "class_ii"
+  },
+  {
+   "pack": "bosniak-renal-cyst",
+   "name": "two lesions: cyst and enhancing solid mass",
+   "two_lesion": true,
+   "finding": "Renal mass protocol CT. 2 cm well-defined left renal cyst with a thin wall and no septa, and a separate 3 cm ill-defined heterogeneous enhancing solid mass in the left upper pole.",
+   "findings": "Renal mass protocol CT. 2 cm well-defined left renal cyst with a thin wall and no septa, and a separate 3 cm ill-defined heterogeneous enhancing solid mass in the left upper pole.",
+   "history": "",
+   "expect_settled": {
+    "technique": "renal_mass_protocol",
+    "mimic": "No"
+   },
+   "accept_missing": [],
+   "truth": {
+    "mimic": "No",
+    "too_small": "no",
+    "technique": "renal_mass_protocol",
+    "margin": "well_defined",
+    "wall": "thin",
+    "septa": "none",
+    "protrusion": "none",
+    "calcification": "none",
+    "contents": "uniform",
+    "contents_enhancement": "absent",
+    "hu": "10 HU"
+   },
+   "expect_missing": [
+    "too_small"
+   ],
+   "expect_outcome": null,
+   "expect_state": "applies",
+   "expect_final": "class_i"
+  }
+ ]
+}

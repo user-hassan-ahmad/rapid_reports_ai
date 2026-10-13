@@ -6,6 +6,7 @@
 	 * (`ask_chat`), so it lands in the rail chat like any item's "Ask in chat".
 	 */
 	import GuidelinePanel from '../../../routes/components/GuidelinePanel.svelte';
+	import GlCard from '$lib/rail/GlCard.svelte';
 	import type { GuidelineEntry, RichClassificationGrade, UrgencyTier } from '$lib/guidelines/types';
 
 	let {
@@ -194,35 +195,14 @@
 			{@const accentColor = glAccentColor(guideline)}
 			{@const hasDetail = !!(guideline.clinical_summary || (guideline.differentials?.length ?? 0) > 0)}
 		{@const detailAutoOpen = (guideline.differentials?.length ?? 0) > 0}
-			<div class="gl-card" style="--gl-accent: {accentColor}; --gl-action-color: {accentColor}">
-				<!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
-				<div
-					class="gl-head {isExpanded ? 'gl-head--open' : ''}"
-					role="button"
-					tabindex="0"
-					onclick={() => (guidelinesExpanded = { ...guidelinesExpanded, [guidelineKey]: !isExpanded })}
-					onkeydown={(e) => {
-						if (e.key === 'Enter' || e.key === ' ') {
-							e.preventDefault();
-							guidelinesExpanded = { ...guidelinesExpanded, [guidelineKey]: !isExpanded };
-						}
-					}}
-				>
-					<div class="gl-meta">
-						<!-- Row 1: title + right-aligned grade badge -->
-					<div class="gl-title-row">
-						<span class="gl-title">{guideline.finding_short_label || guideline.finding}</span>
-							{#if gradeBadge}
-								<span class="gl-grade-badge ch-{gradeBadge.variant}">{gradeBadge.text}</span>
-							{/if}
-						</div>
-						<!-- Row 2: colored action hint (collapsed only) -->
-						{#if !isExpanded && actionPreview}
-							<div class="gl-action-hint">→ {actionPreview}</div>
-						{/if}
-					</div>
-					<!-- Controls: ask + chevron (right-aligned, top-aligned) -->
-					<div class="gl-controls">
+			<GlCard
+				title={guideline.finding_short_label || guideline.finding}
+				badge={gradeBadge}
+				hint={actionPreview}
+				accent={accentColor}
+				bind:open={() => isExpanded, (v) => (guidelinesExpanded = { ...guidelinesExpanded, [guidelineKey]: v })}
+			>
+				{#snippet controls()}
 						{#if addFor && onAdd}
 							{@const addId = addFor(guideline)}
 							{#if addId}
@@ -245,15 +225,11 @@
 								onAsk?.(guideline.finding);
 							}}
 						>Ask →</button>
-						<svg class="gl-chevron {isExpanded ? 'open' : ''}" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
-					</div>
-				</div>
-
-			{#if isExpanded}
+				{/snippet}
+				{#snippet body()}
 				{@const urgencyLabel = URGENCY_LABEL[guideline.urgency_tier ?? 'none']}
 				{@const sourcesKey = `sources-${idx}`}
 				{@const sourcesOpen = sourcesExpanded[sourcesKey] === true}
-				<div class="gl-body">
 
 					<!-- ① Urgency tier badge -->
 					{#if urgencyLabel}
@@ -431,9 +407,8 @@
 							{/if}
 						{/if}
 					</div>
-				</div>
-			{/if}
-			</div>
+				{/snippet}
+			</GlCard>
 		{/each}
 	</div>
 	{/if}
@@ -510,93 +485,8 @@
 		letter-spacing: 0.1em;
 		color: #71717a;
 	}
-	/* ═══ Guideline cards ════════════════════════════ */
+	/* ═══ Guideline cards (the card shell is lib/rail/GlCard.svelte) ═══ */
 	.gl-card-stack { display: flex; flex-direction: column; gap: 6px; }
-
-	.gl-card {
-		border-radius: 10px;
-		border: 1px solid rgba(255,255,255,0.08);
-		background: #0d0d14;
-		overflow: hidden;
-		transition: border-color 0.18s, background 0.18s;
-		position: relative;
-	}
-	/* Left accent strip — solid, always visible */
-	.gl-card::before {
-		content: '';
-		position: absolute;
-		left: 0; top: 0; bottom: 0;
-		width: 3px;
-		background: var(--gl-accent, #8b5cf6);
-		border-radius: 10px 0 0 10px;
-	}
-	.gl-card:hover {
-		border-color: rgba(255,255,255,0.13);
-		background: #101018;
-	}
-
-	/* ── Collapsed head ── */
-	.gl-head {
-		display: flex;
-		align-items: flex-start;
-		gap: 8px;
-		padding: 10px 11px 10px 15px;
-		cursor: pointer;
-		user-select: none;
-	}
-	.gl-head--open { padding-bottom: 9px; }
-
-	.gl-meta { flex: 1; min-width: 0; }
-
-	/* Row 1: title + grade badge */
-	.gl-title-row {
-		display: flex;
-		align-items: flex-start;
-		justify-content: space-between;
-		gap: 8px;
-	}
-	.gl-title {
-		flex: 1;
-		min-width: 0;
-		font-size: 13px;
-		font-weight: 600;
-		color: #e8e8ec;
-		line-height: 1.3;
-		letter-spacing: -0.008em;
-	}
-	/* Grade badge — right-aligned, theme-consistent */
-	.gl-grade-badge {
-		flex-shrink: 0;
-		font-size: 9px;
-		font-weight: 700;
-		padding: 2px 7px;
-		border-radius: 20px;
-		letter-spacing: 0.02em;
-		white-space: nowrap;
-		margin-top: 2px;
-	}
-	.ch-v { background: rgba(139,92,246,0.12); color: #c4b5fd; border: 1px solid rgba(139,92,246,0.25); }
-	.ch-c { background: rgba(6,182,212,0.1);   color: #67e8f9; border: 1px solid rgba(6,182,212,0.22); }
-	.ch-a { background: rgba(245,158,11,0.1);  color: #fcd34d; border: 1px solid rgba(245,158,11,0.22); }
-	.ch-r { background: rgba(244,63,94,0.1);   color: #fda4af; border: 1px solid rgba(244,63,94,0.22); }
-
-	/* Row 2: colored action hint (collapsed only) — no extra opacity dimming */
-	.gl-action-hint {
-		margin-top: 4px;
-		font-size: 10.5px;
-		font-weight: 500;
-		line-height: 1.35;
-		color: var(--gl-action-color, #a78bfa);
-	}
-
-	/* Controls: ask + chevron */
-	.gl-controls {
-		display: flex;
-		align-items: center;
-		gap: 5px;
-		flex-shrink: 0;
-		padding-top: 2px;
-	}
 	.gl-ask-btn {
 		padding: 3px 8px;
 		border-radius: 6px;
@@ -626,18 +516,6 @@
 	}
 	.gl-add-btn:hover { background: rgba(16,185,129,0.2); color: #a7f3d0; }
 	.gl-add-btn--row { margin-left: auto; }
-	.gl-chevron { transition: transform 0.2s; color: #52525b; flex-shrink: 0; }
-	.gl-chevron.open { transform: rotate(180deg); color: #a1a1aa; }
-
-	/* ── Expanded body ── */
-	.gl-body {
-		border-top: 1px solid rgba(255,255,255,0.06);
-		padding: 10px 12px 12px 15px;
-		display: flex;
-		flex-direction: column;
-		gap: 10px;
-		min-width: 0;
-	}
 
 	/* Urgency tier text badge */
 	.gl-urgency-tier-row {

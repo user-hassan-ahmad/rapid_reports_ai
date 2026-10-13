@@ -1,0 +1,245 @@
+{
+  "cases": [
+    {
+      "name": "Source example i: CAC 0 (A0), category dictated, no Agatston score",
+      "origin": "source",
+      "inputs": {
+        "agatston": {
+          "state": "not_assessable"
+        },
+        "cac_drs": "0"
+      },
+      "outcome": "cac_drs_0"
+    },
+    {
+      "name": "Source example ii: CAC 1-99 in 3 vessels (A1/N3), category",
+      "origin": "source",
+      "inputs": {
+        "agatston": {
+          "state": "not_assessable"
+        },
+        "cac_drs": "1"
+      },
+      "outcome": "cac_drs_1"
+    },
+    {
+      "name": "Source example iii: CAC 100-299 in 3 vessels (A2/N3), category",
+      "origin": "source",
+      "inputs": {
+        "agatston": {
+          "state": "not_assessable"
+        },
+        "cac_drs": "2"
+      },
+      "outcome": "cac_drs_2"
+    },
+    {
+      "name": "Source example iv: CAC above 300 in 4 vessels (A3/N4), category",
+      "origin": "source",
+      "inputs": {
+        "agatston": {
+          "state": "not_assessable"
+        },
+        "cac_drs": "3"
+      },
+      "outcome": "cac_drs_3"
+    },
+    {
+      "name": "Visual V2/N3, no Agatston score",
+      "origin": "ours",
+      "inputs": {
+        "agatston": {
+          "state": "not_assessable"
+        },
+        "cac_drs": "2"
+      },
+      "outcome": "cac_drs_2"
+    },
+    {
+      "name": "Agatston score 0: zero",
+      "origin": "ours",
+      "inputs": {
+        "agatston": 0
+      },
+      "outcome": "cac_drs_0",
+      "steps": {
+        "agatston_band": "s0"
+      }
+    },
+    {
+      "name": "Agatston score 0.4: below 0.5 rounds to 0",
+      "origin": "ours",
+      "inputs": {
+        "agatston": 0.4
+      },
+      "outcome": "cac_drs_0",
+      "steps": {
+        "agatston_band": "s0"
+      }
+    },
+    {
+      "name": "Agatston score 0.5: 0.5 rounds up to 1",
+      "origin": "ours",
+      "inputs": {
+        "agatston": 0.5
+      },
+      "outcome": "cac_drs_1",
+      "steps": {
+        "agatston_band": "s1"
+      }
+    },
+    {
+      "name": "Agatston score 1: 1",
+      "origin": "ours",
+      "inputs": {
+        "agatston": 1
+      },
+      "outcome": "cac_drs_1",
+      "steps": {
+        "agatston_band": "s1"
+      }
+    },
+    {
+      "name": "Agatston score 99: 99",
+      "origin": "ours",
+      "inputs": {
+        "agatston": 99
+      },
+      "outcome": "cac_drs_1",
+      "steps": {
+        "agatston_band": "s1"
+      }
+    },
+    {
+      "name": "Agatston score 99.4: 99.4 rounds to 99",
+      "origin": "ours",
+      "inputs": {
+        "agatston": 99.4
+      },
+      "outcome": "cac_drs_1",
+      "steps": {
+        "agatston_band": "s1"
+      }
+    },
+    {
+      "name": "Agatston score 99.5: 99.5 rounds up to 100",
+      "origin": "ours",
+      "inputs": {
+        "agatston": 99.5
+      },
+      "outcome": "cac_drs_2",
+      "steps": {
+        "agatston_band": "s2"
+      }
+    },
+    {
+      "name": "Agatston score 100: 100",
+      "origin": "ours",
+      "inputs": {
+        "agatston": 100
+      },
+      "outcome": "cac_drs_2",
+      "steps": {
+        "agatston_band": "s2"
+      }
+    },
+    {
+      "name": "Agatston score 299: 299",
+      "origin": "ours",
+      "inputs": {
+        "agatston": 299
+      },
+      "outcome": "cac_drs_2",
+      "steps": {
+        "agatston_band": "s2"
+      }
+    },
+    {
+      "name": "Agatston score 299.4: 299.4 rounds to 299",
+      "origin": "ours",
+      "inputs": {
+        "agatston": 299.4
+      },
+      "outcome": "cac_drs_2",
+      "steps": {
+        "agatston_band": "s2"
+      }
+    },
+    {
+      "name": "Agatston score 299.5: 299.5 rounds up to 300",
+      "origin": "ours",
+      "inputs": {
+        "agatston": 299.5
+      },
+      "outcome": "cac_drs_3",
+      "steps": {
+        "agatston_band": "s3"
+      }
+    },
+    {
+      "name": "Agatston score 300: 300 (text: category 3)",
+      "origin": "ours",
+      "inputs": {
+        "agatston": 300
+      },
+      "outcome": "cac_drs_3",
+      "steps": {
+        "agatston_band": "s3"
+      }
+    },
+    {
+      "name": "Agatston score 450: 450",
+      "origin": "ours",
+      "inputs": {
+        "agatston": 450
+      },
+      "outcome": "cac_drs_3",
+      "steps": {
+        "agatston_band": "s3"
+      }
+    },
+    {
+      "name": "Agatston score given with a conflicting category: score wins and the category is not asked",
+      "origin": "ours",
+      "inputs": {
+        "agatston": 450,
+        "cac_drs": "1"
+      },
+      "outcome": "cac_drs_3"
+    },
+    {
+      "name": "Nothing dictated: either input can settle it",
+      "origin": "ours",
+      "inputs": {},
+      "outcome": null,
+      "needed": [
+        "agatston",
+        "cac_drs"
+      ]
+    },
+    {
+      "name": "Score unavailable, category not dictated: asks for the category",
+      "origin": "ours",
+      "inputs": {
+        "agatston": {
+          "state": "not_assessable"
+        }
+      },
+      "outcome": null,
+      "needed": [
+        "cac_drs"
+      ]
+    },
+    {
+      "name": "Category dictated, Agatston score not yet answered: asks whether a score exists",
+      "origin": "ours",
+      "inputs": {
+        "cac_drs": "2"
+      },
+      "outcome": null,
+      "needed": [
+        "agatston"
+      ]
+    }
+  ]
+}

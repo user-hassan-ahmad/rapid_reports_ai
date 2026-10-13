@@ -3,6 +3,7 @@ switch RR_HYBRID_STACK is not "0" (default on). Reviewers (RR_STACK_REVIEWERS, c
 emails) approve, edit or reject reconciled families."""
 from __future__ import annotations
 
+import json
 import os
 from typing import Literal, Mapping
 
@@ -118,6 +119,9 @@ class CloseRequest(BaseModel):
     regions: list[Region]
 
 
+LOG_COPILOT_MAX = 64 * 1024   # bytes of the Copilot session record, as JSON
+
+
 class LogRequest(BaseModel):
     session_id: str
     scan_type: str | None = None
@@ -134,6 +138,7 @@ class LogRequest(BaseModel):
     gate: dict | None = None      # v2 §5: the confirmed record (None: not confirmed)
     report_id: str | None = None  # v2: set once Generate returns
     template_id: str | None = None  # template sessions: stamped with the sheet that drove them (None: quick)
+    copilot: dict | None = None   # Copilot session record (scratchpad copilot spec §5.7)
 
 
 class SlimRequest(BaseModel):
@@ -282,12 +287,14 @@ async def stack_close(req: CloseRequest, user: User = Depends(get_current_user))
 @router.post("/log")
 async def stack_log(req: LogRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _require()
+    if req.copilot is not None and len(json.dumps(req.copilot, ensure_ascii=False).encode()) > LOG_COPILOT_MAX:
+        raise HTTPException(status_code=413, detail="Copilot record too large")
     row = db.query(DictationStackLog).filter_by(user_id=user.id, session_id=req.session_id).first()
     if row is None:
         row = DictationStackLog(user_id=user.id, session_id=req.session_id)
         db.add(row)
     for k, v in req.model_dump(exclude_unset=True).items():
-        if k in ("session_id", "template_id") or (k in ("gate", "report_id") and v is None):
+        if k in ("session_id", "template_id") or (k in ("gate", "report_id", "copilot") and v is None):
             continue  # a partial log (the report id alone) changes only what it sends; a gate is never erased
         setattr(row, k, v)
     if req.template_id and row.stamp is None:   # pinned to the sheet the session started with

@@ -16,6 +16,7 @@ import { pillState } from '$lib/dictation-lab/coverage';
 import { effectiveConfig } from '$lib/dictation-lab/package';
 import { fetchSchema, postReportId } from '$lib/hybrid-stack/api';
 import { hybridStackOn } from '$lib/hybrid-stack/flag';
+import { copilotOn } from '$lib/copilot/flag';
 import type { GateRecord, StackSchema } from '$lib/hybrid-stack/types';
 import { hasUnsavedWork as unsavedWork } from '$lib/utils/confirmGate';
 import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedReport';
@@ -137,8 +138,10 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	$: dictationConfig = effectiveConfig(labConfig, undefined, (apiKeyStatus as { dictation_v2?: boolean })?.dictation_v2 === true);
 	// The hybrid dictation stack (rr_hybrid_stack): the grouped view and pills from its grouping, where the
 	// server allows it and the dictation package is on. /sections and the Jev pills keep running in shadow.
-	$: stackStatus = apiKeyStatus as { hybrid_stack?: boolean; hybrid_stack_shadow_rate?: number };
+	$: stackStatus = apiKeyStatus as { hybrid_stack?: boolean; hybrid_stack_shadow_rate?: number; stack_copilot?: boolean };
 	$: hybridStack = hybridStackOn(undefined, stackStatus?.hybrid_stack === true && dictationConfig !== null);
+	// The guideline Copilot (rr_stack_copilot): opt-in per browser, and only on top of the stack.
+	$: stackCopilot = copilotOn(undefined, stackStatus?.stack_copilot === true, hybridStack);
 	let stackSchema: StackSchema | null = null;
 	// Scratchpad v2 gate (spec 2026-10-11 §5-6): Generate waits for the Confirm, then sends the findings block.
 	let stackGate: GateRecord | null = null;
@@ -1048,6 +1051,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			{onDecision}
 			{onOutcome}
 			{hybridStack}
+			{stackCopilot}
 			stackRegions={stackSchema?.regions ?? []}
 			stackGroups={stackSchema?.groups ?? []}
 			stackSchemaMeta={stackSchema ? { key: stackSchema.key, source: stackSchema.source, provisional: stackSchema.provisional } : null}

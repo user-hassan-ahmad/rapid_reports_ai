@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "CAD-RADS 2.0 - 2022 Coronary Artery Disease - Reporting and Data System: an expert consensus document of SCCT, ACC, ACR and NASCI (Cury RC, et al. Radiol Cardiothorac Imaging 2022;4(5):e220183; PMC9627235 full text, table images ryct.220183.tbl1-9 and tbl11 viewed)",
+      "issuer": "Society of Cardiovascular Computed Tomography (SCCT), with ACC, ACR and NASCI",
+      "edition": "2022",
+      "url": "https://doi.org/10.1148/ryct.220183",
+      "sha256": "9ca7e8d0cbc1b6d7eedf0c1cc434d42c7dd261dd749be1244c4a78b3d589d429",
+      "file": "sources/9ca7e8d0cbc1b6d7eedf0c1cc434d42c7dd261dd749be1244c4a78b3d589d429.txt",
+      "text_file": "sources/9ca7e8d0cbc1b6d7eedf0c1cc434d42c7dd261dd749be1244c4a78b3d589d429.txt",
+      "retrieved": "2026-10-12"
+    }
+  ]
+}

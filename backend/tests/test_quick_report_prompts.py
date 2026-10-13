@@ -112,3 +112,16 @@ def test_principle_11_gender_rule_not_clobbered():
     assert "**11. Gender-specific structures require an explicit gender " in (
         QUICK_REPORT_HARDENING_PREAMBLE
     )
+
+
+def test_stack_prompt_carries_the_recommendations_exception_and_others_are_unchanged():
+    from rapid_reports_ai.quick_report_generator import build_prompts
+    from rapid_reports_ai.quick_report_prompts import QR_STACK_RECOMMENDATIONS
+    for brief in (True, False):
+        for provider in ("anthropic", "cerebras"):
+            plain = build_prompts("SHEET", "CT", "f", "h", provider, brief=brief)
+            assert build_prompts("SHEET", "CT", "f", "h", provider, brief=brief, stack=False) == plain
+            assert "Scratchpad Recommendations" not in plain[0]
+    sys_p, user_p = build_prompts("SHEET", "CT", "f", "h", "cerebras", brief=True, stack=True)
+    assert sys_p.count(QR_STACK_RECOMMENDATIONS) == 1 and "`RECOMMENDATIONS:`" in sys_p
+    assert user_p == build_prompts("SHEET", "CT", "f", "h", "cerebras", brief=True)[1]

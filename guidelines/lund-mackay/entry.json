@@ -1,0 +1,299 @@
+{
+  "id": "lund-mackay",
+  "version": "1993.1",
+  "topic": "chronic-rhinosinusitis-ct-staging",
+  "purpose": "Stages the extent of chronic rhinosinusitis on CT of the paranasal sinuses, for assessing disease extent and guiding clinical management.",
+  "trigger": ["exam"],
+  "exam": "CT paranasal sinuses for chronic rhinosinusitis",
+  "issuer": "Lund VJ, Mackay IS (Rhinology)",
+  "system": "Lund-Mackay CT staging of chronic rhinosinusitis: each of five sinus groups per side graded 0 to 2 and the ostiomeatal complex 0 or 2, totalling 0 to 12 per side and 0 to 24 overall",
+  "display": "Lund-Mackay CT sinus staging (1993)",
+  "edition": "1993",
+  "tier": 2,
+  "status": "current",
+  "applies_to": {
+    "region": [
+      "head",
+      "sinuses"
+    ],
+    "modality": [
+      "CT"
+    ],
+    "finding_type": [
+      "paranasal sinus mucosal thickening or opacification (rhinosinusitis)"
+    ],
+    "context": []
+  },
+  "aliases": [
+    "Lund-Mackay",
+    "Lund Mackay",
+    "Lund-Mackay score",
+    "Lund-Mackay staging",
+    "Lund-Mackay CT score",
+    "Lund Mackay score",
+    "LM score",
+    "Lund-Mackay CT staging system",
+    "Lund-Mackay sinus score",
+    "Lund and Mackay staging"
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "A simple CT staging system for chronic rhinosinusitis: five sinus groups on each side are graded 0 (no abnormality), 1 (partial opacification) or 2 (total opacification).",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Outline of staging system, paragraph 2 (journal p183)"
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "The ostiomeatal complex is scored 0 (not obstructed) or 2 (obstructed). The total is 0 to 24, and each side can be taken separately (0 to 12).",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Outline of staging system, paragraph 2 (journal p183)"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "Anatomic variants are recorded as present or absent but do not contribute to the score. The paper gives no severity bands and no management for any score.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Outline of staging system, paragraph 2 (journal p183) and Table 1 (p184)"
+        }
+      },
+      {
+        "id": "sum.4",
+        "text": "The authors kept the system deliberately simple. All degrees of partial opacification share one grade, and simplicity may over-state disease extent where secretion rather than mucosal disease causes opacification.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Outline paragraph 3 (journal p183) and Discussion (p184)"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.sinus",
+        "text": "Sinus group grade, scored for each of maxillary, anterior ethmoid, posterior ethmoid, sphenoid and frontal: 0 no abnormality; 1 partial opacification; 2 total opacification.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Outline of staging system, paragraph 2 (journal p183)"
+        }
+      },
+      {
+        "id": "def.omc",
+        "text": "Ostiomeatal complex (OMC): 0 if not obstructed, 2 if obstructed. No intermediate score of 1.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Outline of staging system, paragraph 2 (journal p183)"
+        }
+      },
+      {
+        "id": "def.total",
+        "text": "Total score: sum of the sinus group grades and the OMC score, 0 to 24 overall or 0 to 12 for each side taken separately.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Outline of staging system, paragraph 2 (journal p183)"
+        }
+      },
+      {
+        "id": "def.variants",
+        "text": "Anatomic variants noted present (1) or absent (0) and not added to the score: absent frontal sinus, concha bullosa, paradoxical middle turbinate, Haller cells, everted uncinate process, agger nasi pneumatization.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Outline paragraph 2 (journal p183); Table 1 anatomic variants (p184)"
+        }
+      },
+      {
+        "id": "def.sides",
+        "text": "Table 1 records the sinus grades and the OMC separately for the right (R) and left (L) side.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Table 1: Radiological grading block (journal p184)"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "tab.grading",
+        "title": "Radiological grading, per side",
+        "columns": [
+          "Item",
+          "Allowed scores",
+          "Meaning"
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Table 1: Radiological grading block (journal p184)"
+        },
+        "rows": [
+          [
+            "Maxillary sinus",
+            "0, 1, 2",
+            "0 no abnormality; 1 partial opacification; 2 total opacification"
+          ],
+          [
+            "Anterior ethmoids",
+            "0, 1, 2",
+            "0 no abnormality; 1 partial opacification; 2 total opacification"
+          ],
+          [
+            "Posterior ethmoids",
+            "0, 1, 2",
+            "0 no abnormality; 1 partial opacification; 2 total opacification"
+          ],
+          [
+            "Sphenoid sinus",
+            "0, 1, 2",
+            "0 no abnormality; 1 partial opacification; 2 total opacification"
+          ],
+          [
+            "Frontal sinus",
+            "0, 1, 2",
+            "0 no abnormality; 1 partial opacification; 2 total opacification"
+          ],
+          [
+            "Ostiomeatal complex (OMC)",
+            "0 or 2",
+            "0 not obstructed; 2 obstructed"
+          ],
+          [
+            "Total",
+            "0 to 12 per side; 0 to 24 both sides",
+            "Sum of the six items for the side (or for both sides)"
+          ]
+        ]
+      },
+      {
+        "id": "tab.variants",
+        "title": "Anatomic variants (recorded, not scored)",
+        "columns": [
+          "Variant",
+          "Recording",
+          "Added to total"
+        ],
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Table 1: Anatomic variants (0-1) (journal p184); text p183"
+        },
+        "rows": [
+          [
+            "Absent frontal sinus",
+            "1 = variant present (frontal sinus absent), 0 = variant not present",
+            "No"
+          ],
+          [
+            "Concha bullosa",
+            "1 = variant present, 0 = variant not present",
+            "No"
+          ],
+          [
+            "Paradoxical middle turbinate",
+            "1 = variant present, 0 = variant not present",
+            "No"
+          ],
+          [
+            "Everted uncinate process",
+            "1 = variant present, 0 = variant not present",
+            "No"
+          ],
+          [
+            "Haller cells",
+            "1 = variant present, 0 = variant not present",
+            "No"
+          ],
+          [
+            "Agger nasi cells",
+            "1 = variant present, 0 = variant not present",
+            "No"
+          ]
+        ]
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.nobands",
+        "text": "The paper defines no severity bands, thresholds or management for any total. Library note: a report should state the score (and sides) rather than label it mild, moderate or severe on this paper's authority.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Outline of staging system and Table 1 (journal pp183-184)"
+        }
+      },
+      {
+        "id": "pit.partial",
+        "text": "Partial opacification is a single grade (1), whatever its extent, particularly in the maxillary sinus. The authors accept this loss of detail for ease of use and say it may be revised.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Outline paragraph 3 (journal p183)"
+        }
+      },
+      {
+        "id": "pit.secretion",
+        "text": "The system can over-state disease extent where secretion rather than mucosal disease produces the opacification.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Discussion (journal p184)"
+        }
+      },
+      {
+        "id": "pit.omc",
+        "text": "The OMC takes only 0 or 2, never 1. The prose says only 'each sinus group'; the list of five groups (anterior and posterior ethmoids separate) comes from Table 1, so each side has five groups plus the OMC.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Table 1: Radiological grading, and Outline paragraph 2 (journal pp183-184)"
+        }
+      },
+      {
+        "id": "pit.notscored",
+        "text": "The text states endoscopic appearances are not in the staging system. Variants are stated not to score. The surgical score (own 0 to 14 total) and patient symptom score are separate sections of the form, so we read them as outside the radiological score (inference).",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Outline paragraphs 2 to 5 (journal pp183-184); Table 1"
+        }
+      },
+      {
+        "id": "pit.scope",
+        "text": "Developed to stage non-neoplastic sinus disease, chiefly chronic rhinosinusitis in patients undergoing endoscopic sinus surgery. The paper was not developed for tumours; it speaks of staging non-neoplastic sinus disease.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Introduction (journal p183)"
+        }
+      },
+      {
+        "id": "pit.evidence",
+        "text": "The only agreement figure is a 98% correlation of scores between two people (one an author) scoring 200 scans independently; there is no validation against symptoms or outcome. The authors describe the system as a starting point open to modification.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Outline paragraph 3 (journal p183) and Discussion (p184)"
+        }
+      },
+      {
+        "id": "pit.undefined",
+        "text": "The paper is silent on: how to score an absent or hypoplastic sinus (absent frontal sinus is listed only as a variant); what separates partial from total opacification; what counts as ostiomeatal complex obstruction; and whether post-operative anatomy is scored. The card adds no convention.",
+        "locator": {
+          "source": "S1",
+          "page": 1,
+          "section": "Outline of staging system (journal p183) and Table 1 (p184), by absence"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,1406 @@
+{
+  "id": "fleischner-pulmonary-nodule",
+  "version": "2017.1",
+  "topic": "pulmonary-nodule-incidental",
+  "purpose": "Gives follow-up recommendations for solid and subsolid pulmonary nodules found incidentally on CT in adults.",
+  "issuer": "Fleischner Society",
+  "system": "Fleischner Society guidelines for incidentally detected pulmonary nodules on CT",
+  "display": "Fleischner Society 2017",
+  "edition": "2017",
+  "tier": 1,
+  "status": "current",
+  "applies_to": {
+    "region": [
+      "chest"
+    ],
+    "modality": [
+      "CT"
+    ],
+    "finding_type": [
+      "pulmonary nodule"
+    ],
+    "context": [
+      "incidental"
+    ]
+  },
+  "aliases": [
+    "fleischner",
+    "fleischner society",
+    "fleischner 2017",
+    "fleischner criteria"
+  ],
+  "inputs": [
+    {
+      "id": "age",
+      "label": "Age",
+      "type": "number",
+      "unit": "years",
+      "scope": "patient",
+      "role": "eligibility",
+      "fact": "age_years",
+      "how_stated": "patient age in years, usually from the clinical history or request",
+      "min_value": 0,
+      "max_value": 110,
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system"
+      }
+    },
+    {
+      "id": "exclusion",
+      "label": "Lung cancer screening, immunocompromise at risk of infection, or known primary cancer at risk of metastases",
+      "type": "boolean",
+      "how_stated": "patient-level, usually from the clinical history or request: true when the scan is a lung cancer screening CT, the patient is immunocompromised and at risk for infection, or has a known primary cancer and is at risk for metastases; false when the history states none of these. Leave it unset when the history does not say.",
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system"
+      },
+      "scope": "patient",
+      "role": "eligibility"
+    },
+    {
+      "id": "nodule_type",
+      "label": "Nodule type",
+      "type": "enum",
+      "options": [
+        "solid",
+        "ground-glass",
+        "part-solid"
+      ],
+      "how_stated": "solid; ground-glass (pure ground-glass, non-solid); or part-solid (subsolid with a solid component). For multiple nodules, the type of the most suspicious one.",
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "Table: A Solid Nodules; B Subsolid Nodules"
+      },
+      "scope": "lesion"
+    },
+    {
+      "id": "count",
+      "label": "Number of nodules",
+      "type": "enum",
+      "options": [
+        "single",
+        "multiple"
+      ],
+      "how_stated": "single when one noncalcified nodule is dictated; multiple when more than one is dictated",
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "Table: Single / Multiple rows"
+      },
+      "scope": "patient"
+    },
+    {
+      "id": "diameter_mm",
+      "label": "Nodule diameter",
+      "type": "number",
+      "unit": "mm",
+      "how_stated": "average of long and short axis, as dictated (whole nodule for part-solid; the most suspicious nodule when multiple)",
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "Table footnote: average of long and short axes, rounded to the nearest millimetre"
+      },
+      "scope": "lesion",
+      "dims": "mean"
+    },
+    {
+      "id": "risk",
+      "label": "Patient risk",
+      "type": "enum",
+      "options": [
+        "low",
+        "high"
+      ],
+      "how_stated": "the ACCP risk category the guideline uses. High (intermediate risk counts as high): any stated high-risk factor, e.g. a current or former smoker ('ex-smoker', pack-years), older age, a family history of lung cancer, emphysema or fibrosis, exposure to asbestos, uranium or radon, upper lobe location, irregular or spiculated margins. Low: only when the history states little or no smoking and no other risk factor (young age, a small regular nodule outside the upper lobe)",
+      "prerequisites": [
+        {
+          "ref": "nodule_type",
+          "eq": "solid"
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 12,
+        "section": "Risk Estimation and Risk Models: low risk is associated with young age, less smoking, smaller size, regular margins and a location other than the upper lobe; high risk combines the ACCP intermediate and high categories (older age, heavy smoking, larger size, irregular or spiculated margins, upper lobe); smoking history, emphysema, fibrosis and inhaled carcinogens are risk factors"
+      },
+      "scope": "patient"
+    }
+  ],
+  "logic": [
+    {
+      "step": "band",
+      "id": "age_band",
+      "ref": "age",
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system"
+      },
+      "bands": [
+        {
+          "id": "lt35",
+          "label": "Under 35 years",
+          "max": 35
+        },
+        {
+          "id": "ge35",
+          "label": "35 years or over",
+          "min": 35
+        }
+      ]
+    },
+    {
+      "step": "band",
+      "id": "size_band",
+      "ref": "diameter_mm",
+      "locator": {
+        "source": "S1",
+        "page": 5,
+        "section": "General Recommendations: measurements rounded to the nearest millimetre; <6 mm corresponds to a rounded 5 mm or less"
+      },
+      "bands": [
+        {
+          "id": "lt6",
+          "label": "<6 mm",
+          "max": 5.5,
+          "max_inclusive": false
+        },
+        {
+          "id": "6to8",
+          "label": "6–8 mm",
+          "min": 5.5,
+          "min_inclusive": true,
+          "max": 8.5,
+          "max_inclusive": false
+        },
+        {
+          "id": "gt8",
+          "label": ">8–30 mm",
+          "min": 8.5,
+          "min_inclusive": true,
+          "max": 30,
+          "max_inclusive": true
+        },
+        {
+          "id": "gt30",
+          "label": ">30 mm (a mass)",
+          "min": 30,
+          "min_inclusive": false
+        }
+      ]
+    },
+    {
+      "step": "table",
+      "id": "management",
+      "keys": [
+        "nodule_type",
+        "count",
+        "size_band",
+        "risk"
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+      },
+      "rows": [
+        {
+          "match": [
+            "solid",
+            "single",
+            "lt6",
+            "low"
+          ],
+          "result": "solid_single_lt6_low"
+        },
+        {
+          "match": [
+            "solid",
+            "single",
+            "lt6",
+            "high"
+          ],
+          "result": "solid_single_lt6_high"
+        },
+        {
+          "match": [
+            "solid",
+            "single",
+            "6to8",
+            "low"
+          ],
+          "result": "solid_single_6to8_low"
+        },
+        {
+          "match": [
+            "solid",
+            "single",
+            "6to8",
+            "high"
+          ],
+          "result": "solid_single_6to8_high"
+        },
+        {
+          "match": [
+            "solid",
+            "single",
+            "gt8",
+            "low"
+          ],
+          "result": "solid_single_gt8"
+        },
+        {
+          "match": [
+            "solid",
+            "single",
+            "gt8",
+            "high"
+          ],
+          "result": "solid_single_gt8"
+        },
+        {
+          "match": [
+            "solid",
+            "multiple",
+            "lt6",
+            "low"
+          ],
+          "result": "solid_multiple_lt6_low"
+        },
+        {
+          "match": [
+            "solid",
+            "multiple",
+            "lt6",
+            "high"
+          ],
+          "result": "solid_multiple_lt6_high"
+        },
+        {
+          "match": [
+            "solid",
+            "multiple",
+            "6to8",
+            "low"
+          ],
+          "result": "solid_multiple_ge6_low"
+        },
+        {
+          "match": [
+            "solid",
+            "multiple",
+            "6to8",
+            "high"
+          ],
+          "result": "solid_multiple_ge6_high"
+        },
+        {
+          "match": [
+            "solid",
+            "multiple",
+            "gt8",
+            "low"
+          ],
+          "result": "solid_multiple_ge6_low"
+        },
+        {
+          "match": [
+            "solid",
+            "multiple",
+            "gt8",
+            "high"
+          ],
+          "result": "solid_multiple_ge6_high"
+        },
+        {
+          "match": [
+            "ground-glass",
+            "single",
+            "lt6",
+            "@not_applicable"
+          ],
+          "result": "ggn_single_lt6"
+        },
+        {
+          "match": [
+            "ground-glass",
+            "single",
+            "6to8",
+            "@not_applicable"
+          ],
+          "result": "ggn_single_ge6"
+        },
+        {
+          "match": [
+            "ground-glass",
+            "single",
+            "gt8",
+            "@not_applicable"
+          ],
+          "result": "ggn_single_ge6"
+        },
+        {
+          "match": [
+            "ground-glass",
+            "multiple",
+            "lt6",
+            "@not_applicable"
+          ],
+          "result": "subsolid_multiple_lt6"
+        },
+        {
+          "match": [
+            "ground-glass",
+            "multiple",
+            "6to8",
+            "@not_applicable"
+          ],
+          "result": "subsolid_multiple_ge6"
+        },
+        {
+          "match": [
+            "ground-glass",
+            "multiple",
+            "gt8",
+            "@not_applicable"
+          ],
+          "result": "subsolid_multiple_ge6"
+        },
+        {
+          "match": [
+            "part-solid",
+            "single",
+            "lt6",
+            "@not_applicable"
+          ],
+          "result": "psn_single_lt6"
+        },
+        {
+          "match": [
+            "part-solid",
+            "single",
+            "6to8",
+            "@not_applicable"
+          ],
+          "result": "psn_single_ge6"
+        },
+        {
+          "match": [
+            "part-solid",
+            "single",
+            "gt8",
+            "@not_applicable"
+          ],
+          "result": "psn_single_ge6"
+        },
+        {
+          "match": [
+            "part-solid",
+            "multiple",
+            "lt6",
+            "@not_applicable"
+          ],
+          "result": "subsolid_multiple_lt6"
+        },
+        {
+          "match": [
+            "part-solid",
+            "multiple",
+            "6to8",
+            "@not_applicable"
+          ],
+          "result": "subsolid_multiple_ge6"
+        },
+        {
+          "match": [
+            "part-solid",
+            "multiple",
+            "gt8",
+            "@not_applicable"
+          ],
+          "result": "subsolid_multiple_ge6"
+        },
+        {
+          "match": [
+            "solid",
+            "single",
+            "gt30",
+            "low"
+          ],
+          "result": "mass"
+        },
+        {
+          "match": [
+            "solid",
+            "single",
+            "gt30",
+            "high"
+          ],
+          "result": "mass"
+        },
+        {
+          "match": [
+            "solid",
+            "multiple",
+            "gt30",
+            "low"
+          ],
+          "result": "mass"
+        },
+        {
+          "match": [
+            "solid",
+            "multiple",
+            "gt30",
+            "high"
+          ],
+          "result": "mass"
+        },
+        {
+          "match": [
+            "ground-glass",
+            "single",
+            "gt30",
+            "@not_applicable"
+          ],
+          "result": "mass"
+        },
+        {
+          "match": [
+            "ground-glass",
+            "multiple",
+            "gt30",
+            "@not_applicable"
+          ],
+          "result": "mass"
+        },
+        {
+          "match": [
+            "part-solid",
+            "single",
+            "gt30",
+            "@not_applicable"
+          ],
+          "result": "mass"
+        },
+        {
+          "match": [
+            "part-solid",
+            "multiple",
+            "gt30",
+            "@not_applicable"
+          ],
+          "result": "mass"
+        }
+      ]
+    },
+    {
+      "step": "rules",
+      "id": "applies",
+      "cases": [
+        {
+          "when": {
+            "any": [
+              {
+                "ref": "exclusion",
+                "eq": true
+              },
+              {
+                "ref": "age_band",
+                "eq": "lt35"
+              }
+            ]
+          },
+          "result": "does_not_apply",
+          "locator": {
+            "source": "S1",
+            "page": 2,
+            "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "mass"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "does_not_apply",
+          "locator": {
+            "source": "S2",
+            "page": 13,
+            "section": "Glossary, mass (printed p709): a mass is any pulmonary, pleural or mediastinal lesion seen as an opacity greater than 3 cm in diameter; nodule (p14, printed p710): on CT a rounded or irregular opacity measuring up to 3 cm"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_single_lt6_low"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "solid_single_lt6_low",
+          "locator": {
+            "source": "S1",
+            "page": 3,
+            "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_single_lt6_high"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "solid_single_lt6_high",
+          "locator": {
+            "source": "S1",
+            "page": 3,
+            "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_single_6to8_low"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "solid_single_6to8_low",
+          "locator": {
+            "source": "S1",
+            "page": 3,
+            "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_single_6to8_high"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "solid_single_6to8_high",
+          "locator": {
+            "source": "S1",
+            "page": 3,
+            "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_single_gt8"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "solid_single_gt8",
+          "locator": {
+            "source": "S1",
+            "page": 3,
+            "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_multiple_lt6_low"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "solid_multiple_lt6_low",
+          "locator": {
+            "source": "S1",
+            "page": 3,
+            "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_multiple_lt6_high"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "solid_multiple_lt6_high",
+          "locator": {
+            "source": "S1",
+            "page": 3,
+            "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_multiple_ge6_low"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "solid_multiple_ge6_low",
+          "locator": {
+            "source": "S1",
+            "page": 3,
+            "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "solid_multiple_ge6_high"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "solid_multiple_ge6_high",
+          "locator": {
+            "source": "S1",
+            "page": 3,
+            "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "ggn_single_lt6"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "ggn_single_lt6",
+          "locator": {
+            "source": "S1",
+            "page": 3,
+            "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "ggn_single_ge6"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "ggn_single_ge6",
+          "locator": {
+            "source": "S1",
+            "page": 3,
+            "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "subsolid_multiple_lt6"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "subsolid_multiple_lt6",
+          "locator": {
+            "source": "S1",
+            "page": 3,
+            "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "subsolid_multiple_ge6"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "subsolid_multiple_ge6",
+          "locator": {
+            "source": "S1",
+            "page": 3,
+            "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "psn_single_lt6"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "psn_single_lt6",
+          "locator": {
+            "source": "S1",
+            "page": 3,
+            "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "psn_single_ge6"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "psn_single_ge6",
+          "locator": {
+            "source": "S1",
+            "page": 3,
+            "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+          }
+        }
+      ]
+    }
+  ],
+  "result": "applies",
+  "outcomes": [
+    {
+      "id": "solid_single_lt6_low",
+      "headline": "Solid nodule <6 mm, low risk",
+      "action": "No routine follow-up",
+      "category": "none",
+      "classification": "Single solid nodule <6 mm in a low-risk patient.",
+      "recommendation": "No routine follow-up.",
+      "caveats": [
+        "Some high-risk patients with suspicious morphology, an upper lobe nodule, or both may warrant CT at 12 months."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "A Solid Nodules: Single, Low risk, <6 mm"
+      }
+    },
+    {
+      "id": "solid_single_lt6_high",
+      "headline": "Solid nodule <6 mm, high risk",
+      "action": "Optional CT at 12 months",
+      "category": "surveillance",
+      "classification": "Single solid nodule <6 mm in a high-risk patient.",
+      "recommendation": "Optional CT at 12 months.",
+      "caveats": [
+        "Some high-risk patients with suspicious morphology, an upper lobe nodule, or both may warrant CT at 12 months."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "A Solid Nodules: Single, High risk, <6 mm"
+      }
+    },
+    {
+      "id": "solid_single_6to8_low",
+      "headline": "Solid nodule 6–8 mm, low risk",
+      "action": "CT at 6–12 months",
+      "category": "surveillance",
+      "classification": "Single solid nodule 6–8 mm in a low-risk patient.",
+      "recommendation": "CT at 6–12 months, then consider CT at 18–24 months.",
+      "caveats": [],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "A Solid Nodules: Single, Low risk, 6-8 mm"
+      }
+    },
+    {
+      "id": "solid_single_6to8_high",
+      "headline": "Solid nodule 6–8 mm, high risk",
+      "action": "CT at 6–12 months",
+      "category": "surveillance",
+      "classification": "Single solid nodule 6–8 mm in a high-risk patient.",
+      "recommendation": "CT at 6–12 months, then CT at 18–24 months.",
+      "caveats": [],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "A Solid Nodules: Single, High risk, 6-8 mm"
+      }
+    },
+    {
+      "id": "solid_single_gt8",
+      "headline": "Solid nodule >8 mm",
+      "action": "Consider 3-month CT, PET-CT, sampling",
+      "category": "workup",
+      "classification": "Single solid nodule >8 mm.",
+      "recommendation": "Consider CT at 3 months, PET-CT or tissue sampling.",
+      "caveats": [],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "A Solid Nodules: Single, Low and High risk, >8 mm"
+      }
+    },
+    {
+      "id": "solid_multiple_lt6_low",
+      "headline": "Multiple solid nodules <6 mm, low risk",
+      "action": "No routine follow-up",
+      "category": "none",
+      "classification": "Multiple solid nodules, the most suspicious <6 mm, in a low-risk patient.",
+      "recommendation": "No routine follow-up.",
+      "caveats": [
+        "Use the most suspicious nodule to guide management; intervals may vary with size and risk."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "A Solid Nodules: Multiple, Low risk, <6 mm"
+      }
+    },
+    {
+      "id": "solid_multiple_lt6_high",
+      "headline": "Multiple solid nodules <6 mm, high risk",
+      "action": "Optional CT at 12 months",
+      "category": "surveillance",
+      "classification": "Multiple solid nodules, the most suspicious <6 mm, in a high-risk patient.",
+      "recommendation": "Optional CT at 12 months.",
+      "caveats": [
+        "Use the most suspicious nodule to guide management; intervals may vary with size and risk."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "A Solid Nodules: Multiple, High risk, <6 mm"
+      }
+    },
+    {
+      "id": "solid_multiple_ge6_low",
+      "headline": "Multiple solid nodules ≥6 mm, low risk",
+      "action": "CT at 3–6 months",
+      "category": "surveillance",
+      "classification": "Multiple solid nodules, the most suspicious 6 mm or larger, in a low-risk patient.",
+      "recommendation": "CT at 3–6 months, then consider CT at 18–24 months.",
+      "caveats": [
+        "Use the most suspicious nodule to guide management; intervals may vary with size and risk."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "A Solid Nodules: Multiple, Low risk, 6-8 mm and >8 mm"
+      }
+    },
+    {
+      "id": "solid_multiple_ge6_high",
+      "headline": "Multiple solid nodules ≥6 mm, high risk",
+      "action": "CT at 3–6 months",
+      "category": "surveillance",
+      "classification": "Multiple solid nodules, the most suspicious 6 mm or larger, in a high-risk patient.",
+      "recommendation": "CT at 3–6 months, then CT at 18–24 months.",
+      "caveats": [
+        "Use the most suspicious nodule to guide management; intervals may vary with size and risk."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "A Solid Nodules: Multiple, High risk, 6-8 mm and >8 mm"
+      }
+    },
+    {
+      "id": "ggn_single_lt6",
+      "headline": "Pure ground-glass nodule <6 mm",
+      "action": "No routine follow-up",
+      "category": "none",
+      "classification": "Single pure ground-glass nodule <6 mm.",
+      "recommendation": "No routine follow-up.",
+      "caveats": [
+        "For certain suspicious nodules <6 mm, consider CT at 2 and 4 years.",
+        "If a solid component or growth develops, consider resection."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "B Subsolid Nodules: Single, Ground glass, <6 mm"
+      }
+    },
+    {
+      "id": "ggn_single_ge6",
+      "headline": "Pure ground-glass nodule ≥6 mm",
+      "action": "CT at 6–12 months",
+      "category": "surveillance",
+      "classification": "Single pure ground-glass nodule 6 mm or larger.",
+      "recommendation": "CT at 6–12 months to confirm persistence, then CT every 2 years until 5 years.",
+      "caveats": [
+        "If a solid component or growth develops, consider resection."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "B Subsolid Nodules: Single, Ground glass, >=6 mm"
+      }
+    },
+    {
+      "id": "psn_single_lt6",
+      "headline": "Part-solid nodule <6 mm",
+      "action": "No routine follow-up",
+      "category": "none",
+      "classification": "Single part-solid nodule <6 mm.",
+      "recommendation": "No routine follow-up.",
+      "caveats": [
+        "In practice a nodule cannot be called part-solid until it is 6 mm or larger; nodules <6 mm usually need no follow-up."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "B Subsolid Nodules: Single, Part solid, <6 mm"
+      }
+    },
+    {
+      "id": "psn_single_ge6",
+      "headline": "Part-solid nodule ≥6 mm",
+      "action": "CT at 3–6 months",
+      "category": "surveillance",
+      "classification": "Single part-solid nodule 6 mm or larger.",
+      "recommendation": "CT at 3–6 months to confirm persistence; if unchanged and the solid component stays <6 mm, annual CT for 5 years.",
+      "caveats": [
+        "A persistent part-solid nodule with a solid component of 6 mm or more should be considered highly suspicious."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "B Subsolid Nodules: Single, Part solid, >=6 mm"
+      }
+    },
+    {
+      "id": "subsolid_multiple_lt6",
+      "headline": "Multiple subsolid nodules <6 mm",
+      "action": "CT at 3–6 months",
+      "category": "surveillance",
+      "classification": "Multiple subsolid nodules, the most suspicious <6 mm.",
+      "recommendation": "CT at 3–6 months; if stable, consider CT at 2 and 4 years.",
+      "caveats": [
+        "Multiple pure ground-glass nodules <6 mm are usually benign; consider 2- and 4-year follow-up in selected high-risk patients."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "B Subsolid Nodules: Multiple, <6 mm"
+      }
+    },
+    {
+      "id": "subsolid_multiple_ge6",
+      "headline": "Multiple subsolid nodules ≥6 mm",
+      "action": "CT at 3–6 months",
+      "category": "surveillance",
+      "classification": "Multiple subsolid nodules, the most suspicious 6 mm or larger.",
+      "recommendation": "CT at 3–6 months; base further management on the most suspicious nodule(s).",
+      "caveats": [],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "B Subsolid Nodules: Multiple, >=6 mm"
+      }
+    },
+    {
+      "id": "does_not_apply",
+      "headline": "Outside Fleischner 2017",
+      "action": "Manage per clinical context",
+      "category": "not_applicable",
+      "classification": "Fleischner 2017 does not apply: lung cancer screening, age under 35, immunocompromised patient, known primary cancer, or a mass (an opacity greater than 3 cm in diameter).",
+      "recommendation": "Manage per the clinical context (screening programme protocol, or the patient's oncology or immunosuppression care).",
+      "caveats": [
+        "The Fleischner Society advises the ACR Lung-RADS system for lung cancer screening CT.",
+        "Under 35: decide case by case; infection is more likely than cancer, so keep serial CT to a minimum."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 2,
+        "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system"
+      }
+    }
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "Fleischner Society 2017 guidance for incidental pulmonary nodules on CT in adults aged 35 or over, revising the earlier Fleischner guidelines for solid and subsolid nodules.",
+        "locator": {
+          "source": "S1",
+          "page": 2
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "Management is set by nodule type (solid, ground-glass, part-solid), single or multiple, size, and for solid nodules the patient's clinical risk.",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "table": "Fleischner Society 2017 Guidelines"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "The threshold for routine follow-up of solid nodules is 6 mm; subsolid nodules are followed longer, up to 5 years.",
+        "locator": {
+          "source": "S1",
+          "page": 2,
+          "section": "Advances in Knowledge"
+        }
+      },
+      {
+        "id": "sum.4",
+        "text": "Ranges of follow-up intervals are deliberate, leaving room for radiologist, clinician and patient preference.",
+        "locator": {
+          "source": "S1",
+          "page": 2
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.size",
+        "text": "Size is the average of the long- and short-axis diameters, measured on the same image (transverse, coronal or sagittal) showing the largest dimensions, rounded to the nearest millimetre. <6 mm means a rounded size of 5 mm or less.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "General Recommendations"
+        }
+      },
+      {
+        "id": "def.risk",
+        "text": "Low risk is an estimated cancer risk below 5% (younger age, less smoking, smaller size, regular margins, non-upper-lobe). High risk combines the ACCP intermediate (5–65%) and high (>65%) categories.",
+        "locator": {
+          "source": "S1",
+          "page": 12,
+          "section": "Risk Estimation and Risk Models"
+        }
+      },
+      {
+        "id": "def.highrisk_factors",
+        "text": "High-risk factors include older age, heavy smoking (30 pack-years or more and quitting within the past 15 years, the NLST threshold), larger size, irregular or spiculated margins and upper lobe location.",
+        "locator": {
+          "source": "S1",
+          "page": 12,
+          "section": "Tobacco and Other Inhaled Carcinogens; Risk Estimation and Risk Models"
+        }
+      },
+      {
+        "id": "def.subsolid",
+        "text": "Subsolid nodules are ground-glass (no solid component) or part-solid. Components visible on mediastinal (soft-tissue) window settings are solid.",
+        "locator": {
+          "source": "S1",
+          "page": 10,
+          "section": "Nodule Size and Morphology"
+        }
+      },
+      {
+        "id": "def.dominant",
+        "text": "With multiple nodules, the most suspicious (dominant) nodule guides management; it may not be the largest. The others are monitored on follow-up.",
+        "locator": {
+          "source": "S1",
+          "page": 7,
+          "section": "Recommendation 2: multiple solid noncalcified nodules"
+        }
+      },
+      {
+        "id": "def.risk_subsolid",
+        "text": "Subsolid nodule recommendations do not depend on the customary risk categories.",
+        "locator": {
+          "source": "S1",
+          "page": 12,
+          "section": "Tobacco and Other Inhaled Carcinogens"
+        }
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.exclusions",
+        "text": "Does not apply to lung cancer screening (use Lung-RADS), patients under 35, immunocompromised patients or patients with known primary cancer.",
+        "locator": {
+          "source": "S1",
+          "page": 3,
+          "section": "Table note; Introduction and Implications for Patient Care (p. 2)"
+        }
+      },
+      {
+        "id": "pit.mass",
+        "text": "An opacity over 3 cm is a mass, not a nodule (Fleischner glossary); the 2017 guidelines are for nodules. The cut-off is applied to the average diameter this entry uses throughout.",
+        "locator": {
+          "source": "S2",
+          "page": 13,
+          "section": "Glossary, mass (printed p709)"
+        }
+      },
+      {
+        "id": "pit.volume",
+        "text": "Volumetric thresholds (100 and 250 mm³) are given by the source but are not supported here yet; enter the average diameter.",
+        "locator": {
+          "source": "S1",
+          "page": 5,
+          "section": "General Recommendations"
+        }
+      },
+      {
+        "id": "pit.benign",
+        "text": "Applies to noncalcified nodules. Benign calcification patterns or fat (e.g. hamartoma, granuloma) need no CT follow-up.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "Figures 1 and 2"
+        }
+      },
+      {
+        "id": "pit.perifissural",
+        "text": "Perifissural or juxtapleural nodules with typical lymph node morphology need no follow-up, even above 6 mm; spiculation, fissure displacement or cancer history change this.",
+        "locator": {
+          "source": "S1",
+          "page": 13,
+          "section": "Perifissural Nodules"
+        }
+      },
+      {
+        "id": "pit.partsolid",
+        "text": "For part-solid nodules, the table size is the whole nodule; a solid component of 6 mm or more, or above 8 mm, changes management.",
+        "locator": {
+          "source": "S1",
+          "page": 10,
+          "section": "Recommendation 4: solitary part-solid lung nodules"
+        }
+      },
+      {
+        "id": "pit.mixed",
+        "text": "The table has no row for a mix of solid and subsolid nodules; the source says the most suspicious nodule guides management.",
+        "locator": {
+          "source": "S1",
+          "page": 7,
+          "section": "Recommendation 2: multiple solid noncalcified nodules"
+        }
+      },
+      {
+        "id": "pit.incomplete",
+        "text": "Nodules on partial chest CT (e.g. abdomen): <6 mm need no further imaging; 6–8 mm need complete chest CT at 3–12 months.",
+        "locator": {
+          "source": "S1",
+          "page": 13,
+          "section": "Incidentally Detected Lung Nodules on Incomplete Thoracic CT Scans"
+        }
+      },
+      {
+        "id": "pit.thick",
+        "text": "If the first scan used thick sections, a short-term thin-section follow-up may be needed before applying the table.",
+        "locator": {
+          "source": "S1",
+          "page": 4,
+          "section": "General Recommendations"
+        }
+      }
+    ]
+  }
+}

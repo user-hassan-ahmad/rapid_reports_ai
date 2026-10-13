@@ -1,0 +1,40 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "British Thoracic Society guidelines for the investigation and management of pulmonary nodules (Callister MEJ, et al. Thorax 2015;70(Suppl 2):ii1-ii54)",
+      "issuer": "British Thoracic Society",
+      "edition": "2015",
+      "url": "https://doi.org/10.1136/thoraxjnl-2015-207168",
+      "sha256": "93797cd8e56be654a6778d75a4734694198e584c4284bcf1851caeb0e8d52367",
+      "file": "sources/93797cd8e56be654a6778d75a4734694198e584c4284bcf1851caeb0e8d52367.pdf",
+      "text_file": "sources/93797cd8e56be654a6778d75a4734694198e584c4284bcf1851caeb0e8d52367.txt",
+      "retrieved": "2026-10-12"
+    },
+    {
+      "id": "S2",
+      "role": "primary",
+      "title": "Probability of cancer in pulmonary nodules detected on first screening CT (McWilliams A, et al. N Engl J Med 2013;369:910-919), Table 2 model 2b: the Brock (PanCan) model adopted by BTS 2015",
+      "issuer": "McWilliams et al. (Pan-Canadian Early Detection of Lung Cancer Study), model adopted by BTS",
+      "edition": "2013",
+      "url": "https://doi.org/10.1056/NEJMoa1214726",
+      "sha256": "81e17d222b6b8f0fb89caafd3247eebcc9fd89633e35acd5187659bf0031ae90",
+      "file": "sources/81e17d222b6b8f0fb89caafd3247eebcc9fd89633e35acd5187659bf0031ae90.txt",
+      "text_file": "sources/81e17d222b6b8f0fb89caafd3247eebcc9fd89633e35acd5187659bf0031ae90.txt",
+      "retrieved": "2026-10-12"
+    },
+    {
+      "id": "A1",
+      "role": "amendment",
+      "title": "Correction: British Thoracic Society guidelines for the investigation and management of pulmonary nodules (Thorax 2015;70:1188)",
+      "issuer": "British Thoracic Society",
+      "edition": "2015-12",
+      "url": "https://doi.org/10.1136/thoraxjnl-2015-207168corr1",
+      "sha256": "12e52ed6fab400f0e7431ca499ce2142d92709d700a84d5f2c12741a8a0db6e2",
+      "file": "sources/12e52ed6fab400f0e7431ca499ce2142d92709d700a84d5f2c12741a8a0db6e2.txt",
+      "text_file": "sources/12e52ed6fab400f0e7431ca499ce2142d92709d700a84d5f2c12741a8a0db6e2.txt",
+      "retrieved": "2026-10-12"
+    }
+  ]
+}

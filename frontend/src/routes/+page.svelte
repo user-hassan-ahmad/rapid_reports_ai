@@ -46,6 +46,7 @@ import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 		dictation_v2?: boolean; // the dictation package is allowed on this server (RR_DICTATION_V2)
 		hybrid_stack?: boolean; // the hybrid dictation stack is on (RR_HYBRID_STACK, with the dictation package)
 		hybrid_stack_shadow_rate?: number; // share of sessions that build the old Structured text in shadow
+		stack_copilot?: boolean; // the server allows the guideline Copilot (RR_STACK_COPILOT, with the stack)
 	};
 	type HistoryModalInput = {
 		variables?: Record<string, string>;
@@ -358,7 +359,8 @@ let templatedModel = 'claude'; // Track model for template editor
 						using_user_keys: data.using_user_keys || { deepgram: data.deepgram_configured || false },
 						dictation_v2: data.dictation_v2 === true,
 						hybrid_stack: data.hybrid_stack === true,
-						hybrid_stack_shadow_rate: typeof data.hybrid_stack_shadow_rate === 'number' ? data.hybrid_stack_shadow_rate : 0.25
+						hybrid_stack_shadow_rate: typeof data.hybrid_stack_shadow_rate === 'number' ? data.hybrid_stack_shadow_rate : 0.25,
+						stack_copilot: data.stack_copilot === true
 					};
 				}
 			} else {

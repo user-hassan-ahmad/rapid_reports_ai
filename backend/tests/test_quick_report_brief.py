@@ -653,3 +653,14 @@ def test_stack_brief_keeps_the_report_flow_and_says_labels_are_for_tracing():
     b = qb.stack_fallback(slim, "", [])
     assert "Paragraph 1: Liver, Gallbladder and bile ducts" in b.text
     assert "labelled by region only so each can be traced" in b.text and "never in the input's order" in b.text
+
+
+def test_stack_fallback_recommendations_rule():
+    from rapid_reports_ai.quick_report_brief import RECS_LINE
+    assert RECS_LINE == "Recommendations (selected by the radiologist):"
+    for conclusion in ("Complex cyst.", ""):   # the rule stands with or without a confirmed conclusion
+        b = qb.stack_fallback("", conclusion)
+        assert "Scratchpad Recommendations" in b.text and RECS_LINE in b.text
+        assert "adding none and dropping none" in b.text and "write no recommendations section" in b.text
+        assert "headed `RECOMMENDATIONS:` on its own line after the impression" in b.text
+        assert "the one exception to the rules that recommendations sit in the impression" in b.text

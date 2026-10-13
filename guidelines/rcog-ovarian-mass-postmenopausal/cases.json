@@ -1,0 +1,550 @@
+{
+  "cases": [
+    {
+      "name": "Simple unilateral 2.5 cm cyst, asymptomatic, CA125 not given: no follow-up (Dec 2025 update)",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 2.5
+      },
+      "outcome": "no_follow_up",
+      "steps": {
+        "feature_count": 0,
+        "u_band": "u0",
+        "size_band": "le3",
+        "pathway": "no_follow_up"
+      }
+    },
+    {
+      "name": "Simple 3.0 cm cyst: the 3 cm edge is in the no-follow-up group",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 3.0
+      },
+      "outcome": "no_follow_up",
+      "steps": {
+        "size_band": "le3"
+      }
+    },
+    {
+      "name": "Simple 3.1 cm cyst, CA125 20: conservative",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 3.1,
+        "ca125": 20
+      },
+      "outcome": "conservative",
+      "steps": {
+        "size_band": "gt3_le5",
+        "feature_count": 0,
+        "u_score": 0,
+        "rmi": 0,
+        "ca125_band": "normal"
+      }
+    },
+    {
+      "name": "Simple 5.0 cm cyst, CA125 35: both edges inclusive, conservative",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 5.0,
+        "ca125": 35
+      },
+      "outcome": "conservative",
+      "steps": {
+        "size_band": "gt3_le5",
+        "ca125_band": "normal",
+        "rmi": 0
+      }
+    },
+    {
+      "name": "Simple 4 cm cyst, CA125 35.1: raised CA125 excludes conservative management",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 4,
+        "ca125": 35.1
+      },
+      "outcome": "surgery_raised_ca125",
+      "steps": {
+        "ca125_band": "raised",
+        "rmi": 0.0,
+        "rmi_band": "lt200"
+      }
+    },
+    {
+      "name": "Simple 5.1 cm cyst, CA125 10: over 5 cm, consider surgery",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 5.1,
+        "ca125": 10
+      },
+      "outcome": "consider_surgery",
+      "steps": {
+        "size_band": "gt5",
+        "rmi": 0,
+        "rmi_band": "lt200"
+      }
+    },
+    {
+      "name": "Multilocular 6 cm cyst, CA125 66.6: RMI 199.8, low risk, consider surgery",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "multilocular",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 6,
+        "ca125": 66.6
+      },
+      "outcome": "consider_surgery",
+      "steps": {
+        "feature_count": 1,
+        "u_band": "u1",
+        "u_score": 1,
+        "rmi": 199.79999999999998,
+        "rmi_band": "lt200"
+      }
+    },
+    {
+      "name": "Multilocular 6 cm cyst, CA125 66.7: RMI 200.1, CT and MDT",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "multilocular",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 6,
+        "ca125": 66.7
+      },
+      "outcome": "ct_mdt",
+      "steps": {
+        "feature_count": 1,
+        "u_score": 1,
+        "rmi": 200.10000000000002,
+        "rmi_band": "ge200"
+      }
+    },
+    {
+      "name": "Multilocular cyst, CA125 200/3: RMI exactly 200 is in the 200-or-more group",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "multilocular",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 6,
+        "ca125": 66.66666666666667
+      },
+      "outcome": "ct_mdt",
+      "steps": {
+        "rmi": 200.0,
+        "rmi_band": "ge200"
+      }
+    },
+    {
+      "name": "Bilateral multilocular solid masses with ascites and metastases, CA125 100: score 5, U 3, RMI 900",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "multilocular_solid",
+        "bilateral": true,
+        "ascites": true,
+        "metastases": true,
+        "symptomatic": false,
+        "size_cm": 9,
+        "ca125": 100
+      },
+      "outcome": "ct_mdt",
+      "steps": {
+        "feature_count": 5,
+        "u_band": "u3",
+        "u_score": 3,
+        "rmi": 900,
+        "rmi_band": "ge200"
+      }
+    },
+    {
+      "name": "Cyst with solid areas and ascites, CA125 20: RMI 180, but ascites routes to CT and MDT (I1)",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "solid_areas",
+        "bilateral": false,
+        "ascites": true,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 4,
+        "ca125": 20
+      },
+      "outcome": "ct_mdt",
+      "steps": {
+        "feature_count": 2,
+        "u_band": "u3",
+        "u_score": 3,
+        "rmi": 180,
+        "rmi_band": "lt200"
+      }
+    },
+    {
+      "name": "Simple 4 cm unilateral cyst with ascites, CA125 20: RMI 60, ascites routes to CT and MDT (I1)",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": true,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 4,
+        "ca125": 20
+      },
+      "outcome": "ct_mdt",
+      "steps": {
+        "feature_count": 1,
+        "u_score": 1,
+        "rmi": 60,
+        "rmi_band": "lt200"
+      }
+    },
+    {
+      "name": "Simple 2 cm cyst with metastases, CA125 80: RMI 240, CT and MDT",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": true,
+        "symptomatic": false,
+        "size_cm": 2,
+        "ca125": 80
+      },
+      "outcome": "ct_mdt",
+      "steps": {
+        "feature_count": 1,
+        "rmi": 240,
+        "rmi_band": "ge200"
+      }
+    },
+    {
+      "name": "Bilateral simple 4 cm cysts, CA125 30: RMI 90, consider surgery",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": true,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 4,
+        "ca125": 30
+      },
+      "outcome": "consider_surgery",
+      "steps": {
+        "feature_count": 1,
+        "u_band": "u1",
+        "rmi": 90
+      }
+    },
+    {
+      "name": "Symptomatic woman, simple 2 cm cyst, CA125 10: same single no-follow-up outcome (Hassan 2026-10-13)",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": true,
+        "size_cm": 2,
+        "ca125": 10
+      },
+      "outcome": "no_follow_up",
+      "steps": {
+        "rmi": 0
+      }
+    },
+    {
+      "name": "Unilocular non-simple 4 cm cyst, CA125 not given: ultrasound score 0, consider surgery without CA125",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "unilocular_non_simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 4
+      },
+      "outcome": "consider_surgery",
+      "steps": {
+        "feature_count": 0,
+        "u_band": "u0"
+      }
+    },
+    {
+      "name": "Premenopausal woman: does not apply",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": false,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 4,
+        "ca125": 20
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "Mass already confirmed as ovarian cancer: does not apply",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": true,
+        "morphology": "solid_areas",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 7,
+        "ca125": 400
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "Simple 4 cm cyst, CA125 not given: CA125 decides conservative vs surgery",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 4
+      },
+      "outcome": null,
+      "needed": [
+        "ca125"
+      ]
+    },
+    {
+      "name": "Simple 2 cm cyst, menopausal status not stated",
+      "origin": "ours",
+      "inputs": {
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 2
+      },
+      "outcome": null,
+      "needed": [
+        "postmenopausal"
+      ]
+    },
+    {
+      "name": "Cyst with solid areas and metastases, CA125 20: RMI 180, metastases route to CT and MDT, never laparoscopy (I1)",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "solid_areas",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": true,
+        "symptomatic": false,
+        "size_cm": 6,
+        "ca125": 20
+      },
+      "outcome": "ct_mdt",
+      "steps": {
+        "feature_count": 2,
+        "u_band": "u3",
+        "rmi": 180,
+        "rmi_band": "lt200"
+      }
+    },
+    {
+      "name": "Simple 2 cm cyst with ascites, CA125 not given: CT and MDT without CA125 (I1, M6)",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": true,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 2
+      },
+      "outcome": "ct_mdt",
+      "steps": {
+        "feature_count": 1,
+        "size_band": "le3"
+      }
+    },
+    {
+      "name": "Simple 4 cm cyst with metastases only, CA125 15: RMI 45, CT and MDT (I1, M6)",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": true,
+        "symptomatic": false,
+        "size_cm": 4,
+        "ca125": 15
+      },
+      "outcome": "ct_mdt",
+      "steps": {
+        "feature_count": 1,
+        "u_score": 1,
+        "rmi": 45,
+        "rmi_band": "lt200"
+      }
+    },
+    {
+      "name": "Multilocular solid cyst alone, CA125 20: one input gives score 2, U 3, RMI 180, consider surgery (M6)",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "multilocular_solid",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 4,
+        "ca125": 20
+      },
+      "outcome": "consider_surgery",
+      "steps": {
+        "feature_count": 2,
+        "u_band": "u3",
+        "u_score": 3,
+        "rmi": 180,
+        "rmi_band": "lt200"
+      }
+    },
+    {
+      "name": "Symptomatic woman, simple 4 cm cyst, CA125 10: consider surgery",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": true,
+        "size_cm": 4,
+        "ca125": 10
+      },
+      "outcome": "consider_surgery",
+      "steps": {
+        "size_band": "gt3_le5",
+        "rmi": 0
+      }
+    },
+    {
+      "name": "Simple 4 cm cyst with 'small amount of pelvic free fluid', CA125 20: ascites false, conservative, not CT/MDT",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "symptomatic": false,
+        "size_cm": 4,
+        "ca125": 20
+      },
+      "outcome": "conservative",
+      "steps": {
+        "feature_count": 0,
+        "rmi": 0.0
+      }
+    },
+    {
+      "name": "Simple 2 cm cyst, symptoms not stated: no-follow-up without asking symptomatic",
+      "origin": "ours",
+      "inputs": {
+        "postmenopausal": true,
+        "malignancy_confirmed": false,
+        "morphology": "simple",
+        "bilateral": false,
+        "ascites": false,
+        "metastases": false,
+        "size_cm": 2
+      },
+      "outcome": "no_follow_up",
+      "needed": []
+    }
+  ]
+}

@@ -3487,6 +3487,7 @@ async def get_api_key_status(
     db.refresh(current_user)
     from rapid_reports_ai.dictation_v2 import v2_allowed
     from rapid_reports_ai.hybrid_stack.routes import shadow_rate, stack_allowed
+    from rapid_reports_ai.hybrid_stack.copilot.routes import copilot_allowed
     
     # All API keys are system-wide via environment variables
     has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
@@ -3507,6 +3508,8 @@ async def get_api_key_status(
         "hybrid_stack": stack_allowed(),
         # share of sessions that also build the old Structured text once, at session end (shadow)
         "hybrid_stack_shadow_rate": shadow_rate(),
+        # the scratchpad Copilot (guideline cards): on with the stack; RR_STACK_COPILOT=0 turns it off
+        "stack_copilot": copilot_allowed(),
         "using_user_keys": {
             "deepgram": has_deepgram  # backward compat: same as deepgram_configured
         }
@@ -6100,6 +6103,8 @@ async def list_report_audits(
 
 app.include_router(canvas_router)
 app.include_router(hybrid_stack_router)
+from .hybrid_stack.copilot.routes import router as stack_copilot_router  # noqa: E402
+app.include_router(stack_copilot_router)
 # Experimental planning/execution pipeline (/api/v2/*). Product report generation uses monolithic
 # prompts + /api/chat + generate_auto_report; keep router mounted for future work and manual API tests.
 app.include_router(agentic_router)

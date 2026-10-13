@@ -1,0 +1,652 @@
+{
+  "id": "nhs-aaa-surveillance",
+  "version": "2025.1",
+  "topic": "abdominal-aortic-aneurysm",
+  "purpose": "Gives screening results, surveillance intervals and referral for an abdominal aortic aneurysm measured on ultrasound within the NHS AAA Screening Programme.",
+  "trigger": ["exam"],
+  "exam": "NHS AAA Screening Programme abdominal aortic ultrasound",
+  "exam_presets": {"screening_programme": "true", "sex": "male", "previous_aaa_treatment": "false"},
+  "issuer": "NHS England (NHS Abdominal Aortic Aneurysm Screening Programme)",
+  "system": "NHS abdominal aortic aneurysm screening programme: screening results, surveillance intervals and referral thresholds",
+  "display": "NHS AAA Screening 2025",
+  "edition": "2025",
+  "tier": 1,
+  "status": "current",
+  "applies_to": {
+    "region": [
+      "abdomen"
+    ],
+    "modality": [
+      "US"
+    ],
+    "finding_type": [
+      "abdominal aortic aneurysm"
+    ],
+    "context": [
+      "screening"
+    ]
+  },
+  "aliases": [
+    "nhs aaa screening",
+    "aaa screening programme",
+    "naaasp",
+    "nhs aaa surveillance"
+  ],
+  "inputs": [
+    {
+      "id": "screening_programme",
+      "label": "Scan done within the NHS AAA screening programme",
+      "type": "boolean",
+      "how_stated": "true when this ultrasound is an NHS AAA screening programme scan (the initial screen or a programme surveillance scan); false for any other aortic imaging, such as a diagnostic or incidental finding outside the programme",
+      "locator": {
+        "source": "S1",
+        "section": "AAA screening"
+      },
+      "scope": "patient",
+      "role": "eligibility",
+      "fact": "screening_programme"
+    },
+    {
+      "id": "sex",
+      "label": "Sex",
+      "type": "enum",
+      "options": [
+        "female",
+        "male"
+      ],
+      "how_stated": "patient sex, usually from the request details",
+      "locator": {
+        "source": "S1",
+        "section": "AAA screening: screening is not routinely offered to women"
+      },
+      "scope": "patient",
+      "role": "eligibility",
+      "fact": "sex"
+    },
+    {
+      "id": "previous_aaa_treatment",
+      "label": "AAA already treated",
+      "type": "boolean",
+      "how_stated": "true when the patient has already had an abdominal aortic aneurysm treated (open repair or endovascular stent-graft, EVAR), from the history or a graft seen on the scan; false for a native, untreated aorta",
+      "locator": {
+        "source": "S1",
+        "section": "AAA screening: screening is not routinely offered to anyone who has already been treated for an AAA"
+      },
+      "scope": "patient",
+      "role": "eligibility"
+    },
+    {
+      "id": "diameter_cm",
+      "label": "Abdominal aortic diameter",
+      "type": "number",
+      "unit": "cm",
+      "how_stated": "the aortic diameter recorded on this screening ultrasound, in cm (the programme reports in cm, e.g. 'aorta 3.6 cm'; a value given in mm, e.g. '36 mm', is the same measurement); the pathway requirements do not state the measurement plane, so use the programme's own recorded diameter. not_assessable when the aorta could not be visualised on this scan",
+      "states": [
+        "not_assessable"
+      ],
+      "locator": {
+        "source": "S1",
+        "section": "AAA screening: 4 possible AAA screening results based on the size of the abdominal aorta"
+      },
+      "min_value": 0,
+      "min_inclusive": false,
+      "max_value": 20,
+      "scope": "lesion",
+      "dims": "max"
+    },
+    {
+      "id": "prior_programme_scan",
+      "label": "Previous programme scan measuring the aneurysm",
+      "type": "boolean",
+      "how_stated": "true when this is a surveillance scan and an earlier programme scan measured the aneurysm (a man already under AAA surveillance); false for the initial screen",
+      "locator": {
+        "source": "S1",
+        "section": "2. Screening test: Surveillance"
+      },
+      "scope": "lesion"
+    },
+    {
+      "id": "growth_12m_cm",
+      "label": "Growth in aortic diameter over 12 months",
+      "type": "number",
+      "unit": "cm",
+      "how_stated": "increase in the aortic diameter over the last 12 months, in cm: this scan's diameter minus the diameter about 12 months earlier, e.g. 'grown from 4.1 to 5.3 cm in a year' is 1.2 cm; 0 or negative when unchanged or smaller",
+      "prerequisites": [
+        {
+          "ref": "prior_programme_scan",
+          "eq": true
+        }
+      ],
+      "locator": {
+        "source": "S1",
+        "section": "AAA screening: those whose aneurysm has grown by more than 1cm in 12 months are offered a referral to vascular services"
+      },
+      "min_value": -10,
+      "max_value": 20,
+      "scope": "lesion"
+    }
+  ],
+  "logic": [
+    {
+      "step": "band",
+      "id": "diameter_band",
+      "ref": "diameter_cm",
+      "locator": {
+        "source": "S1",
+        "section": "AAA screening: no AAA found (less than 3.0cm); small AAA (3.0cm to 4.4cm); medium AAA (4.5cm to 5.4cm); large AAA (5.5cm and larger)"
+      },
+      "bands": [
+        {
+          "id": "lt3",
+          "label": "less than 3.0 cm",
+          "max": 3.0
+        },
+        {
+          "id": "small",
+          "label": "3.0 to 4.4 cm",
+          "min": 3.0,
+          "max": 4.5
+        },
+        {
+          "id": "medium",
+          "label": "4.5 to 5.4 cm",
+          "min": 4.5,
+          "max": 5.5
+        },
+        {
+          "id": "large",
+          "label": "5.5 cm or larger",
+          "min": 5.5
+        }
+      ]
+    },
+    {
+      "step": "band",
+      "id": "growth_band",
+      "ref": "growth_12m_cm",
+      "locator": {
+        "source": "S1",
+        "section": "3. After screening test (diagnosis): Referral (grown by more than 1cm in 12 months)"
+      },
+      "bands": [
+        {
+          "id": "le1",
+          "label": "1 cm or less in 12 months",
+          "max": 1.0,
+          "max_inclusive": true
+        },
+        {
+          "id": "gt1",
+          "label": "more than 1 cm in 12 months",
+          "min": 1.0,
+          "min_inclusive": false
+        }
+      ]
+    },
+    {
+      "step": "rules",
+      "id": "pathway",
+      "cases": [
+        {
+          "when": {
+            "any": [
+              {
+                "ref": "screening_programme",
+                "eq": false
+              },
+              {
+                "ref": "sex",
+                "eq": "female"
+              },
+              {
+                "ref": "previous_aaa_treatment",
+                "eq": true
+              }
+            ]
+          },
+          "result": "does_not_apply",
+          "locator": {
+            "source": "S1",
+            "section": "AAA screening: scan offered to men in the year they turn 65; not routinely offered to women or anyone already treated for an AAA"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "screening_programme",
+                "eq": true
+              },
+              {
+                "ref": "sex",
+                "eq": "male"
+              },
+              {
+                "ref": "previous_aaa_treatment",
+                "eq": false
+              },
+              {
+                "ref": "diameter_band",
+                "state": "not_assessable"
+              }
+            ]
+          },
+          "result": "non_visualised",
+          "locator": {
+            "source": "S1",
+            "section": "2. Screening test: Carrying out the screening test (aorta could not be visualised; inconclusive scans)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "screening_programme",
+                "eq": true
+              },
+              {
+                "ref": "sex",
+                "eq": "male"
+              },
+              {
+                "ref": "previous_aaa_treatment",
+                "eq": false
+              },
+              {
+                "ref": "diameter_band",
+                "eq": "lt3"
+              },
+              {
+                "ref": "prior_programme_scan",
+                "eq": false
+              }
+            ]
+          },
+          "result": "no_aaa",
+          "locator": {
+            "source": "S1",
+            "section": "2. Screening test: Carrying out the screening test (no aneurysm detected)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "screening_programme",
+                "eq": true
+              },
+              {
+                "ref": "sex",
+                "eq": "male"
+              },
+              {
+                "ref": "previous_aaa_treatment",
+                "eq": false
+              },
+              {
+                "ref": "diameter_band",
+                "eq": "lt3"
+              },
+              {
+                "ref": "prior_programme_scan",
+                "eq": true
+              }
+            ]
+          },
+          "result": "does_not_fit",
+          "locator": {
+            "source": "S1",
+            "section": "4. After screening test (intervention): points at which active inclusion ends are in the AAA screening standard operating procedure"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "screening_programme",
+                "eq": true
+              },
+              {
+                "ref": "sex",
+                "eq": "male"
+              },
+              {
+                "ref": "previous_aaa_treatment",
+                "eq": false
+              },
+              {
+                "ref": "diameter_band",
+                "eq": "small"
+              },
+              {
+                "none": [
+                  {
+                    "ref": "growth_band",
+                    "eq": "gt1"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "small_surveillance",
+          "locator": {
+            "source": "S1",
+            "section": "2. Screening test: Surveillance (yearly surveillance scans for small aneurysms)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "screening_programme",
+                "eq": true
+              },
+              {
+                "ref": "sex",
+                "eq": "male"
+              },
+              {
+                "ref": "previous_aaa_treatment",
+                "eq": false
+              },
+              {
+                "ref": "diameter_band",
+                "eq": "medium"
+              },
+              {
+                "none": [
+                  {
+                    "ref": "growth_band",
+                    "eq": "gt1"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "medium_surveillance",
+          "locator": {
+            "source": "S1",
+            "section": "2. Screening test: Surveillance (scans every 3 months for medium aneurysms)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "screening_programme",
+                "eq": true
+              },
+              {
+                "ref": "sex",
+                "eq": "male"
+              },
+              {
+                "ref": "previous_aaa_treatment",
+                "eq": false
+              },
+              {
+                "ref": "diameter_band",
+                "in": [
+                  "small",
+                  "medium"
+                ]
+              },
+              {
+                "ref": "growth_band",
+                "eq": "gt1"
+              }
+            ]
+          },
+          "result": "growth_refer",
+          "locator": {
+            "source": "S1",
+            "section": "3. After screening test (diagnosis): Referral (aneurysm grown by more than 1cm in 12 months)"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "screening_programme",
+                "eq": true
+              },
+              {
+                "ref": "sex",
+                "eq": "male"
+              },
+              {
+                "ref": "previous_aaa_treatment",
+                "eq": false
+              },
+              {
+                "ref": "diameter_band",
+                "eq": "large"
+              }
+            ]
+          },
+          "result": "large_refer",
+          "locator": {
+            "source": "S1",
+            "section": "3. After screening test (diagnosis): Referral (large aneurysm)"
+          }
+        }
+      ]
+    }
+  ],
+  "result": "pathway",
+  "outcomes": [
+    {
+      "id": "does_not_apply",
+      "headline": "Outside NHS AAA screening programme",
+      "action": "Manage per clinical context",
+      "category": "not_applicable",
+      "classification": "NHS AAA screening programme thresholds apply only to programme scans; the programme does not routinely screen women, men under 65 or anyone already treated for an AAA.",
+      "recommendation": "Manage per the clinical context.",
+      "locator": {
+        "source": "S1",
+        "section": "AAA screening: scan offered to men in the year they turn 65; not routinely offered to women or anyone already treated for an AAA"
+      }
+    },
+    {
+      "id": "non_visualised",
+      "headline": "Aorta not visualised: inconclusive screen",
+      "action": "Offer further programme scan",
+      "category": "workup",
+      "classification": "Aorta not visualised: inconclusive AAA screen.",
+      "recommendation": "A further programme scan will be offered.",
+      "locator": {
+        "source": "S1",
+        "section": "2. Screening test: Carrying out the screening test (aorta could not be visualised; inconclusive scans)"
+      },
+      "caveats": [
+        "The programme sends a further screening invitation after a non-visualised initial screen; it does not say what follows a non-visualised surveillance scan."
+      ]
+    },
+    {
+      "id": "no_aaa",
+      "headline": "No AAA",
+      "action": "No further AAA screening",
+      "category": "none",
+      "normal": true,
+      "classification": "No AAA found: aortic diameter less than 3.0 cm.",
+      "recommendation": "No further AAA screening scans or invitations needed.",
+      "locator": {
+        "source": "S1",
+        "section": "AAA screening: no AAA found (less than 3.0cm); 2. Screening test: no aneurysm detected"
+      }
+    },
+    {
+      "id": "small_surveillance",
+      "headline": "Small AAA",
+      "action": "Yearly surveillance scans",
+      "category": "surveillance",
+      "classification": "Small AAA (3.0 to 4.4 cm).",
+      "recommendation": "Yearly AAA surveillance scans; the programme also offers a vascular nurse specialist appointment for health and lifestyle advice.",
+      "caveats": [
+        "Growth of more than 1 cm in 12 months on surveillance prompts referral to vascular services instead."
+      ],
+      "locator": {
+        "source": "S1",
+        "section": "2. Screening test: Surveillance (yearly surveillance scans for small aneurysms; vascular nurse specialist appointment)"
+      }
+    },
+    {
+      "id": "medium_surveillance",
+      "headline": "Medium AAA",
+      "action": "Surveillance scans every 3 months",
+      "category": "surveillance",
+      "classification": "Medium AAA (4.5 to 5.4 cm).",
+      "recommendation": "AAA surveillance scans every 3 months; the programme also offers a vascular nurse specialist appointment for health and lifestyle advice.",
+      "caveats": [
+        "Growth of more than 1 cm in 12 months on surveillance prompts referral to vascular services instead."
+      ],
+      "locator": {
+        "source": "S1",
+        "section": "2. Screening test: Surveillance (scans every 3 months for medium aneurysms; vascular nurse specialist appointment)"
+      }
+    },
+    {
+      "id": "growth_refer",
+      "headline": "AAA grown >1 cm in 12 months",
+      "action": "Vascular referral within one working day",
+      "category": "refer",
+      "classification": "AAA {diameter_band} that has grown by more than 1 cm in 12 months.",
+      "recommendation": "Offer referral to vascular services within one working day; a vascular specialist appointment should follow within 2 weeks of the scan.",
+      "locator": {
+        "source": "S1",
+        "section": "3. After screening test (diagnosis): Referral"
+      }
+    },
+    {
+      "id": "large_refer",
+      "headline": "Large AAA",
+      "action": "Vascular referral within one working day",
+      "category": "refer",
+      "classification": "Large AAA (5.5 cm or larger).",
+      "recommendation": "Offer referral to vascular services within one working day; a vascular specialist appointment should follow within 2 weeks of the scan.",
+      "caveats": [
+        "Fit men who opt for surgery should be treated within 8 weeks of the scan."
+      ],
+      "locator": {
+        "source": "S1",
+        "section": "3. After screening test (diagnosis): Referral; 4. After screening test (intervention)"
+      }
+    },
+    {
+      "id": "does_not_fit",
+      "headline": "Under 3.0 cm during AAA surveillance",
+      "action": "Manage per screening SOP",
+      "category": "not_applicable",
+      "classification": "Aortic diameter less than 3.0 cm in a man already under AAA surveillance: not defined by the pathway requirements.",
+      "recommendation": "Manage per the AAA screening standard operating procedure.",
+      "caveats": [
+        "Library addition: the pathway requirements do not say what happens when a surveillance scan measures under 3.0 cm; they point to the standard operating procedure for when active inclusion ends."
+      ],
+      "locator": {
+        "source": "S1",
+        "section": "4. After screening test (intervention): points at which active inclusion ends are in the AAA screening standard operating procedure"
+      }
+    }
+  ],
+  "reference": {
+    "summary": [
+      {
+        "id": "sum.1",
+        "text": "The NHS offers men an AAA screening ultrasound in the screening year they turn 65; men over 65 who have not been screened can self-refer.",
+        "locator": {
+          "source": "S1",
+          "section": "AAA screening"
+        }
+      },
+      {
+        "id": "sum.2",
+        "text": "Four screening results by aortic size: no AAA (under 3.0 cm), small (3.0 to 4.4 cm), medium (4.5 to 5.4 cm) and large (5.5 cm or larger).",
+        "locator": {
+          "source": "S1",
+          "section": "AAA screening"
+        }
+      },
+      {
+        "id": "sum.3",
+        "text": "In the programme, small aneurysms get yearly surveillance scans and medium aneurysms scans every 3 months; large aneurysms, and any that grow by more than 1 cm in 12 months, are offered referral to vascular services.",
+        "locator": {
+          "source": "S1",
+          "section": "2. Screening test: Surveillance; 3. After screening test (diagnosis): Referral"
+        }
+      }
+    ],
+    "definitions": [
+      {
+        "id": "def.surveillance",
+        "text": "Surveillance: repeat programme scans of men with aneurysms from 3 cm to 5.4 cm to check whether they are getting bigger.",
+        "locator": {
+          "source": "S1",
+          "section": "2. Screening test: Surveillance"
+        }
+      }
+    ],
+    "tables": [
+      {
+        "id": "tab.results",
+        "title": "NHS AAA screening programme: results and next step",
+        "columns": [
+          "Result",
+          "Aortic size",
+          "Next step"
+        ],
+        "rows": [
+          [
+            "No AAA found",
+            "less than 3.0 cm",
+            "No further scans or invitations"
+          ],
+          [
+            "Small AAA",
+            "3.0 cm to 4.4 cm",
+            "Yearly surveillance scans"
+          ],
+          [
+            "Medium AAA",
+            "4.5 cm to 5.4 cm",
+            "Surveillance scans every 3 months"
+          ],
+          [
+            "Large AAA",
+            "5.5 cm and larger",
+            "Referral to vascular services within one working day"
+          ]
+        ],
+        "locator": {
+          "source": "S1",
+          "section": "AAA screening; 2. Screening test: Surveillance; 3. After screening test (diagnosis): Referral"
+        }
+      }
+    ],
+    "pitfalls": [
+      {
+        "id": "pit.programme_only",
+        "text": "These thresholds and intervals belong to the NHS AAA screening programme (men screened from 65); they do not apply to women, men under 65, treated aneurysms, or AAAs found outside the programme.",
+        "locator": {
+          "source": "S1",
+          "section": "AAA screening"
+        }
+      },
+      {
+        "id": "pit.plane",
+        "text": "The pathway requirements do not state how the diameter is measured; the scan follows the programme's clinical guidance, which this entry does not cover. If two diameters are dictated, this entry uses the larger.",
+        "locator": {
+          "source": "S1",
+          "section": "2. Screening test: perform the ultrasound scan in accordance with the AAA screening clinical guidance"
+        }
+      },
+      {
+        "id": "pit.exit",
+        "text": "When a man leaves active surveillance is set by the AAA screening standard operating procedure, not by this entry.",
+        "locator": {
+          "source": "S1",
+          "section": "4. After screening test (intervention)"
+        }
+      }
+    ]
+  }
+}

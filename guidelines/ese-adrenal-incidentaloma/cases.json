@@ -1,0 +1,370 @@
+{
+  "cases": [
+    {
+      "name": "Known extra-adrenal malignancy: the incidentaloma pathway does not apply",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": true,
+        "size_cm": 2.5,
+        "appearance": "homogeneous",
+        "unenhanced_hu": 30
+      },
+      "outcome": "does_not_apply",
+      "steps": {
+        "pathway": "does_not_apply"
+      }
+    },
+    {
+      "name": "CT done for suspected phaeochromocytoma: not an incidentaloma",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": true,
+        "size_cm": 3.0
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "0.9 cm nodule: below the 1 cm work-up threshold, appearance not needed",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 0.9
+      },
+      "outcome": "below_threshold",
+      "steps": {
+        "size_band": "lt1"
+      }
+    },
+    {
+      "name": "1.0 cm homogeneous 5 HU: the 1 cm edge is worked up; benign",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 1.0,
+        "appearance": "homogeneous",
+        "unenhanced_hu": 5
+      },
+      "outcome": "benign_attenuation",
+      "steps": {
+        "size_band": "1to4",
+        "hu_band": "le10"
+      }
+    },
+    {
+      "name": "6 cm homogeneous -5 HU: benign whatever the size, age not needed",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 6.0,
+        "appearance": "homogeneous",
+        "unenhanced_hu": -5
+      },
+      "outcome": "benign_attenuation",
+      "steps": {
+        "size_band": "ge4",
+        "hu_band": "le10"
+      }
+    },
+    {
+      "name": "2 cm homogeneous 10.4 HU, age 60: over 10 HU, additional imaging",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 2.0,
+        "appearance": "homogeneous",
+        "unenhanced_hu": 10.4,
+        "age": 60
+      },
+      "outcome": "additional_imaging",
+      "steps": {
+        "hu_band": "11to20"
+      }
+    },
+    {
+      "name": "2 cm homogeneous exactly 10 HU: the 10 HU edge is benign",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 2.0,
+        "appearance": "homogeneous",
+        "unenhanced_hu": 10
+      },
+      "outcome": "benign_attenuation",
+      "steps": {
+        "hu_band": "le10"
+      }
+    },
+    {
+      "name": "2 cm homogeneous exactly 20 HU, age 60: the 20 HU edge is in the 11-20 group, additional imaging",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 2.0,
+        "appearance": "homogeneous",
+        "unenhanced_hu": 20,
+        "age": 60
+      },
+      "outcome": "additional_imaging",
+      "steps": {
+        "hu_band": "11to20"
+      }
+    },
+    {
+      "name": "3 cm heterogeneous with unenhanced 5 HU, age 60: heterogeneity wins, indeterminate (MDT)",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 3.0,
+        "appearance": "heterogeneous",
+        "unenhanced_hu": 5,
+        "age": 60
+      },
+      "outcome": "indeterminate_mdt"
+    },
+    {
+      "name": "2 cm homogeneous 10.5 HU, age 60: over 10 HU, additional imaging",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 2.0,
+        "appearance": "homogeneous",
+        "unenhanced_hu": 10.5,
+        "age": 60
+      },
+      "outcome": "additional_imaging",
+      "steps": {
+        "hu_band": "11to20",
+        "age_band": "ge40"
+      }
+    },
+    {
+      "name": "3.9 cm homogeneous 20.4 HU, age 55: over 20 HU and under 4 cm, indeterminate (MDT)",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 3.9,
+        "appearance": "homogeneous",
+        "unenhanced_hu": 20.4,
+        "age": 55
+      },
+      "outcome": "indeterminate_mdt",
+      "steps": {
+        "size_band": "1to4",
+        "hu_band": "gt20"
+      }
+    },
+    {
+      "name": "4.0 cm homogeneous 15 HU, age 55: 4 cm or more with 11-20 HU, indeterminate (MDT)",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 4.0,
+        "appearance": "homogeneous",
+        "unenhanced_hu": 15,
+        "age": 55
+      },
+      "outcome": "indeterminate_mdt",
+      "steps": {
+        "size_band": "ge4",
+        "hu_band": "11to20"
+      }
+    },
+    {
+      "name": "3 cm homogeneous 20.5 HU, age 70: over 20 HU, indeterminate (MDT)",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 3.0,
+        "appearance": "homogeneous",
+        "unenhanced_hu": 20.5,
+        "age": 70
+      },
+      "outcome": "indeterminate_mdt",
+      "steps": {
+        "hu_band": "gt20"
+      }
+    },
+    {
+      "name": "2.5 cm heterogeneous, age 50: indeterminate (MDT), attenuation not needed",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 2.5,
+        "appearance": "heterogeneous",
+        "age": 50
+      },
+      "outcome": "indeterminate_mdt"
+    },
+    {
+      "name": "4.0 cm heterogeneous: relevant risk of malignancy (text edge, 4 cm or more)",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 4.0,
+        "appearance": "heterogeneous"
+      },
+      "outcome": "high_risk",
+      "steps": {
+        "size_band": "ge4"
+      }
+    },
+    {
+      "name": "4.0 cm homogeneous 25 HU: relevant risk of malignancy at the 4 cm edge",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 4.0,
+        "appearance": "homogeneous",
+        "unenhanced_hu": 25
+      },
+      "outcome": "high_risk",
+      "steps": {
+        "hu_band": "gt20"
+      }
+    },
+    {
+      "name": "6 cm homogeneous 35 HU, age 25: high risk wins over the young route",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 6.0,
+        "appearance": "homogeneous",
+        "unenhanced_hu": 35,
+        "age": 25
+      },
+      "outcome": "high_risk",
+      "steps": {
+        "age_band": "lt40"
+      }
+    },
+    {
+      "name": "8 cm myelolipoma with macroscopic fat: clear benign features",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 8.0,
+        "appearance": "clearly_benign"
+      },
+      "outcome": "benign_other"
+    },
+    {
+      "name": "2 cm homogeneous mass on portal venous CT only: unenhanced CT needed",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 2.0,
+        "appearance": "homogeneous",
+        "unenhanced_hu": {
+          "state": "not_assessable"
+        }
+      },
+      "outcome": "needs_unenhanced_ct"
+    },
+    {
+      "name": "Age 39, 2 cm homogeneous 15 HU: urgent assessment, young route",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 2.0,
+        "appearance": "homogeneous",
+        "unenhanced_hu": 15,
+        "age": 39
+      },
+      "outcome": "young_indeterminate",
+      "steps": {
+        "age_band": "lt40"
+      }
+    },
+    {
+      "name": "Age 40, 2 cm homogeneous 15 HU: 40 is not under 40, additional imaging",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 2.0,
+        "appearance": "homogeneous",
+        "unenhanced_hu": 15,
+        "age": 40
+      },
+      "outcome": "additional_imaging",
+      "steps": {
+        "age_band": "ge40"
+      }
+    },
+    {
+      "name": "Age 30, 3 cm heterogeneous: young route",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 3.0,
+        "appearance": "heterogeneous",
+        "age": 30
+      },
+      "outcome": "young_indeterminate"
+    },
+    {
+      "name": "2 cm homogeneous 15 HU, age not stated: age is needed",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 2.0,
+        "appearance": "homogeneous",
+        "unenhanced_hu": 15
+      },
+      "outcome": null,
+      "needed": [
+        "age"
+      ]
+    },
+    {
+      "name": "2 cm homogeneous 5 HU, eligibility not stated: both eligibility questions needed",
+      "origin": "ours",
+      "inputs": {
+        "size_cm": 2.0,
+        "appearance": "homogeneous",
+        "unenhanced_hu": 5
+      },
+      "outcome": null,
+      "needed": [
+        "known_primary_cancer",
+        "not_incidentaloma"
+      ]
+    },
+    {
+      "name": "1.5 cm mass, appearance not stated: appearance and attenuation needed",
+      "origin": "ours",
+      "inputs": {
+        "known_primary_cancer": false,
+        "not_incidentaloma": false,
+        "size_cm": 1.5,
+        "age": 65
+      },
+      "outcome": null,
+      "needed": [
+        "appearance",
+        "unenhanced_hu"
+      ]
+    }
+  ]
+}

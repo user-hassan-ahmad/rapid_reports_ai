@@ -262,6 +262,10 @@ STACK_FALLBACK_DROP = {"Companion Matrix", "Clinical Lane", "Impression Exemplar
                        "Conditional Suppression Rules", "Interpretive Clause Rules", "Region Normals",
                        "Recommendation Scope"}
 
+# The findings block's last line when the radiologist ticked recommendations (scratchpad copilot spec §6). The
+# frontend writes the same label (regionState.RECS_LINE).
+RECS_LINE = "Recommendations (selected by the radiologist):"
+
 
 # Bullets a stack brief drops from the sections it keeps: the impression phrases the confirmed conclusion, so the
 # sheet's rule to carry findings descriptors into it would add what the conclusion does not contain (probe 2026-10-12).
@@ -309,6 +313,12 @@ def stack_fallback(sheet: str, conclusion: str, declined: Sequence[str] = ()) ->
         "normal statement (no 'not dilated', 'normal' or 'no lymphadenopathy' the input does not contain). Every "
         "statement in the input appears, with its meaning unchanged; statements about the same structure may be joined "
         "into one sentence, naming only the structures the input names; nothing is added."])]))
+    secs.append(Section("Scratchpad Recommendations", bullets=[Bullet("Recommendations", [
+        f"- **Recommendations:** when the FINDINGS input has a line starting '{RECS_LINE}', write a section headed "
+        "`RECOMMENDATIONS:` on its own line after the impression (the one exception to the rules that recommendations "
+        "sit in the impression and that no section is added) containing exactly those items, each in report style, "
+        "adding none and dropping none; never put them in the impression or the findings. With no such line, write no "
+        "recommendations section."])]))
     if conclusion.strip():
         secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", [
             "- **Confirmed conclusion (the radiologist's own; write the impression from it in report style, keeping "

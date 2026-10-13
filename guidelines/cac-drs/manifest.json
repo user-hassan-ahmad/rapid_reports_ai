@@ -1,0 +1,16 @@
+{
+  "sources": [
+    {
+      "id": "S1",
+      "role": "primary",
+      "title": "CAC-DRS: Coronary Artery Calcium Data and Reporting System. An expert consensus document of the Society of Cardiovascular Computed Tomography (SCCT) (Hecht HS et al. J Cardiovasc Comput Tomogr 2018;12:185-191)",
+      "issuer": "Society of Cardiovascular Computed Tomography (SCCT)",
+      "edition": "2018",
+      "url": "https://doi.org/10.1016/j.jcct.2018.03.008",
+      "sha256": "12b1c06271bef0f414a77f15587925c1b53eae18bef8704f3b47f54be448d445",
+      "file": "sources/12b1c06271bef0f414a77f15587925c1b53eae18bef8704f3b47f54be448d445.pdf",
+      "text_file": "sources/12b1c06271bef0f414a77f15587925c1b53eae18bef8704f3b47f54be448d445.txt",
+      "retrieved": "2026-10-12"
+    }
+  ]
+}

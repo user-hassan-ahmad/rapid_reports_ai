@@ -1,0 +1,477 @@
+{
+ "Bosniak": {
+  "first_ms": 4965,
+  "fill_ms": 7436,
+  "sources": [
+   "https://epos.myesr.org/poster/esr/ecr2022/C-17408",
+   "https://pmc.ncbi.nlm.nih.gov/articles/PMC6677285",
+   "https://radiogyan.com/bosniak-calculator",
+   "https://utsouthwestern.elsevierpure.com/en/publications/bosniak-classification-of-cystic-renal-masses-version-2019-a-pict",
+   "https://www.cua.org/system/files/Guideline-Files/CUA_guideline_on_the_management_of_cystic_renal_lesions.pdf",
+   "https://radiologyassistant.nl/abdomen/kidney/bozniak-2019",
+   "https://radathand.com/radiology-calculators/body-imaging/bosniak-calculator"
+  ],
+  "branches": [
+   {
+    "name": "Class I and II",
+    "state": "checked",
+    "rule": "If wall ≤2 mm thin AND no septa AND attenuation −9 to 20 HU AND no calcification → Class I. If wall ≤2 mm thin AND (septa few (1–3) OR attenuation ≥70 HU OR attenuation >20 HU non‑enhancing OR attenuation 21–30 HU) AND any calcification allowed → Class II.",
+    "outputs": [
+     {
+      "when": "wall ≤ 2 mm thin && septa none && attenuation −9 to 20 HU && calcification none",
+      "classification": "I",
+      "recommendation": "No follow‑up",
+      "quote": "Simple cyst: Thin smooth wall, homogeneous simple fluid (−9 to 20 HU), no septa, no calcification."
+     },
+     {
+      "when": "wall ≤ 2 mm thin && (septa few (1–3) || attenuation ≥ 70 HU || attenuation > 20 HU non‑enhancing || attenuation 21–30 HU) && calcification any",
+      "classification": "II",
+      "recommendation": "No follow‑up",
+      "quote": "Bosniak II: Thin wall plus any one of: few thin enhancing septa; homogeneous hyperattenuating ≥70 HU; homogeneous non‑enhancing >20 HU; homogeneous 21–30 HU; calcification of any type is allowed."
+     }
+    ]
+   },
+   {
+    "name": "Class IIF",
+    "state": "checked",
+    "rule": "Assign Bosniak IIF when (1) a smooth wall is minimally thickened to 3 mm and shows enhancement, OR (2) one or more septa are minimally thickened to 3 mm and show enhancement, OR (3) there are many (≥ 4) smooth thin (≤ 2 mm) septa that enhance. All other combinations belong to different Bosniak categories.",
+    "outputs": [
+     {
+      "when": "no progression on imaging over five years",
+      "classification": "IIF",
+      "recommendation": "Continue follow‑up for a total of five years",
+      "quote": "For patients with a Bosniak IIF cyst that do not demonstrate progression on imaging, a followup of five years is suggested (CUA guideline)."
+     }
+    ]
+   },
+   {
+    "name": "Class IV",
+    "state": "not_available",
+    "rule": "",
+    "outputs": []
+   },
+   {
+    "name": "Class III",
+    "state": "not_available",
+    "rule": "",
+    "outputs": []
+   }
+  ]
+ },
+ "BTA U classification": {
+  "first_ms": 6361,
+  "fill_ms": 6182,
+  "sources": [
+   "https://pmc.ncbi.nlm.nih.gov/articles/PMC6987506",
+   "https://www.butterfly.org.uk/wp-content/uploads/2016/04/BTA_Guidelines_for_the_Management_of_Thyroid_Cancer.pdf",
+   "https://www.spcir.com/wp-content/uploads/pdf/formacao/British_Thyroid_Association_Guidelines_for_the_Management_of_Thyroid_Cancer.pdf",
+   "https://www.bmus.org/bmus-publications-1/ultrapost/2017-poster-presentations/march-poster-presentation/correlation-between-the-british-thyroid-association-ultrasound-grading-of-thyroid-nodules-and-histopathology-specimens-with-assessment-of-inter-rater",
+   "https://www.endocrine-abstracts.org/ea/0056/ea0056gp244",
+   "https://www.entandaudiologynews.com/features/ent-features/post/a-guided-tour-of-the-new-thyroid-nodule-guidelines",
+   "https://radiopaedia.org/articles/bta-ultrasound-u-classification-of-thyroid-nodules?lang=us",
+   "https://www.sciencedirect.com/science/article/abs/pii/S0009926020300817"
+  ],
+  "branches": [
+   {
+    "name": "U1 and U2 benign",
+    "state": "checked",
+    "rule": "If the U‑grade is U1 or U2, the nodule is considered benign and does not require fine‑needle aspiration cytology (FNAC).",
+    "outputs": [
+     {
+      "when": "U‑grade = U1 or U‑grade = U2",
+      "classification": "benign",
+      "recommendation": "",
+      "quote": "U1 represents normal thyroid parenchyma, U2 a benign nodule."
+     }
+    ]
+   },
+   {
+    "name": "U3 indeterminate",
+    "state": "checked",
+    "rule": "If the nodule is classified as U3 (indeterminate/equivocal), then fine‑needle aspiration cytology (FNAC) is recommended.",
+    "outputs": [
+     {
+      "when": "U‑score = U3",
+      "classification": "U3",
+      "recommendation": "Perform FNAC",
+      "quote": "FNAC is recommended for nodules classified as U3 or above."
+     }
+    ]
+   },
+   {
+    "name": "U4 and U5 suspicious or malignant",
+    "state": "not_available",
+    "rule": "",
+    "outputs": []
+   }
+  ]
+ },
+ "ESE adrenal incidentaloma": {
+  "first_ms": 5109,
+  "fill_ms": 6039,
+  "sources": [
+   "https://www.ese-hormones.org/publications/directory/ese-clinical-practice-guideline-on-the-management-of-adrenal-incidentalomas-in-collaboration-with-the-european-network-for-the-study-of-adrenal-tumors",
+   "https://epos.myesr.org/poster/esr/ecr2026/C-22039/findings%20and%20procedure%20details",
+   "https://www.ese-hormones.org/media/jjwm0ip2/adrenal-incidentaloma-guideline-presentation-ece-2023.pdf",
+   "https://pmc.ncbi.nlm.nih.gov/articles/PMC12204974",
+   "https://pmc.ncbi.nlm.nih.gov/articles/PMC10475962",
+   "https://www.guidelinecentral.com/guideline/3097018",
+   "https://journals.viamedica.pl/endokrynologia_polska/article/view/100278",
+   "https://emedicine.medscape.com/article/116587-guidelines",
+   "https://epos.myesr.org/poster/esr/ecr2026/C-24597/findings%20and%20procedure%20details",
+   "https://www.e-enm.org/journal/view.php?number=2413"
+  ],
+  "branches": [
+   {
+    "name": "Unenhanced CT attenuation 10 HU or less",
+    "state": "checked",
+    "rule": "If the lesion is homogeneous and the unenhanced CT attenuation is ≤10 HU, the mass is considered benign and no further imaging is required.",
+    "outputs": [
+     {
+      "when": "attenuation = ≤10 HU (and lesion is homogeneous)",
+      "classification": "Benign adrenal adenoma (or other benign entity)",
+      "recommendation": "No further imaging required",
+      "quote": "If the non‑contrast CT is consistent with a benign adrenal mass (homogenous appearance and Hounsfield units (HU) ≤ 10) no further imaging is required."
+     }
+    ]
+   },
+   {
+    "name": "Indeterminate lesions above 20 HU or inhomogeneous",
+    "state": "checked",
+    "rule": "If the lesion has an unenhanced HU >20 or is inhomogeneous, immediate additional imaging is preferred over interval imaging when the patient has not undergone adrenalectomy.",
+    "outputs": [
+     {
+      "when": "I1 = \">20 HU\" OR I2 = \"Inhomogeneous\"",
+      "classification": "",
+      "recommendation": "Perform immediate additional imaging (e.g., MRI, FDG‑PET/CT, or contrast‑enhanced CT with washout)",
+      "quote": "the guideline suggests an individualized approach… an immediate imaging work‑up is preferred over an interval imaging follow‑up for indeterminate adrenal tumors that have not undergone surgical treatment"
+     },
+     {
+      "when": "I1 = \">20 HU\" OR I2 = \"Inhomogeneous\" AND patient declines surgery",
+      "classification": "",
+      "recommendation": "Repeat non‑contrast CT or MRI after 6–12 months",
+      "quote": "If a patient chooses not to undergo adrenalectomy, one repeat non‑contrast CT or magnetic resonance imaging after 6 to 12 months is suggested"
+     }
+    ]
+   },
+   {
+    "name": "Attenuation 11 to 20 HU",
+    "state": "checked",
+    "rule": "If attenuation is 11‑20 HU and size is <4 cm, classify as Category 1 (Benign) with no further imaging. If attenuation is 11‑20 HU and size is ≥4 cm, classify as Category 2 (Likely Benign) and schedule a non‑contrast CT follow‑up in 6–12 months.",
+    "outputs": [
+     {
+      "when": "attenuation = 11‑20 HU AND size = <4 cm",
+      "classification": "Category 1 (Benign)",
+      "recommendation": "",
+      "quote": "lesions measuring 11–20 HU with a size <4 cm; these require no further imaging (Category 1 – Benign)."
+     },
+     {
+      "when": "attenuation = 11‑20 HU AND size = ≥4 cm",
+      "classification": "Category 2 (Likely Benign)",
+      "recommendation": "non‑contrast CT follow‑up in 6–12 months",
+      "quote": "lesions measuring 11–20 HU and ≥4 cm ... a single non‑contrast CT follow‑up at 6–12 months is appropriate (Category 2 – Likely Benign)."
+     }
+    ]
+   }
+  ]
+ },
+ "Fleischner": {
+  "first_ms": 9608,
+  "fill_ms": 11374,
+  "sources": [
+   "https://www.professionalradiology.com/media/user/resources/Fleischner%202017.pdf",
+   "https://www.sts.org/follow-lung-nodules",
+   "https://www.aafp.org/afp/2023/0300/pulmonary-nodules",
+   "https://www.ccjm.org/content/93/8/475",
+   "https://snu.elsevierpure.com/en/publications/guidelines-for-management-of-incidental-pulmonary-nodules-detecte",
+   "https://wiki.radiology.wisc.edu/images/b/b9/Flesichner_Guidelines_2017.pdf",
+   "https://radionox.com/fleischner",
+   "https://www.lung.org/lung-health-diseases/warning-signs-of-lung-disease/nodules/understanding-lung-nodules",
+   "https://radiologyassistant.nl/chest/plumonary-nodules/fleischner-2017-guideline",
+   "https://cts-sct.ca/wp-content/uploads/2018/04/Tyan-A_reduced.pdf",
+   "https://radiology-universe.org/2017_Fleischner_Society_Pulmonary_Nodule_Follow-Up_New_Guidelines_Recommendations",
+   "https://pmc.ncbi.nlm.nih.gov/articles/PMC8548191",
+   "https://www.2minutemedicine.com/fleischner-society-guidelines-2017-update-consolidated-follow-up-recommendations-for-incidental-solid-and-subsolid-pulmonary-nodules-classics-series",
+   "https://radiopaedia.org/articles/fleischner-society-pulmonary-nodule-recommendations-1?lang=us"
+  ],
+  "branches": [
+   {
+    "name": "Solid nodule, single",
+    "state": "checked",
+    "rule": "",
+    "outputs": [
+     {
+      "when": "size 6–8 mm && risk = Low",
+      "classification": "",
+      "recommendation": "No routine follow‑up CT at 6–12 months, then consider CT at 18–24 months",
+      "quote": "No routine follow-up CT at 6–12 months, then consider CT at 18–24 months"
+     },
+     {
+      "when": "size 6–8 mm && risk = High",
+      "classification": "",
+      "recommendation": "CT at 6–12 months, then CT at 18–24 months",
+      "quote": "CT at 6–12 months, then CT at 18–24 months"
+     }
+    ]
+   },
+   {
+    "name": "Solid nodules, multiple",
+    "state": "checked",
+    "rule": "Use the most suspicious nodule’s size and the patient’s risk category to select the management column (low‑risk or high‑risk) from the multiple solid nodule table.",
+    "outputs": [
+     {
+      "when": "risk = Low risk AND size = 6–8 mm",
+      "classification": "",
+      "recommendation": "CT at 3–6 months, then consider CT at 18–24 months",
+      "quote": "Low risk → CT at 3–6 months, then consider CT at 18–24 months"
+     },
+     {
+      "when": "risk = High risk AND size = <6 mm",
+      "classification": "",
+      "recommendation": "Optional CT at 12 months",
+      "quote": "High risk → Optional CT at 12 months"
+     },
+     {
+      "when": "risk = High risk AND size = 6–8 mm",
+      "classification": "",
+      "recommendation": "CT at 3–6 months, then at 18–24 months",
+      "quote": "High risk → CT at 3–6 months, then at 18–24 months"
+     },
+     {
+      "when": "risk = High risk AND size = >8 mm",
+      "classification": "",
+      "recommendation": "CT at 3–6 months, then at 18–24 months",
+      "quote": "High risk → CT at 3–6 months, then at 18–24 months"
+     }
+    ]
+   },
+   {
+    "name": "Subsolid nodule, part-solid",
+    "state": "checked",
+    "rule": "If size < 6 mm → no routine follow‑up. If size ≥ 6 mm and solid component < 6 mm → obtain CT at 3–6 months to confirm persistence, then repeat annually for a minimum of 5 years. If size ≥ 6 mm and solid component ≥ 6 mm → CT at 3–6 months and if suspicious consider PET/CT, biopsy or resection.",
+    "outputs": [
+     {
+      "when": "size < 6 mm",
+      "classification": "",
+      "recommendation": "No routine follow‑up",
+      "quote": "For solitary part‑solid nodules smaller than 6 mm, no routine follow‑up is recommended (1C)."
+     },
+     {
+      "when": "size ≥ 6 mm and solid_comp < 6 mm",
+      "classification": "",
+      "recommendation": "CT at 3–6 months, then annually for 5 years",
+      "quote": "For solitary part‑solid nodules 6 mm or larger with a solid component less than 6 mm in diameter, follow up is recommended at 3‑6 months and then annually for minimum of 5 years."
+     },
+     {
+      "when": "size ≥ 6 mm and ...",
+      "classification": "",
+      "recommendation": "CT at 3–6 months; if suspicious, consider PET/CT, biopsy or resection",
+      "quote": "For solitary part‑solid nodules with a solid component 6 mm or larger, a short‑term follow‑up CT scan at 3‑6 months should be considered. For nodules with ... ... PET ... resection (1B)."
+     }
+    ]
+   },
+   {
+    "name": "Subsolid nodule, pure ground-glass",
+    "state": "checked",
+    "rule": "If size is <6 mm, no follow‑up CT is required. If size is ≥6 mm, obtain an initial follow‑up CT within 6–12 months to confirm persistence; if the nodule remains persistent and unchanged, perform surveillance CT every 2 years for up to 5 years.",
+    "outputs": [
+     {
+      "when": "size = <6 mm",
+      "classification": "",
+      "recommendation": "no follow‑up surveillance CT",
+      "quote": "Solitary, smaller pure GGNs (<6 mm) require no follow‑up surveillance CT."
+     },
+     {
+      "when": "size = ≥6 mm",
+      "classification": "",
+      "recommendation": "initial follow‑up CT within 6–12 months to determine persistence, then surveillance CT every 2 years until 5 years if persistent and unchanged",
+      "quote": "Solitary, larger pure GGNs (≥6 mm) require initial follow‑up surveillance CT within 6–12 months to determine persistence, followed by surveillance CT every 2 years until 5 years if they remain persistent and unchanged."
+     }
+    ]
+   },
+   {
+    "name": "Subsolid nodules, multiple",
+    "state": "checked",
+    "rule": "If size is <6 mm, obtain CT at 3–6 months; if unchanged, low‑risk patients may stop, while high‑risk patients consider additional CT at 2 years and 4 years. If size is ≥6 mm, obtain CT at 3–6 months and then manage according to the most suspicious nodule among the multiple lesions, without a fixed interval specified.",
+    "outputs": [
+     {
+      "when": "size = '<6 mm' and risk = 'High‑risk'",
+      "classification": "",
+      "recommendation": "CT in 3 to 6 months; if unchanged, consider CT at 2 and 4 years",
+      "quote": "CT in 3 to 6 months. If unchanged, consider CT at 2 and 4 years."
+     },
+     {
+      "when": "size = '≥6 mm'",
+      "classification": "",
+      "recommendation": "CT in 3 to 6 months, then management based on the most suspicious nodule(s)",
+      "quote": "CT in 3 to 6 months. Then management based on most suspicious nodule(s)."
+     }
+    ]
+   }
+  ]
+ },
+ "Kellgren-Lawrence": {
+  "first_ms": 7394,
+  "fill_ms": 0,
+  "sources": [
+   "https://pmc.ncbi.nlm.nih.gov/articles/PMC1006995",
+   "https://www.scirp.org/reference/referencespapers?referenceid=3726901",
+   "https://radiopaedia.org/articles/kellgren-and-lawrence-system-for-classification-of-osteoarthritis?lang=us",
+   "https://www.jeffreypengmd.com/post/kellgren-lawrence-grading-system-understanding-x-ray-stages-of-knee-arthritis"
+  ],
+  "branches": [
+   {
+    "name": "Grades 0 to 4",
+    "state": "checked",
+    "rule": "",
+    "outputs": [
+     {
+      "when": "I1='definite absence' AND I2='none' AND I3='none' AND I4='none'",
+      "classification": "grade 0 (none)",
+      "recommendation": "",
+      "quote": "grade 0 (none): definite absence of x‑ray changes of osteoarthritis"
+     }
+    ]
+   }
+  ]
+ },
+ "LI-RADS CT/MRI": {
+  "first_ms": 11340,
+  "fill_ms": 7055,
+  "sources": [
+   "https://pmc.ncbi.nlm.nih.gov/articles/PMC9476877",
+   "https://pmc.ncbi.nlm.nih.gov/articles/PMC6368120",
+   "https://www.satmed-health.com/explore-the-2026-evolution-of-li-rads-and-hcc-diagnostic-paradigms-discover-advancements-in-multi-modal-imaging-ai-detection-and-precision-contrast-delivery",
+   "https://oncotoolkit.com/calculator/lirads-hcc",
+   "https://radiopaedia.org/articles/ctmri-li-rads?lang=us",
+   "https://www.frontiersin.org/journals/oncology/articles/10.3389/fonc.2023.1186290/full",
+   "https://www.acr.org/Clinical-Resources/Clinical-Tools-and-Reference/Reporting-and-Data-Systems/LI-RADS",
+   "https://cco.amegroups.org/article/view/44048/html",
+   "https://www.e-jlc.org/journal/view.php?number=561"
+  ],
+  "branches": [
+   {
+    "name": "LR-3 intermediate",
+    "state": "checked",
+    "rule": "Assign LR‑3 when any of the following conditions are met: (1) size < 20 mm, APHE = No APHE, and major_cnt = 0 or 1; (2) size ≥ 20 mm, APHE = No APHE, and major_cnt = 0; or (3) size < 20 mm, APHE = Non‑rim APHE, and major_cnt = 0. All thresholds and size bands are taken exactly as stated in the source.",
+    "outputs": [
+     {
+      "when": "size < 20 mm AND aphe = No APHE AND major_cnt = 0 or 1",
+      "classification": "LR‑3",
+      "recommendation": "",
+      "quote": "When the nodule diameter is < 20 mm, no arterial phase enhancement (APHE), and no or only one major features (enhancing “capsule”, nonperipheral “washout”, threshold growth);"
+     },
+     {
+      "when": "size ≥ 20 mm AND aphe = No APHE AND major_cnt = 0",
+      "classification": "LR‑3",
+      "recommendation": "",
+      "quote": "When the nodule diameter is ≥ 20 mm, no APHE, and no other major features;"
+     },
+     {
+      "when": "size < 20 mm AND aphe = Non‑rim APHE AND major_cnt = 0",
+      "classification": "LR‑3",
+      "recommendation": "",
+      "quote": "When the nodule diameter is < 20 mm, nonrim APHE, and no other major features."
+     }
+    ]
+   },
+   {
+    "name": "LR-5 definitely HCC",
+    "state": "not_available",
+    "rule": "",
+    "outputs": []
+   },
+   {
+    "name": "LR-4 probably HCC",
+    "state": "checked",
+    "rule": "Assign LR‑4 (probably HCC) when there is no arterial phase hyperenhancement, the lesion is <20 mm with two or more of washout, capsule, and threshold growth, or the lesion is ≥20 mm (size criterion alone suffices).",
+    "outputs": [
+     {
+      "when": "aphe = No AND size = <20 mm AND (washout = Yes + capsule = Yes) OR (washout = Yes + threshold_growth = Yes) OR (capsule = Yes + threshold_growth = Yes)",
+      "classification": "LR‑4",
+      "recommendation": "",
+      "quote": "LR‑4 (probably HCC) – no arterial phase hyperenhancement; <20 mm with two or more of non‑peripheral washout, enhancing capsule, threshold growth; ≥20 mm."
+     }
+    ]
+   },
+   {
+    "name": "LR-M",
+    "state": "checked",
+    "rule": "If any one of the listed LR‑M imaging features (rim APHE, peripheral washout, delayed central enhancement, targetoid restriction, targetoid TP/HBP appearance, infiltrative appearance, marked diffusion restriction, or necrosis/severe ischemia) is present, the observation is categorized as LR‑M.",
+    "outputs": [
+     {
+      "when": "Any feature f1‑f8 is Present",
+      "classification": "LR-M",
+      "recommendation": "",
+      "quote": "LR‑M is defined as observations that are probably or definitely malignant but not specific for HCC…any hepatic observation showing only one targetoid imaging feature can be categorized into LR‑M."
+     }
+    ]
+   }
+  ]
+ },
+ "O-RADS US": {
+  "first_ms": 5724,
+  "fill_ms": 6176,
+  "sources": [
+   "https://pmc.ncbi.nlm.nih.gov/articles/PMC11392681",
+   "https://x-ray.ca/wp-content/uploads/2026/02/O-RADS.pdf",
+   "https://radathand.com/radiology-calculators/women-imaging/orads-calculator",
+   "https://pubmed.ncbi.nlm.nih.gov/37698472",
+   "https://pmc.ncbi.nlm.nih.gov/articles/PMC11950876",
+   "https://radiopaedia.org/articles/ovarian-adnexal-reporting-and-data-system-ultrasound-o-rads-us?lang=us",
+   "https://www.acr.org/Clinical-Resources/Clinical-Tools-and-Reference/Reporting-and-Data-Systems/O-RADS"
+  ],
+  "branches": [
+   {
+    "name": "O-RADS 2 almost certainly benign",
+    "state": "not_available",
+    "rule": "",
+    "outputs": []
+   },
+   {
+    "name": "O-RADS 3 low risk",
+    "state": "checked",
+    "rule": "Assign O‑RADS 3 (low risk) when any of the following conditions are met: (1) typical benign ovarian lesion AND size ≥ 10 cm; (2) unilocular or bilocular cyst AND size > 10 cm (simple or non‑simple); (3) multilocular cyst AND size < 10 cm AND inner wall smooth AND color score 1‑3; (4) solid lesion AND smooth outer contour AND (color score 1 OR (color score 2‑3 AND shadowing present)); (5) unilocular irregular cyst of any size.",
+    "outputs": [
+     {
+      "when": "Any of the criteria listed in the rule are satisfied",
+      "classification": "O‑RADS 3",
+      "recommendation": "6‑month follow‑up ultrasound if not excised, or referral to a gynecologist with ultrasound specialist or MRI",
+      "quote": "Low risk of malignancy (1% to <10%) - if not surgically excised then 6-month follow-up ultrasound can be performed, or if solid referral gynecologist with ultrasound specialist or MRI."
+     }
+    ]
+   },
+   {
+    "name": "O-RADS 5 high risk",
+    "state": "not_available",
+    "rule": "",
+    "outputs": []
+   },
+   {
+    "name": "O-RADS 4 intermediate risk",
+    "state": "checked",
+    "rule": "If the lesion is O‑RADS 4A and CA125 < 35 U/ml, classify as benign; if the lesion is O‑RADS 4A and CA125 ≥ 35 U/ml, or if the lesion is O‑RADS 4B (any CA125), or if the lesion is O‑RADS 5, classify as malignant.",
+    "outputs": [
+     {
+      "when": "lesion_category = 4A AND ca125 = <35 U/ml",
+      "classification": "benign",
+      "recommendation": "",
+      "quote": "Lesions identified as category 1, 2, 3, or 4A with a CA125 level below 35 U/ml were classified as benign."
+     },
+     {
+      "when": "lesion_category = 4A AND ca125 = ≥35 U/ml",
+      "classification": "malignant",
+      "recommendation": "",
+      "quote": "Lesions identified as category 4A with a CA125 level more than or equal to 35 U/ml ... were classified as malignant."
+     },
+     {
+      "when": "lesion_category = 4B",
+      "classification": "malignant",
+      "recommendation": "",
+      "quote": "... lesions with a category of 4B ... were classified as malignant."
+     }
+    ]
+   }
+  ]
+ }
+}
