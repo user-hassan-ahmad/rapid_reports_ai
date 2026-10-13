@@ -2709,7 +2709,12 @@ async def skill_sheet_refine_endpoint(
         if v.status == "refused":
             return {"success": True, "skill_sheet": request.skill_sheet, "response": v.message,
                     "behavioral_claim": "", "applied": False}
-        out = {"success": True, **result, "skill_sheet": v.sheet, "applied": v.status == "saved"}
+        if v.status == "unchanged":
+            # nothing changed: the model's reply stands only when it asks or clarifies, never a claimed change
+            reply = (result.get("response") or "").strip()
+            return {"success": True, "skill_sheet": v.sheet, "applied": False, "behavioral_claim": "",
+                    "response": reply if "?" in reply else "No change was needed."}
+        out = {"success": True, **result, "skill_sheet": v.sheet, "applied": True}
         if v.message:  # ADJUSTED: saved, with a small repair
             out["notice"] = v.message
             out["response"] = f"{result.get('response', '').rstrip()} {v.message}".strip()

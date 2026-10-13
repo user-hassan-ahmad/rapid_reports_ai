@@ -73,6 +73,18 @@ def test_refine_question_turn_is_unchanged_and_applied_false(client, auth_header
     assert r["response"] == "It already does. Want it changed?"
 
 
+def test_refine_unchanged_non_question_reply_says_no_change_was_needed(client, auth_headers, monkeypatch,
+                                                                       refine_returns):
+    refine_returns({"skill_sheet": GOOD, "response": "Reports will now always state it.", "behavioral_claim": "c"})
+
+    async def vet(sheet, origin, previous=""):
+        return S.VetOutcome("unchanged", previous)
+
+    monkeypatch.setattr(S, "vet_sheet", vet)
+    r = client.post(URL, headers=auth_headers, json={"skill_sheet": GOOD, "message": "m"}).json()
+    assert r["applied"] is False and r["response"] == "No change was needed." and r["behavioral_claim"] == ""
+
+
 def test_refine_model_failure_is_a_friendly_message(client, auth_headers, refine_returns):
     refine_returns(exc=ValueError("Could not parse JSON: {'skill_sheet' ... traceback"))
     r = client.post(URL, headers=auth_headers, json={"skill_sheet": GOOD, "message": "m"}).json()
@@ -97,4 +109,5 @@ async def test_refine_prompt_carries_the_grammar(monkeypatch):
     s = seen["system"]
     assert P.GRAMMAR[:60] in s and P.SHEET_LAYOUT[:60] in s and "report behaviour" in s
     assert "INTERPRET" in s and "behavioral_claim" in s  # three-phase behaviour and the claim are kept
+    assert "does not clearly cover" in s and "unchanged" in s  # fit check: ask, don't edit
     assert "orig ask" in seen["user"] and "bad claim" in seen["user"]

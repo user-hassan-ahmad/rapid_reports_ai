@@ -3670,6 +3670,7 @@ Generate a JSON object with exactly two keys:
 Your job has three phases:
 
 1. INTERPRET the behavioural outcome — what should future reports do differently?
+   First check fit: if the instruction names anatomy, a structure or a finding that this examination does not clearly cover (judge from the scan context and what the report's paragraphs describe), do not edit. Return the skill sheet unchanged, leave behavioral_claim empty, and in "response" ask, in report terms, whether it applies to this scan (for example: "These reports don't currently describe <the named item>. Should they include it?"). This is asking when unclear, not refusing: an instruction about something the examination does cover goes ahead.
 
 2. SCAN the entire skill sheet for every rule affecting this outcome:
    - Rules that already produce the desired behaviour (keep as-is)
