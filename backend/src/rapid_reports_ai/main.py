@@ -776,6 +776,13 @@ class SkillSheetSaveRequest(BaseModel):
     rules_step: Dict[str, Any] = {}        # evidence: the decision run's record (cards, dropped quotes, habits)
 
 
+class SkillSheetApplyDecisionsRequest(BaseModel):
+    skill_sheet: str
+    decisions: List[Dict[str, Any]] = []   # the ledger so far
+    changes: List[Dict[str, Any]] = []     # card answers [{kind, key, choice, source?}]
+    source: str = "creation"               # creation | first_use_review (chat goes through /refine)
+
+
 # Quick Report Proto — ephemeral skill sheet pipeline
 class QuickReportProtoAnalyseRequest(BaseModel):
     scan_type: str
@@ -2785,6 +2792,27 @@ async def skill_sheet_refine_endpoint(
     except Exception as e:
         logger.exception("skill sheet refine failed: %s", e)
         return {"success": False, "error": "Couldn't make that change just now. Please try again."}
+
+
+@app.post("/api/templates/skill-sheet/apply-decisions")
+async def skill_sheet_apply_decisions_endpoint(
+    request: SkillSheetApplyDecisionsRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Record card answers on the decision ledger and apply it to the sheet in hand, by code (no model call). The
+    creator keeps the result until Create; the refine panel PUTs it, where the save function applies it again."""
+    from . import template_ledger_apply as tla
+    if request.source not in ("creation", "first_use_review"):
+        return {"success": False, "error": "Unknown source."}
+    ledger, errors = td.ledger_from_changes(request.changes, base=td.clean_ledger(request.decisions),
+                                            source=request.source)
+    if errors:
+        return {"success": False, "error": f"Couldn't apply that choice ({errors[0]})."}
+    res = tla.apply_ledger(request.skill_sheet, ledger)
+    if res.failed:
+        logger.error("apply-decisions: entries not applied (a bug): %s", [e.get("key") for e in res.failed])
+    return {"success": True, "skill_sheet": res.sheet, "decisions": ledger, "applied": res.applied,
+            "unmatched": res.unmatched, "stale_quotes": res.stale_quotes}
 
 
 @app.post("/api/templates/skill-sheet/test-generate")

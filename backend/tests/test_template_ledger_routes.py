@@ -150,3 +150,29 @@ def test_refine_that_drops_a_whole_decided_list_keeps_it_and_returns_the_card(cl
         "skill_sheet": before, "message": "remove the values", "decisions": led}).json()
     assert r["success"] and LINE in r["skill_sheet"] and r["decisions"] == led
     assert [c["id"] for c in r["cards"]] == ["value:width"] and r["response"].endswith(S.LEDGER_KEPT)
+
+
+APPLY = "/api/templates/skill-sheet/apply-decisions"
+
+
+def test_apply_decisions_records_answers_and_returns_the_applied_sheet(client, auth_headers):
+    r = client.post(APPLY, headers=auth_headers, json={
+        "skill_sheet": GOOD, "decisions": _width(), "source": "first_use_review",
+        "changes": [{"kind": "normal", "key": "Knee :: menisci", "choice": {"text": "The menisci are normal."}}]}).json()
+    assert r["success"], r
+    assert LINE in r["skill_sheet"] and 'NORMAL [menisci] "The menisci are normal."' in r["skill_sheet"]
+    assert [(e["key"], e["source"]) for e in r["decisions"]] == [("Width", "creation"),
+                                                                 ("Knee :: menisci", "first_use_review")]
+    assert r["unmatched"] == [] and r["stale_quotes"] == []
+
+
+def test_apply_decisions_refuses_a_change_code_cannot_apply(client, auth_headers):
+    r = client.post(APPLY, headers=auth_headers, json={
+        "skill_sheet": GOOD, "changes": [{"kind": "normal", "key": "Knee :: menisci",
+                                          "choice": {"text": "Measures {size}."}}]}).json()
+    assert r["success"] is False and "Couldn't apply" in r["error"]
+
+
+def test_apply_decisions_refuses_an_unknown_source(client, auth_headers):
+    r = client.post(APPLY, headers=auth_headers, json={"skill_sheet": GOOD, "changes": [], "source": "chat"}).json()
+    assert r["success"] is False
