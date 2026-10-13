@@ -80,6 +80,9 @@ export const CONTEXT_DEBOUNCE_MS = 600;
 /** After a failed /match, rounds make no call for this long (Retry bypasses it): a down endpoint costs one
  *  timeout per window, not one per grouping round. */
 export const MATCH_BACKOFF_MS = 15_000;
+/** Background previews after /match (checkpoint 4: the verdict upfront), at most this many in flight. The server
+ *  prewarmed every card's settlement, so each is cheap; a click still opens at once (it jumps the queue). */
+export const MAX_PREFETCH = 4;
 const MAX_COLUMNS = 3;
 
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
@@ -155,6 +158,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		openSeq.clear();
 		queued = false;
 		matchSeq++;
+		prefetchQueue = [];
 		if (examTimer) clearTimeout(examTimer);
 		examTimer = null;
 		if (ctxTimer) clearTimeout(ctxTimer);
@@ -228,6 +232,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 			const refs = new Set(all().map(cardRef));
 			views = Object.fromEntries(Object.entries(views).filter(([r]) => refs.has(r)));
 			for (const c of cards) if (c.finding_id === 'exam' && !c.needs_modality && !examText.has(cardRef(c)) && !views[cardRef(c)]?.loading) void fetchCard(c);
+			prefetchPacks();
 		} catch (e) {
 			if (seq === matchSeq && failed(e)) {
 				matchFailed = true;
@@ -248,12 +253,45 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	}
 
 	// ── /open ──
+	// ── background previews (checkpoint 4): every pack card and sibling column gets its verdict without opening ──
+	let prefetchQueue: (() => Promise<unknown>)[] = [];
+	const wanted = new Set<string>(); // refs the radiologist opened: a background preview's failure then shows
+	let prefetching = 0;
+	function pump() {
+		while (prefetching < MAX_PREFETCH && prefetchQueue.length && live()) {
+			const job = prefetchQueue.shift()!;
+			prefetching++;
+			void job().finally(() => {
+				prefetching--;
+				pump();
+			});
+		}
+	}
+	/** Queue a quiet /open for every pack card (finding or exam) and sibling column with no preview yet; never a
+	 *  needs-modality, reference, TNM or "other" card. Cards still expand only on click. */
+	function prefetchPacks() {
+		for (const c of cards) {
+			if (c.needs_modality) continue;
+			const kind = kindOf(c);
+			if (kind !== 'finding' && kind !== 'exam') continue;
+			const ref = cardRef(c);
+			const v = views[ref] ?? closedView;
+			if (c.siblings.length) {
+				for (const key of columnsToFetch(c, v, false)) prefetchQueue.push(() => fetchColumn(c, key, true));
+			} else if (kind === 'finding' && !v.result && !v.loading && !v.error) prefetchQueue.push(() => fetchCard(c, true));
+		}
+		pump();
+	}
+
 	async function request(
 		seqKey: string,
 		body: OpenBody,
 		set: (p: Partial<ColumnView>) => void,
-		route: 'open' | 'preview' = 'open'
+		route: 'open' | 'preview' = 'open',
+		background = false
 	): Promise<OpenResult | null> {
+		// a background preview never replaces one already there or under way (a click got there first)
+		if (background && openAc.has(seqKey)) return null;
 		openAc.get(seqKey)?.abort();
 		const seq = ++openCounter;
 		openSeq.set(seqKey, seq);
@@ -272,7 +310,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 			return res;
 		} catch (e) {
 			if (openSeq.get(seqKey) === seq && failed(e)) {
-				set({ loading: false, error: reason(e) });
+				set(background && !wanted.has(seqKey) ? { loading: false, error: null } : { loading: false, error: reason(e) }); // fail open: a background preview that fails just leaves the card to its click
 				fail(body.card.key);
 			}
 			return null;
@@ -282,11 +320,12 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		}
 	}
 
-	async function fetchCard(card: Card) {
+	async function fetchCard(card: Card, background = false) {
 		if (!live() || card.needs_modality) return;
 		const ref = cardRef(card);
+		if (background && views[ref]?.result) return;
 		const body = openBody(card);
-		const res = await request(ref, body, (p) => patch(ref, p));
+		const res = await request(ref, body, (p) => patch(ref, p), 'open', background);
 		if (res && card.finding_id === 'exam') {
 			examText.set(ref, body.finding);
 			if (quiet(card, res.preview) && !log.quiet.includes(card.key)) log.quiet.push(card.key);
@@ -459,10 +498,11 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	}
 
 	const columnKeys = (card: Card) => [card.key, ...card.siblings].slice(0, MAX_COLUMNS);
-	function fetchColumn(card: Card, key: string) {
+	function fetchColumn(card: Card, key: string, background = false) {
 		const ref = cardRef(card);
+		if (background && views[ref]?.columns?.[key]?.result) return Promise.resolve(null);
 		const colCard = key === card.key ? card : { ...card, key, name: key };
-		return request(`${ref}#${key}`, openBody(colCard, views[ref]?.columns?.[key]?.edits ?? {}), (p) => patchCol(ref, key, p));
+		return request(`${ref}#${key}`, openBody(colCard, views[ref]?.columns?.[key]?.edits ?? {}), (p) => patchCol(ref, key, p), 'open', background);
 	}
 
 	/** The sibling columns still worth a request: not loading and no result. An exam card's primary column is its
@@ -481,6 +521,8 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		const card = find(ref);
 		if (!card || card.needs_modality) return;
 		patch(ref, { open: true });
+		wanted.add(ref);
+		for (const key of columnKeys(card)) wanted.add(`${ref}#${key}`);
 		const v = views[ref];
 		if (card.siblings.length) for (const key of columnsToFetch(card, v, false)) void fetchColumn(card, key);
 		else if (!v.loading && !v.result && !v.error) void fetchCard(card);

@@ -17,7 +17,7 @@
 				<span class="cp-vchip cp-vchip--{c.kind}" title={c.title}>
 					{#if c.kind === 'prefilled'}<span class="cp-vdot" aria-hidden="true"></span>{/if}
 					{#if c.kind === 'exam'}<Icon name="exam" size={11} />{/if}
-					{c.text}{#if c.kind === 'exam'}<span class="cp-sr-only">{' (set by the exam)'}</span>{/if}
+					{#if c.full}<span aria-hidden="true">{c.text}</span><span class="cp-sr-only">{c.full}</span>{:else}{c.text}{/if}{#if c.kind === 'exam'}<span class="cp-sr-only">{' (set by the exam)'}</span>{/if}
 				</span>
 			{/each}
 			{#if chips.more}<span class="cp-vchip cp-vchip--more">+{chips.more}</span>{/if}

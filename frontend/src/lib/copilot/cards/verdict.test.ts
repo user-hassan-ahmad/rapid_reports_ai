@@ -76,6 +76,10 @@ describe('headChips and decidingQuestion', () => {
 		expect(capped).toEqual(['2.2 cm', '8 HU']); // the pre-filled 8 HU is kept before later read values
 		const flaggedNo = result(card(), preview({ proposal: null, draft: [draft({ input: 'a', label: 'A', state: 'read', value: '1' }), draft({ input: 'pre', label: 'Mass effect', state: 'prefilled', value: 'No' })] }));
 		expect(headChips(flaggedNo, 1).chips.map((c) => c.text)).toEqual(['Mass effect: No']);
+		const longLabel = result(card(), preview({ proposal: null, draft: [draft({ input: 'pre', label: 'History of extra-adrenal malignancy', state: 'prefilled', value: 'No' })] }));
+		const chip = headChips(longLabel).chips[0];
+		expect(chip.text).toBe('History of extra-adrenal…: No'); // short form in the chip
+		expect(chip.full).toBe('History of extra-adrenal malignancy: No'); // the full text for screen readers
 	});
 
 	it('decidingQuestion: the deciding input label, else the first needed open question; empty with no branches', () => {

@@ -164,7 +164,8 @@ export function verdictOf(p: Preview | null | undefined, o: VerdictOverride = {}
 			category: 'not_applicable',
 			pill: 'Does not apply',
 			excluded: true,
-			headline: o.headline ?? x?.headline ?? (x ? headlineOf(x.classification) : 'Does not apply'),
+			// the specific reason first ("Maximum diameter 38 mm"), never the generic list of exclusion criteria
+			headline: o.headline ?? (p.exclusion_reason ? `${p.exclusion_reason.label} ${p.exclusion_reason.value}` : null) ?? x?.headline ?? (x ? headlineOf(x.classification) : 'Does not apply'),
 			action: '',
 			recommendation: x?.recommendation ?? '',
 			classification: x?.classification ?? '',
@@ -224,7 +225,7 @@ export function sourcesOf(cs: Citation[]): { short: string; more: number; full: 
 }
 
 export type ChipKind = 'read' | 'prefilled' | 'assumed' | 'exam' | 'set';
-export interface HeadChip { input: string; text: string; title: string; kind: ChipKind }
+export interface HeadChip { input: string; text: string; title: string; kind: ChipKind; /** the full text when `text` is shortened */ full?: string }
 /** The head's key values as compact chips (controller ruling 2026-10-13): assumed values are represented ONLY by
  *  the "⚠ N assumed" chip, never as chips of their own; pre-filled values come first (flagged, and never capped
  *  away; shown even as "Label: No" / "Label: Not stated"), then read and set values; the chips keep the card's
@@ -242,11 +243,16 @@ export function headChips(r: OpenResult, max = 4): { chips: HeadChip[]; more: nu
 		const flagged = k === 'prefilled';
 		const empty = !val || /^(no|not stated)$/i.test(val);
 		if (empty && !(flagged && val)) continue;
-		const text = /^yes$/i.test(val) ? v.label : empty ? `${v.label}: ${val}` : val;
-		all.push({ input: v.input, text: text.length > 28 ? `${text.slice(0, 27)}…` : text, title: `${v.label}: ${val}`, kind: k, flagged, i: all.length });
+		// a long label shortens to its first three words so it does not crowd the value chips; the full text stays in
+		// the chip's accessible text and tooltip
+		const short = (l: string) => (l.split(/\s+/).length > 3 ? `${l.split(/\s+/).slice(0, 3).join(' ')}…` : l);
+		const full = /^yes$/i.test(val) ? v.label : empty ? `${v.label}: ${val}` : val;
+		let text = /^yes$/i.test(val) ? short(v.label) : empty ? `${short(v.label)}: ${val}` : val;
+		if (!empty && text.length > 28) text = `${text.slice(0, 27)}…`; // a long value; a flagged label is already short
+		all.push({ input: v.input, text, full: text !== full ? full : undefined, title: `${v.label}: ${val}`, kind: k, flagged, i: all.length });
 	}
 	const pick = [...all.filter((c) => c.flagged), ...all.filter((c) => !c.flagged)].slice(0, max).sort((a, b) => a.i - b.i);
-	return { chips: pick.map(({ input, text, title, kind }) => ({ input, text, title, kind })), more: all.length - pick.length };
+	return { chips: pick.map(({ input, text, title, kind, full }) => ({ input, text, title, kind, ...(full ? { full } : {}) })), more: all.length - pick.length };
 }
 
 /** The category's text token: >= 4.5:1 on its wash in both themes (the -line tokens are for strips and icons). */

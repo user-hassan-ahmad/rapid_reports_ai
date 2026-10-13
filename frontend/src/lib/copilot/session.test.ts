@@ -250,7 +250,9 @@ describe('session: opening cards', () => {
 		s.round([unit(1, A)], false, 'LUNGS: a 6 mm solid nodule.');
 		api.calls.match[0].resolve(matched([exam, nodule]));
 		await flush();
-		expect(api.calls.open).toHaveLength(1); // the finding card waits for a click (Q3)
+		// both previewed in the background (checkpoint 4: the verdict upfront); neither is opened
+		expect(api.calls.open.map((c) => c.body.card.key)).toEqual([exam.key, nodule.key]);
+		expect(state().views[cardRef(nodule)]).toMatchObject({ open: false, loading: true });
 		const body = api.calls.open[0].body;
 		expect(body.card).toEqual(exam);
 		expect(body.finding).toBe('LUNGS: a 6 mm solid nodule.');
@@ -390,9 +392,10 @@ describe('session: opening cards', () => {
 		s.round([unit(1, A)], false, A);
 		api.calls.match[0].resolve(matched([examSib]));
 		await flush();
-		expect(api.calls.open).toHaveLength(1); // auto-open of the primary
-		s.open(cardRef(examSib)); // still loading: not asked again
+		// the primary auto-opens and the sibling column is previewed in the background
 		expect(api.calls.open.map((c) => c.body.card.key)).toEqual(['cad-rads-2', 'other-cta-pack']);
+		s.open(cardRef(examSib)); // both still loading: nothing asked again
+		expect(api.calls.open).toHaveLength(2);
 	});
 
 	it('a sibling card retry re-fetches only the failed columns', async () => {
@@ -677,5 +680,49 @@ describe('session: edits, shared patient answers and Calculate (Slice B2)', () =
 		api.calls.preview[3].reject(new CopilotError('timeout'));
 		await flush();
 		expect(state().views[cardRef(adrenal)].edits).toEqual({ hu: '12 HU' });
+	});
+
+});
+
+describe('session: background previews (checkpoint 4)', () => {
+	const pack = (key: string, extra: Partial<Card> = {}) => card({ key, finding_id: 'u1', finding: A, ...extra });
+
+	it('every pack card is previewed after /match, at most MAX_PREFETCH at a time; read-only cards never', async () => {
+		const packs = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'].map((k) => pack(k));
+		const ro = [pack('tnm-lung'), pack('bta-x', { needs_modality: 'US' }), pack('fazekas', { reference: true })];
+		await matchA([...packs, ...ro]);
+		expect(api.calls.open.map((c) => c.body.card.key)).toEqual(['p1', 'p2', 'p3', 'p4']);
+		api.calls.open[0].resolve(result(packs[0], preview()));
+		await flush();
+		expect(api.calls.open.map((c) => c.body.card.key)).toEqual(['p1', 'p2', 'p3', 'p4', 'p5']);
+		for (const c of api.calls.open.slice(1)) c.resolve(result(packs[1], preview()));
+		await flush();
+		api.calls.open.at(-1)!.resolve(result(packs[5], preview()));
+		await flush();
+		expect(api.calls.open.map((c) => c.body.card.key)).toEqual(['p1', 'p2', 'p3', 'p4', 'p5', 'p6']);
+		expect(state().views[cardRef(packs[0])]).toMatchObject({ open: false, loading: false });
+		expect(state().views[cardRef(packs[0])].result).not.toBeNull();
+	});
+
+	it('a background preview that fails is silent (the card opens on click); one the radiologist opened shows its error', async () => {
+		const a = pack('p1');
+		const b = pack('p2');
+		await matchA([a, b]);
+		api.calls.open[0].reject(new CopilotError('timeout'));
+		await flush();
+		expect(state().views[cardRef(a)]).toMatchObject({ loading: false, error: null, result: null });
+		s.open(cardRef(a)); // nothing there: asks again, in the foreground
+		expect(api.calls.open).toHaveLength(3);
+		s.open(cardRef(b)); // already in flight: not asked again, but its failure now shows
+		api.calls.open[1].reject(new CopilotError('timeout'));
+		await flush();
+		expect(state().views[cardRef(b)].error).toBe('timeout');
+	});
+
+	it('sibling columns are previewed too', async () => {
+		const sib = pack('fleischner-pulmonary-nodule', { siblings: ['bts-pulmonary-nodule'] });
+		await matchA([sib]);
+		expect(api.calls.open.map((c) => c.body.card.key)).toEqual(['fleischner-pulmonary-nodule', 'bts-pulmonary-nodule']);
+		expect(state().views[cardRef(sib)]?.open ?? false).toBe(false);
 	});
 });

@@ -287,6 +287,31 @@ export const sections: Section[] = [
 		title: 'Pack, does not apply',
 		...one(nodule, fl, view(result(fl, preview({ state: 'does_not_apply', proposal: null, exclusion: outcome({ classification: 'Not for patients under 35', recommendation: '' }) })), { open: true }))
 	},
+	{
+		id: 'does-not-apply-reason',
+		title: 'Does not apply: the specific reason first (planned exclusion_reason)',
+		...one(
+			nodule,
+			fl,
+			view(
+				result(
+					fl,
+					preview({
+						state: 'does_not_apply',
+						proposal: null,
+						exclusion: outcome({ classification: 'Fleischner does not apply to patients under 35, with known cancer, or immunosuppressed, or to screening.', recommendation: '' }),
+						exclusion_reason: { input: 'age', label: 'Age', value: '28' },
+						draft: [
+							draft({ input: 'age', label: 'Age', scope: 'patient', fact: 'age', state: 'read', value: '28', quote: '28 year old' }),
+							draft({ input: 'size', label: 'Mean diameter', state: 'read', value: '7 mm', quote: '7 mm' }),
+							draft({ input: 'subsolid', label: 'Solid component', state: 'not_applicable' })
+						]
+					})
+				),
+				{ open: true }
+			)
+		)
+	},
 	{ id: 'degraded', title: 'Pack, degraded', ...one(nodule, fl, view(result(fl, preview({ degraded: true })), { open: true })) },
 	{ id: 'collapsed', title: 'Pack, collapsed with preview', ...one(nodule, fl, view(flApplies)) },
 	{

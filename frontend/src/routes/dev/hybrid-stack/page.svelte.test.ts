@@ -59,6 +59,8 @@ describe('/dev/hybrid-stack Copilot', () => {
 		await expect.element(strip).toBeInTheDocument();
 		await strip.click();
 		await expect.element(page.getByRole('dialog', { name: 'Copilot' }).getByText('Fleischner 2017')).toBeInTheDocument();
-		expect(cp.open).not.toHaveBeenCalled(); // finding cards open on click only
+		// the card is previewed in the background for its verdict (checkpoint 4) but not opened
+		expect(cp.open).toHaveBeenCalled();
+		expect(document.querySelector('.gl-body')).toBeNull();
 	});
 });

@@ -471,6 +471,49 @@ describe('CopilotCards', () => {
 		expect(document.querySelector('[data-testid="cp-exclusion"]')).toBeNull();
 	});
 
+	it('checkpoint 4: N/A rows hidden behind "+N not applicable"; an action the recommendation repeats is said once', async () => {
+		const c = card({ finding: finding.text });
+		const pv = preview({
+			proposal: null,
+			draft_outcome: outcome({ classification: 'Benign: x', recommendation: 'No further imaging required.', action: 'No further imaging', category: 'none' }),
+			draft: [draft({ input: 'size', label: 'Size', state: 'read', value: '2.2 cm' }), draft({ input: 'side', label: 'Solid component', state: 'not_applicable' })]
+		});
+		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
+		const verdict = page.getByRole('region', { name: 'Verdict' }).element();
+		await expect.element(page.getByText('No further imaging required.')).toBeInTheDocument();
+		expect(verdict.querySelector('.cp-action')!.textContent!.trim()).toBe('No further imaging required.');
+		expect(verdict.querySelector('.cp-recommendation')).toBeNull();
+		expect(document.body.textContent).not.toContain('Solid component');
+		await page.getByRole('button', { name: '+1 not applicable' }).click();
+		await expect.element(page.getByText('Solid component')).toBeInTheDocument();
+	});
+
+	it('checkpoint 4: a card that does not apply leads with the specific reason; the generic text and the values wait behind toggles', async () => {
+		const c = card({ finding: finding.text });
+		const pv = preview({
+			state: 'does_not_apply',
+			proposal: null,
+			exclusion: outcome({ classification: 'Not for patients under 35, with known cancer, or immunosuppressed.', recommendation: '' }),
+			exclusion_reason: { input: 'age', label: 'Age', value: '28' },
+			draft: [draft({ input: 'age', label: 'Age', state: 'read', value: '28' })]
+		});
+		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
+		const verdict = page.getByRole('region', { name: 'Verdict' }).element();
+		await expect.element(page.getByText('Age 28').first()).toBeInTheDocument();
+		expect(verdict.querySelector('.cp-headline')!.textContent).toBe('Age 28');
+		const cls = verdict.querySelector('.cp-classification') as HTMLElement;
+		expect(cls.hidden).toBe(true);
+		// the dimmed card carries aria-disabled (GlCard), which Playwright's actionability treats as disabling the
+		// buttons inside, so these toggles are clicked through the DOM
+		(page.getByRole('button', { name: 'full reason' }).element() as HTMLElement).click();
+		await expect.poll(() => cls.hidden).toBe(false);
+		const valuesToggle = page.getByRole('button', { name: /^values/ });
+		const list = document.getElementById(valuesToggle.element().getAttribute('aria-controls')!)!;
+		expect(list.hidden).toBe(true);
+		(valuesToggle.element() as HTMLElement).click();
+		await expect.poll(() => list.hidden).toBe(false);
+	});
+
 	it('PackCard takes an assumptions list directly (B1 feeds Task 3)', async () => {
 		const { default: PackCard } = await import('./PackCard.svelte');
 		const c = card({ finding: finding.text });

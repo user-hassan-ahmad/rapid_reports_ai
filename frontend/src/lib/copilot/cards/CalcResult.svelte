@@ -22,6 +22,7 @@
 	const icons: Record<string, IconName> = { none: 'check', surveillance: 'clock', workup: 'search', refer: 'alert', info: 'info', not_applicable: 'info', neutral: 'dot' };
 	const action = $derived(out ? (out.action ?? actionOf(out.recommendation)) : '');
 	const norm = (t: string) => t.trim().toLowerCase().replace(/[.;:,]+$/, '');
+	const recSaysAction = $derived(!!out && !!action && !!out.recommendation && norm(out.recommendation).startsWith(norm(action)));
 	const used = $derived((c?.values ?? []).filter((v) => v.value && v.state !== 'not_applicable'));
 	const stateWord = (v: DraftValue) =>
 		assumed.has(v.input) || v.state === 'assumed' ? 'assumed' : ({ read: 'read', prefilled: 'pre-filled', answered: 'answered', edited: 'changed' } as Record<string, string>)[v.state] ?? '';
@@ -39,10 +40,11 @@
 		{#if out}
 			<p class="cp-p cp-calc-headline">{out.headline ?? headlineOf(out.classification)}</p>
 			{#if action}
-				<p class="cp-p cp-calc-action"><Icon name={icons[out.category ?? (out.normal ? 'none' : 'neutral')]} size={13} /> {action}</p>
+				<p class="cp-p cp-calc-action"><Icon name={icons[out.category ?? (out.normal ? 'none' : 'neutral')]} size={13} /> {recSaysAction ? out.recommendation : action}</p>
 			{/if}
-			<!-- the full recommendation always, beside the short action (which can drop later steps) -->
-			{#if out.recommendation && norm(out.recommendation) !== norm(action)}<p class="cp-p cp-calc-rec">{out.recommendation}</p>{/if}
+			<!-- the full recommendation always, beside the short action (which can drop later steps); said once when it
+			     starts with the action's words -->
+			{#if out.recommendation && !recSaysAction && norm(out.recommendation) !== norm(action)}<p class="cp-p cp-calc-rec">{out.recommendation}</p>{/if}
 			<p class="cp-p cp-calc-cls">{out.classification}</p>
 			{#if out.caveats.length}<p class="cp-p cp-muted cp-calc-meta">{out.caveats.length} {out.caveats.length === 1 ? 'note' : 'notes'} on the card above</p>{/if}
 		{:else if c.exclusion}

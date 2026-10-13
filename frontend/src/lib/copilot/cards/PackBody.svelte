@@ -61,6 +61,13 @@
 	const decided = $derived(!!v && v.category !== 'open' && !v.tentative);
 	const longText = $derived(!!v && v.classification.length > 110);
 	const normalise = (t: string) => t.trim().toLowerCase().replace(/[.;:,]+$/, '');
+	// "No further imaging" / "No further imaging required.": the recommendation already says the action
+	const actionInRec = $derived(!!v?.action && !!v.recommendation && normalise(v.recommendation).startsWith(normalise(v.action)));
+	// N/A rows are hidden by default (checkpoint 4)
+	const shownRows = $derived(rows.filter((r) => r.state !== 'not_applicable'));
+	const naRows = $derived(rows.filter((r) => r.state === 'not_applicable'));
+	let showNa = $state(false);
+	let showValues = $state(false);
 	let showMore = $state(false);
 	let showNotes = $state(false);
 	let showSource = $state(false);
@@ -85,14 +92,21 @@
 				{#if v.excluded}
 					<p class="cp-p cp-action"><Icon name="slash" size={14} /> Does not apply</p>
 				{:else if v.action}
-					<p class="cp-p cp-action"><Icon name={icon[v.category]} size={14} /> {v.action}</p>
+					<!-- when the recommendation starts with the action's words, it is the action line itself (said once) -->
+					<p class="cp-p cp-action"><Icon name={icon[v.category]} size={14} /> {actionInRec ? v.recommendation : v.action}</p>
 				{/if}
 				<!-- the short action never stands alone: some drop later steps (a follow-up interval, a second scan), so the
 				     full recommendation is always there -->
-				{#if v.recommendation && !v.excluded && normalise(v.recommendation) !== normalise(v.action)}
+				{#if v.recommendation && !v.excluded && !actionInRec && normalise(v.recommendation) !== normalise(v.action)}
 					<p class="cp-p cp-recommendation">{v.recommendation}</p>
 				{/if}
-				{#if v.classification && v.classification !== v.headline}
+				{#if v.excluded && v.classification && v.classification !== v.headline}
+					<!-- does not apply: the specific reason leads; the generic exclusion text waits behind "full reason" -->
+					<button type="button" class="cp-link cp-more" aria-expanded={showMore} aria-controls="{uid}-cls" onclick={() => (showMore = !showMore)}
+						>{showMore ? 'hide full reason' : 'full reason'}</button
+					>
+					<p class="cp-p cp-classification" id="{uid}-cls" hidden={!showMore}>{v.classification}</p>
+				{:else if v.classification && v.classification !== v.headline}
 					<p
 						class="cp-p cp-classification"
 						class:cp-clamp={longText && !showMore && !compact}
@@ -175,11 +189,28 @@
 		{#if editError}<p class="cp-p cp-edit-error" role="alert">{editError}</p>{/if}
 		{#if rows.length}
 			<section class="cp-values" aria-label="Values">
-				<div class="cp-label">Values</div>
-				<ul class="cp-val-list">
-					{#each rows as r (r.input)}
+				{#if v?.excluded}
+					<!-- a card that does not apply keeps its values out of the way -->
+					<button type="button" class="cp-link cp-aux-toggle" aria-expanded={showValues} aria-controls="{uid}-values" onclick={() => (showValues = !showValues)}
+						>values <span class="cp-caret"><Icon name="chev" size={11} /></span></button
+					>
+				{:else}
+					<div class="cp-label">Values</div>
+				{/if}
+				<ul class="cp-val-list" id="{uid}-values" hidden={!!v?.excluded && !showValues}>
+					{#each shownRows as r (r.input)}
 						<ValueRow row={r} {uid} {onEdit} />
 					{/each}
+					{#if naRows.length}
+						{#if showNa}
+							{#each naRows as r (r.input)}<ValueRow row={r} {uid} {onEdit} />{/each}
+						{/if}
+						<li class="cp-na-toggle">
+							<button type="button" class="cp-link cp-aux-toggle" aria-expanded={showNa} onclick={() => (showNa = !showNa)}
+								>{showNa ? 'hide not applicable' : `+${naRows.length} not applicable`}</button
+							>
+						</li>
+					{/if}
 				</ul>
 			</section>
 		{/if}
@@ -329,6 +360,11 @@
 	}
 	.cp-action :global(.cp-icon) {
 		color: var(--cp-cat);
+	}
+	.cp-na-toggle {
+		list-style: none;
+		margin-top: 2px;
+		font-size: 0.75rem;
 	}
 	.cp-recommendation {
 		font-size: 0.875rem;

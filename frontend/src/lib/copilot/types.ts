@@ -83,6 +83,7 @@ export interface Preview {
 	// Planned backend fields (no outcome yet): the likeliest outcome and, when one question genuinely decides it, its
 	// branches. Names per the controller (2026-10-13); not in contract.json until the backend has them.
 	most_likely?: OutcomeBrief | null;
+	exclusion_reason?: { input: string; label: string; value: string } | null; // planned: the value that excludes
 	deciding?: DecidingBranch[];
 	deciding_input?: string; // the input whose answer decides (its label is the "Depends on" question)
 	draft?: DraftValue[]; // Task 3
