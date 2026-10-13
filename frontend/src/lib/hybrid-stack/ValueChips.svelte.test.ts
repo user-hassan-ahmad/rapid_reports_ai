@@ -134,4 +134,12 @@ describe('ValueChips', () => {
 		await page.getByRole('button', { name: '45 ml/m2' }).click();
 		expect(onPick).toHaveBeenLastCalledWith('RVEF', '45 ml/m2', 'RVEDVi 90 and RVESVi 45 ml/m2.');
 	});
+
+	it('a picked chip shows its number and the clause it came from', async () => {
+		const values: ValueChip[] = [{ item: 'RVEF', state: 'picked', value: '50%', quote: 'RVEF 50%.', picked_clause: 'RVEF 50%.' }];
+		render(ValueChips, { ...props(), values });
+		const chip = page.getByRole('button', { name: /^RVEF 50%/ });
+		await expect.element(chip).toHaveAttribute('data-state', 'picked');
+		await expect.element(chip).toHaveAttribute('title', 'Picked from the dictation: "RVEF 50%."');
+	});
 });

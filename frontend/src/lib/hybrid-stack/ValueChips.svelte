@@ -56,6 +56,7 @@
 	const openCount = $derived(values.filter((v) => v.state === 'open').length);
 	const tone: Record<ValueChip['state'], string> = {
 		filled: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200',
+		picked: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200',
 		entered: 'border-sky-400/30 bg-sky-500/10 text-sky-200',
 		na: 'border-white/10 bg-white/[0.03] text-gray-500',
 		open: 'border-amber-400/50 bg-amber-500/10 text-amber-200',
@@ -113,12 +114,14 @@
 	}
 	const title = (v: ValueChip) =>
 		v.state === 'filled' && v.quote ? `From the dictation: "${v.quote}"`
+		: v.state === 'picked' ? `Picked from the dictation: "${v.picked_clause ?? v.quote}"`
 		: v.state === 'check' && v.value ? 'Two or more numbers in the dictation give this value: pick one'
 		: v.state === 'check' ? 'Stated in the dictation, but no number gives its value: check it'
 		: v.state === 'filling' ? 'Reading the dictation…'
 		: v.state === 'open' ? 'Click to type the value' : 'Click to change';
 	const said: Record<ValueChip['state'], string> = {
 		filled: 'from dictation',
+		picked: 'picked from dictation',
 		entered: 'typed',
 		na: 'not applicable',
 		open: 'needs a value',

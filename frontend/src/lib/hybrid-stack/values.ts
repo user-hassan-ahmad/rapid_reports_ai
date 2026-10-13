@@ -6,7 +6,7 @@ import type { ValueChip, ValueFill } from './types';
 
 const key = (s: string) => s.trim().toLowerCase();
 const opened = (item: string): ValueChip => ({ item, state: 'open', value: null, quote: null });
-const own = (c: ValueChip) => c.state === 'entered' || c.state === 'na';
+const own = (c: ValueChip) => c.state === 'entered' || c.state === 'picked' || c.state === 'na';
 
 export function initialChips(items: string[]): ValueChip[] {
 	return items.map(opened);
@@ -43,10 +43,10 @@ export function enterValue(chips: ValueChip[], item: string, text: string): Valu
 	return chips.map((c) => (c.item !== item ? c : t ? { item, state: 'entered', value: t, quote: null } : opened(item)));
 }
 
-/** A number picked from a dictation clause (a conflict chip's numbers or an open chip's picks): entered, with its
- *  clause recorded. */
+/** A number tapped from a dictation clause (a conflict chip's numbers or an open chip's picks): picked, with its clause.
+ *  The dictation already carries it, so it is never stated as the radiologist's answer (typed values only). */
 export function pickValue(chips: ValueChip[], item: string, value: string, clause: string): ValueChip[] {
-	return chips.map((c) => (c.item === item ? { item, state: 'entered', value, quote: null, picked_clause: clause } : c));
+	return chips.map((c) => (c.item === item ? { item, state: 'picked', value, quote: clause, picked_clause: clause } : c));
 }
 
 export function markNa(chips: ValueChip[], item: string): ValueChip[] {
@@ -69,8 +69,9 @@ export const blockingValues = (chips: ValueChip[]): string[] => chips.filter((c)
 export const openCount = (chips: ValueChip[]): number => chips.filter((c) => c.state === 'open').length;
 export const isFilling = (chips: ValueChip[]): boolean => chips.some((c) => c.state === 'filling');
 export const naItems = (chips: ValueChip[]): string[] => chips.filter((c) => c.state === 'na').map((c) => c.item);
-/** Values filled from the dictation: sent with Generate so the post-generation backstop checks the report states each. */
-export const filledItems = (chips: ValueChip[]): string[] => chips.filter((c) => c.state === 'filled').map((c) => c.item);
+/** Values from the dictation (filled or picked): sent with Generate so the post-generation backstop checks the report
+ *  states each. */
+export const filledItems = (chips: ValueChip[]): string[] => chips.filter((c) => c.state === 'filled' || c.state === 'picked').map((c) => c.item);
 /** The value cluster's fields in the Generate body (absent: no cluster this session, the server keeps today's path). */
 export const valuesBody = (chips: ValueChip[] | undefined): { stack_values_na?: string[]; stack_values_filled?: string[] } =>
 	chips ? { stack_values_na: naItems(chips), stack_values_filled: filledItems(chips) } : {};

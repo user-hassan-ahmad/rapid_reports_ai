@@ -59,7 +59,9 @@ export interface ItemsResult { items: StackItem[]; capped: StackItem[]; contradi
 export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean; required_values?: string[] }
 /** The value cluster (requirements spec 2026-10-12 part 1): a template's required value and how it was resolved.
  *  check: stated, but no single sentence named (needs a look); filling: a fill is running. */
-export type ValueState = 'filled' | 'entered' | 'na' | 'open' | 'check' | 'filling';
+/** picked: a number the radiologist tapped from the dictation (resolved, backstop-checked, never stated as an answer);
+ *  entered: a value they typed (stated in FINDINGS). */
+export type ValueState = 'filled' | 'picked' | 'entered' | 'na' | 'open' | 'check' | 'filling';
 /** A number-bearing clause of the dictation offered on an open chip: one number (value) or several to choose from. */
 export interface ClausePick { clause: string; value: string | null; numbers: string[] }
 export interface ValueChip {
@@ -70,7 +72,7 @@ export interface ValueChip {
 	kept?: boolean;
 	/** Open: the dictation's number clauses to pick from. Check with a value: the numbers mapped to it, best first. */
 	picks?: ClausePick[];
-	/** Entered by picking a number from this clause (for a future alias store). */
+	/** Picked: the clause the number was tapped from (for a future alias store). */
 	picked_clause?: string;
 }
 /** The server's smart fill: filled from the dictation (value null: stated without one number) or open. */

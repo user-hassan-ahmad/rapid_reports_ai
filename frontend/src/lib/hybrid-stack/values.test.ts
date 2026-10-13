@@ -130,10 +130,15 @@ describe('value cluster chips', () => {
 		expect(failFill(c)).toEqual([open('LVEF'), open('RVEF')]); // a failed fill drops picks that may no longer match the text
 	});
 
-	it('a picked number is entered and records its clause', () => {
-		const c = pickValue(initialChips(['RVEF']), 'RVEF', '50%', 'RVEF 50%.');
-		expect(c[0]).toEqual({ item: 'RVEF', state: 'entered', value: '50%', quote: null, picked_clause: 'RVEF 50%.' });
-		expect(valueStatements(c)).toEqual(['RVEF 50%']);
+	it('a number tapped from the dictation is picked: resolves the chip, goes to the backstop, is never stated', () => {
+		const c = pickValue(initialChips(['RVEF', 'LVEF']), 'RVEF', '50%', 'RVEF 50%.');
+		expect(c[0]).toEqual({ item: 'RVEF', state: 'picked', value: '50%', quote: 'RVEF 50%.', picked_clause: 'RVEF 50%.' });
+		expect(chipLabel(c[0])).toBe('RVEF 50%');
+		expect(blockingValues(c)).toEqual(['LVEF']);
+		expect(filledItems(c)).toEqual(['RVEF']);           // the backstop checks the report states it
+		expect(valueStatements(c)).toEqual([]);              // only typed values are "Answered by the radiologist"
+		expect(mergeFill(startFill(c), [])[0]).toEqual(c[0]); // the radiologist's pick stands through a fill
+		expect(failFill(c)[0]).toEqual(c[0]);
 	});
 
 	it('openCount counts open chips only ("stated?" still needs a look)', () => {
