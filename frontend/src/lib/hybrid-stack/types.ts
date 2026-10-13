@@ -21,6 +21,8 @@ export interface StackSchema {
 	family: string | null;
 	key: string;
 	provisional: boolean;
+	quiet?: string[];
+	protocol?: { id: string; display_name: string; scan_type_line: string; phases: string[]; laterality: string | null } | null;
 }
 export interface GroupResult {
 	units: StackUnit[];
@@ -70,7 +72,7 @@ export interface ItemsResult {
 	/** the template trigger call failed: no template rows this review (what is on screen stays) */
 	trigger_error?: string | null;
 }
-export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean; required_values?: string[] }
+export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean; level_groups?: Record<string, string[]>; required_values?: string[] }
 /** The value cluster (requirements spec 2026-10-12 part 1): a template's required value and how it was resolved.
  *  check: needs a look (stated with no number, or two or more numbers); filling: a fill is running.
  *  picked: a number the radiologist tapped from the dictation (resolved, backstop-checked, never stated as an answer);
@@ -97,8 +99,14 @@ export interface ValuesResult { values: ValueFill[]; ms: number; error: string |
 export type Dropped = Record<string, { sentence: string; reason: string }[]>;
 export interface AssumedResult {
 	assumed: Record<string, string[]>;
-	/** Region -> normals not assumed, with why: covered | hedged | contradicted | removed | rule. */
+	/** Region -> assumed normals the dictation may conflict with (also in `assumed`): shown highlighted (review R1). */
+	flagged?: Record<string, string[]>;
+	/** Region -> normals not assumed, with why: covered | contradicted | removed | rule. */
 	dropped?: Dropped;
+	/** The session's template context-rule decision (condition -> P(met)); kept and sent back (review R5). */
+	rules?: Record<string, number> | null;
+	/** The sheet has context rules: Confirm re-asks every one with the dictation. */
+	confirm_recheck?: boolean;
 	ms: number;
 	error: string | null;
 }
@@ -122,6 +130,7 @@ export interface GateRecord {
 	review_failed?: boolean; // the end-of-dictation review failed: no finding checks were offered
 	offered?: Record<string, string[]>; // region normals the sheet offered, before the assumed-normal check
 	jev_dropped?: Dropped | null; // what the check dropped, with why (null: the check failed)
+	flagged?: Record<string, string[]>; // assumed normals confirmed with the "may conflict" marker (R1)
 	assumed_check_failed?: boolean; // the assumed-normal check failed: nothing was dropped by it
 	// Dictation checks seen this session and how each ended: answered, skipped, edited away, or still open (advisory).
 	checks?: { kind: string; quote: string; other: string | null; answered_by: 'as_dictated' | 'skip' | 'replaced' | 'edited' | 'open' }[];

@@ -53,14 +53,30 @@ export function unitFor(text: string, units: StackUnit[]): number | null {
 	return null;
 }
 
+/** A side conflict always holds Confirm until answered or dismissed (2026-10-13), whatever a reply says: a wrong side
+ *  survives into the signed report. */
+const SIDE_BLOCKS = (f: IntegrityFlag) => f.kind === 'laterality_conflict';
+
 export function toChecks(text: string, flags: IntegrityFlag[], units: StackUnit[]): CheckFlag[] {
 	return flags.map((f) => {
 		const tier = f.severity === 'high' ? 1 : 2;
 		const quote = tier === 1 ? f.excerpt.trim() : text.slice(f.start, f.end).trim() || f.excerpt.trim();
 		const other = f.related_start != null && f.related_end != null ? text.slice(f.related_start, f.related_end).trim() || null : null;
-		return { key: `${f.kind}|${norm(quote)}`, kind: f.kind, blocking: f.blocking ?? tier === 1, tier, message: f.message,
+		return { key: `${f.kind}|${norm(quote)}`, kind: f.kind, blocking: SIDE_BLOCKS(f) || (f.blocking ?? tier === 1), tier, message: f.message,
 			quote, other, suggestion: (f.suggestion ?? '').trim(), unitId: unitFor(quote, units) };
 	});
+}
+
+/** What the check's answer is keyed on (round 1): the text and the scan type it was checked against, so a new pick
+ *  (a side added to the scan type line) makes the check behind. */
+export const checkKey = (scan: string, text: string) => `${scan}\u0003${text}`;
+
+/** What the settle backstop runs for the text on screen (round 1): nothing while the model check is in flight on it
+ *  (a tier-1 run must not supersede it, or its flags are lost and Confirm opens early), the model check again when the
+ *  scan type changed since it last ran, else tier 1 only. */
+export function backstopRun(o: { text: string; scan: string; semanticFor: string | null; semanticScan: string | null }): 'none' | 'tier1' | 'semantic' {
+	if (o.semanticFor !== null && o.semanticFor === o.text) return 'none';
+	return o.semanticScan !== null && o.semanticScan !== o.scan ? 'semantic' : 'tier1';
 }
 
 /** The hover card's title. */

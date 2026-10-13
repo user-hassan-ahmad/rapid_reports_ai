@@ -15,6 +15,8 @@ import type { DecisionRecord, OutcomeEvent } from '$lib/dictation-lab/decisionFi
 import { pillState } from '$lib/dictation-lab/coverage';
 import { effectiveConfig } from '$lib/dictation-lab/package';
 import { fetchSchema, postReportId } from '$lib/hybrid-stack/api';
+import ProtocolPicker from '$lib/hybrid-stack/ProtocolPicker.svelte';
+import { backToLibrary, caseDirty, needsFreeText, pickBody, pickKey, type ProtocolPick } from '$lib/hybrid-stack/protocol';
 import { hybridStackOn } from '$lib/hybrid-stack/flag';
 import { copilotOn } from '$lib/copilot/flag';
 import type { GateRecord, StackSchema } from '$lib/hybrid-stack/types';
@@ -33,6 +35,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	let sectionsError = '';
 	let sectionsGeneratedFromScanType = '';
 	let sectionsGeneratedFromHistory = '';
+	let sectionsGeneratedFromPick: ProtocolPick | null = null; // the protocol the workspace was built from (null: free text)
 	let regenerating = false;
 
 	// ── Quick-report ephemeral-skill-sheet pipeline ──
@@ -78,8 +81,8 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 
 	$: workspaceOpen = prePoppedSections.length > 0 || sectionsLoading;
 	$: sectionsDirty = prePoppedSections.length > 0
-		&& (scanType.trim() !== sectionsGeneratedFromScanType
-			|| clinicalHistory.trim() !== sectionsGeneratedFromHistory);
+		&& caseDirty({ scanType, history: clinicalHistory, pick: stackProtocol },
+			{ scanType: sectionsGeneratedFromScanType, history: sectionsGeneratedFromHistory, pick: sectionsGeneratedFromPick });
 	// Show full form when: no workspace yet, user clicked edit, or there's a dirty state needing action
 	$: caseDetailsExpanded = !workspaceOpen || caseDetailsManuallyExpanded || sectionsDirty;
 	let scratchpadRef: {
@@ -138,8 +141,21 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	$: dictationConfig = effectiveConfig(labConfig, undefined, (apiKeyStatus as { dictation_v2?: boolean })?.dictation_v2 === true);
 	// The hybrid dictation stack (rr_hybrid_stack): the grouped view and pills from its grouping, where the
 	// server allows it and the dictation package is on. /sections and the Jev pills keep running in shadow.
-	$: stackStatus = apiKeyStatus as { hybrid_stack?: boolean; hybrid_stack_shadow_rate?: number; stack_copilot?: boolean };
+	$: stackStatus = apiKeyStatus as { hybrid_stack?: boolean; hybrid_stack_shadow_rate?: number; protocol_library?: boolean; stack_copilot?: boolean };
 	$: hybridStack = hybridStackOn(undefined, stackStatus?.hybrid_stack === true && dictationConfig !== null);
+	// Protocol library (spec 2026-10-13 §3): pick a curated protocol instead of typing the scan type.
+	$: protocolLibrary = hybridStack && stackStatus?.protocol_library === true;
+	let stackProtocol: ProtocolPick | null = null;
+	let freeText = false;   // "Not listed": today's textarea and reconciler path
+	let pickerKey = 0;      // bumped by a reset so the picker starts empty
+	let pickerQuery = '';   // free text carried back into the picker's search box by "Pick from the library"
+	// A scan type with no pick behind it (restored draft, opened report, revert, a flag that arrives late) shows in
+	// the textarea, so the scan type is never hidden behind an empty picker.
+	$: if (protocolLibrary && !freeText && needsFreeText(scanType, stackProtocol)) freeText = true;
+	let schemaSeq = 0;      // a stale /schema reply never overwrites the schema or the scan type
+	// The pick the current schema was resolved for: the scratchpad's slim sheet follows it, so the schema and the
+	// sheet always come from the same protocol (never a library schema with a free-text sheet).
+	let stackSchemaPick: ProtocolPick | null = null;
 	// The guideline Copilot (rr_stack_copilot): opt-in per browser, and only on top of the stack.
 	$: stackCopilot = copilotOn(undefined, stackStatus?.stack_copilot === true, hybridStack);
 	let stackSchema: StackSchema | null = null;
@@ -153,23 +169,39 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	let stackSheetId: string | null = null;
 	$: stackGated = hybridStack && !!stackSchema;
 	let stackPills: string[] = [];
-	let stackSchemaFor = ''; // the scan type + history the schema was requested for
+	let stackSchemaFor = ''; // the scan type + history + pick the schema was requested for
 	// Also covers a restored draft (sections come from storage, no /sections call) and a flag that
 	// arrives after the workspace exists (the settings status is fetched asynchronously).
-	$: if (hybridStack && sectionsGeneratedFromScanType && stackSchemaFor !== `${sectionsGeneratedFromScanType}|${sectionsGeneratedFromHistory}`) {
-		void loadStackSchema(sectionsGeneratedFromScanType, sectionsGeneratedFromHistory);
+	$: if (hybridStack && sectionsGeneratedFromScanType
+		&& stackSchemaFor !== `${sectionsGeneratedFromScanType}|${sectionsGeneratedFromHistory}|${pickKey(sectionsGeneratedFromPick)}`) {
+		void loadStackSchema(sectionsGeneratedFromScanType, sectionsGeneratedFromHistory, sectionsGeneratedFromPick);
 	}
-	async function loadStackSchema(scan: string, history: string) {
-		stackSchemaFor = `${scan.trim()}|${history.trim()}`;
+	async function loadStackSchema(scan: string, history: string, pick: ProtocolPick | null) {
+		const mine = ++schemaSeq;
+		const reqScan = scan.trim();
+		const reqPick = pickKey(pick);
+		stackSchemaFor = `${reqScan}|${history.trim()}|${reqPick}`;
 		stackPills = [];
-		if (!hybridStack || !scan.trim()) {
+		if (!hybridStack || !reqScan) {
 			stackSchema = null;
+			stackSchemaPick = null;
 			return;
 		}
 		try {
-			stackSchema = await fetchSchema($token, { scan_type: scan.trim(), clinical_history: history.trim() });
+			const schema = await fetchSchema($token, { scan_type: reqScan, clinical_history: history.trim(), ...pickBody(pick) });
+			if (mine !== schemaSeq) return;
+			stackSchema = schema;
+			stackSchemaPick = pick;
+			// The server's line (side and phase variant) is the scan type of the workspace built from this pick. The
+			// box takes it only while it still shows that pick: a reply for a superseded pick never resets it.
+			if (stackSchema?.protocol) {
+				const line = stackSchema.protocol.scan_type_line;
+				if (sectionsGeneratedFromScanType === reqScan) sectionsGeneratedFromScanType = line;
+				stackSchemaFor = `${line}|${history.trim()}|${reqPick}`;
+				if (pickKey(stackProtocol) === reqPick && scanType.trim() === reqScan) scanType = line;
+			}
 		} catch {
-			stackSchema = null; // fail open: today's pills show
+			if (mine === schemaSeq) { stackSchema = null; stackSchemaPick = null; } // fail open: today's pills show
 		}
 	}
 	/** Dictation Lab only: three-state pills from coverage scores. null = binary pills as in production. */
@@ -265,7 +297,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
-			void loadStackSchema(scanType, clinicalHistory); // in parallel; /sections stays as the shadow list
+			void loadStackSchema(scanType, clinicalHistory, stackProtocol); // in parallel; /sections stays as the shadow list
 			const res = await fetch(`${API_URL}/api/canvas/sections`, {
 				method: 'POST',
 				headers,
@@ -276,6 +308,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 				prePoppedSections = data.sections;
 				coveredSections = new Set();
 				sectionsGeneratedFromScanType = scanType.trim();
+				sectionsGeneratedFromPick = stackProtocol;
 				sectionsGeneratedFromHistory = clinicalHistory.trim();
 				caseDetailsManuallyExpanded = false;
 			} else {
@@ -300,7 +333,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
-			void loadStackSchema(scanType, clinicalHistory); // in parallel; /sections stays as the shadow list
+			void loadStackSchema(scanType, clinicalHistory, stackProtocol); // in parallel; /sections stays as the shadow list
 			const res = await fetch(`${API_URL}/api/canvas/sections`, {
 				method: 'POST',
 				headers,
@@ -321,6 +354,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 				prePoppedSections = data.sections;
 				coveredSections = new Set();
 				sectionsGeneratedFromScanType = scanType.trim();
+				sectionsGeneratedFromPick = stackProtocol;
 				sectionsGeneratedFromHistory = clinicalHistory.trim();
 				caseDetailsManuallyExpanded = false;
 			} else {
@@ -347,8 +381,13 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		resetConfirmVisible = false;
 		clinicalHistory = '';
 		scanType = '';
+		stackProtocol = null;
+		freeText = false;
+		pickerQuery = '';
+		pickerKey++;
 		prePoppedSections = [];
 		sectionsGeneratedFromScanType = '';
+		sectionsGeneratedFromPick = null;
 		sectionsGeneratedFromHistory = '';
 		activePrompts = [];
 		coveredSections = new Set();
@@ -662,11 +701,13 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		const draft = $draftStore;
 		clinicalHistory = draft.intelliTab.clinicalHistory;
 		scanType = draft.intelliTab.scanType;
+		stackProtocol = null; // no pick is stored: the restored scan type shows as free text
 		polishMode = draft.intelliTab.mode ?? 'clean';
 		// Restore sections so the workspace re-opens
 		prePoppedSections = [...(draft.intelliTab.prePoppedSections ?? [])];
 		// Mark as not-dirty so workspace doesn't show the "regenerate" overlay
 		sectionsGeneratedFromScanType = draft.intelliTab.scanType;
+		sectionsGeneratedFromPick = null; // drafts keep no pick: the scan type shows as free text
 		sectionsGeneratedFromHistory = draft.intelliTab.clinicalHistory;
 		// Wait for prePoppedSections to trigger the scratchpad render, then inject content
 		if (draft.intelliTab.scratchpadContent && (draft.intelliTab.prePoppedSections?.length ?? 0) > 0) {
@@ -709,10 +750,13 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		analyseLoading = false;
 		prePoppedSections = [];
 		sectionsGeneratedFromScanType = '';
+		sectionsGeneratedFromPick = null;
 		sectionsGeneratedFromHistory = '';
 		activePrompts = [];
 		coveredSections = new Set();
 		scanType = vars.SCAN_TYPE ?? report.input_data?.extracted_scan_type ?? '';
+		stackProtocol = null; // an opened report keeps its scan type as free text
+		pickerKey++;
 		clinicalHistory = vars.CLINICAL_HISTORY ?? '';
 		applicableGuidelines = [];
 		reportOptions = [];
@@ -848,7 +892,15 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 						></textarea>
 					</div>
 					<div class="space-y-1.5">
-						<label for="scan-type" class="block text-xs font-medium text-gray-400 uppercase tracking-wider">Scan Type</label>
+						<label for={protocolLibrary && !freeText ? 'protocol-search' : 'scan-type'} class="block text-xs font-medium text-gray-400 uppercase tracking-wider">Scan Type</label>
+						{#if protocolLibrary && !freeText}
+							{#key pickerKey}
+								<ProtocolPicker token={$token} value={stackProtocol} query={pickerQuery} disabled={sectionsLoading || regenerating}
+									onPick={(p) => { stackProtocol = p; scanType = p.displayName; pickerQuery = ''; }}
+									onClear={() => { stackProtocol = null; scanType = ''; }}
+									onNotListed={(text) => { freeText = true; stackProtocol = null; scanType = text; }} />
+							{/key}
+						{:else}
 						<textarea
 							id="scan-type"
 							bind:value={scanType}
@@ -857,6 +909,12 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 							class="input-dark w-full resize-none text-sm"
 							rows="3"
 						></textarea>
+						{#if protocolLibrary}
+							<button type="button" disabled={sectionsLoading || regenerating}
+								onclick={() => { const b = backToLibrary(scanType); pickerQuery = b.query; scanType = b.scanType; stackProtocol = b.pick; freeText = b.freeText; pickerKey++; }}
+								class="text-xs text-gray-500 hover:text-gray-300 transition-colors disabled:cursor-not-allowed disabled:opacity-40">Pick from the library</button>
+						{/if}
+						{/if}
 					</div>
 				</div>
 
@@ -868,7 +926,8 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 					<div class="flex items-center gap-2">
 						{#if sectionsDirty && sectionsGeneratedFromScanType}
 							<button type="button"
-								onclick={() => { scanType = sectionsGeneratedFromScanType; clinicalHistory = sectionsGeneratedFromHistory; }}
+								onclick={() => { scanType = sectionsGeneratedFromScanType; clinicalHistory = sectionsGeneratedFromHistory;
+									stackProtocol = sectionsGeneratedFromPick; freeText = !sectionsGeneratedFromPick; pickerKey++; }}
 								class="text-xs text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1"
 								in:fade={{ duration: 200 }}>
 								<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1055,6 +1114,8 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			stackRegions={stackSchema?.regions ?? []}
 			stackGroups={stackSchema?.groups ?? []}
 			stackSchemaMeta={stackSchema ? { key: stackSchema.key, source: stackSchema.source, provisional: stackSchema.provisional } : null}
+			stackProtocol={stackSchemaPick}
+			stackQuiet={stackSchema?.quiet ?? []}
 			onStackPills={(p) => { stackPills = p; }}
 			stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
 			onStackGate={(g, f) => { stackGate = g; stackFindings = f; }}

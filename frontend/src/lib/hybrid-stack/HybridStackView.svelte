@@ -9,7 +9,7 @@
 	import { buildView } from './stackState';
 	import { CONCLUSION, GENERAL, OTHER, TECHNIQUE, regionStates, showsGroup } from './regionState';
 	import { checkLabel, replaced, segments, withoutQuote, type CheckAnswer, type CheckFlag } from './checks';
-	import { anchorRegion, answerLabel, openCount, quietLine, rowSentences, unansweredChecks, waiting } from './items';
+	import { QUIET_MAX, anchorRegion, answerLabel, isFlagged as flaggedIn, openCount, quietLine, rowSentences, unansweredChecks, waiting } from './items';
 	import type { StackItem, StackUnit, ValueChip, ViewRow } from './types';
 	import ValueChips from './ValueChips.svelte';
 	import { openCount as openValueChips } from './values';
@@ -38,6 +38,8 @@
 		tapped = [],
 		removed = [],
 		assumed = {},
+		flagged = {},
+		confirmNote = null,
 		namedNormals = false,
 		skipped = [],
 		values = [],
@@ -80,7 +82,8 @@
 		onConfirm,
 		onDeleteRegion = () => {},
 		onAppend = () => {},
-		syncing = false
+		syncing = false,
+		checking = false
 	}: {
 		units: StackUnit[];
 		groups: string[];
@@ -105,6 +108,10 @@
 		removed?: string[];
 		/** Region normals that will be reported unless removed (the slim sheet, checked against the dictation). */
 		assumed?: Record<string, string[]>;
+		/** Assumed normals the dictation may conflict with (review R1): kept, shown with an amber "check" marker. */
+		flagged?: Record<string, string[]>;
+		/** Why the last Confirm press did not gate (a re-checked rule added a normal; the dictation moved on). */
+		confirmNote?: string | null;
 		/** No sheet this session: untouched regions are confirmed by name (v2). With a sheet, only sentences are. */
 		namedNormals?: boolean;
 		/** Rows skipped (finding checks) or marked not assessed (referral rows): folded, nothing stated. */
@@ -175,6 +182,9 @@
 		onAppend?: (text: string) => void;
 		/** The grouping has not caught up with the text yet: Confirm waits (the block must match what is shown). */
 		syncing?: boolean;
+		/** The model check (sides, conflicts, garbles) is running on this text: Confirm and the walk wait for its flags
+		 *  (bounded by the check's own timeout; it fails open). */
+		checking?: boolean;
 	} = $props();
 
 	const reduced = typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -330,7 +340,7 @@
 		document.querySelector(`[data-stop="${CSS.escape(current)}"]`)?.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
 	});
 	function startWalk() {
-		if (!stops.length) return;
+		if (!stops.length || checking) return;
 		walkSkipped = [];
 		walkTotal = stops.length;
 		hoverKey = pinnedKey = null;
@@ -400,6 +410,9 @@
 		if (onConfirmGenerate) onConfirmGenerate();
 		else onConfirm();
 	}
+	const FLAG_TITLE = 'May conflict with your dictation: confirm or remove';
+	// Keyed by region and normalised text (round 1): the same words in another region carry no marker.
+	const isFlagged = (regions: string[], s: string) => flaggedIn(flagged, regions, s);
 	const keptAssumed = (region: string) => {
 		const gone = new Set(removed.map((r) => r.trim().toLowerCase().replace(/\.$/, '')));
 		return (assumed[region] ?? []).filter((s) => !gone.has(s.trim().toLowerCase().replace(/\.$/, '')));
@@ -407,7 +420,8 @@
 	// Every statement that will be reported without being dictated: region normals, and regions confirmed by
 	// name where no sentences exist yet.
 	const assumedCount = $derived(
-		trayRegions.filter((r) => !dictatedNormalWords.has(r)).reduce((n, r) => n + (namedNormals ? 1 : keptAssumed(r).length), 0) +
+		// a dictated-normal region counts the sheet sentences it keeps (review R2), never its own name
+		trayRegions.reduce((n, r) => n + (dictatedNormalWords.has(r) ? keptAssumed(r).length : namedNormals ? 1 : keptAssumed(r).length), 0) +
 			states.abnormal.reduce((n, r) => n + keptAssumed(r).length, 0)
 	);
 	let expanded: string[] = $state([]);
@@ -775,8 +789,9 @@
 	</span>
 {/snippet}
 
-{#snippet sentences(list: string[], key: string)}
-	{@const q = expanded.includes(key) ? { shown: list, more: 0 } : quietLine(list)}
+{#snippet sentences(list: string[], key: string, regions: string[])}
+	<!-- A flagged normal is never hidden behind "+N more": the radiologist must see it to confirm or remove it. -->
+	{@const q = expanded.includes(key) || list.slice(QUIET_MAX).some((s) => isFlagged(regions, s)) ? { shown: list, more: 0 } : quietLine(list)}
 	{#each q.shown as s (s)}
 		{#if assumedEditing === s}
 			<textarea
@@ -804,6 +819,10 @@
 			{@render micControls('Enter save · Esc cancel')}
 		{:else}
 			<span class="inline-flex items-center gap-0.5">
+				{#if isFlagged(regions, s)}
+					<span class="rounded bg-amber-500/15 px-1 text-[10px] uppercase tracking-wide text-amber-300" title={FLAG_TITLE}
+						data-flag="conflict">check</span>
+				{/if}
 				<!-- Click to edit (hand read 2026-10-12): an edited normal becomes the radiologist's own words. -->
 				<button type="button" class="cursor-text rounded text-left text-gray-300/80 underline decoration-emerald-500/40 decoration-dashed underline-offset-4 hover:bg-white/[0.04] hover:text-gray-200"
 					title="Click to edit" onclick={() => openAssumed(s)}>{s}</button>
@@ -991,7 +1010,7 @@
 			{#if normals.length}
 				<p class="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-1 text-xs" data-quiet={g.name}>
 					<span class="text-[10px] uppercase tracking-wide text-emerald-400/70">Will also be reported</span>
-					{@render sentences(normals, g.name)}
+					{@render sentences(normals, g.name, ownMembers(g))}
 				</p>
 			{/if}
 		</section>
@@ -1075,6 +1094,14 @@
 							{/each}
 						</div>
 					{/each}
+					<!-- The sheet sentences a dictated-normal region still reports (review R2): the radiologist's words cover
+					     only what they said ("ACL intact" leaves the PCL sentence). -->
+					{#each said.filter((r) => keptAssumed(r).length) as r (r)}
+						<p class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs" data-quiet={r}>
+							<span class="text-[10px] uppercase tracking-wide text-emerald-400/70">{r} · will be reported</span>
+							{@render sentences(keptAssumed(r), `said:${r}`, [r])}
+						</p>
+					{/each}
 				</div>
 			{/if}
 			{#if rest.length}
@@ -1088,9 +1115,12 @@
 								type="button"
 								class="rounded-full px-2 py-0.5 text-xs {none ? 'border border-white/10 text-gray-600'
 									: 'border border-dashed border-white/20 text-gray-400 hover:border-emerald-400/40'} {openPill === r ? 'ring-1 ring-emerald-400/40' : ''}"
-								title={keptAssumed(r).length ? `Will be reported: ${keptAssumed(r).join(' ')}` : none ? 'Nothing assumed: only what you dictate is reported' : 'Assumed normal (not dictated)'}
+								title={keptAssumed(r).some((s) => isFlagged([r], s)) ? `${FLAG_TITLE}. Will be reported: ${keptAssumed(r).join(' ')}`
+									: keptAssumed(r).length ? `Will be reported: ${keptAssumed(r).join(' ')}` : none ? 'Nothing assumed: only what you dictate is reported' : 'Assumed normal (not dictated)'}
 								data-state={none ? 'none' : 'assumed'}
-								onclick={() => (openPill = openPill === r ? null : r)}>{r}</button>
+								data-flagged={keptAssumed(r).some((s) => isFlagged([r], s)) ? 'true' : undefined}
+								onclick={() => (openPill = openPill === r ? null : r)}>{r}{#if keptAssumed(r).some((s) => isFlagged([r], s))}<span
+									class="ml-1 text-amber-300" aria-hidden="true">●</span>{/if}</button>
 						{/each}
 					</div>
 				</div>
@@ -1098,7 +1128,7 @@
 			{#if openPill && keptAssumed(openPill).length}
 				<p class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs" data-quiet={openPill}>
 					<span class="text-[10px] uppercase tracking-wide text-emerald-400/70">{openPill} · will be reported</span>
-					{@render sentences(keptAssumed(openPill), `tray:${openPill}`)}
+					{@render sentences(keptAssumed(openPill), `tray:${openPill}`, [openPill])}
 				</p>
 			{/if}
 		</section>
@@ -1192,7 +1222,7 @@
 				{#if stops.length > 1}<button type="button" class="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-gray-200 hover:bg-white/[0.06]" onclick={nextStop}>Next ›</button>{/if}
 				{#if !stops.length}
 					<button type="button" class="rounded-lg bg-purple-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-40"
-						disabled={!hasConclusion || syncing || editing !== null || valueDraft || newLine.trim().length > 0} onclick={finishWalk}>{onConfirmGenerate ? 'Confirm & Generate' : 'Confirm'}</button>
+						disabled={!hasConclusion || syncing || checking || editing !== null || valueDraft || newLine.trim().length > 0} onclick={finishWalk}>{onConfirmGenerate ? 'Confirm & Generate' : 'Confirm'}</button>
 				{/if}
 			</span>
 		</section>
@@ -1202,7 +1232,7 @@
 			<span class="rounded px-1.5 py-0.5 {openRows ? 'bg-amber-500/15 text-amber-200' : 'bg-white/5 text-gray-500'}">{openRows} referral {openRows === 1 ? 'question' : 'questions'} open</span>
 			{#if openValueCount}<span class="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-200" data-gate="values">{openValueCount} required {openValueCount === 1 ? 'value' : 'values'} to resolve</span>{/if}
 			{#if liveChecks.length}<button type="button" class="rounded border border-orange-400/40 bg-orange-400/15 px-1.5 py-px text-orange-100 hover:bg-orange-400/25" data-gate="checks"
-				onclick={startWalk} disabled={!stops.length} title={stops.length ? 'Go through what blocks Confirm' : 'Advisory only: hover the underlines'}
+				onclick={startWalk} disabled={!stops.length || checking} title={stops.length ? 'Go through what blocks Confirm' : 'Advisory only: hover the underlines'}
 				>{liveChecks.length} to check{blockingChecks ? ` · ${blockingChecks} blocking` : ''}</button>{/if}
 			{#if reviewing}<span class="rounded bg-white/5 px-1.5 py-0.5 text-gray-400">checking the findings…</span>
 			{:else if reviewFailed}<span class="rounded bg-rose-500/15 px-1.5 py-0.5 text-rose-200" data-review="failed">checks unavailable: review the scan as usual</span>
@@ -1211,15 +1241,16 @@
 			<span class="rounded bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300/90"
 				>{gateConfirmed ? 'assumptions confirmed' : namedNormals ? `${assumedCount} regions assumed normal (no sheet yet)` : `${assumedCount} assumed normal`}</span>
 			{#if !hasConclusion}<span class="rounded bg-white/5 px-1.5 py-0.5 text-gray-400">no conclusion yet</span>{/if}
+			{#if confirmNote}<span class="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-200" role="status" data-gate="note">{confirmNote}</span>{/if}
 		</p>
 		<button
 			type="button"
 			class="rounded-lg px-4 py-1.5 text-xs font-medium transition-colors {gateConfirmed
 				? 'bg-emerald-500/20 text-emerald-200'
 				: 'bg-purple-700 text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-40'}"
-			disabled={gateConfirmed || !hasConclusion || syncing || newLine.trim().length > 0 || editing !== null || valueDraft}
+			disabled={gateConfirmed || !hasConclusion || syncing || checking || newLine.trim().length > 0 || editing !== null || valueDraft}
 			onclick={() => (stops.length ? startWalk() : onConfirm())}
-			>{gateConfirmed ? 'Confirmed ✓' : syncing ? 'Updating…' : stops.length ? `Confirm · ${stops.length} to resolve` : 'Confirm'}</button>
+			>{gateConfirmed ? 'Confirmed ✓' : checking ? 'Checking…' : syncing ? 'Updating…' : stops.length ? `Confirm · ${stops.length} to resolve` : 'Confirm'}</button>
 	</section>
 	{/if}
 </div>

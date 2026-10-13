@@ -18,12 +18,25 @@ every conflict kind blocks. Lab before the widening: Lab (13 garbled, 12 clean, 
 (all ambiguous), "appendix calculus" for "appendix collie" 1; blocking right 13/13; clean flagged 0/12.
 `severity` is unchanged (medium), so the old banner path still never gates on a model flag.
 
+laterality_conflict widened (2026-10-13, live miss: history "medial joint line pain", dictated "lateral meniscus" tear,
+nothing flagged): a compartment or side within one structure counts as a side, the scan type's picked side is compared,
+and an unexpected but possibly true side is still asked, as a question. Lab (gpt-oss), first a single run on 8 planted
+slips, 4 true-but-unexpected sides and 10 consistent cases: old wording 6/8, 2/4, 0/10 false; this wording 7/8, 4/4,
+1/10. Round 1 (the same 22 plus 5 consistent cases: 3 correct crossed-anatomy, 2 extra findings; 2 runs): this wording
+7/8, 4/4, 1/15 false in both runs, the knee compartment cases caught every run; the one false alarm, stable, is a correct
+crossed-anatomy case (one-sided weakness with an opposite-hemisphere lesion). A "like with like" rule (compare with the
+same structure's side, not a symptom's) cleared it but asked 0/4 unexpected sides and lost the live miss in both runs,
+so it was not kept. Every laterality_conflict blocks Confirm.
+
 Two deliberate constraints follow from using a model:
 
-1. **Advisory, never gating.** Tier 1 is deterministic, so a flag is a fact and
-   blocking on it is fair. A model's judgement is not a fact. Every issue here
-   is emitted at ``medium`` severity, which the frontend renders but does not
-   gate on. A false positive costs a glance, never a blocked report.
+1. **Blocks Confirm in the scratchpad, never generation elsewhere.** Every
+   conflict (sides, measurements, contradictions, units) and every garble that
+   could change the report sets ``blocking``: the scratchpad holds Confirm until
+   the radiologist answers or dismisses it, because a wrong side or number would
+   survive into the signed report. A certain garble is advisory. ``severity``
+   stays ``medium``, so the older banner path (which gates on ``high``, tier 1)
+   still never gates on a model flag. A false positive costs one dismissal.
 
 2. **Verbatim spans only.** The model returns the exact text it objects to and
    we locate it ourselves. If the quote is not present character-for-character,
@@ -101,8 +114,21 @@ SEMANTIC_SYSTEM_PROMPT = (
     "would survive into a signed report and mislead a reader.\n"
     "\n"
     "Report only these:\n"
-    "- laterality_conflict: left/right, or a side that contradicts the clinical "
-    "history or scan type.\n"
+    "- laterality_conflict: a side that contradicts another side in the "
+    "dictation, the clinical history or the scan type. A side is left or "
+    "right, and also a compartment or part within one structure where it "
+    "denotes a side of that structure (medial or lateral, anterior or "
+    "posterior, superior or inferior, upper or lower, inner or outer, or a "
+    "named pole, lobe, limb or quadrant). The scan type may carry the side "
+    "picked for the examination; a dictated side that differs from it is a "
+    "conflict. The history may state a side or point to one; compare the side "
+    "each finding is on with the side the history or scan type gives. Ask "
+    "even when the dictated side may be true: an unexpected side is the "
+    "radiologist's to confirm. Write `message` as a question naming both "
+    "sides, never as a statement that one is wrong. Not a conflict: a "
+    "matching side, bilateral findings, a side neither the history nor the "
+    "scan type gives, a side word that is part of a structure's name, or a "
+    "statement that the other side or another compartment is normal.\n"
     "- measurement_mismatch: a measurement inconsistent with its own descriptor "
     "or with another measurement of the same structure.\n"
     "- internal_contradiction: two statements that cannot both be true. This "

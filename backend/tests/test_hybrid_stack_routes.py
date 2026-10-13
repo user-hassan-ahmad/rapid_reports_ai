@@ -110,7 +110,7 @@ def test_items_assumed_and_draft_routes(authed, monkeypatch):
         return ItemsResult(items=[Item(id="a", kind="finding", region="Bowel", question="Abscess?",
                                        sentences=["No pericolic abscess."])])
 
-    async def assumed(dictation, normals, abnormal, dictated_normal, removed, owned, touched, **k):
+    async def assumed(dictation, normals, abnormal, removed, owned, **k):
         assert normals == {"Liver": ["The liver is normal."]}
         return AssumedResult(assumed=normals)
 
@@ -158,6 +158,13 @@ def test_slim_sheet_route_and_review(authed, monkeypatch, db_session, user):
     monkeypatch.setenv("RR_STACK_REVIEWERS", user.email)
     [s] = authed.get("/api/canvas/stack/slim-sheets").json()
     assert s["flagged"] == 1 and s["removal"]["The liver is normal."] == {"sessions": 5, "removed": 2, "flag": True}
+    async def screen(normals, transport=None):   # a reviewer edit passes the Jev screen, not a regex
+        return {k: [x for x in v if "prostate" not in x] for k, v in normals.items()}, []
+    monkeypatch.setattr(R, "screen_normals", screen)
+    assert authed.post(f"/api/canvas/stack/slim-sheets/{s['id']}", json={"region_normals": {
+        "Liver": ["No cervical lymphadenopathy", "The prostate is normal."]}}).json() == {"ok": True}
+    db_session.refresh(row)
+    assert row.region_normals == {"Liver": ["No cervical lymphadenopathy."]}
     assert authed.post(f"/api/canvas/stack/slim-sheets/{s['id']}", json={"status": "discarded"}).json() == {"ok": True}
     db_session.refresh(row)
     assert row.status == "discarded"
@@ -252,6 +259,21 @@ def test_assumed_checks_up_to_sixteen_normals_per_region(authed, monkeypatch):
     assert len(seen["A"]) == 16 == R.MAX_NORMALS_PER_REGION
 
 
+def test_assumed_ignores_the_retired_dictated_normal_and_touched_fields(authed, monkeypatch):
+    got = {}
+
+    async def fake_assumed(dictation, normals, abnormal, removed, owned, **k):
+        got.update(removed=removed, owned=owned, kw=set(k))
+        from rapid_reports_ai.hybrid_stack.normals import AssumedResult
+        return AssumedResult(assumed=normals)
+
+    monkeypatch.setattr(R, "assumed_normals", fake_assumed)
+    r = authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"A": ["Normal."]},
+                                                       "dictated_normal": ["A"], "touched": ["A"], "removed": ["B."]})
+    assert r.status_code == 200 and got["removed"] == ["B."] and got["owned"] == []
+    assert not got["kw"] & {"dictated_normal", "touched"}
+
+
 _RULED_SHEET = """## Report Structure
 SECTION FINDINGS | header: "Findings:" | role: findings
 SECTION CONCLUSION | header: "Conclusion:" | role: impression
@@ -284,6 +306,7 @@ def test_assumed_applies_the_templates_context_rules_and_labels(authed, monkeypa
     assert seen["suppressions"] == [("no previous study is available",
                                      "No other interval changes compared with the previous MRI.")]
     assert seen["labels"] == {"Unremarkable.": "ventricles"} and seen["clinical_history"] == "Headache."
+    assert seen["rules"] is None and seen["confirm"] is False   # the first refresh decides the session's rules
     assert seen["scan_type"] == ""   # this template stores no scan type
     t.template_config = {**t.template_config, "scan_type": "MRI brain with contrast"}
     db_session.commit()
@@ -292,6 +315,10 @@ def test_assumed_applies_the_templates_context_rules_and_labels(authed, monkeypa
     assert seen["scan_type"] == "MRI brain with contrast"
     authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"Brain": ["Unremarkable."]}})
     assert seen["suppressions"] == [] and seen["labels"] == {}
+    authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"Brain": ["Unremarkable."]},
+                                                   "template_id": str(t.id), "confirm": True,
+                                                   "rules": {"no previous study is available": 0.9}})
+    assert seen["rules"] == {"no previous study is available": 0.9} and seen["confirm"] is True
 
 
 def test_assumed_passes_the_region_text_capped(authed, monkeypatch):

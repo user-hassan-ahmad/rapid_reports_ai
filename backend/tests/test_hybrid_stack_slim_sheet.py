@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import httpx
+import pytest
 
 from rapid_reports_ai.database.models import StackSlimSheet
 from rapid_reports_ai.hybrid_stack import slim_sheet as SL
@@ -27,6 +28,14 @@ SHEET = """## Scan Context
 """
 REGIONS = [Region(name="Liver", includes="liver"), Region(name="Kidneys", includes="kidneys"),
            Region(name="Spleen", includes="spleen"), Region(name="Other findings", includes="other")]
+
+
+@pytest.fixture(autouse=True)
+def _no_sex_screen_call(monkeypatch):
+    """No test here may reach OpenRouter: the sex screen passes every sentence unless a test stubs its own."""
+    async def screen(normals, transport=None):
+        return normals, []
+    monkeypatch.setattr(SL, "screen_normals", screen)
 
 
 def test_parse_keeps_known_regions_and_drops_measurements():
@@ -92,9 +101,32 @@ def test_template_region_normals_from_the_stored_structure():
     assert all(s.strip() for ss in normals.values() for s in ss)
 
 
-def test_sex_specific_sentences_never_become_shared_normals():
-    md = "## Region Normals\n- **Pelvic organs:** \"The bladder is normal.\" \"The prostate is normal in size.\" \"The uterus is unremarkable.\" \"The ovaries are normal.\"\n"
-    assert SL.parse_slim(md, ["Pelvic organs"])[0] == {"Pelvic organs": ["The bladder is normal."]}
+_PELVIS_MD = "## Region Normals\n- **Pelvic organs:** \"The bladder is normal.\" \"The prostate is normal in size.\" \"The uterus is unremarkable.\" \"The ovaries are normal.\"\n"
+
+
+def test_parse_slim_keeps_sex_specific_sentences_for_the_async_screen():
+    assert SL.parse_slim(_PELVIS_MD, ["Pelvic organs"])[0] == {"Pelvic organs": [
+        "The bladder is normal.", "The prostate is normal in size.", "The uterus is unremarkable.", "The ovaries are normal."]}
+
+
+async def test_sex_specific_sentences_never_become_shared_normals(db_session, monkeypatch):
+    async def gen(*a, **k):
+        return _PELVIS_MD
+    monkeypatch.setattr(SL, "generate", gen)
+
+    async def facet(scan_type, transport=None):
+        return "none"
+    monkeypatch.setattr(SL, "contrast_facet", facet)
+    scores = {"The prostate is normal in size.": 0.95, "The uterus is unremarkable.": 0.9, "The ovaries are normal.": 0.97}
+
+    async def screen(normals, transport=None):
+        return await real_screen(normals, httpx.MockTransport(lambda req: httpx.Response(200, json={"answers": {"q": {
+            "noul": scores.get(json.loads(req.content)["state"].removeprefix("SENTENCE: "), 0.02)}}})))
+    from rapid_reports_ai.hybrid_stack.sex_screen import screen_normals as real_screen
+    monkeypatch.setattr(SL, "screen_normals", screen)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    row = await SL.get_or_make(db_session, "CT pelvis", "pelvis", [Region(name="Pelvic organs", includes="pelvis")])
+    assert row.region_normals == {"Pelvic organs": ["The bladder is normal."]}
 
 
 def _lean_cfg(sheet=None):
@@ -184,3 +216,21 @@ def test_a_slot_placeholder_sentence_is_never_offered():
     assert st.usable
     assert not any("{" in s for ss in template_region_normals(st).values() for s in ss)
     assert "The spleen is normal in size." in template_region_normals(st)["Liver"]
+
+
+def test_the_prompt_carries_the_standard_section_order_and_rules():
+    assert SL.PROMPT_VERSION == "slim-7"   # bumped so cached free-text sheets regenerate
+    assert "- **Sections:** Comparison; Technique; Limitations (only when applicable); Findings; Conclusion" \
+        in SL.SLIM_SYS
+    assert "Findings; Impression" not in SL.SLIM_SYS
+    rules = next(ln for ln in SL.SLIM_SYS.splitlines() if ln.startswith("- **Section rules:**"))
+    for needle in ("no prior imaging is available for comparison", "Modality line in Scan Context",
+                   "never the not-assessable list", "Never a clinical history",
+                   "CONCLUSION never restates the modality, region or technique; it opens with the finding."):
+        assert needle in rules
+
+
+def test_a_generated_sheet_with_the_standard_sections_still_parses():
+    md = SHEET.replace("TECHNIQUE, FINDINGS, IMPRESSION",
+                       "Comparison; Technique; Limitations (only when applicable); Findings; Conclusion")
+    assert SL.parse_slim(md, [r.name for r in REGIONS]) == SL.parse_slim(SHEET, [r.name for r in REGIONS])

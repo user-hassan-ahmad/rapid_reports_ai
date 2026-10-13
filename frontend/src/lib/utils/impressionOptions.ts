@@ -25,7 +25,9 @@ export interface TextEdit {
 }
 
 const SECTION_HEADER = /^[A-Z][A-Z /&()-]{2,}:\s*$/;
-const IMPRESSION_HEADER = /^IMPRESSION:?\s*$/;
+// The impression's heading: IMPRESSION, or CONCLUSION (library and slim sheets). IMPRESSION wins when a
+// report has both, so an IMPRESSION report reads exactly as before (backend report_review.IMPRESSION_HEADINGS).
+const IMPRESSION_HEADERS = [/^IMPRESSION:?\s*$/, /^CONCLUSION:?\s*$/];
 const NUMBERED = /^(\d+)[.)]\s/;
 
 interface Block {
@@ -35,10 +37,12 @@ interface Block {
 	lastNumber: number;
 }
 
-/** The IMPRESSION block, ending at the next section header or end of text. The insertion
- * point is after the block's last complete sentence, so a trailing signature is left alone. */
+/** The IMPRESSION (else CONCLUSION) block, ending at the next section header or end of text. The
+ * insertion point is after the block's last complete sentence, so a trailing signature is left alone. */
 function impressionBlock(text: string): Block | null {
 	const lines = text.split('\n');
+	const IMPRESSION_HEADER =
+		IMPRESSION_HEADERS.find((h) => lines.some((line) => h.test(line.trim()))) ?? IMPRESSION_HEADERS[0];
 	let offset = 0;
 	let start = -1;
 	let end = -1;

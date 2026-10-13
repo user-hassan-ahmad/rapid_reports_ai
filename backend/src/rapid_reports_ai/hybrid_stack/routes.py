@@ -18,10 +18,11 @@ from ..database.models import DictationStackLog, StackSchemaFamily, StackSlimShe
 from ..dictation_v2 import v2_allowed
 from ..template_decisions import clean_ledger
 from ..template_sheet_structure import generation_stamp
-from .schemas import Region
+from .schemas import Region, groups_for, pill_regions
 from .items import Item, ItemsResult, Referral, recheck as items_recheck, update as items_update
 from .jev_stack import MATERIAL_MIN, STALE_MIN, UNFINISHED_MIN, ask_material, ask_stale, ask_unfinished
 from .normals import AssumedResult, assumed as assumed_normals
+from .sex_screen import screen_normals
 from .slim_sheet import clean_sentences, get_or_make as slim_get_or_make
 from .template import (template_normal_labels, template_region_normals, template_required_values, template_structure,
                        template_suppressions)
@@ -60,6 +61,9 @@ class SchemaRequest(BaseModel):
     scan_type: str = ""
     clinical_history: str = ""
     template_id: str | None = None
+    protocol_id: str | None = None          # protocol library pick (spec §3); phases/laterality complete it
+    phases: list[str] | None = None
+    laterality: str | None = None
 
 
 class GroupRequest(BaseModel):
@@ -104,13 +108,14 @@ class AssumedRequest(BaseModel):
     dictation: str = ""
     region_normals: dict[str, list[str]] = Field(default_factory=dict)
     abnormal: list[str] = Field(default_factory=list)
-    dictated_normal: list[str] = Field(default_factory=list)
     removed: list[str] = Field(default_factory=list)
     owned: list[str] = Field(default_factory=list)       # the rows' sentences: a row owns its check
-    touched: list[str] = Field(default_factory=list)     # regions those rows (and removals) concern
     template_id: str | None = None                       # its context rules and normal labels apply
     clinical_history: str = ""                           # a context rule's condition is judged on it too
     region_text: dict[str, str] | None = None   # region -> its grouped sentences (Task A3b); None: an older client
+    # The session's context-rule decision, as the first reply returned it (review R5); None: decide it now.
+    rules: dict[str, float] | None = None
+    confirm: bool = False   # at Confirm: every condition is re-asked with the dictation
 
 
 class DraftRequest(BaseModel):
@@ -150,6 +155,9 @@ class SlimRequest(BaseModel):
     scan_type: str = ""
     clinical_history: str = ""
     template_id: str | None = None
+    protocol_id: str | None = None
+    phases: list[str] | None = None
+    laterality: str | None = None
     # The family and regions are resolved on the server (review 2026-10-12): a shared sheet is never keyed or
     # shaped by what a client sends.
 
@@ -160,6 +168,7 @@ class SlimResult(BaseModel):
     not_assessable: str = ""
     status: str = ""              # provisional | approved | template | template_unusable | "" (not ready)
     ready: bool = False
+    level_groups: dict[str, list[str]] = Field(default_factory=dict)
     required_values: list[str] = Field(default_factory=list)   # template sessions: the LIST_MISSING items (value cluster)
 
 
@@ -173,14 +182,36 @@ class FamilyUpdate(BaseModel):
     regions: list[Region] | None = None
 
 
+def _library_pick(protocol_id, phases, laterality):
+    """The resolved pick, or None when the request is free text or the library is off. A bad pick is a 422."""
+    from .protocol_library.bundle import get_bundle, library_allowed
+    from .protocol_library.compose import PickError, resolve
+    if not protocol_id or not library_allowed():
+        return None, None
+    b = get_bundle()
+    try:
+        return b, resolve(b, protocol_id, phases, laterality)
+    except PickError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @router.post("/schema", response_model=SchemaResult)
 async def stack_schema(req: SchemaRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _require()
-    structure = None
+    # Resolution order (integration contract §8.1): template structure, else the library pick, else free text.
     if req.template_id:
         t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
         structure = template_structure(t.template_config) if t is not None else None
-    return await resolve_schema(req.scan_type, req.clinical_history, structure, db)
+        if structure is not None:
+            return await resolve_schema(req.scan_type, req.clinical_history, structure, db)
+    b, pick = _library_pick(req.protocol_id, req.phases, req.laterality)
+    if pick is not None:
+        return SchemaResult(regions=pick.regions, groups=groups_for(pick.regions), pills=pill_regions(pick.regions),
+                            source="library", key=pick.schema_key, quiet=pick.quiet,
+                            protocol={"id": pick.entry_id, "display_name": pick.display_name,
+                                      "scan_type_line": pick.scan_type_line, "phases": pick.phases,
+                                      "laterality": pick.laterality})
+    return await resolve_schema(req.scan_type, req.clinical_history, None, db)
 
 
 @router.post("/group", response_model=GroupResult)
@@ -287,11 +318,15 @@ async def stack_assumed(req: AssumedRequest, user: User = Depends(get_current_us
             suppressions, labels = template_suppressions(st), template_normal_labels(st)
         if t is not None and isinstance(t.template_config, dict):
             scan_type = str(t.template_config.get("scan_type") or "")[:300]
-    return await assumed_normals(req.dictation, normals, req.abnormal, req.dictated_normal, req.removed[:50],
-                                 owned, req.touched[:40], suppressions=suppressions,
+    # Seam 21: every context-rule decision is condition_state's, on the template's scan type; `rules` is the
+    # session's cached answer on the history and `confirm` re-decides every condition with the dictation.
+    return await assumed_normals(req.dictation, normals, req.abnormal, req.removed[:50], owned,
+                                 suppressions=suppressions,
                                  clinical_history=req.clinical_history[:2000], labels=labels,
-                                 scan_type=scan_type, region_text=None if req.region_text is None else
-                                 {r: t[:MAX_REGION_TEXT] for r, t in list(req.region_text.items())[:40]})
+                                 region_text=None if req.region_text is None else
+                                 {r: t[:MAX_REGION_TEXT] for r, t in list(req.region_text.items())[:40]},
+                                 rules=None if req.rules is None else dict(list(req.rules.items())[:100]),
+                                 confirm=req.confirm, scan_type=scan_type)
 
 
 
@@ -391,6 +426,7 @@ async def stack_slim_sheet(req: SlimRequest, user: User = Depends(get_current_us
     read their own structure; quick sessions get the shared slim sheet (made on first use). Never errors: not
     ready means no quiet lines yet."""
     _require()
+    # The same order as /schema (contract §8.1): template structure, else the library pick, else free text.
     if req.template_id:
         t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
         st = template_structure(t.template_config) if t is not None else None
@@ -398,6 +434,12 @@ async def stack_slim_sheet(req: SlimRequest, user: User = Depends(get_current_us
             return SlimResult(status="template_unusable")
         return SlimResult(region_normals=template_region_normals(st), required_values=template_required_values(st),
                           status="template", ready=True)
+    b, pick = _library_pick(req.protocol_id, req.phases, req.laterality)
+    if pick is not None:
+        from .protocol_library.compose import compose_sheet
+        s = compose_sheet(b, pick)
+        return SlimResult(id=s.id, region_normals=s.region_normals, not_assessable=s.not_assessable,
+                          status="library", ready=True, level_groups=s.level_groups)
     if not req.scan_type.strip():
         return SlimResult()
     schema = await resolve_schema(req.scan_type[:300], req.clinical_history[:2000], None, db)
@@ -459,6 +501,13 @@ async def update_slim_sheet(sheet_id: str, upd: SlimUpdate, user: User = Depends
     if upd.status:
         row.status = upd.status
     if upd.region_normals is not None:
-        row.region_normals = {k: kept for k, v in upd.region_normals.items() if (kept := clean_sentences(v))}
+        cleaned = {k: kept for k, v in upd.region_normals.items() if (kept := clean_sentences(v))}
+        row.region_normals, flagged = await screen_normals(cleaned)
+        if flagged:
+            logger.info("[stack.slim] %d sex-specific borderline sentence(s) kept for review: %r", len(flagged), flagged[:5])
     db.commit()
     return {"ok": True}
+
+
+from .protocol_library.routes import router as _protocols_router  # noqa: E402
+router.include_router(_protocols_router)

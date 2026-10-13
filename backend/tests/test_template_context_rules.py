@@ -364,9 +364,13 @@ async def test_the_checklist_and_the_report_ask_conditions_on_the_same_state(mon
     await cr.resolve_context_rules(SHEET, "?lesion", findings, ask=ask, scan_type="CT abdomen")
 
     monkeypatch.setattr(normals, "_ask", lambda *a, **k: _empty(a))
+    # Seam 21: the checklist's Confirm re-decides every condition on the very state the report decides on; the
+    # session's cached decision (before anything is dictated) is condition_state's too, with no findings.
     await normals.assumed(findings, {"Liver": ["The liver is normal."]}, [], [], [], suppressions=[(PRIOR, "x")],
-                          clinical_history="?lesion", scan_type="CT abdomen")
-    assert len(states) == 2 and states[0] == states[1] == cr.condition_state("CT abdomen", "?lesion", findings)
+                          clinical_history="?lesion", scan_type="CT abdomen", confirm=True)
+    assert len(states) == 3 and states[0] == cr.condition_state("CT abdomen", "?lesion", findings)
+    assert sorted(states[1:]) == sorted([cr.condition_state("CT abdomen", "?lesion", findings),
+                                         cr.condition_state("CT abdomen", "?lesion", "")])
     assert states[0].startswith("SCAN TYPE:\nCT abdomen\nCLINICAL HISTORY:\n?lesion\n")
 
 

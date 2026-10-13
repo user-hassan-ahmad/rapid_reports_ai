@@ -24,12 +24,18 @@ export function effectiveItems(units: StackUnit[]): Item[] {
 	return out;
 }
 
-/** Each findings region's own grouped sentences (or split parts), joined: what may cover that region's assumed
- *  normals (Task A3b). Technique, General, Conclusion and unplaced units cover nothing, so a conclusion or a bare
- *  "normal" leaves the template's normals offered. */
+/** Each findings region's own grouped sentences (or split parts), joined, then every non-heading, non-abnormal
+ *  sentence that names the region in its covers (a collective normal, review round 1: "Solid organs unremarkable."
+ *  covers the spleen's sheet sentence), once each: what may cover that region's assumed normals (Task A3b).
+ *  Technique, General, Conclusion and unplaced units give nothing of their own, so a conclusion or a bare "normal"
+ *  leaves the template's normals offered. */
 export function regionText(units: StackUnit[]): Record<string, string> {
 	const out: Record<string, string[]> = {};
 	for (const i of effectiveItems(units)) if (!FIXED.has(i.group)) (out[i.group] ??= []).push(i.text);
+	for (const u of units) {
+		if (u.heading || u.abnormal) continue;
+		for (const g of u.covers ?? []) if (!FIXED.has(g) && !(out[g] ?? []).includes(u.text)) (out[g] ??= []).push(u.text);
+	}
 	return Object.fromEntries(Object.entries(out).map(([g, ts]) => [g, ts.join(' ')]));
 }
 

@@ -52,6 +52,17 @@ describe('impression options', () => {
 		const text = 'IMPRESSION:\nOne finding.\n\nRECOMMENDATIONS:\nSomething else.';
 		expect(applyEdit(text, insertEdit(text, opt)!)).toContain('One finding. MRI brain is recommended.\n\nRECOMMENDATIONS:');
 	});
+
+	it('reads a CONCLUSION heading as the impression', () => {
+		const text = PROSE.replace('IMPRESSION:', 'CONCLUSION:');
+		const out = applyEdit(text, insertEdit(text, opt)!);
+		expect(out).toContain('Urgent neurosurgical review recommended. MRI brain is recommended.\n\nDr A');
+	});
+
+	it('keeps the IMPRESSION when a report has both headings', () => {
+		const text = 'CONCLUSION:\nFirst.\n\nIMPRESSION:\nSecond.';
+		expect(applyEdit(text, insertEdit(text, opt)!)).toBe('CONCLUSION:\nFirst.\n\nIMPRESSION:\nSecond. MRI brain is recommended.');
+	});
 });
 
 describe('panelOptions', () => {

@@ -3,8 +3,8 @@
 // the heading rules), so the text the rail writes is exactly the text the verifier checked. `edits.test.ts`
 // holds parity vectors generated from the backend; keep the two in step.
 //
-// Where `lib/utils/impressionOptions.ts` and the backend differ (its IMPRESSION-only heading match and its
-// "after the last complete sentence" append point), the backend wins: it is the text the fix was verified on.
+// Where `lib/utils/impressionOptions.ts` and the backend differ (its "after the last complete sentence" append
+// point; both now match an IMPRESSION or CONCLUSION heading), the backend wins: it is the text the fix was verified on.
 
 /** The backend `Edit` (review_engine/items.py). Local until `types.ts` lands; structurally compatible. */
 export interface EditLike {

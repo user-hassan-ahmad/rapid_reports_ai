@@ -1,17 +1,30 @@
 import { API_URL } from '$lib/config.js';
 import type { IntegrityFlag } from './checks';
+import type { ProtocolSearch } from './protocol';
 import type { AssumedResult, DraftResult, GateRecord, GroupResult, ItemsResult, Region, SlimSheet, StackItem, StackSchema, StackUnit, ValuesResult } from './types';
 
-async function post<T>(token: string | null, path: string, body: unknown, keepalive = false): Promise<T> {
+async function post<T>(token: string | null, path: string, body: unknown, keepalive = false, timeoutMs?: number): Promise<T> {
 	const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 	if (token) headers['Authorization'] = `Bearer ${token}`;
-	const res = await fetch(`${API_URL}/api/canvas/stack/${path}`, { method: 'POST', headers, body: JSON.stringify(body), keepalive });
+	const signal = timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined;
+	const res = await fetch(`${API_URL}/api/canvas/stack/${path}`, { method: 'POST', headers, body: JSON.stringify(body), keepalive, signal });
 	if (!res.ok) throw new Error(`stack ${path} ${res.status}`);
 	return (await res.json()) as T;
 }
 
-export const fetchSchema = (token: string | null, body: { scan_type: string; clinical_history: string; template_id?: string | null }) =>
+/** The dictation check and the assumed check give up after this long; Confirm never waits on them forever. */
+const CHECK_TIMEOUT_MS = 25000;
+
+type PickFields = { protocol_id?: string; phases?: string[]; laterality?: string | null };
+
+export const fetchSchema = (token: string | null, body: { scan_type: string; clinical_history: string; template_id?: string | null } & PickFields) =>
 	post<StackSchema>(token, 'schema', body);
+
+export const searchProtocols = (token: string | null, body: { q: string; rerank: boolean }) =>
+	post<ProtocolSearch>(token, 'protocols/search', body);
+
+export const postNotListed = (token: string | null, body: { q: string }) =>
+	post<{ ok: boolean }>(token, 'protocols/not-listed', body);
 
 export const postGroup = (token: string | null, body: { scan_type: string; text: string; regions: Region[]; previous: StackUnit[] }) =>
 	post<GroupResult>(token, 'group', body);
@@ -37,9 +50,10 @@ export const postItems = (token: string | null, body: {
 }) => post<ItemsResult>(token, 'items', body);
 
 export const postAssumed = (token: string | null, body: {
-	dictation: string; region_normals: Record<string, string[]>; abnormal: string[]; dictated_normal: string[]; removed?: string[]; owned?: string[]; touched?: string[];
+	dictation: string; region_normals: Record<string, string[]>; abnormal: string[]; removed?: string[]; owned?: string[];
 	template_id?: string | null; clinical_history?: string; region_text?: Record<string, string>;
-}) => post<AssumedResult>(token, 'assumed', body);
+	rules?: Record<string, number> | null; confirm?: boolean;
+}) => post<AssumedResult>(token, 'assumed', body, false, CHECK_TIMEOUT_MS); // a timeout fails open, as an error does
 
 /** The quiet re-check after an edit that leaves the abnormal findings unchanged: the rows on screen against the
  *  current dictation, no writer call. */
@@ -58,15 +72,17 @@ export const postConclusionCheck = (token: string | null, body: { conclusion: st
 export async function postDictationCheck(token: string | null, body: { findings: string; include_semantic: boolean; skip_tier1?: boolean; scan_type?: string; clinical_history?: string }): Promise<{ flags: IntegrityFlag[] }> {
 	const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 	if (token) headers['Authorization'] = `Bearer ${token}`;
-	const res = await fetch(`${API_URL}/api/dictation/check`, { method: 'POST', headers, body: JSON.stringify(body) });
+	// A timeout rejects like an error: the caller's catch fails open and Confirm stops waiting on the check.
+	const res = await fetch(`${API_URL}/api/dictation/check`, { method: 'POST', headers, body: JSON.stringify(body), signal: AbortSignal.timeout(CHECK_TIMEOUT_MS) });
 	if (!res.ok) throw new Error(`dictation check ${res.status}`);
 	return (await res.json()) as { flags: IntegrityFlag[] };
 }
 
 /** Unfinished sentences, judged by Jev: the scratchpad's only check for them (flags shaped as the dictation check's). */
-export const postUnfinished = (token: string | null, body: { text: string }) => post<{ flags: IntegrityFlag[] }>(token, 'unfinished', body);
+export const postUnfinished = (token: string | null, body: { text: string }) =>
+	post<{ flags: IntegrityFlag[] }>(token, 'unfinished', body, false, CHECK_TIMEOUT_MS); // paired with the dictation check: a timeout fails open
 
-export const postSlimSheet = (token: string | null, body: { scan_type: string; clinical_history: string; template_id?: string | null }) =>
+export const postSlimSheet = (token: string | null, body: { scan_type: string; clinical_history: string; template_id?: string | null } & PickFields) =>
 	post<SlimSheet>(token, 'slim-sheet', body);
 /** The value cluster's smart fill: the template's required values filled from the dictation or open (fails open). */
 export const postValues = (token: string | null, body: { dictation: string; template_id: string | null }) =>

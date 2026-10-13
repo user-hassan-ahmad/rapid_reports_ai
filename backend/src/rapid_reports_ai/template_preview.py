@@ -8,7 +8,7 @@ checklist rows, so no answered rows or "Answered by the radiologist" lines; ever
 confirmed. Units are duck-typed (StackUnit or anything with text/group/heading, optionally abnormal/parts/covers)."""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Sequence
 
 from .hybrid_stack.schemas import CONCLUSION, GENERAL, OTHER, TECHNIQUE
 from .hybrid_stack.template import norm_key
@@ -51,11 +51,13 @@ def region_states(units, pill_regions: list[str]) -> tuple[list[str], list[str],
     return abnormal, [r for r in rest if said_normal(r)], [r for r in rest if not said_normal(r)]
 
 
-def confirmed_assumed(assumed: dict, abnormal: list[str], untouched: list[str], removed: list[str]) -> dict:
-    """assumedFrom: the assumed normals of the abnormal then the untouched regions, minus removed sentences."""
+def confirmed_assumed(assumed: dict, abnormal: list[str], untouched: list[str], removed: list[str],
+                      dictated_normal: Sequence[str] = ()) -> dict:
+    """assumedFrom: the assumed normals of the abnormal, the dictated-normal (review R2) then the untouched regions,
+    minus removed sentences."""
     gone = {norm_key(x) for x in removed}
     out = {}
-    for r in [*abnormal, *untouched]:
+    for r in [*abnormal, *dictated_normal, *untouched]:
         kept = [x for x in assumed.get(r) or [] if norm_key(x) not in gone]
         if kept:
             out[r] = kept
@@ -63,12 +65,20 @@ def confirmed_assumed(assumed: dict, abnormal: list[str], untouched: list[str], 
 
 
 def region_text(units) -> dict[str, str]:
-    """regionText: each findings region's own grouped sentences (or split parts), joined; Technique, General,
-    Conclusion and unplaced units give nothing. A normal is covered only by its own region's text (Task A3b)."""
+    """regionText: each findings region's own grouped sentences (or split parts), joined, then every non-heading,
+    non-abnormal sentence that names the region in its covers (a collective normal, review round 1), once each;
+    Technique, General, Conclusion and unplaced units give nothing of their own. A normal is covered only by its
+    own region's text (Task A3b)."""
     out: dict[str, list[str]] = {}
     for _, t, g, _ in _items(units):
         if g not in _FIXED:
             out.setdefault(g, []).append(t)
+    for u in units:
+        if getattr(u, "heading", False) or getattr(u, "abnormal", False):
+            continue
+        for g in getattr(u, "covers", None) or []:
+            if g not in _FIXED and u.text not in out.get(g, []):
+                out.setdefault(g, []).append(u.text)
     return {g: " ".join(ts) for g, ts in out.items()}
 
 
@@ -147,10 +157,12 @@ async def preview_report(sheet: str, scan_type: str, history: str, dictation: st
     normals = {r: s[:MAX_NORMALS_PER_REGION] for r, s in template_region_normals(st).items()}
     g = await service.group_update(scan_type, dictation, regions, [])
     abnormal, dictated_normal, untouched = region_states(g.units, [r.name for r in regions if r.name != OTHER])
-    a = await normals_mod.assumed(dictation, normals, abnormal, dictated_normal, declined,
+    a = await normals_mod.assumed(dictation, normals, abnormal, declined,
                                   suppressions=template_suppressions(st), clinical_history=history,
-                                  labels=template_normal_labels(st), region_text=region_text(g.units))
-    kept = confirmed_assumed(a.assumed, abnormal, untouched, declined)
+                                  labels=template_normal_labels(st), region_text=region_text(g.units),
+                                  scan_type=scan_type,
+                                  confirm=True)   # one shot, as the report after Confirm: rules decided now (R5)
+    kept = confirmed_assumed(a.assumed, abnormal, untouched, declined, dictated_normal)
     conclusion = conclusion.strip() or conclusion_text(g.units)
     block = findings_block(g.units, regions, kept, conclusion, declined)
     # the scratchpad's own Generate path (context rules, required values, slot strip, check), never the bare
@@ -163,7 +175,8 @@ async def preview_report(sheet: str, scan_type: str, history: str, dictation: st
     # required-values backstop; its review flags are the Test step's
     review = list((gen.get("quality_check") or {}).get("review") or [])
     flags = [f for f in review if f.get("kind") == "undictated_number"]
-    return {"usable": True, "regions": [r.name for r in regions], "assumed": kept, "dropped": a.dropped,
+    return {"usable": True, "regions": [r.name for r in regions], "assumed": kept, "flagged": a.flagged,
+            "dropped": a.dropped,
             "assumed_error": a.error, "grouper_error": getattr(g, "error", None), "findings_block": block,
             "report_content": gen["report_content"], "model_used": gen.get("model_used"),
             "number_flags": flags, "review": review}

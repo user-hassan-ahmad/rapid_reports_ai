@@ -89,6 +89,50 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByText('No ascites.')).toBeInTheDocument();
 	});
 
+	it('a flagged normal shows an amber check marker on the region card and in the tray, and stays removable (R1)', async () => {
+		const props = { ...base(), onRemoveSentence: vi.fn() };
+		const title = 'May conflict with your dictation: confirm or remove';
+		render(HybridStackView, {
+			...props,
+			units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })],
+			assumed: { Liver: ['No biliary dilatation.', 'The portal vein is patent.', 'No other lesion.', 'No ascites.'],
+				Kidneys: ['The kidneys are normal.'], Spleen: ['The spleen is normal.'] },
+			flagged: { Liver: ['No ascites.'], Kidneys: ['The kidneys are normal.'], Spleen: ['No biliary dilatation.'] }, assumedReady: true
+		});
+		// on the card: a flagged sentence is never hidden behind "+N more"
+		const card = page.getByRole('region', { name: 'Liver' });
+		await expect.element(card.getByText('No ascites.')).toBeInTheDocument();
+		await expect.element(card.getByTitle(title, { exact: true })).toBeInTheDocument();
+		expect(card.getByTitle(title, { exact: true }).elements()).toHaveLength(1);   // flagged in Spleen, not in Liver: no marker
+		// in the tray: the pill carries the marker before it is opened; opened, the sentence does
+		const pill = page.getByRole('button', { name: /^Kidneys/ });
+		await expect.element(pill).toHaveAttribute('data-flagged', 'true');
+		await expect.element(page.getByRole('button', { name: /^Spleen/ })).not.toHaveAttribute('data-flagged');
+		await pill.click();
+		const tray = page.getByRole('region', { name: 'Normal regions' });
+		await expect.element(tray.getByText('The kidneys are normal.')).toBeInTheDocument();
+		await expect.element(tray.getByTitle(title, { exact: true })).toBeInTheDocument();
+		await page.getByLabelText('Remove The kidneys are normal.').click();
+		expect(props.onRemoveSentence).toHaveBeenCalledWith('The kidneys are normal.');
+	});
+
+	it('a dictated-normal region shows "Normal, as you said" and the sheet sentences left as "will be reported" (R2)', async () => {
+		const props = { ...base(), onRemoveSentence: vi.fn() };
+		render(HybridStackView, {
+			...props,
+			units: [u(0, 'The right kidney is normal.', 'Kidneys', { covers: ['Kidneys'] })],
+			assumed: { Kidneys: ['The left kidney is normal.'], Liver: ['The liver is normal.'] }, assumedReady: true
+		});
+		const tray = page.getByRole('region', { name: 'Normal regions' });
+		await expect.element(tray.getByText('Normal, as you said')).toBeInTheDocument();
+		await expect.element(tray.getByText('Kidneys', { exact: true })).toHaveAttribute('data-state', 'dictated');
+		await expect.element(tray.getByText('Kidneys · will be reported')).toBeInTheDocument();
+		await expect.element(tray.getByText('The left kidney is normal.')).toBeInTheDocument();
+		await expect.element(page.getByText('2 assumed normal')).toBeInTheDocument();   // Kidneys' sentence counts
+		await page.getByLabelText('Remove The left kidney is normal.').click();
+		expect(props.onRemoveSentence).toHaveBeenCalledWith('The left kidney is normal.');
+	});
+
 	it('shows the live strip and lets a line be edited and committed with Enter', async () => {
 		const props = base();
 		render(HybridStackView, {

@@ -62,23 +62,98 @@ export function abnormalAll(units: StackUnit[]): string[] {
 	return effectiveItems(units).filter((i) => i.abnormal).map((i) => i.text);
 }
 
-export interface AssumedSnap { dictation: string; abnormal: string[]; untouched: string[]; assumed: Record<string, string[]>; offered: Record<string, string[]>; dropped?: Dropped; check_failed?: boolean }
+export interface AssumedSnap { dictation: string; abnormal: string[]; untouched: string[]; assumed: Record<string, string[]>; offered: Record<string, string[]>; dictatedNormal?: string[]; flagged?: Record<string, string[]>; dropped?: Dropped; check_failed?: boolean; confirm_recheck?: boolean; confirmed?: boolean; failures?: number }
 
 /** What the gate confirms as assumed: only the sentences /assumed answered for each region, in the state (abnormal
  *  or untouched) that region had when they were checked, minus removed ones. Never the raw sheet (review
  *  2026-10-12: a region missing from the reply fell back to the sheet; an untouched region's normals stayed
  *  assumed after it turned abnormal). Until /assumed answers, nothing is assumed. */
-export function assumedFrom(snap: AssumedSnap | null, abnormal: string[], untouched: string[], removed: string[]): Record<string, string[]> {
+/** The /assumed answer is behind: a sheet exists and no answer was computed for this exact dictation. An answer for
+ *  the empty dictation (the check run when the sheet loads, E6) is current until something is dictated. */
+export function assumedStale(hasSheet: boolean, snap: AssumedSnap | null, dictation: string): boolean {
+	if (!hasSheet) return false;
+	if (snap === null || snap.dictation !== dictation) return true;
+	// A failed answer for the empty dictation (the sheet load's rule call, round 1) is asked again, up to three tries,
+	// so the tray recovers; once something is dictated a failure fails open, as before.
+	return !!snap.check_failed && !dictation.trim() && (snap.failures ?? 1) < ASSUMED_RETRIES;
+}
+export const ASSUMED_RETRIES = 3;
+
+/** A dictated-normal region (review R2) keeps the sentences the check left: the stated check removed what was said,
+ *  so "ACL intact" keeps the PCL sentence. Like the others, only when it was checked in that same state. */
+export function assumedFrom(snap: AssumedSnap | null, abnormal: string[], untouched: string[], removed: string[], dictatedNormal: string[] = []): Record<string, string[]> {
 	if (!snap) return {};
 	const gone = new Set(removed.map(norm));
 	const out: Record<string, string[]> = {};
-	const same = (r: string) => (abnormal.includes(r) ? snap.abnormal.includes(r) : snap.untouched.includes(r));
-	for (const r of [...abnormal, ...untouched]) {
+	const same = (r: string) =>
+		abnormal.includes(r) ? snap.abnormal.includes(r) : dictatedNormal.includes(r) ? (snap.dictatedNormal ?? []).includes(r) : snap.untouched.includes(r);
+	for (const r of [...abnormal, ...dictatedNormal, ...untouched]) {
 		if (!same(r)) continue;
 		const kept = (snap.assumed[r] ?? []).filter((x) => !gone.has(norm(x)));
 		if (kept.length) out[r] = kept;
 	}
 	return out;
+}
+
+/** The assumed sentences the dictation may conflict with (review R1): Jev half-read them as covered or contradicted,
+ *  so they are kept, highlighted, for the radiologist to confirm or remove. Only those `assumedFrom` still keeps. */
+export function flaggedFrom(snap: AssumedSnap | null, abnormal: string[], untouched: string[], removed: string[], dictatedNormal: string[] = []): Record<string, string[]> {
+	if (!snap?.flagged) return {};
+	const out: Record<string, string[]> = {};
+	for (const [r, xs] of Object.entries(assumedFrom(snap, abnormal, untouched, removed, dictatedNormal))) {
+		const mine = new Set((snap.flagged[r] ?? []).map(norm));
+		const kept = xs.filter((x) => mine.has(norm(x)));
+		if (kept.length) out[r] = kept;
+	}
+	return out;
+}
+
+/** Whether `s` is flagged in one of `regions` (by region and normalised text: the same words elsewhere are not). */
+export function isFlagged(flagged: Record<string, string[]>, regions: string[], s: string): boolean {
+	return regions.some((r) => (flagged[r] ?? []).some((x) => norm(x) === norm(s)));
+}
+
+/** What a Confirm answer adds to what the radiologist was shown (round 1): a sentence now assumed, or now flagged, in
+ *  a region that did not show it before (a rule the dictation un-hid, a row moving into the tray). Anything added is
+ *  shown first and Confirm waits for another press; removals alone let it through. */
+export function addedAtConfirm(before: { assumed: Record<string, string[]>; flagged: Record<string, string[]> },
+	after: { assumed: Record<string, string[]>; flagged: Record<string, string[]> }): string[] {
+	const added = (b: Record<string, string[]>, a: Record<string, string[]>) =>
+		Object.entries(a).flatMap(([r, xs]) => xs.filter((x) => !(b[r] ?? []).some((y) => norm(y) === norm(x))));
+	return [...new Set([...added(before.assumed, after.assumed), ...added(before.flagged, after.flagged)])];
+}
+
+/** The session's template context-rule decision (review R5): condition -> P(met), decided once from the clinical
+ *  history by the first good /assumed reply (the workspace load), as `fixedReferrals` is for the referral rows. */
+export interface SessionRules { history: string; rules: Record<string, number> }
+
+/** What the next /assumed sends: the kept decision while the history is the one it was decided from; else null, and
+ *  the server decides (one call). */
+export function rulesToSend(fixed: SessionRules | null, history: string): Record<string, number> | null {
+	return fixed && fixed.history === history ? fixed.rules : null;
+}
+
+/** The first good reply's decision is kept; later replies never replace it. A failed reply keeps nothing. */
+export function keepRules(fixed: SessionRules | null, history: string, res: { rules?: Record<string, number> | null; error?: string | null }): SessionRules | null {
+	if (rulesToSend(fixed, history)) return fixed;
+	return res.rules && !res.error ? { history, rules: res.rules } : null;
+}
+
+/** Confirm records the gate only on an answer computed at Confirm (`confirmed`: every rule re-asked with the
+ *  dictation) for the dictation now on screen (review round 1): never on a live answer. */
+export function confirmReady(snap: AssumedSnap | null, dictation: string): boolean {
+	return !!snap?.confirmed && snap.dictation === dictation;
+}
+
+/** The Confirm re-ask failed where the live answer it replaced had not (re-review minor): Confirm must not gate the
+ *  emptied tray a failure leaves; the live answer is kept and the radiologist confirms again. */
+export function confirmRecheckFailed(live: AssumedSnap | null, after: AssumedSnap | null): boolean {
+	return !!after?.confirmed && !!after.check_failed && !live?.check_failed;
+}
+
+/** The key a recorded gate is valid for: the scan type first, so a gate never survives a scan-type change. */
+export function gateKeyOf(scanType: string, parts: string[]): string {
+	return [scanType, ...parts].join('\u0003');
 }
 
 /** Rows over the writer's caps (E1b): shown behind one quiet "N more checks" line instead of vanishing. `rows`: the

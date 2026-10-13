@@ -69,8 +69,9 @@ def test_region_states_and_confirmed_assumed_as_the_scratchpad():
     assert (abnormal, dictated_normal, untouched) == (["Liver"], ["Spleen"], ["Kidneys"])
     got = confirmed_assumed({"Kidneys": ["Normal kidneys.", "No hydronephrosis"], "Liver": ["No biliary dilatation."],
                              "Spleen": ["Normal spleen."], "Other findings": ["x"]},
-                            abnormal, untouched, ["no hydronephrosis."])
-    assert got == {"Liver": ["No biliary dilatation."], "Kidneys": ["Normal kidneys."]}
+                            abnormal, untouched, ["no hydronephrosis."], dictated_normal)
+    # review R2: a dictated-normal region keeps the sentences the check did not find said
+    assert got == {"Liver": ["No biliary dilatation."], "Spleen": ["Normal spleen."], "Kidneys": ["Normal kidneys."]}
 
 
 SHEET = """# Skill Sheet: CT
@@ -105,11 +106,12 @@ async def test_preview_report_wires_the_scratchpad_path(monkeypatch):
         seen["regions"] = [r.name for r in regions]
         return NS(units=[U("Gallstones.", regions[0].name, abnormal=True), U("Appendicitis.", "Conclusion")])
 
-    async def fake_assumed(dictation, region_normals, abnormal, dictated_normal, removed, owned=None, touched=None,
-                           suppressions=None, clinical_history="", labels=None, region_text=None):
-        seen.update(normals=region_normals, abnormal=abnormal, dictated_normal=dictated_normal, removed=removed,
-                    history=clinical_history, labels=labels, region_text=region_text)
-        return NS(assumed={r: list(s) for r, s in region_normals.items()}, dropped={}, error=None)
+    async def fake_assumed(dictation, region_normals, abnormal, removed, owned=None,
+                           suppressions=None, clinical_history="", labels=None, region_text=None, rules=None,
+                           confirm=False, scan_type=""):
+        seen.update(normals=region_normals, abnormal=abnormal, removed=removed, assumed_scan=scan_type,
+                    history=clinical_history, labels=labels, region_text=region_text, rules=rules, confirm=confirm)
+        return NS(assumed={r: list(s) for r, s in region_normals.items()}, flagged={}, dropped={}, error=None)
 
     async def fake_lean(*, sheet, scan_type, findings, history, case, signature, declined=(), stack=None):
         seen.update(sheet=sheet, scan=scan_type, inputs={"FINDINGS": findings, "CLINICAL_HISTORY": history},
@@ -125,8 +127,10 @@ async def test_preview_report_wires_the_scratchpad_path(monkeypatch):
     out = await template_preview.preview_report(SHEET, "CT", "Pain.", "Gallstones. Appendicitis.", declined=["x."])
     assert out["usable"] and out["report_content"] == "REPORT"
     liver = seen["regions"][0]
-    assert seen["abnormal"] == [liver] and seen["dictated_normal"] == [] and seen["history"] == "Pain."
+    assert seen["abnormal"] == [liver] and seen["history"] == "Pain."
     assert seen["removed"] == ["x."] and seen["region_text"] == {liver: "Gallstones."}
+    assert seen["rules"] is None and seen["confirm"] is True   # one shot: decided now, as at Confirm (review R5)
+    assert seen["assumed_scan"] == "CT"   # seam 21: the rules are decided on the scan type, as at Generate
     assert out["findings_block"].startswith(f"{liver}: Gallstones. {A} ")
     assert out["findings_block"].endswith("DO NOT ASSERT (removed by the radiologist): x.")
     assert "Conclusion (confirmed by the radiologist): Appendicitis." in out["findings_block"]
@@ -184,8 +188,8 @@ async def test_preview_report_surfaces_the_generate_paths_review_flags_once(monk
     async def fake_group(scan_type, text, regions, previous):
         return NS(units=[U("Gallstones 12 mm.", regions[0].name, abnormal=True), U("Cholelithiasis.", "Conclusion")])
 
-    async def fake_assumed(dictation, region_normals, abnormal, dictated_normal, removed, **kw):
-        return NS(assumed={}, dropped={}, error=None)
+    async def fake_assumed(dictation, region_normals, abnormal, removed, **kw):
+        return NS(assumed={}, flagged={}, dropped={}, error=None)
 
     number = {"kind": "undictated_number", "text": "23 mm", "sentence": "A 23 mm cyst."}
     missing = {"kind": "value_missing", "text": "RVEF", "message": "Required value RVEF not found in the report"}
@@ -209,3 +213,103 @@ async def test_preview_report_surfaces_the_generate_paths_review_flags_once(monk
     monkeypatch.setattr(template_lean, "generate_template_report_lean", unchecked)
     out = await template_preview.preview_report(SHEET, "CT", "Pain.", "Gallstones 12 mm. Cholelithiasis.")
     assert out["number_flags"] == [] and out["review"] == []
+
+
+_RULED = """## Report Structure
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION CONCLUSION | header: "Conclusion:" | role: impression
+
+## Paragraph: Brain (FINDINGS)
+COVERS ["brain"]
+NEGATIVE "No other interval changes compared with the previous MRI."
+NORMAL [ventricles] "The ventricles are normal in size."
+RULE WHEN [context: no previous study is available] SUPPRESS "No other interval changes compared with the previous MRI."
+"""
+
+
+async def test_preview_with_empty_findings_hides_a_suppressed_sentence(monkeypatch):
+    # review R5: the Test run decides the context rules from the history, empty findings included
+    from rapid_reports_ai.hybrid_stack import normals, service
+    from rapid_reports_ai import template_lean
+    seen = {"conds": []}
+
+    async def fake_group(scan_type, text, regions, previous):
+        return NS(units=[])
+
+    async def never(*a, **k):
+        raise AssertionError("no per-sentence check for empty findings")
+
+    async def conds(state, conditions):
+        seen["conds"].append((state, list(conditions)))
+        return [0.9 for _ in conditions]
+
+    async def fake_lean(**kw):
+        seen["findings"] = kw["findings"]
+        return {"report_content": "REPORT", "model_used": "m"}
+
+    monkeypatch.setattr(service, "group_update", fake_group)
+    monkeypatch.setattr(normals, "ask_rows", never)
+    monkeypatch.setattr(normals, "ask_conditions", conds)
+    monkeypatch.setattr(template_lean, "generate_template_report_lean", fake_lean)
+    out = await template_preview.preview_report(_RULED, "MRI head", "First MRI. No previous imaging.", "")
+    assert out["usable"] and out["assumed_error"] is None
+    # seam 21: the session decision is condition_state's, on the scan type and the history, nothing dictated
+    assert seen["conds"] == [("SCAN TYPE:\nMRI head\nCLINICAL HISTORY:\nFirst MRI. No previous imaging.\n"
+                              "DICTATED FINDINGS:\n", ["no previous study is available"])]
+    assert "compared with the previous MRI" not in out["findings_block"]
+    assert "The ventricles are normal in size." in out["findings_block"]
+    assert {"sentence": "No other interval changes compared with the previous MRI.", "reason": "rule"} in \
+        sum(out["dropped"].values(), [])
+
+
+def test_region_text_adds_a_collective_normal_to_every_region_it_covers():
+    # review round 1: a region dictated normal by a collective sentence has that sentence as its text
+    units = [U("Solid organs unremarkable.", "General", covers=["Spleen", "Pancreas"]),
+             U("Liver, spleen and pancreas normal.", "Liver", covers=["Liver", "Spleen", "Pancreas"]),
+             U("A splenic cyst.", "Spleen", abnormal=True, covers=["Kidneys"]),
+             U("Kidneys:", "Kidneys", heading=True, covers=["Kidneys"])]
+    assert region_text(units) == {
+        "Liver": "Liver, spleen and pancreas normal.",
+        "Spleen": "A splenic cyst. Solid organs unremarkable. Liver, spleen and pancreas normal.",
+        "Pancreas": "Solid organs unremarkable. Liver, spleen and pancreas normal."}
+
+
+_SOLID = """## Report Structure
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION CONCLUSION | header: "Conclusion:" | role: impression
+
+## Paragraph: Liver (FINDINGS)
+COVERS ["liver"]
+NORMAL [liver] "The liver is normal."
+
+## Paragraph: Spleen (FINDINGS)
+COVERS ["spleen"]
+NORMAL [spleen] "The spleen is normal in size."
+"""
+
+
+async def test_preview_a_collective_dictated_normal_covers_its_regions_sheet_sentence(monkeypatch):
+    # through the Jev path: a text-sensitive fake covers the spleen sentence only when the spleen's text says so
+    from rapid_reports_ai.hybrid_stack import jev_stack as J, normals, service
+    from rapid_reports_ai import template_lean
+    said = "Solid organs unremarkable."
+
+    async def fake_group(scan_type, text, regions, previous):
+        spleen = next(r.name for r in regions if "pleen" in r.name)
+        return NS(units=[U("Gallstones.", regions[0].name, abnormal=True), U(said, "General", covers=[spleen])])
+
+    async def rows(dictation, sentences, removed, *, stated=True, contra=True, hedge=None):
+        return [J.RowCheck(0.95 if stated and said in dictation and "spleen" in s.lower() else 0.0, 0.0, 0.0)
+                for s in sentences]
+
+    async def fake_lean(**kw):
+        return {"report_content": "REPORT", "model_used": "m"}
+
+    monkeypatch.setattr(service, "group_update", fake_group)
+    monkeypatch.setattr(normals, "ask_rows", rows)
+    monkeypatch.setattr(template_lean, "generate_template_report_lean", fake_lean)
+    out = await template_preview.preview_report(_SOLID, "CT", "Pain.", f"Gallstones. {said}")
+    assert out["usable"] and out["assumed_error"] is None
+    assert "The spleen is normal in size." not in out["findings_block"]
+    assert {"sentence": "The spleen is normal in size.", "reason": "covered"} in sum(out["dropped"].values(), [])
+
