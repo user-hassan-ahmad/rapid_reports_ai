@@ -192,3 +192,24 @@ def build_cards(run: DecisionRun, n_examples: int) -> dict:
     open_ = sorted((c for c in every if c["selected"] is None),
                    key=lambda c: (c["rank"], -sum(len(e["reports"]) for e in c["evidence"] if e.get("quote"))))
     return {"cards": open_[:MAX_CARDS], "more": open_[MAX_CARDS:], "kept": kept, "defaults": defaults_of(kept)}
+
+
+def current_value_cards(sheet: str, ledger: List[dict]) -> List[dict]:
+    """The Required-values rows for a stored template (the refine panel): every LIST_MISSING item (selected as the
+    ledger says, else "every") and every value the ledger records as only-when-relevant or not needed."""
+    from . import template_sheet_grammar as tsg
+    if not tsg.is_grammar_sheet(sheet or ""):
+        return []
+    st = tsg.parse_sheet(sheet, mode="template").structure
+    out, seen = [], set()
+    for name in [x for r in st.rules if r.effect == "list_missing" for x in r.items]:
+        if td._name(name) in seen:
+            continue
+        e = td.find(ledger, "value", name)
+        out.append(value_card(name, [], selected=e["choice"]["need"] if e else "every", step="review"))
+        seen.add(td._name(name))
+    for e in ledger or []:
+        if e.get("kind") == "value" and td._name(e["key"]) not in seen:
+            out.append(value_card(e["key"], [], selected=e["choice"]["need"], step="review"))
+            seen.add(td._name(e["key"]))
+    return out

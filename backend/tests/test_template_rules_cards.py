@@ -120,3 +120,25 @@ def test_the_budget_moves_the_rest_to_more():
 
 def test_a_failed_run_has_no_cards():
     assert C.build_cards(R.DecisionRun(ok=False), 3) == {"cards": [], "more": [], "kept": [], "defaults": []}
+
+
+from rapid_reports_ai import template_ledger_apply as tla
+from tests.template_sheet_fixtures import LEDGER_SHEET
+
+
+def test_current_value_cards_show_the_sheets_list_and_the_ledgers_other_values():
+    led, _ = td.set_decision([], "value", "LVEF", {"need": "every"}, source="creation")
+    led, _ = td.set_decision(led, "value", "ECV", {"need": "relevant"}, source="creation")
+    sheet = tla.apply_ledger(LEDGER_SHEET, led).sheet
+    cards = C.current_value_cards(sheet, led)
+    assert [(c["key"], c["selected"]) for c in cards] == [("LVEF", "every"), ("ECV", "relevant")]
+    assert C.current_value_cards("# not grammar", led) == []
+
+
+def test_card_for_change_is_prefilled_and_not_preselected():
+    card = C.card_for_change("value", "ECV", {"need": "not_needed"})
+    assert card["id"] == "value:ecv" and card["step"] == "chat" and card["selected"] is None
+    card = C.card_for_change("concept", "comparison", {"use": True, "default": "", "when_met": "Compared with {date}."})
+    assert card["wording"] == {"default": "", "when_met": "Compared with {date}.", "condition": PRIOR_COND}
+    card = C.card_for_change("normal", "Liver :: liver", {"text": "The liver is normal."})
+    assert card["wording"] == {"text": "The liver is normal."} and card["kind"] == "normal"
