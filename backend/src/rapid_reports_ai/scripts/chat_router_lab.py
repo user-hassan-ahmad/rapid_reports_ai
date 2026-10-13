@@ -28,7 +28,7 @@ import json
 import statistics
 import time
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from rapid_reports_ai import chat_router as R
 from rapid_reports_ai import chat_router_calls as C
@@ -471,9 +471,65 @@ def touches_for(truth: List[dict], sheet: str) -> Optional[List[str]]:
     return sorted(x for x in out if x)
 
 
+def _need_ok(t: dict, end: str, ledger: List[dict]) -> bool:
+    need = (t.get("choice") or {}).get("need")
+    listed = {sh.norm(x) for x in L.listed_values(end)}
+    e = L.entry(ledger, "value", t.get("key", ""))
+    if need == "every":
+        return sh.norm(t.get("key", "")) in listed
+    if need == "relevant":
+        return bool(e) and e["choice"].get("need") == "relevant"
+    return sh.norm(t.get("key", "")) not in listed
+
+
+def state_score(truth: List[dict], end: str, ledger: List[dict]) -> Tuple[int, int]:
+    """(truth items whose state holds in the final sheet / ledger, items that can be scored that way). The same for
+    every arm, so arm 0 (today's refine, no records) is comparable: value lists, FIXED lines, normal texts, concept
+    state and wording, paragraph renames / removals / additions. Style and card expectations are not scored."""
+    correct = scored = 0
+    paras = {sh.norm(n) for n, _ in sh.paragraphs(end)}
+    for t in truth or []:
+        k, ch = t.get("kind"), t.get("choice") or {}
+        ok: Optional[bool] = None
+        try:
+            if t.get("expect") == "card" or k == "style":
+                ok = None
+            elif k == "value":
+                ok = _need_ok(t, end, ledger)
+            elif k == "fixed":
+                keep = ch.get("keep")
+                present = L.current(end, "fixed", t["key"]) == {"keep": "always"}
+                e = L.entry(ledger, "fixed", t["key"])
+                ok = (present if keep == "always" else (not present) if keep == "remove"
+                      else bool(e) and e["choice"].get("keep") == "dictated")
+            elif k == "normal":
+                cur = L.current(end, "normal", t["key"])
+                ok = cur is not None and _norm_obj(cur.get("text")) == _norm_obj(ch.get("text", ""))
+            elif k == "concept":
+                e = L.entry(ledger, "concept", t["key"])
+                now = e["choice"] if e else L.current(end, "concept", t["key"])
+                ok = _concept_view(now)[:3] == _concept_view(ch)[:3]
+            elif k == "layout":
+                op = t.get("op") or {}
+                name = op.get("op")
+                if name == "rename_paragraph":
+                    ok = sh.norm(op.get("to")) in paras and sh.norm(op.get("paragraph")) not in paras
+                elif name == "remove_paragraph":
+                    ok = sh.norm(op.get("paragraph")) not in paras
+                elif name == "add_paragraph":
+                    ok = sh.norm(op.get("name")) in paras
+        except (L.Rejected, KeyError, TypeError):
+            ok = False
+        if ok is not None:
+            scored += 1
+            correct += int(ok)
+    return correct, scored
+
+
 def arm_record(item: dict, t: Optional[R.Turn], qwen_calls: int, start: str, touches: Optional[List[str]],
                fallback: Optional[str] = None) -> dict:
     truth = item.get("truth") or []
+    sc, ss = state_score(truth, t.sheet if t else start, t.ledger if t else [])
     recs = turn_records(t) if t else []
     s = score_changes(truth, recs)
     return {"id": item["id"], "set": item.get("set", ""), "fallback": fallback,
@@ -483,7 +539,8 @@ def arm_record(item: dict, t: Optional[R.Turn], qwen_calls: int, start: str, tou
                                                        ) if t else 0,
             "qwen_calls": qwen_calls, "ms": t.evidence.get("ms") if t else None,
             "unrelated": unrelated_changes(start, t.sheet, touches) if (t and touches is not None) else None,
-            "style_checks": list(t.evidence.get("style_claims") or []) if t else []}
+            "style_checks": list(t.evidence.get("style_claims") or []) if t else [],
+            "state_correct": sc, "state_scored": ss}
 
 
 def edit_check_prf(results: Dict[str, dict], labels: Dict[str, int]) -> dict:
@@ -499,6 +556,15 @@ def edit_check_prf(results: Dict[str, dict], labels: Dict[str, int]) -> dict:
     return prf(pairs)
 
 
+def _pct(xs: List[float], q: float) -> Optional[float]:
+    if not xs:
+        return None
+    xs = sorted(xs)
+    i = q * (len(xs) - 1)
+    lo = int(i)
+    return float(xs[lo] + (xs[min(lo + 1, len(xs) - 1)] - xs[lo]) * (i - lo))
+
+
 def arm_summary(rows: List[dict]) -> dict:
     n = len(rows)
     ms = [r["ms"] for r in rows if r.get("ms") is not None]
@@ -506,17 +572,37 @@ def arm_summary(rows: List[dict]) -> dict:
     return {"items": n, "fallbacks": sum(bool(r["fallback"]) for r in rows),
             "applied": sum(len(r["applied_claims"]) for r in rows), "correct": sum(r["correct"] for r in rows),
             "unrequested": sum(r["unrequested"] for r in rows), "missing": sum(r["missing"] for r in rows),
+            "state_correct": sum(r.get("state_correct", 0) for r in rows),
+            "state_scored": sum(r.get("state_scored", 0) for r in rows),
             "cards": sum(r["cards"] for r in rows), "card_rate": round(sum(r["cards"] for r in rows) / n, 3) if n else None,
             "invented": sum(r["invented"] for r in rows),
             "qwen_calls_mean": round(sum(r["qwen_calls"] for r in rows) / n, 2) if n else None,
-            "ms_median": statistics.median(ms) if ms else None, "unrelated": sum(unrelated)}
+            "ms_p50": _pct(ms, 0.5), "ms_p90": _pct(ms, 0.9), "unrelated": sum(unrelated)}
 
 
-ARMS = {"arm1": R.route_turn, "arm2": P.propose_turn}
+async def refine_turn(sheet: str, ledger: List[dict], instruction: str, *, context: str = "") -> R.Turn:
+    """Arm 0: today's whole-sheet refine, vetted by the save function with the ledger, as the endpoint's fallback
+    does. It has no records, so it is scored by the final sheet and ledger (state_score) and the sheet diff."""
+    from rapid_reports_ai.template_manager import TemplateManager
+    t0 = time.monotonic()
+    history = [{"role": "assistant", "content": context}] if (context or "").strip() else []
+    result = await TemplateManager().refine_skill_sheet(skill_sheet=sheet, message=instruction, chat_history=history,
+                                                        api_key=os.environ.get("CEREBRAS_API_KEY", ""))
+    saved = await L.save(result.get("skill_sheet", "") or sheet, sheet, ledger)
+    ms = int((time.monotonic() - t0) * 1000)
+    if saved.status == "refused":
+        return R.Turn(sheet, ledger, False, saved.message, evidence={"route": "refine", "refused": True, "ms": ms})
+    changed = saved.sheet != sheet or saved.ledger != ledger
+    return R.Turn(saved.sheet, saved.ledger, changed, result.get("response", ""),
+                  claim=result.get("behavioral_claim", ""), evidence={"route": "refine", "ms": ms})
+
+
+# arm 1 (tag-then-route) is kept: it costs nothing to keep (the code stays in chat_router) and anchors the old run
+ARMS = {"arm0": refine_turn, "arm1": R.route_turn, "arm2": P.propose_turn}
 
 
 async def run_arms(root: Path, run: int) -> None:
-    """Both arms on every item, from the same sheet and an empty ledger (real Jev / Qwen / save function). The save
+    """All three arms on every item, from the same sheet and an empty ledger (real Jev / Qwen / save function). The save
     function's unit checks run as in production. Model calls are counted per item and arm."""
     async def fn(it):
         sheet = _sheet(root, it["sheet"])

@@ -133,7 +133,7 @@ def test_arm_record_scores_a_turn_against_the_truth():
     rec = lab.arm_record(item, t, qwen_calls=2, start="S", touches=None)
     assert rec == {"id": "i1", "set": "synthetic", "fallback": None, "applied_claims": ["W", "D"], "cards": 1,
                    "correct": 1, "unrequested": 1, "missing": 0, "invented": 1, "qwen_calls": 2, "ms": 120,
-                   "unrelated": None, "style_checks": []}
+                   "unrelated": None, "style_checks": [], "state_correct": 1, "state_scored": 1}
     fb = lab.arm_record(item, None, qwen_calls=0, start="S", touches=None, fallback="no_tag")
     assert fb["fallback"] == "no_tag" and fb["applied_claims"] == [] and fb["missing"] == 1
 
@@ -143,9 +143,12 @@ def test_arm_summary_totals_and_rates():
              "unrequested": 0, "missing": 0, "invented": 0, "qwen_calls": 1, "ms": 100, "unrelated": 0},
             {"id": "b", "set": "synthetic", "fallback": "no_tag", "applied_claims": [], "cards": 0, "correct": 0,
              "unrequested": 2, "missing": 1, "invented": 1, "qwen_calls": 3, "ms": 300, "unrelated": None}]
+    rows[0].update(state_correct=1, state_scored=1)
+    rows[1].update(state_correct=0, state_scored=2)
     assert lab.arm_summary(rows) == {"items": 2, "fallbacks": 1, "applied": 1, "correct": 1, "unrequested": 2,
-                                     "missing": 1, "cards": 1, "card_rate": 0.5, "invented": 1,
-                                     "qwen_calls_mean": 2.0, "ms_median": 200.0, "unrelated": 0}
+                                     "missing": 1, "state_correct": 1, "state_scored": 3, "cards": 1,
+                                     "card_rate": 0.5, "invented": 1, "qwen_calls_mean": 2.0, "ms_p50": 200.0,
+                                     "ms_p90": 280.0, "unrelated": 0}
 
 
 def test_qwen_calls_are_counted_per_item_task():
@@ -178,3 +181,36 @@ def test_the_edit_check_is_scored_against_hand_labels():
     out = lab.edit_check_prf(rows, labels)
     assert (out["tp"], out["fp"], out["fn"], out["n"]) == (1, 1, 1, 3)      # honest = edit_score >= 0.5
     assert lab.edit_check_prf(rows, {})["n"] == 0
+
+
+
+# ── three arms: arm 0 (today's refine), arm 1 (tag-then-route, reference), arm 2 (the hybrid) ───────────────────
+def test_the_truth_is_scored_on_the_final_sheet_and_ledger():
+    from tests.template_sheet_fixtures import ROUTER_SHEET
+    end = ROUTER_SHEET.replace('LIST_MISSING ["Width" | "Depth"]', 'LIST_MISSING ["Depth"]').replace(
+        'FIXED "No previous imaging available."\n', "").replace("## Paragraph: Lower (FINDINGS)", "## Paragraph: Bottom (FINDINGS)")
+    truth = [{"kind": "value", "key": "Width", "choice": {"need": "not_needed"}},
+             {"kind": "fixed", "key": "No previous imaging available.", "choice": {"keep": "remove"}},
+             {"kind": "normal", "key": "Upper :: alpha", "choice": {"text": "Alpha is fine."}},
+             {"kind": "layout", "op": {"op": "rename_paragraph", "paragraph": "Lower", "to": "Bottom"}},
+             {"kind": "style"}]
+    assert lab.state_score(truth, end, []) == (3, 4)          # style is not scored; the normal was not changed
+    assert lab.state_score([{"kind": "value", "key": "Width", "choice": {"need": "relevant"}}], ROUTER_SHEET,
+                           [{"kind": "value", "key": "Width", "choice": {"need": "relevant"}}]) == (1, 1)
+
+
+async def test_arm_0_is_todays_refine_through_the_save_function(monkeypatch):
+    from rapid_reports_ai import template_sheet_save as S
+    from tests.template_sheet_fixtures import ROUTER_SHEET
+
+    async def refine(self, skill_sheet, message, chat_history, api_key, rejection_context=None):
+        return {"skill_sheet": skill_sheet.replace('LIST_MISSING ["Width" | "Depth"]', 'LIST_MISSING ["Depth"]'),
+                "response": "Done.", "behavioral_claim": "c"}
+
+    async def none(structure, sheet):
+        return []
+    monkeypatch.setattr("rapid_reports_ai.template_manager.TemplateManager.refine_skill_sheet", refine)
+    monkeypatch.setattr(S, "check_units", none)
+    t = await lab.refine_turn(ROUTER_SHEET, [], "drop width")
+    assert t.applied and 'LIST_MISSING ["Depth"]' in t.sheet and t.records == [] and t.evidence["route"] == "refine"
+    assert set(lab.ARMS) == {"arm0", "arm1", "arm2"}
