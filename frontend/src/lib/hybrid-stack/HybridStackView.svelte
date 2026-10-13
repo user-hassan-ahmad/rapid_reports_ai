@@ -58,6 +58,7 @@
 		onEditLine,
 		onEditing = () => {},
 		onAnswer = () => {},
+		onAnswerTemplate = () => {},
 		onRemoveSentence = () => {},
 		onDictateInto = () => {},
 		onSkip = () => {},
@@ -130,6 +131,8 @@
 		onEditing?: (active: boolean) => void;
 		/** A row answered with a tap: its listed sentences are added as the radiologist's answer. */
 		onAnswer?: (id: string) => void;
+		/** Yes or No on a template row: the template's own sentence for that answer is added. */
+		onAnswerTemplate?: (id: string, which: 'yes' | 'no') => void;
 		/** A row sentence or an assumed normal removed (×): never stated. */
 		onRemoveSentence?: (sentence: string) => void;
 		/** "Dictate" on a row: the next words go under that region. */
@@ -192,11 +195,11 @@
 	const referrals = $derived(items.filter((i) => i.kind === 'referral'));
 	const shownNames = $derived(new Set(shown.map((g) => g.name)));
 	const covered = $derived(new Set(shown.flatMap((g) => g.members)));
-	const rowsFor = (region: string) => items.filter((i) => i.kind === 'finding' && anchorRegion(i, units) === region);
+	const rowsFor = (region: string) => items.filter((i) => i.kind !== 'referral' && anchorRegion(i, units) === region);
 	// A joined card holds the rows and normals of the regions it spans, unless a region has its own card.
 	const ownMembers = (g: { name: string; members: string[] }) => g.members.filter((m) => m === g.name || !shownNames.has(m));
 	// A finding row whose region has no card (the writer named a region outside the scratchpad) shows up top.
-	const looseRows = $derived(items.filter((i) => i.kind === 'finding' && !covered.has(anchorRegion(i, units))));
+	const looseRows = $derived(items.filter((i) => i.kind !== 'referral' && !covered.has(anchorRegion(i, units))));
 	const openRows = $derived(openCount(items, tapped, removed, skipped));
 	// Checks still asking: not answered, and their words still in the text (an edit that removes them resolves them).
 	// A check whose words are on a line shown here is an underline with a hover card; any other is a row, in the card
@@ -596,6 +599,22 @@
 	{:else if it.answered}
 		<div class="flex flex-wrap items-baseline gap-x-2 rounded-md border-l-2 border-emerald-500/60 bg-emerald-500/[0.06] px-2 py-1 text-sm" data-row="answered" transition:fade={{ duration: ms }}>
 			<span class="text-emerald-200">✓ {it.question}</span><span class="text-xs text-emerald-300/70">answered in your dictation</span>
+		</div>
+	{:else if it.kind === 'template' && actionsReady}
+		<!-- A template row (a findings-triggered habit): the template's own question. Yes / No add the template's own
+		     sentence for that answer; Not assessed states nothing. -->
+		<div class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border-l-2 border-amber-400/80 bg-amber-500/[0.07] px-2 py-1.5" data-row="template" transition:fade={{ duration: ms }}>
+			{#if label}<span class="text-[10px] font-semibold uppercase tracking-wide text-amber-300/90">{label}</span>{/if}
+			<span class="text-sm font-medium text-amber-100">{it.question}</span>
+			{#if it.why}<span class="cursor-help text-xs text-gray-500" title={it.why} aria-label="Why: {it.why}">ⓘ</span>{/if}
+			<span class="ml-auto flex gap-1">
+				<button type="button" class="rounded-md border border-amber-300/40 bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-100 hover:bg-amber-400/25"
+					title="Add: {it.yes}" onclick={() => onAnswerTemplate(it.id, 'yes')}>Yes</button>
+				<button type="button" class="rounded-md border border-amber-300/40 bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-100 hover:bg-amber-400/25"
+					title="Add: {it.no}" onclick={() => onAnswerTemplate(it.id, 'no')}>No</button>
+				<button type="button" class="rounded-md px-2 py-0.5 text-xs text-gray-500 hover:text-gray-300" title="Nothing is stated"
+					onclick={() => onSkip(it.id)}>Not assessed</button>
+			</span>
 		</div>
 	{:else if listed.length && !actionsReady}
 		<!-- Before the review: a reminder of the question only, no buttons. -->

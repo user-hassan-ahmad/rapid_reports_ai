@@ -119,7 +119,7 @@ export function buildFindingsBlock(units: StackUnit[], groups: string[], gate: G
 	const standalone: string[] = [];
 	for (const it of gate.items) {
 		if (it.answered_by !== 'tap' || !it.sentences.length) continue;
-		if (groups.includes(it.region) && (dictatedRegion(it.region) || it.kind === 'finding')) add(it.region, `${ANSWERED} ${it.sentences.join(' ')}`);
+		if (groups.includes(it.region) && (dictatedRegion(it.region) || it.kind !== 'referral')) add(it.region, `${ANSWERED} ${it.sentences.join(' ')}`);
 		else standalone.push(`${it.region || 'Referral question'} (answered by the radiologist): ${it.sentences.join(' ')}`);
 	}
 	const tray: string[] = [];
