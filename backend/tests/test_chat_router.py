@@ -475,3 +475,15 @@ async def test_a_tag_call_past_the_deadline_falls_back(fake, monkeypatch):
     monkeypatch.setattr(J, "tag", stuck)
     with pytest.raises(R.Fallback):
         await R.route_turn(ROUTER_SHEET, [], "drop width")
+
+
+async def test_a_plausible_always_mention_request_passes_the_misfit_check(fake):
+    """misfit_B: a request to add, require or mention something the scan could assess is not unrelated."""
+    assert "A request to add, require or mention something this scan could plausibly assess is not unrelated." in (
+        J.QUESTIONS["misfit"]["instructions"])
+    fake["tags"] = tags(misfit=0.1, normal=0.9)
+    t = await R.route_turn(ROUTER_SHEET, [], "always mention the ECV")
+    assert t.evidence["route"] == "router" and [k for k, _ in fake["seen"]] == ["normal"]
+    fake["tags"], fake["seen"] = tags(misfit=0.5, normal=0.9), []
+    blocked = await R.route_turn(ROUTER_SHEET, [], "always mention the ECV")
+    assert blocked.evidence["route"] == "ask" and fake["seen"] == [] and not blocked.applied
