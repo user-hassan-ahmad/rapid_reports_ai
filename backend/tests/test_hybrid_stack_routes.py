@@ -376,3 +376,46 @@ def test_log_stamp_is_pinned_to_the_sheet_the_session_started_with(authed, db_se
     db_session.expire_all()
     row = db_session.query(DictationStackLog).filter_by(session_id="s5").one()
     assert row.stamp["sheet_hash"] == sheet_hash("first")
+
+
+_HABIT_SHEET = """## Report Structure
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION CONCLUSION | header: "Conclusion:" | role: impression
+
+## Paragraph: Upper (FINDINGS)
+COVERS ["alpha"]
+NORMAL [alpha] "Alpha is normal."
+RULE WHEN [findings: an alpha abnormality is reported] ASK "Extension beyond alpha?" YES "The abnormality extends beyond alpha." NO "No extension beyond alpha."
+"""
+
+
+def test_items_passes_the_templates_confirmed_habits_only(authed, monkeypatch, db_session, user):
+    from rapid_reports_ai import template_decisions as td
+    from rapid_reports_ai.database.models import Template
+    from rapid_reports_ai.hybrid_stack.items import ItemsResult
+    led, _ = td.set_decision([], "habit", "Upper :: an alpha abnormality is reported",
+                             {"mode": "ask", "question": "Extension beyond alpha?",
+                              "yes": "The abnormality extends beyond alpha.", "no": "No extension beyond alpha."},
+                             source="creation", at="t")
+    t = Template(name="T", user_id=user.id, is_active=True, tags=[],
+                 template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": _HABIT_SHEET, "decisions": led})
+    unconfirmed = Template(name="U", user_id=user.id, is_active=True, tags=[],
+                           template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": _HABIT_SHEET})
+    db_session.add_all([t, unconfirmed])
+    db_session.commit()
+    seen = {}
+
+    async def items(*a, **k):
+        seen.clear()
+        seen.update(k)
+        return ItemsResult(items=[])
+    monkeypatch.setattr(R, "items_update", items)
+    authed.post("/api/canvas/stack/items", json={"regions": ["Upper"], "dictation": "x", "template_id": str(t.id)})
+    assert [(h.region, h.mode, h.question) for h in seen["habits"]] == [("Upper", "ask", "Extension beyond alpha?")]
+    authed.post("/api/canvas/stack/items", json={"regions": ["Upper"], "dictation": "x"})
+    assert "habits" not in seen
+    authed.post("/api/canvas/stack/items", json={"regions": ["Upper"], "dictation": "x", "template_id": str(uuid.uuid4())})
+    assert "habits" not in seen
+    # Hassan H3: the same line with no confirmed entry is inactive
+    authed.post("/api/canvas/stack/items", json={"regions": ["Upper"], "dictation": "x", "template_id": str(unconfirmed.id)})
+    assert "habits" not in seen
