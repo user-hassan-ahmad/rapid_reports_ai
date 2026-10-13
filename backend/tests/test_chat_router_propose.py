@@ -341,3 +341,30 @@ def test_field_claims_are_specific():
     assert CH.concept_field_claim("comparison", "when_met", "") == (
         f'{L.CONCEPTS["comparison"]}: the wording for when it applies is removed.')
     assert CH.concept_field_claim("comparison", "state", "not_used") == f'{L.CONCEPTS["comparison"]}: no longer stated.'
+
+
+# ── item 4: the habit guard blocks only what becomes unconditional ──────────────────────────────────────────────
+def test_the_habit_guard_blocks_only_new_unconditional_content():
+    blocks = lambda kind, **f: P.habit_blocks(kind, _change(kind, "c", **f)[1])
+    assert blocks("normal", paragraph="Upper", negative="No collection.", to="add", text="No collection.")
+    assert blocks("normal", paragraph="Upper", structure="delta", to="add", text="Delta is normal.")
+    assert blocks("fixed", to="add", paragraph="Technique", text="A line.")
+    assert blocks("fixed", to="always", line="Axial images were acquired.")
+    assert blocks("value", name="Width", to="every")
+    assert not blocks("normal", paragraph="Upper", structure="alpha", to="reword", text="Alpha is fine.")
+    assert not blocks("normal", paragraph="Upper", negative="No beta abnormality.", to="removed")
+    assert not blocks("fixed", to="remove", line="Axial images were acquired.")
+    assert not blocks("fixed", to="dictated", line="Axial images were acquired.")
+    assert not blocks("value", name="Width", to="relevant")
+    assert not blocks("concept", concept="comparison", when_met="Compared with the {study} of {date}.")
+
+
+async def test_with_the_habit_guard_a_rewording_still_applies(stub):
+    stub["habit"] = 0.9
+    stub["proposal"] = _proposal(
+        _change("normal", "Upper: the alpha normal reads Alpha is fine.", paragraph="Upper", structure="alpha",
+                to="reword", text="Alpha is fine."),
+        _change("value", "Width must be stated in every report.", name="Width", to="every"))
+    t = await P.propose_turn(ROUTER_SHEET, [], "when there is a mass say Alpha is fine. and always give the width")
+    assert t.applied and "Alpha is fine." in t.sheet and t.cards[0]["kind"] == "habit"
+    assert t.evidence["habit_dropped"] == ["value"]

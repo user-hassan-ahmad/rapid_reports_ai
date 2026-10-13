@@ -156,6 +156,14 @@ def single_field(p: PConcept, field: str) -> PConcept:
     return PConcept(concept=p.concept, claim=p.claim, sure=p.sure, condition=p.condition, **{field: getattr(p, field)})
 
 
+def habit_blocks(kind: str, p) -> bool:
+    """Under the habit guard, only a change that makes something new unconditional is blocked (Hassan 2026-10-13):
+    a normal or negative added, a fixed line added or made always printed, a value required in every report.
+    Rewordings, removals and conditional concept wording pass."""
+    return ((kind == "normal" and p.to == "add") or (kind == "fixed" and p.to in ("add", "always"))
+            or (kind == "value" and p.to == "every"))
+
+
 LISTS = (("value", "values"), ("concept", "concepts"), ("fixed", "fixed"), ("normal", "normals"),
          ("layout", "layout"), ("style", "style"))
 
@@ -346,8 +354,8 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
             orig, f = group_of[id(c)]
             groups.setdefault(id(orig), (orig, {}))[1][f] = ok
             continue
-        if habit_card and v.kind in R.HABIT_KINDS:
-            dropped.append(v.kind)                     # parked: never written as a rule line (until item 5)
+        if habit_card and habit_blocks(v.kind, c):
+            dropped.append(v.kind)                     # parked: never made unconditional (until item 5)
             continue
         verdicts.append(v if ok else CH.to_card(v))
     for orig, oks in groups.values():   # apply only the verified fields; card the whole proposal for the rest
