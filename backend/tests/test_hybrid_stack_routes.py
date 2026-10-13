@@ -370,3 +370,61 @@ def test_log_stamp_is_pinned_to_the_sheet_the_session_started_with(authed, db_se
     db_session.expire_all()
     row = db_session.query(DictationStackLog).filter_by(session_id="s5").one()
     assert row.stamp["sheet_hash"] == sheet_hash("first")
+
+
+_VALUES_SHEET = """## Report Structure
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION CONCLUSION | header: "Conclusion:" | role: impression
+
+## Report-wide
+RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["LVEF" | "LV mass index" | "RVEF"] AT TOP
+
+## Paragraph: Left ventricle (FINDINGS)
+COVERS ["left ventricle"]
+NORMAL [left ventricle] "Normal left ventricular size and function."
+"""
+
+
+def _values_template(db_session, user):
+    from rapid_reports_ai.database.models import Template
+    t = Template(name="CMR", user_id=user.id, is_active=True, tags=[],
+                 template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": _VALUES_SHEET})
+    db_session.add(t)
+    db_session.commit()
+    return t
+
+
+def test_slim_sheet_carries_the_templates_required_values(authed, db_session, user):
+    t = _values_template(db_session, user)
+    d = authed.post("/api/canvas/stack/slim-sheet", json={"scan_type": "CMR", "template_id": str(t.id)}).json()
+    assert d["status"] == "template" and d["required_values"] == ["LVEF", "LV mass index", "RVEF"]
+
+
+def test_values_route_fills_the_templates_items_read_on_the_server(authed, monkeypatch, db_session, user):
+    from rapid_reports_ai.hybrid_stack.values import ValueFill, ValuesResult
+    t = _values_template(db_session, user)
+    seen = {}
+
+    async def fake(dictation, items):
+        seen.update(dictation=dictation, items=items)
+        return ValuesResult(values=[ValueFill(item="LVEF", state="filled", value="45%", quote="LVEF 45%.", score=0.9),
+                                    ValueFill(item="LV mass index"), ValueFill(item="RVEF")])
+    monkeypatch.setattr(R, "smart_fill", fake)
+    d = authed.post("/api/canvas/stack/values", json={"dictation": "LVEF 45%.", "template_id": str(t.id)}).json()
+    assert seen == {"dictation": "LVEF 45%.", "items": ["LVEF", "LV mass index", "RVEF"]}
+    assert d["values"][0] == {"item": "LVEF", "state": "filled", "value": "45%", "quote": "LVEF 45%.", "score": 0.9}
+    assert [v["state"] for v in d["values"][1:]] == ["open", "open"] and d["error"] is None
+
+
+def test_values_route_without_a_usable_template_has_no_items(authed, monkeypatch):
+    seen = {}
+
+    async def fake(dictation, items):
+        seen["items"] = items
+        from rapid_reports_ai.hybrid_stack.values import ValuesResult
+        return ValuesResult()
+    monkeypatch.setattr(R, "smart_fill", fake)
+    assert authed.post("/api/canvas/stack/values", json={"dictation": "x"}).json()["values"] == []
+    assert seen["items"] == []
+    other = authed.post("/api/canvas/stack/values", json={"dictation": "x", "template_id": str(uuid.uuid4())})
+    assert other.status_code == 200 and seen["items"] == []   # unknown / another user's template: nothing asked
