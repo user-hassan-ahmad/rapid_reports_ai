@@ -516,6 +516,17 @@ async def test_a_library_pack_hit_becomes_a_pack_card(db_session, monkeypatch, t
         [("toy-nodule@1.0", "Pack", ["Pack"], "verified", True, ["toy-other@1.0"])]
 
 
+@pytest.fixture(autouse=True)
+def _no_case_facts(monkeypatch):
+    """No Jev in these tests: /match/other gets no case modality and filters nothing (as /match on failure). A test
+    that needs a modality patches LM.case_facts itself."""
+    from rapid_reports_ai.hybrid_stack.copilot import library_match as LM
+
+    async def no_facts(scan, history):
+        raise TimeoutError("no jev in tests")
+    monkeypatch.setattr(LM, "case_facts", no_facts)
+
+
 def _pack_match(monkeypatch, toy):
     monkeypatch.setattr(L, "get", lambda: _toy_lib(toy))
 

@@ -528,7 +528,8 @@ def taps(e: Entry, s, label: dict, patient: dict, picked: bool = False,
          presets: dict[str, str] | None = None) -> tuple[int, str | None]:
     """Taps to an outcome (spec §12): one per asked input the engine needs (truth, else assumed), one per wrong
     drafted value (corrected to truth), one per eligibility value the card assumed in scope that the truth
-    contradicts (corrected to truth), one for the lesion pick if shown. Calculate is not counted. A wrong draft is
+    contradicts (corrected to truth), one per scope doubt the truth agrees with (confirmed at Apply), one for the
+    lesion pick if shown. Calculate is not counted. A wrong draft is
     dropped from a copy of the settlement, so the engine never sees it; the original is untouched."""
     truth, d = _truth(label), drafts(s, e, presets)
     wrong = [k for k, (v, _, t) in d.items() if not _right(e, k, v, t, label)]
@@ -547,10 +548,12 @@ def taps(e: Entry, s, label: dict, patient: dict, picked: bool = False,
         answered.update(new)
         n += len(new)
         p = finish(e, s, answered, patient, presets=presets)
-    # the Calculate tap: the engine over every value the card shows (a pre-filled scope doubt the truth agrees with is
-    # confirmed by it and excludes, as live Calculate would)
+    # Apply: a scope doubt the truth agrees with is confirmed (one tap each; a contradicted one was already corrected
+    # above), then Calculate runs over every value the card shows
     shown = {d.input: d.value for d in p.draft if d.value}
-    return n, calculate(e, s, shown, patient, [], "", presets=presets).outcome
+    confirm = {k: shown[k] for k in p.scope_doubt if k not in answered and k in shown}
+    n += len(confirm)
+    return n, calculate(e, s, shown, patient, [], "", presets=presets, answered={**answered, **confirm}).outcome
 
 
 def spot_rows(e: Entry, card: dict, s, label: dict) -> list[dict]:

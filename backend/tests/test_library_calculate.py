@@ -175,8 +175,10 @@ def test_a_prefilled_excluding_eligibility_value_is_a_scope_doubt_not_an_exclusi
     d = next(x for x in p.draft if x.input == "pregnant_or_acute")
     assert (d.state, d.value, d.quote) == ("prefilled", "Yes", "Pelvic pain") and PP.WHY_WOULD_EXCLUDE in d.why
     assert "pregnant_or_acute" not in _ids(p.assumptions)
-    c = PP.calculate(e, s, {"pregnant_or_acute": "Yes"}, None, [], "b1")       # confirmed by the radiologist
-    assert c.outcome == "does_not_apply" and c.exclusion is not None
+    c = PP.calculate(e, s, {"pregnant_or_acute": "Yes"}, None, [], "b1")       # sent back unchanged: still a doubt
+    assert c.outcome is None and c.exclusion is None and c.scope_doubt == ["pregnant_or_acute"]
+    c = PP.calculate(e, s, {"pregnant_or_acute": "Yes"}, None, [], "b1", answered={"pregnant_or_acute": "Yes"})
+    assert c.outcome == "does_not_apply" and c.exclusion is not None and c.scope_doubt == []      # confirmed
 
 
 def test_a_prefilled_known_cancer_never_excludes_and_a_suspicion_is_never_drafted(monkeypatch):
@@ -447,3 +449,68 @@ def test_calculate_weighs_the_assumptions_sent_back():
     c = PP.calculate(e, s, sent, None, [], "b1")
     a = {x.input: x for x in c.assumptions}
     assert a["benign_features"].decisive is True and a["spiculation"].decisive is False and c.outcome is not None
+
+
+
+# final review C1, I1, I3
+def _fl():
+    return next(x for x in _tier1() if x.id == "fleischner-pulmonary-nodule")
+
+
+@pytest.mark.parametrize("tier", ["read", "prefilled"])
+def test_a_corrected_exclusion_keeps_the_previews_assumptions_in_calculate(tier):
+    """C1: a 38 mm opacity corrected to 7 mm: Calculate keeps age and exclusion assumed and decisive."""
+    e = _fl()
+    s = PP.Settlement(values={"diameter_mm": PP.Drafted(InputValue(value=38.0), "38 mm", tier, []),
+                              "nodule_type": PP.Drafted(InputValue(value="solid"), "solid", "read"),
+                              "count": PP.Drafted(InputValue(value="single"), "solitary", "prefilled", ["x"]),
+                              "risk": PP.Drafted(InputValue(value="low"), "never smoked", "prefilled", ["x"])})
+    p = PP.finish(e, s, {"diameter_mm": "7"}, None, [])
+    assert {a.input for a in p.assumptions} >= {"age", "exclusion"}
+    shown = {d.input: d.value for d in p.draft if d.value}
+    c = PP.calculate(e, s, shown, None, [], "b1", answered={"diameter_mm": "7"})
+    a = {x.input: x for x in c.assumptions}
+    assert c.outcome is not None and {"age", "exclusion"} <= set(a) and a["age"].decisive and a["exclusion"].decisive
+    states = {v.input: v.state for v in c.values}
+    assert states["age"] == states["exclusion"] == "assumed"
+
+
+def test_a_prefilled_doubt_corrected_keeps_age_assumed_in_calculate():
+    e = _fl()
+    s = PP.Settlement(values={"exclusion": PP.Drafted(InputValue(value=True), "screening", "prefilled", [PP.WHY_KIND]),
+                              "nodule_type": PP.Drafted(InputValue(value="solid"), "solid", "read"),
+                              "diameter_mm": PP.Drafted(InputValue(value=7.0), "7 mm", "read")})
+    p = PP.finish(e, s, {"exclusion": "No"}, None, [])
+    shown = {d.input: d.value for d in p.draft if d.value}
+    c = PP.calculate(e, s, shown, None, [], "b1", answered={"exclusion": "No"})
+    assert {v.input: v.state for v in c.values}["age"] == "assumed" and "age" in {x.input for x in c.assumptions}
+
+
+def test_a_scope_doubt_card_never_decides_on_the_guessed_value():
+    """I1: Fleischner pre-filled exclusion=Yes, ESE pre-filled known cancer: no deciding answer leads to an exclusion,
+    and decisive matches the same card without the doubt value."""
+    e = _fl()
+    s = PP.Settlement(values={"exclusion": PP.Drafted(InputValue(value=True), "screening", "prefilled", [PP.WHY_KIND]),
+                              "nodule_type": PP.Drafted(InputValue(value="solid"), "solid", "read"),
+                              "diameter_mm": PP.Drafted(InputValue(value=7.0), "7 mm", "read")})
+    p = PP.finish(e, s, {}, None, [])
+    assert p.scope_doubt == ["exclusion"] and all(d.category != "not_applicable" for d in p.deciding)
+    clean = PP.finish(e, PP.Settlement(values={k: v for k, v in s.values.items() if k != "exclusion"}), {}, None, [])
+    dec = {a.input: a.decisive for a in clean.assumptions if a.input != "exclusion"}
+    assert {a.input: a.decisive for a in p.assumptions} == dec
+    ese = next(x for x in _tier1() if x.id == "ese-adrenal-incidentaloma")
+    s = PP.Settlement(values={"known_primary_cancer": PP.Drafted(InputValue(value=True), "breast cancer",
+                                                                 "prefilled", [PP.WHY_KIND]),
+                              "size_cm": PP.Drafted(InputValue(value=2.4), "2.4 cm", "read")})
+    p = PP.finish(ese, s, {}, None, [])
+    assert p.scope_doubt == ["known_primary_cancer"] and all(d.category != "not_applicable" for d in p.deciding)
+
+
+@pytest.mark.parametrize("settlement", [PP.Settlement(failed=True), PP.Settlement(no_unit=True)])
+def test_visible_signs_are_asked_when_nothing_was_read(settlement):
+    """I3: a failed settle or no finding unit: nobody looked, so lesion signs are asked, never assumed absent."""
+    e = next(x for x in _tier1() if x.id == "bts-pulmonary-nodule")
+    p = PP.finish(e, settlement, {}, None, [])
+    states = {d.input: d.state for d in p.draft}
+    assert states["benign_features"] != "assumed" and states["spiculation"] != "assumed"
+    assert not {"benign_features", "spiculation"} & {a.input for a in p.assumptions}
