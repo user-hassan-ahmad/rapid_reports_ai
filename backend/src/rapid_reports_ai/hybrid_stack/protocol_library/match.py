@@ -43,10 +43,28 @@ def agent_words(agent: str) -> str:
     return " ".join(w if w.isupper() and len(w) > 1 else w.lower() for w in AGENT.get(agent, agent).split())
 
 
+UNENHANCED = {"non_contrast", "cine", "flow", "t1_t2_mapping", "t2star", "calcium_score"}
+
+
+def effective_agent(e: Entry, phases: list[str]) -> str:
+    """The contrast wording follows the picked phase set (re-review 2026-10-13): a set of only unenhanced phases or
+    non-contrast sequences is "none" whatever the entry's agent; a contrast phase on an agent-none entry takes the
+    modality default; an empty phase set keeps the entry's agent."""
+    if not phases:
+        return e.agent
+    if all(p in UNENHANCED for p in phases):
+        return "none"
+    if e.agent == "none":
+        return "gadolinium" if e.modality.upper() in ("MR", "MRI") else "iv_iodinated"
+    return e.agent
+
+
 def protocol_line(entry: Entry, phases: list[str] | None = None) -> str:
+    """The picker's line, e.g. "IV contrast · arterial, portal venous": the agent follows the picked phase set."""
     ph = entry.phases_default if phases is None else phases
     words = phase_words(ph)
-    return AGENT.get(entry.agent, entry.agent) + (f" · {words}" if words else "")
+    agent = effective_agent(entry, ph)
+    return AGENT.get(agent, agent) + (f" · {words}" if words else "")
 
 
 def _edit1(a: str, b: str) -> bool:

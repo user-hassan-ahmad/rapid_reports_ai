@@ -22,6 +22,15 @@ def test_protocol_line(b):
     assert M.protocol_line(b.entry("TMBR")) == "Gadolinium · DCE"
 
 
+def test_protocol_line_follows_the_phase_aware_agent(b):
+    mr0 = b.entry("TMBR").model_copy(update={"agent": "none"})
+    assert M.protocol_line(mr0, ["dce"]) == "Gadolinium · DCE"          # never "No contrast · DCE"
+    ct0 = b.entry("TCAP").model_copy(update={"agent": "none"})
+    assert M.protocol_line(ct0) == "IV contrast · portal venous"
+    assert M.protocol_line(b.entry("TCAP"), ["non_contrast"]) == "No contrast · unenhanced"
+    assert M._option(mr0).variants[0].line == "Gadolinium · DCE"
+
+
 def test_local_search_abbreviation_partial_misspelling(b):
     assert M.local_search(b, "ctap")[0][1].id == "TCAP"
     assert M.local_search(b, "cth")[0][1].id == "TCTH"

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..schemas import OTHER, Region, pill_regions
 from .bundle import Bundle, Entry, phase_id
-from .match import PHASE_WORDS, agent_words, phase_words
+from .match import PHASE_WORDS, UNENHANCED, agent_words, effective_agent, phase_words  # noqa: F401
 
 LATERALITY = ("left", "right", "bilateral")
 
@@ -70,22 +70,6 @@ def resolve(bundle: Bundle, entry_id: str, phases: list[str] | None, laterality:
                       level_groups=kd.level_groups, scan_type_line=line,
                       sheet_id=f"lib:{e.id}|{phase_id(ph)}|{lat or '-'}|{bundle.version}",
                       schema_key=f"lib:{e.sheet_key}|{e.contrast_class}")
-
-
-UNENHANCED = {"non_contrast", "cine", "flow", "t1_t2_mapping", "t2star", "calcium_score"}
-
-
-def effective_agent(e: Entry, phases: list[str]) -> str:
-    """The contrast wording follows the picked phase set (re-review 2026-10-13): a set of only unenhanced phases or
-    non-contrast sequences is "none" whatever the entry's agent; a contrast phase on an agent-none entry takes the
-    modality default; an empty phase set keeps the entry's agent."""
-    if not phases:
-        return e.agent
-    if all(p in UNENHANCED for p in phases):
-        return "none"
-    if e.agent == "none":
-        return "gadolinium" if e.modality.upper() in ("MR", "MRI") else "iv_iodinated"
-    return e.agent
 
 
 def modality_line(e: Entry, phases: list[str]) -> str:
