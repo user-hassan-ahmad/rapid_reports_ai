@@ -270,8 +270,7 @@ async def _turn(fake, kind, out, instruction, ledger=None):
 async def test_undo_reverses_a_ledger_turn(fake):
     t = await _turn(fake, "value", CH.ValueOut(changes=[CH.ValueChange(name="Width", to="not_needed")]), "drop width")
     u = await R.undo_turn(t.sheet, t.ledger, t.records)
-    listed = L.listed_values(u.sheet)   # apply_ledger appends a value that comes back after the kept ones
-    assert u.applied and sorted(listed) == ["Depth", "Width"]
+    assert u.applied and 'LIST_MISSING ["Width" | "Depth"]' in u.sheet
     assert L.entry(u.ledger, "value", "Width")["choice"] == {"need": "every"}
     assert u.reply == "Undone: Width is no longer required." and u.evidence["route"] == "undo"
 
@@ -298,8 +297,10 @@ async def test_undo_reverses_a_fixed_reword_and_its_decided_entry(fake):
 
 
 async def test_undo_puts_back_validated_dropped_entries_only(fake):
-    # a ledger consistent with the sheet (the save function applies it on every save)
-    led, _ = L.set_choice([], "normal", L.normal_key("Lower", "gamma"), {"text": "Gamma is normal."})
+    # a decision confirmed at creation (not by chat): undo must bring it back as it was
+    led = L.clean([{"kind": "normal", "key": L.normal_key("Lower", "gamma"), "choice": {"text": "Gamma is fine."},
+                    "by": "radiologist", "at": "2026-10-01T09:00:00+00:00", "source": "creation"}])
+    original = L.entry(led, "normal", L.normal_key("Lower", "gamma"))
     t = await _turn(fake, "layout", CH.LayoutOut(changes=[CH.LayoutChange(op="remove_paragraph", target="Lower")]),
                     "remove the lower paragraph", led)
     assert L.entry(t.ledger, "normal", L.normal_key("Lower", "gamma")) is None
@@ -308,7 +309,8 @@ async def test_undo_puts_back_validated_dropped_entries_only(fake):
     u = await R.undo_turn(t.sheet, t.ledger, tampered)
     assert "## Paragraph: Lower (FINDINGS)" in u.sheet
     restored = L.entry(u.ledger, "normal", L.normal_key("Lower", "gamma"))
-    assert restored["choice"] == {"text": "Gamma is normal."} and restored["source"] == "chat"
+    assert restored["choice"] == {"text": "Gamma is fine."}
+    assert restored == original and restored["source"] == "creation"   # the original entry whole
     assert not any(e["kind"] == "value" for e in u.ledger)
 
 
