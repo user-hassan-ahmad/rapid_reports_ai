@@ -2580,7 +2580,8 @@ No user input provided. Omit this section entirely from output.
         if stack is not None:
             # Scratchpad session: the radiologist confirmed the content; the sheet keeps structure and style only
             pre_writing, checklist = PRE_WRITING_ANALYSIS_STACK, VERIFICATION_CHECKLIST_STACK
-            brief = stack_brief(skill_sheet, stack.get("conclusion") or "", stack.get("declined") or ())
+            brief = stack_brief(skill_sheet, stack.get("conclusion") or "", stack.get("declined") or (),
+                                values_decided=stack.get("values_decided") is True)
             system_prompt = (
                 f"{SYSTEM_PREAMBLE}\n\n{GLOBAL_STYLE_GUIDE_STACK}\n\n"
                 f"{TEMPLATE_SHEET_HEADER_STACK}\n\n{brief}"

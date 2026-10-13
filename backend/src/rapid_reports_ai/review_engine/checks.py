@@ -45,7 +45,9 @@ _PROBABLE = re.compile(rf"\b(?:{_alt(HEDGE_PROBABLE)})\b", re.I)
 Hedge = Literal["negated", "possible", "probable", "definite"]
 
 # ── dates and priors ─────────────────────────────────────────────────────────
-_MONTH = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?"
+# Month names whole, never a word that starts like one ("septal 1070 ms", "marked 1200 ms")
+_MONTH = (r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|"
+          r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\.?")
 DATE_PATTERN = (rf"\b\d{{1,2}}[/.-]\d{{1,2}}[/.-]\d{{2,4}}\b|\b\d{{4}}-\d{{1,2}}-\d{{1,2}}\b|\b\d{{1,2}}/\d{{4}}\b"
                 rf"|\b\d{{1,2}}(?:st|nd|rd|th)?\s+{_MONTH}\s+\d{{2,4}}\b|\b{_MONTH}\s+\d{{4}}\b")  # provisional: Gate B1
 # Report side: any of these is a reference to an earlier study.

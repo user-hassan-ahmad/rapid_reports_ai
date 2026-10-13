@@ -214,3 +214,10 @@ async def test_the_fallback_path_never_shows_a_habit_line_to_the_generator(captu
     await TemplateManager().generate_report_from_config(cfg, {"FINDINGS": "f"}, None, stack=stack)
     gen = next(k for k in capture if k["output_type"] is str)
     assert "Extension beyond alpha" not in gen["system_prompt"] and "No delta extension" not in gen["system_prompt"]
+
+
+def test_missing_values_rule_only_when_the_scratchpad_decided_the_values():
+    assert "Missing values" not in stack_brief(LEAN, "", ())
+    b = stack_brief(LEAN, "", (), values_decided=True)
+    assert "**Missing values:**" in b and "write no list of missing or unprovided values" in b
+    assert b.index("**Missing values:**") > b.index("## Scratchpad Session")

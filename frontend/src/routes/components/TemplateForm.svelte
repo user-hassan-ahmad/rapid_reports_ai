@@ -11,6 +11,7 @@
 	import { sectionList } from '$lib/review/savedReport';
 	import { fetchSchema, postReportId } from '$lib/hybrid-stack/api';
 	import { hybridStackOn } from '$lib/hybrid-stack/flag';
+	import { valuesBody } from '$lib/hybrid-stack/values';
 	import type { GateRecord, StackSchema } from '$lib/hybrid-stack/types';
 
 	// ── Feedback capture ──────────────────────────────────────────────
@@ -460,7 +461,7 @@
 					user_inputs: variableValues,
 					model: selectedModel,
 					...(useStack
-						? { stack: true, stack_declined: declined, stack_conclusion: stackGate?.conclusion_text ?? '' }
+						? { stack: true, stack_declined: declined, stack_conclusion: stackGate?.conclusion_text ?? '', ...valuesBody(stackGate?.values) }
 						: {})
 				})
 			});

@@ -197,3 +197,8 @@ def test_stored_texts_returns_the_templates_examples_newest_first(db_session, gu
     db_session.commit()
     assert E.stored_texts(db_session, guided_template.id) == ["new report", "old report"]
     assert E.stored_texts(db_session, "not-a-uuid") == []
+
+
+def test_scrub_keeps_a_word_starting_like_a_month():
+    assert E.scrub("Segment 3 septal 1070 ms.") == "Segment 3 septal 1070 ms."
+    assert "2023" not in E.scrub("Scanned 12 March 2023.")

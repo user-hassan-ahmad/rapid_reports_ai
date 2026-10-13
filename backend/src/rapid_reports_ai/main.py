@@ -680,6 +680,8 @@ class TemplateGenerateRequest(BaseModel):
     stack_declined: Optional[List[str]] = None  # scratchpad v2: chips the radiologist removed (never offered back)
     stack: bool = False  # a scratchpad session: FINDINGS is the confirmed findings block (template_stack)
     stack_conclusion: str = ""  # the conclusion the radiologist confirmed (the impression phrases it)
+    stack_values_na: Optional[List[str]] = None  # value cluster: required values marked N/A (None: no cluster this session)
+    stack_values_filled: Optional[List[str]] = None  # value cluster: values filled from the dictation (post-gen backstop)
 
 
 class TemplatePrepareRequest(BaseModel):
@@ -1997,6 +1999,10 @@ async def generate_report_from_template(
         # (the report never waits for options). The heavy mirror (tp.generate_template_report) is parked.
         _stack = ({"conclusion": request.stack_conclusion, "declined": request.stack_declined or []}
                   if request.stack else None)
+        if _stack is not None and request.stack_values_na is not None:
+            # The value cluster settled the template's required values: these were marked N/A (template_required_values)
+            _stack["values_na"] = [x.strip()[:200] for x in request.stack_values_na if x.strip()][:40]
+            _stack["values_filled"] = [x.strip()[:200] for x in (request.stack_values_filled or []) if x.strip()][:40]
         if _stack is not None:
             from .hybrid_stack.template import template_structure
             if template_structure(template.template_config) is None:

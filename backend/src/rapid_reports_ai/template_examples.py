@@ -19,7 +19,9 @@ MAX_EXAMPLES = 10      # the creator takes 1-5; a bound on Jev calls per save
 TIMEOUT_S = 5.0        # one Jev call per example, all in parallel (~0.5-1 s for 10 in the lab); the save waits on it
 REMOVED = "[removed]"
 
-_MONTH = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
+# Month names whole, never a word that starts like one ("septal 1070 ms", "marked 1200 ms")
+_MONTH = (r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|"
+          r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\.?")
 _PATTERNS = [
     # a labelled identifier line ("Name: …", "DOB: …", "NHS No: …") goes whole
     re.compile(r"(?im)^[ \t]*(?:name|patient name|patient|pt name|dob|d\.o\.b\.?|date of birth|nhs(?: no\.?| number)?|"

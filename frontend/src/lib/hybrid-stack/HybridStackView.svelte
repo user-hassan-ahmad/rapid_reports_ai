@@ -10,7 +10,9 @@
 	import { CONCLUSION, GENERAL, OTHER, TECHNIQUE, regionStates, showsGroup } from './regionState';
 	import { checkLabel, replaced, segments, withoutQuote, type CheckAnswer, type CheckFlag } from './checks';
 	import { anchorRegion, answerLabel, openCount, quietLine, rowSentences, unansweredChecks, waiting } from './items';
-	import type { StackItem, StackUnit, ViewRow } from './types';
+	import type { StackItem, StackUnit, ValueChip, ViewRow } from './types';
+	import ValueChips from './ValueChips.svelte';
+	import { openCount as openValueChips } from './values';
 
 	export type ConclusionState =
 		| { kind: 'waiting' }
@@ -38,6 +40,12 @@
 		assumed = {},
 		namedNormals = false,
 		skipped = [],
+		values = [],
+		onEnterValue = () => {},
+		onValueNa = () => {},
+		onValuesRestNa = () => {},
+		onKeepValue = () => {},
+		onPickValue = () => {},
 		reviewing = false,
 		reviewWaiting = false,
 		reviewFailed = false,
@@ -101,6 +109,15 @@
 		namedNormals?: boolean;
 		/** Rows skipped (finding checks) or marked not assessed (referral rows): folded, nothing stated. */
 		skipped?: string[];
+		/** The value cluster (template sessions): the template's required values; open and "stated?" ones block Confirm. */
+		values?: ValueChip[];
+		onEnterValue?: (item: string, text: string) => void;
+		onValueNa?: (item: string) => void;
+		onValuesRestNa?: () => void;
+		/** A "stated?" chip kept as stated. */
+		onKeepValue?: (item: string) => void;
+		/** A number tapped from a dictation clause on a chip: picked (never stated as a typed answer), with the clause. */
+		onPickValue?: (item: string, value: string, clause: string) => void;
 		/** The end-of-dictation review is running / will run when dictation stops. */
 		reviewing?: boolean;
 		reviewWaiting?: boolean;
@@ -201,6 +218,10 @@
 	// A finding row whose region has no card (the writer named a region outside the scratchpad) shows up top.
 	const looseRows = $derived(items.filter((i) => i.kind !== 'referral' && !covered.has(anchorRegion(i, units))));
 	const openRows = $derived(openCount(items, tapped, removed, skipped));
+	const openValues = $derived(openValueChips(values));
+	const openValueCount = $derived(values.filter((v) => v.state === 'open' || v.state === 'check').length);
+	// A required-value editor holding unsaved text holds Confirm (like an inline line edit)
+	let valueDraft = $state(false);
 	// Checks still asking: not answered, and their words still in the text (an edit that removes them resolves them).
 	// A check whose words are on a line shown here is an underline with a hover card; any other is a row, in the card
 	// holding its sentence or up top.
@@ -284,7 +305,8 @@
 	let walking = $state(false);
 	let walkSkipped: string[] = $state([]);
 	let walkTotal = $state(0);
-	// What blocks Confirm, top to bottom: open referral rows, then each blocking check by its line's position.
+	// What blocks Confirm, top to bottom: open referral rows, open or "stated?" required values, then each blocking
+	// check by its line's position.
 	const stops = $derived.by(() => {
 		const rows = referrals.filter((i) => waiting(i, tapped, removed, skipped)).map((i) => `row:${i.id}`);
 		const pos = (c: CheckFlag) => {
@@ -292,11 +314,13 @@
 			return r ? shownLines.indexOf(r) : Number.MAX_SAFE_INTEGER;
 		};
 		const blocking = liveChecks.filter((c) => c.blocking).sort((a, b) => pos(a) - pos(b)).map((c) => `check:${c.key}`);
-		const all = [...rows, ...blocking];
+		const valueStops = values.filter((v) => v.state === 'open' || v.state === 'check').map((v) => `value:${v.item}`);
+		const all = [...rows, ...valueStops, ...blocking];
 		return [...all.filter((x) => !walkSkipped.includes(x)), ...all.filter((x) => walkSkipped.includes(x))];
 	});
 	const current = $derived(walking ? (stops[0] ?? null) : null);
 	const currentCheck = $derived(current?.startsWith('check:') ? (liveChecks.find((c) => `check:${c.key}` === current) ?? null) : null);
+	const currentValue = $derived(current?.startsWith('value:') ? (values.find((v) => `value:${v.item}` === current) ?? null) : null);
 	const cardOpen = (c: CheckFlag) => (walking ? currentCheck?.key === c.key : pinnedKey === c.key || hoverKey === c.key);
 	$effect(() => {
 		walkTotal = Math.max(walkTotal, stops.length);
@@ -843,6 +867,7 @@
 <svelte:window onkeydown={walkKey} />
 
 <div class="space-y-3" data-testid="hybrid-stack">
+	<ValueChips {values} {current} onEnter={onEnterValue} onNa={onValueNa} onRestNa={onValuesRestNa} onKeep={onKeepValue} onPick={onPickValue} onDraft={(d) => (valueDraft = d)} />
 	<!-- The scratchpad box (hand read 2026-10-12): one permanent, fixed-size box for what is being said now and a line
 	     to type into. It never changes size, so nothing below it jumps; longer text scrolls inside it, pinned to the
 	     latest line. -->
@@ -1153,7 +1178,7 @@
 		<section aria-label="Walkthrough" data-testid="walkthrough" tabindex="-1" class="outline-none flex flex-wrap items-center justify-between gap-2 rounded-lg border border-orange-400/40 bg-orange-400/[0.07] px-2.5 py-2">
 			<p class="flex flex-col text-xs">
 				{#if stops.length}
-					<span class="font-medium text-orange-100">Checking {walkTotal - stops.length + 1} of {walkTotal} · {current?.startsWith('row:') ? 'Referral question' : currentCheck ? checkLabel(currentCheck.kind) : ''}</span>
+					<span class="font-medium text-orange-100">Checking {walkTotal - stops.length + 1} of {walkTotal} · {current?.startsWith('row:') ? 'Referral question' : currentValue ? (currentValue.state === 'check' ? 'Required value · needs a look' : 'Required value') : currentCheck ? checkLabel(currentCheck.kind) : ''}</span>
 					<span class="text-gray-400">Each answer moves to the next item that blocks Confirm. Advisory underlines stay in the text.</span>
 				{:else}
 					<span class="font-medium text-emerald-200">All checked</span>
@@ -1162,10 +1187,12 @@
 			</p>
 			<span class="flex gap-1.5">
 				<button type="button" class="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200" onclick={() => (walking = false)}>Exit</button>
+				<!-- One explicit step for the open required values (a sequence not acquired); "stated?" ones still need a look -->
+				{#if openValues}<button type="button" class="rounded-lg border border-amber-400/40 px-3 py-1.5 text-xs text-amber-200 hover:bg-amber-500/10" onclick={onValuesRestNa}>Mark {openValues} not provided</button>{/if}
 				{#if stops.length > 1}<button type="button" class="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-gray-200 hover:bg-white/[0.06]" onclick={nextStop}>Next ›</button>{/if}
 				{#if !stops.length}
 					<button type="button" class="rounded-lg bg-purple-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-40"
-						disabled={!hasConclusion || syncing || editing !== null || newLine.trim().length > 0} onclick={finishWalk}>{onConfirmGenerate ? 'Confirm & Generate' : 'Confirm'}</button>
+						disabled={!hasConclusion || syncing || editing !== null || valueDraft || newLine.trim().length > 0} onclick={finishWalk}>{onConfirmGenerate ? 'Confirm & Generate' : 'Confirm'}</button>
 				{/if}
 			</span>
 		</section>
@@ -1173,6 +1200,7 @@
 	<section aria-label="Confirm" class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-2.5 py-2">
 		<p class="flex flex-wrap gap-2 text-xs">
 			<span class="rounded px-1.5 py-0.5 {openRows ? 'bg-amber-500/15 text-amber-200' : 'bg-white/5 text-gray-500'}">{openRows} referral {openRows === 1 ? 'question' : 'questions'} open</span>
+			{#if openValueCount}<span class="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-200" data-gate="values">{openValueCount} required {openValueCount === 1 ? 'value' : 'values'} to resolve</span>{/if}
 			{#if liveChecks.length}<button type="button" class="rounded border border-orange-400/40 bg-orange-400/15 px-1.5 py-px text-orange-100 hover:bg-orange-400/25" data-gate="checks"
 				onclick={startWalk} disabled={!stops.length} title={stops.length ? 'Go through what blocks Confirm' : 'Advisory only: hover the underlines'}
 				>{liveChecks.length} to check{blockingChecks ? ` · ${blockingChecks} blocking` : ''}</button>{/if}
@@ -1189,7 +1217,7 @@
 			class="rounded-lg px-4 py-1.5 text-xs font-medium transition-colors {gateConfirmed
 				? 'bg-emerald-500/20 text-emerald-200'
 				: 'bg-purple-700 text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-40'}"
-			disabled={gateConfirmed || !hasConclusion || syncing || newLine.trim().length > 0 || editing !== null}
+			disabled={gateConfirmed || !hasConclusion || syncing || newLine.trim().length > 0 || editing !== null || valueDraft}
 			onclick={() => (stops.length ? startWalk() : onConfirm())}
 			>{gateConfirmed ? 'Confirmed ✓' : syncing ? 'Updating…' : stops.length ? `Confirm · ${stops.length} to resolve` : 'Confirm'}</button>
 	</section>
