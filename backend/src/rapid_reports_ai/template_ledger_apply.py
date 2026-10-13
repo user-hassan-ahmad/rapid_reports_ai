@@ -143,7 +143,92 @@ def _values(lines, st, entries):
     return out2, [{"kind": "value", "key": "*", "action": "inserted"}], [], []
 
 
-_OPS: List[Tuple[str, Callable]] = []   # (kind, op) for single-entry kinds; filled in by the tasks that add them
+def _targeting(st: tss.SheetStructure, texts: Set[str]) -> List[tss.Rule]:
+    """Context REPLACE / SUPPRESS rules whose target is one of `texts` (norm_key)."""
+    return [r for r in st.rules if r.condition_source == "context" and r.effect in ("replace", "suppress")
+            and norm_key(r.target) in texts]
+
+
+def _concept_rules(st: tss.SheetStructure, name: str) -> List[tss.Rule]:
+    """The context rules carrying one of the concept's standard conditions (how a concept is found)."""
+    return [r for r in st.rules if r.condition_source == "context" and td.concept_of_condition(r.condition) == name]
+
+
+def _concept_lines(choice: dict, fixed_suffix: str = "", rule_suffix: str = "") -> List[str]:
+    """A used concept's lines: FIXED default + REPLACE, FIXED default + SUPPRESS (no alternative wording), or USE."""
+    default, when_met, cond = choice.get("default", ""), choice.get("when_met", ""), choice["condition"]
+    out = []
+    if default:
+        out.append(f'FIXED "{default}"{fixed_suffix}')
+    effect = "replace" if default and when_met else ("suppress" if default else "use")
+    rule = tss.Rule(id="ledger", section="", condition=cond, condition_source="context", effect=effect,
+                    target=default, then_text=when_met, source_lines=[])
+    out.append(tsg.render_rule(rule) + rule_suffix)
+    return out
+
+
+def _home(lines, st, c: td.Concept) -> Optional[int]:
+    """Insert index for a concept written from scratch: the end of the first paragraph of the first non-optional
+    section with one of the concept's roles, else of the first findings section."""
+    ordered = sorted(st.sections, key=lambda s: s.order)
+    for role in [*c.roles, "findings"]:
+        for s in ordered:
+            if s.role != role or s.optional:
+                continue
+            para = next((p for p in st.paragraphs if p.section == s.name), None)
+            span = _paragraph_span(lines, para.id) if para else None
+            if span:
+                return _block_end(lines, *span)
+    return None
+
+
+def _concept(lines, st, entry):
+    name, choice = entry["key"], entry["choice"]
+    row = {"kind": "concept", "key": name, "action": "kept"}
+    rules = _concept_rules(st, name)
+    texts = {norm_key(r.target) for r in rules if r.target}
+    if choice.get("default"):
+        texts.add(norm_key(choice["default"]))
+    drop: Set[int] = set()
+    rule_line = fixed_line = None
+    for r in [*rules, *(x for x in _targeting(st, texts) if x not in rules)]:
+        i = _index(lines, r.source_lines[0], drop)
+        if i is not None:
+            drop.add(i)
+            rule_line = rule_line or lines[i]
+    for f in st.fixed_blocks:
+        if norm_key(f.text) in texts:
+            i = _index(lines, f.source_line, drop)
+            if i is not None:
+                drop.add(i)
+                fixed_line = fixed_line or lines[i]
+    olds = [t for r in rules for t in (r.target, r.then_text) if t]
+    if drop:
+        at = min(drop)
+    elif choice["use"]:
+        at = _home(lines, st, td.CONCEPTS[name])
+        if at is None:
+            return lines, [], [entry], []
+    else:
+        return lines, [row], [], []
+    # each new line keeps the trailing "| section:" of the line it replaces (a Report-wide unit without one belongs
+    # to the first findings section, so nothing is added)
+    fixed_suffix = _suffix(fixed_line) if fixed_line else (_suffix(rule_line) if rule_line else "")
+    rule_suffix = _suffix(rule_line) if rule_line else fixed_suffix
+    new = _concept_lines(choice, fixed_suffix, rule_suffix) if choice["use"] else []
+    old = [lines[i] for i in sorted(drop)]
+    if [ln.strip() for ln in old] == [ln.strip() for ln in new]:
+        return lines, [row], [], []
+    out = [ln for i, ln in enumerate(lines) if i not in drop]
+    if new:
+        prefix = _prefix(old[0]) if old else ""
+        out[at:at] = [prefix + ln for ln in new]
+    action = "removed" if not new else ("rewritten" if drop else "inserted")
+    keep = {norm_key(choice.get("default", "")), norm_key(choice.get("when_met", ""))}
+    return out, [{**row, "action": action}], [], [t for t in olds if norm_key(t) not in keep]
+
+
+_OPS: List[Tuple[str, Callable]] = [("concept", _concept)]
 
 
 def apply_ledger(sheet: str, ledger: List[dict]) -> LedgerResult:
