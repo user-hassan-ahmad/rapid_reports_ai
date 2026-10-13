@@ -44,6 +44,7 @@
 	import { abnormalAll, assumedFrom, moreLine, openCount, rowSentences, splitReply, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
+	import { pickBody, visiblePills, withElsewhere, type ProtocolPick } from '$lib/hybrid-stack/protocol';
 	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
@@ -87,6 +88,9 @@
 	export let stackRegions: Region[] = [];
 	export let stackGroups: string[] = [];
 	export let stackSchemaMeta: { key: string; source: string; provisional: boolean } | null = null;
+	/** Protocol library: the picked protocol (null: free text) and the schema's quiet regions (spec 2026-10-13 §3-4). */
+	export let stackProtocol: ProtocolPick | null = null;
+	export let stackQuiet: string[] = [];
 	export let onStackPills: (pills: string[]) => void = () => {};
 	export let stackShadowRate = 0.25; // share of sessions that build the old Structured text once, at session end
 	/** Template sessions: the template whose structure gives the region normals (checklist spec §8.3). */
@@ -330,6 +334,12 @@
 	// What Confirm takes ownership of: the region normals still shown (abnormal regions' checked sentences,
 	// untouched regions' sheet sentences), minus anything removed.
 	$: confirmedAssumed = assumedFrom(assumedSnap, regionView.abnormal, regionView.assumedNormal, removedSentences);
+	// Quiet regions show as pills once something is placed there; a segment's normal reads "Elsewhere, …" once one
+	// of its levels is dictated.
+	let stackLevelGroups: Record<string, string[]> = {};
+	$: placedGroups = new Set(stackUnits.map((u) => u.group).filter((g): g is string => !!g));
+	$: shownPills = visiblePills(stackGroups, pillRegions, stackQuiet, placedGroups);
+	$: shownAssumed = withElsewhere(confirmedAssumed, stackLevelGroups, placedGroups);
 	$: assumedBehind = Object.keys(stackRegionNormals).length > 0 && (assumedSnap === null || assumedSnap.dictation !== verbatimNow);
 	// Regions are confirmed by name only when no sheet exists for this session (v2 behaviour); with a sheet, a region
 	// with no sentence left assumes nothing. An abnormal region's remainder is never named (review 2026-10-12).
@@ -1793,14 +1803,16 @@
 		stackRegionNormals = {};
 		stackNotAssessable = '';
 		stackTemplateUnusable = false;
+		stackLevelGroups = {};
 		onStackSheet(null);
 		if (!hybridStack || !stackRegions.length) return;
 		try {
-			const res = await postSlimSheet($token, { scan_type: scanType, clinical_history: clinicalHistory, template_id: stackTemplateId });
+			const res = await postSlimSheet($token, { scan_type: scanType, clinical_history: clinicalHistory, template_id: stackTemplateId, ...pickBody(stackProtocol) });
 			if (seq !== slimSeq) return;
 			stackTemplateUnusable = res.status === 'template_unusable';
 			if (!res.ready) return;
 			stackRegionNormals = res.region_normals;
+			stackLevelGroups = res.level_groups ?? {};
 			stackNotAssessable = res.not_assessable;
 			onStackSheet(res.id);
 		} catch {
@@ -1960,7 +1972,7 @@
 					.map(({ item, how }): GateItem => ({ id: item.id, kind: item.kind, region: item.region, question: item.question, sentences: [],
 						answered_by: how === 'abnormal' ? 'dictation' : how }))
 			],
-			assumed: confirmedAssumed,
+			assumed: shownAssumed,
 			removed: removedSentences,
 			capped: stackCapped.map((c) => ({ region: c.region, question: c.question })),
 			capped_opened: moreOpened,
@@ -2630,8 +2642,8 @@
 								This template's sheet could not be read for assumed normals, so Generate writes the report the usual way (the template fills in its normals). Re-saving the template usually fixes this.
 							</p>
 						{/if}
-						<HybridStackView units={stackUnits} groups={stackGroups} {pillRegions} pending={stripNow}
-							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView.show ? moreView.rows : []} moreWaiting={moreView.waiting} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
+						<HybridStackView units={stackUnits} groups={stackGroups} pillRegions={shownPills} pending={stripNow}
+							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView.show ? moreView.rows : []} moreWaiting={moreView.waiting} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={shownAssumed}
 							checks={placedChecks} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}

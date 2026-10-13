@@ -15,6 +15,8 @@ import type { DecisionRecord, OutcomeEvent } from '$lib/dictation-lab/decisionFi
 import { pillState } from '$lib/dictation-lab/coverage';
 import { effectiveConfig } from '$lib/dictation-lab/package';
 import { fetchSchema, postReportId } from '$lib/hybrid-stack/api';
+import ProtocolPicker from '$lib/hybrid-stack/ProtocolPicker.svelte';
+import { pickBody, type ProtocolPick } from '$lib/hybrid-stack/protocol';
 import { hybridStackOn } from '$lib/hybrid-stack/flag';
 import type { GateRecord, StackSchema } from '$lib/hybrid-stack/types';
 import { hasUnsavedWork as unsavedWork } from '$lib/utils/confirmGate';
@@ -137,8 +139,13 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	$: dictationConfig = effectiveConfig(labConfig, undefined, (apiKeyStatus as { dictation_v2?: boolean })?.dictation_v2 === true);
 	// The hybrid dictation stack (rr_hybrid_stack): the grouped view and pills from its grouping, where the
 	// server allows it and the dictation package is on. /sections and the Jev pills keep running in shadow.
-	$: stackStatus = apiKeyStatus as { hybrid_stack?: boolean; hybrid_stack_shadow_rate?: number };
+	$: stackStatus = apiKeyStatus as { hybrid_stack?: boolean; hybrid_stack_shadow_rate?: number; protocol_library?: boolean };
 	$: hybridStack = hybridStackOn(undefined, stackStatus?.hybrid_stack === true && dictationConfig !== null);
+	// Protocol library (spec 2026-10-13 §3): pick a curated protocol instead of typing the scan type.
+	$: protocolLibrary = hybridStack && stackStatus?.protocol_library === true;
+	let stackProtocol: ProtocolPick | null = null;
+	let freeText = false;   // "Not listed": today's textarea and reconciler path
+	let pickerKey = 0;      // bumped by a reset so the picker starts empty
 	let stackSchema: StackSchema | null = null;
 	// Scratchpad v2 gate (spec 2026-10-11 §5-6): Generate waits for the Confirm, then sends the findings block.
 	let stackGate: GateRecord | null = null;
@@ -164,7 +171,14 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			return;
 		}
 		try {
-			stackSchema = await fetchSchema($token, { scan_type: scan.trim(), clinical_history: history.trim() });
+			stackSchema = await fetchSchema($token, { scan_type: scan.trim(), clinical_history: history.trim(), ...pickBody(stackProtocol) });
+			// The server's line (side and phase variant) becomes the scan type; the workspace stays clean.
+			if (stackSchema?.protocol) {
+				const line = stackSchema.protocol.scan_type_line;
+				if (sectionsGeneratedFromScanType === scanType.trim()) sectionsGeneratedFromScanType = line;
+				stackSchemaFor = `${line}|${history.trim()}`;
+				scanType = line;
+			}
 		} catch {
 			stackSchema = null; // fail open: today's pills show
 		}
@@ -344,6 +358,9 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		resetConfirmVisible = false;
 		clinicalHistory = '';
 		scanType = '';
+		stackProtocol = null;
+		freeText = false;
+		pickerKey++;
 		prePoppedSections = [];
 		sectionsGeneratedFromScanType = '';
 		sectionsGeneratedFromHistory = '';
@@ -846,6 +863,13 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 					</div>
 					<div class="space-y-1.5">
 						<label for="scan-type" class="block text-xs font-medium text-gray-400 uppercase tracking-wider">Scan Type</label>
+						{#if protocolLibrary && !freeText}
+							{#key pickerKey}
+								<ProtocolPicker token={$token} value={stackProtocol}
+									onPick={(p) => { stackProtocol = p; scanType = p.displayName; }}
+									onNotListed={(text) => { freeText = true; stackProtocol = null; scanType = text; }} />
+							{/key}
+						{:else}
 						<textarea
 							id="scan-type"
 							bind:value={scanType}
@@ -854,6 +878,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 							class="input-dark w-full resize-none text-sm"
 							rows="3"
 						></textarea>
+						{/if}
 					</div>
 				</div>
 
@@ -1051,6 +1076,8 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			stackRegions={stackSchema?.regions ?? []}
 			stackGroups={stackSchema?.groups ?? []}
 			stackSchemaMeta={stackSchema ? { key: stackSchema.key, source: stackSchema.source, provisional: stackSchema.provisional } : null}
+			stackProtocol={stackProtocol}
+			stackQuiet={stackSchema?.quiet ?? []}
 			onStackPills={(p) => { stackPills = p; }}
 			stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
 			onStackGate={(g, f) => { stackGate = g; stackFindings = f; }}
