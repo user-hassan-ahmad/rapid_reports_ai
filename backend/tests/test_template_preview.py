@@ -288,7 +288,7 @@ async def test_preview_a_collective_dictated_normal_covers_its_regions_sheet_sen
         spleen = next(r.name for r in regions if "pleen" in r.name)
         return NS(units=[U("Gallstones.", regions[0].name, abnormal=True), U(said, "General", covers=[spleen])])
 
-    async def rows(dictation, sentences, removed, *, stated=True, contra=True):
+    async def rows(dictation, sentences, removed, *, stated=True, contra=True, hedge=None):
         return [J.RowCheck(0.95 if stated and said in dictation and "spleen" in s.lower() else 0.0, 0.0, 0.0)
                 for s in sentences]
 

@@ -168,10 +168,23 @@ class RowCheck:
     stated: float
     contra: float
     removed: float
+    hedge: float = 0.0   # P(the region's own dictation hedges or limits its assessment); 0 when not asked
 
 
 def removed_key(i: int) -> str:
     return f"removed_{i}"
+
+
+HEDGE_KEY = "hedge"
+
+
+def hedge_question(region: str) -> dict[str, Any]:
+    return {"type": "noul", "instructions": (
+        "The DICTATION expresses doubt, uncertainty or a limitation of assessment about this structure or region, or "
+        "a structure within it: a qualified or tentative statement (a qualifier such as probably, likely, possibly, "
+        "grossly, appears or no obvious), a finding that may not be real, or a structure "
+        "not seen, partly seen or not fully assessed. A plain or collective statement that it is normal, or a "
+        f"definite finding, is not doubt. REGION: {region}")}
 
 
 def removed_question(sentence: str) -> dict[str, Any]:
@@ -181,13 +194,17 @@ def removed_question(sentence: str) -> dict[str, Any]:
 
 
 async def ask_rows(dictation: str, sentences: list[str], removed: list[str], transport=None, *,
-                   stated: bool = True, contra: bool = True) -> list[RowCheck]:
+                   stated: bool = True, contra: bool = True, hedge: str | None = None) -> list[RowCheck]:
     """Stated, contradicted and (when the radiologist removed anything) the same as a removed sentence, per
     sentence, in one Jev call. `stated=False` / `contra=False` leave that question out (its score is 0): the
-    assumed normals ask coverage on a region's own text and contradiction on the whole dictation (Task A3b)."""
+    assumed normals ask coverage on a region's own text and contradiction on the whole dictation (Task A3b).
+    `hedge` (a region name): the same call also asks, once, whether the dictation hedges that region; every
+    returned check carries the answer (0 when not asked)."""
     if not sentences:
         return []
     qs: dict[str, dict[str, Any]] = {}
+    if hedge is not None:
+        qs[HEDGE_KEY] = hedge_question(hedge)
     for i, s in enumerate(sentences):
         if stated:
             qs[f"stated_{i}"] = stated_question(s)
@@ -203,7 +220,8 @@ async def ask_rows(dictation: str, sentences: list[str], removed: list[str], tra
     r.raise_for_status()
     ans = r.json().get("answers") or {}
     score = lambda k: float((ans.get(k) or {}).get("noul") or 0.0) if k in qs else 0.0   # an unasked part: 0
-    return [RowCheck(score(f"stated_{i}"), score(contra_key(i)), score(removed_key(i))) for i in range(len(sentences))]
+    h = score(HEDGE_KEY)
+    return [RowCheck(score(f"stated_{i}"), score(contra_key(i)), score(removed_key(i)), h) for i in range(len(sentences))]
 
 
 def row_fate(c: RowCheck) -> str:
@@ -218,16 +236,22 @@ def row_fate(c: RowCheck) -> str:
     return "keep"
 
 
+HEDGE_MIN = 0.5  # lab 2026-10-13 (30 region texts, 2 runs): hedges 11/12 >= 0.82, plain normals <= 0.06, findings <= 0.22
+
+
 def normal_fate(c: RowCheck) -> str:
-    """A region normal: 'removed', 'covered' (the dictation states it), 'contradicted', 'flagged' (the dictation
-    hedges, half-covers or may contradict it: kept, highlighted for the radiologist to confirm or remove) or
-    'assumed'. Only the bars drop a normal; Jev being unsure never does (review R1 2026-10-13: chip_state's bands)."""
+    """A region normal: 'removed', 'covered' (the dictation states it), 'contradicted', 'flagged' (its region's
+    dictation hedges or limits the assessment, or the dictation may contradict it: kept, highlighted for the
+    radiologist to confirm or remove) or 'assumed'. Only the bars drop a normal; Jev being unsure never does
+    (review R1). A half-band stated score no longer flags on its own: it cannot tell a paraphrase of a dictated
+    normal from a hedge (live 2026-10-13: "Liver normal." stated 0.52), so the region's hedge question does."""
     if c.removed >= REMOVED_MIN:
         return "removed"
-    state = chip_state(c.stated, c.contra)
-    if state == "gone":
-        return "covered" if c.stated >= STATED_MIN else "contradicted"
-    return "flagged" if state == "optional" else "assumed"
+    if c.stated >= STATED_MIN:
+        return "covered"
+    if c.contra >= CONTRA_MIN:
+        return "contradicted"
+    return "flagged" if c.hedge >= HEDGE_MIN or c.contra >= OPTIONAL_MIN else "assumed"
 
 
 # ── Review gates (labs 2026-10-12, scripts/scratchpad_v2_labs.py material | conclusion) ──────────────────────────

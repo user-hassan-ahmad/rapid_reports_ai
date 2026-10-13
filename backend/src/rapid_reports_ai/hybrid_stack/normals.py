@@ -1,8 +1,9 @@
 """Assumed normals (checklist spec §5): the slim sheet's region normals that reach the report unless the
 radiologist removes them. Every region, untouched, dictated normal or abnormal, keeps the sentences the dictation
 neither covers nor contradicts (Jev): a dictated-normal region keeps the radiologist's words and the sentences on its
-other structures (review R2 2026-10-13: "ACL intact" kept the PCL sentence). A sentence Jev is unsure about
-(between the hedge band and the bars) is kept and flagged for the radiologist (review R1 2026-10-13). Sentences the
+other structures (review R2 2026-10-13: "ACL intact" kept the PCL sentence). A sentence in a region whose
+dictation hedges or limits its assessment, or that the dictation may contradict (contra between 0.3 and its bar), is
+kept and flagged for the radiologist (review R1, hedge question 2026-10-13). Sentences the
 radiologist removed never return; a template's context rules, decided once per session, hide their sentences."""
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 class AssumedResult(BaseModel):
     assumed: dict[str, list[str]]
-    # region -> assumed sentences the dictation may conflict with (Jev unsure: hedged, half-covered or a weak
+    # region -> assumed sentences the dictation may conflict with (its region's dictation hedges, or a weak
     # contradiction): also in `assumed`, shown highlighted for the radiologist to confirm or remove (review R1)
     flagged: dict[str, list[str]] = {}
     dropped: dict[str, list[dict]] = {}   # region -> [{sentence, reason: covered|contradicted|removed|rule}]
@@ -61,19 +62,21 @@ def _jev_calls(asked: list[tuple[str, str]], region_text: dict[str, str] | None,
 
 async def _ask_by_region(dictation: str, asked: list[tuple[str, str]], texts: list[str], gone: list[str],
                          region_text: dict[str, str]) -> list[RowCheck]:
-    """Task A3b: a normal is covered (or flagged as half-covered) only by the sentences grouped in its own region (one stated call per
-    region with text, in parallel; a region with none is covered by nothing); contradicted (and the same as a
-    removed sentence) by the whole dictation, conclusion included."""
+    """Task A3b: a normal is covered only by the sentences grouped in its own region (one stated call per region
+    with text, in parallel; a region with none is covered by nothing), and flagged when that region's text hedges
+    or limits its assessment (asked once per region, in the same call); contradicted (and the same as a removed
+    sentence) by the whole dictation, conclusion included."""
     regions = _text_regions(asked, region_text)
     idx = {r: [i for i, (ar, _) in enumerate(asked) if ar == r] for r in regions}
     whole, *per_region = await asyncio.gather(
         _ask(dictation, texts, gone, stated=False),
-        *(_ask(region_text[r], [texts[i] for i in idx[r]], [], contra=False) for r in regions))
+        *(_ask(region_text[r], [texts[i] for i in idx[r]], [], contra=False, hedge=r) for r in regions))
     stated = [0.0] * len(asked)
+    hedge = [0.0] * len(asked)
     for r, checks in zip(regions, per_region):
         for i, c in zip(idx[r], checks):
-            stated[i] = c.stated
-    return [RowCheck(s, c.contra, c.removed) for s, c in zip(stated, whole)]
+            stated[i], hedge[i] = c.stated, c.hedge
+    return [RowCheck(s, c.contra, c.removed, h) for s, h, c in zip(stated, hedge, whole)]
 
 
 def _history_state(history: str) -> str:
@@ -117,7 +120,8 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     included: a finding the grouper filed under another region leaves its own region looking untouched (side review
     2026-10-12: "The spleen is normal" beside a misplaced splenic finding). A sentence is assumed unless the dictation
     covers (STATED_MIN) or contradicts (CONTRA_MIN) it or it says the same as a removed sentence or a row's (owned);
-    one Jev half-reads as covered or contradicted (the chip_state band) is assumed and listed in `flagged`.
+    one whose region's text hedges (HEDGE_MIN, region mode only) or that Jev half-reads as contradicted is assumed
+    and listed in `flagged`.
     Every sentence not assumed is in `dropped` with its reason. `labels` (sentence ->
     structure label, template_normal_labels) names a subject-less sentence for the Jev check only; what is returned
     is always the template's own sentence. Labels are keyed by sentence: one sentence in two regions takes the first

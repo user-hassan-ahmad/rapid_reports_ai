@@ -25,7 +25,8 @@ async def test_every_region_is_checked_dictated_normal_regions_included(monkeypa
     assert out.assumed == {"Liver": ["The liver is normal."], "Kidneys": [],
                            "Pelvic organs": ["The uterus is normal.", "No adnexal mass."]}
     assert out.dropped["Kidneys"] == [{"sentence": "The kidneys are normal.", "reason": "covered"}]
-    assert out.flagged == {"Liver": [], "Kidneys": [], "Pelvic organs": ["No adnexal mass."]}
+    # a half-band stated score no longer flags on its own (hedge question 2026-10-13)
+    assert out.flagged == {"Liver": [], "Kidneys": [], "Pelvic organs": []}
     assert sorted(sum(seen, [])) == sorted(["The liver is normal.", "The kidneys are normal.", "The uterus is normal.",
                                              "The ovaries are normal.", "No adnexal mass."])
 
@@ -122,24 +123,26 @@ async def test_dropped_normals_carry_their_reason(monkeypatch):
     assert out.dropped == {"Liver": [{"sentence": "The liver is normal.", "reason": "covered"}],
                            "Kidneys": [{"sentence": "The kidneys are normal.", "reason": "contradicted"}],
                            "Pelvic organs": [{"sentence": "The ovaries are normal.", "reason": "removed"}]}
-    # hedged is no longer a drop reason (review R1): the uterus is kept, flagged
+    # a half-band stated score is neither a drop nor a flag: the uterus is assumed
     assert out.assumed["Pelvic organs"] == ["The uterus is normal.", "No adnexal mass."]
-    assert out.flagged["Pelvic organs"] == ["The uterus is normal."]
+    assert out.flagged["Pelvic organs"] == []
 
 
-# ── Three-state band (review R1 2026-10-13): only the bars drop; the 0.3–bar band is kept, flagged ───────────────
-@pytest.mark.parametrize("stated,contra,fate", [
-    (0.29, 0.0, "assumed"), (0.3, 0.0, "flagged"), (0.69, 0.0, "flagged"), (0.7, 0.0, "flagged"),
-    (0.79, 0.0, "flagged"), (0.8, 0.0, "covered"),
-    (0.0, 0.29, "assumed"), (0.0, 0.3, "flagged"), (0.0, 0.69, "flagged"), (0.0, 0.7, "contradicted"),
-    (0.0, 0.79, "contradicted"), (0.0, 0.8, "contradicted"),
+# ── Three-state band (review R1; hedge question 2026-10-13): only the bars drop; a hedge or a weak contra flags ──
+@pytest.mark.parametrize("stated,contra,hedge,fate", [
+    # a stated score below the bar never flags on its own (a paraphrase of a dictated normal reads 0.5)
+    (0.29, 0.0, 0.0, "assumed"), (0.3, 0.0, 0.0, "assumed"), (0.52, 0.06, 0.0, "assumed"), (0.79, 0.0, 0.0, "assumed"),
+    (0.8, 0.0, 0.0, "covered"), (0.8, 0.0, 0.9, "covered"),
+    (0.0, 0.29, 0.0, "assumed"), (0.0, 0.3, 0.0, "flagged"), (0.0, 0.69, 0.0, "flagged"), (0.0, 0.7, 0.0, "contradicted"),
+    (0.0, 0.79, 0.0, "contradicted"), (0.0, 0.8, 0.9, "contradicted"),
+    (0.0, 0.0, 0.49, "assumed"), (0.0, 0.0, 0.5, "flagged"), (0.56, 0.09, 0.96, "flagged"),
 ])
-async def test_band_boundaries(monkeypatch, stated, contra, fate):
+async def test_band_boundaries(monkeypatch, stated, contra, hedge, fate):
     s = "The liver is normal."
-    monkeypatch.setattr(N, "ask_rows", _checks({s: (stated, contra, 0.0)}))
+    monkeypatch.setattr(N, "ask_rows", _checks({s: (stated, contra, 0.0, hedge)}))
     out = await N.assumed("x", {"Liver": [s]}, ["Liver"], [], [])
     assert out.error is None
-    assert J.normal_fate(J.RowCheck(stated, contra, 0.0)) == fate
+    assert J.normal_fate(J.RowCheck(stated, contra, 0.0, hedge)) == fate
     if fate in ("covered", "contradicted"):
         assert out.assumed == {"Liver": []} and out.flagged == {"Liver": []}
         assert out.dropped == {"Liver": [{"sentence": s, "reason": fate}]}
@@ -196,13 +199,14 @@ def test_one_normaliser_matches_suppressions():
 # ── Coverage only from the normal's own region (Task A3b) ──────────────────────────────────────────────────────
 def _by_dictation(table, calls):
     """Jev as a table keyed by (dictation state, sentence); honours the stated/contra split."""
-    async def fake(dictation, sentences, removed, *, stated=True, contra=True):
+    async def fake(dictation, sentences, removed, *, stated=True, contra=True, hedge=None):
         calls.append({"dictation": dictation, "sentences": list(sentences), "removed": list(removed),
-                      "stated": stated, "contra": contra})
+                      "stated": stated, "contra": contra, **({"hedge": hedge} if hedge is not None else {})})
         out = []
         for s in sentences:
             st, co, rm = table.get((dictation, s), (0.0, 0.0, 0.0))
-            out.append(J.RowCheck(st if stated else 0.0, co if contra else 0.0, rm if removed else 0.0))
+            h = table.get((dictation, "hedge"), 0.0) if hedge is not None else 0.0
+            out.append(J.RowCheck(st if stated else 0.0, co if contra else 0.0, rm if removed else 0.0, h))
         return out
     return fake
 
@@ -234,7 +238,7 @@ async def test_a_same_region_sentence_still_covers_its_normal(monkeypatch):
     assert out.dropped["Lungs"] == [{"sentence": "No pneumothorax.", "reason": "covered"}]
     stated = [c for c in calls if c["stated"]]
     assert stated == [{"dictation": "No pneumothorax.", "sentences": BRAIN["Lungs"], "removed": [],
-                       "stated": True, "contra": False}]
+                       "stated": True, "contra": False, "hedge": "Lungs"}]
 
 
 async def test_a_conclusion_that_contradicts_a_normal_still_drops_it(monkeypatch):
@@ -438,3 +442,41 @@ async def test_confirm_with_a_blank_dictation_or_no_conditions_makes_no_rule_cal
 
 def test_the_findings_word_filter_is_gone():
     assert not hasattr(N, "mentions_findings") and not hasattr(N, "_FINDINGS_WORDS")
+
+
+# ── Hedge question per dictated region (hedge-brief 2026-10-13) ─────────────────────────────────────────────────
+async def test_a_hedged_region_flags_its_normals_and_a_paraphrase_does_not(monkeypatch):
+    calls = []
+    abdo = {"Liver": ["The liver is normal in size and outline.", "No focal liver lesion."],
+            "Pancreas": ["The pancreas is unremarkable."], "Spleen": ["The spleen is normal in size."]}
+    d = "Liver normal.\nPancreas not well seen due to bowel gas."
+    table = {("Liver normal.", "The liver is normal in size and outline."): (0.52, 0.0, 0.0),
+             ("Liver normal.", "hedge"): 0.03,
+             ("Pancreas not well seen due to bowel gas.", "hedge"): 0.98}
+    monkeypatch.setattr(N, "ask_rows", _by_dictation(table, calls))
+    out = await N.assumed(d, abdo, [], [], [], region_text={"Liver": "Liver normal.",
+                                                            "Pancreas": "Pancreas not well seen due to bowel gas."})
+    assert out.assumed == abdo
+    assert out.flagged == {"Liver": [], "Pancreas": ["The pancreas is unremarkable."], "Spleen": []}
+    # asked once per region with text, in its stated call; never on the whole dictation or an empty region
+    assert sorted(c["hedge"] for c in calls if "hedge" in c) == ["Liver", "Pancreas"]
+    assert all(c["stated"] for c in calls if "hedge" in c)
+
+
+async def test_ask_rows_asks_the_hedge_question_once_in_the_same_call():
+    import httpx
+    seen = []
+
+    def handler(request):
+        import json
+        body = json.loads(request.content)
+        seen.append(body["questions"])
+        return httpx.Response(200, json={"answers": {"stated_0": {"noul": 0.4}, "stated_1": {"noul": 0.1},
+                                                     "hedge": {"noul": 0.9}}})
+    out = await J.ask_rows("Liver probably normal.", ["A.", "B."], [], httpx.MockTransport(handler),
+                           contra=False, hedge="Liver")
+    assert len(seen) == 1 and sorted(seen[0]) == ["hedge", "stated_0", "stated_1"]
+    assert seen[0]["hedge"]["instructions"].endswith("REGION: Liver")
+    assert [c.hedge for c in out] == [0.9, 0.9] and [c.stated for c in out] == [0.4, 0.1]
+    out = await J.ask_rows("x", ["A."], [], httpx.MockTransport(handler))
+    assert "hedge" not in seen[-1] and out[0].hedge == 0.0
