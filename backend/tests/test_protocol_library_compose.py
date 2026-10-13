@@ -50,6 +50,19 @@ def test_quiet_and_level_groups(b):
     assert [x.name for x in r.regions if x.quiet] == ["L4/5", "L5/S1"]
 
 
+def test_a_region_with_no_normal_in_the_composed_sheet_is_derived_quiet(b):
+    from rapid_reports_ai.hybrid_stack.schemas import pill_regions
+    r = C.resolve(b, "TMKN", None, "left")              # the phase sheet empties Menisci's normal
+    assert r.quiet == ["Menisci"] and [x.name for x in r.regions if x.quiet] == ["Menisci"]
+    assert pill_regions(r.regions) == [] and "Menisci" not in C.compose_sheet(b, r).region_normals
+    assert C.resolve(b, "TCAP", None, None).quiet == []   # every region has a normal; Other findings never quiet
+    # a segment region with no normal is left to its level group, never derived quiet
+    kd = b.keys["mr_spine_t"]
+    kd.regions = [x.model_copy(update={"quiet": False}) for x in kd.regions]
+    r = C.resolve(b, "TMWS", None, None)
+    assert r.quiet == [] and pill_regions(r.regions) == ["Alignment and vertebrae", "Lumbar levels", "L4/5", "L5/S1"]
+
+
 def test_compose_overlays_phase_normals_and_scan_context(b):
     s = C.compose_sheet(b, C.resolve(b, "TCAPT", None, None))
     assert s.region_normals["Liver"] == ["The liver is normal.", "No arterially enhancing focal liver lesion."]

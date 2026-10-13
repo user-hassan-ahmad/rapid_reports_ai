@@ -29,9 +29,12 @@ def test_every_pick_resolves_and_composes(b):
         for ph in e.phase_sets():
             res = C.resolve(b, e.id, ph, lat)
             s = C.compose_sheet(b, res)
+            kd = b.keys[e.sheet_key]
+            grouped = {r.name for r in kd.regions if r.level_group} | set(kd.level_groups) \
+                | {n for v in kd.level_groups.values() for n in v}
             missing = [r.name for r in res.regions if not r.quiet and r.name != "Other findings"
-                       and r.name not in s.region_normals and r.name not in SEX_ONLY]
-            if missing and len(missing) > len(res.regions) // 2:
+                       and r.name not in s.region_normals and r.name not in SEX_ONLY and r.name not in grouped]
+            if missing:   # every non-quiet region has a normal; a region with none is derived quiet
                 bad.append((e.id, ph, missing[:4]))
             brief = stack_fallback(s.markdown, "", []).text
             assert STANDARD_SECTIONS in brief and "Section rules" in brief and "Technique statement" in brief, e.id
@@ -75,3 +78,15 @@ def test_every_pick_resolves_and_composes(b):
 def test_display_names_find_themselves(b):
     misses = [e.id for e in b.entries if e.id not in [o.id for _, o in M.local_search(b, e.display_name, 3)]]
     assert len(misses) <= len(b.entries) // 50, misses[:10]
+
+
+def test_regions_with_no_normal_are_derived_quiet(b):
+    """MDWBN (default phases: a limited DWI study) and MIRCA|t2star (liver and myocardial iron only) leave regions
+    with no normal: they are quiet (no pill, no assumed normal), not listed as unfilled checklist regions."""
+    for entry_id, ph in (("MDWBN", None), ("MIRCA", ["t2star"])):
+        e = b.entry(entry_id)
+        res = C.resolve(b, entry_id, ph, "left" if e.laterality == "required" else None)
+        declared = {r.name for r in b.keys[e.sheet_key].regions if r.quiet}
+        derived = [q for q in res.quiet if q not in declared]
+        assert derived, (entry_id, ph)
+        assert not set(derived) & set(C.compose_sheet(b, res).region_normals), (entry_id, ph)

@@ -7,7 +7,7 @@ import re
 
 from pydantic import BaseModel, Field
 
-from ..schemas import Region, pill_regions
+from ..schemas import OTHER, Region, pill_regions
 from .bundle import Bundle, Entry, phase_id
 from .match import PHASE_WORDS, agent_words, phase_words
 
@@ -54,7 +54,14 @@ def resolve(bundle: Bundle, entry_id: str, phases: list[str] | None, laterality:
     if e.laterality != "required" and lat is not None:
         raise PickError(f"{entry_id}: laterality is not used for this protocol")
     kd = bundle.keys[e.sheet_key]
-    regions = [Region(name=r.name, includes=r.includes, quiet=r.quiet) for r in kd.regions]
+    # A region with no normal in the composed sheet is quiet too (2026-10-13): no pill, no assumed normal, still
+    # dictatable. Segment and level-group regions are left to their level group; Other findings is never quiet.
+    have = _normals(bundle, e, ph)
+    grouped = set(kd.level_groups) | {n for v in kd.level_groups.values() for n in v}
+    regions = [Region(name=r.name, includes=r.includes,
+                      quiet=r.quiet or (r.name != OTHER and not r.level_group and r.name not in grouped
+                                        and not have.get(r.name)))
+               for r in kd.regions]
     line = e.display_name + (f" ({lat})" if lat else "")
     if ph != e.phases_default:
         line += f" ({phase_words(ph)})"
@@ -179,16 +186,22 @@ def _standard_sections(md: str, regions: list[Region]) -> str:
 _SCAN_CONTEXT = re.compile(r"^##\s+Scan Context\s*$[\s\S]*?(?=^##\s|\Z)", re.M | re.I)
 
 
-def compose_sheet(bundle: Bundle, res: Resolution) -> ComposedSheet:
-    e = bundle.entry(res.entry_id)
-    base = bundle.base_sheets[f"{res.sheet_key}|{res.contrast_class}"]
-    phase = bundle.phase_sheets[f"{res.entry_id}|{phase_id(res.phases)}"]
-    normals = {r: list(v) for r, v in base.region_normals.items()}
-    for r, v in phase.changed_normals.items():
+def _normals(bundle: Bundle, e: Entry, phases: list[str]) -> dict[str, list[str]]:
+    """The base sheet's region normals with the phase sheet's changes laid over (an empty change removes one)."""
+    normals = {r: list(v) for r, v in bundle.base_sheets[f"{e.sheet_key}|{e.contrast_class}"].region_normals.items()}
+    for r, v in bundle.phase_sheets[f"{e.id}|{phase_id(phases)}"].changed_normals.items():
         if v:
             normals[r] = list(v)
         else:
             normals.pop(r, None)
+    return normals
+
+
+def compose_sheet(bundle: Bundle, res: Resolution) -> ComposedSheet:
+    e = bundle.entry(res.entry_id)
+    base = bundle.base_sheets[f"{res.sheet_key}|{res.contrast_class}"]
+    phase = bundle.phase_sheets[f"{res.entry_id}|{phase_id(res.phases)}"]
+    normals = _normals(bundle, e, res.phases)
     for q in res.quiet:
         normals.pop(q, None)
     # One source for every phase set, default included: the reviewed phase sheet; the entry's list only if it is empty.
