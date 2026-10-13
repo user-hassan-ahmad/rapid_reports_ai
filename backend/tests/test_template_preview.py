@@ -107,9 +107,10 @@ async def test_preview_report_wires_the_scratchpad_path(monkeypatch):
         return NS(units=[U("Gallstones.", regions[0].name, abnormal=True), U("Appendicitis.", "Conclusion")])
 
     async def fake_assumed(dictation, region_normals, abnormal, dictated_normal, removed, owned=None, touched=None,
-                           suppressions=None, clinical_history="", labels=None, region_text=None):
+                           suppressions=None, clinical_history="", labels=None, region_text=None, rules=None,
+                           confirm=False):
         seen.update(normals=region_normals, abnormal=abnormal, dictated_normal=dictated_normal, removed=removed,
-                    history=clinical_history, labels=labels, region_text=region_text)
+                    history=clinical_history, labels=labels, region_text=region_text, rules=rules, confirm=confirm)
         return NS(assumed={r: list(s) for r, s in region_normals.items()}, flagged={}, dropped={}, error=None)
 
     class FakeTM:
@@ -127,6 +128,7 @@ async def test_preview_report_wires_the_scratchpad_path(monkeypatch):
     liver = seen["regions"][0]
     assert seen["abnormal"] == [liver] and seen["dictated_normal"] == [] and seen["history"] == "Pain."
     assert seen["removed"] == ["x."] and seen["region_text"] == {liver: "Gallstones."}
+    assert seen["rules"] is None and seen["confirm"] is True   # one shot: decided now, as at Confirm (review R5)
     assert out["findings_block"].startswith(f"{liver}: Gallstones. {A} ")
     assert out["findings_block"].endswith("DO NOT ASSERT (removed by the radiologist): x.")
     assert "Conclusion (confirmed by the radiologist): Appendicitis." in out["findings_block"]
@@ -202,3 +204,49 @@ async def test_preview_report_returns_undictated_number_flags(monkeypatch):
     assert seen["sources"] == [out["findings_block"], "Pain.", "Cholelithiasis."] and seen["sheet"] == SHEET
     texts = [f["text"] for f in out["number_flags"]]
     assert len(texts) == 1 and "23" in texts[0]
+
+
+_RULED = """## Report Structure
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION CONCLUSION | header: "Conclusion:" | role: impression
+
+## Paragraph: Brain (FINDINGS)
+COVERS ["brain"]
+NEGATIVE "No other interval changes compared with the previous MRI."
+NORMAL [ventricles] "The ventricles are normal in size."
+RULE WHEN [context: no previous study is available] SUPPRESS "No other interval changes compared with the previous MRI."
+"""
+
+
+async def test_preview_with_empty_findings_hides_a_suppressed_sentence(monkeypatch):
+    # review R5: the Test run decides the context rules from the history, empty findings included
+    from rapid_reports_ai.hybrid_stack import normals, service
+    from rapid_reports_ai import template_manager
+    seen = {"conds": []}
+
+    async def fake_group(scan_type, text, regions, previous):
+        return NS(units=[])
+
+    async def never(*a, **k):
+        raise AssertionError("no per-sentence check for empty findings")
+
+    async def conds(state, conditions):
+        seen["conds"].append((state, list(conditions)))
+        return [0.9 for _ in conditions]
+
+    class FakeTM:
+        async def generate_report_from_config(self, cfg, inputs, sig, stack=None):
+            seen["inputs"] = inputs
+            return {"report_content": "REPORT", "model_used": "m"}
+
+    monkeypatch.setattr(service, "group_update", fake_group)
+    monkeypatch.setattr(normals, "ask_rows", never)
+    monkeypatch.setattr(normals, "ask_conditions", conds)
+    monkeypatch.setattr(template_manager, "TemplateManager", FakeTM)
+    out = await template_preview.preview_report(_RULED, "MRI head", "First MRI. No previous imaging.", "")
+    assert out["usable"] and out["assumed_error"] is None
+    assert seen["conds"] == [("CLINICAL HISTORY:\nFirst MRI. No previous imaging.", ["no previous study is available"])]
+    assert "compared with the previous MRI" not in out["findings_block"]
+    assert "The ventricles are normal in size." in out["findings_block"]
+    assert {"sentence": "No other interval changes compared with the previous MRI.", "reason": "rule"} in \
+        sum(out["dropped"].values(), [])

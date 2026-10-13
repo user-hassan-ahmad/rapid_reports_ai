@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { computeDelta } from '$lib/dictation-lab/delta';
 	import type { CoverageTrace, LabConfig } from '$lib/dictation-lab/types';
 	import {
@@ -41,7 +41,7 @@
 	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
 	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
-	import { abnormalAll, assumedFrom, assumedStale, flaggedFrom, moreLine, openCount, rowSentences, splitReply, type AssumedSnap } from '$lib/hybrid-stack/items';
+	import { abnormalAll, assumedFrom, assumedStale, flaggedFrom, keepRules, moreLine, openCount, rowSentences, splitReply, rulesToSend, type AssumedSnap, type SessionRules } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
 	import { asTailUnits, assumedKey, blockedSegments, pickBody, pickKey, placedRegions, shownNormals, visiblePills, withoutSegments, type ProtocolPick } from '$lib/hybrid-stack/protocol';
@@ -307,6 +307,10 @@
 	let shownSentences: string[] = []; // every row sentence shown this session (a row owns its check)
 	// The session's referral rows: the first /items reply's, fixed so they never drift (null until it answers).
 	let fixedReferrals: { question: string; region: string; sentences: string[] }[] | null = null;
+	// The template's context rules, decided once for the session from the clinical history (review R5): the first good
+	// /assumed reply's (the sheet load), sent back on every refresh; re-asked only at Confirm for rules about findings.
+	let sessionRules: SessionRules | null = null;
+	let confirming = false;
 	let itemsSeq = 0;
 	let assumedSeq = 0;
 	let draft: { text: string; hash: string; edited: boolean; typed: boolean } | null = null;
@@ -1819,6 +1823,7 @@
 	 *  a new family may wait for it, and the scratchpad works without it meanwhile. */
 	async function loadSlimSheet(): Promise<void> {
 		const seq = ++slimSeq;
+		sessionRules = null; // a new sheet decides its own rules
 		stackRegionNormals = {};
 		stackNotAssessable = '';
 		stackTemplateUnusable = false;
@@ -1844,9 +1849,11 @@
 	}
 	/** Which region normals stay assumed, given the dictation (spec §5). The answer is kept with the dictation and
 	 *  region states it was computed for; a failure assumes nothing (and lets Confirm through). */
-	async function refreshAssumed(): Promise<void> {
+	async function refreshAssumed(confirm = false): Promise<void> {
 		if (!Object.keys(stackRegionNormals).length) return;
 		const seq = ++assumedSeq;
+		const sheet = slimSeq;
+		const history = clinicalHistory;
 		// Segments are never checked (E1): the check reads a segment line against the whole dictation and dropped every
 		// segment once any level was dictated. `shownNormals` offers them from the sheet.
 		const offered = withoutSegments(stackRegionNormals, stackLevelGroups);
@@ -1855,9 +1862,12 @@
 		try {
 			const res = await postAssumed($token, { dictation: snap.dictation, region_normals: offered, abnormal: snap.abnormal,
 				dictated_normal: snap.dictatedNormal, removed: removedSentences, owned: ownedNow(),
-				touched: touchedRegions(), template_id: stackTemplateId, clinical_history: clinicalHistory,
-				region_text: regionText(stackUnits) }); // a normal is covered only by its own region's sentences
-			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed, flagged: res.flagged, dropped: res.dropped, check_failed: !!res.error };
+				touched: touchedRegions(), template_id: stackTemplateId, clinical_history: history,
+				region_text: regionText(stackUnits), // a normal is covered only by its own region's sentences
+				rules: rulesToSend(sessionRules, history), confirm });
+			if (sheet === slimSeq) sessionRules = keepRules(sessionRules, history, res);
+			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed, flagged: res.flagged, dropped: res.dropped, check_failed: !!res.error,
+				confirm_recheck: !!res.confirm_recheck };
 		} catch {
 			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {}, check_failed: true }; // nothing assumed
 		}
@@ -1981,7 +1991,21 @@
 		draft = null; // offered only when the field is empty (the ✨ button): nothing of the radiologist's is replaced
 		void requestDraft();
 	}
-	function stackConfirm(): void {
+	/** Confirm (spec §5). A template rule whose condition mentions findings is re-asked with the dictation first
+	 *  (review R5): the gate records that answer. Confirm does not gate if the dictation moved on meanwhile. */
+	async function stackConfirm(): Promise<boolean> {
+		if (assumedSnap?.confirm_recheck && !assumedSnap.check_failed) {
+			if (confirming) return false;
+			confirming = true;
+			const asked = verbatimNow;
+			try {
+				await refreshAssumed(true);
+				await tick(); // the tray, counts and gate key follow the Confirm answer before the gate is recorded
+			} finally {
+				confirming = false;
+			}
+			if (verbatimNow !== asked || assumedSnap?.dictation !== asked) return false;
+		}
 		// Sentences the grouping never received (after failed retries) still reach the report, as said; the segment
 		// backstop reads them before the assumed record is written.
 		const tail = asTailUnits(liveTail(verbatimNow, stackUnits));
@@ -2017,6 +2041,7 @@
 		stackGate = gate;
 		onStackGate(gate, buildFindingsBlock([...stackUnits, ...tail], stackGroups, gate));
 		void sendStackLog();
+		return true;
 	}
 	function scheduleClose(): void {
 		if (!hybridStack) return;
@@ -2078,6 +2103,7 @@
 		foldedRows = [];
 		shownSentences = [];
 		fixedReferrals = null;
+		sessionRules = null;
 		skippedRows = {};
 		reviewedFor = '';
 		reviewedAbnormal = null;
@@ -2675,7 +2701,7 @@
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
 							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
-							onConfirm={stackConfirm} onConfirmGenerate={onStackGenerate ? () => { stackConfirm(); onStackGenerate?.(); } : null} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
+							onConfirm={stackConfirm} onConfirmGenerate={onStackGenerate ? async () => { if (await stackConfirm()) onStackGenerate?.(); } : null} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
 							syncing={assumedBehind || checksBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
 					{/if}
 				</div>

@@ -291,8 +291,13 @@ def test_assumed_applies_the_templates_context_rules_and_labels(authed, monkeypa
     assert seen["suppressions"] == [("no previous study is available",
                                      "No other interval changes compared with the previous MRI.")]
     assert seen["labels"] == {"Unremarkable.": "ventricles"} and seen["clinical_history"] == "Headache."
+    assert seen["rules"] is None and seen["confirm"] is False   # the first refresh decides the session's rules
     authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"Brain": ["Unremarkable."]}})
     assert seen["suppressions"] == [] and seen["labels"] == {}
+    authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"Brain": ["Unremarkable."]},
+                                                   "template_id": str(t.id), "confirm": True,
+                                                   "rules": {"no previous study is available": 0.9}})
+    assert seen["rules"] == {"no previous study is available": 0.9} and seen["confirm"] is True
 
 
 def test_assumed_passes_the_region_text_capped(authed, monkeypatch):

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abnormalAll, anchorRegion, answerLabel, assumedFrom, assumedStale, flaggedFrom, moreLine, openCount, quietLine, rowSentences, splitReply, unansweredChecks } from './items';
+import { abnormalAll, anchorRegion, answerLabel, assumedFrom, assumedStale, flaggedFrom, keepRules, moreLine, openCount, quietLine, rowSentences, rulesToSend, splitReply, unansweredChecks } from './items';
 import type { StackItem, StackUnit } from './types';
 
 const item = (id: string, sentences: string[], extra: Partial<StackItem> = {}): StackItem => ({
@@ -112,5 +112,25 @@ describe('assumed normals before any dictation (E6)', () => {
 		expect(assumedStale(true, null, '')).toBe(true);
 		expect(assumedStale(true, snap, 'At L4/5 there is a disc bulge.')).toBe(true);
 		expect(assumedStale(false, null, '')).toBe(false);
+	});
+});
+
+describe('template context rules decided once per session (R5)', () => {
+	const ok = { rules: { 'no previous study is available': 0.9 }, error: null };
+	it('the first good reply is kept for the history it was decided from, and sent back on every refresh', () => {
+		expect(rulesToSend(null, 'Headache.')).toBeNull(); // nothing decided: the server decides now
+		const kept = keepRules(null, 'Headache.', ok);
+		expect(kept).toEqual({ history: 'Headache.', rules: ok.rules });
+		expect(rulesToSend(kept, 'Headache.')).toEqual(ok.rules);
+		// later replies never replace the session's decision
+		expect(keepRules(kept, 'Headache.', { rules: { 'no previous study is available': 0.1 }, error: null })).toBe(kept);
+	});
+	it('a failed reply keeps nothing; an edited history is decided again', () => {
+		expect(keepRules(null, 'Headache.', { rules: null, error: 'RuntimeError: down' })).toBeNull();
+		expect(keepRules(null, 'Headache.', { rules: { x: 0.9 }, error: 'RuntimeError: down' })).toBeNull();
+		const kept = keepRules(null, 'Headache.', ok);
+		expect(rulesToSend(kept, 'Headache. Prior MRI 2024.')).toBeNull();
+		expect(keepRules(kept, 'Headache. Prior MRI 2024.', { rules: { x: 0.1 }, error: null }))
+			.toEqual({ history: 'Headache. Prior MRI 2024.', rules: { x: 0.1 } });
 	});
 });

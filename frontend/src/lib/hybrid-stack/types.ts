@@ -67,6 +67,10 @@ export interface AssumedResult {
 	flagged?: Record<string, string[]>;
 	/** Region -> normals not assumed, with why: covered | contradicted | removed | rule. */
 	dropped?: Dropped;
+	/** The session's template context-rule decision (condition -> P(met)); kept and sent back (review R5). */
+	rules?: Record<string, number> | null;
+	/** Some rule condition mentions findings: Confirm re-asks it with the dictation. */
+	confirm_recheck?: boolean;
 	ms: number;
 	error: string | null;
 }

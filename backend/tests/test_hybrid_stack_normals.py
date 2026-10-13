@@ -83,7 +83,8 @@ async def test_a_met_context_condition_drops_its_target(monkeypatch):
         return [J.RowCheck(0.0, 0.0, 0.0) for _ in sentences]
 
     async def conds(state, conditions):
-        assert "No previous MRI." in state and "Headache." in state
+        # review R5: the session's rules are decided from the clinical history, not the dictation
+        assert "Headache." in state and "No previous MRI." not in state
         assert conditions == ["no previous study is available"]
         return [0.9 for _ in conditions]
 
@@ -98,6 +99,7 @@ async def test_a_met_context_condition_drops_its_target(monkeypatch):
     assert out.assumed == {"Brain": ["The ventricles are normal in size."]}
     assert out.dropped["Brain"] == [{"sentence": "No other interval changes compared with the previous MRI.",
                                      "reason": "rule"}]
+    assert out.rules == {"no previous study is available": 0.9}
 
 
 async def test_an_unmet_context_condition_keeps_its_target(monkeypatch):
@@ -302,8 +304,87 @@ async def test_an_empty_dictation_makes_no_jev_call_and_keeps_every_normal(monke
     monkeypatch.setattr(N, "ask_conditions", never)
     for blank in ("", "  \n"):
         out = await N.assumed(blank, NORMALS, [], [], ["The kidneys are normal."], owned=["The uterus is normal."],
-                              suppressions=[("no prior study", "The liver is normal.")])
+                              suppressions=[("no prior study", "The liver is normal.")],
+                              rules={"no prior study": 0.1})   # decided for the session: unmet
         assert out.assumed == {"Liver": ["The liver is normal."], "Kidneys": [],
                                "Pelvic organs": ["The ovaries are normal.", "No adnexal mass."]}
         assert out.dropped["Kidneys"] == [{"sentence": "The kidneys are normal.", "reason": "removed"}]
         assert out.error is None
+
+
+# ── Template context rules decided once per session (review R5 2026-10-13) ────────────────────────────────────
+PRIOR = "No other interval changes compared with the previous MRI."
+BRAIN_R = {"Brain": [PRIOR, "The ventricles are normal in size."]}
+NO_PRIOR = "no previous study is available"
+NAMES_PRIOR = "the dictation names a previous imaging study for comparison"
+
+
+def _conds(scores, calls):
+    async def fake(state, conditions):
+        calls.append({"state": state, "conditions": list(conditions)})
+        return [scores[c] for c in conditions]
+    return fake
+
+
+async def test_an_empty_dictation_applies_the_sessions_suppressions(monkeypatch):
+    async def never(*a, **k):
+        raise AssertionError("no per-sentence check for an empty dictation")
+
+    calls = []
+    monkeypatch.setattr(N, "ask_rows", never)
+    monkeypatch.setattr(N, "ask_conditions", _conds({NO_PRIOR: 0.9}, calls))
+    out = await N.assumed("", BRAIN_R, [], [], [], suppressions=[(NO_PRIOR, PRIOR)], clinical_history="First scan.")
+    assert out.assumed == {"Brain": ["The ventricles are normal in size."]}
+    assert out.dropped["Brain"] == [{"sentence": PRIOR, "reason": "rule"}]
+    assert out.rules == {NO_PRIOR: 0.9} and out.error is None
+    assert calls == [{"state": "CLINICAL HISTORY:\nFirst scan.", "conditions": [NO_PRIOR]}]
+    # the cached decision: no call at all
+    calls.clear()
+    out = await N.assumed("", BRAIN_R, [], [], [], suppressions=[(NO_PRIOR, PRIOR)], clinical_history="First scan.",
+                          rules=out.rules)
+    assert out.assumed == {"Brain": ["The ventricles are normal in size."]} and calls == []
+
+
+async def test_the_rules_are_decided_once_per_session_not_per_refresh(monkeypatch):
+    calls = []
+    monkeypatch.setattr(N, "ask_rows", _checks({}))
+    monkeypatch.setattr(N, "ask_conditions", _conds({NO_PRIOR: 0.9, NAMES_PRIOR: 0.1}, calls))
+    sup = [(NO_PRIOR, PRIOR), (NAMES_PRIOR, PRIOR)]
+    first = await N.assumed("", BRAIN_R, [], [], [], suppressions=sup, clinical_history="Headache.")
+    rules = first.rules
+    for d in ("Small left frontal meningioma.", "Small left frontal meningioma. Compared with the MRI of 2024."):
+        out = await N.assumed(d, BRAIN_R, ["Brain"], [], [], suppressions=sup, clinical_history="Headache.", rules=rules)
+        assert out.dropped["Brain"] == [{"sentence": PRIOR, "reason": "rule"}] and out.rules == rules
+    assert len(calls) == 1
+
+
+async def test_confirm_re_asks_only_the_conditions_that_mention_findings(monkeypatch):
+    calls = []
+    monkeypatch.setattr(N, "ask_rows", _checks({}))
+    monkeypatch.setattr(N, "ask_conditions", _conds({NAMES_PRIOR: 0.95}, calls))
+    sup = [(NO_PRIOR, PRIOR), (NAMES_PRIOR, "The ventricles are normal in size.")]
+    rules = {NO_PRIOR: 0.1, NAMES_PRIOR: 0.1}   # decided from the history: neither met
+    d = "Stable meningioma compared with the MRI of 2024."
+    live = await N.assumed(d, BRAIN_R, ["Brain"], [], [], suppressions=sup, clinical_history="Headache.", rules=rules)
+    assert live.assumed == BRAIN_R and calls == []     # live refreshes never re-ask
+    assert live.confirm_recheck is True
+    out = await N.assumed(d, BRAIN_R, ["Brain"], [], [], suppressions=sup, clinical_history="Headache.", rules=rules,
+                          confirm=True)
+    assert calls == [{"state": f"CLINICAL HISTORY:\nHeadache.\nDICTATED FINDINGS:\n{d}", "conditions": [NAMES_PRIOR]}]
+    assert out.assumed == {"Brain": [PRIOR]}
+    assert out.dropped["Brain"] == [{"sentence": "The ventricles are normal in size.", "reason": "rule"}]
+    assert out.rules == rules     # the session's decision is unchanged
+
+
+async def test_confirm_without_findings_conditions_makes_no_rule_call(monkeypatch):
+    calls = []
+    monkeypatch.setattr(N, "ask_rows", _checks({}))
+    monkeypatch.setattr(N, "ask_conditions", _conds({}, calls))
+    out = await N.assumed("Meningioma.", BRAIN_R, ["Brain"], [], [], suppressions=[(NO_PRIOR, PRIOR)],
+                          clinical_history="x", rules={NO_PRIOR: 0.1}, confirm=True)
+    assert calls == [] and out.assumed == BRAIN_R and out.confirm_recheck is False
+
+
+def test_conditions_that_mention_findings():
+    assert N.mentions_findings(NAMES_PRIOR) and N.mentions_findings("The dictated findings report a lesion")
+    assert not N.mentions_findings(NO_PRIOR) and not N.mentions_findings("a short-form report is requested by the referrer")

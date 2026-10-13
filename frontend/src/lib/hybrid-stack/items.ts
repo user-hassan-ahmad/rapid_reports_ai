@@ -62,7 +62,7 @@ export function abnormalAll(units: StackUnit[]): string[] {
 	return effectiveItems(units).filter((i) => i.abnormal).map((i) => i.text);
 }
 
-export interface AssumedSnap { dictation: string; abnormal: string[]; untouched: string[]; assumed: Record<string, string[]>; offered: Record<string, string[]>; dictatedNormal?: string[]; flagged?: Record<string, string[]>; dropped?: Dropped; check_failed?: boolean }
+export interface AssumedSnap { dictation: string; abnormal: string[]; untouched: string[]; assumed: Record<string, string[]>; offered: Record<string, string[]>; dictatedNormal?: string[]; flagged?: Record<string, string[]>; dropped?: Dropped; check_failed?: boolean; confirm_recheck?: boolean }
 
 /** What the gate confirms as assumed: only the sentences /assumed answered for each region, in the state (abnormal
  *  or untouched) that region had when they were checked, minus removed ones. Never the raw sheet (review
@@ -96,6 +96,22 @@ export function flaggedFrom(snap: AssumedSnap | null, abnormal: string[], untouc
 	if (!snap?.flagged) return [];
 	const kept = assumedFrom(snap, abnormal, untouched, removed, dictatedNormal);
 	return Object.entries(kept).flatMap(([r, xs]) => xs.filter((x) => (snap.flagged?.[r] ?? []).includes(x)));
+}
+
+/** The session's template context-rule decision (review R5): condition -> P(met), decided once from the clinical
+ *  history by the first good /assumed reply (the workspace load), as `fixedReferrals` is for the referral rows. */
+export interface SessionRules { history: string; rules: Record<string, number> }
+
+/** What the next /assumed sends: the kept decision while the history is the one it was decided from; else null, and
+ *  the server decides (one call). */
+export function rulesToSend(fixed: SessionRules | null, history: string): Record<string, number> | null {
+	return fixed && fixed.history === history ? fixed.rules : null;
+}
+
+/** The first good reply's decision is kept; later replies never replace it. A failed reply keeps nothing. */
+export function keepRules(fixed: SessionRules | null, history: string, res: { rules?: Record<string, number> | null; error?: string | null }): SessionRules | null {
+	if (rulesToSend(fixed, history)) return fixed;
+	return res.rules && !res.error ? { history, rules: res.rules } : null;
 }
 
 /** Rows over the writer's caps (E1b): shown behind one quiet "N more checks" line instead of vanishing. `rows`: the

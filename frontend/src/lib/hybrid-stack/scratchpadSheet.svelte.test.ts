@@ -20,7 +20,7 @@ vi.mock('$lib/hybrid-stack/api', async (orig) => {
 		postSlimSheet: stub('slim', () => ({ ready: true, id: 's1', status: 'ok', not_assessable: '',
 			region_normals: { Cord: ['Normal cord signal.'], Alignment: ['Normal alignment.'], 'Lumbar levels': ['The lumbar discs are normal.'] },
 			level_groups: { 'Lumbar levels': ['L4/5'] } }), 400),
-		postAssumed: stub('assumed', (b) => ({ assumed: b.region_normals, dropped: {}, ms: 1 })),
+		postAssumed: stub('assumed', (b) => ({ assumed: b.region_normals, dropped: {}, ms: 1, rules: { 'no previous study is available': 0.1 }, error: null })),
 		postItems: stub('items', () => ({ items: [], capped: [], contradicted: [], ms: 1, error: null })),
 		postGroup: stub('group', () => ({ units: [], new_ids: [], pills: [] })),
 		postLog: stub('log', () => ({}))
@@ -43,6 +43,8 @@ describe('scratchpad: assumed normals before any dictation (E6)', () => {
 		expect(first.at - slim.done!).toBeLessThan(500);
 		const sent = first.body;
 		expect(sent.dictation).toBe('');
+		expect(sent.rules).toBeNull(); // R5: the workspace load decides the session's context rules (one call)
+		expect(sent.confirm).toBe(false);
 		expect(Object.keys(sent.region_normals).sort()).toEqual(['Alignment', 'Cord']); // segments are never sent (E1)
 		await expect.poll(() => document.body.innerText, { timeout: 3000 }).toContain('3 assumed normal');
 		await wait(1600); // past the 1.2 s re-arm timer: the empty-dictation answer is current, so nothing re-runs

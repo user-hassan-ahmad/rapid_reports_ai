@@ -152,7 +152,8 @@ async def preview_report(sheet: str, scan_type: str, history: str, dictation: st
     abnormal, dictated_normal, untouched = region_states(g.units, [r.name for r in regions if r.name != OTHER])
     a = await normals_mod.assumed(dictation, normals, abnormal, dictated_normal, declined,
                                   suppressions=template_suppressions(st), clinical_history=history,
-                                  labels=template_normal_labels(st), region_text=region_text(g.units))
+                                  labels=template_normal_labels(st), region_text=region_text(g.units),
+                                  confirm=True)   # one shot, as the report after Confirm: rules decided now (R5)
     kept = confirmed_assumed(a.assumed, abnormal, untouched, declined, dictated_normal)
     conclusion = conclusion.strip() or conclusion_text(g.units)
     block = findings_block(g.units, regions, kept, conclusion, declined)
