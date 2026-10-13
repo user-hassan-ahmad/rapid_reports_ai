@@ -149,6 +149,14 @@ def jev_findings(findings: str) -> str:
     return "\n".join(out)
 
 
+def condition_state(scan_type: str, history: str, findings: str) -> str:
+    """The one Jev state every context condition is asked on (resolve_context_rules and the checklist's template
+    suppressions): the scan type when given, the clinical history, and the dictated findings without what the
+    radiologist did not dictate (jev_findings)."""
+    head = f"SCAN TYPE:\n{scan_type}\n" if (scan_type or "").strip() else ""
+    return head + f"CLINICAL HISTORY:\n{history or '(not given)'}\nDICTATED FINDINGS:\n{jev_findings(findings)}"
+
+
 Ask = Callable[[str, List[str]], Awaitable[List[float]]]
 
 
@@ -194,8 +202,7 @@ async def resolve_context_rules(sheet: str, history: str, findings: str, ask: Op
         rec["asked"] = len(conds)
         scores: List[float] = []
         if conds:
-            head = f"SCAN TYPE:\n{scan_type}\n" if (scan_type or "").strip() else ""
-            state = head + f"CLINICAL HISTORY:\n{history or '(not given)'}\nDICTATED FINDINGS:\n{jev_findings(findings)}"
+            state = condition_state(scan_type, history, findings)
             scores = await (ask or ask_conditions)(state, conds)
         if len(scores) != len(conds):
             rec["error"] = "jev: answer count mismatch"

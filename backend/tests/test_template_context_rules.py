@@ -350,3 +350,26 @@ async def test_the_jev_state_leads_with_the_scan_type_when_given_and_is_unchange
     await cr.resolve_context_rules(SHEET, "?lesion", "Liver normal.", ask=_ask({}, calls))
     assert calls[0][0].startswith("SCAN TYPE:\nCT abdomen with contrast\nCLINICAL HISTORY:\n?lesion\n")
     assert calls[1][0] == "CLINICAL HISTORY:\n?lesion\nDICTATED FINDINGS:\nLiver normal."
+
+
+async def test_the_checklist_and_the_report_ask_conditions_on_the_same_state(monkeypatch):
+    from rapid_reports_ai.hybrid_stack import normals
+    states: list = []
+
+    async def ask(state, conditions):
+        states.append(state)
+        return [0.0 for _ in conditions]
+    findings = "Liver normal.\nAssumed normal (confirmed by the radiologist): spleen."
+    monkeypatch.setattr(normals, "ask_conditions", ask)
+    await cr.resolve_context_rules(SHEET, "?lesion", findings, ask=ask, scan_type="CT abdomen")
+
+    monkeypatch.setattr(normals, "_ask", lambda *a, **k: _empty(a))
+    await normals.assumed(findings, {"Liver": ["The liver is normal."]}, [], [], [], suppressions=[(PRIOR, "x")],
+                          clinical_history="?lesion", scan_type="CT abdomen")
+    assert len(states) == 2 and states[0] == states[1] == cr.condition_state("CT abdomen", "?lesion", findings)
+    assert states[0].startswith("SCAN TYPE:\nCT abdomen\nCLINICAL HISTORY:\n?lesion\n")
+
+
+async def _empty(a):
+    from rapid_reports_ai.hybrid_stack.jev_stack import RowCheck
+    return [RowCheck(stated=0.0, contra=0.0, removed=0.0) for _ in a[1]]
