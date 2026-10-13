@@ -31,7 +31,7 @@
 		onRestNa: () => void;
 		/** A "stated?" chip kept as stated. */
 		onKeep: (item: string) => void;
-		/** A number picked from a dictation clause: entered, with the clause recorded. */
+		/** A number tapped from a dictation clause: picked (never stated as a typed answer), with the clause recorded. */
 		onPick?: (item: string, value: string, clause: string) => void;
 		/** An editor is open with text that differs from its chip (true) or not (false). */
 		onDraft?: (dirty: boolean) => void;

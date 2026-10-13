@@ -115,7 +115,7 @@
 		onValuesRestNa?: () => void;
 		/** A "stated?" chip kept as stated. */
 		onKeepValue?: (item: string) => void;
-		/** A number picked from a dictation clause on a chip: entered, with the clause recorded. */
+		/** A number tapped from a dictation clause on a chip: picked (never stated as a typed answer), with the clause. */
 		onPickValue?: (item: string, value: string, clause: string) => void;
 		/** The end-of-dictation review is running / will run when dictation stops. */
 		reviewing?: boolean;
