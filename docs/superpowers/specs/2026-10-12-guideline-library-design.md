@@ -266,18 +266,47 @@ over the values the radiologist confirmed, builds the result that Apply writes, 
 
 ## 5. Matching
 
-- **Controlled vocabulary.** Each entry's `applies_to` uses fixed vocabularies for region, modality, finding type and
-  context.
-- **Who fills each field:**
-  - anatomy comes from the scratchpad region;
-  - modality and protocol come from the scan type;
-  - the matcher (gpt-oss with the Jev gate, as now) fills finding type and context.
-- **Shortlist.** Entries whose `applies_to` matches form a closed shortlist, and the matcher picks from it. The
-  matcher never invents an entry.
-- **Embeddings.** A lexical or embedding prefilter is added only if the vocabulary shortlist grows too large to hand
-  to the matcher whole.
-- **Systems outside the library.** A system the matcher recognises but the library doesn't hold yields no card. Its
-  name is logged as a demand signal for authoring (§9.3).
+Revised 2026-10-13 after the matching lab (152 hand-selected production cases: the gpt-oss → name → Jev-gate path
+found 67/184 expected topics; one Jev choice per finding found 169/184). Hassan approved the change.
+
+### 5.1 Two kinds of pack
+
+- **Finding-triggered** (`trigger` includes `"finding"`): incidental and lesion guidelines (nodule, adrenal, renal
+  cyst, thyroid, ovarian, AAA, fractures, SINS…). An abnormal finding unit triggers them. A normal unit never does:
+  "no nodule" gives no card.
+- **Exam-level** (`trigger` includes `"exam"`): reporting frameworks that score the whole examination (CAD-RADS on a
+  coronary CT angiogram, CAC-DRS on a calcium-score study, PI-RADS on prostate MRI, ASPECTS on stroke CT, Lund-Mackay on
+  sinus CT). The study's identity binds them, whatever is dictated, and a normal study settles to its normal outcome
+  (e.g. CAD-RADS 0). A pack may carry both triggers (CAC-DRS: exam-level on a calcium-score study, finding-triggered for
+  coronary calcification seen on any other CT).
+- Each entry carries `purpose`: one or two sentences, from its own source, on what the system is for and in what
+  setting. No thresholds, categories or eligibility lists (those stay on the card). Exam-level entries also carry
+  `exam`: a one-line description of the study that binds them.
+
+### 5.2 Who decides what
+
+- **Per case** (cached by scan type + referral): one Jev request reads SCAN TYPE and CLINICAL HISTORY and answers
+  (a) the imaging modality (CT / MRI / US / XR / other), as a choice, and (b) for each exam-level pack, whether this
+  study is its `exam`, as a yes/no.
+- **Per new abnormal finding unit** (cached by scan type + referral + unit text): one Jev choice over the
+  finding-triggered topics, each option built in code from the entries' names, `purpose` and `applies_to`
+  (finding type, region, modality), plus "none". Topics, not packs: siblings (BTS/Fleischner, RCOG pre/post) are one
+  option and become columns on one card; CAC-DRS and CAD-RADS are offered as one coronary option. A pick below the
+  confidence floor is "none".
+- **Code**: maps the topic to its packs; drops a pack whose `applies_to.modality` excludes the resolved modality (an
+  "other" or failed modality drops nothing); merges an exam-bound pack with the same pack picked by a finding into one
+  card; applies the per-finding and per-case caps.
+- **Exam-level cards** settle from the whole dictation (normal units included), not from one finding unit.
+- **Failure**: a failed Jev request yields no library card for that finding or case and caches nothing (fails open).
+- **No gpt-oss in library matching.** The gpt-oss matcher (registry systems from model knowledge, TNM) moves to an
+  explicit, on-demand "other guidelines" request; it no longer runs on every finding.
+- **Systems outside the library** yield no library card; a named one is logged as a demand signal (§9.3).
+
+### 5.3 Card weight
+
+A pre-resolved normal exam-level outcome (CAD-RADS 0, CAC-DRS 0) renders as a quiet one-line card with a single
+insert; it never prompts for optional inputs. It is still seen before it reaches the report (§7.10), and Apply stays
+off until Hassan enables it.
 
 ## 6. Runtime interface
 
