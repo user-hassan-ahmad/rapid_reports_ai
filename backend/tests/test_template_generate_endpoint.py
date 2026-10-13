@@ -55,6 +55,7 @@ def test_malformed_and_missing_configs_are_hidden_and_do_not_break_the_list(
 # ── Phase 1 at "Set up workspace" (plan 2026-10-01-template-wiring W3) ─────────
 
 import asyncio  # noqa: E402
+import uuid  # noqa: E402
 import pathlib  # noqa: E402
 
 import httpx  # noqa: E402
@@ -456,7 +457,7 @@ async def test_a_scratchpad_report_carries_its_generation_stamp(aclient, auth_he
     monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
     r = await _generate_stack(aclient, auth_headers, mirror_template)
     await _drain_options()
-    stamp = db_session.get(Report, __import__("uuid").UUID(r["report_id"])).generation_stamp
+    stamp = db_session.get(Report, uuid.UUID(r["report_id"])).generation_stamp
     assert stamp["path"] == "scratchpad" and stamp["template_id"] == str(mirror_template.id)
     assert stamp["sheet_hash"] == sheet_hash(mirror_template.template_config["skill_sheet"])
     assert stamp["grammar_version"] == STRUCTURE_VERSION
@@ -468,6 +469,35 @@ async def test_a_fallback_report_is_stamped_fallback(aclient, auth_headers, guid
     monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
     r = await _generate_stack(aclient, auth_headers, guided_template)   # no usable structure: today's path
     await _drain_options()
-    stamp = db_session.get(Report, __import__("uuid").UUID(r["report_id"])).generation_stamp
+    stamp = db_session.get(Report, uuid.UUID(r["report_id"])).generation_stamp
     assert stamp["path"] == "fallback"
     assert stamp["sheet_hash"] == sheet_hash(guided_template.template_config["skill_sheet"])
+
+
+async def test_a_failing_stamp_never_stops_the_report_saving(aclient, auth_headers, mirror_template, stubs,
+                                                             db_session, monkeypatch):
+    from rapid_reports_ai import template_sheet_structure as tss
+
+    class Exploding(dict):
+        def get(self, *a, **k):
+            raise RuntimeError("config down")
+    real = tss.generation_stamp
+    monkeypatch.setattr(tss, "generation_stamp", lambda tid, cfg, path: real(tid, Exploding(cfg), path))
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+    r = await _generate_stack(aclient, auth_headers, mirror_template)
+    await _drain_options()
+    saved = db_session.get(Report, uuid.UUID(r["report_id"]))
+    assert r["success"] and saved is not None and saved.generation_stamp is None
+
+
+def test_generation_stamp_is_total():
+    from rapid_reports_ai.template_sheet_structure import STRUCTURE_VERSION, generation_stamp, sheet_hash
+    assert generation_stamp("t", "not a dict", "fallback") == {
+        "template_id": "t", "sheet_hash": None, "grammar_version": STRUCTURE_VERSION, "analyser_version": "",
+        "path": "fallback"}
+    odd = generation_stamp("t", {"skill_sheet": 123, "analyser_version": 7}, "scratchpad")
+    assert odd["sheet_hash"] is None and odd["analyser_version"] == ""
+    assert generation_stamp("t", {"skill_sheet": "  \n"}, "scratchpad")["sheet_hash"] is None   # empty: no hash
+    assert generation_stamp("t", {"skill_sheet": "x", "analyser_version": "v" * 99}, "scratchpad") == {
+        "template_id": "t", "sheet_hash": sheet_hash("x"), "grammar_version": STRUCTURE_VERSION,
+        "analyser_version": "v" * 64, "path": "scratchpad"}

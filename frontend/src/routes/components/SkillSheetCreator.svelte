@@ -53,7 +53,8 @@
 
 	// Phase 2 — workbench
 	let skillSheet = '';
-	let analyserVersion = ''; // the writer that produced the sheet (stored on save as evidence)
+	// The writer that produced the base sheet (stored on save as evidence), not any later refine of it.
+	let analyserVersion = '';
 	/** @type {{
 	 *   structure?: { sections: { name: string, paragraphs: string[] }[] },
 	 *   voice?: { description: string, phrases: string[] },

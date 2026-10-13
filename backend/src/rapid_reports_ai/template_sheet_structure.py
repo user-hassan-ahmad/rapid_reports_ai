@@ -261,12 +261,21 @@ def sheet_hash(sheet: str) -> str:
     return hashlib.sha256(sheet.encode()).hexdigest()
 
 
-def generation_stamp(template_id: str, config: dict | None, path: str) -> dict:
-    """Which sheet produced a report or a session (template pipeline spec, block 4)."""
-    config = config or {}
-    return {"template_id": str(template_id), "sheet_hash": sheet_hash(config.get("skill_sheet") or ""),
-            "grammar_version": STRUCTURE_VERSION, "analyser_version": config.get("analyser_version") or "",
-            "path": path}
+def generation_stamp(template_id: str, config: dict | None, path: str) -> dict | None:
+    """Which sheet produced a report or a session (template pipeline spec, block 4). Total: a malformed config
+    gives empty fields, any surprise gives None (logged) -- a stamp never breaks the save it rides on. An empty
+    sheet has no hash, so a sheet-less version never matches every other sheet-less one."""
+    try:
+        config = config if isinstance(config, dict) else {}
+        sheet = config.get("skill_sheet")
+        sheet = sheet if isinstance(sheet, str) else ""
+        version = config.get("analyser_version")
+        return {"template_id": str(template_id), "sheet_hash": sheet_hash(sheet) if sheet.strip() else None,
+                "grammar_version": STRUCTURE_VERSION,
+                "analyser_version": version[:64] if isinstance(version, str) else "", "path": str(path)}
+    except Exception as e:  # noqa: BLE001 -- evidence only
+        logger.warning("generation stamp failed for template %s: %s", template_id, e)
+        return None
 
 
 def numbered(sheet: str) -> str:

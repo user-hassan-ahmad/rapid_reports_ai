@@ -121,6 +121,18 @@ def test_skill_sheet_save_stores_the_analyser_version(client, auth_headers):
     assert "analyser_version" not in _get(client, auth_headers, r["template_id"])["template_config"]
 
 
+def test_analyser_version_is_capped_and_survives_an_edit(client, auth_headers):
+    r = client.post("/api/templates/skill-sheet/save", headers=auth_headers, json={
+        "skill_sheet": GOOD, "scan_type": "MRI knee", "template_name": "Knee", "analyser_version": "v" * 99}).json()
+    cfg = _get(client, auth_headers, r["template_id"])["template_config"]
+    assert cfg["analyser_version"] == "v" * 64
+    edit = {k: v for k, v in cfg.items() if k != "analyser_version"} | {"skill_sheet": EDITED}
+    assert client.put(f"/api/templates/{r['template_id']}", headers=auth_headers,
+                      json={"template_config": edit}).json()["success"]
+    cfg = _get(client, auth_headers, r["template_id"])["template_config"]
+    assert cfg["skill_sheet"] == EDITED and cfg["analyser_version"] == "v" * 64
+
+
 def test_skill_sheet_save_refuses_a_free_form_sheet(client, auth_headers):
     r = client.post("/api/templates/skill-sheet/save", headers=auth_headers, json={
         "skill_sheet": FREE, "scan_type": "MRI knee", "template_name": "Knee"}).json()

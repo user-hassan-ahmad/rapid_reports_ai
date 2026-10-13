@@ -336,3 +336,45 @@ def test_log_with_an_unknown_template_stores_no_stamp(authed, db_session):
     assert r.json() == {"ok": True}
     row = db_session.query(DictationStackLog).filter_by(session_id="s2").one()
     assert row.template_id is None and row.stamp is None
+
+
+def _template(db_session, owner_id, sheet="## FINDINGS\nx"):
+    from rapid_reports_ai.database.models import Template
+    t = Template(name="T", template_config={"skill_sheet": sheet}, user_id=owner_id, tags=[], is_active=True)
+    db_session.add(t)
+    db_session.commit()
+    return t
+
+
+def test_log_stores_no_stamp_for_another_users_template(authed, db_session):
+    other = User(id=uuid.uuid4(), email="other@nhs.net", password_hash="x", full_name="O",
+                 is_active=True, is_verified=True, is_approved=True)
+    db_session.add(other)
+    db_session.commit()
+    t = _template(db_session, other.id)
+    assert authed.post("/api/canvas/stack/log", json={"session_id": "s3", "template_id": str(t.id)}).json() == {"ok": True}
+    row = db_session.query(DictationStackLog).filter_by(session_id="s3").one()
+    assert row.template_id is None and row.stamp is None
+
+
+def test_log_still_writes_the_row_when_stamping_raises(authed, db_session, user, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("stamp down")
+    monkeypatch.setattr(R, "generation_stamp", boom)
+    t = _template(db_session, user.id)
+    r = authed.post("/api/canvas/stack/log", json={"session_id": "s4", "template_id": str(t.id), "manual_moves": 3})
+    assert r.json() == {"ok": True}
+    row = db_session.query(DictationStackLog).filter_by(session_id="s4").one()
+    assert row.manual_moves == 3 and row.stamp is None and row.template_id is None
+
+
+def test_log_stamp_is_pinned_to_the_sheet_the_session_started_with(authed, db_session, user):
+    from rapid_reports_ai.template_sheet_structure import sheet_hash
+    t = _template(db_session, user.id, sheet="first")
+    authed.post("/api/canvas/stack/log", json={"session_id": "s5", "template_id": str(t.id)})
+    t.template_config = {"skill_sheet": "second"}
+    db_session.commit()
+    authed.post("/api/canvas/stack/log", json={"session_id": "s5", "template_id": str(t.id)})
+    db_session.expire_all()
+    row = db_session.query(DictationStackLog).filter_by(session_id="s5").one()
+    assert row.stamp["sheet_hash"] == sheet_hash("first")

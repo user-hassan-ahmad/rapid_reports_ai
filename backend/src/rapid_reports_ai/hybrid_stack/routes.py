@@ -301,11 +301,14 @@ async def stack_log(req: LogRequest, user: User = Depends(get_current_user), db:
         if k in ("session_id", "template_id") or (k in ("gate", "report_id") and v is None):
             continue  # a partial log (the report id alone) changes only what it sends; a gate is never erased
         setattr(row, k, v)
-    if req.template_id:
-        t = get_template(db, req.template_id, str(user.id))   # owner only; an unknown template stamps nothing
-        if t is not None:
-            row.template_id = str(t.id)
-            row.stamp = generation_stamp(str(t.id), t.template_config, "scratchpad")
+    if req.template_id and row.stamp is None:   # pinned to the sheet the session started with
+        try:
+            t = get_template(db, req.template_id, str(user.id))   # owner only; an unknown template stamps nothing
+            stamp = generation_stamp(str(t.id), t.template_config, "scratchpad") if t is not None else None
+            if stamp is not None:
+                row.template_id, row.stamp = str(t.id), stamp
+        except Exception as e:  # noqa: BLE001 -- the stamp is evidence; the log row always lands
+            logger.warning("stack log %s: stamp failed: %s", req.session_id, e)
     db.commit()
     return {"ok": True}
 

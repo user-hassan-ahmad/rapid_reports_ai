@@ -1657,6 +1657,8 @@ def _carry_structure(new_config: dict, old_config: dict) -> dict:
     old = old_config or {}
     if new.get("skill_sheet") and old.get("skill_sheet") == new["skill_sheet"] and old.get("sheet_structure"):
         new["sheet_structure"] = old["sheet_structure"]
+    if not new.get("analyser_version") and old.get("analyser_version"):
+        new["analyser_version"] = old["analyser_version"]   # the writer of the base sheet survives edits
     return new
 
 
@@ -2781,7 +2783,7 @@ async def skill_sheet_save_endpoint(
         if refusal:
             return {"success": False, "error": refusal}
         if request.analyser_version:
-            template_config = {**template_config, "analyser_version": request.analyser_version}
+            template_config = {**template_config, "analyser_version": request.analyser_version[:64]}
         logger.info("  coverage_sections: %s", template_config.get("coverage_sections"))
         template = create_template(
             db=db,
