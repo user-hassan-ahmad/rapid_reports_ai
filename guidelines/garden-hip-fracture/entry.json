@@ -2,6 +2,7 @@
   "id": "garden-hip-fracture",
   "version": "1961.1",
   "topic": "femoral-neck-fracture-classification",
+  "purpose": "Classifies a subcapital (intracapsular) femoral neck fracture into stages by its degree of displacement on radiographs taken before reduction.",
   "issuer": "Garden RS (Preston Royal Infirmary)",
   "system": "Garden four-stage radiographic classification of subcapital (intracapsular) femoral neck fractures by displacement",
   "display": "Garden 1961",

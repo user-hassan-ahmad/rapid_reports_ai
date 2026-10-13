@@ -31,11 +31,14 @@
     },
     "display": "AOSpine thoracolumbar injury classification (2013 consensus paper)",
     "edition": "2013",
+    "exam": "",
     "id": "ao-spine-thoracolumbar",
     "inputs": [],
     "issuer": "AOSpine Spinal Cord Injury & Trauma Knowledge Forum (Vaccaro AR et al.)",
     "logic": [],
+    "match_topic": "",
     "outcomes": [],
+    "purpose": "Classifies an acute thoracolumbar spine injury by fracture morphology, with neurological status and case-specific modifiers, in spinal trauma; designed mainly around features seen on CT. Not for chronic or osteoporotic (insufficiency) vertebral fractures.",
     "reference": {
      "definitions": [
       {
@@ -576,6 +579,9 @@
     "system": "AOSpine thoracolumbar spine injury classification: morphologic type A, B, C with subtypes, neurological status N0 to N4 and NX, and modifiers M1 and M2",
     "tier": 2,
     "topic": "thoracolumbar-spine-injury-classification",
+    "trigger": [
+     "finding"
+    ],
     "version": "2013.1"
    },
    "sources": [
@@ -615,11 +621,14 @@
     },
     "display": "ASPECTS (Barber 2000)",
     "edition": "2000",
+    "exam": "non-contrast CT head for suspected acute ischaemic stroke",
     "id": "aspects",
     "inputs": [],
     "issuer": "ASPECTS Study Group (Alberta Stroke Programme)",
     "logic": [],
+    "match_topic": "",
     "outcomes": [],
+    "purpose": "Scores early ischaemic change in the middle cerebral artery territory on non-contrast CT in hyperacute ischaemic stroke, as part of the pre-treatment CT assessment before thrombolysis.",
     "reference": {
      "definitions": [
       {
@@ -899,6 +908,9 @@
     "system": "Alberta Stroke Program Early CT Score (ASPECTS) for early ischaemic change in the MCA territory on non-contrast CT",
     "tier": 2,
     "topic": "acute-ischaemic-stroke-ct",
+    "trigger": [
+     "exam"
+    ],
     "version": "2000.1"
    },
    "sources": [
@@ -935,6 +947,7 @@
     },
     "display": "Bosniak 2019",
     "edition": "2019",
+    "exam": "",
     "id": "bosniak-renal-cyst",
     "inputs": [
      {
@@ -2660,6 +2673,7 @@
       "step": "rules"
      }
     ],
+    "match_topic": "",
     "outcomes": [
      {
       "caveats": [
@@ -2771,6 +2785,7 @@
       "recommendation": "Manage per the clinical context."
      }
     ],
+    "purpose": "Stratifies the risk of malignancy in a cystic renal mass on CT or MRI.",
     "reference": {
      "definitions": [
       {
@@ -2983,6 +2998,9 @@
     "system": "Bosniak Classification of Cystic Renal Masses, Version 2019",
     "tier": 1,
     "topic": "cystic-renal-mass",
+    "trigger": [
+     "finding"
+    ],
     "version": "2019.1"
    },
    "sources": [
@@ -3021,6 +3039,7 @@
     },
     "display": "BTA 2014 U classification",
     "edition": "2014",
+    "exam": "",
     "id": "bta-thyroid-u-grading",
     "inputs": [
      {
@@ -3098,6 +3117,7 @@
       "step": "table"
      }
     ],
+    "match_topic": "",
     "outcomes": [
      {
       "caveats": [
@@ -3177,6 +3197,7 @@
       "recommendation": "Ultrasound-guided FNAC. Assess the rest of the neck for nodal metastases."
      }
     ],
+    "purpose": "Grades a thyroid nodule on ultrasound to assess its risk of malignancy and guide whether fine needle aspiration cytology is needed, within the British Thyroid Association guideline on the investigation and management of thyroid cancer.",
     "reference": {
      "definitions": [
       {
@@ -3512,6 +3533,9 @@
     "system": "British Thyroid Association guidelines for the management of thyroid cancer (third edition): ultrasound U classification of thyroid nodules",
     "tier": 1,
     "topic": "thyroid-nodule",
+    "trigger": [
+     "finding"
+    ],
     "version": "2014.1"
    },
    "sources": [
@@ -3549,6 +3573,7 @@
     },
     "display": "BTS 2015",
     "edition": "2015",
+    "exam": "",
     "id": "bts-pulmonary-nodule",
     "inputs": [
      {
@@ -5703,6 +5728,7 @@
       "step": "rules"
      }
     ],
+    "match_topic": "",
     "outcomes": [
      {
       "caveats": [
@@ -5990,6 +6016,7 @@
       "recommendation": "Manage per the clinical context."
      }
     ],
+    "purpose": "Gives the investigation and follow-up pathway for a solid pulmonary nodule on CT in adults, whether detected incidentally in routine practice, on surveillance after previous malignancy, or by lung cancer screening.",
     "reference": {
      "definitions": [
       {
@@ -6193,6 +6220,9 @@
     "system": "British Thoracic Society guidelines for the investigation and management of pulmonary nodules: solid-nodule pathway",
     "tier": 1,
     "topic": "pulmonary-nodule-incidental",
+    "trigger": [
+     "finding"
+    ],
     "version": "2015.1"
    },
    "sources": [
@@ -6246,6 +6276,7 @@
     },
     "display": "CAC-DRS (SCCT 2018)",
     "edition": "2018",
+    "exam": "dedicated CT coronary artery calcium scan, or non-contrast chest CT in which coronary calcium is assessed",
     "id": "cac-drs",
     "inputs": [
      {
@@ -6485,6 +6516,7 @@
       "step": "rules"
      }
     ],
+    "match_topic": "coronary",
     "outcomes": [
      {
       "caveats": [
@@ -6548,6 +6580,7 @@
       "recommendation": "Document the scoring system (A for Agatston, V for visual) and the number of vessels with calcium (N). CAC informs a clinician-patient discussion of preventive therapy."
      }
     ],
+    "purpose": "Standardises reporting of coronary artery calcium, with a risk statement and management recommendations, on dedicated calcium-score scans and on any non-contrast chest CT, whatever the indication.",
     "reference": {
      "definitions": [
       {
@@ -6817,6 +6850,10 @@
     "system": "CAC-DRS: Coronary Artery Calcium Data and Reporting System",
     "tier": 1,
     "topic": "coronary-artery-calcium",
+    "trigger": [
+     "exam",
+     "finding"
+    ],
     "version": "2018.1"
    },
    "sources": [
@@ -6854,6 +6891,7 @@
     },
     "display": "CAD-RADS 2.0",
     "edition": "2022",
+    "exam": "coronary CT angiography (CTCA)",
     "id": "cad-rads-2",
     "inputs": [
      {
@@ -8406,6 +8444,7 @@
       "step": "table"
      }
     ],
+    "match_topic": "coronary",
     "outcomes": [
      {
       "caveats": [],
@@ -9263,6 +9302,7 @@
       "recommendation": "No CAD-RADS 2.0 management suggestion for this indication; manage on clinical context."
      }
     ],
+    "purpose": "Standardises reporting of coronary artery stenosis and plaque burden on coronary CT angiography, with management suggestions for patients presenting with stable or acute chest pain.",
     "reference": {
      "definitions": [
       {
@@ -9421,6 +9461,9 @@
     "system": "CAD-RADS 2.0 Coronary Artery Disease - Reporting and Data System",
     "tier": 1,
     "topic": "coronary-stenosis-ccta",
+    "trigger": [
+     "exam"
+    ],
     "version": "2022.1"
    },
    "sources": [
@@ -9458,6 +9501,7 @@
     },
     "display": "ESE adrenal incidentaloma 2023",
     "edition": "2023",
+    "exam": "",
     "id": "ese-adrenal-incidentaloma",
     "inputs": [
      {
@@ -10080,6 +10124,7 @@
       "step": "rules"
      }
     ],
+    "match_topic": "",
     "outcomes": [
      {
       "caveats": [
@@ -10235,6 +10280,7 @@
       "recommendation": "Manage per the clinical context (library addition)."
      }
     ],
+    "purpose": "Guides imaging work-up of an adrenal incidentaloma on CT or MRI, an adrenal mass found on imaging done for reasons other than suspected adrenal disease, to decide whether it is benign.",
     "reference": {
      "definitions": [
       {
@@ -10454,6 +10500,9 @@
     "system": "ESE-ENSAT clinical practice guideline on the management of adrenal incidentalomas (2023): imaging work-up",
     "tier": 1,
     "topic": "adrenal-incidentaloma",
+    "trigger": [
+     "finding"
+    ],
     "version": "2023.1"
    },
    "sources": [
@@ -10495,11 +10544,14 @@
     },
     "display": "Fazekas scale (1987)",
     "edition": "1987",
+    "exam": "",
     "id": "fazekas",
     "inputs": [],
     "issuer": "Fazekas F et al. (Hospital of the University of Pennsylvania)",
     "logic": [],
+    "match_topic": "",
     "outcomes": [],
+    "purpose": "Grades periventricular and deep white matter hyperintensity separately on MRI. Described in a research study of MR signal abnormalities in Alzheimer's dementia and normal ageing.",
     "reference": {
      "definitions": [
       {
@@ -10858,6 +10910,9 @@
     "system": "Fazekas grading of periventricular and deep white-matter hyperintensity on MRI (0 to 3 each)",
     "tier": 2,
     "topic": "white-matter-hyperintensities-mri",
+    "trigger": [
+     "finding"
+    ],
     "version": "1987.1"
    },
    "sources": [
@@ -10895,6 +10950,7 @@
     },
     "display": "Fleischner Society 2017",
     "edition": "2017",
+    "exam": "",
     "id": "fleischner-pulmonary-nodule",
     "inputs": [
      {
@@ -11798,6 +11854,7 @@
       "step": "rules"
      }
     ],
+    "match_topic": "",
     "outcomes": [
      {
       "caveats": [
@@ -12018,6 +12075,7 @@
       "recommendation": "Manage per the clinical context (screening programme protocol, or the patient's oncology or immunosuppression care)."
      }
     ],
+    "purpose": "Gives follow-up recommendations for solid and subsolid pulmonary nodules found incidentally on CT in adults; not intended for lung cancer screening.",
     "reference": {
      "definitions": [
       {
@@ -12212,6 +12270,9 @@
     "system": "Fleischner Society guidelines for incidentally detected pulmonary nodules on CT",
     "tier": 1,
     "topic": "pulmonary-nodule-incidental",
+    "trigger": [
+     "finding"
+    ],
     "version": "2017.1"
    },
    "sources": [
@@ -12253,11 +12314,14 @@
     },
     "display": "Garden 1961",
     "edition": "1961",
+    "exam": "",
     "id": "garden-hip-fracture",
     "inputs": [],
     "issuer": "Garden RS (Preston Royal Infirmary)",
     "logic": [],
+    "match_topic": "",
     "outcomes": [],
+    "purpose": "Classifies a subcapital (intracapsular) femoral neck fracture into stages by its degree of displacement on radiographs taken before reduction.",
     "reference": {
      "definitions": [
       {
@@ -12474,6 +12538,9 @@
     "system": "Garden four-stage radiographic classification of subcapital (intracapsular) femoral neck fractures by displacement",
     "tier": 2,
     "topic": "femoral-neck-fracture-classification",
+    "trigger": [
+     "finding"
+    ],
     "version": "1961.1"
    },
    "sources": [
@@ -12517,11 +12584,14 @@
     },
     "display": "Kellgren-Lawrence 1957",
     "edition": "1957",
+    "exam": "",
     "id": "kellgren-lawrence",
     "inputs": [],
     "issuer": "Kellgren and Lawrence (University of Manchester)",
     "logic": [],
+    "match_topic": "",
     "outcomes": [],
+    "purpose": "Grades the severity of osteoarthritis on radiographs of the hand, wrist, spinal apophyseal joints, hip and knee. Developed for reading x-rays in a population survey of rheumatic disease.",
     "reference": {
      "definitions": [
       {
@@ -12865,6 +12935,9 @@
     "system": "Kellgren and Lawrence five-grade radiographic grading of osteo-arthrosis",
     "tier": 2,
     "topic": "osteoarthritis-radiographic-grade",
+    "trigger": [
+     "finding"
+    ],
     "version": "1957.1"
    },
    "sources": [
@@ -12907,11 +12980,14 @@
     },
     "display": "Lund-Mackay CT sinus staging (1993)",
     "edition": "1993",
+    "exam": "CT of the paranasal sinuses",
     "id": "lund-mackay",
     "inputs": [],
     "issuer": "Lund VJ, Mackay IS (Rhinology)",
     "logic": [],
+    "match_topic": "",
     "outcomes": [],
+    "purpose": "Stages the extent of chronic rhinosinusitis on CT of the paranasal sinuses, for assessing disease extent and guiding clinical management.",
     "reference": {
      "definitions": [
       {
@@ -13195,6 +13271,9 @@
     "system": "Lund-Mackay CT staging of chronic rhinosinusitis: each of five sinus groups per side graded 0 to 2 and the ostiomeatal complex 0 or 2, totalling 0 to 12 per side and 0 to 24 overall",
     "tier": 2,
     "topic": "chronic-rhinosinusitis-ct-staging",
+    "trigger": [
+     "exam"
+    ],
     "version": "1993.1"
    },
    "sources": [
@@ -13232,6 +13311,7 @@
     },
     "display": "NHS AAA Screening 2025",
     "edition": "2025",
+    "exam": "",
     "id": "nhs-aaa-surveillance",
     "inputs": [
      {
@@ -13694,6 +13774,7 @@
       "step": "rules"
      }
     ],
+    "match_topic": "",
     "outcomes": [
      {
       "caveats": [],
@@ -13794,6 +13875,7 @@
       "recommendation": "Manage per the AAA screening standard operating procedure."
      }
     ],
+    "purpose": "Gives screening results, surveillance intervals and referral for an abdominal aortic aneurysm measured on ultrasound within the NHS AAA Screening Programme.",
     "reference": {
      "definitions": [
       {
@@ -13908,6 +13990,9 @@
     "system": "NHS abdominal aortic aneurysm screening programme: screening results, surveillance intervals and referral thresholds",
     "tier": 1,
     "topic": "abdominal-aortic-aneurysm",
+    "trigger": [
+     "finding"
+    ],
     "version": "2025.1"
    },
    "sources": [
@@ -13945,6 +14030,7 @@
     },
     "display": "PI-RADS v2.1",
     "edition": "2019 (v2.1)",
+    "exam": "multiparametric MRI of the prostate",
     "id": "pi-rads-2-1",
     "inputs": [
      {
@@ -14884,6 +14970,7 @@
       "step": "rules"
      }
     ],
+    "match_topic": "",
     "outcomes": [
      {
       "caveats": [
@@ -15005,6 +15092,7 @@
       "recommendation": "No PI-RADS category; v2.1 criteria do not apply to suspected recurrence after treatment."
      }
     ],
+    "purpose": "Assigns a likelihood of clinically significant cancer to a prostate lesion on multiparametric MRI, for detection, localisation and risk stratification in patients with suspected cancer in a treatment-naive prostate.",
     "reference": {
      "definitions": [
       {
@@ -15586,6 +15674,9 @@
     "system": "PI-RADS Prostate Imaging - Reporting and Data System, Version 2.1",
     "tier": 1,
     "topic": "prostate-lesion-mri",
+    "trigger": [
+     "exam"
+    ],
     "version": "2019.1"
    },
    "sources": [
@@ -15623,6 +15714,7 @@
     },
     "display": "RCOG GTG 34 (2016, updated 2025)",
     "edition": "2016 (minor update December 2025)",
+    "exam": "",
     "id": "rcog-ovarian-mass-postmenopausal",
     "inputs": [
      {
@@ -16424,6 +16516,7 @@
       "step": "rules"
      }
     ],
+    "match_topic": "",
     "outcomes": [
      {
       "caveats": [
@@ -16521,6 +16614,7 @@
       "recommendation": "Manage per the clinical context."
      }
     ],
+    "purpose": "Assesses the risk of malignancy of an ovarian cyst in a postmenopausal woman using ultrasound and CA125 (the RMI), to decide between general gynaecological care and referral to gynaecological oncology.",
     "reference": {
      "definitions": [
       {
@@ -16768,6 +16862,9 @@
     "system": "RCOG Green-top Guideline No. 34: the management of ovarian cysts in postmenopausal women (RMI I pathway)",
     "tier": 1,
     "topic": "ovarian-mass",
+    "trigger": [
+     "finding"
+    ],
     "version": "2016.1"
    },
    "sources": [
@@ -16807,6 +16904,7 @@
     },
     "display": "RCOG GTG 62 (2011)",
     "edition": "2011 (first edition, RCOG/BSGE joint guideline; RCOG lists a second edition as in development, checked 2026-10-12)",
+    "exam": "",
     "id": "rcog-ovarian-mass-premenopausal",
     "inputs": [
      {
@@ -17748,6 +17846,7 @@
       "step": "rules"
      }
     ],
+    "match_topic": "",
     "outcomes": [
      {
       "caveats": [
@@ -17874,6 +17973,7 @@
       "recommendation": "Manage per the clinical context."
      }
     ],
+    "purpose": "Guides initial ultrasound assessment of a suspected ovarian mass in a premenopausal woman, to decide whether it can be managed in a benign gynaecology service or needs gynaecological oncology referral.",
     "reference": {
      "definitions": [
       {
@@ -18133,6 +18233,9 @@
     "system": "RCOG Green-top Guideline No. 62: management of suspected ovarian masses in premenopausal women (IOTA simple rules pathway)",
     "tier": 1,
     "topic": "ovarian-mass",
+    "trigger": [
+     "finding"
+    ],
     "version": "2011.1"
    },
    "sources": [
@@ -18190,6 +18293,7 @@
     },
     "display": "Salter-Harris 1963",
     "edition": "1963",
+    "exam": "",
     "id": "salter-harris",
     "inputs": [
      {
@@ -18267,6 +18371,7 @@
       "step": "table"
      }
     ],
+    "match_topic": "",
     "outcomes": [
      {
       "caveats": [
@@ -18361,6 +18466,7 @@
       "recommendation": "Growth prognosis (1963): decidedly poor, the worst of the types; premature cessation of growth is almost inevitable."
      }
     ],
+    "purpose": "Classifies an injury of the growth (epiphyseal) plate in a child by its pattern, to indicate the prognosis for growth disturbance and guide treatment.",
     "reference": {
      "definitions": [
       {
@@ -18614,6 +18720,9 @@
     "system": "Salter-Harris classification of epiphyseal-plate injuries, types I to V",
     "tier": 1,
     "topic": "physeal-fracture",
+    "trigger": [
+     "finding"
+    ],
     "version": "1963.1"
    },
    "sources": [
@@ -18658,6 +18767,7 @@
     },
     "display": "Spinal Instability Neoplastic Score, SINS (2010)",
     "edition": "2010",
+    "exam": "",
     "id": "sins",
     "inputs": [
      {
@@ -18754,6 +18864,7 @@
       "step": "table"
      }
     ],
+    "match_topic": "",
     "outcomes": [
      {
       "caveats": [
@@ -18803,6 +18914,7 @@
       "recommendation": "Patients with SINS 7 to 18 warrant surgical consultation."
      }
     ],
+    "purpose": "Scores spinal instability caused by a neoplastic (e.g. metastatic) spinal lesion from clinical and imaging criteria, to help identify patients with spinal tumours who may benefit from surgical consultation.",
     "reference": {
      "definitions": [
       {
@@ -19260,6 +19372,9 @@
     "system": "Spinal Instability Neoplastic Score (SINS): six scored components summed to 0 to 18, banded as stable, indeterminate (possibly impending) instability or unstable",
     "tier": 1,
     "topic": "spinal-instability-neoplastic",
+    "trigger": [
+     "finding"
+    ],
     "version": "2010.1"
    },
    "sources": [
@@ -19311,11 +19426,14 @@
     },
     "display": "Stoller meniscal signal grade (1987)",
     "edition": "1987",
+    "exam": "",
     "id": "stoller-meniscus",
     "inputs": [],
     "issuer": "Stoller DW et al. (University of California San Francisco; Cedars-Sinai Medical Center)",
     "logic": [],
+    "match_topic": "",
     "outcomes": [],
+    "purpose": "Grades abnormal meniscal signal on knee MRI, correlated with histological degeneration and tears. Derived from an autopsy and amputation specimen study.",
     "reference": {
      "definitions": [
       {
@@ -19626,6 +19744,9 @@
     "system": "Stoller grading of meniscal MR signal intensity (grades 1 to 3) with histologic correlation",
     "tier": 2,
     "topic": "meniscal-signal-grade-mri",
+    "trigger": [
+     "finding"
+    ],
     "version": "1987.1"
    },
    "sources": [
@@ -19673,11 +19794,14 @@
     },
     "display": "AO/OTA 2018 ankle fracture (44A/B/C)",
     "edition": "2018",
+    "exam": "",
     "id": "weber-ankle",
     "inputs": [],
     "issuer": "AO Foundation and Orthopaedic Trauma Association",
     "logic": [],
+    "match_topic": "",
     "outcomes": [],
+    "purpose": "Classifies a malleolar (ankle) fracture by the level of the fibular injury relative to the syndesmosis, within the AO/OTA compendium used to standardise fracture communication and recording.",
     "reference": {
      "definitions": [
       {
@@ -20048,6 +20172,9 @@
     "system": "AO/OTA Fracture and Dislocation Classification Compendium 2018: malleolar segment 44 (types A, B, C by the level of the fibular injury relative to the syndesmosis)",
     "tier": 2,
     "topic": "ankle-fracture",
+    "trigger": [
+     "finding"
+    ],
     "version": "2018.1"
    },
    "sources": [
@@ -20062,5 +20189,5 @@
    ]
   }
  },
- "version": "35bc9d642708"
+ "version": "4aa2decc29b6"
 }

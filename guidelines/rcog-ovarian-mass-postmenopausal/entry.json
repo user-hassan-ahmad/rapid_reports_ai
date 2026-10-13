@@ -2,6 +2,7 @@
   "id": "rcog-ovarian-mass-postmenopausal",
   "version": "2016.1",
   "topic": "ovarian-mass",
+  "purpose": "Assesses the risk of malignancy of an ovarian cyst in a postmenopausal woman using ultrasound and CA125 (the RMI), to decide between general gynaecological care and referral to gynaecological oncology.",
   "issuer": "Royal College of Obstetricians and Gynaecologists",
   "system": "RCOG Green-top Guideline No. 34: the management of ovarian cysts in postmenopausal women (RMI I pathway)",
   "display": "RCOG GTG 34 (2016, updated 2025)",

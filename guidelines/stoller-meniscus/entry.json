@@ -2,6 +2,7 @@
   "id": "stoller-meniscus",
   "version": "1987.1",
   "topic": "meniscal-signal-grade-mri",
+  "purpose": "Grades abnormal meniscal signal on knee MRI, correlated with histological degeneration and tears. Derived from an autopsy and amputation specimen study.",
   "issuer": "Stoller DW et al. (University of California San Francisco; Cedars-Sinai Medical Center)",
   "system": "Stoller grading of meniscal MR signal intensity (grades 1 to 3) with histologic correlation",
   "display": "Stoller meniscal signal grade (1987)",

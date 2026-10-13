@@ -2,6 +2,7 @@
   "id": "weber-ankle",
   "version": "2018.1",
   "topic": "ankle-fracture",
+  "purpose": "Classifies a malleolar (ankle) fracture by the level of the fibular injury relative to the syndesmosis, within the AO/OTA compendium used to standardise fracture communication and recording.",
   "issuer": "AO Foundation and Orthopaedic Trauma Association",
   "system": "AO/OTA Fracture and Dislocation Classification Compendium 2018: malleolar segment 44 (types A, B, C by the level of the fibular injury relative to the syndesmosis)",
   "display": "AO/OTA 2018 ankle fracture (44A/B/C)",

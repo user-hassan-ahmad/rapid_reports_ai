@@ -2,6 +2,7 @@
   "id": "bosniak-renal-cyst",
   "version": "2019.1",
   "topic": "cystic-renal-mass",
+  "purpose": "Stratifies the risk of malignancy in a cystic renal mass on CT or MRI.",
   "issuer": "Society of Abdominal Radiology (Silverman et al.)",
   "system": "Bosniak Classification of Cystic Renal Masses, Version 2019",
   "display": "Bosniak 2019",

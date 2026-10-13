@@ -6,7 +6,7 @@ from rapid_reports_ai.hybrid_stack.copilot.library import engine as E
 from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
 
 CALC = {
-    "id": "calc", "version": "1", "topic": "calc", "issuer": "T", "system": "calc", "display": "Calc", "edition": "1",
+    "id": "calc", "version": "1", "topic": "calc", "purpose": "Toy test entry.", "issuer": "T", "system": "calc", "display": "Calc", "edition": "1",
     "tier": 1, "applies_to": {},
     "inputs": [{"id": "a", "label": "A", "type": "number"}, {"id": "b", "label": "B", "type": "number"},
                {"id": "flag", "label": "Flag", "type": "boolean"},

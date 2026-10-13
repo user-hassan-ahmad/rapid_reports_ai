@@ -92,3 +92,43 @@ def test_a_fact_needs_a_patient_scoped_input_of_its_own_form():
         with pytest.raises(ValidationError):
             S.InputDef(id="x", label="X", **bad)
     assert S.InputDef(id="s", label="Sex", type="enum", options=["female", "male"], scope="patient", fact="sex")
+
+
+def _toy_with(toy, **kw):
+    d = {**toy, **kw}
+    for k, v in list(d.items()):
+        if v is None:
+            del d[k]
+    return d
+
+
+def test_purpose_is_required_and_bounded(toy):
+    assert S.Entry.model_validate(toy).purpose
+    for bad in (None, "", "   ", "x" * 401):
+        with pytest.raises(ValidationError):
+            S.Entry.model_validate(_toy_with(toy, purpose=bad))
+    S.Entry.model_validate(_toy_with(toy, purpose="x" * 400))
+
+
+def test_trigger_defaults_to_finding_and_rejects_empty_or_duplicates(toy):
+    assert S.Entry.model_validate(toy).trigger == ["finding"]
+    for bad in ([], ["finding", "finding"], ["exam", "exam"], ["other"]):
+        with pytest.raises(ValidationError):
+            S.Entry.model_validate(_toy_with(toy, trigger=bad, exam="CT of something"))
+
+
+def test_exam_is_required_exactly_when_trigger_has_exam(toy):
+    S.Entry.model_validate(_toy_with(toy, trigger=["exam"], exam="CT of the sinuses"))
+    S.Entry.model_validate(_toy_with(toy, trigger=["exam", "finding"], exam="CT of the sinuses"))
+    with pytest.raises(ValidationError):
+        S.Entry.model_validate(_toy_with(toy, trigger=["exam"]))
+    with pytest.raises(ValidationError):
+        S.Entry.model_validate(_toy_with(toy, trigger=["exam"], exam="  "))
+    with pytest.raises(ValidationError):
+        S.Entry.model_validate(_toy_with(toy, trigger=["finding"], exam="CT of the sinuses"))
+
+
+def test_matcher_topic_falls_back_to_topic(toy):
+    e = S.Entry.model_validate(toy)
+    assert e.matcher_topic == e.topic
+    assert S.Entry.model_validate(_toy_with(toy, match_topic="coronary")).matcher_topic == "coronary"

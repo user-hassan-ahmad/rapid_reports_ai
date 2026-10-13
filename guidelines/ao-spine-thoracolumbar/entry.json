@@ -2,6 +2,7 @@
   "id": "ao-spine-thoracolumbar",
   "version": "2013.1",
   "topic": "thoracolumbar-spine-injury-classification",
+  "purpose": "Classifies an acute thoracolumbar spine injury by fracture morphology, with neurological status and case-specific modifiers, in spinal trauma; designed mainly around features seen on CT. Not for chronic or osteoporotic (insufficiency) vertebral fractures.",
   "issuer": "AOSpine Spinal Cord Injury & Trauma Knowledge Forum (Vaccaro AR et al.)",
   "system": "AOSpine thoracolumbar spine injury classification: morphologic type A, B, C with subtypes, neurological status N0 to N4 and NX, and modifiers M1 and M2",
   "display": "AOSpine thoracolumbar injury classification (2013 consensus paper)",

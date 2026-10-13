@@ -130,3 +130,14 @@ def test_known_text_line_carries_the_key_and_a_scope_from_the_entry_data(toy):
     aaa = lines["nhs-aaa-surveillance@2025.1"]   # an eligibility input whose false (or other option) excludes
     assert "only: Scan done within the NHS AAA screening programme; Sex = male; not: AAA already treated)" in aaa
     assert all(ln.count(" | ") <= L.KNOWN_ALIASES - 1 for ln in lines.values())
+
+
+def test_every_entry_has_a_purpose_and_exam_level_set_is_the_five():
+    from rapid_reports_ai.hybrid_stack.copilot.library.bundle import compile_bundle
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
+    entries = [Entry.model_validate(v["entry"]) for v in compile_bundle()["entries"].values() if v["entry"]["status"] == "current"]
+    assert entries and all(e.purpose.strip() and len(e.purpose) <= 400 for e in entries)
+    assert all("no clinical" not in e.purpose.lower() and "is stated" not in e.purpose.lower() for e in entries)
+    assert {e.id for e in entries if "exam" in e.trigger} == {
+        "cad-rads-2", "cac-drs", "pi-rads-2-1", "aspects", "lund-mackay"}
+    assert {e.id: e.matcher_topic for e in entries if e.match_topic} == {"cac-drs": "coronary", "cad-rads-2": "coronary"}

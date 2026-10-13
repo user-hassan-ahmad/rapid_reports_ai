@@ -2,6 +2,7 @@
   "id": "salter-harris",
   "version": "1963.1",
   "topic": "physeal-fracture",
+  "purpose": "Classifies an injury of the growth (epiphyseal) plate in a child by its pattern, to indicate the prognosis for growth disturbance and guide treatment.",
   "issuer": "Salter and Harris (American Academy of Orthopaedic Surgeons instructional course lecture)",
   "system": "Salter-Harris classification of epiphyseal-plate injuries, types I to V",
   "display": "Salter-Harris 1963",

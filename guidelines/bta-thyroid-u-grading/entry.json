@@ -2,6 +2,7 @@
   "id": "bta-thyroid-u-grading",
   "version": "2014.1",
   "topic": "thyroid-nodule",
+  "purpose": "Grades a thyroid nodule on ultrasound to assess its risk of malignancy and guide whether fine needle aspiration cytology is needed, within the British Thyroid Association guideline on the investigation and management of thyroid cancer.",
   "issuer": "British Thyroid Association",
   "system": "British Thyroid Association guidelines for the management of thyroid cancer (third edition): ultrasound U classification of thyroid nodules",
   "display": "BTA 2014 U classification",

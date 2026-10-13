@@ -2,6 +2,7 @@
   "id": "fazekas",
   "version": "1987.1",
   "topic": "white-matter-hyperintensities-mri",
+  "purpose": "Grades periventricular and deep white matter hyperintensity separately on MRI. Described in a research study of MR signal abnormalities in Alzheimer's dementia and normal ageing.",
   "issuer": "Fazekas F et al. (Hospital of the University of Pennsylvania)",
   "system": "Fazekas grading of periventricular and deep white-matter hyperintensity on MRI (0 to 3 each)",
   "display": "Fazekas scale (1987)",

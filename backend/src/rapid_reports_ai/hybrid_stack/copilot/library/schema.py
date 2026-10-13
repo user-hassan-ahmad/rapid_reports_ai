@@ -309,6 +309,10 @@ class Entry(_M):
     id: str
     version: str
     topic: str
+    match_topic: str = ""             # the topic offered to the matcher when it differs from `topic` (spec §5)
+    purpose: str                      # one line: what the system classifies/scores and in what setting (spec §5.2)
+    trigger: list[Literal["finding", "exam"]] = Field(default_factory=lambda: ["finding"])
+    exam: str = ""                    # the examination an exam-level pack applies to; set exactly when "exam" triggers
     issuer: str
     system: str
     display: str                      # short name for cards and report lines, e.g. "Fleischner Society 2017"
@@ -326,6 +330,20 @@ class Entry(_M):
     @property
     def key(self) -> str:
         return f"{self.id}@{self.version}"
+
+    @property
+    def matcher_topic(self) -> str:
+        return self.match_topic or self.topic
+
+    @model_validator(mode="after")
+    def _matching(self):
+        if not self.purpose.strip() or len(self.purpose) > 400:
+            raise ValueError("purpose: required, at most 400 characters")
+        if not self.trigger or len(set(self.trigger)) != len(self.trigger):
+            raise ValueError("trigger: non-empty, no duplicates")
+        if ("exam" in self.trigger) != bool(self.exam.strip()):
+            raise ValueError("exam: given exactly when trigger includes 'exam'")
+        return self
 
     @model_validator(mode="after")
     def _tier(self):

@@ -61,7 +61,7 @@ def test_unfillable_placeholder(toy, manifest, cases):
 
 
 SCORED = {
-    "id": "scored", "version": "1", "topic": "s", "issuer": "T", "system": "s", "display": "S", "edition": "1",
+    "id": "scored", "version": "1", "topic": "s", "purpose": "Toy test entry.", "issuer": "T", "system": "s", "display": "S", "edition": "1",
     "tier": 1, "applies_to": {},
     "inputs": [{"id": "x", "label": "X", "type": "number"}],
     "logic": [
@@ -129,7 +129,7 @@ def test_enumeration_keeps_an_input_an_outcome_placeholder_names(toy, manifest, 
 
 
 DISCRETE_SCORE = {
-    "id": "dscore", "version": "1", "topic": "d", "issuer": "T", "system": "d", "display": "D", "edition": "1",
+    "id": "dscore", "version": "1", "topic": "d", "purpose": "Toy test entry.", "issuer": "T", "system": "d", "display": "D", "edition": "1",
     "tier": 1, "applies_to": {},
     "inputs": [{"id": "k", "label": "K", "type": "enum", "options": ["a", "b"], "locator": {"source": "S1"}}],
     "logic": [

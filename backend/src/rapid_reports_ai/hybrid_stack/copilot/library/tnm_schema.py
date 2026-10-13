@@ -39,7 +39,9 @@ def site_entry(site: str) -> Entry:
     if vs:
         inputs.append({"id": "histology", "label": "Histology", "type": "enum", "options": vs})
     return Entry.model_validate({
-        "id": f"tnm-{slug(site)}", "version": "9.0", "topic": f"tnm-{slug(site)}", "issuer": "UICC",
+        "id": f"tnm-{slug(site)}", "version": "9.0", "topic": f"tnm-{slug(site)}",
+        "purpose": f"Stages a primary malignancy of the {site.lower()} from its T, N and M categories (UICC TNM, 9th edition).",
+        "issuer": "UICC",
         "system": tnm.SOURCE, "display": f"TNM {site}", "edition": "9", "tier": 1,
         "applies_to": {"finding_type": ["primary malignancy"]},
         "inputs": inputs,

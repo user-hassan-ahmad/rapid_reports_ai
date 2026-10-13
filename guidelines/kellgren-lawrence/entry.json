@@ -2,6 +2,7 @@
   "id": "kellgren-lawrence",
   "version": "1957.1",
   "topic": "osteoarthritis-radiographic-grade",
+  "purpose": "Grades the severity of osteoarthritis on radiographs of the hand, wrist, spinal apophyseal joints, hip and knee. Developed for reading x-rays in a population survey of rheumatic disease.",
   "issuer": "Kellgren and Lawrence (University of Manchester)",
   "system": "Kellgren and Lawrence five-grade radiographic grading of osteo-arthrosis",
   "display": "Kellgren-Lawrence 1957",

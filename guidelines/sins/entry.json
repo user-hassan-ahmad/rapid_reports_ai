@@ -2,6 +2,7 @@
   "id": "sins",
   "version": "2010.1",
   "topic": "spinal-instability-neoplastic",
+  "purpose": "Scores spinal instability caused by a neoplastic (e.g. metastatic) spinal lesion from clinical and imaging criteria, to help identify patients with spinal tumours who may benefit from surgical consultation.",
   "issuer": "Spine Oncology Study Group (Fisher CG et al.)",
   "system": "Spinal Instability Neoplastic Score (SINS): six scored components summed to 0 to 18, banded as stable, indeterminate (possibly impending) instability or unstable",
   "display": "Spinal Instability Neoplastic Score, SINS (2010)",

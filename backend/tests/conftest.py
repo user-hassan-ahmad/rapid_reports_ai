@@ -182,7 +182,7 @@ import json as _json
 
 _L1 = {"source": "S1", "page": 2}
 TOY_ENTRY = {
-    "id": "toy-nodule", "version": "1.0", "topic": "toy-nodule", "issuer": "TOY", "system": "Toy nodule guideline",
+    "id": "toy-nodule", "version": "1.0", "topic": "toy-nodule", "purpose": "Toy test entry.", "issuer": "TOY", "system": "Toy nodule guideline",
     "display": "Toy 2020", "edition": "2020", "tier": 1,
     "applies_to": {"region": ["chest"], "modality": ["CT"], "finding_type": ["nodule"], "context": ["incidental"]},
     "aliases": ["toy nodule", "toy guideline"],
@@ -236,7 +236,7 @@ TOY_CASES = {"cases": [
      "needed": ["risk"]},
 ]}
 TOY_REFERENCE = {
-    "id": "toy-grade", "version": "1.0", "topic": "toy-grade", "issuer": "TOY", "system": "Toy grading",
+    "id": "toy-grade", "version": "1.0", "topic": "toy-grade", "purpose": "Toy test entry.", "issuer": "TOY", "system": "Toy grading",
     "display": "Toy grade 2020", "edition": "2020", "tier": 2,
     "applies_to": {"region": ["knee"], "modality": ["MRI"], "finding_type": ["cartilage defect"], "context": []},
     "aliases": ["toy grade"],

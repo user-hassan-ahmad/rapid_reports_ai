@@ -43,7 +43,7 @@ def test_too_many_combinations_falls_back_to_everything(toy_entry, monkeypatch):
 def test_a_single_possible_outcome_is_settled_even_when_a_table_key_is_unknown():
     L = {"source": "S1", "page": 2}
     e = Entry.model_validate({
-        "id": "t", "version": "1", "topic": "t", "issuer": "T", "system": "T", "display": "T", "edition": "1", "tier": 1,
+        "id": "t", "version": "1", "topic": "t", "purpose": "Toy test entry.", "issuer": "T", "system": "T", "display": "T", "edition": "1", "tier": 1,
         "applies_to": {"region": ["chest"], "modality": ["CT"], "finding_type": ["nodule"], "context": ["incidental"]},
         "aliases": [],
         "inputs": [{"id": "a", "label": "A", "type": "enum", "options": ["x", "y"]},
