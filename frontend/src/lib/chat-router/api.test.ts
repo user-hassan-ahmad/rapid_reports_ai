@@ -10,12 +10,12 @@ describe('chat-router api', () => {
 	it('posts an undo with the token and returns the turn', async () => {
 		const fetchMock = vi.fn(async () => new Response(JSON.stringify(turn)));
 		vi.stubGlobal('fetch', fetchMock);
-		const r = await postRouterUndo('tok', { skill_sheet: 's', decisions: [], changes: [{ type: 'ledger' }] });
+		const r = await postRouterUndo('tok', { skill_sheet: 's', decisions: [], changes: [{ type: 'ledger' }], changes_sig: 'S', turn_id: null });
 		expect(r.response).toBe('Undone.');
 		const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
 		expect(url.endsWith('/api/templates/skill-sheet/refine/undo')).toBe(true);
 		expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
-		expect(JSON.parse(init.body as string).changes).toEqual([{ type: 'ledger' }]);
+		expect(JSON.parse(init.body as string)).toMatchObject({ changes: [{ type: 'ledger' }], changes_sig: 'S' });
 	});
 
 	it('posts a card answer and throws on an HTTP error', async () => {

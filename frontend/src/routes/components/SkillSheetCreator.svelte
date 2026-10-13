@@ -83,6 +83,7 @@
 	 *   preMutationDecisions?: any[] | null,
 	 *   route?: string,
 	 *   changes?: any[],
+	 *   changesSig?: string | null,
 	 *   cards?: any[],
 	 *   originalInstruction?: string,
 	 *   status?: 'pending' | 'rejected' | 'confirmed' | null,
@@ -441,7 +442,8 @@
 		if (target.route === 'router' && Array.isArray(target.changes) && target.changes.length) {
 			// a router turn reverses its own changes on the backend, so a later turn is never clobbered
 			try {
-				const r = await postRouterUndo($token, { skill_sheet: skillSheet, decisions, changes: target.changes });
+				const r = await postRouterUndo($token, { skill_sheet: skillSheet, decisions, changes: target.changes,
+					changes_sig: target.changesSig });
 				if (!r.success) throw new Error(r.error);
 				skillSheet = r.skill_sheet;
 				if (Array.isArray(r.decisions)) decisions = r.decisions;
@@ -566,6 +568,7 @@
 						isRefineTurn: true,
 						route: data.route,
 						changes: data.changes || [],
+						changesSig: data.changes_sig || null,
 						cards: data.route === 'router' ? data.cards || [] : []
 				  }
 				: { role: 'assistant', content: data.response, route: data.route,

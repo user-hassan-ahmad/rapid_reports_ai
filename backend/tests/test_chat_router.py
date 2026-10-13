@@ -681,3 +681,23 @@ def test_blocks_sharing_a_word_do_not_satisfy_each_other():
     assert R.specific_claim("b4: shorter.", b["b4"], blocks) and not R.specific_claim("b44 is shorter.", b["b4"], blocks)
     assert not R.specific_claim("Voiceless consonants.", b["b1"], blocks)                 # trailing word boundary
     assert R.specific_claim("The construction guidance is shorter.", b["b4"], blocks)      # a word only it has
+
+
+
+# ── review: undo is bound to its own records ──────────────────────────────────────────────────────────────────
+def test_signed_records_verify_only_for_the_same_records_and_user():
+    recs = [{"type": "ledger", "claim": "x"}]
+    sig = R.sign_records(recs, "u1")
+    assert R.records_ok(recs, sig, "u1")
+    assert not R.records_ok([{"type": "ledger", "claim": "y"}], sig, "u1") and not R.records_ok(recs, sig, "u2")
+    assert not R.records_ok(recs, "", "u1") and not R.records_ok(recs, None, "u1")
+
+
+async def test_undo_refuses_an_inverse_op_that_does_not_match_its_forward_op():
+    rec = {"type": "edit", "kind": "fixed", "claim": "x",
+           "op": {"op": "fixed_add", "paragraph": "Technique", "text": "A new line."},
+           "inverse": [{"op": "remove_paragraph", "paragraph": "Lower"}]}          # not the inverse of fixed_add
+    u = await R.undo_turn(ROUTER_SHEET, [], [rec])
+    assert not u.applied and "## Paragraph: Lower (FINDINGS)" in u.sheet and u.evidence["skipped"] == 1
+    assert R.inverse_ok({"op": "fixed_add"}, [{"op": "unit_drop", "keyword": "FIXED", "text": "A."}])
+    assert not R.inverse_ok({"op": "fixed_add"}, [{"op": "unit_drop", "keyword": "NORMAL", "text": "A."}])

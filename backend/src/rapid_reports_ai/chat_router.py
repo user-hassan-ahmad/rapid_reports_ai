@@ -425,6 +425,44 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
                 cards=cards, notice=saved.message, unmatched=saved.unmatched, evidence=ev)
 
 
+# ── undo is bound to its own records (review): signed for the creator, looked up for a saved template ───────────
+def sign_records(records: List[dict], user_id: str) -> str:
+    """HMAC of a turn's change records for this user (the server key): undo accepts only records it signed."""
+    import hmac
+    import json
+    from .auth import SECRET_KEY
+    msg = f"{user_id}|" + json.dumps(records or [], sort_keys=True, separators=(",", ":"), default=str)
+    return hmac.new(SECRET_KEY.encode(), msg.encode(), hashlib.sha256).hexdigest()
+
+
+def records_ok(records: List[dict], sig: Optional[str], user_id: str) -> bool:
+    import hmac
+    return bool(sig) and hmac.compare_digest(sign_records(records, user_id), str(sig))
+
+
+INVERSE_OF = {"fixed_reword": {"fixed_reword"}, "fixed_add": {"unit_drop"}, "normal_add": {"unit_drop", "covers_drop"},
+              "negative_add": {"unit_drop"}, "rename_paragraph": {"rename_paragraph"},
+              "move_paragraph": {"move_paragraph"}, "remove_paragraph": {"insert_block"},
+              "add_paragraph": {"remove_paragraph"}, "rename_section": {"rename_section"},
+              "move_section": {"move_section"}, "remove_section": {"insert_block", "insert_section_line"},
+              "add_section": {"remove_section"}, "style_block": {"style_block"}}
+_UNIT_KW = {"fixed_add": "FIXED", "normal_add": "NORMAL", "negative_add": "NEGATIVE"}
+
+
+def inverse_ok(op: Optional[dict], inverse) -> bool:
+    """The inverse ops have the shape of their record's forward op (an edit record cannot carry arbitrary ops)."""
+    name = (op or {}).get("op")
+    allowed = INVERSE_OF.get(name)
+    if not allowed or not isinstance(inverse, list) or not inverse:
+        return False
+    for inv in inverse:
+        if not isinstance(inv, dict) or inv.get("op") not in allowed:
+            return False
+        if inv["op"] == "unit_drop" and inv.get("keyword") != _UNIT_KW.get(name):
+            return False
+    return True
+
+
 CARD_REJECTED = "I couldn't apply that choice. Could you tell me in the chat what you want instead?"
 
 
@@ -463,6 +501,10 @@ async def undo_turn(sheet: str, ledger: List[dict], records: List[dict]) -> Turn
                     skipped += 1
                     continue
             elif kind == "edit":
+                if not inverse_ok(rec.get("op"), rec.get("inverse")):
+                    logger.info("[chat-router] undo refused an edit record whose inverse does not match its op")
+                    skipped += 1
+                    continue
                 for inv in reversed(rec.get("inverse") or []):
                     prev = cur
                     cur, _ = E.apply_op(cur, inv)

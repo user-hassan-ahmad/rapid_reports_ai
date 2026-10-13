@@ -767,6 +767,8 @@ class SkillSheetRouterUndoRequest(BaseModel):
     decisions: Optional[List[Dict[str, Any]]] = None
     changes: List[Dict[str, Any]] = []      # the router turn's records, as returned by /skill-sheet/refine
     template_id: Optional[str] = None
+    changes_sig: Optional[str] = None       # the server's HMAC of `changes` (the creator: no stored turn)
+    turn_id: Optional[str] = None           # the stored turn (the refine panel): its own records are used
 
 
 class SkillSheetRouterCardRequest(BaseModel):
@@ -2773,20 +2775,33 @@ async def skill_sheet_generate_test_case_endpoint(
 
 
 def _record_chat_turn(db, user, template_id, instruction: str, response: str, applied: bool, before: str,
-                      after: str, routing: Optional[dict]) -> None:
-    """Evidence: a chat turn stored with the template it edits (never fails the reply)."""
+                      after: str, routing: Optional[dict]) -> Optional[str]:
+    """Evidence: a chat turn stored with the template it edits (never fails the reply); its id, or None."""
     if not template_id:
-        return
+        return None
     try:
         owned = get_template(db, template_id, user_id=str(user.id))
     except Exception as e:
         db.rollback()
         logger.warning("chat turn template lookup failed: %s", type(e).__name__)
-        return
+        return None
     if owned:
         # applied = the save function accepted it (no-change and asks included); a sheet change is
         # sheet_hash_before != sheet_hash_after
-        template_chat_turns.record_turn(db, owned.id, instruction, response, applied, before, after, routing=routing)
+        return template_chat_turns.record_turn(db, owned.id, instruction, response, applied, before, after,
+                                               routing=routing)
+    return None
+
+
+def _bind_router_turn(db, user, template_id, out: dict, turn, instruction: str, before: str) -> dict:
+    """Record a router turn (its records kept in routing, for the refine panel's undo) and sign its records (the
+    creator's undo, which has no stored turn)."""
+    turn_id = _record_chat_turn(db, user, template_id, instruction, out["response"], not turn.refused, before,
+                                out["skill_sheet"], {**turn.evidence, "records": turn.records})
+    out["changes_sig"] = chat_router.sign_records(turn.records, str(user.id))
+    if turn_id:
+        out["turn_id"] = turn_id
+    return out
 
 
 @app.post("/api/templates/skill-sheet/refine")
@@ -2837,9 +2852,8 @@ async def skill_sheet_refine_endpoint(
                 logger.exception("[chat-router] unexpected %s; fallback to the whole-sheet refine", router_fallback)
             else:
                 out = chat_router.response(turn)
-                _record_chat_turn(db, current_user, request.template_id, request.message, out["response"],
-                                  not turn.refused, request.skill_sheet, out["skill_sheet"], turn.evidence)
-                return out
+                return _bind_router_turn(db, current_user, request.template_id, out, turn, request.message,
+                                         request.skill_sheet)
 
         result = await tm.refine_skill_sheet(
             skill_sheet=request.skill_sheet,
@@ -3012,11 +3026,26 @@ async def skill_sheet_refine_undo_endpoint(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """"Not quite" on a router turn: reverse its own changes (a later turn's are left alone)."""
+    """"Not quite" on a router turn: reverse its own changes (a later turn's are left alone). The records are the
+    server's own: the stored turn's (a saved template, by turn id), else the client's copy only when it carries the
+    server's signature (the creator). Anything else is refused."""
     try:
-        turn = await chat_router.undo_turn(request.skill_sheet, request.decisions or [], request.changes)
+        records = None
+        if request.template_id and request.turn_id:
+            try:
+                owned = get_template(db, request.template_id, user_id=str(current_user.id))
+            except Exception:
+                db.rollback()
+                owned = None
+            if owned:
+                records = template_chat_turns.stored_records(db, owned.id, request.turn_id)
+        if records is None:
+            if not chat_router.records_ok(request.changes, request.changes_sig, str(current_user.id)):
+                return {"success": False, "error": "That change can't be undone here."}
+            records = request.changes
+        turn = await chat_router.undo_turn(request.skill_sheet, request.decisions or [], records)
         out = chat_router.response(turn)
-        _record_chat_turn(db, current_user, request.template_id, f"[undo] {len(request.changes)} change(s)",
+        _record_chat_turn(db, current_user, request.template_id, f"[undo] {len(records)} change(s)",
                           out["response"], not turn.refused, request.skill_sheet, out["skill_sheet"], turn.evidence)
         return out
     except Exception as e:
@@ -3035,9 +3064,8 @@ async def skill_sheet_refine_card_endpoint(
         turn = await chat_router.answer_card(request.skill_sheet, request.decisions or [], request.answer)
         out = chat_router.response(turn)
         label = request.answer.get("key") or (request.answer.get("proposal") or {}).get("claim") or ""
-        _record_chat_turn(db, current_user, request.template_id, f"[card] {label}"[:300], out["response"],
-                          not turn.refused, request.skill_sheet, out["skill_sheet"], turn.evidence)
-        return out
+        return _bind_router_turn(db, current_user, request.template_id, out, turn, f"[card] {label}"[:300],
+                                 request.skill_sheet)
     except Exception as e:
         logger.exception("chat router card failed: %s", e)
         return {"success": False, "error": "Couldn't apply that just now. Please try again."}

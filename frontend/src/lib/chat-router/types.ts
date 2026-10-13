@@ -38,6 +38,10 @@ export interface RouterTurnResponse {
 	cards?: RouterCard[];
 	decisions?: LedgerEntry[];
 	unmatched?: Record<string, unknown>[];
+	/** the server's signature of `changes` (undo accepts only records it signed) */
+	changes_sig?: string;
+	/** the stored turn (a saved template): undo uses its own records */
+	turn_id?: string;
 	notice?: string;
 	error?: string;
 }

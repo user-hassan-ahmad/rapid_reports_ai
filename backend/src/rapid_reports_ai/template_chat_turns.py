@@ -48,18 +48,37 @@ def _clean(v) -> str:
 
 
 def record_turn(db, template_id, instruction: str, response: str, applied: bool,
-                sheet_before: str, sheet_after: str, routing: dict | None = None) -> None:
+                sheet_before: str, sheet_after: str, routing: dict | None = None) -> str | None:
+    """Store the turn; its id (the refine panel's undo looks its records up by it), or None when not stored."""
     try:
-        db.add(TemplateChatTurn(
+        row = TemplateChatTurn(
             template_id=template_id, instruction=_clean(instruction),
             response=_clean(response), applied=applied,
             sheet_hash_before=sheet_hash(sheet_before or ""), sheet_hash_after=sheet_hash(sheet_after or ""),
             routing=_routing(routing),
-        ))
+        )
+        db.add(row)
         db.commit()
+        return str(row.id)
     except Exception as e:   # evidence only
         db.rollback()
         logger.warning("chat turn not stored for %s: %s", template_id, type(e).__name__)
+        return None
+
+
+def stored_records(db, template_id, turn_id) -> list | None:
+    """The change records the router stored with one turn of this template (routing.records), or None."""
+    try:
+        row = db.query(TemplateChatTurn).filter(TemplateChatTurn.id == uuid.UUID(str(turn_id)),
+                                                TemplateChatTurn.template_id == template_id).first()
+    except (ValueError, TypeError):
+        return None
+    except Exception as e:
+        db.rollback()
+        logger.warning("chat turn lookup failed: %s", type(e).__name__)
+        return None
+    recs = ((row.routing or {}) if row else {}).get("records")
+    return recs if isinstance(recs, list) else None
 
 
 def store_creator_turns(db, template_id, turns: list[dict]) -> int:

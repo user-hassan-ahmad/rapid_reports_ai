@@ -16,7 +16,14 @@ async function post(token: string | null, path: 'undo' | 'card', body: unknown):
 
 export const postRouterUndo = (
 	token: string | null,
-	body: { skill_sheet: string; decisions: LedgerEntry[]; changes: RouterRecord[]; template_id?: string | null }
+	body: {
+		skill_sheet: string;
+		decisions: LedgerEntry[];
+		changes: RouterRecord[];
+		changes_sig?: string | null;
+		turn_id?: string | null;
+		template_id?: string | null;
+	}
 ) => post(token, 'undo', body);
 
 export const postRouterCard = (
