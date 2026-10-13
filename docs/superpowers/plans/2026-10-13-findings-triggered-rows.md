@@ -58,6 +58,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
 11. **Proposal verification:** a habit is kept only with verified quotes from at least 2 distinct reports, with its YES or NO sentence appearing in a cited report, and only if `td.validate` accepts it; duplicates (by `match_key`) merge; at most 4 per run. Habit cards rank with concept cards inside `MAX_CARDS`, are never pre-ticked, and have no "Edit wording" choice (chat changes wording).
 12. **Two trigger wordings (A, B) are labbed**; `TRIGGER_MIN = 0.5` (the context-rule cut-off) until Hassan sets it from the report. **A score below `TRIGGER_MIN` is silent, even in the 0.35–0.5 band (Hassan H2);** the lab reports how often that band occurs and how often its rows were truly met.
 13. **A writer failure** returns no rows that round, as today (`res.error`: what is on screen stays), template rows included.
+14. **Generate never sees a habit line, on either path (re-review, 2026-10-13).** Habits are resolved only in the scratchpad (asked rows, assumed statements). `template_lean.generate_template_report_lean` strips every `RULE … ASK …` and `NEGATIVE … WHEN [findings: …]` line from `gen_sheet`, right after the context-rule resolver prepares it, with or without `stack`. **Known limitation:** on the straight-dictation path (`stack=None`) nothing is asked, so a confirmed `state` habit is not written there in this release; nothing is written unasked.
 
 ## File map
 
@@ -103,7 +104,7 @@ Frontend (`frontend/src/lib/`):
 | Phase | Tasks | Leaves working software |
 |---|---|---|
 | 0. Bring the branch up to date | 0 | the branch has `feat/context-rules` and the latest `feat/rules-step`; baselines recorded |
-| 1. Grammar, renderer, ledger kind `habit` | 1–5 | habit lines parse, render and save; only ledger-confirmed habits are active, others are asked on a card; nothing proposes or triggers them yet |
+| 1. Grammar, renderer, ledger kind `habit` | 1–5, 5b | habit lines parse, render and save; only ledger-confirmed habits are active, others are asked on a card; nothing proposes or triggers them yet |
 | 2. Labs (controller-run, reported) | 6–10 | trigger and proposal code exists and is measured; nothing in the scratchpad calls it; the decision run stores richer habit evidence |
 | 3. Decision-run proposal and Rules-step card | 11–12 | habits are proposed and confirmed at creation; saved sheets carry them |
 | 4. Scratchpad trigger, rows, ranking, Generate | 13–17 | confirmed habits are asked and stated in the scratchpad and reach the report |
@@ -1268,6 +1269,128 @@ Expected: PASS; the full suite count is the Task 0 baseline plus the new tests, 
 ```bash
 git add backend/src/rapid_reports_ai/template_sheet_save.py backend/src/rapid_reports_ai/template_rules_cards.py backend/src/rapid_reports_ai/main.py backend/tests/test_template_ledger_save.py backend/tests/test_template_rules_cards.py backend/tests/test_template_ledger_routes.py
 git commit -m "feat(rules-step): a habit line nobody confirmed stays inactive and is asked at the next review
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
+```
+
+---
+
+### Task 5b: Generate never sees a habit line, on both paths
+
+Habits are resolved only in the scratchpad, as asked rows or assumed statements. The straight-dictation Generate (`template_lean.generate_template_report_lean` with `stack=None`) reads the raw sheet, so without this task a habit line would reach the generator as text. Code strips every habit line from `gen_sheet` right after the context-rule resolver prepares it, on both paths (on the scratchpad path `template_stack._strip` drops them too; stripping twice is harmless). **Known limitation:** on the straight path nothing is asked, so a confirmed `state` habit is not written there in this release (nothing is written unasked).
+
+**Files:**
+- Modify: `backend/src/rapid_reports_ai/template_context_rules.py` (after `jev_findings`)
+- Modify: `backend/src/rapid_reports_ai/template_lean.py` (`generate_template_report_lean`, its inner `gen()`, the line that builds `gen_sheet`)
+- Test: `backend/tests/test_template_context_rules.py`, `backend/tests/test_template_lean.py`
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `backend/tests/test_template_context_rules.py` (`tcr` is the module alias there; if it is not, add `from rapid_reports_ai import template_context_rules as tcr`):
+
+```python
+def test_without_habits_drops_both_habit_forms_and_nothing_else():
+    sheet = "\n".join([
+        "## Paragraph: Upper (FINDINGS)",
+        'NEGATIVE "No beta abnormality."',
+        'RULE WHEN [findings: an alpha abnormality is reported] ASK "Extension?" YES "It extends." NO "No extension."',
+        '  - NEGATIVE "No extension beyond alpha." WHEN [findings: an alpha abnormality is reported]',
+        'RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["Width"] AT TOP',
+        'RULE WHEN [context: a previous study is available] SUPPRESS "No beta abnormality."',
+        "Voice: when present, say ASK nothing."])
+    out, n = tcr.without_habits(sheet)
+    assert n == 2 and "ASK \"" not in out and "WHEN [findings: an alpha" not in out
+    assert out.split("\n") == [sheet.split("\n")[i] for i in (0, 1, 4, 5, 6)]
+    assert tcr.without_habits("") == ("", 0)
+```
+
+Append to `backend/tests/test_template_lean.py` (add `import pytest` to its imports if missing):
+
+```python
+@pytest.mark.parametrize("stack", [None, {"conclusion": "Lesion.", "declined": []}])
+async def test_no_habit_line_reaches_the_generator_pending_or_confirmed(monkeypatch, stack):
+    from rapid_reports_ai import template_decisions as td
+    from rapid_reports_ai import template_ledger_apply as tla
+    from tests.template_sheet_fixtures import HABIT_SHEET
+    ask = {"mode": "ask", "question": "Extension into the gallbladder?",
+           "yes": "The abnormality extends into the gallbladder.", "no": "No extension into the gallbladder."}
+    led, _ = td.set_decision([], "habit", "Liver :: a focal liver abnormality is reported", ask, source="creation", at="t")
+    confirmed = tla.apply_ledger(HABIT_SHEET, led).sheet
+    pending = 'NEGATIVE "No delta extension." WHEN [findings: a focal delta abnormality is reported]'
+    sheet = confirmed.replace('NORMAL [delta] "Delta is normal."\n', 'NORMAL [delta] "Delta is normal."\n' + pending + "\n")
+    assert " ASK " in sheet and pending in sheet
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    out = await tl.generate_template_report_lean(sheet=sheet, scan_type="CT", findings="A focal liver abnormality.",
+                                                 history="", case=CASE, signature="Dr A", stack=stack)
+    gen_sheet = calls["gen"]["sheet"]
+    assert " ASK " not in gen_sheet and "WHEN [findings: a focal" not in gen_sheet
+    assert 'NEGATIVE "No focal liver lesion."' in gen_sheet   # unconditional units are untouched
+    assert out["report_generated"] == REPORT
+    if out.get("options_job") is not None:
+        await out["options_job"]
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `cd backend && .venv/bin/python -m pytest tests/test_template_context_rules.py tests/test_template_lean.py -q -k "habit"`
+Expected: FAIL with `AttributeError: module … has no attribute 'without_habits'` and, for both `stack` values, `assert " ASK " not in gen_sheet`.
+
+- [ ] **Step 3: The strip** (`template_context_rules.py`, after `jev_findings`)
+
+```python
+# The two findings-triggered habit forms (spec 2026-10-13-findings-triggered-rows-design), with the grammar's optional
+# indentation and "- " bullet. Habits are resolved only in the scratchpad (asked rows, assumed statements): the
+# generator never reads one, on either Generate path.
+_HABIT_LINE = re.compile(r'^\s*(?:-\s+)?(?:RULE\s+WHEN\s*\[\s*findings\s*:[^\]]*\]\s*ASK\b'
+                         r'|NEGATIVE\s*"[^"]*"\s+WHEN\s*\[\s*findings\s*:)')
+
+
+def without_habits(sheet: str) -> Tuple[str, int]:
+    """(the sheet without its habit lines, how many were removed). Every other line is kept byte for byte."""
+    lines = (sheet or "").split("\n")
+    kept = [ln for ln in lines if not _HABIT_LINE.match(ln)]
+    return "\n".join(kept), len(lines) - len(kept)
+```
+
+(`re` and `Tuple` are already imported in the module.)
+
+- [ ] **Step 4: Use it where `gen_sheet` is prepared** (`template_lean.py`)
+
+Add `without_habits` to the existing `from .template_context_rules import …` line. In `gen()` replace
+
+```python
+        gen_sheet = resolved.sheet + ("\n\n" + block if block else "")
+```
+
+with
+
+```python
+        # habits are resolved only in the scratchpad; on the straight path nothing is asked, so nothing is written
+        # (a confirmed "state" habit is not written there in this release: findings-triggered rows plan, decision 14)
+        base, rec["habit_lines_stripped"] = without_habits(resolved.sheet)
+        gen_sheet = base + ("\n\n" + block if block else "")
+```
+
+- [ ] **Step 5: Confirm no other generation path reads the sheet raw**
+
+```bash
+cd backend/src/rapid_reports_ai && grep -rn "_generate_report_skill_sheet_guided(\|generate_template_report(\|generate_template_report_lean(" --include="*.py" . | grep -v "^./scripts/"
+```
+
+Expected hits: `template_lean.py` (fixed above), `template_manager.py` (the method's definition and its skill-sheet early exit in the generic `generate_report`), `template_pipeline.py` (the heavy mirror, parked: `main.py` says "The heavy mirror (tp.generate_template_report) is parked"), and the `main.py` call of `generate_template_report_lean`. For every hit other than `template_lean.py`, follow its callers (`grep -n "<function name>(" main.py hybrid_stack/*.py template_*.py`) and confirm no live endpoint reaches it with a guided template. If one does, pass its sheet through `without_habits(...)[0]` in the same way, add the same parametrised test for that path, and say so in the commit message.
+
+- [ ] **Step 6: Run the tests to verify they pass**
+
+Run: `cd backend && .venv/bin/python -m pytest tests/test_template_context_rules.py tests/test_template_lean.py tests/test_template_stack.py tests/test_template_generate_endpoint.py -q`
+Expected: PASS (`test_lean_generation_is_todays_generator_then_check_then_vetted_options` still sees `OLD_SHEET` unchanged: it has no habit line).
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add backend/src/rapid_reports_ai/template_context_rules.py backend/src/rapid_reports_ai/template_lean.py backend/tests/test_template_context_rules.py backend/tests/test_template_lean.py
+git commit -m "feat(generate): no habit line reaches the generator, scratchpad or straight dictation
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
@@ -3780,7 +3903,8 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 | Trigger at the review hook, one Jev noul per distinct condition, threshold | 6, 13, 14, 17 |
 | An answered row stays answered until its condition stops being met | 15, 17 |
 | Already answered: stated check folds the row | 13 |
-| Generate: answers as "Answered by the radiologist:", required as assumed lines, removed as DO NOT ASSERT | 2, 16, 17 |
+| Generate: answers as "Answered by the radiologist:", required as assumed lines, removed as DO NOT ASSERT | 2, 5b, 16, 17 |
+| No habit line reaches the generator on the straight path either (re-review) | 5b |
 | Failure table (trigger fails, stated check fails, no habits, lint rejects a habit) | 4, 6, 13, 17 (a habit the grammar refuses is `failed` and `unmatched` in `apply_ledger`, so the Rules step's existing `ledger_unmatched` path shows it as a card at the next review) |
 | Lab first: proposal lab, trigger lab, held-out real set, reported | 8–10 |
 | Unit and frontend tests listed in the spec | 1–4, 13, 15, 16 |
