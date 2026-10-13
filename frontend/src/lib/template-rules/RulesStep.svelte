@@ -14,6 +14,7 @@
 		evidenceLine,
 		flatCards,
 		validValueName,
+		wordingProblem,
 		type Answer
 	} from './cards';
 	import type { CardWording, DecisionCard, DecisionChange } from './types';
@@ -167,6 +168,7 @@
 						<input class="input w-full text-sm" bind:value={draft.text} use:focusOnOpen />
 					</label>
 				{/if}
+				{#if wordingProblem(c, draft)}<p class="text-xs text-amber-300/80" role="status">{wordingProblem(c, draft)}</p>{/if}
 				<button
 					type="button"
 					class="btn-primary text-xs"

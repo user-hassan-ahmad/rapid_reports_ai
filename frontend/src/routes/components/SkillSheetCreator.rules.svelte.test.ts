@@ -64,4 +64,22 @@ describe('SkillSheetCreator rules step', () => {
 			skill_sheet: 'SHEET', source: 'creation', changes: [{ kind: 'fixed', key: 'Breath-holding was adequate.', choice: { keep: 'dictated' }, source: 'creation' }] });
 		await expect.element(page.getByText('Always printed')).not.toBeInTheDocument();   // re-run on the applied sheet
 	});
+
+	it('stays on the Rules step and shows the error when the build is refused', async () => {
+		vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+			if (url.endsWith('/skill-sheet/decide')) return new Response('x', { status: 500 });
+			if (url.endsWith('/skill-sheet/analyze')) return new Response(JSON.stringify({ success: false, error: 'An example report is too long' }));
+			return new Response(JSON.stringify({ success: true, tags: [], templates: [] }));
+		}));
+		render(SkillSheetCreator, {});
+		await userEvent.fill(page.getByPlaceholder('e.g. CT chest with IV contrast', { exact: false }), 'CT abdomen');
+		for (const n of [1, 2, 3]) {
+			await page.getByRole('button', { name: `Report ${n}` }).click();
+			await userEvent.fill(page.getByPlaceholder('Paste complete report...'), `Report ${n}.`);
+		}
+		await page.getByRole('button', { name: 'Analyse my style' }).click();
+		await expect.element(page.getByText('An example report is too long').first()).toBeInTheDocument();
+		await expect.element(page.getByText('Check your rules')).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+	});
 });

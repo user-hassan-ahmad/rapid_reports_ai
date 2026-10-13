@@ -225,3 +225,25 @@ def test_a_saved_template_gives_its_name_and_description_as_setup(client, auth_h
     client.post(URL, headers=auth_headers, json={"template_id": str(t.id)})
     s = seen["setup"]
     assert (s.name, s.scan_type, s.protocol) == ("Named study", "<scan>", "Protocol text")
+
+
+def test_a_failed_first_use_run_is_stamped_and_only_an_explicit_retry_reruns(client, auth_headers, db_session,
+                                                                             test_user, run_returns):
+    set_run, seen = run_returns
+    set_run(R.DecisionRun(ok=False, error="timeout"))
+    t = _make_template(db_session, test_user, "T", {"generation_mode": "skill_sheet_guided",
+                                                    "skill_sheet": LEDGER_SHEET})
+    for i, e in enumerate(EX):
+        db_session.add(TemplateExample(template_id=t.id, text=e["content"], sha256=str(i) * 64, source="pasted"))
+    db_session.commit()
+    assert client.post(URL, headers=auth_headers, json={"template_id": str(t.id)}).json()["ran"] is False
+    db_session.refresh(t)
+    assert t.template_config["rules_step"]["ok"] is False
+    seen.clear()
+    client.post(URL, headers=auth_headers, json={"template_id": str(t.id)})
+    assert "examples" not in seen                                       # not re-paid on the next open
+    set_run(_run())
+    r = client.post(URL, headers=auth_headers, json={"template_id": str(t.id), "retry": True}).json()
+    assert r["ran"] is True
+    db_session.refresh(t)
+    assert t.template_config["rules_step"]["ok"] is True

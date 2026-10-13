@@ -114,7 +114,14 @@ def _values(lines, st, entries):
         first = rules[0]
         spell = {td._name(k): k for k in every}
         ordered = [spell[td._name(x)] for x in first.items if td._name(x) in spell]
-        ordered += [k for k in every if td._name(k) not in {td._name(x) for x in first.items}]
+        listed = {td._name(x) for x in first.items}
+        # a value not in the list goes before the next "every" value the ledger records after it (the ledger keeps
+        # each entry's place, so an undone removal returns to where it was); with none, at the end
+        for n, k in enumerate(every):
+            if td._name(k) in listed:
+                continue
+            nxt = next((f for f in every[n + 1:] if f in ordered), None)
+            ordered.insert(ordered.index(nxt) if nxt else len(ordered), k)
         out: List[Optional[str]] = list(lines)
         for i in idx[1:]:
             out[i] = None
@@ -491,6 +498,25 @@ def _fixed_reword(sb: tss.SheetStructure, sa: tss.SheetStructure) -> Optional[Tu
     return (gone[0], new[0]) if len(gone) == 1 and len(new) == 1 else None
 
 
+def _negative_reword(sb: tss.SheetStructure, sa: tss.SheetStructure, e: dict) -> Optional[str]:
+    """The new text when exactly one template NEGATIVE of the entry's paragraph was removed (the entry's) and one
+    added; else None."""
+    para_name, label, neg = td.split_normal_key(e["key"])
+    if not neg:
+        return None
+    pb, pa = _paragraph(sb, para_name), _paragraph(sa, para_name)
+    if pb is None or pa is None:
+        return None
+
+    def texts(st, pid):
+        return {norm_key(n.text): n.text for n in st.negatives
+                if n.paragraph == pid and n.origin == "template" and not n.condition}
+    b, a = texts(sb, pb.id), texts(sa, pa.id)
+    gone, new = [k for k in b if k not in a], [a[k] for k in a if k not in b]
+    mine = {norm_key(label), norm_key(e["choice"].get("text", ""))}
+    return new[0] if len(gone) == 1 and len(new) == 1 and gone[0] in mine else None
+
+
 def _wholesale(e: dict, ob: dict, oa: dict, sb: tss.SheetStructure, sa: tss.SheetStructure) -> bool:
     """A rewrite that removed a whole decided item: the whole LIST_MISSING list, or every line of a used concept.
     Product decision D3: never folded into the ledger silently; the ledger is kept and a card asks."""
@@ -527,14 +553,27 @@ def reconcile_chat(before: str, after: str, ledger: List[dict]) -> Tuple[List[di
             elif (e["kind"] == "fixed" and ob == {"keep": "always"} and oa == {"keep": "remove"} and rw
                   and norm_key(rw[0]) == norm_key(e["key"])):   # an always-printed line reworded: same choice, new key
                 out, ch = td.rekey_decision(out, "fixed", e["key"], rw[1], source="chat")
-            elif oa is None or ob == oa:
+            elif (e["kind"] == "normal" and ob and ob.get("text") and oa is not None and not oa.get("text")
+                  and _negative_reword(sb, sa, e)):   # a decided NEGATIVE reworded: the new text, rekeyed
+                para, _, _ = td.split_normal_key(e["key"])
+                text = _negative_reword(sb, sa, e)
+                out, ch = td.rekey_decision(out, "normal", e["key"], td.negative_key(para, text), source="chat",
+                                            choice={"text": text})
+            elif ob is None or oa is None or ob == oa:   # a paragraph gone or back: nothing to read, entry kept
                 continue
             elif _wholesale(e, ob, oa, sb, sa):
                 cards.append(trc.card_for_change(e["kind"], e["key"], e["choice"]))
                 continue
             else:
                 out, ch = td.set_decision(out, e["kind"], e["key"], oa, source="chat")
-        except (td.DecisionError, KeyError, StopIteration):
+        except td.DecisionError as err:   # a change code cannot write: kept, asked (never skipped silently)
+            logger.info("[ledger] chat change to %s %r refused: %s", e["kind"], e["key"], err)
+            try:
+                cards.append({**trc.card_for_change(e["kind"], e["key"], e["choice"]), "reason": "invalid"})
+            except td.DecisionError:
+                pass
+            continue
+        except (KeyError, StopIteration):
             continue
         if ch:
             changes.append(ch)

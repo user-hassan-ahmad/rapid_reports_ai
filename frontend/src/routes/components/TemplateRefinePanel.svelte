@@ -45,6 +45,9 @@
 	let reviewLoading = false;
 	let reviewBusy = false;
 	let reviewDone = false;
+	/** where the review's cards came from: the first-use review (/decide) or a chat edit that kept a confirmed item */
+	/** @type {'first_use_review' | 'chat'} */
+	let reviewSource = 'first_use_review';
 	/** @type {import('$lib/template-rules/types').SheetChecksResponse | null} */
 	let checks = null;
 	let reviewChanged = false;
@@ -69,6 +72,7 @@
 	 * template has never been reviewed. Fail-soft: without it the panel works as before. */
 	async function loadReview(/** @type {any} */ t) {
 		review = null;
+		reviewSource = 'first_use_review';
 		reviewOpen = false;
 		if (!t?.id) return;
 		reviewLoading = true;
@@ -86,6 +90,7 @@
 	function showKeptCards(/** @type {any[]} */ cards) {
 		if (!Array.isArray(cards) || !cards.length) return;
 		review = { success: true, ran: false, cards, more: [], kept: [], defaults: [], notice: '', run: {} };
+		reviewSource = 'chat';   // answers to these cards come from the chat edit, not the first-use review
 		reviewDone = false;
 		reviewOpen = true;
 		reviewKey += 1;
@@ -127,7 +132,9 @@
 		reviewBusy = true;
 		error = '';
 		try {
-			const r = await postApplyDecisions($token, { skill_sheet: skillSheet, decisions, changes, source: 'first_use_review' });
+			const src = reviewSource;
+			const r = await postApplyDecisions($token, { skill_sheet: skillSheet, decisions,
+				changes: changes.map((c) => (c.source === 'default' ? c : { ...c, source: src })), source: src });
 			if (!r.success) throw new Error(r.error || 'Could not apply that choice');
 			reviewChanged = r.skill_sheet !== skillSheet || JSON.stringify(r.decisions) !== JSON.stringify(decisions);
 			skillSheet = r.skill_sheet;

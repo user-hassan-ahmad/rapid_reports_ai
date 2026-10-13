@@ -250,3 +250,24 @@ async def test_a_clinical_line_starting_with_signed_is_still_asked():
     flags = await V.fixed_flags(_st(sheet), [], transport=httpx.MockTransport(handler))
     assert line in flags and any(line in q for q in asked) and states == [V.FIXED_STATE]
     assert not any("Electronically signed." in q for q in asked)
+
+
+async def test_the_duplicate_and_fixed_checks_run_concurrently(monkeypatch):
+    import asyncio
+    order = []
+
+    async def dup(st, ledger, transport=None):
+        order.append("dup start")
+        await asyncio.sleep(0)
+        order.append("dup end")
+        return []
+
+    async def fixed(st, ledger, transport=None):
+        order.append("fixed start")
+        await asyncio.sleep(0)
+        order.append("fixed end")
+        return []
+    monkeypatch.setattr(V, "concept_duplicates", dup)
+    monkeypatch.setattr(V, "fixed_flags", fixed)
+    out = await V.sheet_checks(LEDGER_SHEET, [])
+    assert order[:2] == ["dup start", "fixed start"] and out["errors"] == []

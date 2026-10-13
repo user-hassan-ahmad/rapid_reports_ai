@@ -373,3 +373,10 @@ async def test_the_checklist_and_the_report_ask_conditions_on_the_same_state(mon
 async def _empty(a):
     from rapid_reports_ai.hybrid_stack.jev_stack import RowCheck
     return [RowCheck(stated=0.0, contra=0.0, removed=0.0) for _ in a[1]]
+
+
+async def test_on_stack_a_standard_concept_use_rule_in_a_findings_paragraph_is_resolved():
+    rule = f'RULE WHEN [context: {PRIOR}] USE "Compared with the previous study of {{date}}."'
+    sheet = SHEET.replace('NORMAL [liver]', rule + "\nNORMAL [liver]")
+    res = await cr.resolve_context_rules(sheet, "", "x", ask=_ask({PRIOR: 0.9}), stack=True)
+    assert rule not in res.sheet and 'FIXED "Compared with the previous study of {date}."' in res.sheet

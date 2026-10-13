@@ -26,19 +26,6 @@ _USUAL = {"contrast": ("Is contrast usually given for this scan?",
 _RANK = {"disagree": 0, "value": 1, "concept": 2, "fixed": 3, "normal": 4, "uncovered": 5}
 
 
-def _reports(nums) -> str:
-    nums = sorted(set(nums))
-    return ("report " if len(nums) == 1 else "reports ") + ", ".join(str(n) for n in nums)
-
-
-def evidence_line(e: dict) -> str:
-    """"reports 1, 2, 4: 'ECV 28%'" or "report 3: not stated" (never percentages); the study setup is named as
-    such, never as a report number."""
-    if e.get("source") == "setup":
-        return f"From the study setup: '{e['quote']}'" if e.get("quote") else "From the study setup"
-    return f"{_reports(e['reports'])}: " + (f"'{e['quote']}'" if e.get("quote") else "not stated")
-
-
 def _choice(cid: str, label: str, choice: Optional[dict]) -> dict:
     return {"id": cid, "label": label, "choice": choice}
 

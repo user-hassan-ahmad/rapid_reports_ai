@@ -174,8 +174,15 @@ def test_apply_decisions_refuses_a_change_code_cannot_apply(client, auth_headers
 
 
 def test_apply_decisions_refuses_an_unknown_source(client, auth_headers):
-    r = client.post(APPLY, headers=auth_headers, json={"skill_sheet": GOOD, "changes": [], "source": "chat"}).json()
+    r = client.post(APPLY, headers=auth_headers, json={"skill_sheet": GOOD, "changes": [], "source": "writer"}).json()
     assert r["success"] is False
+
+
+def test_apply_decisions_records_a_refine_panel_chat_card_as_chat(client, auth_headers):
+    r = client.post(APPLY, headers=auth_headers, json={
+        "skill_sheet": GOOD, "source": "chat",
+        "changes": [{"kind": "value", "key": "Width", "choice": {"need": "every"}}]}).json()
+    assert r["success"] and [(e["key"], e["source"]) for e in r["decisions"]] == [("Width", "chat")]
 
 
 def test_apply_decisions_needs_a_login(client):
@@ -291,3 +298,48 @@ def test_sheet_checks_need_a_login_and_cap_their_inputs(client, auth_headers):
     assert client.post(SHEET_CHECKS, json={"skill_sheet": "x"}).status_code in (401, 403)
     r = client.post(SHEET_CHECKS, headers=auth_headers, json={"skill_sheet": "x" * 200_001})
     assert r.status_code == 422
+
+
+FRAGMENT = {"kind": "concept", "key": "comparison",
+            "choice": {"use": True, "default": "No prior.", "when_met": "compared with prior {date}",
+                       "condition": "the dictation names a previous imaging study for comparison"}}
+
+
+def test_analyze_refuses_a_card_answer_code_cannot_apply(client, auth_headers, monkeypatch):
+    monkeypatch.setattr("rapid_reports_ai.main.get_system_api_key", lambda *a, **k: "key")
+
+    async def write(*a, **k):
+        raise AssertionError("the writer must not run")
+    monkeypatch.setattr("rapid_reports_ai.template_writer.write_sheet", write)
+    r = client.post("/api/templates/skill-sheet/analyze", headers=auth_headers, json={
+        "scan_type": "MRI knee", "examples": [{"content": "a"}, {"content": "b"}, {"content": "c"}],
+        "changes": [FRAGMENT]}).json()
+    assert r["success"] is False and "comparison" in r["error"]
+
+
+def test_refine_that_breaks_a_decided_wording_keeps_it_and_returns_the_card(client, auth_headers, monkeypatch):
+    from rapid_reports_ai import template_ledger_apply as tla
+    monkeypatch.setattr("rapid_reports_ai.main.get_system_api_key", lambda *a, **k: "key")
+    led, _ = td.set_decision([], "concept", "comparison", {
+        "use": True, "default": "No previous imaging available.", "when_met": "Compared with the previous {date}.",
+        "condition": "the dictation names a previous imaging study for comparison"}, source="creation", at="t")
+    before = tla.apply_ledger(GOOD, led).sheet
+    after = before.replace("Compared with the previous {date}.", "compared with the prior study")
+
+    async def refine(self, skill_sheet, message, chat_history, api_key, rejection_context=None):
+        return {"skill_sheet": after, "response": "Done.", "behavioral_claim": "c"}
+    monkeypatch.setattr("rapid_reports_ai.template_manager.TemplateManager.refine_skill_sheet", refine)
+    r = client.post("/api/templates/skill-sheet/refine", headers=auth_headers, json={
+        "skill_sheet": before, "message": "shorten it", "decisions": led}).json()
+    assert r["success"] and r["applied"] is False and r["skill_sheet"] == before and r["decisions"] == led
+    assert [c["id"] for c in r["cards"]] == ["concept:comparison"] and S.LEDGER_INVALID in r["response"]
+
+
+@pytest.mark.parametrize("url,body", [
+    ("/api/templates/skill-sheet/analyze", {"scan_type": "x", "examples": [{"content": "a"}], "changes": [{}] * 201}),
+    ("/api/templates/skill-sheet/refine", {"skill_sheet": "s", "message": "m", "decisions": [{}] * 201}),
+    ("/api/templates/skill-sheet/save", {"skill_sheet": "s", "scan_type": "x", "template_name": "n",
+                                         "decisions": [{}] * 201}),
+])
+def test_ledger_lists_are_capped_everywhere(client, auth_headers, url, body):
+    assert client.post(url, headers=auth_headers, json=body).status_code == 422

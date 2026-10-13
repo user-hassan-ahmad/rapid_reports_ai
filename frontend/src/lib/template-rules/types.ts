@@ -3,7 +3,7 @@
 
 export type LedgerKind = 'value' | 'concept' | 'fixed' | 'normal';
 export type CardKind = 'value' | 'concept' | 'disagree' | 'fixed' | 'normal' | 'uncovered' | 'duplicate' | 'group';
-export type ChangeSource = 'creation' | 'first_use_review' | 'default';
+export type ChangeSource = 'creation' | 'first_use_review' | 'chat' | 'default';
 export type Choice = Record<string, unknown>;
 
 /** One line of evidence: report numbers (1-based) with a quote, or "not stated" when the quote is null. The study

@@ -728,11 +728,16 @@ class SkillSheetExample(BaseModel):
     label: Optional[str] = None
     content: str
 
+SKILL_SHEET_MAX_CHARS = 200_000   # request caps for the decision-ledger endpoints
+LEDGER_MAX_ITEMS = 200
+RULES_STEP_MAX_CHARS = 50_000
+
+
 class SkillSheetAnalyzeRequest(BaseModel):
     scan_type: str
     examples: List[SkillSheetExample]  # 1-5 example reports
     protocol_notes: Optional[str] = ""
-    changes: List[Dict[str, Any]] = []   # Rules-step card answers [{kind, key, choice, source?}]
+    changes: List[Dict[str, Any]] = Field(default=[], max_length=LEDGER_MAX_ITEMS)   # Rules-step card answers [{kind, key, choice, source?}]
 
 class SkillSheetGenerateTestCaseRequest(BaseModel):
     scan_type: str
@@ -752,7 +757,7 @@ class SkillSheetRefineRequest(BaseModel):
     chat_history: Optional[List[SkillSheetChatMessage]] = None
     rejection_context: Optional[SkillSheetRejectionContext] = None
     template_id: Optional[str] = None   # the saved template this chat edits (None in the creator): the turn is recorded
-    decisions: Optional[List[Dict[str, Any]]] = None   # the template's decision ledger (None: not tracked)
+    decisions: Optional[List[Dict[str, Any]]] = Field(default=None, max_length=LEDGER_MAX_ITEMS)   # the template's decision ledger (None: not tracked)
 
 class SkillSheetRouterUndoRequest(BaseModel):
     skill_sheet: str
@@ -779,11 +784,6 @@ class SkillSheetDiversityCheckRequest(BaseModel):
     examples: List[SkillSheetExample]
 
 
-SKILL_SHEET_MAX_CHARS = 200_000   # request caps for the decision-ledger endpoints
-LEDGER_MAX_ITEMS = 200
-RULES_STEP_MAX_CHARS = 50_000
-
-
 class SkillSheetSaveRequest(BaseModel):
     skill_sheet: str
     scan_type: str
@@ -792,7 +792,7 @@ class SkillSheetSaveRequest(BaseModel):
     analyser_version: str = ""  # the writer that produced the sheet (evidence stamp; "" when unknown)
     examples: List[SkillSheetExample] = []  # the pasted examples: stored de-identified with the template
     chat_turns: List[Dict[str, Any]] = []   # the creator's chat-to-edit turns (stored by D5)
-    decisions: List[Dict[str, Any]] = []   # the decision ledger from the Rules step (applied at save)
+    decisions: List[Dict[str, Any]] = Field(default=[], max_length=LEDGER_MAX_ITEMS)   # the decision ledger from the Rules step (applied at save)
     rules_step: Dict[str, Any] = {}        # evidence: the decision run's record (cards, dropped quotes, habits)
 
     @field_validator("rules_step")
@@ -807,7 +807,7 @@ class SkillSheetApplyDecisionsRequest(BaseModel):
     skill_sheet: str = Field(max_length=SKILL_SHEET_MAX_CHARS)
     decisions: List[Dict[str, Any]] = Field(default=[], max_length=LEDGER_MAX_ITEMS)   # the ledger so far
     changes: List[Dict[str, Any]] = Field(default=[], max_length=LEDGER_MAX_ITEMS)     # card answers [{kind, key, choice, source?}]
-    source: str = "creation"               # creation | first_use_review (chat goes through /refine)
+    source: str = "creation"               # creation | first_use_review | chat (a refine-panel chat card)
 
 
 class SkillSheetDecideRequest(BaseModel):
@@ -818,6 +818,7 @@ class SkillSheetDecideRequest(BaseModel):
     # decision run. Truncated to template_decision_run's SETUP_* caps, never refused.
     template_name: str = ""
     protocol_notes: str = ""
+    retry: bool = False   # an explicit retry: a saved template whose first-use run failed (ok: false) runs again
 
 
 NO_PRECHECK = "We couldn't pre-check your rules; review them on the Style step."
@@ -1767,10 +1768,9 @@ async def _vet_config(new_cfg: Optional[dict], old_cfg: Optional[dict], origin: 
         cfg = {**new_cfg, "decisions": out.ledger, "ledger_unmatched": out.ledger_unmatched}
     else:
         cfg = {k: v for k, v in new_cfg.items() if k != "ledger_unmatched"}
-    if out.status == "unchanged":
-        return cfg, "", "", []
-    notes = [td.describe_change(c) for c in out.ledger_changes] + ([tsave.LEDGER_KEPT] if out.ledger_cards else [])
-    notice = " ".join(x for x in [out.message or "", *notes] if x)
+    notice = " ".join(x for x in [out.message or "", *tsave.ledger_notes(out)] if x)
+    if out.status == "unchanged":   # the stored sheet stands (the ledger may have put back what the edit changed)
+        return {**cfg, "skill_sheet": out.sheet}, "", notice, out.ledger_cards
     return ({**cfg, "skill_sheet": out.sheet, "coverage_sections": out.coverage_sections}, "", notice,
             out.ledger_cards)
 
@@ -2692,7 +2692,9 @@ async def skill_sheet_analyze_endpoint(
         from . import template_writer
 
         # The grammar analyser writes the sheet (vetted by the save function); the test case runs in parallel.
-        ledger, _ = td.ledger_from_changes(request.changes, source="creation")
+        ledger, errors = td.ledger_from_changes(request.changes, source="creation")
+        if errors:   # an answer code cannot apply is refused, never dropped silently (as /apply-decisions)
+            return {"success": False, "error": f"Couldn't apply that choice ({errors[0]})."}
         analysis_task = template_writer.write_sheet(
             [{"label": e["label"] or "", "content": e["content"]} for e in examples],
             request.scan_type,
@@ -2858,14 +2860,16 @@ async def skill_sheet_refine_endpoint(
             reply = (result.get("response") or "").strip()
             out = {"success": True, "skill_sheet": v.sheet, "applied": False, "behavioral_claim": "",
                    "response": reply if "?" in reply else "No change was needed."}
+            if v.ledger_cards:   # the ledger put back a decided item the edit changed: say so, offer the card
+                out["cards"] = v.ledger_cards
+                out["response"] = " ".join(tsave.ledger_notes(v))
         else:
             out = {"success": True, **result, "skill_sheet": v.sheet, "applied": True}
             if v.message:  # ADJUSTED: saved, with a small repair
                 out["notice"] = v.message
                 out["response"] = f"{result.get('response', '').rstrip()} {v.message}".strip()
-            notes = [n for n in (td.describe_change(c) for c in v.ledger_changes) if n]
-            if v.ledger_cards:   # D3: a whole decided item removed by the rewrite is kept and asked about
-                notes.append(tsave.LEDGER_KEPT)
+            notes = tsave.ledger_notes(v)   # changed confirmed items, kept items (D3), restated lines
+            if v.ledger_cards:
                 out["cards"] = v.ledger_cards
             if notes:   # a chat edit that changes a confirmed decision says so
                 out["response"] = f"{out.get('response', '').rstrip()} {' '.join(notes)}".strip()
@@ -2888,7 +2892,7 @@ async def skill_sheet_apply_decisions_endpoint(
     """Record card answers on the decision ledger and apply it to the sheet in hand, by code (no model call). The
     creator keeps the result until Create; the refine panel PUTs it, where the save function applies it again."""
     from . import template_ledger_apply as tla
-    if request.source not in ("creation", "first_use_review"):
+    if request.source not in ("creation", "first_use_review", "chat"):
         return {"success": False, "error": "Unknown source."}
     ledger, errors = td.ledger_from_changes(request.changes, base=td.clean_ledger(request.decisions),
                                             source=request.source)
@@ -2934,8 +2938,10 @@ async def skill_sheet_decide_endpoint(
             scan_type = scan_type or cfg.get("scan_type") or ""
             name = name or owned.name or ""
             protocol = protocol or owned.description or ""
-            # first-use review only: a template that has decisions or a decision-run record is not re-run
-            reviewed = bool(cfg.get("decisions")) or bool(cfg.get("rules_step"))
+            # first-use review only: a template that has decisions or a decision-run record is not re-run, except a
+            # failed run (ok: false) on an explicit retry
+            stamp = cfg.get("rules_step") or {}
+            reviewed = bool(cfg.get("decisions")) or (bool(stamp) and not (request.retry and stamp.get("ok") is False))
             if not examples and not reviewed:
                 examples = [x[:DECIDE_EXAMPLE_MAX_CHARS]
                             for x in template_examples.stored_texts(db, owned.id, limit=MAX_DECIDE_EXAMPLES)]
@@ -2943,7 +2949,10 @@ async def skill_sheet_decide_endpoint(
             return {**empty, "cards": current}
         run = await tdr.run_decisions(examples, scan_type, tdr.study_setup(name, scan_type, protocol))
         if not run.ok:
-            return {**empty, "cards": current, "notice": NO_PRECHECK, "run": tdr.evidence(run)}
+            record = tdr.evidence(run)
+            if request.template_id:   # a failed run is stamped too (ok: false): the next open does not re-pay
+                tdr.stamp_review(db, request.template_id, record)
+            return {**empty, "cards": current, "notice": NO_PRECHECK, "run": record}
         built = trc.build_cards(run, len(examples))
         have = {c["id"] for c in current}
         kept = [c for c in built["kept"] if c["id"] not in have]
@@ -3075,7 +3084,7 @@ async def skill_sheet_save_endpoint(
                       "scan_type": request.scan_type}
         if request.decisions:
             new_config["decisions"] = request.decisions
-        template_config, refusal, _, _ = await _vet_config(new_config, {}, "analyser", creating=True)
+        template_config, refusal, notice, _ = await _vet_config(new_config, {}, "analyser", creating=True)
         if refusal:
             return {"success": False, "error": refusal}
         if request.rules_step:
@@ -3100,7 +3109,7 @@ async def skill_sheet_save_endpoint(
             except Exception as e:   # evidence only: never fails the save
                 logger.warning("template examples not stored for %s: %s", tid, type(e).__name__)  # no str(e): it can carry example text
         template_chat_turns.store_creator_turns(db, tid, request.chat_turns)
-        return {"success": True, "template_id": tid}
+        return {"success": True, "template_id": tid, **({"notice": notice} if notice else {})}
     except Exception as e:
         import traceback
         traceback.print_exc()

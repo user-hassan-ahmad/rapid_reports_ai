@@ -2,8 +2,9 @@
 "Always printed" and "Your normal report"); roadmap §4's creation-time FIXED check.
 
 - fixed_flags: a FIXED line is printed in every report. Each one not covered by a context rule and not already
-  decided is asked of Jev ("could this be false for a different patient having this scan?"); an absence-worded line
-  ("No …", "There is no …", "Without …") is flagged by code as a tiny backstop. Flags become "Always printed" cards;
+  decided is asked of Jev ("could this sentence differ between patients having this same scan?", FIXED_INSTRUCTIONS
+  with FIXED_CRITERIA); an absence-worded line ("No …", "There is no …", "Without …") is flagged by code as a
+  tiny backstop. Flags become "Always printed" cards;
   nothing is ever dropped silently.
 - normal_report: the all-normal report built by code from the NORMAL / NEGATIVE lines in section order, each sentence
   tagged with its ledger key (tap to edit or remove).
@@ -273,16 +274,18 @@ async def sheet_checks(sheet: str, ledger: List[dict], transport=None) -> dict:
         except Exception as e:
             logger.warning("[sheet-checks] %s failed: %s", name, type(e).__name__)
             out["errors"].append(name)
-    try:
-        out["duplicate_cards"] = await concept_duplicates(st, ledger, transport)
-    except Exception as e:
-        logger.warning("[sheet-checks] duplicate check failed: %s", type(e).__name__)
+    # the two Jev checks run concurrently; each fails soft on its own
+    dups, flags = await asyncio.gather(concept_duplicates(st, ledger, transport), fixed_flags(st, ledger, transport),
+                                       return_exceptions=True)
+    if isinstance(dups, BaseException):
+        logger.warning("[sheet-checks] duplicate check failed: %s", type(dups).__name__)
         out["errors"].append("duplicates")
+    else:
+        out["duplicate_cards"] = dups
     dup = {td.match_key("fixed", c["title"]) for c in out["duplicate_cards"]}   # one card per line
-    try:
-        out["fixed_cards"] = [trc.fixed_card(t) for t in await fixed_flags(st, ledger, transport)
-                              if td.match_key("fixed", t) not in dup]
-    except Exception as e:
-        logger.warning("[sheet-checks] fixed check failed: %s", type(e).__name__)
+    if isinstance(flags, BaseException):
+        logger.warning("[sheet-checks] fixed check failed: %s", type(flags).__name__)
         out["errors"].append("fixed")
+    else:
+        out["fixed_cards"] = [trc.fixed_card(t) for t in flags if td.match_key("fixed", t) not in dup]
     return out

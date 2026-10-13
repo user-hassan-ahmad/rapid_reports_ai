@@ -329,3 +329,16 @@ def test_the_stored_ledger_is_applied_to_the_upgraded_sheet(db_session, test_use
     # a re-run sees its own vetted sheet as already written
     again = U.main(_manifest(tmp_path, t.id, GOOD), apply=True, db=db_session)
     assert _actions(again) == {str(t.id): "already-written"}
+
+
+def test_the_upgrade_stores_unmatched_entries_and_reports_drift(db_session, test_user, tmp_path, no_jev):
+    from rapid_reports_ai import template_decisions as td
+    led, _ = td.set_decision([], "value", "Width", {"need": "every"}, source="creation", at="t")
+    led, _ = td.set_decision(led, "fixed", "A line the sheet lacks.", {"keep": "always"}, source="creation", at="t")
+    t = _make_template(db_session, test_user, "Knee 3", {"generation_mode": "skill_sheet_guided",
+                                                         "skill_sheet": OLD, "decisions": led})
+    summary = U.main(_manifest(tmp_path, t.id, GOOD), apply=True, db=db_session)
+    row = next(r for r in summary["templates"] if r["template_id"] == str(t.id))
+    assert row["action"] == "written" and row["ledger_drift"] == 1
+    db_session.refresh(t)
+    assert [e["key"] for e in t.template_config["ledger_unmatched"]] == ["A line the sheet lacks."]

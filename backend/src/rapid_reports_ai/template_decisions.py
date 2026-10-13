@@ -161,14 +161,14 @@ def match_key(kind: str, key: str) -> str:
     return _name(key)
 
 
-_ACRONYM_START = re.compile(r"[a-z]+[A-Z]")   # a lowercase-led word that holds a capital ("eGFR", "pH" is not)
+_ACRONYM_START = re.compile(r"[a-z]+[A-Z]")   # a lowercase-led word that holds a capital ("eGFR", "pH")
 
 
 def is_sentence(text: str) -> bool:
     """A full sentence, the shape a wording that replaces a line or prints on its own (REPLACE ... WITH, USE) must
     have, since a fragment would print mid-sentence. The rule:
     - it starts with a capital letter, a {slot}, a digit ("3 phases were acquired."), or a lowercase-led word that
-      holds a capital (an acronym such as "eGFR ...");
+      holds a capital (an acronym or unit such as "eGFR ..." or "pH ...");
     - it ends with "." or ":". A wording that ends on a bare slot ("... of {date}") or with no full stop is a
       fragment.
     Only the edges are checked; the words between them are the radiologist's."""
@@ -302,9 +302,11 @@ def concept_texts(ledger: List[Entry]) -> set:
 
 
 def rekey_decision(ledger: List[Entry], kind: str, key: str, new_key: str, *, source: str,
-                   by: str = "radiologist", at: Optional[str] = None) -> Tuple[List[Entry], Change]:
-    """The entry (kind, key) moved to `new_key` with its choice kept (a reworded line), and the change (its old
-    entry carries the old key). Never mutates `ledger`. DecisionError when invalid."""
+                   by: str = "radiologist", at: Optional[str] = None,
+                   choice: Optional[dict] = None) -> Tuple[List[Entry], Change]:
+    """The entry (kind, key) moved to `new_key` (a reworded line), its choice kept unless `choice` is given (a
+    reworded NEGATIVE carries its new text), and the change (its old entry carries the old key). Never mutates
+    `ledger`. DecisionError when invalid."""
     if source not in SOURCES:
         raise DecisionError(f"unknown source {source!r}")
     if by not in BY:
@@ -312,7 +314,7 @@ def rekey_decision(ledger: List[Entry], kind: str, key: str, new_key: str, *, so
     old = find(ledger, kind, key)
     if old is None or find(ledger, kind, new_key) is not None:
         raise DecisionError(f"{kind} {key!r}: nothing to move, or {new_key!r} is already decided")
-    new_key, choice = validate(kind, new_key, old["choice"])
+    new_key, choice = validate(kind, new_key, old["choice"] if choice is None else choice)
     if kind == "fixed" and norm_key(new_key) in concept_texts(ledger):
         raise DecisionError("this line belongs to a study-level wording; change it there")
     entry: Entry = {"kind": kind, "key": new_key, "choice": choice, "by": by, "at": at or _now(), "source": source}
