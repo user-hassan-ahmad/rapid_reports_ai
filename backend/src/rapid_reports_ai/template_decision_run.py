@@ -129,3 +129,78 @@ def check_quotes(out: RunOutput, examples: List[str]) -> DecisionRun:
             concepts.append(ConceptWording(concept=c.concept, state=c.state, text=" ".join(c.text.split()), quotes=ok))
     habits = [h for h in out.habits if len({r for r in h.reports if 1 <= r <= len(examples)}) >= 2]
     return DecisionRun(ok=True, values=values, concepts=concepts, habits=habits, dropped_quotes=dropped)
+
+
+async def _qwen(examples: List[str], scan_type: str) -> RunOutput:
+    """The decision call on the analyser's model (Qwen); one retry on gpt-oss (another provider) if it fails."""
+    from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model
+
+    prompt = user_prompt(examples, scan_type)
+
+    async def call(model: str, timeout: float) -> RunOutput:
+        r = await asyncio.wait_for(_run_agent_with_model(
+            model_name=model, output_type=RunOutput, system_prompt=SYSTEM, user_prompt=prompt, api_key="",
+            model_settings=dict(SETTINGS)), timeout)
+        return r.output
+
+    try:
+        return await call(MODEL_CONFIG["SKILL_SHEET_ANALYZER"], QWEN_TIMEOUT_S)
+    except Exception as e:
+        logger.warning("[decision-run] qwen %s: %s; fallback %s", type(e).__name__, str(e)[:200],
+                       MODEL_CONFIG["STACK_REVIEW_FALLBACK"])
+        return await call(MODEL_CONFIG["STACK_REVIEW_FALLBACK"], FALLBACK_TIMEOUT_S)
+
+
+async def ask_states(examples: List[str], transport=None) -> Dict[str, List[int]]:
+    """concept -> example numbers whose report states it (Jev noul >= STATES_MIN). One Jev call per example (the four
+    questions together), in parallel. Raises on any Jev failure."""
+    from .jev_client import JEV_MODEL, jev_post
+
+    names = list(td.CONCEPTS)
+
+    async def one(text: str) -> List[float]:
+        qs = {f"c{i}": {"type": "noul", "instructions": td.CONCEPTS[n].question} for i, n in enumerate(names)}
+        r = await jev_post({"model": JEV_MODEL, "state": f"REPORT:\n{text}", "questions": qs},
+                           os.environ.get("OPENROUTER_API_KEY", ""), JEV_TIMEOUT_S, transport)
+        r.raise_for_status()
+        ans = r.json().get("answers") or {}
+        out = []
+        for i in range(len(names)):
+            v = (ans.get(f"c{i}") or {}).get("noul")
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise ValueError("jev: incomplete answers")
+            out.append(float(v))
+        return out
+
+    scores = await asyncio.gather(*(one(t) for t in examples))
+    return {n: [k + 1 for k, s in enumerate(scores) if s[i] >= STATES_MIN] for i, n in enumerate(names)}
+
+
+async def run_decisions(examples: List[str], scan_type: str) -> DecisionRun:
+    """The decision run for these examples. Never raises."""
+    t0 = time.monotonic()
+    qwen, jev = await asyncio.gather(_qwen(examples, scan_type), ask_states(examples), return_exceptions=True)
+    ms = int((time.monotonic() - t0) * 1000)
+    if isinstance(qwen, BaseException):
+        logger.warning("[decision-run] failed: %s: %s", type(qwen).__name__, str(qwen)[:200])
+        return DecisionRun(ok=False, ms=ms, error=type(qwen).__name__)
+    run = check_quotes(qwen, examples)
+    run.ms = ms
+    if isinstance(jev, BaseException):
+        logger.warning("[decision-run] jev failed: %s", type(jev).__name__)
+    else:
+        run.states = jev
+    logger.info("[decision-run] values=%d concepts=%d habits=%d dropped_quotes=%d jev=%s ms=%d", len(run.values),
+                len(run.concepts), len(run.habits), run.dropped_quotes, run.states is not None, ms)
+    return run
+
+
+def evidence(run: DecisionRun, built: Optional[dict] = None) -> dict:
+    """The record stored with the template (template_config["rules_step"]): counts, timings, hidden habit candidates
+    for the findings-triggered rows lab. No example text."""
+    out = {"version": RUN_VERSION, "ok": run.ok, "ms": run.ms, "error": run.error, "values": len(run.values),
+           "concepts": len(run.concepts), "dropped_quotes": run.dropped_quotes, "jev": run.states is not None,
+           "habits": [h.model_dump() for h in run.habits]}
+    if built:
+        out.update(cards=len(built["cards"]), more=len(built["more"]), kept=len(built["kept"]))
+    return out
