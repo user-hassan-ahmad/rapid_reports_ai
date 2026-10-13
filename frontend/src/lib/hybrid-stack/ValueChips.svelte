@@ -5,8 +5,9 @@
 	// type its value; "Mark rest N/A" closes every open one (a sequence not acquired). Each chip is a walkthrough stop
 	// (data-stop "value:<item>"), ringed while it is the current stop and opened to type. An editor holding unsaved
 	// text is reported up (onDraft) so Confirm waits for it. An open chip's editor lists the dictation's number clauses
-	// (picks): one tap enters a clause's one number, or shows its numbers to choose from; a filled clause with several
-	// numbers shows them the same way (onPick enters the number and records the clause).
+	// (picks): one tap enters a clause's one number, or shows its numbers to choose from. A conflict chip ("check" with a
+	// value: two or more numbers mapped to the item) shows each number with its sentence (onPick enters the number and
+	// records the clause).
 	import { tick, untrack } from 'svelte';
 	import { chipLabel } from './values';
 	import type { ClausePick, ValueChip } from './types';
@@ -112,7 +113,8 @@
 	}
 	const title = (v: ValueChip) =>
 		v.state === 'filled' && v.quote ? `From the dictation: "${v.quote}"`
-		: v.state === 'check' ? 'Stated in the dictation, but no single sentence gives its value: check it'
+		: v.state === 'check' && v.value ? 'Two or more numbers in the dictation give this value: pick one'
+		: v.state === 'check' ? 'Stated in the dictation, but no number gives its value: check it'
 		: v.state === 'filling' ? 'Reading the dictation…'
 		: v.state === 'open' ? 'Click to type the value' : 'Click to change';
 	const said: Record<ValueChip['state'], string> = {
@@ -123,7 +125,8 @@
 		check: 'stated in dictation, needs a look',
 		filling: 'reading the dictation'
 	};
-	const ariaLabel = (v: ValueChip) => `${chipLabel(v)}, ${v.state === 'filled' && v.kept ? 'stated in dictation, kept' : said[v.state]}`;
+	const ariaLabel = (v: ValueChip) =>
+		`${chipLabel(v)}, ${v.state === 'filled' && v.kept ? 'stated in dictation, kept' : v.state === 'check' && v.value ? 'more than one number, pick one' : said[v.state]}`;
 </script>
 
 {#if values.length}
@@ -137,17 +140,21 @@
 					<input bind:this={input} data-testid="value-input" aria-label={`Value for ${v.item}`} bind:value={text} onkeydown={key}
 						class="w-24 rounded border border-white/15 bg-black/30 px-1.5 py-0.5 text-gray-100" />
 					<button type="button" class="rounded border border-white/15 px-1.5 py-0.5 text-gray-300 hover:bg-white/[0.06]" onclick={save}>Save</button>
-					{#if v.state === 'check'}
+					{#if v.state === 'check' && !v.value}
 						<button type="button" class="rounded border border-white/15 px-1.5 py-0.5 text-emerald-200 hover:bg-white/[0.06]" onclick={keep}>Stated ✓</button>
 					{/if}
 					<button type="button" class="rounded border border-white/15 px-1.5 py-0.5 text-gray-400 hover:bg-white/[0.06]" onclick={na}>N/A</button>
 				</span>
-				{@const numbersOf = pickFrom ?? (v.quote && v.numbers?.length ? { clause: v.quote, value: null, numbers: v.numbers } : null)}
-				{#if numbersOf}
-					<span class="flex basis-full flex-wrap items-center gap-1 pl-1" data-testid="value-numbers">
-						<span class="text-gray-400">"{numbersOf.clause}"</span>
-						{#each numbersOf.numbers as n, i (i)}
-							<button type="button" class="rounded border border-sky-400/30 px-1.5 py-0.5 text-sky-200 hover:bg-sky-500/10" onclick={() => choose(n, numbersOf.clause)}>{n}</button>
+				{@const choices = pickFrom ? [pickFrom] : v.state === 'check' && v.picks?.length ? v.picks : null}
+				{#if choices}
+					<span class="flex basis-full flex-col gap-1 pl-1" data-testid="value-numbers">
+						{#each choices as ch, j (j)}
+							<span class="flex flex-wrap items-center gap-1">
+								{#each ch.value ? [ch.value] : ch.numbers as n, i (i)}
+									<button type="button" class="rounded border border-sky-400/30 px-1.5 py-0.5 text-sky-200 hover:bg-sky-500/10" onclick={() => choose(n, ch.clause)}>{n}</button>
+								{/each}
+								<span class="text-gray-400">"{ch.clause}"</span>
+							</span>
 						{/each}
 					</span>
 				{:else if v.state === 'open' && v.picks?.length}

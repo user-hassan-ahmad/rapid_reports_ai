@@ -17,16 +17,17 @@ export function startFill(chips: ValueChip[]): ValueChip[] {
 	return chips.map((c) => (own(c) ? c : { ...c, state: 'filling' }));
 }
 
-/** A fill from the server: entered and N/A chips stand; a stated value with its sentence is filled (with its numbers
- *  to pick when the sentence holds several); one with no sentence named needs a look (check), unless the radiologist
- *  already kept it; anything else is open, with the dictation's number clauses to pick from. */
+/** A fill from the server: entered and N/A chips stand; a number mapped to the item fills it; two or more mapped
+ *  numbers make a check chip (the most confident, the others to pick); stated with no number needs a look (check),
+ *  unless the radiologist already kept it; anything else is open, with the dictation's number clauses to pick from. */
 export function mergeFill(chips: ValueChip[], fill: ValueFill[]): ValueChip[] {
 	const by = new Map(fill.map((f) => [key(f.item), f]));
 	return chips.map((c) => {
 		if (own(c)) return c;
 		const f = by.get(key(c.item));
+		if (f?.state === 'check') return { item: c.item, state: 'check', value: f.value, quote: f.quote, picks: f.picks ?? [] };
 		if (!f || f.state !== 'filled') return f?.picks?.length ? { ...opened(c.item), picks: f.picks } : opened(c.item);
-		if (f.quote) return { item: c.item, state: 'filled', value: f.value, quote: f.quote, ...(f.numbers?.length && !f.value ? { numbers: f.numbers } : {}) };
+		if (f.quote) return { item: c.item, state: 'filled', value: f.value, quote: f.quote };
 		return c.kept ? { item: c.item, state: 'filled', value: null, quote: null, kept: true } : { item: c.item, state: 'check', value: null, quote: null };
 	});
 }
@@ -42,7 +43,7 @@ export function enterValue(chips: ValueChip[], item: string, text: string): Valu
 	return chips.map((c) => (c.item !== item ? c : t ? { item, state: 'entered', value: t, quote: null } : opened(item)));
 }
 
-/** A number picked from a dictation clause (a filled chip's numbers or an open chip's picks): entered, with its
+/** A number picked from a dictation clause (a conflict chip's numbers or an open chip's picks): entered, with its
  *  clause recorded. */
 export function pickValue(chips: ValueChip[], item: string, value: string, clause: string): ValueChip[] {
 	return chips.map((c) => (c.item === item ? { item, state: 'entered', value, quote: null, picked_clause: clause } : c));
@@ -84,6 +85,6 @@ export function chipLabel(c: ValueChip): string {
 	if (c.state === 'na') return `${c.item} N/A`;
 	if (c.state === 'open') return `${c.item} —`;
 	if (c.state === 'filling') return `${c.item} …`;
-	if (c.state === 'check') return `${c.item} stated?`;
+	if (c.state === 'check') return c.value ? `${c.item} ${c.value}?` : `${c.item} stated?`;
 	return c.value ? `${c.item} ${c.value}` : `${c.item} stated`;
 }

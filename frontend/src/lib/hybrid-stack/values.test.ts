@@ -116,15 +116,18 @@ describe('value cluster chips', () => {
 		expect(valuesKey(enterValue(a, 'LVEF', '45'))).not.toBe(valuesKey(enterValue(a, 'LVEF', '46')));
 	});
 
-	it('a filled clause with two numbers carries them to pick; an open chip carries the clause picks', () => {
+	it('a conflict is a check chip with the most confident number and the alternatives; an open chip carries the clause picks', () => {
+		const alts = [{ clause: 'Previously LVEF 55%.', value: '55%', numbers: [] }, { clause: 'LVEF 45%.', value: '45%', numbers: [] }];
 		const picks = [{ clause: 'RVEF 50%.', value: '50%', numbers: [] }];
-		const c = mergeFill(initialChips(['LVEDVi', 'RVEF']), [
-			{ item: 'LVEDVi', state: 'filled', value: null, quote: 'LVEDVi 98 and LVESVi 40 ml/m2.', numbers: ['98 ml/m2', '40 ml/m2'] },
+		const c = mergeFill(initialChips(['LVEF', 'RVEF']), [
+			{ item: 'LVEF', state: 'check', value: '55%', quote: 'Previously LVEF 55%.', picks: alts },
 			{ item: 'RVEF', state: 'open', value: null, quote: null, picks }
 		]);
-		expect(c[0]).toEqual({ item: 'LVEDVi', state: 'filled', value: null, quote: 'LVEDVi 98 and LVESVi 40 ml/m2.', numbers: ['98 ml/m2', '40 ml/m2'] });
+		expect(c[0]).toEqual({ item: 'LVEF', state: 'check', value: '55%', quote: 'Previously LVEF 55%.', picks: alts });
+		expect(chipLabel(c[0])).toBe('LVEF 55%?');
+		expect(blockingValues(c)).toEqual(['LVEF', 'RVEF']);
 		expect(c[1]).toEqual({ ...open('RVEF'), picks });
-		expect(failFill(c)[1]).toEqual(open('RVEF')); // a failed fill drops picks that may no longer match the text
+		expect(failFill(c)).toEqual([open('LVEF'), open('RVEF')]); // a failed fill drops picks that may no longer match the text
 	});
 
 	it('a picked number is entered and records its clause', () => {

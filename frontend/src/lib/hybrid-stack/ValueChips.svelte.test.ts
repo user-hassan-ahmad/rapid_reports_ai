@@ -105,14 +105,18 @@ describe('ValueChips', () => {
 		await expect.element(page.getByTestId('value-cluster')).not.toBeInTheDocument();
 	});
 
-	it('a filled clause with two numbers shows the clause and enters the tapped number', async () => {
+	it('a conflict chip shows each number with its sentence; a tap enters it (no "Stated ✓")', async () => {
 		const onPick = vi.fn();
-		const values: ValueChip[] = [{ item: 'LVEDVi', state: 'filled', value: null, quote: 'LVEDVi 98 and LVESVi 40 ml/m2.', numbers: ['98 ml/m2', '40 ml/m2'] }];
+		const values: ValueChip[] = [{ item: 'LVEF', state: 'check', value: '55%', quote: 'Previously LVEF 55%.', picks: [
+			{ clause: 'Previously LVEF 55%.', value: '55%', numbers: [] },
+			{ clause: 'LVEF 45%.', value: '45%', numbers: [] }
+		] }];
 		render(ValueChips, { ...props(), values, onPick });
-		await page.getByRole('button', { name: /^LVEDVi stated/ }).click();
-		await expect.element(page.getByTestId('value-numbers')).toHaveTextContent('LVEDVi 98 and LVESVi 40 ml/m2.');
-		await page.getByRole('button', { name: '98 ml/m2' }).click();
-		expect(onPick).toHaveBeenCalledWith('LVEDVi', '98 ml/m2', 'LVEDVi 98 and LVESVi 40 ml/m2.');
+		await page.getByRole('button', { name: /^LVEF 55%\?/ }).click();
+		await expect.element(page.getByTestId('value-numbers')).toHaveTextContent('LVEF 45%.');
+		await expect.element(page.getByRole('button', { name: 'Stated ✓' })).not.toBeInTheDocument();
+		await page.getByRole('button', { name: '45%', exact: true }).click();
+		expect(onPick).toHaveBeenCalledWith('LVEF', '45%', 'LVEF 45%.');
 	});
 
 	it('an open chip offers the dictation clauses; a one-number pick enters it, a two-number pick offers its numbers', async () => {

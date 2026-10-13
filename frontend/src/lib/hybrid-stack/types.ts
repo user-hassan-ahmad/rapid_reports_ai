@@ -68,15 +68,15 @@ export interface ValueChip {
 	value: string | null;
 	quote: string | null;
 	kept?: boolean;
-	/** Filled from a clause with two or more numbers: each selectable. */
-	numbers?: string[];
-	/** Open: the dictation's number clauses to pick from, best first. */
+	/** Open: the dictation's number clauses to pick from. Check with a value: the numbers mapped to it, best first. */
 	picks?: ClausePick[];
 	/** Entered by picking a number from this clause (for a future alias store). */
 	picked_clause?: string;
 }
 /** The server's smart fill: filled from the dictation (value null: stated without one number) or open. */
-export interface ValueFill { item: string; state: 'filled' | 'open'; value: string | null; quote: string | null; score?: number | null; numbers?: string[]; picks?: ClausePick[] }
+/** The server's fill: filled (one number mapped, or stated with no number: value null), check (two or more numbers
+ *  mapped: the most confident, the others in picks) or open. */
+export interface ValueFill { item: string; state: 'filled' | 'check' | 'open'; value: string | null; quote: string | null; score?: number | null; picks?: ClausePick[] }
 export interface ValuesResult { values: ValueFill[]; ms: number; error: string | null }
 /** Region -> normals the assumed-normal check dropped, with why. */
 export type Dropped = Record<string, { sentence: string; reason: string }[]>;
