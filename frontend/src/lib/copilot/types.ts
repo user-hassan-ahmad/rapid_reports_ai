@@ -17,9 +17,17 @@ export interface Card {
 	reference: boolean; // tier 2: read-only
 	finding: string; // the unit text (exam card: the dictation) as /match returned it
 	needs_modality: string; // e.g. "US": read-only, never opened (M4)
+	sibling_names?: string[]; // display names for siblings, same order (contract R: new backend field)
 }
 export interface Citation { [k: string]: unknown } // rendered as given (label, locator, url)
-export interface Proposal { classification: string; line: string; recommendation: string; caveats: string[]; citations: Citation[] }
+export interface Proposal {
+	classification: string;
+	line: string;
+	recommendation: string;
+	caveats: string[];
+	citations: Citation[];
+	normal?: boolean; // R3: the outcome is the guideline's normal one (backend default false); quiet prefers it
+}
 export interface Settled { input: string; value: string; quote: string; fact: string; by: '' | 'exam' }
 export interface Ask { [k: string]: unknown } // label, definition, options, decides, citations (rendered as given)
 export type ValueState = 'read' | 'prefilled' | 'asked' | 'answered' | 'edited' | 'not_applicable'; // Task 3

@@ -5,7 +5,9 @@ import { API_URL } from '$lib/config.js';
 import { token } from '$lib/stores/auth.js';
 import type { CalculateBody, CalculateResult, MatchBody, MatchResult, OpenBody, OpenResult } from './types';
 
-/** The server's _require() answered 404: the Copilot is off; send nothing more this page. */
+/** The server's _require() answered 404 with detail OFF_DETAIL: the Copilot is off; send nothing more this page.
+ *  Any other 404 (unknown route, proxy, mid-deploy) is a card-local CopilotError; /settings/status stays the
+ *  authoritative off signal. */
 export class CopilotOff extends Error {
 	constructor() {
 		super('copilot off');
@@ -20,6 +22,16 @@ export class CopilotError extends Error {
 	) {
 		super(`copilot request failed (${reason}${status ? ` ${status}` : ''})`);
 		this.name = 'CopilotError';
+	}
+}
+
+export const OFF_DETAIL = 'copilot_off';
+
+async function isOff(res: Response): Promise<boolean> {
+	try {
+		return ((await res.json()) as { detail?: unknown })?.detail === OFF_DETAIL;
+	} catch {
+		return false;
 	}
 }
 
@@ -55,7 +67,7 @@ async function post<T>(path: string, body: unknown, timeoutMs: number, signal?: 
 			if (signal?.aborted) throw e; // the caller superseded it: not a failure
 			throw new CopilotError('network');
 		}
-		if (res.status === 404) throw new CopilotOff();
+		if (res.status === 404 && (await isOff(res))) throw new CopilotOff();
 		if (!res.ok) throw new CopilotError('http', res.status);
 		try {
 			return (await res.json()) as T;
@@ -99,6 +111,6 @@ export const matchOther = (b: MatchBody, signal?: AbortSignal) =>
 	post<MatchResult>('match/other', matchBody(b), TIMEOUT_MS.other, signal);
 export const open = (b: OpenBody, signal?: AbortSignal) => post<OpenResult>('open', openBody(b), TIMEOUT_MS.open, signal);
 export const preview = (b: OpenBody, signal?: AbortSignal) => post<OpenResult>('preview', openBody(b), TIMEOUT_MS.preview, signal);
-/** Task 3. Never call it before that route lands: an unknown route 404s, which reads as CopilotOff. */
+/** Task 3. Until that route lands a call 404s as a card-local CopilotError (not CopilotOff). */
 export const calculate = (b: CalculateBody, signal?: AbortSignal) =>
 	post<CalculateResult>('calculate', { ...openBody(b), values: b.values }, TIMEOUT_MS.calculate, signal);

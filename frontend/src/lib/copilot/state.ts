@@ -62,20 +62,37 @@ export function kindOf(c: Card, fromOther = false): CardKind {
 export interface Group { finding: Finding | null; cards: Card[] } // null: the exam group
 
 /** Exam cards first, then one group per current finding (with cards) in dictation order; cards whose finding text
- *  is no longer dictated are dropped (a deleted finding takes its cards, copilot spec §4.1). A card with no
- *  finding text (non-library) falls back to its finding_id. Duplicate cards (same cardRef) show once. */
+ *  is no longer dictated are dropped (a deleted finding takes its cards, copilot spec §4.1). Groups are keyed by
+ *  finding id: a card goes to the finding with its own id when the text still matches, else to the first finding
+ *  with its text (renumbered units), so two findings with identical text stay separate groups. A card with no
+ *  finding text (non-library) goes by finding_id only. Within a group, duplicate cards (same cardRef) show once. */
 export function groupCards(cards: Card[], findings: Finding[]): Group[] {
+	const exam: Card[] = [];
+	const byId = new Map<string, Card[]>();
 	const seen = new Set<string>();
-	const unique = cards.filter((c) => !seen.has(cardRef(c)) && !!seen.add(cardRef(c)));
-	const exam = unique.filter((c) => c.finding_id === 'exam');
-	const rest = unique.filter((c) => c.finding_id !== 'exam');
-	const used = new Set<Card>();
+	const put = (id: string, list: Card[], c: Card) => {
+		const ref = `${id}|${cardRef(c)}`;
+		if (seen.has(ref)) return;
+		seen.add(ref);
+		list.push(c);
+	};
+	for (const c of cards) {
+		if (c.finding_id === 'exam') {
+			put('exam', exam, c);
+			continue;
+		}
+		const text = norm(c.finding);
+		const home = c.finding
+			? (findings.find((f) => f.id === c.finding_id && norm(f.text) === text) ?? findings.find((f) => norm(f.text) === text))
+			: findings.find((f) => f.id === c.finding_id);
+		if (!home) continue;
+		if (!byId.has(home.id)) byId.set(home.id, []);
+		put(home.id, byId.get(home.id)!, c);
+	}
 	const groups: Group[] = exam.length ? [{ finding: null, cards: exam }] : [];
 	for (const f of findings) {
-		const key = norm(f.text);
-		const mine = rest.filter((c) => !used.has(c) && (c.finding ? norm(c.finding) === key : c.finding_id === f.id));
-		mine.forEach((c) => used.add(c));
-		if (mine.length) groups.push({ finding: f, cards: mine });
+		const mine = byId.get(f.id);
+		if (mine?.length) groups.push({ finding: f, cards: mine });
 	}
 	return groups;
 }
@@ -83,11 +100,14 @@ export function groupCards(cards: Card[], findings: Finding[]): Group[] {
 /** The outcome the card shows, read-only: Task 3's draft_outcome, else today's proposal (never Applied). */
 export const outcomeOf = (p: Preview | null) => p?.draft_outcome ?? p?.proposal ?? null;
 
-/** §5.3 quiet one-line card. Interim rule until contract request R3 (plan Q2): an exam card whose preview applies,
- *  reached an outcome, needs nothing, is not degraded, and has no pre-filled value. */
+/** §5.3 quiet one-line card: an exam card whose preview applies, needs nothing, is not degraded, has no pre-filled
+ *  value, and whose outcome is normal. When the backend sends Proposal.normal (R3) it decides "normal"; otherwise
+ *  the interim rule (plan Q2) takes any reached outcome. */
 export function quiet(c: Card, p: Preview | null): boolean {
 	if (c.finding_id !== 'exam' || !p) return false;
-	if (p.state !== 'applies' || p.degraded || p.missing.length || !outcomeOf(p)) return false;
+	const outcome = outcomeOf(p);
+	if (p.state !== 'applies' || p.degraded || p.missing.length || !outcome) return false;
+	if (outcome.normal !== undefined && !outcome.normal) return false;
 	const prefilled = p.settled.some((s) => s.by === 'exam') || (p.draft ?? []).some((v) => v.state === 'prefilled' || v.by === 'exam');
 	return !prefilled;
 }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { token } from '$lib/stores/auth.js';
-import { calculate, CopilotError, CopilotOff, match, matchOther, open, preview, TIMEOUT_MS } from './api';
+import { calculate, CopilotError, CopilotOff, match, matchOther, OFF_DETAIL, open, preview, TIMEOUT_MS } from './api';
 import type { Card, MatchBody, OpenBody } from './types';
 
 // SYNTHETIC: pack names and generic phrases only.
@@ -91,9 +91,24 @@ describe('bodies', () => {
 });
 
 describe('errors', () => {
-	it('a 404 throws CopilotOff', async () => {
-		vi.stubGlobal('fetch', vi.fn(async () => new Response('{"detail":"Not Found"}', { status: 404 })));
+	it('a 404 with detail copilot_off throws CopilotOff', async () => {
+		vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ detail: OFF_DETAIL }), { status: 404 })));
+		expect(OFF_DETAIL).toBe('copilot_off');
 		await expect(match(matchBody)).rejects.toBeInstanceOf(CopilotOff);
+	});
+	it('a bare "Not Found" 404 is a card-local CopilotError and the session stays on', async () => {
+		const f = vi
+			.fn()
+			.mockResolvedValueOnce(new Response('{"detail":"Not Found"}', { status: 404 }))
+			.mockResolvedValueOnce(new Response('not json', { status: 404 }))
+			.mockResolvedValueOnce(new Response(JSON.stringify({ cards: [], ms: 1 })));
+		vi.stubGlobal('fetch', f);
+		const e = await open(openBody).catch((x) => x);
+		expect(e).toBeInstanceOf(CopilotError);
+		expect(e).not.toBeInstanceOf(CopilotOff);
+		expect(e.status).toBe(404);
+		expect(await calculate({ ...openBody, values: {} }).catch((x) => x)).toBeInstanceOf(CopilotError);
+		await expect(match(matchBody)).resolves.toEqual({ cards: [], ms: 1 });
 	});
 	it('any other failure throws CopilotError with its status', async () => {
 		vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 500 })));

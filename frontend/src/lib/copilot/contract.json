@@ -1,9 +1,10 @@
 {
-	"Card": ["key", "name", "version", "finding_id", "why", "branch", "skeleton", "publication", "known", "status", "siblings", "reference", "finding", "needs_modality"],
+	"_off_detail": "copilot_off",
+	"Card": ["key", "name", "version", "finding_id", "why", "branch", "skeleton", "publication", "known", "status", "siblings", "reference", "finding", "needs_modality", "sibling_names"],
 	"CardIn": ["key", "name", "version", "finding_id", "why", "branch", "skeleton", "publication", "known", "status", "finding", "needs_modality"],
 	"Preview": ["settled", "missing", "proposal", "state", "exclusion", "possible", "bounded", "asks", "trace", "degraded"],
 	"Settled": ["input", "value", "quote", "fact", "by"],
-	"Proposal": ["classification", "line", "recommendation", "caveats", "citations"],
+	"Proposal": ["classification", "line", "recommendation", "caveats", "citations", "normal"],
 	"OpenResult": ["entry", "preview", "branch", "ms", "error", "reference", "needs_modality"],
 	"MatchResult": ["cards", "ms"],
 	"MatchRequest": ["scan_type", "clinical_history", "findings", "dictation", "patient"],

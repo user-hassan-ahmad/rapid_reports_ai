@@ -90,6 +90,21 @@ describe('stableFindings', () => {
 	});
 });
 
+describe('markSent', () => {
+	it('records each finding by normalised text, in place, and returns the same set', () => {
+		const sent = new Set<string>(['old']);
+		const out = markSent(sent, [f(1, '  A 6 mm  Solid nodule.'), f(2, 'A 2 cm cyst;')]);
+		expect(out).toBe(sent);
+		expect([...sent].sort()).toEqual(['a 2 cm cyst', 'a 6 mm solid nodule', 'old']);
+		expect(markSent(sent, []).size).toBe(3);
+	});
+	it('marked texts no longer trigger a call under the same context', () => {
+		const stable = [f(1, 'A 6 mm solid nodule.')];
+		const sent = markSent(new Set(), stable);
+		expect(planMatch(sent, 'ctx', 'ctx', stable, true).call).toBe(false);
+	});
+});
+
 describe('planMatch', () => {
 	const ctx = 'CT chest|cough';
 	it('calls once per new normalised text, not again for whitespace or case changes', () => {
@@ -118,6 +133,25 @@ describe('planMatch', () => {
 });
 
 describe('groupCards', () => {
+	it('keeps findings with identical text but different ids as separate groups', () => {
+		const findings = [f(1, 'A simple cyst.'), f(4, 'a simple cyst')];
+		const c1 = card({ key: 'bosniak-2019', finding_id: 'u1', finding: 'A simple cyst.' });
+		const c4 = card({ key: 'bosniak-2019', finding_id: 'u4', finding: 'a simple cyst' });
+		const groups = groupCards([c1, c4, c1], findings);
+		expect(groups.map((g) => [g.finding?.id, g.cards.length])).toEqual([
+			['u1', 1],
+			['u4', 1]
+		]);
+	});
+	it('follows a renumbered unit by its text', () => {
+		const groups = groupCards([card({ finding_id: 'u1', finding: 'A 6 mm solid nodule.' })], [f(3, 'A 6 mm solid nodule.')]);
+		expect(groups[0].finding?.id).toBe('u3');
+	});
+	it('places a card with no finding text by its finding_id only', () => {
+		const c = card({ finding_id: 'u2', finding: '' });
+		expect(groupCards([c], [f(1, 'x'), f(2, 'y')])[0].finding?.id).toBe('u2');
+		expect(groupCards([c], [f(1, 'x')])).toEqual([]);
+	});
 	it('keeps exam cards first, groups by finding in dictation order, drops cards of deleted findings', () => {
 		const exam = card({ key: 'cad-rads-2022', finding_id: 'exam', finding: 'whole dictation' });
 		const nodule = card({ finding_id: 'u7', finding: 'A 6 mm solid nodule.' });
@@ -178,6 +212,11 @@ describe('quiet', () => {
 		['there is no outcome', preview({ proposal: null })]
 	])('is false when %s', (_why, p) => {
 		expect(quiet(exam, p)).toBe(false);
+	});
+	it('prefers Proposal.normal when the backend sends it', () => {
+		expect(quiet(exam, preview({ proposal: { ...prop('CAD-RADS 0'), normal: true } }))).toBe(true);
+		expect(quiet(exam, preview({ proposal: { ...prop('CAD-RADS 3'), normal: false } }))).toBe(false);
+		expect(quiet(exam, preview({ proposal: { ...prop('CAD-RADS 0'), normal: true }, missing: ['x'] }))).toBe(false);
 	});
 	it('is false for a finding card or no preview', () => {
 		expect(quiet(card(), preview())).toBe(false);
