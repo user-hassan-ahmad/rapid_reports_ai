@@ -949,3 +949,16 @@ def test_extension_fields_round_trip_and_stay_out_of_the_extractor_schema():
     assert "header" not in schema["Paragraph"]["properties"]
     assert "alt_headers" not in schema["StructSection"]["properties"]
     assert "optional" not in schema["StructSection"]["properties"]
+
+
+def test_fixed_unit_keeps_its_sheet_line():
+    from rapid_reports_ai import template_sheet_grammar as tsg
+    sheet = ('## Report Structure\nSECTION FINDINGS | header: "Findings:" | role: findings\n'
+             'SECTION IMPRESSION | header: "Impression:" | role: impression\n\n'
+             '## Paragraph: Knee (FINDINGS)\nCOVERS ["menisci"]\n- FIXED "Standard views were obtained."\n')
+    st = tsg.parse_sheet(sheet).structure
+    assert st.usable
+    assert st.fixed_blocks[0].source_line == '- FIXED "Standard views were obtained."'
+    # the extractor's JSON schema never sees it
+    from rapid_reports_ai import template_sheet_structure as tss
+    assert "source_line" not in tss.StructureDraft.model_json_schema()["$defs"]["FixedBlock"]["properties"]

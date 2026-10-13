@@ -155,6 +155,7 @@ class FixedBlock(_Model):
     id: str
     section: str = ""  # a missing section drops the block in verification, not the whole draft
     text: str
+    source_line: SkipJsonSchema[str] = ""  # grammar: the sheet line itself (the decision ledger edits it)
 
     @field_validator("section", mode="before")
     @classmethod
