@@ -170,3 +170,27 @@ def test_undo_and_card_fail_soft(client, auth_headers, monkeypatch):
                        json={"skill_sheet": "s", "changes": []}).json()["success"] is False
     assert client.post(URL + "/card", headers=auth_headers,
                        json={"skill_sheet": "s", "answer": {}}).json()["success"] is False
+
+
+def test_any_router_exception_falls_back_to_todays_refine(client, auth_headers, monkeypatch, guided_template,
+                                                          db_session):
+    monkeypatch.setenv("RR_CHAT_ROUTER", "1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    monkeypatch.setattr("rapid_reports_ai.main.get_system_api_key", lambda *a, **k: "key")
+
+    async def route(*a, **k):
+        raise KeyError("a router bug")
+
+    async def refine(self, skill_sheet, message, chat_history, api_key, rejection_context=None):
+        return {"skill_sheet": skill_sheet, "response": "Done.", "behavioral_claim": "c"}
+
+    async def vet(sheet, origin, previous="", ledger=None):
+        return S.VetOutcome("saved", sheet, "")
+    monkeypatch.setattr(R, "route_turn", route)
+    monkeypatch.setattr("rapid_reports_ai.template_manager.TemplateManager.refine_skill_sheet", refine)
+    monkeypatch.setattr(S, "vet_sheet", vet)
+    r = client.post(URL, headers=auth_headers, json={"skill_sheet": ROUTER_SHEET, "message": "drop width",
+                                                     "template_id": str(guided_template.id)}).json()
+    assert r["success"] and r["response"] == "Done." and "route" not in r
+    (turn,) = _turns(db_session)
+    assert turn.routing["fallback"] == "KeyError" and turn.routing["route"] == "refine"

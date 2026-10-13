@@ -216,10 +216,12 @@ async def _style(sheet: str, out: CH.StyleOut, ctx: CH.Ctx):
 
 async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, context: str = "",
                      rejection: Optional[dict] = None) -> Turn:
+    # The turn deadline starts here, before the tag call: tag + targeted calls (+ the style check) are bounded by
+    # TURN_TIMEOUT_S together. The save that follows is outside it; its unit checks have their own timeout.
     t0 = time.monotonic()
     scan = sh.scan_type(sheet)
     try:
-        tags = await J.tag(instruction, scan, context)
+        tags = await asyncio.wait_for(J.tag(instruction, scan, context), timeout=TURN_TIMEOUT_S)
     except Exception as e:
         logger.warning("[chat-router] tag call failed: %s: %s", type(e).__name__, str(e)[:200])
         raise Fallback(type(e).__name__) from e

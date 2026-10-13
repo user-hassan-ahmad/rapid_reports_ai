@@ -2826,6 +2826,9 @@ async def skill_sheet_refine_endpoint(
             except chat_router.Fallback as e:
                 router_fallback = str(e)
                 logger.warning("[chat-router] fallback to the whole-sheet refine: %s", e)
+            except Exception as e:   # any router bug: today's refine for this turn, never the generic error
+                router_fallback = type(e).__name__
+                logger.exception("[chat-router] unexpected %s; fallback to the whole-sheet refine", router_fallback)
             else:
                 out = chat_router.response(turn)
                 _record_chat_turn(db, current_user, request.template_id, request.message, out["response"],

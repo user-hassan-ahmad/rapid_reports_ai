@@ -445,3 +445,31 @@ async def test_a_style_undo_that_would_change_a_unit_line_is_refused():
            "blocks": [{"before": 'NORMAL [gamma] "Gamma is fine."', "after": "Keep it brief."}]}
     u = await R.undo_turn(ROUTER_SHEET, [], [rec])
     assert not u.applied and u.sheet == ROUTER_SHEET and u.evidence["skipped"] == 1
+
+
+async def test_the_deadline_starts_before_the_tag_call(fake, monkeypatch):
+    monkeypatch.setattr(R, "TURN_TIMEOUT_S", 0.3)
+    fast = CH.ValueOut(changes=[CH.ValueChange(name="Width", to="not_needed")])
+
+    async def slow_tag(instruction, scan_type="", context="", transport=None):
+        await asyncio.sleep(0.2)
+        return tags(value=0.9, normal=0.9)
+
+    async def call_kind(kind, instruction, view, context="", rejection=None):
+        if kind == "normal":
+            await asyncio.sleep(0.2)    # fits 0.3 s alone, not after the tag's 0.2 s
+        return fast if kind == "value" else CH.OUTPUTS[kind]()
+    monkeypatch.setattr(J, "tag", slow_tag)
+    monkeypatch.setattr(C, "call_kind", call_kind)
+    t = await R.route_turn(ROUTER_SHEET, [], "drop width and reword the alpha normal")
+    assert t.applied and t.evidence["timed_out"] == ["normal"]
+
+
+async def test_a_tag_call_past_the_deadline_falls_back(fake, monkeypatch):
+    monkeypatch.setattr(R, "TURN_TIMEOUT_S", 0.05)
+
+    async def stuck(instruction, scan_type="", context="", transport=None):
+        await asyncio.sleep(5)
+    monkeypatch.setattr(J, "tag", stuck)
+    with pytest.raises(R.Fallback):
+        await R.route_turn(ROUTER_SHEET, [], "drop width")
