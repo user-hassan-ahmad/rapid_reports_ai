@@ -76,7 +76,8 @@ export async function postDictationCheck(token: string | null, body: { findings:
 }
 
 /** Unfinished sentences, judged by Jev: the scratchpad's only check for them (flags shaped as the dictation check's). */
-export const postUnfinished = (token: string | null, body: { text: string }) => post<{ flags: IntegrityFlag[] }>(token, 'unfinished', body);
+export const postUnfinished = (token: string | null, body: { text: string }) =>
+	post<{ flags: IntegrityFlag[] }>(token, 'unfinished', body, false, CHECK_TIMEOUT_MS); // paired with the dictation check: a timeout fails open
 
 export const postSlimSheet = (token: string | null, body: { scan_type: string; clinical_history: string; template_id?: string | null } & PickFields) =>
 	post<SlimSheet>(token, 'slim-sheet', body);
