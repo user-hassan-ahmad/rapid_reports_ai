@@ -26,7 +26,7 @@ def calls(monkeypatch):
         seen["system"], seen["user"], seen["settings"] = system, user, settings
         return _answer()
 
-    async def vet(sheet, origin, previous=""):
+    async def vet(sheet, origin, previous="", ledger=None):
         seen["vetted"], seen["origin"] = sheet, origin
         return VetOutcome("saved", sheet, message="Saved, with 1 statement reworded so the template stays consistent.",
                           dropped=[{"text": "VOICE x", "reason": "lint"}], coverage_sections=["FINDINGS"])
@@ -48,7 +48,7 @@ async def test_write_returns_a_vetted_sheet_summary_and_questions(calls):
 
 
 async def test_write_raises_the_refusal_message(calls, monkeypatch):
-    async def refuse(sheet, origin, previous=""):
+    async def refuse(sheet, origin, previous="", ledger=None):
         return VetOutcome("refused", "", message="The sheet failed its checks, try again")
 
     monkeypatch.setattr(W, "vet_sheet", refuse)

@@ -27,7 +27,7 @@ def refine_returns(monkeypatch):
 def test_refine_refusal_keeps_the_sheet_and_says_why(client, auth_headers, monkeypatch, refine_returns):
     refine_returns({"skill_sheet": EDITED, "response": "Done", "behavioral_claim": "x should now y"})
 
-    async def vet(sheet, origin, previous=""):
+    async def vet(sheet, origin, previous="", ledger=None):
         assert origin == "chat" and previous == GOOD
         return S.VetOutcome("refused", previous, 'Couldn\'t apply: "Mild thinning." (states an abnormality as a normal).')
 
@@ -40,7 +40,7 @@ def test_refine_refusal_keeps_the_sheet_and_says_why(client, auth_headers, monke
 def test_refine_saved_returns_the_vetted_sheet(client, auth_headers, monkeypatch, refine_returns):
     refine_returns({"skill_sheet": EDITED, "response": "Reports will now say it.", "behavioral_claim": "c"})
 
-    async def vet(sheet, origin, previous=""):
+    async def vet(sheet, origin, previous="", ledger=None):
         return S.VetOutcome("saved", sheet + "\n", "")
 
     monkeypatch.setattr(S, "vet_sheet", vet)
@@ -52,7 +52,7 @@ def test_refine_saved_returns_the_vetted_sheet(client, auth_headers, monkeypatch
 def test_refine_adjusted_edit_carries_the_notice(client, auth_headers, monkeypatch, refine_returns):
     refine_returns({"skill_sheet": EDITED, "response": "Reports will now say it.", "behavioral_claim": "c"})
 
-    async def vet(sheet, origin, previous=""):
+    async def vet(sheet, origin, previous="", ledger=None):
         return S.VetOutcome("saved", sheet, S.ADJUSTED)
 
     monkeypatch.setattr(S, "vet_sheet", vet)
@@ -64,7 +64,7 @@ def test_refine_adjusted_edit_carries_the_notice(client, auth_headers, monkeypat
 def test_refine_question_turn_is_unchanged_and_applied_false(client, auth_headers, monkeypatch, refine_returns):
     refine_returns({"skill_sheet": GOOD, "response": "It already does. Want it changed?", "behavioral_claim": ""})
 
-    async def vet(sheet, origin, previous=""):
+    async def vet(sheet, origin, previous="", ledger=None):
         return S.VetOutcome("unchanged", previous)
 
     monkeypatch.setattr(S, "vet_sheet", vet)
@@ -77,7 +77,7 @@ def test_refine_unchanged_non_question_reply_says_no_change_was_needed(client, a
                                                                        refine_returns):
     refine_returns({"skill_sheet": GOOD, "response": "Reports will now always state it.", "behavioral_claim": "c"})
 
-    async def vet(sheet, origin, previous=""):
+    async def vet(sheet, origin, previous="", ledger=None):
         return S.VetOutcome("unchanged", previous)
 
     monkeypatch.setattr(S, "vet_sheet", vet)
@@ -125,7 +125,7 @@ def test_refine_with_a_template_records_the_turn(client, auth_headers, guided_te
     sheet = guided_template.template_config["skill_sheet"]
     refine_returns({"skill_sheet": sheet, "response": "No change needed", "behavioral_claim": ""})
 
-    async def vet(sheet, origin, previous=""):
+    async def vet(sheet, origin, previous="", ledger=None):
         return S.VetOutcome("unchanged", sheet, "")
     monkeypatch.setattr(S, "vet_sheet", vet)
     client.post(URL, headers=auth_headers, json={"skill_sheet": sheet, "message": "keep it short",
@@ -139,7 +139,7 @@ def test_refused_write_records_applied_false_with_equal_hashes(client, auth_head
                                                                monkeypatch, refine_returns):
     refine_returns({"skill_sheet": EDITED, "response": "Done", "behavioral_claim": "c"})
 
-    async def vet(sheet, origin, previous=""):
+    async def vet(sheet, origin, previous="", ledger=None):
         return S.VetOutcome("refused", previous, "Couldn't apply that.")
     monkeypatch.setattr(S, "vet_sheet", vet)
     client.post(URL, headers=auth_headers, json={"skill_sheet": GOOD, "message": "m",
@@ -153,7 +153,7 @@ def test_applied_edit_records_changed_hash(client, auth_headers, guided_template
                                            refine_returns):
     refine_returns({"skill_sheet": EDITED, "response": "Done", "behavioral_claim": "c"})
 
-    async def vet(sheet, origin, previous=""):
+    async def vet(sheet, origin, previous="", ledger=None):
         return S.VetOutcome("saved", sheet, "")
     monkeypatch.setattr(S, "vet_sheet", vet)
     client.post(URL, headers=auth_headers, json={"skill_sheet": GOOD, "message": "m",
@@ -165,7 +165,7 @@ def test_applied_edit_records_changed_hash(client, auth_headers, guided_template
 def test_refine_without_a_template_records_nothing(client, auth_headers, db_session, monkeypatch, refine_returns):
     refine_returns({"skill_sheet": GOOD, "response": "ok", "behavioral_claim": ""})
 
-    async def vet(sheet, origin, previous=""):
+    async def vet(sheet, origin, previous="", ledger=None):
         return S.VetOutcome("saved", sheet, "")
     monkeypatch.setattr(S, "vet_sheet", vet)
     assert client.post(URL, headers=auth_headers, json={"skill_sheet": GOOD, "message": "m"}).json()["success"]
@@ -185,7 +185,7 @@ def test_refine_on_another_users_template_records_nothing(client, auth_headers, 
     db_session.commit()
     refine_returns({"skill_sheet": GOOD, "response": "ok", "behavioral_claim": ""})
 
-    async def vet(sheet, origin, previous=""):
+    async def vet(sheet, origin, previous="", ledger=None):
         return S.VetOutcome("saved", sheet, "")
     monkeypatch.setattr(S, "vet_sheet", vet)
     assert client.post(URL, headers=auth_headers, json={"skill_sheet": GOOD, "message": "m",
@@ -197,7 +197,7 @@ def test_a_db_failure_while_recording_never_fails_the_refine(client, auth_header
                                                              refine_returns):
     refine_returns({"skill_sheet": GOOD, "response": "ok", "behavioral_claim": ""})
 
-    async def vet(sheet, origin, previous=""):
+    async def vet(sheet, origin, previous="", ledger=None):
         return S.VetOutcome("saved", sheet, "")
     monkeypatch.setattr(S, "vet_sheet", vet)
 
