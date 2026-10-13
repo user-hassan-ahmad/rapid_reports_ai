@@ -716,6 +716,12 @@ def sheet(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path) -> Path
     return path
 
 
+def _draft_now(e: Entry, s, presets: dict[str, str]) -> str | None:
+    """The draft outcome the card shows today over the stored settlement (the engine is deterministic), so a score-only
+    re-run measures the current card rules, not those of the day the settler ran. None when there is no outcome."""
+    return (finish(e, s, {}, presets=presets).trace or {}).get("outcome")
+
+
 def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdicts_csv: Path | None = None) -> Path:
     lib, cards, labels, st = _load(cards_p, labels_p, settler_p)
     overrides, op = _apply_overrides(lib, cards, labels, verdicts_csv)
@@ -733,7 +739,7 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
         rows.append({"card": c["id"], "pack": c["pack"], "source": c.get("source", "prod"),
                      "sibling": bool(c.get("via_sibling_of")), "ms": st[c["id"]]["ms"], "taps": n, "verdicts": verdicts(e, s, lab, pre),
                      "tiers": {k: t for k, (_, _, t) in d.items()}, "degraded": st[c["id"]]["degraded"],
-                     "outcome": outcome, "draft_outcome": st[c["id"]].get("draft_outcome_id")})
+                     "outcome": outcome, "draft_outcome": _draft_now(e, s, pre)})
     errored = [k for k, r in st.items() if "error" in r]
     if skipped:
         print(f"skipped {len(skipped)} unlabelled, unsettled or errored cards: {', '.join(skipped)}", file=sys.stderr)
