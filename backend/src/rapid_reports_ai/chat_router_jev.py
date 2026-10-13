@@ -51,6 +51,13 @@ QUESTIONS["habit"] = _q("The INSTRUCTION asks for something to be stated or aske
                         "present.")
 HABIT_MIN = 0.5
 
+# V1 from the verify lab (2026-10-13, synthetic/chat_router/verify_lab.py): "did the instruction ask for this change?"
+CLAIM_MIN = 0.5
+
+
+def v1(claim: str) -> dict:
+    return {"type": "noul", "instructions": f'Does the INSTRUCTION ask for this change: "{claim}"?'}
+
 # requires_A from the same lab (req_A), word for word
 REQUIRES: dict = _q("Does this LINE require the report to state something that the report could otherwise leave out?",
                     "Yes: it makes a finding, structure, value, comparison or statement mandatory in every report, or "
@@ -77,6 +84,19 @@ async def tag(instruction: str, scan_type: str = "", context: str = "", transpor
     r.raise_for_status()
     answers = r.json().get("answers") or {}
     return {k: _score(answers, k) for k in KINDS + GUARDS}
+
+
+async def verify_claims(scan_type: str, instruction: str, claims: List[str], transport=None) -> List[float]:
+    """V1 score per claim, all in ONE call on the instruction's state (as the verify lab asked it). Raises on
+    failure; no call for no claims."""
+    if not claims:
+        return []
+    state = f"SCAN TYPE: {scan_type or 'not given'}\n\nINSTRUCTION:\n{(instruction or '').strip()}"
+    r = await jev_post({"model": JEV_MODEL, "state": state, "questions": {f"c{i}": v1(c) for i, c in enumerate(claims)}},
+                       os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
+    r.raise_for_status()
+    answers = r.json().get("answers") or {}
+    return [_score(answers, f"c{i}") for i in range(len(claims))]
 
 
 async def requires(lines: List[str], transport=None) -> List[float]:

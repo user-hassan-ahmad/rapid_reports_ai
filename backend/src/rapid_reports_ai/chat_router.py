@@ -26,6 +26,7 @@ from . import chat_router_layout as lay
 from . import chat_router_ledger as L
 from . import chat_router_sheet as sh
 from . import chat_router_views as V
+from . import template_sheet_grammar as tsg
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +51,26 @@ _HABIT_LEAD = re.compile(r"^\s*(?:with|when|whenever|if|in)\s+(?P<cond>[^,;]+?)\
 _HABIT_TAIL = re.compile(r"^(?P<rest>.+?)\s*,?\s+(?:when(?:ever)?|if)\s+(?P<cond>.+?)\s*$", re.I)
 _HABIT_MID = re.compile(r"^\s*(?:when(?:ever)?|if)\s+(?P<cond>.+?)\s+(?P<rest>(?:say|mention|comment|state|add|ask|"
                         r"report|describe|note)\b.*)$", re.I)
-PROSE_KEPT = ("I kept some of the template's wording guidance as it was: the change would have removed lines your "
-              "instruction didn't mention. Ask for that change on its own if you want it.")
+STYLE_UNVERIFIED = "I wasn't sure you asked for this, so I left it out: {claim}"
+_LABEL_WORD = re.compile(r"[a-z][a-z0-9]{3,}")
+
+
+def block_label(block: sh.Block) -> str:
+    """How a claim names a prose block: its paragraph's name, else its heading."""
+    ph = tsg.paragraph_heading(block.heading)
+    return ph[0] if ph else block.heading
+
+
+def specific_claim(claim: str, block: sh.Block) -> bool:
+    """A style claim is specific when it names the block it changes (the block id, its label, or a 4+ letter word
+    of the label) - a structural check, run before any Jev call: "the wording is changed" names nothing."""
+    c = (claim or "").lower()
+    if not c.strip():
+        return False
+    if re.search(rf"\b{re.escape(block.id.lower())}\b", c):
+        return True
+    label = block_label(block).lower()
+    return label in c or any(re.search(rf"\b{re.escape(w)}", c) for w in _LABEL_WORD.findall(label))
 CAPPED_LINE = "That wording change was long, so I applied the first part only. Please ask for the rest separately."
 STYLE_TIMEOUT = "I couldn't finish the wording change just now, so I left it out. Please try that part again."
 STYLE_TOUCHED_RULES = ("The style change also touched the template's rules, so I left it out. Could you say it as "
@@ -92,36 +111,6 @@ def _ask_reply(scan: str, misfit: bool) -> str:
     if misfit:
         return f"That doesn't look like part of a {s}report. What should these reports do differently?"
     return f"I'm not sure what to change in these {s}reports. What should they do differently?"
-
-
-# ── prose deletion check: a structural backstop, not a judgement of meaning ─────────────────────────────────────
-# A style edit may only delete or reword prose the instruction is about. "About" is approximated by a simple overlap
-# of content words (words of 4+ letters, a few function words dropped, a plural "s" stripped) between the
-# instruction and the removed line or its block heading. It catches a call that rewrites unrelated guidance (a value
-# instruction stripping the impression rules); it is deliberately crude and never decides what a line means.
-_WORD = re.compile(r"[a-z][a-z0-9]{3,}")
-_STOP = frozenset("""with that this from have into than then them they what when which will your been were there
-their these those should would could about also only each more most very just""".split())
-
-
-def content_words(text: str) -> set:
-    out = set()
-    for w in _WORD.findall((text or "").lower()):
-        if w in _STOP:
-            continue
-        out.add(w[:-1] if w.endswith("s") and len(w) > 4 else w)
-    return out
-
-
-def mentioned(line: str, instruction: str, heading: str) -> bool:
-    """The instruction shares a content word with the line or with its block's heading."""
-    return bool(content_words(instruction) & (content_words(line) | content_words(heading)))
-
-
-def _deletions_ok(block: sh.Block, new_text: str, instruction: str) -> bool:
-    new = {sh.norm(x) for x in new_text.splitlines() if x.strip()}
-    removed = [x for x in block.text.splitlines() if x.strip() and sh.norm(x) not in new]
-    return all(mentioned(x, instruction, block.heading) for x in removed)
 
 
 def _park_habit(instruction: str, score: float) -> Tuple[dict, str, dict]:
@@ -228,10 +217,12 @@ async def _reroute(lines: List[str], ctx: CH.Ctx) -> List[CH.Verdict]:
     return list(await asyncio.gather(*(one(l) for l in head))) + [ask(l) for l in rest]
 
 
-async def _style(sheet: str, out: CH.StyleOut, ctx: CH.Ctx):
+async def _style(sheet: str, out: CH.StyleOut, ctx: CH.Ctx, *, scan: str = "", verified: bool = False):
     """(sheet, style record or None, reply lines, extra verdicts, evidence) for a style output: unit lines must be
-    untouched; each new prose line is asked whether it requires the report to state something, and a yes is left out
-    of the edit and re-routed."""
+    untouched; each changed block's claim is verified against the instruction (Jev V1, Hassan 2026-10-13: replaces
+    the content-word overlap check) and a block whose claim fails is not applied; each new prose line is asked
+    whether it requires the report to state something, and a yes is left out of the edit and re-routed.
+    `verified`: the caller already asked V1 for these claims (arm 2)."""
     blocks = {b.id: b for b in sh.prose_blocks(sheet)}
     edits = {b.id: b.text.strip("\n") for b in out.blocks
              if b.id in blocks and b.text.strip("\n") != blocks[b.id].text}
@@ -248,26 +239,37 @@ async def _style(sheet: str, out: CH.StyleOut, ctx: CH.Ctx):
     new = new[:MAX_REQUIRES_LINES]
     if over:
         logger.info("[chat-router] requires capped: %d new prose lines left out", len(over))
-    try:
-        scores = await J.requires(new)
+    by_id = {b.id: b for b in out.blocks}
+    claims = {b: (by_id[b].claim or out.summary or "").strip() for b in edits}
+    vague = [b for b in edits if not specific_claim(claims[b], blocks[b])] if not verified else []
+    asked = [b for b in edits if b not in vague] if not verified else []
+
+    async def no_claims():
+        return []
+    try:   # the line questions and the block claims together (the claims in one call)
+        scores, claim_scores = await asyncio.gather(
+            J.requires(new),
+            J.verify_claims(scan, ctx.instruction, [claims[b] for b in asked]) if asked else no_claims())
     except Exception as e:
-        logger.warning("[chat-router] requires check failed: %s", type(e).__name__)
+        logger.warning("[chat-router] style checks failed: %s", type(e).__name__)
         return sheet, None, [REQUIRES_FAILED], [], {"style": "requires_failed"}
+    claim_of = dict(zip(asked, claim_scores))
+    style_claims = [{"block": b, "claim": claims[b], "score": round(claim_of[b], 3) if b in claim_of else None,
+                     "verified": verified or claim_of.get(b, 0.0) >= J.CLAIM_MIN, **({"vague": True} if b in vague else {})}
+                    for b in edits]
+    refused = [c for c in style_claims if not c["verified"]]
+    claim_lines = [STYLE_UNVERIFIED.format(claim=c["claim"] or "a change of wording") for c in refused]
+    edits = {b: t for b, t in edits.items() if b not in {c["block"] for c in refused}}
     flagged = [l for l, s in zip(new, scores) if s >= J.REQUIRES_MIN]
     ev = {"style": "applied", "disguise": [{"line": l[:200], "score": round(s, 3)} for l, s in zip(new, scores)],
           "truncated": {"requires": len(over), "reroutes": max(0, len(flagged) - MAX_REROUTES)}}
-    lines_out = [CAPPED_LINE] if over else []
+    ev["style_claims"] = style_claims
+    lines_out = ([CAPPED_LINE] if over else []) + claim_lines
     if flagged or over:
         fl = {sh.norm(x) for x in flagged + over}
         edits = {b: "\n".join(x for x in t.splitlines() if sh.norm(x) not in fl) for b, t in edits.items()}
         # a block left empty keeps its old prose (the radiologist did not ask to delete it)
         edits = {b: t for b, t in edits.items() if t.strip() and t.strip("\n") != blocks[b].text}
-    kept = [b for b, t in edits.items() if not _deletions_ok(blocks[b], t, ctx.instruction)]
-    if kept:   # that part is not applied; the rest of the style edit is
-        logger.info("[chat-router] prose deletion check kept %s", kept)
-        edits = {b: t for b, t in edits.items() if b not in kept}
-        lines_out.append(PROSE_KEPT)
-        ev["prose_kept"] = kept
     rerouted = await _reroute(flagged, ctx) if flagged else []
     if not edits:
         return sheet, None, lines_out, rerouted, {**ev, "style": "all_rerouted"}
@@ -345,7 +347,7 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
     if style_out is not None and style_out.blocks:
         try:
             styled, style_rec, style_lines, extra, style_ev = await asyncio.wait_for(
-                _style(sheet, style_out, ctx), timeout=max(0.01, deadline - time.monotonic()))
+                _style(sheet, style_out, ctx, scan=scan), timeout=max(0.01, deadline - time.monotonic()))
         except asyncio.TimeoutError:
             logger.warning("[chat-router] turn deadline: the style check did not finish")
             style_lines, extra, style_ev = [STYLE_TIMEOUT], [], {"style": "timed_out"}

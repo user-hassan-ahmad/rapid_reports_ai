@@ -112,9 +112,11 @@ async def test_a_style_block_is_verified_and_the_prose_deletion_check_applies(st
     assert t.applied and new in t.sheet and stub["verify_calls"] == [["The impression is shorter."]]
     stub["proposal"] = P.Proposal(changes=[
         _change("value", "Width is no longer required.", name="Width", to="not_needed"),
-        _change("style", "The impression guidance is trimmed.", id="b4", text="Lead with the most important finding.")])
+        _change("style", 'In Impression Construction, the line "Keep it brief." is removed.', id="b4", text="Lead with the most important finding.")])
+    stub["claim_scores"] = {'In Impression Construction, the line "Keep it brief." is removed.': 0.1}
     t2 = await P.propose_turn(ROUTER_SHEET, [], "drop Width")
-    assert "Keep it brief." in t2.sheet and R.PROSE_KEPT in t2.reply
+    assert "Keep it brief." in t2.sheet and 'LIST_MISSING ["Depth"]' in t2.sheet
+    assert R.STYLE_UNVERIFIED.format(claim='In Impression Construction, the line "Keep it brief." is removed.') in t2.reply
 
 
 async def test_an_unverified_style_block_is_not_applied(stub):
@@ -123,6 +125,26 @@ async def test_an_unverified_style_block_is_not_applied(stub):
     stub["claim_scores"] = {"The impression is shorter.": 0.1}
     t = await P.propose_turn(ROUTER_SHEET, [], "make the impression more concise")
     assert not t.applied and t.sheet == ROUTER_SHEET and "I wasn't sure you asked for this" in t.reply
+
+
+async def test_arm_2_refuses_a_vague_style_claim_whatever_jev_says(stub):
+    stub["proposal"] = P.Proposal(changes=[_change("style", "Style updated.", id="b4",
+                                                   text="Lead with the main finding in one sentence.")])
+    t = await P.propose_turn(ROUTER_SHEET, [], "make the impression more concise")
+    assert not t.applied and "Keep it brief." in t.sheet and R.STYLE_UNVERIFIED.format(claim="Style updated.") in t.reply
+
+
+async def test_arm_2_verifies_style_claims_once(stub, monkeypatch):
+    calls = []
+
+    async def verify_claims(*a, **k):
+        calls.append(a)
+        return []
+    monkeypatch.setattr(J, "verify_claims", verify_claims)
+    stub["proposal"] = P.Proposal(changes=[_change("style", "The impression is shorter.", id="b4",
+                                                   text="Lead with the main finding in one sentence.")])
+    t = await P.propose_turn(ROUTER_SHEET, [], "make the impression more concise")
+    assert t.applied and calls == []           # its own verify call already asked V1 for the block's claim
 
 
 async def test_a_failed_proposal_falls_back(stub):

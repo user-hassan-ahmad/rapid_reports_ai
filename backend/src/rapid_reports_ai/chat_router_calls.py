@@ -75,9 +75,12 @@ STYLE = (
     "Read the whole INSTRUCTION. Handle only style, tone, length or phrasing. Ignore every other part of the "
     "INSTRUCTION: other editors handle which values reports state, study-level statements, sentences printed in "
     "every report, normal findings, and sections and paragraphs.\n"
-    "You get the template's prose BLOCKS under CURRENT, each with an id. Return only the blocks you change, each "
-    "with its id and its complete new text. Never add a line that tells reports to always state something. Never "
-    "write a line that starts with an upper-case keyword. Change nothing the INSTRUCTION does not ask for.\n"
+    "You get the template's prose BLOCKS under CURRENT, each with an id. Change only what the INSTRUCTION asks for: "
+    "never delete or reword a line it is not about. Return only the blocks you change, each with its id, its "
+    'complete new text and a "claim": one short specific sentence that names the block (its heading as shown '
+    'under CURRENT) and what changed in it, for example "In <heading>: sentences are shorter." A claim that names '
+    'no block, such as "the wording is changed", is not applied. Never add a line that tells reports to always state '
+    "something. Never write a line that starts with an upper-case keyword.\n"
     '"summary": one sentence, in plain report language, saying what future reports will do differently (for '
     'example: "The impression will be shorter."). If nothing in the INSTRUCTION is about style, return no blocks. '
     'If it is about style but unclear, return no blocks and put one short question in "question".')

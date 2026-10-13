@@ -49,3 +49,10 @@ async def test_call_kind_retries_once_on_gpt_oss_with_prompted_output(monkeypatc
     assert [m for m, _ in seen] == [eu.MODEL_CONFIG["SKILL_SHEET_REFINER"], eu.MODEL_CONFIG["STACK_REVIEW_FALLBACK"]]
     assert seen[0][1] is CH.StyleOut                            # Qwen keeps tool output
     assert isinstance(seen[1][1], PromptedOutput) and seen[1][1].outputs is CH.StyleOut   # gpt-oss: JSON in text
+
+
+
+def test_the_style_prompt_asks_for_only_what_is_asked_and_a_claim_per_block():
+    s = C.SYSTEM["style"]
+    assert "Change only what the INSTRUCTION asks for" in s and '"claim"' in s
+    assert "claim" in CH.StyleBlock.model_fields

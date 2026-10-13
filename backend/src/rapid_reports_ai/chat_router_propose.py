@@ -44,7 +44,7 @@ COVER_MIN = 0.65    # C1 (verify lab)
 MAX_CHANGES = 10
 SETTINGS = {"temperature": 0, "max_tokens": 6000, "reasoning_effort": "low"}
 PART_NOT_APPLIED = "Part of your message wasn't applied: could you say what else you wanted changed?"
-STYLE_UNVERIFIED = "I wasn't sure you asked for this, so I left it out: {claim}"
+STYLE_UNVERIFIED = R.STYLE_UNVERIFIED
 
 
 class ProposedChange(BaseModel):
@@ -124,8 +124,7 @@ async def _propose(sheet: str, ledger: List[dict], instruction: str, context: st
         return await call(MODEL_CONFIG["STACK_REVIEW_FALLBACK"], FALLBACK_TIMEOUT_S, PromptedOutput(Proposal))
 
 
-def _v1(claim: str) -> dict:
-    return {"type": "noul", "instructions": f'Does the INSTRUCTION ask for this change: "{claim}"?'}
+_v1 = J.v1
 
 
 C1 = {"type": "noul", "instructions": "Does the INSTRUCTION ask for anything that is not covered by the CHANGES listed?"}
@@ -175,6 +174,7 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
     # validate: the existing gates, per change (style blocks go through the router's own style path)
     pairs: List[Tuple[ProposedChange, CH.Verdict]] = []
     style_blocks = [c for c in changes if c.kind == "style"]
+    blocks_by_id = {b.id: b for b in sh.prose_blocks(sheet)}
     for c in changes:
         if c.kind == "style":
             continue
@@ -212,17 +212,18 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
     verified_blocks = []
     for j, c in enumerate(style_blocks):
         s = by_claim[len(applicable) + j]
+        if c.style.id not in blocks_by_id or not R.specific_claim(c.claim, blocks_by_id[c.style.id]):
+            s = 0.0                                    # a claim that names no block: unverified, whatever Jev said
         ev["claims"].append({"kind": "style", "claim": c.claim, "proposed": c.claim, "score": round(s, 3),
                              "verified": s >= VERIFY_MIN})
         if s >= VERIFY_MIN:
-            verified_blocks.append(c.style)
+            verified_blocks.append(c.style.model_copy(update={"claim": c.claim}))
         else:
             asks.append(STYLE_UNVERIFIED.format(claim=c.claim))
     styled, style_rec, style_lines, style_ev = sheet, None, [], {}
     if verified_blocks:
-        out = CH.StyleOut(blocks=verified_blocks, summary=" ".join(c.claim for c in style_blocks
-                                                                   if c.style in verified_blocks))
-        styled, style_rec, style_lines, extra, style_ev = await R._style(sheet, out, ctx)
+        out = CH.StyleOut(blocks=verified_blocks, summary=" ".join(b.claim for b in verified_blocks))
+        styled, style_rec, style_lines, extra, style_ev = await R._style(sheet, out, ctx, scan=scan, verified=True)
         verdicts += extra
     if cover >= COVER_MIN:
         asks.append(PART_NOT_APPLIED)

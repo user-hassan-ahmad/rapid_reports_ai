@@ -24,7 +24,7 @@ def tags(**scores):
 
 @pytest.fixture
 def fake(monkeypatch):
-    state = {"tags": tags(), "calls": {}, "requires": {}, "seen": []}
+    state = {"tags": tags(), "calls": {}, "requires": {}, "seen": [], "claim_calls": [], "claim_scores": {}}
 
     async def tag(instruction, scan_type="", context="", transport=None):
         if isinstance(state["tags"], Exception):
@@ -38,6 +38,10 @@ def fake(monkeypatch):
             raise r
         return r if r is not None else CH.OUTPUTS[kind]()
 
+    async def verify_claims(scan_type, instruction, claims, transport=None):
+        state["claim_calls"].append(list(claims))
+        return [state["claim_scores"].get(c, 0.9) for c in claims]
+
     async def requires(lines, transport=None):
         if state.get("requires_fn"):
             return await state["requires_fn"](lines)
@@ -48,6 +52,7 @@ def fake(monkeypatch):
     monkeypatch.setattr(J, "tag", tag)
     monkeypatch.setattr(C, "call_kind", call_kind)
     monkeypatch.setattr(J, "requires", requires)
+    monkeypatch.setattr(J, "verify_claims", verify_claims)
     return state
 
 
@@ -400,7 +405,7 @@ async def test_at_most_eight_new_prose_lines_are_checked_and_the_rest_left_out(f
     fake["tags"] = tags(style=0.9)
     keep = "Lead with the most important finding.\nKeep it brief."   # nothing deleted: only the cap is under test
     fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=keep + "\n" + "\n".join(lines))],
-                                         summary="Longer.")
+                                         summary="In Impression Construction: more guidance lines.")
     fake["requires_fn"] = requires
     t = await R.route_turn(ROUTER_SHEET, [], "add guidance")
     assert len(asked) == R.MAX_REQUIRES_LINES == 8
@@ -510,7 +515,8 @@ async def test_a_finding_triggered_habit_is_parked_and_nothing_is_written(fake):
 
 async def test_a_habit_turn_still_applies_its_style_part(fake):
     fake["tags"] = {**tags(normal=0.9, style=0.9), "habit": 0.8}
-    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=NEW_IC)], summary="Shorter.")
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=NEW_IC)],
+                                         summary="The impression guidance is shorter.")
     t = await R.route_turn(ROUTER_SHEET, [], "when there is a mass say so, and keep the impression shorter")
     assert t.applied and NEW_IC in t.sheet and [k for k, _ in fake["seen"]] == ["style"]
     assert t.cards[0]["kind"] == "habit" and "when there is a mass" in t.cards[0]["title"]
@@ -532,29 +538,68 @@ async def test_no_habit_below_the_threshold(fake):
     assert t.applied and "habit" not in t.evidence
 
 
-# ── prose deletion check (a structural backstop) ──────────────────────────────────────────────────────────────────
-async def test_a_value_instruction_cannot_strip_unrelated_prose(fake):
+# ── style claims verified by Jev (Hassan 2026-10-13: replaces the content-word overlap check) ─────────────────────
+async def test_a_concise_rewording_passes(fake):
+    fake["tags"] = tags(style=0.9)
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(
+        id="b4", text="Lead with the key finding.", claim="The impression guidance is shorter.")], summary="Shorter.")
+    t = await R.route_turn(ROUTER_SHEET, [], "make the reports more concise")
+    assert t.applied and "Lead with the key finding." in t.sheet and "Keep it brief." not in t.sheet
+    assert fake["claim_calls"] == [["The impression guidance is shorter."]]
+
+
+async def test_a_stray_deletion_with_a_failing_claim_is_refused(fake):
     fake["tags"] = tags(value=0.9, style=0.9)
     fake["calls"]["value"] = CH.ValueOut(changes=[CH.ValueChange(name="Width", to="not_needed")])
-    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text="Lead with the most important finding.")],
-                                         summary="Shorter.")
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(
+        id="b4", text="Lead with the most important finding.", claim='In Impression Construction, the line "Keep it brief." is removed.')])
+    fake["claim_scores"] = {'In Impression Construction, the line "Keep it brief." is removed.': 0.1}
     t = await R.route_turn(ROUTER_SHEET, [], "drop Width")
     assert t.applied and 'LIST_MISSING ["Depth"]' in t.sheet and "Keep it brief." in t.sheet
-    assert R.PROSE_KEPT in t.reply and t.evidence["prose_kept"] == ["b4"]
-    assert not any(r["type"] == "style" for r in t.records)
+    assert R.STYLE_UNVERIFIED.format(claim='In Impression Construction, the line "Keep it brief." is removed.') in t.reply
+    assert not any(r["type"] == "style" for r in t.records) and t.evidence["style_claims"] == [
+        {"block": "b4", "claim": 'In Impression Construction, the line "Keep it brief." is removed.', "score": 0.1, "verified": False}]
 
 
-async def test_prose_the_instruction_names_may_be_removed(fake):
+async def test_all_block_claims_are_verified_in_one_call(fake):
     fake["tags"] = tags(style=0.9)
-    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b1", text="Sentences are declarative.")],
-                                         summary="No length rule.")
-    t = await R.route_turn(ROUTER_SHEET, [], "stop asking for short sentences")
-    assert t.applied and "Sentences are declarative." in t.sheet and "prose_kept" not in t.evidence
+    fake["calls"]["style"] = CH.StyleOut(blocks=[
+        CH.StyleBlock(id="b1", text="Sentences are short.", claim="The voice guidance is shorter."),
+        CH.StyleBlock(id="b4", text="Lead with the key finding.", claim="The impression guidance is shorter.")],
+        summary="Shorter.")
+    fake["claim_scores"] = {"The voice guidance is shorter.": 0.2}
+    t = await R.route_turn(ROUTER_SHEET, [], "make the reports more concise")
+    assert fake["claim_calls"] == [["The voice guidance is shorter.", "The impression guidance is shorter."]]
+    assert "Lead with the key finding." in t.sheet and "Sentences are short and declarative." in t.sheet
 
 
-def test_content_words_are_a_simple_overlap():
-    assert R.content_words("Keep it brief, please.") == {"keep", "brief", "please"}
-    assert R.mentioned("Lead with the most important findings.", "the impression should lead with findings", "")
-    assert not R.mentioned("Keep it brief.", "drop Width", "Impression Construction")
-    assert R.mentioned("Keep it brief.", "make it more concise", "Impression Construction") is False
-    assert R.mentioned("Keep it brief.", "shorter impression", "Impression Construction")
+async def test_a_block_without_a_claim_is_checked_by_the_summary(fake):
+    fake["tags"] = tags(style=0.9)
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text="Lead with the key finding.")],
+                                         summary="The impression guidance is shorter.")
+    t = await R.route_turn(ROUTER_SHEET, [], "make the reports more concise")
+    assert t.applied and fake["claim_calls"] == [["The impression guidance is shorter."]]
+
+
+async def test_a_vague_claim_is_not_applied_and_jev_is_not_asked(fake):
+    fake["tags"] = tags(style=0.9)
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text="Lead with the key finding.",
+                                                               claim="The wording is changed.")])
+    t = await R.route_turn(ROUTER_SHEET, [], "make the reports more concise")
+    assert not t.applied and "Keep it brief." in t.sheet and fake["claim_calls"] == []
+    assert R.STYLE_UNVERIFIED.format(claim="The wording is changed.") in t.reply
+    assert t.evidence["style_claims"][0]["vague"] is True
+
+
+def test_a_claim_is_specific_when_it_names_the_block():
+    blocks = {b.id: b for b in __import__("rapid_reports_ai.chat_router_sheet", fromlist=["x"]).prose_blocks(ROUTER_SHEET)}
+    assert R.specific_claim("In Impression Construction: sentences are shorter.", blocks["b4"])
+    assert R.specific_claim("The impression guidance is shorter.", blocks["b4"])
+    assert R.specific_claim("b2 now opens with beta.", blocks["b2"])
+    assert R.specific_claim("The Upper paragraph's opening is reworded.", blocks["b2"])
+    assert not R.specific_claim("Style updated.", blocks["b4"]) and not R.specific_claim("", blocks["b1"])
+    assert not R.specific_claim("The wording is changed.", blocks["b1"])
+
+
+def test_the_overlap_check_is_gone():
+    assert not hasattr(R, "content_words") and not hasattr(R, "PROSE_KEPT")

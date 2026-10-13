@@ -89,3 +89,15 @@ async def test_the_habit_guard_is_asked_in_the_same_call():
     t = _transport(lambda body: {k: {"noul": 0.7 if k == "habit" else 0.1} for k in body["questions"]}, seen)
     out = await J.tag("with diverticulitis always comment on collection", "CT", transport=t)
     assert out["habit"] == 0.7 and set(seen[0]["questions"]) == set(J.KINDS) | {"habit"} and len(seen) == 1
+
+
+
+async def test_verify_claims_asks_v1_per_claim_in_one_call():
+    seen = []
+    t = _transport(lambda body: {k: {"noul": 0.8} for k in body["questions"]}, seen)
+    assert await J.verify_claims("CT", "shorter", ["A is shorter.", "B is shorter."], transport=t) == [0.8, 0.8]
+    assert len(seen) == 1 and seen[0]["state"] == "SCAN TYPE: CT\n\nINSTRUCTION:\nshorter"
+    assert seen[0]["questions"]["c1"] == J.v1("B is shorter.") == {
+        "type": "noul", "instructions": 'Does the INSTRUCTION ask for this change: "B is shorter."?'}
+    assert await J.verify_claims("CT", "x", [], transport=t) == [] and len(seen) == 1
+    assert J.CLAIM_MIN == 0.5

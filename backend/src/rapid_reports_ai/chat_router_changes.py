@@ -97,6 +97,7 @@ class LayoutOut(BaseModel):
 class StyleBlock(BaseModel):
     id: str
     text: str
+    claim: str = ""   # one short specific sentence of what changed in this block (verified by Jev, V1)
 
 
 class StyleOut(BaseModel):

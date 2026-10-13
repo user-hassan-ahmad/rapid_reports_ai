@@ -81,6 +81,12 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
 13. **Explicit removals are applied (Hassan, D-R1).** "Stop listing <value>" and "never mention comparison" are ledger writes like any other. The reply names the change ("This changes something you confirmed: …", from `td.describe_change`), and the turn has a one-tap Undo. Only an implicit whole-item removal, where a rewrite drops a whole list or concept unasked, becomes a card. The save function does this already (`ledger_cards`), and the router passes those cards on.
 14. **`applied` means something changed.** A turn is `applied: true` only when the saved sheet or the ledger differs from the turn's input. A turn that changed nothing returns no undo records. Decided items the sheet no longer has (`ledger_unmatched`) get a reply line, and the response carries them.
 15. **No internal error text in replies.** A code rejection reads "I couldn't apply the change to <kind> as asked. Could you say it another way?", and the internal reason goes only to the evidence (`detail`).
+17. **2026-10-13 (Hassan): style claims verified, not word overlap.** The content-word-overlap prose check is removed: it refused ordinary style requests ("more concise", "British spelling", "less formal").
+    - The style call changes only what the instruction asks for and returns, per changed block, a claim that names the block (its heading or id) and what changed.
+    - A claim that names no block is unverified and is not applied, with no Jev call (a structural check).
+    - Every other claim gets Jev V1 ("Does the INSTRUCTION ask for this change: "<claim>"?", from the verify lab) at 0.5, all claims in one call, in parallel with the line questions.
+    - A block that fails is not applied and gets an ask line. The unit-line and grammar guards stay.
+    - This applies in both arm 1's style path and arm 2.
 16. **Prose the style call never sees:** `## Scan Context` and `## Report Structure` (the fit check reads the scan context, and the structure block is layout).
 
 ## File map
