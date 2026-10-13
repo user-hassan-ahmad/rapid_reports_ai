@@ -603,3 +603,17 @@ def test_a_claim_is_specific_when_it_names_the_block():
 
 def test_the_overlap_check_is_gone():
     assert not hasattr(R, "content_words") and not hasattr(R, "PROSE_KEPT")
+
+
+async def test_with_the_habit_guard_a_flagged_prose_line_is_not_rerouted(fake):
+    hidden = "Always comment on a collection."
+    fake["tags"] = {**tags(normal=0.9, style=0.9), "habit": 0.9}
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=f"{NEW_IC}\n{hidden}",
+                                                               claim="The impression guidance is shorter.")])
+    fake["requires"] = {hidden: 0.9}
+    fake["calls"]["normal"] = CH.NormalOut(changes=[CH.NormalChange(paragraph="Upper", negative="No collection.",
+                                                                    to="add", text="No collection.")])
+    t = await R.route_turn(ROUTER_SHEET, [], "with a collection always comment on it, and keep the impression short")
+    assert hidden not in t.sheet and NEW_IC in t.sheet
+    assert [k for k, _ in fake["seen"]] == ["style"]                 # no normal / fixed re-route call
+    assert [c["kind"] for c in t.cards] == ["habit"]

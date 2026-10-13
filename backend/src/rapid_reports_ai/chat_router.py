@@ -217,12 +217,14 @@ async def _reroute(lines: List[str], ctx: CH.Ctx) -> List[CH.Verdict]:
     return list(await asyncio.gather(*(one(l) for l in head))) + [ask(l) for l in rest]
 
 
-async def _style(sheet: str, out: CH.StyleOut, ctx: CH.Ctx, *, scan: str = "", verified: bool = False):
+async def _style(sheet: str, out: CH.StyleOut, ctx: CH.Ctx, *, scan: str = "", verified: bool = False,
+                 habit: bool = False):
     """(sheet, style record or None, reply lines, extra verdicts, evidence) for a style output: unit lines must be
     untouched; each changed block's claim is verified against the instruction (Jev V1, Hassan 2026-10-13: replaces
     the content-word overlap check) and a block whose claim fails is not applied; each new prose line is asked
     whether it requires the report to state something, and a yes is left out of the edit and re-routed.
-    `verified`: the caller already asked V1 for these claims (arm 2)."""
+    `verified`: the caller already asked V1 for these claims (arm 2). `habit`: the habit guard fired, so a flagged
+    line is left out and NOT re-routed (it must not become a normal or fixed card; Hassan 2026-10-13)."""
     blocks = {b.id: b for b in sh.prose_blocks(sheet)}
     edits = {b.id: b.text.strip("\n") for b in out.blocks
              if b.id in blocks and b.text.strip("\n") != blocks[b.id].text}
@@ -270,7 +272,7 @@ async def _style(sheet: str, out: CH.StyleOut, ctx: CH.Ctx, *, scan: str = "", v
         edits = {b: "\n".join(x for x in t.splitlines() if sh.norm(x) not in fl) for b, t in edits.items()}
         # a block left empty keeps its old prose (the radiologist did not ask to delete it)
         edits = {b: t for b, t in edits.items() if t.strip() and t.strip("\n") != blocks[b].text}
-    rerouted = await _reroute(flagged, ctx) if flagged else []
+    rerouted = await _reroute(flagged, ctx) if flagged and not habit else []
     if not edits:
         return sheet, None, lines_out, rerouted, {**ev, "style": "all_rerouted"}
     rec = {"type": "style", "blocks": [{"before": blocks[b].text, "after": edits[b]} for b in edits],
@@ -347,7 +349,8 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
     if style_out is not None and style_out.blocks:
         try:
             styled, style_rec, style_lines, extra, style_ev = await asyncio.wait_for(
-                _style(sheet, style_out, ctx, scan=scan), timeout=max(0.01, deadline - time.monotonic()))
+                _style(sheet, style_out, ctx, scan=scan, habit=bool(habit_card)),
+                timeout=max(0.01, deadline - time.monotonic()))
         except asyncio.TimeoutError:
             logger.warning("[chat-router] turn deadline: the style check did not finish")
             style_lines, extra, style_ev = [STYLE_TIMEOUT], [], {"style": "timed_out"}

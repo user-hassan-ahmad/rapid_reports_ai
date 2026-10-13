@@ -223,7 +223,8 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
     styled, style_rec, style_lines, style_ev = sheet, None, [], {}
     if verified_blocks:
         out = CH.StyleOut(blocks=verified_blocks, summary=" ".join(b.claim for b in verified_blocks))
-        styled, style_rec, style_lines, extra, style_ev = await R._style(sheet, out, ctx, scan=scan, verified=True)
+        styled, style_rec, style_lines, extra, style_ev = await R._style(sheet, out, ctx, scan=scan, verified=True,
+                                                                         habit=bool(habit_card))
         verdicts += extra
     if cover >= COVER_MIN:
         asks.append(PART_NOT_APPLIED)

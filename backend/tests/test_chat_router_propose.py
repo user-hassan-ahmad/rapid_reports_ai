@@ -203,3 +203,17 @@ async def test_verify_asks_v1_per_claim_with_habit_and_c1_on_the_changes_state()
     assert cover_call["questions"]["C1"] == {"type": "noul", "instructions":
                                              "Does the INSTRUCTION ask for anything that is not covered by the CHANGES listed?"}
     assert cover_call["state"].endswith("\n\nCHANGES:\n- Width is no longer required.")
+
+
+async def test_arm_2_with_the_habit_guard_does_not_reroute_a_flagged_line(stub, monkeypatch):
+    from rapid_reports_ai import chat_router_calls as C
+
+    async def no_call(*a, **k):
+        raise AssertionError("no re-route call under the habit guard")
+    monkeypatch.setattr(C, "call_kind", no_call)
+    hidden = "Always comment on a collection."
+    stub["proposal"] = P.Proposal(changes=[_change("style", "The impression guidance is shorter.", id="b4",
+                                                   text=f"Lead with the main finding.\n{hidden}")])
+    stub["habit"], stub["requires"] = 0.9, {hidden: 0.9}
+    t = await P.propose_turn(ROUTER_SHEET, [], "with a collection always comment on it; shorter impression")
+    assert hidden not in t.sheet and [c["kind"] for c in t.cards] == ["habit"]

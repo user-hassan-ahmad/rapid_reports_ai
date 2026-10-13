@@ -87,6 +87,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
     - Every other claim gets Jev V1 ("Does the INSTRUCTION ask for this change: "<claim>"?", from the verify lab) at 0.5, all claims in one call, in parallel with the line questions.
     - A block that fails is not applied and gets an ask line. The unit-line and grammar guards stay.
     - This applies in both arm 1's style path and arm 2.
+18. **2026-10-13 (Hassan): the habit guard covers the style path.** When it fires, a prose line flagged as requiring content is left out and is not re-routed, so it cannot become a normal or fixed card.
 16. **Prose the style call never sees:** `## Scan Context` and `## Report Structure` (the fit check reads the scan context, and the structure block is layout).
 
 ## File map
