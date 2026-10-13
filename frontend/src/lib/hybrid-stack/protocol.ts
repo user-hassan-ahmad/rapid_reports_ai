@@ -10,6 +10,16 @@ export function pickBody(pick: ProtocolPick | null): { protocol_id?: string; pha
 	return pick ? { protocol_id: pick.id, phases: pick.phases, laterality: pick.laterality } : {};
 }
 
+/** The pick's identity for the slim sheet: a different id, phase set or side has different normals. '' = no pick. */
+export function pickKey(pick: ProtocolPick | null): string {
+	return pick ? [pick.id, pick.phases.join(','), pick.laterality ?? ''].join('\u0001') : '';
+}
+
+/** A scan type with no pick behind it (a restored draft, an opened report, a revert) belongs in the free-text box. */
+export function needsFreeText(scanType: string, pick: ProtocolPick | null): boolean {
+	return !!scanType.trim() && !pick;
+}
+
 /** Pills in schema order: every non-quiet pill, plus a quiet region once something has been placed there. */
 export function visiblePills(groups: string[], pills: string[], quiet: string[], placed: Set<string>): string[] {
 	if (!quiet.length) return pills;

@@ -44,7 +44,7 @@
 	import { abnormalAll, assumedFrom, moreLine, openCount, rowSentences, splitReply, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
-	import { pickBody, visiblePills, withElsewhere, type ProtocolPick } from '$lib/hybrid-stack/protocol';
+	import { pickBody, pickKey, visiblePills, withElsewhere, type ProtocolPick } from '$lib/hybrid-stack/protocol';
 	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
@@ -403,6 +403,14 @@
 			fixedReferrals = null; // a new case asks its own questions
 			scheduleGroup(0);
 			scheduleItems(0); // the referral row appears before anything is dictated
+		}
+	}
+	// The slim sheet follows the regions and the pick: a different protocol, phase set or side has different normals.
+	let lastSheetKey = '\u0002'; // no regions, no pick: nothing to load (as the regions block above)
+	$: {
+		const k = `${stackRegions.map((r) => r.name).join('|')}\u0002${pickKey(stackProtocol)}`;
+		if (k !== lastSheetKey) {
+			lastSheetKey = k;
 			void loadSlimSheet();
 		}
 	}

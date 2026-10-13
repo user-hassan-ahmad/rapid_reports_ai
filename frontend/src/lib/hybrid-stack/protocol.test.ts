@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { pickBody, visiblePills, withElsewhere } from './protocol';
+import { needsFreeText, pickBody, pickKey, visiblePills, withElsewhere, type ProtocolPick } from './protocol';
 
 describe('visiblePills', () => {
 	const groups = ['Technique', 'Right breast', 'Implants', 'Other findings', 'General', 'Conclusion'];
@@ -35,5 +35,28 @@ describe('pickBody', () => {
 		expect(pickBody({ id: 'TMKN', phases: [], laterality: 'left', displayName: 'MRI Knee', line: 'No contrast' })).toEqual({
 			protocol_id: 'TMKN', phases: [], laterality: 'left'
 		});
+	});
+});
+
+describe('pickKey', () => {
+	const knee: ProtocolPick = { id: 'TMKN', phases: [], laterality: 'left', displayName: 'MRI Knee', line: 'No contrast' };
+	it('is empty without a pick and changes with the id, the phases or the side', () => {
+		expect(pickKey(null)).toBe('');
+		const k = pickKey(knee);
+		expect(pickKey({ ...knee })).toBe(k);
+		expect(pickKey({ ...knee, laterality: 'right' })).not.toBe(k);
+		expect(pickKey({ ...knee, phases: ['arterial'] })).not.toBe(k);
+		expect(pickKey({ ...knee, id: 'TMKX' })).not.toBe(k);
+		expect(pickKey({ ...knee, displayName: 'Other name' })).toBe(k); // display text is not identity
+	});
+});
+
+describe('needsFreeText', () => {
+	const pick: ProtocolPick = { id: 'TCAP', phases: ['portal_venous'], laterality: null, displayName: 'CT AP', line: 'IV contrast' };
+	it('a scan type with no pick behind it shows as free text', () => {
+		expect(needsFreeText('CT abdomen and pelvis', null)).toBe(true);
+		expect(needsFreeText('CT abdomen and pelvis', pick)).toBe(false);
+		expect(needsFreeText('   ', null)).toBe(false);
+		expect(needsFreeText('', null)).toBe(false);
 	});
 });

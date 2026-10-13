@@ -16,7 +16,7 @@ import { pillState } from '$lib/dictation-lab/coverage';
 import { effectiveConfig } from '$lib/dictation-lab/package';
 import { fetchSchema, postReportId } from '$lib/hybrid-stack/api';
 import ProtocolPicker from '$lib/hybrid-stack/ProtocolPicker.svelte';
-import { pickBody, type ProtocolPick } from '$lib/hybrid-stack/protocol';
+import { needsFreeText, pickBody, type ProtocolPick } from '$lib/hybrid-stack/protocol';
 import { hybridStackOn } from '$lib/hybrid-stack/flag';
 import type { GateRecord, StackSchema } from '$lib/hybrid-stack/types';
 import { hasUnsavedWork as unsavedWork } from '$lib/utils/confirmGate';
@@ -146,6 +146,10 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	let stackProtocol: ProtocolPick | null = null;
 	let freeText = false;   // "Not listed": today's textarea and reconciler path
 	let pickerKey = 0;      // bumped by a reset so the picker starts empty
+	// A scan type with no pick behind it (restored draft, opened report, revert, a flag that arrives late) shows in
+	// the textarea, so the scan type is never hidden behind an empty picker.
+	$: if (protocolLibrary && !freeText && needsFreeText(scanType, stackProtocol)) freeText = true;
+	let schemaSeq = 0;      // a stale /schema reply never overwrites the schema or the scan type
 	let stackSchema: StackSchema | null = null;
 	// Scratchpad v2 gate (spec 2026-10-11 §5-6): Generate waits for the Confirm, then sends the findings block.
 	let stackGate: GateRecord | null = null;
@@ -164,6 +168,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		void loadStackSchema(sectionsGeneratedFromScanType, sectionsGeneratedFromHistory);
 	}
 	async function loadStackSchema(scan: string, history: string) {
+		const mine = ++schemaSeq;
 		stackSchemaFor = `${scan.trim()}|${history.trim()}`;
 		stackPills = [];
 		if (!hybridStack || !scan.trim()) {
@@ -171,7 +176,9 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			return;
 		}
 		try {
-			stackSchema = await fetchSchema($token, { scan_type: scan.trim(), clinical_history: history.trim(), ...pickBody(stackProtocol) });
+			const schema = await fetchSchema($token, { scan_type: scan.trim(), clinical_history: history.trim(), ...pickBody(stackProtocol) });
+			if (mine !== schemaSeq) return;
+			stackSchema = schema;
 			// The server's line (side and phase variant) becomes the scan type; the workspace stays clean.
 			if (stackSchema?.protocol) {
 				const line = stackSchema.protocol.scan_type_line;
@@ -180,7 +187,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 				scanType = line;
 			}
 		} catch {
-			stackSchema = null; // fail open: today's pills show
+			if (mine === schemaSeq) stackSchema = null; // fail open: today's pills show
 		}
 	}
 	/** Dictation Lab only: three-state pills from coverage scores. null = binary pills as in production. */
@@ -890,7 +897,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 					<div class="flex items-center gap-2">
 						{#if sectionsDirty && sectionsGeneratedFromScanType}
 							<button type="button"
-								onclick={() => { scanType = sectionsGeneratedFromScanType; clinicalHistory = sectionsGeneratedFromHistory; }}
+								onclick={() => { scanType = sectionsGeneratedFromScanType; clinicalHistory = sectionsGeneratedFromHistory; stackProtocol = null; freeText = true; }}
 								class="text-xs text-gray-500 hover:text-gray-300 transition-colors flex items-center gap-1"
 								in:fade={{ duration: 200 }}>
 								<svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
