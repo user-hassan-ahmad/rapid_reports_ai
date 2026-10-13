@@ -56,7 +56,14 @@ export interface StackItem {
 	answered: boolean; // the dictation answered every sentence: the row folds
 }
 export interface ItemsResult { items: StackItem[]; capped: StackItem[]; contradicted: string[]; cached: boolean; ms: number; error: string | null }
-export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean }
+export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean; required_values?: string[] }
+/** The value cluster (requirements spec 2026-10-12 part 1): a template's required value and how it was resolved.
+ *  check: stated, but no single sentence named (needs a look); filling: a fill is running. */
+export type ValueState = 'filled' | 'entered' | 'na' | 'open' | 'check' | 'filling';
+export interface ValueChip { item: string; state: ValueState; value: string | null; quote: string | null; kept?: boolean }
+/** The server's smart fill: filled from the dictation (value null: stated without one number) or open. */
+export interface ValueFill { item: string; state: 'filled' | 'open'; value: string | null; quote: string | null; score?: number | null }
+export interface ValuesResult { values: ValueFill[]; ms: number; error: string | null }
 /** Region -> normals the assumed-normal check dropped, with why. */
 export type Dropped = Record<string, { sentence: string; reason: string }[]>;
 export interface AssumedResult {
@@ -89,6 +96,7 @@ export interface GateRecord {
 	assumed_check_failed?: boolean; // the assumed-normal check failed: nothing was dropped by it
 	// Dictation checks seen this session and how each ended: answered, skipped, edited away, or still open (advisory).
 	checks?: { kind: string; quote: string; other: string | null; answered_by: 'as_dictated' | 'skip' | 'replaced' | 'edited' | 'open' }[];
+	values?: ValueChip[]; // the value cluster at Confirm (absent: the template has no required values)
 	units_hash: string;
 }
 export interface StackCommand { action: 'dictate' | 'delete' | 'answer'; region: string | null; item: string | null; command: string | null; confidence: number | null }
