@@ -955,6 +955,10 @@
    "outcome": null,
    "needed": [
     "ischemia"
+   ],
+   "waiting": [
+    "ischemia_test",
+    "fixed_defect"
    ]
   },
   {
@@ -969,6 +973,9 @@
    "outcome": null,
    "needed": [
     "ischemia_test"
+   ],
+   "waiting": [
+    "fixed_defect"
    ]
   },
   {

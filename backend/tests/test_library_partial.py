@@ -225,7 +225,44 @@ def test_bts_follow_up_inputs_wait_for_prior_study():
     assert "resolved" in t.needed and "resolved" not in t.waiting
 
 
+def _packs():
+    import json
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+    raw = json.loads(LB.BUNDLE.read_text())
+    lib = LB.Library(raw)
+    current = [lib.lookup(k.split("@")[0]) for k in sorted(raw["entries"])]
+    return [e for e in {e.key: e for e in current}.values() if e.result]     # tier 1 (computed) packs only
+
+
+def _golden(e):
+    import json
+    from pathlib import Path
+    p = Path(__file__).resolve().parents[2] / "guidelines" / e.id / "cases.json"
+    return [c["inputs"] for c in json.loads(p.read_text())["cases"]] if p.exists() else []
+
+
 def test_parents_first_never_leaves_an_open_bounded_card_with_nothing_to_ask(toy_entry):
     for given in ({}, {"size": 7}, {"kind": "solid"}):
         t = E.evaluate(toy_entry, given)
         assert t.outcome is not None or t.needed
+    for e in _packs():                                  # every pack, empty and on each golden case's inputs
+        for given in [{}] + _golden(e):
+            t = E.evaluate(e, given)
+            assert t.outcome is not None or not t.bounded or t.needed, (e.key, given)
+            assert not set(t.needed) & set(t.waiting), (e.key, given)
+
+
+def test_an_input_with_a_value_never_waits_but_its_unknown_parent_is_asked():
+    t = E.evaluate(_bts(), {"age": 60, "proven_malignant": False, "resolved": False})
+    assert "resolved" not in t.waiting and "prior_study" in t.needed
+    bosniak = next(e for e in _packs() if e.id == "bosniak-renal-cyst")
+    t = E.evaluate(bosniak, {"technique": "renal_mass_protocol"})     # the CT exam preset
+    assert "technique" not in t.waiting and "too_small" in t.needed
+
+
+def test_a_gate_that_can_settle_the_exam_is_asked_straight_after_eligibility():
+    pirads = next(e for e in _packs() if e.id == "pi-rads-2-1")
+    assert E.gates(pirads) == {"finding_above_1"}      # no finding above 1 settles the exam at PI-RADS 1
+    t = E.evaluate(pirads, {})
+    assert t.needed[:2] == ["treated_cancer", "finding_above_1"]        # eligibility, then the gate, then zone, dwi
+    assert E.evaluate(pirads, {"treated_cancer": False}).needed[0] == "finding_above_1"

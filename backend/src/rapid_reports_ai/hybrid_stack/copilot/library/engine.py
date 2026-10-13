@@ -53,7 +53,8 @@ class Trace(BaseModel):
     bounded: bool = True              # False: an unknown number feeds a formula, so `possible` may be incomplete
     needed: list[str] = Field(default_factory=list)
     decides: dict[str, list[str]] = Field(default_factory=dict)   # needed input -> the outcomes its value decides between
-    waiting: list[str] = Field(default_factory=list)   # behind a prerequisite still unknown: not asked yet (§7.4)
+    waiting: list[str] = Field(default_factory=list)   # unanswered inputs behind a prerequisite still unknown: not
+                                                       # asked yet (§7.4); an input with a value is never listed
     inputs: dict[str, InputValue] = Field(default_factory=dict)
     steps: list[StepTrace] = Field(default_factory=list)
 
@@ -317,12 +318,32 @@ def parents(entry: Entry) -> set[str]:
     return {c.ref for i in entry.inputs for p in i.prerequisites for c in conds(p) if entry.input(c.ref) is not None}
 
 
-def parents_first(entry: Entry, needed: list[str], env: dict[str, V]) -> tuple[list[str], list[str]]:
+def gates(entry: Entry) -> set[str]:
+    """The inputs one answer to which can settle the outcome on its own: a result rules case (not does_not_apply)
+    that tests only that input and eligibility inputs, e.g. PI-RADS finding_above_1 = no settles the exam at PI-RADS 1.
+    Asked straight after eligibility, since that one answer may close the card."""
+    s = entry.step(entry.result)
+    if not isinstance(s, RulesStep):
+        return set()
+    out: set[str] = set()
+    for case in s.cases:
+        refs = {c.ref for c in conds(case.when)}
+        if case.result == DOES_NOT_APPLY or any(entry.input(r) is None for r in refs):
+            continue
+        rest = {r for r in refs if entry.input(r).role != "eligibility"}
+        if len(rest) == 1:
+            out |= rest
+    return out
+
+
+def parents_first(entry: Entry, needed: list[str], env: dict[str, V],
+                  held: frozenset[str] = frozenset()) -> tuple[list[str], list[str]]:
     """(needed, waiting), spec §7.4. An input behind a prerequisite that is still unknown is not asked yet: it waits,
-    and its unknown parents are asked in its place, transitively. Order: eligibility inputs, then parents, then the
-    rest, each in the pack's input order."""
+    and its unknown parents are asked in its place, transitively. The walk goes through a parent that has a value
+    (`held`: its own unknown prerequisite must still be asked), but an input with a value is never returned as waiting.
+    Order: eligibility inputs, then gates, then parents, then the rest, each in the pack's input order."""
     order = [i.id for i in entry.inputs]
-    par = parents(entry)
+    par, gate = parents(entry), gates(entry)
     ask: list[str] = []
     waiting: list[str] = []
     todo, seen = list(needed), set()
@@ -339,8 +360,8 @@ def parents_first(entry: Entry, needed: list[str], env: dict[str, V]) -> tuple[l
             todo += [u for u in up if u not in seen]
         else:
             ask.append(k)
-    rank = {k: (entry.input(k).role != "eligibility", k not in par, order.index(k)) for k in ask}
-    return sorted(ask, key=rank.get), sorted((w for w in waiting if w not in ask), key=order.index)
+    rank = {k: (entry.input(k).role != "eligibility", k not in gate, k not in par, order.index(k)) for k in ask}
+    return sorted(ask, key=rank.get), sorted((w for w in waiting if w not in ask and w not in held), key=order.index)
 
 
 def reach_states(e: Entry, ref: str) -> set[str]:
@@ -500,7 +521,8 @@ def evaluate(entry: Entry, given: dict[str, Any]) -> Trace:
     possible, bounded, needed, decides = _partial(entry, given, env)
     if bounded and len(possible) == 1:      # the unknown inputs cannot change the outcome: it is settled
         return Trace(outcome=possible[0], possible=possible, bounded=True, needed=[], inputs=inputs, steps=steps)
-    needed, waiting = parents_first(entry, needed, env)
+    needed, waiting = parents_first(entry, needed, env,
+                                    frozenset(k for k, v in given.items() if v.state != "unknown"))
     decides = {k: decides.get(k) or possible for k in needed}
     return Trace(possible=possible, bounded=bounded, needed=needed, waiting=waiting, decides=decides, inputs=inputs,
                  steps=steps)

@@ -322,6 +322,9 @@
    "outcome": null,
    "needed": [
     "prior_programme_scan"
+   ],
+   "waiting": [
+    "growth_12m_cm"
    ]
   },
   {
