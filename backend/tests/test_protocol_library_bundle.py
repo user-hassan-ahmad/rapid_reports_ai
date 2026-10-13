@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -13,6 +14,16 @@ def _clear():
     PB.reset_cache()
     yield
     PB.reset_cache()
+
+
+@pytest.fixture(autouse=True)
+def _logger_enabled():
+    """An earlier test's logging config can leave this logger disabled; caplog would then see nothing."""
+    lg = logging.getLogger(PB.__name__)
+    was = lg.disabled
+    lg.disabled = False
+    yield
+    lg.disabled = was
 
 
 def test_phase_id():
@@ -57,6 +68,7 @@ def test_library_allowed_needs_flag_stack_and_bundle(monkeypatch):
 
 
 def test_broken_bundle_turns_library_off(monkeypatch, tmp_path, caplog):
+    caplog.set_level(logging.WARNING, logger=PB.__name__)
     p = tmp_path / "bad.json"
     p.write_text("{not json")
     env = {"RR_DICTATION_V2": "1", "RR_PROTOCOL_LIBRARY": "1", "RR_PROTOCOL_LIBRARY_PATH": str(p)}
