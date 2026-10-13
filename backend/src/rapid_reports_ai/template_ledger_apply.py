@@ -649,6 +649,29 @@ def _negative_reword(sb: tss.SheetStructure, sa: tss.SheetStructure, e: dict) ->
     return new[0] if len(gone) == 1 and len(new) == 1 and gone[0] in mine else None
 
 
+def _habit_reword(sb: tss.SheetStructure, sa: tss.SheetStructure, e: dict) -> Optional[Tuple[str, dict]]:
+    """(new key, the habit as the rewrite now writes it) when, in the entry's paragraph, exactly one habit condition
+    was removed (the entry's) and one added: the chat reworded the condition, so the entry moves with it (as a reworded
+    FIXED or NEGATIVE line does) and the sheet never carries two lines. Else None."""
+    para_name, cond = td.split_habit_key(e["key"])
+    pb, pa = _habit_paragraph(sb, para_name), _habit_paragraph(sa, para_name)
+    if pb is None or pa is None:
+        return None
+
+    def conds(st, pid):
+        out = {td._name(r.condition): r.condition for r in st.rules if r.effect == "ask" and r.paragraph == pid}
+        out.update({td._name(n.condition): n.condition for n in st.negatives if n.paragraph == pid
+                    and n.origin == "template" and n.condition and n.condition_source == "findings"})
+        return out
+    b, a = conds(sb, pb.id), conds(sa, pa.id)
+    gone, new = [k for k in b if k not in a], [a[k] for k in a if k not in b]
+    if not (len(gone) == 1 and len(new) == 1 and gone[0] == td._name(cond)):
+        return None
+    key = td.habit_key(pa.name, new[0])
+    seen = observe(sa, "habit", key)
+    return key, {**e["choice"], **{k: v for k, v in (seen or {}).items() if v}}
+
+
 def _wholesale(e: dict, ob: dict, oa: dict, sb: tss.SheetStructure, sa: tss.SheetStructure) -> bool:
     """A rewrite that removed a whole decided item: the whole LIST_MISSING list, or every line of a used concept.
     Product decision D3: never folded into the ledger silently; the ledger is kept and a card asks."""
@@ -693,6 +716,10 @@ def reconcile_chat(before: str, after: str, ledger: List[dict]) -> Tuple[List[di
                 text = _negative_reword(sb, sa, e)
                 out, ch = td.rekey_decision(out, "normal", e["key"], td.negative_key(para, text), source="chat",
                                             choice={"text": text})
+            elif (e["kind"] == "habit" and ob and ob.get("mode") in ("ask", "state") and oa is not None
+                  and oa.get("mode") == "removed" and _habit_reword(sb, sa, e)):   # its condition reworded: rekeyed
+                new_key, choice = _habit_reword(sb, sa, e)
+                out, ch = td.rekey_decision(out, "habit", e["key"], new_key, source="chat", choice=choice)
             elif ob is None or oa is None or ob == oa:   # a paragraph gone or back: nothing to read, entry kept
                 continue
             elif _wholesale(e, ob, oa, sb, sa):

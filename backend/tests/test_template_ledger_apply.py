@@ -522,3 +522,18 @@ def test_a_chat_rewrite_that_drops_a_confirmed_habit_is_kept_and_asked():
     restated = before.replace(ASK_LINE, STATE_LINE)
     out, changes, cards = tla.reconcile_chat(before, restated, led)
     assert cards == [] and out[0]["choice"] == {**HASK, "mode": "state"} and out[0]["source"] == "chat"
+
+
+def test_a_chat_reword_of_a_confirmed_habits_condition_is_folded_as_a_reword():
+    led = _led(("habit", HK, HASK))
+    before = tla.apply_ledger(HABIT_SHEET, led).sheet
+    new_cond = "a focal liver mass abnormality is reported"
+    after = before.replace("[findings: a focal liver abnormality is reported]", f"[findings: {new_cond}]")
+    out, changes, cards = tla.reconcile_chat(before, after, led)
+    assert cards == [] and len(changes) == 1 and changes[0]["old"]["key"] == HK
+    assert [(e["key"], e["choice"], e["source"]) for e in out] == [(f"Liver :: {new_cond}", HASK, "chat")]
+    applied = tla.apply_ledger(after, out)
+    assert applied.sheet == after and applied.pending == []   # one line, not two
+    reworded_q = after.replace('"Extension into the gallbladder?"', '"Gallbladder extension?"')
+    out, _, _ = tla.reconcile_chat(before, reworded_q, led)   # condition and question reworded together
+    assert out[0]["key"] == f"Liver :: {new_cond}" and out[0]["choice"]["question"] == "Gallbladder extension?"
