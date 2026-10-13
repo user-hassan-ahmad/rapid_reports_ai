@@ -16,6 +16,7 @@
 Every Jev question is case-agnostic (structural wording only)."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import List, Optional, Set
@@ -74,27 +75,49 @@ def _targeted(st: tss.SheetStructure) -> Set[str]:
     return {norm_key(r.target) for r in st.rules if r.condition_source == "context" and r.target}
 
 
-async def _jev_scores(texts: List[str], transport=None) -> List[float]:
+JEV_BATCH = 20   # questions per Jev call; larger sets go as parallel calls
+
+
+async def _noul_batched(instructions: List[str], state: str, transport=None, what: str = "jev") -> List[float]:
+    """One noul score per instruction, JEV_BATCH questions per call, the calls in parallel. Raises on any failure
+    (a timeout is logged first)."""
     from .jev_client import JEV_MODEL, jev_post
-    qs = {f"f{i}": {"type": "noul", "instructions": FIXED_QUESTION.format(s=t)} for i, t in enumerate(texts)}
-    r = await jev_post({"model": JEV_MODEL, "state": "Statements from a radiology report template.", "questions": qs},
-                       os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
-    r.raise_for_status()
-    ans = r.json().get("answers") or {}
-    out = []
-    for i in range(len(texts)):
-        v = (ans.get(f"f{i}") or {}).get("noul")
-        if isinstance(v, bool) or not isinstance(v, (int, float)):
-            raise ValueError("jev: incomplete answers")
-        out.append(float(v))
-    return out
+
+    async def one(chunk: List[str]) -> List[float]:
+        qs = {f"q{i}": {"type": "noul", "instructions": t} for i, t in enumerate(chunk)}
+        r = await jev_post({"model": JEV_MODEL, "state": state, "questions": qs},
+                           os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
+        r.raise_for_status()
+        ans = r.json().get("answers") or {}
+        out = []
+        for i in range(len(chunk)):
+            v = (ans.get(f"q{i}") or {}).get("noul")
+            if isinstance(v, bool) or not isinstance(v, (int, float)):
+                raise ValueError("jev: incomplete answers")
+            out.append(float(v))
+        return out
+
+    chunks = [instructions[i:i + JEV_BATCH] for i in range(0, len(instructions), JEV_BATCH)]
+    try:
+        parts = await asyncio.gather(*(one(c) for c in chunks))
+    except Exception as e:
+        if "timeout" in type(e).__name__.lower():
+            logger.warning("[sheet-checks] %s: Jev timed out (%d questions in %d calls)", what, len(instructions),
+                           len(chunks))
+        raise
+    return [s for p in parts for s in p]
+
+
+async def _jev_scores(texts: List[str], transport=None) -> List[float]:
+    return await _noul_batched([FIXED_QUESTION.format(s=t) for t in texts],
+                               "Statements from a radiology report template.", transport, what="fixed")
 
 
 async def fixed_flags(st: tss.SheetStructure, ledger: List[dict], transport=None) -> List[str]:
     """The FIXED lines to show as "Always printed" cards. Raises when Jev fails (the caller shows no such cards)."""
     texts = fixed_candidates(st, ledger)
     targeted = _targeted(st)   # roadmap §4(a): the default-plus-context-rule pattern is legal for the backstop
-    backstop = [t for t in texts if tsg._ABSENCE_START.match(t) and norm_key(t) not in targeted]
+    backstop = [t for t in texts if tsg.absence_worded(t) and norm_key(t) not in targeted]
     rest = [t for t in texts if t not in backstop]
     scores = await _jev_scores(rest, transport) if rest else []
     flagged = set(backstop) | {t for t, s in zip(rest, scores) if s >= FIXED_MIN}
@@ -102,13 +125,14 @@ async def fixed_flags(st: tss.SheetStructure, ledger: List[dict], transport=None
 
 
 DUP_MIN = 0.5   # lab-set (scripts/rules_step_lab.py dups)
+DUP_MAX_QUESTIONS = 120   # (decided concept, line) pairs asked per check; the rest are logged as truncated
 
 
 def duplicate_candidates(st: tss.SheetStructure, ledger: List[dict]) -> List[dict]:
     """Lines the ledger does not own that a decided concept could also be stating in every report: FIXED lines and
     the template's unconditional NEGATIVE lines. A line a non-standard context rule targets or prints is conditional
     (resolved per case) and is left out. Each as {"text", "ledger_kind", "key"}: the ledger item a card records."""
-    owned = td.concept_texts(ledger) | _conditional(st)
+    owned = td.concept_texts(ledger) | _conditional(st)   # (decided lines are skipped below, by their ledger key)
     paras = {p.id: p.name for p in st.paragraphs}
     found = [(f.text, "fixed", f.text) for f in st.fixed_blocks]
     found += [(n.text, "normal", td.negative_key(paras[n.paragraph], n.text)) for n in st.negatives
@@ -117,32 +141,29 @@ def duplicate_candidates(st: tss.SheetStructure, ledger: List[dict]) -> List[dic
     seen: Set[str] = set()
     for text, kind, key in found:
         k = norm_key(text)
-        if k not in owned and k not in seen:
-            seen.add(k)
-            out.append({"text": text, "ledger_kind": kind, "key": key})
+        if k in owned or k in seen or td.find(ledger, kind, key) is not None:   # an answered card stays answered
+            continue
+        seen.add(k)
+        out.append({"text": text, "ledger_kind": kind, "key": key})
     return out
 
 
 async def concept_duplicates(st: tss.SheetStructure, ledger: List[dict], transport=None) -> List[dict]:
     """Style cards for a line that may state a decided concept a second time (Jev: the concept's own question over
     each line the ledger does not own). Raises when Jev fails."""
-    from .jev_client import JEV_MODEL, jev_post
     decided = [e["key"] for e in ledger if e["kind"] == "concept" and e["key"] in td.CONCEPTS]
     lines = duplicate_candidates(st, ledger)
     if not decided or not lines:
         return []
     pairs = [(c, x) for c in decided for x in lines]
-    qs = {f"d{i}": {"type": "noul", "instructions": f"{td.CONCEPTS[c].question} REPORT: {x['text']}"}
-          for i, (c, x) in enumerate(pairs)}
-    r = await jev_post({"model": JEV_MODEL, "state": "Each question quotes one REPORT sentence from a template.",
-                        "questions": qs}, os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
-    r.raise_for_status()
-    ans = r.json().get("answers") or {}
+    if len(pairs) > DUP_MAX_QUESTIONS:
+        logger.info("[sheet-checks] duplicates: %d questions truncated to %d", len(pairs), DUP_MAX_QUESTIONS)
+        pairs = pairs[:DUP_MAX_QUESTIONS]
+    scores = await _noul_batched([f"{td.CONCEPTS[c].question} REPORT: {x['text']}" for c, x in pairs],
+                                 "Each question quotes one REPORT sentence from a template.", transport,
+                                 what="duplicates")
     out, seen = [], set()
-    for i, (c, x) in enumerate(pairs):
-        v = (ans.get(f"d{i}") or {}).get("noul")
-        if isinstance(v, bool) or not isinstance(v, (int, float)):
-            raise ValueError("jev: incomplete answers")
+    for (c, x), v in zip(pairs, scores):
         if v >= DUP_MIN and x["key"] not in seen:
             seen.add(x["key"])
             out.append(trc.duplicate_card(x["text"], td.CONCEPTS[c].label, x["ledger_kind"], x["key"]))
@@ -193,8 +214,8 @@ def uncovered(st: tss.SheetStructure) -> List[dict]:
     for p in st.paragraphs:
         if p.section not in findings:
             continue
-        have = {td._name(n.structure) for n in st.normals if n.paragraph == p.id}
-        out += [trc.uncovered_card(p.name, c) for c in p.covers if td._name(c) not in have]
+        have = {td.name_key(n.structure) for n in st.normals if n.paragraph == p.id}
+        out += [trc.uncovered_card(p.name, c) for c in p.covers if td.name_key(c) not in have]
     return out
 
 
@@ -207,11 +228,19 @@ async def sheet_checks(sheet: str, ledger: List[dict], transport=None) -> dict:
         out["errors"].append("parse")
         return out
     ledger = td.clean_ledger(ledger)
-    res = tla.apply_ledger(sheet, ledger)
-    out["stale_quotes"] = res.stale_quotes
-    out["unmatched_cards"] = trc.unmatched_cards(res.unmatched)   # the same cards /decide shows at review
-    out["normal_report"] = normal_report(sheet, st)
-    out["uncovered_cards"] = uncovered(st)
+    try:
+        res = tla.apply_ledger(sheet, ledger)
+        out["stale_quotes"] = res.stale_quotes
+        out["unmatched_cards"] = trc.unmatched_cards(res.unmatched)   # the same cards /decide shows at review
+    except Exception as e:
+        logger.warning("[sheet-checks] ledger check failed: %s", type(e).__name__)
+        out["errors"].append("ledger")
+    for name, part in (("normal_report", lambda: normal_report(sheet, st)), ("uncovered_cards", lambda: uncovered(st))):
+        try:
+            out[name] = part()
+        except Exception as e:
+            logger.warning("[sheet-checks] %s failed: %s", name, type(e).__name__)
+            out["errors"].append(name)
     try:
         out["duplicate_cards"] = await concept_duplicates(st, ledger, transport)
     except Exception as e:

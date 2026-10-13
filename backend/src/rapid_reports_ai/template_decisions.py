@@ -120,6 +120,11 @@ def _name(s: str) -> str:
     return " ".join((s or "").lower().split())
 
 
+def name_key(s: str) -> str:
+    """The comparison form of a value or structure name (lower case, single spaces)."""
+    return _name(s)
+
+
 def structure_label(structure: str) -> str:
     """A NORMAL's structure label without the quotes the grammar allows (NORMAL ["ROTATOR CUFF"])."""
     s = (structure or "").strip()

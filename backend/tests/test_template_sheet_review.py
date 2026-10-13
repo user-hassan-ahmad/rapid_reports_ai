@@ -158,3 +158,49 @@ def test_a_non_standard_context_rule_makes_its_lines_conditional_not_always_prin
     assert cands == ["Axial images were acquired.", "No previous imaging available."]
     assert not {"Routine protocol.", "Out-of-hours protocol.", "Reported out of hours."} & {
         x["text"] for x in V.duplicate_candidates(st, [])}
+
+
+def _cmp_ledger():
+    led, _ = td.set_decision([], "concept", "comparison", {"use": True, "default": "No previous imaging available.",
+                                                           "when_met": "Compared with {date}."}, source="creation")
+    return led
+
+
+async def test_an_answered_duplicate_card_does_not_come_back():
+    led = _cmp_ledger()
+    sheet = tla.apply_ledger(LEDGER_SHEET, led).sheet.replace(
+        'FIXED "Axial images were acquired."\n', 'FIXED "Axial images were acquired."\nFIXED "There is no prior study."\n'
+    ).replace('NEGATIVE "No focal liver lesion."\n',
+              'NEGATIVE "No focal liver lesion."\nNEGATIVE "No prior study for comparison."\n')
+    cards = await V.concept_duplicates(_st(sheet), led, transport=_jev_on("prior"))
+    assert {c["title"] for c in cards} == {"There is no prior study.", "No prior study for comparison."}
+    keep = [{"kind": c["ledger_kind"], "key": c["key"], "choice": c["choices"][1]["choice"]} for c in cards]
+    led2, errors = td.ledger_from_changes(keep, base=led)     # "Keep both" on each
+    assert errors == []
+    assert await V.concept_duplicates(_st(sheet), led2, transport=_jev_on("prior")) == []
+
+
+async def test_a_failing_part_of_the_sheet_checks_is_named_and_the_rest_still_runs(monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("x")
+    monkeypatch.setattr(V, "normal_report", boom)
+    out = await V.sheet_checks(LEDGER_SHEET, [], transport=_jev(0.1))
+    assert out["errors"] == ["normal_report"] and out["normal_report"] == [] and out["uncovered_cards"]
+
+
+async def test_the_duplicate_check_batches_its_questions_and_caps_them(monkeypatch):
+    sizes, logged = [], []
+
+    def handler(request):
+        import json
+        qs = json.loads(request.content)["questions"]
+        sizes.append(len(qs))
+        return httpx.Response(200, json={"answers": {k: {"noul": 0.1} for k in qs}})
+    extra = "".join(f'FIXED "Line number {i}."\n' for i in range(30))
+    sheet = tla.apply_ledger(LEDGER_SHEET, _cmp_ledger()).sheet.replace(
+        'FIXED "Axial images were acquired."\n', 'FIXED "Axial images were acquired."\n' + extra)
+    monkeypatch.setattr(V, "DUP_MAX_QUESTIONS", 25)
+    monkeypatch.setattr(V.logger, "info", lambda msg, *a: logged.append(msg % a))   # global log config varies
+    assert await V.concept_duplicates(_st(sheet), _cmp_ledger(), transport=httpx.MockTransport(handler)) == []
+    assert sum(sizes) == 25 and max(sizes) <= V.JEV_BATCH
+    assert any("truncated" in m for m in logged)

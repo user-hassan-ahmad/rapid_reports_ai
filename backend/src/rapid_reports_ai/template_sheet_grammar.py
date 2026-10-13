@@ -270,6 +270,13 @@ def _outside_quotes(text: str) -> str:
 # A statement of absence. In prose it should be a NEGATIVE unit. Normal-state voice ("the ducts are not
 # dilated") is not an absence statement and stays prose.
 _ABSENCE_START = re.compile(r"^(?:No|There\s+is\s+no|There\s+are\s+no|Without|Absent|Nil|Negative\s+for)\b", re.I)
+
+
+def absence_worded(text: str) -> bool:
+    """The sentence opens as a statement of absence ("No …", "There is no …", "Without …")."""
+    return bool(_ABSENCE_START.match(text or ""))
+
+
 _ABSENCE_ANY = re.compile(
     r"\b(?:is|are)\s+absent\b"
     r"|^Free\s+of\b"  # "Free of X."
