@@ -129,3 +129,44 @@ def test_the_kill_switch_and_a_non_grammar_sheet_take_todays_path(client, auth_h
     monkeypatch.setenv("RR_CHAT_ROUTER", "1")
     assert client.post(URL, headers=auth_headers, json={"skill_sheet": "## FINDINGS\nfree text",
                                                         "message": "m"}).json()["success"]
+
+
+def test_undo_endpoint_reverses_through_the_router_and_records(client, auth_headers, monkeypatch, guided_template,
+                                                               db_session):
+    seen = {}
+
+    async def undo(sheet, ledger, records):
+        seen.update(sheet=sheet, ledger=ledger, records=records)
+        return _turn(reply="Undone: Width is no longer required.", records=[], evidence={"route": "undo"})
+    monkeypatch.setattr(R, "undo_turn", undo)
+    r = client.post(URL + "/undo", headers=auth_headers, json={
+        "skill_sheet": ROUTER_SHEET, "decisions": [], "changes": [{"type": "ledger"}],
+        "template_id": str(guided_template.id)}).json()
+    assert r["success"] and r["response"].startswith("Undone") and seen["records"] == [{"type": "ledger"}]
+    (turn,) = _turns(db_session)
+    assert turn.instruction == "[undo] 1 change(s)" and turn.routing == {"route": "undo"}
+
+
+def test_card_endpoint_applies_through_the_router(client, auth_headers, monkeypatch):
+    seen = {}
+
+    async def answer(sheet, ledger, a):
+        seen["answer"] = a
+        return _turn(evidence={"route": "card"})
+    monkeypatch.setattr(R, "answer_card", answer)
+    r = client.post(URL + "/card", headers=auth_headers, json={
+        "skill_sheet": ROUTER_SHEET, "decisions": [],
+        "answer": {"kind": "value", "key": "Width", "choice": {"need": "not_needed"}}}).json()
+    assert r["success"] and r["decisions"][0]["key"] == "Width"
+    assert seen["answer"] == {"kind": "value", "key": "Width", "choice": {"need": "not_needed"}}
+
+
+def test_undo_and_card_fail_soft(client, auth_headers, monkeypatch):
+    async def boom(*a, **k):
+        raise RuntimeError("x")
+    monkeypatch.setattr(R, "undo_turn", boom)
+    monkeypatch.setattr(R, "answer_card", boom)
+    assert client.post(URL + "/undo", headers=auth_headers,
+                       json={"skill_sheet": "s", "changes": []}).json()["success"] is False
+    assert client.post(URL + "/card", headers=auth_headers,
+                       json={"skill_sheet": "s", "answer": {}}).json()["success"] is False

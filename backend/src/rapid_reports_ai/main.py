@@ -754,6 +754,20 @@ class SkillSheetRefineRequest(BaseModel):
     template_id: Optional[str] = None   # the saved template this chat edits (None in the creator): the turn is recorded
     decisions: Optional[List[Dict[str, Any]]] = None   # the template's decision ledger (None: not tracked)
 
+class SkillSheetRouterUndoRequest(BaseModel):
+    skill_sheet: str
+    decisions: Optional[List[Dict[str, Any]]] = None
+    changes: List[Dict[str, Any]] = []      # the router turn's records, as returned by /skill-sheet/refine
+    template_id: Optional[str] = None
+
+
+class SkillSheetRouterCardRequest(BaseModel):
+    skill_sheet: str
+    decisions: Optional[List[Dict[str, Any]]] = None
+    answer: Dict[str, Any]                  # {kind, key, choice} or {proposal: <card.apply>}
+    template_id: Optional[str] = None
+
+
 class SkillSheetTestGenerateRequest(BaseModel):
     skill_sheet: str
     scan_type: str
@@ -2972,6 +2986,43 @@ async def skill_sheet_checks_endpoint(
     except Exception as e:
         logger.warning("sheet checks failed: %s", type(e).__name__)
         return {"success": True, **{k: list(v) for k, v in SHEET_CHECKS_FAILED.items()}}
+
+
+@app.post("/api/templates/skill-sheet/refine/undo")
+async def skill_sheet_refine_undo_endpoint(
+    request: SkillSheetRouterUndoRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """"Not quite" on a router turn: reverse its own changes (a later turn's are left alone)."""
+    try:
+        turn = await chat_router.undo_turn(request.skill_sheet, request.decisions or [], request.changes)
+        out = chat_router.response(turn)
+        _record_chat_turn(db, current_user, request.template_id, f"[undo] {len(request.changes)} change(s)",
+                          out["response"], not turn.refused, request.skill_sheet, out["skill_sheet"], turn.evidence)
+        return out
+    except Exception as e:
+        logger.exception("chat router undo failed: %s", e)
+        return {"success": False, "error": "Couldn't undo that just now. Please try again."}
+
+
+@app.post("/api/templates/skill-sheet/refine/card")
+async def skill_sheet_refine_card_endpoint(
+    request: SkillSheetRouterCardRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """A tapped chat card: applied by code through the ledger (source "chat") or the proposal's edit."""
+    try:
+        turn = await chat_router.answer_card(request.skill_sheet, request.decisions or [], request.answer)
+        out = chat_router.response(turn)
+        label = request.answer.get("key") or (request.answer.get("proposal") or {}).get("claim") or ""
+        _record_chat_turn(db, current_user, request.template_id, f"[card] {label}"[:300], out["response"],
+                          not turn.refused, request.skill_sheet, out["skill_sheet"], turn.evidence)
+        return out
+    except Exception as e:
+        logger.exception("chat router card failed: %s", e)
+        return {"success": False, "error": "Couldn't apply that just now. Please try again."}
 
 
 @app.post("/api/templates/skill-sheet/test-generate")
