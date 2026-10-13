@@ -21,6 +21,8 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 
 import argparse
 import asyncio
+import contextlib
+import contextvars
 import difflib
 import json
 import statistics
@@ -32,6 +34,7 @@ from rapid_reports_ai import chat_router as R
 from rapid_reports_ai import chat_router_calls as C
 from rapid_reports_ai import chat_router_changes as CH
 from rapid_reports_ai import chat_router_jev as J
+from rapid_reports_ai import chat_router_propose as P
 from rapid_reports_ai import chat_router_ledger as L
 from rapid_reports_ai import chat_router_sheet as sh
 from rapid_reports_ai import chat_router_views as V
@@ -410,8 +413,132 @@ def report_e2e(root: Path, runs: List[int]) -> str:
     return "\n\n".join(parts)
 
 
-REPORTS = {"tag": report_tag, "requires": report_requires, "calls": report_calls, "e2e": report_e2e}
-RUNNERS = {"tag": run_tag, "requires": run_requires, "calls": run_calls, "e2e": run_e2e}
+# ── head-to-head: arm 1 (route_turn, the new wordings, no band) vs arm 2 (chat_router_propose) ─────────────────────
+_QWEN_CALLS: contextvars.ContextVar = contextvars.ContextVar("qwen_calls", default=None)
+
+
+@contextlib.contextmanager
+def counting():
+    """Count model calls made inside this item's task (and the tasks it starts): yields a one-item list."""
+    box = [0]
+    token = _QWEN_CALLS.set(box)
+    try:
+        yield box
+    finally:
+        _QWEN_CALLS.reset(token)
+
+
+@contextlib.contextmanager
+def patched_counter():
+    """Wrap enhancement_utils._run_agent_with_model (both arms import it at call time) to count calls."""
+    from rapid_reports_ai import enhancement_utils as eu
+    orig = eu._run_agent_with_model
+
+    async def counted(*a, **k):
+        box = _QWEN_CALLS.get()
+        if box is not None:
+            box[0] += 1
+        return await orig(*a, **k)
+    eu._run_agent_with_model = counted
+    try:
+        yield
+    finally:
+        eu._run_agent_with_model = orig
+
+
+def touches_for(truth: List[dict], sheet: str) -> Optional[List[str]]:
+    """Headings / paragraphs a truth may change, for the unrelated-lines count; None when that cannot be bounded
+    (style or concept changes may touch prose or a home paragraph anywhere)."""
+    out = set()
+    for t in truth or []:
+        k = t.get("kind")
+        if k in ("style", "concept") or t.get("expect") == "card":
+            return None
+        if k == "value":
+            out.add("Report-wide")
+        elif k == "fixed":
+            line = next((l for l in sh.walk(sheet) if l.keyword == "FIXED" and sh.norm(sh.quoted(l.text)).rstrip(".")
+                         == sh.norm(t.get("key", "")).rstrip(".")), None)
+            if line is None:
+                return None
+            out.add(line.paragraph or line.heading)
+        elif k == "normal":
+            out.add((t.get("key") or "").split("::", 1)[0].strip())
+        elif k == "layout":
+            op = t.get("op") or {}
+            out.add("Report Structure")
+            out.update(str(op[f]) for f in ("paragraph", "to", "name", "before", "after") if op.get(f))
+    return sorted(x for x in out if x)
+
+
+def arm_record(item: dict, t: Optional[R.Turn], qwen_calls: int, start: str, touches: Optional[List[str]],
+               fallback: Optional[str] = None) -> dict:
+    truth = item.get("truth") or []
+    recs = turn_records(t) if t else []
+    s = score_changes(truth, recs)
+    return {"id": item["id"], "set": item.get("set", ""), "fallback": fallback,
+            "applied_claims": [r.get("claim") for r in (t.records if t else []) if r.get("claim")],
+            "cards": len(t.cards) if t else 0, "correct": s["correct"], "unrequested": s["extra_applied"],
+            "missing": s["missing"], "invented": sum(bool(c.get("invented")) for c in (t.evidence.get("changes") or [])
+                                                       ) if t else 0,
+            "qwen_calls": qwen_calls, "ms": t.evidence.get("ms") if t else None,
+            "unrelated": unrelated_changes(start, t.sheet, touches) if (t and touches is not None) else None}
+
+
+def arm_summary(rows: List[dict]) -> dict:
+    n = len(rows)
+    ms = [r["ms"] for r in rows if r.get("ms") is not None]
+    unrelated = [r["unrelated"] for r in rows if r.get("unrelated") is not None]
+    return {"items": n, "fallbacks": sum(bool(r["fallback"]) for r in rows),
+            "applied": sum(len(r["applied_claims"]) for r in rows), "correct": sum(r["correct"] for r in rows),
+            "unrequested": sum(r["unrequested"] for r in rows), "missing": sum(r["missing"] for r in rows),
+            "cards": sum(r["cards"] for r in rows), "card_rate": round(sum(r["cards"] for r in rows) / n, 3) if n else None,
+            "invented": sum(r["invented"] for r in rows),
+            "qwen_calls_mean": round(sum(r["qwen_calls"] for r in rows) / n, 2) if n else None,
+            "ms_median": statistics.median(ms) if ms else None, "unrelated": sum(unrelated)}
+
+
+ARMS = {"arm1": R.route_turn, "arm2": P.propose_turn}
+
+
+async def run_arms(root: Path, run: int) -> None:
+    """Both arms on every item, from the same sheet and an empty ledger (real Jev / Qwen / save function). The save
+    function's unit checks run as in production. Model calls are counted per item and arm."""
+    async def fn(it):
+        sheet = _sheet(root, it["sheet"])
+        out = {}
+        for name, turn_fn in ARMS.items():
+            with counting() as n:
+                try:
+                    t = await turn_fn(sheet, [], it["instruction"], context=it.get("context", ""))
+                    rec = arm_record(it, t, n[0], sheet, touches_for(it.get("truth") or [], sheet))
+                except R.Fallback as e:
+                    rec = arm_record(it, None, n[0], sheet, None, fallback=str(e))
+            out[name] = rec
+        return {"arms": out}
+    with patched_counter():
+        await _each(load_items(root), _out(root, "arms", run), fn)
+
+
+def report_arms(root: Path, runs: List[int]) -> str:
+    parts = []
+    for run in runs:
+        got = _runs(root, "arms", run)
+        for subset in ("synthetic", "real"):
+            rows = {a: [v["arms"][a] for v in got.values() if "arms" in v and v["arms"][a]["set"] == subset]
+                    for a in ARMS}
+            if not any(rows.values()):
+                continue
+            summ = {a: arm_summary(r) for a, r in rows.items()}
+            keys = list(next(iter(summ.values())))
+            parts.append(f"### run {run}, {subset}: head to head (unrequested = applied changes the planted truth "
+                         f"does not ask for: the headline)\n\n"
+                         + md_table(["metric", *ARMS], [[k, *(summ[a][k] for a in ARMS)] for k in keys]))
+    return "\n\n".join(parts)
+
+
+REPORTS = {"arms": report_arms, "tag": report_tag, "requires": report_requires, "calls": report_calls, "e2e": report_e2e}
+RUNNERS = {"arms": run_arms, "tag": run_tag, "requires": run_requires, "calls": run_calls, "e2e": run_e2e}
 
 
 def main() -> None:

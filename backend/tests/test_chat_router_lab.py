@@ -107,3 +107,64 @@ def test_report_tag_includes_the_near_miss_rate_and_the_habit_placeholder(tmp_pa
     text = lab.report_tag(tmp_path, [1])
     assert "near-miss band [0.35, 0.5), not routed" in text and "items with any kind in the near-miss band: 1/1" in text
     assert "habit vs normal (item 5 placeholder)" in text
+
+
+# ── head-to-head arms: arm 1 (route_turn) vs arm 2 (propose, verify, apply) ─────────────────────────────────────
+def test_touches_for_names_the_parts_a_truth_may_change():
+    from tests.template_sheet_fixtures import ROUTER_SHEET
+    truth = [{"kind": "value", "key": "Width", "choice": {"need": "not_needed"}},
+             {"kind": "fixed", "key": "Axial images were acquired.", "choice": {"keep": "remove"}},
+             {"kind": "normal", "key": "Upper :: alpha", "choice": {"text": ""}},
+             {"kind": "layout", "op": {"op": "rename_paragraph", "paragraph": "Lower", "to": "Bottom"}}]
+    assert lab.touches_for(truth, ROUTER_SHEET) == ["Bottom", "Lower", "Report Structure", "Report-wide", "Technique",
+                                                    "Upper"]
+    assert lab.touches_for([{"kind": "style"}], ROUTER_SHEET) is None          # prose anywhere: not counted
+    assert lab.touches_for([{"kind": "concept", "key": "comparison", "choice": {}}], ROUTER_SHEET) is None
+
+
+def test_arm_record_scores_a_turn_against_the_truth():
+    from rapid_reports_ai import chat_router as R
+    t = R.Turn("S2", [], True, "r", records=[
+        {"type": "ledger", "change": {"kind": "value", "key": "Width", "new": {"need": "not_needed"}}, "claim": "W"},
+        {"type": "ledger", "change": {"kind": "value", "key": "Depth", "new": {"need": "not_needed"}}, "claim": "D"}],
+        cards=[{"ledger_kind": "normal", "key": "k"}],
+        evidence={"ms": 120, "changes": [{"invented": True}, {"invented": False}]})
+    item = {"id": "i1", "set": "synthetic", "truth": [{"kind": "value", "key": "Width", "choice": {"need": "not_needed"}}]}
+    rec = lab.arm_record(item, t, qwen_calls=2, start="S", touches=None)
+    assert rec == {"id": "i1", "set": "synthetic", "fallback": None, "applied_claims": ["W", "D"], "cards": 1,
+                   "correct": 1, "unrequested": 1, "missing": 0, "invented": 1, "qwen_calls": 2, "ms": 120,
+                   "unrelated": None}
+    fb = lab.arm_record(item, None, qwen_calls=0, start="S", touches=None, fallback="no_tag")
+    assert fb["fallback"] == "no_tag" and fb["applied_claims"] == [] and fb["missing"] == 1
+
+
+def test_arm_summary_totals_and_rates():
+    rows = [{"id": "a", "set": "synthetic", "fallback": None, "applied_claims": ["x"], "cards": 1, "correct": 1,
+             "unrequested": 0, "missing": 0, "invented": 0, "qwen_calls": 1, "ms": 100, "unrelated": 0},
+            {"id": "b", "set": "synthetic", "fallback": "no_tag", "applied_claims": [], "cards": 0, "correct": 0,
+             "unrequested": 2, "missing": 1, "invented": 1, "qwen_calls": 3, "ms": 300, "unrelated": None}]
+    assert lab.arm_summary(rows) == {"items": 2, "fallbacks": 1, "applied": 1, "correct": 1, "unrequested": 2,
+                                     "missing": 1, "cards": 1, "card_rate": 0.5, "invented": 1,
+                                     "qwen_calls_mean": 2.0, "ms_median": 200.0, "unrelated": 0}
+
+
+def test_qwen_calls_are_counted_per_item_task():
+    import asyncio
+    from rapid_reports_ai import enhancement_utils as eu
+
+    async def main():
+        async def fake(**kw):
+            return None
+        async def item():
+            with lab.counting() as n:
+                await eu._run_agent_with_model(model_name="m")
+                await asyncio.gather(eu._run_agent_with_model(model_name="m"), eu._run_agent_with_model(model_name="m"))
+                return n[0]
+        orig = eu._run_agent_with_model
+        eu._run_agent_with_model = fake
+        try:
+            with lab.patched_counter():
+                return await asyncio.gather(item(), item())
+        finally:
+            eu._run_agent_with_model = orig
+    assert asyncio.run(main()) == [3, 3]
