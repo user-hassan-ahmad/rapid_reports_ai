@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abnormalAll, anchorRegion, answerLabel, assumedFrom, assumedStale, flaggedFrom, keepRules, moreLine, openCount, quietLine, rowSentences, rulesToSend, splitReply, unansweredChecks } from './items';
+import { abnormalAll, anchorRegion, answerLabel, assumedFrom, assumedStale, confirmReady, flaggedFrom, keepRules, moreLine, openCount, quietLine, rowSentences, rulesToSend, splitReply, unansweredChecks } from './items';
 import type { StackItem, StackUnit } from './types';
 
 const item = (id: string, sentences: string[], extra: Partial<StackItem> = {}): StackItem => ({
@@ -132,5 +132,15 @@ describe('template context rules decided once per session (R5)', () => {
 		expect(rulesToSend(kept, 'Headache. Prior MRI 2024.')).toBeNull();
 		expect(keepRules(kept, 'Headache. Prior MRI 2024.', { rules: { x: 0.1 }, error: null }))
 			.toEqual({ history: 'Headache. Prior MRI 2024.', rules: { x: 0.1 } });
+	});
+});
+
+describe('Confirm gates only on a Confirm answer for this dictation (round 1)', () => {
+	const snap = { offered: {}, dictation: 'A liver cyst.', abnormal: ['Liver'], untouched: [], assumed: {} };
+	it('a live answer, or a Confirm answer for another dictation, is not enough', () => {
+		expect(confirmReady(null, 'A liver cyst.')).toBe(false);
+		expect(confirmReady(snap, 'A liver cyst.')).toBe(false);
+		expect(confirmReady({ ...snap, confirmed: true }, 'A liver cyst. Gallstones.')).toBe(false);
+		expect(confirmReady({ ...snap, confirmed: true }, 'A liver cyst.')).toBe(true);
 	});
 });

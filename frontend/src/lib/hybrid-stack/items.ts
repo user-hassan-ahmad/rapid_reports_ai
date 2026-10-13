@@ -62,7 +62,7 @@ export function abnormalAll(units: StackUnit[]): string[] {
 	return effectiveItems(units).filter((i) => i.abnormal).map((i) => i.text);
 }
 
-export interface AssumedSnap { dictation: string; abnormal: string[]; untouched: string[]; assumed: Record<string, string[]>; offered: Record<string, string[]>; dictatedNormal?: string[]; flagged?: Record<string, string[]>; dropped?: Dropped; check_failed?: boolean; confirm_recheck?: boolean }
+export interface AssumedSnap { dictation: string; abnormal: string[]; untouched: string[]; assumed: Record<string, string[]>; offered: Record<string, string[]>; dictatedNormal?: string[]; flagged?: Record<string, string[]>; dropped?: Dropped; check_failed?: boolean; confirm_recheck?: boolean; confirmed?: boolean }
 
 /** What the gate confirms as assumed: only the sentences /assumed answered for each region, in the state (abnormal
  *  or untouched) that region had when they were checked, minus removed ones. Never the raw sheet (review
@@ -112,6 +112,12 @@ export function rulesToSend(fixed: SessionRules | null, history: string): Record
 export function keepRules(fixed: SessionRules | null, history: string, res: { rules?: Record<string, number> | null; error?: string | null }): SessionRules | null {
 	if (rulesToSend(fixed, history)) return fixed;
 	return res.rules && !res.error ? { history, rules: res.rules } : null;
+}
+
+/** Confirm records the gate only on an answer computed at Confirm (`confirmed`: every rule re-asked with the
+ *  dictation) for the dictation now on screen (review round 1): never on a live answer. */
+export function confirmReady(snap: AssumedSnap | null, dictation: string): boolean {
+	return !!snap?.confirmed && snap.dictation === dictation;
 }
 
 /** Rows over the writer's caps (E1b): shown behind one quiet "N more checks" line instead of vanishing. `rows`: the

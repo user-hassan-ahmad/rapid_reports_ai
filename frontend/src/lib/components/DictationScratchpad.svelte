@@ -41,7 +41,7 @@
 	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
 	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
-	import { abnormalAll, assumedFrom, assumedStale, flaggedFrom, keepRules, moreLine, openCount, rowSentences, splitReply, rulesToSend, type AssumedSnap, type SessionRules } from '$lib/hybrid-stack/items';
+	import { abnormalAll, assumedFrom, assumedStale, confirmReady, flaggedFrom, keepRules, moreLine, openCount, rowSentences, splitReply, rulesToSend, type AssumedSnap, type SessionRules } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
 	import { asTailUnits, assumedKey, blockedSegments, pickBody, pickKey, placedRegions, shownNormals, visiblePills, withoutSegments, type ProtocolPick } from '$lib/hybrid-stack/protocol';
@@ -1867,9 +1867,9 @@
 				rules: rulesToSend(sessionRules, history), confirm });
 			if (sheet === slimSeq) sessionRules = keepRules(sessionRules, history, res);
 			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed, flagged: res.flagged, dropped: res.dropped, check_failed: !!res.error,
-				confirm_recheck: !!res.confirm_recheck };
+				confirm_recheck: !!res.confirm_recheck, confirmed: confirm };
 		} catch {
-			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {}, check_failed: true }; // nothing assumed
+			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {}, check_failed: true, confirmed: confirm }; // nothing assumed
 		}
 	}
 	/** Regions a row or a removal concerns: every one of their sentences is checked, not only word matches. */
@@ -1885,7 +1885,7 @@
 		if (assumedTimer) clearTimeout(assumedTimer);
 		assumedTimer = setTimeout(() => {
 			assumedTimer = null;
-			if (assumedBehind) void refreshAssumed();
+			if (assumedBehind && !confirming) void refreshAssumed(); // never under a Confirm re-ask (round 1)
 		}, 1200);
 	}
 	// Re-armed on every text change and every answer while behind (review 2026-10-12: a boolean that stays true
@@ -1893,6 +1893,7 @@
 	$: if (hybridStack && assumedBehind) {
 		void verbatimNow;
 		void assumedSnap;
+		void confirming;
 		armAssumed();
 	}
 	/** A row on the checklist, or one behind "more checks". */
@@ -1991,20 +1992,20 @@
 		draft = null; // offered only when the field is empty (the ✨ button): nothing of the radiologist's is replaced
 		void requestDraft();
 	}
-	/** Confirm (spec §5). Every template context rule is re-asked with the dictation first
-	 *  (review R5): the gate records that answer. Confirm does not gate if the dictation moved on meanwhile. */
+	/** Confirm (spec §5). Every template context rule is re-asked with the dictation first (review R5): the gate is
+	 *  recorded only on that Confirm answer for the dictation on screen (round 1), never on a live one; live
+	 *  refreshes wait while it runs. */
 	async function stackConfirm(): Promise<boolean> {
-		if (assumedSnap?.confirm_recheck && !assumedSnap.check_failed) {
+		if (assumedSnap?.confirm_recheck && !confirmReady(assumedSnap, verbatimNow)) {
 			if (confirming) return false;
 			confirming = true;
-			const asked = verbatimNow;
 			try {
 				await refreshAssumed(true);
 				await tick(); // the tray, counts and gate key follow the Confirm answer before the gate is recorded
 			} finally {
 				confirming = false;
 			}
-			if (verbatimNow !== asked || assumedSnap?.dictation !== asked) return false;
+			if (!confirmReady(assumedSnap, verbatimNow)) return false; // the dictation moved on meanwhile
 		}
 		// Sentences the grouping never received (after failed retries) still reach the report, as said; the segment
 		// backstop reads them before the assumed record is written.
