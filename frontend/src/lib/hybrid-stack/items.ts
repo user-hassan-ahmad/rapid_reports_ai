@@ -48,9 +48,9 @@ export function openCount(items: StackItem[], tapped: string[], removed: string[
 	return items.filter((i) => i.kind === 'referral' && waiting(i, tapped, removed, skipped)).length;
 }
 
-/** Finding checks left unanswered: they never block; nothing is stated for them. */
+/** Finding checks and template rows left unanswered: they never block; nothing is stated for them. */
 export function unansweredChecks(items: StackItem[], tapped: string[], removed: string[], skipped: string[] = []): number {
-	return items.filter((i) => i.kind === 'finding' && waiting(i, tapped, removed, skipped)).length;
+	return items.filter((i) => i.kind !== 'referral' && waiting(i, tapped, removed, skipped)).length;
 }
 
 export function quietLine(sentences: string[], max = QUIET_MAX): { shown: string[]; more: number } {

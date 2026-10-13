@@ -7,6 +7,11 @@ const item = (id: string, sentences: string[], extra: Partial<StackItem> = {}): 
 });
 
 describe('checklist rows', () => {
+	it('a template row left open counts as an unanswered check and never blocks', () => {
+		const tpl = item('t', ['A.', 'B.'], { kind: 'template', yes: 'A.', no: 'B.' });
+		expect(unansweredChecks([tpl], [], [])).toBe(1);
+		expect(openCount([tpl], [], [])).toBe(0);
+	});
 	it('labels the answer "✓ Normal" however many wordings sit beside it', () => {
 		expect(answerLabel(['No features of torsion.'])).toBe('✓ Normal');
 		expect(answerLabel(['No torsion.', 'No rupture.', 'No haemorrhage.'])).toBe('✓ Normal');
