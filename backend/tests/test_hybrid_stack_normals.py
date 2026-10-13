@@ -15,16 +15,35 @@ def _checks(table, seen=None):
     return fake
 
 
-async def test_every_region_is_checked_dictated_normal_regions_assume_nothing(monkeypatch):
+async def test_every_region_is_checked_dictated_normal_regions_included(monkeypatch):
+    # review R2: a dictated-normal region is asked like an abnormal one; the stated check removes what was said
     seen = []
     monkeypatch.setattr(N, "ask_rows", _checks({"The ovaries are normal.": (0.0, 0.9, 0.0),
-                                                 "No adnexal mass.": (0.4, 0.0, 0.0)}, seen))
+                                                 "No adnexal mass.": (0.4, 0.0, 0.0),
+                                                 "The kidneys are normal.": (0.9, 0.0, 0.0)}, seen))
     out = await N.assumed("A right ovarian cyst. Kidneys normal.", NORMALS, ["Pelvic organs"], ["Kidneys"], [])
     assert out.assumed == {"Liver": ["The liver is normal."], "Kidneys": [],
                            "Pelvic organs": ["The uterus is normal.", "No adnexal mass."]}
+    assert out.dropped["Kidneys"] == [{"sentence": "The kidneys are normal.", "reason": "covered"}]
     assert out.flagged == {"Liver": [], "Kidneys": [], "Pelvic organs": ["No adnexal mass."]}
-    assert sorted(sum(seen, [])) == sorted(["The liver is normal.", "The uterus is normal.", "The ovaries are normal.",
-                                             "No adnexal mass."])
+    assert sorted(sum(seen, [])) == sorted(["The liver is normal.", "The kidneys are normal.", "The uterus is normal.",
+                                             "The ovaries are normal.", "No adnexal mass."])
+
+
+async def test_a_dictated_normal_keeps_its_regions_other_sentences(monkeypatch):
+    # review R2: dictating "ACL intact" must not lose the PCL sentence
+    calls = []
+    said = "The anterior cruciate ligament is intact."
+    knee = {"Ligaments": ["The anterior cruciate ligament is intact.", "The posterior cruciate ligament is intact."],
+            "Menisci": ["The menisci are intact."]}
+    table = {(said, "The anterior cruciate ligament is intact."): (0.97, 0.0, 0.0),
+             (said, "The posterior cruciate ligament is intact."): (0.05, 0.0, 0.0)}
+    monkeypatch.setattr(N, "ask_rows", _by_dictation(table, calls))
+    out = await N.assumed(said, knee, [], ["Ligaments"], [], region_text={"Ligaments": said})
+    assert out.assumed == {"Ligaments": ["The posterior cruciate ligament is intact."],
+                           "Menisci": ["The menisci are intact."]}
+    assert out.dropped["Ligaments"] == [{"sentence": "The anterior cruciate ligament is intact.", "reason": "covered"}]
+    assert [c["sentences"] for c in calls if c["stated"]] == [knee["Ligaments"]]
 
 
 async def test_an_untouched_region_contradicted_by_a_misplaced_finding_assumes_nothing(monkeypatch):

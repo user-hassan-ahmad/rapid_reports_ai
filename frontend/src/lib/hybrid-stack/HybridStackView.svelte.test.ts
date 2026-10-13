@@ -92,6 +92,23 @@ describe('HybridStackView v2', () => {
 		expect(props.onRemoveSentence).toHaveBeenCalledWith('The kidneys are normal.');
 	});
 
+	it('a dictated-normal region shows "Normal, as you said" and the sheet sentences left as "will be reported" (R2)', async () => {
+		const props = { ...base(), onRemoveSentence: vi.fn() };
+		render(HybridStackView, {
+			...props,
+			units: [u(0, 'The right kidney is normal.', 'Kidneys', { covers: ['Kidneys'] })],
+			assumed: { Kidneys: ['The left kidney is normal.'], Liver: ['The liver is normal.'] }, assumedReady: true
+		});
+		const tray = page.getByRole('region', { name: 'Normal regions' });
+		await expect.element(tray.getByText('Normal, as you said')).toBeInTheDocument();
+		await expect.element(tray.getByText('Kidneys', { exact: true })).toHaveAttribute('data-state', 'dictated');
+		await expect.element(tray.getByText('Kidneys · will be reported')).toBeInTheDocument();
+		await expect.element(tray.getByText('The left kidney is normal.')).toBeInTheDocument();
+		await expect.element(page.getByText('2 assumed normal')).toBeInTheDocument();   // Kidneys' sentence counts
+		await page.getByLabelText('Remove The left kidney is normal.').click();
+		expect(props.onRemoveSentence).toHaveBeenCalledWith('The left kidney is normal.');
+	});
+
 	it('shows the live strip and lets a line be edited and committed with Enter', async () => {
 		const props = base();
 		render(HybridStackView, {

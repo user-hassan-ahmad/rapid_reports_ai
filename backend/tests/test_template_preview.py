@@ -69,8 +69,9 @@ def test_region_states_and_confirmed_assumed_as_the_scratchpad():
     assert (abnormal, dictated_normal, untouched) == (["Liver"], ["Spleen"], ["Kidneys"])
     got = confirmed_assumed({"Kidneys": ["Normal kidneys.", "No hydronephrosis"], "Liver": ["No biliary dilatation."],
                              "Spleen": ["Normal spleen."], "Other findings": ["x"]},
-                            abnormal, untouched, ["no hydronephrosis."])
-    assert got == {"Liver": ["No biliary dilatation."], "Kidneys": ["Normal kidneys."]}
+                            abnormal, untouched, ["no hydronephrosis."], dictated_normal)
+    # review R2: a dictated-normal region keeps the sentences the check did not find said
+    assert got == {"Liver": ["No biliary dilatation."], "Spleen": ["Normal spleen."], "Kidneys": ["Normal kidneys."]}
 
 
 SHEET = """# Skill Sheet: CT

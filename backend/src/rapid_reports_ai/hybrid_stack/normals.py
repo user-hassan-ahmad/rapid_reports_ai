@@ -1,7 +1,7 @@
 """Assumed normals (checklist spec §5): the slim sheet's region normals that reach the report unless the
-radiologist removes them. Untouched regions keep all their sentences; a dictated-normal region keeps the
-radiologist's words instead; an abnormal region keeps the sentences the dictation neither covers nor contradicts
-(Jev). A sentence Jev is unsure about (between the hedge band and the bars) is kept and flagged for the radiologist
+radiologist removes them. Every region, untouched, dictated normal or abnormal, keeps the sentences the dictation
+neither covers nor contradicts (Jev): a dictated-normal region keeps the radiologist's words and the sentences on its
+other structures (review R2 2026-10-13: "ACL intact" kept the PCL sentence). A sentence Jev is unsure about (between the hedge band and the bars) is kept and flagged for the radiologist
 (review R1 2026-10-13). Sentences the radiologist removed never return."""
 from __future__ import annotations
 
@@ -94,12 +94,13 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     `region_text` (region -> its grouped sentences; Technique, General, Conclusion and unplaced excluded): a normal
     is covered (or flagged) only by its own region's sentences, so a conclusion or a bare "normal" covers nothing;
     contradiction is still asked on the whole dictation. None: the whole dictation answers both (older callers). On
-    a Jev failure nothing is assumed. `touched` is accepted for compatibility; every sentence is asked now."""
+    a Jev failure nothing is assumed. `dictated_normal` and `touched` are accepted for compatibility; every sentence
+    is asked now."""
     t0 = time.perf_counter()
     gone = list(dict.fromkeys(r for r in [*removed, *(owned or [])] if r.strip()))
-    said = set(dictated_normal)
     labels = labels or {}
-    asked = [(region, s) for region, sentences in region_normals.items() if region not in said for s in sentences]
+    # A dictated-normal region is asked as an abnormal one is (review R2): the stated check removes what was said.
+    asked = [(region, s) for region, sentences in region_normals.items() for s in sentences]
     out: dict[str, list[str]] = {r: [] for r in region_normals}
     flagged: dict[str, list[str]] = {r: [] for r in region_normals}
     dropped: dict[str, list[dict]] = {r: [] for r in region_normals}

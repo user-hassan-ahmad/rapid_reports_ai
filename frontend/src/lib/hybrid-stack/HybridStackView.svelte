@@ -386,7 +386,8 @@
 	// Every statement that will be reported without being dictated: region normals, and regions confirmed by
 	// name where no sentences exist yet.
 	const assumedCount = $derived(
-		trayRegions.filter((r) => !dictatedNormalWords.has(r)).reduce((n, r) => n + (namedNormals ? 1 : keptAssumed(r).length), 0) +
+		// a dictated-normal region counts the sheet sentences it keeps (review R2), never its own name
+		trayRegions.reduce((n, r) => n + (dictatedNormalWords.has(r) ? keptAssumed(r).length : namedNormals ? 1 : keptAssumed(r).length), 0) +
 			states.abnormal.reduce((n, r) => n + keptAssumed(r).length, 0)
 	);
 	let expanded: string[] = $state([]);
@@ -1041,6 +1042,14 @@
 								{/if}
 							{/each}
 						</div>
+					{/each}
+					<!-- The sheet sentences a dictated-normal region still reports (review R2): the radiologist's words cover
+					     only what they said ("ACL intact" leaves the PCL sentence). -->
+					{#each said.filter((r) => keptAssumed(r).length) as r (r)}
+						<p class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs" data-quiet={r}>
+							<span class="text-[10px] uppercase tracking-wide text-emerald-400/70">{r} · will be reported</span>
+							{@render sentences(keptAssumed(r), `said:${r}`)}
+						</p>
 					{/each}
 				</div>
 			{/if}

@@ -62,7 +62,7 @@ export function abnormalAll(units: StackUnit[]): string[] {
 	return effectiveItems(units).filter((i) => i.abnormal).map((i) => i.text);
 }
 
-export interface AssumedSnap { dictation: string; abnormal: string[]; untouched: string[]; assumed: Record<string, string[]>; offered: Record<string, string[]>; flagged?: Record<string, string[]>; dropped?: Dropped; check_failed?: boolean }
+export interface AssumedSnap { dictation: string; abnormal: string[]; untouched: string[]; assumed: Record<string, string[]>; offered: Record<string, string[]>; dictatedNormal?: string[]; flagged?: Record<string, string[]>; dropped?: Dropped; check_failed?: boolean }
 
 /** What the gate confirms as assumed: only the sentences /assumed answered for each region, in the state (abnormal
  *  or untouched) that region had when they were checked, minus removed ones. Never the raw sheet (review
@@ -74,12 +74,15 @@ export function assumedStale(hasSheet: boolean, snap: AssumedSnap | null, dictat
 	return hasSheet && (snap === null || snap.dictation !== dictation);
 }
 
-export function assumedFrom(snap: AssumedSnap | null, abnormal: string[], untouched: string[], removed: string[]): Record<string, string[]> {
+/** A dictated-normal region (review R2) keeps the sentences the check left: the stated check removed what was said,
+ *  so "ACL intact" keeps the PCL sentence. Like the others, only when it was checked in that same state. */
+export function assumedFrom(snap: AssumedSnap | null, abnormal: string[], untouched: string[], removed: string[], dictatedNormal: string[] = []): Record<string, string[]> {
 	if (!snap) return {};
 	const gone = new Set(removed.map(norm));
 	const out: Record<string, string[]> = {};
-	const same = (r: string) => (abnormal.includes(r) ? snap.abnormal.includes(r) : snap.untouched.includes(r));
-	for (const r of [...abnormal, ...untouched]) {
+	const same = (r: string) =>
+		abnormal.includes(r) ? snap.abnormal.includes(r) : dictatedNormal.includes(r) ? (snap.dictatedNormal ?? []).includes(r) : snap.untouched.includes(r);
+	for (const r of [...abnormal, ...dictatedNormal, ...untouched]) {
 		if (!same(r)) continue;
 		const kept = (snap.assumed[r] ?? []).filter((x) => !gone.has(norm(x)));
 		if (kept.length) out[r] = kept;
@@ -89,9 +92,9 @@ export function assumedFrom(snap: AssumedSnap | null, abnormal: string[], untouc
 
 /** The assumed sentences the dictation may conflict with (review R1): Jev half-read them as covered or contradicted,
  *  so they are kept, highlighted, for the radiologist to confirm or remove. Only those `assumedFrom` still keeps. */
-export function flaggedFrom(snap: AssumedSnap | null, abnormal: string[], untouched: string[], removed: string[]): string[] {
+export function flaggedFrom(snap: AssumedSnap | null, abnormal: string[], untouched: string[], removed: string[], dictatedNormal: string[] = []): string[] {
 	if (!snap?.flagged) return [];
-	const kept = assumedFrom(snap, abnormal, untouched, removed);
+	const kept = assumedFrom(snap, abnormal, untouched, removed, dictatedNormal);
 	return Object.entries(kept).flatMap(([r, xs]) => xs.filter((x) => (snap.flagged?.[r] ?? []).includes(x)));
 }
 

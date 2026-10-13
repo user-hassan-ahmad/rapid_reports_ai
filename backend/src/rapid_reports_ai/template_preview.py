@@ -51,11 +51,13 @@ def region_states(units, pill_regions: list[str]) -> tuple[list[str], list[str],
     return abnormal, [r for r in rest if said_normal(r)], [r for r in rest if not said_normal(r)]
 
 
-def confirmed_assumed(assumed: dict, abnormal: list[str], untouched: list[str], removed: list[str]) -> dict:
-    """assumedFrom: the assumed normals of the abnormal then the untouched regions, minus removed sentences."""
+def confirmed_assumed(assumed: dict, abnormal: list[str], untouched: list[str], removed: list[str],
+                      dictated_normal: list[str] = ()) -> dict:
+    """assumedFrom: the assumed normals of the abnormal, the dictated-normal (review R2) then the untouched regions,
+    minus removed sentences."""
     gone = {norm_key(x) for x in removed}
     out = {}
-    for r in [*abnormal, *untouched]:
+    for r in [*abnormal, *dictated_normal, *untouched]:
         kept = [x for x in assumed.get(r) or [] if norm_key(x) not in gone]
         if kept:
             out[r] = kept
@@ -151,7 +153,7 @@ async def preview_report(sheet: str, scan_type: str, history: str, dictation: st
     a = await normals_mod.assumed(dictation, normals, abnormal, dictated_normal, declined,
                                   suppressions=template_suppressions(st), clinical_history=history,
                                   labels=template_normal_labels(st), region_text=region_text(g.units))
-    kept = confirmed_assumed(a.assumed, abnormal, untouched, declined)
+    kept = confirmed_assumed(a.assumed, abnormal, untouched, declined, dictated_normal)
     conclusion = conclusion.strip() or conclusion_text(g.units)
     block = findings_block(g.units, regions, kept, conclusion, declined)
     cfg = {"generation_mode": "skill_sheet_guided", "skill_sheet": sheet, "scan_type": scan_type}

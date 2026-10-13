@@ -333,11 +333,12 @@
 	// Confirm waits for the review of what is on screen; a failed review counts as done (nothing new is asked).
 	$: reviewBehind = stackView && !!verbatimNow.trim() && reviewedFor !== verbatimNow;
 	$: if (stackView && !isRecording && reviewBehind) scheduleReview(verbatimNow);
-	// What Confirm takes ownership of: the region normals still shown (abnormal regions' checked sentences,
-	// untouched regions' sheet sentences), minus anything removed.
-	$: confirmedAssumed = assumedFrom(assumedSnap, regionView.abnormal, regionView.assumedNormal, removedSentences);
+	// What Confirm takes ownership of: the region normals still shown (abnormal and dictated-normal regions' checked
+	// sentences, untouched regions' sheet sentences), minus anything removed.
+	$: dictatedNormalRegions = regionView.dictatedNormal.map((d) => d.region);
+	$: confirmedAssumed = assumedFrom(assumedSnap, regionView.abnormal, regionView.assumedNormal, removedSentences, dictatedNormalRegions);
 	// Kept normals the dictation may conflict with (review R1): shown with an amber marker; still assumed.
-	$: flaggedNow = flaggedFrom(assumedSnap, regionView.abnormal, regionView.assumedNormal, removedSentences);
+	$: flaggedNow = flaggedFrom(assumedSnap, regionView.abnormal, regionView.assumedNormal, removedSentences, dictatedNormalRegions);
 	// Quiet regions show as pills once something is placed there; a segment's normal reads "Elsewhere, …" once one
 	// of its levels is dictated.
 	let stackLevelGroups: Record<string, string[]> = {};
@@ -1849,10 +1850,11 @@
 		// Segments are never checked (E1): the check reads a segment line against the whole dictation and dropped every
 		// segment once any level was dictated. `shownNormals` offers them from the sheet.
 		const offered = withoutSegments(stackRegionNormals, stackLevelGroups);
-		const snap = { offered, dictation: verbatimNow, abnormal: [...regionView.abnormal], untouched: [...regionView.assumedNormal] };
+		const snap = { offered, dictation: verbatimNow, abnormal: [...regionView.abnormal], untouched: [...regionView.assumedNormal],
+			dictatedNormal: regionView.dictatedNormal.map((d) => d.region) };
 		try {
 			const res = await postAssumed($token, { dictation: snap.dictation, region_normals: offered, abnormal: snap.abnormal,
-				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences, owned: ownedNow(),
+				dictated_normal: snap.dictatedNormal, removed: removedSentences, owned: ownedNow(),
 				touched: touchedRegions(), template_id: stackTemplateId, clinical_history: clinicalHistory,
 				region_text: regionText(stackUnits) }); // a normal is covered only by its own region's sentences
 			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed, flagged: res.flagged, dropped: res.dropped, check_failed: !!res.error };

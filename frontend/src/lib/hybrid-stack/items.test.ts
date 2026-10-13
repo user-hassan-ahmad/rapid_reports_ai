@@ -50,6 +50,18 @@ describe('checklist rows', () => {
 		expect(assumedFrom(snap, ['Spleen', 'Liver'], ['Bowel'], [])).toEqual({ Spleen: ['The spleen is normal.', 'No splenic lesion.'] });
 		expect(assumedFrom(null, ['Spleen'], [], [])).toEqual({});
 	});
+	it('a dictated-normal region keeps the sentences the check left, compared with its state in the snapshot (R2)', () => {
+		const snap = { offered: {}, dictation: 'x', abnormal: [], untouched: ['Menisci'], dictatedNormal: ['Ligaments'],
+			assumed: { Ligaments: ['The posterior cruciate ligament is intact.'], Menisci: ['The menisci are intact.'] } };
+		expect(assumedFrom(snap, [], ['Menisci'], [], ['Ligaments']))
+			.toEqual({ Ligaments: ['The posterior cruciate ligament is intact.'], Menisci: ['The menisci are intact.'] });
+		// Menisci dictated normal since the answer (checked untouched): not assumed until checked in that state
+		expect(assumedFrom(snap, [], [], [], ['Ligaments', 'Menisci'])).toEqual({ Ligaments: ['The posterior cruciate ligament is intact.'] });
+		// Ligaments turned abnormal since: its dictated-normal answer no longer holds
+		expect(assumedFrom(snap, ['Ligaments'], ['Menisci'], [], [])).toEqual({ Menisci: ['The menisci are intact.'] });
+		// an older snapshot without dictated-normal regions assumes nothing for them
+		expect(assumedFrom({ ...snap, dictatedNormal: undefined }, [], ['Menisci'], [], ['Ligaments'])).toEqual({ Menisci: ['The menisci are intact.'] });
+	});
 	it('keeps the flagged sentences in the snapshot: only those still assumed, in the state they were checked for (R1)', () => {
 		const snap = { offered: {}, dictation: 'x', abnormal: ['Spleen'], untouched: ['Liver'],
 			assumed: { Liver: ['The liver is normal.'], Spleen: ['The spleen is normal.', 'No splenic lesion.'] },
