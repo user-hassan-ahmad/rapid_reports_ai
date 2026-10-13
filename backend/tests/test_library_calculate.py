@@ -303,12 +303,17 @@ def test_an_unstated_visible_sign_is_assumed_absent_and_the_most_likely_outcome_
 
 
 def test_with_several_outcomes_left_the_deciding_question_splits_them():
+    e = next(x for x in _tier1() if x.id == "bts-pulmonary-nodule")
+    R = lambda v, q: PP.Drafted(InputValue(value=v), q, "read")                       # noqa: E731
+    s = PP.Settlement(values={"diameter_mm": R(6.0, "6 mm"), "age": R(65.0, "65")})
+    p = PP.finish(e, s, {"prior_study": "No"}, None, [])
+    assert p.most_likely is None and p.deciding_input.input == "nodule_type"
+    assert p.deciding_input.label == e.input("nodule_type").label and 1 <= len(p.deciding) <= PP.MAX_DECIDING
+    solid = next(d for d in p.deciding if "solid" in d.answer.split(" / "))
+    assert solid.category == "surveillance" and solid.headline
     e, s = _bts6()
-    p = PP.finish(e, s, {}, None, [])
-    assert p.most_likely is None and p.deciding_input.input == "prior_study"
-    assert p.deciding_input.label == e.input("prior_study").label and 1 <= len(p.deciding) <= PP.MAX_DECIDING
-    no = next(d for d in p.deciding if d.answer == "No")
-    assert no.category == "surveillance" and no.headline
+    p = PP.finish(e, s, {}, None, [])                     # prior CT unknown: unbounded, too costly to weigh (I-3)
+    assert p.deciding_input is None and p.deciding == []
 
 
 def test_ese_and_bosniak_deciding_and_signs():
@@ -320,17 +325,54 @@ def test_ese_and_bosniak_deciding_and_signs():
     b = next(x for x in _tier1() if x.id == "bosniak-renal-cyst")
     p = PP.finish(b, PP.Settlement(), {}, None, [])
     shown = {d.input: (d.state, d.value) for d in p.draft}
-    assert {k: shown[k] for k in ("septa", "protrusion", "calcification")} == dict.fromkeys(
-        ("septa", "protrusion", "calcification"), ("assumed", "none"))
-    assert {"septa", "protrusion", "calcification"} <= set(p.assumptions)
+    assert shown["calcification"] == ("assumed", "none") and "calcification" in p.assumptions
+    assert shown["septa"][0] == shown["protrusion"][0] == "asked"     # review I-1: septa and protrusion stay asked
 
 
 def test_calculate_labels_a_sign_sent_back_as_assumed_and_gives_the_deciding_question():
     e, s = _bts6()
-    c = PP.calculate(e, s, {"diameter_mm": "6 mm", "nodule_type": "solid", "age": "65", "benign_features": "No"},
-                     None, [], "b1")
+    sent = {"diameter_mm": "6 mm", "age": "65", "benign_features": "No", "prior_study": "No", "proven_malignant": "No"}
+    c = PP.calculate(e, s, sent, None, [], "b1")
     assert {v.input: v.state for v in c.values}["benign_features"] == "assumed"
-    assert c.outcome is None and c.deciding_input is not None and c.deciding
+    s2 = PP.Settlement(values={k: v for k, v in s.values.items() if k != "nodule_type"})
+    c = PP.calculate(e, s2, sent, None, [], "b1")
+    assert c.outcome is None and c.deciding_input.input == "nodule_type" and c.deciding
+    # review M-3: an explicit "No" is answered, never assumed, even though it equals the assumption
+    c = PP.calculate(e, s, sent, None, [], "b1", answered={"benign_features": "No"})
+    assert {v.input: v.state for v in c.values}["benign_features"] == "answered"
+
+
+def test_not_stated_on_a_visible_sign_asks_it_and_never_re_assumes_it():
+    """Review M-2."""
+    e, s = _bts6(prior_study=PP.Drafted(InputValue(value=False), "no previous imaging", "prefilled", [PP.WHY_KIND]))
+    p = PP.finish(e, s, {"benign_features": PP.NOT_STATED}, None, [])
+    d = next(x for x in p.draft if x.input == "benign_features")
+    assert d.state == "asked" and "benign_features" not in p.assumptions and "benign_features" in p.missing
+
+
+def test_a_papillary_mention_without_a_count_is_unknown_never_assumed_no():
+    """Review I-2: m3_four_papillary is not a visible sign (its definition leaves a count-less mention unknown)."""
+    e = next(x for x in _tier1() if x.id == "rcog-ovarian-mass-premenopausal")
+    assert not e.input("m3_four_papillary").visible_sign
+    p = PP.finish(e, PP.Settlement(), {}, None, [])
+    assert next(x for x in p.draft if x.input == "m3_four_papillary").state != "assumed"
+    assert "m3_four_papillary" not in p.assumptions
+    assert {"m2_ascites", "b3_acoustic_shadowing"} <= set(p.assumptions)
+
+
+def test_the_bts_answer_path_with_prior_ct_unknown_stays_fast():
+    """Review I-3: 10 mm solid, prior CT unknown: about 1 s a tap before the cap; generous bound."""
+    import time
+    e = next(x for x in _tier1() if x.id == "bts-pulmonary-nodule")
+    R = lambda v, q: PP.Drafted(InputValue(value=v), q, "read")                       # noqa: E731
+    s = PP.Settlement(values={"diameter_mm": R(10.0, "10 mm"), "nodule_type": R("solid", "solid"),
+                              "age": R(65.0, "65")})
+    worst = 0.0
+    for ans in ({}, {"sex": "female"}, {"sex": "female", "family_history": "No"}):
+        t0 = time.perf_counter()
+        PP.finish(e, s, ans, None, [])
+        worst = max(worst, time.perf_counter() - t0)
+    assert worst < 0.4
 
 
 def test_a_visible_sign_is_a_yes_no_or_a_choice_naming_its_absent_option():

@@ -433,11 +433,16 @@ Each input on the card is in exactly one state:
 | **Edited** | In a Calculate result: a sent value that differs from its draft or preset | As sent |
 
 **Visible signs, the most likely outcome and the deciding question (Hassan, 2026-10-13).**
-- **Visible signs.** A sign the imaging shows when it is present (for example spiculation, emphysema on CT, benign
-  calcification or fat, septa, ascites) is flagged in the pack data (`visible_sign`, with `absent_option` for a choice).
+- **Visible signs.** A sign the imaging shows when it is present is flagged in the pack data (`visible_sign`, with
+  `absent_option` for a choice). Flagged today: BTS benign calcification or fat and spiculation; Bosniak calcification;
+  RCOG ascites and acoustic shadowing.
   If unstated, it is drafted as **assumed absent**: state `assumed`, listed in `assumptions`, never read. A stated
-  value always wins. This is the product's silence policy. It never applies to what the imaging may not show, such as
-  enhancement on an unenhanced scan or Doppler flow.
+  value always wins, and an explicit "Not stated" makes it asked. This is the product's silence policy.
+  - It never applies to what the imaging may not show: enhancement on an unenhanced scan, Doppler flow, or emphysema
+    when chest coverage may be partial.
+  - It never applies to a count that a mention may leave open (papillary projections), or to a feature that would make
+    a class less conservative (Bosniak septa and protrusion).
+- The deciding question is skipped while the result is unbounded. The extras computed for a tap are capped.
 - **Most likely.** `most_likely` is the draft outcome under these assumptions, in short (`headline`, `action`,
   `category`).
 - **Deciding question.** While several outcomes remain, `deciding_input` is the unknown input whose answers settle the

@@ -134,7 +134,6 @@
   },
   {
    "id": "emphysema",
-   "visible_sign": true,
    "label": "Emphysema on CT",
    "type": "boolean",
    "how_stated": "true when any emphysema is reported on this CT; false when the lungs are described without emphysema",
