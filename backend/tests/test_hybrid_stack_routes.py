@@ -158,6 +158,13 @@ def test_slim_sheet_route_and_review(authed, monkeypatch, db_session, user):
     monkeypatch.setenv("RR_STACK_REVIEWERS", user.email)
     [s] = authed.get("/api/canvas/stack/slim-sheets").json()
     assert s["flagged"] == 1 and s["removal"]["The liver is normal."] == {"sessions": 5, "removed": 2, "flag": True}
+    async def screen(normals, transport=None):   # a reviewer edit passes the Jev screen, not a regex
+        return {k: [x for x in v if "prostate" not in x] for k, v in normals.items()}, []
+    monkeypatch.setattr(R, "screen_normals", screen)
+    assert authed.post(f"/api/canvas/stack/slim-sheets/{s['id']}", json={"region_normals": {
+        "Liver": ["No cervical lymphadenopathy", "The prostate is normal."]}}).json() == {"ok": True}
+    db_session.refresh(row)
+    assert row.region_normals == {"Liver": ["No cervical lymphadenopathy."]}
     assert authed.post(f"/api/canvas/stack/slim-sheets/{s['id']}", json={"status": "discarded"}).json() == {"ok": True}
     db_session.refresh(row)
     assert row.status == "discarded"

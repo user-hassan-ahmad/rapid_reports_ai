@@ -20,6 +20,7 @@ from .schemas import Region, groups_for, pill_regions
 from .items import Item, ItemsResult, Referral, recheck as items_recheck, update as items_update
 from .jev_stack import MATERIAL_MIN, STALE_MIN, UNFINISHED_MIN, ask_material, ask_stale, ask_unfinished
 from .normals import AssumedResult, assumed as assumed_normals
+from .sex_screen import screen_normals
 from .slim_sheet import clean_sentences, get_or_make as slim_get_or_make
 from .template import template_normal_labels, template_region_normals, template_structure, template_suppressions
 from .draft import DraftResult, draft_conclusion
@@ -441,7 +442,8 @@ async def update_slim_sheet(sheet_id: str, upd: SlimUpdate, user: User = Depends
     if upd.status:
         row.status = upd.status
     if upd.region_normals is not None:
-        row.region_normals = {k: kept for k, v in upd.region_normals.items() if (kept := clean_sentences(v))}
+        cleaned = {k: kept for k, v in upd.region_normals.items() if (kept := clean_sentences(v))}
+        row.region_normals, _flagged = await screen_normals(cleaned)
     db.commit()
     return {"ok": True}
 

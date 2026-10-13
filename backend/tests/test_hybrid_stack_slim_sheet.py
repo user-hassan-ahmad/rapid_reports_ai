@@ -92,9 +92,32 @@ def test_template_region_normals_from_the_stored_structure():
     assert all(s.strip() for ss in normals.values() for s in ss)
 
 
-def test_sex_specific_sentences_never_become_shared_normals():
-    md = "## Region Normals\n- **Pelvic organs:** \"The bladder is normal.\" \"The prostate is normal in size.\" \"The uterus is unremarkable.\" \"The ovaries are normal.\"\n"
-    assert SL.parse_slim(md, ["Pelvic organs"])[0] == {"Pelvic organs": ["The bladder is normal."]}
+_PELVIS_MD = "## Region Normals\n- **Pelvic organs:** \"The bladder is normal.\" \"The prostate is normal in size.\" \"The uterus is unremarkable.\" \"The ovaries are normal.\"\n"
+
+
+def test_parse_slim_keeps_sex_specific_sentences_for_the_async_screen():
+    assert SL.parse_slim(_PELVIS_MD, ["Pelvic organs"])[0] == {"Pelvic organs": [
+        "The bladder is normal.", "The prostate is normal in size.", "The uterus is unremarkable.", "The ovaries are normal."]}
+
+
+async def test_sex_specific_sentences_never_become_shared_normals(db_session, monkeypatch):
+    async def gen(*a, **k):
+        return _PELVIS_MD
+    monkeypatch.setattr(SL, "generate", gen)
+
+    async def facet(scan_type, transport=None):
+        return "none"
+    monkeypatch.setattr(SL, "contrast_facet", facet)
+    scores = {"The prostate is normal in size.": 0.95, "The uterus is unremarkable.": 0.9, "The ovaries are normal.": 0.97}
+
+    async def screen(normals, transport=None):
+        return await real_screen(normals, httpx.MockTransport(lambda req: httpx.Response(200, json={"answers": {"q": {
+            "noul": scores.get(json.loads(req.content)["state"].removeprefix("SENTENCE: "), 0.02)}}})))
+    from rapid_reports_ai.hybrid_stack.sex_screen import screen_normals as real_screen
+    monkeypatch.setattr(SL, "screen_normals", screen)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    row = await SL.get_or_make(db_session, "CT pelvis", "pelvis", [Region(name="Pelvic organs", includes="pelvis")])
+    assert row.region_normals == {"Pelvic organs": ["The bladder is normal."]}
 
 
 def _lean_cfg(sheet=None):

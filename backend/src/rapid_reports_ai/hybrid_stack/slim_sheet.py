@@ -17,6 +17,7 @@ from ..jev_client import JEV_MODEL, jev_post
 from ..report_reconcile import _MEASUREMENT
 from .http import post_chat
 from .schemas import OTHER, Region
+from .sex_screen import screen_normals
 
 logger = logging.getLogger(__name__)
 
@@ -82,9 +83,6 @@ REGIONS:
 {regions}"""
 
 _LOCKS: dict[tuple, asyncio.Lock] = {}
-# Backstop for the prompt rule above: a shared sentence about a sex-specific organ would be assumed for every
-# patient (hand read 2026-10-12: "The prostate is normal" offered beside an ovarian cyst).
-_SEX_SPECIFIC = re.compile(r"(?i)\b(?:prostat\w*|seminal|uter\w*|endometri\w*|ovar\w*|adnex\w*|cervi\w*|testi\w*|testes|scrot\w*|vagin\w*|fallopian|myometri\w*)\b")
 _REGION_LINE = re.compile(r"^\s*-\s+\*\*(.+?):\*\*\s*(.*)$")
 
 
@@ -94,12 +92,12 @@ def _section(md: str, title: str) -> str:
 
 
 def clean_sentences(sentences: list[str]) -> list[str]:
-    """The rules every shared normal obeys, written by the model or edited by a reviewer: no measurement, no
-    sex-specific organ, one sentence each."""
+    """The rules every shared normal obeys, written by the model or edited by a reviewer: no measurement, one
+    sentence each; sex-specific screening is `sex_screen` (async)."""
     out = []
     for s in sentences:
         s = " ".join(str(s).split()).strip()
-        if s and not _MEASUREMENT.search(s) and not _SEX_SPECIFIC.search(s):
+        if s and not _MEASUREMENT.search(s):
             out.append(s if s.endswith(".") else s + ".")
     return out
 
@@ -185,6 +183,9 @@ async def get_or_make(db: Session, scan_type: str, family: str, regions: list[Re
             logger.warning("[stack.slim] %s: %s", type(e).__name__, str(e)[:200])
             return None
         normals, na = parse_slim(md, [r.name for r in regions])
+        normals, flagged = await screen_normals(normals)
+        if flagged:
+            logger.info("[stack.slim] %d sex-specific borderline sentence(s) kept for review: %r", len(flagged), flagged[:5])
         if not normals:
             logger.warning("[stack.slim] no region normals parsed for %r/%s", family, contrast)
             return None
