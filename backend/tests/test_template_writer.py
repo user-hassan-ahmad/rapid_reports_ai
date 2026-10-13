@@ -89,7 +89,7 @@ def endpoint(monkeypatch):
 
 
 def test_analyze_returns_the_grammar_sheet_and_the_creator_keys(client, auth_headers, endpoint, monkeypatch):
-    async def write(examples, scan_type, protocol_notes=""):
+    async def write(examples, scan_type, protocol_notes="", decisions=None):
         assert [e["content"] for e in examples] == ["report 0", "report 1", "report 2"]
         return {"skill_sheet": GOOD, "summary": SUMMARY, "questions": QUESTIONS, "dropped": [],
                 "analyser_version": W.ANALYSER_VERSION}
@@ -102,9 +102,24 @@ def test_analyze_returns_the_grammar_sheet_and_the_creator_keys(client, auth_hea
 
 
 def test_analyze_returns_the_refusal_as_an_error(client, auth_headers, endpoint, monkeypatch):
-    async def write(examples, scan_type, protocol_notes=""):
+    async def write(examples, scan_type, protocol_notes="", decisions=None):
         raise ValueError("The sheet failed its checks, try again")
 
     monkeypatch.setattr(W, "write_sheet", write)
     r = _analyze(client, auth_headers)
     assert r == {"success": False, "error": "The sheet failed its checks, try again"}
+
+
+async def test_write_passes_the_decisions_to_the_save_function(calls, monkeypatch):
+    seen = {}
+
+    async def vet(sheet, origin, previous="", ledger=None):
+        seen["ledger"] = ledger
+        return VetOutcome("saved", sheet, ledger=list(ledger or []), ledger_drift=2)
+    monkeypatch.setattr(W, "vet_sheet", vet)
+    led = [{"kind": "value", "key": "A", "choice": {"need": "every"}, "by": "radiologist", "at": "t",
+            "source": "creation"}]
+    out = await W.write_sheet([{"label": "", "content": "r1"}], "MRI knee", decisions=led)
+    assert seen["ledger"] == led and out["decisions"] == led and out["ledger_drift"] == 2
+    out2 = await W.write_sheet([{"label": "", "content": "r1"}], "MRI knee")
+    assert seen["ledger"] is None and out2["decisions"] == []

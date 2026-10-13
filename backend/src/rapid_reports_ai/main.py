@@ -731,6 +731,7 @@ class SkillSheetAnalyzeRequest(BaseModel):
     scan_type: str
     examples: List[SkillSheetExample]  # 1-5 example reports
     protocol_notes: Optional[str] = ""
+    changes: List[Dict[str, Any]] = []   # Rules-step card answers [{kind, key, choice, source?}]
 
 class SkillSheetGenerateTestCaseRequest(BaseModel):
     scan_type: str
@@ -750,6 +751,7 @@ class SkillSheetRefineRequest(BaseModel):
     chat_history: Optional[List[SkillSheetChatMessage]] = None
     rejection_context: Optional[SkillSheetRejectionContext] = None
     template_id: Optional[str] = None   # the saved template this chat edits (None in the creator): the turn is recorded
+    decisions: Optional[List[Dict[str, Any]]] = None   # the template's decision ledger (None: not tracked)
 
 class SkillSheetTestGenerateRequest(BaseModel):
     skill_sheet: str
@@ -2625,10 +2627,12 @@ async def skill_sheet_analyze_endpoint(
         from . import template_writer
 
         # The grammar analyser writes the sheet (vetted by the save function); the test case runs in parallel.
+        ledger, _ = td.ledger_from_changes(request.changes, source="creation")
         analysis_task = template_writer.write_sheet(
             [{"label": e["label"] or "", "content": e["content"]} for e in examples],
             request.scan_type,
             protocol_notes,
+            decisions=ledger or None,
         )
         test_case_task = tm.generate_test_case(
             examples=examples,
@@ -2740,7 +2744,9 @@ async def skill_sheet_refine_endpoint(
 
         # vet the edit now (the save function, origin "chat") so a refusal reaches the radiologist at the moment of
         # the edit; the template PUT vets again when the panel saves
-        v = await tsave.vet_sheet(result.get("skill_sheet", ""), origin="chat", previous=request.skill_sheet)
+        decisions = td.clean_ledger(request.decisions) if request.decisions is not None else None
+        v = await tsave.vet_sheet(result.get("skill_sheet", ""), origin="chat", previous=request.skill_sheet,
+                                  ledger=decisions)
         logger.info("  vet: %s %s", v.status, v.message[:300])
         if v.status == "refused":
             out = {"success": True, "skill_sheet": request.skill_sheet, "response": v.message,
@@ -2755,6 +2761,14 @@ async def skill_sheet_refine_endpoint(
             if v.message:  # ADJUSTED: saved, with a small repair
                 out["notice"] = v.message
                 out["response"] = f"{result.get('response', '').rstrip()} {v.message}".strip()
+            notes = [n for n in (td.describe_change(c) for c in v.ledger_changes) if n]
+            if v.ledger_cards:   # D3: a whole decided item removed by the rewrite is kept and asked about
+                notes.append(tsave.LEDGER_KEPT)
+                out["cards"] = v.ledger_cards
+            if notes:   # a chat edit that changes a confirmed decision says so
+                out["response"] = f"{out.get('response', '').rstrip()} {' '.join(notes)}".strip()
+        if decisions is not None:
+            out["decisions"] = v.ledger
         if request.template_id:   # evidence: the turn is stored with the template (never fails the reply)
             try:
                 owned = get_template(db, request.template_id, user_id=str(current_user.id))

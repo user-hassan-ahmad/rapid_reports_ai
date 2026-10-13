@@ -82,3 +82,71 @@ def test_a_put_without_decisions_keeps_the_ledger_and_the_rules_step_record(clie
     assert r["success"], r
     after = _get(client, auth_headers, t["id"])["template_config"]
     assert after["decisions"] == _width() and after["rules_step"] == {"version": "v"}
+
+
+def test_analyze_records_the_card_answers_and_passes_them_to_the_writer(client, auth_headers, monkeypatch):
+    seen = {}
+    monkeypatch.setattr("rapid_reports_ai.main.get_system_api_key", lambda *a, **k: "key")
+
+    async def write(examples, scan_type, protocol_notes="", decisions=None):
+        seen["decisions"] = decisions
+        return {"skill_sheet": GOOD, "summary": {}, "questions": [], "dropped": [], "notice": "",
+                "analyser_version": "v", "decisions": decisions or [], "ledger_drift": 0}
+
+    async def test_case(self, examples, scan_type, api_key):
+        return {"sample_clinical_history": "", "sample_findings": ""}
+    monkeypatch.setattr("rapid_reports_ai.template_writer.write_sheet", write)
+    monkeypatch.setattr("rapid_reports_ai.template_manager.TemplateManager.generate_test_case", test_case)
+    r = client.post("/api/templates/skill-sheet/analyze", headers=auth_headers, json={
+        "scan_type": "MRI knee", "examples": [{"content": "a"}, {"content": "b"}, {"content": "c"}],
+        "changes": [{"kind": "value", "key": "Width", "choice": {"need": "every"}},
+                    {"kind": "value", "key": "Depth", "choice": {"need": "every"}, "source": "default"}]}).json()
+    assert r["success"], r
+    assert [(e["key"], e["source"], e["by"]) for e in seen["decisions"]] == [
+        ("Width", "creation", "radiologist"), ("Depth", "default", "code")]
+    assert [e["key"] for e in r["decisions"]] == ["Width", "Depth"]
+
+
+def test_refine_carries_the_ledger_and_names_a_changed_decision(client, auth_headers, monkeypatch):
+    from rapid_reports_ai import template_ledger_apply as tla
+    monkeypatch.setattr("rapid_reports_ai.main.get_system_api_key", lambda *a, **k: "key")
+    led = _width()
+    before = tla.apply_ledger(GOOD, led).sheet
+    after = before.replace(LINE, 'LIST_MISSING ["Depth"]')
+
+    async def refine(self, skill_sheet, message, chat_history, api_key, rejection_context=None):
+        return {"skill_sheet": after, "response": "Done.", "behavioral_claim": "c"}
+    monkeypatch.setattr("rapid_reports_ai.template_manager.TemplateManager.refine_skill_sheet", refine)
+    r = client.post("/api/templates/skill-sheet/refine", headers=auth_headers, json={
+        "skill_sheet": before, "message": "swap width for depth", "decisions": led}).json()
+    assert r["success"] and r["applied"] is True and r["skill_sheet"] == after
+    assert {(e["key"], e["choice"]["need"]) for e in r["decisions"]} == {("Width", "not_needed"), ("Depth", "every")}
+    assert r["response"] == ("Done. This changes something you confirmed: Width every report → not needed.")
+
+
+def test_refine_without_decisions_returns_none(client, auth_headers, monkeypatch):
+    monkeypatch.setattr("rapid_reports_ai.main.get_system_api_key", lambda *a, **k: "key")
+
+    async def refine(self, skill_sheet, message, chat_history, api_key, rejection_context=None):
+        return {"skill_sheet": GOOD, "response": "Nothing to change?", "behavioral_claim": ""}
+    monkeypatch.setattr("rapid_reports_ai.template_manager.TemplateManager.refine_skill_sheet", refine)
+    r = client.post("/api/templates/skill-sheet/refine", headers=auth_headers,
+                    json={"skill_sheet": GOOD, "message": "m"}).json()
+    assert r["success"] and "decisions" not in r
+
+
+
+def test_refine_that_drops_a_whole_decided_list_keeps_it_and_returns_the_card(client, auth_headers, monkeypatch):
+    from rapid_reports_ai import template_ledger_apply as tla
+    monkeypatch.setattr("rapid_reports_ai.main.get_system_api_key", lambda *a, **k: "key")
+    led = _width()
+    before = tla.apply_ledger(GOOD, led).sheet
+    after = "\n".join(ln for ln in before.split("\n") if "LIST_MISSING" not in ln)
+
+    async def refine(self, skill_sheet, message, chat_history, api_key, rejection_context=None):
+        return {"skill_sheet": after, "response": "Done.", "behavioral_claim": "c"}
+    monkeypatch.setattr("rapid_reports_ai.template_manager.TemplateManager.refine_skill_sheet", refine)
+    r = client.post("/api/templates/skill-sheet/refine", headers=auth_headers, json={
+        "skill_sheet": before, "message": "remove the values", "decisions": led}).json()
+    assert r["success"] and LINE in r["skill_sheet"] and r["decisions"] == led
+    assert [c["id"] for c in r["cards"]] == ["value:width"] and r["response"].endswith(S.LEDGER_KEPT)
