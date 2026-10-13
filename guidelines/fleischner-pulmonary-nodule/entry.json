@@ -179,9 +179,17 @@
         },
         {
           "id": "gt8",
-          "label": ">8 mm",
+          "label": ">8–30 mm",
           "min": 8.5,
-          "min_inclusive": true
+          "min_inclusive": true,
+          "max": 30,
+          "max_inclusive": true
+        },
+        {
+          "id": "gt30",
+          "label": ">30 mm (a mass, not a nodule)",
+          "min": 30,
+          "min_inclusive": false
         }
       ]
     },
@@ -415,6 +423,78 @@
             "@not_applicable"
           ],
           "result": "subsolid_multiple_ge6"
+        },
+        {
+          "match": [
+            "solid",
+            "single",
+            "gt30",
+            "low"
+          ],
+          "result": "mass"
+        },
+        {
+          "match": [
+            "solid",
+            "single",
+            "gt30",
+            "high"
+          ],
+          "result": "mass"
+        },
+        {
+          "match": [
+            "solid",
+            "multiple",
+            "gt30",
+            "low"
+          ],
+          "result": "mass"
+        },
+        {
+          "match": [
+            "solid",
+            "multiple",
+            "gt30",
+            "high"
+          ],
+          "result": "mass"
+        },
+        {
+          "match": [
+            "ground-glass",
+            "single",
+            "gt30",
+            "@not_applicable"
+          ],
+          "result": "mass"
+        },
+        {
+          "match": [
+            "ground-glass",
+            "multiple",
+            "gt30",
+            "@not_applicable"
+          ],
+          "result": "mass"
+        },
+        {
+          "match": [
+            "part-solid",
+            "single",
+            "gt30",
+            "@not_applicable"
+          ],
+          "result": "mass"
+        },
+        {
+          "match": [
+            "part-solid",
+            "multiple",
+            "gt30",
+            "@not_applicable"
+          ],
+          "result": "mass"
         }
       ]
     },
@@ -440,6 +520,34 @@
             "source": "S1",
             "page": 2,
             "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system"
+          }
+        },
+        {
+          "when": {
+            "all": [
+              {
+                "ref": "age_band",
+                "eq": "ge35"
+              },
+              {
+                "all": [
+                  {
+                    "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "management",
+                    "eq": "mass"
+                  }
+                ]
+              }
+            ]
+          },
+          "result": "does_not_apply",
+          "locator": {
+            "source": "S2",
+            "page": 13,
+            "section": "Glossary, mass (printed p709): a mass is any pulmonary, pleural or mediastinal lesion seen as an opacity greater than 3 cm in diameter; nodule (p14, printed p710): on CT a rounded or irregular opacity measuring up to 3 cm"
           }
         },
         {
@@ -1057,7 +1165,7 @@
     },
     {
       "id": "does_not_apply",
-      "classification": "Fleischner 2017 does not apply: lung cancer screening, age under 35, immunocompromised patient or known primary cancer.",
+      "classification": "Fleischner 2017 does not apply: lung cancer screening, age under 35, immunocompromised patient, known primary cancer, or an opacity over 3 cm (a mass, not a nodule).",
       "recommendation": "Manage per the clinical context (screening programme protocol, or the patient's oncology or immunosuppression care).",
       "caveats": [
         "The Fleischner Society advises the ACR Lung-RADS system for lung cancer screening CT.",
@@ -1171,6 +1279,15 @@
           "source": "S1",
           "page": 3,
           "section": "Table note; Introduction and Implications for Patient Care (p. 2)"
+        }
+      },
+      {
+        "id": "pit.mass",
+        "text": "An opacity over 3 cm is a mass, not a nodule (Fleischner glossary): these nodule guidelines do not apply.",
+        "locator": {
+          "source": "S2",
+          "page": 13,
+          "section": "Glossary, mass (printed p709)"
         }
       },
       {

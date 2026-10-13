@@ -11398,10 +11398,18 @@
        },
        {
         "id": "gt8",
-        "label": ">8 mm",
-        "max_inclusive": false,
+        "label": ">8–30 mm",
+        "max": 30.0,
+        "max_inclusive": true,
         "min": 8.5,
         "min_inclusive": true
+       },
+       {
+        "id": "gt30",
+        "label": ">30 mm (a mass, not a nodule)",
+        "max_inclusive": false,
+        "min": 30.0,
+        "min_inclusive": false
        }
       ],
       "id": "size_band",
@@ -11644,6 +11652,78 @@
          "@not_applicable"
         ],
         "result": "subsolid_multiple_ge6"
+       },
+       {
+        "match": [
+         "solid",
+         "single",
+         "gt30",
+         "low"
+        ],
+        "result": "mass"
+       },
+       {
+        "match": [
+         "solid",
+         "single",
+         "gt30",
+         "high"
+        ],
+        "result": "mass"
+       },
+       {
+        "match": [
+         "solid",
+         "multiple",
+         "gt30",
+         "low"
+        ],
+        "result": "mass"
+       },
+       {
+        "match": [
+         "solid",
+         "multiple",
+         "gt30",
+         "high"
+        ],
+        "result": "mass"
+       },
+       {
+        "match": [
+         "ground-glass",
+         "single",
+         "gt30",
+         "@not_applicable"
+        ],
+        "result": "mass"
+       },
+       {
+        "match": [
+         "ground-glass",
+         "multiple",
+         "gt30",
+         "@not_applicable"
+        ],
+        "result": "mass"
+       },
+       {
+        "match": [
+         "part-solid",
+         "single",
+         "gt30",
+         "@not_applicable"
+        ],
+        "result": "mass"
+       },
+       {
+        "match": [
+         "part-solid",
+         "multiple",
+         "gt30",
+         "@not_applicable"
+        ],
+        "result": "mass"
        }
       ],
       "step": "table"
@@ -11667,6 +11747,35 @@
           {
            "eq": "lt35",
            "ref": "age_band"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
+         "page": 13,
+         "section": "Glossary, mass (printed p709): a mass is any pulmonary, pleural or mediastinal lesion seen as an opacity greater than 3 cm in diameter; nodule (p14, printed p710): on CT a rounded or irregular opacity measuring up to 3 cm",
+         "source": "S2",
+         "table": ""
+        },
+        "result": "does_not_apply",
+        "when": {
+         "all": [
+          {
+           "eq": "ge35",
+           "ref": "age_band"
+          },
+          {
+           "all": [
+            {
+             "eq": false,
+             "ref": "exclusion"
+            },
+            {
+             "eq": "mass",
+             "ref": "management"
+            }
+           ]
           }
          ]
         }
@@ -12337,7 +12446,7 @@
        "The Fleischner Society advises the ACR Lung-RADS system for lung cancer screening CT.",
        "Under 35: decide case by case; infection is more likely than cancer, so keep serial CT to a minimum."
       ],
-      "classification": "Fleischner 2017 does not apply: lung cancer screening, age under 35, immunocompromised patient or known primary cancer.",
+      "classification": "Fleischner 2017 does not apply: lung cancer screening, age under 35, immunocompromised patient, known primary cancer, or an opacity over 3 cm (a mass, not a nodule).",
       "id": "does_not_apply",
       "locator": {
        "page": 2,
@@ -12423,6 +12532,16 @@
         "table": ""
        },
        "text": "Does not apply to lung cancer screening (use Lung-RADS), patients under 35, immunocompromised patients or patients with known primary cancer."
+      },
+      {
+       "id": "pit.mass",
+       "locator": {
+        "page": 13,
+        "section": "Glossary, mass (printed p709)",
+        "source": "S2",
+        "table": ""
+       },
+       "text": "An opacity over 3 cm is a mass, not a nodule (Fleischner glossary): these nodule guidelines do not apply."
       },
       {
        "id": "pit.volume",
@@ -12557,6 +12676,14 @@
      "role": "primary",
      "title": "Guidelines for Management of Incidental Pulmonary Nodules Detected on CT Images: From the Fleischner Society 2017 (MacMahon H, et al. Radiology 2017;284:228-243)",
      "url": "https://doi.org/10.1148/radiol.2017161659"
+    },
+    {
+     "edition": "2008",
+     "id": "S2",
+     "issuer": "Fleischner Society",
+     "role": "primary",
+     "title": "Fleischner Society: Glossary of Terms for Thoracic Imaging (Hansell DM, et al. Radiology 2008;246(3):697-722)",
+     "url": "https://doi.org/10.1148/radiol.2462070712"
     }
    ]
   },
@@ -20684,5 +20811,5 @@
    ]
   }
  },
- "version": "0d8863f658de"
+ "version": "3c8602b17a21"
 }

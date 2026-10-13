@@ -171,3 +171,30 @@ before (Jev run-to-run variance), checked by hand against the table, p3; managem
 - Most dictations state neither age nor exclusions, so most Fleischner cards open as check_first until answered.
 
 Independent clinical read (skill step 8): PENDING, dispatched by the controller.
+
+## Size scope (2026-10-13, live Chrome test: a 3.8 cm mass showed "applies")
+
+New source S2 (role primary, issuer Fleischner Society): Hansell DM et al., "Fleischner Society: Glossary of Terms for
+Thoracic Imaging", Radiology 2008;246(3):697–722, doi:10.1148/radiol.2462070712. Supplied by Hassan; sha256
+a0029823…e57a; text extracted with `pdftotext -layout`.
+- PDF p13 (printed p709), "mass": "any pulmonary, pleural, or mediastinal lesion seen … as an opacity greater than 3
+  cm in diameter".
+- PDF p14 (printed p710), "nodule": on CT "a rounded or irregular opacity … measuring up to 3 cm in diameter".
+
+Checklist:
+- `size_band`: `gt8` is now >8 mm up to 30 mm inclusive, relabelled ">8–30 mm"; a new band `gt30` is ">30 mm (a mass,
+  not a nodule)". The 30 mm edge stays inside the step, so a band answer still feeds the table; no dead end. The
+  step's locator stays S1 p5, and the exclusion case cites S2. ✓
+- `management` table: 8 new rows, one for each type, count and risk combination at `gt30`, each giving `mass`. ✓
+- `applies`: a new does_not_apply case, all(age ≥35, exclusion false, management = mass), with the S2 locator. It
+  cannot overlap the existing exclusion. ✓
+- does_not_apply text adds "or an opacity over 3 cm (a mass, not a nodule)". A new pitfall `pit.mass` cites S2. ✓
+- golden cases: 30 mm → solid_single_gt8 (the edge, still a nodule); 30.5 mm → does_not_apply (band gt30); 38 mm solid
+  and 38 mm part-solid → does_not_apply; band answer gt30 → does_not_apply; 38 mm with eligibility unknown →
+  does_not_apply with nothing asked (a mass is excluded whatever the eligibility). ✓
+- gates 1–4 pass. Gate 5 (Jev evidence) and the clinical read: controller and reviewer.
+
+**For Hassan**
+- DECISION, confirmed 2026-10-13: the cut-off follows the source wording: up to 3 cm is a nodule, over 3 cm is a mass.
+- The glossary's "mass" entry is worded for chest radiographs, under the heading "Radiographs and CT scans". The CT
+  "nodule" entry gives the same 3 cm limit, so both are cited together.
