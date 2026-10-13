@@ -9,8 +9,8 @@
   tagged with its ledger key (tap to edit or remove).
 - uncovered: structures a findings paragraph COVERS with no NORMAL ("mentioned in your examples but no normal
   sentence": Add wording / Leave unmentioned).
-- concept_duplicates: a FIXED line, a template NEGATIVE or a non-standard context rule's sentence the ledger does not
-  own that Jev says states a decided concept again ("may be stated twice"). A NEGATIVE's card acts on the NEGATIVE
+- concept_duplicates: a FIXED line or a template NEGATIVE the ledger does not own (and no non-standard context rule
+  makes conditional) that Jev says states a decided concept again ("may be stated twice"). A NEGATIVE's card acts on the NEGATIVE
   (its normal-kind ledger key), never as a fixed entry.
 - sheet_checks: all of the above plus the ledger entries that could not be matched (cards at the next review).
 Every Jev question is case-agnostic (structural wording only)."""
@@ -45,8 +45,11 @@ def _clean(sheet: str) -> Optional[tss.SheetStructure]:
 def fixed_candidates(st: tss.SheetStructure, ledger: List[dict]) -> List[str]:
     """FIXED texts printed for every patient and not yet decided. Only the ledger's own lines are left out (a decided
     concept's wordings, a decided fixed line); the default of an undecided concept is checked like any other line,
-    so a default with the wrong polarity still shows up."""
-    owned = td.concept_texts(ledger) | {norm_key(e["key"]) for e in ledger if e["kind"] == "fixed"}
+    so a default with the wrong polarity still shows up (a standard concept's default keeps its candidacy although its
+    standard rule targets it). A FIXED line a non-standard context rule targets is conditional: item 1's resolver
+    decides it per case at Generate, so it is not "always printed" and not a candidate."""
+    owned = (td.concept_texts(ledger) | {norm_key(e["key"]) for e in ledger if e["kind"] == "fixed"}
+             | _conditional(st))
     out, seen = [], set()
     for f in st.fixed_blocks:
         k = norm_key(f.text)
@@ -54,6 +57,16 @@ def fixed_candidates(st: tss.SheetStructure, ledger: List[dict]) -> List[str]:
             continue
         seen.add(k)
         out.append(f.text)
+    return out
+
+
+def _conditional(st: tss.SheetStructure) -> Set[str]:
+    """The lines a context rule outside the standard concepts targets (REPLACE / SUPPRESS) or prints (USE /
+    REPLACE WITH): resolved per case, never printed for every patient."""
+    out: Set[str] = set()
+    for r in st.rules:
+        if r.condition_source == "context" and not td.concept_of_condition(r.condition):
+            out |= {norm_key(t) for t in (r.target, r.then_text) if t}
     return out
 
 
@@ -92,16 +105,14 @@ DUP_MIN = 0.5   # lab-set (scripts/rules_step_lab.py dups)
 
 
 def duplicate_candidates(st: tss.SheetStructure, ledger: List[dict]) -> List[dict]:
-    """Lines the ledger does not own that a decided concept could also be stating: FIXED lines, the template's
-    unconditional NEGATIVE lines, and the sentences of context USE / REPLACE rules whose condition is not a standard
-    one. Each as {"text", "ledger_kind", "key"}: the ledger item a card on it records."""
-    owned = td.concept_texts(ledger)
+    """Lines the ledger does not own that a decided concept could also be stating in every report: FIXED lines and
+    the template's unconditional NEGATIVE lines. A line a non-standard context rule targets or prints is conditional
+    (resolved per case) and is left out. Each as {"text", "ledger_kind", "key"}: the ledger item a card records."""
+    owned = td.concept_texts(ledger) | _conditional(st)
     paras = {p.id: p.name for p in st.paragraphs}
     found = [(f.text, "fixed", f.text) for f in st.fixed_blocks]
     found += [(n.text, "normal", td.negative_key(paras[n.paragraph], n.text)) for n in st.negatives
               if n.paragraph in paras and n.origin == "template" and not n.condition]
-    found += [(r.then_text, "fixed", r.then_text) for r in st.rules if r.condition_source == "context"
-              and r.then_text and not td.concept_of_condition(r.condition)]
     out: List[dict] = []
     seen: Set[str] = set()
     for text, kind, key in found:

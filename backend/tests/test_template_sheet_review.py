@@ -140,3 +140,21 @@ async def test_a_negative_that_may_state_a_decided_concept_twice_is_a_card_on_th
     assert [(c["ledger_kind"], c["key"], c["title"]) for c in cards] == [
         ("normal", td.negative_key("Liver", "No prior study for comparison."), "No prior study for comparison.")]
     assert [x["choice"] for x in cards[0]["choices"]] == [{"text": ""}, {"text": "No prior study for comparison."}]
+
+
+OTHER = "the dictation states the study was performed out of hours"   # a context condition no standard concept owns
+CONDITIONAL_SHEET = LEDGER_SHEET.replace(
+    'FIXED "Axial images were acquired."\n',
+    'FIXED "Axial images were acquired."\nFIXED "Routine protocol."\n'
+    f'RULE WHEN [context: {OTHER}] REPLACE "Routine protocol." WITH "Out-of-hours protocol."\n'
+    f'RULE WHEN [context: {OTHER}] USE "Reported out of hours."\n')
+
+
+def test_a_non_standard_context_rule_makes_its_lines_conditional_not_always_printed():
+    st = _st(CONDITIONAL_SHEET)
+    cands = V.fixed_candidates(st, [])
+    assert "Routine protocol." not in cands                       # its target: resolved per case at Generate
+    assert "Out-of-hours protocol." not in cands and "Reported out of hours." not in cands
+    assert cands == ["Axial images were acquired.", "No previous imaging available."]
+    assert not {"Routine protocol.", "Out-of-hours protocol.", "Reported out of hours."} & {
+        x["text"] for x in V.duplicate_candidates(st, [])}
