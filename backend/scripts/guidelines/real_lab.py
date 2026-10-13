@@ -29,6 +29,7 @@ import importlib.util
 import json
 import os
 import random
+import re
 import statistics
 import sys
 import time
@@ -44,6 +45,7 @@ load_dotenv("/Users/hassan/Code/rapid_reports_ai/backend/.env")
 from rapid_reports_ai.hybrid_stack.copilot import matcher as M  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot import tnm  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB  # noqa: E402
+from rapid_reports_ai.hybrid_stack.copilot.library import quantity as Q  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library.pack_preview import (  # noqa: E402
     EXAM_CARD, Drafted, _answer, _show, display_options, exam_presets, finish, preset_values, settle_pack, Settlement)
 from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry, InputValue  # noqa: E402
@@ -354,14 +356,16 @@ def write_brief(lib, cards: list[dict], cards_path: Path, labels_path: Path) -> 
 
 def parse_label(e: Entry, raw: dict, served_by: str) -> dict:
     """The label keyed by input; every pack input present (an unlabelled one: not stated, boundary); a value the
-    pack cannot take becomes a boundary item with no value."""
+    pack cannot take becomes a boundary item with no value. A number labelled as a band or bound ("under 1 cm",
+    ">8 mm") is a value: _same compares a drafted number with it as the engine bands it."""
     got = {x["input"]: x for x in raw.get("inputs", []) if e.input(x["input"]) is not None}
     out = {}
     for i in e.inputs:
         x = dict(got.get(i.id) or {"stated": False, "value": None, "quote": "", "locator": "", "assumed": None,
                                    "boundary": True, "note": "not labelled"})
         for k in ("value", "assumed"):
-            if x.get(k) is not None and _answer(e, i, str(x[k])) is None:
+            if (x.get(k) is not None and _answer(e, i, str(x[k])) is None
+                    and not (i.type == "number" and _interval(e, i, str(x[k])) is not None)):
                 x["boundary"], x["note"], x[k] = True, f"{k} {x[k]!r} is not a value of the pack", None
         if x["value"] is None:
             x["stated"] = False
@@ -414,11 +418,76 @@ def drafts(s, e: Entry | None = None, presets: dict[str, str] | None = None) -> 
     return out
 
 
+# a labeller's band or bound for a number ("under 1 cm", "35 years or over", ">8 mm", "1 cm to under 4 cm"): an interval
+_BOUNDS = [(re.compile(r"^(?:under|below|less than|<)\s*(.+)$"), "lt"),
+           (re.compile(r"^(?:up to|at most|≤|<=)\s*(.+)$"), "le"),
+           (re.compile(r"^(.+?)\s*or (?:less|under|below|smaller)$"), "le"),
+           (re.compile(r"^(?:over|above|more than|greater than|>)\s*(.+)$"), "gt"),
+           (re.compile(r"^(?:at least|≥|>=)\s*(.+)$"), "ge"),
+           (re.compile(r"^(.+?)\s*or (?:over|more|above|greater|older)$"), "ge")]
+_SPAN = re.compile(r"^(.+?)\s*(to under|to less than|to|-|–|—)\s*(.+)$")
+
+
+def _norm_label(s: str) -> str:
+    return " ".join(s.lower().replace("–", "-").replace("—", "-").split())
+
+
+def _reading(i, text: str, unit_hint: str = "") -> float | None:
+    """One number from a label part, in the input's unit (a bare number borrows the other part's unit, else the
+    input's own)."""
+    xs = Q.readings(text, i.unit, i.dims)
+    if not xs and re.fullmatch(r"\s*\d+(?:\.\d+)?\s*", text):
+        xs = Q.readings(f"{text.strip()} {unit_hint or i.unit}", i.unit, i.dims)
+    return xs[0] if len(xs) == 1 else None
+
+
+def _interval(e: Entry, i, label: str):
+    """(lo, lo_inclusive, hi, hi_inclusive) for a band label of this input on any band step, or a bound or span the
+    labeller wrote; None when the label is neither."""
+    n = _norm_label(label)
+    for s in e.logic:
+        if getattr(s, "ref", None) == i.id and hasattr(s, "bands"):
+            for b in s.bands:
+                if _norm_label(b.label) == n:
+                    return (b.min, b.min_inclusive, b.max, b.max_inclusive)
+    for rx, kind in _BOUNDS:
+        m = rx.match(n)
+        if m and (x := _reading(i, m.group(1))) is not None:
+            return {"lt": (None, True, x, False), "le": (None, True, x, True),
+                    "gt": (x, False, None, False), "ge": (x, True, None, False)}[kind]
+    m = _SPAN.match(n)
+    if m:
+        unit = re.sub(r"[\d.\s]", "", m.group(3)) or ""
+        lo, hi = _reading(i, m.group(1), unit), _reading(i, m.group(3))
+        if lo is not None and hi is not None:
+            return (lo, True, hi, m.group(2) not in ("to under", "to less than"))
+    return None
+
+
+def _inside(x: float, iv) -> bool:
+    lo, lo_inc, hi, hi_inc = iv
+    ok_lo = lo is None or (x >= lo - 1e-9 if lo_inc else x > lo + 1e-9)
+    ok_hi = hi is None or (x <= hi + 1e-9 if hi_inc else x < hi - 1e-9)
+    return ok_lo and ok_hi
+
+
 def _same(e: Entry, k: str, v: InputValue, label_value: str | None) -> bool:
+    """The drafted value agrees with the label. A number is compared numerically in the input's unit; against a band
+    label (the pack's own, from any band step reading it) or a labeller's bound or span, it agrees when it falls inside
+    that interval, as the engine would band it. A genuine mismatch stays a mismatch."""
     if label_value is None:
         return False
-    t = _answer(e, e.input(k), label_value)
-    return t is not None and _show(e, e.input(k), t) == _show(e, e.input(k), v)
+    i = e.input(k)
+    t = _answer(e, i, label_value)
+    if t is not None and _show(e, i, t) == _show(e, i, v):
+        return True
+    if i.type != "number" or v.state != "present" or v.value is None:
+        return False
+    x = float(v.value)
+    if t is not None and t.state == "present" and t.value is not None:
+        return abs(float(t.value) - x) <= 1e-9 * max(1.0, abs(x))
+    iv = _interval(e, i, label_value)
+    return iv is not None and _inside(x, iv)
 
 
 def _truth(label: dict) -> dict[str, str | None]:
