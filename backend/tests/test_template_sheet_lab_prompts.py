@@ -255,3 +255,9 @@ def test_the_decided_block_follows_the_current_card_shapes():
     assert tla.render_concept("contrast", led[1]["choice"]) == ['FIXED "No agent was given."',
                                                                f'RULE WHEN [context: {given}] SUPPRESS "No agent was given."']
     assert tla.render_concept("sequences", led[2]["choice"]) == []
+
+
+def test_the_decided_prompt_keeps_example_prose_off_the_decided_lines():
+    p = P.analyser_system_prompt(True)
+    assert "Opening, Order and Measurement prose never quotes one of those lines" in p
+    assert "never quotes one of those lines" not in P.WRITER_SYSTEM_PROMPT

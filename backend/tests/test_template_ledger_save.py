@@ -121,3 +121,23 @@ async def test_rebuild_and_restore_never_leave_two_comparison_lines(origin, prev
     assert out.sheet == CMP_SHEET and out.ledger == CMP
     assert [e["key"] for e in out.ledger_unmatched] == ["comparison"]
     _one_comparison_line_each_way(out.sheet)
+
+
+_PRIOR = "No previous imaging available."
+COMPARISON = _led(("concept", "comparison", {"use": True, "default": _PRIOR, "when_met": "Compared with {date}."}))
+RESTATED = LEDGER_SHEET.replace('Opening: "Axial images were acquired."',
+                                f'Opening: "Axial images were acquired. {_PRIOR}"')
+
+
+async def test_prose_quoting_a_decided_concepts_line_is_a_non_blocking_warning():
+    out = await S.vet_sheet(RESTATED, origin="analyser", ledger=COMPARISON)
+    assert out.status == "saved"
+    assert [(w["reason"], w["detail"]) for w in out.ledger_warnings] == [
+        ("prose quotes a decided standard line", _PRIOR)]
+    assert out.ledger_warnings[0]["text"].startswith("Opening:")
+    assert out.sheet.split("\n")[out.ledger_warnings[0]["line"] - 1] == out.ledger_warnings[0]["text"]
+    # no quote, no warning; a line the ledger does not own is not flagged; no ledger, no check
+    assert (await S.vet_sheet(LEDGER_SHEET, origin="analyser", ledger=COMPARISON)).ledger_warnings == []
+    assert (await S.vet_sheet(RESTATED, origin="analyser", ledger=LVEF)).ledger_warnings == []
+    assert (await S.vet_sheet(RESTATED, origin="analyser")).ledger_warnings == []
+    assert tla.apply_ledger(RESTATED, COMPARISON).restated[0]["detail"] == _PRIOR

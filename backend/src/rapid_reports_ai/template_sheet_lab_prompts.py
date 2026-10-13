@@ -492,7 +492,9 @@ _GUESS_CONTEXT = ("- Context rules: where examples differ because of what was pe
                   "limitation or prior imaging, write the context RULE that produces the variant wording, quoting it.")
 _DECIDED_CONTEXT = (f"- Context rules: for each study-level circumstance listed under {DECIDED_HEADING}, write exactly the "
                     "lines given there, word for word, and no other line or rule about that circumstance; a "
-                    "circumstance marked not used or whichever is dictated gets no line at all. For any other "
+                    "circumstance marked not used or whichever is dictated gets no line at all. Opening, Order and "
+                    "Measurement prose never quotes one of those lines: the line prints itself, so a quote would "
+                    "state it twice. For any other "
                     "circumstance where the examples differ because of what was performed or the protocol, write the "
                     "context RULE that produces the variant wording, quoting it.")
 _GUESS_GRAMMAR = ("Use it when an example shows a list of values not provided (under any label), or contains unfilled "

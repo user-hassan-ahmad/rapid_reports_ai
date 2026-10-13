@@ -38,6 +38,8 @@ class LedgerResult:
     unmatched: List[dict] = field(default_factory=list)  # entries shown as cards at the next review
     failed: List[dict] = field(default_factory=list)     # entries whose edit would break the sheet (a bug)
     stale_quotes: List[str] = field(default_factory=list)
+    restated: List[dict] = field(default_factory=list)   # lint warnings: paragraph prose quoting a decided concept's
+                                                         # FIXED line ({"line", "text", "reason", "detail"})
 
     @property
     def changed(self) -> int:
@@ -399,7 +401,35 @@ def apply_ledger(sheet: str, ledger: List[dict], before: str = "") -> LedgerResu
         stale += olds
     prose = _free_prose_lines(res.sheet.split("\n"))
     res.stale_quotes = sorted({t for t in stale if t and any(f'"{t}"' in ln for ln in prose)})
+    res.restated = restated_quotes(res.sheet, ledger)
     return res
+
+
+RESTATED = "prose quotes a decided standard line"
+_EXAMPLE_PROSE = re.compile(r"^\s*(?:-\s+)?(?:Opening|Order|Measurement)\b")
+_QUOTED = re.compile(r'"([^"]*)"')
+
+
+def restated_quotes(sheet: str, ledger: List[dict]) -> List[dict]:
+    """Lint warnings (never blocking): an Opening, Order or Measurement line of a paragraph whose quote holds a used
+    decided concept's FIXED line word for word. The line prints itself, so the writer would state it twice."""
+    owned = {" ".join(e["choice"]["default"].split()) for e in td.clean_ledger(ledger)
+             if e["kind"] == "concept" and e["choice"]["use"] and e["choice"]["default"]}
+    if not owned:
+        return []
+    lines = sheet.split("\n")
+    out: List[dict] = []
+    for title, start, end in _blocks(lines):
+        if tsg.paragraph_heading(title) is None:
+            continue
+        for i in range(start, end):
+            ln = lines[i]
+            if not _EXAMPLE_PROSE.match(ln):
+                continue
+            quotes = [" ".join(q.split()) for q in _QUOTED.findall(ln)]
+            for text in sorted(t for t in owned if any(t in q for q in quotes)):
+                out.append({"line": i + 1, "text": ln, "reason": RESTATED, "detail": text})
+    return out
 
 
 # ── reading a sheet for a ledger item (chat reconciliation; the router's targeted calls) ───────────────────────
