@@ -5,7 +5,7 @@
   "match_topic": "coronary",
   "purpose": "Standardises reporting of coronary artery calcium, with a risk statement and management recommendations, on dedicated calcium-score scans and on any non-contrast chest CT, whatever the indication.",
   "trigger": ["exam", "finding"],
-  "exam": "dedicated CT coronary artery calcium scan, or non-contrast chest CT in which coronary calcium is assessed",
+  "exam": "dedicated ECG-gated CT coronary artery calcium scoring scan",
   "issuer": "Society of Cardiovascular Computed Tomography (SCCT)",
   "system": "CAC-DRS: Coronary Artery Calcium Data and Reporting System",
   "display": "CAC-DRS (SCCT 2018)",

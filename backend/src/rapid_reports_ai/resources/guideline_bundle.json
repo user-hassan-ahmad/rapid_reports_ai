@@ -38,7 +38,7 @@
     "logic": [],
     "match_topic": "",
     "outcomes": [],
-    "purpose": "Classifies an acute thoracolumbar spine injury by fracture morphology, with neurological status and case-specific modifiers, in spinal trauma; designed mainly around features seen on CT. Not for chronic or osteoporotic (insufficiency) vertebral fractures.",
+    "purpose": "Classifies an acute thoracolumbar spine injury by fracture morphology, with neurological status and case-specific modifiers, in spinal trauma; designed mainly around features seen on CT. Not for chronic fractures or low-energy osteoporotic insufficiency fractures.",
     "reference": {
      "definitions": [
       {
@@ -6276,7 +6276,7 @@
     },
     "display": "CAC-DRS (SCCT 2018)",
     "edition": "2018",
-    "exam": "dedicated CT coronary artery calcium scan, or non-contrast chest CT in which coronary calcium is assessed",
+    "exam": "dedicated ECG-gated CT coronary artery calcium scoring scan",
     "id": "cac-drs",
     "inputs": [
      {
@@ -14030,7 +14030,7 @@
     },
     "display": "PI-RADS v2.1",
     "edition": "2019 (v2.1)",
-    "exam": "multiparametric MRI of the prostate",
+    "exam": "MRI of the prostate (multiparametric or biparametric)",
     "id": "pi-rads-2-1",
     "inputs": [
      {
@@ -20189,5 +20189,5 @@
    ]
   }
  },
- "version": "4aa2decc29b6"
+ "version": "fd4a765c5cc7"
 }
