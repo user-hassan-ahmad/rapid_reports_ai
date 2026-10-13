@@ -42,7 +42,7 @@ def stub(monkeypatch):
         return [state["claim_scores"].get(c, 0.9) for c in claims], (state["cover"] if cover is not None else None)
 
     async def screen(scan, instruction, context="", transport=None):
-        return {"habit": state["habit"], "undo": state.get("undo", 0.0)}
+        return {"habit": state["habit"], "undo": state.get("undo", 0.0), "misfit": state.get("misfit", 0.0)}
 
     async def requires(lines, transport=None):
         return [state["requires"].get(l, 0.0) for l in lines]
@@ -241,7 +241,8 @@ async def test_screen_asks_the_habit_and_undo_questions_in_one_call():
         return httpx.Response(200, json={"answers": {k: {"noul": 0.3} for k in body["questions"]}})
     out = await P.screen("CT", "put it back", context="PREVIOUS REPLY (context only):\nX",
                          transport=httpx.MockTransport(handler))
-    assert out == {"habit": 0.3, "undo": 0.3} and len(seen) == 1
+    assert out == {"habit": 0.3, "undo": 0.3, "misfit": 0.3} and len(seen) == 1
+    assert seen[0]["questions"]["misfit"] == J.QUESTIONS["misfit"]                # misfit_B, as the wording lab chose
     assert seen[0]["questions"]["habit"] == J.QUESTIONS["habit"]
     assert seen[0]["questions"]["undo"] == {"type": "noul",
                                             "instructions": "The INSTRUCTION asks to undo the previous change."}
@@ -483,3 +484,22 @@ async def test_below_the_threshold_the_proposer_runs(stub):
     stub["proposal"] = _proposal(_change("value", "Width is no longer required.", name="Width", to="not_needed"))
     t = await P.propose_turn(ROUTER_SHEET, [], "drop width", last_changes=[{"type": "ledger", "claim": "x"}])
     assert t.applied and t.evidence["route"] == "propose"
+
+
+
+# ── misfit in the screen call (misfit_B, 0.5) ───────────────────────────────────────────────────────────────────
+async def test_a_misfit_asks_the_scan_type_question_and_proposes_nothing(stub):
+    stub["misfit"] = 0.8
+    stub["proposal"] = RuntimeError("the proposer must not run")
+    t = await P.propose_turn(ROUTER_SHEET, [], "add the weather forecast")
+    assert not t.applied and t.sheet == ROUTER_SHEET and t.reply == P.MISFIT_REPLY.format(scan="Router test")
+    assert t.reply.startswith("That doesn't look like part of a Router test report") and "did you mean" in t.reply
+    assert t.evidence["route"] == "misfit" and t.evidence["screen"] == {"habit": 0.1, "undo": 0.0, "misfit": 0.8}
+
+
+async def test_a_plausible_always_mention_request_is_proposed(stub):
+    stub["misfit"] = 0.2
+    stub["proposal"] = _proposal(_change("normal", "Upper: alpha now reads Alpha is fine.", paragraph="Upper",
+                                         structure="alpha", to="reword", text="Alpha is fine."))
+    t = await P.propose_turn(ROUTER_SHEET, [], "always mention the ECV; say Alpha is fine.")
+    assert t.evidence["route"] == "propose" and t.evidence["screen"]["misfit"] == 0.2

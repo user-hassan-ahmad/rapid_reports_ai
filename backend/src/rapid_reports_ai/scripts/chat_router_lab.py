@@ -540,7 +540,8 @@ def arm_record(item: dict, t: Optional[R.Turn], qwen_calls: int, start: str, tou
             "qwen_calls": qwen_calls, "ms": t.evidence.get("ms") if t else None,
             "unrelated": unrelated_changes(start, t.sheet, touches) if (t and touches is not None) else None,
             "style_checks": list(t.evidence.get("style_claims") or []) if t else [],
-            "state_correct": sc, "state_scored": ss}
+            "state_correct": sc, "state_scored": ss,
+            "screen": (t.evidence.get("screen") if t else None)}   # habit / undo / misfit scores, for the next lab
 
 
 def edit_check_prf(results: Dict[str, dict], labels: Dict[str, int]) -> dict:

@@ -264,6 +264,9 @@ def chat_context(context: str = "", last_changes: Optional[List[dict]] = None) -
 
 UNDO_MIN = 0.5      # validated in the next lab
 NOTHING_TO_UNDO = "There's no recent change of mine to undo. What should change?"
+MISFIT_MIN = 0.5    # misfit_B (wording lab 2026-10-13)
+MISFIT_REPLY = ("That doesn't look like part of a {scan} report — did you mean something these reports should say "
+                "or do differently?")
 UNDO_Q = {"type": "noul", "instructions": "The INSTRUCTION asks to undo the previous change."}
 
 
@@ -280,11 +283,12 @@ async def _post(state: str, questions: dict, transport=None) -> dict:
 
 
 async def screen(scan_type: str, instruction: str, context: str = "", transport=None) -> dict:
-    """One cheap Jev call before proposing: the habit guard and "undo the previous change" (validated in the next
-    lab). Raises on failure."""
+    """One cheap Jev call before proposing: the habit guard, "undo the previous change" and misfit (misfit_B), all to
+    be validated in the next lab (the lab records the scores). Raises on failure."""
     a = await _post(_state(scan_type, instruction, context),
-                    {"habit": dict(J.QUESTIONS["habit"]), "undo": dict(UNDO_Q)}, transport)
-    return {"habit": J._score(a, "habit"), "undo": J._score(a, "undo")}
+                    {"habit": dict(J.QUESTIONS["habit"]), "undo": dict(UNDO_Q), "misfit": dict(J.QUESTIONS["misfit"])},
+                    transport)
+    return {k: J._score(a, k) for k in ("habit", "undo", "misfit")}
 
 
 async def verify(scan_type: str, instruction: str, claims: List[str], context: str = "",
@@ -313,14 +317,19 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
         logger.warning("[chat-router.propose] screen failed: %s", type(e).__name__)
         raise R.Fallback(f"screen_{type(e).__name__}") from e
     habit = screened["habit"]
+    scores_ev = {k: round(v, 3) for k, v in screened.items()}
     if screened.get("undo", 0.0) >= UNDO_MIN:   # "undo that" / "put it back": the last turn's own records
         if not last_changes:
             return R.Turn(sheet, ledger, False, NOTHING_TO_UNDO,
-                          evidence={"version": PROPOSE_VERSION, "route": "undo", "undo": round(screened["undo"], 3),
+                          evidence={"version": PROPOSE_VERSION, "route": "undo", "screen": scores_ev,
                                     "applied": 0, "ms": R._ms(t0)})
         u = await R.undo_turn(sheet, ledger, last_changes)
-        u.evidence.update(version=PROPOSE_VERSION, route="undo", undo=round(screened["undo"], 3), ms=R._ms(t0))
+        u.evidence.update(version=PROPOSE_VERSION, route="undo", screen=scores_ev, ms=R._ms(t0))
         return u
+    if screened.get("misfit", 0.0) >= MISFIT_MIN:   # not part of this scan's reports: ask, propose nothing
+        return R.Turn(sheet, ledger, False, MISFIT_REPLY.format(scan=scan or "this scan's"),
+                      evidence={"version": PROPOSE_VERSION, "route": "misfit", "screen": scores_ev, "applied": 0,
+                                "ms": R._ms(t0)})
     try:
         proposal = await _propose(sheet, ledger, instruction, context, rejection)
     except Exception as e:
@@ -381,7 +390,7 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
         raise R.Fallback(f"verify_{type(e).__name__}") from e
     by_claim = dict(zip(range(len(claims)), scores))
 
-    ev = {"version": PROPOSE_VERSION, "route": "propose", "proposed": len(changes) + unidentified,
+    ev = {"version": PROPOSE_VERSION, "route": "propose", "screen": scores_ev, "proposed": len(changes) + unidentified,
           "unidentified": unidentified, "truncated": truncated,
           "coverage": round(cover, 3) if cover is not None else None, "claims": []}
     if habit_ev:

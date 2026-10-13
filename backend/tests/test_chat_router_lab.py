@@ -128,12 +128,14 @@ def test_arm_record_scores_a_turn_against_the_truth():
         {"type": "ledger", "change": {"kind": "value", "key": "Width", "new": {"need": "not_needed"}}, "claim": "W"},
         {"type": "ledger", "change": {"kind": "value", "key": "Depth", "new": {"need": "not_needed"}}, "claim": "D"}],
         cards=[{"ledger_kind": "normal", "key": "k"}],
-        evidence={"ms": 120, "changes": [{"invented": True}, {"invented": False}]})
+        evidence={"ms": 120, "changes": [{"invented": True}, {"invented": False}],
+                  "screen": {"habit": 0.1, "undo": 0.2, "misfit": 0.3}})
     item = {"id": "i1", "set": "synthetic", "truth": [{"kind": "value", "key": "Width", "choice": {"need": "not_needed"}}]}
     rec = lab.arm_record(item, t, qwen_calls=2, start="S", touches=None)
     assert rec == {"id": "i1", "set": "synthetic", "fallback": None, "applied_claims": ["W", "D"], "cards": 1,
                    "correct": 1, "unrequested": 1, "missing": 0, "invented": 1, "qwen_calls": 2, "ms": 120,
-                   "unrelated": None, "style_checks": [], "state_correct": 1, "state_scored": 1}
+                   "unrelated": None, "style_checks": [], "state_correct": 1, "state_scored": 1,
+                   "screen": {"habit": 0.1, "undo": 0.2, "misfit": 0.3}}
     fb = lab.arm_record(item, None, qwen_calls=0, start="S", touches=None, fallback="no_tag")
     assert fb["fallback"] == "no_tag" and fb["applied_claims"] == [] and fb["missing"] == 1
 
