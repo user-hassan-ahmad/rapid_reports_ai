@@ -233,49 +233,6 @@ def test_resume_survives_a_truncated_last_line_and_retries_that_case(tmp_path, m
     assert "1 unreadable checkpoint lines skipped" in capsys.readouterr().err
 
 
-def test_cards_for_passes_known_systems_and_emits_a_sibling_once(monkeypatch):
-    import asyncio
-    from types import SimpleNamespace as NS
-    a, b = NS(key="a", tier=1, display="A"), NS(key="b", tier=1, display="B")
-    ref = NS(key="r", tier=2, display="R")
-
-    class Lib:
-        def find(self, name, version=""):
-            return {"A": a, "B": b, "R": ref}.get(name)
-
-        def siblings(self, p):
-            return {"a": [b, ref], "b": [a]}.get(p.key, [])
-
-        def known_text(self):
-            return "- a: A [aliases: ]\n- b: B [aliases: ]"
-    prompts = []
-
-    async def call(prompt):
-        prompts.append(prompt)
-        sysm = lambda n: NS(key="", name=n, version="")
-        return NS(findings=[NS(id="F1", systems=[sysm("A"), sysm("B")])])
-
-    async def pgate(text, pack, history):
-        return 1.0
-
-    async def schema(*a, **k):
-        return NS(regions=[])
-
-    async def group_update(*a, **k):
-        return NS(units=[])
-    import rapid_reports_ai.hybrid_stack.service as S
-    monkeypatch.setattr(S, "resolve_schema", schema)
-    monkeypatch.setattr(S, "group_update", group_update)
-    monkeypatch.setattr(RL, "_coverage_lab", lambda: NS(findings=lambda units: [{"id": "F1", "text": "nodule"}]))
-    monkeypatch.setattr(RL.LB, "get", lambda: Lib())
-    monkeypatch.setattr(RL.M, "_call", call)
-    monkeypatch.setattr(RL.M, "_pgate", pgate)
-    case = {"id": "c", "scan_type": "CT", "clinical_history": "h", "findings": "x"}
-    out = asyncio.run(RL._cards_for(case, asyncio.Semaphore(1)))
-    assert Lib().known_text() in prompts[0]
-    assert sorted(c["id"] for c in out) == ["c:F1:a", "c:F1:b"]   # b named by the model and as a's sibling: once; tier 2 dropped
-
-
 def test_append_stamps_source_and_prefixes_ids_and_checkpoints(tmp_path, monkeypatch):
     import asyncio
     import json
@@ -312,84 +269,6 @@ def test_metrics_split_by_source_and_synthetic_never_joins_the_combined_view():
     assert set(RL.by_source([r("a", "prod", 1, "ok")])) == {"prod"}
 
 
-def _run_cards_for(monkeypatch, names_by_finding, packs, siblings, gate, caps=None):
-    import asyncio
-    from types import SimpleNamespace as NS
-
-    class Lib:
-        def find(self, name, version=""):
-            return packs.get(name)
-
-        def siblings(self, p):
-            return siblings.get(p.key, [])
-
-        def known_text(self):
-            return ""
-
-    async def call(prompt):
-        return NS(findings=[NS(id=fid, systems=[NS(key="", name=n, version="") for n in names])
-                            for fid, names in names_by_finding.items()])
-
-    async def schema(*a, **k):
-        return NS(regions=[])
-
-    async def group_update(*a, **k):
-        return NS(units=[])
-    import rapid_reports_ai.hybrid_stack.service as S
-    monkeypatch.setattr(S, "resolve_schema", schema)
-    monkeypatch.setattr(S, "group_update", group_update)
-    fs = [{"id": fid, "text": f"t{fid}"} for fid in names_by_finding]
-    monkeypatch.setattr(RL, "_coverage_lab", lambda: NS(findings=lambda units: fs))
-    monkeypatch.setattr(RL.LB, "get", lambda: Lib())
-    monkeypatch.setattr(RL.M, "_call", call)
-    monkeypatch.setattr(RL.M, "_pgate", gate)
-    if caps:
-        monkeypatch.setattr(RL.M, "MAX_PER_FINDING", caps[0])
-        monkeypatch.setattr(RL.M, "MAX_PER_CASE", caps[1])
-    case = {"id": "c", "scan_type": "CT", "clinical_history": "h", "findings": "x"}
-    return asyncio.run(RL._cards_for(case, asyncio.Semaphore(1)))
-
-
-def _packs(*keys, tier=1):
-    from types import SimpleNamespace as NS
-    return {k.upper(): NS(key=k, tier=tier, display=k) for k in keys}
-
-
-def test_a_failed_gate_drops_the_hit_and_its_siblings_and_an_exception_is_tolerated(monkeypatch):
-    packs = _packs("a", "b", "x")
-    sib = {"a": [packs["X"]], "b": [packs["X"]]}
-
-    async def gate(text, pack, history):
-        if pack.key == "a":
-            return None
-        if pack.key == "b":
-            raise RuntimeError("boom")
-        return 1.0
-    assert _run_cards_for(monkeypatch, {"F1": ["A", "B"]}, packs, sib, gate) == []
-
-    async def gate2(text, pack, history):
-        if pack.key == "b":
-            raise RuntimeError("boom")
-        return 1.0
-    out = _run_cards_for(monkeypatch, {"F1": ["A", "B"]}, packs, {}, gate2)
-    assert [c["pack"] for c in out] == ["a"]                       # b's failure did not drop the case
-
-
-def test_caps_apply_in_rank_order_tier2_counts_and_siblings_do_not(monkeypatch):
-    from types import SimpleNamespace as NS
-    packs = {**_packs("a", "b", "c", "d"), "R": NS(key="r", tier=2, display="r"), "S": NS(key="s", tier=1, display="s")}
-
-    async def gate(text, pack, history):
-        return 1.0
-    # F1 ranks R(tier 2), A, B ; F2 ranks C, D. MAX_PER_FINDING 2, MAX_PER_CASE 3: rank 0 = R, C ; rank 1 = A (case full)
-    out = _run_cards_for(monkeypatch, {"F1": ["R", "A", "B"], "F2": ["C", "D"]}, packs,
-                         {"c": [packs["S"]]}, gate, caps=(2, 3))
-    hits = [c["pack"] for c in out if not c["via_sibling_of"]]
-    assert hits == ["c", "a"]                                      # R used a slot but is a tier 2 card the lab drops
-    sibs = [c for c in out if c["via_sibling_of"]]
-    assert [(c["pack"], c["via_sibling_of"]) for c in sibs] == [("s", "c")]   # sibling beyond the caps, tagged
-
-
 def test_headline_excludes_synthetic_and_card_kinds_split_hits_from_siblings():
     rows = [{"source": "prod", "sibling": False}, {"source": "prod", "sibling": True},
             {"source": "hassan", "sibling": False}, {"source": "synthetic", "sibling": False}]
@@ -399,48 +278,74 @@ def test_headline_excludes_synthetic_and_card_kinds_split_hits_from_siblings():
                                    "synthetic": {"hit": 1, "sibling": 0}}
 
 
-def test_cards_for_resolves_a_listed_key_first_as_live_does(monkeypatch):
-    from types import SimpleNamespace as NS
-    packs = _packs("a", "b")
-    for p in packs.values():
-        p.status = "current"
-    gated = []
+def _lab_lib():
+    import copy
 
-    async def gate(text, pack, history):
-        gated.append(pack.key)
-        return 1.0
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as L
 
-    class Lib:
-        def lookup(self, key):
-            return {"a": packs["A"]}.get(key)
+    from .conftest import TOY_ENTRY, TOY_REFERENCE
 
-        def find(self, name, version=""):
-            return packs.get(name)
+    def e(base, id_, topic, **kw):
+        d = copy.deepcopy(base)
+        d.update(id=id_, topic=topic, display=f"{id_} 2020", system=f"{id_} system", aliases=[], **kw)
+        return d
+    ents = [e(TOY_ENTRY, "nod-a", "nodule"), e(TOY_ENTRY, "nod-b", "nodule"), e(TOY_REFERENCE, "nod-r", "nodule"),
+            e(TOY_ENTRY, "ex", "ex", trigger=["exam"], exam="a study")]
+    return L.Library({"version": "v", "entries": {f"{d['id']}@{d['version']}": {"entry": d} for d in ents}})
 
-        def siblings(self, p):
-            return []
 
-        def known_text(self):
-            return ""
+def test_cards_for_runs_the_live_library_path_through_the_shared_builder(monkeypatch):
     import asyncio
-    import rapid_reports_ai.hybrid_stack.service as S
+    from types import SimpleNamespace as NS
 
-    async def call(prompt):
-        return NS(findings=[NS(id="F1", systems=[NS(key="a", name="Unknown name", version=""),
-                                                 NS(key="zz", name="B", version="")])])
+    import rapid_reports_ai.hybrid_stack.service as S
+    from rapid_reports_ai.hybrid_stack.copilot import library_match as LM
+    from rapid_reports_ai.hybrid_stack.copilot import tnm
+
+    lib = _lab_lib()
+    site = tnm.sites()[0]
 
     async def schema(*a, **k):
         return NS(regions=[])
 
     async def group_update(*a, **k):
         return NS(units=[])
+
+    async def facts(scan, history):
+        assert (scan, history) == ("CT", "h")
+        return LM.CaseFacts(modality="CT", exams={"ex@1.0"})
+
+    async def pick(scan, history, finding):
+        return ([lib.lookup("nod-a"), lib.lookup("nod-b"), lib.lookup("nod-r")], site if finding == "t1" else None)
+
+    async def gate(finding, s, history):
+        return 0.9
+    built = []
+    real_build = RL.M.build_cards
+
+    async def build(*a, **k):
+        built.append(a)
+        return await real_build(*a, **k)
     monkeypatch.setattr(S, "resolve_schema", schema)
     monkeypatch.setattr(S, "group_update", group_update)
-    monkeypatch.setattr(RL, "_coverage_lab", lambda: NS(findings=lambda units: [{"id": "F1", "text": "t"}]))
-    monkeypatch.setattr(RL.LB, "get", lambda: Lib())
-    monkeypatch.setattr(RL.M, "_call", call)
-    monkeypatch.setattr(RL.M, "_pgate", gate)
-    case = {"id": "c", "scan_type": "CT", "clinical_history": "h", "findings": "x"}
+    monkeypatch.setattr(RL, "_coverage_lab", lambda: NS(findings=lambda units: [{"id": "F1", "text": "t1"}]))
+    monkeypatch.setattr(RL.LB, "get", lambda: lib)
+    monkeypatch.setattr(LM, "case_facts", facts)
+    monkeypatch.setattr(LM, "pick", pick)
+    monkeypatch.setattr(RL.M, "_gate", gate)
+    monkeypatch.setattr(RL.M, "build_cards", build)
+
+    async def no_gptoss(prompt):
+        raise AssertionError("the lab runs the library path: no gpt-oss")
+    monkeypatch.setattr(RL.M, "_call", no_gptoss)
+    case = {"id": "c", "scan_type": "CT", "clinical_history": "h", "findings": "t1. Rest normal."}
     out = asyncio.run(RL._cards_for(case, asyncio.Semaphore(1)))
-    assert gated == ["a", "b"]                         # the key hit, then an unknown key falling back to the name
-    assert sorted(c["id"] for c in out) == ["c:F1:a", "c:F1:b"]
+    assert len(built) == 1
+    got = [(c["id"], c["pack"], c["trigger"], c["finding"], c["via_sibling_of"]) for c in out]
+    assert got == [
+        ("c:exam:ex@1.0", "ex@1.0", "exam", "t1. Rest normal.", None),
+        (f"c:F1:tnm:{site}", f"tnm:{site}", "finding", "t1", None),
+        ("c:F1:nod-a@1.0", "nod-a@1.0", "finding", "t1", None),
+        ("c:F1:nod-b@1.0", "nod-b@1.0", "finding", "t1", "nod-a@1.0"),   # tier 1 sibling once; tier 2 sibling dropped
+    ]
+    assert [c["pack"] for c in RL.settleable(out)] == ["ex@1.0", "nod-a@1.0", "nod-b@1.0"]

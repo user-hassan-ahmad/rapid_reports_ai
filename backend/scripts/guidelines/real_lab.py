@@ -1,7 +1,8 @@
 """Real-dictation lab (library spec §12, "Draft card slice"). Production findings, read only through Metabase,
-grouped offline by the stack grouper, matched to library packs (matcher naming + pack gate); truth from an independent
-Claude Opus 5.5 subagent holding every pack's sources (the controller dispatches it with the brief this script writes);
-Hassan spot-checks the boundary items; the settler is measured. Metrics and recommendations only: Hassan decides.
+grouped offline by the stack grouper, matched to library packs by the live library path (matcher.library_cards);
+truth from an independent Claude Opus 5.5 subagent holding every pack's sources (the controller dispatches it with the
+brief this script writes); Hassan spot-checks the boundary items; the settler is measured. Metrics and
+recommendations only: Hassan decides.
 Everything stays in the output directory given on the command line, pid in each name; nothing from production is ever
 committed, and no clinical text is ever logged.
 
@@ -41,6 +42,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")    # model keys only
 load_dotenv("/Users/hassan/Code/rapid_reports_ai/backend/.env")
 
 from rapid_reports_ai.hybrid_stack.copilot import matcher as M  # noqa: E402
+from rapid_reports_ai.hybrid_stack.copilot import tnm  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library.pack_preview import (  # noqa: E402
     _answer, _show, display_options, finish, settle_pack, Settlement)
@@ -156,56 +158,44 @@ async def _cards_for(case: dict, sem: asyncio.Semaphore) -> list[dict]:
         fs = _coverage_lab().findings([u.model_dump() for u in g.units])
         if not fs:
             return []
-        # Live path (matcher.match) with web fetch OFF: the library's keys and scopes steer the model.
-        raw = await M._call(M._prompt(case["scan_type"], case["clinical_history"], [M.Finding(**f) for f in fs],
-                                      LB.get().known_text()))
-        lib, out = LB.get(), []
-        # Mirrors matcher.match order: candidates per finding -> gated card each (tier 1 AND tier 2 are hits, so tier 2
-        # counts toward the caps as live counts it) -> dedupe within the finding -> caps in rank order. TNM is skipped
-        # (no TNM pack in the lab). Siblings are columns on the hit's card live: emitted here as their own cards (each
-        # is settled and labelled) but never counted toward the caps.
-        per_finding: dict[str, list] = {f["id"]: [] for f in fs}
-        for rf in raw.findings:
-            f = next((x for x in fs if x["id"] == M._rid(rf.id)), None)
-            for s in (rf.systems if f else [])[:M.CANDIDATES_PER_FINDING]:
-                try:                                 # live's _safe_card: one failing candidate is skipped, not the case
-                    if s.name.strip().upper() == "TNM":
-                        continue
-                    pack = M.library_pack(lib, s)          # live's resolution: the listed key first, else the name
-                    if pack is None:
-                        continue
-                    score = await M._pgate(f["text"], pack, case["clinical_history"])
-                    if score is None or score < M.PACK_GATE_MIN:
-                        continue
-                except Exception:
-                    continue
-                if all(x.key != pack.key for x in per_finding[f["id"]]):
-                    per_finding[f["id"]].append(pack)
-        hits: list[tuple[dict, object]] = []
-        for rank in range(M.MAX_PER_FINDING):
-            for f in fs:
-                ranked = per_finding[f["id"]]
-                if rank < len(ranked) and len(hits) < M.MAX_PER_CASE and all(
-                        not (h[0]["id"] == f["id"] and h[1].key == ranked[rank].key) for h in hits):
-                    hits.append((f, ranked[rank]))
-        seen: set[str] = set()
+        # The live path itself (matcher.library_cards, as /match runs it): the case request, one request per finding,
+        # and the shared card builder (exam cards, TNM, modality filter, merge, caps). The case's whole findings text
+        # is the dictation, as the client sends it.
+        cards = await M.library_cards(case["scan_type"], case["clinical_history"], [M.Finding(**f) for f in fs],
+                                      dictation=case["findings"])
+        lib, out, seen = LB.get(), [], set()
+        texts = {f["id"]: f["text"] for f in fs}
 
-        def emit(f: dict, pack, via: str | None = None) -> None:
-            cid = f"{case['id']}:{f['id']}:{pack.key}"
+        def emit(c, pack: str, via: str | None = None) -> None:
+            fid = c.finding_id
+            cid = f"{case['id']}:{fid}:{pack}"
             if cid not in seen:
                 seen.add(cid)
-                out.append({"id": cid, "case": case["id"], "pack": pack.key, "source": case.get("source", "prod"),
+                out.append({"id": cid, "case": case["id"], "pack": pack, "source": case.get("source", "prod"),
                             "scan_type": case["scan_type"], "clinical_history": case["clinical_history"],
-                            "findings": case["findings"], "finding": f["text"], "via_sibling_of": via})
+                            "findings": case["findings"], "finding": c.finding or texts.get(fid, ""),
+                            "via_sibling_of": via, "trigger": "exam" if fid == "exam" else "finding"})
 
-        for f, pack in hits:                         # the lab settles tier 1 only: tier 2 hits used a cap slot, no card
-            if pack.tier == 1:
-                emit(f, pack)
-        for f, pack in hits:
-            for sib in lib.siblings(pack):
-                if sib.tier == 1:
-                    emit(f, sib, pack.key)
+        # Tier 1 cards are settled and labelled; a tier 2 card used a cap slot live but gets no lab card. TNM cards are
+        # recorded as "tnm:<site>" (counted, never settled or labelled). Siblings are columns on the hit's card live:
+        # emitted here as their own cards (each is settled and labelled) after the hits, never counted toward the caps.
+        for c in cards:
+            site = tnm.site_for(c.key) if tnm.is_tnm(c.key) else None
+            if site:
+                emit(c, f"tnm:{site}")
+            elif (e := lib.lookup(c.key)) is not None and e.tier == 1:
+                emit(c, e.key)
+        for c in cards:
+            for k in c.siblings:
+                sib = lib.lookup(k)
+                if sib is not None and sib.tier == 1:
+                    emit(c, sib.key, c.key)
         return out
+
+
+def settleable(cards: list[dict]) -> list[dict]:
+    """The cards the lab settles and labels: library packs, not TNM (TNM cards are only counted)."""
+    return [c for c in cards if not str(c["pack"]).startswith("tnm:")]
 
 
 def sample_cards(cards: list[dict], per_pack: int, total: int, seed: int = 13) -> list[dict]:
@@ -320,8 +310,8 @@ async def group(src: Path, out_dir: Path, per_pack: int = 30, total: int = 100, 
     ckpt = _pid(out_dir, "group_cases", "jsonl")
     cards = await _gather_cards(cases, ckpt, _read_checkpoint(resume), concurrency)
     p = _pid(out_dir, "cards", "json")
-    p.write_text(json.dumps(sample_cards(cards, per_pack, total), indent=1))
-    print(f"{len(cases)} dictations, {len(cards)} pack cards -> {p} ({dict(Counter(c['pack'] for c in cards))}); "
+    p.write_text(json.dumps(sample_cards(settleable(cards), per_pack, total), indent=1))
+    print(f"{len(cases)} dictations, {len(cards)} cards -> {p} ({dict(Counter(c['pack'] for c in cards))}); "
           f"checkpoint {ckpt}")
     return p
 
@@ -340,8 +330,9 @@ async def hassan(src: Path, cards_path: Path, out_dir: Path, concurrency: int = 
     cards = json.loads(cards_path.read_text()) + await _gather_cards(cases, ckpt, _read_checkpoint(resume),
                                                                       concurrency)
     p = _pid(out_dir, "cards", "json")
-    p.write_text(json.dumps(cards, indent=1))
-    print(f"{len(cards)} cards -> {p} ({dict(Counter((c['source'], c['pack']) for c in cards))}); checkpoint {ckpt}")
+    p.write_text(json.dumps(settleable(cards), indent=1))
+    print(f"{len(cards)} cards -> {p} ({dict(Counter((c['source'], c['pack']) for c in cards))}; tnm counted, not "
+          f"written); checkpoint {ckpt}")
     return p
 
 

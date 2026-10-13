@@ -74,13 +74,48 @@ def test_status_flag(authed, monkeypatch):
 
 
 def test_match_route(authed, monkeypatch):
-    async def fake(db, scan_type, history, findings):
+    seen = {}
+
+    async def fake(db, scan_type, history, findings, dictation=""):
         assert scan_type == "CT" and history == "h"
+        seen["dictation"] = dictation
         return [Card(key="k@1", name="K", version="1", finding_id=findings[0].id, branch="B")]
+
+    async def other(*a, **k):
+        raise AssertionError("/match must not run the other-guidelines path")
     monkeypatch.setattr(CR, "match", fake)
+    monkeypatch.setattr(CR, "match_other", other)
     d = authed.post("/api/canvas/stack/guidelines/match",
                     json={"scan_type": "CT", "clinical_history": "h", "findings": [{"id": "u1", "text": "x"}]}).json()
     assert d["cards"][0]["key"] == "k@1" and d["cards"][0]["finding_id"] == "u1"
+    assert seen["dictation"] == "x"   # no dictation sent: the joined finding texts
+    authed.post("/api/canvas/stack/guidelines/match",
+                json={"scan_type": "CT", "clinical_history": "h", "findings": [{"id": "u1", "text": "x"}],
+                      "dictation": "x. Rest normal."})
+    assert seen["dictation"] == "x. Rest normal."
+
+
+def test_match_other_route_calls_the_old_path_without_prewarm(authed, monkeypatch):
+    async def other(db, scan_type, history, findings):
+        assert scan_type == "CT" and history == "h"
+        return [Card(key="k@1", name="K", version="1", finding_id=findings[0].id, branch="B")]
+
+    async def lib_match(*a, **k):
+        raise AssertionError("/match/other must not run the library path")
+
+    def no_prewarm(*a, **k):
+        raise AssertionError("/match/other does not prewarm")
+    monkeypatch.setattr(CR, "match_other", other)
+    monkeypatch.setattr(CR, "match", lib_match)
+    monkeypatch.setattr(CR, "_prewarm", no_prewarm)
+    d = authed.post("/api/canvas/stack/guidelines/match/other",
+                    json={"scan_type": "CT", "clinical_history": "h", "findings": [{"id": "u1", "text": "x"}]}).json()
+    assert [(c["key"], c["finding_id"]) for c in d["cards"]] == [("k@1", "u1")]
+
+
+def test_match_other_route_is_gated_by_the_flag(authed, monkeypatch):
+    monkeypatch.setenv("RR_STACK_COPILOT", "0")
+    assert authed.post("/api/canvas/stack/guidelines/match/other", json={"findings": []}).status_code == 404
 
 
 def test_open_route_returns_entry_and_preview(authed, monkeypatch):
@@ -561,7 +596,7 @@ async def test_match_starts_pack_previews_and_open_reuses_them(db_session, user,
     monkeypatch.setattr(L, "get", lambda: lib)
     card = Card(key="toy-nodule@1.0", name="Toy 2020", version="2020", finding_id="u1", branch="Pack")
 
-    async def fake_match(db, scan, history, findings):
+    async def fake_match(db, scan, history, findings, dictation=""):
         return [card]
     calls = []
 
@@ -644,7 +679,7 @@ def test_a_failed_pack_preview_applies_when_the_pack_has_no_eligibility(authed, 
 async def test_match_fails_open_when_the_library_cannot_be_read(db_session, user, monkeypatch):
     card = Card(key="toy-nodule@1.0", name="Toy 2020", version="2020", finding_id="u1", branch="Pack")
 
-    async def fake_match(db, scan, history, findings):
+    async def fake_match(db, scan, history, findings, dictation=""):
         return [card]
 
     def broken():

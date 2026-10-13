@@ -51,7 +51,7 @@ async def test_new_candidate_becomes_new_key(db_session, monkeypatch):
     async def call(prompt):
         return _raw(u1=[_sys("Fleischner")], u2=[])
     monkeypatch.setattr(M, "_call", call)
-    cards = await M.match(db_session, "CT chest", "", U)
+    cards = await M.match_other(db_session, "CT chest", "", U)
     assert [(c.key, c.finding_id, c.branch, c.known) for c in cards] == [("fleischner@2017", "u1", "Subsolid", False)]
 
 
@@ -63,7 +63,7 @@ async def test_alias_hit_uses_registry_key_branches_and_shows_them(db_session, m
         assert "- fleischner@2017: Fleischner 2017 [branches: Solid | Subsolid nodule]" in prompt
         return _raw(u1=[_sys("Fleischner Society", "2017", branch="subsolid  NODULE")])
     monkeypatch.setattr(M, "_call", call)
-    cards = await M.match(db_session, "CT", "", U[:1])
+    cards = await M.match_other(db_session, "CT", "", U[:1])
     assert cards[0].key == "fleischner@2017" and cards[0].known and cards[0].skeleton == ["Solid", "Subsolid nodule"]
     assert cards[0].branch == "Subsolid nodule"          # normalised-equal: the registry's own name
 
@@ -86,7 +86,7 @@ async def test_two_versions_go_to_jev(db_session, monkeypatch):
         return "fleischner@2005"
     monkeypatch.setattr(M, "_call", call)
     monkeypatch.setattr(M, "_jev_pick", pick)
-    assert (await M.match(db_session, "CT", "", U[:1]))[0].key == "fleischner@2005"
+    assert (await M.match_other(db_session, "CT", "", U[:1]))[0].key == "fleischner@2005"
 
 
 async def test_versionless_no_pick_takes_latest_verified_first(db_session, monkeypatch):
@@ -101,12 +101,12 @@ async def test_versionless_no_pick_takes_latest_verified_first(db_session, monke
         return None
     monkeypatch.setattr(M, "_call", call)
     monkeypatch.setattr(M, "_jev_pick", pick)
-    cards = await M.match(db_session, "CT", "", U[:1])
+    cards = await M.match_other(db_session, "CT", "", U[:1])
     assert cards[0].key == "fleischner@2005"             # verified first; never a new unversioned key
     db_session.get(R.GuidelineRegistry, "fleischner@2005").status = "draft"
     db_session.commit()
     M.clear_cache()
-    assert (await M.match(db_session, "CT", "", U[:1]))[0].key == "fleischner@2023"
+    assert (await M.match_other(db_session, "CT", "", U[:1]))[0].key == "fleischner@2023"
 
 
 async def test_same_version_alias_row_before_jev(db_session, monkeypatch):
@@ -120,7 +120,7 @@ async def test_same_version_alias_row_before_jev(db_session, monkeypatch):
         raise AssertionError("same-version alias row must win before Jev")
     monkeypatch.setattr(M, "_call", call)
     monkeypatch.setattr(M, "_jev_pick", pick)
-    assert (await M.match(db_session, "CT", "", U[:1]))[0].key == "fleischner@2017"
+    assert (await M.match_other(db_session, "CT", "", U[:1]))[0].key == "fleischner@2017"
 
 
 def test_version_normalisation():
@@ -151,10 +151,10 @@ async def test_cache_skips_model_for_unchanged_findings(db_session, monkeypatch)
         n["calls"] += 1
         return _raw(u1=[_sys("Fleischner")], u2=[])
     monkeypatch.setattr(M, "_call", call)
-    await M.match(db_session, "CT", "", U)
-    await M.match(db_session, "CT", "", U)
+    await M.match_other(db_session, "CT", "", U)
+    await M.match_other(db_session, "CT", "", U)
     assert n["calls"] == 1
-    await M.match(db_session, "CT", "different history", U)   # history is part of the key
+    await M.match_other(db_session, "CT", "different history", U)   # history is part of the key
     assert n["calls"] == 2
 
 
@@ -162,16 +162,16 @@ async def test_model_failure_keeps_cached_findings_and_caches_nothing(db_session
     async def ok(prompt):
         return _raw(u1=[_sys("Fleischner")])
     monkeypatch.setattr(M, "_call", ok)
-    await M.match(db_session, "CT", "", U[:1])
+    await M.match_other(db_session, "CT", "", U[:1])
     n = {"calls": 0}
 
     async def down(prompt):
         n["calls"] += 1
         raise RuntimeError("down")
     monkeypatch.setattr(M, "_call", down)
-    cards = await M.match(db_session, "CT", "", U)
+    cards = await M.match_other(db_session, "CT", "", U)
     assert [c.finding_id for c in cards] == ["u1"]       # the cached finding's card survives
-    await M.match(db_session, "CT", "", U)
+    await M.match_other(db_session, "CT", "", U)
     assert n["calls"] == 2                                # the failure cached nothing for u2
 
 
@@ -179,7 +179,7 @@ async def test_returned_ids_are_normalised(db_session, monkeypatch):
     async def call(prompt):
         return M.RawMatch(findings=[M.RawFinding(id=" [u1] ", systems=[_sys("Fleischner")])])
     monkeypatch.setattr(M, "_call", call)
-    assert [c.finding_id for c in await M.match(db_session, "CT", "", U[:1])] == ["u1"]
+    assert [c.finding_id for c in await M.match_other(db_session, "CT", "", U[:1])] == ["u1"]
 
 
 async def test_no_ids_back_caches_nothing(db_session, monkeypatch):
@@ -189,8 +189,8 @@ async def test_no_ids_back_caches_nothing(db_session, monkeypatch):
         n["calls"] += 1
         return M.RawMatch(findings=[M.RawFinding(id="finding-1", systems=[_sys("Fleischner")])])
     monkeypatch.setattr(M, "_call", call)
-    assert await M.match(db_session, "CT", "", U[:1]) == []
-    await M.match(db_session, "CT", "", U[:1])
+    assert await M.match_other(db_session, "CT", "", U[:1]) == []
+    await M.match_other(db_session, "CT", "", U[:1])
     assert n["calls"] == 2
 
 
@@ -200,7 +200,7 @@ async def test_caps(db_session, monkeypatch):
     async def call(prompt):
         return _raw(**{f.id: [_sys(f"Sys{f.id}a"), _sys(f"Sys{f.id}b"), _sys(f"Sys{f.id}c")] for f in many})
     monkeypatch.setattr(M, "_call", call)
-    cards = await M.match(db_session, "CT", "", many)
+    cards = await M.match_other(db_session, "CT", "", many)
     assert len(cards) == M.MAX_PER_CASE
     assert max(sum(c.finding_id == f.id for c in cards) for f in many) <= M.MAX_PER_FINDING
 
@@ -212,7 +212,7 @@ async def test_caps_take_every_first_before_any_second(db_session, monkeypatch):
     async def call(prompt):
         return _raw(**{f.id: [_sys(f"Sys{f.id}a"), _sys(f"Sys{f.id}b")] for f in many})
     monkeypatch.setattr(M, "_call", call)
-    cards = await M.match(db_session, "CT", "", many)
+    cards = await M.match_other(db_session, "CT", "", many)
     assert [c.name for c in cards] == ["Sysu0a", "Sysu1a", "Sysu2a", "Sysu3a", "Sysu0b"]
 
 
@@ -227,11 +227,11 @@ async def test_tnm_candidate_needs_listed_site_and_jev_gate(db_session, monkeypa
         return gate[site]
     monkeypatch.setattr(M, "_call", call)
     monkeypatch.setattr(M, "_tnm_gate", tnm_gate)
-    cards = await M.match(db_session, "CT", "", U)
+    cards = await M.match_other(db_session, "CT", "", U)
     assert [(c.key, c.status, c.branch) for c in cards] == [("tnm-lung@9", "verified", "Staging")]
     M.clear_cache()
     gate["Lung"] = 0.2
-    assert await M.match(db_session, "CT", "", U) == []
+    assert await M.match_other(db_session, "CT", "", U) == []
 
 
 async def test_tnm_site_is_normalised_to_the_closed_list(db_session, monkeypatch):
@@ -243,7 +243,7 @@ async def test_tnm_site_is_normalised_to_the_closed_list(db_session, monkeypatch
         return 0.9
     monkeypatch.setattr(M, "_call", call)
     monkeypatch.setattr(M, "_tnm_gate", tnm_gate)
-    assert [c.key for c in await M.match(db_session, "CT", "", U[:1])] == ["tnm-lung@9"]
+    assert [c.key for c in await M.match_other(db_session, "CT", "", U[:1])] == ["tnm-lung@9"]
 
 
 async def test_tnm_gate_success_is_cached_failure_is_not(db_session, monkeypatch):
@@ -258,10 +258,10 @@ async def test_tnm_gate_success_is_cached_failure_is_not(db_session, monkeypatch
         return 0.9
     monkeypatch.setattr(M, "_call", call)
     monkeypatch.setattr(M, "_tnm_gate", tnm_gate)
-    assert await M.match(db_session, "CT", "", U[:1]) == []          # fails closed
+    assert await M.match_other(db_session, "CT", "", U[:1]) == []          # fails closed
     n["fail"] = False
-    assert len(await M.match(db_session, "MR", "", U[:1])) == 1      # the failure was not cached
-    assert len(await M.match(db_session, "US", "", U[:1])) == 1      # the success was
+    assert len(await M.match_other(db_session, "MR", "", U[:1])) == 1      # the failure was not cached
+    assert len(await M.match_other(db_session, "US", "", U[:1])) == 1      # the success was
     assert n["calls"] == 2
 
 
@@ -285,14 +285,14 @@ async def test_known_rows_verified_first_and_capped(db_session, monkeypatch):
         assert "b-sys@1" in prompt and "a-sys@1" not in prompt
         return _raw(u1=[])
     monkeypatch.setattr(M, "_call", call)
-    assert await M.match(db_session, "CT", "", U[:1]) == []
+    assert await M.match_other(db_session, "CT", "", U[:1]) == []
 
 
 async def test_model_failure_returns_no_cards(db_session, monkeypatch):
     async def call(prompt):
         raise RuntimeError("down")
     monkeypatch.setattr(M, "_call", call)
-    assert await M.match(db_session, "CT", "", U) == []
+    assert await M.match_other(db_session, "CT", "", U) == []
 
 
 async def test_both_sides_of_the_id_comparison_are_normalised(db_session, monkeypatch):
@@ -300,7 +300,7 @@ async def test_both_sides_of_the_id_comparison_are_normalised(db_session, monkey
         return M.RawMatch(findings=[M.RawFinding(id="u1", systems=[_sys("Fleischner")])])
     monkeypatch.setattr(M, "_call", call)
     f = [M.Finding(id=" [u1] ", text="8 mm part-solid nodule right upper lobe.")]
-    assert [c.key for c in await M.match(db_session, "CT", "", f)] == ["fleischner@2017"]
+    assert [c.key for c in await M.match_other(db_session, "CT", "", f)] == ["fleischner@2017"]
 
 
 async def test_malformed_tnm_gate_answer_fails_closed_and_is_not_cached(db_session, monkeypatch):
@@ -312,10 +312,10 @@ async def test_malformed_tnm_gate_answer_fails_closed_and_is_not_cached(db_sessi
         return _Resp(st["body"])
     monkeypatch.setattr(M, "_call", call)
     monkeypatch.setattr(M, "jev_post", jev)
-    assert await M.match(db_session, "CT", "", U[:1]) == []
+    assert await M.match_other(db_session, "CT", "", U[:1]) == []
     assert len(M._GATE) == 0
     st["body"] = {"answers": {"q": {"noul": 0.9}}}
-    assert len(await M.match(db_session, "MR", "", U[:1])) == 1
+    assert len(await M.match_other(db_session, "MR", "", U[:1])) == 1
 
 
 async def test_malformed_edition_pick_is_not_cached(db_session, monkeypatch):
@@ -329,7 +329,7 @@ async def test_malformed_edition_pick_is_not_cached(db_session, monkeypatch):
         return _Resp({"answers": {"pick": {"choice": "ed_0"}}})   # no confidence
     monkeypatch.setattr(M, "_call", call)
     monkeypatch.setattr(M, "jev_post", jev)
-    assert (await M.match(db_session, "CT", "", U[:1]))[0].key == "fleischner@2017"   # latest, no pick
+    assert (await M.match_other(db_session, "CT", "", U[:1]))[0].key == "fleischner@2017"   # latest, no pick
     assert len(M._PICK) == 0
 
 
@@ -346,8 +346,8 @@ async def test_pick_cache_key_includes_history(db_session, monkeypatch):
         return "fleischner@2005"
     monkeypatch.setattr(M, "_call", call)
     monkeypatch.setattr(M, "_jev_pick", pick)
-    await M.match(db_session, "CT", "smoker", U[:1])
-    await M.match(db_session, "CT", "never smoked", U[:1])
+    await M.match_other(db_session, "CT", "smoker", U[:1])
+    await M.match_other(db_session, "CT", "never smoked", U[:1])
     assert seen == ["smoker", "never smoked"]
 
 
@@ -363,13 +363,13 @@ async def test_unmatched_branch_goes_to_jev_among_registry_branches(db_session, 
         return _Resp({"answers": {"branch": {"choice": "br_1", "confidence": 0.9}}})
     monkeypatch.setattr(M, "_call", call)
     monkeypatch.setattr(M, "jev_post", jev)
-    cards = await M.match(db_session, "CT", "", U[:1])
+    cards = await M.match_other(db_session, "CT", "", U[:1])
     assert cards[0].branch == "Subsolid"
     q = seen[0]["questions"]["branch"]
     assert set(q["criteria"]) == {"br_0", "br_1", "none"} and q["criteria"]["br_1"] == "Subsolid"
     assert seen[0]["state"] == f"FINDING:\n{U[0].text}\n\nMODEL BRANCH: Part-solid"
     M._CACHE.clear()
-    await M.match(db_session, "CT", "", U[:1])
+    await M.match_other(db_session, "CT", "", U[:1])
     assert len(seen) == 1                                 # the success was cached
 
 
@@ -387,10 +387,10 @@ async def test_branch_jev_none_or_failure_keeps_the_model_name(db_session, monke
         return _Resp(st["body"])
     monkeypatch.setattr(M, "_call", call)
     monkeypatch.setattr(M, "jev_post", jev)
-    assert (await M.match(db_session, "CT", "", U[:1]))[0].branch == "Part-solid"
+    assert (await M.match_other(db_session, "CT", "", U[:1]))[0].branch == "Part-solid"
     M.clear_cache()
     st["body"] = None
-    assert (await M.match(db_session, "CT", "", U[:1]))[0].branch == "Part-solid"
+    assert (await M.match_other(db_session, "CT", "", U[:1]))[0].branch == "Part-solid"
     assert len(M._BRANCH) == 0                            # the failure was not cached
 
 
@@ -487,7 +487,7 @@ async def test_match_releases_the_connection_before_the_model(db_session, monkey
         seen.append(db_session.in_transaction())
         return _raw(u1=[_sys("Fleischner", branch="Solid")], u2=[])
     monkeypatch.setattr(M, "_call", call)
-    cards = await M.match(db_session, "CT chest", "", U)
+    cards = await M.match_other(db_session, "CT chest", "", U)
     assert seen == [False] and cards[0].key == "fleischner@2017" and cards[0].known
 
 
@@ -511,7 +511,7 @@ async def test_a_library_pack_hit_becomes_a_pack_card(db_session, monkeypatch, t
         return 0.9
     monkeypatch.setattr(M, "_call", call)
     monkeypatch.setattr(M, "_pack_gate", pack_gate)
-    cards = await M.match(db_session, "CT chest", "", U[:1])
+    cards = await M.match_other(db_session, "CT chest", "", U[:1])
     assert [(c.key, c.branch, c.skeleton, c.status, c.known, c.siblings) for c in cards] == \
         [("toy-nodule@1.0", "Pack", ["Pack"], "verified", True, ["toy-other@1.0"])]
 
@@ -532,10 +532,10 @@ async def test_pack_card_needs_the_jev_applicability_gate(db_session, monkeypatc
         assert pack.key == "toy-nodule@1.0" and history == "smoker"
         return gate["score"]
     monkeypatch.setattr(M, "_pack_gate", pack_gate)
-    assert [c.key for c in await M.match(db_session, "CT", "smoker", U[:1])] == ["toy-nodule@1.0"]
+    assert [c.key for c in await M.match_other(db_session, "CT", "smoker", U[:1])] == ["toy-nodule@1.0"]
     M.clear_cache()
     gate["score"] = M.PACK_GATE_MIN - 0.01
-    assert await M.match(db_session, "CT", "smoker", U[:1]) == []   # no card, and no fall-through to a registry key
+    assert await M.match_other(db_session, "CT", "smoker", U[:1]) == []   # no card, and no fall-through to a registry key
 
 
 async def test_pack_gate_jev_failure_is_no_card(db_session, monkeypatch, toy):
@@ -544,7 +544,7 @@ async def test_pack_gate_jev_failure_is_no_card(db_session, monkeypatch, toy):
     async def jev(payload, key, timeout, transport=None):
         raise TimeoutError("jev slow")
     monkeypatch.setattr(M, "jev_post", jev)
-    assert await M.match(db_session, "CT", "", U[:1]) == []
+    assert await M.match_other(db_session, "CT", "", U[:1]) == []
     assert len(M._GATE) == 0
 
 
@@ -558,10 +558,10 @@ async def test_pack_gate_success_is_cached_failure_is_not(db_session, monkeypatc
             raise TimeoutError("jev slow")
         return 0.9
     monkeypatch.setattr(M, "_pack_gate", pack_gate)
-    assert await M.match(db_session, "CT", "", U[:1]) == []          # fails closed
+    assert await M.match_other(db_session, "CT", "", U[:1]) == []          # fails closed
     n["fail"] = False
-    assert len(await M.match(db_session, "MR", "", U[:1])) == 1      # the failure was not cached
-    assert len(await M.match(db_session, "US", "", U[:1])) == 1      # the success was
+    assert len(await M.match_other(db_session, "MR", "", U[:1])) == 1      # the failure was not cached
+    assert len(await M.match_other(db_session, "US", "", U[:1])) == 1      # the success was
     assert n["calls"] == 2
 
 
@@ -601,7 +601,7 @@ async def test_a_reference_entry_hit_becomes_a_read_only_card(db_session, monkey
         return 0.9
     monkeypatch.setattr(M, "_call", call)
     monkeypatch.setattr(M, "_pack_gate", pack_gate)
-    cards = await M.match(db_session, "MRI knee", "", U[:1])
+    cards = await M.match_other(db_session, "MRI knee", "", U[:1])
     assert [(c.key, c.branch, c.skeleton, c.reference) for c in cards] == \
         [("toy-grade@1.0", "Reference", ["Reference"], True)]
     assert gated == ["toy-grade@1.0"]
@@ -617,7 +617,7 @@ async def test_a_library_card_carries_its_finding_text(db_session, monkeypatch, 
         return 0.9
     monkeypatch.setattr(M, "_call", call)
     monkeypatch.setattr(M, "_pack_gate", pack_gate)
-    cards = await M.match(db_session, "CT chest", "", U[:1])
+    cards = await M.match_other(db_session, "CT chest", "", U[:1])
     assert [(c.key, c.finding) for c in cards] == [("toy-nodule@1.0", U[0].text)]
 
 
@@ -669,7 +669,7 @@ async def test_the_prompt_lists_library_keys_with_scope_and_asks_for_the_key(db_
         return 0.9
     monkeypatch.setattr(M, "_call", call)
     monkeypatch.setattr(M, "_pack_gate", pack_gate)
-    cards = await M.match(db_session, "CT chest", "", U[:1])
+    cards = await M.match_other(db_session, "CT chest", "", U[:1])
     assert "KNOWN SYSTEMS" in seen[0]
     assert "- toy-nodule@1.0: Toy 2020 [aliases: toy nodule | toy guideline] (scope: nodule in chest" in seen[0]
     assert "key:" in M.MATCH_SYS and "scope" in M.MATCH_SYS

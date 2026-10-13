@@ -71,7 +71,7 @@ async def test_matcher_offers_no_registry_or_new_key_card_outside_the_library(db
             M.RawSystem(name="Other", version="1"), M.RawSystem(name="Brand New Score", version="3")])])
     monkeypatch.setattr(M, "_call", call)
     caplog.set_level("INFO")
-    cards = await M.match(db_session, "CT", "", [M.Finding(id="u1", text="a finding")])
+    cards = await M.match_other(db_session, "CT", "", [M.Finding(id="u1", text="a finding")])
     assert cards == []
     assert "other@1" not in seen["prompt"]                     # registry rows are not offered as known systems
     assert "Brand New Score" in caplog.text                     # the name is logged as demand

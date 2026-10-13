@@ -20,6 +20,7 @@ from ...enhancement_utils import MODEL_CONFIG, _run_agent_with_model
 from ...jev_client import JEV_MODEL, jev_post
 from ..schemas import scan_key
 from . import jev as J
+from . import library_match as LM
 from . import registry as R
 from . import tnm
 from .library import bundle as L
@@ -91,6 +92,7 @@ def clear_cache() -> None:
     _GATE.clear()
     _PICK.clear()
     _BRANCH.clear()
+    LM.clear_cache()
 
 
 def _put(cache: OrderedDict, k, v) -> None:
@@ -442,9 +444,90 @@ def _rid(s: str) -> str:
     return s.strip().strip("[]").strip()
 
 
-async def match(db: Session, scan_type: str, history: str, findings: list[Finding]) -> list[Card]:
-    """Cards for these findings, ranked and capped. Only findings the cache has not seen (with this scan type and
-    history) call the model; a model failure caches nothing and still returns the cached findings' cards."""
+def _pack_card(lib, e, finding_id: str, finding: str) -> Card:
+    branch = PACK_BRANCH if e.tier == 1 else REFERENCE_BRANCH
+    return Card(key=e.key, name=e.display, version=e.edition, finding_id=finding_id, why="", branch=branch,
+                skeleton=[branch], publication=Publication(body=e.issuer, year=e.edition), known=True,
+                status="verified", siblings=[x.key for x in lib.siblings(e)], reference=e.tier == 2, finding=finding)
+
+
+def _rank_capped(cards: list[Card], per_finding: list[list[Card]]) -> list[Card]:
+    """Caps in rank order after `cards`: every finding's first card before any finding's second."""
+    for rank in range(MAX_PER_FINDING):
+        for ranked in per_finding:
+            if rank < len(ranked) and len(cards) < MAX_PER_CASE and all(x.id != ranked[rank].id for x in cards):
+                cards.append(ranked[rank])
+    return cards
+
+
+async def build_cards(facts, picks: list[tuple[Finding, tuple | None]], history: str, dictation: str = "",
+                      lib=None) -> list[Card]:
+    """The library path's cards (spec §5.2) from the case facts (None: the case request failed) and each finding's
+    pick ((entries, tnm_site), or None: its request failed). Shared by match() and real_lab, so the lab cannot drift.
+
+    Exam cards first (each bound exam-level entry; settled from the whole dictation; never modality-filtered). Then
+    per finding: a TNM card (site confirmed by the existing site gate) ranked first, then the picked topic's first
+    entry the modality allows; a topic an exam card already carries merges into that card. Caps as match_other."""
+    lib = lib or L.get()
+    text = dictation or "\n".join(f.text for f, _ in picks)
+    exam = [_pack_card(lib, e, "exam", text) for e in LM.exam_entries(lib) if facts and e.key in facts.exams]
+    carried = {c.key for c in exam}
+    modality = facts.modality if facts else None
+
+    async def one(f: Finding, got) -> list[Card]:
+        if got is None:
+            return []
+        entries, site = got
+        out: list[Card] = []
+        if site:
+            try:
+                c = await _tnm_card(f, RawSystem(name="TNM", site=site), history)
+            except Exception as e:   # a failed confirm: no TNM card; the library card is unaffected
+                logger.info("[copilot.match] TNM card failed: %s", type(e).__name__)
+                c = None
+            if c is not None:
+                out.append(c)
+        if entries and not any(e.key in carried for e in entries):
+            ok = [e for e in entries if LM.modality_ok(e, modality)]
+            if ok:
+                out.append(_pack_card(lib, ok[0], f.id, f.text))
+        return out
+    per_finding = await asyncio.gather(*(one(f, got) for f, got in picks))
+    return _rank_capped(exam[:MAX_PER_CASE], list(per_finding))
+
+
+async def library_cards(scan_type: str, history: str, findings: list[Finding], dictation: str = "") -> list[Card]:
+    """Library cards for this case and its findings (spec §5.2): one Jev case request (modality, exam binding) and one
+    Jev request per finding (topic choice, TNM), concurrently, then build_cards. No gpt-oss, no pack gate. A failed
+    case request gives no exam cards and no modality filter; a failed finding request gives no card for that finding.
+    real_lab calls this too, so the lab runs exactly the live path."""
+    async def facts():
+        try:
+            return await LM.case_facts(scan_type, history)
+        except Exception as e:
+            logger.info("[copilot.match] case facts failed: %s", type(e).__name__)
+            return None
+
+    async def one(f: Finding):
+        try:
+            return await LM.pick(scan_type, history, f.text)
+        except Exception as e:
+            logger.info("[copilot.match] finding pick failed: %s", type(e).__name__)
+            return None
+    got = await asyncio.gather(facts(), *(one(f) for f in findings))
+    return await build_cards(got[0], list(zip(findings, got[1:])), history, dictation)
+
+
+async def match(db: Session, scan_type: str, history: str, findings: list[Finding], dictation: str = "") -> list[Card]:
+    """The /match path: library cards only (library_cards). `db` is unused (the signature matches match_other)."""
+    return await library_cards(scan_type, history, findings, dictation)
+
+
+async def match_other(db: Session, scan_type: str, history: str, findings: list[Finding]) -> list[Card]:
+    """The on-demand "other guidelines" path (gpt-oss: registry systems from model knowledge, TNM, library by name
+    through the pack gate). Cards for these findings, ranked and capped. Only findings the cache has not seen (with
+    this scan type and history) call the model; a model failure caches nothing and still returns the cached findings'
+    cards."""
     sk, hk = scan_key(scan_type), R.norm(history)
     keyf = lambda f: (sk, hk, R.norm(f.text))
     try:
@@ -472,11 +555,4 @@ async def match(db: Session, scan_type: str, history: str, findings: list[Findin
     for (f, _), c in zip(plan, resolved):
         if c is not None and all(x.id != c.id for x in per_finding[f.id]):
             per_finding[f.id].append(c)
-    # Caps in rank order: every finding's first card before any finding's second.
-    cards: list[Card] = []
-    for rank in range(MAX_PER_FINDING):
-        for f in findings:
-            ranked = per_finding.get(f.id) or []
-            if rank < len(ranked) and len(cards) < MAX_PER_CASE and all(x.id != ranked[rank].id for x in cards):
-                cards.append(ranked[rank])
-    return cards
+    return _rank_capped([], [per_finding.get(f.id) or [] for f in findings])

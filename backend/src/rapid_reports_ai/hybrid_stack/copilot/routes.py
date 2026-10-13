@@ -37,7 +37,7 @@ from .library import describe as D
 from .library import preview_cache as PC
 from .library.pack_preview import PACK_BRANCH, REFERENCE_BRANCH, Settlement, as_entry, failed, finish, settle_pack
 from .library.schema import FACTS
-from .matcher import Finding, match
+from .matcher import Finding, match, match_other
 from .preview import preview
 from .recs import RecsResult, suggest
 from .types import Card, Entry, GuidelineContent, Preview
@@ -360,8 +360,20 @@ async def copilot_match(req: MatchRequest, user: User = Depends(get_current_user
     _require()
     t0 = time.perf_counter()
     findings = [Finding(id=f.id, text=f.text) for f in req.findings]
-    cards = await match(db, req.scan_type[:300], req.clinical_history[:2000], findings)
+    dictation = (req.dictation or "\n".join(f.text for f in req.findings))[:6000]
+    cards = await match(db, req.scan_type[:300], req.clinical_history[:2000], findings, dictation=dictation)
     _prewarm(req, cards)
+    return MatchResult(cards=cards, ms=_ms(t0))
+
+
+@router.post("/match/other", response_model=MatchResult)
+async def copilot_match_other(req: MatchRequest, user: User = Depends(get_current_user),
+                              db: Session = Depends(get_db)):
+    """On demand: other guidelines for these findings (gpt-oss from model knowledge, registry, TNM). No prewarm."""
+    _require()
+    t0 = time.perf_counter()
+    findings = [Finding(id=f.id, text=f.text) for f in req.findings]
+    cards = await match_other(db, req.scan_type[:300], req.clinical_history[:2000], findings)
     return MatchResult(cards=cards, ms=_ms(t0))
 
 

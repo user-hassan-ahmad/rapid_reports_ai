@@ -521,10 +521,10 @@ async def test_explicit_pack_question_skips_the_applicability_gate_background_ma
     assert res.card.key == "toy-nodule@1.0" and res.card.finding_id == "u1" and calls == []
     assert res.answer == "From the pack."
 
-    async def call(prompt):   # the background matcher still gates the same pack
+    async def call(prompt):   # the on-demand other-guidelines matcher still gates the same pack
         return M.RawMatch(findings=[M.RawFinding(id="u1", systems=[M.RawSystem(name="Toy Nodule", version="2020")])])
     monkeypatch.setattr(M, "_call", call)
-    assert await M.match(db_session, "CT", "", [M.Finding(id="u1", text="7 mm solid nodule.")]) == []
+    assert await M.match_other(db_session, "CT", "", [M.Finding(id="u1", text="7 mm solid nodule.")]) == []
     assert calls == ["toy-nodule@1.0"]
 
 
