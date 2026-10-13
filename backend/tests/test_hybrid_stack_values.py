@@ -119,7 +119,10 @@ def test_reference_range_ends_are_never_asked(dictation):
     ("LVEDV 230 ml (EDVi 120 ml/m2).", ["230 ml", "120 ml/m2"]),
     ("LVEF 62% (normal 55-70).", ["62%"]),
     ("LVEF 62% (ref 55%).", ["62%"]),
-    ("LVEF 62%, normal 55.", ["62%"]),                       # a single reference number after "normal"
+    ("LVEF 62%, normal 55.", ["62%", "55"]),                 # a bare number after "normal" is a measurement
+    ("Native T1 normal 997.", ["997"]),
+    ("LVEF 62%, normal up to 70.", ["62%"]),                 # a limit
+    ("LVEF 62%, ref 55.", ["62%"]),                          # other reference words mask a single number
     ("Native T1 1010 ms (950-1050).", ["1010 ms"]),          # a bare bracketed range without a unit
     ("LVEF normal 55-60%.", ["55%", "60%"]),                 # a measured range: no reference word, a unit
     ("LVEF 58%, normal range 55-60%.", ["58%"]),             # a reference word follows "normal"
@@ -267,7 +270,10 @@ async def test_a_conflict_of_the_same_value_fills():
     res = await V.smart_fill("Ascending aorta 22 x 22 mm.", ["Ascending aorta diameter"], ask=_ask([(0.1, None)]),
                              ask_numbers=_nums([(0, 0.7), (0, 0.9)]))
     [v] = res.values
-    assert (v.state, v.value, v.picks) == ("filled", "22 mm", [])
+    assert (v.state, v.value, v.picks) == ("filled", "22 x 22 mm", [])   # one dimension span
+    res = await V.smart_fill("Aorta 22 mm. Again 22 mm.", ["X"], ask=_ask([(0.1, None)]),
+                             ask_numbers=_nums([(0, 0.7), (0, 0.9)]))
+    assert (res.values[0].state, res.values[0].value) == ("filled", "22 mm")
 
 
 async def test_open_chip_picks_rank_by_the_items_probability_then_dictation_order():
@@ -295,3 +301,102 @@ async def test_the_stated_question_runs_with_the_number_calls_for_every_item():
     assert seen["items"] == ["LVEF", "Conus level"] and order.index("stated start") < order.index("numbers end")
     assert (res.values[0].state, res.values[0].value) == ("filled", "45%")   # the mapped item's stated answer is dropped
     assert (res.values[1].state, res.values[1].quote) == ("filled", None)
+
+
+@pytest.mark.parametrize("clause,value", [
+    ("LVEDVi 84 ml per metre squared", "84 ml/m²"),
+    ("LVEDVi 88 ml per square metre", "88 ml/m²"),
+    ("LVEDVi 99 ml per m2", "99 ml/m²"),
+    ("LVEDVi 90 ml/m squared", "90 ml/m²"),
+    ("LVEDVi 102 millilitres per metre squared", "102 ml/m²"),
+    ("wall 10 millimetres", "10 mm"),
+    ("native T1 1045 milliseconds", "1045 ms"),
+    ("distance 1.7 centimetre", "1.7 cm"),
+    ("aorta 3.4 centimetres", "3.4 cm"),
+    ("LA 31 cm squared", "31 cm²"),
+    ("LA 27 square centimetres", "27 cm²"),
+    ("aortic flow 68 ml per beat", "68 ml/beat"),
+    ("LVEF 55 percent", "55%"),
+    ("LVEF 55 per cent", "55%"),
+])
+def test_spelled_out_units_are_read(clause, value):
+    assert V.read_value(clause) == value
+
+
+def test_normal_followed_by_a_spelled_unit_is_a_measurement():
+    assert [m.value for m in V.number_mentions("LVEF normal 55 to 60 percent.")] == ["55%", "60%"]
+
+
+@pytest.mark.parametrize("dictation,value", [
+    ("Ascending aorta 30 x 31 mm.", "30 x 31 mm"),
+    ("Ascending aorta 30×31 mm.", "30×31 mm"),
+    ("LVEF 30–35%.", "30–35%"),
+    ("Wall thickness 10-11 mm.", "10-11 mm"),
+    ("Wall thickness 10 to 11 mm.", "10 to 11 mm"),
+])
+async def test_numbers_of_one_span_fill_as_one_value(dictation, value):
+    res = await V.smart_fill(dictation, ["X"], ask=_ask([(0.1, None)]), ask_numbers=_nums([(0, 0.7), (0, 0.9)]))
+    [v] = res.values
+    assert (v.state, v.value, v.picks) == ("filled", value, [])
+
+
+async def test_numbers_in_different_spans_are_still_a_conflict():
+    res = await V.smart_fill("Aorta 30 mm. Previously aorta 31 mm.", ["X"], ask=_ask([(0.1, None)]),
+                             ask_numbers=_nums([(0, 0.7), (0, 0.9)]))
+    assert res.values[0].state == "check"
+    res = await V.smart_fill("Aorta 30 mm and 31 mm previously.", ["X"], ask=_ask([(0.1, None)]),
+                             ask_numbers=_nums([(0, 0.7), (0, 0.9)]))
+    assert res.values[0].state == "check"                  # "and" joins two measurements, not one span
+
+
+async def test_when_every_item_is_mapped_the_fill_does_not_wait_for_the_stated_question():
+    import asyncio
+    import time
+    cancelled = []
+
+    async def numbers(dictation, mentions, items):
+        await asyncio.sleep(0.02)
+        return [(0, 0.9)]
+
+    async def slow_stated(dictation, items, cands):
+        try:
+            await asyncio.sleep(1.0)
+        except asyncio.CancelledError:
+            cancelled.append(True)
+            raise
+        return [(0.1, None)]
+    t = time.perf_counter()
+    res = await V.smart_fill("LVEF 45%.", ["LVEF"], ask=slow_stated, ask_numbers=numbers)
+    assert time.perf_counter() - t < 0.5 and res.values[0].value == "45%" and res.error is None
+    await asyncio.sleep(0)
+    assert cancelled == [True]
+
+
+async def test_the_fill_takes_the_slowest_call_not_the_sum():
+    import asyncio
+    import time
+
+    async def numbers(dictation, mentions, items):
+        await asyncio.sleep(0.2)
+        return [(0, 0.9)]
+
+    async def stated(dictation, items, cands):
+        await asyncio.sleep(0.2)
+        return [(0.1, None), (0.9, None)]
+    t = time.perf_counter()
+    res = await V.smart_fill("LVEF 45%.", ["LVEF", "Conus level"], ask=stated, ask_numbers=numbers)
+    assert time.perf_counter() - t < 0.35 and res.values[1].state == "filled"
+
+
+async def test_a_unicode_minus_conflict_never_raises():
+    res = await V.smart_fill("Shift of −5 mm and −3 mm.", ["Shift"], ask=_ask([(0.1, None)]),
+                             ask_numbers=_nums([(0, 0.7), (0, 0.9)]))
+    assert res.values[0].state == "check" and res.error is None
+    res = await V.smart_fill("Shift −5 mm. Again −5 mm.", ["Shift"], ask=_ask([(0.1, None)]),
+                             ask_numbers=_nums([(0, 0.7), (0, 0.9)]))
+    assert (res.values[0].state, res.values[0].value) == ("filled", "−5 mm")
+
+
+async def test_any_internal_error_fails_soft_to_open_chips():
+    res = await V.smart_fill("LVEF 45%.", ["LVEF"], ask=_ask([(0.1, None)]), ask_numbers=_nums([("bad", "x")]))
+    assert res.values[0].state == "open" and res.error

@@ -200,3 +200,16 @@ async def test_ask_report_values_asks_the_report_per_item_in_batches(monkeypatch
     def fail(req):
         raise AssertionError("no call without items")
     assert await J.ask_report_values("x", [], transport=httpx.MockTransport(fail)) == []
+
+
+async def test_ask_values_without_clauses_asks_every_item_in_one_call(monkeypatch):
+    """Latency: the stated-only question is small, so one call (no parallel batches whose slowest sets the fill)."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    calls = []
+
+    def handler(req):
+        qs = json.loads(req.content)["questions"]
+        calls.append(sorted(qs))
+        return httpx.Response(200, json={"answers": {k: {"noul": 0.5} for k in qs}})
+    out = await J.ask_values("x", [f"I{i}" for i in range(12)], [], transport=httpx.MockTransport(handler))
+    assert len(calls) == 1 and len(calls[0]) == 12 and out == [(0.5, None, None)] * 12

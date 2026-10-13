@@ -341,8 +341,8 @@ async def ask_values(dictation: str, items: list[str], clauses: list[str], trans
                      stated: Callable[[str], dict[str, Any]] = value_stated_question
                      ) -> list[tuple[float, Optional[int], Optional[list[float]]]]:
     """(P stated, index into `clauses` of the clause that gives its value or None, the where-choice's probability per
-    clause or None when Jev sent none) per item, in order. Items go in parallel calls of VALUE_BATCH; keys keep the
-    item's global index. The clause question is asked only when there are clauses. `stated`: the wording (the lab
+    clause or None when Jev sent none) per item, in order. Items go in parallel calls of VALUE_BATCH (one call when
+    there are no clauses); keys keep the item's global index. The clause question is asked only when there are clauses. `stated`: the wording (the lab
     passes its arms)."""
     if not items:
         return []
@@ -369,7 +369,9 @@ async def ask_values(dictation: str, items: list[str], clauses: list[str], trans
             out.append((p, k if k is not None and k < len(clauses) else None, scores))
         return out
 
-    parts = await asyncio.gather(*(batch(k, items[k:k + VALUE_BATCH]) for k in range(0, len(items), VALUE_BATCH)))
+    # Without clauses the questions are small: one call (no parallel batches whose slowest would set the fill's time)
+    size = VALUE_BATCH if clauses else max(len(items), 1)
+    parts = await asyncio.gather(*(batch(k, items[k:k + size]) for k in range(0, len(items), size)))
     return [x for p in parts for x in p]
 
 

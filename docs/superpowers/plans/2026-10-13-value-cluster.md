@@ -183,6 +183,12 @@ Frontend:
     3. **A tapped number is `picked`, not `entered` (Hassan's "typed values only" rule).** A number tapped from the dictation (a conflict pick or an open-chip clause pick) gets its own state, `picked`. It resolves the chip and Confirm, and it is sent as a filled item for the backstop. It is never an "Answered by the radiologist" statement, because the dictation already carries it. Only typed values (`entered`) are stated.
     4. **Same value and pick ranking.** A conflict in which every mapped number has the same value ("22 x 22 mm") fills, with no check chip. An open chip's picks are ranked by the number → item probabilities for that item (clauses whose numbers went to none or to other items come later), then by dictation order, capped at 8.
     5. **Latency.** The stated question is asked for every item, in parallel with the number calls. Its answers are used only for items no number mapped to.
+13. **After the production lab re-run and the re-review (2026-10-13).**
+    1. **Compound values.** When an item's mapped numbers form one span (the same clause, adjacent, joined by x / × / - / – / to), they fill as one value: "30 x 31 mm", "30–35%". This is not a conflict. Numbers joined by "and", or in different clauses, are still a conflict.
+    2. **Spelled-out units.** These are read and normalised: ml per metre squared, per square metre, per m2, "ml/m squared" and "millilitres per …" give `ml/m²`; ml per beat gives `ml/beat`; cm squared and square centimetres give `cm²`; millimetres give `mm`; centimetres give `cm`; milliseconds give `ms`; percent and per cent give `%`. Symbol forms keep their written form (`98 ml/m2`).
+    3. **"normal".** After "normal", a number is masked only when a range, a limit (<, >, ≤, ≥, up to) or a range/value/limit word follows, and a range with a unit and no such word is kept. So "normal 997" and "normal 55-60%" are measurements. Other reference words (ref, range, ULN, …) still mask a single number.
+    4. **Latency.** The stated question starts together with the number calls and is one call (it has no clauses, so no batching), so the fill waits for the slowest single call, not the sum. When every item is mapped, it is cancelled rather than awaited.
+    5. **Fail-soft everywhere.** Everything after the Jev calls runs inside the fail-soft guard, so any internal error gives open chips. A Unicode minus is normalised before any number comparison.
 
 ### Where the lab sits
 

@@ -36,7 +36,7 @@ _BARE_RANGE = re.compile(rf"\(\s*{_N}\s*(?:-|–|—|to)\s*{_N}\s*\)")          
 # A reference number, limit or range after a reference word: "normal 55", "normal range: 891 to 1035", "normal (a-b)",
 # "normal value <24". Kept: "normal" straight before a number with a unit ("LVEF normal 55-60%" is the measurement).
 _REF_AFTER = re.compile(rf"(?i)\b(?P<word>{_REF_WORDS})\b(?P<fill>(?:\s*(?:range|values?|limits?|of|is|:|=|\())*)"
-                        rf"\s*(?P<num>[<>≤≥]\s*{_N}|{_N}(?:\s*(?:-|–|—|to)\s*{_N})?)")
+                        rf"\s*(?P<num>(?:[<>≤≥]|up\s+to)\s*{_N}|{_N}(?:\s*(?P<rng>-|–|—|to)\s*{_N})?)")
 _JOIN = re.compile(r"\s*(?:and|-|–|—|to|x|×|/)\s*", re.I)   # numbers that share a trailing unit
 _CLAUSE = re.compile(r"(?<!\d)[;,]|[;,](?!\d)")       # a comma or semicolon, except inside a number ("1,050")
 _NUMBER = re.compile(r"(?:(?<![^\s(])[-−+])?(?<![\w.,^])\d+(?:,\d{3})*(?:\.\d+)?")   # a sign only at a word start
@@ -59,9 +59,15 @@ def _numbers(clause: str) -> list[re.Match]:
     text = _BARE_RANGE.sub(blank, _REF_BRACKET.sub(blank, _masked(clause or "", set())))
 
     def ref(m: re.Match) -> str:
-        measured = (m["word"].lower() == "normal" and not m["fill"].strip() and m["num"][0].isdigit()
-                    and _UNIT.match(text, m.end()))
-        return m.group(0) if measured else blank(m)
+        """After "normal", only a range, a limit or a range/value word is reference text; a bare number ("normal
+        997") or a range with a unit and no such word ("normal 55-60%") is the measurement."""
+        if m["word"].lower() != "normal":
+            return blank(m)
+        worded = re.search(r"(?i)range|value|limit", m["fill"])
+        limit = not m["num"][0].isdigit()
+        if worded or limit or (m["rng"] and not _unit_at(text, m.end())):
+            return blank(m)
+        return m.group(0)
     return list(_NUMBER.finditer(_REF_AFTER.sub(ref, text)))
 
 
@@ -72,9 +78,27 @@ def has_number(clause: str) -> bool:
 _AREA = re.compile(r"([cm]m)(?:2|\^2|²)")
 
 
-def _unit_after(clause: str, m: re.Match) -> Optional[str]:
-    """The unit written right after a number, normalised ("%", "mmHg", "cm²"), else None."""
-    u = _UNIT.match(clause, m.end())
+_VOL = r"(?:mls?|mL|millilit(?:re|er)s?)"
+_SQ_M = r"(?:met(?:re|er)s?\s+squared|square\s+met(?:re|er)s?|m\s+squared|m2|m²|m\^2)"
+# Spelled-out units, tried before the symbols; each normalised (lab: dictated units read as "ml", "84 ml per metre
+# squared" lost its index)
+_SPELLED = [(re.compile(rf"\s*{_VOL}\s*(?:per\s+{_SQ_M}|/\s*m\s+squared)(?![A-Za-z0-9])", re.I), "ml/m²"),
+            (re.compile(rf"\s*{_VOL}\s*(?:per\s+|/\s*)beat\b", re.I), "ml/beat"),
+            (re.compile(r"\s*(?:cm|centimet(?:re|er)s?)\s+squared\b|\s*square\s+centimet(?:re|er)s?\b", re.I), "cm²"),
+            (re.compile(r"\s*(?:mm|millimet(?:re|er)s?)\s+squared\b|\s*square\s+millimet(?:re|er)s?\b", re.I), "mm²"),
+            (re.compile(r"\s*millimet(?:re|er)s?\b", re.I), "mm"),
+            (re.compile(r"\s*centimet(?:re|er)s?\b", re.I), "cm"),
+            (re.compile(r"\s*millisec(?:ond)?s?\b", re.I), "ms"),
+            (re.compile(r"\s*millilit(?:re|er)s?\b", re.I), "ml"),
+            (re.compile(r"\s*per\s*cent\b", re.I), "%")]
+
+
+def _unit_at(text: str, pos: int) -> Optional[str]:
+    """The unit written at `pos` (right after a number), normalised ("%", "mmHg", "cm²", "ml/m²"), else None."""
+    for rx, unit in _SPELLED:
+        if rx.match(text, pos):
+            return unit
+    u = _UNIT.match(text, pos)
     if not u:
         return None
     unit = u.group(1)
@@ -83,6 +107,10 @@ def _unit_after(clause: str, m: re.Match) -> Optional[str]:
     if unit.replace(" ", "").lower() in ("%", "percent"):
         return "%"
     return _AREA.sub(r"\1²", unit)
+
+
+def _unit_after(clause: str, m: re.Match) -> Optional[str]:
+    return _unit_at(clause, m.end())
 
 
 def _with_unit(number: str, unit: Optional[str]) -> str:
@@ -117,22 +145,44 @@ class Mention(BaseModel):
     value: str
     clause: str
     marked: str
+    cid: int = 0     # which clause of the dictation
+    start: int = 0   # the number's span in its clause
+    end: int = 0
 
 
 def number_mentions(dictation: str) -> list[Mention]:
     """Every number of the dictation in order (the lab's extraction): per sentence, per clause, `_numbers` masking."""
     out: list[Mention] = []
+    cid = 0
     for s in sentences(dictation or ""):
         cur = 0
         for c in [c.strip() for c in _CLAUSE.split(s) if c.strip()]:
+            cid += 1
             off = s.find(c, cur)
             off = off if off >= 0 else cur
             cur = off + len(c)
             for m, value in zip(_numbers(c), read_numbers(c)):
                 pos = off + m.start()
-                out.append(Mention(number=m.group(0).replace(",", ""), value=value, clause=c,
+                out.append(Mention(number=m.group(0).replace(",", ""), value=value, clause=c, cid=cid,
+                                   start=m.start(), end=m.end(),
                                    marked=s[:pos] + "[[" + m.group(0) + "]]" + s[pos + len(m.group(0)):]))
     return out
+
+
+_SPAN_JOIN = re.compile(r"\s*(?:x|×|-|–|—|to)\s*", re.I)   # dimensions ("30 x 31 mm") and measured ranges ("30–35%")
+
+
+def _span(ms: list[Mention]) -> Optional[str]:
+    """Numbers of one span (one clause, adjacent, joined by x / - / to) as one value with the last number's unit
+    ("30 x 31 mm", "30–35%"); None when they are not one span."""
+    ms = sorted(ms, key=lambda m: m.start)
+    if len({m.cid for m in ms}) != 1:
+        return None
+    c = ms[0].clause
+    if not all(_SPAN_JOIN.fullmatch(c[a.end:b.start]) for a, b in zip(ms, ms[1:])):
+        return None
+    last = ms[-1]
+    return c[ms[0].start:last.end] + last.value[len(c[last.start:last.end]):]
 
 
 class ClausePick(BaseModel):
@@ -195,46 +245,70 @@ async def smart_fill(dictation: str, items: list[str], ask: Optional[Ask] = None
         p_clause.clear()
         return done([opened(k) for k in range(len(items))], error)
 
+    async def fill() -> ValuesResult:
+        nonlocal cands
+        cands = [c for c in clauses(dictation) if has_number(c)]
+        mentions = number_mentions(dictation)[:MAX_NUMBERS]
+        # Latency: the stated question (every item) starts with the number calls, so the fill waits for the slowest
+        # single call, never their sum; when every item is mapped it is cancelled, not awaited.
+        stated_task = asyncio.ensure_future((ask or ask_values)(dictation, items, []))
+        stated_task.add_done_callback(lambda t: t.cancelled() or t.exception())   # an unawaited failure is not logged
+        try:
+            mapped = await (ask_numbers or ask_number_items)(dictation, [(m.number, m.marked) for m in mentions],
+                                                             items) if mentions else []
+        except BaseException:
+            stated_task.cancel()
+            raise
+        if len(mapped) != len(mentions):
+            stated_task.cancel()
+            return all_open("jev: answer count mismatch")
+        by_item: dict[int, list[tuple[float, Mention]]] = {}
+        for m, a in zip(mentions, mapped):
+            i, conf = a[0], float(a[1])
+            probs = a[2] if len(a) > 2 else None
+            if i is not None and 0 <= i < len(items):
+                by_item.setdefault(i, []).append((conf, m))
+            for k, pk in enumerate(probs or []):
+                p_clause.setdefault(k, {})[m.clause] = max(p_clause.get(k, {}).get(m.clause, 0.0), float(pk))
+        if len(by_item) == len(items):
+            stated_task.cancel()
+            stated: list = [(0.0,)] * len(items)
+        else:
+            stated = await stated_task
+            if len(stated) != len(items):
+                return all_open("jev: answer count mismatch")
+        out: list[ValueFill] = []
+        for k, item in enumerate(items):
+            if k in by_item:
+                ranked = sorted(by_item[k], key=lambda x: -x[0])   # stable: equal confidence keeps dictation order
+                conf, best = ranked[0]
+                span = _span([m for _, m in ranked]) if len(ranked) > 1 else None
+                if span is not None:   # one dimension or measured range ("30 x 31 mm", "30–35%"): one value
+                    out.append(ValueFill(item=item, state="filled", value=span, quote=best.clause,
+                                         score=round(conf, 3)))
+                elif len({_num(m.number) for _, m in ranked}) == 1:   # one number, or the same value twice
+                    out.append(ValueFill(item=item, state="filled", value=best.value, quote=best.clause,
+                                         score=round(conf, 3)))
+                else:
+                    out.append(ValueFill(item=item, state="check", value=best.value, quote=best.clause,
+                                         score=round(conf, 3),
+                                         picks=[ClausePick(clause=m.clause, value=m.value) for _, m in ranked]))
+                continue
+            p = float(stated[k][0])
+            if p >= VALUE_UNQUOTED_MIN:
+                out.append(ValueFill(item=item, state="filled", score=round(p, 3)))   # "stated?": needs a look
+            else:
+                out.append(opened(k, round(p, 3)))
+        return done(out)
+
     if not items or not (dictation or "").strip():
         return all_open()
-    cands = [c for c in clauses(dictation) if has_number(c)]
-    mentions = number_mentions(dictation)[:MAX_NUMBERS]
-
-    async def no_numbers() -> list:
-        return []
     try:
-        mapped, stated = await asyncio.gather(
-            (ask_numbers or ask_number_items)(dictation, [(m.number, m.marked) for m in mentions], items)
-            if mentions else no_numbers(),
-            (ask or ask_values)(dictation, items, []))
+        return await fill()
     except Exception as e:  # noqa: BLE001 -- fail-soft: every chip open, the radiologist fills or marks N/A
         return all_open(f"{type(e).__name__}: {e}"[:200])
-    if len(mapped) != len(mentions) or len(stated) != len(items):
-        return all_open("jev: answer count mismatch")
-    by_item: dict[int, list[tuple[float, Mention]]] = {}
-    for m, a in zip(mentions, mapped):
-        i, conf = a[0], a[1]
-        probs = a[2] if len(a) > 2 else None
-        if i is not None and 0 <= i < len(items):
-            by_item.setdefault(i, []).append((conf, m))
-        for k, pk in enumerate(probs or []):
-            p_clause.setdefault(k, {})[m.clause] = max(p_clause.get(k, {}).get(m.clause, 0.0), float(pk))
-    out: list[ValueFill] = []
-    for k, item in enumerate(items):
-        if k in by_item:
-            ranked = sorted(by_item[k], key=lambda x: -x[0])   # stable: equal confidence keeps dictation order
-            conf, best = ranked[0]
-            if len({float(m.number) for _, m in ranked}) == 1:   # one number, or the same value twice ("22 x 22 mm")
-                out.append(ValueFill(item=item, state="filled", value=best.value, quote=best.clause,
-                                     score=round(conf, 3)))
-            else:
-                out.append(ValueFill(item=item, state="check", value=best.value, quote=best.clause,
-                                     score=round(conf, 3),
-                                     picks=[ClausePick(clause=m.clause, value=m.value) for _, m in ranked]))
-            continue
-        p = float(stated[k][0])
-        if p >= VALUE_UNQUOTED_MIN:
-            out.append(ValueFill(item=item, state="filled", score=round(p, 3)))   # "stated?": needs a look
-        else:
-            out.append(opened(k, round(p, 3)))
-    return done(out)
+
+
+def _num(n: str) -> float:
+    """A number token as a float: a Unicode minus or dash is a minus ("−5"), thousands commas dropped."""
+    return float(n.replace("−", "-").replace("–", "-").replace(",", ""))
