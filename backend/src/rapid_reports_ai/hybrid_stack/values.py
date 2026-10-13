@@ -24,9 +24,10 @@ MAX_CLAUSES = 80   # numeric clauses offered to the "which clause" question: rai
                    # holds ~30-50 numbers); an item whose clause falls past the cap comes back stated without a quote,
                    # which the scratchpad shows as a chip to look at, never as a value
 
+_REF = re.compile(r"\([^()]*[A-Za-z][^()]*\)")         # bracketed text with a word: a reference range
 _CLAUSE = re.compile(r"(?<!\d)[;,]|[;,](?!\d)")       # a comma or semicolon, except inside a number ("1,050")
-_NUMBER = re.compile(r"(?<![\w.,^])\d+(?:,\d{3})*(?:\.\d+)?")
-_UNIT = re.compile(r"\s*(%|per ?cent\b|(?:mL|ml|g|kg|L|l|mm|cm|ms|s|m|cc|HU|mmHg|bpm)"
+_NUMBER = re.compile(r"(?:(?<![^\s(])[-−+])?(?<![\w.,^])\d+(?:,\d{3})*(?:\.\d+)?")   # a sign only at a word start
+_UNIT = re.compile(r"\s*(%|per ?cent\b|(?:mm ?Hg|mls|mL|ml|g|kg|L|l|mm|cm|msec|ms|s|m|cc|HU|bpm)"
                    r"(?:/(?:m\^?2|m²|min|s|m|beat))?(?![A-Za-z0-9²]))")
 
 
@@ -39,8 +40,9 @@ def clauses(dictation: str) -> list[str]:
 
 
 def _numbers(clause: str) -> list[re.Match]:
-    """Number tokens, after list markers, identifiers (T2, L4/5), dates and times are blanked (same length)."""
-    return list(_NUMBER.finditer(_masked(clause or "", set())))
+    """Number tokens, after list markers, identifiers (T2, L4/5), dates, times and bracketed words with their numbers
+    ("(normal 55)") are blanked (same length)."""
+    return list(_NUMBER.finditer(_REF.sub(lambda m: " " * len(m.group(0)), _masked(clause or "", set()))))
 
 
 def has_number(clause: str) -> bool:
@@ -57,6 +59,8 @@ def read_value(clause: str) -> Optional[str]:
     if not u:
         return m.group(0)
     unit = u.group(1)
+    if unit.replace(" ", "") == "mmHg":
+        unit = "mmHg"
     return m.group(0) + ("%" if unit.replace(" ", "").lower() in ("%", "percent") else f" {unit}")
 
 

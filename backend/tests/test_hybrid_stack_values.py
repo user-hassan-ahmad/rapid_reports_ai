@@ -136,3 +136,23 @@ async def test_clauses_are_capped_at_max_clauses():
     d = " ".join(f"Value {i} is {i}." for i in range(1, 100))
     await V.smart_fill(d, ["LVEF"], ask=_ask([(0.1, None)], seen))
     assert V.MAX_CLAUSES == 80 and len(seen["cands"]) == 80
+
+
+@pytest.mark.parametrize("clause,value", [
+    ("GLS -18%", "-18%"),
+    ("GLS -18.5 %", "-18.5%"),
+    ("strain +3", "+3"),
+    ("GLS (−18%)", "−18%"),
+    ("PA 25 mm Hg", "25 mmHg"),
+    ("PA 25 mmHg", "25 mmHg"),
+    ("LVEDVi 98 mls/m2", "98 mls/m2"),
+    ("native T1 1050 msec", "1050 msec"),
+    ("LVEF 45 % (normal 55)", "45%"),
+])
+def test_read_value_keeps_signs_pressure_units_and_ignores_bracketed_ranges(clause, value):
+    assert V.read_value(clause) == value
+
+
+async def test_exactly_the_cut_off_is_filled():
+    res = await V.smart_fill("EF 45.", ["LVEF"], ask=_ask([(V.VALUE_STATED_MIN, 0)]))
+    assert res.values[0].state == "filled" and res.values[0].value == "45"
