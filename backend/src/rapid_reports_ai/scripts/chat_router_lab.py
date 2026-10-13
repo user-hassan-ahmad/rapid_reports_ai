@@ -566,6 +566,24 @@ def _pct(xs: List[float], q: float) -> Optional[float]:
     return float(xs[lo] + (xs[min(lo + 1, len(xs) - 1)] - xs[lo]) * (i - lo))
 
 
+def _screen_label(item: dict, key: str) -> bool:
+    labels = item.get("labels") or {}
+    if key in labels:
+        return bool(labels[key])
+    return item.get("category") == key        # "undo" items: planted reversals ("undo that", "revert", ...)
+
+
+def screen_prf(results: Dict[str, dict], items: Dict[str, dict], key: str, threshold: float = 0.5) -> dict:
+    """Precision / recall of a screen question (undo or misfit, at 0.5) from arm 2's recorded scores. An instruction
+    that changes something back to a stated wording ("put the comparison back to ...") is a change, not an undo."""
+    pairs = []
+    for i, v in results.items():
+        scr = ((v.get("arms") or {}).get("arm2") or {}).get("screen")
+        if i in items and isinstance(scr, dict) and key in scr:
+            pairs.append((_screen_label(items[i], key), scr[key] >= threshold))
+    return prf(pairs)
+
+
 def arm_summary(rows: List[dict]) -> dict:
     n = len(rows)
     ms = [r["ms"] for r in rows if r.get("ms") is not None]
@@ -635,6 +653,11 @@ def report_arms(root: Path, runs: List[int]) -> str:
             parts.append(f"### run {run}, {subset}: head to head (unrequested = applied changes the planted truth "
                          f"does not ask for: the headline)\n\n"
                          + md_table(["metric", *ARMS], [[k, *(summ[a][k] for a in ARMS)] for k in keys]))
+        items = {it["id"]: it for it in load_items(root)}
+        for key in ("undo", "misfit"):
+            sp = screen_prf(got, items, key)
+            parts.append(f"### run {run}: screen question '{key}' at 0.5 (arm 2)\n\n"
+                         + md_table(["P", "R", "F1", "n"], [[sp["p"], sp["r"], sp["f1"], sp["n"]]]))
         labels_path = Path(root) / "labels" / "edit_checks.json"
         labels = json.loads(labels_path.read_text()) if labels_path.exists() else {}
         e = edit_check_prf(got, labels)

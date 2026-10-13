@@ -216,3 +216,17 @@ async def test_arm_0_is_todays_refine_through_the_save_function(monkeypatch):
     t = await lab.refine_turn(ROUTER_SHEET, [], "drop width")
     assert t.applied and 'LIST_MISSING ["Depth"]' in t.sheet and t.records == [] and t.evidence["route"] == "refine"
     assert set(lab.ARMS) == {"arm0", "arm1", "arm2"}
+
+
+def test_the_screen_questions_are_scored_for_precision():
+    items = {"u1": {"id": "u1", "category": "undo", "labels": {k: 0 for k in KINDS}},
+             "c1": {"id": "c1", "category": "single", "instruction": "put the comparison back to No previous imaging.",
+                    "labels": {**{k: 0 for k in KINDS}, "concept": 1}},
+             "m1": {"id": "m1", "category": "misfit", "labels": {**{k: 0 for k in KINDS}, "misfit": 1}}}
+    got = {"u1": {"arms": {"arm2": {"screen": {"undo": 0.9, "misfit": 0.1}}}},
+           "c1": {"arms": {"arm2": {"screen": {"undo": 0.7, "misfit": 0.1}}}},     # a change, not an undo: a FP
+           "m1": {"arms": {"arm2": {"screen": {"undo": 0.1, "misfit": 0.8}}}}}
+    undo = lab.screen_prf(got, items, "undo")
+    assert (undo["tp"], undo["fp"], undo["fn"], undo["p"]) == (1, 1, 0, 0.5)
+    mis = lab.screen_prf(got, items, "misfit")
+    assert (mis["tp"], mis["fp"], mis["fn"]) == (1, 0, 0)
