@@ -325,6 +325,31 @@ def test_finding_pick_of_an_exam_carried_pack_merges(db_session, monkeypatch):
     assert [(c.key, c.finding_id) for c in cards] == [("cor-cac@1.0", "exam")]
 
 
+CADRADS = _e("cad-x", "stenosis", match_topic="coronary", display="CADX", trigger=("exam",),
+              exam="a coronary CT angiogram", region=("heart",))
+
+
+def test_ctca_coronary_finding_merges_into_the_exam_card_and_gives_no_calcium_card(db_session, monkeypatch):
+    lib = _lib(COR_CAC, CADRADS)          # CAC: exam + finding; CADX: exam only; both match_topic "coronary"
+    _wire(monkeypatch, lib, bound={"cad-x"}, picks={"Calcified plaque.": "cor-cac"})
+    cards = asyncio_run(M.match(db_session, "CT coronary angiogram", "", [M.Finding(id="u1", text="Calcified plaque.")]))
+    assert [(c.key, c.finding_id) for c in cards] == [("cad-x@1.0", "exam")]
+
+
+def test_calcium_scan_coronary_finding_merges_into_the_calcium_exam_card(db_session, monkeypatch):
+    lib = _lib(COR_CAC, CADRADS)
+    _wire(monkeypatch, lib, bound={"cor-cac"}, picks={"Calcified plaque.": "cor-cac"})
+    cards = asyncio_run(M.match(db_session, "CT calcium score", "", [M.Finding(id="u1", text="Calcified plaque.")]))
+    assert [(c.key, c.finding_id) for c in cards] == [("cor-cac@1.0", "exam")]
+
+
+def test_coronary_finding_without_a_bound_exam_gets_the_calcium_card(db_session, monkeypatch):
+    lib = _lib(COR_CAC, CADRADS)
+    _wire(monkeypatch, lib, picks={"Calcified plaque.": "cor-cac"})
+    cards = asyncio_run(M.match(db_session, "CT chest", "", [M.Finding(id="u1", text="Calcified plaque.")]))
+    assert [(c.key, c.finding_id) for c in cards] == [("cor-cac@1.0", "u1")]
+
+
 def test_exam_cards_count_toward_the_case_cap(db_session, monkeypatch):
     exams = [_e(f"ex{i}", f"ex{i}", trigger=("exam",), exam=f"study {i}") for i in range(M.MAX_PER_CASE - 1)]
     lib = _lib(*exams, NODULE_A, XR_ONLY)

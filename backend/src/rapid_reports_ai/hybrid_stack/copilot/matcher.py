@@ -467,11 +467,12 @@ async def build_cards(facts, picks: list[tuple[Finding, tuple | None]], history:
 
     Exam cards first (each bound exam-level entry; settled from the whole dictation; never modality-filtered). Then
     per finding: a TNM card (site confirmed by the existing site gate) ranked first, then the picked topic's first
-    entry the modality allows; a topic an exam card already carries merges into that card. Caps as match_other."""
+    entry the modality allows. An exam-level framework owns its topic on that study: a picked topic whose
+    matcher_topic equals a bound exam entry's merges into that exam card (no finding card). Caps as match_other."""
     lib = lib or L.get()
     text = dictation or "\n".join(f.text for f, _ in picks)
     exam = [_pack_card(lib, e, "exam", text) for e in LM.exam_entries(lib) if facts and e.key in facts.exams]
-    carried = {c.key for c in exam}
+    owned = {e.matcher_topic for e in LM.exam_entries(lib) if facts and e.key in facts.exams}
     modality = facts.modality if facts else None
 
     async def one(f: Finding, got) -> list[Card]:
@@ -487,7 +488,7 @@ async def build_cards(facts, picks: list[tuple[Finding, tuple | None]], history:
                 c = None
             if c is not None:
                 out.append(c)
-        if entries and not any(e.key in carried for e in entries):
+        if entries and not any(e.matcher_topic in owned for e in entries):
             ok = [e for e in entries if LM.modality_ok(e, modality)]
             if ok:
                 out.append(_pack_card(lib, ok[0], f.id, f.text))
