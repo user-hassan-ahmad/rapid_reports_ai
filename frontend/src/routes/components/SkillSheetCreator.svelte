@@ -11,6 +11,8 @@
 	import VoicePhrases from './skill-sheet-summary/VoicePhrases.svelte';
 	import ConventionRules from './skill-sheet-summary/ConventionRules.svelte';
 	import ImpressionFlow from './skill-sheet-summary/ImpressionFlow.svelte';
+	import ChatCards from '$lib/chat-router/ChatCards.svelte';
+	import { postRouterCard, postRouterUndo } from '$lib/chat-router/api';
 	import RulesStep from '$lib/template-rules/RulesStep.svelte';
 	import StyleChecks from '$lib/template-rules/StyleChecks.svelte';
 	import { postApplyDecisions, postDecide, postSheetChecks } from '$lib/template-rules/api';
@@ -79,6 +81,9 @@
 	 *   behavioralClaim?: string,
 	 *   preMutationSkillSheet?: string | null,
 	 *   preMutationDecisions?: any[] | null,
+	 *   route?: string,
+	 *   changes?: any[],
+	 *   cards?: any[],
 	 *   originalInstruction?: string,
 	 *   status?: 'pending' | 'rejected' | 'confirmed' | null,
 	 * }} ChatMessage
@@ -429,14 +434,28 @@
 		finally { loading = false; }
 	}
 
-	function rejectTurn(/** @type {number} */ assistantIndex) {
+	async function rejectTurn(/** @type {number} */ assistantIndex) {
 		const target = chatHistory[assistantIndex];
 		if (!target || target.role !== 'assistant') return;
 
-		if (typeof target.preMutationSkillSheet === 'string') {
-			skillSheet = target.preMutationSkillSheet;
+		if (target.route === 'router' && Array.isArray(target.changes) && target.changes.length) {
+			// a router turn reverses its own changes on the backend, so a later turn is never clobbered
+			try {
+				const r = await postRouterUndo($token, { skill_sheet: skillSheet, decisions, changes: target.changes });
+				if (!r.success) throw new Error(r.error);
+				skillSheet = r.skill_sheet;
+				if (Array.isArray(r.decisions)) decisions = r.decisions;
+				if (testReport) previewStale = true;
+			} catch (e) {
+				error = e instanceof Error ? e.message : String(e);
+				return;
+			}
+		} else {
+			if (typeof target.preMutationSkillSheet === 'string') {
+				skillSheet = target.preMutationSkillSheet;
+			}
+			if (Array.isArray(target.preMutationDecisions)) decisions = target.preMutationDecisions;
 		}
-		if (Array.isArray(target.preMutationDecisions)) decisions = target.preMutationDecisions;
 		chatCards = [];   // they asked about the rejected edit
 		loadChecks();
 
@@ -467,6 +486,24 @@
 			updated[userIndex] = { ...updated[userIndex], status: 'confirmed' };
 		}
 		chatHistory = updated;
+	}
+
+	/** A router card tapped in the chat: applied by code on the backend (source "chat"), the reply appended. */
+	async function answerCard(/** @type {import('$lib/chat-router/types').CardAnswer} */ answer) {
+		if (loading || chatCardsBusy) return;
+		chatCardsBusy = true; error = '';
+		try {
+			const r = await postRouterCard($token, { skill_sheet: skillSheet, decisions, answer });
+			if (!r.success) throw new Error(r.error);
+			if (testReport && r.skill_sheet !== skillSheet) previewStale = true;
+			skillSheet = r.skill_sheet;
+			if (Array.isArray(r.decisions)) decisions = r.decisions;
+			/** @type {ChatMessage} */
+			const reply = { role: 'assistant', content: r.response, route: 'router', cards: r.cards || [] };
+			chatHistory = [...chatHistory, reply];
+			if (r.applied) loadChecks();
+		} catch (e) { error = e instanceof Error ? e.message : String(e); }
+		finally { chatCardsBusy = false; }
 	}
 
 	async function sendAnswer(/** @type {string} */ msg) {
@@ -508,7 +545,9 @@
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
 			if (Array.isArray(data.decisions)) decisions = data.decisions;
-			if (Array.isArray(data.cards)) chatCards = data.cards;
+			// a router turn's cards sit on its own message (answered through /refine/card); the whole-sheet refine's kept
+			// cards (D3) stay in the Rules-step review above the chat
+			if (Array.isArray(data.cards)) chatCards = data.route === 'router' ? [] : data.cards;
 			if (data.applied !== false) loadChecks();
 			/** @type {ChatMessage} */
 			// a refused edit (applied === false) keeps the sheet and explains why: no change to verify
@@ -521,9 +560,13 @@
 						preMutationDecisions,
 						originalInstruction: msg,
 						status: 'pending',
-						isRefineTurn: true
+						isRefineTurn: true,
+						route: data.route,
+						changes: data.changes || [],
+						cards: data.route === 'router' ? data.cards || [] : []
 				  }
-				: { role: 'assistant', content: data.response };
+				: { role: 'assistant', content: data.response, route: data.route,
+					cards: data.route === 'router' ? data.cards || [] : [] };
 			chatHistory = [...chatHistory, assistantMsg];
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
@@ -1064,6 +1107,12 @@
 												</div>
 											{:else}
 												<p class="text-gray-200 leading-relaxed" style="white-space: pre-wrap;">{assistantMsg.behavioralClaim}</p>
+												{#if assistantMsg.route === 'router' && assistantMsg.content !== assistantMsg.behavioralClaim}
+													<p class="text-xs text-gray-400 leading-relaxed" style="white-space: pre-wrap;">{assistantMsg.content}</p>
+												{/if}
+												{#if assistantMsg.cards?.length}
+													<ChatCards cards={assistantMsg.cards} busy={loading || chatCardsBusy} onAnswer={answerCard} />
+												{/if}
 												<div class="flex items-center justify-between gap-3 pt-2 border-t border-purple-500/15">
 													{#if awaitingPreview}
 														<span class="text-xs text-purple-200/70 flex items-center gap-1.5">
@@ -1098,7 +1147,12 @@
 										<div class="max-w-[90%] bg-purple-600/20 border border-purple-500/15 rounded-2xl rounded-br-sm px-4 py-2.5 text-sm text-gray-200" style="white-space: pre-wrap;">{msg.content}</div>
 									</div>
 								{:else}
-									<div class="max-w-[90%] bg-white/[0.03] border border-white/10 rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm text-gray-300 leading-relaxed" style="white-space: pre-wrap;">{msg.content}</div>
+									<div class="max-w-[90%] bg-white/[0.03] border border-white/10 rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm text-gray-300 leading-relaxed space-y-2" style="white-space: pre-wrap;">
+										<div>{msg.content}</div>
+										{#if msg.cards?.length}
+											<ChatCards cards={msg.cards} busy={loading || chatCardsBusy} onAnswer={answerCard} />
+										{/if}
+									</div>
 								{/if}
 							{/each}
 
