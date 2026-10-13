@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseTemplate, templateKey, unmetTemplate, withChosen, withRequired } from './templateRows';
+import { chooseTemplate, reviewTemplate, templateKey, unmetTemplate, withChosen, withRequired } from './templateRows';
 import type { StackItem } from './types';
 
 const t = (id: string, extra: Partial<StackItem> = {}): StackItem => ({
@@ -32,5 +32,23 @@ describe('template rows', () => {
 		expect(templateKey({ a: chooseTemplate(t('a'), 'no') }, {})).not.toBe(k);
 		expect(templateKey({ a: chooseTemplate(t('a'), 'yes') }, { Liver: ['No free fluid.'] })).not.toBe(k);
 		expect(templateKey({ a: chooseTemplate(t('a'), 'yes'), f: { ...t('f'), kind: 'finding' } }, {})).toBe(k);
+	});
+});
+
+describe('a full review and the template answers', () => {
+	type Skip = { item: StackItem; how: 'skip' | 'not_assessed' | 'abnormal' };
+	const tapped = { a: chooseTemplate(t('a'), 'no'), f: { ...t('f'), kind: 'finding' as const } };
+	const skipped: Record<string, Skip> = { b: { item: t('b'), how: 'not_assessed' } };
+	it('drops a stale template answer whose row the review no longer returns, and takes the required statements', () => {
+		const res = { items: [t('b')], capped: [], required: { Liver: ['No free fluid.'] }, trigger_error: null };
+		const out = reviewTemplate(res, tapped, skipped);
+		expect(out).not.toBeNull();
+		expect(Object.keys(out!.tapped)).toEqual(['f']);   // 'a' no longer returned: its answer goes; findings stay
+		expect(Object.keys(out!.skipped)).toEqual(['b']);
+		expect(out!.required).toEqual({ Liver: ['No free fluid.'] });
+	});
+	it('a trigger error leaves everything as it was (answers given explicitly stay)', () => {
+		const res = { items: [], capped: [], required: {}, trigger_error: 'RuntimeError: jev down' };
+		expect(reviewTemplate(res, tapped, skipped)).toBeNull();
 	});
 });

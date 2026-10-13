@@ -39,7 +39,7 @@
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
 	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
-	import { chooseTemplate, templateKey, unmetTemplate, withChosen, withRequired } from '$lib/hybrid-stack/templateRows';
+	import { chooseTemplate, reviewTemplate, templateKey, withChosen, withRequired } from '$lib/hybrid-stack/templateRows';
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
 	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
 	import { abnormalAll, assumedFrom, moreLine, openCount, rowSentences, splitReply, type AssumedSnap } from '$lib/hybrid-stack/items';
@@ -1716,16 +1716,13 @@
 			}
 			if (res.error) return; // the writer failed: what is on screen stays
 			if (review) reviewedAbnormal = abnormal;
-			if (review && !res.trigger_error) {
-				// The template's habits for this dictation: its met required statements, and answers to rows whose condition
-				// is no longer met dropped (a failed trigger changes nothing on screen).
-				templateRequired = res.required ?? {};
-				const skippedItems = Object.fromEntries(Object.entries(skippedRows).map(([k, v]) => [k, v.item]));
-				const gone = new Set([...unmetTemplate(tappedRows, res), ...unmetTemplate(skippedItems, res)]);
-				if (gone.size) {
-					tappedRows = Object.fromEntries(Object.entries(tappedRows).filter(([k]) => !gone.has(k)));
-					skippedRows = Object.fromEntries(Object.entries(skippedRows).filter(([k]) => !gone.has(k)));
-				}
+			// The template's habits for this dictation: its met required statements, and answers to rows whose condition
+			// is no longer met dropped (a failed trigger changes nothing on screen).
+			const tpl = review ? reviewTemplate(res, tappedRows, skippedRows) : null;
+			if (tpl) {
+				templateRequired = tpl.required;
+				if (Object.keys(tpl.tapped).length !== Object.keys(tappedRows).length) tappedRows = tpl.tapped;
+				if (Object.keys(tpl.skipped).length !== Object.keys(skippedRows).length) skippedRows = tpl.skipped;
 			}
 			if (fixedReferrals === null)
 				fixedReferrals = res.items.filter((i) => i.kind === 'referral').map((i) => ({ question: i.question, region: i.region, sentences: i.sentences }));

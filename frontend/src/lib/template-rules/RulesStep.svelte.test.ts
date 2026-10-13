@@ -210,7 +210,9 @@ describe('RulesStep', () => {
 		await userEvent.type(when, 'an alpha abnormality in the upper part is reported');
 		await page.getByRole('button', { name: 'Use this wording' }).click();
 		await page.getByRole('button', { name: 'Continue' }).click();
-		expect(onContinue).toHaveBeenCalledWith([{ kind: 'habit', key: 'Upper :: an alpha abnormality in the upper part is reported',
-			choice: { mode: 'ask', ...HTEXTS }, source: 'creation' }]);
+		expect(onContinue).toHaveBeenCalledWith([
+			{ kind: 'habit', key: HKEY, choice: { mode: 'removed', ...HTEXTS }, source: 'creation' },
+			{ kind: 'habit', key: 'Upper :: an alpha abnormality in the upper part is reported', choice: { mode: 'ask', ...HTEXTS }, source: 'creation' }
+		]);
 	});
 });

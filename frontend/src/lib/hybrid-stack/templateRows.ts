@@ -45,3 +45,21 @@ export function templateKey(tapped: Record<string, StackItem>, required: Record<
 	const rows = Object.values(tapped).filter((r) => r.kind === 'template').map((r) => `${r.id}=${r.sentences.join(' ')}`).sort();
 	return JSON.stringify([rows, required]);
 }
+
+/** What a successful full review does to the template's state: its met required statements replace the old ones, and
+ *  answers (tapped or skipped) to template rows it no longer returns are dropped. A failed trigger (`trigger_error`)
+ *  returns null: nothing changes, so answers the radiologist gave explicitly stay. */
+export function reviewTemplate<S extends { item: StackItem }>(
+	res: { items: StackItem[]; capped: StackItem[]; required?: Record<string, string[]>; trigger_error?: string | null },
+	tapped: Record<string, StackItem>,
+	skipped: Record<string, S>
+): { required: Record<string, string[]>; tapped: Record<string, StackItem>; skipped: Record<string, S> } | null {
+	if (res.trigger_error) return null;
+	const skippedItems = Object.fromEntries(Object.entries(skipped).map(([k, v]) => [k, v.item]));
+	const gone = new Set([...unmetTemplate(tapped, res), ...unmetTemplate(skippedItems, res)]);
+	return {
+		required: res.required ?? {},
+		tapped: Object.fromEntries(Object.entries(tapped).filter(([k]) => !gone.has(k))),
+		skipped: Object.fromEntries(Object.entries(skipped).filter(([k]) => !gone.has(k)))
+	};
+}

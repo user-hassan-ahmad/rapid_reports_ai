@@ -29,6 +29,8 @@ export interface CardWording {
 	question?: string;
 	yes?: string;
 	no?: string;
+	/** a habit edit keeps the mode chosen on the card: asked every time, or always stated */
+	mode?: 'ask' | 'state';
 }
 
 export interface DecisionCard {

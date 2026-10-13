@@ -537,3 +537,21 @@ def test_a_chat_reword_of_a_confirmed_habits_condition_is_folded_as_a_reword():
     reworded_q = after.replace('"Extension into the gallbladder?"', '"Gallbladder extension?"')
     out, _, _ = tla.reconcile_chat(before, reworded_q, led)   # condition and question reworded together
     assert out[0]["key"] == f"Liver :: {new_cond}" and out[0]["choice"]["question"] == "Gallbladder extension?"
+
+
+def test_editing_a_pending_habit_card_leaves_exactly_one_habit_line():
+    # the Rules step sends the old key as removed, then the reworded one (frontend cards.changesFor)
+    stray = HABIT_SHEET.replace('NEGATIVE "No focal liver lesion."\n',
+                                'NEGATIVE "No focal liver lesion."\n' + STATE_LINE + "\n")
+    new_key = "Liver :: a focal liver abnormality in the left part is reported"
+    changes = [{"kind": "habit", "key": HK, "choice": {"mode": "removed", "question": "", "yes": "",
+                                                        "no": "No extension into the gallbladder."}},
+               {"kind": "habit", "key": new_key, "choice": {"mode": "state", "question": "", "yes": "",
+                                                             "no": "No extension into the gallbladder."}}]
+    led, errors = td.ledger_from_changes(changes, source="first_use_review")
+    assert errors == []
+    res = tla.apply_ledger(stray, led)
+    st = _clean(res.sheet)
+    habit_lines = [n for n in st.negatives if n.condition] + [r for r in st.rules if r.effect == "ask"]
+    assert [(u.condition) for u in habit_lines] == ["a focal liver abnormality in the left part is reported"]
+    assert res.pending == []

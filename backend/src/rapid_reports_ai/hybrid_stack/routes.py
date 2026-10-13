@@ -186,10 +186,15 @@ async def stack_items(req: ItemsRequest, user: User = Depends(get_current_user),
     _require()
     extra = {}
     if req.template_id:
-        t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
-        st = template_structure(t.template_config) if t is not None else None
-        # only habits the radiologist confirmed are asked (Hassan H3: a line with no entry is inactive)
-        habits = template_habits(st, clean_ledger((t.template_config or {}).get("decisions"))) if st is not None else []
+        try:
+            t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
+            st = template_structure(t.template_config) if t is not None else None
+            # only habits the radiologist confirmed are asked (Hassan H3: a line with no entry is inactive)
+            habits = template_habits(st, clean_ledger((t.template_config or {}).get("decisions"))) if st is not None else []
+        except Exception as e:  # noqa: BLE001 -- fail-soft: no template rows, generic rows as usual
+            logger.warning("[stack.items] template %s habits not read: %s: %s", req.template_id, type(e).__name__,
+                           str(e)[:200])
+            habits = []
         if habits:
             extra["habits"] = habits
     return await items_update(req.scan_type, req.clinical_history, req.regions[:40], req.dictation,

@@ -419,3 +419,19 @@ def test_items_passes_the_templates_confirmed_habits_only(authed, monkeypatch, d
     # Hassan H3: the same line with no confirmed entry is inactive
     authed.post("/api/canvas/stack/items", json={"regions": ["Upper"], "dictation": "x", "template_id": str(unconfirmed.id)})
     assert "habits" not in seen
+
+
+def test_items_with_a_database_error_on_the_template_gives_generic_rows(authed, monkeypatch):
+    from rapid_reports_ai.hybrid_stack.items import ItemsResult
+    seen = {}
+
+    def broken(*a, **k):
+        raise RuntimeError("db down")
+
+    async def items(*a, **k):
+        seen.update(k, called=True)
+        return ItemsResult(items=[])
+    monkeypatch.setattr(R, "get_template", broken)
+    monkeypatch.setattr(R, "items_update", items)
+    r = authed.post("/api/canvas/stack/items", json={"regions": ["Upper"], "dictation": "x", "template_id": str(uuid.uuid4())})
+    assert r.status_code == 200 and seen.get("called") and "habits" not in seen
