@@ -61,7 +61,7 @@ WHY_SEVERAL = "the finding may describe more than one lesion"
 WHY_NO_CHECK = "the check did not run"
 WHY_EXAM = "set by the exam"   # an exam preset: the one pre-fill with no quote (spec §5.1, §7.10)
 WHY_ASSUMED = "assumed: not stated, so taken as within the guideline's scope"   # an assumed eligibility input
-WHY_WOULD_EXCLUDE = "this pre-filled value would make the guideline not apply: confirm it"   # a scope doubt
+WHY_WOULD_EXCLUDE = "this pre-filled value would make the guideline not apply: confirm it"   # a scope doubt, any role
 SETTLE_SYS = """You settle the inputs of one published radiology classification system for ONE finding. INPUTS lists each open input's id, scope, type and allowed values: use nothing else.
 An input's scope decides where it may be settled from:
 - [lesion]: the FINDING only, never another lesion in the dictation, even one of the same kind;
@@ -225,9 +225,25 @@ _HEDGE = re.compile(r"\b(?:suspicious|suspected|suspect|suspicion|possible|possi
                     r"|not\s+excluded)\b|\?", re.I)
 
 
-def _hedged_cancer(i: InputDef, v: InputValue, quote: str) -> bool:
-    """A "known primary cancer: yes" whose quote hedges: dropped, so the input is asked."""
-    return i.fact == "known_primary_cancer" and v.value is True and bool(_HEDGE.search(quote))
+_SENTENCE_END = re.compile(r"[.;\n]")
+
+
+def _hedged_cancer(i: InputDef, v: InputValue, quote: str, texts: list[str] | None = None) -> bool:
+    """A "known primary cancer: yes" whose quote, or the sentence around it in its scope's texts ("suspicious for RCC"
+    quoted as "RCC"), hedges: dropped, so the input is asked."""
+    if i.fact != "known_primary_cancer" or v.value is not True:
+        return False
+    if _HEDGE.search(quote):
+        return True
+    for t in texts or []:
+        n = (t or "").find(quote)
+        while n >= 0:
+            start = max((m.end() for m in _SENTENCE_END.finditer(t, 0, n)), default=0)
+            end = (m.start() if (m := _SENTENCE_END.search(t, n + len(quote))) else len(t))
+            if _HEDGE.search(t[start:end]):
+                return True
+            n = t.find(quote, n + 1)
+    return False
 
 
 async def _call(system: str, prompt: str) -> RawSettle:
@@ -328,7 +344,7 @@ async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings
         if i is None or i.id not in ids or not q or not _in_scope(i, q, finding, findings, history):
             continue
         v = _value(i, item, _texts(i, finding, findings, history))
-        if v is not None and _hedged_cancer(i, v, q):
+        if v is not None and _hedged_cancer(i, v, q, _texts(i, finding, findings, history)):
             continue                 # a suspicion, about this lesion or another, is never a known cancer: asked
         if v is not None:
             out[i.id] = (v, Settled(input=i.id, value=_show(e, i, v), quote=q))
@@ -621,24 +637,33 @@ def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str,
 
 def _no_prefilled_exclusion(e: Entry, t: engine.Trace, s: Settlement, answers: dict[str, InputValue],
                             given: dict[str, InputValue]) -> tuple[engine.Trace, list[str]]:
-    """Only a read, answered or stated eligibility value may exclude (Hassan 2026-10-13). When the draft excludes and
-    pre-filled eligibility values are behind it, the draft is computed with those values assumed in scope instead, and
-    the ones that alone would exclude are returned as the scope doubt: shown pre-filled, with WHY_WOULD_EXCLUDE, and
-    the card stays check_first. Calculate still takes such a value as sent once the radiologist confirms it."""
+    """Nothing is excluded on a guess (Hassan 2026-10-13): only a read, answered or stated value may give
+    does_not_apply. When the draft excludes and pre-filled values are behind it, of any role (an eligibility value, or
+    a clinical one such as a pre-filled diameter over 3 cm), the ones whose removal lifts the exclusion are the scope
+    doubt: the draft is recomputed over every other value (the remaining pre-filled values stay in it), they are shown
+    pre-filled with WHY_WOULD_EXCLUDE, and the card stays check_first. Calculate takes such a value as sent once the
+    radiologist confirms it."""
     if t.outcome != DOES_NOT_APPLY:
         return t, []
-    pre = [k for k, d in s.values.items() if d.tier == "prefilled" and k not in answers
-           and e.input(k) is not None and e.input(k).role == "eligibility"]
+    pre = [k for k, d in s.values.items() if d.tier == "prefilled" and k not in answers and e.input(k) is not None]
     if not pre:
         return t, []
-    rest = {k: v for k, v in _known(given).items() if k not in pre}
-    t2 = engine.evaluate(e, rest, assume_eligible=True)
-    if t2.outcome == DOES_NOT_APPLY:                   # excluded anyway, by a read or answered value
+    known = _known(given)
+
+    def without(ks) -> engine.Trace:
+        return engine.evaluate(e, {k: v for k, v in known.items() if k not in ks}, assume_eligible=True)
+    if without(pre).outcome == DOES_NOT_APPLY:        # excluded anyway, by a read, answered or stated value
         return t, []
-    doubt = [k for k in pre
-             if engine.evaluate(e, {**rest, k: given[k]}, assume_eligible=True).outcome == DOES_NOT_APPLY]
-    logger.info("[library.preview] %s: a pre-filled eligibility value would exclude; drafted in scope", e.key)
-    return t2, doubt or pre
+    doubt = [k for k in pre if without([k]).outcome != DOES_NOT_APPLY]          # removing it alone lifts it
+    if not doubt:                                      # several together: each that alone excludes, else them all
+        rest = {k: v for k, v in known.items() if k not in pre}
+        doubt = [k for k in pre
+                 if engine.evaluate(e, {**rest, k: known[k]}, assume_eligible=True).outcome == DOES_NOT_APPLY] or pre
+    t2 = without(doubt)
+    if t2.outcome == DOES_NOT_APPLY:
+        doubt, t2 = pre, without(pre)
+    logger.info("[library.preview] %s: a pre-filled value would exclude; drafted in scope", e.key)
+    return t2, doubt
 
 
 def _same_shown(e: Entry, i: InputDef, v: InputValue | None, g: InputValue) -> bool:

@@ -491,6 +491,18 @@ def _same(e: Entry, k: str, v: InputValue, label_value: str | None) -> bool:
     return iv is not None and _inside(x, iv)
 
 
+def _agrees_by_band(e: Entry, k: str, v: InputValue, label_value: str | None) -> bool:
+    """_same holds only because the number falls inside a band or bound, not because it equals the truth: reported
+    apart, since a number that also feeds a formula is not verified by its band (review M-b)."""
+    if label_value is None:
+        return False
+    i = e.input(k)
+    t = _answer(e, i, label_value)
+    if t is not None and (_show(e, i, t) == _show(e, i, v) or (t.state == "present" and t.value is not None)):
+        return False
+    return _same(e, k, v, label_value)
+
+
 def _truth(label: dict) -> dict[str, str | None]:
     return {k: (x["value"] if x["stated"] else x["assumed"]) for k, x in label["inputs"].items()}
 
@@ -736,10 +748,14 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
         pre = card_presets(e, c)
         n, outcome = taps(e, s, lab, {}, presets=pre)
         d = drafts(s, e, pre)
+        ver = verdicts(e, s, lab, pre)
+        by_band = [k for k, (val, _, tier) in d.items() if ver[k] == "ok" and _agrees_by_band(
+            e, k, val, _truth(lab)[k] if tier == "prefilled" else lab["inputs"][k]["value"])]
         rows.append({"card": c["id"], "pack": c["pack"], "source": c.get("source", "prod"),
-                     "sibling": bool(c.get("via_sibling_of")), "ms": st[c["id"]]["ms"], "taps": n, "verdicts": verdicts(e, s, lab, pre),
+                     "sibling": bool(c.get("via_sibling_of")), "ms": st[c["id"]]["ms"], "taps": n, "verdicts": ver, "agrees_by_band": by_band,
                      "tiers": {k: t for k, (_, _, t) in d.items()}, "degraded": st[c["id"]]["degraded"],
-                     "outcome": outcome, "draft_outcome": _draft_now(e, s, pre)})
+                     "outcome": outcome, "draft_outcome": _draft_now(e, s, pre),
+                     "draft_outcome_stored": st[c["id"]].get("draft_outcome_id")})
     errored = [k for k, r in st.items() if "error" in r]
     if skipped:
         print(f"skipped {len(skipped)} unlabelled, unsettled or errored cards: {', '.join(skipped)}", file=sys.stderr)
@@ -749,6 +765,11 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
     q = statistics.quantiles(ms, n=20) if len(ms) > 1 else ms * 2
     result = {**metrics(head), "headline_sources": list(HEADLINE_SOURCES), "outcome_agreement": outcome_agreement(head),
               "wrong_prefill_total": wrong_prefill_total(head), "by_source": by_source(rows),
+              "agrees_by_band": [f"{r['card']}:{k}" for r in head for k in r["agrees_by_band"]],
+              "notes": ["taps outcome = the Calculate result over every value the card shows",
+                        "outcome agreement uses the draft outcome recomputed under today's card rules over the stored "
+                        "settlement (draft_outcome); the settler-time one is draft_outcome_stored per row"],
+              "rows": rows,
               "card_kinds_by_source": card_kinds(rows), "category_dictated_by_pack": dict(cats),
               "hassan_overrides": overrides, "override_problems": op, "skipped_cards": skipped,
               "errored_cards": errored, "latency_ms": {"p50": statistics.median(ms) if ms else None,
@@ -766,11 +787,13 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
         print(f"| median taps to Calculate | {result['median_taps']} | <= 2 |")
         print(f"| taps distribution | {result['taps_distribution']} | |")
         print(f"| wrong pre-filled values | {result['wrong_prefill_total']} | |")
+        print(f"| numbers right only by band (reported apart) | {len(result['agrees_by_band'])} | |")
         print(f"| outcome agreement | {result['outcome_agreement']} | |")
         print(f"| errored / skipped cards | {len(errored)} / {len(skipped)} | |")
         print(f"| degraded cards | {len(result['degraded'])} | |")
         print(f"| latency p50 / p95 ms | {result['latency_ms']['p50']} / {result['latency_ms']['p95']} | |")
         print("| time to first paint | not measured offline | |\n| checker, lesions | n/a | |")
+        print("\n".join(f"note: {x}" for x in result["notes"]))
     print(f"\ncards by source (hit / sibling): {result['card_kinds_by_source']}")
     for src, m in result["by_source"].items():
         print(f"\n### source: {src}\n| metric | measured |\n|---|---|")

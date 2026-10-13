@@ -516,3 +516,12 @@ def test_a_scope_doubt_the_truth_agrees_with_excludes_at_the_calculate_tap():
     lab = _label(**{i.id: (None, None) for i in e.inputs})
     lab["inputs"]["pregnant_or_acute"].update(stated=True, value="Yes")
     assert RL.taps(e, s, lab, {})[1] == "does_not_apply"
+
+
+def test_a_number_right_only_by_its_band_is_tagged_apart():
+    import json
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+    e = LB.Library(json.loads(LB.BUNDLE.read_text())).lookup("fleischner-pulmonary-nodule")
+    assert RL._agrees_by_band(e, "diameter_mm", InputValue(value=14.0), ">8 mm")
+    assert not RL._agrees_by_band(e, "diameter_mm", InputValue(value=9.0), "9 mm")          # equal: verified
+    assert not RL._agrees_by_band(e, "diameter_mm", InputValue(value=7.0), "<6 mm")         # wrong: not ok at all

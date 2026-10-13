@@ -204,3 +204,45 @@ def test_a_read_excluding_eligibility_value_still_excludes():
     assert p.state == "does_not_apply" and p.exclusion is not None and p.scope_doubt == []
     p = PP.finish(e, PP.Settlement(), {"exclusion": "Yes"}, None, [])                # answered: excludes too
     assert p.state == "does_not_apply"
+
+
+def test_only_the_doubtful_value_leaves_the_draft_other_prefilled_values_stay():
+    """Review I-b: a Jev outage pre-fills everything; age 64 stays in the draft, only proven_malignant is the doubt."""
+    e = next(x for x in _tier1() if x.id == "bts-pulmonary-nodule")
+    P = lambda v, q: PP.Drafted(InputValue(value=v), q, "prefilled", [PP.WHY_NO_CHECK])   # noqa: E731
+    s = PP.Settlement(values={"age": P(64.0, "64-year-old"), "proven_malignant": P(True, "biopsy-proven"),
+                              "nodule_type": P("solid", "solid"), "diameter_mm": P(4.0, "4 mm"),
+                              "benign_features": P(False, "no calcification"), "prior_study": P(False, "no previous")})
+    p = PP.finish(e, s, {}, None, [])
+    assert p.scope_doubt == ["proven_malignant"] and p.state == "check_first" and p.exclusion is None
+    assert "age" not in p.missing and p.draft_outcome is not None
+    by = {d.input: d for d in p.draft}
+    assert by["age"].state == "prefilled" and by["age"].needed is False
+
+
+@pytest.mark.parametrize("pack,extra", [
+    ("bts-pulmonary-nodule", {"age": "64", "proven_malignant": "No", "nodule_type": "solid", "prior_study": "No",
+                              "benign_features": "No"}),
+    ("fleischner-pulmonary-nodule", {"age": "64", "exclusion": "No", "nodule_type": "solid", "count": "single",
+                                     "risk": "low"})])
+def test_a_prefilled_clinical_value_never_excludes_but_a_read_one_does(pack, extra):
+    """Review I-c: a pre-filled diameter over 3 cm is a scope doubt, never an exclusion; read, it excludes."""
+    e = next(x for x in _tier1() if x.id == pack)
+    for tier, want in (("prefilled", "check_first"), ("read", "does_not_apply")):
+        s = PP.Settlement(values={"diameter_mm": PP.Drafted(InputValue(value=35.0), "35 mm", tier,
+                                                            [PP.WHY_OTHER_NUMBER] if tier == "prefilled" else [])})
+        p = PP.finish(e, s, extra, None, [])
+        assert p.state == want, (pack, tier)
+        assert (p.scope_doubt == ["diameter_mm"]) is (tier == "prefilled") and (p.exclusion is None) is (
+            tier == "prefilled")
+        if tier == "prefilled":
+            d = next(x for x in p.draft if x.input == "diameter_mm")
+            assert d.value == "35 mm" and PP.WHY_WOULD_EXCLUDE in d.why
+
+
+def test_the_hedge_backstop_reads_the_sentence_around_a_short_quote():
+    e = next(x for x in _tier1() if x.id == "ese-adrenal-incidentaloma")
+    i = e.input("known_primary_cancer")
+    texts = ["1.4 cm left adrenal nodule. Separate 3 cm right renal mass, suspicious for RCC.", ""]
+    assert PP._hedged_cancer(i, InputValue(value=True), "RCC", texts)
+    assert not PP._hedged_cancer(i, InputValue(value=True), "RCC", ["Known metastatic RCC on treatment.", ""])
