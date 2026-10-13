@@ -115,6 +115,8 @@ def _ws(sheet: str) -> str:
     return "\n".join(" ".join(ln.split()) for ln in sheet.splitlines() if ln.strip())
 
 
+# Old lint errors are matched by (text, reason), not line number, so they survive edits that shift lines. A copied
+# erroneous line therefore also passes as "old"; the sheet is unusable at generation either way (any lint error).
 def _err_key(e) -> tuple:
     return (e.text.strip(), e.reason)
 

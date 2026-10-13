@@ -206,3 +206,19 @@ async def test_repeated_source_lines_map_to_successive_lines(monkeypatch):
     lines = sheet.splitlines()
     assert len(fails) == 2 and len({f.line for f in fails}) == 2
     assert all(lines[f.line - 1] == dup for f in fails)
+
+
+async def test_check_units_runs_on_a_structure_marked_unusable(monkeypatch):
+    # the save function checks units of a sheet unusable only through old lint errors (template_sheet_save._usable)
+    from tests.template_sheet_fixtures import GOOD
+    sheet = GOOD + "COVERS menisci without brackets\n" + 'NORMAL [bone] "The bones are {x}."\n' \
+        + 'NORMAL [cartilage] "Mild chondral thinning."\n'
+    res = parse_sheet(sheet, mode="template")
+    assert not res.structure.usable and res.errors
+
+    async def scores(units):
+        return {u.text: (0.05 if "thinning" in u.text else 0.9, 0.0) for u in units}
+    monkeypatch.setattr(C, "_jev_scores", scores)
+    fails = await C.check_units(res.structure, sheet)
+    assert {(f.text, f.reason) for f in fails} == {("The bones are {x}.", C.PLACEHOLDER),
+                                                  ("Mild chondral thinning.", C.NOT_NORMAL)}

@@ -357,3 +357,15 @@ async def test_labelled_openings_save_unchanged_without_a_repair(no_jev, monkeyp
     monkeypatch.setattr(S, "_repair", _counting_no_repair(calls))
     out = await S.vet_sheet(LABELLED, origin="analyser")
     assert out.status == "saved" and out.sheet == LABELLED and calls == [] and out.dropped == []
+
+
+@pytest.mark.parametrize("change", ["drop_impression", "new_lint_error"])
+async def test_old_lint_errors_do_not_excuse_new_damage(no_jev, monkeypatch, change):
+    prev = GOOD + "COVERS menisci without brackets\n"
+    if change == "drop_impression":
+        edited = prev.replace('SECTION IMPRESSION | header: "Impression:" | role: impression\n', "")
+    else:
+        edited = prev + "NEGATIVE without quotes\n"
+    monkeypatch.setattr(S, "_repair", _no_repair)
+    out = await S.vet_sheet(edited, origin="chat", previous=prev)
+    assert out.status == "refused" and out.sheet == prev and "readable" in out.message
