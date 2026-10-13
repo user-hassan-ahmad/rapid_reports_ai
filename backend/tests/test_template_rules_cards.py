@@ -281,3 +281,21 @@ def test_an_unmatched_fixed_line_is_never_offered_always_again():
     c = trc.unmatched_cards([{"kind": "fixed", "key": "A line the sheet lacks.", "choice": {"keep": "always"}}])[0]
     assert [(x["id"], x["choice"]) for x in c["choices"]] == [
         ("dictated", {"keep": "dictated"}), ("remove", {"keep": "remove"}), ("forget", td.FORGET)]
+
+
+FRAG = R.ConceptWording(concept="comparison", state="compared", text="compared with {study} of {date}",
+                        quotes=[_q(2, "Compared with CT of 01/01/2020.")])
+
+
+def test_a_fragment_wording_is_never_offered_and_the_concept_falls_back_to_dictated():
+    run = _run([], [NO_PRIOR, FRAG], states=ALL)
+    assert any(w.text == FRAG.text for w in run.concepts)          # the quote is real: only the shape is wrong
+    out = C.build_cards(run, 3)
+    card = next(c for c in C.flat(out["cards"] + out["more"]) if c["key"] == "comparison")
+    offered = [x["choice"] for x in card["choices"] if x["choice"]]
+    assert all(FRAG.text not in (ch.get("default", ""), ch.get("when_met", "")) for ch in offered)
+    assert any(x["id"] == "dictated" and x["choice"]["dictated"] for x in card["choices"])
+    for ch in offered:
+        td.validate("concept", "comparison", ch)                    # every offered choice is applicable
+    assert card["selected"] is None
+    assert any(e.get("quote") == "Compared with CT of 01/01/2020." for e in card["evidence"])

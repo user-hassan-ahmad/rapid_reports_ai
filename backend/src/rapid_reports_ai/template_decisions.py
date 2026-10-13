@@ -159,6 +159,13 @@ def match_key(kind: str, key: str) -> str:
     return _name(key)
 
 
+def is_sentence(text: str) -> bool:
+    """A full sentence: starts with a capital letter or a {slot}, ends with "." or ":". A wording that replaces a line
+    or is printed on its own (REPLACE ... WITH, USE) must be one; a fragment would print mid-sentence."""
+    t = (text or "").strip()
+    return bool(t) and (t[0].isupper() or t[0] == "{") and t[-1] in ".:"
+
+
 def _text(v, what: str, allow_slots: bool = True) -> str:
     if not isinstance(v, str):
         raise DecisionError(f"{what}: text expected")
@@ -196,6 +203,8 @@ def validate(kind: str, key: str, choice: dict) -> Tuple[str, dict]:
         when_met = _text(choice.get("when_met", ""), "concept wording")
         if not (default or when_met):
             raise DecisionError("concept: a used concept needs wording")
+        if when_met and not is_sentence(when_met):
+            raise DecisionError("concept wording: a full sentence (a capital or a {slot} first, '.' or ':' last)")
         if default and when_met and norm_key(default) == norm_key(when_met):
             raise DecisionError("concept: the two wordings are the same")
         conds = CONCEPTS[key].conditions

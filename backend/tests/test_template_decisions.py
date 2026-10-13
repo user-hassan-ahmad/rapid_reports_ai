@@ -160,3 +160,24 @@ def test_a_forget_change_removes_the_entry():
                                      {"kind": "value", "key": "LVEF", "choice": {"need": "every"}}])
     out, errors = td.ledger_from_changes([{"kind": "fixed", "key": "A line.", "choice": dict(td.FORGET)}], base=led)
     assert errors == [] and [e["key"] for e in out] == ["LVEF"]
+
+
+def test_a_replacement_or_use_wording_must_be_a_full_sentence():
+    import pytest
+    from rapid_reports_ai import template_decisions as td
+    for frag in ("assessment is limited by {limitation}", "Assessment is limited by {limitation}",
+                 "compared with the {study}."):
+        with pytest.raises(td.DecisionError, match="full sentence"):
+            td.validate("concept", "limitation", {"use": True, "default": "", "when_met": frag})
+        with pytest.raises(td.DecisionError, match="full sentence"):
+            td.validate("concept", "limitation", {"use": True, "default": "Image quality is adequate.",
+                                                  "when_met": frag})
+    for ok in ("Assessment is limited by {limitation}.", "{Limitation} limits assessment.", "Limitations:"):
+        td.validate("concept", "limitation", {"use": True, "default": "", "when_met": ok})
+    assert td.is_sentence("No previous imaging.") and not td.is_sentence("no previous imaging.")
+    # a stored fragment is dropped, so it never becomes a rule
+    stored = [{"kind": "concept", "key": "limitation", "by": "radiologist", "at": "t", "source": "creation",
+               "choice": {"use": True, "default": "", "when_met": "assessment is limited by {limitation}"}}]
+    assert td.clean_ledger(stored) == []
+    from rapid_reports_ai import template_sheet_lab_prompts as P
+    assert "assessment is limited" not in P.decided_block(stored)

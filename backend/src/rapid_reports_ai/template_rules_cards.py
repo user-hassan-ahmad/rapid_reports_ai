@@ -68,7 +68,7 @@ def concept_card(concept: str, default: str, when_met: str, evidence: List[dict]
 
 
 def disagree_card(concept: str, options: List[dict], other: str, role: str, evidence: List[dict],
-                  condition: str) -> dict:
+                  condition: str, title: str = "") -> dict:
     """options: [{"text", "reports"}] for one side; `other` the single wording of the other side ("" if none).
     "Use whichever is dictated" is its own choice ({"use": false, "dictated": true}), not "not used"."""
     choices = []
@@ -80,7 +80,8 @@ def disagree_card(concept: str, options: List[dict], other: str, role: str, evid
     choices.append(_choice("dictated", "Use whichever is dictated",
                            {"use": False, "default": "", "when_met": "", "condition": "", "dictated": True}))
     return {"id": f"disagree:{concept}", "kind": "disagree", "step": "rules",
-            "title": f"Your examples word {td.CONCEPTS[concept].label.lower()} differently", "evidence": evidence,
+            "title": title or f"Your examples word {td.CONCEPTS[concept].label.lower()} differently",
+            "evidence": evidence,
             "ledger_kind": "concept", "key": concept, "choices": choices, "selected": None, "rank": _RANK["disagree"]}
 
 
@@ -225,6 +226,9 @@ def _concept_cards(run: DecisionRun, n: int) -> List[dict]:
             by_state[w.state].append(seen[k])
         if not any(by_state.values()):
             continue
+        # a wording that is not a full sentence is never offered (it would print mid-sentence): the concept falls
+        # back to "Use whichever is dictated", beside the full-sentence base wording when there is one
+        fragments = [w for ws in by_state.values() for w in ws if not td.is_sentence(w["text"])]
         quoted = {r for ws in by_state.values() for w in ws for r in w["reports"]}
         stating = set(run.states.get(name) or []) | quoted     # a verified quote counts even when Jev missed it
         base = next((s for s, cond in c.states.items() if cond is None), None)
@@ -232,6 +236,17 @@ def _concept_cards(run: DecisionRun, n: int) -> List[dict]:
         # the study setup, when it states the concept, is the first evidence (Hassan, 2026-10-13)
         told = (run.setup or {}).get(name)
         setup_ev = [{"reports": [], "source": "setup", "quote": told.get("quote")}] if told else []
+        if fragments:
+            whole = {s: [w for w in ws if td.is_sentence(w["text"])] for s, ws in by_state.items()}
+            other = next((s for s in c.states if s != base), None) if base else None
+            rest = whole[other] if other else []
+            ev = [*setup_ev, *({"reports": w["reports"], "quote": w["quote"]} for ws in by_state.values() for w in ws)]
+            if silent:
+                ev.append({"reports": silent, "quote": None})
+            out.append(disagree_card(name, whole[base] if base else [], rest[0]["text"] if len(rest) == 1 else "",
+                                     "default", ev, c.states[other] or "" if other else "",
+                                     title=f"{c.label}: your examples word it only as part of a sentence"))
+            continue
         if base is None:
             counts = {s: len({r for w in ws for r in w["reports"]}) for s, ws in by_state.items()}
             top = max(c.states, key=lambda s: counts[s])
