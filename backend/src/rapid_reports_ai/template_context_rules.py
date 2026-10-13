@@ -14,7 +14,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable, Dict, List, Optional, Set, Tuple
+from typing import Awaitable, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from .hybrid_stack.jev_stack import CONDITION_MIN, ask_conditions
 from .hybrid_stack.template import norm_key
@@ -68,7 +68,7 @@ def apply_rules(sheet: str, rules: List[Rule], met: Dict[str, bool]) -> Tuple[st
     taken: set[int] = set()        # rule lines already matched to a rule
     claimed: set[str] = set()      # target keys settled by a met rule
     decided: List[str] = []
-    kept: List[str] = []
+    pending: List[Tuple[str, str]] = []   # (target key, text) of FIXED defaults a not-met rule left
     per: List[dict] = []
     for r in rules:
         raw = r.source_lines[0] if r.source_lines else None
@@ -97,7 +97,7 @@ def apply_rules(sheet: str, rules: List[Rule], met: Dict[str, bool]) -> Tuple[st
             entry["outcome"] = "unmatched"
         elif not entry["met"]:
             out[i] = None
-            kept.extend(q for k in targets if _FIXED.match(lines[k]) and (q := _first_quote(lines[k])))
+            pending.extend((key, q) for k in targets if _FIXED.match(lines[k]) and (q := _first_quote(lines[k])))
             entry["outcome"] = "applied"
         elif key in claimed:
             entry["outcome"] = "conflict"
@@ -109,6 +109,7 @@ def apply_rules(sheet: str, rules: List[Rule], met: Dict[str, bool]) -> Tuple[st
             if r.effect == "replace" and SLOT.search(r.then_text):
                 decided.append(r.then_text)
             entry["outcome"] = "applied"
+    kept = list(dict.fromkeys(q for key, q in pending if key not in claimed))   # a met rule settled the rest
     text = "\n".join(x for x in out if x is not None)
     return (text + "\n" if sheet.endswith("\n") else text), decided, kept, per
 
@@ -168,7 +169,7 @@ async def resolve_context_rules(sheet: str, history: str, findings: str, ask: Op
     rec: dict = {"asked": 0, "ms": 0, "error": None, "skipped": None, "rules": [], "slot_leaks": 0, "kept": 0}
 
     def done(text: str, decided: Optional[List[str]] = None, kept: Optional[List[str]] = None) -> Resolved:
-        rec["kept"] = len(kept or [])
+        rec["kept"] = len(dict.fromkeys(kept or []))
         rec["ms"] = int((time.perf_counter() - t0) * 1000)
         outcomes = [e["outcome"] for e in rec["rules"]]
         logger.log(logging.WARNING if rec["error"] else logging.INFO,
@@ -221,7 +222,7 @@ _SENTENCE_END = re.compile(r'(?<=[.!?])\s+(?=[A-Z0-9"(])')
 _LEAD = re.compile(r"^\s*(?:[-*•]\s+)?(?:\d+[.)]\s+)?(?:[*_#]*\s*[^:{}.\n]{1,40}:(?!\d)[*_]*\s*)?")   # indent, bullet, "**Header:** "
 
 
-def decided_block(decided: List[str], kept=()) -> str:
+def decided_block(decided: List[str], kept: Sequence[str] = ()) -> str:
     """The generator's instruction for lines the rules decided (appended to the sheet it reads): lines a met rule
     wrote with {slots}, and FIXED defaults a not-met rule kept, which are written word for word."""
     if not decided and not kept:

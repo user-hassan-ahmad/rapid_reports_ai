@@ -330,3 +330,15 @@ def test_block_with_both_lists_has_the_heading_once():
     assert block.count(cr.DECIDED_HEADING) == 1
     assert block.index("Fill each") < block.index("Write word for word")
     assert cr.decided_block([], []) == ""
+
+
+def test_a_default_a_met_rule_settled_is_never_kept_in_either_rule_order():
+    other = "the patient declined comparison"
+    extra = ('RULE WHEN [context: the patient declined comparison] REPLACE '
+             '"No previous imaging available for comparison." WITH "Comparison declined." | section: COMPARISON\n')
+    after = SHEET.replace('FIXED "Images reviewed on PACS."', extra + 'FIXED "Images reviewed on PACS."')
+    before = SHEET.replace("RULE WHEN [context: the dictation names", extra + "RULE WHEN [context: the dictation names")
+    for sheet in (after, before):
+        for met in ({PRIOR}, {other}):
+            assert _apply(met, sheet)[2] == ["Images reviewed on PACS."]
+        assert _apply(set(), sheet)[2] == KEPT
