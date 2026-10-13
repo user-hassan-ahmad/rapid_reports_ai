@@ -432,6 +432,21 @@ Each input on the card is in exactly one state:
 | **Assumed** | An unknown eligibility input, assumed at its in-scope value (§3.6, amendment of 2026-10-13) | Marked as assumed, with why; a stated value always wins |
 | **Edited** | In a Calculate result: a sent value that differs from its draft or preset | As sent |
 
+**Visible signs, the most likely outcome and the deciding question (Hassan, 2026-10-13).**
+- **Visible signs.** A sign the imaging shows when it is present (for example spiculation, emphysema on CT, benign
+  calcification or fat, septa, ascites) is flagged in the pack data (`visible_sign`, with `absent_option` for a choice).
+  If unstated, it is drafted as **assumed absent**: state `assumed`, listed in `assumptions`, never read. A stated
+  value always wins. This is the product's silence policy. It never applies to what the imaging may not show, such as
+  enhancement on an unenhanced scan or Doppler flow.
+- **Most likely.** `most_likely` is the draft outcome under these assumptions, in short (`headline`, `action`,
+  `category`).
+- **Deciding question.** While several outcomes remain, `deciding_input` is the unknown input whose answers settle the
+  most different outcomes. `deciding` lists up to three answer → outcome pairs.
+- `possible` still lists every outcome possible without the sign assumptions ("show all").
+- Each outcome carries display fields: `headline` (at most 8 words), `action` (at most 6 words) and `category`. The
+  category is one of none, info, surveillance, workup, refer, not_applicable. `info` means the source states no
+  management.
+
 - **Quotes only.** A value is never pre-filled from inference alone. The model still leaves out anything not stated,
   and a proposal without a verbatim quote is dropped.
 - **Highlight reasons.** Guards that used to force an ask now only say why a value is pre-filled rather than read:

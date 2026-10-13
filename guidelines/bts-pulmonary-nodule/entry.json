@@ -32,6 +32,7 @@
  "inputs": [
   {
    "id": "benign_features",
+   "visible_sign": true,
    "label": "Clear benign features",
    "type": "boolean",
    "how_stated": "true when the nodule has a benign calcification pattern (diffuse, central, laminated or popcorn), macroscopic fat (e.g. hamartoma), or is a typical perifissural or subpleural nodule (smooth, solid, lentiform or triangular, within 1 cm of a fissure or pleura, under 10 mm); false when none of these is described",
@@ -133,6 +134,7 @@
   },
   {
    "id": "emphysema",
+   "visible_sign": true,
    "label": "Emphysema on CT",
    "type": "boolean",
    "how_stated": "true when any emphysema is reported on this CT; false when the lungs are described without emphysema",
@@ -168,6 +170,7 @@
   },
   {
    "id": "spiculation",
+   "visible_sign": true,
    "label": "Spiculation",
    "type": "boolean",
    "how_stated": "true when the nodule margin is described as spiculated; false for smooth, well-defined or lobulated margins",

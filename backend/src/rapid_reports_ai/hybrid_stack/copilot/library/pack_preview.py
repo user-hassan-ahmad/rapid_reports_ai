@@ -30,8 +30,8 @@ from ....report_reconcile import QWEN
 from .. import jev as J
 from .. import preview as P
 from .. import registry as R
-from ..types import (Branch, Calculation, DraftValue, Entry as CardEntry, GuidelineContent, Input, Preview, Proposal,
-                     Publication, Settled, Source)
+from ..types import (Branch, Calculation, DecidingAnswer, DecidingInput, DraftValue, Entry as CardEntry,
+                     GuidelineContent, Input, OutcomeBrief, Preview, Proposal, Publication, Settled, Source)
 from . import engine
 from . import quantity as Q
 from .describe import citation
@@ -61,6 +61,9 @@ WHY_SEVERAL = "the finding may describe more than one lesion"
 WHY_NO_CHECK = "the check did not run"
 WHY_EXAM = "set by the exam"   # an exam preset: the one pre-fill with no quote (spec §5.1, §7.10)
 WHY_ASSUMED = "assumed: not stated, so taken as within the guideline's scope"   # an assumed eligibility input
+WHY_ASSUMED_ABSENT = "assumed absent: a visible sign the report does not mention"   # silence policy
+MAX_DECIDING = 3
+DECIDING_CANDIDATES = 3   # the first unknown inputs, in `needed` order, tried as the deciding question
 WHY_WOULD_EXCLUDE = "this pre-filled value would make the guideline not apply: confirm it"   # a scope doubt, any role
 SETTLE_SYS = """You settle the inputs of one published radiology classification system for ONE finding. INPUTS lists each open input's id, scope, type and allowed values: use nothing else.
 An input's scope decides where it may be settled from:
@@ -509,7 +512,8 @@ def _possible(e: Entry, t: engine.Trace) -> list[str]:
 
 def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict[str, str], sources: list[dict],
            degraded: bool, preset: frozenset[str] = frozenset(), draft: list[DraftValue] | None = None,
-           doubt: list[str] | None = None) -> Preview:
+           doubt: list[str] | None = None, signs: dict[str, InputValue] | None = None,
+           possible: list[str] | None = None, likely: tuple | None = None) -> Preview:
     """The card (spec §7.4): eligibility asks first; the state worked out in code; the reached outcome is a draft
     "on these values" (never a proposal, so never Applied); a does_not_apply outcome is shown as an exclusion."""
     elig = [i.id for i in e.inputs if i.role == "eligibility"]
@@ -525,11 +529,16 @@ def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict
     else:          # check_first stays honest: an assumed or still-unknown eligibility input (the UI's warning)
         state = "check_first" if t.assumed or doubt or set(elig) & set(needed) else "applies"
         draft_outcome, exclusion = text, None
-    assumptions = ([i.id for i in e.inputs if i.id in t.assumed and i.id not in (doubt or [])]
-                   if t.outcome != DOES_NOT_APPLY else [])
+    elig_assumed = ([i.id for i in e.inputs if i.id in t.assumed and i.id not in (doubt or [])]
+                    if t.outcome != DOES_NOT_APPLY else [])
+    assumptions = [i.id for i in e.inputs if i.id in elig_assumed or i.id in (signs or {})]
+    most_likely, deciding_input, deciding = likely or (None, None, [])
+    if possible is None:
+        possible = _possible(e, t)
     return Preview(settled=settled, draft=draft or [], draft_outcome=draft_outcome, missing=needed, proposal=None,
-                   assumptions=assumptions, assumed_eligible=bool(assumptions), scope_doubt=list(doubt or []),
-                   exclusion=exclusion, state=state, possible=_possible(e, t), bounded=t.bounded,
+                   assumptions=assumptions, assumed_eligible=bool(elig_assumed), scope_doubt=list(doubt or []),
+                   most_likely=most_likely, deciding_input=deciding_input, deciding=deciding,
+                   exclusion=exclusion, state=state, possible=possible, bounded=t.bounded,
                    asks=_asks(e, t, sources, needed), waiting=list(t.waiting),
                    trace=t.model_dump(mode="json") if t.outcome is not None else None, degraded=degraded)
 
@@ -606,9 +615,16 @@ def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str,
         if k not in given:
             given[k] = v
             preset.add(k)
+    # silence policy: an unstated visible sign is assumed absent (shown "assumed", never read; a stated value wins)
+    signs = {i.id: i.absent_value() for i in e.inputs if i.visible_sign and i.id not in _known(given)}
+    drafted = {**given, **signs}
     try:      # the draft never leads with eligibility: an unknown one is assumed in scope, visibly (Hassan 2026-10-13)
-        t = engine.evaluate(e, _known(given), assume_eligible=True)
-        t, doubt = _no_prefilled_exclusion(e, t, s, answers, given)
+        t = engine.evaluate(e, _known(drafted), assume_eligible=True)
+        t, doubt = _no_prefilled_exclusion(e, t, s, answers, drafted)
+        # "show all": every outcome still possible without the sign assumptions
+        possible = (_possible(e, engine.evaluate(e, _known(given), assume_eligible=True)) if signs
+                    else _possible(e, t))
+        likely = _likely(e, t, _known(drafted), sources or [], assume=True)
     except (engine.EvaluationError, ValueError) as ex:
         logger.error("[library.preview] %s cannot be evaluated: %s", e.key, ex)
         return failed(e)
@@ -625,15 +641,65 @@ def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str,
             st = d.tier
         elif a is None and i.id in preset:
             st = "prefilled"
+        elif i.id in signs:
+            st, g = "assumed", signs[i.id]
         elif i.id in t.assumed:
             st, g = "assumed", t.assumed[i.id]
         else:
             st = "asked"
         dv = _draft_value(e, i, t, st, g, d if a is None else None, "exam" if i.id in preset else "")
+        if st == "assumed" and i.id in signs:
+            dv.why = [WHY_ASSUMED_ABSENT]
         if i.id in doubt:
             dv.why.append(WHY_WOULD_EXCLUDE)
         draft.append(dv)
-    return _build(e, t, given, quotes, sources or [], s.failed or s.no_unit, frozenset(preset), draft, doubt)
+    return _build(e, t, given, quotes, sources or [], s.failed or s.no_unit, frozenset(preset), draft, doubt, signs,
+                  possible, likely)
+
+
+def _brief(e: Entry, t: engine.Trace, oid: str) -> OutcomeBrief:
+    o = e.outcome(oid)
+    head = o.headline or engine.PH.sub("…", engine.render(e, t, o.classification))
+    return OutcomeBrief(headline=head, action=o.action or "", category=o.category or "")
+
+
+def _likely(e: Entry, t: engine.Trace, base: dict[str, InputValue], sources: list[dict], assume: bool):
+    """(most_likely, deciding_input, deciding). The reached outcome (not an exclusion), in short. While several
+    outcomes remain: of the first DECIDING_CANDIDATES unknown inputs the radiologist can pick an answer for, the one
+    whose answers settle the most different outcomes (then the widest `decides`, then `needed` order), with each
+    answer's outcome under the same assumptions, answers that lead to the same outcome grouped, at most MAX_DECIDING.
+    Engine only: no model, no Jev."""
+    if t.outcome is not None:
+        return (_brief(e, t, t.outcome) if t.outcome != DOES_NOT_APPLY else None), None, []
+    if len(t.possible) < 2 or not t.needed:
+        return None, None, []
+    pickable = [k for k in t.needed if display_options(e, e.input(k))][:DECIDING_CANDIDATES]
+    if not pickable:
+        return None, None, []
+
+    def answers(k: str) -> dict[str | None, list[str]]:
+        i, groups = e.input(k), {}
+        for label in display_options(e, i):
+            v = _answer(e, i, label)
+            if v is not None:
+                groups.setdefault(engine.evaluate(e, {**base, k: v}, assume_eligible=assume).outcome, []).append(label)
+        return groups
+    scored = []
+    for n, k in enumerate(pickable):     # the most outcomes settled by one answer; then the widest decides; then order
+        g = answers(k)
+        scored.append(((len([o for o in g if o is not None]), len(t.decides.get(k, t.possible)), -n), k, g))
+    score, k, groups = max(scored, key=lambda x: x[0])
+    if score[0] == 0:                    # no single answer settles an outcome: there is no deciding question yet
+        return None, None, []
+    i = e.input(k)
+    deciding = []
+    for oid, labels in list(groups.items())[:MAX_DECIDING]:
+        if oid is None:
+            deciding.append(DecidingAnswer(answer=" / ".join(labels), headline="Needs more answers"))
+        else:
+            b = _brief(e, t, oid)
+            deciding.append(DecidingAnswer(answer=" / ".join(labels), headline=b.headline, category=b.category))
+    return None, DecidingInput(input=k, label=i.label), deciding
 
 
 def _no_prefilled_exclusion(e: Entry, t: engine.Trace, s: Settlement, answers: dict[str, InputValue],
@@ -688,7 +754,9 @@ def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str
     pre = preset_values(e, presets)
     shared = _given(e, {}, patient)
     # what the draft assumed (over the drafted values and presets): a value sent back equal to it stays "assumed"
-    asm = engine.assumptions(e, {**pre, **{k: d.value for k, d in s.values.items()}})
+    drafted = {**pre, **{k: d.value for k, d in s.values.items()}}
+    asm = engine.assumptions(e, drafted)
+    asm.update({i.id: i.absent_value() for i in e.inputs if i.visible_sign and i.id not in drafted})
     used = []
     for i in e.inputs:
         d, g = s.values.get(i.id), given.get(i.id)
@@ -711,9 +779,11 @@ def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str
         used.append(_draft_value(e, i, t, st, g, d if st in ("read", "prefilled") else None, by))
     text = _outcome_text(e, t, sources) if t.outcome is not None else None
     excluded = t.outcome == DOES_NOT_APPLY
+    most_likely, deciding_input, deciding = _likely(e, t, _known(given), sources, assume=False)
     return Calculation(outcome=t.outcome, result=None if excluded else text, exclusion=text if excluded else None,
                        possible=_possible(e, t), needed=list(t.needed), values=used,
                        assumptions=[v.input for v in used if v.state == "assumed"],
+                       most_likely=most_likely, deciding_input=deciding_input, deciding=deciding,
                        trace=t.model_dump(mode="json") if t.outcome is not None else None,
                        pack=e.key, bundle=bundle)
 

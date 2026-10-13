@@ -135,6 +135,8 @@
     },
     {
       "id": "septa",
+      "visible_sign": true,
+      "absent_option": "none",
       "label": "Septa (the one that sets the highest class)",
       "type": "enum",
       "options": [
@@ -164,6 +166,8 @@
     },
     {
       "id": "protrusion",
+      "visible_sign": true,
+      "absent_option": "none",
       "label": "Convex protrusion from wall or septa (most significant)",
       "type": "enum",
       "options": [
@@ -189,6 +193,8 @@
     },
     {
       "id": "calcification",
+      "visible_sign": true,
+      "absent_option": "none",
       "label": "Calcification",
       "type": "enum",
       "options": [

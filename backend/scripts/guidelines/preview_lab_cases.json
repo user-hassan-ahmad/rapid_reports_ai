@@ -481,7 +481,6 @@
     "contents_enhancement": "absent"
    },
    "expect_missing": [
-    "calcification",
     "hu"
    ],
    "expect_outcome": null,
@@ -853,10 +852,8 @@
     "diameter_mm",
     "sex",
     "family_history",
-    "emphysema",
     "upper_lobe",
-    "nodule_count",
-    "spiculation"
+    "nodule_count"
    ],
    "expect_outcome": null,
    "expect_state": "applies",
@@ -1090,10 +1087,8 @@
     "diameter_mm",
     "sex",
     "family_history",
-    "emphysema",
     "upper_lobe",
-    "nodule_count",
-    "spiculation"
+    "nodule_count"
    ],
    "expect_outcome": null,
    "expect_state": "applies",
@@ -1325,15 +1320,12 @@
     "proven_malignant"
    ],
    "expect_missing": [
-    "benign_features",
     "nodule_type",
     "diameter_mm",
     "sex",
     "family_history",
-    "emphysema",
     "upper_lobe",
-    "nodule_count",
-    "spiculation"
+    "nodule_count"
    ],
    "expect_outcome": null,
    "expect_state": "applies",
@@ -1418,11 +1410,9 @@
     "proven_malignant"
    ],
    "expect_missing": [
-    "benign_features",
     "sex",
     "family_history",
-    "nodule_count",
-    "spiculation"
+    "nodule_count"
    ],
    "expect_outcome": null,
    "expect_state": "applies",
@@ -1675,13 +1665,10 @@
    },
    "expect_missing": [
     "prior_study",
-    "benign_features",
     "nodule_type",
     "diameter_mm",
-    "emphysema",
     "upper_lobe",
-    "nodule_count",
-    "spiculation"
+    "nodule_count"
    ],
    "expect_outcome": null,
    "expect_state": "check_first",
@@ -1721,13 +1708,10 @@
    },
    "expect_missing": [
     "prior_study",
-    "benign_features",
     "nodule_type",
     "diameter_mm",
-    "emphysema",
     "upper_lobe",
-    "nodule_count",
-    "spiculation"
+    "nodule_count"
    ],
    "expect_outcome": null,
    "expect_state": "check_first",
@@ -1767,13 +1751,10 @@
    },
    "expect_missing": [
     "prior_study",
-    "benign_features",
     "nodule_type",
     "diameter_mm",
-    "emphysema",
     "upper_lobe",
-    "nodule_count",
-    "spiculation"
+    "nodule_count"
    ],
    "expect_outcome": null,
    "expect_state": "check_first",
@@ -1813,13 +1794,10 @@
    },
    "expect_missing": [
     "prior_study",
-    "benign_features",
     "nodule_type",
     "diameter_mm",
-    "emphysema",
     "upper_lobe",
-    "nodule_count",
-    "spiculation"
+    "nodule_count"
    ],
    "expect_outcome": null,
    "expect_state": "check_first",

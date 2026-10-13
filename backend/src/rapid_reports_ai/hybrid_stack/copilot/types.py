@@ -149,6 +149,25 @@ class DraftValue(BaseModel):
     options: list[str] = Field(default_factory=list)  # display_options + "Not stated" (spec §7.6)
 
 
+class OutcomeBrief(BaseModel):
+    """An outcome in short (the UI's most-likely line): its display fields."""
+    headline: str
+    action: str = ""
+    category: str = ""
+
+
+class DecidingAnswer(BaseModel):
+    """One answer to the deciding question and the outcome it leads to ("Needs more answers" when it settles none)."""
+    answer: str
+    headline: str
+    category: str = ""
+
+
+class DecidingInput(BaseModel):
+    input: str
+    label: str
+
+
 class Calculation(BaseModel):
     """Calculate (spec §7.7): the engine over exactly the values the card shows."""
     outcome: str | None = None
@@ -158,6 +177,9 @@ class Calculation(BaseModel):
     needed: list[str] = Field(default_factory=list)
     values: list[DraftValue] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)   # inputs sent back at the draft's assumed in-scope value
+    most_likely: OutcomeBrief | None = None    # the outcome reached, in short; None while several remain
+    deciding_input: DecidingInput | None = None   # several remain: the one unknown input whose answer splits them most
+    deciding: list[DecidingAnswer] = Field(default_factory=list)   # its answers -> outcomes (at most 3)
     trace: dict[str, Any] | None = None
     pack: str = ""                     # pack_id@version
     bundle: str = ""                   # the bundle version
@@ -170,6 +192,9 @@ class Preview(BaseModel):
     assumptions: list[str] = Field(default_factory=list)   # library packs: eligibility inputs assumed in scope (their
                                                            # draft values have state "assumed"), in pack order
     assumed_eligible: bool = False   # library packs: the draft rests on assumptions; the card shows a warning
+    most_likely: OutcomeBrief | None = None    # library packs: the draft's outcome under its assumptions, in short
+    deciding_input: DecidingInput | None = None   # library packs: several outcomes remain: the input that splits most
+    deciding: list[DecidingAnswer] = Field(default_factory=list)   # its answers -> outcomes (at most 3)
     scope_doubt: list[str] = Field(default_factory=list)   # library packs: pre-filled values (any role: eligibility,
     # or clinical such as a diameter over 3 cm) that would exclude; never an exclusion until confirmed (only a read,
     # answered or stated value excludes). The card shows them prominently (check_first); the draft is computed

@@ -84,6 +84,7 @@
     },
     {
       "id": "m2_ascites",
+      "visible_sign": true,
       "label": "IOTA M2: ascites",
       "type": "boolean",
       "scope": "patient",
@@ -96,6 +97,7 @@
     },
     {
       "id": "m3_four_papillary",
+      "visible_sign": true,
       "label": "IOTA M3: at least four papillary structures",
       "type": "boolean",
       "how_stated": "true when at least four papillary projections (papillary structures) are described in the mass; false when none, or a stated count under four, are described. Leave unknown when projections are described without a count (e.g. 'several' or 'multiple papillary projections').",
@@ -150,6 +152,7 @@
     },
     {
       "id": "b3_acoustic_shadowing",
+      "visible_sign": true,
       "label": "IOTA B3: acoustic shadowing",
       "type": "boolean",
       "how_stated": "true when acoustic shadowing from the mass is reported; false when none is reported",

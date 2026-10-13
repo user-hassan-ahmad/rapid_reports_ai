@@ -89,6 +89,7 @@
     },
     {
       "id": "ascites",
+      "visible_sign": true,
       "label": "Ascites",
       "type": "boolean",
       "scope": "patient",

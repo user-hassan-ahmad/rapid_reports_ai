@@ -195,7 +195,9 @@ async def test_an_unbounded_preview_says_so_and_asks_every_reaching_input(monkey
            {"input": "benign_features", "value": False, "quote": "no benign features"},
            {"input": "prior_study", "value": False, "quote": "no prior"})
     out = await PP.preview_pack(e, "10 mm solid nodule, no benign features, no prior imaging.", "", {}, finding="10 mm solid nodule, no benign features, no prior imaging.")
-    assert out.draft_outcome is None and out.bounded is False and BTS_BROCK <= set(out.missing)
+    signs = {"emphysema", "spiculation"}                 # visible signs: assumed absent when unstated (silence policy)
+    assert out.draft_outcome is None and out.bounded is False and BTS_BROCK - signs <= set(out.missing)
+    assert signs <= set(out.assumptions) and not signs & set(out.missing)
 
 
 async def test_the_preview_carries_the_waiting_inputs(toy_entry, monkeypatch, jev):
@@ -289,8 +291,9 @@ async def test_bts_asks_carry_citations_for_every_brock_input(monkeypatch, jev):
     out = await PP.preview_pack(e, "10 mm solid nodule, no benign features, no prior imaging.", "", {},
                                 lib.sources(e.key), finding="10 mm solid nodule, no benign features, no prior imaging.")
     asks = {a["input"]: a for a in out.asks}
-    assert BTS_BROCK <= set(asks) and [a["input"] for a in out.asks] == out.missing
-    for k in BTS_BROCK:
+    brock = BTS_BROCK - {"emphysema", "spiculation"}      # the visible signs are assumed absent, not asked
+    assert brock <= set(asks) and [a["input"] for a in out.asks] == out.missing
+    for k in brock:
         assert asks[k]["citations"] and all(c.get("title") for c in asks[k]["citations"])
         assert asks[k]["decides_between"] and all("{" not in d["classification"] for d in asks[k]["decides_between"])
 
@@ -612,13 +615,15 @@ async def test_bts_with_eligibility_unknown_drafts_under_assumptions(monkeypatch
     out = await PP.preview_pack(_bts(), "7 mm solid nodule.", "", {"nodule_type": "solid", "diameter_mm": "7",
                                                                   "benign_features": "Yes", "prior_study": "No"},
                                 finding="7 mm solid nodule.")
-    assert out.state == "check_first" and out.assumptions == ["proven_malignant"] and out.missing == ["age"]
+    assert out.state == "check_first" and out.missing == ["age"]
+    assert out.assumptions == ["proven_malignant", "emphysema", "spiculation"]     # eligibility, then visible signs
     assert _states(out)["proven_malignant"] == "assumed" and _states(out)["age"] == "asked"
     # review I1: age also feeds Brock, so no band of it can be answered back: it is asked, never assumed
     out = await PP.preview_pack(_bts(), "7 mm solid nodule.", "", {"nodule_type": "solid", "diameter_mm": "7",
                                                                   "benign_features": "Yes", "prior_study": "No",
                                                                   "age": "60"}, finding="7 mm solid nodule.")
-    assert out.assumptions == ["proven_malignant"] and out.draft_outcome is not None and out.missing == []
+    assert out.assumptions == ["proven_malignant", "emphysema", "spiculation"] and out.draft_outcome is not None
+    assert out.missing == []
 
 
 # fix round 5: a lesion number settles only for a finding that describes one lesion

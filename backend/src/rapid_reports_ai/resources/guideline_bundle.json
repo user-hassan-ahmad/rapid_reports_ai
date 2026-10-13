@@ -972,7 +972,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "yes when dictated as 'too small to characterise' (eg, section thickness over half the diameter), and then whether it is well-defined, homogeneous and of low attenuation; no when the mass is described by its features (wall, septa, contents or attenuation) rather than called too small",
@@ -995,7 +996,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "renal mass protocol CT (unenhanced plus contrast phases); unenhanced CT only; a single portal venous phase only; or other contrast-enhanced CT with no unenhanced series",
@@ -1024,7 +1026,8 @@
       "scope": "patient",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "well-defined or ill-defined",
@@ -1051,7 +1054,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "smooth wall thin (2 mm or less, may enhance), minimally thickened (3 mm) or thick (4 mm or more), and whether that wall enhances; not enhancing, or enhancement not assessable (needs unenhanced and enhanced images to compare, or a measurement)",
@@ -1081,9 +1085,11 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
+      "absent_option": "none",
       "how_stated": "no septa; few (1 to 3) thin (2 mm or less) septa, enhancing or not; many (4 or more) thin septa; or a minimally thickened (3 mm) or thick (4 mm or more) septum, and whether it enhances. Give the highest-class enhancing septum; if none enhances, the thickest. not enhancing, or enhancement not assessable (needs unenhanced and enhanced images to compare, or a measurement)",
       "id": "septa",
       "label": "Septa (the one that sets the highest class)",
@@ -1114,9 +1120,11 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": true
      },
      {
+      "absent_option": "none",
       "how_stated": "none (smooth); irregular thickening (enhancing, obtuse margins, 3 mm or less); nodule (enhancing, acute margins of any size, or obtuse margins and 4 mm or more); or a protrusion that does not enhance or cannot be assessed. Measure perpendicular to its wall or septum, adding protrusions on both sides and excluding the septum. Code the most suspicious protrusion: an enhancing one over a non-enhancing one, and a nodule over irregular thickening.",
       "id": "protrusion",
       "label": "Convex protrusion from wall or septa (most significant)",
@@ -1143,9 +1151,11 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": true
      },
      {
+      "absent_option": "none",
       "how_stated": "calcification of any type, or none",
       "id": "calcification",
       "label": "Calcification",
@@ -1170,7 +1180,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": true
      },
      {
       "how_stated": "fluid of uniform attenuation throughout, or heterogeneous contents",
@@ -1197,7 +1208,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "whether the mass contents themselves enhance (not the wall or septa, which are coded on their own inputs), comparing unenhanced and enhanced series; absent means a non-enhancing mass",
@@ -1228,7 +1240,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "attenuation in HU on the unenhanced series (on the contrast-enhanced series if there is no unenhanced one)",
@@ -1252,7 +1265,8 @@
       "scope": "lesion",
       "states": [],
       "type": "number",
-      "unit": "HU"
+      "unit": "HU",
+      "visible_sign": false
      }
     ],
     "issuer": "Society of Abdominal Radiology (Silverman et al.)",
@@ -3105,7 +3119,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      }
     ],
     "issuer": "British Thyroid Association",
@@ -3655,7 +3670,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": true
      },
      {
       "how_stated": "solid; part-solid (solid and ground-glass components); or nonsolid (pure ground-glass). For multiple nodules, the largest one.",
@@ -3678,7 +3694,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "dims": "max",
@@ -3700,7 +3717,8 @@
       "scope": "lesion",
       "states": [],
       "type": "number",
-      "unit": "mm"
+      "unit": "mm",
+      "visible_sign": false
      },
      {
       "fact": "age_years",
@@ -3723,7 +3741,8 @@
       "scope": "patient",
       "states": [],
       "type": "number",
-      "unit": "years"
+      "unit": "years",
+      "visible_sign": false
      },
      {
       "how_stated": "true only when this nodule has been shown on histology or cytology (biopsy or resection) to be lung cancer or a metastasis from another cancer, e.g. 'biopsy-proven adenocarcinoma'; false when this nodule is described as new, indeterminate or not yet sampled. A known cancer elsewhere, or a nodule merely suspected to be malignant, does not make it true.",
@@ -3743,7 +3762,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "fact": "sex",
@@ -3766,7 +3786,8 @@
       "scope": "patient",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when a first-degree or other family history of lung cancer is given in the clinical details",
@@ -3785,7 +3806,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when any emphysema is reported on this CT; false when the lungs are described without emphysema",
@@ -3804,7 +3826,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": true
      },
      {
       "how_stated": "true for a right or left upper lobe nodule; false for middle or lower lobe (whether the lingula counts as upper lobe is not stated by the source: treat as left upper lobe)",
@@ -3823,7 +3846,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "total number of nodules on this CT, e.g. 'solitary' is 1, 'three nodules' is 3",
@@ -3843,7 +3867,8 @@
       "scope": "patient",
       "states": [],
       "type": "number",
-      "unit": "count"
+      "unit": "count",
+      "visible_sign": false
      },
      {
       "how_stated": "true when the nodule margin is described as spiculated; false for smooth, well-defined or lobulated margins",
@@ -3862,7 +3887,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": true
      },
      {
       "how_stated": "true only when this nodule itself is described on an earlier study, e.g. 'unchanged since 2023', 'previously 6 mm', 'stable compared with the prior CT'; false when this is the first study to show it, e.g. 'new since the prior study', 'no previous imaging'. A whole-study fact: such a statement anywhere in the request or the report counts. A comparison line that does not mention this nodule (e.g. 'Comparison: CT 2023') settles neither: leave it out",
@@ -3882,7 +3908,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when a nodule seen on an earlier CT is no longer visible on this CT; false whenever the nodule is seen and described on this CT",
@@ -3907,7 +3934,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "volumetry when nodule volumes (mm3) from volumetry software are compared with the baseline CT; otherwise growth judged on diameter (2D) measurement or comparison: diameter_stable when unchanged in diameter, diameter_clear_growth when clearly larger, diameter_indeterminate for any other change such as a small or equivocal increase or a decrease (BTS gives no 2D growth threshold)",
@@ -3945,7 +3973,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "nodule volume on the baseline (first) CT in cubic millimetres, from volumetry software; always above 0",
@@ -3975,7 +4004,8 @@
       "scope": "lesion",
       "states": [],
       "type": "number",
-      "unit": "mm3"
+      "unit": "mm3",
+      "visible_sign": false
      },
      {
       "how_stated": "nodule volume on this CT in cubic millimetres, measured with the same volumetry software; always above 0 (for a nodule no longer visible, use the resolved input instead)",
@@ -4005,7 +4035,8 @@
       "scope": "lesion",
       "states": [],
       "type": "number",
-      "unit": "mm3"
+      "unit": "mm3",
+      "visible_sign": false
      },
      {
       "how_stated": "days between the baseline CT and this CT, above 0, e.g. 3 months is about 91 days, 1 year is 365 days",
@@ -4039,7 +4070,8 @@
       "scope": "lesion",
       "states": [],
       "type": "number",
-      "unit": "days"
+      "unit": "days",
+      "visible_sign": false
      }
     ],
     "issuer": "British Thoracic Society",
@@ -6655,7 +6687,8 @@
        "not_assessable"
       ],
       "type": "number",
-      "unit": "score"
+      "unit": "score",
+      "visible_sign": false
      },
      {
       "how_stated": "the category digit 0 to 3 as dictated, e.g. 'CAC-DRS 2' or 'CAC-DRS V2/N3' (the digit after the A or V scoring-system letter; ignore the /N vessel count). Used when no Agatston score is available.",
@@ -6680,7 +6713,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      }
     ],
     "issuer": "Society of Cardiovascular Computed Tomography (SCCT)",
@@ -7293,7 +7327,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "stable for stable chest pain or suspected stable CAD; acute for acute chest pain or suspected ACS (eg emergency department); other when the indication is not chest pain (eg pre-procedural, asymptomatic)",
@@ -7316,7 +7351,8 @@
       "scope": "patient",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when the code carries /E or the narrowing has a non-atherosclerotic cause (eg dissection, anomalous origin, aneurysm, vasculitis, fistula, extrinsic compression); false for a code without E in atherosclerotic disease",
@@ -7354,7 +7390,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "P1 to P4 after the category (eg 'CAD-RADS 2/P3'): mild, moderate, severe or extensive overall plaque",
@@ -7397,7 +7434,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "from CT-FFR or stress CTP: positive for I+, negative for I-, borderline for I+/- (I±); absent when stated as not performed; not assessable when non-diagnostic",
@@ -7443,7 +7481,8 @@
        "not_assessable"
       ],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "ct_ffr for CT-FFR (FFR-CT); ctp for stress myocardial CT perfusion",
@@ -7480,7 +7519,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true for a fixed (stress and rest) perfusion defect of prior infarction without ischaemia; false when stress CTP shows no defect",
@@ -7519,7 +7559,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      }
     ],
     "issuer": "Society of Cardiovascular Computed Tomography (SCCT), with ACC, ACR and NASCI (expert consensus document)",
@@ -10122,7 +10163,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when the scan was done to investigate suspected adrenal disease (e.g. signs or symptoms of phaeochromocytoma, Cushing's or Conn's syndrome), or as screening in a hereditary syndrome that predisposes to adrenal tumours; false when the mass is incidental on a scan done for something else",
@@ -10142,7 +10184,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "dims": "max",
@@ -10164,7 +10207,8 @@
       "scope": "lesion",
       "states": [],
       "type": "number",
-      "unit": "cm"
+      "unit": "cm",
+      "visible_sign": false
      },
      {
       "how_stated": "homogeneous: uniform density or signal throughout. heterogeneous: not uniform. clearly_benign: only when the dictation makes a specific benign diagnosis from imaging features other than attenuation, e.g. a myelolipoma with macroscopic fat; 'probable adenoma' is not enough",
@@ -10188,7 +10232,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "mean attenuation of the mass on unenhanced (noncontrast) CT in Hounsfield units, e.g. '8 HU on the unenhanced phase' or 'precontrast density 25 HU'. not_assessable when there is no unenhanced CT (contrast-enhanced phases only, or MRI only); enhanced-phase values do not count",
@@ -10210,7 +10255,8 @@
        "not_assessable"
       ],
       "type": "number",
-      "unit": "HU"
+      "unit": "HU",
+      "visible_sign": false
      },
      {
       "fact": "age_years",
@@ -10233,7 +10279,8 @@
       "scope": "patient",
       "states": [],
       "type": "number",
-      "unit": "years"
+      "unit": "years",
+      "visible_sign": false
      }
     ],
     "issuer": "European Society of Endocrinology",
@@ -11613,7 +11660,8 @@
       "scope": "patient",
       "states": [],
       "type": "number",
-      "unit": "years"
+      "unit": "years",
+      "visible_sign": false
      },
      {
       "how_stated": "patient-level, usually from the clinical history or request: true when the scan is a lung cancer screening CT, the patient is immunocompromised and at risk for infection, or has a known primary cancer and is at risk for metastases; false when the history states none of these. Leave it unset when the history does not say.",
@@ -11633,7 +11681,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "solid; ground-glass (pure ground-glass, non-solid); or part-solid (subsolid with a solid component). For multiple nodules, the type of the most suspicious one.",
@@ -11657,7 +11706,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "single when one noncalcified nodule is dictated; multiple when more than one is dictated",
@@ -11680,7 +11730,8 @@
       "scope": "patient",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "dims": "mean",
@@ -11701,7 +11752,8 @@
       "scope": "lesion",
       "states": [],
       "type": "number",
-      "unit": "mm"
+      "unit": "mm",
+      "visible_sign": false
      },
      {
       "how_stated": "the ACCP risk category the guideline uses. High (intermediate risk counts as high): any stated high-risk factor, e.g. a current or former smoker ('ex-smoker', pack-years), older age, a family history of lung cancer, emphysema or fibrosis, exposure to asbestos, uranium or radon, upper lobe location, irregular or spiculated margins. Low: only when the history states little or no smoking and no other risk factor (young age, a small regular nodule outside the upper lobe)",
@@ -11729,7 +11781,8 @@
       "scope": "patient",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      }
     ],
     "issuer": "Fleischner Society",
@@ -14174,7 +14227,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "fact": "sex",
@@ -14197,7 +14251,8 @@
       "scope": "patient",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when the patient has already had an abdominal aortic aneurysm treated (open repair or endovascular stent-graft, EVAR), from the history or a graft seen on the scan; false for a native, untreated aorta",
@@ -14216,7 +14271,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "dims": "max",
@@ -14240,7 +14296,8 @@
        "not_assessable"
       ],
       "type": "number",
-      "unit": "cm"
+      "unit": "cm",
+      "visible_sign": false
      },
      {
       "how_stated": "true when this is a surveillance scan and an earlier programme scan measured the aneurysm (a man already under AAA surveillance); false for the initial screen",
@@ -14259,7 +14316,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "increase in the aortic diameter over the last 12 months, in cm: this scan's diameter minus the diameter about 12 months earlier, e.g. 'grown from 4.1 to 5.3 cm in a year' is 1.2 cm; 0 or negative when unchanged or smaller",
@@ -14285,7 +14343,8 @@
       "scope": "lesion",
       "states": [],
       "type": "number",
-      "unit": "cm"
+      "unit": "cm",
+      "visible_sign": false
      }
     ],
     "issuer": "NHS England (NHS Abdominal Aortic Aneurysm Screening Programme)",
@@ -14927,7 +14986,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when the history gives prior treatment of prostate cancer (eg prostatectomy, radiotherapy, focal or ablative therapy) and the MRI looks for recurrence; false for a treatment-naive gland, including suspected cancer, a prior negative biopsy, or BPH treatment",
@@ -14947,7 +15007,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "peripheral for a PZ lesion, transition for a TZ lesion; a central zone or anterior fibromuscular stroma lesion takes the zone it appears to arise from (eg 'scored with TZ criteria'); if several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
@@ -14970,7 +15031,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "the DWI (ADC and high b-value) score 1 to 5 as dictated, eg 'DWI 4', 'DWI 3/5'; not assessable when DWI is called X, technically inadequate, non-diagnostic or not performed; if several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
@@ -14998,7 +15060,8 @@
        "not_assessable"
       ],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "the T2-weighted score 1 to 5 as dictated, eg 'T2 4', 'T2W 2/5'; not assessable when T2W is called X, technically inadequate or not performed; if several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
@@ -15039,7 +15102,8 @@
        "not_assessable"
       ],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "positive for focal early (or contemporaneous) enhancement matching the T2W or DWI finding; negative for no early enhancement, diffuse enhancement, or enhancement of a BPH-type nodule; not assessable when DCE is X, inadequate or not given (biparametric MRI); if several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
@@ -15085,7 +15149,8 @@
        "not_assessable"
       ],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      }
     ],
     "issuer": "American College of Radiology (PI-RADS Steering Committee: ACR, ESUR, AdMeTech Foundation)",
@@ -16804,7 +16869,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true only when this ovarian mass is already confirmed as ovarian cancer (histology or cytology); false when it is undiagnosed. A mass merely suspected of malignancy on imaging is false.",
@@ -16824,7 +16890,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "simple: round or oval, thin or imperceptible wall, posterior acoustic enhancement, anechoic fluid, no septations or nodules. unilocular_non_simple: one locule, no solid areas, but not all simple features (e.g. echogenic contents, thick wall, incomplete septum). multilocular: complete septation, no solid areas. solid_areas: solid areas (solid nodules, papillary projections or solid component) without complete septation, including mainly solid masses. multilocular_solid: complete septation and solid areas.",
@@ -16850,7 +16917,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when both ovaries have a cyst or mass; false when the other ovary is normal or not involved. A contralateral simple, unilocular cyst of 3 cm or less does not count (RCOG: not clinically significant).",
@@ -16870,7 +16938,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when the dictation says ascites, or describes more than a small amount of free fluid; false when no ascites or free fluid is reported, or only a small amount of pelvic free fluid (not ascites, by Hassan's ruling of 2026-10-13)",
@@ -16890,7 +16959,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": true
      },
      {
       "how_stated": "true when the imaging shows metastatic disease (e.g. peritoneal or omental deposits, liver metastases); false when none is described",
@@ -16910,7 +16980,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "dims": "max",
@@ -16932,7 +17003,8 @@
       "scope": "lesion",
       "states": [],
       "type": "number",
-      "unit": "cm"
+      "unit": "cm",
+      "visible_sign": false
      },
      {
       "how_stated": "true when the woman has symptoms attributed to the cyst or adnexa, or persistent or frequent symptoms suggesting ovarian cancer (e.g. persistent abdominal distension, feeling full or loss of appetite, pelvic or abdominal pain, urinary urgency or frequency); false when the cyst is incidental and she is asymptomatic. The scan indication alone (e.g. 'abdominal pain') is not enough.",
@@ -16952,7 +17024,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "serum CA125 in iu/ml (U/ml and kU/L are the same), from the clinical details or results, e.g. 'CA125 48'",
@@ -16973,7 +17046,8 @@
       "scope": "patient",
       "states": [],
       "type": "number",
-      "unit": "iu/ml"
+      "unit": "iu/ml",
+      "visible_sign": false
      }
     ],
     "issuer": "Royal College of Obstetricians and Gynaecologists",
@@ -18020,7 +18094,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when the woman is pregnant, or the stated indication is an acute presentation of the cyst (suspected torsion, rupture or haemorrhage, or acute pain); false when she is not pregnant and the stated indication is non-acute or incidental. A pelvic ultrasound that describes the uterus without a pregnancy settles not pregnant; acute presentation settles only from the stated indication.",
@@ -18040,7 +18115,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true only when this mass is already diagnosed as an ovarian malignancy or a borderline ovarian tumour (histology or cytology); false when it is undiagnosed. A mass merely suspected on imaging is false.",
@@ -18060,7 +18136,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when the mass is a solid tumour with an irregular outline (e.g. 'irregular solid adnexal mass'); false when it is cystic or partly cystic, or a smooth solid mass, or no such tumour is described",
@@ -18080,7 +18157,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when ascites is reported (IOTA: fluid outside the pouch of Douglas); false when no ascites is reported, or free fluid is confined to the pouch of Douglas",
@@ -18100,7 +18178,8 @@
       "scope": "patient",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": true
      },
      {
       "how_stated": "true when at least four papillary projections (papillary structures) are described in the mass; false when none, or a stated count under four, are described. Leave unknown when projections are described without a count (e.g. 'several' or 'multiple papillary projections').",
@@ -18120,7 +18199,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": true
      },
      {
       "how_stated": "true when the mass is an irregular multilocular-solid tumour (septa and solid tissue, irregular); false when it is not multilocular-solid, or is smooth. Its size is read from the maximum diameter, not here.",
@@ -18140,7 +18220,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when colour Doppler shows very strong blood flow in the mass (IOTA colour score 4); false when Doppler shows absent, minimal or moderate flow, or when the mass is a simple cyst (unilocular cysts carry a very low risk whatever their vascularity). Leave unknown when Doppler findings are not described for any other mass.",
@@ -18159,7 +18240,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when the mass is a unilocular cyst: one locule, no septa and no solid component (e.g. a simple cyst); false when it has septa or any solid component, or is solid",
@@ -18179,7 +18261,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when solid components are present and the largest measures under 7 mm in largest diameter; false when there is no solid component, or the largest is 7 mm or more",
@@ -18199,7 +18282,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when acoustic shadowing from the mass is reported; false when none is reported",
@@ -18219,7 +18303,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": true
      },
      {
       "how_stated": "true when the mass is a smooth multilocular cyst (septa, no solid component); false when it is not multilocular, is irregular, or has solid tissue. Its size is read from the maximum diameter, not here.",
@@ -18239,7 +18324,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when colour Doppler shows no blood flow in the mass (IOTA colour score 1, e.g. 'no internal vascularity'); false when any flow is seen. Leave unknown when Doppler findings are not described.",
@@ -18258,7 +18344,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "how_stated": "true when the cyst is called simple, or described as anechoic and thin-walled with no internal structures; false when it has internal echoes, septa, nodules or a thick wall (e.g. an endometrioma or haemorrhagic cyst)",
@@ -18283,7 +18370,8 @@
       "scope": "lesion",
       "states": [],
       "type": "boolean",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      },
      {
       "dims": "max",
@@ -18305,7 +18393,8 @@
       "scope": "lesion",
       "states": [],
       "type": "number",
-      "unit": "mm"
+      "unit": "mm",
+      "visible_sign": false
      }
     ],
     "issuer": "Royal College of Obstetricians and Gynaecologists",
@@ -19449,7 +19538,8 @@
       "scope": "lesion",
       "states": [],
       "type": "enum",
-      "unit": ""
+      "unit": "",
+      "visible_sign": false
      }
     ],
     "issuer": "Salter and Harris (American Academy of Orthopaedic Surgeons instructional course lecture)",
@@ -19941,7 +20031,8 @@
       "scope": "lesion",
       "states": [],
       "type": "number",
-      "unit": "points"
+      "unit": "points",
+      "visible_sign": false
      }
     ],
     "issuer": "Spine Oncology Study Group (Fisher CG et al.)",
@@ -21358,5 +21449,5 @@
    ]
   }
  },
- "version": "61c5c13760d0"
+ "version": "247564f1f2f8"
 }

@@ -278,3 +278,68 @@ def test_every_tier_1_pack_outcome_has_display_fields_and_info_marks_no_manageme
     assert cats[("salter-harris", "sh4_through_plate")] == "info" and cats[("sins", "b0_6")] == "info"
     assert cats[("cad-rads-2", "stable_3_e")] == "info" and cats[("pi-rads-2-1", "pirads_3")] == "info"
     assert cats[("pi-rads-2-1", "pirads_1")] == "none" and cats[("bts-pulmonary-nodule", "discharge_small")] == "none"
+
+
+# Hassan 2026-10-13: silence policy for visible signs; most likely + the deciding question
+def _bts6(**extra):
+    e = next(x for x in _tier1() if x.id == "bts-pulmonary-nodule")
+    R = lambda v, q: PP.Drafted(InputValue(value=v), q, "read")                       # noqa: E731
+    return e, PP.Settlement(values={"diameter_mm": R(6.0, "6 mm"), "nodule_type": R("solid", "solid"),
+                                    "age": R(65.0, "65"), **extra})
+
+
+def test_an_unstated_visible_sign_is_assumed_absent_and_the_most_likely_outcome_follows():
+    e, s = _bts6(prior_study=PP.Drafted(InputValue(value=False), "no previous imaging", "prefilled", [PP.WHY_KIND]))
+    p = PP.finish(e, s, {}, None, [])
+    by = {d.input: d for d in p.draft}
+    assert (by["benign_features"].state, by["benign_features"].value) == ("assumed", "No")
+    assert by["benign_features"].why == [PP.WHY_ASSUMED_ABSENT] and "benign_features" in p.assumptions
+    assert p.draft_outcome.category == "surveillance" and p.most_likely.category == "surveillance"
+    assert p.most_likely.headline == p.draft_outcome.headline and p.deciding == [] and p.deciding_input is None
+    assert len(p.possible) == 2                                    # "show all": benign discharge is still possible
+    assert p.assumed_eligible is True and p.state == "check_first"  # proven_malignant; the signs are not eligibility
+    stated = PP.finish(e, s, {"benign_features": "Yes"}, None, [])  # a stated value wins over the assumption
+    assert "benign_features" not in stated.assumptions and stated.most_likely.category == "none"
+
+
+def test_with_several_outcomes_left_the_deciding_question_splits_them():
+    e, s = _bts6()
+    p = PP.finish(e, s, {}, None, [])
+    assert p.most_likely is None and p.deciding_input.input == "prior_study"
+    assert p.deciding_input.label == e.input("prior_study").label and 1 <= len(p.deciding) <= PP.MAX_DECIDING
+    no = next(d for d in p.deciding if d.answer == "No")
+    assert no.category == "surveillance" and no.headline
+
+
+def test_ese_and_bosniak_deciding_and_signs():
+    e = next(x for x in _tier1() if x.id == "ese-adrenal-incidentaloma")
+    s = PP.Settlement(values={"size_cm": PP.Drafted(InputValue(value=2.4), "2.4 cm", "read")})
+    p = PP.finish(e, s, {}, None, [])
+    assert p.deciding_input.input == "appearance"
+    assert any(d.answer == "clearly_benign" and d.category == "none" for d in p.deciding)
+    b = next(x for x in _tier1() if x.id == "bosniak-renal-cyst")
+    p = PP.finish(b, PP.Settlement(), {}, None, [])
+    shown = {d.input: (d.state, d.value) for d in p.draft}
+    assert {k: shown[k] for k in ("septa", "protrusion", "calcification")} == dict.fromkeys(
+        ("septa", "protrusion", "calcification"), ("assumed", "none"))
+    assert {"septa", "protrusion", "calcification"} <= set(p.assumptions)
+
+
+def test_calculate_labels_a_sign_sent_back_as_assumed_and_gives_the_deciding_question():
+    e, s = _bts6()
+    c = PP.calculate(e, s, {"diameter_mm": "6 mm", "nodule_type": "solid", "age": "65", "benign_features": "No"},
+                     None, [], "b1")
+    assert {v.input: v.state for v in c.values}["benign_features"] == "assumed"
+    assert c.outcome is None and c.deciding_input is not None and c.deciding
+
+
+def test_a_visible_sign_is_a_yes_no_or_a_choice_naming_its_absent_option():
+    import pydantic
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import InputDef
+    assert InputDef(id="s", label="S", type="boolean", visible_sign=True).absent_value() == InputValue(value=False)
+    assert InputDef(id="c", label="C", type="enum", options=["none", "present"], visible_sign=True,
+                    absent_option="none").absent_value() == InputValue(value="none")
+    for bad in ({"type": "number", "visible_sign": True}, {"type": "enum", "options": ["a"], "visible_sign": True},
+                {"type": "boolean", "absent_option": "x"}):
+        with pytest.raises(pydantic.ValidationError):
+            InputDef(id="x", label="X", **bad)
