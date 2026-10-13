@@ -2,6 +2,7 @@
 import pytest
 
 from rapid_reports_ai import template_decision_run as R
+from rapid_reports_ai import template_decisions as td
 from tests.test_template_sheet_lab_prompts import CLINICAL
 
 EX = ["Findings: LVEF 55%. ECV 28%. No previous imaging.",
@@ -38,11 +39,10 @@ def test_check_quotes_drops_unverifiable_quotes_and_empty_candidates():
                                    quotes=[R.Quote(report=1, text="No previous imaging.")]),
                   R.ConceptWording(concept="comparison", state="compared", text="Compared with {study}.",
                                    quotes=[R.Quote(report=3, text="Compared with CT")])],
-        habits=[R.HabitCandidate(finding="x", habit="y", reports=[1, 3]), R.HabitCandidate(finding="z", habit="w", reports=[2])])
+        habits=[])
     run = R.check_quotes(out, EX)
     assert [v.name for v in run.values] == ["LVEF"] and len(run.values[0].quotes) == 1
     assert [c.state for c in run.concepts] == ["none"]
-    assert [h.finding for h in run.habits] == ["x"]
     assert run.dropped_quotes == 3 and run.ok
     bad = R.RunOutput(concepts=[R.ConceptWording(concept="contrast", state="none", text="x.",
                                                  quotes=[R.Quote(report=1, text="LVEF 55%")])])
@@ -105,10 +105,12 @@ async def test_a_failed_qwen_call_gives_no_run_and_a_failed_jev_call_gives_no_st
 
 
 def test_evidence_record_is_small_and_names_the_version():
-    run = R.DecisionRun(ok=True, habits=[R.HabitCandidate(finding="f", habit="h", reports=[1, 2])], dropped_quotes=2)
+    run = R.DecisionRun(ok=True, habits=[_h()], dropped_quotes=2)
     ev = R.evidence(run, {"cards": [1, 2], "more": [], "kept": [3]})
     assert ev["version"] == R.RUN_VERSION and ev["dropped_quotes"] == 2 and ev["cards"] == 2 and ev["kept"] == 1
-    assert ev["habits"] == [{"finding": "f", "habit": "h", "reports": [1, 2]}]
+    assert ev["habits"] == [{"paragraph": "Upper", "condition": "an alpha abnormality is reported",
+                             "question": "Extension beyond alpha?", "yes": "The abnormality extends beyond alpha.",
+                             "no": "No extension beyond alpha.", "reports": [1, 3]}]   # never example text
 
 
 # ── review fixes (Phase 2 review) ──────────────────────────────────────────────────────────────────────────────
@@ -335,3 +337,48 @@ def test_a_dict_quote_with_no_report_is_dropped_not_a_failed_output():
     v = R.ValueCandidate(name="X", quotes=[{"text": "LVEF 55%"}, {"report": None, "text": "x y"},
                                            {"report": 2, "text": "LVEF 60%"}])
     assert [(q.report, q.text) for q in v.quotes] == [(2, "LVEF 60%")]
+
+
+# ── habits (spec 2026-10-13-findings-triggered-rows-design) ──
+HEX = ["Upper: An alpha abnormality. No extension beyond alpha.", "Upper: Normal.",
+       "Upper: A second alpha abnormality. No extension beyond alpha."]
+
+
+def _h(**k):
+    base = dict(paragraph="Upper", condition="an alpha abnormality is reported", question="Extension beyond alpha?",
+                yes="The abnormality extends beyond alpha.", no="No extension beyond alpha.",
+                quotes=[R.Quote(report=1, text="No extension beyond alpha."), R.Quote(report=3, text="No extension beyond alpha.")])
+    base.update(k)
+    return R.HabitCandidate(**base)
+
+
+def test_a_habit_needs_two_reports_a_quoted_sentence_and_a_valid_ledger_entry():
+    out = R.RunOutput(habits=[
+        _h(),
+        _h(condition="an alpha abnormality type two is reported", quotes=[R.Quote(report=1, text="No extension beyond alpha.")]),
+        _h(condition="a beta abnormality is reported", yes="Beta extends.", no="No beta extension."),
+        _h(condition="alpha is reported"),
+        _h(condition="an alpha abnormality type three is reported", question="Extension beyond alpha"),
+        _h(condition="an alpha abnormality type four is reported", quotes=[R.Quote(report=2, text="never written"),
+                                                                         R.Quote(report=3, text="No extension beyond alpha.")])])
+    run = R.check_quotes(out, HEX)
+    assert [h.condition for h in run.habits] == ["an alpha abnormality is reported"]
+    assert run.habits[0].reports == [1, 3] and run.dropped_quotes == 1
+
+
+def test_habits_merge_by_key_and_are_capped():
+    many = [_h(condition=f"an alpha abnormality type {w} is reported") for w in ("one", "two", "three", "four", "five")]
+    run = R.check_quotes(R.RunOutput(habits=[_h(), _h(paragraph="upper"), *many]), HEX)
+    assert len(run.habits) == R.MAX_HABITS == 4
+    assert len({td.match_key("habit", td.habit_key(h.paragraph, h.condition)) for h in run.habits}) == 4
+
+
+def test_flat_string_quotes_are_read_for_habits_too():
+    h = R.HabitCandidate(paragraph="Upper", condition="an alpha abnormality is reported", question="Q?", yes="a.",
+                         no="b.", quotes=["Report 1: No extension beyond alpha.", "no number here"])
+    assert [(q.report, q.text) for q in h.quotes] == [(1, "No extension beyond alpha.")]
+
+
+def test_the_prompt_asks_for_each_habit_field():
+    for field in ("paragraph:", "condition:", "question:", "yes:", "no:", "at least two reports", "is reported"):
+        assert field in R.SYSTEM, field

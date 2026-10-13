@@ -34,6 +34,8 @@ RUN_TIMEOUT_S = 60.0      # the whole Qwen step, fallback included: the radiolog
 JEV_TIMEOUT_S = 6.0
 MIN_QUOTE_WORDS = 2  # a verified quote has at least this many words, or MIN_QUOTE_CHARS characters, so a short
 MIN_QUOTE_CHARS = 6  # fragment ("55%") cannot verify by chance
+MIN_HABIT_REPORTS = 2   # spec: a habit is proposed only with evidence in at least 2 example reports
+MAX_HABITS = 4
 STATES_MIN = 0.5   # lab-set (scripts/rules_step_lab.py decide): one cut-off for every concept question
 # max_tokens: gpt-oss (the fallback) reasons into the same cap. At 6000 its tool-call JSON was cut off on the larger
 # sets, the ones Qwen timed out on, and each re-ask was cut off the same way ("Exceeded maximum output retries",
@@ -98,9 +100,18 @@ class ConceptWording(BaseModel):
 
 
 class HabitCandidate(BaseModel):
-    finding: str
-    habit: str
-    reports: List[int] = []
+    paragraph: str = ""
+    condition: str = ""
+    question: str = ""
+    yes: str = ""
+    no: str = ""
+    quotes: List[Quote] = []
+
+    _quotes = field_validator("quotes", mode="before")(staticmethod(_read_quotes))
+
+    @property
+    def reports(self) -> List[int]:
+        return sorted({q.report for q in self.quotes})
 
 
 class SetupMention(BaseModel):
@@ -129,7 +140,12 @@ List three things, each grounded in quotes copied word for word from the example
 - limitation: state "none" (no limitation stated) or "limited" (a technical limitation is stated).
 The state says what the wording states, never how often it is used: do not decide which wording is the usual one. Write the wording as a template line: copied from the reports, with the varying parts (dates, study names, the part not performed, the limitation) replaced by a named slot in curly braces such as {date}. Give the quotes it comes from. Different wordings with the same state are separate entries. Leave out a concept that no report words.
 
-3. HABITS: a statement the radiologist adds only when a particular finding is present (the finding, and what they always add), seen in at least two reports. Give the report numbers.
+3. HABITS: a check the radiologist writes only when a particular finding is reported (for example, whether that finding extends into a neighbouring structure), seen in at least two reports. Never a statement every report makes whatever the findings (that is a normal), never a measured value. For each habit give:
+- paragraph: the part of the report it is written in (the structure or region the reports name there, a few words);
+- condition: the finding that sets it off, as a statement naming the finding in at least two words and ending "is reported" (for example "a focal abnormality of the main structure is reported");
+- question: the check as a short question (at most 12 words, ending with "?");
+- yes: the sentence a report writes when the check is positive; no: the sentence when it is negative. Copy at least one of them word for word from the reports and write the other in the same style;
+- quotes: the sentence that writes the habit in every report that has it, copied word for word, with the report's number.
 
 4. SETUP: when a STUDY SETUP is given (the study name, scan type and protocol the radiologist entered), it is authoritative context about every report: it may state a concept's state outright (for example whether a contrast agent is given, which acquisitions are planned, whether comparison is expected) and may support a value. For each concept the STUDY SETUP states, give its state (as in CONCEPTS; empty when it only mentions the concept) and a quote copied word for word from the STUDY SETUP. Never use the STUDY SETUP as a report quote, and never invent a setup quote.
 
@@ -214,9 +230,35 @@ class DecisionRun:
     error: str = ""
 
 
+def _sentence(s: str) -> str:
+    s = " ".join((s or "").split())
+    return s if not s or s.endswith((".", "?", "!")) else s + "."
+
+
+def _habit(h: HabitCandidate, examples: List[str]):
+    """(the habit with verified quotes and normalised wording, or None; quotes dropped). Kept only with verified
+    quotes from MIN_HABIT_REPORTS reports, its YES or NO sentence written in a cited report, and a ledger entry code
+    can apply (td.validate: a two-word condition, a question, two different sentences, no quotes or slots)."""
+    ok = [q for q in h.quotes if verified(q, examples)]
+    dropped = len(h.quotes) - len(ok)
+    clean = HabitCandidate(paragraph=" ".join(h.paragraph.split()), condition=" ".join(h.condition.split()).rstrip("."),
+                           question=" ".join(h.question.split()), yes=_sentence(h.yes), no=_sentence(h.no), quotes=ok)
+    if len(clean.reports) < MIN_HABIT_REPORTS:
+        return None, dropped
+    cited = [_norm(examples[q.report - 1]) for q in ok]
+    if not any(_norm(s).rstrip(".") in ex for s in (clean.yes, clean.no) if s for ex in cited):
+        return None, dropped
+    try:
+        td.validate("habit", td.habit_key(clean.paragraph, clean.condition),
+                    {"mode": "ask", "question": clean.question, "yes": clean.yes, "no": clean.no})
+    except td.DecisionError:
+        return None, dropped
+    return clean, dropped
+
+
 def check_quotes(out: RunOutput, examples: List[str]) -> DecisionRun:
     """Keep only verified quotes; drop a candidate left with none, a value name code could not store, and a habit
-    seen in fewer than two examples. Value candidates with one name (td._name) are merged, so no two cards share an
+    that fails _habit. Value candidates with one name (td._name) are merged, so no two cards share an
     id. A concept wording that matches none of its quotes' examples (slots as wildcards) is replaced by its first
     verified quote, so an invented wording never reaches a card."""
     dropped = 0
@@ -250,7 +292,18 @@ def check_quotes(out: RunOutput, examples: List[str]) -> DecisionRun:
                 continue
         if '"' not in text:
             concepts.append(ConceptWording(concept=c.concept, state=c.state, text=text, quotes=ok))
-    habits = [h for h in out.habits if len({r for r in h.reports if 1 <= r <= len(examples)}) >= 2]
+    habits: List[HabitCandidate] = []
+    seen_habits: set = set()
+    for h in out.habits:
+        good, d = _habit(h, examples)
+        dropped += d
+        if good is None:
+            continue
+        k = td.match_key("habit", td.habit_key(good.paragraph, good.condition))
+        if k not in seen_habits:
+            seen_habits.add(k)
+            habits.append(good)
+    habits = sorted(habits, key=lambda h: -len(h.reports))[:MAX_HABITS]
     return DecisionRun(ok=True, values=values, concepts=concepts, habits=habits, dropped_quotes=dropped)
 
 
@@ -394,7 +447,7 @@ def evidence(run: DecisionRun, built: Optional[dict] = None) -> dict:
     for the findings-triggered rows lab. No example text."""
     out = {"version": RUN_VERSION, "ok": run.ok, "ms": run.ms, "error": run.error, "values": len(run.values),
            "concepts": len(run.concepts), "dropped_quotes": run.dropped_quotes, "jev": run.states is not None,
-           "habits": [h.model_dump() for h in run.habits], "setup": sorted(run.setup)}
+           "habits": [{**h.model_dump(exclude={"quotes"}), "reports": h.reports} for h in run.habits], "setup": sorted(run.setup)}
     if built:
         out.update(cards=len(built["cards"]), more=len(built["more"]), kept=len(built["kept"]))
     return out
