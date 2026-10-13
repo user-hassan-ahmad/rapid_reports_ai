@@ -116,6 +116,19 @@ def load_bundle(path: Path) -> Bundle:
     return b
 
 
+def read_pin(path: Path | None = None) -> tuple[str, str]:
+    """The pin file is `<bundle_version> <priv_commit>`; a bare one-field pin is the bundle version alone."""
+    path = path or PIN_FILE
+    fields = (path.read_text().split() if path.exists() else [])[:2]
+    return (fields + ["", ""])[0], (fields + ["", ""])[1]
+
+
+def pin_commit(path: Path | None = None) -> str:
+    """The private-repo commit to fetch: the pin's second field, else its only field."""
+    version, commit = read_pin(path)
+    return commit or version
+
+
 _CACHE: dict[str, Bundle | None] = {}
 
 
@@ -132,7 +145,7 @@ def get_bundle(env: Mapping[str, str] = os.environ) -> Bundle | None:
         return _CACHE[raw]
     try:
         b = load_bundle(_resolve_path(raw))
-        pin = PIN_FILE.read_text().strip() if PIN_FILE.exists() else ""
+        pin = read_pin(PIN_FILE)[0]
         if pin and not b.version.startswith(pin):
             logger.warning("[protocol_library] bundle %s does not match pin %s", b.version, pin)
         logger.info("[protocol_library] loaded bundle %s (%d entries)", b.version, len(b.entries))

@@ -81,3 +81,28 @@ def test_directory_path_finds_bundle(tmp_path):
     (tmp_path / "bundle" / "protocol_library.json").write_text(FIX.read_text())
     env = {"RR_DICTATION_V2": "1", "RR_PROTOCOL_LIBRARY": "1", "RR_PROTOCOL_LIBRARY_PATH": str(tmp_path)}
     assert PB.library_allowed(env) is True
+
+
+@pytest.mark.parametrize("pin, want, commit", [("fixture-1 3ab958e", ("fixture-1", "3ab958e"), "3ab958e"),
+                                               ("fixture-1", ("fixture-1", ""), "fixture-1"),
+                                               ("", ("", ""), "")])
+def test_read_pin_both_formats(tmp_path, pin, want, commit):
+    p = tmp_path / "protocol_library.pin"
+    p.write_text(pin + "\n")
+    assert PB.read_pin(p) == want and PB.pin_commit(p) == commit
+    assert PB.read_pin(tmp_path / "absent.pin") == ("", "")
+
+
+@pytest.mark.parametrize("pin, warns", [("fixture-1 3ab958e", False), ("fixture-1", False),
+                                        ("other 3ab958e", True), ("other", True)])
+def test_pin_compares_only_the_bundle_version(monkeypatch, tmp_path, caplog, pin, warns):
+    caplog.set_level(logging.WARNING, logger=PB.__name__)
+    p = tmp_path / "protocol_library.pin"
+    p.write_text(pin)
+    monkeypatch.setattr(PB, "PIN_FILE", p)
+    assert PB.get_bundle({"RR_PROTOCOL_LIBRARY_PATH": str(FIX)}) is not None
+    assert ("does not match pin" in caplog.text) is warns
+
+
+def test_the_repo_pin_names_the_bundle_version_then_the_private_commit():
+    assert PB.read_pin() == ("9c29622", "3ab958e")
