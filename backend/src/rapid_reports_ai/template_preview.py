@@ -8,7 +8,7 @@ checklist rows, so no answered rows or "Answered by the radiologist" lines; ever
 confirmed. Units are duck-typed (StackUnit or anything with text/group/heading, optionally abnormal/parts/covers)."""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Sequence
 
 from .hybrid_stack.schemas import CONCLUSION, GENERAL, OTHER, TECHNIQUE
 from .hybrid_stack.template import norm_key
@@ -52,7 +52,7 @@ def region_states(units, pill_regions: list[str]) -> tuple[list[str], list[str],
 
 
 def confirmed_assumed(assumed: dict, abnormal: list[str], untouched: list[str], removed: list[str],
-                      dictated_normal: list[str] = ()) -> dict:
+                      dictated_normal: Sequence[str] = ()) -> dict:
     """assumedFrom: the assumed normals of the abnormal, the dictated-normal (review R2) then the untouched regions,
     minus removed sentences."""
     gone = {norm_key(x) for x in removed}

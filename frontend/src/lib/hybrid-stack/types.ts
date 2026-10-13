@@ -94,6 +94,7 @@ export interface GateRecord {
 	review_failed?: boolean; // the end-of-dictation review failed: no finding checks were offered
 	offered?: Record<string, string[]>; // region normals the sheet offered, before the assumed-normal check
 	jev_dropped?: Dropped | null; // what the check dropped, with why (null: the check failed)
+	flagged?: Record<string, string[]>; // assumed normals confirmed with the "may conflict" marker (R1)
 	assumed_check_failed?: boolean; // the assumed-normal check failed: nothing was dropped by it
 	// Dictation checks seen this session and how each ended: answered, skipped, edited away, or still open (advisory).
 	checks?: { kind: string; quote: string; other: string | null; answered_by: 'as_dictated' | 'skip' | 'replaced' | 'edited' | 'open' }[];

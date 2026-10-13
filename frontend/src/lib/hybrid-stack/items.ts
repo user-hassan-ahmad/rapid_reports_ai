@@ -62,7 +62,7 @@ export function abnormalAll(units: StackUnit[]): string[] {
 	return effectiveItems(units).filter((i) => i.abnormal).map((i) => i.text);
 }
 
-export interface AssumedSnap { dictation: string; abnormal: string[]; untouched: string[]; assumed: Record<string, string[]>; offered: Record<string, string[]>; dictatedNormal?: string[]; flagged?: Record<string, string[]>; dropped?: Dropped; check_failed?: boolean; confirm_recheck?: boolean; confirmed?: boolean }
+export interface AssumedSnap { dictation: string; abnormal: string[]; untouched: string[]; assumed: Record<string, string[]>; offered: Record<string, string[]>; dictatedNormal?: string[]; flagged?: Record<string, string[]>; dropped?: Dropped; check_failed?: boolean; confirm_recheck?: boolean; confirmed?: boolean; failures?: number }
 
 /** What the gate confirms as assumed: only the sentences /assumed answered for each region, in the state (abnormal
  *  or untouched) that region had when they were checked, minus removed ones. Never the raw sheet (review
@@ -71,8 +71,13 @@ export interface AssumedSnap { dictation: string; abnormal: string[]; untouched:
 /** The /assumed answer is behind: a sheet exists and no answer was computed for this exact dictation. An answer for
  *  the empty dictation (the check run when the sheet loads, E6) is current until something is dictated. */
 export function assumedStale(hasSheet: boolean, snap: AssumedSnap | null, dictation: string): boolean {
-	return hasSheet && (snap === null || snap.dictation !== dictation);
+	if (!hasSheet) return false;
+	if (snap === null || snap.dictation !== dictation) return true;
+	// A failed answer for the empty dictation (the sheet load's rule call, round 1) is asked again, up to three tries,
+	// so the tray recovers; once something is dictated a failure fails open, as before.
+	return !!snap.check_failed && !dictation.trim() && (snap.failures ?? 1) < ASSUMED_RETRIES;
 }
+export const ASSUMED_RETRIES = 3;
 
 /** A dictated-normal region (review R2) keeps the sentences the check left: the stated check removed what was said,
  *  so "ACL intact" keeps the PCL sentence. Like the others, only when it was checked in that same state. */

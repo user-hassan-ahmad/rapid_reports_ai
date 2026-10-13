@@ -1893,10 +1893,14 @@
 				rules: rulesToSend(sessionRules, history), confirm });
 			if (sheet === slimSeq) sessionRules = keepRules(sessionRules, history, res);
 			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed, flagged: res.flagged, dropped: res.dropped, check_failed: !!res.error,
-				confirm_recheck: !!res.confirm_recheck, confirmed: confirm };
+				confirm_recheck: !!res.confirm_recheck, confirmed: confirm, failures: res.error ? failuresFor(snap.dictation) : 0 };
 		} catch {
-			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {}, check_failed: true, confirmed: confirm }; // nothing assumed
+			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {}, check_failed: true, confirmed: confirm, failures: failuresFor(snap.dictation) }; // nothing assumed
 		}
+	}
+	/** Failed answers in a row for this dictation (assumedStale re-asks the empty dictation's a few times, round 1). */
+	function failuresFor(dictation: string): number {
+		return (assumedSnap?.check_failed && assumedSnap.dictation === dictation ? (assumedSnap.failures ?? 1) : 0) + 1;
 	}
 	/** Regions a row or a removal concerns: every one of their sentences is checked, not only word matches. */
 	function touchedRegions(): string[] {
@@ -2078,6 +2082,7 @@
 			checks: Object.values(seenChecks).map((c) => ({ kind: c.kind, quote: c.quote, other: c.other,
 				answered_by: checkAnswers[c.key] ?? (checks.some((x) => x.key === c.key) ? 'open' : 'edited') })),
 			units_hash: gateKey,
+			flagged: flaggedNow, // kept normals the dictation may conflict with, confirmed as shown (R1 evidence)
 			...offeredAndDropped(assumedSnap?.offered ?? stackRegionNormals, assumedSnap?.dropped, assumedSnap?.check_failed)
 		};
 		stackGate = gate;
@@ -2745,7 +2750,7 @@
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
 							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
 							onConfirm={stackConfirm} {confirmNote} onConfirmGenerate={onStackGenerate ? async () => { if (await stackConfirm()) onStackGenerate?.(); } : null} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
-							checking={semanticFor !== null && semanticFor === verbatimNow} syncing={assumedBehind || checksBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
+							checking={semanticFor !== null && semanticFor === verbatimNow} syncing={confirming || assumedBehind || checksBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
 					{/if}
 				</div>
 

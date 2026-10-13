@@ -114,6 +114,15 @@ describe('assumed normals before any dictation (E6)', () => {
 		expect(assumedStale(true, snap, 'At L4/5 there is a disc bulge.')).toBe(true);
 		expect(assumedStale(false, null, '')).toBe(false);
 	});
+	it('a failed answer for the empty dictation is behind again, up to three tries (round 1: the rule call can fail)', () => {
+		const failed = { ...snap, assumed: {}, check_failed: true };
+		expect(assumedStale(true, failed, '')).toBe(true);
+		expect(assumedStale(true, { ...failed, failures: 2 }, '')).toBe(true);
+		expect(assumedStale(true, { ...failed, failures: 3 }, '')).toBe(false);
+		// once something is dictated a failure fails open, as before: Confirm is not held
+		const said = { ...failed, dictation: 'A liver cyst.' };
+		expect(assumedStale(true, said, 'A liver cyst.')).toBe(false);
+	});
 });
 
 describe('template context rules decided once per session (R5)', () => {
