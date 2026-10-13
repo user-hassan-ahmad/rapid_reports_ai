@@ -213,3 +213,42 @@ def test_jev_findings_cuts_a_mid_line_assumed_tail_and_drops_a_bare_label():
     assert cr.jev_findings(bare) == "Kidneys: Normal."
     answered = "Liver: 2 cm cyst. Answered by the radiologist: segment 4."
     assert cr.jev_findings(answered) == answered
+
+
+def test_decided_block_lists_each_slot_line_once_with_the_partial_fill_instruction():
+    assert cr.decided_block([]) == ""
+    block = cr.decided_block(["Compared with the {study} of {date}.", "Compared with the {study} of {date}."])
+    assert block.startswith(cr.DECIDED_HEADING + "\n")
+    assert block.count('- "Compared with the {study} of {date}."') == 1
+    assert "leave out the words that carry it" in block
+
+
+def test_slot_guard_removes_only_the_sentence_holding_a_slot():
+    report = ("Comparison: Comparison made with previous CT dated {date}.\n"
+              "Findings: The liver is normal. A {size} cyst. No ascites.\n"
+              "- Note made of previous {study}.\n"
+              "Conclusion: Normal study.")
+    out, n = cr.strip_slot_sentences(report, {"Comparison:"})
+    assert n == 3
+    assert out == "Comparison:\nFindings: The liver is normal. No ascites.\nConclusion: Normal study."
+
+
+def test_slot_guard_keeps_a_bare_lead_only_when_it_is_a_declared_header():
+    report = "Medication given: {medication}.\nScan quality: {quality}\nAverage HR: {rate} bpm.\nFindings: Normal."
+    assert cr.strip_slot_sentences(report, {"Findings:"}) == ("Findings: Normal.", 3)
+    bold = "**Comparison:** Comparison made with previous CT dated {date}. Stable."
+    assert cr.strip_slot_sentences(bold) == ("**Comparison:** Stable.", 1)
+    line = "Comparison: Comparison made with previous CT dated {date}."
+    assert cr.strip_slot_sentences(line, {"Comparison:"}) == ("Comparison:", 1)
+    assert cr.strip_slot_sentences(line) == ("", 1)
+    assert cr.strip_slot_sentences("- Note made of previous {study}.") == ("", 1)
+
+
+def test_slot_guard_leaves_a_report_without_slots_untouched():
+    report = "Findings: Normal.\n\nConclusion: Normal study."
+    assert cr.strip_slot_sentences(report) == (report, 0)
+
+
+def test_sheet_headers_are_the_declared_section_and_paragraph_headers():
+    assert cr.sheet_headers(SHEET) == {"Comparison:", "Findings:", "Conclusion:"}
+    assert cr.sheet_headers("# Skill Sheet\nSome prose only.\n") == set()

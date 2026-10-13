@@ -202,3 +202,57 @@ async def resolve_context_rules(sheet: str, history: str, findings: str, ask: Op
     except Exception as e:  # noqa: BLE001 -- fail-soft: the generator reads the stored sheet, as today
         rec["error"], rec["rules"] = f"{type(e).__name__}: {e}"[:300], []
         return done(sheet)
+
+
+DECIDED_HEADING = "## Decided for This Case"
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+_LEAD = re.compile(r"^\s*(?:[-*•]\s+)?(?:[*_#]*\s*[^:{}.\n]{1,40}:[*_]*\s+)?")   # indent, bullet, "**Header:** "
+
+
+def decided_block(decided: List[str]) -> str:
+    """The generator's instruction for lines a met rule wrote with {slots} (appended to the sheet it reads)."""
+    if not decided:
+        return ""
+    lines = "\n".join(f'- "{t}"' for t in dict.fromkeys(decided))
+    return (f"{DECIDED_HEADING}\n"
+            "The template's rules decided these lines for this case. Write each in its place. Fill each {slot} "
+            "with the value the FINDINGS input or the clinical history states; where neither states a slot's value, "
+            "leave out the words that carry it. Never print a {slot}.\n" + lines)
+
+
+def sheet_headers(sheet: str) -> Set[str]:
+    """The declared section and paragraph headers of a clean grammar sheet (empty otherwise): the only bare
+    leads the slot guard may keep."""
+    st = _clean(sheet)
+    if st is None:
+        return set()
+    heads = {h for s in st.sections for h in [s.header, *s.alt_headers] if h}
+    return heads | {p.header for p in st.paragraphs if p.header}
+
+
+def _head_key(text: str) -> str:
+    return re.sub(r"[*_#]", "", text).strip().rstrip(":").strip().lower()
+
+
+def strip_slot_sentences(report: str, headers=()) -> Tuple[str, int]:
+    """Remove every sentence that still holds a {slot}, keeping the line's indent, bullet and "Header: " prefix.
+    A line left empty is dropped, unless its lead is a declared header (`headers`), which is kept bare: a label
+    like "Scan quality:" is not a header and goes with its value. Returns (report, sentences removed)."""
+    if not SLOT.search(report or ""):
+        return report, 0
+    declared = {_head_key(h) for h in headers}
+    out: List[str] = []
+    removed = 0
+    for line in report.splitlines():
+        if not SLOT.search(line):
+            out.append(line)
+            continue
+        lead = _LEAD.match(line).group(0)
+        parts = _SENTENCE_END.split(line[len(lead):])
+        keep = [p for p in parts if not SLOT.search(p)]
+        removed += len(parts) - len(keep)
+        if keep:
+            out.append(lead + " ".join(keep))
+        elif ":" in lead and _head_key(lead) in declared:
+            out.append(lead.rstrip())
+    return "\n".join(out), removed
