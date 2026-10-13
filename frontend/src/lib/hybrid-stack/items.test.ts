@@ -71,6 +71,10 @@ describe('checklist rows', () => {
 		const full = splitReply(res, ['c1', 'c2', 'c3'], ['a'], false);
 		expect(full.items.map((r) => r.id)).toEqual(['a', 'c2']);   // the full reply's caps may promote one
 		expect(full.capped.map((r) => r.id)).toEqual(['c1', 'c3']);   // answered behind the line: folds there
+		// a re-check's caps pushed out an open row: it stays on the checklist, never lost
+		const pushed = splitReply({ items: [], capped: [item('a', ['x']), item('c3', ['No fistula.'])] }, ['c3'], ['a'], true);
+		expect(pushed.items.map((r) => r.id)).toEqual(['a']);
+		expect(pushed.capped.map((r) => r.id)).toEqual(['c3']);
 		expect(splitReply({ items: [item('a', ['x'])], capped: [] }, [], [], true)).toEqual({ items: [item('a', ['x'])], capped: [] });
 	});
 });

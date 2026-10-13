@@ -1651,7 +1651,7 @@
 		const tapped = Object.values(tappedRows).flatMap((r) => r.sentences);
 		// Skipped rows (open or capped) are not re-checked; they stay as they are. At most 6 capped rows per re-check.
 		const open = stackItems.filter((i) => !i.answered && !skippedRows[i.id]);
-		const capped = stackCapped.filter((c) => !c.answered && !skippedRows[c.id]).slice(0, MAX_RECHECK_CAPPED);
+		const capped = stackCapped.filter((c) => !c.answered && !skippedRows[c.id] && !tappedRows[c.id]).slice(0, MAX_RECHECK_CAPPED);
 		if (!open.length && !tapped.length && !capped.length) {
 			reviewedFor = text;
 			return;

@@ -98,8 +98,11 @@ export function splitReply(res: { items: StackItem[]; capped: StackItem[] }, was
 	const capped = new Set(wasCapped);
 	const open = new Set(wasOpen);
 	const behind = (r: StackItem) => capped.has(r.id) && (recheck || (r.answered && !open.has(r.id)));
+	// A re-check's capped row that was not behind the line before (an open row its caps pushed out) stays on the
+	// checklist: a re-check never loses a row.
+	const stays = (r: StackItem) => !recheck || capped.has(r.id);
 	return {
-		items: res.items.filter((r) => !behind(r)),
-		capped: [...res.items.filter(behind), ...res.capped]
+		items: [...res.items.filter((r) => !behind(r)), ...res.capped.filter((r) => !stays(r))],
+		capped: [...res.items.filter(behind), ...res.capped.filter(stays)]
 	};
 }
