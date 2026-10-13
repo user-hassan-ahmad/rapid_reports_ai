@@ -19,7 +19,9 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+from pydantic_ai import PromptedOutput
 
 from . import template_decisions as td
 
@@ -46,9 +48,42 @@ class Quote(BaseModel):
     text: str     # copied word for word from that example
 
 
+# gpt-oss (the fallback) writes quotes as flat strings (lab diagnostics, 2026-10-13): "Report 1: text",
+# "text (Report 2)", "[3] text". Each is read as {report, text}; a string with no report number is dropped, never
+# guessed.
+_QUOTE_FORMS = (
+    re.compile(r"^\s*\[?\s*report\s*(?P<n>\d+)\s*\]?\s*[:\-\u2013\u2014]\s*(?P<t>.+?)\s*$", re.I | re.S),
+    re.compile(r"^\s*(?P<t>.+?)\s*[\(\[]\s*report\s*(?P<n>\d+)\s*[\)\]]\s*$", re.I | re.S),
+    re.compile(r"^\s*\[\s*(?P<n>\d+)\s*\]\s*(?P<t>.+?)\s*$", re.S),
+)
+
+
+def _parse_quote(s: str) -> Optional[dict]:
+    for form in _QUOTE_FORMS:
+        m = form.match(s)
+        if m and m.group("t").strip():
+            return {"report": int(m.group("n")), "text": m.group("t").strip()}
+    return None
+
+
+def _read_quotes(v):
+    if not isinstance(v, list):
+        return v
+    out = []
+    for q in v:
+        if isinstance(q, str):
+            q = _parse_quote(q)
+            if q is None:
+                continue
+        out.append(q)
+    return out
+
+
 class ValueCandidate(BaseModel):
     name: str
     quotes: List[Quote] = []
+
+    _quotes = field_validator("quotes", mode="before")(staticmethod(_read_quotes))
 
 
 class ConceptWording(BaseModel):
@@ -56,6 +91,8 @@ class ConceptWording(BaseModel):
     state: str    # what the wording says (one of the concept's states in template_decisions.CONCEPTS)
     text: str     # the wording as a template line, {slots} for what varies
     quotes: List[Quote] = []
+
+    _quotes = field_validator("quotes", mode="before")(staticmethod(_read_quotes))
 
 
 class HabitCandidate(BaseModel):
@@ -223,9 +260,9 @@ async def _qwen(examples: List[str], scan_type: str, setup_text: str = "") -> Ru
 
     deadline = time.monotonic() + RUN_TIMEOUT_S
 
-    async def call(model: str, timeout: float) -> RunOutput:
+    async def call(model: str, timeout: float, output_type=RunOutput) -> RunOutput:
         r = await asyncio.wait_for(_run_agent_with_model(
-            model_name=model, output_type=RunOutput, system_prompt=SYSTEM, user_prompt=prompt, api_key="",
+            model_name=model, output_type=output_type, system_prompt=SYSTEM, user_prompt=prompt, api_key="",
             model_settings=dict(SETTINGS)), timeout)
         return r.output
 
@@ -237,7 +274,11 @@ async def _qwen(examples: List[str], scan_type: str, setup_text: str = "") -> Ru
         left = deadline - time.monotonic()
         if left <= 1:
             raise
-        return await call(MODEL_CONFIG["STACK_REVIEW_FALLBACK"], min(FALLBACK_TIMEOUT_S, left))
+        # gpt-oss gets prompted output (the JSON in its text, as Sonnet does in enhancement_utils._output_type_for):
+        # with tool output it re-asked by calling a tool named "json", not final_result, until retries ran out
+        # (lab diagnostics, 2026-10-13). Qwen keeps tool output, which it produces reliably.
+        return await call(MODEL_CONFIG["STACK_REVIEW_FALLBACK"], min(FALLBACK_TIMEOUT_S, left),
+                          PromptedOutput(RunOutput))
 
 
 async def ask_states(examples: List[str], transport=None) -> Dict[str, List[int]]:

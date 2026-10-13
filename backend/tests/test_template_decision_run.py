@@ -284,3 +284,48 @@ async def test_no_setup_is_todays_run(monkeypatch):
     monkeypatch.setattr(R, "ask_setup", setup)
     assert (await R.run_decisions(EX, "<scan>")).setup == {}
     assert (await R.run_decisions(EX, "<scan>", R.study_setup("", "", ""))).setup == {}
+
+
+# ── the gpt-oss fallback's shapes (lab diagnostics, runs/diag, 2026-10-13) ─────────────────────────────────────
+
+def test_string_quotes_are_parsed_and_a_quote_with_no_report_is_dropped():
+    v = R.ValueCandidate(name="X", quotes=["Report 1: Total dose: 38 units", "The score is 0. (Report 3)",
+                                           "[2] ECV 30%", "report 4 - LVEF 50%", "no report number here",
+                                           {"report": 5, "text": "kept as given"}])
+    assert [(q.report, q.text) for q in v.quotes] == [(1, "Total dose: 38 units"), (3, "The score is 0."),
+                                                      (2, "ECV 30%"), (4, "LVEF 50%"), (5, "kept as given")]
+    c = R.ConceptWording(concept="comparison", state="none", text="No previous imaging.",
+                         quotes=["No previous imaging. (Report 1)"])
+    assert c.quotes[0].report == 1
+
+
+# The diagnostics' first fallback answer: quotes as flat strings (both forms seen)
+BAD = {"values": [{"name": "LVEF", "quotes": ["Report 1: LVEF 55%", "LVEF 60% (Report 2)"]}],
+       "concepts": [{"concept": "comparison", "state": "none", "text": "No previous imaging.",
+                     "quotes": ["Report 3: No previous imaging."]}], "habits": []}
+
+
+async def test_the_fallback_uses_prompted_output_and_reads_the_bad_shapes(monkeypatch):
+    import json
+    from pydantic_ai import Agent, PromptedOutput
+    from pydantic_ai.messages import ModelResponse, TextPart
+    from pydantic_ai.models.function import FunctionModel
+    from rapid_reports_ai import enhancement_utils as eu
+    seen = []
+
+    def gpt_oss(messages, info):
+        # answers in text only (as gpt-oss does when it does not call final_result); a tool-output agent rejects this
+        return ModelResponse(parts=[TextPart(json.dumps(BAD))])
+
+    async def fake(model_name, output_type, system_prompt, user_prompt, api_key, model_settings=None, **k):
+        seen.append((model_name, output_type))
+        if model_name == eu.MODEL_CONFIG["SKILL_SHEET_ANALYZER"]:
+            raise TimeoutError()
+        agent = Agent(FunctionModel(gpt_oss), output_type=output_type, system_prompt=system_prompt, retries=k.get("retries", 2))
+        return await agent.run(user_prompt)
+    monkeypatch.setattr(eu, "_run_agent_with_model", fake)
+    out = await R._qwen(EX, "<scan>")
+    assert seen[0][1] is R.RunOutput                                   # Qwen keeps tool output
+    assert isinstance(seen[1][1], PromptedOutput)                      # gpt-oss: JSON in text, no tool to misname
+    assert [(q.report, q.text) for q in out.values[0].quotes] == [(1, "LVEF 55%"), (2, "LVEF 60%")]
+    assert out.concepts[0].quotes[0].report == 3
