@@ -217,3 +217,8 @@ def test_abnormal_defaults_false_and_missing_placement_is_not_abnormal():
     units = _units("The liver is normal.", "Two.")
     apply_placements(units, [Placement(id=0, group="Liver")], [0, 1], GROUPS)
     assert units[0].abnormal is False and units[1].abnormal is False
+
+
+def test_grouper_prefers_the_more_specific_region():
+    from rapid_reports_ai.hybrid_stack.grouper import GROUPER_SYSTEM
+    assert "more specific" in GROUPER_SYSTEM
