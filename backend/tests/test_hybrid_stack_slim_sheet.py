@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import httpx
+import pytest
 
 from rapid_reports_ai.database.models import StackSlimSheet
 from rapid_reports_ai.hybrid_stack import slim_sheet as SL
@@ -27,6 +28,14 @@ SHEET = """## Scan Context
 """
 REGIONS = [Region(name="Liver", includes="liver"), Region(name="Kidneys", includes="kidneys"),
            Region(name="Spleen", includes="spleen"), Region(name="Other findings", includes="other")]
+
+
+@pytest.fixture(autouse=True)
+def _no_sex_screen_call(monkeypatch):
+    """No test here may reach OpenRouter: the sex screen passes every sentence unless a test stubs its own."""
+    async def screen(normals, transport=None):
+        return normals, []
+    monkeypatch.setattr(SL, "screen_normals", screen)
 
 
 def test_parse_keeps_known_regions_and_drops_measurements():
