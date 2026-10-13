@@ -69,9 +69,9 @@ def test_uncovered_lists_covered_structures_without_a_normal():
 async def test_sheet_checks_is_fail_soft_and_reports_unmatched_entries():
     led, _ = td.set_decision([], "normal", "Spleen :: spleen", {"text": "The spleen is normal."}, source="creation")
     out = await V.sheet_checks(LEDGER_SHEET, led, transport=httpx.MockTransport(lambda r: httpx.Response(500)))
-    assert out["errors"] == ["fixed"] and out["fixed_cards"] == []
+    assert out["errors"] == ["uncovered", "fixed"] and out["fixed_cards"] == []
     assert [c["key"] for c in out["unmatched_cards"]] == ["Spleen :: spleen"]
-    assert out["normal_report"] and out["uncovered_cards"]
+    assert out["normal_report"] and out["uncovered_cards"] == []      # Jev failed: nothing, never the raw list
     assert (await V.sheet_checks("# free", []))["errors"] == ["parse"]
 
 
@@ -271,3 +271,82 @@ async def test_the_duplicate_and_fixed_checks_run_concurrently(monkeypatch):
     monkeypatch.setattr(V, "fixed_flags", fixed)
     out = await V.sheet_checks(LEDGER_SHEET, [])
     assert order[:2] == ["dup start", "fixed start"] and out["errors"] == []
+
+
+
+# ── uncovered structures: Jev reads the normal report (combined sentences cover several structures) ─────────────
+
+COMBINED = """# Skill Sheet: Combined normals
+
+## Report Structure
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION IMPRESSION | header: "Impression:" | role: impression
+
+## Paragraph: Ventricles (FINDINGS)
+COVERS ["LV end-diastolic volume" | "LV ejection fraction" | "RV size"]
+Opening: "Normal"
+NORMAL [LV size and function] "Normal indexed LV end-diastolic volume and global systolic function."
+
+## Paragraph: Valves (FINDINGS)
+COVERS ["aortic valve" | "mitral valve" | "tricuspid valve" | "pulmonary valve"]
+Opening: "The valves"
+NORMAL [valves] "The aortic, mitral, tricuspid and pulmonary valves are normal."
+
+## Paragraph: Pericardium (FINDINGS)
+COVERS ["pericardium"]
+Opening: "No pericardial"
+NEGATIVE "No pericardial effusion."
+
+## Paragraph: Impression (IMPRESSION)
+Opening: "Normal study."
+"""
+
+
+def _jev_covered(uncovered_words):
+    """Jev stub: a structure is covered unless its name holds one of `uncovered_words`; records each request."""
+    seen = []
+
+    def handler(request):
+        import json
+        body = json.loads(request.content)
+        seen.append(body)
+        return httpx.Response(200, json={"answers": {
+            k: {"noul": 0.1 if any(w in q["instructions"].lower() for w in uncovered_words) else 0.9}
+            for k, q in body["questions"].items()}})
+    return httpx.MockTransport(handler), seen
+
+
+async def test_uncovered_keeps_only_structures_the_normal_report_does_not_state():
+    transport, seen = _jev_covered(["rv size"])
+    st = _st(COMBINED)
+    assert len(V.uncovered(st)) == 8            # label matching alone: every structure but the one NORMAL label
+    cards = await V.uncovered_checked(st, V.normal_report(COMBINED, st), [], transport=transport)
+    assert [c["key"] for c in cards] == ["Ventricles :: RV size"]
+    # one batched call, the normal report as the state, a criteria question per structure
+    assert len(seen) == 1 and "Normal indexed LV end-diastolic volume" in seen[0]["state"]
+    assert "No pericardial effusion." in seen[0]["state"]
+    q = next(iter(seen[0]["questions"].values()))
+    assert q["type"] == "noul" and set(q["criteria"]) == {"true", "false"}
+    assert q["instructions"].startswith("The NORMAL REPORT states something about this structure: ")
+
+
+async def test_uncovered_shows_at_most_eight():
+    transport, _ = _jev_covered([""])          # nothing covered
+    extra = "".join(f' | "structure {i}"' for i in range(10))
+    sheet = COMBINED.replace('COVERS ["pericardium"]', f'COVERS ["pericardium"{extra}]')
+    st = _st(sheet)
+    cards = await V.uncovered_checked(st, V.normal_report(sheet, st), [], transport=transport)
+    assert len(cards) == V.UNCOVERED_MAX == 8
+
+
+async def test_uncovered_shows_nothing_when_jev_fails():
+    st = _st(COMBINED)
+    out = await V.sheet_checks(COMBINED, [], transport=httpx.MockTransport(lambda r: httpx.Response(500)))
+    assert out["uncovered_cards"] == [] and "uncovered" in out["errors"]
+
+
+def test_the_covered_question_is_case_agnostic():
+    q = V.q_covered("x")
+    text = " ".join([q["instructions"], *q["criteria"].values()]).lower()
+    for word in ("liver", "valve", "pericardi", "contrast", "lv "):
+        assert word not in text

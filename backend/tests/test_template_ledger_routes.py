@@ -265,7 +265,11 @@ def test_sheet_checks_returns_the_style_step_cards(client, auth_headers, monkeyp
 
     async def scores(texts, transport=None):
         return [0.9 for _ in texts]
+
+    async def not_covered(structures, report_text, transport=None):
+        return [0.1 for _ in structures]
     monkeypatch.setattr(V, "_jev_scores", scores)
+    monkeypatch.setattr(V, "_covered_scores", not_covered)
     r = client.post(SHEET_CHECKS, headers=auth_headers, json={"skill_sheet": LEDGER_SHEET, "decisions": []}).json()
     assert r["success"] and r["errors"] == [] and r["duplicate_cards"] == []      # nothing decided yet
     assert [c["key"] for c in r["fixed_cards"]] == ["Axial images were acquired.", "No previous imaging available."]

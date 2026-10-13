@@ -247,6 +247,42 @@ def uncovered(st: tss.SheetStructure) -> List[dict]:
     return out
 
 
+UNCOVERED_MAX = 8     # structures shown at most
+COVERED_MIN = 0.5     # Jev: the normal report states something about the structure
+COVERED_INSTRUCTIONS = "The NORMAL REPORT states something about this structure: {s}."
+COVERED_CRITERIA = {
+    "true": "The NORMAL REPORT has a sentence about this structure, alone or together with other structures, in any "
+            "wording (a combined sentence, a measurement or an absence counts).",
+    "false": "No sentence of the NORMAL REPORT is about this structure."}
+
+
+def q_covered(structure: str) -> dict:
+    """Does the normal report already say something about this structure? (case-agnostic, criteria noul)"""
+    return {"type": "noul", "instructions": COVERED_INSTRUCTIONS.format(s=structure),
+            "criteria": dict(COVERED_CRITERIA)}
+
+
+async def _covered_scores(structures: List[str], report_text: str, transport=None) -> List[float]:
+    return await _noul_batched([q_covered(x) for x in structures], f"NORMAL REPORT:\n{report_text}", transport,
+                               what="uncovered")
+
+
+async def uncovered_checked(st: tss.SheetStructure, report: List[dict], ledger: List[dict],
+                            transport=None) -> List[dict]:
+    """The "mentioned but no normal sentence" cards: the structures a findings paragraph COVERS with no NORMAL label
+    and no ledger answer (code), kept only when Jev says the normal report states nothing about them, since one
+    combined sentence often covers several structures. At most UNCOVERED_MAX. Raises when Jev fails (the caller
+    shows none, never the unchecked list)."""
+    cands = _unanswered(uncovered(st), ledger)
+    if not cands:
+        return []
+    text = "\n".join(x["text"] for sec in report for x in sec["sentences"])
+    if text.strip():
+        scores = await _covered_scores([td.split_normal_key(c["key"])[1] for c in cands], text, transport)
+        cands = [c for c, v in zip(cands, scores) if v < COVERED_MIN]
+    return cands[:UNCOVERED_MAX]
+
+
 def _unanswered(cards: List[dict], ledger: List[dict]) -> List[dict]:
     """Cards whose ledger item has no entry yet ("Leave unmentioned" records an empty normal: it stays answered)."""
     return [c for c in cards if td.find(ledger, c["ledger_kind"], c["key"]) is None]
@@ -268,20 +304,26 @@ async def sheet_checks(sheet: str, ledger: List[dict], transport=None) -> dict:
     except Exception as e:
         logger.warning("[sheet-checks] ledger check failed: %s", type(e).__name__)
         out["errors"].append("ledger")
-    for name, part in (("normal_report", lambda: normal_report(sheet, st)), ("uncovered_cards", lambda: _unanswered(uncovered(st), ledger))):
+    for name, part in (("normal_report", lambda: normal_report(sheet, st)),):
         try:
             out[name] = part()
         except Exception as e:
             logger.warning("[sheet-checks] %s failed: %s", name, type(e).__name__)
             out["errors"].append(name)
-    # the two Jev checks run concurrently; each fails soft on its own
-    dups, flags = await asyncio.gather(concept_duplicates(st, ledger, transport), fixed_flags(st, ledger, transport),
-                                       return_exceptions=True)
+    # the Jev checks run concurrently; each fails soft on its own
+    dups, unc, flags = await asyncio.gather(concept_duplicates(st, ledger, transport),
+                                            uncovered_checked(st, out["normal_report"], ledger, transport),
+                                            fixed_flags(st, ledger, transport), return_exceptions=True)
     if isinstance(dups, BaseException):
         logger.warning("[sheet-checks] duplicate check failed: %s", type(dups).__name__)
         out["errors"].append("duplicates")
     else:
         out["duplicate_cards"] = dups
+    if isinstance(unc, BaseException):   # never the unchecked list: most of it is usually covered
+        logger.warning("[sheet-checks] uncovered check failed: %s", type(unc).__name__)
+        out["errors"].append("uncovered")
+    else:
+        out["uncovered_cards"] = unc
     dup = {td.match_key("fixed", c["title"]) for c in out["duplicate_cards"]}   # one card per line
     if isinstance(flags, BaseException):
         logger.warning("[sheet-checks] fixed check failed: %s", type(flags).__name__)
