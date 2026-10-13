@@ -37,7 +37,7 @@ export const postDecide = (token: string | null, body: DecideRequest) =>
 
 export const postApplyDecisions = (
 	token: string | null,
-	body: { skill_sheet: string; decisions: LedgerEntry[]; changes: DecisionChange[]; source: 'creation' | 'first_use_review' }
+	body: { skill_sheet: string; decisions: LedgerEntry[]; changes: DecisionChange[]; source: 'creation' | 'first_use_review' | 'chat' }
 ) => post<ApplyResponse>(token, 'apply-decisions', body);
 
 const CHECK_PARTS = ['fixed_cards', 'duplicate_cards', 'normal_report', 'uncovered_cards', 'unmatched_cards', 'stale_quotes', 'errors'] as const;

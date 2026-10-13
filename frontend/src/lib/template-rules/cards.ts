@@ -32,13 +32,41 @@ export function editWording(card: DecisionCard, selectedId: string | null): Card
 	return { default: c.default ?? '', when_met: c.when_met ?? '', condition: c.condition ?? '' };
 }
 
-/** The change an answer records; null when it needs wording the radiologist has not written. */
+const ACRONYM_START = /^[a-z]+[A-Z]/; // a lowercase-led word that holds a capital ("eGFR"; "pH" is not)
+
+/** A full sentence (mirrors backend template_decisions.is_sentence): it starts with a capital, a {slot}, a digit or a
+ * lowercase-led acronym, and ends with "." or ":" (so never on a bare slot). Only the edges are checked. */
+export function isSentence(text: string): boolean {
+	const t = (text ?? '').trim();
+	if (!t || !'.:'.includes(t[t.length - 1])) return false;
+	const c = t[0];
+	return (c !== c.toLowerCase() && c === c.toUpperCase()) || c === '{' || /\d/.test(c) || ACRONYM_START.test(t);
+}
+
+const QUOTES = /["“”]/;
+
+/** Why written wording can't be stored (the server's rules), or null when it can. A concept's wordings must each be
+ * a full sentence; a normal sentence has nothing to fill in; no wording has double quotes. Empty fields are not
+ * judged here (changeFor asks for some wording). */
+export function wordingProblem(card: DecisionCard, edited: CardWording | undefined): string | null {
+	const e = edited ?? {};
+	const texts = card.ledger_kind === 'concept' ? [e.default ?? '', e.when_met ?? ''] : [e.text ?? ''];
+	const written = texts.map((t) => t.trim()).filter(Boolean);
+	if (written.some((t) => QUOTES.test(t))) return 'Leave out double quotes.';
+	if (card.ledger_kind === 'concept') {
+		if (written.some((t) => !isSentence(t))) return 'Write it as a full sentence.';
+	} else if (written.some((t) => /[{}]/.test(t))) return 'Leave out values to fill in.';
+	return null;
+}
+
+/** The change an answer records; null when it needs wording the radiologist has not written, or the written
+ * wording breaks the server's rules (wordingProblem). */
 export function changeFor(card: DecisionCard, a: Answer, source: ChangeSource): DecisionChange | null {
 	if (!card.ledger_kind) return null;
 	const c = card.choices.find((x) => x.id === a.choiceId);
 	if (!c) return null;
 	if (c.choice) return { kind: card.ledger_kind, key: card.key, choice: c.choice, source };
-	if (!a.edited) return null;
+	if (!a.edited || wordingProblem(card, a.edited)) return null;
 	if (card.ledger_kind === 'concept') {
 		const d = (a.edited.default ?? '').trim();
 		const w = (a.edited.when_met ?? '').trim();

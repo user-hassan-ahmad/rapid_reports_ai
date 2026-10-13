@@ -5,7 +5,7 @@
 	 * once by the parent (postApplyDecisions), which then reloads these checks so the answered card goes away. A part
 	 * that failed on the server is simply empty: the Style step shows the summary without it.
 	 */
-	import { changeFor, editWording } from './cards';
+	import { changeFor, editWording, wordingProblem } from './cards';
 	import type { CardWording, ChangeSource, DecisionCard, DecisionChange, NormalSentence, SheetChecksResponse } from './types';
 
 	let {
@@ -75,6 +75,11 @@
 		return changeFor(card, { choiceId: editId, edited: { ...draft } }, source);
 	}
 
+	/** A normal sentence's wording problem (no quotes, nothing to fill in), or null. */
+	function sentenceProblem(text: string | undefined): string | null {
+		return wordingProblem({ ledger_kind: 'normal' } as DecisionCard, { text: text ?? '' });
+	}
+
 	function sentenceChange(s: NormalSentence, text: string): DecisionChange {
 		return { kind: 'normal', key: s.key, choice: { text: text.trim() }, source };
 	}
@@ -107,6 +112,7 @@
 			{:else}
 				<input class="input w-full text-sm" aria-label="Wording for {card.title}" bind:value={draft.text} use:focusOnOpen onkeydown={onKey} />
 			{/if}
+			{#if wordingProblem(card, draft)}<p class="text-xs text-amber-300/80" role="status">{wordingProblem(card, draft)}</p>{/if}
 			{@render editorButtons(() => apply(cardChange(card)), !cardChange(card))}
 		</div>
 	{/if}
@@ -171,10 +177,11 @@
 									<input class="input w-full text-sm" aria-label="Edit sentence" bind:value={draft.text} use:focusOnOpen onkeydown={onKey} />
 									<div class="flex gap-2">
 										<button type="button" class="btn-primary text-xs" onclick={() => apply(sentenceChange(s, draft.text ?? ''))}
-											disabled={!(draft.text ?? '').trim() || busy}>Save</button>
+											disabled={!(draft.text ?? '').trim() || !!sentenceProblem(draft.text) || busy}>Save</button>
 										<button type="button" class="btn-ghost text-xs" onclick={() => apply(sentenceChange(s, ''))} disabled={busy}>Remove</button>
 										<button type="button" class="btn-ghost text-xs" onclick={close} disabled={busy}>Cancel</button>
 									</div>
+									{#if sentenceProblem(draft.text)}<p class="text-xs text-amber-300/80" role="status">{sentenceProblem(draft.text)}</p>{/if}
 									{#if failed && error}<p class="text-xs text-red-400" role="alert">{error}</p>{/if}
 								</div>
 							{:else}

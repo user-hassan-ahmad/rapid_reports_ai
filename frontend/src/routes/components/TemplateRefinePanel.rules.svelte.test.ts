@@ -81,6 +81,11 @@ describe('TemplateRefinePanel rules review', () => {
 		await expect.element(page.getByRole('button', { name: 'LVEF: Not needed' })).toBeInTheDocument();
 		const refine = calls.find((c) => c.url.endsWith('/refine'))!;
 		expect(refine.body.decisions).toEqual([]);
+		await page.getByRole('button', { name: 'LVEF: Not needed' }).click();
+		await page.getByRole('button', { name: 'Apply' }).click();
+		await vi.waitFor(() => expect(calls.some((c) => c.url.endsWith('/apply-decisions'))).toBe(true));
+		expect(calls.find((c) => c.url.endsWith('/apply-decisions'))!.body).toMatchObject({ source: 'chat',
+			changes: [{ kind: 'value', key: 'LVEF', choice: { need: 'not_needed' }, source: 'chat' }] });
 	});
 
 	it('shows the card the save returns when it kept a confirmed item', async () => {

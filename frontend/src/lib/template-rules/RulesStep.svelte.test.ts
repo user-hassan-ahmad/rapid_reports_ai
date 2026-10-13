@@ -139,6 +139,17 @@ describe('RulesStep', () => {
 		await expect.element(use).toBeDisabled();
 	});
 
+	it('a fragment cannot be used and the hint says why', async () => {
+		render(RulesStep, { cards: [concept()], onContinue: vi.fn() });
+		await page.getByRole('button', { name: 'Comparison with previous imaging: Edit wording' }).click();
+		await userEvent.fill(page.getByLabelText('When it applies'), 'compared with {date}');
+		await expect.element(page.getByRole('button', { name: 'Use this wording' })).toBeDisabled();
+		await expect.element(page.getByText('Write it as a full sentence.')).toBeInTheDocument();
+		await userEvent.fill(page.getByLabelText('When it applies'), 'Compared with {date}.');
+		await expect.element(page.getByRole('button', { name: 'Use this wording' })).not.toBeDisabled();
+		await expect.element(page.getByText('Write it as a full sentence.')).not.toBeInTheDocument();
+	});
+
 	it('adds a required value', async () => {
 		const onContinue = vi.fn();
 		render(RulesStep, { cards: [value('ECV')], onContinue });
