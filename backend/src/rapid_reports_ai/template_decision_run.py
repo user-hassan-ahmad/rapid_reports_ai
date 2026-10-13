@@ -447,7 +447,7 @@ def evidence(run: DecisionRun, built: Optional[dict] = None) -> dict:
     for the findings-triggered rows lab. No example text."""
     out = {"version": RUN_VERSION, "ok": run.ok, "ms": run.ms, "error": run.error, "values": len(run.values),
            "concepts": len(run.concepts), "dropped_quotes": run.dropped_quotes, "jev": run.states is not None,
-           "habits": [{**h.model_dump(exclude={"quotes"}), "reports": h.reports} for h in run.habits], "setup": sorted(run.setup)}
+           "habits": [{"condition": h.condition, "reports": h.reports, "quotes": len(h.quotes)} for h in run.habits], "setup": sorted(run.setup)}
     if built:
         out.update(cards=len(built["cards"]), more=len(built["more"]), kept=len(built["kept"]))
     return out

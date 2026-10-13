@@ -108,9 +108,8 @@ def test_evidence_record_is_small_and_names_the_version():
     run = R.DecisionRun(ok=True, habits=[_h()], dropped_quotes=2)
     ev = R.evidence(run, {"cards": [1, 2], "more": [], "kept": [3]})
     assert ev["version"] == R.RUN_VERSION and ev["dropped_quotes"] == 2 and ev["cards"] == 2 and ev["kept"] == 1
-    assert ev["habits"] == [{"paragraph": "Upper", "condition": "an alpha abnormality is reported",
-                             "question": "Extension beyond alpha?", "yes": "The abnormality extends beyond alpha.",
-                             "no": "No extension beyond alpha.", "reports": [1, 3]}]   # never example text
+    # never example text: the yes / no sentences and quotes are copied from the examples
+    assert ev["habits"] == [{"condition": "an alpha abnormality is reported", "reports": [1, 3], "quotes": 2}]
 
 
 # ── review fixes (Phase 2 review) ──────────────────────────────────────────────────────────────────────────────

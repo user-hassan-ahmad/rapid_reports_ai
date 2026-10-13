@@ -31,16 +31,10 @@ def template_structure(config: dict) -> Optional[SheetStructure]:
 
 
 def template_regions(st: SheetStructure) -> list[Region]:
-    order = {sec.name: sec.order for sec in st.sections}
-    findings = {sec.name for sec in st.sections if sec.role == "findings"}
-    paras = sorted((p for p in st.paragraphs if p.section in findings), key=lambda p: order.get(p.section, 0))
-    out: list[Region] = []
-    seen: set[str] = set()
-    for p in paras:
-        name = p.name if p.name.lower() not in seen else f"{p.name} ({p.section.title()})"
-        seen.add(name.lower())
-        out.append(Region(name=name, includes=", ".join(p.covers) or p.name))
-    if OTHER.lower() not in seen:
+    by_id = {p.id: p for p in st.paragraphs}
+    out = [Region(name=name, includes=", ".join(by_id[pid].covers) or by_id[pid].name)
+           for pid, name in paragraph_regions(st).items()]
+    if OTHER.lower() not in {r.name.lower() for r in out}:
         out.append(other_region())
     return out
 
