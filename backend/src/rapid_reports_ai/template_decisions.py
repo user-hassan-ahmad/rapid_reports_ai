@@ -11,6 +11,14 @@ One entry per (kind, key): {"kind", "key", "choice", "by", "at", "source"}.
     fixed    the FIXED line's text                           {"keep": "always" | "dictated" | "remove"}
     normal   normal_key(paragraph, structure) for a NORMAL,  {"text": str}  ("" = removed / left unmentioned)
              negative_key(paragraph, text) for a NEGATIVE
+    habit    habit_key(paragraph, condition)                 {"mode": "ask" | "state" | "removed", "question": str,
+                                                              "yes": str, "no": str}
+
+A habit (spec 2026-10-13-findings-triggered-rows-design) is written in its paragraph as RULE WHEN [findings: condition]
+ASK "question" YES "yes" NO "no" (mode ask: the scratchpad asks it when the condition is met) or NEGATIVE "no" WHEN
+[findings: condition] (mode state: a required statement); mode removed writes nothing and keeps the wording. A habit
+is active only through its entry: a habit line with no entry stays inactive and is asked on a card at the next review
+(template_ledger_apply.pending_habits).
 
 A used concept is written as: FIXED default + RULE WHEN [context: condition] REPLACE default WITH when_met; FIXED
 default + SUPPRESS default (no alternative wording: the line is dropped when the dictation contradicts it); or USE
@@ -36,7 +44,9 @@ from .hybrid_stack.template import norm_key
 
 logger = logging.getLogger(__name__)
 
-KINDS = ("value", "concept", "fixed", "normal")
+KINDS = ("value", "concept", "fixed", "normal", "habit")
+HABIT_MODES = ("ask", "state", "removed")
+MAX_QUESTION_WORDS = 15
 SOURCES = ("creation", "chat", "first_use_review", "default")
 BY = ("radiologist", "code")
 NEEDS = ("every", "relevant", "not_needed")
@@ -140,6 +150,18 @@ def negative_key(paragraph: str, text: str) -> str:
     return f'{paragraph.strip()}{_SEP}"{text.strip()}"'
 
 
+def habit_key(paragraph: str, condition: str) -> str:
+    return f"{' '.join((paragraph or '').split())}{_SEP}{' '.join((condition or '').split())}"
+
+
+def split_habit_key(key: str) -> Tuple[str, str]:
+    """(paragraph, condition) of a habit key."""
+    para, sep, cond = (key or "").partition(_SEP)
+    if not sep or not para.strip() or not cond.strip():
+        raise DecisionError(f"habit key {key!r}: '<paragraph> :: <condition>'")
+    return " ".join(para.split()), " ".join(cond.split())
+
+
 def split_normal_key(key: str) -> Tuple[str, str, bool]:
     """(paragraph, structure or negative text, is_negative)."""
     para, sep, label = (key or "").partition(_SEP)
@@ -155,6 +177,9 @@ def match_key(kind: str, key: str) -> str:
     if kind == "normal":
         para, label, neg = split_normal_key(key)
         return f"{_name(para)}{_SEP}" + (f'"{norm_key(label)}"' if neg else _name(label))
+    if kind == "habit":
+        para, cond = split_habit_key(key)
+        return f"{_name(para)}{_SEP}{_name(cond)}"
     if kind == "fixed":
         return norm_key(key)
     return _name(key)
@@ -260,6 +285,27 @@ def validate(kind: str, key: str, choice: dict, strict: bool = True) -> Tuple[st
         if choice.get("keep") not in KEEPS:
             raise DecisionError(f"fixed keep: one of {KEEPS}")
         return key, {"keep": choice["keep"]}
+    if kind == "habit":
+        from .template_sheet_grammar import _content_words
+        para, cond = split_habit_key(key)
+        if any(c in cond for c in '"[]|{}') or len(_content_words(cond)) < 2:
+            raise DecisionError(f"habit condition {cond!r}: name the finding in at least two words")
+        mode = choice.get("mode")
+        if mode not in HABIT_MODES:
+            raise DecisionError(f"habit mode: one of {HABIT_MODES}")
+        q = _text(choice.get("question", ""), "habit question", allow_slots=False)
+        yes = _text(choice.get("yes", ""), "habit yes sentence", allow_slots=False)
+        no = _text(choice.get("no", ""), "habit no sentence", allow_slots=False)
+        if mode == "ask":
+            if not (q and yes and no):
+                raise DecisionError("habit ask: a question and both sentences")
+            if not q.endswith("?") or len(q.split()) > MAX_QUESTION_WORDS:
+                raise DecisionError("habit question: a short question ending with ?")
+            if norm_key(yes) == norm_key(no):
+                raise DecisionError("habit: the two sentences are the same")
+        if mode == "state" and not no:
+            raise DecisionError("habit state: the sentence to state")
+        return habit_key(para, cond), {"mode": mode, "question": q, "yes": yes, "no": no}
     split_normal_key(key)
     return key, {"text": _text(choice.get("text", ""), "normal wording", allow_slots=False)}
 
@@ -376,6 +422,9 @@ def item_label(kind: str, key: str) -> str:
     if kind == "normal":
         para, label, neg = split_normal_key(key)
         return f'{para}: "{label}"' if neg else f"{para}: {label}"
+    if kind == "habit":
+        para, cond = split_habit_key(key)
+        return f"{para}: when {cond}"
     return key
 
 
@@ -390,6 +439,9 @@ def state_label(kind: str, choice: Optional[dict]) -> str:
         if not choice.get("use"):
             return "whichever is dictated" if choice.get("dictated") else "not used"
         return f'"{choice.get("default") or choice.get("when_met")}"'
+    if kind == "habit":
+        return {"ask": f'asked: "{choice.get("question")}"',
+                "state": f'always stated: "{choice.get("no")}"'}.get(choice.get("mode"), "not used")
     return f'"{choice.get("text")}"' if choice.get("text") else "removed"
 
 

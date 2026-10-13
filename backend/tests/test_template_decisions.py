@@ -198,3 +198,43 @@ def test_full_sentence_edges():
 
 def test_a_lowercase_led_word_holding_a_capital_starts_a_sentence():
     assert td.is_sentence("eGFR was 60.") and td.is_sentence("pH was 7.")
+
+
+# ── habit (spec 2026-10-13-findings-triggered-rows-design) ──
+H = "Upper :: an alpha abnormality is reported"
+HASK = {"mode": "ask", "question": "Extension beyond alpha?", "yes": "The abnormality extends beyond alpha.",
+        "no": "No extension beyond alpha."}
+
+
+def test_habit_is_a_ledger_kind_keyed_by_paragraph_and_condition():
+    assert "habit" in td.KINDS and td.HABIT_MODES == ("ask", "state", "removed")
+    assert td.habit_key(" Upper ", "an  alpha abnormality is reported") == H
+    assert td.split_habit_key(H) == ("Upper", "an alpha abnormality is reported")
+    assert td.match_key("habit", "upper ::  An alpha abnormality is REPORTED") == td.match_key("habit", H)
+    with pytest.raises(td.DecisionError):
+        td.split_habit_key("Upper")
+
+
+def test_habit_choices_validate():
+    assert td.validate("habit", H, HASK) == (H, HASK)
+    assert td.validate("habit", H, {"mode": "state", "no": "No extension beyond alpha."})[1] == {
+        "mode": "state", "question": "", "yes": "", "no": "No extension beyond alpha."}
+    assert td.validate("habit", H, {"mode": "removed"})[1]["mode"] == "removed"
+    for bad in ({**HASK, "mode": "maybe"}, {**HASK, "question": "Extension beyond alpha"}, {**HASK, "yes": HASK["no"]},
+                {**HASK, "no": 'No "quoted" extension.'}, {"mode": "state"}, {**HASK, "yes": "Width {value} mm."},
+                {**HASK, "question": ""}):
+        with pytest.raises(td.DecisionError):
+            td.validate("habit", H, bad)
+    with pytest.raises(td.DecisionError):   # one content word: the grammar's subject rule would refuse it
+        td.validate("habit", "Upper :: alpha is reported", HASK)
+
+
+def test_habit_set_find_describe_and_clean():
+    led, ch = td.set_decision([], "habit", H, HASK, source="creation", at="t")
+    assert ch["old"] is None and td.find(led, "habit", "upper :: an alpha abnormality is reported")
+    led, ch = td.set_decision(led, "habit", H, {**HASK, "mode": "state"}, source="chat", at="t2")
+    assert td.describe_change(ch) == (
+        'This changes something you confirmed: Upper: when an alpha abnormality is reported '
+        'asked: "Extension beyond alpha?" → always stated: "No extension beyond alpha.".')
+    assert td.state_label("habit", {**HASK, "mode": "removed"}) == "not used"
+    assert td.clean_ledger(led) == led
