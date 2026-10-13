@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	blockingValues, chipLabel, enterValue, failFill, filledItems, initialChips, isFilling, keepStated, markNa, markRestNa, mergeFill,
-	naItems, startFill, valueStatements, valuesKey
+	naItems, startFill, valueStatements, valuesBody, valuesKey
 } from './values';
 import type { ValueChip } from './types';
 
@@ -52,6 +52,23 @@ describe('value cluster chips', () => {
 		expect(isFilling(failFill(c))).toBe(false);
 	});
 
+	it('a failed fill never undoes the radiologist\'s choices: a kept "stated" chip stays kept', () => {
+		let c = mergeFill(initialChips(['Conus level', 'LVEF', 'RVEF']), [{ item: 'Conus level', state: 'filled', value: null, quote: null }]);
+		c = markNa(enterValue(keepStated(c, 'Conus level'), 'LVEF', '45%'), 'RVEF');
+		const before = c;
+		c = failFill(startFill(c));
+		expect(c).toEqual(before);
+		expect(c[0]).toEqual({ item: 'Conus level', state: 'filled', value: null, quote: null, kept: true });
+	});
+
+	it('a value typed while a fill runs stands when the fill lands', () => {
+		let c = startFill(initialChips(ITEMS));
+		c = enterValue(c, 'LVEF', '50%');
+		c = mergeFill(c, [{ item: 'LVEF', state: 'filled', value: '45%', quote: 'LVEF 45%.' }]);
+		expect(c[0]).toEqual({ item: 'LVEF', state: 'entered', value: '50%', quote: null });
+		expect(c.slice(1).map((x) => x.state)).toEqual(['open', 'open']);
+	});
+
 	it('typing empty reopens a chip; Mark rest N/A closes only the open ones', () => {
 		let c = enterValue(initialChips([...ITEMS, 'Conus level']), 'LVEF', ' 45% ');
 		expect(c[0]).toEqual({ item: 'LVEF', state: 'entered', value: '45%', quote: null });
@@ -72,6 +89,17 @@ describe('value cluster chips', () => {
 		expect(valueStatements(c)).toEqual(['LVEDVi 98 mL/m²']);
 		expect(naItems(c)).toEqual(['RVEF']);
 		expect(filledItems(c)).toEqual(['LVEF', 'Conus level']); // the post-generation backstop checks these in the report
+	});
+
+	it('the Generate body carries the N/A and filled items only when the session has a value cluster', () => {
+		const c: ValueChip[] = [
+			{ item: 'LVEF', state: 'filled', value: '45%', quote: 'LVEF 45%.' },
+			{ item: 'LVEDVi', state: 'entered', value: '98', quote: null },
+			{ item: 'RVEF', state: 'na', value: null, quote: null }
+		];
+		expect(valuesBody(c)).toEqual({ stack_values_na: ['RVEF'], stack_values_filled: ['LVEF'] });
+		expect(valuesBody([])).toEqual({ stack_values_na: [], stack_values_filled: [] });
+		expect(valuesBody(undefined)).toEqual({}); // an old gate or no template values: the server keeps today's behaviour
 	});
 
 	it('labels each state, and the gate key changes with any chip', () => {

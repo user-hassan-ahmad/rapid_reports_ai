@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 NA_PREFIX = "Values not provided"
 VALUE_MISSING = "value_missing"
+VALUE_CHECK_UNAVAILABLE = "value_check_unavailable"   # the backstop could not run: never a silent failure
 _NA_LINE = re.compile(r"(?im)^[ \t]*(?:[-*•][ \t]*)?values not provided\b[^\n]*\n?")
 
 
@@ -84,7 +85,8 @@ def values_applied(rec: dict) -> bool:
 async def backstop(report: str, lists: List[dict], filled: Sequence[str], ask=None) -> Tuple[List[dict], List[dict], dict]:
     """The post-generation backstop: (lists with every filled value the report does not state added to its list's
     N/A items, value_missing review flags, record). Jev decides (ask_report_values, BACKSTOP_MIN); code lists and
-    flags. A Jev failure or a short reply changes nothing and flags nothing; no filled items: no call."""
+    flags. A Jev failure or a short reply changes nothing and adds one value_check_unavailable flag (never silent);
+    no filled items: no call."""
     rec: dict = {"asked": 0, "missing": [], "error": None}
     required = {norm_key(x) for e in lists for x in e["items"]}   # the client's items, checked against the template
     items = list(dict.fromkeys(x.strip() for x in filled
@@ -101,7 +103,8 @@ async def backstop(report: str, lists: List[dict], filled: Sequence[str], ask=No
         rec["error"] = ("jev: answer count mismatch" if isinstance(e, ValueError) and "mismatch" in str(e)
                         else f"{type(e).__name__}: {e}"[:200])
         logger.warning("[template.required_values] backstop error=%s", rec["error"])
-        return lists, [], rec
+        return lists, [{"kind": VALUE_CHECK_UNAVAILABLE, "text": "",
+                        "message": "Required values could not be checked against the report"}], rec
     missing = [i for i, p in zip(items, scores) if p < BACKSTOP_MIN]
     rec["missing"] = missing
     if not missing:

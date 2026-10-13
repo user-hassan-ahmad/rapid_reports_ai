@@ -212,6 +212,8 @@
 	const looseRows = $derived(items.filter((i) => i.kind === 'finding' && !covered.has(anchorRegion(i, units))));
 	const openRows = $derived(openCount(items, tapped, removed, skipped));
 	const openValueCount = $derived(values.filter((v) => v.state === 'open' || v.state === 'check').length);
+	// A required-value editor holding unsaved text holds Confirm (like an inline line edit)
+	let valueDraft = $state(false);
 	// Checks still asking: not answered, and their words still in the text (an edit that removes them resolves them).
 	// A check whose words are on a line shown here is an underline with a hover card; any other is a row, in the card
 	// holding its sentence or up top.
@@ -841,7 +843,7 @@
 <svelte:window onkeydown={walkKey} />
 
 <div class="space-y-3" data-testid="hybrid-stack">
-	<ValueChips {values} {current} onEnter={onEnterValue} onNa={onValueNa} onRestNa={onValuesRestNa} onKeep={onKeepValue} />
+	<ValueChips {values} {current} onEnter={onEnterValue} onNa={onValueNa} onRestNa={onValuesRestNa} onKeep={onKeepValue} onDraft={(d) => (valueDraft = d)} />
 	<!-- The scratchpad box (hand read 2026-10-12): one permanent, fixed-size box for what is being said now and a line
 	     to type into. It never changes size, so nothing below it jumps; longer text scrolls inside it, pinned to the
 	     latest line. -->
@@ -1164,7 +1166,7 @@
 				{#if stops.length > 1}<button type="button" class="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-gray-200 hover:bg-white/[0.06]" onclick={nextStop}>Next ›</button>{/if}
 				{#if !stops.length}
 					<button type="button" class="rounded-lg bg-purple-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-40"
-						disabled={!hasConclusion || syncing || editing !== null || newLine.trim().length > 0} onclick={finishWalk}>{onConfirmGenerate ? 'Confirm & Generate' : 'Confirm'}</button>
+						disabled={!hasConclusion || syncing || editing !== null || valueDraft || newLine.trim().length > 0} onclick={finishWalk}>{onConfirmGenerate ? 'Confirm & Generate' : 'Confirm'}</button>
 				{/if}
 			</span>
 		</section>
@@ -1189,7 +1191,7 @@
 			class="rounded-lg px-4 py-1.5 text-xs font-medium transition-colors {gateConfirmed
 				? 'bg-emerald-500/20 text-emerald-200'
 				: 'bg-purple-700 text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-40'}"
-			disabled={gateConfirmed || !hasConclusion || syncing || newLine.trim().length > 0 || editing !== null}
+			disabled={gateConfirmed || !hasConclusion || syncing || newLine.trim().length > 0 || editing !== null || valueDraft}
 			onclick={() => (stops.length ? startWalk() : onConfirm())}
 			>{gateConfirmed ? 'Confirmed ✓' : syncing ? 'Updating…' : stops.length ? `Confirm · ${stops.length} to resolve` : 'Confirm'}</button>
 	</section>

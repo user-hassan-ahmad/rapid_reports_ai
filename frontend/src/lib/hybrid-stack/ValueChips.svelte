@@ -3,8 +3,9 @@
 	// chips at the top of the scratchpad. Filled from the dictation (its source on hover), typed, N/A, open, "stated?"
 	// (stated, no sentence named: needs a look) or filling. Open and "stated?" chips block Confirm. Click a chip to
 	// type its value; "Mark rest N/A" closes every open one (a sequence not acquired). Each chip is a walkthrough stop
-	// (data-stop "value:<item>"), ringed while it is the current stop.
-	import { tick } from 'svelte';
+	// (data-stop "value:<item>"), ringed while it is the current stop and opened to type. An editor holding unsaved
+	// text is reported up (onDraft) so Confirm waits for it.
+	import { tick, untrack } from 'svelte';
 	import { chipLabel } from './values';
 	import type { ValueChip } from './types';
 
@@ -14,7 +15,8 @@
 		onEnter,
 		onNa,
 		onRestNa,
-		onKeep
+		onKeep,
+		onDraft = () => {}
 	}: {
 		values: ValueChip[];
 		/** The walkthrough's current stop ("value:<item>" rings that chip). */
@@ -25,10 +27,24 @@
 		onRestNa: () => void;
 		/** A "stated?" chip kept as stated. */
 		onKeep: (item: string) => void;
+		/** An editor is open with text that differs from its chip (true) or not (false). */
+		onDraft?: (dirty: boolean) => void;
 	} = $props();
 
 	let editing: string | null = $state(null);
 	let text = $state('');
+	let input: HTMLInputElement | null = $state(null);
+	const chipEls: Record<string, HTMLButtonElement | null> = $state({});
+	const dirty = $derived(editing !== null && text.trim() !== (values.find((v) => v.item === editing)?.value ?? ''));
+	$effect(() => onDraft(dirty));
+	// The walkthrough reaching a chip opens it to type (only when the stop changes: Escape leaves it closed)
+	$effect(() => {
+		const stop = current;
+		untrack(() => {
+			const v = stop?.startsWith('value:') ? values.find((x) => `value:${x.item}` === stop) : null;
+			if (v && editing !== v.item) void edit(v);
+		});
+	});
 	const openCount = $derived(values.filter((v) => v.state === 'open').length);
 	const tone: Record<ValueChip['state'], string> = {
 		filled: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200',
@@ -44,22 +60,29 @@
 		editing = v.item;
 		text = v.value ?? '';
 		await tick();
-		document.querySelector<HTMLInputElement>('[data-testid="value-input"]')?.focus();
+		input?.focus();
+	}
+	/** Close the editor and give focus back to its chip. */
+	async function close() {
+		const item = editing;
+		editing = null;
+		await tick();
+		if (item !== null) chipEls[item]?.focus();
 	}
 	function save() {
 		if (editing === null) return;
 		onEnter(editing, text);
-		editing = null;
+		void close();
 	}
 	function na() {
 		if (editing === null) return;
 		onNa(editing);
-		editing = null;
+		void close();
 	}
 	function keep() {
 		if (editing === null) return;
 		onKeep(editing);
-		editing = null;
+		void close();
 	}
 	function key(e: KeyboardEvent) {
 		if (e.key === 'Enter') {
@@ -67,7 +90,7 @@
 			save();
 		} else if (e.key === 'Escape') {
 			e.preventDefault();
-			editing = null;
+			void close();
 		}
 	}
 	const title = (v: ValueChip) =>
@@ -75,6 +98,15 @@
 		: v.state === 'check' ? 'Stated in the dictation, but no single sentence gives its value: check it'
 		: v.state === 'filling' ? 'Reading the dictation…'
 		: v.state === 'open' ? 'Click to type the value' : 'Click to change';
+	const said: Record<ValueChip['state'], string> = {
+		filled: 'from dictation',
+		entered: 'typed',
+		na: 'not applicable',
+		open: 'needs a value',
+		check: 'stated in dictation, needs a look',
+		filling: 'reading the dictation'
+	};
+	const ariaLabel = (v: ValueChip) => `${chipLabel(v)}, ${v.state === 'filled' && v.kept ? 'stated in dictation, kept' : said[v.state]}`;
 </script>
 
 {#if values.length}
@@ -83,9 +115,9 @@
 		<span class="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Required values</span>
 		{#each values as v (v.item)}
 			{#if editing === v.item}
-				<span class="flex items-center gap-1 rounded {ring(v)}" data-stop={`value:${v.item}`}>
+				<span class="flex items-center gap-1 rounded {ring(v)}" data-testid="value-editor" data-stop={`value:${v.item}`}>
 					<span class="text-gray-300">{v.item}</span>
-					<input data-testid="value-input" aria-label={`Value for ${v.item}`} bind:value={text} onkeydown={key}
+					<input bind:this={input} data-testid="value-input" aria-label={`Value for ${v.item}`} bind:value={text} onkeydown={key}
 						class="w-24 rounded border border-white/15 bg-black/30 px-1.5 py-0.5 text-gray-100" />
 					<button type="button" class="rounded border border-white/15 px-1.5 py-0.5 text-gray-300 hover:bg-white/[0.06]" onclick={save}>Save</button>
 					{#if v.state === 'check'}
@@ -95,7 +127,7 @@
 				</span>
 			{:else}
 				<button type="button" class="rounded border px-1.5 py-0.5 {tone[v.state]} {ring(v)}" data-state={v.state} data-stop={`value:${v.item}`}
-					title={title(v)} onclick={() => edit(v)}>{chipLabel(v)}</button>
+					bind:this={chipEls[v.item]} aria-label={ariaLabel(v)} title={title(v)} onclick={() => edit(v)}>{chipLabel(v)}</button>
 			{/if}
 		{/each}
 		{#if openCount}

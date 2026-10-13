@@ -146,15 +146,19 @@ async def test_backstop_leaves_a_value_the_report_states_alone():
     assert write_missing("Findings:\nLVEF 45%.", SHEET, lists)[0] == "Findings:\nLVEF 45%."
 
 
-async def test_backstop_jev_failure_changes_nothing_and_flags_nothing():
+_UNAVAILABLE = [{"kind": "value_check_unavailable", "text": "",
+                 "message": "Required values could not be checked against the report"}]
+
+
+async def test_backstop_jev_failure_changes_nothing_and_says_so_once():
     _, rec = apply_required_values(SHEET, [])
 
     async def boom(report, items):
         raise RuntimeError("jev down")
-    lists, flags, b = await backstop("Findings:\nNormal.", rec["lists"], ["LVEF"], ask=boom)
-    assert lists is rec["lists"] and flags == [] and b["error"].startswith("RuntimeError")
+    lists, flags, b = await backstop("Findings:\nNormal.", rec["lists"], ["LVEF", "LV mass index"], ask=boom)
+    assert lists is rec["lists"] and flags == _UNAVAILABLE and b["error"].startswith("RuntimeError")
     lists, flags, b = await backstop("Findings:\nNormal.", rec["lists"], ["LVEF"], ask=_scores([]))
-    assert lists is rec["lists"] and flags == [] and b["error"] == "jev: answer count mismatch"
+    assert lists is rec["lists"] and flags == _UNAVAILABLE and b["error"] == "jev: answer count mismatch"
 
 
 @pytest.mark.parametrize("filled", [[], [" "], None])

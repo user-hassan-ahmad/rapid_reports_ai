@@ -30,8 +30,10 @@ export function mergeFill(chips: ValueChip[], fill: ValueFill[]): ValueChip[] {
 	});
 }
 
-/** The fill failed: chips the dictation filled are open again (never blocks on the network). */
-export const failFill = (chips: ValueChip[]): ValueChip[] => mergeFill(chips, []);
+/** The fill failed: the radiologist's choices stand (entered, N/A, a kept "stated" chip); chips only the dictation
+ *  filled are open again, since the fill that would confirm them did not land (never blocks on the network). */
+export const failFill = (chips: ValueChip[]): ValueChip[] =>
+	chips.map((c) => (own(c) ? c : c.kept ? { item: c.item, state: 'filled', value: null, quote: null, kept: true } : opened(c.item)));
 
 /** A typed value; empty reopens the chip. */
 export function enterValue(chips: ValueChip[], item: string, text: string): ValueChip[] {
@@ -59,6 +61,9 @@ export const isFilling = (chips: ValueChip[]): boolean => chips.some((c) => c.st
 export const naItems = (chips: ValueChip[]): string[] => chips.filter((c) => c.state === 'na').map((c) => c.item);
 /** Values filled from the dictation: sent with Generate so the post-generation backstop checks the report states each. */
 export const filledItems = (chips: ValueChip[]): string[] => chips.filter((c) => c.state === 'filled').map((c) => c.item);
+/** The value cluster's fields in the Generate body (absent: no cluster this session, the server keeps today's path). */
+export const valuesBody = (chips: ValueChip[] | undefined): { stack_values_na?: string[]; stack_values_filled?: string[] } =>
+	chips ? { stack_values_na: naItems(chips), stack_values_filled: filledItems(chips) } : {};
 export const valuesKey = (chips: ValueChip[]): string => chips.map((c) => `${c.item}\u0001${c.state}\u0001${c.value ?? ''}`).join('\u0002');
 
 /** What Generate states as the radiologist's answers: only values they typed (Hassan 2026-10-13). A filled value

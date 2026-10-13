@@ -51,15 +51,53 @@ describe('ValueChips', () => {
 		expect(p.onEnter).not.toHaveBeenCalled();
 	});
 
-	it('Mark rest N/A shows only while a chip is open; the walkthrough\'s current chip is ringed', async () => {
+	it('Mark rest N/A shows only while a chip is open; the walkthrough\'s current chip is ringed and opened to type', async () => {
 		const p = props();
 		const r = render(ValueChips, { ...p, current: 'value:LV mass index' });
-		await expect.element(page.getByRole('button', { name: 'LV mass index —' })).toHaveClass('ring-2');
+		await expect.element(page.getByLabelText('Value for LV mass index')).toHaveFocus();
+		await expect.element(page.getByTestId('value-editor')).toHaveClass('ring-2');
 		await expect.element(page.getByRole('button', { name: 'LVEF 45%' })).not.toHaveClass('ring-2');
 		await page.getByRole('button', { name: 'Mark rest N/A' }).click();
 		expect(p.onRestNa).toHaveBeenCalled();
 		r.rerender({ ...p, values: VALUES.map((v) => (v.state === 'open' ? { ...v, state: 'na' as const } : v)) });
 		await expect.element(page.getByRole('button', { name: 'Mark rest N/A' })).not.toBeInTheDocument();
+	});
+
+	it('each chip names its state for a screen reader', async () => {
+		render(ValueChips, props());
+		const name = (n: string) => page.getByRole('button', { name: n, exact: true });
+		await expect.element(name('LVEF 45%, from dictation')).toBeInTheDocument();
+		await expect.element(name('LVEDVi 98, typed')).toBeInTheDocument();
+		await expect.element(name('RVEF N/A, not applicable')).toBeInTheDocument();
+		await expect.element(name('LV mass index —, needs a value')).toBeInTheDocument();
+		await expect.element(name('Conus level stated?, stated in dictation, needs a look')).toBeInTheDocument();
+		await expect.element(name('Aortic flow …, reading the dictation')).toBeInTheDocument();
+	});
+
+	it('focus returns to the chip after Save, N/A or Escape', async () => {
+		render(ValueChips, props());
+		const chip = page.getByRole('button', { name: 'LV mass index —' });
+		await chip.click();
+		await page.getByLabelText('Value for LV mass index').fill('60');
+		await userEvent.keyboard('{Enter}');
+		await expect.element(chip).toHaveFocus();
+		await chip.click();
+		await userEvent.keyboard('{Escape}');
+		await expect.element(chip).toHaveFocus();
+		await chip.click();
+		await page.getByRole('button', { name: 'N/A', exact: true }).click();
+		await expect.element(chip).toHaveFocus();
+	});
+
+	it('reports an editor holding unsaved text, so Confirm can wait for it', async () => {
+		const onDraft = vi.fn();
+		render(ValueChips, { ...props(), onDraft });
+		await page.getByRole('button', { name: 'LVEDVi 98' }).click();
+		expect(onDraft).toHaveBeenLastCalledWith(false); // opened, nothing changed yet
+		await page.getByLabelText('Value for LVEDVi').fill('99');
+		await vi.waitFor(() => expect(onDraft).toHaveBeenLastCalledWith(true));
+		await userEvent.keyboard('{Escape}');
+		await vi.waitFor(() => expect(onDraft).toHaveBeenLastCalledWith(false));
 	});
 
 	it('renders nothing without required values', async () => {

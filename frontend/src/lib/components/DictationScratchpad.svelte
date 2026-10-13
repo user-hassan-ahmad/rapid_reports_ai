@@ -1799,6 +1799,7 @@
 		stackRegionNormals = {};
 		stackNotAssessable = '';
 		stackTemplateUnusable = false;
+		valuesSeq++; // a fill still running belongs to the old sheet
 		valueChips = [];
 		onStackSheet(null);
 		if (!hybridStack || !stackRegions.length) return;
@@ -1825,7 +1826,8 @@
 		try {
 			const res = await postValues($token, { dictation: text, template_id: stackTemplateId });
 			if (seq !== valuesSeq) return;
-			valueChips = res.error ? failFill(valueChips) : mergeFill(valueChips, res.values);
+			// the dictation changed while the fill ran: its answer is stale (the next review fills again)
+			valueChips = res.error || verbatimNow !== text ? failFill(valueChips) : mergeFill(valueChips, res.values);
 		} catch {
 			if (seq === valuesSeq) valueChips = failFill(valueChips);
 		}

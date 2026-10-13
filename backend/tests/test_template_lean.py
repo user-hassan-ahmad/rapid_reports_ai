@@ -589,7 +589,7 @@ async def test_a_filled_value_the_report_lacks_is_listed_and_flagged(monkeypatch
     assert out["required_values"]["backstop"] == {"asked": 2, "missing": ["LVEF"], "error": None}
 
 
-async def test_a_backstop_failure_leaves_the_report_and_flags_nothing(monkeypatch):
+async def test_a_backstop_failure_leaves_the_report_and_flags_only_that_it_could_not_check(monkeypatch):
     from rapid_reports_ai import template_required_values as trv
     calls = {}
     _gen_fakes(monkeypatch, calls)
@@ -605,6 +605,8 @@ async def test_a_backstop_failure_leaves_the_report_and_flags_nothing(monkeypatc
     assert "Values not provided" not in out["report_content"]
     assert not any(f.get("kind") == "value_missing" for f in (out["quality_check"] or {}).get("review") or [])
     assert out["required_values"]["backstop"]["error"].startswith("RuntimeError")
+    assert [f["kind"] for f in out["quality_check"]["review"] if f.get("kind", "").startswith("value_")] \
+        == ["value_check_unavailable"]
 
 
 async def test_nothing_na_gives_no_list_and_no_line(monkeypatch):
