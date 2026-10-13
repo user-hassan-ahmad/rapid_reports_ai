@@ -38,13 +38,14 @@
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
-	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
+	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet, postValues } from '$lib/hybrid-stack/api';
+	import { enterValue, failFill, initialChips, isFilling, keepStated, markNa, markRestNa, mergeFill, startFill, valuesKey } from '$lib/hybrid-stack/values';
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
 	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
 	import { abnormalAll, assumedFrom, moreLine, openCount, rowSentences, splitReply, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
-	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
+	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit, ValueChip } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
 	import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
@@ -300,6 +301,10 @@
 	/** A template whose sheet has no usable structure: no assumed normals, and Generate takes today's template path. */
 	let stackTemplateUnusable = false;
 	let slimSeq = 0;
+	// The value cluster (requirements spec 2026-10-12 part 1): the template's required values (from the slim-sheet call),
+	// filled when the sheet loads and at each end-of-dictation review; the radiologist's own answers stand.
+	let valueChips: ValueChip[] = [];
+	let valuesSeq = 0;
 	let shownSentences: string[] = []; // every row sentence shown this session (a row owns its check)
 	// The session's referral rows: the first /items reply's, fixed so they never drift (null until it answers).
 	let fixedReferrals: { question: string; region: string; sentences: string[] }[] | null = null;
@@ -364,7 +369,7 @@
 	}
 	$: gateKey = [verbatimNow, JSON.stringify(checks.map((c) => c.key)), JSON.stringify(checkAnswers), findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
 		regionView.remainder.join('|'), String(rowsOpen), Object.keys(tappedRows).join('|'), Object.keys(skippedRows).join('|'), removedSentences.join('|'),
-		JSON.stringify(confirmedAssumed)].join('\u0003');
+		JSON.stringify(confirmedAssumed), valuesKey(valueChips)].join('\u0003');
 	$: if (stackGate && stackGate.units_hash !== gateKey) {
 		stackGate = null;
 		onStackGate(null, '');
@@ -1577,6 +1582,7 @@
 	/** The first review always runs; after it, a material change runs the full review (and the conclusion reacts),
 	 *  anything else the quiet re-check. */
 	async function gateReview(text: string): Promise<void> {
+		void refreshValues(text);
 		const before = reviewedAbnormal;
 		const after = abnormalAll(stackUnits);
 		if (before === null) {
@@ -1793,6 +1799,7 @@
 		stackRegionNormals = {};
 		stackNotAssessable = '';
 		stackTemplateUnusable = false;
+		valueChips = [];
 		onStackSheet(null);
 		if (!hybridStack || !stackRegions.length) return;
 		try {
@@ -1802,9 +1809,25 @@
 			if (!res.ready) return;
 			stackRegionNormals = res.region_normals;
 			stackNotAssessable = res.not_assessable;
+			valueChips = initialChips(res.required_values ?? []);
+			if (verbatimNow.trim()) void refreshValues(verbatimNow); // dictation already there: fill now, not at the next review
 			onStackSheet(res.id);
 		} catch {
 			/* fail open: no quiet lines */
+		}
+	}
+	/** The value cluster's smart fill: Jev says which required values the dictation states, code reads each number.
+	 *  The chips show "filling" (Confirm waits) until it answers; a failure leaves them open (never blocks for long). */
+	async function refreshValues(text: string): Promise<void> {
+		if (!stackTemplateId || !valueChips.length) return;
+		const seq = ++valuesSeq;
+		valueChips = startFill(valueChips);
+		try {
+			const res = await postValues($token, { dictation: text, template_id: stackTemplateId });
+			if (seq !== valuesSeq) return;
+			valueChips = res.error ? failFill(valueChips) : mergeFill(valueChips, res.values);
+		} catch {
+			if (seq === valuesSeq) valueChips = failFill(valueChips);
 		}
 	}
 	/** Which region normals stay assumed, given the dictation (spec §5). The answer is kept with the dictation and
@@ -1969,6 +1992,7 @@
 			checks: Object.values(seenChecks).map((c) => ({ kind: c.kind, quote: c.quote, other: c.other,
 				answered_by: checkAnswers[c.key] ?? (checks.some((x) => x.key === c.key) ? 'open' : 'edited') })),
 			units_hash: gateKey,
+			...(valueChips.length ? { values: valueChips } : {}),
 			...offeredAndDropped(assumedSnap?.offered ?? stackRegionNormals, assumedSnap?.dropped, assumedSnap?.check_failed)
 		};
 		stackGate = gate;
@@ -2051,6 +2075,8 @@
 		reviewFailed = false;
 		removedSentences = [];
 		assumedSnap = null;
+		valuesSeq++; // a fill still running belongs to the old case
+		valueChips = initialChips(valueChips.map((c) => c.item));
 		scheduleItems(0);
 		draft = null;
 		draftFailed = false;
@@ -2637,7 +2663,9 @@
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
 							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
 							onConfirm={stackConfirm} onConfirmGenerate={onStackGenerate ? () => { stackConfirm(); onStackGenerate?.(); } : null} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
-							syncing={assumedBehind || checksBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
+							values={valueChips} onEnterValue={(i, t) => (valueChips = enterValue(valueChips, i, t))} onValueNa={(i) => (valueChips = markNa(valueChips, i))}
+							onValuesRestNa={() => (valueChips = markRestNa(valueChips))} onKeepValue={(i) => (valueChips = keepStated(valueChips, i))}
+							syncing={isFilling(valueChips) || assumedBehind || checksBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
 					{/if}
 				</div>
 
