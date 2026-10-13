@@ -321,6 +321,8 @@ def _golden(e: Entry, cases: Cases | None) -> list[str]:
             p.append(f"case {c.name!r}: outcome {t.outcome} != expected {c.outcome}")
         if c.needed is not None and t.needed != c.needed:
             p.append(f"case {c.name!r}: needed {t.needed} != expected {c.needed}")
+        if c.waiting is not None and t.waiting != c.waiting:
+            p.append(f"case {c.name!r}: waiting {t.waiting} != expected {c.waiting}")
         got = {s.id: s for s in t.steps}
         for sid, want in c.steps.items():
             s = got.get(sid)

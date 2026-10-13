@@ -378,6 +378,13 @@
    "outcome": null,
    "needed": [
     "prior_study"
+   ],
+   "waiting": [
+    "resolved",
+    "growth",
+    "prior_volume_mm3",
+    "current_volume_mm3",
+    "interval_days"
    ]
   },
   {

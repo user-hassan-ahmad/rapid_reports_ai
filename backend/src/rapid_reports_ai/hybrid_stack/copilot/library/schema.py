@@ -428,6 +428,7 @@ class GoldenCase(_M):
     inputs: dict[str, Any]
     outcome: str | None = None         # None: no outcome yet, an input is still needed
     needed: list[str] | None = None
+    waiting: list[str] | None = None   # inputs behind a prerequisite still unknown (engine Trace.waiting, spec §7.4)
     steps: dict[str, Any] = Field(default_factory=dict)   # step id -> expected value (floats within 1e-3)
 
 

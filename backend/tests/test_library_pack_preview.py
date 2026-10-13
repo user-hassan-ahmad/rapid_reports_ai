@@ -187,6 +187,12 @@ async def test_an_unbounded_preview_says_so_and_asks_every_reaching_input(monkey
     assert out.proposal is None and out.bounded is False and BTS_BROCK <= set(out.missing)
 
 
+async def test_the_preview_carries_the_waiting_inputs(toy_entry, monkeypatch, jev):
+    _model(monkeypatch, SIZE)
+    out = await PP.preview_pack(toy_entry, FINDINGS, "", {}, finding=FINDINGS)
+    assert out.missing == ["kind"] and out.waiting == ["risk"]          # risk waits behind its parent kind
+
+
 async def test_a_bounded_preview_says_so(toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND, SIZE)
     assert (await PP.preview_pack(toy_entry, FINDINGS, "", {}, finding=FINDINGS)).bounded is True
