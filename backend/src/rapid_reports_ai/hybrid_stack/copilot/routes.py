@@ -125,7 +125,8 @@ class CardIn(BaseModel):
     publication: PublicationIn = Field(default_factory=PublicationIn)
     known: bool = False
     status: Literal["draft", "verified", "new"] = "new"
-    finding: _s(1000) = ""        # library cards: the finding unit's text, as /match returned it
+    finding: _s(M.DICTATION_MAX) = ""   # library cards: the finding unit's text (exam cards: the dictation), as /match
+                                        # returned it
 
     def card(self) -> Card:
         return Card(**self.model_dump())
@@ -185,7 +186,8 @@ class MatchResult(BaseModel):
 
 class OpenRequest(BaseModel):
     card: CardIn
-    finding: _s(1000) = ""        # the card's own finding unit; lesion-scoped inputs are settled only from it
+    finding: _s(M.DICTATION_MAX) = ""   # the card's own finding unit (exam cards: the dictation); lesion-scoped
+                                        # inputs are settled only from it
     findings: str = ""
     clinical_history: str = ""
     answered: dict[str, str] = Field(default_factory=dict)
@@ -260,7 +262,7 @@ async def _branch_for(card: Card, entry: Entry, findings: str, history: str) -> 
 async def _branch_and_preview(card: Card, entry: Entry, req: OpenRequest) -> tuple[str, Preview]:
     """Fail open, bounded: on a failure or PREVIEW_TIMEOUT_S the criteria still show, with no Apply. Only the
     branch's real inputs are passed as answered."""
-    findings, history = req.findings[:6000], req.clinical_history[:2000]
+    findings, history = req.findings[:M.DICTATION_MAX], req.clinical_history[:2000]
 
     async def run() -> tuple[str, Preview]:
         branch = await _branch_for(card, entry, findings, history)
@@ -317,7 +319,7 @@ async def _pack_result(pack, req: OpenRequest, t0: float, opened: bool) -> OpenR
     now; the answers then re-run only the engine over it. Fail open, bounded, as _branch_and_preview."""
     e, view = pack
     sources = L.get().sources(e.key)
-    findings, history = req.findings[:6000], req.clinical_history[:2000]
+    findings, history = req.findings[:M.DICTATION_MAX], req.clinical_history[:2000]
     finding = req.finding or req.card.finding     # the unit sent with the request, else the one /match gave the card
     k = PC.key(e.key, finding, findings, history)
     try:
@@ -336,7 +338,7 @@ async def _pack_result(pack, req: OpenRequest, t0: float, opened: bool) -> OpenR
 def _prewarm(req: MatchRequest, cards: list[Card]) -> int:
     """Start each pack card's settlement now, keyed as /open will key it. Fail open."""
     texts = {f.id: f.text for f in req.findings}
-    dictation = (req.dictation or "\n".join(f.text for f in req.findings))[:6000]
+    dictation = (req.dictation or "\n".join(f.text for f in req.findings))[:M.DICTATION_MAX]
     history = req.clinical_history[:2000]
     n = 0
     for c in cards:
@@ -360,7 +362,7 @@ async def copilot_match(req: MatchRequest, user: User = Depends(get_current_user
     _require()
     t0 = time.perf_counter()
     findings = [Finding(id=f.id, text=f.text) for f in req.findings]
-    dictation = (req.dictation or "\n".join(f.text for f in req.findings))[:6000]
+    dictation = (req.dictation or "\n".join(f.text for f in req.findings))[:M.DICTATION_MAX]
     cards = await match(db, req.scan_type[:300], req.clinical_history[:2000], findings, dictation=dictation)
     _prewarm(req, cards)
     return MatchResult(cards=cards, ms=_ms(t0))
@@ -464,7 +466,8 @@ async def copilot_ask(req: AskRequest, user: User = Depends(get_current_user)):
     _require()
     if req.card is not None and req.card.key == req.key:
         _check_card(req.card)
-    ctx = Context(scan_type=req.scan_type[:300], history=req.clinical_history[:2000], findings=req.findings[:6000])
+    ctx = Context(scan_type=req.scan_type[:300], history=req.clinical_history[:2000],
+                  findings=req.findings[:M.DICTATION_MAX])
     history = [QA(question=h.question, answer=h.answer) for h in req.history[-3:]]
     abandoned = asyncio.Event()
     done, res = await _bounded(_ask_job(req, ctx, history, abandoned), ASK_TIMEOUT_S)
@@ -477,8 +480,8 @@ async def copilot_ask(req: AskRequest, user: User = Depends(get_current_user)):
 @router.post("/recommendations", response_model=RecsResult)
 async def copilot_recs(req: RecsRequest, user: User = Depends(get_current_user)):
     _require()
-    return await suggest(req.scan_type[:300], req.clinical_history[:2000], req.findings[:6000], req.conclusion[:2000],
-                         list(req.applied))
+    return await suggest(req.scan_type[:300], req.clinical_history[:2000], req.findings[:M.DICTATION_MAX],
+                         req.conclusion[:2000], list(req.applied))
 
 
 # ── reviewer ────────────────────────────────────────────────────────────────────────────────────────────────────

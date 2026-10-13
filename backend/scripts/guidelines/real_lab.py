@@ -160,7 +160,7 @@ async def _cards_for(case: dict, sem: asyncio.Semaphore) -> list[dict]:
             return []
         # The live path itself (matcher.library_cards, as /match runs it): the case request, one request per finding,
         # and the shared card builder (exam cards, TNM, modality filter, merge, caps). The case's whole findings text
-        # is the dictation, as the client sends it.
+        # is the dictation, as the client sends it; library_cards caps it at DICTATION_MAX, as live.
         cards = await M.library_cards(case["scan_type"], case["clinical_history"], [M.Finding(**f) for f in fs],
                                       dictation=case["findings"])
         lib, out, seen = LB.get(), [], set()

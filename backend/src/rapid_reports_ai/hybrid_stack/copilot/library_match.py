@@ -34,6 +34,8 @@ PURPOSE_MAX = 500
 _FACTS: "OrderedDict[tuple, CaseFacts]" = OrderedDict()   # (bundle, scan, history) -> facts (successes only)
 _PICKS: "OrderedDict[tuple, tuple]" = OrderedDict()       # (bundle, scan, history, finding) -> (entries, site)
 _OPTIONS: dict[tuple, tuple] = {}                         # bundle identity -> (topics, options); one bundle per deploy
+# The bundle identity is its version plus its current keys: an entry edited under the same version and keys reuses the
+# old option text until the process restarts (acceptable: one bundle per deploy, the bundle is rebuilt with a release).
 
 
 @dataclass
@@ -169,10 +171,14 @@ async def pick(scan: str, history: str, finding: str) -> tuple[list, str | None]
     entries: list = []
     if opts:
         c, conf = J.choice(body, "pick")
+        if c not in opts and c != "none":
+            raise ValueError(f"jev pick {c!r} is not offered")   # malformed: never cached as "none"
         if c in opts and conf >= CHOICE_MIN:
             entries = list(ts[int(c[1:])])
     score = J.scores(body, ["tnm"])["tnm"]
     sc, _ = J.choice(body, "site")
+    if sc not in sites and sc != "none":
+        raise ValueError(f"jev site {sc!r} is not offered")
     site = sites.get(sc) if score >= TNM_Q_MIN else None
     v = (entries, site)
     M._put(_PICKS, k, v)

@@ -770,3 +770,51 @@ async def test_after_a_failed_settle_answers_make_no_model_call(db_session, user
     await CR.copilot_open(CR.OpenRequest(**body), user=user)
     await CR.copilot_preview(CR.OpenRequest(**body, answered={"risk": "low"}), user=user, db=db_session)
     assert len(calls) == m                                              # and then the result is kept
+
+
+def test_a_long_exam_card_from_match_opens_and_is_asked_about(authed, toy_lib, toy, monkeypatch):
+    """An exam card carries the whole dictation as its finding: /open and /ask accept it past 1000 chars."""
+    import copy
+
+    from rapid_reports_ai.hybrid_stack.copilot import library_match as LM
+    from rapid_reports_ai.hybrid_stack.copilot import matcher as M
+    M.clear_cache()
+    d = copy.deepcopy(toy)
+    d.update(trigger=["exam"], exam="a toy study")
+    lib = L.Library({"version": "v2", "entries": {"toy-nodule@1.0": {"entry": d, "sources": TOY_SOURCES}}})
+    monkeypatch.setattr(L, "get", lambda: lib)
+
+    class _R:
+        def __init__(self, body):
+            self._body = body
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self._body
+
+    async def jev(payload, key, timeout, transport=None):
+        qs = payload["questions"]
+        if "modality" in qs:
+            return _R({"answers": {"modality": {"choice": "CT", "confidence": 0.9}, "x_0": {"noul": 0.95}}})
+        return _R({"answers": {"tnm": {"noul": 0.0}, "site": {"choice": "none", "confidence": 0.9}}})
+    monkeypatch.setattr(LM, "jev_post", jev)
+    dictation = "7 mm solid nodule. " + "Liver normal. " * 120
+    assert len(dictation) > 1000
+    cards = authed.post("/api/canvas/stack/guidelines/match", json={
+        "scan_type": "CT", "findings": [{"id": "u1", "text": "7 mm solid nodule."}], "dictation": dictation}).json()["cards"]
+    assert [(c["key"], c["finding_id"]) for c in cards] == [("toy-nodule@1.0", "exam")]
+    card = cards[0]
+    assert card["finding"] == dictation
+    r = authed.post("/api/canvas/stack/guidelines/open", json={"card": card, "finding": card["finding"],
+                                                                "findings": dictation})
+    assert r.status_code == 200 and r.json()["entry"]["key"] == "toy-nodule@1.0"
+
+    async def fake_ask(db, question, key, ctx, history, finding_id="", abandoned=None):
+        return AskResult(kind="card", key=key, answer="a")
+    monkeypatch.setattr(CR, "ask", fake_ask)
+    r = authed.post("/api/canvas/stack/guidelines/ask", json={"question": "why", "key": card["key"], "card": card,
+                                                               "findings": dictation})
+    assert r.status_code == 200
+    M.clear_cache()

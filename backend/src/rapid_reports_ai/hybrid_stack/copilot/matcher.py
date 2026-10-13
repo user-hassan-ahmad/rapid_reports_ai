@@ -33,6 +33,7 @@ TNM_GATE_MIN = 0.7   # provisional: Jev "a primary malignancy of this site that 
 PACK_GATE_MIN = TNM_GATE_MIN   # Jev "the FINDING is the kind of finding this pack applies to" (pack_question)
 MAX_PER_FINDING = 2
 MAX_PER_CASE = 6
+DICTATION_MAX = 6000  # chars of the whole dictation: an exam card's finding, the /match and /open cache key
 CANDIDATES_PER_FINDING = 3   # resolved per finding (a candidate may resolve to nothing; the next one fills in)
 TIMEOUT_S = 8.0
 JEV_TIMEOUT_S = 4.0  # the edition pick and the TNM / pack gates; all fail closed (no pick, no card)
@@ -516,7 +517,12 @@ async def library_cards(scan_type: str, history: str, findings: list[Finding], d
             logger.info("[copilot.match] finding pick failed: %s", type(e).__name__)
             return None
     got = await asyncio.gather(facts(), *(one(f) for f in findings))
-    return await build_cards(got[0], list(zip(findings, got[1:])), history, dictation)
+    text = (dictation or "\n".join(f.text for f in findings))[:DICTATION_MAX]
+    try:
+        return await build_cards(got[0], list(zip(findings, got[1:])), history, text)
+    except Exception as e:   # fail open: an unreadable bundle or a builder error is no library card, never a 500
+        logger.warning("[copilot.match] library cards failed: %s", type(e).__name__)
+        return []
 
 
 async def match(db: Session, scan_type: str, history: str, findings: list[Finding], dictation: str = "") -> list[Card]:

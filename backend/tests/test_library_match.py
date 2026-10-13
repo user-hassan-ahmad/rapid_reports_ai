@@ -427,3 +427,35 @@ def test_tnm_and_library_card_on_one_finding_rank_tnm_first(db_session, monkeypa
 def asyncio_run(coro):
     import asyncio
     return asyncio.run(coro)
+
+
+def test_match_fails_open_when_the_bundle_is_unreadable(db_session, monkeypatch):
+    _no_gptoss(monkeypatch)
+
+    def broken():
+        raise RuntimeError("bundle unreadable")
+    monkeypatch.setattr(L, "get", broken)
+    assert asyncio_run(M.match(db_session, "CT", "", [M.Finding(id="u1", text="x")])) == []
+
+
+@pytest.mark.parametrize("pick,site", [("t99", "none"), ("none", "s9999")])
+def test_a_pick_or_site_jev_did_not_offer_raises_and_caches_nothing(monkeypatch, pick, site):
+    monkeypatch.setattr(L, "get", lambda: _lib(NODULE_A))
+    _jev(monkeypatch, _pick_ans(pick, site=site))
+    with pytest.raises(ValueError):
+        asyncio_run(LM.pick("CT", "", "x"))
+    assert not LM._PICKS
+
+
+def test_library_cards_cap_the_dictation_for_exam_cards(db_session, monkeypatch):
+    lib = _lib(EXAM_ONLY)
+    _wire(monkeypatch, lib, bound={"ex-only"})
+    cards = asyncio_run(M.library_cards("MRI knee", "", [M.Finding(id="u1", text="x")], dictation="y" * 7000))
+    assert cards[0].finding == "y" * M.DICTATION_MAX
+
+
+def test_options_rebuild_when_the_bundle_identity_changes(monkeypatch):
+    a = _lib(NODULE_A)
+    b = L.Library({"version": "v-other", "entries": {"nod-a@1.0": {"entry": {**NODULE_A, "purpose": "Changed."}}}})
+    assert "Manages" in LM._options(a)[1]["t0"]
+    assert "Changed." in LM._options(b)[1]["t0"]
