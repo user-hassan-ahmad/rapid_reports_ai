@@ -250,6 +250,8 @@ def _with_ledger(out: VetOutcome, origin: str, previous: str, ledger: List[dict]
         status = "saved"
         st = tsg.parse_sheet(res.sheet, mode="template").structure
         coverage = [s.name for s in sorted(st.sections, key=lambda s: s.order)]
+    if previous and res.sheet == previous:   # the ledger put back what the edit changed: nothing was applied
+        status = "unchanged"
     return dataclasses.replace(out, status=status, sheet=res.sheet, coverage_sections=coverage, ledger=ledger,
                                ledger_changes=[dict(c) for c in changes], ledger_cards=cards,
                                ledger_unmatched=res.unmatched,
@@ -257,3 +259,20 @@ def _with_ledger(out: VetOutcome, origin: str, previous: str, ledger: List[dict]
 
 
 LEDGER_KEPT = "This would remove something you confirmed, so it was kept; use the card below to change it."
+LEDGER_INVALID = ("That change to something you confirmed can't be written that way, so it was kept; use the card "
+                  "below to change it.")
+LEDGER_RESTATED = "Some example wording repeats a fixed line; it may be stated twice."
+
+
+def ledger_notes(out: VetOutcome) -> List[str]:
+    """The reply lines for a save with a ledger: each confirmed item a chat edit changed, the kept items' card
+    notice (removed whole, or a change code could not write), and the restated-line warning."""
+    from . import template_decisions as td
+    notes = [n for n in (td.describe_change(c) for c in out.ledger_changes) if n]
+    if any(c.get("reason") != "invalid" for c in out.ledger_cards):
+        notes.append(LEDGER_KEPT)
+    if any(c.get("reason") == "invalid" for c in out.ledger_cards):
+        notes.append(LEDGER_INVALID)
+    if out.ledger_warnings:
+        notes.append(LEDGER_RESTATED)
+    return notes

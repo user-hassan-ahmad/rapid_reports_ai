@@ -406,3 +406,21 @@ def test_removing_a_negative_the_sheet_reworded_is_unmatched_not_kept():
     res = tla.apply_ledger(sheet, _led(("normal", td.negative_key("Liver", "No focal liver lesion."), {"text": ""})))
     assert res.sheet == sheet and res.changed == 0
     assert [e["key"] for e in res.unmatched] == ['Liver :: "No focal liver lesion."']
+
+
+def test_a_paragraph_that_comes_back_keeps_its_entries_provenance():
+    led, _ = td.set_decision([], "normal", "Liver :: liver", {"text": "The liver is normal in size."},
+                             source="default", by="code", at="t")
+    renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatic (FINDINGS)")
+    for before, after in ((renamed, LEDGER_SHEET), (LEDGER_SHEET, renamed)):
+        new, changes, cards = tla.reconcile_chat(before, after, led)
+        assert new == led and changes == [] and cards == []
+
+
+def test_undoing_a_value_change_puts_the_value_back_in_its_place():
+    led = _led(("value", "A", {"need": "every"}), ("value", "B", {"need": "every"}), ("value", "C", {"need": "every"}))
+    before = tla.apply_ledger(LEDGER_SHEET, led).sheet
+    after = before.replace('LIST_MISSING ["A" | "B" | "C"]', 'LIST_MISSING ["A" | "C"]')
+    new, changes, _ = tla.reconcile_chat(before, after, led)
+    undone = td.undo_change(new, changes[0])
+    assert 'LIST_MISSING ["A" | "B" | "C"]' in tla.apply_ledger(after, undone).sheet

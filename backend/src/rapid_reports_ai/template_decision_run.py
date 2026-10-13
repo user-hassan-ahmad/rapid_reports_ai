@@ -402,14 +402,16 @@ def evidence(run: DecisionRun, built: Optional[dict] = None) -> dict:
 
 def stamp_review(db, template_id, record: dict) -> bool:
     """Mark a saved template's first-use review as run (template_config["rules_step"]), so the paid run is not
-    repeated on the next open, even when the panel is closed without saving. Never overwrites a record; never
-    raises (the review is evidence, not a reason to fail)."""
+    repeated on the next open, even when the panel is closed without saving. Never overwrites a record, except a
+    failed run's (ok: false; an explicit retry replaces it); never raises (the review is evidence, not a reason
+    to fail)."""
     import uuid
     from sqlalchemy.orm.attributes import flag_modified
     from .database.models import Template
     try:
         tpl = (db.query(Template).filter(Template.id == uuid.UUID(str(template_id))).with_for_update().first())
-        if tpl is None or (tpl.template_config or {}).get("rules_step"):
+        old = (tpl.template_config or {}).get("rules_step") if tpl is not None else None
+        if tpl is None or (old and old.get("ok") is not False):
             db.rollback()
             return False
         tpl.template_config = {**(tpl.template_config or {}), "rules_step": {**record, "first_use": True}}

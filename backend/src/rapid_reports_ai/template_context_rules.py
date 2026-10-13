@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from typing import Awaitable, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from .hybrid_stack.jev_stack import CONDITION_MIN, ask_conditions
+from . import template_decisions as td
 from .hybrid_stack.template import norm_key
 from .template_sheet_grammar import is_grammar_sheet, parse_sheet
 from .template_sheet_structure import Rule, SheetStructure
@@ -118,11 +119,12 @@ def apply_rules(sheet: str, rules: List[Rule], met: Dict[str, bool]) -> Tuple[st
 def _left_on_stack(st: SheetStructure, rules: List[Rule]) -> Set[str]:
     """Rule ids the scratchpad path leaves as today: template_stack strips NORMAL / NEGATIVE units (a met REPLACE
     of one would lose its WITH text) and a USE in a findings section would become a FIXED clinical assertion.
-    A REPLACE / SUPPRESS of a FIXED line is safe anywhere: FIXED lines survive template_stack._strip."""
+    A REPLACE / SUPPRESS of a FIXED line is safe anywhere: FIXED lines survive template_stack._strip. A standard
+    concept's USE (td.CONCEPTS: study-level, not clinical) is resolved wherever it is homed."""
     findings = {s.name for s in st.sections if s.role == "findings"}
     stripped = {norm_key(n.text) for n in st.normals} | {norm_key(n.text) for n in st.negatives}
     return {r.id for r in rules
-            if (r.effect == "use" and r.section in findings)
+            if (r.effect == "use" and r.section in findings and td.concept_of_condition(r.condition) is None)
             or (r.effect in ("replace", "suppress") and norm_key(r.target) in stripped)}
 
 

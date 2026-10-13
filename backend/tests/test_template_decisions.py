@@ -194,3 +194,7 @@ def test_full_sentence_edges():
     for bad in ("assessment is limited.", "phases were acquired", "Compared with the study of {date}",
                 "egfr was {value}.", "", "  .", "- Compared."):
         assert not td.is_sentence(bad), bad
+
+
+def test_a_lowercase_led_word_holding_a_capital_starts_a_sentence():
+    assert td.is_sentence("eGFR was 60.") and td.is_sentence("pH was 7.")

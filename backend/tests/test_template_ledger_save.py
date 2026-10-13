@@ -80,7 +80,7 @@ async def test_unmatched_entries_are_reported_for_the_next_review():
 async def test_a_chat_edit_that_drops_the_whole_value_list_is_kept_and_carded():
     after = "\n".join(ln for ln in APPLIED.split("\n") if "LIST_MISSING" not in ln)
     out = await S.vet_sheet(after, origin="chat", previous=APPLIED, ledger=LVEF)
-    assert out.status == "saved" and out.sheet == APPLIED and out.ledger == LVEF and out.ledger_changes == []
+    assert out.status == "unchanged" and out.sheet == APPLIED and out.ledger == LVEF and out.ledger_changes == []
     assert [c["id"] for c in out.ledger_cards] == ["value:lvef"]
 
 
@@ -186,3 +186,30 @@ async def test_a_stored_fragment_with_a_default_keeps_the_default_only_shape_unt
     out = await S.vet_sheet(LEDGER_SHEET, origin="analyser", ledger=FRAGMENT)
     assert cond not in out.sheet
     assert trc.unmatched_cards(out.ledger_unmatched)[0]["wording"]["when_met"] == _FRAG
+
+
+async def test_a_chat_edit_that_breaks_a_decided_wording_is_unchanged_with_a_card():
+    after = CMP_SHEET.replace("Compared with the previous {modality} of {date}.", "compared with the prior study")
+    out = await S.vet_sheet(after, origin="chat", previous=CMP_SHEET, ledger=CMP)
+    assert out.status == "unchanged" and out.sheet == CMP_SHEET and out.ledger == CMP and out.ledger_changes == []
+    assert [(c["id"], c["reason"]) for c in out.ledger_cards] == [("concept:comparison", "invalid")]
+    assert S.LEDGER_INVALID in S.ledger_notes(out) and S.LEDGER_KEPT not in S.ledger_notes(out)
+
+
+async def test_a_chat_reworded_negative_is_rekeyed_not_removed():
+    key = td.negative_key("Liver", "No focal liver lesion.")
+    led = _led(("normal", key, {"text": "No focal liver lesion."}))
+    before = tla.apply_ledger(LEDGER_SHEET, led).sheet
+    after = before.replace('NEGATIVE "No focal liver lesion."', 'NEGATIVE "No focal hepatic lesion."')
+    out = await S.vet_sheet(after, origin="chat", previous=before, ledger=led)
+    assert out.sheet == after and out.ledger_unmatched == []
+    assert [(e["key"], e["choice"], e["source"]) for e in out.ledger] == [
+        ('Liver :: "No focal hepatic lesion."', {"text": "No focal hepatic lesion."}, "chat")]
+    assert td.describe_change(out.ledger_changes[0]) == ('This changes something you confirmed: Liver: "No focal liver '
+                                                         'lesion." → Liver: "No focal hepatic lesion.".')
+
+
+async def test_a_restated_line_is_a_short_notice():
+    out = await S.vet_sheet(RESTATED, origin="analyser", ledger=COMPARISON)
+    assert S.LEDGER_RESTATED in S.ledger_notes(out)
+    assert S.ledger_notes(await S.vet_sheet(LEDGER_SHEET, origin="analyser", ledger=COMPARISON)) == []

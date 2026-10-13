@@ -29,17 +29,12 @@ ALL = {"comparison": [1, 2, 3], "contrast": [], "sequences": [], "limitation": [
 PRIOR_COND = "the dictation names a previous imaging study for comparison"
 
 
-def test_evidence_line_names_reports_never_percentages():
-    assert C.evidence_line({"reports": [4, 1, 2], "quote": "ECV 28%"}) == "reports 1, 2, 4: 'ECV 28%'"
-    assert C.evidence_line({"reports": [3], "quote": None}) == "report 3: not stated"
-
-
 def test_a_value_in_every_example_is_kept_pre_ticked_and_a_partial_one_is_a_card():
     out = C.build_cards(_run([LVEF, ECV], states=ALL), 3)
     assert [c["id"] for c in out["kept"]] == ["value:lvef"] and out["kept"][0]["selected"] == "every"
     ecv = out["cards"][0]
     assert ecv["id"] == "value:ecv" and ecv["selected"] is None
-    assert [C.evidence_line(e) for e in ecv["evidence"]] == ["reports 1, 3: 'ECV 28%'", "report 2: not stated"]
+    assert ecv["evidence"] == [{"reports": [1, 3], "quote": "ECV 28%"}, {"reports": [2], "quote": None}]
     assert [c["id"] for c in ecv["choices"]] == ["every", "relevant", "not_needed"]
     assert out["defaults"] == [{"kind": "value", "key": "LVEF", "choice": {"need": "every"}}]
 
@@ -237,7 +232,6 @@ def test_the_setup_sets_contrast_when_the_examples_tie():
     assert card["wording"]["default"] == "Following a contrast agent."
     assert card["wording"]["condition"] == "the dictation states no contrast agent was given"
     assert card["evidence"][0] == {"reports": [], "source": "setup", "quote": "with IV contrast"}
-    assert C.evidence_line(card["evidence"][0]) == "From the study setup: 'with IV contrast'"
 
 
 def test_the_setup_against_a_clear_example_majority_asks_showing_both():
@@ -263,7 +257,6 @@ def test_a_concept_stated_in_the_setup_is_evidence_never_a_report_number():
     run.setup = {"comparison": {"state": None, "quote": None}}
     card = C.build_cards(run, 3)["cards"][0]
     assert card["evidence"][0] == {"reports": [], "source": "setup", "quote": None}
-    assert C.evidence_line(card["evidence"][0]) == "From the study setup"
 
 
 def test_unmatched_entries_become_review_cards_with_a_note():
