@@ -43,8 +43,9 @@
 {/snippet}
 
 {#snippet body()}
-	<CardStatus loading={view.loading} error={err} onRetry={() => onRetry(ref)} />
-	{#if !view.loading && !err && view.result}
+	<!-- a re-open (exam card, debounced) keeps the last preview on screen instead of flickering to a skeleton -->
+	<CardStatus loading={view.loading && !view.result} error={err} onRetry={() => onRetry(ref)} />
+	{#if !err && view.result}
 		<PackBody result={view.result} />
 	{/if}
 {/snippet}

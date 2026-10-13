@@ -172,6 +172,13 @@ describe('CopilotCards', () => {
 		expect(p.onRetry).toHaveBeenCalledWith(cardRef(b));
 	});
 
+	it('a card reloading with a result keeps the result on screen (no skeleton flicker)', async () => {
+		const pv = preview({ proposal: outcome({ classification: 'CAD-RADS 3', normal: false }) });
+		render(CopilotCards, single(exam, v(result(exam, pv), { open: true, loading: true }), null));
+		await expect.element(page.getByText('Follow-up as per the guideline table.')).toBeInTheDocument();
+		expect(document.querySelector('[data-testid="cp-card-loading"]')).toBeNull();
+	});
+
 	it('first match in flight shows the skeleton; no cards shows "No guideline applies yet"', async () => {
 		const r = render(CopilotCards, props([], {}, { matching: true }));
 		await expect.element(page.getByTestId('cp-skeleton')).toBeInTheDocument();

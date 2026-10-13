@@ -38,6 +38,9 @@
 	import { EditorState, Compartment, Prec, StateEffect, StateField } from '@codemirror/state';
 	import IntelliPromptsMargin from './IntelliPromptsMargin.svelte';
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
+	import CopilotRail from '$lib/copilot/cards/CopilotRail.svelte';
+	import { createCopilotSession, type CopilotSession, type CopilotState } from '$lib/copilot/session';
+	import { readable, type Readable } from 'svelte/store';
 	import { postAssumed, postChanged, postDictationCheck, postClose, postConclusionCheck, postDebug, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit, similar } from '$lib/hybrid-stack/stackState';
 	import { abnormalAll, assumedFrom, openCount, rowSentences, type AssumedSnap } from '$lib/hybrid-stack/items';
@@ -308,6 +311,27 @@
 	$: pillRegions = stackRegions.map((r) => r.name).filter((n) => n !== OTHER);
 	// The v2 view takes over only once a schema exists: a failed schema fetch leaves today's editor in place.
 	$: stackView = hybridStack && stackRegions.length > 0;
+
+	// Guideline Copilot (plan Task A7): one session while the rail can show; off means no session and no request.
+	// It reads grouping rounds only and never writes the editor, the findings block, the gate or Generate.
+	const noCopilot: Readable<CopilotState | null> = readable(null);
+	let copilot: CopilotSession | null = null;
+	let copilotState: Readable<CopilotState | null> = noCopilot;
+	$: copilotActive = stackCopilot && hybridStack && stackView;
+	$: if (copilotActive && !copilot) startCopilot();
+	else if (!copilotActive && copilot) stopCopilot();
+	$: copilot?.setContext({ scanType, history: clinicalHistory });
+	function startCopilot(): void {
+		copilot = createCopilotSession();
+		copilotState = copilot.state;
+		copilot.setContext({ scanType, history: clinicalHistory });
+		if (stackUnits.length) copilot.round(stackUnits, isRecording, findingsText(stackUnits, stackGroups));
+	}
+	function stopCopilot(): void {
+		copilot?.destroy();
+		copilot = null;
+		copilotState = noCopilot;
+	}
 	$: regionView = regionStates(stackUnits, pillRegions);
 	// Tapped rows stay on screen as the radiologist's answers even after the writer stops returning them.
 	$: viewItems = [...stackItems, ...Object.values(tappedRows).filter((t) => !stackItems.some((i) => i.id === t.id))];
@@ -1530,6 +1554,7 @@
 			const res = await postGroup($token, { scan_type: scanType, text, regions: stackRegions, previous: stackUnits });
 			if (groupable(verbatimNow) === text) {
 				stackUnits = res.units;
+				copilot?.round(stackUnits, isRecording, findingsText(stackUnits, stackGroups));
 				onStackPills(res.pills);
 				void refreshAssumed(); // the checks wait for the end of dictation; the assumed normals follow the text
 				// The grouper failed or left sentences unplaced (they are kept, as said): retry a few times.
@@ -1986,7 +2011,8 @@
 				schema_source: stackSchemaMeta?.source ?? null, provisional: stackSchemaMeta?.provisional ?? false,
 				units: stackUnits, pills_derived: [...new Set(stackUnits.flatMap((u) => u.covers))],
 				pills_jev: lastJevCovered, sections: checklistSections, structured_text: structured.text ?? '',
-				manual_moves: stackManualMoves, latency_ms: stackLatency, gate: stackGate
+				manual_moves: stackManualMoves, latency_ms: stackLatency, gate: stackGate,
+				...(copilot ? { copilot: copilot.log() } : {})
 			});
 		} catch {
 			/* logging never affects dictation */
@@ -1995,6 +2021,10 @@
 	/** A cleared scratchpad ends the stack session: log it, then start a new one. */
 	function resetStack(): void {
 		void sendStackLog();
+		if (copilot) {
+			stopCopilot(); // a cleared scratchpad starts a fresh Copilot session too
+			if (copilotActive) startCopilot();
+		}
 		stackUnits = [];
 		onStackPills([]);
 		stackSessionId = crypto.randomUUID();
@@ -2253,6 +2283,7 @@
 		onRecordingChange(false);
 		lastWordsAt = 0;
 		groupFailures = 0; // retries resume once dictation stops, so nothing is left stuck in the live strip
+		copilot?.round(stackUnits, false, findingsText(stackUnits, stackGroups)); // stopped: the last finding is stable
 		scheduleGroup(0); // the held-back last sentence now joins its region
 		scheduleClose();
 		isConnecting = false;
@@ -2420,7 +2451,8 @@
 		if (assumedTimer) clearTimeout(assumedTimer);
 		if (reviewTimer) clearTimeout(reviewTimer);
 		if (pauseTimer) clearTimeout(pauseTimer);
-		void sendStackLog();
+		void sendStackLog(); // reads copilot.log() synchronously, before the session goes
+		stopCopilot();
 		if (editor) {
 			editor.destroy();
 			editor = null;
@@ -2452,7 +2484,8 @@
 	}
 </script>
 
-<div class="flex flex-col flex-1 min-h-0">
+<div class="flex flex-row flex-1 min-h-0 gap-3">
+<div class="flex flex-col flex-1 min-h-0 min-w-0">
 
 	<!-- Floating dictate button — centered, overlaps the top edge of the editor+margin row -->
 	<div class="flex flex-col items-center gap-1.5 relative z-10">
@@ -2631,6 +2664,21 @@
 		{/if}
 	</div>
 
+</div>
+{#if copilotActive && copilot && $copilotState?.on}
+	<CopilotRail
+		groups={$copilotState.groups}
+		views={$copilotState.views}
+		matching={$copilotState.matching}
+		matchFailed={$copilotState.matchFailed}
+		otherState={$copilotState.otherState}
+		onOpen={copilot.open}
+		onClose={copilot.close}
+		onRetry={copilot.retry}
+		onRetryMatch={copilot.retryMatch}
+		onOther={copilot.other}
+	/>
+{/if}
 </div>
 
 <style>

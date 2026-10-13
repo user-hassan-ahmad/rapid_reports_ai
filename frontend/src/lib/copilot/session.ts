@@ -10,10 +10,12 @@ import {
 	abnormalFindings,
 	cardRef,
 	groupCards,
+	kindOf,
 	markSent,
 	planMatch,
 	quiet,
 	stableFindings,
+	type CardKind,
 	type Finding,
 	type Group
 } from './state';
@@ -29,13 +31,22 @@ export interface CopilotState {
 	matchFailed: boolean;
 	otherState: OtherState;
 }
-export interface CopilotLog { matched: string[]; opened: string[]; quiet: string[]; failed: Record<string, number>; ms: Record<string, number> }
+/** The stack log's `copilot` record: pack keys, card kinds, counts and ms; never finding or dictation text. */
+export type CopilotLog = {
+	matched: string[];
+	kinds: Record<string, CardKind>;
+	opened: string[];
+	quiet: string[];
+	failed: Record<string, number>;
+	ms: Record<string, number>;
+};
 export interface CopilotSession {
 	state: Readable<CopilotState>;
 	/** After each successful /group: units as placed, whether dictation runs, and the findings text Generate would
 	 *  send (findingsText(units, groups)), sent as /match `dictation` AND /open `findings` (contract R4). */
 	round(units: StackUnit[], recording: boolean, findingsText: string): void;
-	/** A change resets the sent cache and the cards. */
+	/** A change resets the sent cache and the cards: at once while nothing was sent, else after CONTEXT_DEBOUNCE_MS
+	 *  of no further change (history keystrokes must not abort and reset on every key). */
 	setContext(ctx: CopilotContext): void;
 	open(ref: string): void;
 	close(ref: string): void;
@@ -55,6 +66,11 @@ export interface CopilotApi {
 
 /** Exam cards re-open this long after recording stops with changed findings text. */
 export const EXAM_REOPEN_MS = 1500;
+/** A context change (history keystrokes) settles this long before it resets the cards. */
+export const CONTEXT_DEBOUNCE_MS = 600;
+/** After a failed /match, rounds make no call for this long (Retry bypasses it): a down endpoint costs one
+ *  timeout per window, not one per grouping round. */
+export const MATCH_BACKOFF_MS = 15_000;
 const MAX_COLUMNS = 3;
 
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
@@ -77,6 +93,8 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	let matchSeq = 0;
 	let matchAc: AbortController | null = null;
 	let queued = false; // a round planned a call while one was in flight: re-plan when it lands
+	let backoffUntil = 0;
+	let ctxTimer: ReturnType<typeof setTimeout> | null = null;
 
 	// cards
 	let cards: Card[] = [];
@@ -86,12 +104,13 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	let matchFailed = false;
 	let otherState: OtherState = 'idle';
 	let otherAc: AbortController | null = null;
-	const openSeq = new Map<string, number>(); // per card ref or column ref
+	const openSeq = new Map<string, number>(); // per card ref or column ref; values from one monotonic counter, so a
+	let openCounter = 0; // response from before a reset can never match a later request's number
 	const openAc = new Map<string, AbortController>();
 	const examText = new Map<string, string>(); // exam ref → the findings text its last /open carried
 	let examTimer: ReturnType<typeof setTimeout> | null = null;
 
-	const log: CopilotLog = { matched: [], opened: [], quiet: [], failed: {}, ms: {} };
+	const log: CopilotLog = { matched: [], kinds: {}, opened: [], quiet: [], failed: {}, ms: {} };
 	const fail = (k: string) => (log.failed[k] = (log.failed[k] ?? 0) + 1);
 
 	const store = writable<CopilotState>(snapshot());
@@ -124,6 +143,8 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		matchSeq++;
 		if (examTimer) clearTimeout(examTimer);
 		examTimer = null;
+		if (ctxTimer) clearTimeout(ctxTimer);
+		ctxTimer = null;
 	}
 	function turnOff() {
 		on = false;
@@ -158,7 +179,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 
 	// ── /match ──
 	function plan() {
-		if (!live()) return;
+		if (!live() || Date.now() < backoffUntil) return;
 		const p = planMatch(sent, ctxKey(), sentCtx, stable, hasText);
 		if (!p.call) return;
 		if (matchAc) {
@@ -186,14 +207,17 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 			markSent(sent, fs);
 			cards = res.cards;
 			matchFailed = false;
+			for (const c of cards) if (views[cardRef(c)]?.fromOther) patch(cardRef(c), { fromOther: false }); // matched now
 			log.ms.match = res.ms ?? Date.now() - t0;
 			log.matched = [...new Set([...log.matched, ...cards.map((c) => c.key)])];
+			for (const c of cards) log.kinds[c.key] = kindOf(c);
 			const refs = new Set(all().map(cardRef));
 			views = Object.fromEntries(Object.entries(views).filter(([r]) => refs.has(r)));
 			for (const c of cards) if (c.finding_id === 'exam' && !c.needs_modality && !examText.has(cardRef(c)) && !views[cardRef(c)]?.loading) void fetchCard(c);
 		} catch (e) {
 			if (seq === matchSeq && failed(e)) {
 				matchFailed = true;
+				backoffUntil = Date.now() + MATCH_BACKOFF_MS;
 				fail('match');
 			}
 		} finally {
@@ -212,7 +236,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	// ── /open ──
 	async function request(seqKey: string, body: OpenBody, set: (p: Partial<ColumnView>) => void): Promise<OpenResult | null> {
 		openAc.get(seqKey)?.abort();
-		const seq = (openSeq.get(seqKey) ?? 0) + 1;
+		const seq = ++openCounter;
 		openSeq.set(seqKey, seq);
 		const ac = new AbortController();
 		openAc.set(seqKey, ac);
@@ -256,18 +280,25 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		return request(`${ref}#${key}`, openBody(colCard), (p) => patchCol(ref, key, p));
 	}
 
+	/** The sibling columns still worth a request: not loading and no result. An exam card's primary column is its
+	 *  auto-opened top-level view (SiblingColumns falls back to it), so it is skipped while that has or awaits one.
+	 *  `failedToo` includes columns that failed (retry); a plain open leaves them to their Retry. */
+	function columnsToFetch(card: Card, v: CardView, failedToo: boolean): string[] {
+		return columnKeys(card).filter((key) => {
+			const col = v.columns?.[key];
+			if (!col && key === card.key && (v.result || v.loading)) return false;
+			return !col || (!col.loading && !col.result && (failedToo || !col.error));
+		});
+	}
+
 	function open(ref: string) {
 		if (!live()) return;
 		const card = find(ref);
 		if (!card || card.needs_modality) return;
 		patch(ref, { open: true });
 		const v = views[ref];
-		if (card.siblings.length) {
-			for (const key of columnKeys(card)) {
-				const col = v.columns?.[key];
-				if (!col || (!col.loading && !col.result && !col.error)) void fetchColumn(card, key);
-			}
-		} else if (!v.loading && !v.result && !v.error) void fetchCard(card);
+		if (card.siblings.length) for (const key of columnsToFetch(card, v, false)) void fetchColumn(card, key);
+		else if (!v.loading && !v.result && !v.error) void fetchCard(card);
 		publish();
 	}
 
@@ -282,8 +313,25 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		}
 		const card = find(ref);
 		if (!card || card.needs_modality) return;
-		if (card.siblings.length) for (const key of columnKeys(card)) void fetchColumn(card, key);
+		if (card.siblings.length) for (const key of columnsToFetch(card, views[ref] ?? closedView, true)) void fetchColumn(card, key);
 		else void fetchCard(card);
+	}
+
+	function applyContext(next: CopilotContext) {
+		if (!live()) return;
+		ctx = { ...next };
+		abortAll();
+		sent = new Set();
+		sentCtx = null;
+		cards = [];
+		others = [];
+		views = {};
+		examText.clear();
+		matching = false;
+		matchFailed = false;
+		otherState = 'idle';
+		publish();
+		plan();
 	}
 
 	// ── public ──
@@ -314,20 +362,13 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 			plan();
 		},
 		setContext(next) {
-			if (!live() || (next.scanType === ctx.scanType && next.history === ctx.history)) return;
-			ctx = { ...next };
-			abortAll();
-			sent = new Set();
-			sentCtx = null;
-			cards = [];
-			others = [];
-			views = {};
-			examText.clear();
-			matching = false;
-			matchFailed = false;
-			otherState = 'idle';
-			publish();
-			plan();
+			if (!live()) return;
+			if (ctxTimer) clearTimeout(ctxTimer);
+			ctxTimer = null;
+			if (next.scanType === ctx.scanType && next.history === ctx.history) return;
+			const fresh = sentCtx === null && !matchAc && !cards.length; // nothing to lose: apply now
+			if (fresh) applyContext(next);
+			else ctxTimer = setTimeout(() => ((ctxTimer = null), applyContext(next)), CONTEXT_DEBOUNCE_MS);
 		},
 		open,
 		close(ref) {
@@ -339,6 +380,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		retryMatch() {
 			if (!live() || matchAc) return;
 			matchFailed = false;
+			backoffUntil = 0;
 			if (stable.length || hasText) void runMatch(stable.slice(0, MAX_FINDINGS));
 		},
 		async other() {
@@ -357,6 +399,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 					if (known.has(r)) continue;
 					known.add(r);
 					others.push(c);
+					log.kinds[c.key] = kindOf(c, true);
 					patch(r, { fromOther: true });
 				}
 				otherState = 'done';

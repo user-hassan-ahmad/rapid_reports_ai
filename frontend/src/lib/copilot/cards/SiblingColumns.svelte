@@ -58,8 +58,8 @@
 				onclick={() => (chosen = chosen === c.key ? null : c.key)}>{c.title}</button
 			>
 		{/if}
-		<CardStatus loading={cv.loading} error={err} onRetry={() => onRetry(columnRef(card, c.key))} />
-		{#if !cv.loading && !err && cv.result}
+		<CardStatus loading={cv.loading && !cv.result} error={err} onRetry={() => onRetry(columnRef(card, c.key))} />
+		{#if !err && cv.result}
 			<PackBody result={cv.result} compact={!full} />
 		{/if}
 	</div>

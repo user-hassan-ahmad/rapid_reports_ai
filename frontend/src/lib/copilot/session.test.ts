@@ -4,7 +4,7 @@ import { get } from 'svelte/store';
 import type { StackUnit } from '$lib/hybrid-stack/types';
 import { CopilotError, CopilotOff } from './api';
 import { card, preview, result } from './cards/fixtures';
-import { createCopilotSession, EXAM_REOPEN_MS, type CopilotApi } from './session';
+import { CONTEXT_DEBOUNCE_MS, createCopilotSession, EXAM_REOPEN_MS, MATCH_BACKOFF_MS, type CopilotApi } from './session';
 import { cardRef } from './state';
 import type { Card, MatchBody, MatchResult, OpenBody, OpenResult } from './types';
 
@@ -118,7 +118,12 @@ describe('session: matching', () => {
 		await matchA();
 		s.open(cardRef(nodule));
 		expect(Object.keys(state().views)).toHaveLength(1);
-		s.setContext({ scanType: 'CT chest', history: 'weight loss' });
+		s.setContext({ scanType: 'CT chest', history: 'weight los' });
+		s.setContext({ scanType: 'CT chest', history: 'weight loss' }); // keystrokes: debounced, one reset
+		await vi.advanceTimersByTimeAsync(CONTEXT_DEBOUNCE_MS - 10);
+		expect(state().groups).toHaveLength(1);
+		expect(api.calls.match).toHaveLength(2);
+		await vi.advanceTimersByTimeAsync(20);
 		expect(state().groups).toEqual([]);
 		expect(state().views).toEqual({});
 		expect(api.calls.match).toHaveLength(3);
@@ -130,6 +135,7 @@ describe('session: matching', () => {
 	it('a stale response is dropped', async () => {
 		s.round([unit(1, A)], false, A);
 		s.setContext({ scanType: 'CT abdomen', history: '' });
+		await vi.advanceTimersByTimeAsync(CONTEXT_DEBOUNCE_MS);
 		expect(api.calls.match).toHaveLength(2);
 		api.calls.match[0].resolve(matched([card({ key: 'stale-pack', finding: A })]));
 		await flush();
@@ -159,13 +165,35 @@ describe('session: matching', () => {
 		api.calls.match[0].reject(new CopilotError('timeout'));
 		await flush();
 		expect(state()).toMatchObject({ matchFailed: true, matching: false, groups: [] });
-		s.retryMatch();
+		s.round([unit(1, A), unit(2, B)], false, `${A} ${B}`); // backing off: no call per round
+		expect(api.calls.match).toHaveLength(1);
+		s.retryMatch(); // Retry bypasses the backoff
 		expect(api.calls.match).toHaveLength(2);
 		expect(state().matchFailed).toBe(false);
 		api.calls.match[1].resolve(matched([nodule]));
 		await flush();
 		expect(state().groups).toHaveLength(1);
 		expect(s.log().failed).toEqual({ match: 1 });
+	});
+
+	it('after a failed /match, rounds resume calling once the backoff has passed', async () => {
+		s.round([unit(1, A)], false, A);
+		api.calls.match[0].reject(new CopilotError('network'));
+		await flush();
+		s.round([unit(1, A)], false, A);
+		expect(api.calls.match).toHaveLength(1);
+		await vi.advanceTimersByTimeAsync(MATCH_BACKOFF_MS);
+		s.round([unit(1, A)], false, A);
+		expect(api.calls.match).toHaveLength(2);
+	});
+
+	it('a context typed back to its old value cancels the pending reset', async () => {
+		await matchA();
+		s.setContext({ scanType: 'CT chest', history: 'coughs' });
+		s.setContext({ scanType: 'CT chest', history: 'cough' });
+		await vi.advanceTimersByTimeAsync(CONTEXT_DEBOUNCE_MS * 2);
+		expect(state().groups).toHaveLength(1);
+		expect(api.calls.match).toHaveLength(2);
 	});
 
 	it('a CopilotOff (404) turns the session off and later calls are never made', async () => {
@@ -332,6 +360,70 @@ describe('session: opening cards', () => {
 		api.calls.open[0].resolve(result(nodule, preview()));
 		await flush();
 		expect(get(s.state)).toEqual(before);
+	});
+
+	it('an exam card with siblings: open reuses the auto-opened primary and fetches only the sibling', async () => {
+		const examSib = card({ key: 'cad-rads-2', finding_id: 'exam', finding: 'x', siblings: ['other-cta-pack'] });
+		s.round([unit(1, A)], false, A);
+		api.calls.match[0].resolve(matched([examSib]));
+		await flush();
+		expect(api.calls.open).toHaveLength(1); // auto-open of the primary
+		s.open(cardRef(examSib)); // still loading: not asked again
+		expect(api.calls.open.map((c) => c.body.card.key)).toEqual(['cad-rads-2', 'other-cta-pack']);
+	});
+
+	it('a sibling card retry re-fetches only the failed columns', async () => {
+		const sib = card({ finding_id: 'u1', finding: A, siblings: ['bts-pulmonary-nodule'] });
+		await matchA([sib]);
+		s.open(cardRef(sib));
+		api.calls.open[0].resolve(result(sib, preview()));
+		api.calls.open[1].reject(new CopilotError('timeout'));
+		await flush();
+		s.retry(cardRef(sib));
+		expect(api.calls.open).toHaveLength(3);
+		expect(api.calls.open[2].body.card.key).toBe('bts-pulmonary-nodule');
+	});
+
+	it('an /open answer from before a reset never lands on a later request of the same card', async () => {
+		await matchA();
+		s.open(cardRef(nodule));
+		s.setContext({ scanType: 'CT chest', history: 'other' });
+		await vi.advanceTimersByTimeAsync(CONTEXT_DEBOUNCE_MS);
+		api.calls.match[2].resolve(matched([nodule]));
+		await flush();
+		s.open(cardRef(nodule));
+		expect(api.calls.open).toHaveLength(2);
+		api.calls.open[0].resolve(result(nodule, preview({ proposal: null, possible: ['old'] })));
+		await flush();
+		expect(state().views[cardRef(nodule)]).toMatchObject({ loading: true, result: null });
+		api.calls.open[1].resolve(result(nodule, preview()));
+		await flush();
+		expect(state().views[cardRef(nodule)].result?.preview?.possible).toEqual([]);
+	});
+
+	it('a card first found by Other loses its "other" tag when /match later returns it', async () => {
+		await matchA();
+		const extra = card({ key: 'web-guide', finding_id: 'u1', finding: A });
+		s.other();
+		api.calls.other[0].resolve(matched([extra]));
+		await flush();
+		expect(state().views[cardRef(extra)].fromOther).toBe(true);
+		s.round([unit(1, A), unit(2, B)], false, `${A} ${B}`);
+		api.calls.match[2].resolve(matched([nodule, extra]));
+		await flush();
+		expect(state().views[cardRef(extra)].fromOther).toBe(false);
+	});
+
+	it('an exam re-open keeps the last result while it loads', async () => {
+		s.round([unit(1, A)], false, 'one');
+		api.calls.match[0].resolve(matched([exam]));
+		await flush();
+		api.calls.open[0].resolve(result(exam, preview()));
+		await flush();
+		s.round([unit(1, A)], false, 'one two');
+		await vi.advanceTimersByTimeAsync(EXAM_REOPEN_MS);
+		expect(state().views[cardRef(exam)].loading).toBe(true);
+		expect(state().views[cardRef(exam)].result).not.toBeNull();
 	});
 
 	it('log carries keys, counts and ms only: no finding text', async () => {

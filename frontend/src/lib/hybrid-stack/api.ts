@@ -23,6 +23,8 @@ export interface StackLog {
 	session_id: string; scan_type: string; schema_key: string | null; schema_source: string | null; provisional: boolean;
 	units: StackUnit[]; pills_derived: string[]; pills_jev: string[]; sections: string[]; structured_text: string;
 	manual_moves: number; latency_ms: Record<string, number>; gate?: GateRecord | null; report_id?: string | null;
+	/** Copilot session record (copilot/session log()): keys, kinds, counts and ms only, never text; capped server-side. */
+	copilot?: Record<string, unknown>;
 }
 export const postLog = (token: string | null, body: StackLog) => post<{ ok: boolean }>(token, 'log', body, true);
 
