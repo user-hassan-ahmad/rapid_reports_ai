@@ -78,6 +78,8 @@ export interface GateRecord {
 	removed: string[]; // sentences the radiologist removed: never stated
 	capped: { region: string; question: string }[];
 	review_failed?: boolean; // the end-of-dictation review failed: no finding checks were offered
+	offered?: Record<string, string[]>; // region normals the sheet offered, before the assumed-normal check
+	jev_dropped?: Record<string, { sentence: string; reason: string }[]>; // what the check dropped, with why
 	// Dictation checks seen this session and how each ended: answered, skipped, edited away, or still open (advisory).
 	checks?: { kind: string; quote: string; other: string | null; answered_by: 'as_dictated' | 'skip' | 'replaced' | 'edited' | 'open' }[];
 	units_hash: string;

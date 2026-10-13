@@ -40,6 +40,7 @@
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
 	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDebug, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit, similar } from '$lib/hybrid-stack/stackState';
+	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
 	import { abnormalAll, assumedFrom, openCount, rowSentences, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
@@ -1814,7 +1815,7 @@
 				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences, owned: ownedNow(),
 				touched: touchedRegions(), template_id: stackTemplateId, clinical_history: clinicalHistory,
 				region_text: regionText(stackUnits) }); // a normal is covered only by its own region's sentences
-			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed };
+			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed, dropped: res.dropped };
 		} catch {
 			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {} }; // nothing assumed
 		}
@@ -1957,7 +1958,8 @@
 			review_failed: reviewFailed,
 			checks: Object.values(seenChecks).map((c) => ({ kind: c.kind, quote: c.quote, other: c.other,
 				answered_by: checkAnswers[c.key] ?? (checks.some((x) => x.key === c.key) ? 'open' : 'edited') })),
-			units_hash: gateKey
+			units_hash: gateKey,
+			...offeredAndDropped(stackRegionNormals, assumedSnap?.dropped)
 		};
 		stackGate = gate;
 		// Sentences the grouping never received (after failed retries) still reach the report, as said.
