@@ -149,8 +149,8 @@ def test_sequences_and_limitation_questions_ask_whether_the_report_mentions_the_
         assert "whether" in td.CONCEPTS[name].question.lower(), name
     # the follow-up lab's arm b: the report lists the acquisitions, or says the protocol was complete or incomplete
     assert td.CONCEPTS["sequences"].question == (
-        "Does this report list the acquisitions performed (sequences, series, phases or views), or say the planned "
-        "protocol was complete or incomplete?")
+        "The REPORT lists the acquisitions performed (sequences, series, phases or views), or says the planned "
+        "protocol was complete or incomplete.")
     for word in CLINICAL:
         if word == "contrast":
             continue

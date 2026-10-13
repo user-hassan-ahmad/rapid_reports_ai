@@ -98,8 +98,8 @@ CONCEPTS: Dict[str, Concept] = {
     "sequences": Concept(
         "sequences", "Parts of the study not performed",
         {"complete": None, "not_performed": "the dictation states that part of the planned acquisition was not performed"},
-        "Does this report list the acquisitions performed (sequences, series, phases or views), or say the planned "
-        "protocol was complete or incomplete?",
+        "The REPORT lists the acquisitions performed (sequences, series, phases or views), or says the planned "
+        "protocol was complete or incomplete.",
         ("technique",)),
     "limitation": Concept(
         "limitation", "Technical limitation",
