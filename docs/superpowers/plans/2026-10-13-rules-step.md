@@ -73,6 +73,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
     - Contrast: the setup's state wins over an example tie. A setup that disagrees with a clear example majority gets the "usual?" card, which shows both. A silent setup keeps the example-majority rule.
     - A concept the setup states is evidence shown as "From the study setup: '…'", never as a report number.
     - No setup, an empty one, or a failed Jev setup call leaves the run exactly as before.
+18. **After the FIXED-question lab (2026-10-13; `fixed_lab/scored_wording.json` in the private folder).** The plain question separated poorly (AUC 0.67). `template_sheet_review` now asks a criteria noul (`q_fixed`: "Can this sentence differ between patients having this same scan?", with true/false criteria) after structural pre-filters in code: a line with a `{slot}` and a sign-off line (a tiny anchored backstop pattern; the grammar has no sign-off role) are never asked and never carded. The lab's arm scored AUC 0.96, precision 0.93 and recall 0.97 at `FIXED_MIN` 0.5, which stays. The absence-wording backstop stays.
 
 ## File map
 

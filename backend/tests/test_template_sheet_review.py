@@ -126,7 +126,7 @@ async def test_a_patient_specific_concept_default_is_surfaced_by_the_fixed_check
 
 
 def test_the_fixed_question_is_case_agnostic():
-    q = V.FIXED_QUESTION.lower()
+    q = " ".join([V.FIXED_INSTRUCTIONS, *V.FIXED_CRITERIA.values()]).lower()
     for word in ("contrast", "liver", "breath", "ct", "mri"):
         assert f" {word} " not in f" {q} "
 
@@ -204,3 +204,29 @@ async def test_the_duplicate_check_batches_its_questions_and_caps_them(monkeypat
     assert await V.concept_duplicates(_st(sheet), _cmp_ledger(), transport=httpx.MockTransport(handler)) == []
     assert sum(sizes) == 25 and max(sizes) <= V.JEV_BATCH
     assert any("truncated" in m for m in logged)
+
+
+
+def test_the_fixed_question_is_a_criteria_noul_with_the_sentence():
+    q = V.q_fixed("Axial images were acquired.")
+    assert q["type"] == "noul" and set(q["criteria"]) == {"true", "false"}
+    assert q["instructions"].startswith("Can this sentence differ between patients having this same scan?")
+    assert q["instructions"].endswith("Axial images were acquired.")
+    assert "cooperation" in q["criteria"]["true"] and "sign-off" in q["criteria"]["false"]
+
+
+async def test_slot_and_sign_off_lines_are_never_asked_nor_flagged():
+    asked = []
+
+    def handler(request):
+        import json
+        qs = json.loads(request.content)["questions"]
+        asked.extend(q["instructions"] for q in qs.values())
+        return httpx.Response(200, json={"answers": {k: {"noul": 0.9} for k in qs}})
+    lines = ["Slice thickness {thickness} mm.", "Reported by the duty radiologist.", "Dr A. Smith, FRCR.",
+             "No {structure} abnormality."]
+    sheet = BREATH_SHEET.replace('FIXED "Axial images were acquired."\n', 'FIXED "Axial images were acquired."\n'
+                                 + "".join(f'FIXED "{t}"\n' for t in lines))
+    flags = await V.fixed_flags(_st(sheet), [], transport=httpx.MockTransport(handler))
+    assert not any(t in q for t in lines for q in asked) and not set(lines) & set(flags)
+    assert BREATH in flags and any(BREATH in q for q in asked)   # the breath-hold default is still asked

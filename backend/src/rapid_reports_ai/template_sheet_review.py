@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from typing import List, Optional, Set
 
 from . import template_decisions as td
@@ -31,9 +32,30 @@ from .hybrid_stack.template import norm_key
 logger = logging.getLogger(__name__)
 
 TIMEOUT_S = 6.0
-FIXED_MIN = 0.5   # lab-set (scripts/rules_step_lab.py fixed)
-FIXED_QUESTION = ("This SENTENCE is printed in every report of this scan type. It could be false for a different "
-                  "patient having this scan: {s}")
+FIXED_MIN = 0.5   # FIXED-question lab 2026-10-13 (fixed_lab/scored_wording.json): precision 0.93, recall 0.97 at 0.5
+# The criteria noul won the lab (AUC 0.96 with the pre-filters below, against 0.67 for the earlier plain question).
+FIXED_INSTRUCTIONS = "Can this sentence differ between patients having this same scan?"
+FIXED_CRITERIA = {
+    "true": "the sentence reports something that can differ between patients having this same scan: a finding, a "
+            "measurement, whether something was given or achieved, the patient's condition or cooperation, a "
+            "limitation",
+    "false": "the sentence describes the standard protocol, equipment, technique, reporting workflow, sign-off or a "
+             "fill-in field that is the same for every patient"}
+
+# Structural pre-filters, applied before Jev (never judgements of meaning): a line with a {slot} is filled per case,
+# and a sign-off line is the reporter's, so neither is an "Always printed" card. The grammar has no sign-off section
+# role, so sign-off is this tiny anchored backstop pattern; keep it small.
+_SLOT = re.compile(r"\{[^{}]+\}")
+_SIGN_OFF = re.compile(r"^\s*(?:reported\s+by|reporting\s+radiologist|dr\b|frcr\b|gmc\b|signed\b)", re.I)
+
+
+def q_fixed(text: str) -> dict:
+    """The FIXED-line question for one sentence (shaped like template_brief.q_condition)."""
+    return {"type": "noul", "instructions": f"{FIXED_INSTRUCTIONS} SENTENCE: {text}", "criteria": dict(FIXED_CRITERIA)}
+
+
+def _prefiltered(text: str) -> bool:
+    return bool(_SLOT.search(text) or _SIGN_OFF.match(text))
 
 
 def _clean(sheet: str) -> Optional[tss.SheetStructure]:
@@ -78,13 +100,14 @@ def _targeted(st: tss.SheetStructure) -> Set[str]:
 JEV_BATCH = 20   # questions per Jev call; larger sets go as parallel calls
 
 
-async def _noul_batched(instructions: List[str], state: str, transport=None, what: str = "jev") -> List[float]:
-    """One noul score per instruction, JEV_BATCH questions per call, the calls in parallel. Raises on any failure
-    (a timeout is logged first)."""
+async def _noul_batched(instructions: List, state: str, transport=None, what: str = "jev") -> List[float]:
+    """One noul score per question (an instruction string, or a question dict), JEV_BATCH questions per call, the
+    calls in parallel. Raises on any failure (a timeout is logged first)."""
     from .jev_client import JEV_MODEL, jev_post
 
     async def one(chunk: List[str]) -> List[float]:
-        qs = {f"q{i}": {"type": "noul", "instructions": t} for i, t in enumerate(chunk)}
+        qs = {f"q{i}": t if isinstance(t, dict) else {"type": "noul", "instructions": t}
+              for i, t in enumerate(chunk)}
         r = await jev_post({"model": JEV_MODEL, "state": state, "questions": qs},
                            os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
         r.raise_for_status()
@@ -109,13 +132,13 @@ async def _noul_batched(instructions: List[str], state: str, transport=None, wha
 
 
 async def _jev_scores(texts: List[str], transport=None) -> List[float]:
-    return await _noul_batched([FIXED_QUESTION.format(s=t) for t in texts],
+    return await _noul_batched([q_fixed(t) for t in texts],
                                "Statements from a radiology report template.", transport, what="fixed")
 
 
 async def fixed_flags(st: tss.SheetStructure, ledger: List[dict], transport=None) -> List[str]:
     """The FIXED lines to show as "Always printed" cards. Raises when Jev fails (the caller shows no such cards)."""
-    texts = fixed_candidates(st, ledger)
+    texts = [t for t in fixed_candidates(st, ledger) if not _prefiltered(t)]
     targeted = _targeted(st)   # roadmap §4(a): the default-plus-context-rule pattern is legal for the backstop
     backstop = [t for t in texts if tsg.absence_worded(t) and norm_key(t) not in targeted]
     rest = [t for t in texts if t not in backstop]
