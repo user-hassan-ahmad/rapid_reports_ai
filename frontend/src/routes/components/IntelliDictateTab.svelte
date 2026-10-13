@@ -16,7 +16,7 @@ import { pillState } from '$lib/dictation-lab/coverage';
 import { effectiveConfig } from '$lib/dictation-lab/package';
 import { fetchSchema, postReportId } from '$lib/hybrid-stack/api';
 import ProtocolPicker from '$lib/hybrid-stack/ProtocolPicker.svelte';
-import { caseDirty, needsFreeText, pickBody, pickKey, type ProtocolPick } from '$lib/hybrid-stack/protocol';
+import { backToLibrary, caseDirty, needsFreeText, pickBody, pickKey, type ProtocolPick } from '$lib/hybrid-stack/protocol';
 import { hybridStackOn } from '$lib/hybrid-stack/flag';
 import type { GateRecord, StackSchema } from '$lib/hybrid-stack/types';
 import { hasUnsavedWork as unsavedWork } from '$lib/utils/confirmGate';
@@ -147,6 +147,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	let stackProtocol: ProtocolPick | null = null;
 	let freeText = false;   // "Not listed": today's textarea and reconciler path
 	let pickerKey = 0;      // bumped by a reset so the picker starts empty
+	let pickerQuery = '';   // free text carried back into the picker's search box by "Pick from the library"
 	// A scan type with no pick behind it (restored draft, opened report, revert, a flag that arrives late) shows in
 	// the textarea, so the scan type is never hidden behind an empty picker.
 	$: if (protocolLibrary && !freeText && needsFreeText(scanType, stackProtocol)) freeText = true;
@@ -379,6 +380,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		scanType = '';
 		stackProtocol = null;
 		freeText = false;
+		pickerQuery = '';
 		pickerKey++;
 		prePoppedSections = [];
 		sectionsGeneratedFromScanType = '';
@@ -890,8 +892,9 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 						<label for={protocolLibrary && !freeText ? 'protocol-search' : 'scan-type'} class="block text-xs font-medium text-gray-400 uppercase tracking-wider">Scan Type</label>
 						{#if protocolLibrary && !freeText}
 							{#key pickerKey}
-								<ProtocolPicker token={$token} value={stackProtocol} disabled={sectionsLoading || regenerating}
-									onPick={(p) => { stackProtocol = p; scanType = p.displayName; }}
+								<ProtocolPicker token={$token} value={stackProtocol} query={pickerQuery} disabled={sectionsLoading || regenerating}
+									onPick={(p) => { stackProtocol = p; scanType = p.displayName; pickerQuery = ''; }}
+									onClear={() => { stackProtocol = null; scanType = ''; }}
 									onNotListed={(text) => { freeText = true; stackProtocol = null; scanType = text; }} />
 							{/key}
 						{:else}
@@ -903,6 +906,11 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 							class="input-dark w-full resize-none text-sm"
 							rows="3"
 						></textarea>
+						{#if protocolLibrary}
+							<button type="button" disabled={sectionsLoading || regenerating}
+								onclick={() => { const b = backToLibrary(scanType); pickerQuery = b.query; scanType = b.scanType; stackProtocol = b.pick; freeText = b.freeText; pickerKey++; }}
+								class="text-xs text-gray-500 hover:text-gray-300 transition-colors disabled:cursor-not-allowed disabled:opacity-40">Pick from the library</button>
+						{/if}
 						{/if}
 					</div>
 				</div>

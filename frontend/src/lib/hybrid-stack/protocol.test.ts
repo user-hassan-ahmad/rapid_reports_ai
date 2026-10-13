@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { caseDirty, needsFreeText, pickBody, pickKey, visiblePills, withElsewhere, type ProtocolPick } from './protocol';
+import { backToLibrary, caseDirty, needsFreeText, pickBody, pickKey, pickSummary, visiblePills, withElsewhere, type ProtocolPick } from './protocol';
 
 describe('visiblePills', () => {
 	const groups = ['Technique', 'Right breast', 'Implants', 'Other findings', 'General', 'Conclusion'];
@@ -77,5 +77,22 @@ describe('caseDirty', () => {
 		expect(caseDirty({ ...free }, free)).toBe(false);
 		expect(caseDirty({ ...free, scanType: 'US pelvis' }, free)).toBe(true);
 		expect(caseDirty({ ...free, history: 'Fever' }, free)).toBe(true);
+	});
+});
+
+describe('pickSummary', () => {
+	it('names the pick with its side, and carries the protocol line', () => {
+		expect(pickSummary({ id: 'TMKN', phases: [], laterality: 'left', displayName: 'MRI Knee', line: 'No contrast' }))
+			.toEqual({ name: 'MRI Knee (left)', line: 'No contrast' });
+		expect(pickSummary({ id: 'TCAP', phases: ['portal_venous'], laterality: null, displayName: 'CT AP', line: 'IV contrast · portal venous' }).name)
+			.toBe('CT AP');
+	});
+});
+
+describe('backToLibrary', () => {
+	it('moves the typed text to the search box and empties the scan type, so free text does not come straight back', () => {
+		const b = backToLibrary(' US abdomen ');
+		expect(b).toEqual({ query: 'US abdomen', scanType: '', pick: null, freeText: false });
+		expect(needsFreeText(b.scanType, b.pick)).toBe(false);
 	});
 });

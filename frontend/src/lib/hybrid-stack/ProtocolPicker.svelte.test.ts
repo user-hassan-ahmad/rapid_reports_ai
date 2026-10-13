@@ -67,10 +67,63 @@ describe('ProtocolPicker', () => {
 		await expect.element(page.getByRole('combobox')).toBeDisabled();
 	});
 
-	it('shows a restored pick by its display name', async () => {
+	it('shows a restored pick as the committed summary: name, side and the protocol line in italics', async () => {
 		stubFetch([]);
 		const value = { id: 'TMKN', phases: [], laterality: 'left', displayName: 'MRI Knee', line: 'No contrast' };
 		render(ProtocolPicker, { token: 't', value, onPick: vi.fn(), onNotListed: vi.fn() });
+		await expect.element(page.getByTestId('protocol-committed')).toHaveTextContent('MRI Knee (left) · No contrast');
+		await expect.element(page.getByText('No contrast', { exact: true })).toHaveProperty('tagName', 'EM');
+		expect(page.getByRole('combobox').elements()).toHaveLength(0);
+		expect(page.getByRole('radio').elements()).toHaveLength(0);
+	});
+
+	it('after Use collapses to the committed pick; no radio stays live', async () => {
+		stubFetch([CTAP]);
+		const onPick = vi.fn();
+		const r = render(ProtocolPicker, { token: 't', value: null, onPick, onNotListed: vi.fn() });
+		await userEvent.type(page.getByRole('combobox'), 'ctap');
+		await page.getByText('CT Abdomen and Pelvis with contrast').click();
+		await page.getByRole('radio', { name: 'IV contrast · arterial, portal venous' }).click();
+		await page.getByRole('button', { name: 'Use this protocol' }).click();
+		await r.rerender({ value: onPick.mock.calls[0][0] }); // the parent commits the pick
+		await expect.element(page.getByTestId('protocol-committed'))
+			.toHaveTextContent('CT Abdomen and Pelvis with contrast · IV contrast · arterial, portal venous');
+		expect(page.getByRole('radio').elements()).toHaveLength(0);
+		expect(page.getByRole('combobox').elements()).toHaveLength(0);
+	});
+
+	it('Change clears the committed pick (pending) and reopens the search with its name', async () => {
+		stubFetch([KNEE]);
+		const onClear = vi.fn();
+		const onPick = vi.fn();
+		const value = { id: 'TMKN', phases: [], laterality: 'left', displayName: 'MRI Knee', line: 'No contrast' };
+		const r = render(ProtocolPicker, { token: 't', value, onPick, onClear, onNotListed: vi.fn() });
+		await page.getByRole('button', { name: 'Change' }).click();
+		expect(onClear).toHaveBeenCalledTimes(1);
+		await r.rerender({ value: null }); // the parent clears its pick
 		await expect.element(page.getByRole('combobox')).toHaveValue('MRI Knee');
+		await expect.element(page.getByRole('button', { name: 'Use this protocol' })).not.toBeInTheDocument();
+		await page.getByText('MRI Knee').click();
+		await page.getByRole('radio', { name: 'Right' }).click();
+		await page.getByRole('button', { name: 'Use this protocol' }).click();
+		expect(onPick).toHaveBeenCalledWith(expect.objectContaining({ id: 'TMKN', laterality: 'right' }));
+	});
+
+	it('editing the query while a pick is committed clears it', async () => {
+		stubFetch([KNEE]);
+		const onClear = vi.fn();
+		const value = { id: 'TMKN', phases: [], laterality: 'left', displayName: 'MRI Knee', line: 'No contrast' };
+		render(ProtocolPicker, { token: 't', value, onPick: vi.fn(), onClear, onNotListed: vi.fn() });
+		await page.getByRole('button', { name: 'Change' }).click();
+		onClear.mockClear();
+		await userEvent.type(page.getByRole('combobox'), ' x'); // the parent has not yet cleared `value`
+		expect(onClear).toHaveBeenCalled();
+	});
+
+	it('typed text carried back from free text starts in the search box and is searched', async () => {
+		stubFetch([CTAP]);
+		render(ProtocolPicker, { token: 't', value: null, query: 'ct ap', onPick: vi.fn(), onNotListed: vi.fn() });
+		await expect.element(page.getByRole('combobox')).toHaveValue('ct ap');
+		await expect.element(page.getByText('CT Abdomen and Pelvis with contrast')).toBeInTheDocument();
 	});
 });

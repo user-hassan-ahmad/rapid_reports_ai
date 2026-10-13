@@ -10,6 +10,11 @@ export function pickBody(pick: ProtocolPick | null): { protocol_id?: string; pha
 	return pick ? { protocol_id: pick.id, phases: pick.phases, laterality: pick.laterality } : {};
 }
 
+/** The committed pick as the picker's summary shows it: "MRI Knee (left)" and the protocol line ("No contrast"). */
+export function pickSummary(pick: ProtocolPick): { name: string; line: string } {
+	return { name: pick.displayName + (pick.laterality ? ` (${pick.laterality})` : ''), line: pick.line };
+}
+
 /** The pick's identity for the slim sheet: a different id, phase set or side has different normals. '' = no pick. */
 export function pickKey(pick: ProtocolPick | null): string {
 	return pick ? [pick.id, pick.phases.join(','), pick.laterality ?? ''].join('\u0001') : '';
@@ -18,6 +23,12 @@ export function pickKey(pick: ProtocolPick | null): string {
 /** A scan type with no pick behind it (a restored draft, an opened report, a revert) belongs in the free-text box. */
 export function needsFreeText(scanType: string, pick: ProtocolPick | null): boolean {
 	return !!scanType.trim() && !pick;
+}
+
+/** "Pick from the library" from free text: the typed text moves to the picker's search box and the scan type empties,
+ *  so `needsFreeText` does not send the box straight back to free text. */
+export function backToLibrary(scanType: string): { query: string; scanType: string; pick: null; freeText: false } {
+	return { query: scanType.trim(), scanType: '', pick: null, freeText: false };
 }
 
 /** What a workspace is built from: the scan type, the history and the pick (null: free text). */
@@ -49,3 +60,4 @@ export function withElsewhere(
 	}
 	return out;
 }
+
