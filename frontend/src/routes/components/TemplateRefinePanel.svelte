@@ -72,7 +72,8 @@
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
 			chatHistory = [...chatHistory, { role: 'assistant', content: data.response }];
-			hasChanges = true;
+			// a refused edit keeps the sheet and explains why (data.response); nothing changed to save
+			if (data.applied !== false) hasChanges = true;
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 			chatHistory = chatHistory.slice(0, -1);

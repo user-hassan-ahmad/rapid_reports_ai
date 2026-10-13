@@ -2702,11 +2702,21 @@ async def skill_sheet_refine_endpoint(
         logger.info("  behavioral_claim: %s", result.get("behavioral_claim", ""))
         logger.info("  ── refined skill_sheet ──\n%s", result.get("skill_sheet", ""))
 
-        return {"success": True, **result}
+        # vet the edit now (the save function, origin "chat") so a refusal reaches the radiologist at the moment of
+        # the edit; the template PUT vets again when the panel saves
+        v = await tsave.vet_sheet(result.get("skill_sheet", ""), origin="chat", previous=request.skill_sheet)
+        logger.info("  vet: %s %s", v.status, v.message[:300])
+        if v.status == "refused":
+            return {"success": True, "skill_sheet": request.skill_sheet, "response": v.message,
+                    "behavioral_claim": "", "applied": False}
+        out = {"success": True, **result, "skill_sheet": v.sheet, "applied": v.status == "saved"}
+        if v.message:  # ADJUSTED: saved, with a small repair
+            out["notice"] = v.message
+            out["response"] = f"{result.get('response', '').rstrip()} {v.message}".strip()
+        return out
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return {"success": False, "error": str(e)}
+        logger.exception("skill sheet refine failed: %s", e)
+        return {"success": False, "error": "Couldn't make that change just now. Please try again."}
 
 
 @app.post("/api/templates/skill-sheet/test-generate")

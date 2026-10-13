@@ -25,6 +25,17 @@ logger = logging.getLogger(__name__)
 GROQ_GENERATOR_MAX_TOKENS = 16384
 
 
+# Appended to the refine prompt after the sheet grammar (template pipeline Task C5): chat edits keep the sheet a valid
+# grammar sheet, and the reply speaks of report behaviour because the radiologist never sees the sheet.
+REFINE_GRAMMAR_RULE = """
+
+The skill sheet is written in the strict line grammar above. Your edited skill_sheet keeps every unit line valid:
+a new constraint becomes a unit (NORMAL, NEGATIVE, FIXED, TERM, RULE, LIST_MISSING) in the right paragraph, never a
+prose instruction; keep everything you were not asked to change exactly as it is, line for line. Your response
+describes the change as report behaviour ("Reports will now ..."), never as sheet syntax: the radiologist never sees
+the sheet."""
+
+
 class TemplateManager:
     """Manages custom user-created templates"""
     
@@ -3652,7 +3663,9 @@ Generate a JSON object with exactly two keys:
             role_label = "Radiologist" if turn["role"] == "user" else "Assistant"
             history_text += f"\n\n**{role_label}:** {turn['content']}"
 
-        system_prompt = """You are an expert radiology reporting analyst helping a radiologist refine their report template.
+        from . import template_sheet_lab_prompts as P
+
+        base_prompt = """You are an expert radiology reporting analyst helping a radiologist refine their report template.
 
 Your job has three phases:
 
@@ -3663,12 +3676,12 @@ Your job has three phases:
    - Rules that conditionally prevent or qualify the desired behaviour (must be removed or modified)
    - Rules that could counteract the change elsewhere in the document (must be reconciled)
 
-   This scan covers Fixed Blocks, Conditional Suppression rules, IF-THEN clauses, optional framing, ordering rules, Mandatory Negatives, Terminology Rules, and Per-Section Construction Rules.
+   This scan covers every unit line (FIXED, NORMAL, NEGATIVE, TERM, RULE, LIST_MISSING), context RULE conditions, elements marked "(optional)" in an Order line, Order lines themselves, Opening lines, and the prose sections (Voice, Impression Construction, Measurement and Grading).
 
 3. MUTATE the document — additions, modifications, AND removals — so the desired behaviour is unconditionally produced across the entire document.
 
 Critical rules:
-- A user asking for something to be "always", "mandatory", "consistent", "on every report", or "each time" REQUIRES checking for and removing any Conditional Suppression rule, optional framing, or IF-THEN clause that would prevent that field from appearing. Don't just add a positive rule — remove the contradiction.
+- A user asking for something to be "always", "mandatory", "consistent", "on every report", or "each time" REQUIRES checking for and removing any context RULE, "(optional)" marking or conditional wording that would prevent that item from appearing. Don't just add a positive rule — remove the contradiction.
 - A user asking to remove or stop something REQUIRES removing any rule that currently enforces it, not just adding a negative rule elsewhere.
 - A user asking for specific placement ("after X", "at the start of Y") REQUIRES updating ordering rules and any existing formatting rules that place the item elsewhere.
 - Only touch rules unrelated to the requested behaviour if they directly contradict it.
@@ -3680,7 +3693,7 @@ Output fields — you must return all three:
 1. "skill_sheet" — the complete updated skill sheet markdown with all necessary mutations including removals.
 
 2. "response" — a brief plain-English confirmation (1-2 sentences) framing what future reports will now do differently. Write as if confirming an instruction to a colleague.
-   - NEVER reference internal document structure, section names, or technical terms like "Skill Sheet", "Fixed Blocks", "Conditional Suppression", "Per-Section Construction Rules", "Terminology Rules", "Impression Construction Rules", "Mandatory Negatives", or any markdown heading.
+   - NEVER reference internal document structure, section names, or technical terms like "Skill Sheet", "unit", "NORMAL", "NEGATIVE", "FIXED", "TERM", "RULE", "LIST_MISSING", "COVERS", "Order line", "Opening line", "paragraph block", or any markdown heading. The radiologist never sees the sheet.
    - NEVER say "I've updated the [section]" or "The [section] now includes...". Frame in clinical/behavioural language only.
    - Example: "Got it — your reports will now always include the radiation dose on its own line directly after the heart rate."
 
@@ -3693,6 +3706,8 @@ Output fields — you must return all three:
      - "Your template has been updated" (not observable)
      - "The conditional suppression rule has been removed" (references internals)
      - "Reports will be better" (not falsifiable)"""
+
+        system_prompt = base_prompt + "\n\n" + P.GRAMMAR + "\n\n" + P.SHEET_LAYOUT + REFINE_GRAMMAR_RULE
 
         history_section = f"\n\n=== CONVERSATION HISTORY ==={history_text}" if history_text.strip() else ""
 

@@ -444,7 +444,8 @@
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
 			/** @type {ChatMessage} */
-			const assistantMsg = isRefineTurn
+			// a refused edit (applied === false) keeps the sheet and explains why: no change to verify
+			const assistantMsg = isRefineTurn && data.applied !== false
 				? {
 						role: 'assistant',
 						content: data.response,
