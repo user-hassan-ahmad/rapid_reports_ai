@@ -3159,6 +3159,7 @@ Merge only on his go-ahead; never push.
   - the post-generation backstop, which lists and flags any filled value the report lacks.
   
   The backstop's own misses (recall) and false missing (a present value listed as not provided) are measured by the lab's secondary metric. It reads the report with `q_stated`, whose wording names "the dictated findings"; the lab shows whether that matters.
+- **The backstop reads the report before the check's repair.** A value sentence that the post-generation check's repair then removes is not caught: the value leaves the report and is not added to the N/A line.
 - **Backstop latency.** One extra Jev call (batched) runs in parallel with the post-generation check, so it adds wall time only when it is slower than the check.
 - **Clause choice is the weakest Jev step** (Jev is weak at overlapping spans). A wrong clause holding one number shows a **wrong number** with its quote on the chip. Since decision A, that number is display only (the report uses the dictation), but it can mislead the radiologist's look. The lab's `value_wrong` count measures this, and a poor result can change the design (Task 4, Step 8).
 - **The generator's own missing-values wording.** Sheet prose such as "MISSING VALUES - PLEASE SUPPLY:" may still lead the generator to write a list in its own words. The session rule forbids it, but code strips only lines beginning "Values not provided". Watch for it in the hand check.

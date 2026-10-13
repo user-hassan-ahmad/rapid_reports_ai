@@ -1915,8 +1915,8 @@ async def generate_report_from_template(
                   if request.stack else None)
         if _stack is not None and request.stack_values_na is not None:
             # The value cluster settled the template's required values: these were marked N/A (template_required_values)
-            _stack["values_na"] = [x.strip() for x in request.stack_values_na if x.strip()][:40]
-            _stack["values_filled"] = [x.strip() for x in (request.stack_values_filled or []) if x.strip()][:40]
+            _stack["values_na"] = [x.strip()[:200] for x in request.stack_values_na if x.strip()][:40]
+            _stack["values_filled"] = [x.strip()[:200] for x in (request.stack_values_filled or []) if x.strip()][:40]
         if _stack is not None:
             from .hybrid_stack.template import template_structure
             if template_structure(template.template_config) is None:

@@ -540,7 +540,7 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         if flags:
             quality = {**(quality or {"enabled": False})}
             quality["review"] = [*(quality.get("review") or []), *flags]
-        final, vrec["stripped"] = write_missing(final, sheet, lists)
+        final, vrec["stripped"] = write_missing(final, sheet, lists, rec=vrec)
     # Numbers the writer added that no source supplies (a sheet's score/grade/time window): review flags only
     numbers = undictated_numbers(final, [findings, history, (stack or {}).get("conclusion")], sheet)
     if numbers:

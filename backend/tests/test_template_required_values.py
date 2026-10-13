@@ -165,3 +165,45 @@ async def test_backstop_without_filled_items_asks_nothing(filled):
         raise AssertionError("no call")
     lists, flags, b = await backstop("Findings:\nNormal.", rec["lists"], filled or [], ask=fail)
     assert lists is rec["lists"] and flags == [] and b == {"asked": 0, "missing": [], "error": None}
+
+
+async def test_backstop_reads_the_report_without_the_generators_na_lines():
+    _, rec = apply_required_values(SHEET, [])
+    seen = {}
+    lists, flags, _ = await backstop("Findings:\nValues not provided: LVEF.\nNormal LV.", rec["lists"], ["LVEF"],
+                                     ask=_scores([0.1], seen))
+    assert "Values not provided" not in seen["report"] and seen["report"] == "Findings:\nNormal LV."
+    assert lists[0]["na"] == ["LVEF"] and [f["text"] for f in flags] == ["LVEF"]
+
+
+async def test_backstop_never_lists_or_flags_an_item_the_template_does_not_require():
+    _, rec = apply_required_values(SHEET, [])
+    seen = {}
+    lists, flags, b = await backstop("Findings:\nNormal.", rec["lists"], ["Aortic root", "lvef."],
+                                     ask=_scores([0.1], seen))
+    assert seen["items"] == ["lvef."] and b["asked"] == 1
+    assert lists[0]["na"] == ["lvef."] and [f["text"] for f in flags] == ["lvef."]
+
+    async def fail(report, items):
+        raise AssertionError("no call")
+    lists, flags, b = await backstop("Findings:\nNormal.", rec["lists"], ["Aortic root"], ask=fail)
+    assert lists is rec["lists"] and flags == [] and b["asked"] == 0
+    assert "Aortic root" not in write_missing("Findings:\nNormal.", SHEET, lists)[0]
+
+
+def test_write_missing_records_its_error(monkeypatch):
+    import rapid_reports_ai.template_required_values as M
+
+    def boom(sheet):
+        raise RuntimeError("parser down")
+    monkeypatch.setattr(M, "_clean", boom)
+    r: dict = {}
+    assert write_missing("Normal LV.", SHEET, [{"na": ["LVEF"], "position": "top", "section": "FINDINGS",
+                                                "outcome": "applied"}], rec=r) == ("Normal LV.", 0)
+    assert r["write_error"].startswith("RuntimeError")
+
+
+def test_top_placement_after_an_inline_header_goes_on_its_own_line():
+    _, rec = apply_required_values(SHEET, ["LVEF"])
+    assert write_missing("Findings: Normal LV.\n\nConclusion: Normal.", SHEET, rec["lists"])[0] == \
+        "Findings:\nValues not provided: LVEF.\nNormal LV.\n\nConclusion: Normal."

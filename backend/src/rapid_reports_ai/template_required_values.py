@@ -86,12 +86,15 @@ async def backstop(report: str, lists: List[dict], filled: Sequence[str], ask=No
     N/A items, value_missing review flags, record). Jev decides (ask_report_values, BACKSTOP_MIN); code lists and
     flags. A Jev failure or a short reply changes nothing and flags nothing; no filled items: no call."""
     rec: dict = {"asked": 0, "missing": [], "error": None}
-    items = list(dict.fromkeys(x.strip() for x in filled if isinstance(x, str) and x.strip()))
-    if not items or not lists:
+    required = {norm_key(x) for e in lists for x in e["items"]}   # the client's items, checked against the template
+    items = list(dict.fromkeys(x.strip() for x in filled
+                               if isinstance(x, str) and x.strip() and norm_key(x) in required))
+    if not items:
         return lists, [], rec
     rec["asked"] = len(items)
     try:
-        scores = await (ask or ask_report_values)(report, items)
+        # the generator's own "Values not provided" lines would read as stating the value: Jev never sees them
+        scores = await (ask or ask_report_values)(_NA_LINE.sub("", report or ""), items)
         if len(scores) != len(items):
             raise ValueError("jev: answer count mismatch")
     except Exception as e:  # noqa: BLE001 -- fail-soft: the report as it is, no flags
@@ -110,8 +113,7 @@ async def backstop(report: str, lists: List[dict], filled: Sequence[str], ask=No
         if k in listed:
             continue
         listed.add(k)
-        home = next((e for e in out if k in {norm_key(x) for x in e["items"]}), out[0])
-        home["na"].append(item)
+        next(e for e in out if k in {norm_key(x) for x in e["items"]})["na"].append(item)
     flags = [{"kind": VALUE_MISSING, "text": i, "message": f"Required value {i} not found in the report"} for i in missing]
     logger.info("[template.required_values] backstop asked=%d missing=%d", len(items), len(missing))
     return out, flags, rec
@@ -123,12 +125,15 @@ def _insert(text: str, a: int, b: int, line: str, end: bool) -> str:
         k = a + len(body.rstrip())
         return text[:k] + ("\n" if k > a else "") + line + text[k:]
     k = a + len(body) - len(body.lstrip())
-    return text[:k] + line + ("\n" if text[k:b].strip() else "") + text[k:]
+    head = text[:k]
+    if head and not head.endswith("\n"):   # an inline header ("Findings: Normal LV."): the line goes on its own line
+        return head.rstrip(" \t") + "\n" + line + "\n" + text[k:]
+    return head + line + ("\n" if text[k:b].strip() else "") + text[k:]
 
 
-def write_missing(report: str, sheet: str, lists: List[dict]) -> Tuple[str, int]:
+def write_missing(report: str, sheet: str, lists: List[dict], rec: Optional[dict] = None) -> Tuple[str, int]:
     """(the report with code's "Values not provided" lines, generator lines in that wording removed). Never raises:
-    on any error the report comes back as it was."""
+    on any error the report comes back as it was, and the error goes in rec["write_error"]."""
     try:
         from .report_review import section_spans
         from .template_lean import report_sections
@@ -147,5 +152,8 @@ def write_missing(report: str, sheet: str, lists: List[dict]) -> Tuple[str, int]
         logger.info("[template.required_values] written=%d stripped=%d", sum(bool(e.get("na")) for e in lists), stripped)
         return text, stripped
     except Exception as e:  # noqa: BLE001 -- never break Generate
-        logger.warning("[template.required_values] write error=%s", f"{type(e).__name__}: {e}"[:200])
+        err = f"{type(e).__name__}: {e}"[:200]
+        if rec is not None:
+            rec["write_error"] = err
+        logger.warning("[template.required_values] write error=%s", err)
         return report, 0

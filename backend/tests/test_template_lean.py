@@ -645,3 +645,19 @@ async def test_a_stack_session_without_values_leaves_the_list_as_today(monkeypat
 def test_candidate_record_carries_required_values():
     rec = tp.candidate_record({"report_content": "x", "required_values": {"lists": []}}, 10)
     assert rec["required_values"] == {"lists": []}
+
+
+async def test_a_write_failure_is_recorded(monkeypatch):
+    from rapid_reports_ai import template_required_values as trv
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    _values_gen(monkeypatch, calls, "Findings:\nNormal LV.\n\nConclusion:\nNormal.")
+
+    def boom(items):
+        raise RuntimeError("line down")
+    monkeypatch.setattr(trv, "missing_line", boom)
+    out = await tl.generate_template_report_lean(sheet=VALUES, scan_type="CMR", findings="LV normal.", history="",
+                                                 case=None, signature=None,
+                                                 stack={"conclusion": "", "declined": [], "values_na": ["RVEF"]})
+    assert out["required_values"]["write_error"].startswith("RuntimeError")
+    assert "Values not provided" not in out["report_content"]
