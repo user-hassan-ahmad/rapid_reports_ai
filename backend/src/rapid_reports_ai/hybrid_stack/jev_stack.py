@@ -6,7 +6,7 @@ from __future__ import annotations
 import asyncio
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable, Optional
 
 from ..jev_client import JEV_MODEL, jev_post
 
@@ -306,3 +306,87 @@ async def ask_conditions(state: str, conditions: list[str], transport=None) -> l
     r.raise_for_status()
     ans = r.json().get("answers") or {}
     return [float((ans.get(f"cond_{i}") or {}).get("noul") or 0.0) for i in range(len(conditions))]
+
+
+# ── Required values: the value cluster (requirements spec 2026-10-12 part 1) ──────────
+# Per LIST_MISSING item, "stated?" (noul, value_<i>) and "which clause gives its value?" (choice over the dictation's
+# clauses that hold a number, where_<i>). Code reads the number (hybrid_stack.values); Jev never does.
+VALUE_STATED_MIN = STATED_MIN   # 0.8: a false "stated" silently drops a value from the cluster, so the strict
+                                # scratchpad bar first; the value cluster lab reports the alternatives, Hassan sets it
+VALUE_BATCH = 4                 # items per Jev call; batches run in parallel (12 items -> 3 calls)
+
+
+def value_key(i: int) -> str:
+    return f"value_{i}"
+
+
+def where_key(i: int) -> str:
+    return f"where_{i}"
+
+
+def value_stated_question(item: str) -> dict[str, Any]:
+    """Does the dictation state this required value? The brief's LIST_MISSING question (template_brief.q_stated)."""
+    from ..template_brief import q_stated
+    return q_stated(item)
+
+
+def value_where_question(item: str, clauses: list[str]) -> dict[str, Any]:
+    crit: dict[str, str] = {f"s_{k}": c for k, c in enumerate(clauses)}
+    crit[NONE] = "No SENTENCE gives this item's value."
+    return {"type": "choice", "instructions": f"Which SENTENCE of the DICTATION gives the value of this item: {item}",
+            "criteria": crit}
+
+
+async def ask_values(dictation: str, items: list[str], clauses: list[str], transport=None,
+                     stated: Callable[[str], dict[str, Any]] = value_stated_question) -> list[tuple[float, Optional[int]]]:
+    """(P stated, index into `clauses` of the clause that gives its value, or None) per item, in order. Items go in
+    parallel calls of VALUE_BATCH; keys keep the item's global index. The clause question is asked only when there
+    are clauses. `stated`: the wording (the lab passes its arms)."""
+    if not items:
+        return []
+    key = os.environ.get("OPENROUTER_API_KEY", "")
+
+    async def batch(start: int, chunk: list[str]) -> list[tuple[float, Optional[int]]]:
+        qs: dict[str, dict[str, Any]] = {}
+        for j, item in enumerate(chunk):
+            qs[value_key(start + j)] = stated(item)
+            if clauses:
+                qs[where_key(start + j)] = value_where_question(item, clauses)
+        r = await jev_post({"model": JEV_MODEL, "state": f"DICTATION:\n{dictation}", "questions": qs},
+                           key, TIMEOUT_S * 2, transport)
+        r.raise_for_status()
+        ans = r.json().get("answers") or {}
+        out: list[tuple[float, Optional[int]]] = []
+        for j in range(len(chunk)):
+            p = float((ans.get(value_key(start + j)) or {}).get("noul") or 0.0)
+            c = (ans.get(where_key(start + j)) or {}).get("choice")
+            k = int(c[2:]) if isinstance(c, str) and c.startswith("s_") and c[2:].isdigit() else None
+            out.append((p, k if k is not None and k < len(clauses) else None))
+        return out
+
+    parts = await asyncio.gather(*(batch(k, items[k:k + VALUE_BATCH]) for k in range(0, len(items), VALUE_BATCH)))
+    return [x for p in parts for x in p]
+
+
+# Post-generation backstop (value cluster): does the generated REPORT state each value whose chip was filled? A "no"
+# is listed as not provided and flagged by code (template_required_values.backstop). Recall-oriented.
+BACKSTOP_MIN = 0.5   # provisional; the value cluster lab reports backstop recall on planted missing values
+
+
+async def ask_report_values(report: str, items: list[str], transport=None,
+                            stated: Callable[[str], dict[str, Any]] = value_stated_question) -> list[float]:
+    """P(the report states the item) per item, in order; parallel calls of VALUE_BATCH."""
+    if not items:
+        return []
+    key = os.environ.get("OPENROUTER_API_KEY", "")
+
+    async def batch(start: int, chunk: list[str]) -> list[float]:
+        qs = {value_key(start + j): stated(item) for j, item in enumerate(chunk)}
+        r = await jev_post({"model": JEV_MODEL, "state": f"REPORT:\n{report}", "questions": qs},
+                           key, TIMEOUT_S * 2, transport)
+        r.raise_for_status()
+        ans = r.json().get("answers") or {}
+        return [float((ans.get(value_key(start + j)) or {}).get("noul") or 0.0) for j in range(len(chunk))]
+
+    parts = await asyncio.gather(*(batch(k, items[k:k + VALUE_BATCH]) for k in range(0, len(items), VALUE_BATCH)))
+    return [x for p in parts for x in p]
