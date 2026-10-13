@@ -161,7 +161,7 @@ def test_rerun_after_a_dropped_unit_is_already_written(db_session, templates, tm
     assert _actions(U.main(path, apply=True, db=db_session))[str(guided.id)] == "already-written"
 
 
-def test_failure_mid_write_is_an_error_and_the_others_are_written(db_session, test_user, templates, tmp_path, no_jev,
+def test_structure_failure_keeps_the_written_sheet_and_the_others_go_on(db_session, test_user, templates, tmp_path, no_jev,
                                                                     monkeypatch):
     guided, legacy = templates
     other = _make_template(db_session, test_user, "Hip", {"generation_mode": "skill_sheet_guided", "skill_sheet": OLD})
@@ -176,11 +176,46 @@ def test_failure_mid_write_is_an_error_and_the_others_are_written(db_session, te
                                       "legacy_ids": [str(legacy.id)]})
     summary = U.main(path, apply=True, db=db_session)
     rows = {r["template_id"]: r for r in summary["templates"]}
-    assert rows[str(guided.id)]["action"] == "error" and rows[str(guided.id)]["reason"] == "RuntimeError"
+    assert rows[str(guided.id)] == {"template_id": str(guided.id), "action": "written", "dropped_units": 0,
+                                    "structure_stored": False, "reason": "RuntimeError"}
     assert rows[str(other.id)]["action"] == "written" and rows[str(legacy.id)]["action"] == "soft-deleted"
     assert "secret" not in json.dumps(summary)
     db_session.expire_all()
     assert db_session.get(Template, other.id).template_config["skill_sheet"] == GOOD
+    assert db_session.get(Template, guided.id).template_config["skill_sheet"] == GOOD
+
+
+def test_rerun_stores_a_missing_structure(db_session, templates, tmp_path, no_jev, monkeypatch):
+    guided, _ = templates
+
+    def boom(db, template_id, structure):
+        raise RuntimeError("down")
+    path = _manifest(tmp_path, guided.id, GOOD)
+    with monkeypatch.context() as m:
+        m.setattr(tss, "store_structure", boom)
+        U.main(path, apply=True, db=db_session)
+    db_session.expire_all()
+    assert tss.fresh(db_session.get(Template, guided.id).template_config) is None
+    row = U.main(path, apply=True, db=db_session)["templates"][0]
+    assert row["action"] == "already-written" and row["structure_stored"] is True
+    db_session.expire_all()
+    assert tss.fresh(db_session.get(Template, guided.id).template_config) is not None
+
+
+def test_sheet_edited_during_the_snapshot_is_stale(db_session, templates, tmp_path, no_jev, monkeypatch):
+    guided, _ = templates
+    real = U.crud.create_template_version
+
+    def snapshot_then_edit(db, t, skip_if_unchanged=False):
+        v = real(db, t, skip_if_unchanged=skip_if_unchanged)
+        t.template_config = {**t.template_config, "skill_sheet": "Edited meanwhile."}
+        db.commit()
+        return v
+    monkeypatch.setattr(U.crud, "create_template_version", snapshot_then_edit)
+    summary = U.main(_manifest(tmp_path, guided.id, GOOD), apply=True, db=db_session)
+    assert _actions(summary)[str(guided.id)] == "skipped-stale"
+    db_session.expire_all()
+    assert db_session.get(Template, guided.id).template_config["skill_sheet"] == "Edited meanwhile."
 
 
 def test_failed_snapshot_skips_the_template_as_error(db_session, templates, tmp_path, no_jev, monkeypatch):

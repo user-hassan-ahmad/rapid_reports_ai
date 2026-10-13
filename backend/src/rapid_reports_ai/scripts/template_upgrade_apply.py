@@ -113,24 +113,48 @@ def _store_structure(db, template_id: str, config: dict) -> bool:
     return tss.store_structure(db, template_id, tsg.parse_sheet(sheet).structure)
 
 
-def _write(db, row: dict) -> None:
-    """Re-check the plan under a row lock, then snapshot the old state, store the vetted sheet and its structure."""
+def _locked_check(db, row: dict) -> Optional[Template]:
+    """The template row locked FOR UPDATE if it still holds the planned old sheet; else the row's action is updated
+    (already-written or skipped-stale), the lock released and None returned."""
     t = _find(db, row["template_id"], lock=True)
-    if t is None or not t.is_active or (t.template_config or {}).get("generation_mode") != GUIDED:
+    cfg = (t.template_config or {}) if t is not None else {}
+    current = tss.sheet_hash(cfg.get("skill_sheet") or "")
+    if t is not None and t.is_active and cfg.get("generation_mode") == GUIDED and current == row["old_sheet_hash"]:
+        return t
+    db.rollback()
+    written = t is not None and t.is_active and current == tss.sheet_hash(row["config"]["skill_sheet"])
+    row["action"] = "already-written" if written else "skipped-stale"
+    return None
+
+
+def _try_structure(db, row: dict) -> None:
+    """Store the structure of the template's current sheet; a failure leaves the written sheet and is reported."""
+    try:
+        t = _find(db, row["template_id"])
+        row["structure_stored"] = _store_structure(db, row["template_id"], dict(t.template_config or {}))
+    except Exception as e:  # noqa: BLE001 -- a re-run stores it (already-written rows retry)
         db.rollback()
-        row["action"] = "skipped-stale"
+        row["structure_stored"], row["reason"] = False, type(e).__name__
+
+
+def _write(db, row: dict) -> None:
+    """Re-check the plan under a row lock, snapshot the old state, store the vetted sheet, then its structure."""
+    if _locked_check(db, row) is None:
+        if row["action"] == "already-written":
+            _try_structure(db, row)
         return
-    current = tss.sheet_hash((t.template_config or {}).get("skill_sheet") or "")
-    if current != row["old_sheet_hash"]:
-        db.rollback()
-        written = current == tss.sheet_hash(row["config"]["skill_sheet"])
-        row["action"] = "already-written" if written else "skipped-stale"
+    if crud.create_template_version(db, _find(db, row["template_id"]), skip_if_unchanged=True) is None:
+        row["action"], row["reason"] = "error", "snapshot failed"  # pre-upgrade state not restorable: no write
         return
-    if crud.create_template_version(db, t, skip_if_unchanged=True) is None:  # pre-upgrade state, restorable
-        row["action"], row["reason"] = "error", "snapshot failed"
+    t = _locked_check(db, row)  # the snapshot's commit released the lock
+    if t is None:
+        if row["action"] == "already-written":
+            _try_structure(db, row)
         return
-    updated = crud.update_template(db, row["template_id"], template_config=row["config"])  # snapshots new state
-    row["structure_stored"] = _store_structure(db, row["template_id"], dict(updated.template_config or {}))
+    t.template_config = row["config"]  # as crud.update_template: assign, commit (updated_at), snapshot the new state
+    db.commit()
+    crud.create_template_version(db, t)
+    _try_structure(db, row)
 
 
 def _soft_delete(db, row: dict) -> None:
@@ -186,10 +210,10 @@ async def _run(manifest_path: Path, apply: bool, db) -> dict:
         backup_path = manifest_path.with_name(f"template_upgrade_backup_{int(time.time())}.json")
         backup_path.write_text(json.dumps(backup, indent=1, default=str))
         for r in rows:
-            if r["action"] not in ("written", "soft-deleted"):
+            if r["action"] not in ("written", "soft-deleted", "already-written"):
                 continue
             try:
-                (_write if r["action"] == "written" else _soft_delete)(db, r)
+                {"written": _write, "soft-deleted": _soft_delete, "already-written": _try_structure}[r["action"]](db, r)
             except Exception as e:  # noqa: BLE001 -- one template's failure never stops the rest
                 db.rollback()
                 r["action"], r["reason"] = "error", type(e).__name__
