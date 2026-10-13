@@ -23,7 +23,9 @@ AGENT = {"none": "No contrast", "iv_iodinated": "IV contrast", "gadolinium": "Ga
          "iv_and_oral": "IV and oral contrast", "intra_articular": "Intra-articular contrast",
          "intrathecal": "Intrathecal contrast", "rectal_or_luminal": "Luminal contrast", "air": "Air"}
 PHASE_WORDS = {"non_contrast": "unenhanced", "dce": "DCE", "lge": "LGE", "t1_t2_mapping": "T1 and T2 mapping",
-               "t2star": "T2*", "ecg_gated_arterial": "ECG-gated arterial", "hepatobiliary_20min": "hepatobiliary (20 min)"}
+               "t2star": "T2*", "ecg_gated_arterial": "ECG-gated arterial", "hepatobiliary_20min": "hepatobiliary (20 min)",
+               "pre_contrast": "pre-contrast", "dynamic_arterial": "arterial", "dynamic_portal_venous": "portal venous",
+               "dynamic_delayed": "delayed", "post_contrast": "post-contrast", "angiographic": "angiographic"}
 
 
 def norm(s: str) -> str:
@@ -34,6 +36,11 @@ def norm(s: str) -> str:
 
 def phase_words(phases: list[str]) -> str:
     return ", ".join(PHASE_WORDS.get(p, p.replace("_", " ")) for p in phases)
+
+
+def agent_words(agent: str) -> str:
+    """The agent mid-sentence: lowercase except abbreviations ("gadolinium", "IV contrast", "intra-articular contrast")."""
+    return " ".join(w if w.isupper() and len(w) > 1 else w.lower() for w in AGENT.get(agent, agent).split())
 
 
 def protocol_line(entry: Entry, phases: list[str] | None = None) -> str:

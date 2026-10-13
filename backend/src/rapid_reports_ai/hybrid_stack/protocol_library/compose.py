@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..schemas import Region
 from .bundle import Bundle, Entry, phase_id
-from .match import AGENT, phase_words
+from .match import agent_words, phase_words
 
 LATERALITY = ("left", "right", "bilateral")
 
@@ -66,8 +66,8 @@ def resolve(bundle: Bundle, entry_id: str, phases: list[str] | None, laterality:
 
 
 def modality_line(e: Entry, phases: list[str]) -> str:
-    """e.g. "CT with IV contrast: unenhanced, arterial, portal venous"; "MR without contrast"."""
-    head = f"{e.modality} without contrast" if e.agent == "none" else f"{e.modality} with {AGENT.get(e.agent, e.agent)}"
+    """e.g. "CT with IV contrast: unenhanced, arterial, portal venous"; "MR with gadolinium: DCE"; "MR without contrast"."""
+    head = f"{e.modality} without contrast" if e.agent == "none" else f"{e.modality} with {agent_words(e.agent)}"
     words = phase_words(phases)
     return f"{head}: {words}" if words else head
 
@@ -87,10 +87,8 @@ def compose_sheet(bundle: Bundle, res: Resolution) -> ComposedSheet:
             normals.pop(r, None)
     for q in res.quiet:
         normals.pop(q, None)
-    if res.phases == e.phases_default:
-        na = "; ".join(e.not_assessable)
-    else:
-        na = phase.scan_context.get("not assessable on this scan", "") or "; ".join(e.not_assessable)
+    # One source for every phase set, default included: the reviewed phase sheet; the entry's list only if it is empty.
+    na = phase.scan_context.get("not assessable on this scan", "") or "; ".join(e.not_assessable)
     ctx = (f"## Scan Context\n- **Modality:** {modality_line(e, res.phases)}\n"
            f"- **Imaged volume:** {e.coverage}\n- **Not assessable on this scan:** {na or 'none stated'}\n\n")
     md = _SCAN_CONTEXT.sub(lambda _m: ctx, base.markdown, count=1) if _SCAN_CONTEXT.search(base.markdown) \
