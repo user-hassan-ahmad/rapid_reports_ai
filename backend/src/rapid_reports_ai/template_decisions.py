@@ -1,0 +1,205 @@
+"""The decision ledger (Rules-step spec 2026-10-13-template-rules-step-design): what the radiologist settled about a
+template's rules, stored as template_config["decisions"] and applied by code on every save
+(template_ledger_apply.apply_ledger, called by template_sheet_save.vet_sheet).
+
+One entry per (kind, key): {"kind", "key", "choice", "by", "at", "source"}.
+
+    kind     key                                             choice
+    value    the value's short name                          {"need": "every" | "relevant" | "not_needed"}
+    concept  comparison | contrast | sequences | limitation  {"use": bool, "default": str, "when_met": str,
+                                                              "condition": str, "dictated": bool}
+    fixed    the FIXED line's text                           {"keep": "always" | "dictated" | "remove"}
+    normal   normal_key(paragraph, structure) for a NORMAL,  {"text": str}  ("" = removed / left unmentioned)
+             negative_key(paragraph, text) for a NEGATIVE
+
+A used concept is written as: FIXED default + RULE WHEN [context: condition] REPLACE default WITH when_met; FIXED
+default + SUPPRESS default (no alternative wording: the line is dropped when the dictation contradicts it); or USE
+when_met (no default). `condition` is one of the concept's standard conditions, the opposite of the default's state.
+"Use whichever is dictated" is {"use": false, "dictated": true}: no line, recorded as its own choice.
+
+source: creation | chat | first_use_review | default (a skipped step's pre-ticked choice; never "confirmed").
+by: "radiologist" (a card or a chat turn) or "code" (a default).
+
+This module is the API the Rules-step cards and the chat-edit router both call: set_decision validates and records
+one change and returns it (with the old entry whole); undo_change reverses it; ledger_from_changes records a batch of card answers;
+describe_change words a change for the radiologist. Keys are matched by match_key (case and spacing ignored; a final
+full stop ignored for sentence keys), never by free-text similarity."""
+from __future__ import annotations
+
+import logging
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Tuple, TypedDict
+
+from .hybrid_stack.template import norm_key
+
+logger = logging.getLogger(__name__)
+
+KINDS = ("value", "concept", "fixed", "normal")
+SOURCES = ("creation", "chat", "first_use_review", "default")
+BY = ("radiologist", "code")
+NEEDS = ("every", "relevant", "not_needed")
+KEEPS = ("always", "dictated", "remove")
+MAX_VALUE_WORDS = 8
+_SEP = " :: "
+
+
+class DecisionError(ValueError):
+    """A change code cannot apply as given (unknown kind or concept, malformed key or choice)."""
+
+
+class Entry(TypedDict):
+    kind: str
+    key: str
+    choice: dict
+    by: str
+    at: str
+    source: str
+
+
+class Change(TypedDict):
+    kind: str
+    key: str
+    old: Optional[dict]   # the old entry whole (choice, by, at, source); None: a new entry
+    new: dict             # the new choice
+    source: str
+    confirmed: bool       # the old entry was the radiologist's (any source but "default")
+
+
+@dataclass(frozen=True)
+class Concept:
+    name: str
+    label: str                          # how a card and a chat reply name it
+    states: Dict[str, Optional[str]]    # state of a wording -> the standard condition under which it applies (None:
+                                        # the usual state, written as the default)
+    question: str                       # decision run: does an example report state this concept? (Jev noul)
+    roles: Tuple[str, ...]              # home section roles, in preference order
+
+    @property
+    def conditions(self) -> Tuple[str, ...]:
+        return tuple(c for c in self.states.values() if c)
+
+
+# The standard study-level concepts. Their condition texts are fixed: apply_ledger finds a concept's lines by them,
+# and Generate resolves them per case (template_context_rules). Contrast has a condition for both states, so its
+# default is whichever wording is usual in the template's own examples (product decision D1, 2026-10-13); the other
+# three have one condition and a base state. Case-agnostic wording only.
+CONCEPTS: Dict[str, Concept] = {
+    "comparison": Concept(
+        "comparison", "Comparison with previous imaging",
+        {"none": None, "compared": "the dictation names a previous imaging study for comparison"},
+        "The REPORT says whether previous imaging was available or was compared with this study.",
+        ("comparison", "technique", "history")),
+    "contrast": Concept(
+        "contrast", "Contrast",
+        {"given": "the dictation states a contrast agent was given",
+         "not_given": "the dictation states no contrast agent was given"},
+        "The REPORT says whether a contrast agent was given for this study.", ("technique",)),
+    "sequences": Concept(
+        "sequences", "Parts of the study not performed",
+        {"complete": None, "not_performed": "the dictation states that part of the planned acquisition was not performed"},
+        "The REPORT says that part of the planned acquisition (a sequence, phase or view) was not performed.",
+        ("technique",)),
+    "limitation": Concept(
+        "limitation", "Technical limitation",
+        {"none": None, "limited": "the dictation states a technical limitation of the study"},
+        "The REPORT states a technical limitation of the study (for example artefact or incomplete coverage).",
+        ("technique",)),
+}
+STANDARD_CONDITIONS = {" ".join(c.lower().split()): name for name, k in CONCEPTS.items() for c in k.conditions}
+
+
+def concept_of_condition(condition: str) -> Optional[str]:
+    """The concept whose standard condition this is (case and spacing ignored), else None."""
+    return STANDARD_CONDITIONS.get(" ".join((condition or "").lower().split()))
+
+
+def _name(s: str) -> str:
+    return " ".join((s or "").lower().split())
+
+
+def normal_key(paragraph: str, structure: str) -> str:
+    return f"{paragraph.strip()}{_SEP}{structure.strip()}"
+
+
+def negative_key(paragraph: str, text: str) -> str:
+    return f'{paragraph.strip()}{_SEP}"{text.strip()}"'
+
+
+def split_normal_key(key: str) -> Tuple[str, str, bool]:
+    """(paragraph, structure or negative text, is_negative)."""
+    para, sep, label = (key or "").partition(_SEP)
+    label = label.strip()
+    if not sep or not para.strip() or not label:
+        raise DecisionError(f"normal key {key!r}: '<paragraph> :: <structure>' or '<paragraph> :: \"<text>\"'")
+    if len(label) > 2 and label.startswith('"') and label.endswith('"'):
+        return para.strip(), label[1:-1].strip(), True
+    return para.strip(), label, False
+
+
+def match_key(kind: str, key: str) -> str:
+    if kind == "normal":
+        para, label, neg = split_normal_key(key)
+        return f"{_name(para)}{_SEP}" + (f'"{norm_key(label)}"' if neg else _name(label))
+    if kind == "fixed":
+        return norm_key(key)
+    return _name(key)
+
+
+def _text(v, what: str, allow_slots: bool = True) -> str:
+    if not isinstance(v, str):
+        raise DecisionError(f"{what}: text expected")
+    t = " ".join(v.split())
+    if '"' in t or "“" in t or "”" in t:
+        raise DecisionError(f"{what}: no double quotes")
+    if not allow_slots and ("{" in t or "}" in t):
+        raise DecisionError(f"{what}: no value to fill in")
+    return t
+
+
+def validate(kind: str, key: str, choice: dict) -> Tuple[str, dict]:
+    """(key, choice) in canonical form; DecisionError when code cannot apply it."""
+    if kind not in KINDS:
+        raise DecisionError(f"unknown kind {kind!r}")
+    if not isinstance(choice, dict):
+        raise DecisionError("choice: object expected")
+    key = " ".join((key or "").split())
+    if kind == "value":
+        if not key or len(key.split()) > MAX_VALUE_WORDS or any(c in key for c in '"|[]{}'):
+            raise DecisionError(f"value name {key!r}: a short plain name")
+        if choice.get("need") not in NEEDS:
+            raise DecisionError(f"value need: one of {NEEDS}")
+        return key, {"need": choice["need"]}
+    if kind == "concept":
+        if key not in CONCEPTS:
+            raise DecisionError(f"unknown concept {key!r}")
+        use = choice.get("use")
+        if not isinstance(use, bool):
+            raise DecisionError("concept use: true or false")
+        if not use:
+            return key, {"use": False, "default": "", "when_met": "", "condition": "",
+                         "dictated": bool(choice.get("dictated"))}
+        default = _text(choice.get("default", ""), "concept default")
+        when_met = _text(choice.get("when_met", ""), "concept wording")
+        if not (default or when_met):
+            raise DecisionError("concept: a used concept needs wording")
+        if default and when_met and norm_key(default) == norm_key(when_met):
+            raise DecisionError("concept: the two wordings are the same")
+        conds = CONCEPTS[key].conditions
+        given = " ".join((choice.get("condition") or "").lower().split())
+        if not given and len(conds) == 1:
+            condition = conds[0]
+        else:
+            condition = next((c for c in conds if c == given), "")
+            if not condition:
+                raise DecisionError(f"concept {key}: condition must be one of {conds}")
+        return key, {"use": True, "default": default, "when_met": when_met, "condition": condition, "dictated": False}
+    if kind == "fixed":
+        key = _text(key, "fixed line")
+        if not key:
+            raise DecisionError("fixed line: text expected")
+        if choice.get("keep") not in KEEPS:
+            raise DecisionError(f"fixed keep: one of {KEEPS}")
+        return key, {"keep": choice["keep"]}
+    split_normal_key(key)
+    return key, {"text": _text(choice.get("text", ""), "normal wording", allow_slots=False)}
