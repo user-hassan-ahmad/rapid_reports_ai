@@ -619,3 +619,58 @@ async def test_a_library_card_carries_its_finding_text(db_session, monkeypatch, 
     monkeypatch.setattr(M, "_pack_gate", pack_gate)
     cards = await M.match(db_session, "CT chest", "", U[:1])
     assert [(c.key, c.finding) for c in cards] == [("toy-nodule@1.0", U[0].text)]
+
+
+def _keyed(key, name="", version=""):
+    return M.RawSystem(key=key, name=name, version=version, why="w")
+
+
+async def test_a_listed_key_resolves_the_pack_without_name_matching_and_is_still_gated(db_session, monkeypatch, toy):
+    monkeypatch.setattr(L, "get", lambda: _toy_lib(toy))
+    gate = {"score": 0.9, "seen": []}
+
+    async def pgate(finding, pack, history):
+        gate["seen"].append(pack.key)
+        return gate["score"]
+    monkeypatch.setattr(M, "_pgate", pgate)
+    rows = M._Rows(db_session)
+    f = M.Finding(id="u1", text="nodule")
+    for s in (_keyed("toy-nodule@1.0", "A name no pack has"), _keyed("toy-nodule@1.0")):
+        c = await M._card(rows, f, s, "")
+        assert (c.key, c.name, c.version) == ("toy-nodule@1.0", "Toy 2020", "2020")
+    assert gate["seen"] == ["toy-nodule@1.0", "toy-nodule@1.0"]
+    gate["score"] = M.PACK_GATE_MIN - 0.01
+    assert await M._card(rows, f, _keyed("toy-nodule@1.0", "Toy Nodule"), "") is None   # gated: no fall-through
+
+
+async def test_an_unknown_or_superseded_key_falls_back_to_the_name(db_session, monkeypatch, toy):
+    old = {**toy, "version": "0.9", "status": "superseded"}
+    monkeypatch.setattr(L, "get", lambda: _toy_lib(toy, old))
+
+    async def pgate(finding, pack, history):
+        return 0.9
+    monkeypatch.setattr(M, "_pgate", pgate)
+    monkeypatch.setattr(R, "web_fetch_on", lambda: False)
+    rows, f = M._Rows(db_session), M.Finding(id="u1", text="nodule")
+    assert (await M._card(rows, f, _keyed("nope@1.0", "Toy Nodule"), "")).key == "toy-nodule@1.0"
+    assert (await M._card(rows, f, _keyed("toy-nodule@0.9", "Toy Nodule"), "")).key == "toy-nodule@1.0"
+    assert await M._card(rows, f, _keyed("nope@1.0"), "") is None   # no key hit, no name: nothing
+
+
+async def test_the_prompt_lists_library_keys_with_scope_and_asks_for_the_key(db_session, monkeypatch, toy):
+    monkeypatch.setattr(L, "get", lambda: _toy_lib(toy))
+    seen = []
+
+    async def call(prompt):
+        seen.append(prompt)
+        return _raw(u1=[_keyed("toy-nodule@1.0")])
+
+    async def pack_gate(finding, pack, history=""):
+        return 0.9
+    monkeypatch.setattr(M, "_call", call)
+    monkeypatch.setattr(M, "_pack_gate", pack_gate)
+    cards = await M.match(db_session, "CT chest", "", U[:1])
+    assert "KNOWN SYSTEMS" in seen[0]
+    assert "- toy-nodule@1.0: Toy 2020 [aliases: toy nodule | toy guideline] (scope: nodule in chest" in seen[0]
+    assert "key:" in M.MATCH_SYS and "scope" in M.MATCH_SYS
+    assert [c.key for c in cards] == ["toy-nodule@1.0"]

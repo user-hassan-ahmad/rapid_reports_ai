@@ -156,7 +156,7 @@ async def _cards_for(case: dict, sem: asyncio.Semaphore) -> list[dict]:
         fs = _coverage_lab().findings([u.model_dump() for u in g.units])
         if not fs:
             return []
-        # Live path (matcher.match) with web fetch OFF: the library's known systems steer the model's names.
+        # Live path (matcher.match) with web fetch OFF: the library's keys and scopes steer the model.
         raw = await M._call(M._prompt(case["scan_type"], case["clinical_history"], [M.Finding(**f) for f in fs],
                                       LB.get().known_text()))
         lib, out = LB.get(), []
@@ -169,9 +169,9 @@ async def _cards_for(case: dict, sem: asyncio.Semaphore) -> list[dict]:
             f = next((x for x in fs if x["id"] == M._rid(rf.id)), None)
             for s in (rf.systems if f else [])[:M.CANDIDATES_PER_FINDING]:
                 try:                                 # live's _safe_card: one failing candidate is skipped, not the case
-                    if not s.name.strip() or s.name.strip().upper() == "TNM":
+                    if s.name.strip().upper() == "TNM":
                         continue
-                    pack = lib.find(s.name, s.version) or lib.find(s.name)
+                    pack = M.library_pack(lib, s)          # live's resolution: the listed key first, else the name
                     if pack is None:
                         continue
                     score = await M._pgate(f["text"], pack, case["clinical_history"])

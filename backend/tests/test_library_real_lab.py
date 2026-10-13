@@ -252,7 +252,7 @@ def test_cards_for_passes_known_systems_and_emits_a_sibling_once(monkeypatch):
 
     async def call(prompt):
         prompts.append(prompt)
-        sysm = lambda n: NS(name=n, version="")
+        sysm = lambda n: NS(key="", name=n, version="")
         return NS(findings=[NS(id="F1", systems=[sysm("A"), sysm("B")])])
 
     async def pgate(text, pack, history):
@@ -327,7 +327,7 @@ def _run_cards_for(monkeypatch, names_by_finding, packs, siblings, gate, caps=No
             return ""
 
     async def call(prompt):
-        return NS(findings=[NS(id=fid, systems=[NS(name=n, version="") for n in names])
+        return NS(findings=[NS(id=fid, systems=[NS(key="", name=n, version="") for n in names])
                             for fid, names in names_by_finding.items()])
 
     async def schema(*a, **k):
@@ -397,3 +397,50 @@ def test_headline_excludes_synthetic_and_card_kinds_split_hits_from_siblings():
     assert RL.headline_rows([rows[3]]) == []
     assert RL.card_kinds(rows) == {"hassan": {"hit": 1, "sibling": 0}, "prod": {"hit": 1, "sibling": 1},
                                    "synthetic": {"hit": 1, "sibling": 0}}
+
+
+def test_cards_for_resolves_a_listed_key_first_as_live_does(monkeypatch):
+    from types import SimpleNamespace as NS
+    packs = _packs("a", "b")
+    for p in packs.values():
+        p.status = "current"
+    gated = []
+
+    async def gate(text, pack, history):
+        gated.append(pack.key)
+        return 1.0
+
+    class Lib:
+        def lookup(self, key):
+            return {"a": packs["A"]}.get(key)
+
+        def find(self, name, version=""):
+            return packs.get(name)
+
+        def siblings(self, p):
+            return []
+
+        def known_text(self):
+            return ""
+    import asyncio
+    import rapid_reports_ai.hybrid_stack.service as S
+
+    async def call(prompt):
+        return NS(findings=[NS(id="F1", systems=[NS(key="a", name="Unknown name", version=""),
+                                                 NS(key="zz", name="B", version="")])])
+
+    async def schema(*a, **k):
+        return NS(regions=[])
+
+    async def group_update(*a, **k):
+        return NS(units=[])
+    monkeypatch.setattr(S, "resolve_schema", schema)
+    monkeypatch.setattr(S, "group_update", group_update)
+    monkeypatch.setattr(RL, "_coverage_lab", lambda: NS(findings=lambda units: [{"id": "F1", "text": "t"}]))
+    monkeypatch.setattr(RL.LB, "get", lambda: Lib())
+    monkeypatch.setattr(RL.M, "_call", call)
+    monkeypatch.setattr(RL.M, "_pgate", gate)
+    case = {"id": "c", "scan_type": "CT", "clinical_history": "h", "findings": "x"}
+    out = asyncio.run(RL._cards_for(case, asyncio.Semaphore(1)))
+    assert gated == ["a", "b"]                         # the key hit, then an unknown key falling back to the name
+    assert sorted(c["id"] for c in out) == ["c:F1:a", "c:F1:b"]

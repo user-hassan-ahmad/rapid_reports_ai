@@ -7,15 +7,16 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 
-from ..registry import norm
+from ..registry import _strip_version, norm
 from . import engine
-from .schema import Cases, Entry, Manifest
+from .schema import DOES_NOT_APPLY, Cases, Entry, InputDef, Manifest
 from .verify import check
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 _HERE = Path(__file__).resolve()
 BUNDLE = _HERE.parents[3] / "resources" / "guideline_bundle.json"
 _PUBLIC = ("id", "role", "title", "issuer", "edition", "url")
+KNOWN_ALIASES = 3     # aliases shown per KNOWN SYSTEMS line (find still matches every alias)
 
 
 def guidelines_root(here: Path = _HERE) -> Path:
@@ -78,12 +80,62 @@ def dumps(bundle: dict[str, Any]) -> str:
     return json.dumps(bundle, sort_keys=True, ensure_ascii=False, indent=1) + "\n"
 
 
+def _bare_display(e: Entry) -> str:
+    """The display, normalised, with its edition token removed ("ESE adrenal incidentaloma 2023" -> "ese adrenal
+    incidentaloma"): the form the matcher is told to give, a name without the version."""
+    d, ed = norm(e.display), norm(e.edition)
+    return " ".join(re.sub(rf"\b{re.escape(ed)}\b", " ", d).split()) if ed else d
+
+
+def _names(e: Entry) -> set[str]:
+    """Every normalised name `find` takes for an entry: display, system, aliases, the id as a slug, the key, and the
+    display without its edition (as registry.alias_hit does for a registry row)."""
+    return {n for n in (*(norm(x) for x in (e.display, e.system, *e.aliases, e.id.replace("-", " "), e.key)),
+                        _bare_display(e)) if n}
+
+
+def _excluding(e: Entry, i: InputDef) -> list:
+    """The values of an eligibility input that, given alone, reach the does_not_apply outcome ([] if the engine
+    refuses one: the scope line then omits the input rather than failing the prompt)."""
+    try:
+        return [v.value for v in engine.domain(e, i) or []
+                if v.state == "present" and engine.evaluate(e, {i.id: v}).outcome == DOES_NOT_APPLY]
+    except Exception:
+        return []
+
+
+def scope_line(e: Entry) -> str:
+    """A one-line scope from the entry's own data only: applies_to (finding type, region, context, modality), then
+    the eligibility inputs whose value alone removes the pack: "only:" a boolean that must hold (or the enum options
+    that remain), "not:" a boolean that must not. Numbers are left out (a cut-off is not a clean one-line clause)."""
+    a = e.applies_to
+    s = " or ".join(a.finding_type) or e.topic
+    s += f" in {'/'.join(a.region)}" if a.region else ""
+    s += "".join(f", {'/'.join(x)}" for x in (a.context, a.modality) if x)
+    only: list[str] = []
+    nots: list[str] = []
+    for i in e.inputs:
+        if i.role != "eligibility" or i.type == "number" or e.tier != 1:
+            continue
+        x = _excluding(e, i)
+        if i.type == "boolean" and x == [True]:
+            nots.append(i.label)
+        elif i.type == "boolean" and x == [False]:
+            only.append(i.label)
+        elif i.type == "enum" and x and (rest := [o for o in i.options if o not in x]):
+            only.append(f"{i.label} = {'/'.join(rest)}")
+    s += f"; only: {'; '.join(only)}" if only else ""
+    s += f"; not: {'; '.join(nots)}" if nots else ""
+    return s
+
+
 class Library:
     def __init__(self, bundle: dict[str, Any]):
         raw = bundle.get("entries", {})
         self._version = bundle.get("version", "")
         self._entries = {k: Entry.model_validate(v["entry"]) for k, v in raw.items()}
         self._sources = {k: v.get("sources", []) for k, v in raw.items()}
+        self._known: str | None = None
 
     def version(self) -> str:
         return self._version
@@ -108,12 +160,14 @@ class Library:
         return [e for e in self._current() if e.topic == entry.topic and e.id != entry.id]
 
     def find(self, name: str, version: str = "") -> Entry | None:
-        """The current entry a model-named system is: its display, system name or an alias, normalised; a version,
-        when given, must equal the edition."""
+        """The current entry a model-named system is: its display (with or without its edition), system name, an
+        alias, its id as a slug or its key, normalised, or the same with a trailing version token stripped; a version,
+        when given, must equal the edition. Exactly one hit, never a guess between siblings."""
         n = norm(name)
         if not n:
             return None
-        hits = [e for e in self._current() if n in {norm(x) for x in (e.display, e.system, *e.aliases)}]
+        ns = _strip_version(n)
+        hits = [e for e in self._current() if n in (names := _names(e)) or (ns and ns in names)]
         if version:
             hits = [e for e in hits if norm(e.edition) == norm(version)]
         return hits[0] if len(hits) == 1 else None
@@ -128,8 +182,12 @@ class Library:
         return engine.evaluate(e, given)
 
     def known_text(self) -> str:
-        """Lines for the matcher prompt's KNOWN SYSTEMS block, in its `- key: name` format (both tiers)."""
-        return "\n".join(f"- {e.key}: {e.display} [aliases: {' | '.join(e.aliases)}]" for e in self._current())
+        """Lines for the matcher prompt's KNOWN SYSTEMS block (both tiers): `- key: display [aliases: ...] (scope:
+        ...)`, the model picking a pack by its key from the scope and the finding."""
+        if self._known is None:   # the scope runs the engine per eligibility value: built once per bundle
+            self._known = "\n".join(f"- {e.key}: {e.display} [aliases: {' | '.join(e.aliases[:KNOWN_ALIASES])}] "
+                                     f"(scope: {scope_line(e)})" for e in self._current())
+        return self._known
 
 
 @lru_cache(maxsize=1)

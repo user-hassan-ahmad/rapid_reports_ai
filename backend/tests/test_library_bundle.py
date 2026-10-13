@@ -84,3 +84,49 @@ def test_guidelines_root_is_safe_on_a_short_install_path():
     assert isinstance(root, Path) and not root.exists()
     assert L.compile_bundle(root) == {"version": L.compile_bundle(root)["version"], "entries": {}}
     assert L.guidelines_root() == L.Path(L.__file__).resolve().parents[6] / "guidelines"
+
+
+def _live():
+    return L.Library(json.loads(L.BUNDLE.read_text()))
+
+
+def test_find_takes_the_display_without_its_edition_the_id_slug_and_the_key():
+    lib = _live()
+    assert lib.find("ESE adrenal incidentaloma", "2023").id == "ese-adrenal-incidentaloma"
+    assert lib.find("ESE adrenal incidentaloma").id == "ese-adrenal-incidentaloma"
+    assert lib.find("ESE adrenal incidentaloma", "2016") is None          # a given version must equal the edition
+    assert lib.find("BTS pulmonary nodule").id == "bts-pulmonary-nodule"   # the id as a slug
+    assert lib.find("bts-pulmonary-nodule").id == "bts-pulmonary-nodule"
+    assert lib.find("bts-pulmonary-nodule@2015.1").id == "bts-pulmonary-nodule"   # the full key
+    assert lib.find("BTS pulmonary nodule 2015").id == "bts-pulmonary-nodule"     # a trailing year stripped
+
+
+def test_every_current_pack_is_found_by_its_slug_key_and_bare_display():
+    """No pack's id slug, key or display-without-edition collides with another pack's names."""
+    lib = _live()
+    for e in lib._current():
+        assert lib.find(e.id.replace("-", " ")) is e, e.key
+        assert lib.find(e.key) is e, e.key
+        bare = L._bare_display(e)
+        assert bare and lib.find(bare) is e, (e.key, bare)
+
+
+def test_find_never_guesses_between_two_packs_with_the_same_bare_display(toy):
+    a = {**toy, "id": "toy-a", "display": "Toy 2020", "aliases": []}
+    b = {**toy, "id": "toy-b", "display": "Toy 2021", "edition": "2021", "aliases": []}
+    lib = L.Library({"entries": {f"{e['id']}@1.0": {"entry": e} for e in (a, b)}})
+    assert lib.find("Toy") is None
+    assert lib.find("Toy", "2021").id == "toy-b"
+
+
+def test_known_text_line_carries_the_key_and_a_scope_from_the_entry_data(toy):
+    lib = L.Library({"entries": {"toy-nodule@1.0": {"entry": toy}}})
+    assert lib.known_text() == ("- toy-nodule@1.0: Toy 2020 [aliases: toy nodule | toy guideline] "
+                                "(scope: nodule in chest, incidental, CT)")
+    lines = {ln.split(":")[0][2:]: ln for ln in _live().known_text().splitlines()}
+    ese = lines["ese-adrenal-incidentaloma@2023.1"]
+    assert ese.startswith("- ese-adrenal-incidentaloma@2023.1: ESE adrenal incidentaloma 2023 [aliases: ")
+    assert "(scope: adrenal mass in abdomen, CT/MRI; not: History of extra-adrenal malignancy; " in ese
+    aaa = lines["nhs-aaa-surveillance@2025.1"]   # an eligibility input whose false (or other option) excludes
+    assert "only: Scan done within the NHS AAA screening programme; Sex = male; not: AAA already treated)" in aaa
+    assert all(ln.count(" | ") <= L.KNOWN_ALIASES - 1 for ln in lines.values())

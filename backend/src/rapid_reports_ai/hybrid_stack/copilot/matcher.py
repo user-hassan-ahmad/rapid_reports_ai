@@ -50,6 +50,7 @@ For each FINDING, list 0-2 systems a radiologist would apply to THAT finding on 
 - never a system for a different finding, for a diagnosis the dictation does not make, or a general reporting standard;
 - most findings have none: return an empty list for them.
 Each system:
+- key: when KNOWN SYSTEMS lists the system, its key exactly as listed (choose a listed system by its scope and the finding, not by remembering its name); else ""
 - name: its usual name, without the version; when KNOWN SYSTEMS lists it, exactly that name
 - version: the edition or year ("" if it has none); when KNOWN SYSTEMS lists it, that version
 - why: one short clause, what about the finding makes it apply
@@ -66,6 +67,7 @@ class Finding(BaseModel):
 
 
 class RawSystem(BaseModel):
+    key: str = ""        # a KNOWN SYSTEMS key, as listed ("" when the system is not listed)
     name: str = ""
     version: str = ""
     site: str = ""
@@ -158,7 +160,7 @@ def _prompt(scan_type: str, history: str, findings: list[Finding], known: str) -
     s = f"SCAN TYPE: {scan_type}\nCLINICAL HISTORY: {history or 'none given'}\n\nFINDINGS:\n"
     s += "\n".join(f"- [{f.id}] {f.text}" for f in findings)
     if known:
-        s += "\n\nKNOWN SYSTEMS (key: name version [branches]):\n" + known
+        s += "\n\nKNOWN SYSTEMS (key: name version [branches], or key: name [aliases] (scope)):\n" + known
     s += "\n\nTNM SITES:\n" + "\n".join(f"- {x}" for x in tnm.sites())
     return s
 
@@ -365,13 +367,23 @@ async def _resolve(rows: _Rows, f: Finding, s: RawSystem, history: str) -> Guide
     return None if s.version else _latest(cands)
 
 
+def library_pack(lib, s: RawSystem):
+    """The library entry a candidate is: its listed key when that is a current entry; else its name (and version)
+    through find. The caller still gates the hit (real_lab mirrors this resolution)."""
+    if s.key.strip():
+        e = lib.lookup(s.key.strip())
+        if e is not None and e.status == "current":
+            return e
+    return (lib.find(s.name, s.version) or lib.find(s.name)) if s.name.strip() else None
+
+
 async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool = True) -> Card | None:
-    if not s.name.strip():
+    if not s.name.strip() and not s.key.strip():
         return None
     if s.name.strip().upper() == "TNM":
         return await _tnm_card(f, s, history, gate)
     lib = L.get()
-    pack = lib.find(s.name, s.version) or lib.find(s.name)
+    pack = library_pack(lib, s)
     if pack is not None:
         # A name hit is not applicability: Jev must agree the finding is the kind this entry is for (fails closed: no
         # card, never a fall-through to the registry). Siblings share topic and applies_to: gated once, on the hit.
@@ -384,6 +396,8 @@ async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool 
                     branch=branch, skeleton=[branch], publication=Publication(body=pack.issuer, year=pack.edition),
                     known=True, status="verified", siblings=[x.key for x in lib.siblings(pack)],
                     reference=pack.tier == 2, finding=f.text)
+    if not s.name.strip():   # a key outside the library and no name: nothing to resolve
+        return None
     if not R.web_fetch_on():   # spec §5: outside the library, no card; the name is logged as demand
         logger.info("[copilot.match] outside the library, no card (demand): %r %r", s.name.strip()[:120],
                     s.version.strip()[:24])
