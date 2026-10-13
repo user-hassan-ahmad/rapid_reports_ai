@@ -902,3 +902,27 @@ def test_pack_cards_carry_their_siblings_display_names(toy):
                                                    "toy-sib@1.0": {"entry": sib, "sources": TOY_SOURCES}}})
     c = MM._pack_card(lib, lib.lookup("toy-nodule@1.0"), "u1", "7 mm nodule.")
     assert c.siblings == ["toy-sib@1.0"] and c.sibling_names == ["Sib 2021"]
+
+
+def test_prewarm_starts_every_primary_before_any_sibling(monkeypatch, toy):
+    from rapid_reports_ai.hybrid_stack.copilot.library import preview_cache as PC
+    sib = {**toy, "id": "toy-sib", "display": "Sib 2021"}
+    lib = L.Library({"version": "v1", "entries": {"toy-nodule@1.0": {"entry": toy, "sources": TOY_SOURCES},
+                                                   "toy-sib@1.0": {"entry": sib, "sources": TOY_SOURCES}}})
+    monkeypatch.setattr(L, "get", lambda: lib)
+    monkeypatch.setattr(PC, "PREWARM_MAX", 2)
+    started = []
+
+    async def go():
+        async def slow(e, *a, **k):
+            started.append(e.key)
+            await asyncio.sleep(0.05)
+            return PP.Settlement()
+        monkeypatch.setattr(CR, "settle_pack", slow)
+        cards = [Card(key="toy-nodule@1.0", name="Toy 2020", version="2020", finding_id=f"u{n}", branch="Pack",
+                      siblings=["toy-sib@1.0"]) for n in range(2)]
+        req = CR.MatchRequest(findings=[CR.FindingIn(id=f"u{n}", text=f"{n + 5} mm nodule.") for n in range(2)])
+        n = CR._prewarm(req, cards)
+        await asyncio.gather(*list(PC._RUNNING))
+        return n
+    assert asyncio.run(go()) == 2 and started == ["toy-nodule@1.0", "toy-nodule@1.0"]   # both primaries, no sibling
