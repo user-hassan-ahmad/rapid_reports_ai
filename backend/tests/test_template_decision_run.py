@@ -109,3 +109,30 @@ def test_evidence_record_is_small_and_names_the_version():
     ev = R.evidence(run, {"cards": [1, 2], "more": [], "kept": [3]})
     assert ev["version"] == R.RUN_VERSION and ev["dropped_quotes"] == 2 and ev["cards"] == 2 and ev["kept"] == 1
     assert ev["habits"] == [{"finding": "f", "habit": "h", "reports": [1, 2]}]
+
+
+# ── review fixes (Phase 2 review) ──────────────────────────────────────────────────────────────────────────────
+
+def test_a_quote_needs_two_words_or_six_characters():
+    assert not R.verified(R.Quote(report=1, text="LVEF"), EX)            # one short word
+    assert not R.verified(R.Quote(report=1, text="55%"), EX)
+    assert R.verified(R.Quote(report=1, text="ECV 28%"), EX)             # two words
+    assert R.verified(R.Quote(report=1, text="Findings"), EX)            # six characters or more
+
+
+def test_value_candidates_with_one_name_are_merged():
+    out = R.RunOutput(values=[R.ValueCandidate(name="LVEF", quotes=[R.Quote(report=1, text="LVEF 55%")]),
+                              R.ValueCandidate(name="lvef ", quotes=[R.Quote(report=2, text="LVEF 60%"),
+                                                                     R.Quote(report=1, text="LVEF 55%")])])
+    run = R.check_quotes(out, EX)
+    assert [v.name for v in run.values] == ["LVEF"]
+    assert [(q.report, q.text) for q in run.values[0].quotes] == [(1, "LVEF 55%"), (2, "LVEF 60%")]
+
+
+def test_concept_wording_must_match_its_quotes_else_the_first_quote_is_used():
+    good = R.ConceptWording(concept="comparison", state="compared", text="Compared with {study} of {date}.",
+                            quotes=[R.Quote(report=2, text="Compared with CT of 01/01/2020.")])
+    invented = R.ConceptWording(concept="comparison", state="none", text="No prior studies are available.",
+                                quotes=[R.Quote(report=1, text="No previous imaging.")])
+    run = R.check_quotes(R.RunOutput(concepts=[good, invented]), EX)
+    assert [c.text for c in run.concepts] == ["Compared with {study} of {date}.", "No previous imaging."]

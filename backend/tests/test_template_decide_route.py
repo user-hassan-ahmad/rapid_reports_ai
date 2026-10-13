@@ -121,4 +121,72 @@ def test_a_reviewed_template_is_not_re_run(client, auth_headers, db_session, tes
 def test_another_users_template_is_not_found(client, auth_headers, db_session, run_returns):
     import uuid
     r = client.post(URL, headers=auth_headers, json={"template_id": str(uuid.uuid4())}).json()
-    assert r == {"success": False, "error": "Template not found"}
+    assert r["success"] is False and r["error"] == "Template not found"
+    assert r["cards"] == [] and r["more"] == [] and r["kept"] == [] and r["ran"] is False
+
+
+# ── review fixes (Phase 2 review) ──────────────────────────────────────────────────────────────────────────────
+
+def test_too_many_or_too_long_examples_are_refused(client, auth_headers, run_returns):
+    from rapid_reports_ai import main as M
+    set_run, seen = run_returns
+    set_run(_run())
+    six = [{"content": f"Findings: report {i}."} for i in range(M.MAX_DECIDE_EXAMPLES + 1)]
+    r = client.post(URL, headers=auth_headers, json={"scan_type": "<scan>", "examples": six}).json()
+    assert r["success"] is False and r["error"] and r["cards"] == [] and "examples" not in seen
+    long = [*EX[:2], {"content": "x" * (M.DECIDE_EXAMPLE_MAX_CHARS + 1)}]
+    r = client.post(URL, headers=auth_headers, json={"scan_type": "<scan>", "examples": long}).json()
+    assert r["success"] is False and r["error"] and "examples" not in seen
+
+
+def test_a_card_build_failure_never_burns_the_first_use_review(client, auth_headers, db_session, test_user,
+                                                                run_returns, monkeypatch):
+    from rapid_reports_ai import template_rules_cards as trc
+    set_run, _ = run_returns
+    set_run(_run())
+
+    def boom(*a, **k):
+        raise RuntimeError("x")
+    monkeypatch.setattr(trc, "build_cards", boom)
+    t = _make_template(db_session, test_user, "T", {"generation_mode": "skill_sheet_guided",
+                                                    "skill_sheet": LEDGER_SHEET})
+    for i, e in enumerate(EX):
+        db_session.add(TemplateExample(template_id=t.id, text=e["content"], sha256=str(i) * 64, source="pasted"))
+    db_session.commit()
+    r = client.post(URL, headers=auth_headers, json={"template_id": str(t.id)}).json()
+    assert r["success"] and r["notice"]
+    db_session.refresh(t)
+    assert "rules_step" not in (t.template_config or {})
+
+
+def test_the_stamp_records_the_built_cards(client, auth_headers, db_session, test_user, run_returns):
+    set_run, _ = run_returns
+    set_run(_run())
+    t = _make_template(db_session, test_user, "T", {"generation_mode": "skill_sheet_guided",
+                                                    "skill_sheet": LEDGER_SHEET})
+    for i, e in enumerate(EX):
+        db_session.add(TemplateExample(template_id=t.id, text=e["content"], sha256=str(i) * 64, source="pasted"))
+    db_session.commit()
+    r = client.post(URL, headers=auth_headers, json={"template_id": str(t.id)}).json()
+    db_session.refresh(t)
+    stamp = t.template_config["rules_step"]
+    assert stamp["cards"] == len(r["cards"]) == 1 and stamp["kept"] == len(r["kept"]) == 1 and stamp["more"] == 0
+
+
+def test_current_values_count_against_the_card_budget(client, auth_headers, db_session, test_user, run_returns,
+                                                      monkeypatch):
+    from rapid_reports_ai import template_rules_cards as trc
+    set_run, _ = run_returns
+    vals = [R.ValueCandidate(name=f"Value {i}", quotes=[R.Quote(report=1, text="LVEF 55%")]) for i in range(8)]
+    run = R.check_quotes(R.RunOutput(values=vals), [e["content"] for e in EX])
+    run.states = {n: [] for n in td.CONCEPTS}
+    set_run(run)
+    led, _ = td.set_decision([], "value", "LVEF", {"need": "every"}, source="creation")
+    t = _make_template(db_session, test_user, "T", {"generation_mode": "skill_sheet_guided",
+                                                    "skill_sheet": tla.apply_ledger(LEDGER_SHEET, led).sheet})
+    for i, e in enumerate(EX):
+        db_session.add(TemplateExample(template_id=t.id, text=e["content"], sha256=str(i) * 64, source="pasted"))
+    db_session.commit()
+    r = client.post(URL, headers=auth_headers, json={"template_id": str(t.id)}).json()
+    assert len(r["cards"]) == trc.MAX_CARDS and r["cards"][0]["id"] == "value:lvef"
+    assert len(r["more"]) == 1 and r["run"]["cards"] == trc.MAX_CARDS and r["run"]["more"] == 1

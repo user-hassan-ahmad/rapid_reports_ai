@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional
@@ -28,6 +29,8 @@ RUN_VERSION = "decision-run-2026-10-13"
 QWEN_TIMEOUT_S = 25.0
 FALLBACK_TIMEOUT_S = 25.0
 JEV_TIMEOUT_S = 6.0
+MIN_QUOTE_WORDS = 2  # a verified quote has at least this many words, or MIN_QUOTE_CHARS characters, so a short
+MIN_QUOTE_CHARS = 6  # fragment ("55%") cannot verify by chance
 STATES_MIN = 0.5   # lab-set (scripts/rules_step_lab.py decide): one cut-off for every concept question
 SETTINGS = {"temperature": 0.2, "max_tokens": 6000, "reasoning_effort": "low"}
 
@@ -93,10 +96,24 @@ def _norm(s: str) -> str:
 
 
 def verified(q: Quote, examples: List[str]) -> bool:
-    """The quote appears in the example it cites (case and spacing ignored)."""
-    if not 1 <= q.report <= len(examples) or not q.text.strip():
+    """The quote appears in the example it cites (case and spacing ignored) and is long enough to mean something:
+    at least MIN_QUOTE_WORDS words or MIN_QUOTE_CHARS characters."""
+    text = _norm(q.text)
+    if not 1 <= q.report <= len(examples) or not text:
         return False
-    return _norm(q.text) in _norm(examples[q.report - 1])
+    if len(text.split()) < MIN_QUOTE_WORDS and len(text) < MIN_QUOTE_CHARS:
+        return False
+    return text in _norm(examples[q.report - 1])
+
+
+_SLOT = re.compile(r"\{[^{}]*\}")
+
+
+def _wording_matches(text: str, quotes: List[Quote], examples: List[str]) -> bool:
+    """The wording, with each {slot} as a wildcard, appears in one of the examples its quotes cite."""
+    parts = _SLOT.split(_norm(text))
+    pattern = re.compile(".+?".join(re.escape(x) for x in parts))
+    return any(pattern.search(_norm(examples[q.report - 1])) for q in quotes)
 
 
 @dataclass
@@ -113,20 +130,38 @@ class DecisionRun:
 
 def check_quotes(out: RunOutput, examples: List[str]) -> DecisionRun:
     """Keep only verified quotes; drop a candidate left with none, a value name code could not store, and a habit
-    seen in fewer than two examples."""
+    seen in fewer than two examples. Value candidates with one name (td._name) are merged, so no two cards share an
+    id. A concept wording that matches none of its quotes' examples (slots as wildcards) is replaced by its first
+    verified quote, so an invented wording never reaches a card."""
     dropped = 0
-    values, concepts = [], []
+    values: List[ValueCandidate] = []
+    by_name: Dict[str, ValueCandidate] = {}
+    concepts = []
     for v in out.values:
         ok = [q for q in v.quotes if verified(q, examples)]
         dropped += len(v.quotes) - len(ok)
         name = " ".join(v.name.split())
-        if ok and name and len(name.split()) <= td.MAX_VALUE_WORDS and not any(c in name for c in '"|[]{}'):
-            values.append(ValueCandidate(name=name, quotes=ok))
+        if not (ok and name and len(name.split()) <= td.MAX_VALUE_WORDS and not any(c in name for c in '"|[]{}')):
+            continue
+        same = by_name.get(td._name(name))
+        if same is None:
+            by_name[td._name(name)] = same = ValueCandidate(name=name, quotes=[])
+            values.append(same)
+        have = {(q.report, _norm(q.text)) for q in same.quotes}
+        for q in ok:
+            if (q.report, _norm(q.text)) not in have:
+                have.add((q.report, _norm(q.text)))
+                same.quotes.append(q)
     for c in out.concepts:
         ok = [q for q in c.quotes if verified(q, examples)]
         dropped += len(c.quotes) - len(ok)
-        if ok and c.text.strip() and '"' not in c.text and c.state in td.CONCEPTS[c.concept].states:
-            concepts.append(ConceptWording(concept=c.concept, state=c.state, text=" ".join(c.text.split()), quotes=ok))
+        if not (ok and c.text.strip() and c.state in td.CONCEPTS[c.concept].states):
+            continue
+        text = " ".join(c.text.split())
+        if not _wording_matches(text, ok, examples):
+            text = " ".join(ok[0].text.split())
+        if '"' not in text:
+            concepts.append(ConceptWording(concept=c.concept, state=c.state, text=text, quotes=ok))
     habits = [h for h in out.habits if len({r for r in h.reports if 1 <= r <= len(examples)}) >= 2]
     return DecisionRun(ok=True, values=values, concepts=concepts, habits=habits, dropped_quotes=dropped)
 

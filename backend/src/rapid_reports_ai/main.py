@@ -803,6 +803,8 @@ class SkillSheetDecideRequest(BaseModel):
 
 NO_PRECHECK = "We couldn't pre-check your rules; review them on the Style step."
 MIN_DECIDE_EXAMPLES = 2
+MAX_DECIDE_EXAMPLES = 5            # as /skill-sheet/analyze
+DECIDE_EXAMPLE_MAX_CHARS = 20_000  # per example report
 
 
 # Quick Report Proto — ephemeral skill sheet pipeline
@@ -2849,6 +2851,10 @@ async def skill_sheet_decide_endpoint(
     from . import template_rules_cards as trc
     empty = {"success": True, "ran": False, "cards": [], "more": [], "kept": [], "defaults": [], "notice": "",
              "run": {}}
+    if len(request.examples) > MAX_DECIDE_EXAMPLES:
+        return {**empty, "success": False, "error": f"Maximum {MAX_DECIDE_EXAMPLES} example reports allowed"}
+    if any(len(e.content) > DECIDE_EXAMPLE_MAX_CHARS for e in request.examples):
+        return {**empty, "success": False, "error": "An example report is too long"}
     try:
         examples = [e.content for e in request.examples if e.content.strip()]
         scan_type = request.scan_type
@@ -2856,28 +2862,31 @@ async def skill_sheet_decide_endpoint(
         if request.template_id:
             owned = get_template(db, request.template_id, user_id=str(current_user.id))
             if not owned:
-                return {"success": False, "error": "Template not found"}
+                return {**empty, "success": False, "error": "Template not found"}
             cfg = owned.template_config or {}
             current = trc.current_value_cards(cfg.get("skill_sheet") or "", td.clean_ledger(cfg.get("decisions")))
             scan_type = scan_type or cfg.get("scan_type") or ""
             # first-use review only: a template that has decisions or a decision-run record is not re-run
             reviewed = bool(cfg.get("decisions")) or bool(cfg.get("rules_step"))
             if not examples and not reviewed:
-                examples = template_examples.stored_texts(db, owned.id)
+                examples = [x[:DECIDE_EXAMPLE_MAX_CHARS]
+                            for x in template_examples.stored_texts(db, owned.id, limit=MAX_DECIDE_EXAMPLES)]
         if len(examples) < MIN_DECIDE_EXAMPLES:
             return {**empty, "cards": current}
         run = await tdr.run_decisions(examples, scan_type)
         if not run.ok:
             return {**empty, "cards": current, "notice": NO_PRECHECK, "run": tdr.evidence(run)}
-        if request.template_id:   # first-use review: stamped on the server so it never runs twice
-            tdr.stamp_review(db, request.template_id, tdr.evidence(run))
         built = trc.build_cards(run, len(examples))
         have = {c["id"] for c in current}
         kept = [c for c in built["kept"] if c["id"] not in have]
-        out = {"cards": [*current, *(c for c in built["cards"] if c["id"] not in have)],
-               "more": [c for c in built["more"] if c["id"] not in have], "kept": kept}
+        # the template's current values first, then the run's ranked cards; one budget across both
+        open_ = [*current, *(c for c in [*built["cards"], *built["more"]] if c["id"] not in have)]
+        out = {"cards": open_[:trc.MAX_CARDS], "more": open_[trc.MAX_CARDS:], "kept": kept}
+        record = tdr.evidence(run, out)
+        if request.template_id:   # first-use review: stamped once the cards exist, so it never runs twice
+            tdr.stamp_review(db, request.template_id, record)
         return {"success": True, "ran": True, **out, "defaults": trc.defaults_of(kept), "notice": "",
-                "run": tdr.evidence(run, out)}
+                "run": record}
     except Exception as e:
         logger.warning("skill-sheet decide failed: %s", type(e).__name__)
         return {**empty, "notice": NO_PRECHECK}

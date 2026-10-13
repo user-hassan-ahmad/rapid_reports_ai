@@ -142,3 +142,16 @@ def test_card_for_change_is_prefilled_and_not_preselected():
     assert card["wording"] == {"default": "", "when_met": "Compared with {date}.", "condition": PRIOR_COND}
     card = C.card_for_change("normal", "Liver :: liver", {"text": "The liver is normal."})
     assert card["wording"] == {"text": "The liver is normal."} and card["kind"] == "normal"
+
+
+def test_a_contrast_tie_defaults_to_the_given_wording():
+    # pinned (decision pending): with each contrast state used equally often, the first state ("given") is the default
+    none = R.ConceptWording(concept="contrast", state="not_given", text="No contrast agent was given.",
+                            quotes=[_q(1, "No contrast agent was given.")])
+    given = R.ConceptWording(concept="contrast", state="given", text="Following a contrast agent.",
+                             quotes=[_q(3, "Following a contrast agent.")])
+    run = R.check_quotes(R.RunOutput(concepts=[none, given]), EX_C)
+    run.states = {n: [] for n in td.CONCEPTS}
+    card = C.build_cards(run, 3)["cards"][0]
+    assert card["wording"]["default"] == "Following a contrast agent."
+    assert card["wording"]["condition"] == "the dictation states no contrast agent was given"
