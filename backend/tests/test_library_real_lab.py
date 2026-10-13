@@ -310,3 +310,90 @@ def test_metrics_split_by_source_and_synthetic_never_joins_the_combined_view():
     assert got["synthetic"]["wrong_read"] == ["c:k"]
     assert got["prod+hassan"]["cards"] == 2 and got["prod+hassan"]["wrong_read"] == ["b:k"]
     assert set(RL.by_source([r("a", "prod", 1, "ok")])) == {"prod"}
+
+
+def _run_cards_for(monkeypatch, names_by_finding, packs, siblings, gate, caps=None):
+    import asyncio
+    from types import SimpleNamespace as NS
+
+    class Lib:
+        def find(self, name, version=""):
+            return packs.get(name)
+
+        def siblings(self, p):
+            return siblings.get(p.key, [])
+
+        def known_text(self):
+            return ""
+
+    async def call(prompt):
+        return NS(findings=[NS(id=fid, systems=[NS(name=n, version="") for n in names])
+                            for fid, names in names_by_finding.items()])
+
+    async def schema(*a, **k):
+        return NS(regions=[])
+
+    async def group_update(*a, **k):
+        return NS(units=[])
+    import rapid_reports_ai.hybrid_stack.service as S
+    monkeypatch.setattr(S, "resolve_schema", schema)
+    monkeypatch.setattr(S, "group_update", group_update)
+    fs = [{"id": fid, "text": f"t{fid}"} for fid in names_by_finding]
+    monkeypatch.setattr(RL, "_coverage_lab", lambda: NS(findings=lambda units: fs))
+    monkeypatch.setattr(RL.LB, "get", lambda: Lib())
+    monkeypatch.setattr(RL.M, "_call", call)
+    monkeypatch.setattr(RL.M, "_pgate", gate)
+    if caps:
+        monkeypatch.setattr(RL.M, "MAX_PER_FINDING", caps[0])
+        monkeypatch.setattr(RL.M, "MAX_PER_CASE", caps[1])
+    case = {"id": "c", "scan_type": "CT", "clinical_history": "h", "findings": "x"}
+    return asyncio.run(RL._cards_for(case, asyncio.Semaphore(1)))
+
+
+def _packs(*keys, tier=1):
+    from types import SimpleNamespace as NS
+    return {k.upper(): NS(key=k, tier=tier, display=k) for k in keys}
+
+
+def test_a_failed_gate_drops_the_hit_and_its_siblings_and_an_exception_is_tolerated(monkeypatch):
+    packs = _packs("a", "b", "x")
+    sib = {"a": [packs["X"]], "b": [packs["X"]]}
+
+    async def gate(text, pack, history):
+        if pack.key == "a":
+            return None
+        if pack.key == "b":
+            raise RuntimeError("boom")
+        return 1.0
+    assert _run_cards_for(monkeypatch, {"F1": ["A", "B"]}, packs, sib, gate) == []
+
+    async def gate2(text, pack, history):
+        if pack.key == "b":
+            raise RuntimeError("boom")
+        return 1.0
+    out = _run_cards_for(monkeypatch, {"F1": ["A", "B"]}, packs, {}, gate2)
+    assert [c["pack"] for c in out] == ["a"]                       # b's failure did not drop the case
+
+
+def test_caps_apply_in_rank_order_tier2_counts_and_siblings_do_not(monkeypatch):
+    from types import SimpleNamespace as NS
+    packs = {**_packs("a", "b", "c", "d"), "R": NS(key="r", tier=2, display="r"), "S": NS(key="s", tier=1, display="s")}
+
+    async def gate(text, pack, history):
+        return 1.0
+    # F1 ranks R(tier 2), A, B ; F2 ranks C, D. MAX_PER_FINDING 2, MAX_PER_CASE 3: rank 0 = R, C ; rank 1 = A (case full)
+    out = _run_cards_for(monkeypatch, {"F1": ["R", "A", "B"], "F2": ["C", "D"]}, packs,
+                         {"c": [packs["S"]]}, gate, caps=(2, 3))
+    hits = [c["pack"] for c in out if not c["via_sibling_of"]]
+    assert hits == ["c", "a"]                                      # R used a slot but is a tier 2 card the lab drops
+    sibs = [c for c in out if c["via_sibling_of"]]
+    assert [(c["pack"], c["via_sibling_of"]) for c in sibs] == [("s", "c")]   # sibling beyond the caps, tagged
+
+
+def test_headline_excludes_synthetic_and_card_kinds_split_hits_from_siblings():
+    rows = [{"source": "prod", "sibling": False}, {"source": "prod", "sibling": True},
+            {"source": "hassan", "sibling": False}, {"source": "synthetic", "sibling": False}]
+    assert [r["source"] for r in RL.headline_rows(rows)] == ["prod", "prod", "hassan"]
+    assert RL.headline_rows([rows[3]]) == []
+    assert RL.card_kinds(rows) == {"hassan": {"hit": 1, "sibling": 0}, "prod": {"hit": 1, "sibling": 1},
+                                   "synthetic": {"hit": 1, "sibling": 0}}

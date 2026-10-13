@@ -159,28 +159,52 @@ async def _cards_for(case: dict, sem: asyncio.Semaphore) -> list[dict]:
         # Live path (matcher.match) with web fetch OFF: the library's known systems steer the model's names.
         raw = await M._call(M._prompt(case["scan_type"], case["clinical_history"], [M.Finding(**f) for f in fs],
                                       LB.get().known_text()))
-        lib, out, seen = LB.get(), [], set()
+        lib, out = LB.get(), []
+        # Mirrors matcher.match order: candidates per finding -> gated card each (tier 1 AND tier 2 are hits, so tier 2
+        # counts toward the caps as live counts it) -> dedupe within the finding -> caps in rank order. TNM is skipped
+        # (no TNM pack in the lab). Siblings are columns on the hit's card live: emitted here as their own cards (each
+        # is settled and labelled) but never counted toward the caps.
+        per_finding: dict[str, list] = {f["id"]: [] for f in fs}
+        for rf in raw.findings:
+            f = next((x for x in fs if x["id"] == M._rid(rf.id)), None)
+            for s in (rf.systems if f else [])[:M.CANDIDATES_PER_FINDING]:
+                try:                                 # live's _safe_card: one failing candidate is skipped, not the case
+                    if not s.name.strip() or s.name.strip().upper() == "TNM":
+                        continue
+                    pack = lib.find(s.name, s.version) or lib.find(s.name)
+                    if pack is None:
+                        continue
+                    score = await M._pgate(f["text"], pack, case["clinical_history"])
+                    if score is None or score < M.PACK_GATE_MIN:
+                        continue
+                except Exception:
+                    continue
+                if all(x.key != pack.key for x in per_finding[f["id"]]):
+                    per_finding[f["id"]].append(pack)
+        hits: list[tuple[dict, object]] = []
+        for rank in range(M.MAX_PER_FINDING):
+            for f in fs:
+                ranked = per_finding[f["id"]]
+                if rank < len(ranked) and len(hits) < M.MAX_PER_CASE and all(
+                        not (h[0]["id"] == f["id"] and h[1].key == ranked[rank].key) for h in hits):
+                    hits.append((f, ranked[rank]))
+        seen: set[str] = set()
 
-        def emit(f: dict, pack) -> None:
+        def emit(f: dict, pack, via: str | None = None) -> None:
             cid = f"{case['id']}:{f['id']}:{pack.key}"
             if cid not in seen:
                 seen.add(cid)
                 out.append({"id": cid, "case": case["id"], "pack": pack.key, "source": case.get("source", "prod"),
                             "scan_type": case["scan_type"], "clinical_history": case["clinical_history"],
-                            "findings": case["findings"], "finding": f["text"]})
+                            "findings": case["findings"], "finding": f["text"], "via_sibling_of": via})
 
-        for rf in raw.findings:
-            f = next((x for x in fs if x["id"] == M._rid(rf.id)), None)
-            for s in (rf.systems if f else [])[:M.CANDIDATES_PER_FINDING]:
-                pack = lib.find(s.name, s.version) or lib.find(s.name)
-                if pack is None or pack.tier != 1:
-                    continue
-                score = await M._pgate(f["text"], pack, case["clinical_history"])
-                if score is not None and score >= M.PACK_GATE_MIN:
-                    emit(f, pack)
-                    for sib in lib.siblings(pack):      # live renders siblings on the same card, gated once on the hit
-                        if sib.tier == 1:
-                            emit(f, sib)
+        for f, pack in hits:                         # the lab settles tier 1 only: tier 2 hits used a cap slot, no card
+            if pack.tier == 1:
+                emit(f, pack)
+        for f, pack in hits:
+            for sib in lib.siblings(pack):
+                if sib.tier == 1:
+                    emit(f, sib, pack.key)
         return out
 
 
@@ -477,6 +501,22 @@ def metrics(rows: list[dict]) -> dict:
             "degraded": [r["card"] for r in rows if r.get("degraded")]}
 
 
+HEADLINE_SOURCES = ("prod", "hassan")          # real dictations; synthetic is only ever reported on its own
+
+
+def headline_rows(rows: list[dict]) -> list[dict]:
+    return [r for r in rows if r.get("source", "prod") in HEADLINE_SOURCES]
+
+
+def card_kinds(rows: list[dict]) -> dict:
+    """Per source: hit cards (the matcher's own) against sibling cards (columns of a hit, emitted separately)."""
+    out: dict[str, dict] = {}
+    for r in rows:
+        k = out.setdefault(r.get("source", "prod"), {"hit": 0, "sibling": 0})
+        k["sibling" if r.get("sibling") else "hit"] += 1
+    return dict(sorted(out.items()))
+
+
 def by_source(rows: list[dict]) -> dict:
     """Metrics per source present in the rows, plus "prod+hassan" (the real-dictation view) when both exist.
     Production stays the headline; synthetic is only ever reported on its own, never folded in."""
@@ -602,7 +642,7 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
     overrides, op = _apply_overrides(lib, cards, labels, verdicts_csv)
     if op:
         print("\n".join(op), file=sys.stderr)
-    rows, ms, skipped = [], [], []
+    rows, skipped = [], []
     for c in cards:
         if c["id"] not in labels or c["id"] not in st or "error" in st[c["id"]]:
             skipped.append(c["id"])
@@ -610,35 +650,42 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
         e, s, lab = lib.lookup(c["pack"]), _settlement(st[c["id"]]), labels[c["id"]]
         n, outcome = taps(e, s, lab, {})
         d = drafts(s)
-        rows.append({"card": c["id"], "pack": c["pack"], "source": c.get("source", "prod"), "taps": n, "verdicts": verdicts(e, s, lab),
+        rows.append({"card": c["id"], "pack": c["pack"], "source": c.get("source", "prod"),
+                     "sibling": bool(c.get("via_sibling_of")), "ms": st[c["id"]]["ms"], "taps": n, "verdicts": verdicts(e, s, lab),
                      "tiers": {k: t for k, (_, _, t) in d.items()}, "degraded": st[c["id"]]["degraded"],
                      "outcome": outcome, "draft_outcome": st[c["id"]].get("draft_outcome_id")})
-        ms.append(st[c["id"]]["ms"])
     errored = [k for k, r in st.items() if "error" in r]
     if skipped:
         print(f"skipped {len(skipped)} unlabelled, unsettled or errored cards: {', '.join(skipped)}", file=sys.stderr)
     cats = Counter(c["pack"] for c in cards if (labels.get(c["id"]) or {}).get("category"))
+    head = headline_rows(rows)                                          # synthetic never joins the headline
+    ms = [r["ms"] for r in head]
     q = statistics.quantiles(ms, n=20) if len(ms) > 1 else ms * 2
-    result = {**metrics(rows), "outcome_agreement": outcome_agreement(rows),
-              "wrong_prefill_total": wrong_prefill_total(rows), "by_source": by_source(rows),
-              "category_dictated_by_pack": dict(cats),
+    result = {**metrics(head), "headline_sources": list(HEADLINE_SOURCES), "outcome_agreement": outcome_agreement(head),
+              "wrong_prefill_total": wrong_prefill_total(head), "by_source": by_source(rows),
+              "card_kinds_by_source": card_kinds(rows), "category_dictated_by_pack": dict(cats),
               "hassan_overrides": overrides, "override_problems": op, "skipped_cards": skipped,
               "errored_cards": errored, "latency_ms": {"p50": statistics.median(ms) if ms else None,
                                                             "p95": q[-1] if q else None},
               "time_to_first_paint": "not measured offline", "checker": "n/a", "lesions": "n/a"}
     path = _pid(out_dir, "score", "json")
     path.write_text(json.dumps(result, indent=1))
-    print("| metric | measured | reference |\n|---|---|---|")
-    print(f"| cards scored | {result['cards']} | |")
-    print(f"| wrong values shown as read | {len(result['wrong_read'])} | 0 |")
-    print(f"| median taps to Calculate | {result['median_taps']} | <= 2 |")
-    print(f"| taps distribution | {result['taps_distribution']} | |")
-    print(f"| wrong pre-filled values | {result['wrong_prefill_total']} | |")
-    print(f"| outcome agreement | {result['outcome_agreement']} | |")
-    print(f"| errored / skipped cards | {len(errored)} / {len(skipped)} | |")
-    print(f"| degraded cards | {len(result['degraded'])} | |")
-    print(f"| latency p50 / p95 ms | {result['latency_ms']['p50']} / {result['latency_ms']['p95']} | |")
-    print("| time to first paint | not measured offline | |\n| checker, lesions | n/a | |")
+    print(f"headline = {' + '.join(HEADLINE_SOURCES)} only (synthetic is reported on its own below)")
+    if not head:
+        print("no prod or hassan cards scored: there is no headline")
+    else:
+        print("| metric | measured | reference |\n|---|---|---|")
+        print(f"| cards scored | {result['cards']} | |")
+        print(f"| wrong values shown as read | {len(result['wrong_read'])} | 0 |")
+        print(f"| median taps to Calculate | {result['median_taps']} | <= 2 |")
+        print(f"| taps distribution | {result['taps_distribution']} | |")
+        print(f"| wrong pre-filled values | {result['wrong_prefill_total']} | |")
+        print(f"| outcome agreement | {result['outcome_agreement']} | |")
+        print(f"| errored / skipped cards | {len(errored)} / {len(skipped)} | |")
+        print(f"| degraded cards | {len(result['degraded'])} | |")
+        print(f"| latency p50 / p95 ms | {result['latency_ms']['p50']} / {result['latency_ms']['p95']} | |")
+        print("| time to first paint | not measured offline | |\n| checker, lesions | n/a | |")
+    print(f"\ncards by source (hit / sibling): {result['card_kinds_by_source']}")
     for src, m in result["by_source"].items():
         print(f"\n### source: {src}\n| metric | measured |\n|---|---|")
         print(f"| cards scored | {m['cards']} |\n| wrong values shown as read | {len(m['wrong_read'])} |")
