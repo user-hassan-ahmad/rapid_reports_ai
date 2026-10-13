@@ -1,6 +1,7 @@
 // Scratchpad v2 region state and the confirmed findings block (spec 2026-10-11 §2.1, §6). Pure functions
 // of the units: the verbatim text stays the only text; this decides where each region shows.
 import type { GateRecord, RegionStates, StackUnit } from './types';
+import { valueStatements } from './values';
 
 export const TECHNIQUE = 'Technique';
 export const GENERAL = 'General';
@@ -119,7 +120,7 @@ export function buildFindingsBlock(units: StackUnit[], groups: string[], gate: G
 	const standalone: string[] = [];
 	for (const it of gate.items) {
 		if (it.answered_by !== 'tap' || !it.sentences.length) continue;
-		if (groups.includes(it.region) && (dictatedRegion(it.region) || it.kind === 'finding')) add(it.region, `${ANSWERED} ${it.sentences.join(' ')}`);
+		if (groups.includes(it.region) && (dictatedRegion(it.region) || it.kind !== 'referral')) add(it.region, `${ANSWERED} ${it.sentences.join(' ')}`);
 		else standalone.push(`${it.region || 'Referral question'} (answered by the radiologist): ${it.sentences.join(' ')}`);
 	}
 	const tray: string[] = [];
@@ -129,6 +130,9 @@ export function buildFindingsBlock(units: StackUnit[], groups: string[], gate: G
 		else tray.push(`${r}: ${sentences.join(' ')}`);
 	}
 	const parts = [findingsText(units, groups, extra), standalone.join('\n')];
+	// The value cluster: required values the radiologist typed, stated as answers (filled ones are in the dictation)
+	const values = valueStatements(gate.values ?? []);
+	if (values.length) parts.push(`${ANSWERED} ${values.map((v) => `${v}.`).join(' ')}`);
 	if (tray.length) parts.push(`${ASSUMED} ${tray.join(' ')}`);
 	// Regions with no sentences to confirm (no slim sheet yet): confirmed by name, as v2 did.
 	const named = [...gate.assumed_normal.filter((r) => !gate.assumed[r]?.length),

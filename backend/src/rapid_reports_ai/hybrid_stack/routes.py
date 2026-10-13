@@ -16,14 +16,18 @@ from ..database import get_db
 from ..database.crud import get_template
 from ..database.models import DictationStackLog, StackSchemaFamily, StackSlimSheet, User
 from ..dictation_v2 import v2_allowed
+from ..template_decisions import clean_ledger
 from ..template_sheet_structure import generation_stamp
 from .schemas import Region
 from .items import Item, ItemsResult, Referral, recheck as items_recheck, update as items_update
 from .jev_stack import MATERIAL_MIN, STALE_MIN, UNFINISHED_MIN, ask_material, ask_stale, ask_unfinished
 from .normals import AssumedResult, assumed as assumed_normals
 from .slim_sheet import clean_sentences, get_or_make as slim_get_or_make
-from .template import template_normal_labels, template_region_normals, template_structure, template_suppressions
+from .template import (template_normal_labels, template_region_normals, template_required_values, template_structure,
+                       template_suppressions)
+from .values import ValuesResult, smart_fill
 from .draft import DraftResult, draft_conclusion
+from .habits import template_habits
 from .service import GroupResult, SchemaResult, close_update, group_update, resolve_schema
 from .units import StackUnit, sentences as split_sentences
 
@@ -76,6 +80,7 @@ class ItemsRequest(BaseModel):
     tapped: list[str] = Field(default_factory=list)     # sentences answered with a tap: re-checked for contradiction
     referrals: list[Referral] | None = None              # the session's fixed referral rows (None: first call)
     review: bool = False                                 # the end-of-dictation review (reasoning low)
+    template_id: str | None = None                       # its confirmed findings-triggered habits are asked
 
 
 class RecheckRequest(BaseModel):
@@ -155,6 +160,7 @@ class SlimResult(BaseModel):
     not_assessable: str = ""
     status: str = ""              # provisional | approved | template | template_unusable | "" (not ready)
     ready: bool = False
+    required_values: list[str] = Field(default_factory=list)   # template sessions: the LIST_MISSING items (value cluster)
 
 
 class SlimUpdate(BaseModel):
@@ -184,11 +190,24 @@ async def stack_group(req: GroupRequest, user: User = Depends(get_current_user))
 
 
 @router.post("/items", response_model=ItemsResult)
-async def stack_items(req: ItemsRequest, user: User = Depends(get_current_user)):
+async def stack_items(req: ItemsRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _require()
+    extra = {}
+    if req.template_id:
+        try:
+            t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
+            st = template_structure(t.template_config) if t is not None else None
+            # only habits the radiologist confirmed are asked (Hassan H3: a line with no entry is inactive)
+            habits = template_habits(st, clean_ledger((t.template_config or {}).get("decisions"))) if st is not None else []
+        except Exception as e:  # noqa: BLE001 -- fail-soft: no template rows, generic rows as usual
+            logger.warning("[stack.items] template %s habits not read: %s: %s", req.template_id, type(e).__name__,
+                           str(e)[:200])
+            habits = []
+        if habits:
+            extra["habits"] = habits
     return await items_update(req.scan_type, req.clinical_history, req.regions[:40], req.dictation,
                               req.abnormal[:40], req.not_assessable[:2000], req.removed[:50], req.tapped[:20],
-                              req.referrals[:2] if req.referrals is not None else None, req.review)
+                              req.referrals[:2] if req.referrals is not None else None, req.review, **extra)
 
 
 @router.post("/recheck", response_model=ItemsResult)
@@ -260,16 +279,40 @@ async def stack_assumed(req: AssumedRequest, user: User = Depends(get_current_us
     owned = list(dict.fromkeys(o for o in req.owned if o.strip()))[:100]   # the client sends current rows first
     suppressions: list[tuple[str, str]] = []
     labels: dict[str, str] = {}
+    scan_type = ""
     if req.template_id:
         t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
         st = template_structure(t.template_config) if t is not None else None
         if st is not None:
             suppressions, labels = template_suppressions(st), template_normal_labels(st)
+        if t is not None and isinstance(t.template_config, dict):
+            scan_type = str(t.template_config.get("scan_type") or "")[:300]
     return await assumed_normals(req.dictation, normals, req.abnormal, req.dictated_normal, req.removed[:50],
                                  owned, req.touched[:40], suppressions=suppressions,
                                  clinical_history=req.clinical_history[:2000], labels=labels,
-                                 region_text=None if req.region_text is None else
+                                 scan_type=scan_type, region_text=None if req.region_text is None else
                                  {r: t[:MAX_REGION_TEXT] for r, t in list(req.region_text.items())[:40]})
+
+
+
+class ValuesRequest(BaseModel):
+    dictation: str = ""
+    template_id: str | None = None   # the items are read from the template on the server, never sent by the client
+
+
+@router.post("/values", response_model=ValuesResult)
+async def stack_values(req: ValuesRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The value cluster's smart fill (requirements spec 2026-10-12 part 1): the template's required values, each
+    filled from the dictation (Jev says stated and where; code reads the number) or open. Never errors: a Jev
+    failure leaves every value open."""
+    _require()
+    items: list[str] = []
+    if req.template_id:
+        t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
+        st = template_structure(t.template_config) if t is not None else None
+        if st is not None:
+            items = template_required_values(st)
+    return await smart_fill(req.dictation[:20000], items)
 
 
 @router.post("/draft", response_model=DraftResult)
@@ -353,7 +396,8 @@ async def stack_slim_sheet(req: SlimRequest, user: User = Depends(get_current_us
         st = template_structure(t.template_config) if t is not None else None
         if st is None:   # Generate takes today's template path; the scratchpad says so
             return SlimResult(status="template_unusable")
-        return SlimResult(region_normals=template_region_normals(st), status="template", ready=True)
+        return SlimResult(region_normals=template_region_normals(st), required_values=template_required_values(st),
+                          status="template", ready=True)
     if not req.scan_type.strip():
         return SlimResult()
     schema = await resolve_schema(req.scan_type[:300], req.clinical_history[:2000], None, db)

@@ -2580,7 +2580,8 @@ No user input provided. Omit this section entirely from output.
         if stack is not None:
             # Scratchpad session: the radiologist confirmed the content; the sheet keeps structure and style only
             pre_writing, checklist = PRE_WRITING_ANALYSIS_STACK, VERIFICATION_CHECKLIST_STACK
-            brief = stack_brief(skill_sheet, stack.get("conclusion") or "", stack.get("declined") or ())
+            brief = stack_brief(skill_sheet, stack.get("conclusion") or "", stack.get("declined") or (),
+                                values_decided=stack.get("values_decided") is True)
             system_prompt = (
                 f"{SYSTEM_PREAMBLE}\n\n{GLOBAL_STYLE_GUIDE_STACK}\n\n"
                 f"{TEMPLATE_SHEET_HEADER_STACK}\n\n{brief}"
@@ -2763,8 +2764,12 @@ Findings: {findings_input}{history_note}
 
         # ── Skill-sheet-guided early exit ──────────────────────────────────
         if template_config.get("generation_mode") == "skill_sheet_guided":
+            # today's (fallback) path reads the stored sheet: habit lines are resolved only in the scratchpad, so the
+            # generator never sees one here either (findings-triggered rows plan, Task 5b)
+            from .template_context_rules import without_habits
+            sheet, _ = without_habits(template_config.get("skill_sheet") or "")
             return await self._generate_report_skill_sheet_guided(
-                template_config, user_inputs, user_signature,
+                {**template_config, "skill_sheet": sheet}, user_inputs, user_signature,
                 model_override=model_override, stack=stack,
             )
 

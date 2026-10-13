@@ -46,7 +46,9 @@ _TOKEN = re.compile(rf"(?:(?<![\w.])|(?<=\d[x×])){_VALUE}")
 _SRC_TOKEN = re.compile(rf"(?i)(?:(?<![A-Za-z\d.]){_VALUE}|\b(?:{'|'.join(_WORD_NUMS)})\b)")
 _ROMAN_AFTER = re.compile(r"(?i:\b(grade|stage|class|type|category|level|tier))\s+([IVX]{1,4})\b")
 _LABEL_WORDS = {"grade", "score", "stage", "class", "type", "category", "level", "tier", "classification", "scale"}
-_MONTH = r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
+# Month names whole, never a word that starts like one ("septal 1070 ms", "marked 1200 ms")
+_MONTH = (r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sept?(?:ember)?|"
+          r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b\.?")
 _MASKS = [
     re.compile(r"(?m)^\s*\d+[.)\]](?=\s)"),                                     # list markers
     re.compile(r"(?<!\S)\d+[)\]](?=\s)"),                                      # inline "2) " / "1] " markers

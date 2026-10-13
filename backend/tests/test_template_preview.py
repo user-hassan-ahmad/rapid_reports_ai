@@ -111,14 +111,15 @@ async def test_preview_report_wires_the_scratchpad_path(monkeypatch):
                     history=clinical_history, labels=labels, region_text=region_text)
         return NS(assumed={r: list(s) for r, s in region_normals.items()}, dropped={}, error=None)
 
-    class FakeTM:
-        async def generate_report_from_config(self, cfg, inputs, sig, stack=None):
-            seen.update(cfg=cfg, inputs=inputs, stack=stack)
-            return {"report_content": "REPORT", "model_used": "m"}
+    async def fake_lean(*, sheet, scan_type, findings, history, case, signature, declined=(), stack=None):
+        seen.update(sheet=sheet, scan=scan_type, inputs={"FINDINGS": findings, "CLINICAL_HISTORY": history},
+                    stack=stack, case=case, signature=signature, declined=declined)
+        return {"report_content": "REPORT", "model_used": "m"}
 
+    from rapid_reports_ai import template_lean
     monkeypatch.setattr(service, "group_update", fake_group)
     monkeypatch.setattr(normals, "assumed", fake_assumed)
-    monkeypatch.setattr(template_manager, "TemplateManager", FakeTM)
+    monkeypatch.setattr(template_lean, "generate_template_report_lean", fake_lean)
     from rapid_reports_ai.template_sheet_grammar import parse_sheet
     assert parse_sheet(SHEET, mode="template").structure.usable
     out = await template_preview.preview_report(SHEET, "CT", "Pain.", "Gallstones. Appendicitis.", declined=["x."])
@@ -131,7 +132,9 @@ async def test_preview_report_wires_the_scratchpad_path(monkeypatch):
     assert "Conclusion (confirmed by the radiologist): Appendicitis." in out["findings_block"]
     assert seen["inputs"] == {"FINDINGS": out["findings_block"], "CLINICAL_HISTORY": "Pain."}
     assert seen["stack"] == {"conclusion": "Appendicitis.", "declined": ["x."]}
-    assert seen["cfg"]["skill_sheet"] == SHEET and seen["cfg"]["generation_mode"] == "skill_sheet_guided"
+    # the scratchpad's own Generate path (context rules, required values, slot strip, check), not the bare generator
+    assert seen["sheet"] == SHEET and seen["scan"] == "CT" and seen["case"] is None and seen["signature"] is None
+    assert seen["declined"] == ["x."]
 
 
 async def test_preview_report_unusable_sheet():
@@ -155,12 +158,12 @@ def test_test_generate_endpoint_uses_the_preview(authed, monkeypatch):
 
     async def fake_preview(sheet, scan_type, history, dictation, conclusion="", declined=None):
         calls["args"] = (sheet, scan_type, history, dictation)
-        return {"usable": True, "report_content": "R", "model_used": "m"}
+        return {"usable": True, "report_content": "R", "model_used": "m", "review": [{"kind": "value_missing"}]}
 
     monkeypatch.setattr(template_preview, "preview_report", fake_preview)
     r = client.post("/api/templates/skill-sheet/test-generate",
                     json={"skill_sheet": "S", "scan_type": "CT", "clinical_history": "H", "findings_input": "F"})
-    assert r.json() == {"success": True, "report_content": "R", "model_used": "m"}
+    assert r.json() == {"success": True, "report_content": "R", "model_used": "m", "review": [{"kind": "value_missing"}]}
     assert calls["args"] == ("S", "CT", "H", "F")
 
     async def unusable(*a, **k):
@@ -172,10 +175,11 @@ def test_test_generate_endpoint_uses_the_preview(authed, monkeypatch):
     assert r.json()["success"] is False
 
 
-async def test_preview_report_returns_undictated_number_flags(monkeypatch):
+async def test_preview_report_surfaces_the_generate_paths_review_flags_once(monkeypatch):
+    """The number check runs once, inside the Generate path; the preview returns its flags (number_flags) and every
+    review flag the path raised (value_missing included) for the Test step."""
     from rapid_reports_ai.hybrid_stack import normals, service
-    from rapid_reports_ai import template_manager, template_number_check
-    seen = {}
+    from rapid_reports_ai import template_lean, template_number_check
 
     async def fake_group(scan_type, text, regions, previous):
         return NS(units=[U("Gallstones 12 mm.", regions[0].name, abnormal=True), U("Cholelithiasis.", "Conclusion")])
@@ -183,21 +187,25 @@ async def test_preview_report_returns_undictated_number_flags(monkeypatch):
     async def fake_assumed(dictation, region_normals, abnormal, dictated_normal, removed, **kw):
         return NS(assumed={}, dropped={}, error=None)
 
-    class FakeTM:
-        async def generate_report_from_config(self, cfg, inputs, sig, stack=None):
-            return {"report_content": "Gallstones 12 mm. A 23 mm cyst.", "model_used": "m"}
+    number = {"kind": "undictated_number", "text": "23 mm", "sentence": "A 23 mm cyst."}
+    missing = {"kind": "value_missing", "text": "RVEF", "message": "Required value RVEF not found in the report"}
 
-    real = template_number_check.undictated_numbers
+    async def fake_lean(**kw):
+        return {"report_content": "Gallstones 12 mm. A 23 mm cyst.", "model_used": "m",
+                "quality_check": {"enabled": True, "review": [number, missing]}}
 
-    def spy(report, sources, sheet=""):
-        seen.update(report=report, sources=list(sources), sheet=sheet)
-        return real(report, seen["sources"], sheet)
+    def never(*a, **k):
+        raise AssertionError("the number check already ran in the Generate path")
 
     monkeypatch.setattr(service, "group_update", fake_group)
     monkeypatch.setattr(normals, "assumed", fake_assumed)
-    monkeypatch.setattr(template_manager, "TemplateManager", FakeTM)
-    monkeypatch.setattr(template_number_check, "undictated_numbers", spy)
+    monkeypatch.setattr(template_lean, "generate_template_report_lean", fake_lean)
+    monkeypatch.setattr(template_number_check, "undictated_numbers", never)
     out = await template_preview.preview_report(SHEET, "CT", "Pain.", "Gallstones 12 mm. Cholelithiasis.")
-    assert seen["sources"] == [out["findings_block"], "Pain.", "Cholelithiasis."] and seen["sheet"] == SHEET
-    texts = [f["text"] for f in out["number_flags"]]
-    assert len(texts) == 1 and "23" in texts[0]
+    assert out["number_flags"] == [number] and out["review"] == [number, missing]
+
+    async def unchecked(**kw):
+        return {"report_content": "R", "model_used": "m", "quality_check": None}
+    monkeypatch.setattr(template_lean, "generate_template_report_lean", unchecked)
+    out = await template_preview.preview_report(SHEET, "CT", "Pain.", "Gallstones 12 mm. Cholelithiasis.")
+    assert out["number_flags"] == [] and out["review"] == []

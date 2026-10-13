@@ -27,6 +27,9 @@ from .report_reconcile import write_options
 from .report_review import CONTRA_FLAG, Q_CONTRA, ReportSection, run_quality_check
 from .template_number_check import undictated_numbers
 from .template_brief import _scores
+from .template_context_rules import (decided_block, resolve_context_rules, sheet_headers, strip_slot_sentences,
+                                     without_habits)
+from .template_required_values import apply_required_values, backstop, values_applied, write_missing
 from .template_manager import TemplateManager
 from .template_sheet_structure import _key
 
@@ -412,7 +415,9 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
     `case` is the stored Phase 1 case_result (template_pipeline.phase1_record), None, or an async callable
     returning it: then Phase 1 is resolved inside the options job (no prepare: Phase 1 runs on and is stored).
     With `stack` there is no options job at all (`options_job` None, `options_pending` False) and `case` is
-    never touched: the scratchpad checklist already decided what Phase 1 would offer."""
+    never touched: the scratchpad checklist already decided what Phase 1 would offer.
+    Context rules are resolved before the generator (template_context_rules) and any {slot} left in the report
+    is removed."""
     rec: dict = {"lat": {}}
     t_start = time.time()
     style = "\n".join(x for x in (_block(sheet, "Impression Construction Rules") or _block(sheet, "Impression Construction"),
@@ -434,10 +439,39 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
 
     async def gen():
         t0 = time.time()
+        # Context rules settled by Jev and applied by code (spec 2026-10-13-context-rules-resolved-design): the
+        # generator reads one decided line where the sheet had a default plus a rule. Fail-soft: stored sheet.
+        resolved = await resolve_context_rules(sheet, history, findings, stack=stack is not None,
+                                                scan_type=scan_type)
+        rec["context_rules"] = resolved.record
+        # habits are resolved only in the scratchpad; on the straight path nothing is asked, so nothing is written
+        # (a confirmed "state" habit is not written there in this release: findings-triggered rows plan, decision 14)
+        stripped, rec["habit_lines_stripped"] = without_habits(resolved.sheet)
+        base, gen_stack = stripped, stack
+        cluster = stack is not None and stack.get("values_na") is not None
+        # The value cluster (requirements spec 2026-10-12 part 1): code takes the LIST_MISSING lines out and writes
+        # the N/A line itself after the check. Without a cluster this session (the creator's Test, a session without
+        # it, the straight path) code owns the list too: nothing was marked N/A and Jev checks every item against the
+        # report (the backstop), since the generator does not write the line reliably. Only a clean apply tells the
+        # generator; otherwise today's sheet.
+        text, vrec = apply_required_values(stripped, stack["values_na"] if cluster else [])
+        if cluster or vrec.get("lists"):
+            ok = values_applied(vrec)
+            vrec["source"] = "cluster" if cluster else "code"
+            if not cluster:
+                vrec["check"] = list(dict.fromkeys(x for e in vrec["lists"] for x in e["items"]))
+            rec["required_values"] = vrec
+            base = text if ok else stripped
+            if stack is not None:
+                gen_stack = {**stack, "values_decided": ok}
+        block = decided_block(resolved.decided, resolved.kept)
+        gen_sheet = base + ("\n\n" + block if block else "")
+        rec["lat"]["rules_s"] = round(time.time() - t0, 1)
+        t1 = time.time()
         out = await TemplateManager()._generate_report_skill_sheet_guided(
-            template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": sheet, "scan_type": scan_type},
-            user_inputs={"FINDINGS": findings, "CLINICAL_HISTORY": history}, stack=stack)
-        rec["lat"]["generator_s"] = round(time.time() - t0, 1)
+            template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": gen_sheet, "scan_type": scan_type},
+            user_inputs={"FINDINGS": findings, "CLINICAL_HISTORY": history}, stack=gen_stack)
+        rec["lat"]["generator_s"] = round(time.time() - t1, 1)
         return out
 
     job: dict = {"phase1_used": False, "lat": {}}   # the options job's own record (never the report's)
@@ -465,7 +499,15 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         if opts_t is not None:
             opts_t.cancel()
         raise
-    report = out["report_content"]
+    # No {slot} ever reaches a report: a sentence still holding one is removed (and counted)
+    try:
+        heads = sheet_headers(sheet)
+    except Exception:  # noqa: BLE001 -- never raise into Generate
+        heads = set()
+    report, leaks = strip_slot_sentences(out["report_content"], heads)
+    rec["context_rules"]["slot_leaks"] = leaks
+    if leaks:
+        logger.warning("[template.context_rules] slot_leaks=%d removed from the generated report", leaks)
     rec["report_generated"] = report
 
     # Sections come from the generated report; options are placed in its findings / impression sections
@@ -492,13 +534,27 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
                 "phase1_used": job["phase1_used"], "lat": dict(job["lat"])}
 
     vet_t = asyncio.ensure_future(vetted()) if opts_t is not None else None
+    # The value cluster's backstop, beside the check: a filled value the report does not state is listed and flagged
+    vrec = rec.get("required_values")
+    values_on = vrec is not None and values_applied(vrec)
+    filled = vrec.get("check") if values_on and "check" in vrec else (stack or {}).get("values_filled") or []
+    bs_t = asyncio.ensure_future(backstop(report, vrec["lists"], filled)) if values_on else None
     try:
         final, checked_opts, quality = await checked()
     except BaseException:
+        if bs_t is not None:
+            bs_t.cancel()
         if vet_t is not None:
             vet_t.cancel()
             opts_t.cancel()
         raise
+    if bs_t is not None:
+        # The N/A line, by code, at its section's TOP / END (never sent through the check's repair)
+        lists, flags, vrec["backstop"] = await bs_t
+        if flags:
+            quality = {**(quality or {"enabled": False})}
+            quality["review"] = [*(quality.get("review") or []), *flags]
+        final, vrec["stripped"] = write_missing(final, sheet, lists, rec=vrec)
     # Numbers the writer added that no source supplies (a sheet's score/grade/time window): review flags only
     numbers = undictated_numbers(final, [findings, history, (stack or {}).get("conclusion")], sheet)
     if numbers:

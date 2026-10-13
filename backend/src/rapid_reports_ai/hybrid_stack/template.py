@@ -31,17 +31,26 @@ def template_structure(config: dict) -> Optional[SheetStructure]:
 
 
 def template_regions(st: SheetStructure) -> list[Region]:
+    by_id = {p.id: p for p in st.paragraphs}
+    out = [Region(name=name, includes=", ".join(by_id[pid].covers) or by_id[pid].name)
+           for pid, name in paragraph_regions(st).items()]
+    if OTHER.lower() not in {r.name.lower() for r in out}:
+        out.append(other_region())
+    return out
+
+
+def paragraph_regions(st: SheetStructure) -> dict[str, str]:
+    """Findings paragraph id -> its region name, exactly as template_regions names it (the region a habit row sits
+    in and its required statement joins)."""
     order = {sec.name: sec.order for sec in st.sections}
     findings = {sec.name for sec in st.sections if sec.role == "findings"}
     paras = sorted((p for p in st.paragraphs if p.section in findings), key=lambda p: order.get(p.section, 0))
-    out: list[Region] = []
+    out: dict[str, str] = {}
     seen: set[str] = set()
     for p in paras:
         name = p.name if p.name.lower() not in seen else f"{p.name} ({p.section.title()})"
         seen.add(name.lower())
-        out.append(Region(name=name, includes=", ".join(p.covers) or p.name))
-    if OTHER.lower() not in seen:
-        out.append(other_region())
+        out[p.id] = name
     return out
 
 
@@ -148,4 +157,20 @@ def template_suppressions(st: SheetStructure) -> list[tuple[str, str]]:
         t = offered.get(norm_key(r.target))
         if t is not None and (r.condition, t) not in out:
             out.append((r.condition, t))
+    return out
+
+
+def template_required_values(st: SheetStructure) -> list[str]:
+    """The values every report of this template carries (its LIST_MISSING items: the value cluster), in sheet
+    order, each once (norm_key)."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for r in st.rules:
+        if r.effect != "list_missing":
+            continue
+        for item in r.items:
+            k = norm_key(item)
+            if k and k not in seen:
+                seen.add(k)
+                out.append(item.strip())
     return out

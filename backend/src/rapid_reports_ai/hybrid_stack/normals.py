@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from .jev_stack import (CONDITION_MIN, CONTRA_MIN, REMOVED_MIN, STATED_MIN, RowCheck, ask_conditions, ask_rows,
                         normal_assumed)
 from .template import jev_text, norm_key
+from ..template_context_rules import condition_state
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,7 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
                   dictated_normal: list[str], removed: list[str], owned: list[str] | None = None,
                   touched: list[str] | None = None, suppressions: list[tuple[str, str]] | None = None,
                   clinical_history: str = "", labels: dict[str, str] | None = None,
-                  region_text: dict[str, str] | None = None) -> AssumedResult:
+                  region_text: dict[str, str] | None = None, scan_type: str = "") -> AssumedResult:
     """Every region of the sheet is answered (an empty list: nothing assumed), so the caller never falls back to
     the raw sheet. Every sentence is checked for contradiction against the whole dictation, untouched regions
     included: a finding the grouper filed under another region leaves its own region looking untouched (side review
@@ -113,7 +114,7 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     conds = list(dict.fromkeys(c for c, _ in suppressions or []))
     if asked:
         try:
-            ctx = f"CLINICAL HISTORY:\n{clinical_history or '(not given)'}\nDICTATED FINDINGS:\n{dictation}"
+            ctx = condition_state(scan_type, clinical_history or "", dictation)
             texts = [jev_text(s, labels[s]) if s in labels else s for _, s in asked]
             checks, met = await asyncio.gather(
                 _ask(dictation, texts, gone) if region_text is None

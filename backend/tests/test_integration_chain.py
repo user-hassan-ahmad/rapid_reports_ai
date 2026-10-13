@@ -47,11 +47,14 @@ def test_chain_reaches_prod_revision():
 
 
 def test_flag_defaults(monkeypatch):
-    for k in ("RR_HYBRID_STACK", "RR_STACK_COPILOT"):
+    for k in ("RR_HYBRID_STACK", "RR_STACK_COPILOT", "RR_CHAT_ROUTER"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("RR_DICTATION_V2", "1")
     assert R.stack_allowed() is True
     assert CR.copilot_allowed() is True          # D24: on unless RR_STACK_COPILOT=0
+    from rapid_reports_ai import chat_router
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    assert chat_router.enabled() is False         # ships dark: off unless RR_CHAT_ROUTER=1
 
 
 def test_stack_log_keeps_template_stamp_and_copilot(authed, db_session, user):

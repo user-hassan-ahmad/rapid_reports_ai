@@ -14,3 +14,15 @@ describe('postGroup', () => {
 		expect(JSON.parse(init.body as string).text).toBe('A.');
 	});
 });
+
+describe('postValues', () => {
+	it('posts the dictation and the template id to /values', async () => {
+		const fetchMock = vi.fn(async () => new Response(JSON.stringify({ values: [], ms: 1, error: null })));
+		vi.stubGlobal('fetch', fetchMock);
+		const { postValues } = await import('./api');
+		await postValues('tok', { dictation: 'LVEF 45%.', template_id: 't1' });
+		const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+		expect(url.endsWith('/api/canvas/stack/values')).toBe(true);
+		expect(JSON.parse(init.body as string)).toEqual({ dictation: 'LVEF 45%.', template_id: 't1' });
+	});
+});

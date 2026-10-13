@@ -379,6 +379,8 @@ def candidate_record(result: dict, latency_ms: int) -> dict:
             "brief": ({"text": result.get("brief_text"), "decisions": result.get("brief_decisions")}
                       if result.get("brief_used") else None),
             "sections": result.get("sections") or [], "lat": result.get("lat") or {},
+            "context_rules": result.get("context_rules"),
+            "required_values": result.get("required_values"),
             "signature": result.get("signature")}
 
 

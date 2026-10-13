@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import time
 
+import pytest
+
 from rapid_reports_ai import report_reconcile as rc
 from rapid_reports_ai import template_lean as tl
 
@@ -425,3 +427,338 @@ async def test_legacy_sheet_keeps_literal_section_names(monkeypatch):
                                                  case=CASE, signature=None)
     await out["options_job"]
     assert seen["findings_section"] == "FINDINGS" and seen["impression_section"] == "IMPRESSION"
+
+
+from rapid_reports_ai import template_context_rules as cr
+from rapid_reports_ai import template_pipeline as tp
+
+RULED = '''## Report Structure
+SECTION COMPARISON | header: "Comparison:" | role: technique
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION CONCLUSION | header: "Conclusion:" | role: impression
+
+## Report-wide
+FIXED "No previous imaging available for comparison." | section: COMPARISON
+RULE WHEN [context: the dictation names a previous imaging study for comparison] REPLACE "No previous imaging available for comparison." WITH "Comparison made with previous {study} dated {date}." | section: COMPARISON
+
+## Paragraph: Liver (FINDINGS)
+COVERS ["liver"]
+'''
+
+
+def _met(score):
+    async def ask(state, conditions):
+        return [score for _ in conditions]
+    return ask
+
+
+async def test_both_paths_give_the_generator_the_resolved_sheet_and_record_it(monkeypatch):
+    for stack in (None, {"conclusion": "Normal.", "declined": []}):
+        calls = {}
+        _gen_fakes(monkeypatch, calls)
+        monkeypatch.setattr(cr, "ask_conditions", _met(0.9))
+        out = await tl.generate_template_report_lean(sheet=RULED, scan_type="CT", findings="Compared with CT 02/12/2025.",
+                                                     history="", case=CASE, signature=None, stack=stack)
+        sent = calls["gen"]["sheet"]
+        assert "RULE WHEN" not in sent and "No previous imaging available" not in sent
+        assert 'FIXED "Comparison made with previous {study} dated {date}."' in sent
+        assert sent.rstrip().endswith('- "Comparison made with previous {study} dated {date}."')
+        assert out["context_rules"]["rules"][0]["outcome"] == "applied" and "rules_s" in out["lat"]
+        if out.get("options_job") is not None:
+            await out["options_job"]
+
+
+async def test_a_slot_left_in_the_generated_report_is_removed_and_counted(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+
+    async def gen(self, template_config, user_inputs, stack=None, **kw):
+        return {"report_content": "Comparison: Comparison made with previous CT dated {date}.\n\nFindings: Normal.",
+                "model_used": "q", "description": "d", "scan_type": "CT"}
+    monkeypatch.setattr(tl.TemplateManager, "_generate_report_skill_sheet_guided", gen)
+    monkeypatch.setattr(cr, "ask_conditions", _met(0.9))
+    out = await tl.generate_template_report_lean(sheet=RULED, scan_type="CT", findings="Previous CT.", history="",
+                                                 case=None, signature=None, stack={"conclusion": "", "declined": []})
+    assert "{date}" not in out["report_content"] and "{date}" not in out["report_generated"]
+    assert out["context_rules"]["slot_leaks"] == 1
+
+
+async def test_the_stack_brief_of_the_resolved_sheet_has_the_decision_not_the_rule():
+    from rapid_reports_ai.template_stack import stack_brief
+    res = await cr.resolve_context_rules(RULED, "", "Compared with CT 02/12/2025.", ask=_met(0.9), stack=True)
+    brief = stack_brief(res.sheet + "\n\n" + cr.decided_block(res.decided), "", ())
+    assert "RULE WHEN [context: the dictation names" not in brief
+    assert "## Decided for This Case" in brief
+
+
+async def test_a_kept_default_reaches_the_generator_under_write_word_for_word(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    monkeypatch.setattr(cr, "ask_conditions", _met(0.1))
+    out = await tl.generate_template_report_lean(sheet=RULED, scan_type="CT", findings="No previous. 02/12/2025.",
+                                                 history="", case=CASE, signature=None, stack=None)
+    sent = calls["gen"]["sheet"]
+    assert "Write word for word" in sent
+    assert sent.rstrip().endswith('- "No previous imaging available for comparison."')
+    assert out["context_rules"]["kept"] == 1
+    if out.get("options_job") is not None:
+        await out["options_job"]
+
+
+async def test_the_scan_type_reaches_the_context_rule_state(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    states = []
+
+    async def ask(state, conditions):
+        states.append(state)
+        return [0.1 for _ in conditions]
+    monkeypatch.setattr(cr, "ask_conditions", ask)
+    out = await tl.generate_template_report_lean(sheet=RULED, scan_type="CT abdomen", findings="x", history="",
+                                                 case=CASE, signature=None, stack=None)
+    assert states and states[0].startswith("SCAN TYPE:\nCT abdomen\n")
+    if out.get("options_job") is not None:
+        await out["options_job"]
+
+
+def test_candidate_record_carries_context_rules():
+    rec = tp.candidate_record({"report_content": "x", "context_rules": {"asked": 1}}, 10)
+    assert rec["context_rules"] == {"asked": 1}
+
+
+async def test_a_raising_sheet_headers_never_breaks_generate(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    monkeypatch.setattr(cr, "ask_conditions", _met(0.9))
+
+    def boom(sheet):
+        raise RuntimeError("x")
+    monkeypatch.setattr(tl, "sheet_headers", boom)
+    out = await tl.generate_template_report_lean(sheet=RULED, scan_type="CT", findings="Previous CT.", history="",
+                                                 case=CASE, signature=None, stack=None)
+    assert out["report_content"]
+    if out.get("options_job") is not None:
+        await out["options_job"]
+
+
+async def test_sections_and_number_check_read_the_stored_sheet_not_the_resolved_one(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    monkeypatch.setattr(cr, "ask_conditions", _met(0.9))
+    seen = {}
+    real_rs, real_un = tl.report_sections, tl.undictated_numbers
+
+    def rs(report, sheet=""):
+        seen["sections"] = sheet
+        return real_rs(report, sheet)
+
+    def un(final, srcs, sheet):
+        seen["numbers"] = sheet
+        return real_un(final, srcs, sheet)
+    monkeypatch.setattr(tl, "report_sections", rs)
+    monkeypatch.setattr(tl, "undictated_numbers", un)
+    out = await tl.generate_template_report_lean(sheet=RULED, scan_type="CT", findings="Compared with CT 02/12/2025.",
+                                                 history="", case=CASE, signature=None, stack=None)
+    assert "RULE WHEN" not in calls["gen"]["sheet"]
+    assert seen.get("sections") == RULED and seen.get("numbers") == RULED
+    if out.get("options_job") is not None:
+        await out["options_job"]
+
+
+@pytest.mark.parametrize("stack", [None, {"conclusion": "Lesion.", "declined": []}])
+async def test_no_habit_line_reaches_the_generator_pending_or_confirmed(monkeypatch, stack):
+    from rapid_reports_ai import template_decisions as td
+    from rapid_reports_ai import template_ledger_apply as tla
+    from tests.template_sheet_fixtures import HABIT_SHEET
+    ask = {"mode": "ask", "question": "Extension into the gallbladder?",
+           "yes": "The abnormality extends into the gallbladder.", "no": "No extension into the gallbladder."}
+    led, _ = td.set_decision([], "habit", "Liver :: a focal liver abnormality is reported", ask, source="creation", at="t")
+    confirmed = tla.apply_ledger(HABIT_SHEET, led).sheet
+    pending = 'NEGATIVE "No delta extension." WHEN [findings: a focal delta abnormality is reported]'
+    sheet = confirmed.replace('NORMAL [delta] "Delta is normal."\n', 'NORMAL [delta] "Delta is normal."\n' + pending + "\n")
+    assert " ASK " in sheet and pending in sheet
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    out = await tl.generate_template_report_lean(sheet=sheet, scan_type="CT", findings="A focal liver abnormality.",
+                                                 history="", case=CASE, signature="Dr A", stack=stack)
+    gen_sheet = calls["gen"]["sheet"]
+    assert " ASK " not in gen_sheet and "WHEN [findings: a focal" not in gen_sheet
+    assert 'NEGATIVE "No focal liver lesion."' in gen_sheet   # unconditional units are untouched
+    assert out["report_generated"] == REPORT
+    if out.get("options_job") is not None:
+        await out["options_job"]
+
+
+VALUES = '''## Report Structure
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION CONCLUSION | header: "Conclusion:" | role: impression
+
+## Report-wide
+RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["LVEF" | "RVEF"] AT TOP
+
+## Paragraph: Left ventricle (FINDINGS)
+COVERS ["left ventricle"]
+NORMAL [left ventricle] "Normal left ventricular size and function."
+'''
+
+
+def _values_gen(monkeypatch, calls, report):
+    async def gen(self, template_config, user_inputs, user_signature=None, model_override=None, brief_text=None,
+                  history_supplied=False, stack=None):
+        calls["gen"] = {"sheet": template_config["skill_sheet"], "stack": stack}
+        return {"report_content": report, "model_used": "q", "description": "d", "scan_type": "CMR"}
+    monkeypatch.setattr(tl.TemplateManager, "_generate_report_skill_sheet_guided", gen)
+
+
+async def test_a_stack_session_with_values_has_code_write_the_literal_na_line(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    _values_gen(monkeypatch, calls, "Findings:\nValues not provided: LVEF, RVEF.\nNormal LV.\n\nConclusion:\nNormal.")
+    out = await tl.generate_template_report_lean(sheet=VALUES, scan_type="CMR", findings="LVEF 45%.", history="",
+                                                 case=None, signature=None,
+                                                 stack={"conclusion": "", "declined": [], "values_na": ["RVEF"]})
+    assert "LIST_MISSING" not in calls["gen"]["sheet"]
+    assert calls["gen"]["stack"]["values_decided"] is True
+    assert "Values not provided: RVEF.\n\nFindings:\nNormal LV." in out["report_content"]   # report-wide: before the heading
+    assert "LVEF, RVEF" not in out["report_content"]
+    assert out["required_values"]["stripped"] == 1 and out["required_values"]["lists"][0]["na"] == ["RVEF"]
+
+
+async def test_a_filled_value_the_report_lacks_is_listed_and_flagged(monkeypatch):
+    from rapid_reports_ai import template_required_values as trv
+    calls, seen = {}, {}
+    _gen_fakes(monkeypatch, calls)
+    _values_gen(monkeypatch, calls, "Findings:\nNormal LV.\n\nConclusion:\nNormal.")
+
+    async def ask(report, items):
+        seen.update(report=report, items=items)
+        return [0.1, 0.9]
+    monkeypatch.setattr(trv, "ask_report_values", ask)
+    out = await tl.generate_template_report_lean(sheet=VALUES, scan_type="CMR", findings="LVEF 45%. RVEF 50%.",
+                                                 history="", case=None, signature=None,
+                                                 stack={"conclusion": "", "declined": [], "values_na": [],
+                                                        "values_filled": ["LVEF", "RVEF"]})
+    assert seen["items"] == ["LVEF", "RVEF"] and seen["report"].startswith("Findings:\nNormal LV.")
+    assert "Values not provided: LVEF.\n\nFindings:\nNormal LV." in out["report_content"]
+    assert {"kind": "value_missing", "text": "LVEF", "message": "Required value LVEF not found in the report"} \
+        in out["quality_check"]["review"]
+    assert out["required_values"]["backstop"] == {"asked": 2, "missing": ["LVEF"], "error": None}
+
+
+async def test_a_backstop_failure_leaves_the_report_and_flags_only_that_it_could_not_check(monkeypatch):
+    from rapid_reports_ai import template_required_values as trv
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    _values_gen(monkeypatch, calls, "Findings:\nNormal LV.\n\nConclusion:\nNormal.")
+
+    async def boom(report, items):
+        raise RuntimeError("jev down")
+    monkeypatch.setattr(trv, "ask_report_values", boom)
+    out = await tl.generate_template_report_lean(sheet=VALUES, scan_type="CMR", findings="LVEF 45%.", history="",
+                                                 case=None, signature=None,
+                                                 stack={"conclusion": "", "declined": [], "values_na": [],
+                                                        "values_filled": ["LVEF"]})
+    assert "Values not provided" not in out["report_content"]
+    assert not any(f.get("kind") == "value_missing" for f in (out["quality_check"] or {}).get("review") or [])
+    assert out["required_values"]["backstop"]["error"].startswith("RuntimeError")
+    assert [f["kind"] for f in out["quality_check"]["review"] if f.get("kind", "").startswith("value_")] \
+        == ["value_check_unavailable"]
+
+
+async def test_nothing_na_gives_no_list_and_no_line(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    _values_gen(monkeypatch, calls, "Findings:\nNormal LV.\n\nConclusion:\nNormal.")
+    out = await tl.generate_template_report_lean(sheet=VALUES, scan_type="CMR", findings="LVEF 45%. RVEF 50%.",
+                                                 history="", case=None, signature=None,
+                                                 stack={"conclusion": "", "declined": [], "values_na": []})
+    assert "LIST_MISSING" not in calls["gen"]["sheet"] and calls["gen"]["stack"]["values_decided"] is True
+    assert "Values not provided" not in out["report_content"]
+
+
+async def test_values_not_applied_leave_the_sheet_and_the_generator_as_today(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    _values_gen(monkeypatch, calls, "Findings:\nNormal LV.")
+    legacy = "## FINDINGS\nLVEF: {value}\n"
+    out = await tl.generate_template_report_lean(sheet=legacy, scan_type="CMR", findings="LV normal.", history="",
+                                                 case=None, signature=None,
+                                                 stack={"conclusion": "", "declined": [], "values_na": ["RVEF"]})
+    assert calls["gen"]["sheet"] == legacy and calls["gen"]["stack"]["values_decided"] is False
+    assert out["required_values"]["skipped"] == "parse" and "Values not provided" not in out["report_content"]
+
+
+async def test_without_a_value_cluster_code_owns_the_list_and_checks_every_item(monkeypatch):
+    """No value cluster this session (the creator's Test, a scratchpad without it, the straight path): the generator
+    never sees the LIST_MISSING line; Jev checks every item against the report and code writes the line."""
+    from rapid_reports_ai import template_required_values as trv
+    for stack in ({"conclusion": "", "declined": []}, None):
+        calls, seen = {}, {}
+        _gen_fakes(monkeypatch, calls)
+        _values_gen(monkeypatch, calls, "Findings:\nNormal aortic root.\nLVEF 45%.\n\nConclusion:\nNormal.")
+
+        async def ask(report, items):
+            seen["items"] = items
+            return [0.9, 0.1]
+        monkeypatch.setattr(trv, "ask_report_values", ask)
+        out = await tl.generate_template_report_lean(sheet=VALUES, scan_type="CMR", findings="LVEF 45%.", history="",
+                                                     case=CASE, signature=None, stack=stack)
+        assert "LIST_MISSING" not in calls["gen"]["sheet"]
+        if stack is not None:
+            assert calls["gen"]["stack"]["values_decided"] is True
+        assert seen["items"] == ["LVEF", "RVEF"]
+        assert "Values not provided: RVEF.\n\nFindings:\nNormal aortic root." in out["report_content"]
+        assert out["required_values"]["source"] == "code" and out["required_values"]["backstop"]["missing"] == ["RVEF"]
+        if out.get("options_job") is not None:
+            await out["options_job"]
+
+
+async def test_without_a_list_and_without_a_cluster_nothing_changes(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    plain = VALUES.replace('## Report-wide\nRULE WHEN [findings: any listed value is not stated] LIST_MISSING '
+                           '["LVEF" | "RVEF"] AT TOP\n', "")
+    out = await tl.generate_template_report_lean(sheet=plain, scan_type="CMR", findings="LV normal.", history="",
+                                                 case=None, signature=None, stack={"conclusion": "", "declined": []})
+    assert "values_decided" not in calls["gen"]["stack"] and "required_values" not in out
+
+
+def test_candidate_record_carries_required_values():
+    rec = tp.candidate_record({"report_content": "x", "required_values": {"lists": []}}, 10)
+    assert rec["required_values"] == {"lists": []}
+
+
+async def test_a_write_failure_is_recorded(monkeypatch):
+    from rapid_reports_ai import template_required_values as trv
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    _values_gen(monkeypatch, calls, "Findings:\nNormal LV.\n\nConclusion:\nNormal.")
+
+    def boom(items):
+        raise RuntimeError("line down")
+    monkeypatch.setattr(trv, "missing_line", boom)
+    out = await tl.generate_template_report_lean(sheet=VALUES, scan_type="CMR", findings="LV normal.", history="",
+                                                 case=None, signature=None,
+                                                 stack={"conclusion": "", "declined": [], "values_na": ["RVEF"]})
+    assert out["required_values"]["write_error"].startswith("RuntimeError")
+    assert "Values not provided" not in out["report_content"]
+
+
+async def test_without_a_cluster_a_jev_failure_flags_and_writes_no_line(monkeypatch):
+    from rapid_reports_ai import template_required_values as trv
+    for stack in ({"conclusion": "", "declined": []}, None):
+        calls = {}
+        _gen_fakes(monkeypatch, calls)
+        _values_gen(monkeypatch, calls, "Findings:\nNormal LV.\n\nConclusion:\nNormal.")
+
+        async def partial(report, items):
+            raise ValueError("jev: incomplete answers")
+        monkeypatch.setattr(trv, "ask_report_values", partial)
+        out = await tl.generate_template_report_lean(sheet=VALUES, scan_type="CMR", findings="LVEF 45%.", history="",
+                                                     case=None, signature=None, stack=stack)
+        assert "Values not provided" not in out["report_content"] and "LIST_MISSING" not in calls["gen"]["sheet"]
+        assert [f["kind"] for f in out["quality_check"]["review"] if f.get("kind", "").startswith("value_")] \
+            == ["value_check_unavailable"]
+        assert "jev: incomplete answers" in out["required_values"]["backstop"]["error"]
+        if out.get("options_job") is not None:
+            await out["options_job"]

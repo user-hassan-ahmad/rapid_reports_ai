@@ -298,3 +298,9 @@ def test_misattributed_weak_owner_pair_still_exempts():
 def test_pair_confident_matches_lanes():
     from rapid_reports_ai.review_engine import checks, lanes
     assert checks.PAIR_CONFIDENT == lanes.PAIR_CONFIDENT
+
+
+def test_a_word_starting_like_a_month_is_not_a_date():
+    from rapid_reports_ai.review_engine.checks import _DATE
+    assert not _DATE.search("Mid infero-septal 1070 ms. Marked 1200 ms.")
+    assert _DATE.search("Compared with Sept 2024") and _DATE.search("dated 12 October 2024")

@@ -971,4 +971,5 @@ class TemplateChatTurn(Base):
     applied = Column(Boolean, nullable=False, default=True, server_default=true())
     sheet_hash_before = Column(String(64), nullable=True)
     sheet_hash_after = Column(String(64), nullable=True)
+    routing = Column(JSONBType(), nullable=True)   # chat-edit router evidence (migration 20261014090000)
     created_at = Column(DateTime, default=_now, server_default=func.now(), nullable=False)

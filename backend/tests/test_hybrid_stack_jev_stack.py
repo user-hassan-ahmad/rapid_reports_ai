@@ -69,3 +69,158 @@ async def test_ask_conditions_reads_each_conditions_score(monkeypatch):
     def fail(req):
         raise AssertionError("no call without conditions")
     assert await J.ask_conditions("x", [], transport=httpx.MockTransport(fail)) == []
+
+
+async def test_ask_values_asks_stated_and_where_per_item_in_one_call(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    seen = {}
+
+    def handler(req):
+        seen.update(json.loads(req.content))
+        return httpx.Response(200, json={"answers": {
+            "value_0": {"noul": 0.9}, "where_0": {"choice": "s_1", "probabilities": {"s_0": 0.2, "s_1": 0.7, "none": 0.1}},
+            "value_1": {"noul": 0.2}, "where_1": {"choice": "none"},
+            "value_2": {"noul": 0.8}, "where_2": {"choice": "s_7"}}})
+    out = await J.ask_values("LVEF 45%. RVEF 50%.", ["LVEF", "RVEF", "LV mass"], ["LVEF 45%.", "RVEF 50%."],
+                             transport=httpx.MockTransport(handler))
+    assert out == [(0.9, 1, [0.2, 0.7]), (0.2, None, None), (0.8, None, None)]   # out-of-range names no clause; scores
+    # are the where-choice's per-clause probabilities (None when Jev sent none)
+    assert set(seen["questions"]) == {"value_0", "where_0", "value_1", "where_1", "value_2", "where_2"}
+    assert seen["state"] == "DICTATION:\nLVEF 45%. RVEF 50%."
+    assert seen["questions"]["value_0"]["type"] == "noul"
+    assert seen["questions"]["value_0"]["instructions"].endswith("LVEF")      # template_brief.q_stated
+    w = seen["questions"]["where_1"]
+    assert w["type"] == "choice" and w["instructions"].endswith("RVEF")
+    assert w["criteria"] == {"s_0": "LVEF 45%.", "s_1": "RVEF 50%.", "none": "No SENTENCE gives this item's value."}
+
+
+async def test_ask_values_splits_items_into_parallel_batches_keeping_global_keys(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    asked = []
+
+    def handler(req):
+        qs = json.loads(req.content)["questions"]
+        asked.append(sorted(qs))
+        return httpx.Response(200, json={"answers": {
+            k: ({"noul": 0.9} if k.startswith("value_") else {"choice": "s_0"}) for k in qs}})
+    items = ["A", "B", "C", "D", "E", "F"]
+    out = await J.ask_values("A 1.", items, ["A 1."], transport=httpx.MockTransport(handler))
+    assert out == [(0.9, 0, None)] * 6
+    assert J.VALUE_BATCH == 4 and len(asked) == 2
+    assert sorted(asked) == [sorted(f"{p}_{i}" for i in range(4) for p in ("value", "where")),
+                             sorted(f"{p}_{i}" for i in (4, 5) for p in ("value", "where"))]
+
+
+async def test_ask_values_without_clauses_asks_only_whether_stated(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    seen = {}
+
+    def handler(req):
+        seen.update(json.loads(req.content))
+        return httpx.Response(200, json={"answers": {"value_0": {"noul": 0.7}}})
+    assert await J.ask_values("Conus at L1.", ["Conus level"], [], transport=httpx.MockTransport(handler)) == [(0.7, None, None)]
+    assert list(seen["questions"]) == ["value_0"]
+
+    def fail(req):
+        raise AssertionError("no call without items")
+    assert await J.ask_values("x", [], ["x 1"], transport=httpx.MockTransport(fail)) == []
+
+
+async def test_ask_values_takes_another_stated_wording(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    seen = {}
+
+    def handler(req):
+        seen.update(json.loads(req.content))
+        return httpx.Response(200, json={"answers": {"value_0": {"noul": 0.6}}})
+    plain = lambda item: {"type": "noul", "instructions": f"The DICTATION states the {item}."}   # noqa: E731
+    await J.ask_values("EF 45.", ["LVEF"], [], transport=httpx.MockTransport(handler), stated=plain)
+    assert seen["questions"]["value_0"]["instructions"] == "The DICTATION states the LVEF."
+
+
+def test_the_value_cut_offs_after_the_lab():
+    assert J.VALUE_UNQUOTED_MIN == J.STATED_MIN == 0.8     # an item no number maps to: the strict "stated?" bar
+    assert not hasattr(J, "VALUE_STATED_MIN")              # Decision 10's clause rule is superseded by number -> item
+
+
+def test_the_number_item_question_mirrors_the_lab_arm_n1():
+    q = J.number_item_question("1010", "Native T1 [[1010]] ms.", ["LVEF", "Native T1 value"])
+    assert q == {"type": "choice",
+                 "instructions": ("Which required value does the number 1010 in this sentence give? The number is "
+                                  "marked [[ ]] in the SENTENCE. SENTENCE: Native T1 [[1010]] ms."),
+                 "criteria": {"item_0": "LVEF", "item_1": "Native T1 value",
+                              "none": "None of these required values: the number gives something else."}}
+
+
+async def test_ask_number_items_asks_one_choice_per_number_in_parallel_batches(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    bodies = []
+
+    def handler(req):
+        body = json.loads(req.content)
+        bodies.append(body)
+        ans = {}
+        for k in body["questions"]:
+            i = int(k[2:])
+            ans[k] = ({"choice": "item_1", "confidence": 0.9, "probabilities": {"item_0": 0.05, "item_1": 0.9, "none": 0.05}}
+                      if i == 0 else {"choice": "none", "confidence": 0.7}
+                      if i == 1 else {"choice": "item_9", "confidence": 0.8} if i == 2 else {"choice": "item_0"})
+        return httpx.Response(200, json={"answers": ans})
+    mentions = [(str(n), f"A [[{n}]].") for n in range(12)]
+    out = await J.ask_number_items("A 1.", mentions, ["LVEF", "RVEF"], transport=httpx.MockTransport(handler))
+    assert out[:4] == [(1, 0.9, [0.05, 0.9]), (None, 0.7, None), (None, 0.8, None), (0, 0.0, None)]
+    # none and out-of-range map to no item; the third element is P(each item) when Jev sends probabilities
+    assert len(out) == 12 and J.NUMBER_BATCH == 10 and len(bodies) == 2
+    assert sorted(len(b["questions"]) for b in bodies) == [2, 10]
+    assert all(b["state"] == "DICTATION:\nA 1." for b in bodies)
+    b0 = next(b for b in bodies if "n_0" in b["questions"])
+    assert b0["questions"]["n_0"] == J.number_item_question("0", "A [[0]].", ["LVEF", "RVEF"])
+
+    def fail(req):
+        raise AssertionError("no call")
+    assert await J.ask_number_items("x", [], ["LVEF"], transport=httpx.MockTransport(fail)) == []
+    assert await J.ask_number_items("x", [("1", "[[1]]")], [], transport=httpx.MockTransport(fail)) == [(None, 0.0, None)]
+    assert J.BACKSTOP_MIN == 0.5   # the post-generation backstop is recall-oriented
+
+
+async def test_ask_report_values_asks_the_report_per_item_in_batches(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    bodies = []
+
+    def handler(req):
+        body = json.loads(req.content)
+        bodies.append(body)
+        return httpx.Response(200, json={"answers": {k: {"noul": 0.2 if k == "value_4" else 0.9} for k in body["questions"]}})
+    items = ["A", "B", "C", "D", "E"]
+    out = await J.ask_report_values("Findings:\nA 1.", items, transport=httpx.MockTransport(handler))
+    assert out == [0.9, 0.9, 0.9, 0.9, 0.2] and len(bodies) == 2
+    assert all(b["state"] == "REPORT:\nFindings:\nA 1." for b in bodies)
+    assert bodies[0]["questions"]["value_0"]["instructions"].endswith("A")   # template_brief.q_stated
+
+    def fail(req):
+        raise AssertionError("no call without items")
+    assert await J.ask_report_values("x", [], transport=httpx.MockTransport(fail)) == []
+
+
+async def test_ask_values_without_clauses_asks_every_item_in_one_call(monkeypatch):
+    """Latency: the stated-only question is small, so one call (no parallel batches whose slowest sets the fill)."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    calls = []
+
+    def handler(req):
+        qs = json.loads(req.content)["questions"]
+        calls.append(sorted(qs))
+        return httpx.Response(200, json={"answers": {k: {"noul": 0.5} for k in qs}})
+    out = await J.ask_values("x", [f"I{i}" for i in range(12)], [], transport=httpx.MockTransport(handler))
+    assert len(calls) == 1 and len(calls[0]) == 12 and out == [(0.5, None, None)] * 12
+
+
+async def test_ask_report_values_raises_on_a_missing_or_malformed_answer(monkeypatch):
+    import pytest
+    """A partial reply is never read as "not stated": that would write a false "Values not provided" line."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    for answers in ({"value_0": {"noul": 0.9}}, {"value_0": {"noul": 0.9}, "value_1": {"noul": "x"}},
+                    {"value_0": {"noul": 0.9}, "value_1": {}}, {"value_0": {"noul": 0.9}, "value_1": None}):
+        t = httpx.MockTransport(lambda r, a=answers: httpx.Response(200, json={"answers": a}))
+        with pytest.raises(ValueError, match="jev: incomplete answers"):
+            await J.ask_report_values("x", ["A", "B"], transport=t)
