@@ -344,3 +344,18 @@ def test_a_rewrite_that_drops_a_whole_decided_item_keeps_the_ledger_and_returns_
     back = _clean(tla.apply_ledger(after, new).sheet)                 # the save writes the decided lines again
     assert tla.observe(back, "value", "LVEF") == {"need": "every"}
     assert tla.observe(back, "concept", "comparison") == COMPARISON
+
+
+def test_a_concept_rule_left_on_a_reworded_fixed_line_keeps_the_ledger_and_returns_a_card():
+    led = _led(("concept", "comparison", COMPARISON))
+    before = tla.apply_ledger(LEDGER_SHEET, led).sheet
+    after = before.replace('FIXED "No previous imaging available."', 'FIXED "No prior imaging."')
+    new, changes, cards = tla.reconcile_chat(before, after, led)
+    assert new == led and changes == [] and [c["id"] for c in cards] == ["concept:comparison"]
+
+
+def test_removing_a_negative_the_sheet_reworded_is_unmatched_not_kept():
+    sheet = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."', 'NEGATIVE "No focal hepatic lesion."')
+    res = tla.apply_ledger(sheet, _led(("normal", td.negative_key("Liver", "No focal liver lesion."), {"text": ""})))
+    assert res.sheet == sheet and res.changed == 0
+    assert [e["key"] for e in res.unmatched] == ['Liver :: "No focal liver lesion."']

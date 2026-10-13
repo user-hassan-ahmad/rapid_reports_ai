@@ -275,6 +275,9 @@ def _normal(lines, st, entry):
         raws = [n.source_line for n in units]
     if not units:
         if not text:
+            if neg and any(n.paragraph == para.id and n.origin == "template" and not n.condition
+                           for n in st.negatives):   # the paragraph's negative was reworded: ask, never "kept"
+                return lines, [], [entry], []
             return lines, [row], [], []
         if neg:   # a negative is keyed by its own wording: when neither wording is found, ask (never insert)
             return lines, [], [entry], []
@@ -398,6 +401,14 @@ def observe(st: tss.SheetStructure, kind: str, key: str) -> Optional[dict]:
     return {"text": u.text if u else ""}
 
 
+def _orphaned(st: tss.SheetStructure, name: str) -> bool:
+    """A concept's REPLACE / SUPPRESS rule whose target matches no FIXED line (the line was reworded, the rule
+    still names the old text)."""
+    fixed = {norm_key(f.text) for f in st.fixed_blocks}
+    return any(r.effect in ("replace", "suppress") and norm_key(r.target) not in fixed
+               for r in _concept_rules(st, name))
+
+
 def _wholesale(e: dict, ob: dict, oa: dict, sb: tss.SheetStructure, sa: tss.SheetStructure) -> bool:
     """A rewrite that removed a whole decided item: the whole LIST_MISSING list, or every line of a used concept.
     Product decision D3: never folded into the ledger silently; the ledger is kept and a card asks."""
@@ -422,6 +433,10 @@ def reconcile_chat(before: str, after: str, ledger: List[dict]) -> Tuple[List[di
     for e in ledger:
         try:
             ob, oa = observe(sb, e["kind"], e["key"]), observe(sa, e["kind"], e["key"])
+            if (e["kind"] == "concept" and e["choice"].get("use") and _orphaned(sa, e["key"])
+                    and not _orphaned(sb, e["key"])):   # treated as a whole-item change: kept, asked
+                cards.append(trc.card_for_change(e["kind"], e["key"], e["choice"]))
+                continue
             if oa is None or ob == oa:
                 continue
             if _wholesale(e, ob, oa, sb, sa):
