@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abnormalAll, anchorRegion, answerLabel, assumedFrom, moreLine, openCount, quietLine, rowSentences, splitReply, unansweredChecks } from './items';
+import { abnormalAll, anchorRegion, answerLabel, assumedFrom, assumedStale, moreLine, openCount, quietLine, rowSentences, splitReply, unansweredChecks } from './items';
 import type { StackItem, StackUnit } from './types';
 
 const item = (id: string, sentences: string[], extra: Partial<StackItem> = {}): StackItem => ({
@@ -76,5 +76,19 @@ describe('checklist rows', () => {
 		expect(pushed.items.map((r) => r.id)).toEqual(['a']);
 		expect(pushed.capped.map((r) => r.id)).toEqual(['c3']);
 		expect(splitReply({ items: [item('a', ['x'])], capped: [] }, [], [], true)).toEqual({ items: [item('a', ['x'])], capped: [] });
+	});
+});
+
+describe('assumed normals before any dictation (E6)', () => {
+	const snap = { dictation: '', abnormal: [], untouched: ['Cord', 'Alignment'], offered: { Cord: ['Normal cord.'], Alignment: ['Normal alignment.'] },
+		assumed: { Cord: ['Normal cord.'], Alignment: ['Normal alignment.'] } };
+	it('the answer for the empty dictation renders every untouched region', () => {
+		expect(assumedFrom(snap, [], ['Cord', 'Alignment'], [])).toEqual(snap.assumed);
+	});
+	it('is current for the empty dictation, behind once something is dictated, and never behind without a sheet', () => {
+		expect(assumedStale(true, snap, '')).toBe(false);
+		expect(assumedStale(true, null, '')).toBe(true);
+		expect(assumedStale(true, snap, 'At L4/5 there is a disc bulge.')).toBe(true);
+		expect(assumedStale(false, null, '')).toBe(false);
 	});
 });

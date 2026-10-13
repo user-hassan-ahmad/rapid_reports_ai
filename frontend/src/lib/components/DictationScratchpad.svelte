@@ -41,7 +41,7 @@
 	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
 	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
-	import { abnormalAll, assumedFrom, moreLine, openCount, rowSentences, splitReply, type AssumedSnap } from '$lib/hybrid-stack/items';
+	import { abnormalAll, assumedFrom, assumedStale, moreLine, openCount, rowSentences, splitReply, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
 	import { asTailUnits, assumedKey, blockedSegments, pickBody, pickKey, placedRegions, shownNormals, visiblePills, withoutSegments, type ProtocolPick } from '$lib/hybrid-stack/protocol';
@@ -348,7 +348,7 @@
 	// edit on an "Elsewhere, …" line removes it in either form.
 	$: shownAssumed = shownNormals(confirmedAssumed, stackRegionNormals, stackLevelGroups, regionView.assumedNormal, placedGroups, removedSentences,
 		segmentsBlocked);
-	$: assumedBehind = Object.keys(stackRegionNormals).length > 0 && (assumedSnap === null || assumedSnap.dictation !== verbatimNow);
+	$: assumedBehind = assumedStale(Object.keys(stackRegionNormals).length > 0, assumedSnap, verbatimNow);
 	// Regions are confirmed by name only when no sheet exists for this session (v2 behaviour); with a sheet, a region
 	// with no sentence left assumes nothing. An abnormal region's remainder is never named (review 2026-10-12).
 	$: namedNormals = Object.keys(stackRegionNormals).length === 0;
@@ -1831,6 +1831,10 @@
 			stackLevelGroups = res.level_groups ?? {};
 			stackNotAssessable = res.not_assessable;
 			onStackSheet(res.id);
+			// E6: the normals are checked as soon as the sheet is in, with no dictation yet, so the tray shows every
+			// region's normal straight after Set up workspace. One call per sheet load; the empty-dictation answer is
+			// current (assumedStale) until something is dictated.
+			void refreshAssumed();
 		} catch {
 			/* fail open: no quiet lines */
 		}
@@ -1861,7 +1865,6 @@
 		const fromSheet = Object.entries(stackRegionNormals).filter(([, xs]) => xs.some((x) => gone.has(assumedKey(x)))).map(([r]) => r);
 		return [...new Set([...rows, ...fromSheet])].filter(Boolean);
 	}
-	$: if (Object.keys(stackRegionNormals).length) void refreshAssumed();
 	// Confirm waits while the answer is behind the dictation; this keeps it from waiting on a grouping that failed.
 	let assumedTimer: ReturnType<typeof setTimeout> | null = null;
 	function armAssumed(): void {

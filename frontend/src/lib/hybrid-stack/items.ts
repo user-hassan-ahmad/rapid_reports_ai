@@ -68,6 +68,12 @@ export interface AssumedSnap { dictation: string; abnormal: string[]; untouched:
  *  or untouched) that region had when they were checked, minus removed ones. Never the raw sheet (review
  *  2026-10-12: a region missing from the reply fell back to the sheet; an untouched region's normals stayed
  *  assumed after it turned abnormal). Until /assumed answers, nothing is assumed. */
+/** The /assumed answer is behind: a sheet exists and no answer was computed for this exact dictation. An answer for
+ *  the empty dictation (the check run when the sheet loads, E6) is current until something is dictated. */
+export function assumedStale(hasSheet: boolean, snap: AssumedSnap | null, dictation: string): boolean {
+	return hasSheet && (snap === null || snap.dictation !== dictation);
+}
+
 export function assumedFrom(snap: AssumedSnap | null, abnormal: string[], untouched: string[], removed: string[]): Record<string, string[]> {
 	if (!snap) return {};
 	const gone = new Set(removed.map(norm));
