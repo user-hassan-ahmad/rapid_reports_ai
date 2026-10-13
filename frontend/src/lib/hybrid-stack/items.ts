@@ -81,21 +81,25 @@ export function assumedFrom(snap: AssumedSnap | null, abnormal: string[], untouc
 	return out;
 }
 
-/** Rows over the writer's caps (E1b): shown behind "N more checks" instead of vanishing. The capped rows still to
- *  show there: not already among the open rows (a later reply may promote one), not skipped. */
-export function moreRows(capped: StackItem[], items: StackItem[], skipped: string[]): StackItem[] {
+/** Rows over the writer's caps (E1b): shown behind one quiet "N more checks" line instead of vanishing. `rows`: the
+ *  capped rows to show there (not already among the open rows, not skipped); `waiting`: N, the ones still asked;
+ *  `show`: the line is shown while any is asked or a tapped answer sits behind it. */
+export function moreLine(capped: StackItem[], items: StackItem[], tapped: string[], removed: string[], skipped: string[]): { rows: StackItem[]; waiting: number; show: boolean } {
 	const open = new Set(items.map((i) => i.id));
-	return capped.filter((c) => !open.has(c.id) && !skipped.includes(c.id));
+	const rows = capped.filter((c) => !open.has(c.id) && !skipped.includes(c.id));
+	const waitingN = rows.filter((r) => waiting(r, tapped, removed, skipped)).length;
+	return { rows, waiting: waitingN, show: waitingN > 0 || rows.some((r) => tapped.includes(r.id)) };
 }
 
-/** A quiet re-check sends the open and the capped rows together; its reply is split back by where each row came from,
- *  so the re-check never promotes a capped row onto the checklist. A capped row the dictation answered joins the
- *  rows (it shows green and folds like any row); one still asked stays capped. */
-export function splitRecheck(res: { items: StackItem[]; capped: StackItem[] }, cappedIds: string[]): { items: StackItem[]; capped: StackItem[] } {
-	const was = new Set(cappedIds);
-	const all = [...res.items, ...res.capped];
+/** Where each row of an /items or re-check reply goes: the checklist or behind the line. A row the dictation answered
+ *  that was behind the line folds there, quietly, never among the region cards. A quiet re-check never moves a row:
+ *  it saw the capped rows only to fold the answered ones. A full reply's caps decide the rest (it may promote one). */
+export function splitReply(res: { items: StackItem[]; capped: StackItem[] }, wasCapped: string[], wasOpen: string[], recheck: boolean): { items: StackItem[]; capped: StackItem[] } {
+	const capped = new Set(wasCapped);
+	const open = new Set(wasOpen);
+	const behind = (r: StackItem) => capped.has(r.id) && (recheck || (r.answered && !open.has(r.id)));
 	return {
-		items: all.filter((r) => !was.has(r.id) || r.answered),
-		capped: all.filter((r) => was.has(r.id) && !r.answered)
+		items: res.items.filter((r) => !behind(r)),
+		capped: [...res.items.filter(behind), ...res.capped]
 	};
 }

@@ -248,6 +248,9 @@ async def _check(rows: list[Item], dictation: str, removed: list[str], tapped: l
 
 
 def _limit(rows: list[Item]) -> tuple[list[Item], list[Item]]:
+    # Referral rows are never capped: _rows puts them first and there are at most MAX_REFERRALS (< MAX_ROWS) of them,
+    # so the case cap is always reached on finding rows. The scratchpad relies on this: a capped row (shown behind
+    # "N more checks") never blocks Confirm, which an unanswered referral row must.
     out, capped, per_region, total = [], [], {}, 0
     for r in rows:
         if r.answered:

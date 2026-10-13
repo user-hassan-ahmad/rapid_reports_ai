@@ -41,7 +41,7 @@
 	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDebug, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit, similar } from '$lib/hybrid-stack/stackState';
 	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
-	import { abnormalAll, assumedFrom, moreRows, openCount, rowSentences, splitRecheck, type AssumedSnap } from '$lib/hybrid-stack/items';
+	import { abnormalAll, assumedFrom, moreLine, openCount, rowSentences, splitReply, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
 	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
@@ -253,6 +253,7 @@
 	// assumed unless removed; conclusion draft, gate, inline edits, voice commands (v2).
 	const ITEMS_DEBOUNCE_MS = 500;
 	const FOLD_MS = 1200;
+	const MAX_RECHECK_CAPPED = 6; // capped rows sent with a quiet re-check
 	let stackItems: StackItem[] = []; // the open and folding rows from /items
 	let stackCapped: StackItem[] = []; // rows over the writer's caps: behind "N more checks" (E1b), never lost
 	let moreOpen = false; // the "N more checks" line is open
@@ -318,8 +319,9 @@
 	$: regionView = regionStates(stackUnits, pillRegions);
 	// Tapped rows stay on screen as the radiologist's answers even after the writer stops returning them.
 	// Rows over the caps wait behind one quiet line at the end (E1b); a tapped one stays there, green.
-	$: moreView = moreRows(stackCapped, stackItems, Object.keys(skippedRows));
-	$: viewItems = [...stackItems, ...Object.values(tappedRows).filter((t) => !stackItems.some((i) => i.id === t.id) && !moreView.some((c) => c.id === t.id))];
+	$: moreView = moreLine(stackCapped, stackItems, Object.keys(tappedRows), removedSentences, Object.keys(skippedRows));
+	$: if (!moreView.show && moreOpen) moreOpen = false; // nothing left behind the line: it closes
+	$: viewItems = [...stackItems, ...Object.values(tappedRows).filter((t) => !stackItems.some((i) => i.id === t.id) && !moreView.rows.some((c) => c.id === t.id))];
 	// Debug trace (local only): a sentence already placed this session showing in the live strip again.
 	let placedTexts = new Set<string>();
 	let lastDebugKey = '';
@@ -1647,20 +1649,20 @@
 	async function recheckRows(text: string): Promise<void> {
 		const seq = ++itemsSeq;
 		const tapped = Object.values(tappedRows).flatMap((r) => r.sentences);
-		const open = stackItems.filter((i) => !i.answered);
-		const capped = stackCapped.filter((c) => !skippedRows[c.id]);
+		// Skipped rows (open or capped) are not re-checked; they stay as they are. At most 6 capped rows per re-check.
+		const open = stackItems.filter((i) => !i.answered && !skippedRows[i.id]);
+		const capped = stackCapped.filter((c) => !c.answered && !skippedRows[c.id]).slice(0, MAX_RECHECK_CAPPED);
 		if (!open.length && !tapped.length && !capped.length) {
 			reviewedFor = text;
 			return;
 		}
 		try {
-			// The capped rows are checked too, so one the dictation answers folds like any row; the reply is split back
-			// by origin, so a re-check never moves a capped row onto the checklist.
+			// The capped rows are checked too, so one the dictation answers folds behind the line (applyRows splits the
+			// reply by origin: a re-check never moves a capped row onto the checklist).
 			const res = await postRecheck($token, { dictation: text, rows: [...open, ...capped], removed: removedSentences, tapped });
 			if (seq !== itemsSeq) return;
 			reviewedFor = text;
-			const split = splitRecheck(res, capped.map((c) => c.id));
-			applyRows({ ...res, items: split.items, capped: split.capped }, true);
+			applyRows(res, true);
 		} catch {
 			if (seq === itemsSeq) reviewedFor = text; // fail open: the rows on screen stay as they are
 		}
@@ -1740,8 +1742,9 @@
 		}
 	}
 	/** A reply applied: contradicted taps dropped, answered rows shown green then folded, the set replaced. A quiet
-	 *  re-check saw only the open and capped rows, so rows already answered stay; its capped list is the capped rows
-	 *  still asked. */
+	 *  re-check saw only the open and (some) capped rows, not the skipped ones: rows it did not see stay as they are,
+	 *  and it never moves a row between the checklist and the line. A capped row the dictation answers folds behind
+	 *  the line, quietly (splitReply). */
 	function applyRows(res: ItemsResult, recheck: boolean): void {
 		// Tapped answers the dictation now contradicts are dropped; a row left with none is asked again.
 		if (res.contradicted.length) {
@@ -1750,19 +1753,24 @@
 				.map(([k, r]) => [k, { ...r, sentences: r.sentences.filter((x) => !bad.has(normS(x))) }] as const)
 				.filter(([, r]) => r.sentences.length > 0));
 		}
-		for (const it of res.items) {
+		const split = splitReply(res, stackCapped.map((x) => x.id), stackItems.map((x) => x.id), recheck);
+		for (const it of [...split.items, ...split.capped]) {
 			if (!it.answered || dictatedRows[it.id] || tappedRows[it.id]) continue;
 			const was = findRow(it.id);
 			dictatedRows = { ...dictatedRows, [it.id]: { ...it, sentences: was?.sentences ?? it.sentences } };
 			setTimeout(() => {
 				foldedRows = [...foldedRows, it.id];
 				stackItems = stackItems.filter((x) => x.id !== it.id);
+				stackCapped = stackCapped.filter((x) => x.id !== it.id);
 			}, FOLD_MS);
 		}
-		// Each reply replaces the set on screen (tapped answers are kept separately): nothing accumulates.
-		const kept = recheck ? stackItems.filter((x) => x.answered && !res.items.some((r) => r.id === x.id)) : [];
-		stackItems = [...kept, ...res.items].filter((it) => !foldedRows.includes(it.id));
-		stackCapped = res.capped.filter((it) => !foldedRows.includes(it.id));
+		// Each reply replaces the set on screen (tapped answers are kept separately): nothing accumulates. A re-check
+		// keeps what it did not see (answered and skipped rows; capped rows not sent) in place.
+		const seen = new Set([...res.items, ...res.capped].map((r) => r.id));
+		const kept = recheck ? stackItems.filter((x) => (x.answered || skippedRows[x.id]) && !seen.has(x.id)) : [];
+		stackItems = [...kept, ...split.items].filter((it) => !foldedRows.includes(it.id));
+		const back = new Map(split.capped.map((r) => [r.id, r]));
+		stackCapped = (recheck ? stackCapped.map((x) => back.get(x.id) ?? x) : split.capped).filter((it) => !foldedRows.includes(it.id));
 		shownSentences = [...new Set([...shownSentences, ...stackItems.flatMap((i) => i.sentences), ...res.capped.flatMap((i) => i.sentences)])];
 		stackLatency.items = Math.max(stackLatency.items ?? 0, res.ms);
 		void refreshAssumed(); // a row owns its check: the normals saying the same step aside
@@ -1832,7 +1840,7 @@
 	}
 	/** Regions a row or a removal concerns: every one of their sentences is checked, not only word matches. */
 	function touchedRegions(): string[] {
-		const rows = [...stackItems, ...stackCapped, ...Object.values(tappedRows)].map((r) => r.region);
+		const rows = [...stackItems, ...stackCapped, ...Object.values(tappedRows), ...Object.values(skippedRows).map((s) => s.item)].map((r) => r.region);
 		const gone = new Set(removedSentences.map(normS));
 		const fromSheet = Object.entries(stackRegionNormals).filter(([, xs]) => xs.some((x) => gone.has(normS(x)))).map(([r]) => r);
 		return [...new Set([...rows, ...fromSheet])].filter(Boolean);
@@ -1867,7 +1875,7 @@
 		const it = findRow(id);
 		if (!it || !isOpenRow(id)) return;
 		tappedRows = { ...tappedRows, [id]: { ...it, sentences: rowSentences(it, removedSentences) } };
-		if (moreView.some((c) => c.id === id) && !cappedTapped.includes(id)) cappedTapped = [...cappedTapped, id];
+		if (moreView.rows.some((c) => c.id === id) && !cappedTapped.includes(id)) cappedTapped = [...cappedTapped, id];
 	}
 	/** × on a row sentence or an assumed normal: never stated, never offered again. */
 	function removeSentence(sentence: string): void {
@@ -1878,7 +1886,7 @@
 	}
 	/** The open rows as the voice command sees them: the question and the sentences "accept" would add. */
 	function openItemsForVoice(): { id: string; text: string }[] {
-		return stackItems.filter((i) => isOpenRow(i.id))
+		return [...stackItems, ...(moreOpen ? moreView.rows : [])].filter((i) => isOpenRow(i.id))
 			.map((i) => ({ id: i.id, text: `${i.question} ${rowSentences(i, removedSentences).join(' ')}` }));
 	}
 	/** A line edited in the view: exactly that sentence (or part) changes in the verbatim text. */
@@ -2638,7 +2646,7 @@
 							</p>
 						{/if}
 						<HybridStackView units={stackUnits} groups={stackGroups} {pillRegions} pending={stripNow}
-							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
+							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView.show ? moreView.rows : []} moreWaiting={moreView.waiting} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
 							checks={placedChecks} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}

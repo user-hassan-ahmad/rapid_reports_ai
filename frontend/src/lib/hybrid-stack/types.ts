@@ -78,6 +78,8 @@ export interface GateRecord {
 	items: GateItem[]; // rows answered by dictation or by a tap (tapped sentences are stated)
 	assumed: Record<string, string[]>; // region normals confirmed (not dictated)
 	removed: string[]; // sentences the radiologist removed: never stated
+	// Every row behind the "N more checks" line at Confirm (over the writer's caps), whatever became of it: a tapped
+	// one also appears in `items` (answered_by 'tap') and in capped_tapped; a skipped one also in `items`.
 	capped: { region: string; question: string }[];
 	capped_opened?: boolean; // the "N more checks" line was opened (E1b)
 	capped_tapped?: { region: string; question: string }[]; // rows over the cap answered with a tap

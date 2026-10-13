@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abnormalAll, anchorRegion, answerLabel, assumedFrom, moreRows, openCount, quietLine, rowSentences, splitRecheck, unansweredChecks } from './items';
+import { abnormalAll, anchorRegion, answerLabel, assumedFrom, moreLine, openCount, quietLine, rowSentences, splitReply, unansweredChecks } from './items';
 import type { StackItem, StackUnit } from './types';
 
 const item = (id: string, sentences: string[], extra: Partial<StackItem> = {}): StackItem => ({
@@ -50,20 +50,27 @@ describe('checklist rows', () => {
 		expect(assumedFrom(snap, ['Spleen', 'Liver'], ['Bowel'], [])).toEqual({ Spleen: ['The spleen is normal.', 'No splenic lesion.'] });
 		expect(assumedFrom(null, ['Spleen'], [], [])).toEqual({});
 	});
-	it('rows over the cap wait behind "more checks": never twice, never once skipped', () => {
-		const capped = [item('c1', ['No free fluid.']), item('c2', ['No collection.']), item('c3', ['No fistula.'])];
-		// c1 was promoted onto the checklist by a later reply; c3 was skipped
-		expect(moreRows(capped, [item('a', ['x']), item('c1', ['No free fluid.'])], ['c3']).map((r) => r.id)).toEqual(['c2']);
-		expect(moreRows([], [item('a', ['x'])], [])).toEqual([]);
+	it('rows over the cap wait behind "N more checks": N counts the rows still asked; the line stays for a tapped one', () => {
+		const capped = [item('c1', ['No free fluid.']), item('c2', ['No collection.']), item('c3', ['No fistula.']), item('c4', ['No abscess.'])];
+		// c1 was promoted onto the checklist by a later reply; c3 was skipped; c4 tapped
+		const m = moreLine(capped, [item('a', ['x']), item('c1', ['No free fluid.'])], ['c4'], [], ['c3']);
+		expect(m.rows.map((r) => r.id)).toEqual(['c2', 'c4']);
+		expect(m).toMatchObject({ waiting: 1, show: true });
+		expect(moreLine(capped.slice(3), [], ['c4'], [], [])).toMatchObject({ waiting: 0, show: true });   // only a tapped one
+		expect(moreLine([item('c2', ['No collection.'])], [], [], ['no collection'], [])).toMatchObject({ waiting: 0, show: false });   // removed with ×
+		expect(moreLine([], [item('a', ['x'])], [], [], [])).toEqual({ rows: [], waiting: 0, show: false });
 	});
-	it('a re-check reply is split back by origin: answered capped rows fold as rows, the rest stay capped', () => {
+	it('a reply is split by where each row was: answered capped rows fold behind the line; a re-check never moves one', () => {
 		const res = {
 			items: [item('a', ['No torsion.']), item('c1', [], { answered: true }), item('c2', ['No collection.'])], // c2 promoted by the caps
 			capped: [item('c3', ['No fistula.'])]
 		};
-		const out = splitRecheck(res, ['c1', 'c2', 'c3']);
-		expect(out.items.map((r) => r.id)).toEqual(['a', 'c1']);
-		expect(out.capped.map((r) => r.id)).toEqual(['c2', 'c3']);
-		expect(splitRecheck({ items: [item('a', ['x'])], capped: [] }, [])).toEqual({ items: [item('a', ['x'])], capped: [] });
+		const re = splitReply(res, ['c1', 'c2', 'c3'], ['a'], true);
+		expect(re.items.map((r) => r.id)).toEqual(['a']);
+		expect(re.capped.map((r) => r.id)).toEqual(['c1', 'c2', 'c3']);
+		const full = splitReply(res, ['c1', 'c2', 'c3'], ['a'], false);
+		expect(full.items.map((r) => r.id)).toEqual(['a', 'c2']);   // the full reply's caps may promote one
+		expect(full.capped.map((r) => r.id)).toEqual(['c1', 'c3']);   // answered behind the line: folds there
+		expect(splitReply({ items: [item('a', ['x'])], capped: [] }, [], [], true)).toEqual({ items: [item('a', ['x'])], capped: [] });
 	});
 });

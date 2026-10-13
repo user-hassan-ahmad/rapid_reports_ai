@@ -30,6 +30,7 @@
 		editGhost = '',
 		items = [],
 		more = [],
+		moreWaiting = 0,
 		moreOpen = false,
 		onToggleMore = () => {},
 		tapped = [],
@@ -85,6 +86,8 @@
 		/** Rows over the writer's caps (E1b): behind one quiet "N more checks" line at the end of the checklist; opened,
 		 *  they are ordinary rows. Never needed for Confirm. */
 		more?: StackItem[];
+		/** N: the rows behind the line still asked (not tapped, skipped or answered). */
+		moreWaiting?: number;
 		moreOpen?: boolean;
 		onToggleMore?: () => void;
 		/** Rows the radiologist answered with a tap: their listed sentences are stated. */
@@ -954,7 +957,7 @@
 	{#if more.length}
 		<section aria-label="More checks" class="space-y-1">
 			<button type="button" class="px-1 text-xs text-gray-500 hover:text-gray-300" aria-expanded={moreOpen} onclick={onToggleMore}>
-				{moreOpen ? '▾' : '▸'} {more.length} more {more.length === 1 ? 'check' : 'checks'}</button>
+				{moreOpen ? '▾' : '▸'} {moreWaiting ? `${moreWaiting} more ${moreWaiting === 1 ? 'check' : 'checks'}` : 'More checks'}</button>
 			{#if moreOpen}
 				{#each more as it (it.id)}{@render row(it, it.region || null)}{/each}
 			{/if}

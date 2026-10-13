@@ -288,3 +288,16 @@ async def test_recheck_uses_no_writer_and_folds_answered_rows(monkeypatch):
             I.Item(id="b", kind="finding", region="Peritoneum", question="Free gas?", sentences=["No free gas."])]
     out = await I.recheck("A cyst. No features of torsion.", rows)
     assert [(i.id, i.answered) for i in out.items] == [("a", True), ("b", False)]
+
+
+def test_referral_rows_are_never_capped():
+    """Rows over the caps wait behind "N more checks" and never block Confirm, so a referral row must never be capped:
+    referrals come first and there are at most MAX_REFERRALS < MAX_ROWS of them."""
+    assert I.MAX_REFERRALS < I.MAX_ROWS
+    raw = I.RawOutput(
+        referral_questions=[I.RawReferral(question="Appendicitis?", region="Appendix", answers=["The appendix is normal."]),
+                            I.RawReferral(question="Collection?", region="Peritoneum", answers=["No collection."])],
+        finding_checks=[I.RawFinding(region="Liver", question=f"Q{k}?", answers=[f"No finding {k}."]) for k in range(6)])
+    items, capped = I._limit(I._rows(raw))
+    assert [r.kind for r in items].count("referral") == 2
+    assert capped and all(r.kind == "finding" for r in capped)
