@@ -311,10 +311,8 @@ async def ask_conditions(state: str, conditions: list[str], transport=None) -> l
 # ── Required values: the value cluster (requirements spec 2026-10-12 part 1) ──────────
 # Per LIST_MISSING item, "stated?" (noul, value_<i>) and "which clause gives its value?" (choice over the dictation's
 # clauses that hold a number, where_<i>). Code reads the number (hybrid_stack.values); Jev never does.
-VALUE_STATED_MIN = 0.3            # with a named clause (Hassan 2026-10-13, after the lab: the per-item stated question
-                                  # alone recalled 46% at 0.8; "clause named AND p >= 0.3" 81/111, false-stated
-                                  # unchanged; the post-generation backstop protects precision)
-VALUE_UNQUOTED_MIN = STATED_MIN   # 0.8: stated but no clause named -> the "stated?" chip, on the strict bar
+VALUE_UNQUOTED_MIN = STATED_MIN   # 0.8: an item no number maps to, stated -> the "stated?" chip, on the strict bar
+NUMBER_BATCH = 10                 # numbers per number -> item call; batches run in parallel
 VALUE_BATCH = 4                 # items per Jev call; batches run in parallel (12 items -> 3 calls)
 
 
@@ -372,6 +370,46 @@ async def ask_values(dictation: str, items: list[str], clauses: list[str], trans
         return out
 
     parts = await asyncio.gather(*(batch(k, items[k:k + VALUE_BATCH]) for k in range(0, len(items), VALUE_BATCH)))
+    return [x for p in parts for x in p]
+
+
+def number_item_question(number: str, marked: str, items: list[str]) -> dict[str, Any]:
+    """Number -> item (Decision 11, the second lab's arm N1, wording verbatim): which required value does this number
+    give? `marked` is its sentence with the number marked [[ ]]."""
+    crit: dict[str, str] = {f"item_{i}": it for i, it in enumerate(items)}
+    crit[NONE] = "None of these required values: the number gives something else."
+    return {"type": "choice",
+            "instructions": (f"Which required value does the number {number} in this sentence give? The number is "
+                             f"marked [[ ]] in the SENTENCE. SENTENCE: {marked}"),
+            "criteria": crit}
+
+
+async def ask_number_items(dictation: str, mentions: list[tuple[str, str]], items: list[str],
+                           transport=None) -> list[tuple[Optional[int], float]]:
+    """(index into `items` the number gives, or None; Jev's confidence) per (number, marked sentence), in order. One
+    choice per number, NUMBER_BATCH per call, calls in parallel."""
+    if not mentions:
+        return []
+    if not items:
+        return [(None, 0.0)] * len(mentions)
+    key = os.environ.get("OPENROUTER_API_KEY", "")
+
+    async def batch(start: int, chunk: list[tuple[str, str]]) -> list[tuple[Optional[int], float]]:
+        qs = {f"n_{start + j}": number_item_question(n, m, items) for j, (n, m) in enumerate(chunk)}
+        r = await jev_post({"model": JEV_MODEL, "state": f"DICTATION:\n{dictation}", "questions": qs},
+                           key, TIMEOUT_S * 2, transport)
+        r.raise_for_status()
+        ans = r.json().get("answers") or {}
+        out: list[tuple[Optional[int], float]] = []
+        for j in range(len(chunk)):
+            a = ans.get(f"n_{start + j}") or {}
+            c = a.get("choice")
+            i = int(c[5:]) if isinstance(c, str) and c.startswith("item_") and c[5:].isdigit() else None
+            out.append((i if i is not None and i < len(items) else None, float(a.get("confidence") or 0.0)))
+        return out
+
+    parts = await asyncio.gather(*(batch(k, mentions[k:k + NUMBER_BATCH])
+                                   for k in range(0, len(mentions), NUMBER_BATCH)))
     return [x for p in parts for x in p]
 
 

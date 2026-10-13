@@ -139,8 +139,45 @@ async def test_ask_values_takes_another_stated_wording(monkeypatch):
 
 
 def test_the_value_cut_offs_after_the_lab():
-    assert J.VALUE_STATED_MIN == 0.3                       # with a named clause (Hassan 2026-10-13)
-    assert J.VALUE_UNQUOTED_MIN == J.STATED_MIN == 0.8     # no clause named: the strict "stated?" bar
+    assert J.VALUE_UNQUOTED_MIN == J.STATED_MIN == 0.8     # an item no number maps to: the strict "stated?" bar
+    assert not hasattr(J, "VALUE_STATED_MIN")              # Decision 10's clause rule is superseded by number -> item
+
+
+def test_the_number_item_question_mirrors_the_lab_arm_n1():
+    q = J.number_item_question("1010", "Native T1 [[1010]] ms.", ["LVEF", "Native T1 value"])
+    assert q == {"type": "choice",
+                 "instructions": ("Which required value does the number 1010 in this sentence give? The number is "
+                                  "marked [[ ]] in the SENTENCE. SENTENCE: Native T1 [[1010]] ms."),
+                 "criteria": {"item_0": "LVEF", "item_1": "Native T1 value",
+                              "none": "None of these required values: the number gives something else."}}
+
+
+async def test_ask_number_items_asks_one_choice_per_number_in_parallel_batches(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    bodies = []
+
+    def handler(req):
+        body = json.loads(req.content)
+        bodies.append(body)
+        ans = {}
+        for k in body["questions"]:
+            i = int(k[2:])
+            ans[k] = ({"choice": "item_1", "confidence": 0.9} if i == 0 else {"choice": "none", "confidence": 0.7}
+                      if i == 1 else {"choice": "item_9", "confidence": 0.8} if i == 2 else {"choice": "item_0"})
+        return httpx.Response(200, json={"answers": ans})
+    mentions = [(str(n), f"A [[{n}]].") for n in range(12)]
+    out = await J.ask_number_items("A 1.", mentions, ["LVEF", "RVEF"], transport=httpx.MockTransport(handler))
+    assert out[:4] == [(1, 0.9), (None, 0.7), (None, 0.8), (0, 0.0)]   # none and out-of-range map to no item
+    assert len(out) == 12 and J.NUMBER_BATCH == 10 and len(bodies) == 2
+    assert sorted(len(b["questions"]) for b in bodies) == [2, 10]
+    assert all(b["state"] == "DICTATION:\nA 1." for b in bodies)
+    b0 = next(b for b in bodies if "n_0" in b["questions"])
+    assert b0["questions"]["n_0"] == J.number_item_question("0", "A [[0]].", ["LVEF", "RVEF"])
+
+    def fail(req):
+        raise AssertionError("no call")
+    assert await J.ask_number_items("x", [], ["LVEF"], transport=httpx.MockTransport(fail)) == []
+    assert await J.ask_number_items("x", [("1", "[[1]]")], [], transport=httpx.MockTransport(fail)) == [(None, 0.0)]
     assert J.BACKSTOP_MIN == 0.5   # the post-generation backstop is recall-oriented
 
 

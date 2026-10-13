@@ -1,12 +1,13 @@
 """Required values of a templated scratchpad session (requirements spec 2026-10-12 part 1, the value cluster).
 
-Jev decides which of the template's LIST_MISSING items the dictation states, and which clause states each
-(jev_stack.ask_values); code reads the number from that clause. No model writes a number. A chip fills when Jev names a
-clause and P(stated) >= VALUE_STATED_MIN (0.3); with no clause named it needs VALUE_UNQUOTED_MIN (0.8) and shows as
-"stated?". A named clause with two or more numbers (or a range) gives no value but its numbers, each one tap to enter.
-An open chip carries the dictation's number-bearing clauses as picks (code-extracted, ranked by Jev's where-choice).
-Fail-soft: any Jev failure leaves every chip open (the radiologist enters the value, picks a clause or marks it N/A);
-the scratchpad never blocks on the network."""
+Number -> item (Decision 11, after the second lab): code extracts every number of the dictation (masked: identifiers,
+dates, times, bracketed reference text and reference ranges after a reference word), and Jev says, per number, which
+required value it gives (jev_stack.ask_number_items). An item one number maps to is filled with that number and its
+unit as written; two or more numbers on one item keep the most confident as a "check" chip, the others selectable. An
+item no number maps to gets the stated question (jev_stack.ask_values) on the strict bar: stated -> "stated?" chip.
+No model writes a number. An open chip carries the dictation's number-bearing clauses as picks. Fail-soft: any Jev
+failure leaves every chip open (the radiologist enters the value, picks a clause or marks it N/A); the scratchpad
+never blocks on the network."""
 from __future__ import annotations
 
 import logging
@@ -17,18 +18,21 @@ from typing import Awaitable, Callable, Literal, Optional
 from pydantic import BaseModel, Field
 
 from ..template_number_check import _masked
-from .jev_stack import VALUE_STATED_MIN, VALUE_UNQUOTED_MIN, ask_values
+from .jev_stack import VALUE_UNQUOTED_MIN, ask_number_items, ask_values
 from .units import sentences
 
 logger = logging.getLogger(__name__)
 
 MAX_ITEMS = 20     # the largest prod LIST_MISSING has 12 items
-MAX_CLAUSES = 80   # numeric clauses offered to the "which clause" question: raised, not windowed (a long CMR dictation
-                   # holds ~30-50 numbers); an item whose clause falls past the cap comes back stated without a quote,
-                   # which the scratchpad shows as a chip to look at, never as a value
+MAX_NUMBERS = 60   # numbers asked per dictation (a long CMR dictation holds ~30-50); later ones are not asked
 MAX_PICKS = 8      # number-bearing clauses offered on an open chip
 
 _REF = re.compile(r"\([^()]*[A-Za-z][^()]*\)")         # bracketed text with a word: a reference range
+_N = r"\d+(?:[.,]\d+)?"
+# A reference range or limit after a reference word: "normal 891-1035", "normal range: 891 to 1035", "normal (891-1035)",
+# "normal value <24" (the lab's main distractor: range ends mapped to an item)
+_REF_RANGE = re.compile(rf"(?i)\b(?:normal|reference|ref|range|nr|uln)\b(?:\s*(?:range|values?|limits?|of|is|:|=|\())*"
+                        rf"\s*(?:[<>≤≥]\s*{_N}|{_N}\s*(?:-|–|—|to)\s*{_N})")
 _CLAUSE = re.compile(r"(?<!\d)[;,]|[;,](?!\d)")       # a comma or semicolon, except inside a number ("1,050")
 _NUMBER = re.compile(r"(?:(?<![^\s(])[-−+])?(?<![\w.,^])\d+(?:,\d{3})*(?:\.\d+)?")   # a sign only at a word start
 _UNIT = re.compile(r"\s*(%|per ?cent\b|(?:mm ?Hg|[cm]m(?:2|²|\^2)|mls|mL|ml|g|kg|L|l|mm|cm|msec|ms|s|m|cc|HU|bpm)"
@@ -44,9 +48,10 @@ def clauses(dictation: str) -> list[str]:
 
 
 def _numbers(clause: str) -> list[re.Match]:
-    """Number tokens, after list markers, identifiers (T2, L4/5), dates, times and bracketed words with their numbers
-    ("(normal 55)") are blanked (same length)."""
-    return list(_NUMBER.finditer(_REF.sub(lambda m: " " * len(m.group(0)), _masked(clause or "", set()))))
+    """Number tokens, after list markers, identifiers (T2, L4/5), dates, times, bracketed words with their numbers
+    ("(normal 55)") and reference ranges after a reference word ("normal range 891-1035") are blanked (same length)."""
+    blank = lambda m: " " * len(m.group(0))  # noqa: E731
+    return list(_NUMBER.finditer(_REF_RANGE.sub(blank, _REF.sub(blank, _masked(clause or "", set())))))
 
 
 def has_number(clause: str) -> bool:
@@ -95,8 +100,33 @@ def read_numbers(clause: str) -> list[str]:
     return out
 
 
+class Mention(BaseModel):
+    """One number of the dictation: as asked (commas dropped), with its unit, its clause, and its sentence with the
+    number marked [[ ]]."""
+    number: str
+    value: str
+    clause: str
+    marked: str
+
+
+def number_mentions(dictation: str) -> list[Mention]:
+    """Every number of the dictation in order (the lab's extraction): per sentence, per clause, `_numbers` masking."""
+    out: list[Mention] = []
+    for s in sentences(dictation or ""):
+        cur = 0
+        for c in [c.strip() for c in _CLAUSE.split(s) if c.strip()]:
+            off = s.find(c, cur)
+            off = off if off >= 0 else cur
+            cur = off + len(c)
+            for m, value in zip(_numbers(c), read_numbers(c)):
+                pos = off + m.start()
+                out.append(Mention(number=m.group(0).replace(",", ""), value=value, clause=c,
+                                   marked=s[:pos] + "[[" + m.group(0) + "]]" + s[pos + len(m.group(0)):]))
+    return out
+
+
 class ClausePick(BaseModel):
-    """A number-bearing clause of the dictation the radiologist can tap to fill an open chip."""
+    """A number-bearing clause of the dictation the radiologist can tap to fill a chip."""
     clause: str
     value: Optional[str] = None                        # its one number with unit
     numbers: list[str] = Field(default_factory=list)   # two or more numbers: each selectable
@@ -109,12 +139,11 @@ def pick(clause: str) -> ClausePick:
 
 class ValueFill(BaseModel):
     item: str
-    state: Literal["filled", "open"] = "open"
-    value: Optional[str] = None      # code's read; None when filled without one unambiguous number
-    quote: Optional[str] = None      # the clause Jev named (None: stated, no clause named -> "check" chip)
-    score: Optional[float] = None    # P(stated)
-    numbers: list[str] = Field(default_factory=list)     # filled, quote with 2+ numbers: each selectable
-    picks: list[ClausePick] = Field(default_factory=list)   # open: the dictation's number clauses, best first
+    state: Literal["filled", "check", "open"] = "open"
+    value: Optional[str] = None      # the number Jev mapped here, with its unit (check: the most confident)
+    quote: Optional[str] = None      # its clause (None with filled: stated, no number -> "stated?" chip)
+    score: Optional[float] = None    # the number's confidence, or P(stated) for an item no number maps to
+    picks: list[ClausePick] = Field(default_factory=list)   # open: number clauses; check: the numbers mapped here
 
 
 class ValuesResult(BaseModel):
@@ -123,57 +152,63 @@ class ValuesResult(BaseModel):
     error: Optional[str] = None
 
 
-Ask = Callable[[str, list[str], list[str]], Awaitable[list[tuple]]]   # (p, k) or (p, k, where scores per clause)
+Ask = Callable[[str, list[str], list[str]], Awaitable[list[tuple]]]   # the stated question: (p, k, ...) per item
+AskNumbers = Callable[[str, list[tuple[str, str]], list[str]], Awaitable[list[tuple[Optional[int], float]]]]
 
 
-def _picks(cands: list[str], scores: Optional[list[float]]) -> list[ClausePick]:
-    """The number clauses, best where-choice score first (ties and no scores: dictation order), capped."""
-    order = list(range(len(cands)))
-    if scores is not None and len(scores) == len(cands):
-        order.sort(key=lambda i: -scores[i])
-    return [pick(cands[i]) for i in order[:MAX_PICKS]]
-
-
-async def smart_fill(dictation: str, items: list[str], ask: Optional[Ask] = None) -> ValuesResult:
-    """Each required value filled from the dictation or left open. Never raises; a Jev failure leaves every chip
-    open with the error recorded."""
+async def smart_fill(dictation: str, items: list[str], ask: Optional[Ask] = None,
+                     ask_numbers: Optional[AskNumbers] = None) -> ValuesResult:
+    """Each required value filled from the dictation, a check chip, or open. Never raises; a Jev failure leaves every
+    chip open with the error recorded."""
     t0 = time.perf_counter()
     items = [i for i in items if i.strip()][:MAX_ITEMS]
+    cands: list[str] = []
 
     def done(values: list[ValueFill], error: Optional[str] = None) -> ValuesResult:
         ms = int((time.perf_counter() - t0) * 1000)
         logger.log(logging.WARNING if error else logging.INFO,
-                   "[stack.values] items=%d filled=%d valued=%d unquoted=%d error=%s ms=%d", len(items),
+                   "[stack.values] items=%d filled=%d valued=%d check=%d error=%s ms=%d", len(items),
                    sum(v.state == "filled" for v in values), sum(v.value is not None for v in values),
-                   sum(v.state == "filled" and v.quote is None for v in values), error, ms)
+                   sum(v.state == "check" for v in values), error, ms)
         return ValuesResult(values=values, ms=ms, error=error)
 
-    cands: list[str] = []
-
-    def all_open() -> list[ValueFill]:
-        picks = _picks(cands, None)
-        return [ValueFill(item=i, picks=picks) for i in items]
+    def opened(item: str, score: Optional[float] = None) -> ValueFill:
+        return ValueFill(item=item, score=score, picks=[pick(c) for c in cands[:MAX_PICKS]])
 
     if not items or not (dictation or "").strip():
-        return done(all_open())
-    cands = [c for c in clauses(dictation) if has_number(c)][:MAX_CLAUSES]
+        return done([opened(i) for i in items])
+    cands = [c for c in clauses(dictation) if has_number(c)]
+    mentions = number_mentions(dictation)[:MAX_NUMBERS]
     try:
-        answers = await (ask or ask_values)(dictation, items, cands)
+        mapped = await (ask_numbers or ask_number_items)(dictation, [(m.number, m.marked) for m in mentions], items) \
+            if mentions else []
+        if len(mapped) != len(mentions):
+            return done([opened(i) for i in items], "jev: answer count mismatch")
+        by_item: dict[int, list[tuple[float, Mention]]] = {}
+        for m, (i, conf) in zip(mentions, mapped):
+            if i is not None and 0 <= i < len(items):
+                by_item.setdefault(i, []).append((conf, m))
+        rest = [k for k in range(len(items)) if k not in by_item]
+        stated = await (ask or ask_values)(dictation, [items[k] for k in rest], []) if rest else []
+        if len(stated) != len(rest):
+            return done([opened(i) for i in items], "jev: answer count mismatch")
     except Exception as e:  # noqa: BLE001 -- fail-soft: every chip open, the radiologist fills or marks N/A
-        return done(all_open(), f"{type(e).__name__}: {e}"[:200])
-    if len(answers) != len(items):
-        return done(all_open(), "jev: answer count mismatch")
+        return done([opened(i) for i in items], f"{type(e).__name__}: {e}"[:200])
+    p_stated = {k: float(a[0]) for k, a in zip(rest, stated)}
     out: list[ValueFill] = []
-    for item, a in zip(items, answers):
-        p, k = a[0], a[1]
-        scores = a[2] if len(a) > 2 else None
-        quote = cands[k] if k is not None and 0 <= k < len(cands) else None
-        if quote is not None and p >= VALUE_STATED_MIN:
-            value = read_value(quote)
-            out.append(ValueFill(item=item, state="filled", value=value, quote=quote, score=round(p, 3),
-                                 numbers=[] if value else read_numbers(quote)))
-        elif quote is None and p >= VALUE_UNQUOTED_MIN:
-            out.append(ValueFill(item=item, state="filled", score=round(p, 3)))   # "stated?": needs a look
+    for k, item in enumerate(items):
+        if k in by_item:
+            ranked = sorted(by_item[k], key=lambda x: -x[0])   # stable: equal confidence keeps dictation order
+            conf, best = ranked[0]
+            if len(ranked) == 1:
+                out.append(ValueFill(item=item, state="filled", value=best.value, quote=best.clause,
+                                     score=round(conf, 3)))
+            else:
+                out.append(ValueFill(item=item, state="check", value=best.value, quote=best.clause,
+                                     score=round(conf, 3),
+                                     picks=[ClausePick(clause=m.clause, value=m.value) for _, m in ranked]))
+        elif p_stated[k] >= VALUE_UNQUOTED_MIN:
+            out.append(ValueFill(item=item, state="filled", score=round(p_stated[k], 3)))   # "stated?": needs a look
         else:
-            out.append(ValueFill(item=item, score=round(p, 3), picks=_picks(cands, scores)))
+            out.append(opened(item, round(p_stated[k], 3)))
     return done(out)
