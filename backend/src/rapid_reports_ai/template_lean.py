@@ -441,7 +441,7 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         # generator reads one decided line where the sheet had a default plus a rule. Fail-soft: stored sheet.
         resolved = await resolve_context_rules(sheet, history, findings, stack=stack is not None)
         rec["context_rules"] = resolved.record
-        block = decided_block(resolved.decided)
+        block = decided_block(resolved.decided, resolved.kept)
         gen_sheet = resolved.sheet + ("\n\n" + block if block else "")
         rec["lat"]["rules_s"] = round(time.time() - t0, 1)
         t1 = time.time()

@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 EFFECTS = ("replace", "suppress", "use")
 _UNIT = re.compile(r"^\s*(?:-\s+)?(?:FIXED|NORMAL|NEGATIVE)\b")
+_FIXED = re.compile(r"^\s*(?:-\s+)?FIXED\b")
 _QUOTED = re.compile(r'"([^"]+)"')
 _RULE_USE = re.compile(r'RULE\s+WHEN\s*\[[^\]]*\]\s*USE\s*("[^"]+")')
 SLOT = re.compile(r"\{[^{}\n]*\}")
@@ -56,8 +57,9 @@ def _first_quote(line: str) -> Optional[str]:
     return m.group(1) if m else None
 
 
-def apply_rules(sheet: str, rules: List[Rule], met: Dict[str, bool]) -> Tuple[str, List[str], List[dict]]:
-    """(resolved sheet, decided slot lines, one evidence entry per rule). `met`: condition -> met for this case.
+def apply_rules(sheet: str, rules: List[Rule], met: Dict[str, bool]) -> Tuple[str, List[str], List[str], List[dict]]:
+    """(resolved sheet, decided slot lines, kept defaults, one evidence entry per rule). Kept defaults: the text of
+    each FIXED line a not-met REPLACE / SUPPRESS rule left as it stands. `met`: condition -> met for this case.
     Outcome per rule: "applied" (rule line removed; its effect written when met), "unmatched" (no unit line
     quotes its target: rule line left for the generator) or "conflict" (an earlier met rule already settled the
     same target: rule line left)."""
@@ -66,6 +68,7 @@ def apply_rules(sheet: str, rules: List[Rule], met: Dict[str, bool]) -> Tuple[st
     taken: set[int] = set()        # rule lines already matched to a rule
     claimed: set[str] = set()      # target keys settled by a met rule
     decided: List[str] = []
+    kept: List[str] = []
     per: List[dict] = []
     for r in rules:
         raw = r.source_lines[0] if r.source_lines else None
@@ -94,6 +97,7 @@ def apply_rules(sheet: str, rules: List[Rule], met: Dict[str, bool]) -> Tuple[st
             entry["outcome"] = "unmatched"
         elif not entry["met"]:
             out[i] = None
+            kept.extend(q for k in targets if _FIXED.match(lines[k]) and (q := _first_quote(lines[k])))
             entry["outcome"] = "applied"
         elif key in claimed:
             entry["outcome"] = "conflict"
@@ -106,7 +110,7 @@ def apply_rules(sheet: str, rules: List[Rule], met: Dict[str, bool]) -> Tuple[st
                 decided.append(r.then_text)
             entry["outcome"] = "applied"
     text = "\n".join(x for x in out if x is not None)
-    return (text + "\n" if sheet.endswith("\n") else text), decided, per
+    return (text + "\n" if sheet.endswith("\n") else text), decided, kept, per
 
 
 
@@ -151,6 +155,7 @@ Ask = Callable[[str, List[str]], Awaitable[List[float]]]
 class Resolved:
     sheet: str                                          # what the generator reads (the stored sheet if unresolved)
     decided: List[str] = field(default_factory=list)    # lines a met rule wrote that carry {slots}
+    kept: List[str] = field(default_factory=list)       # FIXED defaults a not-met rule kept (written verbatim)
     record: dict = field(default_factory=dict)          # evidence: the candidate record's "context_rules"
 
 
@@ -160,9 +165,10 @@ async def resolve_context_rules(sheet: str, history: str, findings: str, ask: Op
     the error in the record. `findings`: the scratchpad's confirmed findings block, or the dictation. `stack`:
     the scratchpad path, where findings-side rules are left as today (_left_on_stack)."""
     t0 = time.perf_counter()
-    rec: dict = {"asked": 0, "ms": 0, "error": None, "skipped": None, "rules": [], "slot_leaks": 0}
+    rec: dict = {"asked": 0, "ms": 0, "error": None, "skipped": None, "rules": [], "slot_leaks": 0, "kept": 0}
 
-    def done(text: str, decided: Optional[List[str]] = None) -> Resolved:
+    def done(text: str, decided: Optional[List[str]] = None, kept: Optional[List[str]] = None) -> Resolved:
+        rec["kept"] = len(kept or [])
         rec["ms"] = int((time.perf_counter() - t0) * 1000)
         outcomes = [e["outcome"] for e in rec["rules"]]
         logger.log(logging.WARNING if rec["error"] else logging.INFO,
@@ -170,7 +176,7 @@ async def resolve_context_rules(sheet: str, history: str, findings: str, ask: Op
                    "skipped=%s error=%s ms=%d", rec["asked"], sum(bool(e["met"]) for e in rec["rules"]),
                    outcomes.count("applied"), outcomes.count("unmatched"), outcomes.count("conflict"),
                    outcomes.count("left_stack"), rec["skipped"], rec["error"], rec["ms"])
-        return Resolved(sheet=text, decided=list(decided or []), record=rec)
+        return Resolved(sheet=text, decided=list(decided or []), kept=list(kept or []), record=rec)
 
     try:
         st = _clean(sheet)
@@ -193,7 +199,7 @@ async def resolve_context_rules(sheet: str, history: str, findings: str, ask: Op
             rec["error"] = "jev: answer count mismatch"
             return done(sheet)
         score_of = dict(zip(conds, scores))
-        text, decided, per = apply_rules(sheet, applied, {c: score_of.get(c, 0.0) >= CONDITION_MIN for c in conds})
+        text, decided, kept, per = apply_rules(sheet, applied, {c: score_of.get(c, 0.0) >= CONDITION_MIN for c in conds})
         entries = iter({**e, "score": round(float(score_of.get(e["condition"], 0.0)), 3)} for e in per)
         lines = sheet.splitlines()
         for r in rules:
@@ -204,7 +210,7 @@ async def resolve_context_rules(sheet: str, history: str, findings: str, ask: Op
             i = next((k for k, ln in enumerate(lines) if ln == raw), None)
             rec["rules"].append({"line": None if i is None else i + 1, "condition": r.condition, "effect": r.effect,
                                  "met": None, "score": None, "outcome": "left_stack"})
-        return done(text, decided)
+        return done(text, decided, kept)
     except Exception as e:  # noqa: BLE001 -- fail-soft: the generator reads the stored sheet, as today
         rec["error"], rec["rules"] = f"{type(e).__name__}: {e}"[:300], []
         return done(sheet)
@@ -215,15 +221,22 @@ _SENTENCE_END = re.compile(r'(?<=[.!?])\s+(?=[A-Z0-9"(])')
 _LEAD = re.compile(r"^\s*(?:[-*•]\s+)?(?:\d+[.)]\s+)?(?:[*_#]*\s*[^:{}.\n]{1,40}:(?!\d)[*_]*\s*)?")   # indent, bullet, "**Header:** "
 
 
-def decided_block(decided: List[str]) -> str:
-    """The generator's instruction for lines a met rule wrote with {slots} (appended to the sheet it reads)."""
-    if not decided:
+def decided_block(decided: List[str], kept=()) -> str:
+    """The generator's instruction for lines the rules decided (appended to the sheet it reads): lines a met rule
+    wrote with {slots}, and FIXED defaults a not-met rule kept, which are written word for word."""
+    if not decided and not kept:
         return ""
-    lines = "\n".join(f'- "{t}"' for t in dict.fromkeys(decided))
-    return (f"{DECIDED_HEADING}\n"
-            "The template's rules decided these lines for this case. Write each in its place. Fill each {slot} "
-            "with the value the FINDINGS input or the clinical history states; where neither states a slot's value, "
-            "leave out the words that carry it. Never print a {slot}.\n" + lines)
+    parts = [DECIDED_HEADING]
+    if decided:
+        lines = "\n".join(f'- "{t}"' for t in dict.fromkeys(decided))
+        parts.append("The template's rules decided these lines for this case. Write each in its place. Fill each "
+                     "{slot} with the value the FINDINGS input or the clinical history states; where neither states "
+                     "a slot's value, leave out the words that carry it. Never print a {slot}.\n" + lines)
+    if kept:
+        lines = "\n".join(f'- "{t}"' for t in dict.fromkeys(kept))
+        parts.append("Write word for word: the template's rules decided these lines for this case. Write each "
+                     "exactly as it stands, in its place; do not change, merge or add values.\n" + lines)
+    return "\n".join(parts)
 
 
 def sheet_headers(sheet: str) -> Set[str]:

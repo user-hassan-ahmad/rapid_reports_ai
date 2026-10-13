@@ -45,7 +45,7 @@ def test_rules_in_scope_is_none_for_a_non_grammar_or_unclean_sheet():
 
 
 def test_nothing_met_keeps_every_default_and_removes_every_rule_line():
-    sheet, decided, per = _apply(set())
+    sheet, decided, _kept, per = _apply(set())
     assert "RULE " not in sheet and decided == []
     assert 'FIXED "No previous imaging available for comparison."' in sheet
     assert 'FIXED "Images reviewed on PACS."' in sheet and 'NORMAL [liver] "The liver is normal."' in sheet
@@ -54,14 +54,14 @@ def test_nothing_met_keeps_every_default_and_removes_every_rule_line():
 
 
 def test_met_replace_rewrites_the_default_line_and_records_the_slot_line():
-    sheet, decided, _ = _apply({PRIOR})
+    sheet, decided, _kept, _ = _apply({PRIOR})
     assert ('FIXED "Comparison made with previous {study} dated {date}." | section: COMPARISON' in sheet)
     assert "No previous imaging available" not in sheet
     assert decided == ["Comparison made with previous {study} dated {date}."]
 
 
 def test_met_use_becomes_a_fixed_line_in_place_and_met_suppress_removes_the_line():
-    sheet, decided, _ = _apply({NOCON, OFFSITE, NOLIVER})
+    sheet, decided, _kept, _ = _apply({NOCON, OFFSITE, NOLIVER})
     assert 'FIXED "No contrast." | section: COMPARISON' in sheet
     assert "Images reviewed on PACS." not in sheet and "The liver is normal." not in sheet
     assert decided == []   # no slots
@@ -69,21 +69,21 @@ def test_met_use_becomes_a_fixed_line_in_place_and_met_suppress_removes_the_line
 
 def test_the_resolved_sheet_still_lints_clean():
     for met in (set(), {PRIOR, NOCON, OFFSITE, NOLIVER}):
-        sheet, _, _ = _apply(met)
+        sheet, _, _, _ = _apply(met)
         res = parse_sheet(sheet, mode="template")
         assert res.errors == [] and res.structure.usable
 
 
 def test_target_match_ignores_case_spacing_and_the_final_full_stop():
     sheet = SHEET.replace('SUPPRESS "Images reviewed on PACS."', 'SUPPRESS "images  reviewed on PACS"')
-    out, _, per = _apply({OFFSITE}, sheet)
+    out, _, _, per = _apply({OFFSITE}, sheet)
     assert "Images reviewed on PACS." not in out
     assert next(e for e in per if e["condition"] == OFFSITE)["outcome"] == "applied"
 
 
 def test_an_unmatched_target_leaves_the_rule_line_for_the_generator():
     sheet = SHEET.replace('SUPPRESS "Images reviewed on PACS."', 'SUPPRESS "A sentence in no unit line."')
-    out, _, per = _apply({OFFSITE}, sheet)
+    out, _, _, per = _apply({OFFSITE}, sheet)
     assert 'RULE WHEN [context: images were reviewed off site] SUPPRESS "A sentence in no unit line."' in out
     assert next(e for e in per if e["condition"] == OFFSITE)["outcome"] == "unmatched"
 
@@ -92,7 +92,7 @@ def test_two_met_rules_on_one_target_apply_the_first_and_leave_the_second():
     extra = ('RULE WHEN [context: the patient declined comparison] REPLACE '
              '"No previous imaging available for comparison." WITH "Comparison declined." | section: COMPARISON\n')
     sheet = SHEET.replace("FIXED \"Images reviewed on PACS.\"", extra + "FIXED \"Images reviewed on PACS.\"")
-    out, _, per = _apply({PRIOR, "the patient declined comparison"}, sheet)
+    out, _, _, per = _apply({PRIOR, "the patient declined comparison"}, sheet)
     assert "Comparison made with previous {study} dated {date}." in out and 'FIXED "Comparison declined."' not in out
     assert "RULE WHEN [context: the patient declined comparison]" in out
     assert [e["outcome"] for e in per if e["condition"] == "the patient declined comparison"] == ["conflict"]
@@ -102,7 +102,7 @@ def test_rules_outside_scope_are_untouched():
     sheet = SHEET.replace("## Paragraph: Liver (FINDINGS)",
                           "RULE WHEN [context: T2 imaging was not acquired] SUPPRESS_SECTION CONCLUSION | section: CONCLUSION\n\n"
                           "## Paragraph: Liver (FINDINGS)")
-    out, _, per = _apply(set(), sheet)
+    out, _, _, per = _apply(set(), sheet)
     assert "SUPPRESS_SECTION CONCLUSION" in out and len(per) == 4
 
 
@@ -287,3 +287,46 @@ async def test_on_stack_a_replace_of_a_fixed_line_in_a_findings_paragraph_is_app
     res = await cr.resolve_context_rules(sheet, "", "x", ask=_ask({"a prior liver scan was seen": 0.9}), stack=True)
     e = next(e for e in res.record["rules"] if e["condition"] == "a prior liver scan was seen")
     assert e["outcome"] == "applied" and 'FIXED "Prior liver scan seen."' in res.sheet
+
+
+KEPT = ["No previous imaging available for comparison.", "Images reviewed on PACS."]
+
+
+def test_nothing_met_keeps_the_fixed_defaults_but_not_a_normal_line():
+    _, _, kept, _ = _apply(set())
+    assert kept == KEPT   # the Liver NORMAL SUPPRESS target is not FIXED
+
+
+def test_met_use_unmatched_conflict_and_left_stack_rules_are_never_kept():
+    _, _, kept, _ = _apply({PRIOR, OFFSITE, NOCON, NOLIVER})
+    assert kept == []
+    unmatched = SHEET.replace('SUPPRESS "Images reviewed on PACS."', 'SUPPRESS "A sentence in no unit line."')
+    assert _apply(set(), unmatched)[2] == ["No previous imaging available for comparison."]
+    extra = ('RULE WHEN [context: the patient declined comparison] REPLACE '
+             '"No previous imaging available for comparison." WITH "Comparison declined." | section: COMPARISON\n')
+    conflict = SHEET.replace('FIXED "Images reviewed on PACS."', extra + 'FIXED "Images reviewed on PACS."')
+    _, _, kept, per = _apply({PRIOR, "the patient declined comparison"}, conflict)
+    assert kept == ["Images reviewed on PACS."] and "conflict" in [e["outcome"] for e in per]
+
+
+async def test_resolve_carries_kept_and_counts_it_in_the_record():
+    res = await cr.resolve_context_rules(SHEET, "", "x", ask=_ask({}))
+    assert res.kept == KEPT and res.record["kept"] == 2
+    on = await cr.resolve_context_rules(SHEET, "", "x", ask=_ask({}), stack=True)
+    assert on.kept == KEPT
+    left = await cr.resolve_context_rules(SHEET, "", "x", ask=_ask({PRIOR: 0.9}))
+    assert left.kept == ["Images reviewed on PACS."] and left.record["kept"] == 1
+
+
+def test_block_with_only_kept_items_has_heading_and_word_for_word_list_and_no_slot_paragraph():
+    block = cr.decided_block([], KEPT + KEPT)
+    assert block.startswith(cr.DECIDED_HEADING + "\n") and "Write word for word:" in block
+    assert block.count('- "Images reviewed on PACS."') == 1
+    assert "Fill each" not in block and "Never print" not in block
+
+
+def test_block_with_both_lists_has_the_heading_once():
+    block = cr.decided_block(["Compared with the {study}."], KEPT)
+    assert block.count(cr.DECIDED_HEADING) == 1
+    assert block.index("Fill each") < block.index("Write word for word")
+    assert cr.decided_block([], []) == ""

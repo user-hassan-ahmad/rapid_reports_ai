@@ -489,6 +489,20 @@ async def test_the_stack_brief_of_the_resolved_sheet_has_the_decision_not_the_ru
     assert "## Decided for This Case" in brief
 
 
+async def test_a_kept_default_reaches_the_generator_under_write_word_for_word(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    monkeypatch.setattr(cr, "ask_conditions", _met(0.1))
+    out = await tl.generate_template_report_lean(sheet=RULED, scan_type="CT", findings="No previous. 02/12/2025.",
+                                                 history="", case=CASE, signature=None, stack=None)
+    sent = calls["gen"]["sheet"]
+    assert "Write word for word" in sent
+    assert sent.rstrip().endswith('- "No previous imaging available for comparison."')
+    assert out["context_rules"]["kept"] == 1
+    if out.get("options_job") is not None:
+        await out["options_job"]
+
+
 def test_candidate_record_carries_context_rules():
     rec = tp.candidate_record({"report_content": "x", "context_rules": {"asked": 1}}, 10)
     assert rec["context_rules"] == {"asked": 1}
