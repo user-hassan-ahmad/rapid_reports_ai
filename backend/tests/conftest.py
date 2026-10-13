@@ -212,13 +212,13 @@ TOY_ENTRY = {
     ],
     "result": "plan",
     "outcomes": [
-        {"id": "subsolid", "classification": "subsolid nodule", "recommendation": "CT in 12 months", "locator": _L1},
-        {"id": "none", "classification": "solid nodule {size_band}", "recommendation": "No follow-up", "locator": _L1},
-        {"id": "ct12", "classification": "solid nodule {size_band}, {risk} risk", "recommendation": "CT at 12 months",
+        {"id": "subsolid", "headline": "Subsolid nodule", "action": "CT in 12 months", "category": "surveillance", "classification": "subsolid nodule", "recommendation": "CT in 12 months", "locator": _L1},
+        {"id": "none", "headline": "Small solid nodule", "action": "No follow-up", "category": "none", "classification": "solid nodule {size_band}", "recommendation": "No follow-up", "locator": _L1},
+        {"id": "ct12", "headline": "Solid nodule, low risk", "action": "CT at 12 months", "category": "surveillance", "classification": "solid nodule {size_band}, {risk} risk", "recommendation": "CT at 12 months",
          "locator": _L1},
-        {"id": "ct6", "classification": "solid nodule {size_band}, {risk} risk", "recommendation": "CT at 6 months",
+        {"id": "ct6", "headline": "Solid nodule, high risk", "action": "CT at 6 months", "category": "surveillance", "classification": "solid nodule {size_band}, {risk} risk", "recommendation": "CT at 6 months",
          "locator": _L1},
-        {"id": "pet", "classification": "solid nodule {size_band}", "recommendation": "PET-CT", "locator": _L1},
+        {"id": "pet", "headline": "Solid nodule over 8 mm", "action": "PET-CT", "category": "workup", "classification": "solid nodule {size_band}", "recommendation": "PET-CT", "locator": _L1},
     ],
     "reference": {"summary": [{"id": "sum.1", "text": "A toy guideline for tests.", "locator": {"source": "S2"}}]},
 }

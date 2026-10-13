@@ -112,6 +112,9 @@
   "outcomes": [
     {
       "id": "sh1_separation",
+      "headline": "Salter-Harris type I",
+      "action": "No management stated",
+      "category": "info",
       "classification": "Salter-Harris type I: complete separation of the epiphysis from the metaphysis through the plate, with no bone fracture.",
       "recommendation": "Growth prognosis (1963): excellent, except where the epiphysis is entirely covered by cartilage (for example the upper femur), where the blood supply is frequently damaged.",
       "caveats": [
@@ -130,6 +133,9 @@
     },
     {
       "id": "sh2_fracture_separation",
+      "headline": "Salter-Harris type II",
+      "action": "No management stated",
+      "category": "info",
       "classification": "Salter-Harris type II: fracture-separation; the line runs along the plate, then out through the metaphysis, leaving a triangular metaphyseal fragment (Thurston Holland sign).",
       "recommendation": "Growth prognosis (1963): excellent if the circulation to the epiphysis is intact, as it nearly always is.",
       "caveats": [
@@ -147,6 +153,9 @@
     },
     {
       "id": "sh3_partial_epiphysis",
+      "headline": "Salter-Harris type III",
+      "action": "No management stated",
+      "category": "info",
       "classification": "Salter-Harris type III: intra-articular fracture from the joint surface to the weak zone of the plate, then along the plate to its periphery.",
       "recommendation": "Growth prognosis (1963): good if the blood supply to the separated portion of the epiphysis is intact.",
       "caveats": [
@@ -164,6 +173,9 @@
     },
     {
       "id": "sh4_through_plate",
+      "headline": "Salter-Harris type IV",
+      "action": "No management stated",
+      "category": "info",
       "classification": "Salter-Harris type IV: intra-articular fracture from the joint surface through the epiphysis, the full thickness of the plate and part of the metaphysis.",
       "recommendation": "Growth prognosis (1963): bad unless the epiphyseal plate is completely realigned.",
       "caveats": [
@@ -181,6 +193,9 @@
     },
     {
       "id": "sh5_crush",
+      "headline": "Salter-Harris type V",
+      "action": "No management stated",
+      "category": "info",
       "classification": "Salter-Harris type V: crush injury of the epiphyseal plate from a very severe force applied through the epiphysis to one area of the plate.",
       "recommendation": "Growth prognosis (1963): decidedly poor, the worst of the types; premature cessation of growth is almost inevitable.",
       "caveats": [

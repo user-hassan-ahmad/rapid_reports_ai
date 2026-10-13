@@ -10,6 +10,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 State = Literal["present", "absent", "unknown", "not_assessable", "not_applicable"]
 OptState = Literal["absent", "not_assessable"]      # states an input may allow besides present and unknown
 Role = Literal["primary", "amendment", "explanatory"]
+# none: the source says no follow-up (benign, normal, discharge); info: the source states no management (neutral);
+# surveillance: imaging follow-up; workup: further tests; refer: a specialist or admission; not_applicable: outside it
+OutcomeCategory = Literal["none", "info", "surveillance", "workup", "refer", "not_applicable"]
+HEADLINE_MAX = 8
+ACTION_MAX = 6
 Scope = Literal["lesion", "patient"]                # lesion: the card's own finding; patient: history + dictation
 InputRole = Literal["clinical", "eligibility"]      # eligibility: the guideline's own scope, asked first (spec §3.6)
 Fact = Literal["known_primary_cancer", "immunocompromised", "screening_programme", "age_years", "sex"]
@@ -123,6 +128,12 @@ class InputDef(_M):
     dims: Literal["mean", "max"] | None = None             # a number dictated "A x B": its mean or its max
     role: InputRole = "clinical"
     fact: Fact | None = None                               # a shared patient fact (FACTS); patient scope only
+    # silence policy (Hassan 2026-10-13): a sign the imaging shows when present (spiculation, emphysema on CT, septa):
+    # unstated, the draft assumes it absent (state "assumed", never read; a stated value wins). A yes/no sign is
+    # assumed No; a choice names its absent option. Never for what the imaging may not show (enhancement on an
+    # unenhanced scan, Doppler flow)
+    visible_sign: bool = False
+    absent_option: str | None = None
 
     @model_validator(mode="after")
     def _options(self):
@@ -136,12 +147,23 @@ class InputDef(_M):
             raise ValueError(f"input {self.id!r}: empty range")
         if self.dims is not None and self.type != "number":
             raise ValueError(f"input {self.id!r}: only a number has dims")
+        if self.visible_sign and not (self.type == "boolean" and self.absent_option is None
+                                      or self.type == "enum" and self.absent_option in self.options):
+            raise ValueError(f"input {self.id!r}: a visible sign is a yes/no, or a choice naming its absent option")
+        if self.absent_option is not None and not self.visible_sign:
+            raise ValueError(f"input {self.id!r}: absent_option belongs to a visible sign")
         if self.fact is not None:
             t, unit, opts = FACTS[self.fact]
             if self.scope != "patient" or self.type != t or self.unit != unit or tuple(self.options) != opts:
                 raise ValueError(f"input {self.id!r}: fact {self.fact} needs a patient-scoped {t}"
                                  + (f" in {unit}" if unit else "") + (f" with options {list(opts)}" if opts else ""))
         return self
+
+    def absent_value(self) -> "InputValue | None":
+        """The value a visible sign is assumed to take when unstated (silence policy), else None."""
+        if not self.visible_sign:
+            return None
+        return InputValue(value=False) if self.type == "boolean" else InputValue(value=self.absent_option)
 
     @property
     def ranged(self) -> bool:
@@ -273,6 +295,10 @@ class Outcome(_M):
     caveats: list[str] = Field(default_factory=list)
     locator: Locator | None = None
     normal: bool = False              # the framework's normal result (e.g. CAD-RADS 0): a quiet card (spec §5.3)
+    # display (Hassan 2026-10-13), from the outcome's own text: a short verdict, a short action, and its kind
+    headline: str | None = None       # at most HEADLINE_MAX words
+    action: str | None = None         # at most ACTION_MAX words
+    category: OutcomeCategory | None = None
 
 
 class RefText(_M):

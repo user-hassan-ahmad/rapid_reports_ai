@@ -115,7 +115,7 @@
         "low",
         "high"
       ],
-      "how_stated": "low or high clinical risk of lung cancer as stated (e.g. heavy smoking, older age, upper lobe, irregular or spiculated margins favour high)",
+      "how_stated": "the ACCP risk category the guideline uses. High (intermediate risk counts as high): any stated high-risk factor, e.g. a current or former smoker ('ex-smoker', pack-years), older age, a family history of lung cancer, emphysema or fibrosis, exposure to asbestos, uranium or radon, upper lobe location, irregular or spiculated margins. Low: only when the history states little or no smoking and no other risk factor (young age, a small regular nodule outside the upper lobe)",
       "prerequisites": [
         {
           "ref": "nodule_type",
@@ -125,7 +125,7 @@
       "locator": {
         "source": "S1",
         "page": 12,
-        "section": "Risk Estimation and Risk Models"
+        "section": "Risk Estimation and Risk Models: low risk is associated with young age, less smoking, smaller size, regular margins and a location other than the upper lobe; high risk combines the ACCP intermediate and high categories (older age, heavy smoking, larger size, irregular or spiculated margins, upper lobe); smoking history, emphysema, fibrosis and inhaled carcinogens are risk factors"
       },
       "scope": "patient"
     }
@@ -977,6 +977,9 @@
   "outcomes": [
     {
       "id": "solid_single_lt6_low",
+      "headline": "Solid nodule <6 mm, low risk",
+      "action": "No routine follow-up",
+      "category": "none",
       "classification": "Single solid nodule <6 mm in a low-risk patient.",
       "recommendation": "No routine follow-up.",
       "caveats": [
@@ -990,6 +993,9 @@
     },
     {
       "id": "solid_single_lt6_high",
+      "headline": "Solid nodule <6 mm, high risk",
+      "action": "Optional CT at 12 months",
+      "category": "surveillance",
       "classification": "Single solid nodule <6 mm in a high-risk patient.",
       "recommendation": "Optional CT at 12 months.",
       "caveats": [
@@ -1003,6 +1009,9 @@
     },
     {
       "id": "solid_single_6to8_low",
+      "headline": "Solid nodule 6–8 mm, low risk",
+      "action": "CT at 6–12 months",
+      "category": "surveillance",
       "classification": "Single solid nodule 6–8 mm in a low-risk patient.",
       "recommendation": "CT at 6–12 months, then consider CT at 18–24 months.",
       "caveats": [],
@@ -1014,6 +1023,9 @@
     },
     {
       "id": "solid_single_6to8_high",
+      "headline": "Solid nodule 6–8 mm, high risk",
+      "action": "CT at 6–12 months",
+      "category": "surveillance",
       "classification": "Single solid nodule 6–8 mm in a high-risk patient.",
       "recommendation": "CT at 6–12 months, then CT at 18–24 months.",
       "caveats": [],
@@ -1025,6 +1037,9 @@
     },
     {
       "id": "solid_single_gt8",
+      "headline": "Solid nodule >8 mm",
+      "action": "Consider 3-month CT, PET-CT, sampling",
+      "category": "workup",
       "classification": "Single solid nodule >8 mm.",
       "recommendation": "Consider CT at 3 months, PET-CT or tissue sampling.",
       "caveats": [],
@@ -1036,6 +1051,9 @@
     },
     {
       "id": "solid_multiple_lt6_low",
+      "headline": "Multiple solid nodules <6 mm, low risk",
+      "action": "No routine follow-up",
+      "category": "none",
       "classification": "Multiple solid nodules, the most suspicious <6 mm, in a low-risk patient.",
       "recommendation": "No routine follow-up.",
       "caveats": [
@@ -1049,6 +1067,9 @@
     },
     {
       "id": "solid_multiple_lt6_high",
+      "headline": "Multiple solid nodules <6 mm, high risk",
+      "action": "Optional CT at 12 months",
+      "category": "surveillance",
       "classification": "Multiple solid nodules, the most suspicious <6 mm, in a high-risk patient.",
       "recommendation": "Optional CT at 12 months.",
       "caveats": [
@@ -1062,6 +1083,9 @@
     },
     {
       "id": "solid_multiple_ge6_low",
+      "headline": "Multiple solid nodules ≥6 mm, low risk",
+      "action": "CT at 3–6 months",
+      "category": "surveillance",
       "classification": "Multiple solid nodules, the most suspicious 6 mm or larger, in a low-risk patient.",
       "recommendation": "CT at 3–6 months, then consider CT at 18–24 months.",
       "caveats": [
@@ -1075,6 +1099,9 @@
     },
     {
       "id": "solid_multiple_ge6_high",
+      "headline": "Multiple solid nodules ≥6 mm, high risk",
+      "action": "CT at 3–6 months",
+      "category": "surveillance",
       "classification": "Multiple solid nodules, the most suspicious 6 mm or larger, in a high-risk patient.",
       "recommendation": "CT at 3–6 months, then CT at 18–24 months.",
       "caveats": [
@@ -1088,6 +1115,9 @@
     },
     {
       "id": "ggn_single_lt6",
+      "headline": "Pure ground-glass nodule <6 mm",
+      "action": "No routine follow-up",
+      "category": "none",
       "classification": "Single pure ground-glass nodule <6 mm.",
       "recommendation": "No routine follow-up.",
       "caveats": [
@@ -1102,6 +1132,9 @@
     },
     {
       "id": "ggn_single_ge6",
+      "headline": "Pure ground-glass nodule ≥6 mm",
+      "action": "CT at 6–12 months",
+      "category": "surveillance",
       "classification": "Single pure ground-glass nodule 6 mm or larger.",
       "recommendation": "CT at 6–12 months to confirm persistence, then CT every 2 years until 5 years.",
       "caveats": [
@@ -1115,6 +1148,9 @@
     },
     {
       "id": "psn_single_lt6",
+      "headline": "Part-solid nodule <6 mm",
+      "action": "No routine follow-up",
+      "category": "none",
       "classification": "Single part-solid nodule <6 mm.",
       "recommendation": "No routine follow-up.",
       "caveats": [
@@ -1128,6 +1164,9 @@
     },
     {
       "id": "psn_single_ge6",
+      "headline": "Part-solid nodule ≥6 mm",
+      "action": "CT at 3–6 months",
+      "category": "surveillance",
       "classification": "Single part-solid nodule 6 mm or larger.",
       "recommendation": "CT at 3–6 months to confirm persistence; if unchanged and the solid component stays <6 mm, annual CT for 5 years.",
       "caveats": [
@@ -1141,6 +1180,9 @@
     },
     {
       "id": "subsolid_multiple_lt6",
+      "headline": "Multiple subsolid nodules <6 mm",
+      "action": "CT at 3–6 months",
+      "category": "surveillance",
       "classification": "Multiple subsolid nodules, the most suspicious <6 mm.",
       "recommendation": "CT at 3–6 months; if stable, consider CT at 2 and 4 years.",
       "caveats": [
@@ -1154,6 +1196,9 @@
     },
     {
       "id": "subsolid_multiple_ge6",
+      "headline": "Multiple subsolid nodules ≥6 mm",
+      "action": "CT at 3–6 months",
+      "category": "surveillance",
       "classification": "Multiple subsolid nodules, the most suspicious 6 mm or larger.",
       "recommendation": "CT at 3–6 months; base further management on the most suspicious nodule(s).",
       "caveats": [],
@@ -1165,6 +1210,9 @@
     },
     {
       "id": "does_not_apply",
+      "headline": "Outside Fleischner 2017",
+      "action": "Manage per clinical context",
+      "category": "not_applicable",
       "classification": "Fleischner 2017 does not apply: lung cancer screening, age under 35, immunocompromised patient, known primary cancer, or a mass (an opacity greater than 3 cm in diameter).",
       "recommendation": "Manage per the clinical context (screening programme protocol, or the patient's oncology or immunosuppression care).",
       "caveats": [

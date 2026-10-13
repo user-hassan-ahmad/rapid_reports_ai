@@ -32,6 +32,7 @@
  "inputs": [
   {
    "id": "benign_features",
+   "visible_sign": true,
    "label": "Clear benign features",
    "type": "boolean",
    "how_stated": "true when the nodule has a benign calcification pattern (diffuse, central, laminated or popcorn), macroscopic fat (e.g. hamartoma), or is a typical perifissural or subpleural nodule (smooth, solid, lentiform or triangular, within 1 cm of a fissure or pleura, under 10 mm); false when none of these is described",
@@ -63,7 +64,7 @@
    "label": "Maximum diameter",
    "type": "number",
    "unit": "mm",
-   "how_stated": "maximum diameter of the nodule in millimetres, e.g. '9 mm nodule'; for multiple nodules, the largest",
+   "how_stated": "maximum diameter of the nodule in millimetres, e.g. '9 mm nodule'; for multiple nodules, the largest; for a nodule that has resolved, its size when last seen",
    "locator": {
     "source": "S1",
     "page": 8,
@@ -133,6 +134,7 @@
   },
   {
    "id": "emphysema",
+   "visible_sign": true,
    "label": "Emphysema on CT",
    "type": "boolean",
    "how_stated": "true when any emphysema is reported on this CT; false when the lungs are described without emphysema",
@@ -168,6 +170,7 @@
   },
   {
    "id": "spiculation",
+   "visible_sign": true,
    "label": "Spiculation",
    "type": "boolean",
    "how_stated": "true when the nodule margin is described as spiculated; false for smooth, well-defined or lobulated margins",
@@ -586,8 +589,16 @@
     },
     {
      "id": "ge8",
-     "label": "8 mm or more",
-     "min": 8
+     "label": "8 mm to 30 mm",
+     "min": 8,
+     "max": 30,
+     "max_inclusive": true
+    },
+    {
+     "id": "gt30",
+     "label": "over 30 mm (outside the BTS nodule definition)",
+     "min": 30,
+     "min_inclusive": false
     }
    ]
   },
@@ -702,30 +713,6 @@
    ]
   },
   {
-   "step": "band",
-   "id": "mass_band",
-   "ref": "diameter_mm",
-   "locator": {
-    "source": "S1",
-    "page": 11,
-    "table": "Table 1 Definition and terms relating to pulmonary nodules: a pulmonary nodule is a focal rounded opacity ≤3 cm in diameter (part-solid nodule and pGGN likewise ≤3 cm)"
-   },
-   "bands": [
-    {
-     "id": "le30",
-     "label": "30 mm or less (within the BTS nodule definition)",
-     "max": 30,
-     "max_inclusive": true
-    },
-    {
-     "id": "gt30",
-     "label": "over 30 mm (outside the BTS nodule definition)",
-     "min": 30,
-     "min_inclusive": false
-    }
-   ]
-  },
-  {
    "step": "rules",
    "id": "pathway",
    "cases": [
@@ -761,15 +748,7 @@
         "eq": false
        },
        {
-        "none": [
-         {
-          "ref": "resolved",
-          "eq": true
-         }
-        ]
-       },
-       {
-        "ref": "mass_band",
+        "ref": "diameter_band",
         "eq": "gt30"
        }
       ]
@@ -793,8 +772,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -833,8 +817,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -880,8 +869,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -928,8 +922,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -992,8 +991,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1056,8 +1060,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1124,8 +1133,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1192,8 +1206,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1260,8 +1279,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1358,8 +1382,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1464,8 +1493,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1539,8 +1573,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1614,8 +1653,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1693,8 +1737,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1766,6 +1815,14 @@
        {
         "ref": "resolved",
         "eq": true
+       },
+       {
+        "none": [
+         {
+          "ref": "diameter_band",
+          "eq": "gt30"
+         }
+        ]
        }
       ]
      },
@@ -1788,8 +1845,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1852,8 +1914,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1927,8 +1994,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1995,8 +2067,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -2063,8 +2140,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -2122,6 +2204,9 @@
  "outcomes": [
   {
    "id": "discharge_benign",
+   "headline": "Solid nodule with benign features",
+   "action": "No follow-up needed",
+   "category": "none",
    "classification": "Solid nodule with clear benign features (benign calcification, macroscopic fat, or typical perifissural or subpleural nodule).",
    "recommendation": "No follow-up or further investigation needed.",
    "caveats": [
@@ -2135,6 +2220,9 @@
   },
   {
    "id": "subsolid",
+   "headline": "Sub-solid nodule: BTS sub-solid algorithm",
+   "action": "Thin-section CT at 3 months",
+   "category": "surveillance",
    "classification": "Sub-solid nodule (part-solid or pure ground-glass): outside the BTS solid-nodule pathway.",
    "recommendation": "Manage with the BTS sub-solid nodule algorithm, starting with repeat thin-section CT at 3 months.",
    "caveats": [
@@ -2148,6 +2236,9 @@
   },
   {
    "id": "discharge_small",
+   "headline": "Small solid nodule",
+   "action": "No nodule follow-up needed",
+   "category": "none",
    "classification": "Solid nodule {diameter_band} in maximum diameter.",
    "recommendation": "No nodule follow-up needed.",
    "caveats": [
@@ -2162,6 +2253,9 @@
   },
   {
    "id": "ct_1yr",
+   "headline": "Solid nodule, no prior imaging",
+   "action": "CT at 1 year",
+   "category": "surveillance",
    "classification": "Solid nodule {diameter_band}, no prior imaging for comparison.",
    "recommendation": "CT surveillance: repeat CT 1 year after baseline and assess growth by volume doubling time.",
    "caveats": [
@@ -2175,6 +2269,9 @@
   },
   {
    "id": "ct_3m",
+   "headline": "Solid nodule, no prior imaging",
+   "action": "CT at 3 months, 1 year",
+   "category": "surveillance",
    "classification": "Solid nodule {diameter_band}, no prior imaging for comparison.",
    "recommendation": "CT surveillance: repeat CT at 3 months and 1 year after baseline, assessing growth by volume doubling time.",
    "caveats": [
@@ -2188,6 +2285,9 @@
   },
   {
    "id": "brock_low",
+   "headline": "Solid nodule, low Brock risk",
+   "action": "CT at 3 months, 1 year",
+   "category": "surveillance",
    "classification": "Solid nodule {diameter_band}, Brock malignancy risk {brock_band}.",
    "recommendation": "CT surveillance: repeat CT at 3 months and 1 year after baseline, assessing growth by volume doubling time.",
    "caveats": [
@@ -2202,6 +2302,9 @@
   },
   {
    "id": "pet_ct",
+   "headline": "Solid nodule, higher Brock risk",
+   "action": "PET-CT, then Herder risk",
+   "category": "workup",
    "classification": "Solid nodule {diameter_band}, Brock malignancy risk {brock_band}.",
    "recommendation": "PET-CT if the nodule is above the local PET-CT detection threshold, then reassess risk with the Herder model.",
    "caveats": [
@@ -2216,6 +2319,9 @@
   },
   {
    "id": "growth_workup",
+   "headline": "Significant solid nodule growth",
+   "action": "Investigate further; consider definitive management",
+   "category": "workup",
    "classification": "Solid nodule with significant growth (25% or more by volume), volume doubling time {vdt_band}.",
    "recommendation": "Further investigation (biopsy, imaging or resection) and consideration of definitive management.",
    "caveats": [
@@ -2229,6 +2335,9 @@
   },
   {
    "id": "continue_slow_growth",
+   "headline": "Slow nodule growth before 1 year",
+   "action": "Repeat CT at 1 year",
+   "category": "surveillance",
    "classification": "Solid nodule growing slowly before 1 year from baseline: volume doubling time {vdt_band}.",
    "recommendation": "Repeat CT 1 year after baseline and reassess volume doubling time.",
    "caveats": [
@@ -2242,6 +2351,9 @@
   },
   {
    "id": "continue_no_growth",
+   "headline": "No significant growth before 1 year",
+   "action": "Repeat CT at 1 year",
+   "category": "surveillance",
    "classification": "Solid nodule {diameter_band} without significant growth before 1 year from baseline.",
    "recommendation": "Repeat CT 1 year after baseline and reassess volume doubling time.",
    "caveats": [
@@ -2255,6 +2367,9 @@
   },
   {
    "id": "vdt_400_600",
+   "headline": "Nodule growing at 1 year or more",
+   "action": "Consider biopsy or yearly CT",
+   "category": "workup",
    "classification": "Solid nodule growing at 1 year or more from baseline: volume doubling time {vdt_band}.",
    "recommendation": "Consider biopsy or ongoing yearly CT surveillance, guided by patient preference.",
    "caveats": [
@@ -2268,6 +2383,9 @@
   },
   {
    "id": "vdt_gt600",
+   "headline": "Slow growth at 1 year or more",
+   "action": "Consider discharge or CT surveillance",
+   "category": "surveillance",
    "classification": "Solid nodule growing slowly at 1 year or more from baseline: volume doubling time {vdt_band}.",
    "recommendation": "Consider discharge or ongoing CT surveillance, taking account of patient preference, fitness and age.",
    "caveats": [
@@ -2282,6 +2400,9 @@
   },
   {
    "id": "stable_discharge",
+   "headline": "Stable on volumetry at 1 year",
+   "action": "Discharge from nodule follow-up",
+   "category": "none",
    "classification": "Solid nodule {diameter_band}, stable on volumetry (volume change under 25%) at 1 year or more from baseline.",
    "recommendation": "Discharge from nodule follow-up.",
    "caveats": [
@@ -2296,6 +2417,9 @@
   },
   {
    "id": "smaller_discharge",
+   "headline": "Smaller than baseline at 1 year",
+   "action": "Discharge as stable nodule",
+   "category": "none",
    "classification": "Solid nodule {diameter_band}, smaller than at baseline at 1 year or more (negative volume doubling time).",
    "recommendation": "No growth at 1 year: discharge as for a stable nodule.",
    "caveats": [
@@ -2311,6 +2435,9 @@
   },
   {
    "id": "resolved",
+   "headline": "Nodule resolved",
+   "action": "No further nodule follow-up",
+   "category": "none",
    "classification": "Previously seen nodule has resolved on this CT.",
    "recommendation": "No further nodule follow-up.",
    "caveats": [
@@ -2324,6 +2451,9 @@
   },
   {
    "id": "growth_workup_2d",
+   "headline": "Clear growth on diameter measurement",
+   "action": "Investigate further; consider definitive management",
+   "category": "workup",
    "classification": "Solid nodule {diameter_band} with clear growth on diameter measurement.",
    "recommendation": "Further investigation (biopsy, imaging or resection) and consideration of definitive management.",
    "caveats": [
@@ -2337,6 +2467,9 @@
   },
   {
    "id": "ct_2yr_2d",
+   "headline": "Stable on diameter at 1 year",
+   "action": "Repeat CT at 2 years",
+   "category": "surveillance",
    "classification": "Solid nodule {diameter_band}, stable on 2D diameter measurement at 1 year or more from baseline.",
    "recommendation": "Repeat CT 2 years after baseline, then assess volume doubling time; discharge if stable.",
    "caveats": [
@@ -2350,6 +2483,9 @@
   },
   {
    "id": "stable_2d_discharge",
+   "headline": "Stable on diameter at 2 years",
+   "action": "Discharge from nodule follow-up",
+   "category": "none",
    "classification": "Solid nodule {diameter_band}, stable on 2D diameter measurement at 2 years or more from baseline.",
    "recommendation": "Discharge from nodule follow-up.",
    "caveats": [
@@ -2363,6 +2499,9 @@
   },
   {
    "id": "volumetry_advised",
+   "headline": "Diameter change: neither growth nor stability",
+   "action": "Assess growth by volumetry",
+   "category": "workup",
    "classification": "Solid nodule {diameter_band}: diameter change since baseline not clearly growth or stability.",
    "recommendation": "Assess growth by volumetry (volume doubling time) where available.",
    "caveats": [
@@ -2376,6 +2515,9 @@
   },
   {
    "id": "does_not_apply",
+   "headline": "Outside BTS 2015",
+   "action": "Manage per clinical context",
+   "category": "not_applicable",
    "classification": "BTS 2015 does not apply: the guidelines do not cover patients under 18, a nodule already proven to be lung cancer or a metastasis, or an opacity over 3 cm in diameter (BTS defines a pulmonary nodule as a focal, rounded opacity of 3 cm or less)",
    "recommendation": "Manage per the clinical context.",
    "locator": {

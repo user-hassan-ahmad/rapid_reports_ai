@@ -300,3 +300,29 @@ def test_an_opacity_over_3_cm_excludes_before_any_other_input_is_asked():
     fl = next(x for x in _packs() if x.id == "fleischner-pulmonary-nodule")
     t = E.evaluate(fl, {"diameter_mm": 38}, assume_eligible=True)
     assert t.outcome == "does_not_apply" and t.needed == []                 # Fleischner: no resolved branch at all
+
+
+def test_a_read_opacity_over_3_cm_excludes_bts_whatever_prior_imaging_is():
+    """Live checkpoint 3: a measured nodule cannot be resolved, so a read 38 mm excludes BTS without asking prior CT."""
+    e = _bts()
+    for given in ({"diameter_mm": 38}, {"diameter_mm": 38, "age": 65, "nodule_type": "solid"}):
+        t = E.evaluate(e, given, assume_eligible=True)
+        assert t.outcome == "does_not_apply" and t.needed == []
+
+
+def test_a_resolved_nodule_still_reaches_resolved_with_its_last_size():
+    e = _bts()
+    t = E.evaluate(e, {"age": 65, "proven_malignant": False, "prior_study": True, "resolved": True, "diameter_mm": 6})
+    assert t.outcome == "resolved"
+
+
+def test_inputs_that_reach_the_outcome_only_through_an_unread_band_are_not_asked():
+    """Live checkpoint 3: BTS 6 mm solid never asks the Brock inputs (they reach the result only through brock_band,
+    which no 5-8 mm pathway reads); at 10 mm, or with the size unknown, they are asked."""
+    e = _bts()
+    brock = {"sex", "family_history", "emphysema", "upper_lobe", "nodule_count", "spiculation"}
+    t = E.evaluate(e, {"nodule_type": "solid", "diameter_mm": 6, "age": 65}, assume_eligible=True)
+    assert t.needed == ["prior_study", "benign_features"] and not brock & set(t.needed)
+    assert {"growth", "interval_days"} <= set(t.waiting)
+    t = E.evaluate(e, {"nodule_type": "solid", "diameter_mm": 10, "age": 65}, assume_eligible=True)
+    assert brock <= set(t.needed)

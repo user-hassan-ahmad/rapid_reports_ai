@@ -401,6 +401,93 @@ def _over(entry: Entry, given: dict[str, InputValue], env: dict[str, V], names: 
     return sorted(out)
 
 
+def _deps(entry: Entry) -> dict[str, set[str]]:
+    d = {s.id: set(s.refs()) for s in entry.logic}
+    d.update({i.id: {c.ref for p in i.prerequisites for c in conds(p)} for i in entry.inputs})
+    return d
+
+
+def _reach_from(deps: dict[str, set[str]], start: list[str], stop: set[str]) -> set[str]:
+    seen, todo = set(), list(start)
+    while todo:
+        k = todo.pop()
+        if k in seen or k in stop:
+            continue
+        seen.add(k)
+        todo += deps.get(k, set())
+    return seen
+
+
+def _unbounded(entry: Entry, given: dict[str, InputValue], env: dict[str, V], names: list[str],
+               doms: dict[str, list[InputValue] | None], fixed: dict[str, V] | None) -> tuple[list[str], list[str]] | None:
+    """(needed, possible) when an unknown number feeds a formula, instead of asking every reaching input. Each band
+    step left unknown is a free variable over its own band ids (as _over); an input that reaches the result only
+    through such bands is not enumerated, since the band stands for it. An enumerated input is needed when changing it
+    alone can change the outcome; a free band that can is needed through every unknown input that feeds it. BTS: a
+    6 mm solid nodule never asks the Brock inputs, which reach the result only through brock_band, which no 6 mm
+    pathway reads. None over OVER_MAX combinations: the caller asks every reaching input (safe over-asking)."""
+    bands = [s for s in entry.logic if isinstance(s, BandStep) and env.get(s.id, UNKNOWN).state == "unknown"]
+    deps, free = _deps(entry), {s.id for s in bands}
+    direct = _reach_from(deps, [entry.result], free)
+    enum = [n for n in names if n in direct]
+    bdoms = [[V(value=b.id) for b in s.bands] + [V(state=x) for x in sorted(reach_states(entry, s.ref))]
+             for s in bands]
+    if math.prod(len(doms[n]) for n in enum) * math.prod(len(d) for d in bdoms) > OVER_MAX:
+        return None
+    # lazily: each combination runs with the free bands unknown first; only one whose result is still unknown is run
+    # again over the band values (most combinations never read a free band, so this stays far under OVER_MAX runs)
+    table: dict[tuple, Any] = {}          # enumerated values -> outcome (bands not read) or {band values -> outcome}
+    for combo in product(*(doms[n] for n in enum)):
+        key = tuple((v.state, v.value, v.band) for v in combo)
+        e2, _ = _once(entry, {**given, **dict(zip(enum, combo))}, fixed)
+        r = e2[entry.result]
+        if r.state == "present" or not bands:
+            table[key] = r.value if r.state == "present" else None
+            continue
+        sub = {}
+        for bc in product(*bdoms):
+            e3 = _inputs(entry, {**given, **dict(zip(enum, combo))})
+            try:
+                run(entry, e3, {**(fixed or {}), **{s.id: v for s, v in zip(bands, bc)}})
+            except EvaluationError:    # an override no real value produces; gate 2 owns the entry's correctness
+                continue
+            x = e3[entry.result]
+            sub[tuple((v.state, v.value) for v in bc)] = x.value if x.state == "present" else None
+        table[key] = sub
+
+    def at(key: tuple, bkey: tuple):
+        t = table.get(key)
+        return t.get(bkey, ...) if isinstance(t, dict) else t
+
+    bkeys = sorted({bk for t in table.values() if isinstance(t, dict) for bk in t}, key=str) or [()]
+    decisive = set()
+    for k, n in enumerate(enum):
+        groups: dict[tuple, dict] = {}
+        for key in table:
+            groups.setdefault(key[:k] + key[k + 1:], {})[key[k]] = key
+        for members in groups.values():
+            if len(members) > 1 and any(len({at(m, bk) for m in members.values()} - {...}) > 1 for bk in bkeys):
+                decisive.add(n)
+                break
+    for j, s in enumerate(bands):
+        for t in table.values():
+            if not isinstance(t, dict):
+                continue
+            groups = {}
+            for bk, r in t.items():
+                groups.setdefault(bk[:j] + bk[j + 1:], set()).add(r)
+            if any(len(g) > 1 for g in groups.values()):
+                decisive.add(s.id)
+                break
+    outs = {r for t in table.values() for r in (t.values() if isinstance(t, dict) else [t]) if r is not None}
+    unknown = {i.id for i in entry.inputs if env[i.id].state == "unknown" and i.id not in given}
+    needed = [n for n in enum if n in decisive]
+    for s in bands:
+        if s.id in decisive:
+            needed += [k for k in _reach_from(deps, [s.id], set()) if k in unknown and entry.input(k) is not None]
+    return needed, sorted(outs)
+
+
 def _excluded_whatever(entry: Entry, given: dict[str, InputValue], elig: list[InputDef]) -> bool:
     """Every value of the unknown eligibility inputs leads to a does_not_apply case that holds, so the card is excluded
     whatever they are (BTS: a 38 mm opacity is outside the nodule definition at any age). Nothing need be asked."""
@@ -519,8 +606,13 @@ def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V], fixe
             needed.append(n)
             decides[n] = sorted(moved)
     if not bounded:
-        needed = every
-        possible = _over(entry, given, env, names, doms, possible, fixed)
+        got = _unbounded(entry, given, env, names, doms, fixed)
+        if got is None:
+            needed = every
+            possible = _over(entry, given, env, names, doms, possible, fixed)
+        else:
+            needed, over_possible = got
+            possible = sorted(set(possible) | set(over_possible))
     needed = sorted(set(needed), key=order.index)
     if not bounded:            # enumeration cannot tell what one input moves: each decides between all still possible
         return possible, bounded, needed, {n: possible for n in needed}

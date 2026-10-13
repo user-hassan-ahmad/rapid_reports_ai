@@ -546,6 +546,9 @@
   "outcomes": [
     {
       "id": "b0_6",
+      "headline": "SINS 0–6: stable",
+      "action": "No management stated",
+      "category": "info",
       "classification": "SINS 0 to 6: the paper's 'stability' band.",
       "recommendation": "",
       "locator": {
@@ -561,6 +564,9 @@
     },
     {
       "id": "b7_12",
+      "headline": "SINS 7–12: indeterminate instability",
+      "action": "Surgical consultation",
+      "category": "refer",
       "classification": "SINS 7 to 12: 'indeterminate (possibly impending) instability'.",
       "recommendation": "Patients with SINS 7 to 18 warrant surgical consultation.",
       "locator": {
@@ -575,6 +581,9 @@
     },
     {
       "id": "b13_18",
+      "headline": "SINS 13–18: unstable",
+      "action": "Surgical consultation",
+      "category": "refer",
       "classification": "SINS 13 to 18: the paper's 'instability' band.",
       "recommendation": "Patients with SINS 7 to 18 warrant surgical consultation.",
       "locator": {

@@ -32,9 +32,13 @@ def site_entry(site: str) -> Entry:
             if st:
                 stages.add(st)
             rows.append({"match": ([h] if vs else []) + [t, n, m], "result": _sid(st) if st else "no-stage"})
-    outcomes = [{"id": _sid(s), "classification": f"c{{T}} {{N}} {{M}}, {s} ({tnm.TAG})", "locator": loc}
+    # display: staging states no management, so every TNM outcome is "info"
+    outcomes = [{"id": _sid(s), "classification": f"c{{T}} {{N}} {{M}}, {s} ({tnm.TAG})", "locator": loc,
+                 "headline": f"{s} (UICC TNM 9th)", "action": "Stage as UICC TNM 9th", "category": "info"}
                 for s in sorted(stages)]
-    outcomes.append({"id": "no-stage", "classification": f"c{{T}} {{N}} {{M}} ({tnm.TAG})", "locator": loc})
+    outcomes.append({"id": "no-stage", "classification": f"c{{T}} {{N}} {{M}} ({tnm.TAG})", "locator": loc,
+                     "headline": "TNM categories, no stage group", "action": "No stage group defined",
+                     "category": "info"})
     inputs = [{"id": a, "label": f"{a} category", "type": "enum", "options": opts[a]} for a in "TNM"]
     if vs:
         inputs.append({"id": "histology", "label": "Histology", "type": "enum", "options": vs})

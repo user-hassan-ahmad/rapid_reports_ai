@@ -1130,13 +1130,14 @@
    "outcome": "discharge_small"
   },
   {
-   "name": "resolved nodule on follow-up CT (library addition)",
+   "name": "resolved nodule on follow-up CT (library addition), its last size given",
    "origin": "ours",
    "inputs": {
     "prior_study": true,
     "resolved": true,
     "age": 65,
-    "proven_malignant": false
+    "proven_malignant": false,
+    "diameter_mm": 6
    },
    "outcome": "resolved"
   },
@@ -1383,18 +1384,14 @@
    "outcome": "does_not_apply"
   },
   {
-   "name": "38 mm opacity, eligibility and prior imaging not stated",
+   "name": "38 mm opacity, eligibility and prior imaging not stated: excluded, nothing asked (a measured nodule cannot be resolved)",
    "origin": "ours",
    "inputs": {
     "nodule_type": "solid",
     "diameter_mm": 38
    },
-   "outcome": null,
-   "needed": [
-    "age",
-    "proven_malignant",
-    "prior_study"
-   ]
+   "outcome": "does_not_apply",
+   "needed": []
   },
   {
    "name": "38 mm opacity, no previous imaging, eligibility not stated: excluded, nothing asked",
@@ -1406,6 +1403,32 @@
    },
    "outcome": "does_not_apply",
    "needed": []
+  },
+  {
+   "name": "38 mm opacity read, prior CT and resolution unknown: excluded (live checkpoint 3)",
+   "origin": "ours",
+   "inputs": {
+    "nodule_type": "solid",
+    "diameter_mm": 38,
+    "age": 65,
+    "proven_malignant": false
+   },
+   "outcome": "does_not_apply",
+   "needed": []
+  },
+  {
+   "name": "nodule resolved, its size not stated: the size is asked (a measured opacity over 3 cm excludes)",
+   "origin": "ours",
+   "inputs": {
+    "age": 65,
+    "proven_malignant": false,
+    "prior_study": true,
+    "resolved": true
+   },
+   "outcome": null,
+   "needed": [
+    "diameter_mm"
+   ]
   }
  ]
 }

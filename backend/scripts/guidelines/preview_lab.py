@@ -102,7 +102,9 @@ def check(lib: Library, cases: list[dict]) -> int:
                 continue
             given[k] = x
         shared[c["name"]] = _facts(e, c["expect_settled"])
-        t = engine.evaluate(e, given, assume_eligible=True)      # as the card drafts (Hassan 2026-10-13)
+        # as the card drafts (Hassan 2026-10-13): eligibility assumed in scope, unstated visible signs assumed absent
+        given.update({i.id: i.absent_value() for i in e.inputs if i.visible_sign and i.id not in given})
+        t = engine.evaluate(e, given, assume_eligible=True)
         missing = list(t.needed)
         got = (t.outcome, missing, _state(e, t, missing))
         want = (c["expect_outcome"], c["expect_missing"], c["expect_state"])
