@@ -47,6 +47,16 @@
 		} catch { /* silent */ }
 	}
 
+	/** Forget the last generation's feedback state, so a later copy can never post against it (reset, clear, or
+	 * History "Open" of another report). */
+	function clearFeedbackState() {
+		feedbackAiOutput = '';
+		feedbackGeneratedAt = 0;
+		feedbackCopyCount = 0;
+		feedbackCopied = false;
+		feedbackId = null;
+	}
+
 	/** The report viewer's wrapper: only a copy made inside it is this report's copy. */
 	let reportBoxEl: HTMLDivElement | null = null;
 
@@ -116,6 +126,7 @@
 	export function abandonGeneration(): void {
 		++generationToken;
 		loading = false;
+		clearFeedbackState(); // the opened report is not this generation
 	}
 	let sectionsLoading = false;
 	let sectionsError = '';
@@ -372,6 +383,7 @@
 	}
 
 	function doReset() {
+		clearFeedbackState();
 		scratchpadRef?.reset('');
 		resetConfirmVisible = false;
 		prePoppedSections = [];
@@ -491,6 +503,7 @@
 	}
 
 	function clearResponse() {
+		clearFeedbackState();
 		response = null;
 		responseModel = null;
 		error = null;

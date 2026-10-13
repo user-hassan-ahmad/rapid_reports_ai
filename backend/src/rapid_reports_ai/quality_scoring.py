@@ -315,12 +315,19 @@ def _stamp(report) -> dict:
     return stamp if isinstance(stamp, dict) else {}
 
 
+def _template_path(report) -> str:
+    """Which template path wrote the report (generation stamp); "" when unstamped."""
+    path = _stamp(report).get("path")
+    return path if isinstance(path, str) else ""
+
+
 def _sheet_for(db, report, current: str) -> str:
     """The sheet a template report was written from: by its generation stamp, from the template's versions;
     otherwise the current sheet (older reports, no stamp, an empty sheet, or a hash no version holds)."""
     from .database.models import TemplateVersion
     from .template_sheet_structure import sheet_hash
 
+    current = current if isinstance(current, str) else ""
     want = _stamp(report).get("sheet_hash")
     if not want or sheet_hash(current) == want:
         return current
@@ -329,7 +336,7 @@ def _sheet_for(db, report, current: str) -> str:
     for v in versions:
         cfg = v.template_config if isinstance(v.template_config, dict) else {}
         s = cfg.get("skill_sheet") or ""
-        if s and sheet_hash(s) == want:
+        if s and isinstance(s, str) and sheet_hash(s) == want:
             return s
     return current
 
@@ -341,14 +348,17 @@ def _assemble_case(db, report) -> dict:
       - quick:    ``ai_output`` is ``report.report_content``; ``final`` is
         ``report.final_report_content`` (stored on the row, same report);
       - template: from the report's ``ReportVersion`` chain. Version 1 is the generated
-        draft ("Initial generation", ``crud.create_report``) and every saved edit adds a
-        version, so with more than one version ``ai_output`` is version 1 and ``final``
-        the latest. With one version (or none) the report was never edited in-app and
-        ``final`` is ``None``: ``report_feedback.final_output`` (copy-time capture) is NOT
-        used, because the page-wide copy listener could record text from a *different*
-        report (verified: a trauma report whose final_output was an unrelated lumbar
-        study; listener scoped to the report viewer 2026-10-13). ``final=None`` gives a
-        null edit_burden and the judge still assesses ``ai_output``.
+        draft ("Initial generation", ``crud.create_report``) and every later change adds a
+        version, so with more than one version (and a non-empty version 1) ``ai_output``
+        is version 1 and ``final`` the latest version. The latest version includes
+        AI-applied enhancement/comparison revisions as well as the radiologist's edits.
+        Those changes overwrite ``report.report_content``, so before this rule
+        ``ai_output`` was already the current text: the judge input (``final or
+        ai_output``) is unchanged and only edit_burden is new. Otherwise ``final`` is
+        ``None`` (null edit_burden): ``report_feedback.final_output`` (copy-time capture)
+        is NOT used, because the page-wide copy listener could record text from a
+        *different* report (verified: a trauma report whose final_output was an
+        unrelated lumbar study; listener scoped to the report viewer 2026-10-13).
 
     For templates ``skill_sheet`` is the sheet that wrote the report (``_sheet_for``: matched
     by the generation stamp's ``sheet_hash`` in the template's versions, else the current
@@ -369,8 +379,8 @@ def _assemble_case(db, report) -> dict:
         cfg = (tmpl.template_config or {}) if tmpl and isinstance(tmpl.template_config, dict) else {}
         skill_sheet = _sheet_for(db, report, cfg.get("skill_sheet") or "")
         versions = sorted(report.versions or [], key=lambda v: v.version_number)
-        if len(versions) > 1:
-            ai_output = versions[0].report_content or ai_output
+        if len(versions) > 1 and versions[0].report_content:
+            ai_output = versions[0].report_content
             final = versions[-1].report_content
         else:
             final = None  # copy-time capture is not trusted (cross-report copies, fixed in TemplateForm 2026-10-13)
@@ -380,7 +390,7 @@ def _assemble_case(db, report) -> dict:
         "skill_sheet": skill_sheet or "",
         "ai_output": ai_output,
         "final_output": final,
-        "path": _stamp(report).get("path") or "",  # which template path wrote it (generation stamp); "" = unknown/quick
+        "path": _template_path(report) if pipeline == "template" else "",  # quick: no template path, stamps ignored
     }
 
 
@@ -506,7 +516,8 @@ def score_report(db, report, *, rescore: bool = False, judge=None,
             "rationale": js.rationale,
             "issues": [i.model_dump() for i in js.issues],
         }
-    dimensions["path"] = case["path"]  # not a dimension: groups scores by template path (Metabase dimensions_json->>'path')
+    # Not a dimension: kept under _meta so code iterating dimensions never sees it (Metabase: dimensions_json->'_meta'->>'path').
+    dimensions["_meta"] = {"path": case["path"]}
     edit_burden = compute_edit_burden(case["ai_output"], case["final_output"])
     return upsert_score(
         db, report_id=report.id, pipeline=case["pipeline"], scores=scores,

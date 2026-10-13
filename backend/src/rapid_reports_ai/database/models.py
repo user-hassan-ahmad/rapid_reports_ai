@@ -842,7 +842,7 @@ class ReportQualityScore(Base):
     dictation_fidelity = Column(Integer, nullable=True)  # 1–5 (v2: dictated content preserved exactly)
     normal_fill_appropriateness = Column(Integer, nullable=True)  # 1–5 (v2: added normals sanctioned + in-scope)
     edit_burden = Column(Float, nullable=True)           # 0–1 objective; null if no final
-    dimensions_json = Column(JSONBType(), nullable=True)  # {dim:{score,rationale,issues:[...]}}
+    dimensions_json = Column(JSONBType(), nullable=True)  # {dim:{score,rationale,issues:[...]}, "_meta":{path}}
     judge_model = Column(String(100), nullable=False)
     rubric_version = Column(String(32), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
