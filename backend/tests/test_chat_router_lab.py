@@ -71,14 +71,6 @@ def test_unrelated_changes_counts_lines_outside_the_touched_parts():
     assert lab.unrelated_changes(ROUTER_SHEET, edited, ["Lower"]) == 2
 
 
-def test_unsure_counts_how_many_band_decisions_were_wrong():
-    truth = [{"kind": "value", "key": "Width", "choice": {"need": "not_needed"}}]
-    recs = [{"kind": "value", "action": "ledger", "key": "Width", "choice": {"need": "not_needed"}, "route": "llm_unsure"},
-            {"kind": "normal", "action": "ledger", "key": "P :: x", "choice": {"text": ""}, "route": "llm_unsure"},
-            {"kind": "fixed", "action": "ledger", "key": "A.", "choice": {"keep": "remove"}, "route": ""}]
-    assert lab.unsure_counts(recs, truth) == {"unsure": 2, "unsure_wrong": 1}
-
-
 def test_load_items_requires_every_label(tmp_path):
     (tmp_path / "items").mkdir()
     (tmp_path / "items" / "a.json").write_text(json.dumps({**_item(1), "labels": {"value": 1}}))
@@ -104,12 +96,12 @@ def test_the_default_root_is_the_private_lab_folder():
     assert str(lab.DEFAULT_ROOT).endswith("Code/rr-template-conversion-private/synthetic/chat_router")
 
 
-def test_report_tag_includes_the_unsure_rate_and_the_habit_placeholder(tmp_path):
+def test_report_tag_includes_the_near_miss_rate_and_the_habit_placeholder(tmp_path):
     (tmp_path / "items").mkdir()
     (tmp_path / "items" / "i1.json").write_text(json.dumps({**_item(1, value=1), "category": "habit"}))
     run = tmp_path / "runs" / "tag" / "run1"
     run.mkdir(parents=True)
     (run / "i1.json").write_text(json.dumps({"id": "i1", "scores": {k: 0.4 for k in KINDS}, "ms": 5}))
     text = lab.report_tag(tmp_path, [1])
-    assert "unsure band" in text and "items with any kind in the unsure band: 1/1" in text
+    assert "near-miss band [0.35, 0.5), not routed" in text and "items with any kind in the near-miss band: 1/1" in text
     assert "habit vs normal (item 5 placeholder)" in text

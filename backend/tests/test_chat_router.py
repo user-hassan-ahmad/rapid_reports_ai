@@ -57,14 +57,19 @@ async def test_a_failed_tag_call_falls_back(fake):
         await R.route_turn(ROUTER_SHEET, [], "drop width")
 
 
-async def test_misfit_or_no_kind_asks_and_changes_nothing(fake):
+async def test_misfit_asks_and_changes_nothing(fake):
     fake["tags"] = tags(misfit=0.9, value=0.8)
     t = await R.route_turn(ROUTER_SHEET, [], "add the weather")
     assert not t.applied and t.sheet == ROUTER_SHEET and "Router test" in t.reply and fake["seen"] == []
-    fake["tags"] = tags(value=0.2)
-    t = await R.route_turn(ROUTER_SHEET, [], "hmm")
-    assert not t.applied and "What should they do differently?" in t.reply
     assert t.evidence["route"] == "ask"
+
+
+async def test_no_kind_at_the_threshold_takes_todays_refine(fake):
+    """Hassan 2026-10-13 (supersedes D-R2): only tags >= 0.5 route; the 0.35-0.5 band is not routed at all."""
+    fake["tags"] = tags(value=0.45, normal=0.49)
+    with pytest.raises(R.Fallback) as e:
+        await R.route_turn(ROUTER_SHEET, [], "width maybe")
+    assert str(e.value) == "no_tag" and fake["seen"] == []
 
 
 async def test_a_value_change_is_applied_through_the_ledger(fake):
@@ -88,18 +93,16 @@ async def test_a_mixed_instruction_applies_each_tagged_kind(fake):
     assert t.reply.splitlines() == ["Width is no longer required.", '"No previous imaging available." is no longer printed.']
 
 
-async def test_an_unsure_tag_lets_the_call_decide_and_marks_the_route(fake):
-    fake["tags"] = tags(value=0.4)
+async def test_a_kind_below_the_threshold_is_not_called_when_another_routes(fake):
+    fake["tags"] = tags(value=0.9, normal=0.45)
     fake["calls"]["value"] = CH.ValueOut(changes=[CH.ValueChange(name="Width", to="not_needed")])
-    t = await R.route_turn(ROUTER_SHEET, [], "width maybe")
-    assert t.applied and 'LIST_MISSING ["Depth"]' in t.sheet and not t.cards
-    assert L.entry(t.ledger, "value", "Width")["route"] == "llm_unsure"
-    assert t.records[0]["route"] == "llm_unsure" and t.evidence["changes"][0]["route"] == "llm_unsure"
-    assert t.evidence["unsure"] == ["value"]
+    t = await R.route_turn(ROUTER_SHEET, [], "drop width")
+    assert [k for k, _ in fake["seen"]] == ["value"] and "route" not in L.entry(t.ledger, "value", "Width")
+    assert "route" not in t.records[0] and "unsure" not in t.evidence
 
 
-async def test_an_unsure_call_that_decides_nothing_changes_nothing(fake):
-    fake["tags"] = tags(value=0.4)
+async def test_a_call_that_decides_nothing_changes_nothing(fake):
+    fake["tags"] = tags(value=0.9)
     t = await R.route_turn(ROUTER_SHEET, [], "width maybe")
     assert not t.applied and t.records == [] and t.reply == "No change was needed."
 
@@ -202,7 +205,7 @@ async def test_a_style_edit_touches_prose_only(fake):
                                          summary="The impression will be one sentence.")
     t = await R.route_turn(ROUTER_SHEET, [], "make the impression more concise")
     assert t.applied and NEW_IC in t.sheet and "Keep it brief." not in t.sheet
-    assert t.records[0] == {"type": "style", "claim": "The impression will be one sentence.", "route": "",
+    assert t.records[0] == {"type": "style", "claim": "The impression will be one sentence.",
                             "blocks": [{"before": "Lead with the most important finding.\nKeep it brief.",
                                         "after": NEW_IC}]}
     assert t.reply == "The impression will be one sentence." and t.evidence["style"] == "applied"
@@ -247,11 +250,10 @@ async def test_a_failed_requires_check_leaves_the_style_out(fake):
     assert not t.applied and t.reply == R.REQUIRES_FAILED
 
 
-async def test_an_unsure_style_tag_is_decided_by_the_call(fake):
+async def test_a_style_tag_below_the_threshold_alone_takes_todays_refine(fake):
     fake["tags"] = tags(style=0.4)
-    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=NEW_IC)], summary="Shorter impression.")
-    t = await R.route_turn(ROUTER_SHEET, [], "maybe shorter")
-    assert t.applied and NEW_IC in t.sheet and t.records[0]["route"] == "llm_unsure"
+    with pytest.raises(R.Fallback):
+        await R.route_turn(ROUTER_SHEET, [], "maybe shorter")
 
 
 async def test_a_style_edit_with_a_miscased_unit_line_is_rejected_by_the_grammar_guard(fake):

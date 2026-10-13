@@ -43,12 +43,11 @@ def test_set_choice_writes_a_chat_entry_and_returns_the_change():
         L.set_choice([], "concept", "no-such-concept", {"use": False})
 
 
-def test_a_route_marks_the_entry_and_survives_clean():
-    led, _ = L.set_choice([], "value", "Width", {"need": "relevant"}, route="llm_unsure")
-    assert led[0]["route"] == "llm_unsure" and L.clean(led)[0]["route"] == "llm_unsure"
-    assert "route" not in td.clean_ledger([{**led[0], "route": "made-up"}])[0]
-    with pytest.raises(L.Rejected):
-        L.set_choice([], "value", "Width", {"need": "every"}, route="made-up")
+def test_the_ledger_keeps_no_route_field():
+    """D-R2's llm_unsure mark is gone (Hassan, 2026-10-13): nothing stored it, so the field is not kept."""
+    led, _ = L.set_choice([], "value", "Width", {"need": "relevant"})
+    assert "route" not in td.clean_ledger([{**led[0], "route": "llm_unsure"}])[0]
+    assert not hasattr(td, "ROUTES")
 
 
 def test_undo_wraps_undo_change_and_restores_the_old_entry_whole():
@@ -149,9 +148,9 @@ async def test_save_applies_the_ledger_and_reports_unmatched_and_cards():
 
 
 def test_forget_removes_an_entry_and_undo_restores_it_whole():
-    led, _ = L.set_choice([], "value", "Width", {"need": "relevant"}, route="llm_unsure")
+    led, _ = L.set_choice([], "value", "Width", {"need": "relevant"})
     out, change = L.forget(led, "value", "width")
-    assert out == [] and change["new"] is None and change["old"]["route"] == "llm_unsure"
+    assert out == [] and change["new"] is None and change["old"]["choice"] == {"need": "relevant"}
     assert L.undo(out, change) == led
     assert L.forget([], "value", "Width") == ([], None)
     assert L.FORGET == {"forget": True}

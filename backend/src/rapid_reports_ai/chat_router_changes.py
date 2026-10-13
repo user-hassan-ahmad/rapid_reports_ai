@@ -122,7 +122,6 @@ class Verdict:
     reason: str = ""                # ask / reject
     invented: bool = False          # the call said sure, but its wording is neither in the instruction nor the sheet
     change: Optional[dict] = None   # the structured change as the call returned it (evidence)
-    route: str = ""                 # "llm_unsure": its kind was tagged in the unsure band (decision D-R2)
     detail: str = ""                # the internal reason for a reject (evidence only, never a reply)
 
 

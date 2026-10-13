@@ -20,7 +20,6 @@ from .hybrid_stack.template import norm_key
 LEDGER_KINDS: Tuple[str, ...] = tuple(td.KINDS)
 NEEDS: Tuple[str, ...] = tuple(td.NEEDS)
 KEEPS: Tuple[str, ...] = tuple(td.KEEPS)
-ROUTES: Tuple[str, ...] = tuple(td.ROUTES)
 CONCEPTS: Dict[str, str] = {name: c.label for name, c in td.CONCEPTS.items()}
 CONCEPT_STATES = ("used", "dictated", "not_used")
 
@@ -176,19 +175,13 @@ def values(sheet: str, ledger: List[dict]) -> List[Tuple[str, str]]:
     return [(e["key"], e["choice"]["need"]) for e in seed_values(ledger, sheet) if e["kind"] == "value"]
 
 
-def set_choice(ledger: List[dict], kind: str, key: str, choice: dict,
-               route: Optional[str] = None) -> Tuple[List[dict], Optional[dict]]:
-    """One chat decision (source "chat", by the radiologist); `route` marks how it was reached (ROUTES). Returns the
-    ledger and the change, or None when the choice was already so."""
-    if route is not None and route not in ROUTES:
-        raise Rejected(f"unknown route {route!r}")
+def set_choice(ledger: List[dict], kind: str, key: str, choice: dict) -> Tuple[List[dict], Optional[dict]]:
+    """One chat decision (source "chat", by the radiologist). Returns the ledger and the change, or None when the
+    choice was already so."""
     try:
         out, change = td.set_decision(list(ledger or []), kind, key, choice, source="chat")
     except td.DecisionError as e:
         raise Rejected(str(e)) from e
-    if route:
-        e = td.find(out, kind, key)
-        out = [{**x, "route": route} if x is e else x for x in out]
     return out, (dict(change) if change else None)
 
 

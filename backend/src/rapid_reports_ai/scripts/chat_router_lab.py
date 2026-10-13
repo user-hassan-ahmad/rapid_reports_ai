@@ -38,6 +38,7 @@ from rapid_reports_ai import chat_router_views as V
 
 DEFAULT_ROOT = Path.home() / "Code/rr-template-conversion-private/synthetic/chat_router"
 THRESHOLDS = (0.3, 0.35, 0.4, 0.5, 0.6, 0.7)
+NEAR_MISS = 0.35   # diagnostic only: a kind in [NEAR_MISS, TAG_MIN) is NOT routed (Hassan 2026-10-13); such turns fall back
 CONCURRENCY = 4
 
 
@@ -159,15 +160,8 @@ def unrelated_changes(start: str, end: str, touches: List[str]) -> int:
     return n
 
 
-def unsure_counts(records: List[dict], truth: List[dict]) -> dict:
-    """Changes applied for a kind tagged in the unsure band (route llm_unsure, decision D-R2), and how many match no
-    planted truth: the lab's stand-in for "later undone"."""
-    unsure = [r for r in records if r.get("route") == "llm_unsure" and r.get("action") in ("ledger", "edit", "style")]
-    return {"unsure": len(unsure), "unsure_wrong": sum(1 for r in unsure if not any(match(r, t) for t in truth))}
-
-
 def verdict_record(v: CH.Verdict) -> dict:
-    return {"kind": v.kind, "action": v.action, "key": v.key, "choice": v.choice, "op": v.op, "route": v.route,
+    return {"kind": v.kind, "action": v.action, "key": v.key, "choice": v.choice, "op": v.op,
             "invented": v.invented, "reason": v.reason, "detail": v.detail}
 
 
@@ -178,13 +172,11 @@ def turn_records(t: R.Turn) -> List[dict]:
         if r["type"] == "ledger":
             new = r["change"].get("new")
             out.append({"kind": r["change"]["kind"], "action": "ledger", "key": r["change"]["key"],
-                        "choice": new.get("choice") if isinstance(new, dict) and "choice" in new else new, "op": None,
-                        "route": r.get("route", "")})
+                        "choice": new.get("choice") if isinstance(new, dict) and "choice" in new else new, "op": None})
         elif r["type"] == "edit":
-            out.append({"kind": r["kind"], "action": "edit", "key": "", "choice": None, "op": r["op"],
-                        "route": r.get("route", "")})
+            out.append({"kind": r["kind"], "action": "edit", "key": "", "choice": None, "op": r["op"]})
         elif r["type"] == "style":
-            out.append({"kind": "style", "action": "style", "route": r.get("route", "")})
+            out.append({"kind": "style", "action": "style"})
     for c in t.cards:
         out.append({"kind": c.get("ledger_kind") or (c.get("apply") or {}).get("kind"), "action": "card",
                     "key": c.get("key", ""), "choice": None, "op": None})
@@ -301,9 +293,8 @@ async def run_e2e(root: Path, run: int) -> None:
             sheet, ledger = t.sheet, t.ledger
             recs = turn_records(t)
             turns.append({"instruction": turn["instruction"], "records": recs, "reply": t.reply,
-                          "applied": t.applied, "ms": t.evidence.get("ms"), "unsure_kinds": t.evidence.get("unsure", []),
-                          "score": {**score_changes(turn.get("truth") or [], recs),
-                                    **unsure_counts(recs, turn.get("truth") or [])}})
+                          "applied": t.applied, "ms": t.evidence.get("ms"),
+                          "score": score_changes(turn.get("truth") or [], recs)})
         return {"turns": turns, "final_sheet": sheet, "unrelated": unrelated_changes(start, sheet, seq["touches"])}
     await _each(_load(root, "sequences"), _out(root, "e2e", run), fn)
 
@@ -332,12 +323,12 @@ def report_tag(root: Path, runs: List[int]) -> str:
                     for k in J.KINDS for thr in THRESHOLDS]
             parts.append(f"### run {run}, {subset}: precision / recall per kind\n\n"
                          + md_table(["kind", "threshold", "P", "R", "F1", "n"], rows))
-            b = band(its, scores, J.TAG_UNSURE, J.TAG_MIN)
-            parts.append(f"### run {run}, {subset}: unsure band [{J.TAG_UNSURE}, {J.TAG_MIN}), decided by the call\n\n"
+            b = band(its, scores, NEAR_MISS, J.TAG_MIN)
+            parts.append(f"### run {run}, {subset}: near-miss band [{NEAR_MISS}, {J.TAG_MIN}), not routed\n\n"
                          + md_table(["kind", "labelled yes", "labelled no"], [[k, b[k]["pos"], b[k]["neg"]] for k in J.KINDS]))
             have = [it for it in its if isinstance(scores.get(it["id"]), dict) and "error" not in scores[it["id"]]]
-            in_band = sum(any(J.TAG_UNSURE <= scores[it["id"]][k] < J.TAG_MIN for k in J.KINDS) for it in have)
-            parts.append(f"items with any kind in the unsure band: {in_band}/{len(have)}")
+            in_band = sum(any(NEAR_MISS <= scores[it["id"]][k] < J.TAG_MIN for k in J.KINDS) for it in have)
+            parts.append(f"items with any kind in the near-miss band: {in_band}/{len(have)}")
             h = habit_confusion(its, scores)
             parts.append(f"### run {run}, {subset}: habit vs normal (item 5 placeholder)\n\n"
                          + md_table(list(h), [list(h.values())]))
@@ -412,11 +403,9 @@ def report_e2e(root: Path, runs: List[int]) -> str:
             s = _sum([t["score"] for t in turns if "score" in t])
             ms += [t["ms"] for t in turns if t.get("ms") is not None]
             rows.append([i, len(turns), sum("fallback" in t for t in turns), s.get("truth", 0), s.get("correct", 0),
-                         s.get("extra_applied", 0), s.get("cards", 0), sum(bool(t.get("unsure_kinds")) for t in turns),
-                         s.get("unsure", 0), s.get("unsure_wrong", 0), out.get("unrelated")])
+                         s.get("extra_applied", 0), s.get("cards", 0), out.get("unrelated")])
         parts.append(f"### run {run} (median ms per turn: {statistics.median(ms) if ms else None})\n\n" + md_table(
-            ["sequence", "turns", "fallbacks", "truth", "correct", "extra applied", "cards", "turns with an unsure band",
-             "unsure-band changes", "of them wrong", "unrelated lines"], rows))
+            ["sequence", "turns", "fallbacks", "truth", "correct", "extra applied", "cards", "unrelated lines"], rows))
     return "\n\n".join(parts)
 
 

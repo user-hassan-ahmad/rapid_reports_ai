@@ -2,8 +2,8 @@
 rules is applied by code through the decision ledger, the way a card tap is; a change of style is applied by a
 lightweight call that can only touch prose. No model rewrites the whole sheet.
 
-route_turn: Jev tags -> one targeted call per tagged kind (parallel; a kind in the unsure band is decided by its
-call and marked route "llm_unsure", decision D-R2) -> code validates each structured change -> applied (style first,
+route_turn: Jev tags -> one targeted call per kind tagged >= TAG_MIN (parallel; no tag at the threshold: today's
+refine, Hassan 2026-10-13) -> code validates each structured change -> applied (style first,
 then layout and unit edits, then ledger writes; plan decision 8), carded or asked -> the save function (origin
 "chat"), which applies the ledger last -> the reply, one line per applied change. A failed tag call raises Fallback
 and the endpoint runs today's whole-sheet refine (the fallback stays until the lab and live data say otherwise)."""
@@ -28,7 +28,6 @@ from . import chat_router_views as V
 logger = logging.getLogger(__name__)
 
 ROUTER_VERSION = "router-1"
-UNSURE_ROUTE = "llm_unsure"
 # cost caps (review of Tasks 6-11): every truncation is logged and recorded in the evidence
 MAX_REQUIRES_LINES = 8     # new prose lines asked "does this require the report to state something?" per turn
 MAX_REROUTES = 3           # flagged lines sent back through the rule route per turn (in parallel)
@@ -70,7 +69,7 @@ def _ms(t0: float) -> int:
 
 
 def _ev(v: CH.Verdict) -> dict:
-    return {"kind": v.kind, "action": v.action, "key": v.key, "op": (v.op or {}).get("op"), "route": v.route,
+    return {"kind": v.kind, "action": v.action, "key": v.key, "op": (v.op or {}).get("op"),
             "invented": v.invented, "reason": (v.reason or "")[:200], "detail": (v.detail or "")[:300]}
 
 
@@ -117,31 +116,29 @@ def _apply(sheet: str, ledger: List[dict], verdicts: List[CH.Verdict]):
         return 0 if (v.action == "edit" and v.kind == "layout") else 1 if v.action == "edit" else 2
 
     for v in sorted(verdicts, key=rank):
-        route = v.route or None
         try:
             if v.action == "edit":
                 before = sheet
                 sheet, inverse = E.apply_op(sheet, v.op)
-                rec = {"type": "edit", "kind": v.kind, "op": v.op, "inverse": inverse, "claim": v.claim,
-                       "route": v.route}
+                rec = {"type": "edit", "kind": v.kind, "op": v.op, "inverse": inverse, "claim": v.claim}
                 ledger, rec, moved = _ledger_for_edit(ledger, before, v.op, rec)
                 records.append(rec)
                 if moved:
-                    records.append({"type": "ledger", "change": moved, "claim": "", "route": v.route})
+                    records.append({"type": "ledger", "change": moved, "claim": ""})
                     notes.append(L.note(moved))
                 if v.choice is not None:            # a new unit line is also a decision
-                    ledger, change = L.set_choice(ledger, v.kind, v.key, v.choice, route=route)
+                    ledger, change = L.set_choice(ledger, v.kind, v.key, v.choice)
                     if change:
-                        records.append({"type": "ledger", "change": change, "claim": "", "route": v.route})
+                        records.append({"type": "ledger", "change": change, "claim": ""})
                 claims.append(v.claim)
                 continue
             if v.kind == "value" and not seeded:
                 ledger, seeded = L.seed_values(ledger, sheet), True
-            ledger, change = L.set_choice(ledger, v.kind, v.key, v.choice, route=route)
+            ledger, change = L.set_choice(ledger, v.kind, v.key, v.choice)
             if change is None:
                 problems.append(f"Already the case: {v.claim}")
                 continue
-            records.append({"type": "ledger", "change": change, "claim": v.claim, "route": v.route})
+            records.append({"type": "ledger", "change": change, "claim": v.claim})
             claims.append(v.claim)
             notes.append(L.note(change))
         except (E.EditError, L.Rejected) as e:   # the reason is internal: evidence only (decision 15)
@@ -227,17 +224,17 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
         raise Fallback(type(e).__name__) from e
     ledger = L.clean(ledger)
     yes = [k for k in WORK_KINDS if tags[k] >= J.TAG_MIN]
-    unsure = [k for k in WORK_KINDS if J.TAG_UNSURE <= tags[k] < J.TAG_MIN]
     ev = {"version": ROUTER_VERSION, "route": "router", "tags": {k: round(v, 3) for k, v in tags.items()},
-          "yes": yes, "unsure": unsure}
-    misfit = tags["misfit"] >= J.TAG_MIN
-    if misfit or not (yes or unsure):
+          "yes": yes}
+    if tags["misfit"] >= J.TAG_MIN:      # a misfit blocks the turn (misfit_B wording, >= 0.5)
         ev.update(route="ask", applied=0, ms=_ms(t0))
-        return Turn(sheet, ledger, False, _ask_reply(scan, misfit), evidence=ev)
+        return Turn(sheet, ledger, False, _ask_reply(scan, True), evidence=ev)
+    if not yes:   # nothing tagged at the threshold: today's whole-sheet refine for now (Hassan 2026-10-13)
+        raise Fallback("no_tag")
 
     wording = instruction + ("\n" + (rejection.get("original_instruction") or "") if rejection else "")
     ctx = CH.Ctx(sheet, ledger, wording)
-    kinds = yes + unsure
+    kinds = yes
     deadline = t0 + TURN_TIMEOUT_S
     tasks = {k: asyncio.ensure_future(C.call_kind(k, instruction, V.view(k, sheet, ledger), context, rejection))
              for k in kinds}
@@ -252,7 +249,7 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
     asks: List[str] = []
     failed: List[str] = list(timed_out)
     truncated_changes = {}
-    style_out, style_route = None, ""
+    style_out = None
     for k, res in zip(kinds, results):
         if res is None:
             continue
@@ -262,16 +259,14 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
             continue
         if (res.question or "").strip():
             asks.append(res.question.strip())
-        route = UNSURE_ROUTE if k in unsure else ""
         if k == "style":
-            style_out, style_route = res, route
+            style_out = res
             continue
         if len(res.changes) > MAX_CHANGES_PER_CALL:
             truncated_changes[k] = len(res.changes) - MAX_CHANGES_PER_CALL
             logger.info("[chat-router] %s changes capped: %d dropped", k, truncated_changes[k])
         for c in res.changes[:MAX_CHANGES_PER_CALL]:
             v = CH.validate(k, c, ctx)
-            v.route = route
             verdicts.append(v)
 
     styled, style_rec, style_lines, style_ev = sheet, None, [], {}
@@ -283,8 +278,6 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
             logger.warning("[chat-router] turn deadline: the style check did not finish")
             style_lines, extra, style_ev = [STYLE_TIMEOUT], [], {"style": "timed_out"}
             timed_out.append("style")
-        if style_rec:
-            style_rec["route"] = style_route
         verdicts += extra
 
     new_sheet, new_ledger, records, claims, notes, problems, detail = _apply(
@@ -319,7 +312,7 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
     lines = claims + notes + tail(cards) + ([UNMATCHED_LINE] if saved.unmatched else []) + (
         [saved.message] if saved.message else [])
     ev.update(applied=len(records), unmatched=len(saved.unmatched), ms=_ms(t0))
-    logger.info("[chat-router] yes=%s unsure=%s applied=%d cards=%d failed=%s ms=%d", yes, unsure, len(records),
+    logger.info("[chat-router] yes=%s applied=%d cards=%d failed=%s ms=%d", yes, len(records),
                 len(cards), failed, ev["ms"])
     return Turn(saved.sheet, saved.ledger, True, "\n".join(lines), claim=" ".join(claims), records=records,
                 cards=cards, notice=saved.message, unmatched=saved.unmatched, evidence=ev)
@@ -459,5 +452,5 @@ async def _forget(sheet: str, ledger: List[dict], kind: str, key: str, t0: float
     if saved.status == "refused":
         return Turn(sheet, ledger, False, saved.message, refused=True, evidence={**ev, "refused": True})
     return Turn(saved.sheet, saved.ledger, True, claim, claim=claim,
-                records=[{"type": "ledger", "change": change, "claim": claim, "route": ""}],
+                records=[{"type": "ledger", "change": change, "claim": claim}],
                 notice=saved.message, unmatched=saved.unmatched, evidence=ev)

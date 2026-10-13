@@ -38,7 +38,6 @@ logger = logging.getLogger(__name__)
 
 KINDS = ("value", "concept", "fixed", "normal")
 SOURCES = ("creation", "chat", "first_use_review", "default")
-ROUTES = ("llm_unsure",)   # how a chat decision was reached, when not plainly: the chat-edit router's unsure band
 BY = ("radiologist", "code")
 NEEDS = ("every", "relevant", "not_needed")
 KEEPS = ("always", "dictated", "remove")
@@ -418,10 +417,7 @@ def clean_ledger(entries) -> List[Entry]:
         except DecisionError as err:
             logger.warning("[ledger] stored entry dropped: %s", err)
             continue
-        kept = {"kind": e["kind"], "key": key, "choice": choice,
-                "by": e.get("by") if e.get("by") in BY else "code", "at": str(e.get("at") or ""),
-                "source": e.get("source") if e.get("source") in SOURCES else "default"}
-        if e.get("route") in ROUTES:   # the chat-edit router's mark (decision D-R2); anything else is dropped
-            kept["route"] = e["route"]
-        out.append(kept)
+        out.append({"kind": e["kind"], "key": key, "choice": choice,
+                    "by": e.get("by") if e.get("by") in BY else "code", "at": str(e.get("at") or ""),
+                    "source": e.get("source") if e.get("source") in SOURCES else "default"})
     return out
