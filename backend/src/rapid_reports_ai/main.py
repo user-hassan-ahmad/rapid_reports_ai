@@ -763,6 +763,7 @@ class SkillSheetSaveRequest(BaseModel):
     scan_type: str
     template_name: str
     tags: List[str] = []
+    analyser_version: str = ""  # the writer that produced the sheet (evidence stamp; "" when unknown)
 
 
 # Quick Report Proto — ephemeral skill sheet pipeline
@@ -2157,6 +2158,8 @@ Apply each fix while preserving grammatical completeness and report structure.""
                     template_id=str(template.id),
                     description=context_title,
                     candidate_reports=[mirror_candidate] if mirror_candidate else None,
+                    generation_stamp=tss.generation_stamp(str(template.id), template.template_config,
+                                                          "scratchpad" if _stack else "fallback"),
                 )
                 report_id = str(saved_report.id)
                 print(f"✅ Report saved with ID: {report_id}")
@@ -2777,6 +2780,8 @@ async def skill_sheet_save_endpoint(
         }, {}, "analyser", creating=True)
         if refusal:
             return {"success": False, "error": refusal}
+        if request.analyser_version:
+            template_config = {**template_config, "analyser_version": request.analyser_version}
         logger.info("  coverage_sections: %s", template_config.get("coverage_sections"))
         template = create_template(
             db=db,

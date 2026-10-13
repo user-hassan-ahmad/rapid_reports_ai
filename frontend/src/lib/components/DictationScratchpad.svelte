@@ -2001,7 +2001,8 @@
 				schema_source: stackSchemaMeta?.source ?? null, provisional: stackSchemaMeta?.provisional ?? false,
 				units: stackUnits, pills_derived: [...new Set(stackUnits.flatMap((u) => u.covers))],
 				pills_jev: lastJevCovered, sections: checklistSections, structured_text: structured.text ?? '',
-				manual_moves: stackManualMoves, latency_ms: stackLatency, gate: stackGate
+				manual_moves: stackManualMoves, latency_ms: stackLatency, gate: stackGate,
+				template_id: stackTemplateId
 			});
 		} catch {
 			/* logging never affects dictation */

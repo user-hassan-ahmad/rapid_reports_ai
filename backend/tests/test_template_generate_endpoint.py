@@ -448,3 +448,26 @@ async def test_prepare_runs_phase1_on_the_templates_scan_type(aclient, auth_head
     assert r.json()["status"] == "running"
     await _drain()
     assert seen == ["CMR"]  # generate reads the template's scan type, so Phase 1 must too
+
+
+async def test_a_scratchpad_report_carries_its_generation_stamp(aclient, auth_headers, mirror_template, stubs,
+                                                               db_session, monkeypatch):
+    from rapid_reports_ai.template_sheet_structure import STRUCTURE_VERSION, sheet_hash
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+    r = await _generate_stack(aclient, auth_headers, mirror_template)
+    await _drain_options()
+    stamp = db_session.get(Report, __import__("uuid").UUID(r["report_id"])).generation_stamp
+    assert stamp["path"] == "scratchpad" and stamp["template_id"] == str(mirror_template.id)
+    assert stamp["sheet_hash"] == sheet_hash(mirror_template.template_config["skill_sheet"])
+    assert stamp["grammar_version"] == STRUCTURE_VERSION
+
+
+async def test_a_fallback_report_is_stamped_fallback(aclient, auth_headers, guided_template, stubs, db_session,
+                                                     monkeypatch):
+    from rapid_reports_ai.template_sheet_structure import sheet_hash
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+    r = await _generate_stack(aclient, auth_headers, guided_template)   # no usable structure: today's path
+    await _drain_options()
+    stamp = db_session.get(Report, __import__("uuid").UUID(r["report_id"])).generation_stamp
+    assert stamp["path"] == "fallback"
+    assert stamp["sheet_hash"] == sheet_hash(guided_template.template_config["skill_sheet"])

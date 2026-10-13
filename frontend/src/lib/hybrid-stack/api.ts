@@ -23,6 +23,7 @@ export interface StackLog {
 	session_id: string; scan_type: string; schema_key: string | null; schema_source: string | null; provisional: boolean;
 	units: StackUnit[]; pills_derived: string[]; pills_jev: string[]; sections: string[]; structured_text: string;
 	manual_moves: number; latency_ms: Record<string, number>; gate?: GateRecord | null; report_id?: string | null;
+	template_id?: string | null; // template sessions: the server stamps the sheet (null: quick)
 }
 export const postLog = (token: string | null, body: StackLog) => post<{ ok: boolean }>(token, 'log', body, true);
 

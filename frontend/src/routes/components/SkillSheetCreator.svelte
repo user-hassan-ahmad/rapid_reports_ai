@@ -53,6 +53,7 @@
 
 	// Phase 2 — workbench
 	let skillSheet = '';
+	let analyserVersion = ''; // the writer that produced the sheet (stored on save as evidence)
 	/** @type {{
 	 *   structure?: { sections: { name: string, paragraphs: string[] }[] },
 	 *   voice?: { description: string, phrases: string[] },
@@ -337,6 +338,7 @@
 			});
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
+			analyserVersion = data.analyser_version || '';
 			summary = (typeof data.summary === 'object' && data.summary !== null) ? data.summary : null;
 			sampleFindings = coerceToText(data.sample_findings);
 			sampleClinicalHistory = coerceToText(data.sample_clinical_history);
@@ -565,7 +567,8 @@
 				skill_sheet: skillSheet,
 				scan_type: scanType,
 				template_name: templateName.trim(),
-				tags
+				tags,
+				analyser_version: analyserVersion
 			});
 			if (!data.success) throw new Error(data.error || 'Save failed');
 			showSaveDialog = false; saved = true;

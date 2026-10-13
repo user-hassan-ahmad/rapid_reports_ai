@@ -315,3 +315,24 @@ def test_assumed_passes_the_region_text_capped(authed, monkeypatch):
     authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"R0": ["Normal."]},
                                                    "region_text": {}})
     assert seen["region_text"] == {}     # sent but empty: nothing grouped in a region covers anything
+
+
+def test_log_stamps_the_template_sheet(authed, db_session, user):
+    from rapid_reports_ai.database.models import Template
+    from rapid_reports_ai.template_sheet_structure import sheet_hash
+    t = Template(name="T", template_config={"skill_sheet": "## FINDINGS\nx", "analyser_version": "a1"},
+                 user_id=user.id, tags=[], is_active=True)
+    db_session.add(t)
+    db_session.commit()
+    r = authed.post("/api/canvas/stack/log", json={"session_id": "s1", "template_id": str(t.id)})
+    assert r.status_code == 200
+    row = db_session.query(DictationStackLog).filter_by(session_id="s1").one()
+    assert row.template_id == str(t.id) and row.stamp["sheet_hash"] == sheet_hash("## FINDINGS\nx")
+    assert row.stamp["path"] == "scratchpad" and row.stamp["analyser_version"] == "a1"
+
+
+def test_log_with_an_unknown_template_stores_no_stamp(authed, db_session):
+    r = authed.post("/api/canvas/stack/log", json={"session_id": "s2", "template_id": str(uuid.uuid4())})
+    assert r.json() == {"ok": True}
+    row = db_session.query(DictationStackLog).filter_by(session_id="s2").one()
+    assert row.template_id is None and row.stamp is None

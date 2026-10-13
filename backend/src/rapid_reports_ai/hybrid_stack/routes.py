@@ -15,6 +15,7 @@ from ..database import get_db
 from ..database.crud import get_template
 from ..database.models import DictationStackLog, StackSchemaFamily, StackSlimSheet, User
 from ..dictation_v2 import v2_allowed
+from ..template_sheet_structure import generation_stamp
 from .schemas import Region
 from .items import Item, ItemsResult, Referral, recheck as items_recheck, update as items_update
 from .jev_stack import MATERIAL_MIN, STALE_MIN, UNFINISHED_MIN, ask_material, ask_stale, ask_unfinished
@@ -132,6 +133,7 @@ class LogRequest(BaseModel):
     latency_ms: dict = Field(default_factory=dict)
     gate: dict | None = None      # v2 §5: the confirmed record (None: not confirmed)
     report_id: str | None = None  # v2: set once Generate returns
+    template_id: str | None = None  # template sessions: stamped with the sheet that drove them (None: quick)
 
 
 class SlimRequest(BaseModel):
@@ -296,9 +298,14 @@ async def stack_log(req: LogRequest, user: User = Depends(get_current_user), db:
         row = DictationStackLog(user_id=user.id, session_id=req.session_id)
         db.add(row)
     for k, v in req.model_dump(exclude_unset=True).items():
-        if k == "session_id" or (k in ("gate", "report_id") and v is None):
+        if k in ("session_id", "template_id") or (k in ("gate", "report_id") and v is None):
             continue  # a partial log (the report id alone) changes only what it sends; a gate is never erased
         setattr(row, k, v)
+    if req.template_id:
+        t = get_template(db, req.template_id, str(user.id))   # owner only; an unknown template stamps nothing
+        if t is not None:
+            row.template_id = str(t.id)
+            row.stamp = generation_stamp(str(t.id), t.template_config, "scratchpad")
     db.commit()
     return {"ok": True}
 

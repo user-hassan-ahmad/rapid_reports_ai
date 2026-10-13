@@ -261,6 +261,14 @@ def sheet_hash(sheet: str) -> str:
     return hashlib.sha256(sheet.encode()).hexdigest()
 
 
+def generation_stamp(template_id: str, config: dict | None, path: str) -> dict:
+    """Which sheet produced a report or a session (template pipeline spec, block 4)."""
+    config = config or {}
+    return {"template_id": str(template_id), "sheet_hash": sheet_hash(config.get("skill_sheet") or ""),
+            "grammar_version": STRUCTURE_VERSION, "analyser_version": config.get("analyser_version") or "",
+            "path": path}
+
+
 def numbered(sheet: str) -> str:
     """The sheet as the model sees it: every line (blank ones too) prefixed "L<n>| ", 1-based."""
     return "\n".join(f"L{i}| {ln}" for i, ln in enumerate(sheet.splitlines(), 1))

@@ -112,6 +112,15 @@ def test_skill_sheet_save_vets_and_derives_coverage(client, auth_headers):
     assert cfg["coverage_sections"] == ["FINDINGS", "IMPRESSION"] and cfg["skill_sheet"] == GOOD
 
 
+def test_skill_sheet_save_stores_the_analyser_version(client, auth_headers):
+    r = client.post("/api/templates/skill-sheet/save", headers=auth_headers, json={
+        "skill_sheet": GOOD, "scan_type": "MRI knee", "template_name": "Knee", "analyser_version": "grammar-7"}).json()
+    assert _get(client, auth_headers, r["template_id"])["template_config"]["analyser_version"] == "grammar-7"
+    r = client.post("/api/templates/skill-sheet/save", headers=auth_headers, json={
+        "skill_sheet": GOOD, "scan_type": "MRI knee", "template_name": "Knee 2"}).json()
+    assert "analyser_version" not in _get(client, auth_headers, r["template_id"])["template_config"]
+
+
 def test_skill_sheet_save_refuses_a_free_form_sheet(client, auth_headers):
     r = client.post("/api/templates/skill-sheet/save", headers=auth_headers, json={
         "skill_sheet": FREE, "scan_type": "MRI knee", "template_name": "Knee"}).json()
