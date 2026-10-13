@@ -5,7 +5,7 @@ import { page } from '@vitest/browser/context';
 import VerdictPill from './VerdictPill.svelte';
 import type { Verdict } from './format';
 
-const v = (pill: string): Verdict => ({ category: 'none', pill, headline: '', action: pill, classification: '', caveats: [], citations: [] });
+const v = (pill: string, o: Partial<Verdict> = {}): Verdict => ({ category: 'none', pill, headline: '', action: pill, recommendation: '', classification: '', caveats: [], citations: [], ...o });
 const pill = () => document.querySelector('.cp-pill') as HTMLElement;
 
 describe('VerdictPill', () => {
@@ -34,5 +34,17 @@ describe('VerdictPill', () => {
 		await expect.element(page.getByText('Ok')).toBeInTheDocument();
 		expect(pill().style.getPropertyValue('--cp-cat-text')).toBe('var(--rv-green-text)');
 		expect(pill().style.getPropertyValue('--cp-cat')).toBe('var(--rv-green-line)');
+	});
+
+	it('info and an outcome-level not_applicable are neutral but fully legible; only an excluded card is muted', async () => {
+		const r = render(VerdictPill, { verdict: v('Report the grade', { category: 'info' }) });
+		await expect.element(page.getByText('Report the grade')).toBeInTheDocument();
+		expect(pill().style.getPropertyValue('--cp-cat-text')).toBe('var(--rv-text)');
+		expect(pill().classList.contains('cp-pill--excluded')).toBe(false);
+		await r.rerender({ verdict: v('Manage as solid renal mass', { category: 'not_applicable' }) });
+		expect(pill().style.getPropertyValue('--cp-cat-text')).toBe('var(--rv-text)');
+		expect(pill().classList.contains('cp-pill--excluded')).toBe(false);
+		await r.rerender({ verdict: v('Does not apply', { category: 'not_applicable', excluded: true }) });
+		expect(pill().classList.contains('cp-pill--excluded')).toBe(true);
 	});
 });

@@ -60,6 +60,7 @@
 	const src = $derived(sourcesOf(v?.citations ?? []));
 	const decided = $derived(!!v && v.category !== 'open' && !v.tentative);
 	const longText = $derived(!!v && v.classification.length > 110);
+	const normalise = (t: string) => t.trim().toLowerCase().replace(/[.;:,]+$/, '');
 	let showMore = $state(false);
 	let showNotes = $state(false);
 	let showSource = $state(false);
@@ -67,7 +68,7 @@
 	let showPossible = $state(false);
 	let openNote = $state<number | null>(null);
 	const uid = $props.id(); // ids for aria-controls / aria-describedby
-	const icon: Record<string, IconName> = { none: 'check', surveillance: 'clock', workup: 'search', refer: 'alert', info: 'info', not_applicable: 'slash', neutral: 'dot', open: 'open' };
+	const icon: Record<string, IconName> = { none: 'check', surveillance: 'clock', workup: 'search', refer: 'alert', info: 'info', not_applicable: 'info', neutral: 'dot', open: 'open' };
 	const likely = $derived(p?.most_likely ?? null);
 	const branches = $derived((p?.deciding ?? []).slice(0, 3));
 	const decidingQ = $derived(p ? decidingQuestion(p) : '');
@@ -79,12 +80,17 @@
 		{#if result.entry?.content.summary}<p class="cp-p">{result.entry.content.summary}</p>{/if}
 	{:else}
 		{#if decided && v}
-			<section class="cp-verdict" style:--cp-cat={categoryColor(v.category)} style:--cp-cat-text={categoryText(v.category)} data-cat={v.category} data-testid={v.category === 'not_applicable' ? 'cp-exclusion' : undefined} aria-label="Verdict">
+			<section class="cp-verdict" style:--cp-cat={categoryColor(v.category)} style:--cp-cat-text={categoryText(v.category)} data-cat={v.category} data-testid={v.excluded ? 'cp-exclusion' : undefined} aria-label="Verdict">
 				<p class="cp-p cp-headline">{v.headline}</p>
-				{#if v.category === 'not_applicable'}
+				{#if v.excluded}
 					<p class="cp-p cp-action"><Icon name="slash" size={14} /> Does not apply</p>
 				{:else if v.action}
 					<p class="cp-p cp-action"><Icon name={icon[v.category]} size={14} /> {v.action}</p>
+				{/if}
+				<!-- the short action never stands alone: some drop later steps (a follow-up interval, a second scan), so the
+				     full recommendation is always there -->
+				{#if v.recommendation && !v.excluded && normalise(v.recommendation) !== normalise(v.action)}
+					<p class="cp-p cp-recommendation">{v.recommendation}</p>
 				{/if}
 				{#if v.classification && v.classification !== v.headline}
 					<p
@@ -323,6 +329,11 @@
 	}
 	.cp-action :global(.cp-icon) {
 		color: var(--cp-cat);
+	}
+	.cp-recommendation {
+		font-size: 0.875rem;
+		line-height: 1.45;
+		color: var(--rv-text);
 	}
 	.cp-classification {
 		margin-top: 2px;

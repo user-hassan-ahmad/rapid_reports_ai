@@ -252,6 +252,21 @@ export const sections: Section[] = [
 	},
 	{ id: 'bts-surveillance', title: 'BTS surveillance', ...one(nodule, bts, view(btsSurv, { open: true })) },
 	{ id: 'refer', title: 'Refer', ...one(cyst, bosniak, view(bosniakRefer, { open: true })) },
+	{
+		id: 'info',
+		title: 'Info: no management stated (CAD-RADS 4B/E)',
+		...one(null, cad, view(result(cad, preview({ proposal: null, draft_outcome: outcome({ classification: 'CAD-RADS 4B/E: left main or three-vessel obstructive disease; exercise ECG not interpretable', recommendation: 'CAD-RADS assigns the grade; management follows the clinical team.', headline: 'CAD-RADS 4B/E', action: 'Report the grade', category: 'info', normal: false }) })), { open: true }))
+	},
+	{
+		id: 'manage-as-solid',
+		title: 'Outcome-level not applicable (Bosniak: not cystic)',
+		...one(cyst, bosniak, view(result(bosniak, preview({ proposal: null, draft_outcome: outcome({ classification: 'Not a cystic mass: Bosniak does not classify solid masses.', recommendation: 'Manage as a solid renal mass (enhancing solid component).', headline: 'Not a cystic mass', action: 'Manage as solid renal mass', category: 'not_applicable' }) })), { open: true }))
+	},
+	{
+		id: 'later-steps',
+		title: 'Short action, full recommendation (Bosniak IIF)',
+		...one(cyst, bosniak, view(result(bosniak, preview({ proposal: null, draft_outcome: outcome({ classification: 'Bosniak IIF: smooth minimally thickened wall or septa.', recommendation: 'Follow-up CT or MRI at 6 months and 12 months, then yearly for 5 years.', headline: 'Bosniak IIF', action: 'CT or MRI at 6 months', category: 'surveillance' }) })), { open: true }))
+	},
 	{ id: 'most-likely', title: 'No outcome yet: most likely, and what decides it', ...one(nodule, bts, view(btsLikely, { open: true })) },
 	{ id: 'matching', title: 'First match in flight', groups: [], views: {}, matching: true },
 	{ id: 'match-failed', title: 'Match failed', groups: [], views: {}, matchFailed: true },

@@ -438,6 +438,39 @@ describe('CopilotCards', () => {
 		await expect.element(page.getByRole('button', { name: 'Calculate' })).toBeEnabled();
 	});
 
+	it('the short action never stands alone: the full recommendation is shown below it (here with its later steps)', async () => {
+		const c = card({ key: 'bosniak-renal-cyst', name: 'Bosniak 2019', finding: finding.text });
+		const pv = preview({
+			proposal: null,
+			draft_outcome: outcome({
+				classification: 'Bosniak IIF: minimally thickened smooth wall',
+				recommendation: 'Follow-up CT or MRI at 6 months and 12 months, then yearly for 5 years.',
+				headline: 'Bosniak IIF',
+				action: 'CT or MRI at 6 months',
+				category: 'surveillance'
+			})
+		});
+		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
+		const verdict = page.getByRole('region', { name: 'Verdict' }).element();
+		await expect.element(page.getByText('CT or MRI at 6 months', { exact: true }).first()).toBeInTheDocument();
+		expect(verdict.querySelector('.cp-action')!.textContent).toContain('CT or MRI at 6 months');
+		expect(verdict.querySelector('.cp-recommendation')!.textContent).toBe('Follow-up CT or MRI at 6 months and 12 months, then yearly for 5 years.');
+	});
+
+	it('an outcome whose category is not_applicable (e.g. manage as solid) is a full verdict: not dimmed, no "Does not apply"', async () => {
+		const c = card({ key: 'bosniak-renal-cyst', name: 'Bosniak 2019', finding: finding.text });
+		const pv = preview({
+			proposal: null,
+			draft_outcome: outcome({ classification: 'Not a cystic mass: Bosniak does not classify it', recommendation: 'Manage as a solid renal mass.', headline: 'Not cystic', action: 'Manage as solid renal mass', category: 'not_applicable' })
+		});
+		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
+		await expect.element(page.getByRole('region', { name: 'Verdict' })).toHaveTextContent('Manage as solid renal mass');
+		expect(document.querySelector('.gl-card')!.getAttribute('aria-disabled')).toBeNull();
+		expect(document.querySelector('.cp-verdict')!.textContent).not.toContain('Does not apply');
+		expect(document.querySelector('.cp-pill')!.classList.contains('cp-pill--excluded')).toBe(false);
+		expect(document.querySelector('[data-testid="cp-exclusion"]')).toBeNull();
+	});
+
 	it('PackCard takes an assumptions list directly (B1 feeds Task 3)', async () => {
 		const { default: PackCard } = await import('./PackCard.svelte');
 		const c = card({ finding: finding.text });

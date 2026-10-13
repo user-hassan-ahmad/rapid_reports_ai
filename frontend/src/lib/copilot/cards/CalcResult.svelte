@@ -9,7 +9,7 @@
 	 * marked, and counted in a warning line.
 	 */
 	import type { DraftValue } from '../types';
-	import Icon from './Icon.svelte';
+	import Icon, { type IconName } from './Icon.svelte';
 	import { actionOf, headlineOf, sourcesOf } from './format';
 	import type { CalcView } from './view';
 
@@ -19,6 +19,9 @@
 	const src = $derived(sourcesOf(out?.citations ?? c?.exclusion?.citations ?? []));
 	const assumed = $derived(new Set(c?.assumptions ?? []));
 	const label = (id: string) => labels[id] || c?.values.find((v) => v.input === id)?.label || id;
+	const icons: Record<string, IconName> = { none: 'check', surveillance: 'clock', workup: 'search', refer: 'alert', info: 'info', not_applicable: 'info', neutral: 'dot' };
+	const action = $derived(out ? (out.action ?? actionOf(out.recommendation)) : '');
+	const norm = (t: string) => t.trim().toLowerCase().replace(/[.;:,]+$/, '');
 	const used = $derived((c?.values ?? []).filter((v) => v.value && v.state !== 'not_applicable'));
 	const stateWord = (v: DraftValue) =>
 		assumed.has(v.input) || v.state === 'assumed' ? 'assumed' : ({ read: 'read', prefilled: 'pre-filled', answered: 'answered', edited: 'changed' } as Record<string, string>)[v.state] ?? '';
@@ -35,9 +38,11 @@
 		<p class="cp-p cp-calc-caption">Calculated on these values</p>
 		{#if out}
 			<p class="cp-p cp-calc-headline">{out.headline ?? headlineOf(out.classification)}</p>
-			{#if out.action ?? actionOf(out.recommendation)}
-				<p class="cp-p cp-calc-action"><Icon name="check" size={13} /> {out.action ?? actionOf(out.recommendation)}</p>
+			{#if action}
+				<p class="cp-p cp-calc-action"><Icon name={icons[out.category ?? (out.normal ? 'none' : 'neutral')]} size={13} /> {action}</p>
 			{/if}
+			<!-- the full recommendation always, beside the short action (which can drop later steps) -->
+			{#if out.recommendation && norm(out.recommendation) !== norm(action)}<p class="cp-p cp-calc-rec">{out.recommendation}</p>{/if}
 			<p class="cp-p cp-calc-cls">{out.classification}</p>
 			{#if out.caveats.length}<p class="cp-p cp-muted cp-calc-meta">{out.caveats.length} {out.caveats.length === 1 ? 'note' : 'notes'} on the card above</p>{/if}
 		{:else if c.exclusion}
@@ -101,6 +106,9 @@
 		align-items: center;
 		gap: 6px;
 		font-weight: 600;
+		font-size: 0.875rem;
+	}
+	.cp-calc-rec {
 		font-size: 0.875rem;
 	}
 	.cp-calc-cls {

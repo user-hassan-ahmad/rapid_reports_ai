@@ -129,6 +129,11 @@ export interface Verdict {
 	pill: string;
 	/** No outcome yet, but a likeliest one (planned `most_likely`): coloured, drawn dashed. */
 	tentative?: boolean;
+	/** The card does not apply (state does_not_apply): only this dims and mutes. An outcome whose category is
+	 *  not_applicable (e.g. "manage as solid") or info is a real verdict and stays fully legible. */
+	excluded?: boolean;
+	/** The outcome's full recommendation: always shown beside the short action (an action can drop later steps). */
+	recommendation: string;
 	headline: string;
 	action: string;
 	classification: string;
@@ -158,8 +163,10 @@ export function verdictOf(p: Preview | null | undefined, o: VerdictOverride = {}
 		return {
 			category: 'not_applicable',
 			pill: 'Does not apply',
+			excluded: true,
 			headline: o.headline ?? x?.headline ?? (x ? headlineOf(x.classification) : 'Does not apply'),
 			action: '',
+			recommendation: x?.recommendation ?? '',
 			classification: x?.classification ?? '',
 			caveats: x?.caveats ?? [],
 			citations: x?.citations ?? []
@@ -168,12 +175,12 @@ export function verdictOf(p: Preview | null | undefined, o: VerdictOverride = {}
 	const out = outcomeOf(p);
 	if (!out && p.most_likely?.headline) {
 		const m = p.most_likely;
-		return { category: m.category ?? 'neutral', pill: `Likely: ${m.headline}`, headline: m.headline, action: m.action ?? '', classification: '', caveats: [], citations: [], tentative: true };
+		return { category: m.category ?? 'neutral', pill: `Likely: ${m.headline}`, headline: m.headline, action: m.action ?? '', recommendation: '', classification: '', caveats: [], citations: [], tentative: true };
 	}
 	if (!out) {
 		const n = openQuestions(p).length;
 		const pill = n ? `${n} ${n === 1 ? 'question' : 'questions'} open` : p.possible.length > 1 ? `${p.possible.length} outcomes possible` : 'No outcome yet';
-		return { category: 'open', pill, headline: '', action: '', classification: '', caveats: [], citations: [] };
+		return { category: 'open', pill, headline: '', action: '', recommendation: '', classification: '', caveats: [], citations: [] };
 	}
 	const headline = o.headline ?? out.headline ?? headlineOf(out.classification);
 	const action = o.action ?? out.action ?? actionOf(out.recommendation);
@@ -182,6 +189,7 @@ export function verdictOf(p: Preview | null | undefined, o: VerdictOverride = {}
 		pill: action || headline,
 		headline,
 		action,
+		recommendation: out.recommendation,
 		classification: out.classification,
 		caveats: out.caveats,
 		citations: out.citations
@@ -248,8 +256,8 @@ export const categoryText = (c: VerdictCategory) =>
 		surveillance: 'var(--rv-blue-text)',
 		workup: 'var(--rv-amber-text)',
 		refer: 'var(--rv-red-text)',
-		info: 'var(--rv-muted)',
-		not_applicable: 'var(--rv-muted)',
+		info: 'var(--rv-text)', // no management stated: neutral, but a real verdict, fully legible
+		not_applicable: 'var(--rv-text)', // the outcome's own category (e.g. manage as solid); muted only when excluded
 		neutral: 'var(--rv-text)',
 		open: 'var(--rv-muted)'
 	})[c];
@@ -261,8 +269,8 @@ export const categoryColor = (c: VerdictCategory) =>
 		surveillance: 'var(--rv-blue-line)',
 		workup: 'var(--rv-amber-line)',
 		refer: 'var(--rv-red-line)',
-		info: 'var(--rv-muted)',
-		not_applicable: 'var(--rv-muted)',
+		info: 'var(--rv-border-strong)',
+		not_applicable: 'var(--rv-border-strong)',
 		neutral: 'var(--rv-border-strong)', // not categorised yet (no backend category): no colour claim
 		open: 'var(--rv-muted)'
 	})[c];

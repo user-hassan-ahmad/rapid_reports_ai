@@ -19,7 +19,7 @@
 		workup: 'search',
 		refer: 'alert',
 		info: 'info',
-		not_applicable: 'slash',
+		not_applicable: 'info',
 		neutral: 'dot',
 		open: 'open'
 	};
@@ -29,6 +29,7 @@
 <span
 	class="cp-pill cp-pill--{verdict.category}"
 	class:cp-pill--tentative={verdict.tentative}
+	class:cp-pill--excluded={verdict.excluded}
 	style:--cp-cat={categoryColor(verdict.category)}
 	style:--cp-cat-text={categoryText(verdict.category)}
 	title={truncated ? words : undefined}
@@ -36,7 +37,7 @@
 	onpointerenter={measure}
 	onfocusin={measure}
 >
-	<span class="cp-pill-icon"><Icon name={icon[verdict.category]} size={12} /></span>
+	<span class="cp-pill-icon"><Icon name={verdict.excluded ? 'slash' : icon[verdict.category]} size={12} /></span>
 	<span class="cp-pill-text">{words}</span>
 </span>
 
@@ -64,11 +65,18 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	/* nothing decided yet: an outline, no wash */
-	.cp-pill--open,
+	/* neutral verdicts (info: no management stated; not_applicable as an outcome's own category; not categorised):
+	   an outline, no wash, but full-strength text, never faded or reassuring */
 	.cp-pill--info,
 	.cp-pill--neutral,
 	.cp-pill--not_applicable {
+		background: transparent;
+		color: var(--rv-text);
+		border-color: var(--rv-border-strong);
+	}
+	/* nothing decided yet, or the card does not apply: muted */
+	.cp-pill--open,
+	.cp-pill--excluded {
 		background: transparent;
 		color: var(--rv-muted);
 		border-color: var(--rv-border-strong);
@@ -80,9 +88,5 @@
 	.cp-pill--tentative {
 		background: transparent;
 		border-style: dashed;
-	}
-	/* an outcome without a category yet: readable, but no colour claim */
-	.cp-pill--neutral {
-		color: var(--rv-text);
 	}
 </style>
