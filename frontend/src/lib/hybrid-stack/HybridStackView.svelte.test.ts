@@ -417,6 +417,25 @@ describe('HybridStackView v2', () => {
 		expect(props.onConfirm).toHaveBeenCalled();
 	});
 
+	it('the walkthrough offers one step to mark every open value not provided ("stated?" still needs a look)', async () => {
+		const onValuesRestNa = vi.fn();
+		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })];
+		const values = [
+			{ item: 'LVEF', state: 'open' as const, value: null, quote: null },
+			{ item: 'RVEF', state: 'open' as const, value: null, quote: null },
+			{ item: 'Conus level', state: 'check' as const, value: null, quote: null }
+		];
+		const props = { ...base(), units, onValuesRestNa, conclusion: { kind: 'draft', text: 'Liver cyst.', edited: false } as const, namedNormals: true };
+		const r = render(HybridStackView, { ...props, values });
+		await expect.element(page.getByRole('button', { name: 'Mark 2 not provided' })).not.toBeInTheDocument();
+		await page.getByRole('button', { name: 'Confirm · 3 to resolve' }).click();
+		await page.getByRole('button', { name: 'Mark 2 not provided' }).click();
+		expect(onValuesRestNa).toHaveBeenCalledOnce();
+		r.rerender({ ...props, values: [{ ...values[0], state: 'na' as const }, { ...values[1], state: 'na' as const }, values[2]] });
+		await expect.element(page.getByTestId('walkthrough')).toHaveTextContent('Required value · needs a look');
+		await expect.element(page.getByRole('button', { name: /not provided/ })).not.toBeInTheDocument();
+	});
+
 	it('a required-value editor holding unsaved text holds Confirm', async () => {
 		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })];
 		const values = [{ item: 'LVEF', state: 'entered' as const, value: '45%', quote: null }];

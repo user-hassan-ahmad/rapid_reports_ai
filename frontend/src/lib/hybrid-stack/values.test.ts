@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	blockingValues, chipLabel, enterValue, failFill, filledItems, initialChips, isFilling, keepStated, markNa, markRestNa, mergeFill,
-	naItems, startFill, valueStatements, valuesBody, valuesKey
+	naItems, openCount, pickValue, startFill, valueStatements, valuesBody, valuesKey
 } from './values';
 import type { ValueChip } from './types';
 
@@ -114,5 +114,28 @@ describe('value cluster chips', () => {
 		expect(valuesKey(markNa(a, 'RVEF'))).not.toBe(valuesKey(a));
 		expect(valuesKey(startFill(a))).not.toBe(valuesKey(a));
 		expect(valuesKey(enterValue(a, 'LVEF', '45'))).not.toBe(valuesKey(enterValue(a, 'LVEF', '46')));
+	});
+
+	it('a filled clause with two numbers carries them to pick; an open chip carries the clause picks', () => {
+		const picks = [{ clause: 'RVEF 50%.', value: '50%', numbers: [] }];
+		const c = mergeFill(initialChips(['LVEDVi', 'RVEF']), [
+			{ item: 'LVEDVi', state: 'filled', value: null, quote: 'LVEDVi 98 and LVESVi 40 ml/m2.', numbers: ['98 ml/m2', '40 ml/m2'] },
+			{ item: 'RVEF', state: 'open', value: null, quote: null, picks }
+		]);
+		expect(c[0]).toEqual({ item: 'LVEDVi', state: 'filled', value: null, quote: 'LVEDVi 98 and LVESVi 40 ml/m2.', numbers: ['98 ml/m2', '40 ml/m2'] });
+		expect(c[1]).toEqual({ ...open('RVEF'), picks });
+		expect(failFill(c)[1]).toEqual(open('RVEF')); // a failed fill drops picks that may no longer match the text
+	});
+
+	it('a picked number is entered and records its clause', () => {
+		const c = pickValue(initialChips(['RVEF']), 'RVEF', '50%', 'RVEF 50%.');
+		expect(c[0]).toEqual({ item: 'RVEF', state: 'entered', value: '50%', quote: null, picked_clause: 'RVEF 50%.' });
+		expect(valueStatements(c)).toEqual(['RVEF 50%']);
+	});
+
+	it('openCount counts open chips only ("stated?" still needs a look)', () => {
+		const c = mergeFill(initialChips(['LVEF', 'RVEF', 'Conus level']), [{ item: 'Conus level', state: 'filled', value: null, quote: null }]);
+		expect(openCount(c)).toBe(2);
+		expect(openCount(markRestNa(c))).toBe(0);
 	});
 });

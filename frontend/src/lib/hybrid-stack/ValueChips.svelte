@@ -4,10 +4,12 @@
 	// (stated, no sentence named: needs a look) or filling. Open and "stated?" chips block Confirm. Click a chip to
 	// type its value; "Mark rest N/A" closes every open one (a sequence not acquired). Each chip is a walkthrough stop
 	// (data-stop "value:<item>"), ringed while it is the current stop and opened to type. An editor holding unsaved
-	// text is reported up (onDraft) so Confirm waits for it.
+	// text is reported up (onDraft) so Confirm waits for it. An open chip's editor lists the dictation's number clauses
+	// (picks): one tap enters a clause's one number, or shows its numbers to choose from; a filled clause with several
+	// numbers shows them the same way (onPick enters the number and records the clause).
 	import { tick, untrack } from 'svelte';
 	import { chipLabel } from './values';
-	import type { ValueChip } from './types';
+	import type { ClausePick, ValueChip } from './types';
 
 	let {
 		values,
@@ -16,6 +18,7 @@
 		onNa,
 		onRestNa,
 		onKeep,
+		onPick = () => {},
 		onDraft = () => {}
 	}: {
 		values: ValueChip[];
@@ -27,12 +30,16 @@
 		onRestNa: () => void;
 		/** A "stated?" chip kept as stated. */
 		onKeep: (item: string) => void;
+		/** A number picked from a dictation clause: entered, with the clause recorded. */
+		onPick?: (item: string, value: string, clause: string) => void;
 		/** An editor is open with text that differs from its chip (true) or not (false). */
 		onDraft?: (dirty: boolean) => void;
 	} = $props();
 
 	let editing: string | null = $state(null);
 	let text = $state('');
+	// An open chip's pick holding several numbers: its numbers are shown to choose from
+	let pickFrom: ClausePick | null = $state(null);
 	let input: HTMLInputElement | null = $state(null);
 	const chipEls: Record<string, HTMLButtonElement | null> = $state({});
 	const dirty = $derived(editing !== null && text.trim() !== (values.find((v) => v.item === editing)?.value ?? ''));
@@ -58,6 +65,7 @@
 
 	async function edit(v: ValueChip) {
 		editing = v.item;
+		pickFrom = null;
 		text = v.value ?? '';
 		await tick();
 		input?.focus();
@@ -78,6 +86,15 @@
 		if (editing === null) return;
 		onNa(editing);
 		void close();
+	}
+	function choose(value: string, clause: string) {
+		if (editing === null) return;
+		onPick(editing, value, clause);
+		void close();
+	}
+	function pickClause(p: ClausePick) {
+		if (p.value) choose(p.value, p.clause);
+		else pickFrom = p;
 	}
 	function keep() {
 		if (editing === null) return;
@@ -125,6 +142,22 @@
 					{/if}
 					<button type="button" class="rounded border border-white/15 px-1.5 py-0.5 text-gray-400 hover:bg-white/[0.06]" onclick={na}>N/A</button>
 				</span>
+				{@const numbersOf = pickFrom ?? (v.quote && v.numbers?.length ? { clause: v.quote, value: null, numbers: v.numbers } : null)}
+				{#if numbersOf}
+					<span class="flex basis-full flex-wrap items-center gap-1 pl-1" data-testid="value-numbers">
+						<span class="text-gray-400">"{numbersOf.clause}"</span>
+						{#each numbersOf.numbers as n, i (i)}
+							<button type="button" class="rounded border border-sky-400/30 px-1.5 py-0.5 text-sky-200 hover:bg-sky-500/10" onclick={() => choose(n, numbersOf.clause)}>{n}</button>
+						{/each}
+					</span>
+				{:else if v.state === 'open' && v.picks?.length}
+					<span class="flex basis-full flex-wrap items-center gap-1 pl-1" data-testid="value-picks">
+						<span class="text-gray-500">From the dictation:</span>
+						{#each v.picks as p, i (i)}
+							<button type="button" class="max-w-full truncate rounded border border-white/15 px-1.5 py-0.5 text-gray-300 hover:bg-white/[0.06]" title={p.clause} onclick={() => pickClause(p)}>{p.clause}</button>
+						{/each}
+					</span>
+				{/if}
 			{:else}
 				<button type="button" class="rounded border px-1.5 py-0.5 {tone[v.state]} {ring(v)}" data-state={v.state} data-stop={`value:${v.item}`}
 					bind:this={chipEls[v.item]} aria-label={ariaLabel(v)} title={title(v)} onclick={() => edit(v)}>{chipLabel(v)}</button>

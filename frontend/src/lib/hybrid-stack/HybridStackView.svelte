@@ -12,6 +12,7 @@
 	import { anchorRegion, answerLabel, openCount, quietLine, rowSentences, unansweredChecks, waiting } from './items';
 	import type { StackItem, StackUnit, ValueChip, ViewRow } from './types';
 	import ValueChips from './ValueChips.svelte';
+	import { openCount as openValueChips } from './values';
 
 	export type ConclusionState =
 		| { kind: 'waiting' }
@@ -44,6 +45,7 @@
 		onValueNa = () => {},
 		onValuesRestNa = () => {},
 		onKeepValue = () => {},
+		onPickValue = () => {},
 		reviewing = false,
 		reviewWaiting = false,
 		reviewFailed = false,
@@ -113,6 +115,8 @@
 		onValuesRestNa?: () => void;
 		/** A "stated?" chip kept as stated. */
 		onKeepValue?: (item: string) => void;
+		/** A number picked from a dictation clause on a chip: entered, with the clause recorded. */
+		onPickValue?: (item: string, value: string, clause: string) => void;
 		/** The end-of-dictation review is running / will run when dictation stops. */
 		reviewing?: boolean;
 		reviewWaiting?: boolean;
@@ -211,6 +215,7 @@
 	// A finding row whose region has no card (the writer named a region outside the scratchpad) shows up top.
 	const looseRows = $derived(items.filter((i) => i.kind === 'finding' && !covered.has(anchorRegion(i, units))));
 	const openRows = $derived(openCount(items, tapped, removed, skipped));
+	const openValues = $derived(openValueChips(values));
 	const openValueCount = $derived(values.filter((v) => v.state === 'open' || v.state === 'check').length);
 	// A required-value editor holding unsaved text holds Confirm (like an inline line edit)
 	let valueDraft = $state(false);
@@ -843,7 +848,7 @@
 <svelte:window onkeydown={walkKey} />
 
 <div class="space-y-3" data-testid="hybrid-stack">
-	<ValueChips {values} {current} onEnter={onEnterValue} onNa={onValueNa} onRestNa={onValuesRestNa} onKeep={onKeepValue} onDraft={(d) => (valueDraft = d)} />
+	<ValueChips {values} {current} onEnter={onEnterValue} onNa={onValueNa} onRestNa={onValuesRestNa} onKeep={onKeepValue} onPick={onPickValue} onDraft={(d) => (valueDraft = d)} />
 	<!-- The scratchpad box (hand read 2026-10-12): one permanent, fixed-size box for what is being said now and a line
 	     to type into. It never changes size, so nothing below it jumps; longer text scrolls inside it, pinned to the
 	     latest line. -->
@@ -1163,6 +1168,8 @@
 			</p>
 			<span class="flex gap-1.5">
 				<button type="button" class="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-200" onclick={() => (walking = false)}>Exit</button>
+				<!-- One explicit step for the open required values (a sequence not acquired); "stated?" ones still need a look -->
+				{#if openValues}<button type="button" class="rounded-lg border border-amber-400/40 px-3 py-1.5 text-xs text-amber-200 hover:bg-amber-500/10" onclick={onValuesRestNa}>Mark {openValues} not provided</button>{/if}
 				{#if stops.length > 1}<button type="button" class="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-gray-200 hover:bg-white/[0.06]" onclick={nextStop}>Next ›</button>{/if}
 				{#if !stops.length}
 					<button type="button" class="rounded-lg bg-purple-700 px-4 py-1.5 text-xs font-medium text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-40"

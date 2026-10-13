@@ -60,9 +60,23 @@ export interface SlimSheet { id: string | null; region_normals: Record<string, s
 /** The value cluster (requirements spec 2026-10-12 part 1): a template's required value and how it was resolved.
  *  check: stated, but no single sentence named (needs a look); filling: a fill is running. */
 export type ValueState = 'filled' | 'entered' | 'na' | 'open' | 'check' | 'filling';
-export interface ValueChip { item: string; state: ValueState; value: string | null; quote: string | null; kept?: boolean }
+/** A number-bearing clause of the dictation offered on an open chip: one number (value) or several to choose from. */
+export interface ClausePick { clause: string; value: string | null; numbers: string[] }
+export interface ValueChip {
+	item: string;
+	state: ValueState;
+	value: string | null;
+	quote: string | null;
+	kept?: boolean;
+	/** Filled from a clause with two or more numbers: each selectable. */
+	numbers?: string[];
+	/** Open: the dictation's number clauses to pick from, best first. */
+	picks?: ClausePick[];
+	/** Entered by picking a number from this clause (for a future alias store). */
+	picked_clause?: string;
+}
 /** The server's smart fill: filled from the dictation (value null: stated without one number) or open. */
-export interface ValueFill { item: string; state: 'filled' | 'open'; value: string | null; quote: string | null; score?: number | null }
+export interface ValueFill { item: string; state: 'filled' | 'open'; value: string | null; quote: string | null; score?: number | null; numbers?: string[]; picks?: ClausePick[] }
 export interface ValuesResult { values: ValueFill[]; ms: number; error: string | null }
 /** Region -> normals the assumed-normal check dropped, with why. */
 export type Dropped = Record<string, { sentence: string; reason: string }[]>;

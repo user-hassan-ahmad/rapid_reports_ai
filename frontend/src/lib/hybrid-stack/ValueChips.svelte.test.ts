@@ -104,4 +104,30 @@ describe('ValueChips', () => {
 		render(ValueChips, { ...props(), values: [] });
 		await expect.element(page.getByTestId('value-cluster')).not.toBeInTheDocument();
 	});
+
+	it('a filled clause with two numbers shows the clause and enters the tapped number', async () => {
+		const onPick = vi.fn();
+		const values: ValueChip[] = [{ item: 'LVEDVi', state: 'filled', value: null, quote: 'LVEDVi 98 and LVESVi 40 ml/m2.', numbers: ['98 ml/m2', '40 ml/m2'] }];
+		render(ValueChips, { ...props(), values, onPick });
+		await page.getByRole('button', { name: /^LVEDVi stated/ }).click();
+		await expect.element(page.getByTestId('value-numbers')).toHaveTextContent('LVEDVi 98 and LVESVi 40 ml/m2.');
+		await page.getByRole('button', { name: '98 ml/m2' }).click();
+		expect(onPick).toHaveBeenCalledWith('LVEDVi', '98 ml/m2', 'LVEDVi 98 and LVESVi 40 ml/m2.');
+	});
+
+	it('an open chip offers the dictation clauses; a one-number pick enters it, a two-number pick offers its numbers', async () => {
+		const onPick = vi.fn();
+		const values: ValueChip[] = [{ item: 'RVEF', state: 'open', value: null, quote: null, picks: [
+			{ clause: 'RVEF 50%.', value: '50%', numbers: [] },
+			{ clause: 'RVEDVi 90 and RVESVi 45 ml/m2.', value: null, numbers: ['90 ml/m2', '45 ml/m2'] }
+		] }];
+		render(ValueChips, { ...props(), values, onPick });
+		await page.getByRole('button', { name: 'RVEF —' }).click();
+		await page.getByRole('button', { name: 'RVEF 50%.' }).click();
+		expect(onPick).toHaveBeenCalledWith('RVEF', '50%', 'RVEF 50%.');
+		await page.getByRole('button', { name: 'RVEF —' }).click();
+		await page.getByRole('button', { name: 'RVEDVi 90 and RVESVi 45 ml/m2.' }).click();
+		await page.getByRole('button', { name: '45 ml/m2' }).click();
+		expect(onPick).toHaveBeenLastCalledWith('RVEF', '45 ml/m2', 'RVEDVi 90 and RVESVi 45 ml/m2.');
+	});
 });
