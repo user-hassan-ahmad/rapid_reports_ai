@@ -110,3 +110,16 @@ async def store_examples(db, template_id, texts: list[str]) -> int:
         raise
     logger.info("template examples %s: stored=%d held_back=%d", tid, len(kept), held)
     return len(kept)
+
+
+def stored_texts(db, template_id, limit: int = MAX_EXAMPLES) -> list[str]:
+    """The template's stored (scrubbed) example reports, newest first; [] on any error (the first-use review then
+    shows only the Style-step cards)."""
+    try:
+        tid = template_id if isinstance(template_id, uuid.UUID) else uuid.UUID(str(template_id))
+        rows = (db.query(TemplateExample.text).filter(TemplateExample.template_id == tid)
+                .order_by(TemplateExample.created_at.desc()).limit(limit).all())
+        return [t for (t,) in rows if t]
+    except Exception as e:
+        logger.warning("template examples not read for %s: %s", template_id, type(e).__name__)
+        return []

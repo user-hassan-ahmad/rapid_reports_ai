@@ -270,6 +270,13 @@ def _outside_quotes(text: str) -> str:
 # A statement of absence. In prose it should be a NEGATIVE unit. Normal-state voice ("the ducts are not
 # dilated") is not an absence statement and stays prose.
 _ABSENCE_START = re.compile(r"^(?:No|There\s+is\s+no|There\s+are\s+no|Without|Absent|Nil|Negative\s+for)\b", re.I)
+
+
+def absence_worded(text: str) -> bool:
+    """The sentence opens as a statement of absence ("No …", "There is no …", "Without …")."""
+    return bool(_ABSENCE_START.match(text or ""))
+
+
 _ABSENCE_ANY = re.compile(
     r"\b(?:is|are)\s+absent\b"
     r"|^Free\s+of\b"  # "Free of X."
@@ -728,7 +735,7 @@ def _parse_unit(i, raw, body, keyword, ctx: _Ctx, by_name, default_section, err,
                             "condition_source": cond[0] if cond else "findings", "source_lines": [raw],
                             "origin": origin, "targets": targets}
     if keyword == "FIXED":
-        return "fixed", {"section": section, "text": m.group(1)}
+        return "fixed", {"section": section, "text": m.group(1), "source_line": raw}
     if keyword == "TERM":
         return "term", {"kind": m.group(1), "text": m.group(2)}
     if keyword == "IF_PRESENT":

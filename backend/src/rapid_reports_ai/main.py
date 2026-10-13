@@ -75,6 +75,7 @@ from . import template_sheet_grammar as tsg
 from . import template_sheet_save as tsave
 from . import template_examples
 from . import template_chat_turns
+from . import template_decisions as td
 from .auth import (
     verify_password,
     get_password_hash,
@@ -730,6 +731,7 @@ class SkillSheetAnalyzeRequest(BaseModel):
     scan_type: str
     examples: List[SkillSheetExample]  # 1-5 example reports
     protocol_notes: Optional[str] = ""
+    changes: List[Dict[str, Any]] = []   # Rules-step card answers [{kind, key, choice, source?}]
 
 class SkillSheetGenerateTestCaseRequest(BaseModel):
     scan_type: str
@@ -749,6 +751,7 @@ class SkillSheetRefineRequest(BaseModel):
     chat_history: Optional[List[SkillSheetChatMessage]] = None
     rejection_context: Optional[SkillSheetRejectionContext] = None
     template_id: Optional[str] = None   # the saved template this chat edits (None in the creator): the turn is recorded
+    decisions: Optional[List[Dict[str, Any]]] = None   # the template's decision ledger (None: not tracked)
 
 class SkillSheetTestGenerateRequest(BaseModel):
     skill_sheet: str
@@ -761,6 +764,11 @@ class SkillSheetDiversityCheckRequest(BaseModel):
     examples: List[SkillSheetExample]
 
 
+SKILL_SHEET_MAX_CHARS = 200_000   # request caps for the decision-ledger endpoints
+LEDGER_MAX_ITEMS = 200
+RULES_STEP_MAX_CHARS = 50_000
+
+
 class SkillSheetSaveRequest(BaseModel):
     skill_sheet: str
     scan_type: str
@@ -769,6 +777,38 @@ class SkillSheetSaveRequest(BaseModel):
     analyser_version: str = ""  # the writer that produced the sheet (evidence stamp; "" when unknown)
     examples: List[SkillSheetExample] = []  # the pasted examples: stored de-identified with the template
     chat_turns: List[Dict[str, Any]] = []   # the creator's chat-to-edit turns (stored by D5)
+    decisions: List[Dict[str, Any]] = []   # the decision ledger from the Rules step (applied at save)
+    rules_step: Dict[str, Any] = {}        # evidence: the decision run's record (cards, dropped quotes, habits)
+
+    @field_validator("rules_step")
+    @classmethod
+    def _rules_step_size(cls, v):
+        if len(json.dumps(v, default=str)) > RULES_STEP_MAX_CHARS:
+            raise ValueError("rules_step is too large")
+        return v
+
+
+class SkillSheetApplyDecisionsRequest(BaseModel):
+    skill_sheet: str = Field(max_length=SKILL_SHEET_MAX_CHARS)
+    decisions: List[Dict[str, Any]] = Field(default=[], max_length=LEDGER_MAX_ITEMS)   # the ledger so far
+    changes: List[Dict[str, Any]] = Field(default=[], max_length=LEDGER_MAX_ITEMS)     # card answers [{kind, key, choice, source?}]
+    source: str = "creation"               # creation | first_use_review (chat goes through /refine)
+
+
+class SkillSheetDecideRequest(BaseModel):
+    scan_type: str = ""
+    examples: List[SkillSheetExample] = []
+    template_id: Optional[str] = None      # a saved template: its stored examples and current values
+    # the study setup (SkillSheetCreator's template name and protocol notes; scan_type above), read first by the
+    # decision run. Truncated to template_decision_run's SETUP_* caps, never refused.
+    template_name: str = ""
+    protocol_notes: str = ""
+
+
+NO_PRECHECK = "We couldn't pre-check your rules; review them on the Style step."
+MIN_DECIDE_EXAMPLES = 2
+MAX_DECIDE_EXAMPLES = 5            # as /skill-sheet/analyze
+DECIDE_EXAMPLE_MAX_CHARS = 20_000  # per example report
 
 
 # Quick Report Proto — ephemeral skill sheet pipeline
@@ -1664,6 +1704,14 @@ def _carry_structure(new_config: dict, old_config: dict) -> dict:
         new["sheet_structure"] = old["sheet_structure"]
     if not new.get("analyser_version") and old.get("analyser_version"):
         new["analyser_version"] = old["analyser_version"]   # the writer of the base sheet survives edits
+    for k in ("decisions", "rules_step"):   # the decision ledger and its run record survive a PUT that omits them
+        if k not in new and old.get(k):
+            new[k] = old[k]
+    # ledger entries the sheet could not take are server-written only (the save function reports them): a client
+    # copy is dropped, the stored one carried until the next vet recomputes it
+    new.pop("ledger_unmatched", None)
+    if old.get("ledger_unmatched"):
+        new["ledger_unmatched"] = old["ledger_unmatched"]
     return new
 
 
@@ -1671,32 +1719,45 @@ SWITCH_MODE_REFUSED = "This template can't be switched to another mode."
 
 
 async def _vet_config(new_cfg: Optional[dict], old_cfg: Optional[dict], origin: str,
-                      creating: bool = False) -> Tuple[Optional[dict], str, str]:
+                      creating: bool = False) -> Tuple[Optional[dict], str, str, List[dict]]:
     """Run the one save function (template_sheet_save.vet_sheet) when a guided template's sheet changes.
-    Returns (config to store, refusal message or "", notice or ""). coverage_sections comes from the parse.
+    Returns (config to store, refusal message or "", notice or "", cards). coverage_sections comes from the parse.
+    cards: whole decided items a chat edit would have removed (kept; the notice says to use the card). The ledger
+    entries the sheet could not take are stored as ledger_unmatched and shown as cards at the next review (/decide).
     Also refuses emptying a guided sheet (or creating a guided template without one) and switching a
     grammar-sheet template to another generation mode."""
     old = old_cfg or {}
     before = old.get("skill_sheet") or ""
     if not new_cfg:
-        return new_cfg, "", ""
+        return new_cfg, "", "", []
     if new_cfg.get("generation_mode") != "skill_sheet_guided":
         if old.get("generation_mode") == "skill_sheet_guided" and tsg.is_grammar_sheet(before):
-            return None, SWITCH_MODE_REFUSED, ""
-        return new_cfg, "", ""
+            return None, SWITCH_MODE_REFUSED, "", []
+        return new_cfg, "", "", []
     sheet = new_cfg.get("skill_sheet") or ""
     if not sheet:
         if creating or before:
-            return None, tsave.LOST_STRUCTURE, ""
-        return new_cfg, "", ""
-    if sheet == before:
-        return new_cfg, "", ""
-    out = await tsave.vet_sheet(sheet, origin=origin, previous=before)
+            return None, tsave.LOST_STRUCTURE, "", []
+        return new_cfg, "", "", []
+    # the decision ledger: the incoming config's, else the stored one (a restore of a version without decisions,
+    # a client that does not send them); applied by the save function even when only the ledger changed
+    stored = td.clean_ledger(old.get("decisions"))
+    ledger = td.clean_ledger(new_cfg["decisions"]) if isinstance(new_cfg.get("decisions"), list) else stored
+    if sheet == before and ledger == stored:
+        return new_cfg, "", "", []
+    out = await tsave.vet_sheet(sheet, origin=origin, previous=before, ledger=ledger or None)
     if out.status == "refused":
-        return None, out.message, ""
+        return None, out.message, "", []
+    if ledger:
+        cfg = {**new_cfg, "decisions": out.ledger, "ledger_unmatched": out.ledger_unmatched}
+    else:
+        cfg = {k: v for k, v in new_cfg.items() if k != "ledger_unmatched"}
     if out.status == "unchanged":
-        return new_cfg, "", ""
-    return {**new_cfg, "skill_sheet": out.sheet, "coverage_sections": out.coverage_sections}, "", out.message or ""
+        return cfg, "", "", []
+    notes = [td.describe_change(c) for c in out.ledger_changes] + ([tsave.LEDGER_KEPT] if out.ledger_cards else [])
+    notice = " ".join(x for x in [out.message or "", *notes] if x)
+    return ({**cfg, "skill_sheet": out.sheet, "coverage_sections": out.coverage_sections}, "", notice,
+            out.ledger_cards)
 
 
 def _queue_structure(template_id: str, config: dict) -> None:
@@ -1733,7 +1794,7 @@ async def create_template_endpoint(
         if not template_data.template_config:
             return {"success": False, "error": "template_config is required"}
         normalized_config = _carry_structure(_normalize_template_config_styles(template_data.template_config), {})
-        normalized_config, refusal, _ = await _vet_config(normalized_config, {}, "analyser", creating=True)
+        normalized_config, refusal, _, _ = await _vet_config(normalized_config, {}, "analyser", creating=True)
         if refusal:
             return {"success": False, "error": refusal}
         template = create_template(
@@ -1766,13 +1827,15 @@ async def update_template_endpoint(
         # Normalize style_templates before persisting
         template_config = template_data.template_config
         notice = ""
+        kept_cards: List[dict] = []
         if template_config:
             template_config = _normalize_template_config_styles(template_config)
             existing = get_template(db, template_id, user_id=str(current_user.id))
             if not existing:
                 return {"success": False, "error": "Template not found"}
             template_config = _carry_structure(template_config, existing.template_config or {})
-            template_config, refusal, notice = await _vet_config(template_config, existing.template_config, "chat")
+            template_config, refusal, notice, kept_cards = await _vet_config(template_config, existing.template_config,
+                                                                          "chat")
             if refusal:
                 return {"success": False, "error": refusal}
         updated_template = update_template(
@@ -1793,6 +1856,8 @@ async def update_template_endpoint(
         out = {"success": True, "template": updated_template.to_dict()}
         if notice:
             out["notice"] = notice
+        if kept_cards:   # D3: the LEDGER_KEPT notice promises a card
+            out["cards"] = kept_cards
         return out
     except Exception as e:
         import traceback
@@ -2328,7 +2393,7 @@ async def restore_template_version_endpoint(
         vcfg = version.template_config or {}
         if vcfg.get("generation_mode") == "skill_sheet_guided" and not tsg.is_grammar_sheet(vcfg.get("skill_sheet") or ""):
             return {"success": False, "error": "This version is from before the template upgrade and can't be restored."}
-        vetted, refusal, notice = await _vet_config(_carry_structure(vcfg, current_cfg), current_cfg, "restore")
+        vetted, refusal, notice, _ = await _vet_config(_carry_structure(vcfg, current_cfg), current_cfg, "restore")
         if refusal:
             return {"success": False, "error": refusal}
         restored_template = restore_template_version(
@@ -2612,10 +2677,12 @@ async def skill_sheet_analyze_endpoint(
         from . import template_writer
 
         # The grammar analyser writes the sheet (vetted by the save function); the test case runs in parallel.
+        ledger, _ = td.ledger_from_changes(request.changes, source="creation")
         analysis_task = template_writer.write_sheet(
             [{"label": e["label"] or "", "content": e["content"]} for e in examples],
             request.scan_type,
             protocol_notes,
+            decisions=ledger or None,
         )
         test_case_task = tm.generate_test_case(
             examples=examples,
@@ -2727,7 +2794,9 @@ async def skill_sheet_refine_endpoint(
 
         # vet the edit now (the save function, origin "chat") so a refusal reaches the radiologist at the moment of
         # the edit; the template PUT vets again when the panel saves
-        v = await tsave.vet_sheet(result.get("skill_sheet", ""), origin="chat", previous=request.skill_sheet)
+        decisions = td.clean_ledger(request.decisions) if request.decisions is not None else None
+        v = await tsave.vet_sheet(result.get("skill_sheet", ""), origin="chat", previous=request.skill_sheet,
+                                  ledger=decisions)
         logger.info("  vet: %s %s", v.status, v.message[:300])
         if v.status == "refused":
             out = {"success": True, "skill_sheet": request.skill_sheet, "response": v.message,
@@ -2742,6 +2811,14 @@ async def skill_sheet_refine_endpoint(
             if v.message:  # ADJUSTED: saved, with a small repair
                 out["notice"] = v.message
                 out["response"] = f"{result.get('response', '').rstrip()} {v.message}".strip()
+            notes = [n for n in (td.describe_change(c) for c in v.ledger_changes) if n]
+            if v.ledger_cards:   # D3: a whole decided item removed by the rewrite is kept and asked about
+                notes.append(tsave.LEDGER_KEPT)
+                out["cards"] = v.ledger_cards
+            if notes:   # a chat edit that changes a confirmed decision says so
+                out["response"] = f"{out.get('response', '').rstrip()} {' '.join(notes)}".strip()
+        if decisions is not None:
+            out["decisions"] = v.ledger
         if request.template_id:   # evidence: the turn is stored with the template (never fails the reply)
             try:
                 owned = get_template(db, request.template_id, user_id=str(current_user.id))
@@ -2758,6 +2835,114 @@ async def skill_sheet_refine_endpoint(
     except Exception as e:
         logger.exception("skill sheet refine failed: %s", e)
         return {"success": False, "error": "Couldn't make that change just now. Please try again."}
+
+
+@app.post("/api/templates/skill-sheet/apply-decisions")
+async def skill_sheet_apply_decisions_endpoint(
+    request: SkillSheetApplyDecisionsRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Record card answers on the decision ledger and apply it to the sheet in hand, by code (no model call). The
+    creator keeps the result until Create; the refine panel PUTs it, where the save function applies it again."""
+    from . import template_ledger_apply as tla
+    if request.source not in ("creation", "first_use_review"):
+        return {"success": False, "error": "Unknown source."}
+    ledger, errors = td.ledger_from_changes(request.changes, base=td.clean_ledger(request.decisions),
+                                            source=request.source)
+    if errors:
+        return {"success": False, "error": f"Couldn't apply that choice ({errors[0]})."}
+    res = tla.apply_ledger(request.skill_sheet, ledger)
+    if res.failed:
+        logger.error("apply-decisions: entries not applied (a bug): %s", [e.get("key") for e in res.failed])
+    return {"success": True, "skill_sheet": res.sheet, "decisions": ledger, "applied": res.applied,
+            "unmatched": res.unmatched, "stale_quotes": res.stale_quotes}
+
+
+@app.post("/api/templates/skill-sheet/decide")
+async def skill_sheet_decide_endpoint(
+    request: SkillSheetDecideRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The Rules step: the decision run on the pasted examples (or a saved template's stored examples) as cards.
+    Fail-soft: a failed run returns no cards and a notice; nothing here blocks template creation."""
+    from . import template_decision_run as tdr
+    from . import template_rules_cards as trc
+    empty = {"success": True, "ran": False, "cards": [], "more": [], "kept": [], "defaults": [], "notice": "",
+             "run": {}}
+    if len(request.examples) > MAX_DECIDE_EXAMPLES:
+        return {**empty, "success": False, "error": f"Maximum {MAX_DECIDE_EXAMPLES} example reports allowed"}
+    if any(len(e.content) > DECIDE_EXAMPLE_MAX_CHARS for e in request.examples):
+        return {**empty, "success": False, "error": "An example report is too long"}
+    try:
+        examples = [e.content for e in request.examples if e.content.strip()]
+        scan_type = request.scan_type
+        name, protocol = request.template_name, request.protocol_notes
+        current: list = []
+        if request.template_id:
+            owned = get_template(db, request.template_id, user_id=str(current_user.id))
+            if not owned:
+                return {**empty, "success": False, "error": "Template not found"}
+            cfg = owned.template_config or {}
+            current = trc.current_value_cards(cfg.get("skill_sheet") or "", td.clean_ledger(cfg.get("decisions")))
+            have_ids = {c["id"] for c in current}
+            # ledger entries the sheet could not take at the last save (stored by _vet_config) come back as cards
+            current += [c for c in trc.unmatched_cards(cfg.get("ledger_unmatched")) if c["id"] not in have_ids]
+            scan_type = scan_type or cfg.get("scan_type") or ""
+            name = name or owned.name or ""
+            protocol = protocol or owned.description or ""
+            # first-use review only: a template that has decisions or a decision-run record is not re-run
+            reviewed = bool(cfg.get("decisions")) or bool(cfg.get("rules_step"))
+            if not examples and not reviewed:
+                examples = [x[:DECIDE_EXAMPLE_MAX_CHARS]
+                            for x in template_examples.stored_texts(db, owned.id, limit=MAX_DECIDE_EXAMPLES)]
+        if len(examples) < MIN_DECIDE_EXAMPLES:
+            return {**empty, "cards": current}
+        run = await tdr.run_decisions(examples, scan_type, tdr.study_setup(name, scan_type, protocol))
+        if not run.ok:
+            return {**empty, "cards": current, "notice": NO_PRECHECK, "run": tdr.evidence(run)}
+        built = trc.build_cards(run, len(examples))
+        have = {c["id"] for c in current}
+        kept = [c for c in built["kept"] if c["id"] not in have]
+        # the template's current values first, then the run's ranked cards; one budget across both. The run's
+        # "more" (overflow and values seen in one report) stays under "More" even when there is room.
+        open_ = [*current, *(c for c in built["cards"] if c["id"] not in have)]
+        out = {"cards": open_[:trc.MAX_CARDS],
+               "more": trc.group_more([*open_[trc.MAX_CARDS:],
+                                       *(c for c in trc.flat(built["more"]) if c["id"] not in have)]), "kept": kept}
+        record = tdr.evidence(run, out)
+        if request.template_id:   # first-use review: stamped once the cards exist, so it never runs twice
+            tdr.stamp_review(db, request.template_id, record)
+        return {"success": True, "ran": True, **out, "defaults": trc.defaults_of(kept), "notice": "",
+                "run": record}
+    except Exception as e:
+        logger.warning("skill-sheet decide failed: %s", type(e).__name__)
+        return {**empty, "notice": NO_PRECHECK}
+
+
+class SkillSheetChecksRequest(BaseModel):
+    skill_sheet: str = Field(max_length=SKILL_SHEET_MAX_CHARS)
+    decisions: List[Dict[str, Any]] = Field(default=[], max_length=LEDGER_MAX_ITEMS)
+
+
+SHEET_CHECKS_FAILED = {"fixed_cards": [], "duplicate_cards": [], "normal_report": [], "uncovered_cards": [],
+                       "unmatched_cards": [], "stale_quotes": [], "errors": ["all"]}
+
+
+@app.post("/api/templates/skill-sheet/sheet-checks")
+async def skill_sheet_checks_endpoint(
+    request: SkillSheetChecksRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """The Style step's checks: always-printed lines (Jev), lines that may state a decided concept twice (Jev), the
+    normal report, covered structures without a normal, and ledger entries to review. Fail-soft: a part that fails
+    is empty and named in "errors"; nothing here blocks the Style step."""
+    from . import template_sheet_review as tsr
+    try:
+        return {"success": True, **(await tsr.sheet_checks(request.skill_sheet, request.decisions))}
+    except Exception as e:
+        logger.warning("sheet checks failed: %s", type(e).__name__)
+        return {"success": True, **{k: list(v) for k, v in SHEET_CHECKS_FAILED.items()}}
 
 
 @app.post("/api/templates/skill-sheet/test-generate")
@@ -2806,13 +2991,15 @@ async def skill_sheet_save_endpoint(
         if not request.skill_sheet.strip():
             return {"success": False, "error": "Skill sheet is required"}
 
-        template_config, refusal, _ = await _vet_config({
-            "generation_mode": "skill_sheet_guided",
-            "skill_sheet": request.skill_sheet,
-            "scan_type": request.scan_type,
-        }, {}, "analyser", creating=True)
+        new_config = {"generation_mode": "skill_sheet_guided", "skill_sheet": request.skill_sheet,
+                      "scan_type": request.scan_type}
+        if request.decisions:
+            new_config["decisions"] = request.decisions
+        template_config, refusal, _, _ = await _vet_config(new_config, {}, "analyser", creating=True)
         if refusal:
             return {"success": False, "error": refusal}
+        if request.rules_step:
+            template_config = {**template_config, "rules_step": request.rules_step}
         if request.analyser_version:
             template_config = {**template_config, "analyser_version": request.analyser_version[:64]}
         logger.info("  coverage_sections: %s", template_config.get("coverage_sections"))

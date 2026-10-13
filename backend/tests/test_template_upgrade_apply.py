@@ -315,3 +315,17 @@ def test_listed_legacy_id_that_changed_is_reported(db_session, templates, tmp_pa
     assert _actions(summary)[str(legacy.id)] == "skipped-legacy-changed"
     db_session.expire_all()
     assert db_session.get(Template, legacy.id).is_active is True
+
+
+def test_the_stored_ledger_is_applied_to_the_upgraded_sheet(db_session, test_user, tmp_path, no_jev):
+    from rapid_reports_ai import template_decisions as td
+    led, _ = td.set_decision([], "value", "Width", {"need": "every"}, source="creation", at="t")
+    t = _make_template(db_session, test_user, "Knee 2", {"generation_mode": "skill_sheet_guided",
+                                                         "skill_sheet": OLD, "decisions": led})
+    summary = U.main(_manifest(tmp_path, t.id, GOOD), apply=True, db=db_session)
+    assert _actions(summary) == {str(t.id): "written"}
+    db_session.refresh(t)
+    assert 'LIST_MISSING ["Width"]' in t.template_config["skill_sheet"] and t.template_config["decisions"] == led
+    # a re-run sees its own vetted sheet as already written
+    again = U.main(_manifest(tmp_path, t.id, GOOD), apply=True, db=db_session)
+    assert _actions(again) == {str(t.id): "already-written"}

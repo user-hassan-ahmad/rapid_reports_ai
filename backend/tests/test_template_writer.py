@@ -26,7 +26,7 @@ def calls(monkeypatch):
         seen["system"], seen["user"], seen["settings"] = system, user, settings
         return _answer()
 
-    async def vet(sheet, origin, previous=""):
+    async def vet(sheet, origin, previous="", ledger=None):
         seen["vetted"], seen["origin"] = sheet, origin
         return VetOutcome("saved", sheet, message="Saved, with 1 statement reworded so the template stays consistent.",
                           dropped=[{"text": "VOICE x", "reason": "lint"}], coverage_sections=["FINDINGS"])
@@ -42,13 +42,14 @@ async def test_write_returns_a_vetted_sheet_summary_and_questions(calls):
     assert out["dropped"] == [{"text": "VOICE x", "reason": "lint"}]
     assert out["notice"] == "Saved, with 1 statement reworded so the template stays consistent."
     assert out["analyser_version"] == W.ANALYSER_VERSION
-    assert calls["system"] == P.ANALYSER_SYSTEM_PROMPT and calls["settings"] == P.ANALYSER_SETTINGS
+    assert calls["system"] == P.WRITER_SYSTEM_PROMPT and calls["settings"] == P.ANALYSER_SETTINGS
+    assert '"questions"' not in calls["user"] and P.DECIDED_HEADING not in calls["user"]
     assert "MRI knee" in calls["user"] and "notes here" in calls["user"] and "r1" in calls["user"]
     assert calls["origin"] == "analyser" and calls["vetted"] == GOOD.strip()
 
 
 async def test_write_raises_the_refusal_message(calls, monkeypatch):
-    async def refuse(sheet, origin, previous=""):
+    async def refuse(sheet, origin, previous="", ledger=None):
         return VetOutcome("refused", "", message="The sheet failed its checks, try again")
 
     monkeypatch.setattr(W, "vet_sheet", refuse)
@@ -89,7 +90,7 @@ def endpoint(monkeypatch):
 
 
 def test_analyze_returns_the_grammar_sheet_and_the_creator_keys(client, auth_headers, endpoint, monkeypatch):
-    async def write(examples, scan_type, protocol_notes=""):
+    async def write(examples, scan_type, protocol_notes="", decisions=None):
         assert [e["content"] for e in examples] == ["report 0", "report 1", "report 2"]
         return {"skill_sheet": GOOD, "summary": SUMMARY, "questions": QUESTIONS, "dropped": [],
                 "analyser_version": W.ANALYSER_VERSION}
@@ -102,9 +103,41 @@ def test_analyze_returns_the_grammar_sheet_and_the_creator_keys(client, auth_hea
 
 
 def test_analyze_returns_the_refusal_as_an_error(client, auth_headers, endpoint, monkeypatch):
-    async def write(examples, scan_type, protocol_notes=""):
+    async def write(examples, scan_type, protocol_notes="", decisions=None):
         raise ValueError("The sheet failed its checks, try again")
 
     monkeypatch.setattr(W, "write_sheet", write)
     r = _analyze(client, auth_headers)
     assert r == {"success": False, "error": "The sheet failed its checks, try again"}
+
+
+async def test_write_passes_the_decisions_to_the_save_function(calls, monkeypatch):
+    seen = {}
+
+    async def vet(sheet, origin, previous="", ledger=None):
+        seen["ledger"] = ledger
+        return VetOutcome("saved", sheet, ledger=list(ledger or []), ledger_drift=2)
+    monkeypatch.setattr(W, "vet_sheet", vet)
+    led = [{"kind": "value", "key": "A", "choice": {"need": "every"}, "by": "radiologist", "at": "t",
+            "source": "creation"}]
+    out = await W.write_sheet([{"label": "", "content": "r1"}], "MRI knee", decisions=led)
+    assert seen["ledger"] == led and out["decisions"] == led and out["ledger_drift"] == 2
+    out2 = await W.write_sheet([{"label": "", "content": "r1"}], "MRI knee")
+    assert seen["ledger"] is None and out2["decisions"] == []
+
+
+async def test_write_with_decisions_uses_the_decided_prompts_at_the_lab_temperature(calls, monkeypatch):
+    async def vet(sheet, origin, previous="", ledger=None):
+        return VetOutcome("saved", sheet, ledger=list(ledger or []))
+    monkeypatch.setattr(W, "vet_sheet", vet)
+    led = [{"kind": "value", "key": "Value A", "choice": {"need": "every"}, "by": "radiologist", "at": "t",
+            "source": "creation"}]
+    await W.write_sheet([{"label": "", "content": "r1"}], "<scan>", decisions=led)
+    assert calls["system"] == P.analyser_system_prompt(True) and P.DECIDED_HEADING in calls["user"]
+    assert calls["settings"] == P.DECIDED_WRITER_SETTINGS and P.DECIDED_WRITER_SETTINGS["temperature"] == 0.4
+    assert {k: v for k, v in P.DECIDED_WRITER_SETTINGS.items() if k != "temperature"} == \
+        {k: v for k, v in P.ANALYSER_SETTINGS.items() if k != "temperature"}
+    assert P.ANALYSER_SETTINGS["temperature"] == 0.8      # conversion and the undecided writer keep theirs
+    await W.write_sheet([{"label": "", "content": "r1"}], "<scan>")
+    assert calls["system"] == P.WRITER_SYSTEM_PROMPT and P.DECIDED_HEADING not in calls["user"]
+    assert calls["settings"] == P.ANALYSER_SETTINGS
