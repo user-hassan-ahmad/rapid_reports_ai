@@ -1707,6 +1707,11 @@ def _carry_structure(new_config: dict, old_config: dict) -> dict:
     for k in ("decisions", "rules_step"):   # the decision ledger and its run record survive a PUT that omits them
         if k not in new and old.get(k):
             new[k] = old[k]
+    # ledger entries the sheet could not take are server-written only (the save function reports them): a client
+    # copy is dropped, the stored one carried until the next vet recomputes it
+    new.pop("ledger_unmatched", None)
+    if old.get("ledger_unmatched"):
+        new["ledger_unmatched"] = old["ledger_unmatched"]
     return new
 
 
@@ -1714,39 +1719,45 @@ SWITCH_MODE_REFUSED = "This template can't be switched to another mode."
 
 
 async def _vet_config(new_cfg: Optional[dict], old_cfg: Optional[dict], origin: str,
-                      creating: bool = False) -> Tuple[Optional[dict], str, str]:
+                      creating: bool = False) -> Tuple[Optional[dict], str, str, List[dict]]:
     """Run the one save function (template_sheet_save.vet_sheet) when a guided template's sheet changes.
-    Returns (config to store, refusal message or "", notice or ""). coverage_sections comes from the parse.
+    Returns (config to store, refusal message or "", notice or "", cards). coverage_sections comes from the parse.
+    cards: whole decided items a chat edit would have removed (kept; the notice says to use the card). The ledger
+    entries the sheet could not take are stored as ledger_unmatched and shown as cards at the next review (/decide).
     Also refuses emptying a guided sheet (or creating a guided template without one) and switching a
     grammar-sheet template to another generation mode."""
     old = old_cfg or {}
     before = old.get("skill_sheet") or ""
     if not new_cfg:
-        return new_cfg, "", ""
+        return new_cfg, "", "", []
     if new_cfg.get("generation_mode") != "skill_sheet_guided":
         if old.get("generation_mode") == "skill_sheet_guided" and tsg.is_grammar_sheet(before):
-            return None, SWITCH_MODE_REFUSED, ""
-        return new_cfg, "", ""
+            return None, SWITCH_MODE_REFUSED, "", []
+        return new_cfg, "", "", []
     sheet = new_cfg.get("skill_sheet") or ""
     if not sheet:
         if creating or before:
-            return None, tsave.LOST_STRUCTURE, ""
-        return new_cfg, "", ""
+            return None, tsave.LOST_STRUCTURE, "", []
+        return new_cfg, "", "", []
     # the decision ledger: the incoming config's, else the stored one (a restore of a version without decisions,
     # a client that does not send them); applied by the save function even when only the ledger changed
     stored = td.clean_ledger(old.get("decisions"))
     ledger = td.clean_ledger(new_cfg["decisions"]) if isinstance(new_cfg.get("decisions"), list) else stored
     if sheet == before and ledger == stored:
-        return new_cfg, "", ""
+        return new_cfg, "", "", []
     out = await tsave.vet_sheet(sheet, origin=origin, previous=before, ledger=ledger or None)
     if out.status == "refused":
-        return None, out.message, ""
-    cfg = {**new_cfg, "decisions": out.ledger} if ledger else new_cfg
+        return None, out.message, "", []
+    if ledger:
+        cfg = {**new_cfg, "decisions": out.ledger, "ledger_unmatched": out.ledger_unmatched}
+    else:
+        cfg = {k: v for k, v in new_cfg.items() if k != "ledger_unmatched"}
     if out.status == "unchanged":
-        return cfg, "", ""
+        return cfg, "", "", []
     notes = [td.describe_change(c) for c in out.ledger_changes] + ([tsave.LEDGER_KEPT] if out.ledger_cards else [])
     notice = " ".join(x for x in [out.message or "", *notes] if x)
-    return {**cfg, "skill_sheet": out.sheet, "coverage_sections": out.coverage_sections}, "", notice
+    return ({**cfg, "skill_sheet": out.sheet, "coverage_sections": out.coverage_sections}, "", notice,
+            out.ledger_cards)
 
 
 def _queue_structure(template_id: str, config: dict) -> None:
@@ -1783,7 +1794,7 @@ async def create_template_endpoint(
         if not template_data.template_config:
             return {"success": False, "error": "template_config is required"}
         normalized_config = _carry_structure(_normalize_template_config_styles(template_data.template_config), {})
-        normalized_config, refusal, _ = await _vet_config(normalized_config, {}, "analyser", creating=True)
+        normalized_config, refusal, _, _ = await _vet_config(normalized_config, {}, "analyser", creating=True)
         if refusal:
             return {"success": False, "error": refusal}
         template = create_template(
@@ -1816,13 +1827,15 @@ async def update_template_endpoint(
         # Normalize style_templates before persisting
         template_config = template_data.template_config
         notice = ""
+        kept_cards: List[dict] = []
         if template_config:
             template_config = _normalize_template_config_styles(template_config)
             existing = get_template(db, template_id, user_id=str(current_user.id))
             if not existing:
                 return {"success": False, "error": "Template not found"}
             template_config = _carry_structure(template_config, existing.template_config or {})
-            template_config, refusal, notice = await _vet_config(template_config, existing.template_config, "chat")
+            template_config, refusal, notice, kept_cards = await _vet_config(template_config, existing.template_config,
+                                                                          "chat")
             if refusal:
                 return {"success": False, "error": refusal}
         updated_template = update_template(
@@ -1843,6 +1856,8 @@ async def update_template_endpoint(
         out = {"success": True, "template": updated_template.to_dict()}
         if notice:
             out["notice"] = notice
+        if kept_cards:   # D3: the LEDGER_KEPT notice promises a card
+            out["cards"] = kept_cards
         return out
     except Exception as e:
         import traceback
@@ -2378,7 +2393,7 @@ async def restore_template_version_endpoint(
         vcfg = version.template_config or {}
         if vcfg.get("generation_mode") == "skill_sheet_guided" and not tsg.is_grammar_sheet(vcfg.get("skill_sheet") or ""):
             return {"success": False, "error": "This version is from before the template upgrade and can't be restored."}
-        vetted, refusal, notice = await _vet_config(_carry_structure(vcfg, current_cfg), current_cfg, "restore")
+        vetted, refusal, notice, _ = await _vet_config(_carry_structure(vcfg, current_cfg), current_cfg, "restore")
         if refusal:
             return {"success": False, "error": refusal}
         restored_template = restore_template_version(
@@ -2870,6 +2885,9 @@ async def skill_sheet_decide_endpoint(
                 return {**empty, "success": False, "error": "Template not found"}
             cfg = owned.template_config or {}
             current = trc.current_value_cards(cfg.get("skill_sheet") or "", td.clean_ledger(cfg.get("decisions")))
+            have_ids = {c["id"] for c in current}
+            # ledger entries the sheet could not take at the last save (stored by _vet_config) come back as cards
+            current += [c for c in trc.unmatched_cards(cfg.get("ledger_unmatched")) if c["id"] not in have_ids]
             scan_type = scan_type or cfg.get("scan_type") or ""
             name = name or owned.name or ""
             protocol = protocol or owned.description or ""
@@ -2952,7 +2970,7 @@ async def skill_sheet_save_endpoint(
                       "scan_type": request.scan_type}
         if request.decisions:
             new_config["decisions"] = request.decisions
-        template_config, refusal, _ = await _vet_config(new_config, {}, "analyser", creating=True)
+        template_config, refusal, _, _ = await _vet_config(new_config, {}, "analyser", creating=True)
         if refusal:
             return {"success": False, "error": refusal}
         if request.rules_step:

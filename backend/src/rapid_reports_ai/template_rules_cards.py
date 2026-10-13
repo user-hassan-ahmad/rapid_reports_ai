@@ -145,6 +145,23 @@ def card_for_change(kind: str, key: str, proposed: dict) -> dict:
     return normal_card(key, proposed.get("text", ""), step="chat")
 
 
+UNMATCHED_NOTE = "This rule couldn't be placed in your template when it was last saved. Choose again or remove it."
+
+
+def unmatched_cards(entries) -> List[dict]:
+    """The review cards for ledger entries the sheet could not take at the last save (VetOutcome.ledger_unmatched,
+    stored as template_config["ledger_unmatched"]; spec "Failure behaviour": it becomes a card at the next review).
+    An entry code cannot read is skipped."""
+    out = []
+    for e in entries if isinstance(entries, list) else []:
+        try:
+            c = card_for_change(e["kind"], e["key"], e["choice"])
+        except (td.DecisionError, KeyError, TypeError):
+            continue
+        out.append({**c, "step": "review", "note": UNMATCHED_NOTE})
+    return out
+
+
 def defaults_of(cards: List[dict]) -> List[dict]:
     """The pre-ticked choice of each card, as a change [{kind, key, choice}]."""
     out = []

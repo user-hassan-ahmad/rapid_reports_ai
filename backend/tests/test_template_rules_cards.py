@@ -264,3 +264,13 @@ def test_a_concept_stated_in_the_setup_is_evidence_never_a_report_number():
     card = C.build_cards(run, 3)["cards"][0]
     assert card["evidence"][0] == {"reports": [], "source": "setup", "quote": None}
     assert C.evidence_line(card["evidence"][0]) == "study setup: stated"
+
+
+def test_unmatched_entries_become_review_cards_with_a_note():
+    from rapid_reports_ai import template_rules_cards as trc
+    entries = [{"kind": "fixed", "key": "A line the sheet lacks.", "choice": {"keep": "always"}},
+               {"kind": "fixed", "key": "", "choice": {"keep": "nonsense"}}]          # invalid: skipped
+    cards = trc.unmatched_cards(entries)
+    assert [c["key"] for c in cards] == ["A line the sheet lacks."]
+    assert cards[0]["step"] == "review" and cards[0]["note"] == trc.UNMATCHED_NOTE and cards[0]["selected"] is None
+    assert trc.unmatched_cards(None) == [] and trc.unmatched_cards("x") == []

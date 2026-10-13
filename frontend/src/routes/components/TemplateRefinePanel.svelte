@@ -4,6 +4,8 @@
 	import { API_URL } from '$lib/config';
 	import { token } from '$lib/stores/auth';
 	import { templatesStore } from '$lib/stores/templates';
+	import RulesStep from '$lib/template-rules/RulesStep.svelte';
+	import { postApplyDecisions, postDecide } from '$lib/template-rules/api';
 
 	const dispatch = createEventDispatcher();
 
@@ -32,12 +34,72 @@
 	let saveNotice = '';
 	let hasChanges = false;
 	let chatScrollEl = null;
+	/** @type {import('$lib/template-rules/types').LedgerEntry[]} */
+	let decisions = [];
+	/** @type {Record<string, unknown> | null} */
+	let rulesStep = null;
+	/** @type {import('$lib/template-rules/types').DecideResponse | null} */
+	let review = null;
+	let reviewLoading = false;
+	let reviewBusy = false;
+	let reviewDone = false;
+	let reviewOpen = false;
+	let reviewKey = 0;
 
 	$: if (template) {
 		skillSheet = template.template_config?.skill_sheet || '';
+		decisions = Array.isArray(template.template_config?.decisions) ? template.template_config.decisions : [];
+		rulesStep = template.template_config?.rules_step ?? null;
 		chatHistory = [];
 		hasChanges = false;
 		error = '';
+		reviewDone = false;
+		loadReview(template);
+	}
+
+	/** The Required-values card, the entries the last save could not place, and the first-use decision run when the
+	 * template has never been reviewed. Fail-soft: without it the panel works as before. */
+	async function loadReview(/** @type {any} */ t) {
+		review = null;
+		reviewOpen = false;
+		if (!t?.id) return;
+		reviewLoading = true;
+		try {
+			const r = await postDecide($token, { scan_type: t.template_config?.scan_type || '', examples: [], template_id: t.id });
+			if (r.success && t === template) review = r;
+		} catch (e) {
+			review = null;
+		} finally {
+			reviewLoading = false;
+		}
+	}
+
+	/** Cards a chat edit or a save returned: a confirmed item the edit would have removed was kept; ask about it. */
+	function showKeptCards(/** @type {any[]} */ cards) {
+		if (!Array.isArray(cards) || !cards.length) return;
+		review = { success: true, ran: false, cards, more: [], kept: [], defaults: [], notice: '', run: {} };
+		reviewDone = false;
+		reviewOpen = true;
+		reviewKey += 1;
+	}
+
+	async function applyReview(/** @type {import('$lib/template-rules/types').DecisionChange[]} */ changes) {
+		if (!changes.length) { reviewDone = true; return; }
+		reviewBusy = true;
+		error = '';
+		try {
+			const r = await postApplyDecisions($token, { skill_sheet: skillSheet, decisions, changes, source: 'first_use_review' });
+			if (!r.success) throw new Error(r.error || 'Could not apply that choice');
+			skillSheet = r.skill_sheet;
+			decisions = r.decisions;
+			if (review?.ran) rulesStep = { ...(review.run ?? {}), reviewed_at: new Date().toISOString() };
+			hasChanges = true;
+			reviewDone = true;
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+		} finally {
+			reviewBusy = false;
+		}
 	}
 
 	$: if (chatHistory.length && chatScrollEl) {
@@ -69,10 +131,13 @@
 				skill_sheet: skillSheet,
 				message: msg,
 				chat_history: toWireChatHistory(chatHistory.slice(0, -1)),
-				template_id: template?.id ?? null
+				template_id: template?.id ?? null,
+				decisions
 			});
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
+			if (Array.isArray(data.decisions)) decisions = data.decisions;
+			showKeptCards(data.cards);
 			chatHistory = [...chatHistory, { role: 'assistant', content: data.response }];
 			// a refused edit keeps the sheet and explains why (data.response); nothing changed to save
 			if (data.applied !== false) hasChanges = true;
@@ -102,7 +167,8 @@
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
 
 			// coverage_sections is derived server-side from the parsed sheet
-			const updatedConfig = { ...template.template_config, skill_sheet: skillSheet };
+			const updatedConfig = { ...template.template_config, skill_sheet: skillSheet, decisions,
+				...(rulesStep ? { rules_step: rulesStep } : {}) };
 
 			const res = await fetch(`${API_URL}/api/templates/${template.id}`, {
 				method: 'PUT',
@@ -121,6 +187,8 @@
 			hasChanges = false;
 			// the server may adjust the sheet; continue from what was stored (not reassigning `template` keeps the chat)
 			skillSheet = data.template?.template_config?.skill_sheet ?? skillSheet;
+			decisions = data.template?.template_config?.decisions ?? decisions;
+			showKeptCards(data.cards);
 			await templatesStore.refreshTemplates();
 			if (data.notice) {
 				// keep the panel open so the adjustment notice is seen
@@ -194,6 +262,21 @@
 
 		<!-- Chat messages -->
 		<div class="flex-1 overflow-y-auto px-5 py-4 space-y-3" bind:this={chatScrollEl}>
+			{#if reviewLoading}
+				<p class="text-xs text-gray-500">Checking your template's rules…</p>
+			{:else if reviewDone}
+				<p class="text-xs text-gray-400">Rules updated. Save to apply them to future reports.</p>
+			{:else if review && (review.cards.length || review.more.length || review.kept.length)}
+				<details class="rounded-lg border border-white/10 p-3" open={review.ran || reviewOpen}>
+					<summary class="text-sm text-gray-200 cursor-pointer">Your template's rules</summary>
+					<div class="pt-3">
+						{#key reviewKey}
+							<RulesStep cards={review.cards} more={review.more} kept={review.kept} defaults={review.defaults}
+								notice={review.notice} mode="review" busy={reviewBusy} onContinue={applyReview} />
+						{/key}
+					</div>
+				</details>
+			{/if}
 			{#if chatHistory.length === 0}
 				<div class="text-center py-6">
 					<p class="text-sm text-gray-500">Tell me what to change — a rule to add, terminology to adjust, a convention to encode.</p>

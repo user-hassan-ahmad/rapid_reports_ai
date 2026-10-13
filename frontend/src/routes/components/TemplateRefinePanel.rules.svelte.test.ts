@@ -1,0 +1,97 @@
+// The refine panel's rules review: Required values (and the first-use decision run) applied through the ledger;
+// the cards a save or a chat edit returns (a confirmed item kept) and stored unmatched entries come back as cards.
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { render } from 'vitest-browser-svelte';
+import { page, userEvent } from '@vitest/browser/context';
+import TemplateRefinePanel from './TemplateRefinePanel.svelte';
+
+const card = {
+	id: 'value:lvef', kind: 'value', step: 'review', title: 'LVEF', evidence: [], ledger_kind: 'value', key: 'LVEF',
+	choices: [
+		{ id: 'every', label: 'Every report', choice: { need: 'every' } },
+		{ id: 'relevant', label: 'Only when relevant', choice: { need: 'relevant' } },
+		{ id: 'not_needed', label: 'Not needed', choice: { need: 'not_needed' } }
+	],
+	selected: 'every', rank: 1
+};
+const template = { id: 't1', name: 'Cardiac', tags: [], template_config: { generation_mode: 'skill_sheet_guided', skill_sheet: 'SHEET', scan_type: 'MR' } };
+const KEPT = 'This would remove something you confirmed, so it was kept; use the card below to change it.';
+
+type Call = { url: string; body: any; method: string };
+
+afterEach(() => vi.unstubAllGlobals());
+
+function routes(calls: Call[], over: { decideCards?: unknown[]; refine?: unknown; put?: unknown } = {}) {
+	return vi.fn(async (url: string, init: RequestInit) => {
+		const body = init?.body ? JSON.parse(init.body as string) : null;
+		calls.push({ url, body, method: init?.method ?? 'GET' });
+		if (url.endsWith('/skill-sheet/decide'))
+			return new Response(JSON.stringify({ success: true, ran: false, cards: over.decideCards ?? [card], more: [], kept: [], defaults: [], notice: '', run: {} }));
+		if (url.endsWith('/skill-sheet/apply-decisions'))
+			return new Response(JSON.stringify({ success: true, skill_sheet: 'SHEET2', decisions: [{ kind: 'value', key: 'LVEF', choice: { need: 'not_needed' }, by: 'radiologist', at: 't', source: 'first_use_review' }], applied: [], unmatched: [], stale_quotes: [] }));
+		if (url.endsWith('/skill-sheet/refine') && over.refine) return new Response(JSON.stringify(over.refine));
+		if (url.endsWith('/api/templates/t1'))
+			return new Response(JSON.stringify(over.put ?? { success: true, template: { ...template, template_config: { ...template.template_config, skill_sheet: 'SHEET2' } } }));
+		return new Response(JSON.stringify({ success: true, templates: [] }));
+	});
+}
+
+describe('TemplateRefinePanel rules review', () => {
+	it('shows Required values, applies a change through the ledger and saves the ledger', async () => {
+		const calls: Call[] = [];
+		vi.stubGlobal('fetch', routes(calls));
+		render(TemplateRefinePanel, { template });
+		await expect.element(page.getByText("Your template's rules")).toBeInTheDocument();
+		await page.getByText("Your template's rules").click();
+		await page.getByRole('button', { name: 'LVEF: Not needed' }).click();
+		await page.getByRole('button', { name: 'Apply' }).click();
+		await expect.element(page.getByText('Rules updated. Save to apply them to future reports.')).toBeInTheDocument();
+		const apply = calls.find((c) => c.url.endsWith('/apply-decisions'))!;
+		expect(apply.body).toMatchObject({ skill_sheet: 'SHEET', source: 'first_use_review',
+			changes: [{ kind: 'value', key: 'LVEF', choice: { need: 'not_needed' }, source: 'first_use_review' }] });
+		await page.getByRole('button', { name: 'Save' }).click();
+		await vi.waitFor(() => expect(calls.some((c) => c.method === 'PUT')).toBe(true));
+		const put = calls.find((c) => c.method === 'PUT')!;
+		expect(put.body.template_config.skill_sheet).toBe('SHEET2');
+		expect(put.body.template_config.decisions[0]).toMatchObject({ key: 'LVEF', choice: { need: 'not_needed' } });
+		const decide = calls.find((c) => c.url.endsWith('/decide'))!;
+		expect(decide.body).toMatchObject({ template_id: 't1', examples: [], scan_type: 'MR' });
+	});
+
+	it('works without the review when the decide call fails', async () => {
+		vi.stubGlobal('fetch', vi.fn(async () => new Response('x', { status: 500 })));
+		render(TemplateRefinePanel, { template });
+		await expect.element(page.getByText('Tell me what to change', { exact: false })).toBeInTheDocument();
+		await expect.element(page.getByText("Your template's rules")).not.toBeInTheDocument();
+	});
+
+	it('shows the card a chat edit returns when it kept a confirmed item', async () => {
+		const calls: Call[] = [];
+		vi.stubGlobal('fetch', routes(calls, {
+			decideCards: [],
+			refine: { success: true, skill_sheet: 'SHEET', response: `Done. ${KEPT}`, applied: true, cards: [{ ...card, step: 'chat', selected: null }], decisions: [] }
+		}));
+		render(TemplateRefinePanel, { template });
+		await userEvent.fill(page.getByPlaceholder('e.g. Always mention', { exact: false }), 'remove the values');
+		await page.getByRole('button', { name: 'Send' }).click();
+		await expect.element(page.getByText(KEPT, { exact: false })).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'LVEF: Not needed' })).toBeInTheDocument();
+		const refine = calls.find((c) => c.url.endsWith('/refine'))!;
+		expect(refine.body.decisions).toEqual([]);
+	});
+
+	it('shows the card the save returns when it kept a confirmed item', async () => {
+		const calls: Call[] = [];
+		vi.stubGlobal('fetch', routes(calls, {
+			decideCards: [],
+			refine: { success: true, skill_sheet: 'SHEET3', response: 'Done.', applied: true },
+			put: { success: true, notice: KEPT, cards: [{ ...card, step: 'chat', selected: null }], template: { ...template } }
+		}));
+		render(TemplateRefinePanel, { template });
+		await userEvent.fill(page.getByPlaceholder('e.g. Always mention', { exact: false }), 'tidy it');
+		await page.getByRole('button', { name: 'Send' }).click();
+		await page.getByRole('button', { name: 'Save' }).click();
+		await expect.element(page.getByText(KEPT)).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'LVEF: Not needed' })).toBeInTheDocument();
+	});
+});

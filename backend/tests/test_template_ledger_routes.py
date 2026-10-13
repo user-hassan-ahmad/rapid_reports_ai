@@ -195,3 +195,54 @@ def test_creator_save_caps_the_rules_step_record(client, auth_headers):
     r = client.post("/api/templates/skill-sheet/save", headers=auth_headers, json={
         "skill_sheet": GOOD, "scan_type": "MRI knee", "template_name": "Knee", "rules_step": {"x": "y" * 50_001}})
     assert r.status_code == 422
+
+
+# ── Phase 1 carry-over (Phase 3): unmatched entries are stored and become cards; the PUT's kept item is a card ──
+
+MISSING = "A line the sheet lacks."
+
+
+def _missing_fixed():
+    led, _ = td.set_decision(_width(), "fixed", MISSING, {"keep": "always"}, source="creation", at="t")
+    return led
+
+
+def test_a_put_stores_the_unmatched_entries_with_the_template(client, auth_headers):
+    t = _guided(client, auth_headers)["template"]
+    r = _put(client, auth_headers, t, {**t["template_config"], "decisions": _missing_fixed()})
+    assert r["success"], r
+    cfg = _get(client, auth_headers, t["id"])["template_config"]
+    assert [e["key"] for e in cfg["ledger_unmatched"]] == [MISSING]
+    # once the entry is gone from the ledger, nothing is left unmatched
+    r = _put(client, auth_headers, t, {**cfg, "decisions": _width()})
+    assert r["success"], r
+    assert _get(client, auth_headers, t["id"])["template_config"]["ledger_unmatched"] == []
+
+
+def test_a_client_copy_of_the_unmatched_entries_is_never_stored(client, auth_headers):
+    t = _guided(client, auth_headers)["template"]
+    r = _put(client, auth_headers, t, {**t["template_config"], "ledger_unmatched": [{"kind": "fixed", "key": "x"}]})
+    assert r["success"], r
+    assert "ledger_unmatched" not in _get(client, auth_headers, t["id"])["template_config"]
+
+
+def test_a_put_that_drops_a_whole_decided_list_keeps_it_and_returns_the_card(client, auth_headers):
+    t = _guided(client, auth_headers)["template"]
+    _put(client, auth_headers, t, {**t["template_config"], "decisions": _width()})
+    stored = _get(client, auth_headers, t["id"])
+    cfg = stored["template_config"]
+    dropped = "\n".join(ln for ln in cfg["skill_sheet"].split("\n") if "LIST_MISSING" not in ln)
+    r = _put(client, auth_headers, stored, {**cfg, "skill_sheet": dropped})
+    assert r["success"], r
+    assert [c["id"] for c in r["cards"]] == ["value:width"] and r["notice"].endswith(S.LEDGER_KEPT)
+    assert LINE in _get(client, auth_headers, t["id"])["template_config"]["skill_sheet"]
+
+
+def test_decide_shows_a_saved_templates_unmatched_entries_as_cards(client, auth_headers):
+    t = _guided(client, auth_headers)["template"]
+    _put(client, auth_headers, t, {**t["template_config"], "decisions": _missing_fixed()})
+    r = client.post("/api/templates/skill-sheet/decide", headers=auth_headers, json={"template_id": t["id"]}).json()
+    assert r["success"] and r["ran"] is False
+    fixed = [c for c in r["cards"] if c["ledger_kind"] == "fixed"]
+    assert [c["key"] for c in fixed] == [MISSING] and fixed[0]["step"] == "review" and fixed[0]["note"]
+    assert [c["id"] for c in r["cards"] if c["kind"] == "value"] == ["value:width"]
