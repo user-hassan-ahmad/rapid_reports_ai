@@ -68,6 +68,10 @@ DECIDING_CANDIDATES = 3   # the first unknown inputs, in `needed` order, tried a
 EVAL_CAP = 32             # engine evaluations one preview or Calculate may spend on most_likely, deciding and the like
 
 
+def _ev_key(given: dict[str, InputValue], assume: bool) -> tuple:
+    return (assume, tuple(sorted((k, v.state, repr(v.value), v.band) for k, v in given.items())))
+
+
 class _Evals:
     """Engine evaluations within one preview or Calculate: memoised by their values and capped at EVAL_CAP (review
     I-3), so the extras (show all, the deciding question, the exclusion reason) never cost a tap more than a few runs.
@@ -77,7 +81,7 @@ class _Evals:
         self.e, self.memo, self.left = e, {}, cap
 
     def __call__(self, given: dict[str, InputValue], assume: bool) -> "engine.Trace | None":
-        key = (assume, tuple(sorted((k, v.state, repr(v.value), v.band) for k, v in given.items())))
+        key = _ev_key(given, assume)
         if key in self.memo:
             return self.memo[key]
         if self.left <= 0:
@@ -261,12 +265,13 @@ def _hedged_cancer(i: InputDef, v: InputValue, quote: str, texts: list[str] | No
     if _HEDGE.search(quote):
         return True
     for t in texts or []:
-        n = (t or "").find(quote)
+        low, q = (t or "").lower(), quote.lower()          # quotes pass a case-insensitive verbatim check (M8)
+        n = low.find(q)
         while n >= 0:
             start = max((m.end() for m in _SENTENCE_END.finditer(t, 0, n)), default=0)
             if _HEDGE.search(t[start:n]):
                 return True
-            n = t.find(quote, n + 1)
+            n = low.find(q, n + 1)
     return False
 
 
@@ -638,19 +643,26 @@ def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str,
             preset.add(k)
     # silence policy: an unstated visible sign is assumed absent (shown "assumed", never read; a stated value wins)
     # an explicit "Not stated" is the radiologist's: the sign is then asked, never re-assumed (review M-2)
+    # nobody looked when the settle model failed (nothing drafted), and no lesion value is read without a finding
+    # unit: then the signs are asked, never assumed (final review I3)
+    unread = s.failed and not s.values
     signs = {i.id: i.absent_value() for i in e.inputs
-             if i.visible_sign and i.id not in _known(given) and i.id not in answers}
+             if i.visible_sign and i.id not in _known(given) and i.id not in answers
+             and not unread and not (s.no_unit and i.scope == "lesion")}
     drafted = {**given, **signs}
     try:      # the draft never leads with eligibility: an unknown one is assumed in scope, visibly (Hassan 2026-10-13)
         t = engine.evaluate(e, _known(drafted), assume_eligible=True)
         t, doubt = _no_prefilled_exclusion(e, t, s, answers, drafted)
         # "show all": every outcome still possible without the sign assumptions
+        # the extras weigh the same values the draft was computed on: the scope doubt left out (final review I1)
+        base = {k: v for k, v in _known(drafted).items() if k not in doubt}
         ev = _Evals(e)
-        ev.memo[(True, tuple(sorted((k, v.state, repr(v.value), v.band) for k, v in _known(drafted).items())))] = t
-        shown = ev(_known(given), True) if signs and t.bounded else None    # unbounded: t.possible already is all
+        ev.memo[_ev_key(base, True)] = t
+        rest = {k: v for k, v in _known(given).items() if k not in doubt}
+        shown = ev(rest, True) if signs and t.bounded else None    # unbounded: t.possible already is all
         possible = _possible(e, shown or t)
-        likely = _likely(e, t, _known(drafted), sources or [], assume=True, ev=ev)
-        reason = _exclusion_reason(e, t, _known(drafted), ev)
+        likely = _likely(e, t, base, sources or [], assume=True, ev=ev)
+        reason = _exclusion_reason(e, t, base, ev)
     except (engine.EvaluationError, ValueError) as ex:
         logger.error("[library.preview] %s cannot be evaluated: %s", e.key, ex)
         return failed(e)
@@ -681,7 +693,6 @@ def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str,
         draft.append(dv)
     assumed = []
     if t.outcome != DOES_NOT_APPLY:
-        base = _known(drafted)
         for dv in draft:
             if dv.state == "assumed" and dv.input not in doubt:
                 dv.decisive = _decisive(e, t, base, dv.input, signs.get(dv.input) or t.assumed[dv.input], ev, True)
@@ -813,14 +824,15 @@ def _no_prefilled_exclusion(e: Entry, t: engine.Trace, s: Settlement, answers: d
     return t2, doubt
 
 
-def _calc_assumed(e: Entry, t: engine.Trace, given: dict[str, InputValue], used: list[DraftValue],
-                  ev: "_Evals") -> list[Assumption]:
-    """Calculate's assumed values (sent back unchanged from an assumption), each weighed as in the preview."""
+def _calc_assumed(e: Entry, t: engine.Trace, known: dict[str, InputValue], given: dict[str, InputValue],
+                  used: list[DraftValue], ev: "_Evals") -> list[Assumption]:
+    """Calculate's assumed values (sent back unchanged from an assumption), each weighed as in the preview, over the
+    evaluated values (the scope doubt left out)."""
     out = []
     for v in used:
         if v.state != "assumed":
             continue
-        rest = {k: x for k, x in _known(given).items() if k != v.input}
+        rest = {k: x for k, x in known.items() if k != v.input}
         v.decisive = _decisive(e, t, rest, v.input, given[v.input], ev, False)
         out.append(Assumption(input=v.input, label=v.label, value=v.value, decisive=v.decisive,
                               kind="eligibility" if e.input(v.input).role == "eligibility" else "sign"))
@@ -836,26 +848,32 @@ def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str
               sources: list[dict], bundle: str, presets: dict[str, str] | None = None,
               answered: dict[str, str] | None = None) -> Calculation:
     """Spec §7.7: the engine over exactly the values the card shows; an input not sent is unknown, never taken from
-    the settlement, a preset or a shared answer. No model, no Jev. The settlement, the presets and the shared patient
-    answers only label each value: one equal to its draft keeps the draft's state (a preset's: pre-filled, by the
-    exam); one equal to the shared patient answer is answered; any other is edited (answered when nothing was
-    drafted)."""
+    the settlement, a preset or a shared answer. No model, no Jev. The card's own preview (finish over the same
+    settlement, answers and presets) labels each value, so Calculate sees exactly the assumptions and scope doubts the
+    card showed (final review C1, I2):
+    - a value equal to its draft keeps the draft's state (a preset's: pre-filled, by the exam); one equal to the shared
+      patient answer is answered; one the preview showed assumed, sent back unchanged and not answered, stays assumed;
+      any other is edited (answered when nothing was drafted);
+    - a pre-filled value the preview held as a scope doubt, sent back unchanged and not answered (confirmed), is left
+      out of the evaluation and returned in scope_doubt: it never becomes a silent exclusion."""
+    answered = answered or {}
     given = _given(e, values)                         # NOT_STATED -> unknown
     try:
-        t = engine.evaluate(e, _known(given))
+        card = finish(e, s, answered, patient, sources, presets)
+        shown = {d.input: d for d in card.draft}
+        doubt = [k for k in card.scope_doubt if k not in answered and k in given and k in s.values
+                 and _same_shown(e, e.input(k), s.values[k].value, given[k])]
+        known = {k: v for k, v in _known(given).items() if k not in doubt}
+        t = engine.evaluate(e, known)
     except (engine.EvaluationError, ValueError) as ex:
         logger.error("[library.calculate] %s cannot be evaluated: %s", e.key, ex)
         return Calculation(pack=e.key, bundle=bundle)
     pre = preset_values(e, presets)
     shared = _given(e, {}, patient)
-    # what the draft assumed (over the drafted values and presets): a value sent back equal to it stays "assumed"
-    drafted = {**pre, **{k: d.value for k, d in s.values.items()}}
-    asm = engine.assumptions(e, drafted)
-    asm.update({i.id: i.absent_value() for i in e.inputs if i.visible_sign and i.id not in drafted})
     used = []
     for i in e.inputs:
         d, g = s.values.get(i.id), given.get(i.id)
-        p = pre.get(i.id)
+        p, sv = pre.get(i.id), shown.get(i.id)
         by = ""
         if t.inputs[i.id].state == "not_applicable":
             st = "not_applicable"
@@ -867,22 +885,28 @@ def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str
             st = d.tier
         elif d is None and _same_shown(e, i, p, g):
             st, by = "prefilled", "exam"
-        elif d is None and p is None and i.id not in (answered or {}) and _same_shown(e, i, asm.get(i.id), g):
+        elif (sv is not None and sv.state == "assumed" and i.id not in answered
+              and sv.value == _show(e, i, g)):
             st = "assumed"                  # sent back unchanged; an explicit answer is answered (review M-3)
         else:
             st = "edited" if d is not None or p is not None else "answered"
-        used.append(_draft_value(e, i, t, st, g, d if st in ("read", "prefilled") else None, by))
+        dv = _draft_value(e, i, t, st, g, d if st in ("read", "prefilled") else None, by)
+        if i.id in doubt:
+            dv.why.append(WHY_WOULD_EXCLUDE)
+        used.append(dv)
     text = _outcome_text(e, t, sources) if t.outcome is not None else None
     excluded = t.outcome == DOES_NOT_APPLY
-    ev = _Evals(e)
-    most_likely, deciding_input, deciding = _likely(e, t, _known(given), sources, assume=False, ev=ev)
-    return Calculation(outcome=t.outcome, result=None if excluded else text, exclusion=text if excluded else None,
-                       possible=_possible(e, t), needed=list(t.needed), values=used,
-                       assumptions=_calc_assumed(e, t, given, used, ev),
-                       most_likely=most_likely, deciding_input=deciding_input, deciding=deciding,
-                       exclusion_reason=_exclusion_reason(e, t, _known(given), ev),
-                       trace=t.model_dump(mode="json") if t.outcome is not None else None,
-                       pack=e.key, bundle=bundle)
+    out = Calculation(outcome=t.outcome, result=None if excluded else text, exclusion=text if excluded else None,
+                      possible=_possible(e, t), needed=list(t.needed), values=used, scope_doubt=doubt,
+                      trace=t.model_dump(mode="json") if t.outcome is not None else None, pack=e.key, bundle=bundle)
+    try:                                              # the extras fail open: the bare Calculation stands (M2)
+        ev = _Evals(e)
+        out.most_likely, out.deciding_input, out.deciding = _likely(e, t, known, sources, assume=False, ev=ev)
+        out.assumptions = _calc_assumed(e, t, known, given, used, ev)
+        out.exclusion_reason = _exclusion_reason(e, t, known, ev)
+    except (engine.EvaluationError, ValueError) as ex:
+        logger.error("[library.calculate] %s extras failed: %s", e.key, ex)
+    return out
 
 
 async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str, str],

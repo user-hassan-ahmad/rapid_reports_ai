@@ -1,6 +1,8 @@
-"""The matcher (spec §5.2): which published systems apply to each dictated abnormal finding, from model knowledge.
-It also returns each system's publication and skeleton (branch names, never thresholds) and the branch this finding
-falls into: the one case-aware output, which decides what the targeted fetch reads first.
+"""Matching (spec §5.2). /match: library cards from Jev, one case request (modality, exam binding) and one topic
+pick per finding (library_cards, via library_match). /match/other and ask: the older on-demand path, which systems
+apply to each finding from model knowledge (gpt-oss), with each system's publication and skeleton (branch names,
+never thresholds) and the branch this finding falls into; library hits there are gated and follow /match's trigger
+and modality rules.
 
 Caches (_CACHE, _GATE, _PICK, _BRANCH) hold normalised clinical text (finding, history) in their keys, at most
 _CACHE_MAX (512) entries each; they are process-local, never persisted, and never logged."""
@@ -372,7 +374,7 @@ async def _resolve(rows: _Rows, f: Finding, s: RawSystem, history: str) -> Guide
 
 def library_pack(lib, s: RawSystem):
     """The library entry a candidate is: its listed key when that is a current entry; else its name (and version)
-    through find. The caller still gates the hit (real_lab mirrors this resolution)."""
+    through find. The caller still gates the hit. Serves /match/other and ask only (/match uses library_cards)."""
     if s.key.strip():
         e = lib.lookup(s.key.strip())
         if e is not None and e.status == "current":
@@ -380,7 +382,11 @@ def library_pack(lib, s: RawSystem):
     return (lib.find(s.name, s.version) or lib.find(s.name)) if s.name.strip() else None
 
 
-async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool = True) -> Card | None:
+_NO_FILTER = object()   # _card's modality when the caller applies no modality rule (ask's pinned path)
+
+
+async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool = True,
+                modality=_NO_FILTER) -> Card | None:
     if not s.name.strip() and not s.key.strip():
         return None
     if s.name.strip().upper() == "TNM":
@@ -388,6 +394,16 @@ async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool 
     lib = L.get()
     pack = library_pack(lib, s)
     if pack is not None:
+        # matching v2's rules hold here too (final review I4): an exam-level pack is never a finding card (NHS AAA from
+        # an aneurysm on an ordinary CT), and the case's modality filters the pack (a redirect pack becomes a
+        # read-only card naming the modality it needs). No card, never a fall-through to the registry.
+        if "finding" not in getattr(pack, "trigger", ["finding"]):
+            return None
+        needs = ""
+        if modality is not _NO_FILTER and not LM.modality_ok(pack, modality):
+            if getattr(pack, "off_modality", "") != "redirect":
+                return None
+            needs = LM.needs_modality(pack)
         # A name hit is not applicability: Jev must agree the finding is the kind this entry is for (fails closed: no
         # card, never a fall-through to the registry). Siblings share topic and applies_to: gated once, on the hit.
         if gate:
@@ -398,7 +414,8 @@ async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool 
         return Card(key=pack.key, name=pack.display, version=pack.edition, finding_id=f.id, why=s.why,
                     branch=branch, skeleton=[branch], publication=Publication(body=pack.issuer, year=pack.edition),
                     known=True, status="verified", siblings=[x.key for x in lib.siblings(pack)],
-                    sibling_names=[x.display for x in lib.siblings(pack)], reference=pack.tier == 2, finding=f.text)
+                    sibling_names=[x.display for x in lib.siblings(pack)], reference=pack.tier == 2, finding=f.text,
+                    needs_modality=needs)
     if not s.name.strip():   # a key outside the library and no name: nothing to resolve
         return None
     if not R.web_fetch_on():   # spec §5: outside the library, no card; the name is logged as demand
@@ -418,9 +435,10 @@ async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool 
                 why=s.why, branch=s.branch, skeleton=s.skeleton, publication=s.publication, known=False, status="new")
 
 
-async def _safe_card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool = True) -> Card | None:
+async def _safe_card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool = True,
+                     modality=_NO_FILTER) -> Card | None:
     try:
-        return await _card(rows, f, s, history, gate)
+        return await _card(rows, f, s, history, gate, modality)
     except Exception as e:   # one candidate that fails to resolve is skipped, not the whole match
         logger.warning("[copilot.match] candidate %r skipped: %s", s.name, type(e).__name__)
         return None
@@ -571,7 +589,12 @@ async def match_other(db: Session, scan_type: str, history: str, findings: list[
         except Exception as e:
             logger.warning("[copilot.match] %s: %s", type(e).__name__, str(e)[:200])
     plan = [(f, s) for f in findings for s in (_CACHE.get(keyf(f)) or [])[:CANDIDATES_PER_FINDING]]
-    resolved = await asyncio.gather(*(_safe_card(rows, f, s, history) for f, s in plan))
+    try:        # the case's modality, as /match reads it (cached); a failed request filters nothing, as on /match
+        modality = (await LM.case_facts(scan_type, history)).modality if plan else None
+    except Exception as e:
+        logger.warning("[copilot.match] case facts %s: no modality filter", type(e).__name__)
+        modality = None
+    resolved = await asyncio.gather(*(_safe_card(rows, f, s, history, modality=modality) for f, s in plan))
     per_finding: dict[str, list[Card]] = {f.id: [] for f in findings}
     for (f, _), c in zip(plan, resolved):
         if c is not None and all(x.id != c.id for x in per_finding[f.id]):

@@ -21,8 +21,19 @@ def check(entry: Entry, manifest: Manifest, cases: Cases | None) -> list[str]:
         return p                      # the later gates assume every reference resolves
     p += _bands(entry) + _locators(entry, manifest) + _eligibility(entry)
     if entry.tier == 1:
-        p += _display(entry) + _formulas(entry) + _enumerate(entry) + _golden(entry, cases)
+        p += _display(entry) + _presets(entry) + _formulas(entry) + _enumerate(entry) + _golden(entry, cases)
     return p
+
+
+def _presets(e: Entry) -> list[str]:
+    """Exam presets alone never reach does_not_apply: a preset is the one pre-fill without a quote, so it may never
+    exclude (only a read or answered value does; final review M4)."""
+    from .engine import evaluate
+    from .pack_preview import preset_values
+    if not e.exam_presets:
+        return []
+    t = evaluate(e, preset_values(e, dict(e.exam_presets)))
+    return [f"exam presets alone reach {DOES_NOT_APPLY}"] if t.outcome == DOES_NOT_APPLY else []
 
 
 def _display(e: Entry) -> list[str]:

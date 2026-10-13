@@ -10,6 +10,7 @@ hand-written clinical text. Failures raise to the caller and cache nothing; cach
 clinical text in their keys, are bounded by matcher._CACHE_MAX, process-local, never persisted and never logged."""
 from __future__ import annotations
 
+import logging
 import os
 from collections import OrderedDict
 from dataclasses import dataclass, field
@@ -26,6 +27,8 @@ CHOICE_MIN = 0.6     # the finding's topic choice: below this it is "none"
 EXAM_MIN = 0.7       # "this study is the pack's exam"
 TNM_Q_MIN = 0.7      # "the FINDING describes a primary malignant tumour that would be staged"
 JEV_TIMEOUT_S = 4.0
+logger = logging.getLogger(__name__)
+
 MODALITIES = ("CT", "MRI", "US", "XR", "other")
 NAMES_MAX = 4
 ALIASES_PER_ENTRY = 2
@@ -177,8 +180,9 @@ async def pick(scan: str, history: str, finding: str) -> tuple[list, str | None]
             entries = list(ts[int(c[1:])])
     score = J.scores(body, ["tnm"])["tnm"]
     sc, _ = J.choice(body, "site")
-    if sc not in sites and sc != "none":
-        raise ValueError(f"jev site {sc!r} is not offered")
+    if sc not in sites and sc != "none":     # a malformed site is no site; the topic pick stands (final review M5)
+        logger.warning("[library.match] jev site %r is not offered: no TNM site", sc)
+        sc = "none"
     site = sites.get(sc) if score >= TNM_Q_MIN else None
     v = (entries, site)
     M._put(_PICKS, k, v)

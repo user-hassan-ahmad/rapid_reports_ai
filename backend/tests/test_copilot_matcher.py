@@ -516,6 +516,17 @@ async def test_a_library_pack_hit_becomes_a_pack_card(db_session, monkeypatch, t
         [("toy-nodule@1.0", "Pack", ["Pack"], "verified", True, ["toy-other@1.0"])]
 
 
+@pytest.fixture(autouse=True)
+def _no_case_facts(monkeypatch):
+    """No Jev in these tests: /match/other gets no case modality and filters nothing (as /match on failure). A test
+    that needs a modality patches LM.case_facts itself."""
+    from rapid_reports_ai.hybrid_stack.copilot import library_match as LM
+
+    async def no_facts(scan, history):
+        raise TimeoutError("no jev in tests")
+    monkeypatch.setattr(LM, "case_facts", no_facts)
+
+
 def _pack_match(monkeypatch, toy):
     monkeypatch.setattr(L, "get", lambda: _toy_lib(toy))
 
@@ -674,3 +685,32 @@ async def test_the_prompt_lists_library_keys_with_scope_and_asks_for_the_key(db_
     assert "- toy-nodule@1.0: Toy 2020 [aliases: toy nodule | toy guideline] (scope: nodule in chest" in seen[0]
     assert "key:" in M.MATCH_SYS and "scope" in M.MATCH_SYS
     assert [c.key for c in cards] == ["toy-nodule@1.0"]
+
+
+# final review I4: /match/other library hits follow matching v2's trigger and modality rules
+async def test_match_other_never_returns_an_exam_level_pack_or_an_off_modality_pack(db_session, monkeypatch):
+    from rapid_reports_ai.hybrid_stack.copilot import library_match as LM
+    import json as _json
+    real = L.Library(_json.loads(L.BUNDLE.read_text()))
+    monkeypatch.setattr(L, "get", lambda: real)
+    picks = {"u1": [_keyed("nhs-aaa-surveillance@2025.1", "NHS AAA Screening")],
+             "u2": [_keyed("bta-thyroid-u-grading@2014.1", "BTA U grading")],
+             "u3": [_keyed("bosniak-renal-cyst@2019.1", "Bosniak")]}
+
+    async def call(prompt):
+        return _raw(**picks)
+
+    async def pgate(finding, pack, history):
+        return 0.95
+
+    async def facts(scan, history):
+        return LM.CaseFacts(modality="CT")
+    monkeypatch.setattr(M, "_call", call)
+    monkeypatch.setattr(M, "_pgate", pgate)
+    monkeypatch.setattr(LM, "case_facts", facts)
+    fs = [M.Finding(id="u1", text="AAA 5.2 cm."), M.Finding(id="u2", text="Thyroid nodule."),
+          M.Finding(id="u3", text="Renal cyst.")]
+    cards = {c.key: c for c in await M.match_other(db_session, "CT abdomen", "", fs)}
+    assert "nhs-aaa-surveillance@2025.1" not in cards                     # exam-level only: never a finding card
+    assert cards["bta-thyroid-u-grading@2014.1"].needs_modality == "US"   # redirect: read-only, names its modality
+    assert cards["bosniak-renal-cyst@2019.1"].needs_modality == ""        # on its modality: an ordinary card

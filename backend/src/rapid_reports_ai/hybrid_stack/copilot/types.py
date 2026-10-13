@@ -197,6 +197,8 @@ class Calculation(BaseModel):
     values: list[DraftValue] = Field(default_factory=list)
     assumptions: list[Assumption] = Field(default_factory=list)   # values sent back at the draft's assumption
     exclusion_reason: ExclusionReason | None = None   # does_not_apply: the one value behind it; None if not one input
+    scope_doubt: list[str] = Field(default_factory=list)   # pre-filled values sent back unchanged that would exclude:
+    # left out of the evaluation until the radiologist confirms them (sends them as answered); listed at Apply
     most_likely: OutcomeBrief | None = None    # the outcome reached, in short; None while several remain
     deciding_input: DecidingInput | None = None   # several remain: the one unknown input whose answer splits them most
     deciding: list[DecidingAnswer] = Field(default_factory=list)   # its answers -> outcomes (at most 3)

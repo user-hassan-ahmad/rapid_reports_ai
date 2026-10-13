@@ -375,7 +375,9 @@ async def _pack_result(pack, req: OpenRequest, t0: float, opened: bool) -> OpenR
     sources = L.get().sources(e.key)
     settled = await _settlement(e, req, opened)
     try:
-        prev = finish(e, settled, req.answered, req.patient, sources, presets=exam_presets(e, req.card.finding_id))
+        # engine work off the event loop: a shared patient answer re-previews every card at once (final review M3)
+        prev = await asyncio.to_thread(finish, e, settled, req.answered, req.patient, sources,
+                                       exam_presets(e, req.card.finding_id))
     except Exception as ex:
         logger.warning("[copilot.routes] pack preview %s", type(ex).__name__)   # no message: it may hold dictation
         prev = failed(e)
@@ -481,9 +483,9 @@ async def copilot_calculate(req: CalculateRequest, user: User = Depends(get_curr
     e, _ = pack
     lib = L.get()
     settled = await _settlement(e, req, opened=False, start=False)
-    return CalculateResult(calculation=calculate(e, settled, req.values, req.patient, lib.sources(e.key),
-                                                 lib.version(), presets=exam_presets(e, card.finding_id),
-                                                 answered=req.answered),
+    calc = await asyncio.to_thread(calculate, e, settled, req.values, req.patient, lib.sources(e.key), lib.version(),
+                                   exam_presets(e, card.finding_id), req.answered)
+    return CalculateResult(calculation=calc,
                            ms=_ms(t0))
 
 
