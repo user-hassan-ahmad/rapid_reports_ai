@@ -1,6 +1,7 @@
 """Library endpoints (spec §3): search on every keystroke (rerank after a pause) and the "not listed" log."""
 from __future__ import annotations
 
+import hashlib
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -38,5 +39,6 @@ async def protocols_search(req: SearchRequest, user: User = Depends(get_current_
 @router.post("/not-listed")
 async def protocols_not_listed(req: NotListedRequest, user: User = Depends(get_current_user)):
     _bundle()
-    logger.info("[protocol_library] not listed: %r", req.q[:200])
+    q = req.q[:200]  # never log typed text (it can carry patient detail): length and a short hash only
+    logger.info("[protocol_library] not listed: len=%d sha=%s", len(q), hashlib.sha256(q.encode()).hexdigest()[:10])
     return {"ok": True}

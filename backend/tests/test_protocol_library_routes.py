@@ -88,3 +88,21 @@ def test_free_text_schema_unchanged_when_no_protocol(lib_env, authed, monkeypatc
     monkeypatch.setattr(R, "resolve_schema", resolve)
     r = authed.post("/api/canvas/stack/schema", json={"scan_type": "ct head"})
     assert r.json()["source"] == "family" and r.json()["protocol"] is None
+
+
+def test_not_listed_logs_length_and_hash_never_the_text(lib_env, authed, caplog):
+    import hashlib
+    import logging
+    from rapid_reports_ai.hybrid_stack.protocol_library import routes as LR
+    lg = logging.getLogger(LR.__name__)
+    was, lg.disabled = lg.disabled, False   # an earlier test's logging config can leave this logger disabled
+    try:
+        caplog.set_level(logging.INFO, logger=LR.__name__)
+        q = "MRI orbits Mrs Smith 12/03"
+        assert authed.post("/api/canvas/stack/protocols/not-listed", json={"q": q}).status_code == 200
+    finally:
+        lg.disabled = was
+    msgs = [r.getMessage() for r in caplog.records if r.name == LR.__name__]
+    assert any(f"len={len(q)}" in m and hashlib.sha256(q.encode()).hexdigest()[:10] in m for m in msgs)
+    assert not any("Smith" in m or "orbits" in m for m in caplog.text.splitlines())
+
