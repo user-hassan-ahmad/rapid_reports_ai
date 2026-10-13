@@ -1,0 +1,74 @@
+/* Shared rail styles (RailFrame imports this once). Global on purpose: hosts render their head and body markup
+   inside RailFrame's snippets, so those elements carry the host's scope, not the frame's. Everything is under
+   `.rv-rail` so nothing leaks outside a rail; only the theme tokens and the head / body layout live here, so a
+   host's own `.rv-btn` etc. stay scoped to it.
+
+   The app's look (app.css card-dark / btn-sm, the Report Editor card's segmented control): a dark glass panel
+   with white/10 borders, rounded-lg, gray-200 text, purple-600 accent. Mark colours match the editor marks
+   (review/editor/theme.ts) so a rail icon and its underline read the same. The app is dark-only; `light` exists
+   for the dev page and follows the same structure. */
+.rv-rail {
+	--rv-surface: rgba(255, 255, 255, 0.03);
+	--rv-surface-hover: rgba(255, 255, 255, 0.07);
+	--rv-panel: rgba(255, 255, 255, 0.02);
+	--rv-overlay: rgba(6, 6, 10, 0.98);
+	--rv-text: #e5e7eb;
+	--rv-muted: #9ca3af;
+	--rv-border: rgba(255, 255, 255, 0.1);
+	--rv-border-strong: rgba(255, 255, 255, 0.2);
+	--rv-accent: #9333ea;
+	--rv-accent-hover: #a855f7;
+	--rv-accent-soft: rgba(147, 51, 234, 0.15);
+	--rv-focus: #a855f7;
+	--rv-segment: rgba(31, 41, 55, 0.6);
+	--rv-green-line: #5cc285;
+	--rv-amber-line: #e3a94a;
+	--rv-amber-bg: rgba(227, 169, 74, 0.12);
+	--rv-red-line: #ff7a7a;
+	--rv-red-bg: rgba(239, 68, 68, 0.1);
+	--rv-blue-line: #7ea6f0;
+	--rv-del: #ff8c80;
+	--rv-ins: #6fd394;
+}
+.rv-rail[data-theme='light'] {
+	--rv-surface: #ffffff;
+	--rv-surface-hover: #f5f3ff;
+	--rv-panel: #fafafa;
+	--rv-overlay: #ffffff;
+	--rv-text: #1f2937;
+	--rv-muted: #6b7280;
+	--rv-border: #e5e7eb;
+	--rv-border-strong: #d1d5db;
+	--rv-accent: #9333ea;
+	--rv-accent-hover: #7e22ce;
+	--rv-accent-soft: rgba(147, 51, 234, 0.1);
+	--rv-focus: #9333ea;
+	--rv-segment: #f3f4f6;
+	--rv-green-line: #3f9a5d;
+	--rv-amber-line: #b7791f;
+	--rv-amber-bg: #fcebc7;
+	--rv-red-line: #cf3b3b;
+	--rv-red-bg: #fde2e2;
+	--rv-blue-line: #3b6fcf;
+	--rv-del: #b42318;
+	--rv-ins: #1f7a3f;
+}
+
+/* head (tabs, status) above a scrolling body; same specificity as the old scoped rules */
+.rv-rail .rv-head {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 10px 12px 8px;
+	border-bottom: 1px solid var(--rv-border);
+	flex: none;
+}
+.rv-rail .rv-body {
+	overflow-y: auto;
+	padding: 8px 12px 12px;
+	flex: 1;
+	min-height: 0;
+}
+.rv-rail .rv-spacer {
+	flex: 1;
+}
