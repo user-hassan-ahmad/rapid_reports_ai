@@ -418,6 +418,20 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
     style = "\n".join(x for x in (_block(sheet, "Impression Construction Rules") or _block(sheet, "Impression Construction"),
                                   _block(sheet, "Terminology Rules")) if x)
 
+    # The fallback options job names the sheet's own sections and terms (grammar sheets); legacy/unparseable
+    # sheets keep the literal names and the old headings. No parse on the scratchpad path (no options job).
+    fsec, isec = "FINDINGS", "IMPRESSION"
+    if stack is None:
+        from .hybrid_stack.template import template_structure
+        st = template_structure({"generation_mode": "skill_sheet_guided", "skill_sheet": sheet})
+        if st:
+            fsec = next((x.name for x in st.sections if x.role == "findings"), fsec)
+            isec = next((x.name for x in st.sections if x.role == "impression"), isec)
+            if not style:
+                tm = st.terminology
+                style = "\n".join([f'TERM PREFER "{t}"' for t in tm.preferred]
+                                   + [f'TERM AVOID "{t}"' for t in tm.suppressed])
+
     async def gen():
         t0 = time.time()
         out = await TemplateManager()._generate_report_skill_sheet_guided(
@@ -433,12 +447,12 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         resolved = await case() if callable(case) else case
         job["phase1_used"] = bool(resolved)
         job["lat"]["phase1_wait_s"] = round(time.time() - t0, 1)
-        raw, dec = await case_options(resolved, findings, scan_type, history, findings_section="FINDINGS",
-                                      impression_section="IMPRESSION", inclusion_logic=style)
+        raw, dec = await case_options(resolved, findings, scan_type, history, findings_section=fsec,
+                                      impression_section=isec, inclusion_logic=style)
         raw = without_declined(raw, declined)
         t1 = time.time()
         written = await write_options(raw, findings, scan_type, model=MODEL_CONFIG["TEMPLATE_REPORT_GENERATOR"],
-                                      runner=_run_agent_with_model, style=style, impression_section="IMPRESSION",
+                                      runner=_run_agent_with_model, style=style, impression_section=isec,
                                       require_service=True)
         job["lat"]["route_s"], job["lat"]["options_s"] = round(t1 - t0, 1), round(time.time() - t1, 1)
         return written, raw, dec

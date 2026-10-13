@@ -391,3 +391,37 @@ async def test_stack_session_never_resolves_the_case(monkeypatch):
                                                  stack={"conclusion": "C.", "declined": []})
     await asyncio.sleep(0)
     assert resolved["n"] == 0 and out["options_job"] is None
+
+
+async def test_fallback_options_use_the_parsed_section_names_and_terms(monkeypatch):
+    from tests.template_sheet_fixtures import GOOD
+    sheet = (GOOD.replace("SECTION FINDINGS", "SECTION REPORT").replace("SECTION IMPRESSION", "SECTION OPINION")
+             .replace("(FINDINGS)", "(REPORT)") + 'TERM PREFER "lesion"\nTERM AVOID "mass"\n')
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    seen = {}
+
+    async def spy(case, findings, scan_type, history, **kw):
+        seen.update(kw)
+        return [], {}
+    monkeypatch.setattr(tl, "case_options", spy)
+    out = await tl.generate_template_report_lean(sheet=sheet, scan_type="CT", findings="x", history="h",
+                                                 case=CASE, signature=None)
+    await out["options_job"]
+    assert seen["findings_section"] == "REPORT" and seen["impression_section"] == "OPINION"
+    assert 'TERM PREFER "lesion"' in seen["inclusion_logic"] and 'TERM AVOID "mass"' in seen["inclusion_logic"]
+
+
+async def test_legacy_sheet_keeps_literal_section_names(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    seen = {}
+
+    async def spy(case, findings, scan_type, history, **kw):
+        seen.update(kw)
+        return [], {}
+    monkeypatch.setattr(tl, "case_options", spy)
+    out = await tl.generate_template_report_lean(sheet=OLD_SHEET, scan_type="CT", findings="x", history="h",
+                                                 case=CASE, signature=None)
+    await out["options_job"]
+    assert seen["findings_section"] == "FINDINGS" and seen["impression_section"] == "IMPRESSION"
