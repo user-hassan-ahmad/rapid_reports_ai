@@ -36,6 +36,7 @@ UNMATCHED_LINE = ("Some decisions no longer match a line in the template; they w
                   "review.")
 STYLE_TOUCHED_RULES = ("The style change also touched the template's rules, so I left it out. Could you say it as "
                        "a change of wording only?")
+REQUIRES_FAILED = "I couldn't check that wording change just now, so I left it out. Please try again."
 
 
 class Fallback(Exception):
@@ -142,19 +143,53 @@ def _apply(sheet: str, ledger: List[dict], verdicts: List[CH.Verdict]):
     return sheet, ledger, records, claims, [n for n in notes if n], problems, detail
 
 
+async def _reroute(lines: List[str], ctx: CH.Ctx) -> List[CH.Verdict]:
+    """A prose line that requires the report to state something goes back through the rule route (normal, fixed);
+    its wording is the model's, so it is always a card. No rule kind fits: the reply asks (spec Flow 3)."""
+    out: List[CH.Verdict] = []
+    for line in lines:
+        instr = f'Every report should state: "{line}"'
+        res = await asyncio.gather(*(C.call_kind(k, instr, V.view(k, ctx.sheet, ctx.ledger)) for k in ("normal", "fixed")),
+                                   return_exceptions=True)
+        found = [CH.to_card(CH.validate(k, c, ctx)) for k, r in zip(("normal", "fixed"), res)
+                 if not isinstance(r, BaseException) for c in r.changes]
+        found = [v for v in found if v.action == "card"]
+        out.append(found[0] if found else CH.Verdict(
+            "style", "ask", reason=f'I left out "{line}": it reads as something every report must state. Which part '
+                                   "of the report should state it?"))
+    return out
+
+
 async def _style(sheet: str, out: CH.StyleOut, ctx: CH.Ctx):
-    """(sheet, style record or None, reply lines, extra verdicts, evidence) for a style output."""
+    """(sheet, style record or None, reply lines, extra verdicts, evidence) for a style output: unit lines must be
+    untouched; each new prose line is asked whether it requires the report to state something, and a yes is left out
+    of the edit and re-routed."""
     blocks = {b.id: b for b in sh.prose_blocks(sheet)}
     edits = {b.id: b.text.strip("\n") for b in out.blocks
              if b.id in blocks and b.text.strip("\n") != blocks[b.id].text}
     if not edits:
         return sheet, None, [], [], {}
-    styled = sh.splice(sheet, edits)
-    if not sh.units_unchanged(sheet, styled):
+    if not sh.units_unchanged(sheet, sh.splice(sheet, edits)):
         return sheet, None, [STYLE_TOUCHED_RULES], [], {"style": "unit_line_changed"}
+    new = [l for b, t in edits.items() for l in sh.new_lines(blocks[b].text, t)]
+    try:
+        scores = await J.requires(new)
+    except Exception as e:
+        logger.warning("[chat-router] requires check failed: %s", type(e).__name__)
+        return sheet, None, [REQUIRES_FAILED], [], {"style": "requires_failed"}
+    flagged = [l for l, s in zip(new, scores) if s >= J.REQUIRES_MIN]
+    ev = {"style": "applied", "disguise": [{"line": l[:200], "score": round(s, 3)} for l, s in zip(new, scores)]}
+    if flagged:
+        fl = {sh.norm(x) for x in flagged}
+        edits = {b: "\n".join(x for x in t.splitlines() if sh.norm(x) not in fl) for b, t in edits.items()}
+        # a block left empty keeps its old prose (the radiologist did not ask to delete it)
+        edits = {b: t for b, t in edits.items() if t.strip() and t.strip("\n") != blocks[b].text}
+    rerouted = await _reroute(flagged, ctx)
+    if not edits:
+        return sheet, None, [], rerouted, {**ev, "style": "all_rerouted"}
     rec = {"type": "style", "blocks": [{"before": blocks[b].text, "after": edits[b]} for b in edits],
            "claim": out.summary.strip() or "The wording guidance is updated."}
-    return styled, rec, [], [], {"style": "applied"}
+    return sh.splice(sheet, edits), rec, [], rerouted, ev
 
 
 async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, context: str = "",

@@ -189,3 +189,64 @@ async def test_a_clarification_after_a_rejection_may_use_the_original_wording(fa
     t = await R.route_turn(ROUTER_SHEET, [], "no, in every report",
                            rejection={"original_instruction": "always give the height", "rejected_claim": "x"})
     assert t.applied and L.entry(t.ledger, "value", "Height")["choice"] == {"need": "every"}
+
+
+NEW_IC = "Lead with the main finding in one sentence."
+
+
+async def test_a_style_edit_touches_prose_only(fake):
+    fake["tags"] = tags(style=0.9)
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=NEW_IC)],
+                                         summary="The impression will be one sentence.")
+    t = await R.route_turn(ROUTER_SHEET, [], "make the impression more concise")
+    assert t.applied and NEW_IC in t.sheet and "Keep it brief." not in t.sheet
+    assert t.records[0] == {"type": "style", "claim": "The impression will be one sentence.", "route": "",
+                            "blocks": [{"before": "Lead with the most important finding.\nKeep it brief.",
+                                        "after": NEW_IC}]}
+    assert t.reply == "The impression will be one sentence." and t.evidence["style"] == "applied"
+
+
+async def test_a_style_edit_that_changes_a_unit_line_is_rejected(fake):
+    fake["tags"] = tags(style=0.9)
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b1", text='NORMAL [alpha] "Alpha is fine."')])
+    t = await R.route_turn(ROUTER_SHEET, [], "tone it down")
+    assert not t.applied and t.sheet == ROUTER_SHEET and t.reply == R.STYLE_TOUCHED_RULES
+
+
+async def test_a_rule_in_disguise_is_left_out_and_rerouted_to_a_card(fake):
+    hidden = "Always state the alpha size."
+    fake["tags"] = tags(style=0.9)
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=f"{NEW_IC}\n{hidden}")],
+                                         summary="The impression will be one sentence.")
+    fake["requires"] = {hidden: 0.9, NEW_IC: 0.1}
+    fake["calls"]["normal"] = CH.NormalOut(changes=[CH.NormalChange(paragraph="Upper", structure="alpha", to="reword",
+                                                                    text="Alpha is normal in size.")])
+    t = await R.route_turn(ROUTER_SHEET, [], "shorter impression, and always mention the alpha size")
+    assert t.applied and NEW_IC in t.sheet and hidden not in t.sheet
+    assert t.cards and t.cards[0]["ledger_kind"] == "normal"
+    assert ("normal", f'Every report should state: "{hidden}"') in fake["seen"]
+    assert t.evidence["disguise"] == [{"line": NEW_IC, "score": 0.1}, {"line": hidden, "score": 0.9}]
+
+
+async def test_a_disguised_line_with_no_rule_kind_asks(fake):
+    hidden = "Always state the alpha size."
+    fake["tags"] = tags(style=0.9)
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b1", text=hidden)], summary="x")
+    fake["requires"] = {hidden: 0.9}
+    t = await R.route_turn(ROUTER_SHEET, [], "always mention the alpha size")
+    assert not t.applied and "Which part of the report should state it?" in t.reply
+
+
+async def test_a_failed_requires_check_leaves_the_style_out(fake):
+    fake["tags"] = tags(style=0.9)
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=NEW_IC)], summary="x")
+    fake["requires"] = TimeoutError()
+    t = await R.route_turn(ROUTER_SHEET, [], "shorter")
+    assert not t.applied and t.reply == R.REQUIRES_FAILED
+
+
+async def test_an_unsure_style_tag_is_decided_by_the_call(fake):
+    fake["tags"] = tags(style=0.4)
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=NEW_IC)], summary="Shorter impression.")
+    t = await R.route_turn(ROUTER_SHEET, [], "maybe shorter")
+    assert t.applied and NEW_IC in t.sheet and t.records[0]["route"] == "llm_unsure"
