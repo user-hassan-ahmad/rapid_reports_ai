@@ -312,3 +312,21 @@ def describe_change(change: Change) -> str:
     k = change["kind"]
     return (f"This changes something you confirmed: {item_label(k, change['key'])} "
             f"{state_label(k, change['old']['choice'])} → {state_label(k, change['new'])}.")
+
+
+def clean_ledger(entries) -> List[Entry]:
+    """Stored or client-sent entries, re-validated: an entry code cannot apply is dropped (logged), never guessed. An
+    unknown source or by becomes "default" / "code" (never counted as the radiologist's confirmation)."""
+    out: List[Entry] = []
+    for e in entries or []:
+        try:
+            if not isinstance(e, dict):
+                raise DecisionError("entry: object expected")
+            key, choice = validate(e.get("kind", ""), e.get("key", ""), e.get("choice") or {})
+        except DecisionError as err:
+            logger.warning("[ledger] stored entry dropped: %s", err)
+            continue
+        out.append({"kind": e["kind"], "key": key, "choice": choice,
+                    "by": e.get("by") if e.get("by") in BY else "code", "at": str(e.get("at") or ""),
+                    "source": e.get("source") if e.get("source") in SOURCES else "default"})
+    return out

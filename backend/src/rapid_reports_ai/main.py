@@ -75,6 +75,7 @@ from . import template_sheet_grammar as tsg
 from . import template_sheet_save as tsave
 from . import template_examples
 from . import template_chat_turns
+from . import template_decisions as td
 from .auth import (
     verify_password,
     get_password_hash,
@@ -769,6 +770,8 @@ class SkillSheetSaveRequest(BaseModel):
     analyser_version: str = ""  # the writer that produced the sheet (evidence stamp; "" when unknown)
     examples: List[SkillSheetExample] = []  # the pasted examples: stored de-identified with the template
     chat_turns: List[Dict[str, Any]] = []   # the creator's chat-to-edit turns (stored by D5)
+    decisions: List[Dict[str, Any]] = []   # the decision ledger from the Rules step (applied at save)
+    rules_step: Dict[str, Any] = {}        # evidence: the decision run's record (cards, dropped quotes, habits)
 
 
 # Quick Report Proto — ephemeral skill sheet pipeline
@@ -1664,6 +1667,9 @@ def _carry_structure(new_config: dict, old_config: dict) -> dict:
         new["sheet_structure"] = old["sheet_structure"]
     if not new.get("analyser_version") and old.get("analyser_version"):
         new["analyser_version"] = old["analyser_version"]   # the writer of the base sheet survives edits
+    for k in ("decisions", "rules_step"):   # the decision ledger and its run record survive a PUT that omits them
+        if k not in new and old.get(k):
+            new[k] = old[k]
     return new
 
 
@@ -1689,14 +1695,21 @@ async def _vet_config(new_cfg: Optional[dict], old_cfg: Optional[dict], origin: 
         if creating or before:
             return None, tsave.LOST_STRUCTURE, ""
         return new_cfg, "", ""
-    if sheet == before:
+    # the decision ledger: the incoming config's, else the stored one (a restore of a version without decisions,
+    # a client that does not send them); applied by the save function even when only the ledger changed
+    stored = td.clean_ledger(old.get("decisions"))
+    ledger = td.clean_ledger(new_cfg["decisions"]) if isinstance(new_cfg.get("decisions"), list) else stored
+    if sheet == before and ledger == stored:
         return new_cfg, "", ""
-    out = await tsave.vet_sheet(sheet, origin=origin, previous=before)
+    out = await tsave.vet_sheet(sheet, origin=origin, previous=before, ledger=ledger or None)
     if out.status == "refused":
         return None, out.message, ""
+    cfg = {**new_cfg, "decisions": out.ledger} if ledger else new_cfg
     if out.status == "unchanged":
-        return new_cfg, "", ""
-    return {**new_cfg, "skill_sheet": out.sheet, "coverage_sections": out.coverage_sections}, "", out.message or ""
+        return cfg, "", ""
+    notes = [td.describe_change(c) for c in out.ledger_changes] + ([tsave.LEDGER_KEPT] if out.ledger_cards else [])
+    notice = " ".join(x for x in [out.message or "", *notes] if x)
+    return {**cfg, "skill_sheet": out.sheet, "coverage_sections": out.coverage_sections}, "", notice
 
 
 def _queue_structure(template_id: str, config: dict) -> None:
@@ -2806,13 +2819,15 @@ async def skill_sheet_save_endpoint(
         if not request.skill_sheet.strip():
             return {"success": False, "error": "Skill sheet is required"}
 
-        template_config, refusal, _ = await _vet_config({
-            "generation_mode": "skill_sheet_guided",
-            "skill_sheet": request.skill_sheet,
-            "scan_type": request.scan_type,
-        }, {}, "analyser", creating=True)
+        new_config = {"generation_mode": "skill_sheet_guided", "skill_sheet": request.skill_sheet,
+                      "scan_type": request.scan_type}
+        if request.decisions:
+            new_config["decisions"] = request.decisions
+        template_config, refusal, _ = await _vet_config(new_config, {}, "analyser", creating=True)
         if refusal:
             return {"success": False, "error": refusal}
+        if request.rules_step:
+            template_config = {**template_config, "rules_step": request.rules_step}
         if request.analyser_version:
             template_config = {**template_config, "analyser_version": request.analyser_version[:64]}
         logger.info("  coverage_sections: %s", template_config.get("coverage_sections"))

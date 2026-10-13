@@ -137,3 +137,14 @@ def test_a_fixed_entry_on_a_concepts_wording_is_refused():
                                                            "when_met": ""}, source="creation")
     with pytest.raises(td.DecisionError):
         td.set_decision(led, "fixed", "No previous imaging", {"keep": "remove"}, source="creation")
+
+
+def test_clean_ledger_drops_what_code_cannot_apply():
+    good, _ = td.set_decision([], "value", "LVEF", {"need": "every"}, source="creation", at="t")
+    dirty = [*good, {"kind": "value", "key": "X", "choice": {"need": "bogus"}}, "junk",
+             {"kind": "fixed", "key": "Line.", "choice": {"keep": "remove"}, "source": "weird", "by": "x"}]
+    out = td.clean_ledger(dirty)
+    assert out[0] == good[0]
+    assert out[1] == {"kind": "fixed", "key": "Line.", "choice": {"keep": "remove"}, "by": "code", "at": "",
+                      "source": "default"}
+    assert len(out) == 2
