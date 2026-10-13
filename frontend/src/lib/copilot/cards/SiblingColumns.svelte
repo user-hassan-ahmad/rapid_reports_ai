@@ -11,7 +11,7 @@
 	import type { Card } from '../types';
 	import AssumedChip from './AssumedChip.svelte';
 	import CardStatus from './CardStatus.svelte';
-	import { assumptionsOf, columnRef, columnTitles, verdictOf } from './format';
+	import { assumptionsOf, columnRef, columnTitles, scopeDoubts, verdictOf } from './format';
 	import VerdictPill from './VerdictPill.svelte';
 	import PackBody from './PackBody.svelte';
 	import { closedView, errorOf, type CardView, type ColumnView } from './view';
@@ -67,7 +67,8 @@
 				<span class="cp-col-name">{c.title}</span>
 				<span class="cp-col-marks">
 					{#if verdictOf(p)}<VerdictPill verdict={verdictOf(p)!} busy={cv.loading && !!cv.result} />{/if}
-					<AssumedChip {assumed} checkFirst={p?.state === 'check_first'} />
+					{#if scopeDoubts(p).length}<span class="cp-chip cp-chip-warn">⚠ check applicability</span>{/if}
+					<AssumedChip {assumed} checkFirst={p?.state === 'check_first' && !scopeDoubts(p).length} />
 				</span>
 			</div>
 		{:else}
@@ -84,6 +85,7 @@
 			<PackBody
 				result={cv.result}
 				compact={!full && !stacked}
+				guideline={c.title}
 				onEdit={onEdit && (full || stacked) ? (input, value) => onEdit(columnRef(card, c.key), input, value) : null}
 				busy={cv.loading}
 				editError={cv.editError ?? null}

@@ -218,6 +218,30 @@ const flApplies = result(fl, preview({ proposal: outcome({ classification: 'Opti
 
 export const sections: Section[] = [
 	{ id: 'ese-benign', title: 'ESE benign (checkpoint 3 case)', ...one(adrenal, ese, view(eseBenign, { open: true })) },
+	{
+		id: 'scope-doubt',
+		title: 'A pre-filled value that would make it not apply (scope_doubt)',
+		...one(
+			nodule,
+			card({ key: 'nhs-aaa-surveillance', name: 'NHS AAA surveillance', version: '2023', finding: nodule.text }),
+			view(
+				result(
+					card({ key: 'nhs-aaa-surveillance', name: 'NHS AAA surveillance', version: '2023', finding: nodule.text }),
+					preview({
+						state: 'check_first',
+						proposal: null,
+						draft_outcome: outcome({ classification: 'Medium AAA 4.5–5.4 cm', recommendation: 'Surveillance every 3 months.', headline: 'Medium AAA', action: 'Scan every 3 months', category: 'surveillance' }),
+						scope_doubt: ['diameter_mm'],
+						draft: [
+							draft({ input: 'diameter_mm', label: 'Maximum diameter', state: 'prefilled', value: '35 mm', quote: '3.5 cm', why: ['another number in this finding', 'this pre-filled value would make the guideline not apply: confirm it'] }),
+							draft({ input: 'sex', label: 'Sex', scope: 'patient', fact: 'sex', state: 'read', value: 'Male', quote: 'male' })
+						]
+					})
+				),
+				{ open: true }
+			)
+		)
+	},
 	{ id: 'bts-surveillance', title: 'BTS surveillance', ...one(nodule, bts, view(btsSurv, { open: true })) },
 	{ id: 'refer', title: 'Refer', ...one(cyst, bosniak, view(bosniakRefer, { open: true })) },
 	{

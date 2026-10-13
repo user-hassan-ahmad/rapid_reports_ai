@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { assumption, card, draft, outcome, preview, result } from './fixtures';
-import { actionOf, allValueRows, citeShort, decidingQuestion, headlineOf, issuerShort, recommendationBeyond, sourcesOf, verdictOf } from './format';
+import { actionOf, allValueRows, scopeDoubts, citeShort, decidingQuestion, headlineOf, issuerShort, recommendationBeyond, sourcesOf, verdictOf } from './format';
 
 describe('verdictOf', () => {
 	it('fallbacks: headline = first clause, action = first sentence, category none only for a normal outcome', () => {
@@ -85,6 +85,12 @@ describe('value list, recommendation and decidingQuestion', () => {
 		expect(rows.map((x) => [x.input, x.decisive, x.sign ?? false])).toEqual([['cancer', false, false], ['calc', null, true]]);
 		const blank = preview({ proposal: null, draft_outcome: outcome({ classification: 'Cat A: x', recommendation: 'Do y. Then z.', headline: '', action: '', category: '' }) });
 		expect(verdictOf(blank)).toMatchObject({ category: 'neutral', headline: 'Cat A', action: 'Do y' });
+	});
+
+	it('scopeDoubts: the doubtful inputs with their label, value and options from the draft', () => {
+		const p = preview({ proposal: null, scope_doubt: ['d'], draft: [draft({ input: 'd', label: 'Maximum diameter', state: 'prefilled', value: '35 mm', options: ['Not stated'] })] });
+		expect(scopeDoubts(p)).toEqual([{ input: 'd', label: 'Maximum diameter', value: '35 mm', options: ['Not stated'] }]);
+		expect(scopeDoubts(preview())).toEqual([]);
 	});
 
 	it('recommendationBeyond: only what the action does not already say', () => {

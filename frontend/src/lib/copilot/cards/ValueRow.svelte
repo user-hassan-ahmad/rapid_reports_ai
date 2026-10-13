@@ -18,7 +18,13 @@
 	import ValueEdit from './ValueEdit.svelte';
 
 	/** `onEdit` (Slice B2) makes the value changeable: a "Change" button opens ValueEdit in place. N/A never is. */
-	let { row, uid, onEdit = null }: { row: ValueRow; uid: string; onEdit?: ((input: string, value: string) => void) | null } = $props();
+	/** `doubt`: a pre-filled value that would make the guideline not apply (scope_doubt): highlighted, Change in view. */
+	let {
+		row,
+		uid,
+		onEdit = null,
+		doubt = false
+	}: { row: ValueRow; uid: string; onEdit?: ((input: string, value: string) => void) | null; doubt?: boolean } = $props();
 	let editing = $state(false);
 	const editable = $derived(!!onEdit && row.state !== 'not_applicable');
 	const why = $derived(row.why.filter((w) => w !== WHY_EXAM));
@@ -32,6 +38,7 @@
 <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <li
 	class="cp-val"
+	class:cp-val--doubt={doubt}
 	data-state={row.state}
 	tabindex={described ? 0 : undefined}
 	aria-describedby={described ? descId : undefined}
@@ -152,9 +159,14 @@
 		border-color: var(--rv-amber-line);
 		font-weight: 700;
 	}
-	/* an open question is always answerable: its button never hides */
-	.cp-val[data-state='asked'] .cp-val-change {
+	/* an open question is always answerable, and a doubtful value always changeable: their buttons never hide */
+	.cp-val[data-state='asked'] .cp-val-change,
+	.cp-val--doubt .cp-val-change {
 		opacity: 1;
+	}
+	.cp-val--doubt {
+		background: var(--rv-amber-bg);
+		box-shadow: inset 3px 0 0 var(--rv-amber-line);
 	}
 	.cp-val-change {
 		margin-left: 8px;

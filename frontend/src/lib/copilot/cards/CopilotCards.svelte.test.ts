@@ -473,6 +473,36 @@ describe('CopilotCards', () => {
 		expect(region.element().textContent).not.toContain('Most likely');
 	});
 
+	it('scope_doubt: "⚠ check applicability" in the head; a warning first in the body; the row highlighted; Confirm or Change', async () => {
+		const c = card({ key: 'nhs-aaa-surveillance', name: 'NHS AAA surveillance', finding: finding.text });
+		const pv = preview({
+			state: 'check_first',
+			proposal: null,
+			draft_outcome: outcome({ classification: 'Medium AAA', recommendation: 'Scan every 3 months.', action: 'Scan every 3 months', category: 'surveillance' }),
+			scope_doubt: ['diameter_mm'],
+			draft: [
+				draft({ input: 'sex', label: 'Sex', state: 'read', value: 'Male' }),
+				draft({ input: 'diameter_mm', label: 'Maximum diameter', state: 'prefilled', value: '35 mm', why: ['x'], options: [] })
+			]
+		});
+		const p = { ...single(c, v(result(c, pv), { open: true })), onEdit: vi.fn() };
+		render(CopilotCards, p);
+		await expect.element(page.getByTestId('cp-scope-doubt-chip')).toHaveTextContent('⚠ check applicability');
+		expect(document.querySelector('.gl-title-row')!.textContent).not.toContain('check first'); // said once
+		const note = page.getByTestId('cp-scope-doubt');
+		await expect.element(note).toHaveTextContent('Maximum diameter: 35 mm (pre-filled) would make NHS AAA surveillance not apply — confirm or change it');
+		// first in the body
+		expect(document.querySelector('.gl-body .cp-pack-body')!.firstElementChild!.getAttribute('data-testid')).toBe('cp-scope-doubt');
+		const row = [...document.querySelectorAll('.cp-val')].find((e) => e.textContent!.includes('Maximum diameter'))!;
+		expect(row.classList.contains('cp-val--doubt')).toBe(true);
+		await page.getByRole('button', { name: 'Confirm Maximum diameter 35 mm' }).click();
+		expect(p.onEdit).toHaveBeenCalledWith(cardRef(c), 'diameter_mm', '35 mm');
+		await page.getByRole('button', { name: 'Change Maximum diameter' }).first().click();
+		await page.getByRole('textbox', { name: 'Answer for Maximum diameter' }).fill('55 mm');
+		await page.getByRole('button', { name: 'Save' }).click();
+		expect(p.onEdit).toHaveBeenCalledWith(cardRef(c), 'diameter_mm', '55 mm');
+	});
+
 	it('PackCard takes an assumptions list directly (B1 feeds Task 3)', async () => {
 		const { default: PackCard } = await import('./PackCard.svelte');
 		const c = card({ finding: finding.text });

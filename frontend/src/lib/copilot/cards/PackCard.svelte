@@ -13,7 +13,7 @@
 	import type { ActionCategory, Card } from '../types';
 	import CardStatus from './CardStatus.svelte';
 	import AssumedChip from './AssumedChip.svelte';
-	import { assumptionsOf, categoryColor, verdictOf } from './format';
+	import { assumptionsOf, categoryColor, scopeDoubts, verdictOf } from './format';
 	import PackBody from './PackBody.svelte';
 	import VerdictPill from './VerdictPill.svelte';
 	import { errorOf, type CardView } from './view';
@@ -58,7 +58,9 @@
 {#snippet aside()}
 	<span class="cp-head-marks">
 		{#if verdict}<VerdictPill {verdict} busy={view.loading && !!view.result} />{/if}
-		<AssumedChip {assumed} checkFirst={p?.state === 'check_first'} />
+		{#if scopeDoubts(p).length}<span class="cp-chip cp-chip-warn" data-testid="cp-scope-doubt-chip">⚠ check applicability</span>{/if}
+		<!-- the applicability chip already says why the card is check_first: no second "check first" -->
+		<AssumedChip {assumed} checkFirst={p?.state === 'check_first' && !scopeDoubts(p).length} />
 	</span>
 {/snippet}
 
@@ -74,6 +76,7 @@
 			result={view.result}
 			assumptions={assumed}
 			{verdict}
+			guideline={card.name}
 			onEdit={onEdit ? (input, value) => onEdit(ref, input, value) : null}
 			busy={view.loading}
 			editError={view.editError ?? null}

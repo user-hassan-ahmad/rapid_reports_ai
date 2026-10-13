@@ -104,6 +104,14 @@ export function recommendationBeyond(action: string, recommendation: string): st
 	return rest.replace(/[.;:,]+$/, '').split(/\s+/).filter(Boolean).length >= 3 ? rest : '';
 }
 
+/** Pre-filled values that would make the guideline not apply (preview.scope_doubt), with their label and value from
+ *  the draft. Never an exclusion until the radiologist confirms or changes them. */
+export function scopeDoubts(p: Preview | null | undefined): { input: string; label: string; value: string; options: string[] }[] {
+	if (!p?.scope_doubt?.length) return [];
+	const rows = new Map((p.draft ?? []).map((v) => [v.input, v]));
+	return p.scope_doubt.map((id) => ({ input: id, label: rows.get(id)?.label || humanise(id), value: rows.get(id)?.value ?? '', options: rows.get(id)?.options ?? [] }));
+}
+
 /** The backend's WHY_EXAM (library/pack_preview.py): an exam preset, shown as the "set by the exam" chip instead. */
 export const WHY_EXAM = 'set by the exam';
 const humanise = (id: string) => (id.charAt(0).toUpperCase() + id.slice(1)).replace(/_/g, ' ');

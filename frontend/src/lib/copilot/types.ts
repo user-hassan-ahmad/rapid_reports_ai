@@ -91,6 +91,9 @@ export interface Preview {
 	exclusion_reason?: ExclusionReason | null; // does_not_apply: the one read or answered value behind it
 	deciding_input?: DecidingInput | null; // several outcomes remain: the input whose answer splits them most
 	deciding?: DecidingBranch[]; // its answers -> outcomes (at most 3)
+	/** Input ids of pre-filled values that would make the guideline not apply: never an exclusion until confirmed
+	 *  (Hassan's rule: nothing excludes silently); the card shows them prominently. */
+	scope_doubt?: string[];
 	draft?: DraftValue[]; // Task 3
 	draft_outcome?: Proposal | null; // Task 3
 	checker?: Checker | null; // Task 7

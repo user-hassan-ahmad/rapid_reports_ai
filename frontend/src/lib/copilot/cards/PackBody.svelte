@@ -22,12 +22,14 @@
 		decidingQuestion,
 		openQuestions,
 		recommendationBeyond,
+		scopeDoubts,
 		sourcesOf,
 		verdictOf,
 		type Verdict
 	} from './format';
 	import Reference from './Reference.svelte';
 	import ValueRow from './ValueRow.svelte';
+	import ValueEdit from './ValueEdit.svelte';
 
 	let {
 		result,
@@ -36,7 +38,8 @@
 		verdict = undefined,
 		onEdit = null,
 		busy = false,
-		editError = null
+		editError = null,
+		guideline = ''
 	}: {
 		result: OpenResult;
 		compact?: boolean;
@@ -49,7 +52,10 @@
 		/** The card is re-previewing after an edit: the result shown is about to update. */
 		busy?: boolean;
 		editError?: string | null;
+		/** The guideline's name, for the applicability warning. */
+		guideline?: string;
 	} = $props();
+	let doubtEditing = $state<string | null>(null);
 
 	const p = $derived(result.preview);
 	const v = $derived(verdict === undefined ? verdictOf(p) : verdict);
@@ -76,6 +82,9 @@
 	const branches = $derived((p?.deciding ?? []).slice(0, 3));
 	const decidingQ = $derived(p ? decidingQuestion(p) : '');
 	const underAssumptions = $derived(assumed.length > 0 || !!p?.assumed_eligible);
+	// pre-filled values that would make the guideline not apply: never silent (Hassan's rule), shown first
+	const doubts = $derived(scopeDoubts(p));
+	const doubtIds = $derived(new Set(doubts.map((d) => d.input)));
 </script>
 
 <div class="cp-pack-body" class:cp-compact={compact}>
@@ -83,6 +92,34 @@
 		{#if result.entry?.content.summary}<p class="cp-p">{result.entry.content.summary}</p>{/if}
 	{:else}
 		{#if editError}<p class="cp-p cp-edit-error" role="alert">{editError}</p>{/if}
+		{#each doubts as d (d.input)}
+			<div class="cp-doubt" role="note" data-testid="cp-scope-doubt">
+				<p class="cp-p">
+					<Icon name="warn" size={13} />
+					<span><b>{d.label}: {d.value}</b> (pre-filled) would make {guideline || 'this guideline'} not apply — confirm or change it</span>
+				</p>
+				{#if onEdit}
+					<div class="cp-doubt-actions">
+						{#if doubtEditing === d.input}
+							<ValueEdit
+								label={d.label}
+								value={d.value}
+								options={d.options}
+								onSave={(val) => {
+									doubtEditing = null;
+									onEdit?.(d.input, val);
+								}}
+								onCancel={() => (doubtEditing = null)}
+							/>
+						{:else}
+							<!-- confirming sends the value back as the radiologist's answer: only then can it exclude -->
+							<button type="button" class="rv-btn" aria-label={`Confirm ${d.label} ${d.value}`} onclick={() => onEdit?.(d.input, d.value)}>Confirm</button>
+							<button type="button" class="rv-btn" aria-label={`Change ${d.label}`} onclick={() => (doubtEditing = d.input)}>Change</button>
+						{/if}
+					</div>
+				{/if}
+			</div>
+		{/each}
 		<!-- 2. the values -->
 		{#if rows.length}
 			<section class="cp-values" aria-label="Values">
@@ -96,7 +133,7 @@
 				{/if}
 				<ul class="cp-val-list" id="{uid}-values" hidden={!!v?.excluded && !showValues}>
 					{#each shownRows as r (r.input)}
-						<ValueRow row={r} {uid} {onEdit} />
+						<ValueRow row={r} {uid} {onEdit} doubt={doubtIds.has(r.input)} />
 					{/each}
 					{#if naRows.length}
 						{#if showNa}
@@ -452,6 +489,32 @@
 	.cp-open-q + .cp-verdict {
 		padding-top: 10px;
 		border-top: 1px solid var(--rv-border);
+	}
+	.cp-doubt {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 8px 10px;
+		border-radius: 8px;
+		border: 1px solid color-mix(in srgb, var(--rv-amber-line) 55%, transparent);
+		background: var(--rv-amber-bg);
+		color: var(--rv-text);
+		font-size: 0.8125rem;
+	}
+	.cp-doubt p {
+		display: flex;
+		gap: 6px;
+		align-items: flex-start;
+	}
+	.cp-doubt p :global(.cp-icon) {
+		color: var(--rv-amber-text);
+		margin-top: 2px;
+	}
+	.cp-doubt-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
 	}
 	.cp-edit-error {
 		font-size: 0.8125rem;
