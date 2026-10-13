@@ -30,6 +30,8 @@ class SchemaResult(BaseModel):
     family: str | None = None
     key: str
     provisional: bool = False
+    quiet: list[str] = Field(default_factory=list)
+    protocol: dict | None = None
 
 
 class GroupResult(BaseModel):

@@ -16,7 +16,7 @@ from ..database.crud import get_template
 from ..database.models import DictationStackLog, StackSchemaFamily, StackSlimSheet, User
 from ..dictation_v2 import v2_allowed
 from ..template_sheet_structure import generation_stamp
-from .schemas import Region
+from .schemas import Region, groups_for, pill_regions
 from .items import Item, ItemsResult, Referral, recheck as items_recheck, update as items_update
 from .jev_stack import MATERIAL_MIN, STALE_MIN, UNFINISHED_MIN, ask_material, ask_stale, ask_unfinished
 from .normals import AssumedResult, assumed as assumed_normals
@@ -55,6 +55,9 @@ class SchemaRequest(BaseModel):
     scan_type: str = ""
     clinical_history: str = ""
     template_id: str | None = None
+    protocol_id: str | None = None          # protocol library pick (spec §3); phases/laterality complete it
+    phases: list[str] | None = None
+    laterality: str | None = None
 
 
 class GroupRequest(BaseModel):
@@ -140,6 +143,9 @@ class SlimRequest(BaseModel):
     scan_type: str = ""
     clinical_history: str = ""
     template_id: str | None = None
+    protocol_id: str | None = None
+    phases: list[str] | None = None
+    laterality: str | None = None
     # The family and regions are resolved on the server (review 2026-10-12): a shared sheet is never keyed or
     # shaped by what a client sends.
 
@@ -150,6 +156,7 @@ class SlimResult(BaseModel):
     not_assessable: str = ""
     status: str = ""              # provisional | approved | template | template_unusable | "" (not ready)
     ready: bool = False
+    level_groups: dict[str, list[str]] = Field(default_factory=dict)
 
 
 class SlimUpdate(BaseModel):
@@ -162,9 +169,29 @@ class FamilyUpdate(BaseModel):
     regions: list[Region] | None = None
 
 
+def _library_pick(protocol_id, phases, laterality):
+    """The resolved pick, or None when the request is free text or the library is off. A bad pick is a 422."""
+    from .protocol_library.bundle import get_bundle, library_allowed
+    from .protocol_library.compose import PickError, resolve
+    if not protocol_id or not library_allowed():
+        return None, None
+    b = get_bundle()
+    try:
+        return b, resolve(b, protocol_id, phases, laterality)
+    except PickError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @router.post("/schema", response_model=SchemaResult)
 async def stack_schema(req: SchemaRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _require()
+    b, pick = _library_pick(req.protocol_id, req.phases, req.laterality)
+    if pick is not None:
+        return SchemaResult(regions=pick.regions, groups=groups_for(pick.regions), pills=pill_regions(pick.regions),
+                            source="library", key=pick.schema_key, quiet=pick.quiet,
+                            protocol={"id": pick.entry_id, "display_name": pick.display_name,
+                                      "scan_type_line": pick.scan_type_line, "phases": pick.phases,
+                                      "laterality": pick.laterality})
     structure = None
     if req.template_id:
         t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
@@ -341,6 +368,12 @@ async def stack_slim_sheet(req: SlimRequest, user: User = Depends(get_current_us
     read their own structure; quick sessions get the shared slim sheet (made on first use). Never errors: not
     ready means no quiet lines yet."""
     _require()
+    b, pick = _library_pick(req.protocol_id, req.phases, req.laterality)
+    if pick is not None:
+        from .protocol_library.compose import compose_sheet
+        s = compose_sheet(b, pick)
+        return SlimResult(id=s.id, region_normals=s.region_normals, not_assessable=s.not_assessable,
+                          status="library", ready=True, level_groups=s.level_groups)
     if req.template_id:
         t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
         st = template_structure(t.template_config) if t is not None else None
@@ -411,3 +444,7 @@ async def update_slim_sheet(sheet_id: str, upd: SlimUpdate, user: User = Depends
         row.region_normals = {k: kept for k, v in upd.region_normals.items() if (kept := clean_sentences(v))}
     db.commit()
     return {"ok": True}
+
+
+from .protocol_library.routes import router as _protocols_router  # noqa: E402
+router.include_router(_protocols_router)

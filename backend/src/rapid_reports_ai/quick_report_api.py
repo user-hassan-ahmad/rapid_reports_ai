@@ -310,6 +310,16 @@ def _slim_markdown(db: Session, sheet_id: Optional[str]) -> str:
     """The session's slim sheet (checklist spec §8), or "" (the generator then uses today's sheet, stripped)."""
     if not sheet_id:
         return ""
+    if sheet_id.startswith("lib:"):
+        try:
+            from .hybrid_stack.protocol_library.bundle import get_bundle
+            from .hybrid_stack.protocol_library.compose import sheet_from_id
+            b = get_bundle()
+            s = sheet_from_id(b, sheet_id) if b is not None else None
+            return s.markdown if s is not None else ""
+        except Exception as e:  # never blocks the report
+            logger.warning("[quick_report] library sheet %s: %s", sheet_id[:80], e)
+            return ""
     try:
         import uuid
         from .database.models import StackSlimSheet
