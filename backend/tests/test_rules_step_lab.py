@@ -89,3 +89,85 @@ def test_writer_arms_use_the_next_prompts_and_the_decisions_only_when_decided(mo
     assert sys_c == P.analyser_system_prompt(True) and P.DECIDED_HEADING in user_c and t_c == 0.4
     assert '"questions"' not in user_a + user_c
     assert a["status"] == "saved" and a["drift"] == 0 and c["drift"] == 1 and c["sheet"] == LEDGER_SHEET.strip()
+
+
+_GIVEN = 'the dictation states a contrast agent was given'
+_NOT_GIVEN = 'the dictation states no contrast agent was given'
+_PRIOR = 'the dictation names a previous imaging study for comparison'
+
+
+def _with_technique(*lines):
+    from tests.template_sheet_fixtures import LEDGER_SHEET
+    return LEDGER_SHEET.replace('FIXED "Axial images were acquired."\n',
+                                'FIXED "Axial images were acquired."\n' + "".join(f"{x}\n" for x in lines), 1)
+
+
+def _truth(usual="not_given", default="", when_met=""):
+    return {"slug": "s", "kind": "variant", "truth": {"values": [], "patient_specific_fixed": [], "concepts": {
+        "comparison": {"default": "No previous imaging available.", "when_met": "", "usual_state": "none"},
+        "contrast": {"default": default, "when_met": when_met, "usual_state": usual}}}}
+
+
+def test_score_sheet_counts_concept_lines_beyond_one_fixed_and_one_rule():
+    one = _with_technique('FIXED "No agent was given."', f'RULE WHEN [context: {_GIVEN}] SUPPRESS "No agent was given."')
+    assert L.score_sheet(_truth(), one)["concept_duplicates"] == 0
+    # a second FIXED line stating the same concept (a known wording from the truth) and a second rule
+    two = _with_technique('FIXED "No agent was given."', f'RULE WHEN [context: {_GIVEN}] SUPPRESS "No agent was given."',
+                          'FIXED "Contrast was not administered."',
+                          f'RULE WHEN [context: {_GIVEN}] REPLACE "Contrast was not administered." WITH "Agent given."')
+    assert L.score_sheet(_truth(when_met="Contrast was not administered."), two)["concept_duplicates"] == 2
+    # comparison: the fixture's own FIXED line plus a second copy of the truth's wording elsewhere
+    from tests.template_sheet_fixtures import LEDGER_SHEET
+    s = _truth()
+    s["truth"]["concepts"]["comparison"]["default"] = "No previous imaging available."
+    rule = f'RULE WHEN [context: {_PRIOR}] REPLACE "No previous imaging available." WITH "Compared with {{date}}."'
+    sheet = LEDGER_SHEET.replace('FIXED "No previous imaging available."\n',
+                                 f'FIXED "No previous imaging available."\n{rule}\n', 1)
+    assert L.score_sheet(s, sheet)["concept_duplicates"] == 0
+    again = sheet.replace('FIXED "Axial images were acquired."\n',
+                          'FIXED "Axial images were acquired."\nFIXED "No previous imaging available."\n', 1)
+    assert L.score_sheet(s, again)["concept_duplicates"] == 1
+
+
+def test_score_sheet_scores_contrast_presence_polarity_and_condition():
+    right = _with_technique('FIXED "No agent was given."', f'RULE WHEN [context: {_GIVEN}] SUPPRESS "No agent was given."')
+    out = L.score_sheet(_truth("not_given", default="No agent was given."), right)
+    assert out["contrast_rule"] == 1 and out["contrast_condition_ok"] == 1 and out["contrast_default_ok"] == 1
+    wrong = _with_technique('FIXED "Agent given."', f'RULE WHEN [context: {_NOT_GIVEN}] SUPPRESS "Agent given."')
+    out = L.score_sheet(_truth("not_given", default="No agent was given."), wrong)
+    assert out["contrast_rule"] == 1 and out["contrast_condition_ok"] == 0 and out["contrast_default_ok"] == 0
+    # no known wording: polarity by condition only, default n/a; no contrast lines at all
+    out = L.score_sheet(_truth("given"), wrong)
+    assert out["contrast_condition_ok"] == 1 and out["contrast_default_ok"] == "n/a"
+    from tests.template_sheet_fixtures import LEDGER_SHEET
+    out = L.score_sheet(_truth("given"), LEDGER_SHEET)
+    assert out["contrast_rule"] == 0 and out["contrast_condition_ok"] == 0
+    # the radiologist's answer, when there is one, is the truth
+    answers = [{"kind": "concept", "key": "contrast", "choice": {"use": True, "default": "Agent given.", "when_met": "",
+                                                                 "condition": _NOT_GIVEN}}]
+    out = L.score_sheet(_truth("not_given", default="No agent was given."), wrong, answers=answers)
+    assert out["contrast_condition_ok"] == 1 and out["contrast_default_ok"] == 1
+    assert L.score_sheet(_truth(), "# free").get("contrast_rule") is None
+
+
+def test_score_sheet_counts_slots_in_normal_lines():
+    from tests.template_sheet_fixtures import LEDGER_SHEET
+    assert L.score_sheet(_truth(), LEDGER_SHEET)["normal_slots"] == 0
+    slotted = LEDGER_SHEET.replace('NORMAL [liver] "The liver is normal in size."',
+                                   'NORMAL [liver] "The liver measures {measurement}."')
+    assert L.score_sheet(_truth(), slotted)["normal_slots"] == 1
+
+
+def test_required_normals_without_a_gold_sheet_use_the_planted_truth_or_say_n_a():
+    from tests.template_sheet_fixtures import LEDGER_SHEET
+    out = L.score_sheet(_truth(), LEDGER_SHEET)
+    assert out["gold_normals_hit"] == "n/a" and out["gold_normals_total"] == "n/a"
+    s = _truth()
+    s["truth"]["normals"] = ["Liver", "Spleen"]
+    out = L.score_sheet(s, LEDGER_SHEET)
+    assert out["gold_normals_hit"] == 1 and out["gold_normals_total"] == 2 and out["normals_source"] == "truth"
+    assert L.score_sheet(s, LEDGER_SHEET, gold=LEDGER_SHEET)["normals_source"] == "gold"
+    rows = [{"kind": "A:variant", "gold_normals_hit": "n/a", "normal_slots": 1},
+            {"kind": "A:variant", "gold_normals_hit": 2, "normal_slots": 0}]
+    assert L.summarise(rows, ["gold_normals_hit", "normal_slots"])["A:variant"] == {
+        "n": 2, "gold_normals_hit": 2, "normal_slots": 1}
