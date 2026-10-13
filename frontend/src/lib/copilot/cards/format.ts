@@ -64,10 +64,47 @@ export function openQuestions(p: Preview): string[] {
 	return p.missing.filter((m) => !isEligibility(p, m)).map((m) => labels.get(m) || m);
 }
 
+/** The card's one value list (simplified card, Hassan 2026-10-13): every input the draft shows, each editable with
+ *  its provenance; assumed first, then pre-filled (exam presets included), then read, then answered or changed,
+ *  then still open; waiting rows hidden; N/A last (the card hides them behind a toggle). Without a draft (non-pack
+ *  cards, a pre-Task 3 backend) it falls back to valueRows. */
+export function allValueRows(r: OpenResult): ValueRow[] {
+	const p = r.preview;
+	if (!p?.draft?.length) return valueRows(r);
+	const rank: Record<string, number> = { assumed: 0, prefilled: 1, read: 2, answered: 3, edited: 3, asked: 5, not_applicable: 6 };
+	return p.draft
+		.filter((v) => !v.waiting)
+		.map((v, i) => ({ v, i }))
+		.sort((a, b) => (rank[a.v.state] ?? 4) - (rank[b.v.state] ?? 4) || a.i - b.i)
+		.map(({ v }) => ({
+			input: v.input,
+			label: v.label || humanise(v.input),
+			value: v.value,
+			quote: v.quote,
+			byExam: v.by === 'exam',
+			state: v.state,
+			why: v.why,
+			options: v.options,
+			...(v.decisive !== undefined ? { decisive: v.decisive } : {})
+		}));
+}
+
+/** The recommendation, minus what the action already says: the full text when it does not start with the action,
+ *  the rest when it does (e.g. "CT at 3 months" + "CT at 3 months, then 1 year…" → "then 1 year…"), nothing when
+ *  the rest is only a word or two ("No further imaging" + "No further imaging required."). */
+export function recommendationBeyond(action: string, recommendation: string): string {
+	const rec = recommendation.trim();
+	if (!rec) return '';
+	const a = action.trim().toLowerCase().replace(/[.;:,]+$/, '');
+	if (!a || !rec.toLowerCase().startsWith(a)) return rec;
+	const rest = rec.slice(a.length).replace(/^[\s,;:.—-]+/, '').trim();
+	return rest.replace(/[.;:,]+$/, '').split(/\s+/).filter(Boolean).length >= 3 ? rest : '';
+}
+
 /** The backend's WHY_EXAM (library/pack_preview.py): an exam preset, shown as the "set by the exam" chip instead. */
 export const WHY_EXAM = 'set by the exam';
 const humanise = (id: string) => (id.charAt(0).toUpperCase() + id.slice(1)).replace(/_/g, ' ');
-export interface ValueRow { input: string; label: string; value: string; quote: string; byExam: boolean; state: ValueState; why: string[]; options?: string[] }
+export interface ValueRow { input: string; label: string; value: string; quote: string; byExam: boolean; state: ValueState; why: string[]; options?: string[]; decisive?: boolean }
 /** The values the card shows first. From the draft (Task 3): read, pre-filled, answered, edited and N/A rows with
  *  their state and why[]; else (pre-Task 3) preview.settled as read values, labelled from the entry's inputs, else
  *  the ask, else the id. */
@@ -222,37 +259,6 @@ export function sourcesOf(cs: Citation[]): { short: string; more: number; full: 
 	}
 	const list = [...seen.values()];
 	return { short: list.length ? citeShort(list[0]) : '', more: Math.max(0, list.length - 1), full: [...seen.keys()] };
-}
-
-export type ChipKind = 'read' | 'prefilled' | 'assumed' | 'exam' | 'set';
-export interface HeadChip { input: string; text: string; title: string; kind: ChipKind; /** the full text when `text` is shortened */ full?: string }
-/** The head's key values as compact chips (controller ruling 2026-10-13): assumed values are represented ONLY by
- *  the "⚠ N assumed" chip, never as chips of their own; pre-filled values come first (flagged, and never capped
- *  away; shown even as "Label: No" / "Label: Not stated"), then read and set values; the chips keep the card's
- *  order and the remainder is "+N". A plain "Yes" shows as its label; an unflagged "No", "Not stated" or N/A is
- *  left out (noise without the label). */
-export function headChips(r: OpenResult, max = 4): { chips: HeadChip[]; more: number } {
-	const p = r.preview;
-	if (!p) return { chips: [], more: 0 };
-	const kind = (v: ValueRow): ChipKind => (v.byExam ? 'exam' : v.state === 'prefilled' ? 'prefilled' : v.state === 'read' ? 'read' : 'set');
-	const all: (HeadChip & { flagged: boolean; i: number })[] = [];
-	for (const v of valueRows(r)) {
-		if (v.state === 'not_applicable') continue;
-		const k = kind(v);
-		const val = v.value.trim();
-		const flagged = k === 'prefilled';
-		const empty = !val || /^(no|not stated)$/i.test(val);
-		if (empty && !(flagged && val)) continue;
-		// a long label shortens to its first three words so it does not crowd the value chips; the full text stays in
-		// the chip's accessible text and tooltip
-		const short = (l: string) => (l.split(/\s+/).length > 3 ? `${l.split(/\s+/).slice(0, 3).join(' ')}…` : l);
-		const full = /^yes$/i.test(val) ? v.label : empty ? `${v.label}: ${val}` : val;
-		let text = /^yes$/i.test(val) ? short(v.label) : empty ? `${short(v.label)}: ${val}` : val;
-		if (!empty && text.length > 28) text = `${text.slice(0, 27)}…`; // a long value; a flagged label is already short
-		all.push({ input: v.input, text, full: text !== full ? full : undefined, title: `${v.label}: ${val}`, kind: k, flagged, i: all.length });
-	}
-	const pick = [...all.filter((c) => c.flagged), ...all.filter((c) => !c.flagged)].slice(0, max).sort((a, b) => a.i - b.i);
-	return { chips: pick.map(({ input, text, title, kind, full }) => ({ input, text, title, kind, ...(full ? { full } : {}) })), more: all.length - pick.length };
 }
 
 /** The category's text token: >= 4.5:1 on its wash in both themes (the -line tokens are for strips and icons). */

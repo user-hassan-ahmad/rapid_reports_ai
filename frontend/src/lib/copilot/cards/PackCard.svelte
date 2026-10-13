@@ -1,8 +1,8 @@
 <script lang="ts">
 	/**
 	 * A library pack card on the shared GlCard shell, judgement first (B-design, Hassan after checkpoint 3).
-	 * Head, always visible: the guideline's name and the verdict pill (coloured by the outcome's action category,
-	 * with an icon); below, the key values as chips and the assumed-checks cue. The card's left strip takes the
+	 * Head, always visible (simplified card): guideline · result pill (coloured by the outcome's action category, with
+	 * an icon) · assumptions chip (one assumption named, several counted). The card's left strip takes the
 	 * category colour, so a column of cards scans by colour. Opened: PackBody (verdict, notes, source, values).
 	 * Open state belongs to the session (view.open); the chevron asks for it through onOpen / onClose. A pack that
 	 * does not apply dims. `headline` / `action` / `category` override the derived verdict (the planned backend
@@ -12,7 +12,7 @@
 	import { cardRef } from '../state';
 	import type { ActionCategory, Card } from '../types';
 	import CardStatus from './CardStatus.svelte';
-	import HeadChips from './HeadChips.svelte';
+	import AssumedChip from './AssumedChip.svelte';
 	import { assumptionsOf, categoryColor, verdictOf } from './format';
 	import PackBody from './PackBody.svelte';
 	import VerdictPill from './VerdictPill.svelte';
@@ -27,7 +27,6 @@
 		action = null,
 		category = null,
 		onEdit = null,
-		onCalculate = null,
 		onOpen,
 		onClose,
 		onRetry
@@ -43,8 +42,6 @@
 		category?: ActionCategory | null;
 		/** Slice B2: answer or change a value; absent keeps the card read-only. */
 		onEdit?: ((ref: string, input: string, value: string) => void) | null;
-		/** Slice B2: Calculate over the values shown; absent hides the button. Apply is never offered. */
-		onCalculate?: ((ref: string) => void) | null;
 		onOpen: (ref: string) => void;
 		onClose: (ref: string) => void;
 		onRetry: (ref: string) => void;
@@ -59,17 +56,14 @@
 </script>
 
 {#snippet aside()}
-	{#if verdict}<VerdictPill {verdict} />{/if}
+	<span class="cp-head-marks">
+		{#if verdict}<VerdictPill {verdict} />{/if}
+		<AssumedChip {assumed} checkFirst={p?.state === 'check_first'} />
+	</span>
 {/snippet}
 
 {#snippet controls()}
 	{#if other}<span class="cp-chip">other</span>{/if}
-{/snippet}
-
-{#snippet meta()}
-	{#if view.result}
-		<HeadChips result={view.result} {assumed} checkFirst={p?.state === 'check_first'} />
-	{/if}
 {/snippet}
 
 {#snippet body()}
@@ -81,8 +75,6 @@
 			assumptions={assumed}
 			{verdict}
 			onEdit={onEdit ? (input, value) => onEdit(ref, input, value) : null}
-			onCalculate={onCalculate ? () => onCalculate(ref) : null}
-			calc={view.calc ?? null}
 			busy={view.loading}
 			editError={view.editError ?? null}
 		/>
@@ -99,7 +91,17 @@
 		bind:open={() => view.open, (v) => (v ? onOpen(ref) : onClose(ref))}
 		{aside}
 		{controls}
-		{meta}
 		{body}
 	/>
 </div>
+
+<style>
+	.cp-head-marks {
+		display: inline-flex;
+		flex-wrap: wrap;
+		justify-content: flex-end;
+		align-items: center;
+		gap: 4px 6px;
+		max-width: 65%;
+	}
+</style>

@@ -105,7 +105,7 @@
 		{#if copilot && cs?.on}
 			<CopilotRail groups={cs.groups} views={cs.views} matching={cs.matching} matchFailed={cs.matchFailed} otherState={cs.otherState}
 				onOpen={copilot.open} onClose={copilot.close} onRetry={copilot.retry} onRetryMatch={copilot.retryMatch} onOther={copilot.other}
-				onEdit={copilot.edit} onCalculate={copilot.calculate} />
+				onEdit={copilot.edit} />
 		{/if}
 		</div>
 	{/if}

@@ -217,39 +217,6 @@ const flApplies = result(fl, preview({ proposal: outcome({ classification: 'Opti
 
 export const sections: Section[] = [
 	{ id: 'ese-benign', title: 'ESE benign (checkpoint 3 case)', ...one(adrenal, ese, view(eseBenign, { open: true })) },
-	{
-		id: 'calculated',
-		title: 'Edited, then Calculated (Apply stays off)',
-		...one(
-			adrenal,
-			ese,
-			view(eseBenign, {
-				open: true,
-				edits: { size_cm: '2.4 cm' },
-				calc: {
-					loading: false,
-					error: null,
-					result: {
-						outcome: 'benign_attenuation',
-						result: eseBenign.preview!.draft_outcome!,
-						exclusion: null,
-						possible: [],
-						needed: [],
-						values: [
-							draft({ input: 'size_cm', label: 'Adrenal mass maximum diameter', state: 'edited', value: '2.4 cm' }),
-							draft({ input: 'appearance', label: 'Appearance of the mass', state: 'read', value: 'Homogeneous' }),
-							draft({ input: 'unenhanced_hu', label: 'Attenuation on unenhanced CT', state: 'read', value: '8 HU' }),
-							draft({ input: 'known_primary_cancer', label: 'History of extra-adrenal malignancy', state: 'assumed', value: 'No' })
-						],
-						assumptions: ['known_primary_cancer'],
-						trace: null,
-						pack: 'ese-adrenal-incidentaloma@2023',
-						bundle: 'synthetic'
-					}
-				}
-			})
-		)
-	},
 	{ id: 'bts-surveillance', title: 'BTS surveillance', ...one(nodule, bts, view(btsSurv, { open: true })) },
 	{ id: 'refer', title: 'Refer', ...one(cyst, bosniak, view(bosniakRefer, { open: true })) },
 	{

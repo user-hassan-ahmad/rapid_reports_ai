@@ -56,6 +56,7 @@ export interface DraftValue {
 	waiting: boolean;
 	options: string[];
 	by?: '' | 'exam'; // contract request R1
+	decisive?: boolean; // planned: an assumed value that changes the outcome (absent: no tag is shown, never guessed)
 }
 export interface Checker {
 	// Task 7

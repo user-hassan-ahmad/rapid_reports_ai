@@ -6,7 +6,11 @@
 	 *   chip whose reasons (why[]) are in its tooltip and in the row's description;
 	 * - an exam preset (by === 'exam'): the neutral "set by the exam" chip, no highlight (unless it also carries a
 	 *   real reason: then both chips, the highlight and the reason);
-	 * - answered / edited: as set; not_applicable: "N/A".
+	 * - answered / edited: as set; not_applicable: "N/A";
+	 * - assumed (simplified card): a dashed value with an "assumed" badge and, when the backend says so, whether the
+	 *   assumption is decisive (no tag when it does not say: never guessed);
+	 * - asked: "not stated", with "Answer" instead of "Change".
+	 * Every row carries its provenance badge (read · pre-filled · assumed · set by the exam · answered · changed).
 	 * A row with a quote or reasons is focusable (keyboard, or a tap) and shows them in a bubble; screen readers get
 	 * them as its description.
 	 */
@@ -47,12 +51,22 @@
 			/>
 		{:else if row.state === 'not_applicable'}
 			<span class="cp-muted">N/A</span>
+		{:else if row.state === 'asked'}
+			<span class="cp-muted">not stated</span>
+		{:else if row.state === 'assumed'}
+			<b class="cp-assumed-val">{row.value}</b>
 		{:else if prefilled}
 			<b class="cp-prefill">{row.value}</b>
 		{:else if row.value}
 			<b>{row.value}</b>
 		{:else}
 			<span class="cp-muted">{row.state.replace(/_/g, ' ')}</span>
+		{/if}
+		{#if !editing && row.state === 'read' && !row.byExam}<span class="cp-chip cp-val-chip cp-chip-read">read</span>{/if}
+		{#if !editing && row.state === 'assumed'}
+			<span class="cp-chip cp-val-chip cp-chip-warn">assumed</span>
+			{#if row.decisive === true}<span class="cp-chip cp-val-chip cp-chip-decisive">decisive</span>{/if}
+			{#if row.decisive === false}<span class="cp-chip cp-val-chip">doesn't affect outcome</span>{/if}
 		{/if}
 		{#if !editing && row.state === 'edited'}<span class="cp-chip cp-val-chip">changed</span>{/if}
 		{#if !editing && row.state === 'answered'}<span class="cp-chip cp-val-chip">answered</span>{/if}
@@ -64,7 +78,12 @@
 			<span class="cp-chip cp-val-chip cp-chip-why">pre-filled</span>
 		{/if}
 		{#if editable && !editing}
-			<button type="button" class="cp-link cp-val-change" aria-label={`Change ${row.label}`} onclick={(e) => (e.stopPropagation(), (editing = true))}>Change</button>
+			<button
+				type="button"
+				class="cp-link cp-val-change"
+				aria-label={`${row.state === 'asked' ? 'Answer' : 'Change'} ${row.label}`}
+				onclick={(e) => (e.stopPropagation(), (editing = true))}>{row.state === 'asked' ? 'Answer' : 'Change'}</button
+			>
 		{/if}
 	</span>
 	{#if described}
@@ -119,6 +138,23 @@
 	}
 	.cp-chip-why {
 		cursor: help;
+	}
+	.cp-assumed-val {
+		padding: 0 4px;
+		border-radius: 3px;
+		border: 1px dashed color-mix(in srgb, var(--rv-amber-line) 70%, transparent);
+	}
+	.cp-chip-read {
+		opacity: 0.8;
+	}
+	.cp-chip-decisive {
+		color: var(--rv-amber-text);
+		border-color: var(--rv-amber-line);
+		font-weight: 700;
+	}
+	/* an open question is always answerable: its button never hides */
+	.cp-val[data-state='asked'] .cp-val-change {
+		opacity: 1;
 	}
 	.cp-val-change {
 		margin-left: 8px;

@@ -57,7 +57,7 @@ describe('SiblingColumns', () => {
 		expect(cols).toHaveLength(2);
 		expect(cols.map((c) => c.querySelector('.cp-col-name')!.textContent)).toEqual(['Fleischner 2017', 'BTS guideline 2015']);
 		expect(cols[0].querySelector('.cp-col-line .cp-pill')).not.toBeNull(); // each guideline with its own verdict pill
-		expect(cols[1].querySelector('.cp-col-line')!.textContent).toContain('⚠ 1 assumed');
+		expect(cols[1].querySelector('.cp-col-line')!.textContent).toContain('⚠ assumes: Known cancer');
 		expect(document.querySelectorAll('[aria-pressed="true"], [aria-selected="true"]').length).toBe(0);
 		// full bodies, not the outcome-only column
 		await expect.element(page.getByText('Follow-up as per the guideline table').first()).toBeInTheDocument();
@@ -75,19 +75,15 @@ describe('SiblingColumns', () => {
 		await expect.poll(() => document.querySelectorAll('.cp-col--stacked').length).toBe(0);
 	});
 
-	it('B2: each stacked column has its own Change and Calculate, called with its column ref', async () => {
+	it('B2: each stacked column has its own Change, called with its column ref; no Calculate', async () => {
 		const withDraft = (key: string) =>
 			result(card({ key, name: key }), preview({ proposal: null, draft_outcome: null, draft: [{ input: 'size', label: 'Size', role: 'clinical', scope: 'lesion', fact: '', state: 'read', value: '7 mm', quote: '', why: [], by: '', needed: false, waiting: false, options: [] }] }));
-		const v = view({ columns: { [c.key]: { loading: false, error: null, result: withDraft(c.key) }, [bts.key]: { loading: true, error: null, result: withDraft(bts.key) } } });
+		const v = view({ columns: { [c.key]: { loading: false, error: null, result: withDraft(c.key) }, [bts.key]: { loading: false, error: null, result: withDraft(bts.key) } } });
 		const onEdit = vi.fn();
-		const onCalculate = vi.fn();
-		render(SiblingColumns, { ...base({ view: v }), layout: 'stacked', onEdit, onCalculate });
-		const calcs = page.getByRole('button', { name: 'Calculate' });
-		await expect.element(calcs.first()).toBeInTheDocument();
-		expect(calcs.elements()).toHaveLength(2);
-		expect((calcs.elements()[1] as HTMLButtonElement).disabled).toBe(true); // the BTS column is re-previewing
-		await calcs.first().click();
-		expect(onCalculate).toHaveBeenCalledWith(columnRef(c, c.key));
+		render(SiblingColumns, { ...base({ view: v }), layout: 'stacked', onEdit });
+		await expect.element(page.getByRole('button', { name: 'Change Size' }).first()).toBeInTheDocument();
+		expect(page.getByRole('button', { name: 'Change Size' }).elements()).toHaveLength(2);
+		expect(document.body.textContent).not.toContain('Calculate');
 		await page.getByRole('button', { name: 'Change Size' }).first().click();
 		await page.getByRole('textbox', { name: 'Answer for Size' }).fill('8 mm');
 		await page.getByRole('button', { name: 'Save' }).click();

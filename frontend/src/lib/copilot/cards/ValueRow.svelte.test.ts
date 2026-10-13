@@ -21,7 +21,7 @@ describe('ValueRow', () => {
 		show(row({ quote: '7 mm solid nodule' }));
 		await expect.element(page.getByText('7 mm', { exact: true })).toBeInTheDocument();
 		expect(li().querySelector('.cp-prefill')).toBeNull();
-		expect(li().querySelector('.cp-chip')).toBeNull();
+		expect(li().querySelector('.cp-chip')!.textContent).toBe('read'); // its provenance badge
 		expect(document.getElementById(li().getAttribute('aria-describedby')!)!.textContent!.trim()).toBe('“7 mm solid nodule”');
 		await expect.element(page.getByText('“7 mm solid nodule”')).not.toBeVisible();
 		li().focus();
@@ -84,5 +84,16 @@ describe('ValueRow', () => {
 		await r.rerender({ row: row({ state: 'not_applicable', value: '' }) });
 		await expect.element(page.getByText('N/A')).toBeInTheDocument();
 		expect(li().dataset.state).toBe('not_applicable');
+	});
+
+	it('assumed: a dashed value, the "assumed" badge, and a decisive tag only when the backend says', async () => {
+		const r = show(row({ input: 'cancer', label: 'Known cancer', state: 'assumed', value: 'No' }));
+		await expect.element(page.getByText('assumed', { exact: true })).toBeInTheDocument();
+		expect(li().querySelector('.cp-assumed-val')!.textContent).toBe('No');
+		expect(document.body.textContent).not.toMatch(/decisive|doesn't affect/);
+		await r.rerender({ row: row({ input: 'cancer', label: 'Known cancer', state: 'assumed', value: 'No', decisive: true }) });
+		await expect.element(page.getByText('decisive')).toBeInTheDocument();
+		await r.rerender({ row: row({ input: 'cancer', label: 'Known cancer', state: 'assumed', value: 'No', decisive: false }) });
+		await expect.element(page.getByText("doesn't affect outcome")).toBeInTheDocument();
 	});
 });

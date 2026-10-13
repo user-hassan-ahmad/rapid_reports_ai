@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { card, draft, outcome, preview, result } from './fixtures';
-import { actionOf, citeShort, decidingQuestion, headChips, headlineOf, issuerShort, sourcesOf, verdictOf } from './format';
+import { actionOf, allValueRows, citeShort, decidingQuestion, headlineOf, issuerShort, recommendationBeyond, sourcesOf, verdictOf } from './format';
 
 describe('verdictOf', () => {
 	it('fallbacks: headline = first clause, action = first sentence, category none only for a normal outcome', () => {
@@ -54,32 +54,32 @@ describe('sources', () => {
 	});
 });
 
-describe('headChips and decidingQuestion', () => {
-	it('values as chips: assumed only via the ⚠ chip, pre-filled first, a Yes as its label, an unflagged No and N/A left out', () => {
+describe('value list, recommendation and decidingQuestion', () => {
+	it('allValueRows: assumed first, then pre-filled (exam presets too), then read, answered, still open; waiting hidden; N/A last; decisive kept', () => {
 		const r = result(card(), preview({
 			proposal: null,
 			draft: [
 				draft({ input: 'size', label: 'Size', state: 'read', value: '2.2 cm' }),
+				draft({ input: 'q', label: 'Open', state: 'asked', needed: true }),
 				draft({ input: 'hu', label: 'HU', state: 'prefilled', value: '8 HU' }),
+				draft({ input: 'na', label: 'N/A row', state: 'not_applicable' }),
 				draft({ input: 'phase', label: 'Phase', state: 'prefilled', value: 'Unenhanced', by: 'exam' }),
-				draft({ input: 'homog', label: 'Homogeneous', state: 'read', value: 'Yes' }),
-				draft({ input: 'cancer', label: 'Known cancer', role: 'eligibility', state: 'assumed', value: 'No' }),
-				draft({ input: 'adult', label: 'Adult', role: 'eligibility', state: 'assumed', value: 'Yes' }),
-				draft({ input: 'side', label: 'Side', state: 'not_applicable' })
+				draft({ input: 'cancer', label: 'Known cancer', role: 'eligibility', state: 'assumed', value: 'No', decisive: true }),
+				draft({ input: 'age', label: 'Age', state: 'answered', value: '60' }),
+				draft({ input: 'w', label: 'Waiting', state: 'asked', waiting: true })
 			]
 		}));
-		const h = headChips(r);
-		// assumed values never become chips (the "⚠ N assumed" chip stands for them); pre-filled first, then read, in order
-		expect(h.chips.map((c) => [c.text, c.kind])).toEqual([['2.2 cm', 'read'], ['8 HU', 'prefilled'], ['Unenhanced', 'exam'], ['Homogeneous', 'read']]);
-		expect(h.more).toBe(0);
-		const capped = headChips(r, 2).chips.map((c) => c.text);
-		expect(capped).toEqual(['2.2 cm', '8 HU']); // the pre-filled 8 HU is kept before later read values
-		const flaggedNo = result(card(), preview({ proposal: null, draft: [draft({ input: 'a', label: 'A', state: 'read', value: '1' }), draft({ input: 'pre', label: 'Mass effect', state: 'prefilled', value: 'No' })] }));
-		expect(headChips(flaggedNo, 1).chips.map((c) => c.text)).toEqual(['Mass effect: No']);
-		const longLabel = result(card(), preview({ proposal: null, draft: [draft({ input: 'pre', label: 'History of extra-adrenal malignancy', state: 'prefilled', value: 'No' })] }));
-		const chip = headChips(longLabel).chips[0];
-		expect(chip.text).toBe('History of extra-adrenal…: No'); // short form in the chip
-		expect(chip.full).toBe('History of extra-adrenal malignancy: No'); // the full text for screen readers
+		const rows = allValueRows(r);
+		expect(rows.map((x) => x.input)).toEqual(['cancer', 'hu', 'phase', 'size', 'age', 'q', 'na']);
+		expect(rows[0].decisive).toBe(true);
+		expect('decisive' in rows[1]).toBe(false); // absent unless the backend says
+	});
+
+	it('recommendationBeyond: only what the action does not already say', () => {
+		expect(recommendationBeyond('No further imaging', 'No further imaging required.')).toBe('');
+		expect(recommendationBeyond('CT at 3 months', 'CT at 3 months, then 1 year and 2 years if stable.')).toBe('then 1 year and 2 years if stable.');
+		expect(recommendationBeyond('Refer · urology MDT', 'Refer to the urology MDT; surgery is usually advised.')).toBe('Refer to the urology MDT; surgery is usually advised.');
+		expect(recommendationBeyond('', 'Some text.')).toBe('Some text.');
 	});
 
 	it('decidingQuestion: the deciding input label, else the first needed open question; empty with no branches', () => {

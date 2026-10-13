@@ -30,8 +30,7 @@
 		onRetry,
 		onRetryMatch,
 		onOther,
-		onEdit = undefined,
-		onCalculate = undefined
+		onEdit = undefined
 	}: {
 		groups: Group[];
 		views: Record<string, CardView>;
@@ -48,8 +47,6 @@
 		onOther(): void;
 		/** Slice B2: inline edit on pack cards (session.edit). Absent: read-only. */
 		onEdit?: (ref: string, input: string, value: string) => void;
-		/** Slice B2: Calculate on pack cards (session.calculate). Absent: no button. Apply is never offered. */
-		onCalculate?: (ref: string) => void;
 	} = $props();
 
 	const shown = $derived(groups.filter((g) => g.cards.length));
@@ -65,9 +62,9 @@
 		<QuietLine card={c} result={v.result} />
 	{:else if kind === 'exam' || kind === 'finding'}
 		{#if c.siblings.length}
-			<SiblingColumns card={c} view={v} {other} layout={siblingLayout} {onEdit} {onCalculate} {...handlers} />
+			<SiblingColumns card={c} view={v} {other} layout={siblingLayout} {onEdit} {...handlers} />
 		{:else}
-			<PackCard card={c} view={v} {other} {onEdit} {onCalculate} {...handlers} />
+			<PackCard card={c} view={v} {other} {onEdit} {...handlers} />
 		{/if}
 	{:else}
 		<ReadOnlyCard card={c} {kind} view={v} {other} {...handlers} />

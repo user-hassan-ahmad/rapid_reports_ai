@@ -58,32 +58,6 @@
 			const draftRows = p.draft.map((d) => (d.input === input ? { ...d, value: value === 'Not stated' ? '' : value, state: value === 'Not stated' ? ('asked' as const) : d.state === 'asked' ? ('answered' as const) : ('edited' as const), quote: '', why: [] } : d));
 			t.set({ edits: { ...(v.edits ?? {}), [input]: value }, calc: undefined, result: { ...v.result, preview: { ...p, draft: draftRows } } });
 		},
-		onCalculate: (ref: string) => {
-			const t = target(ref);
-			const p = t?.get()?.result?.preview;
-			if (!t || !p) return;
-			t.set({ calc: { loading: true, error: null, result: null } });
-			later(() =>
-				t.set({
-					calc: {
-						loading: false,
-						error: null,
-						result: {
-							outcome: 'drafted',
-							result: p.draft_outcome ?? null,
-							exclusion: p.state === 'does_not_apply' ? p.exclusion : null,
-							possible: p.draft_outcome ? [] : p.possible,
-							needed: (p.draft ?? []).filter((d) => d.state === 'asked' && d.needed).map((d) => d.input),
-							values: (p.draft ?? []).filter((d) => d.value && !d.waiting),
-							assumptions: (p.draft ?? []).filter((d) => d.state === 'assumed').map((d) => d.input),
-							trace: null,
-							pack: 'synthetic@1',
-							bundle: 'synthetic'
-						}
-					}
-				})
-			);
-		},
 		onRetryMatch: () => {
 			matchFailed = false;
 			matching = true;
