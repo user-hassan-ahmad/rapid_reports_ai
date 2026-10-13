@@ -13,13 +13,15 @@ import {
 	kindOf,
 	markSent,
 	planMatch,
+	NOT_STATED,
 	quiet,
 	stableFindings,
+	valuesShown,
 	type CardKind,
 	type Finding,
 	type Group
 } from './state';
-import type { Card, MatchBody, MatchResult, OpenBody, OpenResult } from './types';
+import type { CalculateBody, CalculateResult, Card, MatchBody, MatchResult, OpenBody, OpenResult } from './types';
 
 export interface CopilotContext { scanType: string; history: string }
 export type OtherState = 'idle' | 'loading' | 'done' | 'failed';
@@ -52,6 +54,11 @@ export interface CopilotSession {
 	close(ref: string): void;
 	/** A card ref, or `<cardRef>#<pack key>` for one sibling column (split on the LAST '#'). */
 	retry(ref: string): void;
+	/** Slice B2: answer or change one value on a card. Re-previews the card (the engine only); a value carrying a
+	 *  shared patient fact also re-previews every other card with that fact. Clears the card's Calculate result. */
+	edit(ref: string, input: string, value: string): void;
+	/** Slice B2: Calculate over exactly the values the card shows (valuesShown). Never Applies. */
+	calculate(ref: string): void;
 	retryMatch(): void;
 	other(): void;
 	/** Keys, counts and ms only (no text): for the stack log. */
@@ -62,6 +69,8 @@ export interface CopilotApi {
 	match(b: MatchBody, signal?: AbortSignal): Promise<MatchResult>;
 	matchOther(b: MatchBody, signal?: AbortSignal): Promise<MatchResult>;
 	open(b: OpenBody, signal?: AbortSignal): Promise<OpenResult>;
+	preview(b: OpenBody, signal?: AbortSignal): Promise<OpenResult>;
+	calculate(b: CalculateBody, signal?: AbortSignal): Promise<CalculateResult>;
 }
 
 /** Exam cards re-open this long after recording stops with changed findings text. */
@@ -100,6 +109,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	let cards: Card[] = [];
 	let others: Card[] = [];
 	let views: Record<string, CardView> = {};
+	const patient: Record<string, string> = {}; // case-level shared patient answers by fact (§7.4 "once per case")
 	let matching = false;
 	let matchFailed = false;
 	let otherState: OtherState = 'idle';
@@ -166,15 +176,15 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		clinical_history: ctx.history,
 		findings: fs.map((f) => ({ id: f.id, text: f.text })),
 		dictation: text,
-		patient: {}
+		patient: { ...patient }
 	});
 	const openBody = (card: Card): OpenBody => ({
 		card, // echoed whole: needs_modality and siblings intact (the server trusts them)
 		finding: card.finding_id === 'exam' ? text : card.finding,
 		findings: text,
 		clinical_history: ctx.history,
-		answered: {},
-		patient: {}
+		answered: { ...(views[cardRef(card)]?.edits ?? {}) },
+		patient: { ...patient }
 	});
 
 	// ── /match ──
@@ -234,7 +244,12 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	}
 
 	// ── /open ──
-	async function request(seqKey: string, body: OpenBody, set: (p: Partial<ColumnView>) => void): Promise<OpenResult | null> {
+	async function request(
+		seqKey: string,
+		body: OpenBody,
+		set: (p: Partial<ColumnView>) => void,
+		route: 'open' | 'preview' = 'open'
+	): Promise<OpenResult | null> {
 		openAc.get(seqKey)?.abort();
 		const seq = ++openCounter;
 		openSeq.set(seqKey, seq);
@@ -244,7 +259,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		publish();
 		const t0 = Date.now();
 		try {
-			const res = await api.open(body, ac.signal);
+			const res = await api[route](body, ac.signal);
 			if (openSeq.get(seqKey) !== seq || !live()) return null;
 			set({ loading: false, error: null, result: res });
 			log.ms[body.card.key] = res.ms ?? Date.now() - t0;
@@ -270,6 +285,77 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		if (res && card.finding_id === 'exam') {
 			examText.set(ref, body.finding);
 			if (quiet(card, res.preview) && !log.quiet.includes(card.key)) log.quiet.push(card.key);
+		}
+	}
+
+	// ── Slice B2: edits, shared patient answers, Calculate ──
+	/** Re-preview a card after an edit or a patient answer: the engine only, over its answers (no new settle). */
+	function repreview(card: Card) {
+		const ref = cardRef(card);
+		return request(ref, openBody(card), (p) => patch(ref, p), 'preview');
+	}
+	/** Any edit clears the card's Calculate result, and an answer still in flight is dropped. */
+	function dropCalc(ref: string) {
+		const key = `${ref}@calc`;
+		openAc.get(key)?.abort();
+		openAc.delete(key);
+		openSeq.set(key, ++openCounter);
+		if (views[ref]?.calc) patch(ref, { calc: undefined });
+	}
+	const draftOf = (ref: string) => views[ref]?.result?.preview?.draft ?? [];
+
+	function editValue(ref: string, input: string, value: string) {
+		if (!live()) return;
+		const card = find(ref);
+		if (!card || card.needs_modality) return;
+		const row = draftOf(ref).find((d) => d.input === input);
+		if (!row || row.state === 'not_applicable') return;
+		const v = views[ref] ?? closedView;
+		dropCalc(ref);
+		patch(ref, { edits: { ...(v.edits ?? {}), [input]: value } });
+		void repreview(card);
+		// a shared patient fact (age, sex, history): one answer per case, every card that carries it follows
+		if (row.fact) {
+			if (value === NOT_STATED) delete patient[row.fact];
+			else patient[row.fact] = value;
+			for (const c of all()) {
+				const r = cardRef(c);
+				if (r === ref || c.needs_modality || !views[r]?.result) continue;
+				if (!draftOf(r).some((d) => d.fact === row.fact)) continue;
+				dropCalc(r);
+				void repreview(c);
+			}
+		}
+		publish();
+	}
+
+	async function calculateCard(ref: string) {
+		if (!live()) return;
+		const card = find(ref);
+		const v = views[ref];
+		if (!card || card.needs_modality || !v?.result?.preview) return;
+		const key = `${ref}@calc`;
+		openAc.get(key)?.abort();
+		const seq = ++openCounter;
+		openSeq.set(key, seq);
+		const ac = new AbortController();
+		openAc.set(key, ac);
+		const body: CalculateBody = { ...openBody(card), values: valuesShown(v.result.preview, v.edits) };
+		patch(ref, { calc: { loading: true, error: null, result: null } });
+		publish();
+		try {
+			const res = await api.calculate(body, ac.signal);
+			if (openSeq.get(key) !== seq || !live()) return;
+			patch(ref, { calc: { loading: false, error: res.error, result: res.calculation } });
+			log.ms[`${card.key}:calc`] = res.ms;
+		} catch (e) {
+			if (openSeq.get(key) === seq && failed(e)) {
+				patch(ref, { calc: { loading: false, error: reason(e), result: null } });
+				fail(`${card.key}:calc`);
+			}
+		} finally {
+			if (openAc.get(key) === ac) openAc.delete(key);
+			publish();
 		}
 	}
 
@@ -378,6 +464,8 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 			publish();
 		},
 		retry,
+		edit: editValue,
+		calculate: (ref) => void calculateCard(ref),
 		retryMatch() {
 			if (!live() || matchAc) return;
 			matchFailed = false;

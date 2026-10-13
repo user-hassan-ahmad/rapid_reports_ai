@@ -26,6 +26,8 @@
 		headline = null,
 		action = null,
 		category = null,
+		onEdit = null,
+		onCalculate = null,
 		onOpen,
 		onClose,
 		onRetry
@@ -39,6 +41,10 @@
 		headline?: string | null;
 		action?: string | null;
 		category?: ActionCategory | null;
+		/** Slice B2: answer or change a value; absent keeps the card read-only. */
+		onEdit?: ((ref: string, input: string, value: string) => void) | null;
+		/** Slice B2: Calculate over the values shown; absent hides the button. Apply is never offered. */
+		onCalculate?: ((ref: string) => void) | null;
 		onOpen: (ref: string) => void;
 		onClose: (ref: string) => void;
 		onRetry: (ref: string) => void;
@@ -70,7 +76,14 @@
 	<!-- a re-open (exam card, debounced) keeps the last preview on screen instead of flickering to a skeleton -->
 	<CardStatus loading={view.loading && !view.result} error={err} onRetry={() => onRetry(ref)} />
 	{#if !err && view.result}
-		<PackBody result={view.result} assumptions={assumed} {verdict} />
+		<PackBody
+			result={view.result}
+			assumptions={assumed}
+			{verdict}
+			onEdit={onEdit ? (input, value) => onEdit(ref, input, value) : null}
+			onCalculate={onCalculate ? () => onCalculate(ref) : null}
+			calc={view.calc ?? null}
+		/>
 	{/if}
 {/snippet}
 

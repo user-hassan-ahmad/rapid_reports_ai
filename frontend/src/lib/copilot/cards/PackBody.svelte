@@ -17,12 +17,19 @@
 	import { assumptionsOf, categoryColor, categoryText, decidingQuestion, openQuestions, sourcesOf, valueRows, verdictOf, type Verdict } from './format';
 	import Reference from './Reference.svelte';
 	import ValueRow from './ValueRow.svelte';
+	import ValueEdit from './ValueEdit.svelte';
+	import CalcResult from './CalcResult.svelte';
+	import { rowsOf } from '../state';
+	import type { CalcView } from './view';
 
 	let {
 		result,
 		compact = false,
 		assumptions = null,
-		verdict = undefined
+		verdict = undefined,
+		onEdit = null,
+		onCalculate = null,
+		calc = null
 	}: {
 		result: OpenResult;
 		compact?: boolean;
@@ -30,8 +37,17 @@
 		assumptions?: string[] | null;
 		/** The verdict the head shows; derived from the preview when not given. */
 		verdict?: Verdict | null;
+		/** Slice B2: answer or change a value (the card re-previews). Absent: read-only. */
+		onEdit?: ((input: string, value: string) => void) | null;
+		/** Slice B2: Calculate over the values shown. Absent: no Calculate button. Apply is never offered. */
+		onCalculate?: (() => void) | null;
+		calc?: CalcView | null;
 	} = $props();
+
 	const p = $derived(result.preview);
+	let answering = $state<string | null>(null);
+	const draftRows = $derived(p?.draft?.length ? rowsOf(p) : null);
+	const calcLabels = $derived(Object.fromEntries((p?.draft ?? []).map((d) => [d.input, d.label])));
 	const v = $derived(verdict === undefined ? verdictOf(p) : verdict);
 	const rows = $derived(valueRows(result));
 	const assumed = $derived(assumptions ?? assumptionsOf(p));
@@ -150,7 +166,7 @@
 				<div class="cp-label">Values</div>
 				<ul class="cp-val-list">
 					{#each rows as r (r.input)}
-						<ValueRow row={r} {uid} />
+						<ValueRow row={r} {uid} {onEdit} />
 					{/each}
 				</ul>
 			</section>
@@ -160,7 +176,28 @@
 				<section class="cp-open-q" aria-label="Still open">
 					<div class="cp-label">Still open</div>
 					<ul class="cp-open-list">
-						{#each questions as q, i (i)}<li>{q}</li>{/each}
+						{#if onEdit && draftRows}
+							{#each draftRows.asked as q (q.input)}
+								<li class:cp-open-editing={answering === q.input}>
+									{#if answering === q.input}
+										<span class="cp-open-label">{q.label}</span>
+										<ValueEdit
+											label={q.label}
+											options={q.options}
+											onSave={(val) => {
+												answering = null;
+												onEdit?.(q.input, val);
+											}}
+											onCancel={() => (answering = null)}
+										/>
+									{:else}
+										<button type="button" class="cp-open-answer" aria-label={`Answer ${q.label}`} onclick={() => (answering = q.input)}>{q.label}</button>
+									{/if}
+								</li>
+							{/each}
+						{:else}
+							{#each questions as q, i (i)}<li>{q}</li>{/each}
+						{/if}
 					</ul>
 				</section>
 			{/if}
@@ -196,9 +233,39 @@
 					><Icon name="warn" size={12} /> Assumed eligible: {assumed.length} {assumed.length === 1 ? 'check' : 'checks'}</button
 				>
 				<ul class="cp-list cp-assumed-list" id="{uid}-assumed" hidden={!showAssumed}>
-					{#each assumed as a, i (i)}<li>{a}</li>{/each}
+					{#if onEdit && draftRows?.assumed.length}
+						{#each draftRows.assumed as a (a.input)}
+							<li>
+								{#if answering === a.input}
+									<span>{a.label}</span>
+									<ValueEdit
+										label={a.label}
+										value={a.value}
+										options={a.options}
+										onSave={(val) => {
+											answering = null;
+											if (val !== a.value) onEdit?.(a.input, val);
+										}}
+										onCancel={() => (answering = null)}
+									/>
+								{:else}
+									{a.label}: {a.value}
+									<button type="button" class="cp-link cp-assumed-change" aria-label={`Change ${a.label}`} onclick={() => (answering = a.input)}>Change</button>
+								{/if}
+							</li>
+						{/each}
+					{:else}
+						{#each assumed as a, i (i)}<li>{a}</li>{/each}
+					{/if}
 				</ul>
 			</div>
+		{/if}
+		{#if onCalculate && p.draft?.length && !compact}
+			<div class="cp-calc-row">
+				<button type="button" class="rv-btn cp-calc-btn" disabled={!!calc?.loading} onclick={() => onCalculate?.()}>Calculate</button>
+				<span class="cp-muted cp-calc-hint">on the values shown</span>
+			</div>
+			{#if calc}<CalcResult {calc} labels={calcLabels} />{/if}
 		{/if}
 		{#if p.degraded}
 			<p class="cp-p cp-muted cp-degraded">Some values could not be checked</p>
@@ -417,6 +484,39 @@
 	.cp-values:first-child {
 		padding-top: 0;
 		border-top: 0;
+	}
+	.cp-open-answer {
+		font: inherit;
+		background: none;
+		border: 0;
+		padding: 0;
+		color: inherit;
+		cursor: pointer;
+	}
+	.cp-open-answer:hover {
+		color: var(--rv-text);
+	}
+	.cp-open-list li.cp-open-editing {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
+		border-style: solid;
+	}
+	.cp-open-label {
+		color: var(--rv-text);
+	}
+	.cp-assumed-change {
+		margin-left: 6px;
+		font-size: 0.75rem;
+	}
+	.cp-calc-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.cp-calc-hint {
+		font-size: 0.75rem;
 	}
 	.cp-possible-toggle,
 	.cp-assumed-toggle {

@@ -127,6 +127,7 @@ export interface Calculation {
 	possible: string[];
 	needed: string[];
 	values: DraftValue[];
+	assumptions: string[]; // inputs sent back at the draft's assumed value: still assumptions (confirmed at Apply)
 	trace: Record<string, unknown> | null;
 	pack: string;
 	bundle: string;

@@ -33,7 +33,7 @@ describe('/dev/copilot', () => {
 		expect(() => load()).not.toThrow();
 	});
 
-	it('renders one section per state, with no Apply or Calculate and no API call', async () => {
+	it('renders one section per state, with no Apply, Calculate on pack cards only, and no API call', async () => {
 		const errors: unknown[] = [];
 		const onErr = (e: ErrorEvent) => errors.push(e.message);
 		window.addEventListener('error', onErr);
@@ -47,7 +47,9 @@ describe('/dev/copilot', () => {
 		expect(t('empty')).toContain('No guideline applies yet');
 		expect(t('siblings')).toContain('BTS 2015');
 		const names = [...document.querySelectorAll('button, [role="button"]')].map((b) => (b.textContent ?? '').trim());
-		expect(names.some((n) => /^(apply|calculate)\b/i.test(n))).toBe(false);
+		expect(names.some((n) => /^apply\b/i.test(n))).toBe(false); // Apply stays off
+		// Calculate (Slice B2) only on pack cards, never on a read-only card (needs-modality, reference, TNM)
+		for (const id of ['needs-modality', 'reference', 'tnm']) expect(document.querySelector(`[data-testid="dv-${id}"]`)!.textContent).not.toMatch(/Calculate/);
 		for (const s of sections) await shot(document.querySelector(`[data-testid="dv-${s.id}"]`)!, `section-${s.id}`);
 		if (SHOTS) {
 			await page.getByRole('radio', { name: 'Light' }).click();

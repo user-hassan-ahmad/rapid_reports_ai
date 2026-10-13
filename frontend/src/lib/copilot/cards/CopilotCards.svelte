@@ -29,7 +29,9 @@
 		onClose,
 		onRetry,
 		onRetryMatch,
-		onOther
+		onOther,
+		onEdit = undefined,
+		onCalculate = undefined
 	}: {
 		groups: Group[];
 		views: Record<string, CardView>;
@@ -44,6 +46,10 @@
 		onRetry(ref: string): void;
 		onRetryMatch(): void;
 		onOther(): void;
+		/** Slice B2: inline edit on pack cards (session.edit). Absent: read-only. */
+		onEdit?: (ref: string, input: string, value: string) => void;
+		/** Slice B2: Calculate on pack cards (session.calculate). Absent: no button. Apply is never offered. */
+		onCalculate?: (ref: string) => void;
 	} = $props();
 
 	const shown = $derived(groups.filter((g) => g.cards.length));
@@ -61,7 +67,7 @@
 		{#if c.siblings.length}
 			<SiblingColumns card={c} view={v} {other} layout={siblingLayout} {...handlers} />
 		{:else}
-			<PackCard card={c} view={v} {other} {...handlers} />
+			<PackCard card={c} view={v} {other} {onEdit} {onCalculate} {...handlers} />
 		{/if}
 	{:else}
 		<ReadOnlyCard card={c} {kind} view={v} {other} {...handlers} />

@@ -356,6 +356,78 @@ describe('CopilotCards', () => {
 		expect(document.body.textContent).not.toContain('outcomes still possible');
 	});
 
+	it('B2: with onEdit, a still-open question is answered in place, an assumed value can be changed; Calculate calls back; no Apply', async () => {
+		const c = card({ finding: finding.text });
+		const pv = preview({
+			proposal: null,
+			draft_outcome: outcome({ classification: 'Benign: x', recommendation: 'No further imaging.' }),
+			draft: [
+				draft({ input: 'size', label: 'Size', state: 'read', value: '2.2 cm', quote: '2.2 cm' }),
+				draft({ input: 'brock', label: 'Brock risk', state: 'asked', needed: true, options: ['Under 10%', '10% or more', 'Not stated'] }),
+				draft({ input: 'cancer', label: 'Known cancer', role: 'eligibility', state: 'assumed', value: 'No', options: ['Yes', 'No', 'Not stated'] })
+			]
+		});
+		const p = { ...single(c, v(result(c, pv), { open: true })), onEdit: vi.fn(), onCalculate: vi.fn() };
+		render(CopilotCards, p);
+		await page.getByRole('button', { name: 'Answer Brock risk' }).click();
+		await page.getByRole('combobox', { name: 'Answer for Brock risk' }).selectOptions('Under 10%');
+		expect(p.onEdit).toHaveBeenCalledWith(cardRef(c), 'brock', 'Under 10%');
+		await page.getByRole('button', { name: /Assumed eligible/ }).click();
+		await page.getByRole('button', { name: 'Change Known cancer' }).click();
+		await page.getByRole('combobox', { name: 'Answer for Known cancer' }).selectOptions('Yes');
+		expect(p.onEdit).toHaveBeenCalledWith(cardRef(c), 'cancer', 'Yes');
+		await page.getByRole('button', { name: 'Calculate' }).click();
+		expect(p.onCalculate).toHaveBeenCalledWith(cardRef(c));
+		const names = [...document.querySelectorAll('button, [role="button"]')].map((b) => (b.textContent ?? '').trim());
+		expect(names.some((n) => /^apply\b/i.test(n))).toBe(false);
+	});
+
+	it('B2: a Calculate result shows the outcome, the values used with their state, and still-assumed values', async () => {
+		const c = card({ finding: finding.text });
+		const pv = preview({ proposal: null, draft_outcome: outcome(), draft: [draft({ input: 'size', label: 'Size', state: 'read', value: '2.2 cm' })] });
+		const calc = {
+			loading: false,
+			error: null,
+			result: {
+				outcome: 'benign',
+				result: outcome({ classification: 'Benign lipid-rich adenoma: no work-up', recommendation: 'No further imaging.' }),
+				exclusion: null,
+				possible: [],
+				needed: [],
+				values: [
+					draft({ input: 'size', label: 'Size', state: 'edited', value: '2.4 cm' }),
+					draft({ input: 'cancer', label: 'Known cancer', state: 'assumed', value: 'No' })
+				],
+				assumptions: ['cancer'],
+				trace: null,
+				pack: 'p@1',
+				bundle: 'b'
+			}
+		};
+		render(CopilotCards, { ...single(c, v(result(c, pv), { open: true, calc })), onEdit: vi.fn(), onCalculate: vi.fn() });
+		const region = page.getByRole('region', { name: 'Calculated' });
+		await expect.element(region).toHaveTextContent('Calculated on these values');
+		const t = region.element().textContent!;
+		expect(t).toContain('Benign lipid-rich adenoma');
+		expect(t).toContain('No further imaging');
+		expect(t).toContain('1 value is still assumed (Known cancer): confirmed only at Apply');
+		const used = [...region.element().querySelectorAll('.cp-calc-values li')].map((li) => li.textContent!.replace(/\s+/g, ' ').trim());
+		expect(used).toEqual(['Size 2.4 cm changed', 'Known cancer No assumed']);
+	});
+
+	it('B2: a Calculate with no outcome lists what is still needed and the possible outcomes; an exclusion reads "Does not apply"', async () => {
+		const c = card({ finding: finding.text });
+		const pv = preview({ proposal: null, draft: [draft({ input: 'brock', label: 'Brock risk', state: 'asked', needed: true })] });
+		const base = { outcome: null, result: null, exclusion: null, values: [], assumptions: [], trace: null, pack: 'p@1', bundle: 'b' };
+		const r = render(CopilotCards, { ...single(c, v(result(c, pv), { open: true, calc: { loading: false, error: null, result: { ...base, possible: ['CT surveillance', 'PET-CT'], needed: ['brock'] } } })), onCalculate: vi.fn() });
+		const region = page.getByRole('region', { name: 'Calculated' });
+		await expect.element(region).toHaveTextContent('Not enough to decide');
+		expect(region.element().textContent).toContain('Still needed: Brock risk');
+		expect(region.element().textContent).toContain('2 outcomes possible: CT surveillance; PET-CT');
+		await r.rerender({ views: { [cardRef(c)]: v(result(c, pv), { open: true, calc: { loading: false, error: null, result: { ...base, possible: [], needed: [], exclusion: outcome({ classification: 'Not for under 35s' }) } } }) } });
+		await expect.element(page.getByRole('region', { name: 'Calculated' })).toHaveTextContent('Does not apply');
+	});
+
 	it('PackCard takes an assumptions list directly (B1 feeds Task 3)', async () => {
 		const { default: PackCard } = await import('./PackCard.svelte');
 		const c = card({ finding: finding.text });

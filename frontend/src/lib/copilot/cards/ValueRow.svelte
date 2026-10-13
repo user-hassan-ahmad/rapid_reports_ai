@@ -11,8 +11,12 @@
 	 * them as its description.
 	 */
 	import { WHY_EXAM, type ValueRow } from './format';
+	import ValueEdit from './ValueEdit.svelte';
 
-	let { row, uid }: { row: ValueRow; uid: string } = $props();
+	/** `onEdit` (Slice B2) makes the value changeable: a "Change" button opens ValueEdit in place. N/A never is. */
+	let { row, uid, onEdit = null }: { row: ValueRow; uid: string; onEdit?: ((input: string, value: string) => void) | null } = $props();
+	let editing = $state(false);
+	const editable = $derived(!!onEdit && row.state !== 'not_applicable');
 	const why = $derived(row.why.filter((w) => w !== WHY_EXAM));
 	const prefilled = $derived(row.state === 'prefilled' && (!row.byExam || why.length > 0));
 	const reasons = $derived(why.length ? why.join('; ') : 'not read with certainty');
@@ -30,7 +34,18 @@
 >
 	<span class="cp-val-label">{row.label}</span>
 	<span class="cp-val-value">
-		{#if row.state === 'not_applicable'}
+		{#if editing}
+			<ValueEdit
+				label={row.label}
+				value={row.value}
+				options={row.options ?? []}
+				onSave={(v) => {
+					editing = false;
+					if (v !== row.value) onEdit?.(row.input, v);
+				}}
+				onCancel={() => (editing = false)}
+			/>
+		{:else if row.state === 'not_applicable'}
 			<span class="cp-muted">N/A</span>
 		{:else if prefilled}
 			<b class="cp-prefill">{row.value}</b>
@@ -39,12 +54,17 @@
 		{:else}
 			<span class="cp-muted">{row.state.replace(/_/g, ' ')}</span>
 		{/if}
-		{#if row.byExam}
+		{#if !editing && row.state === 'edited'}<span class="cp-chip cp-val-chip">changed</span>{/if}
+		{#if !editing && row.state === 'answered'}<span class="cp-chip cp-val-chip">answered</span>{/if}
+		{#if row.byExam && !editing}
 			<span class="cp-chip cp-val-chip">set by the exam</span>
 		{/if}
-		{#if prefilled}
+		{#if prefilled && !editing}
 			<!-- no native title: the row's own bubble shows the reasons (a title showed them twice, Hassan 2026-10-13) -->
 			<span class="cp-chip cp-val-chip cp-chip-why">pre-filled</span>
+		{/if}
+		{#if editable && !editing}
+			<button type="button" class="cp-link cp-val-change" aria-label={`Change ${row.label}`} onclick={(e) => (e.stopPropagation(), (editing = true))}>Change</button>
 		{/if}
 	</span>
 	{#if described}
@@ -99,6 +119,24 @@
 	}
 	.cp-chip-why {
 		cursor: help;
+	}
+	.cp-val-change {
+		margin-left: 8px;
+		font-size: 0.75rem;
+		color: var(--rv-muted);
+		opacity: 0;
+		text-decoration: none;
+	}
+	/* quiet until the row is hovered or focused; always there for keyboard and touch */
+	.cp-val:hover .cp-val-change,
+	.cp-val:focus-within .cp-val-change,
+	.cp-val-change:focus-visible {
+		opacity: 1;
+	}
+	@media (hover: none) {
+		.cp-val-change {
+			opacity: 1;
+		}
 	}
 	/* a bubble under the row, out of the flow: revealing it never moves what is below (or under the pointer) */
 	.cp-quote {

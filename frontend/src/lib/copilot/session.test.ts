@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import type { StackUnit } from '$lib/hybrid-stack/types';
 import { CopilotError, CopilotOff } from './api';
-import { card, preview, result } from './cards/fixtures';
+import { card, draft, outcome, preview, result } from './cards/fixtures';
 import { CONTEXT_DEBOUNCE_MS, createCopilotSession, EXAM_REOPEN_MS, MATCH_BACKOFF_MS, type CopilotApi } from './session';
 import { cardRef } from './state';
-import type { Card, MatchBody, MatchResult, OpenBody, OpenResult } from './types';
+import type { CalculateBody, CalculateResult, Card, Calculation, MatchBody, MatchResult, OpenBody, OpenResult } from './types';
 
 const unit = (id: number, text: string, o: Partial<StackUnit> = {}): StackUnit => ({
 	id,
@@ -25,12 +25,24 @@ const dictation = (us: StackUnit[]) => us.map((u) => u.text).join(' ');
 
 type Call<B, R> = { body: B; resolve: (r: R) => void; reject: (e: unknown) => void };
 function fakeApi() {
-	const calls = { match: [] as Call<MatchBody, MatchResult>[], other: [] as Call<MatchBody, MatchResult>[], open: [] as Call<OpenBody, OpenResult>[] };
+	const calls = {
+		match: [] as Call<MatchBody, MatchResult>[],
+		other: [] as Call<MatchBody, MatchResult>[],
+		open: [] as Call<OpenBody, OpenResult>[],
+		preview: [] as Call<OpenBody, OpenResult>[],
+		calculate: [] as Call<CalculateBody, CalculateResult>[]
+	};
 	const pending =
 		<B, R>(list: Call<B, R>[]) =>
 		(body: B) =>
 			new Promise<R>((resolve, reject) => list.push({ body, resolve, reject }));
-	const api: CopilotApi = { match: pending(calls.match), matchOther: pending(calls.other), open: pending(calls.open) };
+	const api: CopilotApi = {
+		match: pending(calls.match),
+		matchOther: pending(calls.other),
+		open: pending(calls.open),
+		preview: pending(calls.preview),
+		calculate: pending(calls.calculate)
+	};
 	return { api, calls };
 }
 const flush = () => vi.advanceTimersByTimeAsync(0);
@@ -446,5 +458,106 @@ describe('session: opening cards', () => {
 		expect(l.matched).toEqual([nodule.key]);
 		expect(JSON.stringify(l)).not.toContain('nodule ');
 		expect(JSON.stringify(l)).not.toContain(A);
+	});
+});
+
+describe('session: edits, shared patient answers and Calculate (Slice B2)', () => {
+	// SYNTHETIC: an adrenal-like card whose age carries the shared patient fact "age", and a second card with it too
+	const adrenal = card({ key: 'ese-adrenal-incidentaloma', finding_id: 'u1', finding: A });
+	const other = card({ key: 'other-pack', finding_id: 'u1', finding: A });
+	const drafted = (c: Card, extra = {}) =>
+		result(
+			c,
+			preview({
+				proposal: null,
+				draft_outcome: outcome({ classification: 'Benign', recommendation: 'No further imaging.' }),
+				draft: [
+					draft({ input: 'size', label: 'Size', state: 'read', value: '2.2 cm', quote: '2.2 cm' }),
+					draft({ input: 'hu', label: 'HU', state: 'prefilled', value: '8 HU', why: ['x'] }),
+					draft({ input: 'age', label: 'Age', scope: 'patient', fact: 'age', state: 'asked', needed: true }),
+					draft({ input: 'cancer', label: 'Known cancer', role: 'eligibility', state: 'assumed', value: 'No' }),
+					draft({ input: 'later', label: 'Later', state: 'asked', waiting: true }),
+					draft({ input: 'side', label: 'Side', state: 'not_applicable' })
+				],
+				...extra
+			})
+		);
+	const calc = (o: Partial<Calculation> = {}): Calculation => ({
+		outcome: 'benign', result: outcome({ classification: 'Benign' }), exclusion: null, possible: [], needed: [], values: [], assumptions: ['cancer'], trace: null, pack: 'p@1', bundle: 'b', ...o
+	});
+
+	async function opened(cards: Card[] = [adrenal]) {
+		await matchA(cards);
+		for (const [i, c] of cards.entries()) {
+			s.open(cardRef(c));
+			api.calls.open[i].resolve(drafted(c));
+		}
+		await flush();
+	}
+
+	it('Calculate sends exactly the values shown (assumed included; asked, waiting and N/A never), with the card echoed', async () => {
+		await opened();
+		s.calculate(cardRef(adrenal));
+		expect(api.calls.calculate).toHaveLength(1);
+		const body = api.calls.calculate[0].body;
+		expect(body.values).toEqual({ size: '2.2 cm', hu: '8 HU', cancer: 'No' });
+		expect(body.card).toEqual(adrenal);
+		expect(body.findings).toBe(A);
+		expect(state().views[cardRef(adrenal)].calc).toMatchObject({ loading: true });
+		api.calls.calculate[0].resolve({ calculation: calc(), ms: 4, error: null });
+		await flush();
+		expect(state().views[cardRef(adrenal)].calc).toMatchObject({ loading: false, error: null, result: { assumptions: ['cancer'] } });
+	});
+
+	it('an edit goes to `answered`, re-previews the card, and is included in the values; "Not stated" is sent as NOT_STATED', async () => {
+		await opened();
+		s.edit(cardRef(adrenal), 'hu', '12 HU');
+		expect(api.calls.preview).toHaveLength(1);
+		expect(api.calls.preview[0].body.answered).toEqual({ hu: '12 HU' });
+		s.edit(cardRef(adrenal), 'size', 'Not stated');
+		expect(api.calls.preview[1].body.answered).toEqual({ hu: '12 HU', size: 'Not stated' });
+		s.calculate(cardRef(adrenal));
+		expect(api.calls.calculate[0].body.values).toEqual({ size: 'Not stated', hu: '12 HU', cancer: 'No' });
+		expect(api.calls.calculate[0].body.answered).toEqual({ hu: '12 HU', size: 'Not stated' });
+	});
+
+	it('an edit after Calculate clears the result, and a Calculate still in flight is dropped', async () => {
+		await opened();
+		s.calculate(cardRef(adrenal));
+		api.calls.calculate[0].resolve({ calculation: calc(), ms: 4, error: null });
+		await flush();
+		expect(state().views[cardRef(adrenal)].calc?.result).not.toBeNull();
+		s.edit(cardRef(adrenal), 'hu', '9 HU');
+		expect(state().views[cardRef(adrenal)].calc).toBeUndefined();
+		s.calculate(cardRef(adrenal));
+		s.edit(cardRef(adrenal), 'hu', '10 HU');
+		api.calls.calculate[1].resolve({ calculation: calc(), ms: 4, error: null });
+		await flush();
+		expect(state().views[cardRef(adrenal)].calc).toBeUndefined();
+	});
+
+	it('a patient answer goes into the case patient map and re-previews every other card with that fact', async () => {
+		await opened([adrenal, other]);
+		s.edit(cardRef(adrenal), 'age', '45');
+		expect(api.calls.preview.map((c) => c.body.card.key)).toEqual([adrenal.key, other.key]);
+		expect(api.calls.preview[1].body.patient).toEqual({ age: '45' });
+		expect(api.calls.preview[1].body.answered).toEqual({}); // the other card's own answers are untouched
+		// later requests carry the patient map too
+		s.calculate(cardRef(other));
+		expect(api.calls.calculate[0].body.patient).toEqual({ age: '45' });
+	});
+
+	it('N/A rows and needs-modality cards are not editable; a calculate error shows on the card', async () => {
+		await opened();
+		s.edit(cardRef(adrenal), 'side', 'Left');
+		expect(api.calls.preview).toHaveLength(0);
+		s.calculate(cardRef(adrenal));
+		api.calls.calculate[0].resolve({ calculation: null, ms: 1, error: 'not a pack' });
+		await flush();
+		expect(state().views[cardRef(adrenal)].calc).toMatchObject({ error: 'not a pack', result: null });
+		s.calculate(cardRef(adrenal));
+		api.calls.calculate[1].reject(new CopilotError('timeout'));
+		await flush();
+		expect(state().views[cardRef(adrenal)].calc).toMatchObject({ error: 'timeout' });
 	});
 });

@@ -133,5 +133,22 @@ export function rowsOf(p: Preview | null): DraftRows {
 	};
 }
 
+/** The backend's NOT_STATED (library/pack_preview.py): offered on every input, clears a value to unknown. */
+export const NOT_STATED = 'Not stated';
+
+/** What Calculate sends (Slice B2, §7.7): every value the card shows, in display form, the radiologist's edits
+ *  included (an edit to "Not stated" is sent as NOT_STATED, which clears it). Assumed values are shown, so they are
+ *  sent and stay marked assumed in the result. Asked rows with no answer, waiting rows and N/A rows are not shown,
+ *  so they are never sent. */
+export function valuesShown(p: Preview | null, edits: Record<string, string> = {}): Record<string, string> {
+	const out: Record<string, string> = {};
+	for (const v of p?.draft ?? []) {
+		if (v.waiting || v.state === 'not_applicable') continue;
+		if (v.input in edits) out[v.input] = edits[v.input];
+		else if (v.state !== 'asked' && v.value) out[v.input] = v.value;
+	}
+	return out;
+}
+
 export const modalityLabel = (m: string) =>
 	(({ US: 'ultrasound', CT: 'CT', MRI: 'MRI', XR: 'a radiograph' }) as Record<string, string>)[m] ?? m;

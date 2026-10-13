@@ -67,7 +67,7 @@ export function openQuestions(p: Preview): string[] {
 /** The backend's WHY_EXAM (library/pack_preview.py): an exam preset, shown as the "set by the exam" chip instead. */
 export const WHY_EXAM = 'set by the exam';
 const humanise = (id: string) => (id.charAt(0).toUpperCase() + id.slice(1)).replace(/_/g, ' ');
-export interface ValueRow { input: string; label: string; value: string; quote: string; byExam: boolean; state: ValueState; why: string[] }
+export interface ValueRow { input: string; label: string; value: string; quote: string; byExam: boolean; state: ValueState; why: string[]; options?: string[] }
 /** The values the card shows first. From the draft (Task 3): read, pre-filled, answered, edited and N/A rows with
  *  their state and why[]; else (pre-Task 3) preview.settled as read values, labelled from the entry's inputs, else
  *  the ask, else the id. */
@@ -82,7 +82,8 @@ export function valueRows(r: OpenResult): ValueRow[] {
 			quote: v.quote,
 			byExam: v.by === 'exam',
 			state: v.state,
-			why: v.why
+			why: v.why,
+			options: v.options
 		}));
 	const labels = new Map<string, string>();
 	for (const b of r.entry?.content.branches ?? []) for (const i of b.inputs ?? []) if (i.question) labels.set(i.id, i.question);

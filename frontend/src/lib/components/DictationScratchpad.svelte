@@ -2677,6 +2677,8 @@
 		onRetry={copilot.retry}
 		onRetryMatch={copilot.retryMatch}
 		onOther={copilot.other}
+		onEdit={copilot.edit}
+		onCalculate={copilot.calculate}
 	/>
 {/if}
 </div>
