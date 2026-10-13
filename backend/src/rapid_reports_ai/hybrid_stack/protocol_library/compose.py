@@ -65,9 +65,26 @@ def resolve(bundle: Bundle, entry_id: str, phases: list[str] | None, laterality:
                       schema_key=f"lib:{e.sheet_key}|{e.contrast_class}")
 
 
+UNENHANCED = {"non_contrast", "cine", "flow", "t1_t2_mapping", "t2star", "calcium_score"}
+
+
+def effective_agent(e: Entry, phases: list[str]) -> str:
+    """The contrast wording follows the picked phase set (re-review 2026-10-13): a set of only unenhanced phases or
+    non-contrast sequences is "none" whatever the entry's agent; a contrast phase on an agent-none entry takes the
+    modality default; an empty phase set keeps the entry's agent."""
+    if not phases:
+        return e.agent
+    if all(p in UNENHANCED for p in phases):
+        return "none"
+    if e.agent == "none":
+        return "gadolinium" if e.modality.upper() in ("MR", "MRI") else "iv_iodinated"
+    return e.agent
+
+
 def modality_line(e: Entry, phases: list[str]) -> str:
     """e.g. "CT with IV contrast: unenhanced, arterial, portal venous"; "MR with gadolinium: DCE"; "MR without contrast"."""
-    head = f"{e.modality} without contrast" if e.agent == "none" else f"{e.modality} with {agent_words(e.agent)}"
+    agent = effective_agent(e, phases)
+    head = f"{e.modality} without contrast" if agent == "none" else f"{e.modality} with {agent_words(agent)}"
     words = phase_words(phases)
     return f"{head}: {words}" if words else head
 
@@ -107,7 +124,7 @@ def technique_statement(e: Entry, phases: list[str], laterality: str | None = No
     if len(words) == 1:
         unit = unit[:-1]
     when = f" in the {listed} {unit}" if listed else ""
-    return f"{subject} {_CONTRAST_WORDS.get(e.agent, 'without contrast')}{when}."
+    return f"{subject} {_CONTRAST_WORDS.get(effective_agent(e, phases), 'without contrast')}{when}."
 
 
 STANDARD_SECTIONS = "Comparison; Technique; Limitations (only when applicable); Findings; Impression"

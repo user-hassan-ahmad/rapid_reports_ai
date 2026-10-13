@@ -37,6 +37,14 @@ def test_every_pick_resolves_and_composes(b):
             assert f"- **Sections:** {STANDARD_SECTIONS}" in s.markdown.splitlines(), (e.id, ph)
             assert s.markdown.count("## Structural Pattern") == 1 and "- **Section rules:**" in s.markdown
             assert "- **Technique statement:**" in s.markdown
+            if ph:
+                lines = [ln for ln in s.markdown.splitlines() if ln.startswith(("- **Technique statement:**", "- **Modality:**"))]
+                assert len(lines) == 2, (e.id, ph)
+                for ln in lines:
+                    if set(ph) <= C.UNENHANCED:
+                        assert "without contrast" in ln and " with " not in ln.replace("without", ""), (e.id, ph, ln)
+                    else:
+                        assert "without contrast" not in ln and " with " in ln, (e.id, ph, ln)
     assert not bad, bad[:10]
 
 

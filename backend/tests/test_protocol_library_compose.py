@@ -171,3 +171,31 @@ def test_the_generator_brief_keeps_the_sections_rules_and_technique_statement(b)
     assert STANDARD_SECTIONS in text
     assert "Section rules" in text and "no prior imaging is available for comparison" in text
     assert "Technique statement" in text and "in the unenhanced, arterial and portal venous phases." in text
+
+
+def _variant(b, entry, **update):
+    return b.entry(entry).model_copy(update=update)
+
+
+def test_contrast_wording_follows_the_phase_set_not_only_the_entry_agent(b):
+    # an unenhanced-only phase set is "without contrast", whatever the entry's agent
+    ct = _variant(b, "TCAP", agent="iv_iodinated")
+    assert C.technique_statement(ct, ["non_contrast"]) == "CT of the abdomen and pelvis without contrast in the unenhanced phase."
+    assert C.modality_line(ct, ["non_contrast"]) == "CT without contrast: unenhanced"
+    mr = _variant(b, "TMKN", agent="gadolinium")
+    assert C.technique_statement(mr, ["cine", "flow"]) == "MRI of the knee without contrast in the cine and flow sequences."
+    assert C.modality_line(mr, ["t2star"]) == "MR without contrast: T2*"
+    # a contrast phase on an agent-none entry takes the modality default
+    mr0 = _variant(b, "TMKN", agent="none")
+    assert C.technique_statement(mr0, ["pre_contrast", "post_contrast"]) == \
+        "MRI of the knee with intravenous gadolinium contrast in the pre-contrast and post-contrast sequences."
+    assert C.modality_line(mr0, ["cine", "flow", "lge"]) == "MR with gadolinium: cine, flow, LGE"
+    ct0 = _variant(b, "TCAP", agent="none")
+    assert C.technique_statement(ct0, ["arterial", "portal_venous"]) == \
+        "CT of the abdomen and pelvis with intravenous contrast in the arterial and portal venous phases."
+    assert C.modality_line(ct0, ["non_contrast", "arterial"]) == "CT with IV contrast: unenhanced, arterial"
+    # an empty phase set keeps the entry's agent; a named agent with contrast phases is unchanged
+    assert C.technique_statement(_variant(b, "TCAP", agent="iv_iodinated"), []) == \
+        "CT of the abdomen and pelvis with intravenous contrast."
+    assert C.modality_line(_variant(b, "TCTH", agent="none"), []) == "CT without contrast"
+    assert C.modality_line(_variant(b, "TCAP", agent="iv_and_oral"), ["arterial"]) == "CT with IV and oral contrast: arterial"

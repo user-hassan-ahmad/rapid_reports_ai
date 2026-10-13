@@ -211,7 +211,7 @@ def test_a_slot_placeholder_sentence_is_never_offered():
 
 def test_the_prompt_carries_the_standard_section_order_and_rules():
     assert SL.PROMPT_VERSION == "slim-6"   # bumped so cached free-text sheets regenerate
-    assert "- **Sections:** exactly: Comparison; Technique; Limitations (only when applicable); Findings; Impression" \
+    assert "- **Sections:** Comparison; Technique; Limitations (only when applicable); Findings; Impression" \
         in SL.SLIM_SYS
     rules = next(ln for ln in SL.SLIM_SYS.splitlines() if ln.startswith("- **Section rules:**"))
     for needle in ("no prior imaging is available for comparison", "Modality line in Scan Context",
