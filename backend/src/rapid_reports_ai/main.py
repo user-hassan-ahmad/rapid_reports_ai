@@ -783,6 +783,16 @@ class SkillSheetApplyDecisionsRequest(BaseModel):
     source: str = "creation"               # creation | first_use_review (chat goes through /refine)
 
 
+class SkillSheetDecideRequest(BaseModel):
+    scan_type: str = ""
+    examples: List[SkillSheetExample] = []
+    template_id: Optional[str] = None      # a saved template: its stored examples and current values
+
+
+NO_PRECHECK = "We couldn't pre-check your rules; review them on the Style step."
+MIN_DECIDE_EXAMPLES = 2
+
+
 # Quick Report Proto — ephemeral skill sheet pipeline
 class QuickReportProtoAnalyseRequest(BaseModel):
     scan_type: str
@@ -2813,6 +2823,52 @@ async def skill_sheet_apply_decisions_endpoint(
         logger.error("apply-decisions: entries not applied (a bug): %s", [e.get("key") for e in res.failed])
     return {"success": True, "skill_sheet": res.sheet, "decisions": ledger, "applied": res.applied,
             "unmatched": res.unmatched, "stale_quotes": res.stale_quotes}
+
+
+@app.post("/api/templates/skill-sheet/decide")
+async def skill_sheet_decide_endpoint(
+    request: SkillSheetDecideRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """The Rules step: the decision run on the pasted examples (or a saved template's stored examples) as cards.
+    Fail-soft: a failed run returns no cards and a notice; nothing here blocks template creation."""
+    from . import template_decision_run as tdr
+    from . import template_rules_cards as trc
+    empty = {"success": True, "ran": False, "cards": [], "more": [], "kept": [], "defaults": [], "notice": "",
+             "run": {}}
+    try:
+        examples = [e.content for e in request.examples if e.content.strip()]
+        scan_type = request.scan_type
+        current: list = []
+        if request.template_id:
+            owned = get_template(db, request.template_id, user_id=str(current_user.id))
+            if not owned:
+                return {"success": False, "error": "Template not found"}
+            cfg = owned.template_config or {}
+            current = trc.current_value_cards(cfg.get("skill_sheet") or "", td.clean_ledger(cfg.get("decisions")))
+            scan_type = scan_type or cfg.get("scan_type") or ""
+            # first-use review only: a template that has decisions or a decision-run record is not re-run
+            reviewed = bool(cfg.get("decisions")) or bool(cfg.get("rules_step"))
+            if not examples and not reviewed:
+                examples = template_examples.stored_texts(db, owned.id)
+        if len(examples) < MIN_DECIDE_EXAMPLES:
+            return {**empty, "cards": current}
+        run = await tdr.run_decisions(examples, scan_type)
+        if not run.ok:
+            return {**empty, "cards": current, "notice": NO_PRECHECK, "run": tdr.evidence(run)}
+        if request.template_id:   # first-use review: stamped on the server so it never runs twice
+            tdr.stamp_review(db, request.template_id, tdr.evidence(run))
+        built = trc.build_cards(run, len(examples))
+        have = {c["id"] for c in current}
+        kept = [c for c in built["kept"] if c["id"] not in have]
+        out = {"cards": [*current, *(c for c in built["cards"] if c["id"] not in have)],
+               "more": [c for c in built["more"] if c["id"] not in have], "kept": kept}
+        return {"success": True, "ran": True, **out, "defaults": trc.defaults_of(kept), "notice": "",
+                "run": tdr.evidence(run, out)}
+    except Exception as e:
+        logger.warning("skill-sheet decide failed: %s", type(e).__name__)
+        return {**empty, "notice": NO_PRECHECK}
 
 
 @app.post("/api/templates/skill-sheet/test-generate")
