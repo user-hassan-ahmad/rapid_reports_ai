@@ -41,7 +41,7 @@
 	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
 	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
-	import { abnormalAll, assumedFrom, assumedStale, confirmReady, flaggedFrom, keepRules, moreLine, openCount, rowSentences, splitReply, rulesToSend, type AssumedSnap, type SessionRules } from '$lib/hybrid-stack/items';
+	import { abnormalAll, addedAtConfirm, assumedFrom, assumedStale, confirmReady, flaggedFrom, keepRules, moreLine, openCount, rowSentences, splitReply, rulesToSend, type AssumedSnap, type SessionRules } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
 	import { asTailUnits, assumedKey, blockedSegments, pickBody, pickKey, placedRegions, shownNormals, visiblePills, withoutSegments, type ProtocolPick } from '$lib/hybrid-stack/protocol';
@@ -311,6 +311,9 @@
 	// /assumed reply's (the sheet load), sent back on every refresh; every rule is re-asked with the dictation at Confirm.
 	let sessionRules: SessionRules | null = null;
 	let confirming = false;
+	// Why the last Confirm press did not gate (round 1): shown at the Confirm bar; cleared by any change.
+	let confirmNote: string | null = null;
+	let confirmNoteKey: string | null = null;
 	let itemsSeq = 0;
 	let assumedSeq = 0;
 	let draft: { text: string; hash: string; edited: boolean; typed: boolean } | null = null;
@@ -390,6 +393,14 @@
 	$: gateKey = [verbatimNow, JSON.stringify(checks.map((c) => c.key)), JSON.stringify(checkAnswers), findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
 		regionView.remainder.join('|'), String(rowsOpen), Object.keys(tappedRows).join('|'), Object.keys(skippedRows).join('|'), removedSentences.join('|'),
 		JSON.stringify(shownAssumed)].join('\u0003');
+	$: if (confirmNote && !confirming) {
+		void gateKey;
+		if (confirmNoteKey === null) confirmNoteKey = gateKey;
+		else if (confirmNoteKey !== gateKey) {
+			confirmNote = null;
+			confirmNoteKey = null;
+		}
+	}
 	$: if (stackGate && stackGate.units_hash !== gateKey) {
 		stackGate = null;
 		onStackGate(null, '');
@@ -1999,14 +2010,29 @@
 		if (assumedSnap?.confirm_recheck && !confirmReady(assumedSnap, verbatimNow)) {
 			if (confirming) return false;
 			confirming = true;
+			confirmNote = confirmNoteKey = null;
+			const before = { assumed: shownAssumed, flagged: flaggedNow };
 			try {
 				await refreshAssumed(true);
 				await tick(); // the tray, counts and gate key follow the Confirm answer before the gate is recorded
 			} finally {
 				confirming = false;
 			}
-			if (!confirmReady(assumedSnap, verbatimNow)) return false; // the dictation moved on meanwhile
+			if (!confirmReady(assumedSnap, verbatimNow)) {
+				confirmNote = 'The dictation changed while the rules were checked: confirm again.';
+				confirmNoteKey = null; // pinned to the state it is shown for, below
+				return false;
+			}
+			// Never gate a sentence the radiologist has not seen (round 1): anything the Confirm answer adds is shown
+			// first; the next press gates on this same answer. Removals alone go through.
+			const added = addedAtConfirm(before, { assumed: shownAssumed, flagged: flaggedNow });
+			if (added.length) {
+				confirmNote = `Checked against your dictation, ${added.length === 1 ? 'a normal was' : `${added.length} normals were`} added: review, then confirm again.`;
+				confirmNoteKey = null;
+				return false;
+			}
 		}
+		confirmNote = confirmNoteKey = null;
 		// Sentences the grouping never received (after failed retries) still reach the report, as said; the segment
 		// backstop reads them before the assumed record is written.
 		const tail = asTailUnits(liveTail(verbatimNow, stackUnits));
@@ -2702,7 +2728,7 @@
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
 							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
-							onConfirm={stackConfirm} onConfirmGenerate={onStackGenerate ? async () => { if (await stackConfirm()) onStackGenerate?.(); } : null} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
+							onConfirm={stackConfirm} {confirmNote} onConfirmGenerate={onStackGenerate ? async () => { if (await stackConfirm()) onStackGenerate?.(); } : null} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
 							syncing={assumedBehind || checksBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
 					{/if}
 				</div>

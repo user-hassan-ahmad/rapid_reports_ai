@@ -92,10 +92,30 @@ export function assumedFrom(snap: AssumedSnap | null, abnormal: string[], untouc
 
 /** The assumed sentences the dictation may conflict with (review R1): Jev half-read them as covered or contradicted,
  *  so they are kept, highlighted, for the radiologist to confirm or remove. Only those `assumedFrom` still keeps. */
-export function flaggedFrom(snap: AssumedSnap | null, abnormal: string[], untouched: string[], removed: string[], dictatedNormal: string[] = []): string[] {
-	if (!snap?.flagged) return [];
-	const kept = assumedFrom(snap, abnormal, untouched, removed, dictatedNormal);
-	return Object.entries(kept).flatMap(([r, xs]) => xs.filter((x) => (snap.flagged?.[r] ?? []).includes(x)));
+export function flaggedFrom(snap: AssumedSnap | null, abnormal: string[], untouched: string[], removed: string[], dictatedNormal: string[] = []): Record<string, string[]> {
+	if (!snap?.flagged) return {};
+	const out: Record<string, string[]> = {};
+	for (const [r, xs] of Object.entries(assumedFrom(snap, abnormal, untouched, removed, dictatedNormal))) {
+		const mine = new Set((snap.flagged[r] ?? []).map(norm));
+		const kept = xs.filter((x) => mine.has(norm(x)));
+		if (kept.length) out[r] = kept;
+	}
+	return out;
+}
+
+/** Whether `s` is flagged in one of `regions` (by region and normalised text: the same words elsewhere are not). */
+export function isFlagged(flagged: Record<string, string[]>, regions: string[], s: string): boolean {
+	return regions.some((r) => (flagged[r] ?? []).some((x) => norm(x) === norm(s)));
+}
+
+/** What a Confirm answer adds to what the radiologist was shown (round 1): a sentence now assumed, or now flagged, in
+ *  a region that did not show it before (a rule the dictation un-hid, a row moving into the tray). Anything added is
+ *  shown first and Confirm waits for another press; removals alone let it through. */
+export function addedAtConfirm(before: { assumed: Record<string, string[]>; flagged: Record<string, string[]> },
+	after: { assumed: Record<string, string[]>; flagged: Record<string, string[]> }): string[] {
+	const added = (b: Record<string, string[]>, a: Record<string, string[]>) =>
+		Object.entries(a).flatMap(([r, xs]) => xs.filter((x) => !(b[r] ?? []).some((y) => norm(y) === norm(x))));
+	return [...new Set([...added(before.assumed, after.assumed), ...added(before.flagged, after.flagged)])];
 }
 
 /** The session's template context-rule decision (review R5): condition -> P(met), decided once from the clinical

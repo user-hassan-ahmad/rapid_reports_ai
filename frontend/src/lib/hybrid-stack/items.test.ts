@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abnormalAll, anchorRegion, answerLabel, assumedFrom, assumedStale, confirmReady, flaggedFrom, keepRules, moreLine, openCount, quietLine, rowSentences, rulesToSend, splitReply, unansweredChecks } from './items';
+import { abnormalAll, anchorRegion, answerLabel, assumedFrom, assumedStale, addedAtConfirm, confirmReady, flaggedFrom, isFlagged, keepRules, moreLine, openCount, quietLine, rowSentences, rulesToSend, splitReply, unansweredChecks } from './items';
 import type { StackItem, StackUnit } from './types';
 
 const item = (id: string, sentences: string[], extra: Partial<StackItem> = {}): StackItem => ({
@@ -66,11 +66,12 @@ describe('checklist rows', () => {
 		const snap = { offered: {}, dictation: 'x', abnormal: ['Spleen'], untouched: ['Liver'],
 			assumed: { Liver: ['The liver is normal.'], Spleen: ['The spleen is normal.', 'No splenic lesion.'] },
 			flagged: { Liver: ['The liver is normal.'], Spleen: ['No splenic lesion.'] } };
-		expect(flaggedFrom(snap, ['Spleen'], ['Liver'], [])).toEqual(['No splenic lesion.', 'The liver is normal.']);
-		expect(flaggedFrom(snap, ['Spleen'], ['Liver'], ['no splenic lesion'])).toEqual(['The liver is normal.']);   // removed with ×
-		expect(flaggedFrom(snap, ['Spleen', 'Liver'], [], [])).toEqual(['No splenic lesion.']);   // Liver changed state since
-		expect(flaggedFrom({ ...snap, flagged: undefined }, ['Spleen'], ['Liver'], [])).toEqual([]);
-		expect(flaggedFrom(null, ['Spleen'], [], [])).toEqual([]);
+		// keyed by region (round 1): the same words in another region are not flagged
+		expect(flaggedFrom(snap, ['Spleen'], ['Liver'], [])).toEqual({ Spleen: ['No splenic lesion.'], Liver: ['The liver is normal.'] });
+		expect(flaggedFrom(snap, ['Spleen'], ['Liver'], ['no splenic lesion'])).toEqual({ Liver: ['The liver is normal.'] });   // removed with ×
+		expect(flaggedFrom(snap, ['Spleen', 'Liver'], [], [])).toEqual({ Spleen: ['No splenic lesion.'] });   // Liver changed state since
+		expect(flaggedFrom({ ...snap, flagged: undefined }, ['Spleen'], ['Liver'], [])).toEqual({});
+		expect(flaggedFrom(null, ['Spleen'], [], [])).toEqual({});
 	});
 	it('rows over the cap wait behind "N more checks": N counts the rows still asked; the line stays for a tapped one', () => {
 		const capped = [item('c1', ['No free fluid.']), item('c2', ['No collection.']), item('c3', ['No fistula.']), item('c4', ['No abscess.'])];
@@ -142,5 +143,25 @@ describe('Confirm gates only on a Confirm answer for this dictation (round 1)', 
 		expect(confirmReady(snap, 'A liver cyst.')).toBe(false);
 		expect(confirmReady({ ...snap, confirmed: true }, 'A liver cyst. Gallstones.')).toBe(false);
 		expect(confirmReady({ ...snap, confirmed: true }, 'A liver cyst.')).toBe(true);
+	});
+});
+
+describe('a Confirm answer that adds anything is shown before it is gated (round 1)', () => {
+	const before = { assumed: { Liver: ['The liver is normal.'], Brain: ['The ventricles are normal.'] }, flagged: {} };
+	it('removals only: nothing added, Confirm proceeds', () => {
+		expect(addedAtConfirm(before, { assumed: { Liver: ['The liver is normal.'] }, flagged: {} })).toEqual([]);
+		expect(addedAtConfirm(before, { assumed: { Liver: ['the liver is normal'], Brain: ['The ventricles are normal.'] }, flagged: {} })).toEqual([]);
+	});
+	it('a sentence un-hidden by a rule, or one newly flagged, is added', () => {
+		const prior = 'No interval change compared with the previous MRI.';
+		expect(addedAtConfirm(before, { assumed: { ...before.assumed, Brain: ['The ventricles are normal.', prior] }, flagged: {} })).toEqual([prior]);
+		expect(addedAtConfirm(before, { assumed: before.assumed, flagged: { Liver: ['The liver is normal.'] } })).toEqual(['The liver is normal.']);
+		// the same words moving to another region count as added there
+		expect(addedAtConfirm(before, { assumed: { Spleen: ['The liver is normal.'] }, flagged: {} })).toEqual(['The liver is normal.']);
+	});
+	it('isFlagged reads a sentence in one of the given regions, by its normalised text', () => {
+		const flagged = { Kidneys: ['The kidneys are normal.'] };
+		expect(isFlagged(flagged, ['Kidneys'], 'the kidneys are normal')).toBe(true);
+		expect(isFlagged(flagged, ['Liver'], 'The kidneys are normal.')).toBe(false);
 	});
 });

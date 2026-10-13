@@ -73,13 +73,13 @@ describe('HybridStackView v2', () => {
 			units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })],
 			assumed: { Liver: ['No biliary dilatation.', 'The portal vein is patent.', 'No other lesion.', 'No ascites.'],
 				Kidneys: ['The kidneys are normal.'], Spleen: ['The spleen is normal.'] },
-			flagged: ['No ascites.', 'The kidneys are normal.'], assumedReady: true
+			flagged: { Liver: ['No ascites.'], Kidneys: ['The kidneys are normal.'], Spleen: ['No biliary dilatation.'] }, assumedReady: true
 		});
 		// on the card: a flagged sentence is never hidden behind "+N more"
 		const card = page.getByRole('region', { name: 'Liver' });
 		await expect.element(card.getByText('No ascites.')).toBeInTheDocument();
 		await expect.element(card.getByTitle(title, { exact: true })).toBeInTheDocument();
-		expect(card.getByTitle(title, { exact: true }).elements()).toHaveLength(1);
+		expect(card.getByTitle(title, { exact: true }).elements()).toHaveLength(1);   // flagged in Spleen, not in Liver: no marker
 		// in the tray: the pill carries the marker before it is opened; opened, the sentence does
 		const pill = page.getByRole('button', { name: /^Kidneys/ });
 		await expect.element(pill).toHaveAttribute('data-flagged', 'true');
