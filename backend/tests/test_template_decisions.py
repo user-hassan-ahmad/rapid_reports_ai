@@ -148,3 +148,8 @@ def test_clean_ledger_drops_what_code_cannot_apply():
     assert out[1] == {"kind": "fixed", "key": "Line.", "choice": {"keep": "remove"}, "by": "code", "at": "",
                       "source": "default"}
     assert len(out) == 2
+
+
+def test_a_quoted_structure_label_is_not_a_negative_key():
+    assert td.normal_key("Shoulder", '"ROTATOR CUFF"') == "Shoulder :: ROTATOR CUFF"
+    assert td.split_normal_key(td.normal_key("Shoulder", '"ROTATOR CUFF"')) == ("Shoulder", "ROTATOR CUFF", False)

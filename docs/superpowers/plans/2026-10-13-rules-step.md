@@ -3926,6 +3926,8 @@ cd backend && for k in 1 2; do .venv/bin/python -m rapid_reports_ai.scripts.rule
 
 Outcome: the creator runs Paste → Rules → (writer) → Style → Test → Refine → Create. The refine panel shows the Required-values card and, the first time an existing template is opened, the decision run's cards. The answers go through `/apply-decisions` and the save function. Needs Phases 1 and 2. It ships without Phase 4, because the ledger already applies the decisions at save.
 
+**Phase 1 review carry-over (must land in Phase 3):** the PUT (`_vet_config`) adds the `LEDGER_KEPT` notice ("use the card below") but returns no card, and `VetOutcome.ledger_unmatched` is not persisted. Phase 3 must persist `ledger_unmatched` with the template and surface those entries, and the PUT's kept-item cards, as cards in the refine panel.
+
 ### Task 22: Wire types and API client
 
 **Files:**

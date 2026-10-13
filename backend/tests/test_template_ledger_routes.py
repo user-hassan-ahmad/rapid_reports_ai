@@ -176,3 +176,22 @@ def test_apply_decisions_refuses_a_change_code_cannot_apply(client, auth_headers
 def test_apply_decisions_refuses_an_unknown_source(client, auth_headers):
     r = client.post(APPLY, headers=auth_headers, json={"skill_sheet": GOOD, "changes": [], "source": "chat"}).json()
     assert r["success"] is False
+
+
+def test_apply_decisions_needs_a_login(client):
+    assert client.post(APPLY, json={"skill_sheet": GOOD}).status_code == 401
+
+
+@pytest.mark.parametrize("body", [
+    {"skill_sheet": "x" * 200_001},
+    {"skill_sheet": GOOD, "decisions": [{}] * 201},
+    {"skill_sheet": GOOD, "changes": [{}] * 201},
+])
+def test_apply_decisions_caps_its_inputs(client, auth_headers, body):
+    assert client.post(APPLY, headers=auth_headers, json=body).status_code == 422
+
+
+def test_creator_save_caps_the_rules_step_record(client, auth_headers):
+    r = client.post("/api/templates/skill-sheet/save", headers=auth_headers, json={
+        "skill_sheet": GOOD, "scan_type": "MRI knee", "template_name": "Knee", "rules_step": {"x": "y" * 50_001}})
+    assert r.status_code == 422

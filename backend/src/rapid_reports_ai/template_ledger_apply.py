@@ -14,6 +14,7 @@ observe() reads what a sheet currently says for a ledger item; reconcile_chat() 
 ledger items back into the ledger (source "chat") before the ledger is applied."""
 from __future__ import annotations
 
+import functools
 import logging
 import re
 from dataclasses import dataclass, field
@@ -182,7 +183,30 @@ def _home(lines, st, c: td.Concept) -> Optional[int]:
     return None
 
 
-def _concept(lines, st, entry):
+def _orphan_extra(lines, st, rules, texts: Set[str], added: Optional[Set[str]]) -> Optional[Tuple[int, str]]:
+    """(index, text) of the FIXED line a reworded default left beside the concept's REPLACE / SUPPRESS rule, whose
+    target now matches no FIXED line. With a before-sheet (`added`: FIXED texts new since then) it is the added
+    line; without one, the FIXED line directly above the orphaned rule. None when there is no orphan or no such
+    line (never guessed further)."""
+    fixed = {norm_key(f.text) for f in st.fixed_blocks}
+    orphans = [r for r in rules if r.effect in ("replace", "suppress") and norm_key(r.target) not in fixed]
+    if not orphans:
+        return None
+    cands = [f for f in st.fixed_blocks if norm_key(f.text) not in texts
+             and (added is None or norm_key(f.text) in added)]
+    rule_at = {_index(lines, r.source_lines[0]) for r in orphans}
+    for f in cands:
+        i = _index(lines, f.source_line)
+        if i is not None and i + 1 in rule_at:
+            return i, f.text
+    if added is not None and len(cands) == 1:
+        i = _index(lines, cands[0].source_line)
+        if i is not None:
+            return i, cands[0].text
+    return None
+
+
+def _concept(lines, st, entry, added: Optional[Set[str]] = None):
     name, choice = entry["key"], entry["choice"]
     row = {"kind": "concept", "key": name, "action": "kept"}
     rules = _concept_rules(st, name)
@@ -203,6 +227,11 @@ def _concept(lines, st, entry):
                 drop.add(i)
                 fixed_line = fixed_line or lines[i]
     olds = [t for r in rules for t in (r.target, r.then_text) if t]
+    unmatched: List[dict] = []
+    extra = _orphan_extra(lines, st, rules, texts, added) if choice["use"] else None
+    if extra is not None:   # never two lines: the ledger's line stays, the extra one goes and is asked about
+        drop.add(extra[0])
+        unmatched = [{**entry, "dropped": extra[1]}]
     if drop:
         at = min(drop)
     elif choice["use"]:
@@ -225,7 +254,7 @@ def _concept(lines, st, entry):
         out[at:at] = [prefix + ln for ln in new]
     action = "removed" if not new else ("rewritten" if drop else "inserted")
     keep = {norm_key(choice.get("default", "")), norm_key(choice.get("when_met", ""))}
-    return out, [{**row, "action": action}], [], [t for t in olds if norm_key(t) not in keep]
+    return out, [{**row, "action": action}], unmatched, [t for t in olds if norm_key(t) not in keep]
 
 
 def _uses(st: tss.SheetStructure, key: str) -> List[tss.Rule]:
@@ -271,7 +300,8 @@ def _normal(lines, st, entry):
                  and norm_key(n.text) in keys]
         raws = [n.source_lines[0] for n in units]
     else:
-        units = [n for n in st.normals if n.paragraph == para.id and td._name(n.structure) == td._name(label)]
+        units = [n for n in st.normals if n.paragraph == para.id
+                 and td._name(td.structure_label(n.structure)) == td._name(label)]
         raws = [n.source_line for n in units]
     if not units:
         if not text:
@@ -326,11 +356,16 @@ def _normal(lines, st, entry):
 _OPS: List[Tuple[str, Callable]] = [("concept", _concept), ("fixed", _fixed), ("normal", _normal)]
 
 
-def apply_ledger(sheet: str, ledger: List[dict]) -> LedgerResult:
-    """The sheet with every ledger entry applied (module doc). A non-grammar sheet or an empty ledger is unchanged."""
+def apply_ledger(sheet: str, ledger: List[dict], before: str = "") -> LedgerResult:
+    """The sheet with every ledger entry applied (module doc). A non-grammar sheet or an empty ledger is unchanged.
+    `before`: the sheet this one replaces, when known; it tells a reworded concept default's added line apart."""
     res = LedgerResult(sheet=sheet)
     if not ledger or not tsg.is_grammar_sheet(sheet or ""):
         return res
+    added: Optional[Set[str]] = None
+    if before and tsg.is_grammar_sheet(before):
+        had = {norm_key(f.text) for f in _parse(before).fixed_blocks}
+        added = {norm_key(f.text) for f in _parse(sheet).fixed_blocks} - had
     steps: List[Tuple[Callable, object, List[dict]]] = []
     values = [e for e in ledger if e.get("kind") == "value"]
     if values:
@@ -343,7 +378,7 @@ def apply_ledger(sheet: str, ledger: List[dict]) -> LedgerResult:
             if kind == "fixed" and norm_key(e["key"]) in owned:   # a concept's line: the concept entry decides it
                 res.applied.append({"kind": "fixed", "key": e["key"], "action": "kept"})
                 continue
-            steps.append((op, e, [e]))
+            steps.append((functools.partial(op, added=added) if op is _concept else op, e, [e]))
     stale: List[str] = []
     for op, arg, entries in steps:
         before_errors = _err_keys(res.sheet)
@@ -397,7 +432,8 @@ def observe(st: tss.SheetStructure, kind: str, key: str) -> Optional[dict]:
     if neg:
         u = next((n for n in st.negatives if n.paragraph == para.id and norm_key(n.text) == norm_key(label)), None)
     else:
-        u = next((n for n in st.normals if n.paragraph == para.id and td._name(n.structure) == td._name(label)), None)
+        u = next((n for n in st.normals if n.paragraph == para.id
+                  and td._name(td.structure_label(n.structure)) == td._name(label)), None)
     return {"text": u.text if u else ""}
 
 
@@ -407,6 +443,14 @@ def _orphaned(st: tss.SheetStructure, name: str) -> bool:
     fixed = {norm_key(f.text) for f in st.fixed_blocks}
     return any(r.effect in ("replace", "suppress") and norm_key(r.target) not in fixed
                for r in _concept_rules(st, name))
+
+
+def _fixed_reword(sb: tss.SheetStructure, sa: tss.SheetStructure) -> Optional[Tuple[str, str]]:
+    """(old, new) when the FIXED lines before and after differ by exactly one removed and one added line."""
+    b = {norm_key(f.text): f.text for f in sb.fixed_blocks}
+    a = {norm_key(f.text): f.text for f in sa.fixed_blocks}
+    gone, new = [b[k] for k in b if k not in a], [a[k] for k in a if k not in b]
+    return (gone[0], new[0]) if len(gone) == 1 and len(new) == 1 else None
 
 
 def _wholesale(e: dict, ob: dict, oa: dict, sb: tss.SheetStructure, sa: tss.SheetStructure) -> bool:
@@ -433,16 +477,25 @@ def reconcile_chat(before: str, after: str, ledger: List[dict]) -> Tuple[List[di
     for e in ledger:
         try:
             ob, oa = observe(sb, e["kind"], e["key"]), observe(sa, e["kind"], e["key"])
+            rw = _fixed_reword(sb, sa)
             if (e["kind"] == "concept" and e["choice"].get("use") and _orphaned(sa, e["key"])
-                    and not _orphaned(sb, e["key"])):   # treated as a whole-item change: kept, asked
+                    and not _orphaned(sb, e["key"])):
+                if not (rw and norm_key(rw[0]) == norm_key(e["choice"].get("default", ""))):
+                    cards.append(trc.card_for_change(e["kind"], e["key"], e["choice"]))   # kept, asked
+                    continue
+                # the default reworded in place: the new wording becomes the default (apply_ledger retargets
+                # the standard rule to it)
+                out, ch = td.set_decision(out, "concept", e["key"], {**e["choice"], "default": rw[1]}, source="chat")
+            elif (e["kind"] == "fixed" and ob == {"keep": "always"} and oa == {"keep": "remove"} and rw
+                  and norm_key(rw[0]) == norm_key(e["key"])):   # an always-printed line reworded: same choice, new key
+                out, ch = td.rekey_decision(out, "fixed", e["key"], rw[1], source="chat")
+            elif oa is None or ob == oa:
+                continue
+            elif _wholesale(e, ob, oa, sb, sa):
                 cards.append(trc.card_for_change(e["kind"], e["key"], e["choice"]))
                 continue
-            if oa is None or ob == oa:
-                continue
-            if _wholesale(e, ob, oa, sb, sa):
-                cards.append(trc.card_for_change(e["kind"], e["key"], e["choice"]))
-                continue
-            out, ch = td.set_decision(out, e["kind"], e["key"], oa, source="chat")
+            else:
+                out, ch = td.set_decision(out, e["kind"], e["key"], oa, source="chat")
         except (td.DecisionError, KeyError, StopIteration):
             continue
         if ch:

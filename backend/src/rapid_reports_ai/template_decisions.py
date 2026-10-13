@@ -118,8 +118,14 @@ def _name(s: str) -> str:
     return " ".join((s or "").lower().split())
 
 
+def structure_label(structure: str) -> str:
+    """A NORMAL's structure label without the quotes the grammar allows (NORMAL ["ROTATOR CUFF"])."""
+    s = (structure or "").strip()
+    return s[1:-1].strip() if len(s) > 2 and s.startswith('"') and s.endswith('"') else s
+
+
 def normal_key(paragraph: str, structure: str) -> str:
-    return f"{paragraph.strip()}{_SEP}{structure.strip()}"
+    return f"{paragraph.strip()}{_SEP}{structure_label(structure)}"
 
 
 def negative_key(paragraph: str, text: str) -> str:
@@ -241,6 +247,26 @@ def concept_texts(ledger: List[Entry]) -> set:
             for t in ((e.get("choice") or {}).get("default", ""), (e.get("choice") or {}).get("when_met", "")) if t}
 
 
+def rekey_decision(ledger: List[Entry], kind: str, key: str, new_key: str, *, source: str,
+                   by: str = "radiologist", at: Optional[str] = None) -> Tuple[List[Entry], Change]:
+    """The entry (kind, key) moved to `new_key` with its choice kept (a reworded line), and the change (its old
+    entry carries the old key). Never mutates `ledger`. DecisionError when invalid."""
+    if source not in SOURCES:
+        raise DecisionError(f"unknown source {source!r}")
+    if by not in BY:
+        raise DecisionError(f"unknown by {by!r}")
+    old = find(ledger, kind, key)
+    if old is None or find(ledger, kind, new_key) is not None:
+        raise DecisionError(f"{kind} {key!r}: nothing to move, or {new_key!r} is already decided")
+    new_key, choice = validate(kind, new_key, old["choice"])
+    if kind == "fixed" and norm_key(new_key) in concept_texts(ledger):
+        raise DecisionError("this line belongs to a study-level wording; change it there")
+    entry: Entry = {"kind": kind, "key": new_key, "choice": choice, "by": by, "at": at or _now(), "source": source}
+    return ([entry if e is old else e for e in ledger],
+            Change(kind=kind, key=new_key, old=dict(old), new=choice, source=source,
+                   confirmed=old.get("source") != "default"))
+
+
 def remove_decision(ledger: List[Entry], kind: str, key: str) -> List[Entry]:
     """The ledger without (kind, key)."""
     old = find(ledger, kind, key)
@@ -310,6 +336,9 @@ def describe_change(change: Change) -> str:
     if not change.get("confirmed"):
         return ""
     k = change["kind"]
+    old_key = change["old"].get("key", change["key"])
+    if match_key(k, old_key) != match_key(k, change["key"]):   # a reworded line (rekey_decision)
+        return f"This changes something you confirmed: {item_label(k, old_key)} → {item_label(k, change['key'])}."
     return (f"This changes something you confirmed: {item_label(k, change['key'])} "
             f"{state_label(k, change['old']['choice'])} → {state_label(k, change['new'])}.")
 

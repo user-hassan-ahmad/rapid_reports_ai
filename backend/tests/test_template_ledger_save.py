@@ -1,6 +1,7 @@
 """The save function applies the decision ledger last, by code, on every origin (Rules-step spec)."""
 import pytest
 
+from rapid_reports_ai import template_context_rules as tcr
 from rapid_reports_ai import template_decisions as td
 from rapid_reports_ai import template_ledger_apply as tla
 from rapid_reports_ai import template_sheet_save as S
@@ -81,3 +82,42 @@ async def test_a_chat_edit_that_drops_the_whole_value_list_is_kept_and_carded():
     out = await S.vet_sheet(after, origin="chat", previous=APPLIED, ledger=LVEF)
     assert out.status == "saved" and out.sheet == APPLIED and out.ledger == LVEF and out.ledger_changes == []
     assert [c["id"] for c in out.ledger_cards] == ["value:lvef"]
+
+
+PRIOR = "the dictation names a previous imaging study for comparison"
+CMP = _led(("concept", "comparison", {"use": True, "default": "No previous imaging available.",
+                                      "when_met": "Compared with the previous {modality} of {date}.",
+                                      "condition": PRIOR}))
+CMP_SHEET = tla.apply_ledger(LEDGER_SHEET, CMP).sheet
+REWORDED = CMP_SHEET.replace('FIXED "No previous imaging available."', 'FIXED "No prior imaging."')
+
+
+def _one_comparison_line_each_way(sheet):
+    rules = tcr.rules_in_scope(sheet)
+    for met in (True, False):
+        out = tcr.apply_rules(sheet, rules, {PRIOR: met})[0]
+        hits = [ln for ln in out.split("\n") if "FIXED" in ln and any(w in ln for w in ("previous", "prior", "Compared"))]
+        assert len(hits) == 1 and "RULE WHEN" not in out, (met, hits)
+
+
+async def test_chat_rewording_a_concept_default_saves_one_line_and_updates_the_ledger():
+    out = await S.vet_sheet(REWORDED, origin="chat", previous=CMP_SHEET, ledger=CMP)
+    assert out.ledger[0]["choice"]["default"] == "No prior imaging." and out.ledger_cards == []
+    assert "No previous imaging available." not in out.sheet
+    _one_comparison_line_each_way(out.sheet)
+
+
+async def test_chat_orphaning_a_concept_rule_otherwise_keeps_the_ledgers_line():
+    after = REWORDED.replace('FIXED "Axial images were acquired."\n', "")
+    out = await S.vet_sheet(after, origin="chat", previous=CMP_SHEET, ledger=CMP)
+    assert out.ledger == CMP and [c["id"] for c in out.ledger_cards] == ["concept:comparison"]
+    assert "No prior imaging." not in out.sheet
+    _one_comparison_line_each_way(out.sheet)
+
+
+@pytest.mark.parametrize("origin,previous", [("rebuild", CMP_SHEET), ("restore", CMP_SHEET), ("rebuild", "")])
+async def test_rebuild_and_restore_never_leave_two_comparison_lines(origin, previous):
+    out = await S.vet_sheet(REWORDED, origin=origin, previous=previous, ledger=CMP)
+    assert out.sheet == CMP_SHEET and out.ledger == CMP
+    assert [e["key"] for e in out.ledger_unmatched] == ["comparison"]
+    _one_comparison_line_each_way(out.sheet)

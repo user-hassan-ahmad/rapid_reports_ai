@@ -235,7 +235,7 @@ def _with_ledger(out: VetOutcome, origin: str, previous: str, ledger: List[dict]
     cards: List[dict] = []
     if origin == "chat" and previous and out.status == "saved":
         ledger, changes, cards = tla.reconcile_chat(previous, out.sheet, ledger)
-    res = tla.apply_ledger(out.sheet, ledger)
+    res = tla.apply_ledger(out.sheet, ledger, before=previous)
     drift = res.changed if origin in AUTOMATIC else 0
     if res.failed:
         logger.error("[sheet-save] %s: ledger entries not applied (a bug): %s", origin,

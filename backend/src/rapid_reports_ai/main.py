@@ -764,6 +764,11 @@ class SkillSheetDiversityCheckRequest(BaseModel):
     examples: List[SkillSheetExample]
 
 
+SKILL_SHEET_MAX_CHARS = 200_000   # request caps for the decision-ledger endpoints
+LEDGER_MAX_ITEMS = 200
+RULES_STEP_MAX_CHARS = 50_000
+
+
 class SkillSheetSaveRequest(BaseModel):
     skill_sheet: str
     scan_type: str
@@ -775,11 +780,18 @@ class SkillSheetSaveRequest(BaseModel):
     decisions: List[Dict[str, Any]] = []   # the decision ledger from the Rules step (applied at save)
     rules_step: Dict[str, Any] = {}        # evidence: the decision run's record (cards, dropped quotes, habits)
 
+    @field_validator("rules_step")
+    @classmethod
+    def _rules_step_size(cls, v):
+        if len(json.dumps(v, default=str)) > RULES_STEP_MAX_CHARS:
+            raise ValueError("rules_step is too large")
+        return v
+
 
 class SkillSheetApplyDecisionsRequest(BaseModel):
-    skill_sheet: str
-    decisions: List[Dict[str, Any]] = []   # the ledger so far
-    changes: List[Dict[str, Any]] = []     # card answers [{kind, key, choice, source?}]
+    skill_sheet: str = Field(max_length=SKILL_SHEET_MAX_CHARS)
+    decisions: List[Dict[str, Any]] = Field(default=[], max_length=LEDGER_MAX_ITEMS)   # the ledger so far
+    changes: List[Dict[str, Any]] = Field(default=[], max_length=LEDGER_MAX_ITEMS)     # card answers [{kind, key, choice, source?}]
     source: str = "creation"               # creation | first_use_review (chat goes through /refine)
 
 

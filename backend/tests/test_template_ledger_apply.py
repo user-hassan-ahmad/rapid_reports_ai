@@ -346,12 +346,59 @@ def test_a_rewrite_that_drops_a_whole_decided_item_keeps_the_ledger_and_returns_
     assert tla.observe(back, "concept", "comparison") == COMPARISON
 
 
-def test_a_concept_rule_left_on_a_reworded_fixed_line_keeps_the_ledger_and_returns_a_card():
+def test_a_reworded_concept_default_folds_into_the_ledger():
     led = _led(("concept", "comparison", COMPARISON))
     before = tla.apply_ledger(LEDGER_SHEET, led).sheet
     after = before.replace('FIXED "No previous imaging available."', 'FIXED "No prior imaging."')
     new, changes, cards = tla.reconcile_chat(before, after, led)
+    assert cards == [] and new[0]["choice"] == {**COMPARISON, "default": "No prior imaging."}
+    assert new[0]["source"] == "chat" and td.describe_change(changes[0]) == (
+        'This changes something you confirmed: Comparison with previous imaging "No previous imaging available." '
+        '→ "No prior imaging.".')
+    saved = tla.apply_ledger(after, new, before=before).sheet
+    rule = next(r for r in _clean(saved).rules if r.condition_source == "context")
+    assert rule.target == "No prior imaging." and "No previous imaging available." not in saved
+
+
+def test_any_other_orphaned_concept_rule_keeps_the_ledger_and_returns_a_card():
+    led = _led(("concept", "comparison", COMPARISON))
+    before = tla.apply_ledger(LEDGER_SHEET, led).sheet
+    after = before.replace('FIXED "No previous imaging available."', 'FIXED "No prior imaging."').replace(
+        'FIXED "Axial images were acquired."\n', "")                    # two lines gone, one added: not a reword
+    new, changes, cards = tla.reconcile_chat(before, after, led)
     assert new == led and changes == [] and [c["id"] for c in cards] == ["concept:comparison"]
+    res = tla.apply_ledger(after, new, before=before)
+    assert "No prior imaging." not in res.sheet and 'FIXED "No previous imaging available."' in res.sheet
+    assert [e["key"] for e in res.unmatched] == ["comparison"]
+
+
+def test_without_a_before_sheet_the_line_beside_an_orphaned_rule_is_dropped_and_reported():
+    led = _led(("concept", "comparison", COMPARISON))
+    sheet = tla.apply_ledger(LEDGER_SHEET, led).sheet
+    res = tla.apply_ledger(sheet.replace('FIXED "No previous imaging available."', 'FIXED "No prior imaging."'), led)
+    assert res.sheet == sheet and [e["key"] for e in res.unmatched] == ["comparison"]
+
+
+def test_a_reworded_always_fixed_line_is_rekeyed_not_removed():
+    led = _led(("fixed", "Axial images were acquired.", {"keep": "always"}))
+    after = LEDGER_SHEET.replace('FIXED "Axial images were acquired."', 'FIXED "Axial and coronal images were acquired."')
+    new, changes, cards = tla.reconcile_chat(LEDGER_SHEET, after, led)
+    assert [(e["key"], e["choice"], e["source"]) for e in new] == [
+        ("Axial and coronal images were acquired.", {"keep": "always"}, "chat")] and cards == []
+    assert td.describe_change(changes[0]) == ('This changes something you confirmed: "Axial images were acquired." '
+                                              '→ "Axial and coronal images were acquired.".')
+    assert tla.apply_ledger(after, new).sheet == after
+
+
+def test_a_quoted_normal_label_is_a_normal_key():
+    sheet = LEDGER_SHEET.replace('COVERS ["liver"', 'COVERS ["ROTATOR CUFF"').replace(
+        "NORMAL [liver]", 'NORMAL ["ROTATOR CUFF"]')
+    st = _clean(sheet)
+    key = td.normal_key("Liver", st.normals[0].structure)
+    assert key == "Liver :: ROTATOR CUFF"
+    assert tla.observe(st, "normal", key) == {"text": "The liver is normal in size."}
+    res = tla.apply_ledger(sheet, _led(("normal", key, {"text": "The cuff is intact."})))
+    assert 'NORMAL ["ROTATOR CUFF"] "The cuff is intact."' in res.sheet and len(_clean(res.sheet).normals) == 1
 
 
 def test_removing_a_negative_the_sheet_reworded_is_unmatched_not_kept():
