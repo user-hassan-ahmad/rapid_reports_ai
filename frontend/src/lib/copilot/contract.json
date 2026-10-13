@@ -12,5 +12,8 @@
 	"MatchResult": ["cards", "ms"],
 	"MatchRequest": ["scan_type", "clinical_history", "findings", "dictation", "patient"],
 	"FindingIn": ["id", "text"],
-	"OpenRequest": ["card", "finding", "findings", "clinical_history", "answered", "patient"]
+	"OpenRequest": ["card", "finding", "findings", "clinical_history", "answered", "patient"],
+	"CalculateRequest": ["card", "finding", "findings", "clinical_history", "answered", "patient", "values"],
+	"CalculateResult": ["calculation", "ms", "error"],
+	"Calculation": ["outcome", "result", "exclusion", "possible", "needed", "values", "assumptions", "pack", "bundle"]
 }
