@@ -223,7 +223,11 @@ Agreed with Hassan on 2026-10-12. Not built yet: it is part of the next slice (�
   - Only an answerable value is assumed: a choice, yes/no, or a number's band when band steps alone read the number.
     A number that also feeds a formula, such as BTS age in Brock, stays asked.
   - Calculate evaluates only the values the client sends. An assumed value sent back counts as sent, and keeps the
-    state `assumed` in the result.
+    state `assumed` in the result: one Calculate tap does not confirm an assumption.
+  - **Assumptions are confirmed at Apply (Hassan 2026-10-13).** A result that rests on assumed values shows the
+    "N checks assumed" warning. Apply on such a result first shows the assumptions in one compact step ("Confirm: …")
+    with a single Confirm & apply; changing any of them recalculates instead. A confirmed assumption becomes an
+    answered value for the session (shared patient facts carry across cards), so it is not asked again.
 - **Size.** A pack has at most three eligibility inputs. If a guideline's scope needs more, the scope belongs in the
   matcher's `applies_to` or in a pitfall, not in questions.
 
@@ -459,7 +463,7 @@ Each input on the card is in exactly one state:
 - **The draft outcome.** The preview runs the engine over the draft (read and pre-filled values, plus answers) and
   shows the outcome as a draft, labelled "on these values". It can never be applied.
 - **Calculate** runs the engine over the confirmed values: every value as the card shows it, with each edit. The tap
-  confirms every value shown. Calculate makes no model or Jev call and is deterministic. It returns:
+  confirms every value shown except assumed eligibility values, which are confirmed at Apply (below). Calculate makes no model or Jev call and is deterministic. It returns:
   - the classification, recommendation and caveats as the entry words them;
   - the citations of the steps that fired and of the outcome;
   - each value used, with its state and quote;
@@ -471,6 +475,10 @@ Each input on the card is in exactly one state:
 - **Apply** writes exactly the last Calculate result: the classification line under the finding, and the ticked
   recommendation under the conclusion. Any edit after Calculate clears that result, so Apply needs a fresh
   Calculate.
+- **Assumptions before Apply.** When the result rests on assumed eligibility values (§3.6), Apply first asks for one
+  explicit confirmation listing them ("Confirm: no known cancer · found incidentally · adult" → Confirm & apply).
+  Changing one recalculates. Calculate itself never needs this step, so the tap count stays low; the confirmation sits
+  where a wrong assumption could otherwise reach the report.
 
 ### 7.8 Checker mode
 
