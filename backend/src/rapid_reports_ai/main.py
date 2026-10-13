@@ -75,6 +75,7 @@ from . import template_sheet_grammar as tsg
 from . import template_sheet_save as tsave
 from . import template_examples
 from . import template_chat_turns
+from . import chat_router
 from . import template_decisions as td
 from .auth import (
     verify_password,
@@ -2752,6 +2753,23 @@ async def skill_sheet_generate_test_case_endpoint(
         return {"success": False, "error": str(e)}
 
 
+def _record_chat_turn(db, user, template_id, instruction: str, response: str, applied: bool, before: str,
+                      after: str, routing: Optional[dict]) -> None:
+    """Evidence: a chat turn stored with the template it edits (never fails the reply)."""
+    if not template_id:
+        return
+    try:
+        owned = get_template(db, template_id, user_id=str(user.id))
+    except Exception as e:
+        db.rollback()
+        logger.warning("chat turn template lookup failed: %s", type(e).__name__)
+        return
+    if owned:
+        # applied = the save function accepted it (no-change and asks included); a sheet change is
+        # sheet_hash_before != sheet_hash_after
+        template_chat_turns.record_turn(db, owned.id, instruction, response, applied, before, after, routing=routing)
+
+
 @app.post("/api/templates/skill-sheet/refine")
 async def skill_sheet_refine_endpoint(
     request: SkillSheetRefineRequest,
@@ -2778,6 +2796,26 @@ async def skill_sheet_refine_endpoint(
              "rejected_claim": request.rejection_context.rejected_claim}
             if request.rejection_context else None
         )
+        # chat-edit router first (spec 2026-10-13-chat-edit-router-design); a failed tag call falls back to the
+        # whole-sheet refine below for this turn
+        router_fallback = None
+        if chat_router.enabled() and tsg.is_grammar_sheet(request.skill_sheet):
+            last_reply = next((m.content for m in reversed(request.chat_history or []) if m.role == "assistant"), "")
+            try:
+                # decisions None = a client that does not send the ledger (before the Rules step): the router treats
+                # it as an empty ledger and always returns `decisions`, so such a client ignores what it does not use;
+                # the save function seeds the value list before any value write (chat_router_ledger.seed_values)
+                turn = await chat_router.route_turn(request.skill_sheet, request.decisions or [], request.message,
+                                                    context=last_reply, rejection=rejection_ctx)
+            except chat_router.Fallback as e:
+                router_fallback = str(e)
+                logger.warning("[chat-router] fallback to the whole-sheet refine: %s", e)
+            else:
+                out = chat_router.response(turn)
+                _record_chat_turn(db, current_user, request.template_id, request.message, out["response"],
+                                  not turn.refused, request.skill_sheet, out["skill_sheet"], turn.evidence)
+                return out
+
         result = await tm.refine_skill_sheet(
             skill_sheet=request.skill_sheet,
             message=request.message,
@@ -2819,18 +2857,9 @@ async def skill_sheet_refine_endpoint(
                 out["response"] = f"{out.get('response', '').rstrip()} {' '.join(notes)}".strip()
         if decisions is not None:
             out["decisions"] = v.ledger
-        if request.template_id:   # evidence: the turn is stored with the template (never fails the reply)
-            try:
-                owned = get_template(db, request.template_id, user_id=str(current_user.id))
-            except Exception as e:
-                db.rollback()
-                owned = None
-                logger.warning("chat turn template lookup failed: %s", type(e).__name__)
-            if owned:
-                # applied = the save function accepted it (no-change and asks included); a sheet change is
-                # sheet_hash_before != sheet_hash_after
-                template_chat_turns.record_turn(db, owned.id, request.message, out["response"],
-                                                v.status != "refused", request.skill_sheet, out["skill_sheet"])
+        _record_chat_turn(db, current_user, request.template_id, request.message, out["response"],
+                          v.status != "refused", request.skill_sheet, out["skill_sheet"],
+                          {"version": chat_router.ROUTER_VERSION, "route": "refine", "fallback": router_fallback})
         return out
     except Exception as e:
         logger.exception("skill sheet refine failed: %s", e)
