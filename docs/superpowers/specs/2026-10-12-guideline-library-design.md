@@ -225,7 +225,8 @@ Agreed with Hassan on 2026-10-12. Not built yet: it is part of the next slice (�
   - Calculate evaluates only the values the client sends. An assumed value sent back counts as sent, and keeps the
     state `assumed` in the result: one Calculate tap does not confirm an assumption.
   - **Assumptions are confirmed at Apply (Hassan 2026-10-13).** A result that rests on assumed values shows the
-    "N checks assumed" warning. Apply on such a result first shows the assumptions in one compact step ("Confirm: …")
+    "N checks assumed" warning. Apply on such a result first shows the decisive assumptions (§7.7) in one compact
+    step ("Confirm: …")
     with a single Confirm & apply; changing any of them recalculates instead. A confirmed assumption becomes an
     answered value for the session (shared patient facts carry across cards), so it is not asked again.
 - **Size.** A pack has at most three eligibility inputs. If a guideline's scope needs more, the scope belongs in the
@@ -433,11 +434,16 @@ Each input on the card is in exactly one state:
 | **Edited** | In a Calculate result: a sent value that differs from its draft or preset | As sent |
 
 **Visible signs, the most likely outcome and the deciding question (Hassan, 2026-10-13).**
-- **Visible signs.** A sign the imaging shows when it is present (for example spiculation, emphysema on CT, benign
-  calcification or fat, septa, ascites) is flagged in the pack data (`visible_sign`, with `absent_option` for a choice).
+- **Visible signs.** A sign the imaging shows when it is present is flagged in the pack data (`visible_sign`, with
+  `absent_option` for a choice). Flagged today: BTS benign calcification or fat and spiculation; Bosniak calcification;
+  RCOG ascites and acoustic shadowing.
   If unstated, it is drafted as **assumed absent**: state `assumed`, listed in `assumptions`, never read. A stated
-  value always wins. This is the product's silence policy. It never applies to what the imaging may not show, such as
-  enhancement on an unenhanced scan or Doppler flow.
+  value always wins, and an explicit "Not stated" makes it asked. This is the product's silence policy.
+  - It never applies to what the imaging may not show: enhancement on an unenhanced scan, Doppler flow, or emphysema
+    when chest coverage may be partial.
+  - It never applies to a count that a mention may leave open (papillary projections), or to a feature that would make
+    a class less conservative (Bosniak septa and protrusion).
+- The deciding question is skipped while the result is unbounded. The extras computed for a tap are capped.
 - **Most likely.** `most_likely` is the draft outcome under these assumptions, in short (`headline`, `action`,
   `category`).
 - **Deciding question.** While several outcomes remain, `deciding_input` is the unknown input whose answers settle the
@@ -477,8 +483,11 @@ Each input on the card is in exactly one state:
 
 - **The draft outcome.** The preview runs the engine over the draft (read and pre-filled values, plus answers) and
   shows the outcome as a draft, labelled "on these values". It can never be applied.
-- **Calculate** runs the engine over the confirmed values: every value as the card shows it, with each edit. The tap
-  confirms every value shown except assumed eligibility values, which are confirmed at Apply (below). Calculate makes no model or Jev call and is deterministic. It returns:
+- **Calculate** runs the engine over the confirmed values: every value as the card shows it, with each edit.
+  - Since 2026-10-13 (Hassan), Calculate is no longer a button the radiologist presses. It is the confirmation step
+    inside Apply, run over the values the card shows when Apply is tapped.
+  - Calculate makes no model or Jev call and is deterministic.
+  - It returns:
   - the classification, recommendation and caveats as the entry words them;
   - the citations of the steps that fired and of the outcome;
   - each value used, with its state and quote;
@@ -487,13 +496,15 @@ Each input on the card is in exactly one state:
 - **No guessing.** If an input that could change the outcome is still unknown, Calculate returns no outcome. It
   returns the possible outcomes and what is still needed.
 - **Exclusions.** A `does_not_apply` result is shown as the exclusion and never applied.
-- **Apply** writes exactly the last Calculate result: the classification line under the finding, and the ticked
-  recommendation under the conclusion. Any edit after Calculate clears that result, so Apply needs a fresh
-  Calculate.
-- **Assumptions before Apply.** When the result rests on assumed eligibility values (§3.6), Apply first asks for one
-  explicit confirmation listing them ("Confirm: no known cancer · found incidentally · adult" → Confirm & apply).
-  Changing one recalculates. Calculate itself never needs this step, so the tap count stays low; the confirmation sits
-  where a wrong assumption could otherwise reach the report.
+- **Apply** runs Calculate over the values shown, then writes exactly its result: the classification line under the
+  finding, and the ticked recommendation under the conclusion. Any edit re-runs it.
+- **Assumptions before Apply.** Each assumed value is weighed (`decisive`): it is decisive when flipping that one
+  assumption alone changes the outcome. This covers eligibility in scope (§3.6) and visible signs absent (§7.5).
+  - When the result rests on decisive assumptions, Apply first asks for one explicit confirmation listing only those
+    ("Confirm: no known cancer · no benign calcification" → Confirm & apply).
+  - A non-decisive assumption needs no confirmation, because it cannot change what is written.
+  - An assumption left unweighed (`decisive: null`, for an unbounded result) is treated as decisive.
+  - Changing one recalculates. The confirmation sits where a wrong assumption could otherwise reach the report.
 
 ### 7.8 Checker mode
 

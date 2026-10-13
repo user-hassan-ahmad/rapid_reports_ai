@@ -1089,7 +1089,6 @@
       "visible_sign": false
      },
      {
-      "absent_option": "none",
       "how_stated": "no septa; few (1 to 3) thin (2 mm or less) septa, enhancing or not; many (4 or more) thin septa; or a minimally thickened (3 mm) or thick (4 mm or more) septum, and whether it enhances. Give the highest-class enhancing septum; if none enhances, the thickest. not enhancing, or enhancement not assessable (needs unenhanced and enhanced images to compare, or a measurement)",
       "id": "septa",
       "label": "Septa (the one that sets the highest class)",
@@ -1121,10 +1120,9 @@
       "states": [],
       "type": "enum",
       "unit": "",
-      "visible_sign": true
+      "visible_sign": false
      },
      {
-      "absent_option": "none",
       "how_stated": "none (smooth); irregular thickening (enhancing, obtuse margins, 3 mm or less); nodule (enhancing, acute margins of any size, or obtuse margins and 4 mm or more); or a protrusion that does not enhance or cannot be assessed. Measure perpendicular to its wall or septum, adding protrusions on both sides and excluding the septum. Code the most suspicious protrusion: an enhancing one over a non-enhancing one, and a nodule over irregular thickening.",
       "id": "protrusion",
       "label": "Convex protrusion from wall or septa (most significant)",
@@ -1152,7 +1150,7 @@
       "states": [],
       "type": "enum",
       "unit": "",
-      "visible_sign": true
+      "visible_sign": false
      },
      {
       "absent_option": "none",
@@ -3827,7 +3825,7 @@
       "states": [],
       "type": "boolean",
       "unit": "",
-      "visible_sign": true
+      "visible_sign": false
      },
      {
       "how_stated": "true for a right or left upper lobe nodule; false for middle or lower lobe (whether the lingula counts as upper lobe is not stated by the source: treat as left upper lobe)",
@@ -18200,7 +18198,7 @@
       "states": [],
       "type": "boolean",
       "unit": "",
-      "visible_sign": true
+      "visible_sign": false
      },
      {
       "how_stated": "true when the mass is an irregular multilocular-solid tumour (septa and solid tissue, irregular); false when it is not multilocular-solid, or is smooth. Its size is read from the maximum diameter, not here.",
@@ -21449,5 +21447,5 @@
    ]
   }
  },
- "version": "247564f1f2f8"
+ "version": "29afa9084e62"
 }

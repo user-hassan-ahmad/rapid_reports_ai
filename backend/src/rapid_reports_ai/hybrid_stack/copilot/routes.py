@@ -482,7 +482,8 @@ async def copilot_calculate(req: CalculateRequest, user: User = Depends(get_curr
     lib = L.get()
     settled = await _settlement(e, req, opened=False, start=False)
     return CalculateResult(calculation=calculate(e, settled, req.values, req.patient, lib.sources(e.key),
-                                                 lib.version(), presets=exam_presets(e, card.finding_id)),
+                                                 lib.version(), presets=exam_presets(e, card.finding_id),
+                                                 answered=req.answered),
                            ms=_ms(t0))
 
 
