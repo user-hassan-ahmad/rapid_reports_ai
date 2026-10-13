@@ -569,7 +569,8 @@
 				scan_type: scanType,
 				template_name: templateName.trim(),
 				tags,
-				analyser_version: analyserVersion
+				analyser_version: analyserVersion,
+				examples: examples.filter((e) => e.content.trim())
 			});
 			if (!data.success) throw new Error(data.error || 'Save failed');
 			showSaveDialog = false; saved = true;
@@ -647,6 +648,7 @@
 			{#if filledCount < 3}
 				<p class="px-5 pt-3 pb-0 text-[11px] text-gray-600">For best results, include a mix — a straightforward case, one with findings, and a complex one.</p>
 			{/if}
+			<p class="px-5 pt-1 pb-0 text-[11px] text-gray-600">Your example reports are kept with this template (with names, dates and ID numbers removed) so it can be improved later. They're deleted if you delete the template.</p>
 			<div class="p-5 pt-2 space-y-3">
 				<div class="flex items-center justify-between">
 					<label class="text-xs font-medium text-gray-400 uppercase tracking-wider">

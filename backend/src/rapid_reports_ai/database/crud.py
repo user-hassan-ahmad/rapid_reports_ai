@@ -13,6 +13,8 @@ from .models import (
     PasswordResetToken,
     Report,
     TemplateVersion,
+    TemplateExample,
+    TemplateChatTurn,
     ReportVersion,
     ReportAudit,
     ReportAuditCriterion,
@@ -431,6 +433,10 @@ def delete_template(db: Session, template_id: str, user_id: Optional[str] = None
         return False
     
     template.is_active = False
+    # A soft delete never fires the FK cascade: the creator promises the user's words (examples, chat turns) go with
+    # the template, so they are removed here.
+    db.query(TemplateExample).filter(TemplateExample.template_id == template.id).delete(synchronize_session=False)
+    db.query(TemplateChatTurn).filter(TemplateChatTurn.template_id == template.id).delete(synchronize_session=False)
     db.commit()
     return True
 

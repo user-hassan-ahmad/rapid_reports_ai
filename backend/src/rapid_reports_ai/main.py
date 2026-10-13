@@ -73,6 +73,7 @@ from . import template_pipeline as tp
 from .generation_artifacts import GenerationArtifacts
 from . import template_sheet_grammar as tsg
 from . import template_sheet_save as tsave
+from . import template_examples
 from .auth import (
     verify_password,
     get_password_hash,
@@ -764,6 +765,8 @@ class SkillSheetSaveRequest(BaseModel):
     template_name: str
     tags: List[str] = []
     analyser_version: str = ""  # the writer that produced the sheet (evidence stamp; "" when unknown)
+    examples: List[SkillSheetExample] = []  # the pasted examples: stored de-identified with the template
+    chat_turns: List[Dict[str, str]] = []   # the creator's chat-to-edit turns (stored by D5)
 
 
 # Quick Report Proto — ephemeral skill sheet pipeline
@@ -2795,6 +2798,11 @@ async def skill_sheet_save_endpoint(
             user_id=str(current_user.id),
         )
         _queue_structure(str(template.id), template_config)
+        if request.examples:
+            try:
+                await template_examples.store_examples(db, template.id, [e.content for e in request.examples])
+            except Exception as e:   # evidence only: never fails the save
+                logger.warning("template examples not stored for %s: %s", template.id, e)
         return {"success": True, "template_id": str(template.id)}
     except Exception as e:
         import traceback
