@@ -1,18 +1,25 @@
-"""One-off ship step: write the reviewed grammar sheets to existing templates and soft-delete the legacy templates.
+"""One-off ship step: write the reviewed grammar sheets to existing templates, soft-delete the listed legacy ones.
 
-Dry run by default (prints and returns what would change, writes nothing); --apply writes, after a backup JSON of
-every template it will change is saved next to the manifest.
+Dry run by default (prints and returns what would change, writes nothing; it still vets every sheet through
+vet_sheet, which makes paid LLM calls); --apply writes, after a backup JSON of every template it will change (and the
+examples and chat turns a delete removes) is saved next to the manifest.
 
     .venv/bin/python -m rapid_reports_ai.scripts.template_upgrade_apply <manifest.json> [--apply]
 
-manifest.json: [{"template_id", "old_sheet_hash", "new_sheet"}]. Per manifest entry:
+manifest.json: {"templates": [{"template_id", "old_sheet_hash", "new_sheet"}], "legacy_ids": [...],
+"analyser_version"?: str}; a bare list is read as "templates" alone (nothing deleted). analyser_version, when set,
+replaces the carried one on every written sheet. Per template entry:
   skipped-missing   no such template
   skipped-inactive  the template was deleted
   skipped-mode      not a guided (skill_sheet_guided) template
-  skipped-stale     its stored sheet no longer hashes to old_sheet_hash (edited since the pull)
+  already-written   its stored sheet is already the vetted new sheet (a re-run)
+  skipped-stale     its stored sheet no longer hashes to old_sheet_hash (edited since the pull); re-checked at write
   skipped-refused   the one save function (template_sheet_save.vet_sheet, origin "rebuild") refused the new sheet
+  skipped-unchanged the new sheet is the stored one
   written           the vetted sheet is stored the way a sheet save does it (see _write)
-Then every active template with no generation_mode (legacy) is soft-deleted (is_active False, the app's Delete).
+  error             the write raised (exception type only) or the pre-upgrade snapshot failed; the rest go on
+Then each legacy_ids template still active with no generation_mode (and not a template entry) is soft-deleted
+(is_active False, the app's Delete); one that no longer is reports skipped-legacy-changed.
 
 Output names template ids only: never sheet text, template names or user identifiers.
 """
@@ -23,6 +30,7 @@ import asyncio
 import json
 import time
 import uuid
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -30,7 +38,7 @@ from rapid_reports_ai import template_sheet_grammar as tsg
 from rapid_reports_ai import template_sheet_save as tsave
 from rapid_reports_ai import template_sheet_structure as tss
 from rapid_reports_ai.database import crud
-from rapid_reports_ai.database.models import Template
+from rapid_reports_ai.database.models import Template, TemplateChatTurn, TemplateExample
 
 GUIDED = "skill_sheet_guided"
 # A rebuild: an automatic writer's sheet replacing a template's existing one. On an automatic write vet_sheet drops a
@@ -38,15 +46,31 @@ GUIDED = "skill_sheet_guided"
 ORIGIN = "rebuild"
 
 
-def _find(db, template_id: str) -> Optional[Template]:
+def _find(db, template_id: str, lock: bool = False) -> Optional[Template]:
     """The template, active or not (crud.get_template hides deleted ones, which this script reports apart)."""
     try:
-        return db.query(Template).filter(Template.id == uuid.UUID(str(template_id))).first()
+        q = db.query(Template).filter(Template.id == uuid.UUID(str(template_id)))
     except ValueError:
         return None
+    return (q.with_for_update().populate_existing() if lock else q).first()
 
 
-async def _plan_entry(db, entry: dict) -> dict:
+def _is_legacy(t: Optional[Template]) -> bool:
+    return t is not None and bool(t.is_active) and not (t.template_config or {}).get("generation_mode")
+
+
+async def _already_written(current: str, new_sheet: str) -> bool:
+    """Whether the stored sheet is what this entry writes: the new sheet itself or its vetted form (a re-run)."""
+    if tss.sheet_hash(current) == tss.sheet_hash(new_sheet):
+        return True
+    try:
+        out = await tsave.vet_sheet(new_sheet, origin=ORIGIN, previous="")
+    except Exception:  # noqa: BLE001 -- a re-run check only; stale is the safe answer
+        return False
+    return out.status != "refused" and tss.sheet_hash(current) == tss.sheet_hash(out.sheet)
+
+
+async def _plan_entry(db, entry: dict, analyser_version: Optional[str] = None) -> dict:
     """What to do with one manifest entry: {"template_id", "action", "reason"?, "dropped_units"?, ...}."""
     from rapid_reports_ai.main import _carry_structure
 
@@ -59,21 +83,25 @@ async def _plan_entry(db, entry: dict) -> dict:
     cfg = dict(t.template_config or {})
     if cfg.get("generation_mode") != GUIDED:
         return {"template_id": tid, "action": "skipped-mode"}
-    if tss.sheet_hash(cfg.get("skill_sheet") or "") != entry.get("old_sheet_hash"):
-        return {"template_id": tid, "action": "skipped-stale"}
+    current = cfg.get("skill_sheet") or ""
+    if tss.sheet_hash(current) != entry.get("old_sheet_hash"):
+        written = await _already_written(current, entry.get("new_sheet") or "")
+        return {"template_id": tid, "action": "already-written" if written else "skipped-stale"}
     # The same steps as a sheet save (PUT /api/templates: _carry_structure then _vet_config's guided branch): drop
     # the stored structure, carry analyser_version, vet the sheet, store the vetted sheet + coverage_sections.
     new_cfg = _carry_structure({**cfg, "skill_sheet": entry.get("new_sheet") or ""}, cfg)
+    if analyser_version:
+        new_cfg["analyser_version"] = analyser_version
     if not new_cfg["skill_sheet"]:
         return {"template_id": tid, "action": "skipped-refused", "reason": tsave.LOST_STRUCTURE}
-    out = await tsave.vet_sheet(new_cfg["skill_sheet"], origin=ORIGIN, previous=cfg.get("skill_sheet") or "")
+    out = await tsave.vet_sheet(new_cfg["skill_sheet"], origin=ORIGIN, previous=current)
     if out.status == "refused":
         return {"template_id": tid, "action": "skipped-refused", "reason": out.message or "refused"}
     if out.status == "unchanged":
         return {"template_id": tid, "action": "skipped-unchanged"}
     vetted = {**new_cfg, "skill_sheet": out.sheet, "coverage_sections": out.coverage_sections}
-    return {"template_id": tid, "action": "written", "config": vetted, "template": t, "old_config": cfg,
-            "dropped_units": len(out.dropped)}
+    return {"template_id": tid, "action": "written", "config": vetted, "old_config": cfg,
+            "old_sheet_hash": entry.get("old_sheet_hash"), "dropped_units": len(out.dropped)}
 
 
 def _store_structure(db, template_id: str, config: dict) -> bool:
@@ -85,20 +113,64 @@ def _store_structure(db, template_id: str, config: dict) -> bool:
     return tss.store_structure(db, template_id, tsg.parse_sheet(sheet).structure)
 
 
-def _write(db, row: dict) -> bool:
-    t = row["template"]
-    crud.create_template_version(db, t, skip_if_unchanged=True)  # the pre-upgrade state, restorable from history
-    updated = crud.update_template(db, str(t.id), template_config=row["config"])  # snapshots the new state too
-    return _store_structure(db, str(t.id), dict(updated.template_config or {}))
+def _write(db, row: dict) -> None:
+    """Re-check the plan under a row lock, then snapshot the old state, store the vetted sheet and its structure."""
+    t = _find(db, row["template_id"], lock=True)
+    if t is None or not t.is_active or (t.template_config or {}).get("generation_mode") != GUIDED:
+        db.rollback()
+        row["action"] = "skipped-stale"
+        return
+    current = tss.sheet_hash((t.template_config or {}).get("skill_sheet") or "")
+    if current != row["old_sheet_hash"]:
+        db.rollback()
+        written = current == tss.sheet_hash(row["config"]["skill_sheet"])
+        row["action"] = "already-written" if written else "skipped-stale"
+        return
+    if crud.create_template_version(db, t, skip_if_unchanged=True) is None:  # pre-upgrade state, restorable
+        row["action"], row["reason"] = "error", "snapshot failed"
+        return
+    updated = crud.update_template(db, row["template_id"], template_config=row["config"])  # snapshots new state
+    row["structure_stored"] = _store_structure(db, row["template_id"], dict(updated.template_config or {}))
+
+
+def _soft_delete(db, row: dict) -> None:
+    if not _is_legacy(_find(db, row["template_id"], lock=True)):
+        db.rollback()
+        row["action"] = "skipped-legacy-changed"
+    elif not crud.delete_template(db, row["template_id"]):
+        row["action"], row["reason"] = "skipped-delete-failed", "delete_template returned False"
+
+
+def _jsonable(v):
+    if isinstance(v, uuid.UUID):
+        return str(v)
+    if isinstance(v, (datetime, date)):
+        return v.isoformat()
+    return v
+
+
+def _rows(db, model, template_id) -> list:
+    return [{c.name: _jsonable(getattr(r, c.name)) for c in model.__table__.columns}
+            for r in db.query(model).filter(model.template_id == template_id).all()]
+
+
+def _read_manifest(path: Path) -> tuple:
+    data = json.loads(path.read_text())
+    if isinstance(data, list):
+        return data, [], None
+    legacy_ids = [str(i) for i in data.get("legacy_ids") or []]
+    return data.get("templates") or [], legacy_ids, data.get("analyser_version")
 
 
 async def _run(manifest_path: Path, apply: bool, db) -> dict:
-    manifest = json.loads(manifest_path.read_text())
-    rows = [await _plan_entry(db, e) for e in manifest]
-    converting = {r["template_id"] for r in rows if r["action"] == "written"}
-    legacy = [t for t in db.query(Template).filter(Template.is_active.is_(True)).all()
-              if not (t.template_config or {}).get("generation_mode") and str(t.id) not in converting]
-    rows += [{"template_id": str(t.id), "action": "soft-deleted", "template": t} for t in legacy]
+    entries, legacy_ids, analyser_version = _read_manifest(manifest_path)
+    rows = [await _plan_entry(db, e, analyser_version) for e in entries]
+    listed = {r["template_id"] for r in rows}
+    for lid in dict.fromkeys(legacy_ids):
+        if lid in listed:
+            continue
+        t = _find(db, lid)
+        rows.append({"template_id": lid, "action": "soft-deleted" if _is_legacy(t) else "skipped-legacy-changed"})
 
     backup_path = None
     if apply:
@@ -107,17 +179,21 @@ async def _run(manifest_path: Path, apply: bool, db) -> dict:
             if r["action"] == "written":
                 backup["converted"][r["template_id"]] = r["old_config"]
             elif r["action"] == "soft-deleted":
-                t = r["template"]
-                backup["legacy"][r["template_id"]] = {"name": t.name, "user_id": str(t.user_id),
-                                                      "template_config": t.template_config}
+                t = _find(db, r["template_id"])
+                backup["legacy"][r["template_id"]] = {
+                    "name": t.name, "user_id": str(t.user_id), "template_config": t.template_config,
+                    "examples": _rows(db, TemplateExample, t.id), "chat_turns": _rows(db, TemplateChatTurn, t.id)}
         backup_path = manifest_path.with_name(f"template_upgrade_backup_{int(time.time())}.json")
         backup_path.write_text(json.dumps(backup, indent=1, default=str))
         for r in rows:
-            if r["action"] == "written":
-                r["structure_stored"] = _write(db, r)
-            elif r["action"] == "soft-deleted":
-                if not crud.delete_template(db, r["template_id"]):
-                    r["action"], r["reason"] = "skipped-delete-failed", "delete_template returned False"
+            if r["action"] not in ("written", "soft-deleted"):
+                continue
+            try:
+                (_write if r["action"] == "written" else _soft_delete)(db, r)
+            except Exception as e:  # noqa: BLE001 -- one template's failure never stops the rest
+                db.rollback()
+                r["action"], r["reason"] = "error", type(e).__name__
+                r.pop("structure_stored", None)
 
     out = [{k: v for k, v in r.items() if k in ("template_id", "action", "reason", "dropped_units",
                                                    "structure_stored")} for r in rows]
