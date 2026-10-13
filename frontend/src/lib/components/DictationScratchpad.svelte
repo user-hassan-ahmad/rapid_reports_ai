@@ -308,7 +308,7 @@
 	// The session's referral rows: the first /items reply's, fixed so they never drift (null until it answers).
 	let fixedReferrals: { question: string; region: string; sentences: string[] }[] | null = null;
 	// The template's context rules, decided once for the session from the clinical history (review R5): the first good
-	// /assumed reply's (the sheet load), sent back on every refresh; re-asked only at Confirm for rules about findings.
+	// /assumed reply's (the sheet load), sent back on every refresh; every rule is re-asked with the dictation at Confirm.
 	let sessionRules: SessionRules | null = null;
 	let confirming = false;
 	let itemsSeq = 0;
@@ -1991,7 +1991,7 @@
 		draft = null; // offered only when the field is empty (the ✨ button): nothing of the radiologist's is replaced
 		void requestDraft();
 	}
-	/** Confirm (spec §5). A template rule whose condition mentions findings is re-asked with the dictation first
+	/** Confirm (spec §5). Every template context rule is re-asked with the dictation first
 	 *  (review R5): the gate records that answer. Confirm does not gate if the dictation moved on meanwhile. */
 	async function stackConfirm(): Promise<boolean> {
 		if (assumedSnap?.confirm_recheck && !assumedSnap.check_failed) {

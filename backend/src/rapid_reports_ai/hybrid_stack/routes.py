@@ -111,7 +111,7 @@ class AssumedRequest(BaseModel):
     region_text: dict[str, str] | None = None   # region -> its grouped sentences (Task A3b); None: an older client
     # The session's context-rule decision, as the first reply returned it (review R5); None: decide it now.
     rules: dict[str, float] | None = None
-    confirm: bool = False   # at Confirm: conditions that mention findings are re-asked with the dictation
+    confirm: bool = False   # at Confirm: every condition is re-asked with the dictation
 
 
 class DraftRequest(BaseModel):

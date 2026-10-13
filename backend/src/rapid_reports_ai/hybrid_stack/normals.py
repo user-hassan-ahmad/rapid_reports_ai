@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 import time
 
 from pydantic import BaseModel
@@ -28,7 +27,7 @@ class AssumedResult(BaseModel):
     # The session's template context-rule decision (condition -> P(met), from the clinical history; review R5): the
     # client keeps the first one and sends it back as `rules`. None: not decided (a failure, or nothing to ask).
     rules: dict[str, float] | None = None
-    confirm_recheck: bool = False   # some condition mentions findings: Confirm re-asks it with the dictation
+    confirm_recheck: bool = False   # the sheet has context rules: Confirm re-asks every one with the dictation
     ms: int = 0
     error: str | None = None
 
@@ -77,15 +76,6 @@ async def _ask_by_region(dictation: str, asked: list[tuple[str, str]], texts: li
     return [RowCheck(s, c.contra, c.removed) for s, c in zip(stated, whole)]
 
 
-_FINDINGS_WORDS = re.compile(r"\b(?:dictat\w*|findings?)\b", re.I)
-
-
-def mentions_findings(condition: str) -> bool:
-    """A context condition the dictation can settle ("the dictation names a previous imaging study"): re-asked with
-    the dictation at Confirm (review R5). Every other condition is decided once per session, from the history."""
-    return bool(_FINDINGS_WORDS.search(condition))
-
-
 def _history_state(history: str) -> str:
     return f"CLINICAL HISTORY:\n{history or '(not given)'}"
 
@@ -100,12 +90,12 @@ async def _session_rules(conds: list[str], history: str, rules: dict[str, float]
 
 
 async def _confirm_rules(conds: list[str], history: str, dictation: str) -> dict[str, float]:
-    """At Confirm only: the conditions that mention findings, asked on the history and the dictation (one call)."""
-    todo = [c for c in conds if mentions_findings(c)]
-    if not todo or not dictation.strip():
+    """At Confirm only: every condition, asked on the history and the dictation (one call). Hassan 2026-10-13: no
+    word filter decides which rule the dictation can settle ("if ascites is present" names no finding word)."""
+    if not conds or not dictation.strip():
         return {}
     state = f"{_history_state(history)}\nDICTATED FINDINGS:\n{dictation}"
-    return dict(zip(todo, await ask_conditions(state, todo)))
+    return dict(zip(conds, await ask_conditions(state, conds)))
 
 
 async def _nothing():
@@ -139,8 +129,8 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     A template's context rule (`suppressions`: condition, sentence) whose condition is met hides its sentence,
     empty dictation included (review R5). The conditions are decided once per session from the clinical history:
     `rules` is that decision as an earlier reply returned it (None: decide now, one call), and the reply's `rules`
-    is what the caller keeps. `confirm`: at Confirm, the conditions that mention findings are re-asked with the
-    dictation for this reply only. On a Jev failure nothing is assumed and no rules are returned.
+    is what the caller keeps. `confirm`: at Confirm, every condition is re-asked on the history and the dictation,
+    for this reply only. On a Jev failure nothing is assumed and no rules are returned.
     `dictated_normal` and `touched` are accepted for compatibility; every sentence is asked now."""
     t0 = time.perf_counter()
     gone = list(dict.fromkeys(r for r in [*removed, *(owned or [])] if r.strip()))
@@ -156,7 +146,7 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     session = rules
     if asked:
         rule_calls = (1 if any(c not in (rules or {}) for c in conds) else 0) + \
-            (1 if confirm and not blank and any(mentions_findings(c) for c in conds) else 0)
+            (1 if confirm and not blank and conds else 0)
         try:
             texts = [jev_text(s, labels[s]) if s in labels else s for _, s in asked]
             # Nothing dictated: Jev has no text to compare against and reads every sentence as hedged (live: an
@@ -192,5 +182,5 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
             logger.log(logging.WARNING if error else logging.INFO, "[stack.normals] jev_calls=%d failed=%s mode=%s",
                        calls, error is not None, "whole" if region_text is None else "region")
     return AssumedResult(assumed=out, flagged=flagged, dropped=dropped, rules=session,
-                         confirm_recheck=any(mentions_findings(c) for c in conds),
+                         confirm_recheck=bool(conds),
                          ms=int((time.perf_counter() - t0) * 1000), error=error)

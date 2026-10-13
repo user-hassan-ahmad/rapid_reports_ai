@@ -358,10 +358,11 @@ async def test_the_rules_are_decided_once_per_session_not_per_refresh(monkeypatc
     assert len(calls) == 1
 
 
-async def test_confirm_re_asks_only_the_conditions_that_mention_findings(monkeypatch):
+async def test_confirm_re_asks_every_condition_with_the_dictation(monkeypatch):
+    # Hassan 2026-10-13: Confirm re-asks every rule, not a word-matched subset
     calls = []
     monkeypatch.setattr(N, "ask_rows", _checks({}))
-    monkeypatch.setattr(N, "ask_conditions", _conds({NAMES_PRIOR: 0.95}, calls))
+    monkeypatch.setattr(N, "ask_conditions", _conds({NO_PRIOR: 0.1, NAMES_PRIOR: 0.95}, calls))
     sup = [(NO_PRIOR, PRIOR), (NAMES_PRIOR, "The ventricles are normal in size.")]
     rules = {NO_PRIOR: 0.1, NAMES_PRIOR: 0.1}   # decided from the history: neither met
     d = "Stable meningioma compared with the MRI of 2024."
@@ -370,21 +371,70 @@ async def test_confirm_re_asks_only_the_conditions_that_mention_findings(monkeyp
     assert live.confirm_recheck is True
     out = await N.assumed(d, BRAIN_R, ["Brain"], [], [], suppressions=sup, clinical_history="Headache.", rules=rules,
                           confirm=True)
-    assert calls == [{"state": f"CLINICAL HISTORY:\nHeadache.\nDICTATED FINDINGS:\n{d}", "conditions": [NAMES_PRIOR]}]
+    assert calls == [{"state": f"CLINICAL HISTORY:\nHeadache.\nDICTATED FINDINGS:\n{d}",
+                      "conditions": [NO_PRIOR, NAMES_PRIOR]}]
     assert out.assumed == {"Brain": [PRIOR]}
     assert out.dropped["Brain"] == [{"sentence": "The ventricles are normal in size.", "reason": "rule"}]
     assert out.rules == rules     # the session's decision is unchanged
 
 
-async def test_confirm_without_findings_conditions_makes_no_rule_call(monkeypatch):
+ASCITES = "ascites is present"
+NO_ASCITES = "No free fluid."
+ABDO = {"Peritoneum": [NO_ASCITES, "No free gas."]}
+
+
+def _reads_the_text():
+    """Jev as a reader: a condition is met when the state's text states it (history or dictation)."""
+    calls = []
+
+    async def fake(state, conditions):
+        calls.append({"state": state, "conditions": list(conditions)})
+        return [0.95 if (c == ASCITES and "ascites" in state.lower()) or (c == NO_PRIOR and "first scan" in state.lower())
+                else 0.05 for c in conditions]
+    return fake, calls
+
+
+async def test_a_condition_worded_without_findings_words_flips_at_confirm(monkeypatch):
+    fake, calls = _reads_the_text()
+    monkeypatch.setattr(N, "ask_rows", _checks({}))
+    monkeypatch.setattr(N, "ask_conditions", fake)
+    sup = [(ASCITES, NO_ASCITES)]
+    first = await N.assumed("", ABDO, [], [], [], suppressions=sup, clinical_history="Abdominal pain.")
+    assert first.rules == {ASCITES: 0.05} and first.assumed == ABDO and first.confirm_recheck is True
+    d = "Moderate ascites."
+    live = await N.assumed(d, ABDO, ["Peritoneum"], [], [], suppressions=sup, clinical_history="Abdominal pain.",
+                           rules=first.rules)
+    assert live.assumed == ABDO          # the live tray keeps the history decision
+    out = await N.assumed(d, ABDO, ["Peritoneum"], [], [], suppressions=sup, clinical_history="Abdominal pain.",
+                          rules=first.rules, confirm=True)
+    assert out.assumed == {"Peritoneum": ["No free gas."]}
+    assert out.dropped["Peritoneum"] == [{"sentence": NO_ASCITES, "reason": "rule"}]
+    assert len(calls) == 2               # the session decision, then Confirm
+
+
+async def test_a_history_condition_keeps_its_answer_when_the_dictation_is_silent(monkeypatch):
+    fake, calls = _reads_the_text()
+    monkeypatch.setattr(N, "ask_rows", _checks({}))
+    monkeypatch.setattr(N, "ask_conditions", fake)
+    sup = [(NO_PRIOR, PRIOR)]
+    first = await N.assumed("", BRAIN_R, [], [], [], suppressions=sup, clinical_history="First scan. Headache.")
+    assert first.rules == {NO_PRIOR: 0.95}
+    out = await N.assumed("Small meningioma.", BRAIN_R, ["Brain"], [], [], suppressions=sup,
+                          clinical_history="First scan. Headache.", rules=first.rules, confirm=True)
+    assert out.dropped["Brain"] == [{"sentence": PRIOR, "reason": "rule"}]
+    assert out.assumed == {"Brain": ["The ventricles are normal in size."]}
+
+
+async def test_confirm_with_a_blank_dictation_or_no_conditions_makes_no_rule_call(monkeypatch):
     calls = []
     monkeypatch.setattr(N, "ask_rows", _checks({}))
     monkeypatch.setattr(N, "ask_conditions", _conds({}, calls))
-    out = await N.assumed("Meningioma.", BRAIN_R, ["Brain"], [], [], suppressions=[(NO_PRIOR, PRIOR)],
-                          clinical_history="x", rules={NO_PRIOR: 0.1}, confirm=True)
+    out = await N.assumed("Meningioma.", BRAIN_R, ["Brain"], [], [], clinical_history="x", rules={}, confirm=True)
     assert calls == [] and out.assumed == BRAIN_R and out.confirm_recheck is False
+    out = await N.assumed("", BRAIN_R, [], [], [], suppressions=[(NO_PRIOR, PRIOR)], clinical_history="x",
+                          rules={NO_PRIOR: 0.1}, confirm=True)
+    assert calls == [] and out.assumed == BRAIN_R and out.confirm_recheck is True
 
 
-def test_conditions_that_mention_findings():
-    assert N.mentions_findings(NAMES_PRIOR) and N.mentions_findings("The dictated findings report a lesion")
-    assert not N.mentions_findings(NO_PRIOR) and not N.mentions_findings("a short-form report is requested by the referrer")
+def test_the_findings_word_filter_is_gone():
+    assert not hasattr(N, "mentions_findings") and not hasattr(N, "_FINDINGS_WORDS")
