@@ -84,6 +84,7 @@
 	 *   route?: string,
 	 *   changes?: any[],
 	 *   changesSig?: string | null,
+	 *   resultHash?: string | null,
 	 *   cards?: any[],
 	 *   originalInstruction?: string,
 	 *   status?: 'pending' | 'rejected' | 'confirmed' | null,
@@ -443,7 +444,7 @@
 			// a router turn reverses its own changes on the backend, so a later turn is never clobbered
 			try {
 				const r = await postRouterUndo($token, { skill_sheet: skillSheet, decisions, changes: target.changes,
-					changes_sig: target.changesSig });
+					changes_sig: target.changesSig, result_hash: target.resultHash });
 				if (!r.success) throw new Error(r.error);
 				skillSheet = r.skill_sheet;
 				if (Array.isArray(r.decisions)) decisions = r.decisions;
@@ -569,6 +570,7 @@
 						route: data.route,
 						changes: data.changes || [],
 						changesSig: data.changes_sig || null,
+						resultHash: data.result_hash || null,
 						cards: data.route === 'router' ? data.cards || [] : []
 				  }
 				: { role: 'assistant', content: data.response, route: data.route,

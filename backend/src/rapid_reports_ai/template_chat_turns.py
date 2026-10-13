@@ -66,6 +66,15 @@ def record_turn(db, template_id, instruction: str, response: str, applied: bool,
         return None
 
 
+def records_if_clean(records) -> list | None:
+    """The records, when scrubbing would leave them byte-identical; None otherwise (a scrubbed copy must never be
+    undone into a template: "[removed]" would be written back)."""
+    try:
+        return records if json.dumps(_scrub_obj(records), sort_keys=True) == json.dumps(records, sort_keys=True) else None
+    except (TypeError, ValueError):
+        return None
+
+
 def stored_records(db, template_id, turn_id) -> list | None:
     """The change records the router stored with one turn of this template (routing.records), or None."""
     try:

@@ -146,7 +146,7 @@ def test_undo_endpoint_reverses_signed_records_and_records_the_turn(client, auth
     records = [{"type": "ledger"}]
     r = client.post(URL + "/undo", headers=auth_headers, json={
         "skill_sheet": ROUTER_SHEET, "decisions": [], "changes": records,
-        "changes_sig": R.sign_records(records, str(test_user.id))}).json()
+        "changes_sig": R.sign_records(records, str(test_user.id), "HASH"), "result_hash": "HASH"}).json()
     assert r["success"] and r["response"].startswith("Undone") and seen["records"] == records
 
 
@@ -154,8 +154,10 @@ def test_undo_refuses_tampered_or_unsigned_records(client, auth_headers, monkeyp
     async def undo(*a, **k):
         raise AssertionError("tampered records must not reach undo_turn")
     monkeypatch.setattr(R, "undo_turn", undo)
-    sig = R.sign_records([{"type": "ledger", "claim": "a"}], str(test_user.id))
-    for body in ({"changes": [{"type": "ledger", "claim": "b"}], "changes_sig": sig}, {"changes": [{"type": "ledger"}]}):
+    sig = R.sign_records([{"type": "ledger", "claim": "a"}], str(test_user.id), "HASH")
+    for body in ({"changes": [{"type": "ledger", "claim": "b"}], "changes_sig": sig, "result_hash": "HASH"},
+                 {"changes": [{"type": "ledger", "claim": "a"}], "changes_sig": sig, "result_hash": "OTHER"},
+                 {"changes": [{"type": "ledger"}]}):
         r = client.post(URL + "/undo", headers=auth_headers, json={"skill_sheet": ROUTER_SHEET, **body}).json()
         assert r["success"] is False and r["error"] == "That change can't be undone here."
 
@@ -250,3 +252,32 @@ def test_the_old_tag_then_route_path_is_not_called_by_the_endpoint(client, auth_
     monkeypatch.setattr(R, "route_turn", old)
     monkeypatch.setattr(P, "propose_turn", hybrid)
     assert client.post(URL, headers=auth_headers, json={"skill_sheet": ROUTER_SHEET, "message": "m"}).json()["route"] == "router"
+
+
+
+def test_scrubbed_records_are_not_stored_and_undo_uses_the_signed_copy(client, auth_headers, monkeypatch,
+                                                                        guided_template, db_session):
+    dated = [{"type": "edit", "kind": "layout", "claim": "x", "op": {"op": "remove_paragraph", "paragraph": "Lower"},
+              "inverse": [{"op": "insert_block", "lines": ["## Paragraph: Lower (FINDINGS)", "Seen on 01/02/2020."],
+                           "before_heading": None}]}]
+    monkeypatch.setenv("RR_CHAT_ROUTER", "1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    monkeypatch.setattr("rapid_reports_ai.main.get_system_api_key", lambda *a, **k: "key")
+
+    async def hybrid(*a, **k):
+        return _turn(records=dated)
+    monkeypatch.setattr(P, "propose_turn", hybrid)
+    first = client.post(URL, headers=auth_headers, json={"skill_sheet": ROUTER_SHEET, "message": "remove lower",
+                                                         "template_id": str(guided_template.id)}).json()
+    (turn,) = _turns(db_session)
+    assert "records" not in turn.routing and turn.routing["records_scrubbed"] is True
+    seen = {}
+
+    async def undo(sheet, ledger, records):
+        seen["records"] = records
+        return _turn(reply="Undone.", records=[], evidence={"route": "undo"})
+    monkeypatch.setattr(R, "undo_turn", undo)
+    r = client.post(URL + "/undo", headers=auth_headers, json={
+        "skill_sheet": first["skill_sheet"], "changes": first["changes"], "changes_sig": first["changes_sig"],
+        "result_hash": first["result_hash"], "template_id": str(guided_template.id), "turn_id": first["turn_id"]}).json()
+    assert r["success"] and seen["records"] == dated                 # the exact, unscrubbed client copy

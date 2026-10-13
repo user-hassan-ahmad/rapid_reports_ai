@@ -23,7 +23,7 @@ function routes(calls: Call[]) {
 		if (url.endsWith('/skill-sheet/refine')) return json({ success: true, skill_sheet: 'SHEET2', applied: true,
 			response: "Width is no longer required.\nI wasn't sure about part of that: choose below.",
 			behavioral_claim: 'Width is no longer required.', route: 'router', changes: [{ type: 'ledger' }],
-			changes_sig: 'SIG', turn_id: 'T1', cards: [proposal], decisions: [entry] });
+			changes_sig: 'SIG', turn_id: 'T1', result_hash: 'H', cards: [proposal], decisions: [entry] });
 		if (url.endsWith('/refine/undo')) return json({ success: true, skill_sheet: 'SHEET', applied: true,
 			response: 'Undone: Width is no longer required.', behavioral_claim: '', route: 'router', changes: [], cards: [], decisions: [] });
 		if (url.endsWith('/refine/card')) return json({ success: true, skill_sheet: 'SHEET3', applied: true,
@@ -51,7 +51,7 @@ describe('TemplateRefinePanel on the chat-edit router', () => {
 		await expect.element(page.getByText('Undone: Width is no longer required.')).toBeInTheDocument();
 		const undo = calls.find((c) => c.url.endsWith('/refine/undo'))!;
 		expect(undo.body).toMatchObject({ skill_sheet: 'SHEET2', changes: [{ type: 'ledger' }], decisions: [entry], template_id: 't1',
-			turn_id: 'T1', changes_sig: 'SIG' });   // the server undoes its own stored / signed records
+			turn_id: 'T1', changes_sig: 'SIG', result_hash: 'H' });   // the server undoes its own stored / signed records
 		await send('only the width line');
 		const refines = calls.filter((c) => c.url.endsWith('/skill-sheet/refine'));
 		expect(refines[1].body.rejection_context).toEqual({ original_instruction: 'drop width', rejected_claim: 'Width is no longer required.' });

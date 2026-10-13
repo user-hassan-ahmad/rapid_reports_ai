@@ -687,10 +687,13 @@ def test_blocks_sharing_a_word_do_not_satisfy_each_other():
 # ── review: undo is bound to its own records ──────────────────────────────────────────────────────────────────
 def test_signed_records_verify_only_for_the_same_records_and_user():
     recs = [{"type": "ledger", "claim": "x"}]
-    sig = R.sign_records(recs, "u1")
-    assert R.records_ok(recs, sig, "u1")
-    assert not R.records_ok([{"type": "ledger", "claim": "y"}], sig, "u1") and not R.records_ok(recs, sig, "u2")
-    assert not R.records_ok(recs, "", "u1") and not R.records_ok(recs, None, "u1")
+    sig = R.sign_records(recs, "u1", "H1", "T1")
+    assert R.records_ok(recs, sig, "u1", "H1", "T1")
+    assert not R.records_ok([{"type": "ledger", "claim": "y"}], sig, "u1", "H1", "T1")
+    assert not R.records_ok(recs, sig, "u2", "H1", "T1")
+    assert not R.records_ok(recs, sig, "u1", "H2", "T1")          # bound to that turn's resulting sheet
+    assert not R.records_ok(recs, sig, "u1", "H1", "T2")          # and to that turn, where it was stored
+    assert not R.records_ok(recs, "", "u1", "H1", "T1") and not R.records_ok(recs, None, "u1", "H1", "T1")
 
 
 async def test_undo_refuses_an_inverse_op_that_does_not_match_its_forward_op():

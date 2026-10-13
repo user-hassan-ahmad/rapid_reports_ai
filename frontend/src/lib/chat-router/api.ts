@@ -22,6 +22,7 @@ export const postRouterUndo = (
 		changes: RouterRecord[];
 		changes_sig?: string | null;
 		turn_id?: string | null;
+		result_hash?: string | null;
 		template_id?: string | null;
 	}
 ) => post(token, 'undo', body);

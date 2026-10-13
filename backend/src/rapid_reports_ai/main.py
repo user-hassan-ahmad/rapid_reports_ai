@@ -769,6 +769,7 @@ class SkillSheetRouterUndoRequest(BaseModel):
     template_id: Optional[str] = None
     changes_sig: Optional[str] = None       # the server's HMAC of `changes` (the creator: no stored turn)
     turn_id: Optional[str] = None           # the stored turn (the refine panel): its own records are used
+    result_hash: Optional[str] = None       # that turn's resulting sheet hash, as signed
 
 
 class SkillSheetRouterCardRequest(BaseModel):
@@ -2796,9 +2797,12 @@ def _record_chat_turn(db, user, template_id, instruction: str, response: str, ap
 def _bind_router_turn(db, user, template_id, out: dict, turn, instruction: str, before: str) -> dict:
     """Record a router turn (its records kept in routing, for the refine panel's undo) and sign its records (the
     creator's undo, which has no stored turn)."""
+    clean = template_chat_turns.records_if_clean(turn.records)
+    routing = {**turn.evidence, **({"records": turn.records} if clean is not None else {"records_scrubbed": True})}
     turn_id = _record_chat_turn(db, user, template_id, instruction, out["response"], not turn.refused, before,
-                                out["skill_sheet"], {**turn.evidence, "records": turn.records})
-    out["changes_sig"] = chat_router.sign_records(turn.records, str(user.id))
+                                out["skill_sheet"], routing)
+    out["result_hash"] = tss.sheet_hash(out["skill_sheet"] or "")
+    out["changes_sig"] = chat_router.sign_records(turn.records, str(user.id), out["result_hash"], turn_id or "")
     if turn_id:
         out["turn_id"] = turn_id
     return out
@@ -3040,7 +3044,8 @@ async def skill_sheet_refine_undo_endpoint(
             if owned:
                 records = template_chat_turns.stored_records(db, owned.id, request.turn_id)
         if records is None:
-            if not chat_router.records_ok(request.changes, request.changes_sig, str(current_user.id)):
+            if not chat_router.records_ok(request.changes, request.changes_sig, str(current_user.id),
+                                          request.result_hash or "", request.turn_id or ""):
                 return {"success": False, "error": "That change can't be undone here."}
             records = request.changes
         turn = await chat_router.undo_turn(request.skill_sheet, request.decisions or [], records)

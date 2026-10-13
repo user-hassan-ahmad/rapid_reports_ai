@@ -42,6 +42,8 @@ export interface RouterTurnResponse {
 	changes_sig?: string;
 	/** the stored turn (a saved template): undo uses its own records */
 	turn_id?: string;
+	/** the turn's resulting sheet hash, part of what `changes_sig` signs */
+	result_hash?: string;
 	notice?: string;
 	error?: string;
 }

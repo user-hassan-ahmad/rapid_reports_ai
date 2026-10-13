@@ -115,6 +115,8 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
         - In the creator (no template), the client's copy is used only with the server's HMAC (SECRET_KEY, bound to the user).
         - Anything else is refused.
         - `undo_turn` runs an edit record's inverse ops only when their shape matches its forward op.
+        - Stored records are kept only when scrubbing leaves them byte-identical; otherwise the turn records `records_scrubbed` and undo uses the signed client copy.
+        - The signature also binds the turn's resulting sheet hash and, where stored, the turn id.
     - The undo question stays at 0.5. The lab's `arms` stage records every screen score and reports the precision and recall of undo and misfit. Planted reversals carry `category: "undo"`; "put the comparison back to …" items are changes and count against the undo question when it fires.
     - The proposal schema is flat, with one list per kind (style has its own list). Identifier fields are required, and a change whose identifier is empty is dropped, not asked about.
 16. **Prose the style call never sees:** `## Scan Context` and `## Report Structure` (the fit check reads the scan context, and the structure block is layout).

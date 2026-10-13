@@ -426,18 +426,21 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
 
 
 # ── undo is bound to its own records (review): signed for the creator, looked up for a saved template ───────────
-def sign_records(records: List[dict], user_id: str) -> str:
-    """HMAC of a turn's change records for this user (the server key): undo accepts only records it signed."""
+def sign_records(records: List[dict], user_id: str, result_hash: str = "", turn_id: str = "") -> str:
+    """HMAC of a turn's change records (the server key), bound to the user, that turn's resulting sheet (its hash) and
+    the stored turn's id where there is one: undo accepts only records it signed for that turn."""
     import hmac
     import json
     from .auth import SECRET_KEY
-    msg = f"{user_id}|" + json.dumps(records or [], sort_keys=True, separators=(",", ":"), default=str)
+    msg = f"{user_id}|{turn_id or ''}|{result_hash or ''}|" + json.dumps(records or [], sort_keys=True,
+                                                                      separators=(",", ":"), default=str)
     return hmac.new(SECRET_KEY.encode(), msg.encode(), hashlib.sha256).hexdigest()
 
 
-def records_ok(records: List[dict], sig: Optional[str], user_id: str) -> bool:
+def records_ok(records: List[dict], sig: Optional[str], user_id: str, result_hash: str = "",
+               turn_id: str = "") -> bool:
     import hmac
-    return bool(sig) and hmac.compare_digest(sign_records(records, user_id), str(sig))
+    return bool(sig) and hmac.compare_digest(sign_records(records, user_id, result_hash, turn_id), str(sig))
 
 
 INVERSE_OF = {"fixed_reword": {"fixed_reword"}, "fixed_add": {"unit_drop"}, "normal_add": {"unit_drop", "covers_drop"},

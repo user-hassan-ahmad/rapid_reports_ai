@@ -203,7 +203,7 @@
 			if (data.applied !== false) loadChecks();
 			chatHistory = [...chatHistory, {
 				role: 'assistant', content: data.response, route: data.route, changes: data.changes || [],
-				changesSig: data.changes_sig || null, turnId: data.turn_id || null,
+				changesSig: data.changes_sig || null, turnId: data.turn_id || null, resultHash: data.result_hash || null,
 				cards: routed ? data.cards || [] : [], behavioralClaim: data.behavioral_claim || '', originalInstruction: msg,
 				status: routed && data.applied !== false && (data.changes || []).length ? 'pending' : null
 			}];
@@ -225,7 +225,8 @@
 		error = '';
 		try {
 			const r = await postRouterUndo($token, { skill_sheet: skillSheet, decisions, changes: target.changes,
-				changes_sig: target.changesSig, turn_id: target.turnId, template_id: template?.id ?? null });
+				changes_sig: target.changesSig, turn_id: target.turnId, result_hash: target.resultHash,
+				template_id: template?.id ?? null });
 			if (!r.success) throw new Error(r.error);
 			skillSheet = r.skill_sheet;
 			if (Array.isArray(r.decisions)) decisions = r.decisions;
