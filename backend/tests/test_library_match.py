@@ -441,13 +441,20 @@ def test_match_fails_open_when_the_bundle_is_unreadable(db_session, monkeypatch)
     assert asyncio_run(M.match(db_session, "CT", "", [M.Finding(id="u1", text="x")])) == []
 
 
-@pytest.mark.parametrize("pick,site", [("t99", "none"), ("none", "s9999")])
-def test_a_pick_or_site_jev_did_not_offer_raises_and_caches_nothing(monkeypatch, pick, site):
+def test_a_pick_jev_did_not_offer_raises_and_caches_nothing(monkeypatch):
     monkeypatch.setattr(L, "get", lambda: _lib(NODULE_A))
-    _jev(monkeypatch, _pick_ans(pick, site=site))
+    _jev(monkeypatch, _pick_ans("t99", site="none"))
     with pytest.raises(ValueError):
         asyncio_run(LM.pick("CT", "", "x"))
     assert not LM._PICKS
+
+
+def test_a_site_jev_did_not_offer_is_no_site_and_the_topic_pick_stands(monkeypatch):
+    """Final review M5: a malformed TNM site no longer discards the finding's topic pick."""
+    monkeypatch.setattr(L, "get", lambda: _lib(NODULE_A))
+    _jev(monkeypatch, _pick_ans("t0", site="s9999"))
+    entries, site = asyncio_run(LM.pick("CT", "", "x"))
+    assert [e.id for e in entries] == ["nod-a"] and site is None
 
 
 def test_library_cards_cap_the_dictation_for_exam_cards(db_session, monkeypatch):

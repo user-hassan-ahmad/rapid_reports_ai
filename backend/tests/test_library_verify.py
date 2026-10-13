@@ -249,3 +249,14 @@ def test_every_tier_1_outcome_needs_its_display_fields(toy, manifest):
     import pydantic
     with pytest.raises(pydantic.ValidationError):
         Entry.model_validate(toy)
+
+
+def test_exam_presets_alone_never_reach_does_not_apply():
+    """Final review M4: a preset is the one pre-fill without a quote; it may never exclude."""
+    import json as _json
+    from pathlib import Path
+    src = Path(__file__).resolve().parents[2] / "guidelines" / "nhs-aaa-surveillance" / "entry.json"
+    d = _json.loads(src.read_text())
+    assert V._presets(Entry.model_validate(d)) == []
+    d["exam_presets"] = {**d["exam_presets"], "sex": "female"}             # female is out of the programme's scope
+    assert any("exam presets alone reach does_not_apply" in p for p in V._presets(Entry.model_validate(d)))

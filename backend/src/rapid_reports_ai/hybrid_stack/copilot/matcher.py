@@ -1,6 +1,8 @@
-"""The matcher (spec §5.2): which published systems apply to each dictated abnormal finding, from model knowledge.
-It also returns each system's publication and skeleton (branch names, never thresholds) and the branch this finding
-falls into: the one case-aware output, which decides what the targeted fetch reads first.
+"""Matching (spec §5.2). /match: library cards from Jev, one case request (modality, exam binding) and one topic
+pick per finding (library_cards, via library_match). /match/other and ask: the older on-demand path, which systems
+apply to each finding from model knowledge (gpt-oss), with each system's publication and skeleton (branch names,
+never thresholds) and the branch this finding falls into; library hits there are gated and follow /match's trigger
+and modality rules.
 
 Caches (_CACHE, _GATE, _PICK, _BRANCH) hold normalised clinical text (finding, history) in their keys, at most
 _CACHE_MAX (512) entries each; they are process-local, never persisted, and never logged."""
@@ -372,7 +374,7 @@ async def _resolve(rows: _Rows, f: Finding, s: RawSystem, history: str) -> Guide
 
 def library_pack(lib, s: RawSystem):
     """The library entry a candidate is: its listed key when that is a current entry; else its name (and version)
-    through find. The caller still gates the hit (real_lab mirrors this resolution)."""
+    through find. The caller still gates the hit. Serves /match/other and ask only (/match uses library_cards)."""
     if s.key.strip():
         e = lib.lookup(s.key.strip())
         if e is not None and e.status == "current":
