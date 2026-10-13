@@ -5,7 +5,8 @@
 	import { token } from '$lib/stores/auth';
 	import { templatesStore } from '$lib/stores/templates';
 	import RulesStep from '$lib/template-rules/RulesStep.svelte';
-	import { postApplyDecisions, postDecide } from '$lib/template-rules/api';
+	import StyleChecks from '$lib/template-rules/StyleChecks.svelte';
+	import { postApplyDecisions, postDecide, postSheetChecks } from '$lib/template-rules/api';
 
 	const dispatch = createEventDispatcher();
 
@@ -43,6 +44,8 @@
 	let reviewLoading = false;
 	let reviewBusy = false;
 	let reviewDone = false;
+	/** @type {import('$lib/template-rules/types').SheetChecksResponse | null} */
+	let checks = null;
 	let reviewChanged = false;
 	let reviewOpen = false;
 	let reviewKey = 0;
@@ -55,7 +58,9 @@
 		hasChanges = false;
 		error = '';
 		reviewDone = false;
+		checks = null;
 		loadReview(template);
+		loadChecks();
 	}
 
 	/** The Required-values card, the entries the last save could not place, and the first-use decision run when the
@@ -84,6 +89,36 @@
 		reviewKey += 1;
 	}
 
+	/** "How your report will read": the Style-step checks for the sheet in hand. Fail-soft: none shown. */
+	async function loadChecks() {
+		const sheet = skillSheet;
+		try {
+			const r = await postSheetChecks($token, { skill_sheet: sheet, decisions });
+			if (sheet === skillSheet) checks = r.success ? r : null;
+		} catch (e) {
+			checks = null;
+		}
+	}
+
+	/** One Style-check tap: applied through the ledger at once, then the checks re-run (the rules review stays). */
+	async function applyStyle(/** @type {import('$lib/template-rules/types').DecisionChange[]} */ changes) {
+		if (loading || reviewBusy || !changes.length) return;
+		reviewBusy = true;
+		error = '';
+		try {
+			const r = await postApplyDecisions($token, { skill_sheet: skillSheet, decisions, changes, source: 'first_use_review' });
+			if (!r.success) throw new Error(r.error || 'Could not apply that choice');
+			if (r.skill_sheet !== skillSheet || JSON.stringify(r.decisions) !== JSON.stringify(decisions)) hasChanges = true;
+			skillSheet = r.skill_sheet;
+			decisions = r.decisions;
+			await loadChecks();
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+		} finally {
+			reviewBusy = false;
+		}
+	}
+
 	async function applyReview(/** @type {import('$lib/template-rules/types').DecisionChange[]} */ changes) {
 		if (loading) return;
 		if (!changes.length) { reviewChanged = false; reviewDone = true; return; }
@@ -99,6 +134,7 @@
 			if (review?.ran) rulesStep = { ...(review.run ?? {}), first_use: true, reviewed_at: new Date().toISOString() };
 			if (reviewChanged) hasChanges = true;
 			reviewDone = true;
+			if (reviewChanged) await loadChecks();
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -142,6 +178,7 @@
 			skillSheet = data.skill_sheet;
 			if (Array.isArray(data.decisions)) decisions = data.decisions;
 			showKeptCards(data.cards);
+			if (data.applied !== false) loadChecks();
 			chatHistory = [...chatHistory, { role: 'assistant', content: data.response }];
 			// a refused edit keeps the sheet and explains why (data.response); nothing changed to save
 			if (data.applied !== false) hasChanges = true;
@@ -193,6 +230,7 @@
 			skillSheet = data.template?.template_config?.skill_sheet ?? skillSheet;
 			decisions = data.template?.template_config?.decisions ?? decisions;
 			showKeptCards(data.cards);
+			loadChecks();   // the stored sheet may differ from the one sent
 			await templatesStore.refreshTemplates();
 			if (data.notice) {
 				// keep the panel open so the adjustment notice is seen
@@ -280,6 +318,14 @@
 							<RulesStep cards={review.cards} more={review.more} kept={review.kept} defaults={review.defaults}
 								notice={review.notice} mode="review" busy={reviewBusy || loading} onContinue={applyReview} />
 						{/key}
+					</div>
+				</details>
+			{/if}
+			{#if checks && (checks.fixed_cards.length || checks.duplicate_cards.length || checks.normal_report.length || checks.uncovered_cards.length || checks.unmatched_cards.length)}
+				<details class="rounded-lg border border-white/10 p-3">
+					<summary class="text-sm text-gray-200 cursor-pointer">How your report will read</summary>
+					<div class="pt-3">
+						<StyleChecks {checks} source="first_use_review" busy={reviewBusy || loading} onChange={applyStyle} />
 					</div>
 				</details>
 			{/if}

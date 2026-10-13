@@ -33,4 +33,35 @@ describe('SkillSheetCreator rules step', () => {
 		const analyze = calls.find((c) => c.url.endsWith('/analyze'))!;
 		expect(analyze.body.changes).toEqual([]);
 	});
+
+	it('shows the Style checks under the summary and applies a tap through the ledger', async () => {
+		const calls: Call[] = [];
+		const fixed = { id: 'fixed:x', kind: 'fixed', step: 'style', title: 'Breath-holding was adequate.', evidence: [], ledger_kind: 'fixed',
+			key: 'Breath-holding was adequate.', selected: null, rank: 3,
+			choices: [{ id: 'always', label: 'Always the same', choice: { keep: 'always' } }, { id: 'dictated', label: 'Only when dictated', choice: { keep: 'dictated' } }] };
+		vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+			const body = init?.body ? JSON.parse(init.body as string) : null;
+			calls.push({ url, body });
+			if (url.endsWith('/skill-sheet/decide')) return new Response('x', { status: 500 });
+			if (url.endsWith('/skill-sheet/analyze'))
+				return new Response(JSON.stringify({ success: true, skill_sheet: 'SHEET', summary: {}, decisions: [], notice: '' }));
+			if (url.endsWith('/skill-sheet/sheet-checks'))
+				return new Response(JSON.stringify({ success: true, fixed_cards: body.skill_sheet === 'SHEET' ? [fixed] : [], errors: [] }));
+			if (url.endsWith('/skill-sheet/apply-decisions'))
+				return new Response(JSON.stringify({ success: true, skill_sheet: 'SHEET2', decisions: [{ kind: 'fixed', key: fixed.key, choice: { keep: 'dictated' }, by: 'radiologist', at: 't', source: 'creation' }], applied: [], unmatched: [], stale_quotes: [] }));
+			return new Response(JSON.stringify({ success: true, tags: [], templates: [] }));
+		}));
+		render(SkillSheetCreator, {});
+		await userEvent.fill(page.getByPlaceholder('e.g. CT chest with IV contrast', { exact: false }), 'MR liver');
+		for (const n of [1, 2, 3]) {
+			await page.getByRole('button', { name: `Report ${n}` }).click();
+			await userEvent.fill(page.getByPlaceholder('Paste complete report...'), `Report ${n}. Breath-holding was adequate.`);
+		}
+		await page.getByRole('button', { name: 'Analyse my style' }).click();
+		await page.getByRole('button', { name: 'Breath-holding was adequate.: Only when dictated' }).click();
+		await vi.waitFor(() => expect(calls.some((c) => c.url.endsWith('/apply-decisions'))).toBe(true));
+		expect(calls.find((c) => c.url.endsWith('/apply-decisions'))!.body).toMatchObject({
+			skill_sheet: 'SHEET', source: 'creation', changes: [{ kind: 'fixed', key: 'Breath-holding was adequate.', choice: { keep: 'dictated' }, source: 'creation' }] });
+		await expect.element(page.getByText('Always printed')).not.toBeInTheDocument();   // re-run on the applied sheet
+	});
 });

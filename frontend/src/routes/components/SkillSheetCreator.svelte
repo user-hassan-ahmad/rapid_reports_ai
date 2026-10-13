@@ -12,7 +12,8 @@
 	import ConventionRules from './skill-sheet-summary/ConventionRules.svelte';
 	import ImpressionFlow from './skill-sheet-summary/ImpressionFlow.svelte';
 	import RulesStep from '$lib/template-rules/RulesStep.svelte';
-	import { postApplyDecisions, postDecide } from '$lib/template-rules/api';
+	import StyleChecks from '$lib/template-rules/StyleChecks.svelte';
+	import { postApplyDecisions, postDecide, postSheetChecks } from '$lib/template-rules/api';
 
 	marked.setOptions({ breaks: true, gfm: true });
 
@@ -103,7 +104,10 @@
 	/** cards a refine turn returned (a confirmed item the edit would have removed: kept, and asked about here) */
 	/** @type {import('$lib/template-rules/types').DecisionCard[]} */
 	let chatCards = [];
-	let chatCardsBusy = false;
+	let chatCardsBusy = false;   // a card answer (refine-stage card or Style check) is being applied
+	/** the Style step's checks for the sheet in hand (null: none, or they failed; the summary shows alone) */
+	/** @type {import('$lib/template-rules/types').SheetChecksResponse | null} */
+	let checks = null;
 	const NO_PRECHECK = "We couldn't pre-check your rules; review them on the Style step.";
 
 	let sampleFindings = '';
@@ -417,6 +421,8 @@
 			stage = 'summary';
 			lastAnalyzedSnapshot = currentExamplesSnapshot;
 			phase = 2;
+			checks = null;
+			loadChecks();
 		} catch (e) { error = e instanceof Error ? e.message : String(e); }
 		finally { loading = false; }
 	}
@@ -430,6 +436,7 @@
 		}
 		if (Array.isArray(target.preMutationDecisions)) decisions = target.preMutationDecisions;
 		chatCards = [];   // they asked about the rejected edit
+		loadChecks();
 
 		// Mark this turn as rejected; also mark the triggering user turn if present.
 		// Index-0 case (no preceding user message) shouldn't happen in the refine
@@ -500,6 +507,7 @@
 			skillSheet = data.skill_sheet;
 			if (Array.isArray(data.decisions)) decisions = data.decisions;
 			if (Array.isArray(data.cards)) chatCards = data.cards;
+			if (data.applied !== false) loadChecks();
 			/** @type {ChatMessage} */
 			// a refused edit (applied === false) keeps the sheet and explains why: no change to verify
 			const assistantMsg = isRefineTurn && data.applied !== false
@@ -546,6 +554,33 @@
 			skillSheet = r.skill_sheet;
 			decisions = r.decisions;
 			chatCards = [];
+			loadChecks();
+		} catch (e) { error = e instanceof Error ? e.message : String(e); }
+		finally { chatCardsBusy = false; }
+	}
+
+	/** The Style step's checks for the sheet in hand. Fail-soft: on any failure none are shown. */
+	async function loadChecks() {
+		const sheet = skillSheet;
+		try {
+			const r = await postSheetChecks($token, { skill_sheet: sheet, decisions });
+			if (sheet === skillSheet) checks = r.success ? r : null;
+		} catch (e) {
+			checks = null;
+		}
+	}
+
+	/** One Style-check tap: recorded on the ledger and applied by code at once; then the checks re-run. */
+	async function applyStyle(/** @type {import('$lib/template-rules/types').DecisionChange[]} */ changes) {
+		if (loading || chatCardsBusy || !changes.length) return;
+		chatCardsBusy = true; error = '';
+		try {
+			const r = await postApplyDecisions($token, { skill_sheet: skillSheet, decisions, changes, source: 'creation' });
+			if (!r.success) throw new Error(r.error || 'Could not apply that choice');
+			if (testReport && r.skill_sheet !== skillSheet) previewStale = true;
+			skillSheet = r.skill_sheet;
+			decisions = r.decisions;
+			await loadChecks();
 		} catch (e) { error = e instanceof Error ? e.message : String(e); }
 		finally { chatCardsBusy = false; }
 	}
@@ -899,6 +934,9 @@
 							{:else}
 								<p class="text-sm text-gray-600">No summary available.</p>
 							{/if}
+							<div class="pt-4">
+								<StyleChecks {checks} source="creation" busy={chatCardsBusy || loading} onChange={applyStyle} />
+							</div>
 						</div>
 						<div class="flex justify-end px-5 py-3 border-t border-white/[0.06] shrink-0">
 							<button class="btn-primary flex items-center gap-2" on:click={nextStage}>

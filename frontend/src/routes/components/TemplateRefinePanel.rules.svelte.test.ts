@@ -19,6 +19,8 @@ const KEPT = 'This would remove something you confirmed, so it was kept; use the
 
 type Call = { url: string; body: any; method: string };
 
+let checksBody: Record<string, unknown> = { success: true, fixed_cards: [], duplicate_cards: [], normal_report: [], uncovered_cards: [], unmatched_cards: [], stale_quotes: [], errors: [] };
+
 afterEach(() => vi.unstubAllGlobals());
 
 function routes(calls: Call[], over: { decideCards?: unknown[]; refine?: unknown; put?: unknown } = {}) {
@@ -27,6 +29,7 @@ function routes(calls: Call[], over: { decideCards?: unknown[]; refine?: unknown
 		calls.push({ url, body, method: init?.method ?? 'GET' });
 		if (url.endsWith('/skill-sheet/decide'))
 			return new Response(JSON.stringify({ success: true, ran: false, cards: over.decideCards ?? [card], more: [], kept: [], defaults: [], notice: '', run: {} }));
+		if (url.endsWith('/skill-sheet/sheet-checks')) return new Response(JSON.stringify(checksBody));
 		if (url.endsWith('/skill-sheet/apply-decisions'))
 			return new Response(JSON.stringify({ success: true, skill_sheet: 'SHEET2', decisions: [{ kind: 'value', key: 'LVEF', choice: { need: 'not_needed' }, by: 'radiologist', at: 't', source: 'first_use_review' }], applied: [], unmatched: [], stale_quotes: [] }));
 		if (url.endsWith('/skill-sheet/refine') && over.refine) return new Response(JSON.stringify(over.refine));
@@ -136,5 +139,33 @@ describe('TemplateRefinePanel rules review', () => {
 		await expect.element(page.getByRole('button', { name: 'Save' })).toBeDisabled();
 		finishApply();
 		await expect.element(page.getByText('Rules updated. Save to apply them to future reports.')).toBeInTheDocument();
+	});
+});
+
+describe('TemplateRefinePanel style checks', () => {
+	it('shows how the report will read and applies a tap through the ledger, keeping the rules review', async () => {
+		checksBody = { success: true, fixed_cards: [], duplicate_cards: [], uncovered_cards: [], unmatched_cards: [], stale_quotes: [], errors: [],
+			normal_report: [{ section: 'FINDINGS', header: 'Findings:', sentences: [{ key: 'Heart :: pericardium', text: 'The pericardium is normal.', kind: 'normal', paragraph: 'Heart' }] }] };
+		const calls: Call[] = [];
+		vi.stubGlobal('fetch', routes(calls));
+		render(TemplateRefinePanel, { template });
+		await page.getByText('How your report will read').click();
+		await page.getByRole('button', { name: 'Edit: The pericardium is normal.' }).click();
+		await page.getByRole('button', { name: 'Remove', exact: true }).click();
+		await vi.waitFor(() => expect(calls.some((c) => c.url.endsWith('/apply-decisions'))).toBe(true));
+		const apply = calls.find((c) => c.url.endsWith('/apply-decisions'))!;
+		expect(apply.body.changes).toEqual([{ kind: 'normal', key: 'Heart :: pericardium', choice: { text: '' }, source: 'first_use_review' }]);
+		// the checks are re-run on the applied sheet; the rules review is still there to answer
+		await vi.waitFor(() => expect(calls.filter((c) => c.url.endsWith('/sheet-checks')).at(-1)?.body.skill_sheet).toBe('SHEET2'));
+		await expect.element(page.getByText("Your template's rules")).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+	});
+
+	it('shows no checks when they fail', async () => {
+		checksBody = { success: false };
+		vi.stubGlobal('fetch', routes([]));
+		render(TemplateRefinePanel, { template });
+		await expect.element(page.getByText("Your template's rules")).toBeInTheDocument();
+		await expect.element(page.getByText('How your report will read')).not.toBeInTheDocument();
 	});
 });
