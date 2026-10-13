@@ -124,4 +124,6 @@ def test_stack_prompt_carries_the_recommendations_exception_and_others_are_uncha
             assert "Scratchpad Recommendations" not in plain[0]
     sys_p, user_p = build_prompts("SHEET", "CT", "f", "h", "cerebras", brief=True, stack=True)
     assert sys_p.count(QR_STACK_RECOMMENDATIONS) == 1 and "`RECOMMENDATIONS:`" in sys_p
-    assert user_p == build_prompts("SHEET", "CT", "f", "h", "cerebras", brief=True)[1]
+    # stack mode has its own prompt family (_STACKS, template-stack); the recommendations exception only touches
+    # the system prompt
+    assert QR_STACK_RECOMMENDATIONS not in user_p and "Scratchpad Recommendations" not in user_p
