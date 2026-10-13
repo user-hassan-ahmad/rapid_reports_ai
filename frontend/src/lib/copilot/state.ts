@@ -101,15 +101,15 @@ export function groupCards(cards: Card[], findings: Finding[]): Group[] {
 export const outcomeOf = (p: Preview | null) => p?.draft_outcome ?? p?.proposal ?? null;
 
 /** §5.3 quiet one-line card: an exam card whose preview applies, needs nothing, is not degraded, has no pre-filled
- *  value, and whose outcome is normal. When the backend sends Proposal.normal (R3) it decides "normal"; otherwise
+ *  value other than the exam's own presets (a value set by the exam keeps the line quiet and shows "set by the
+ *  exam"), and whose outcome is normal. When the backend sends Proposal.normal (R3) it decides "normal"; otherwise
  *  the interim rule (plan Q2) takes any reached outcome. */
 export function quiet(c: Card, p: Preview | null): boolean {
 	if (c.finding_id !== 'exam' || !p) return false;
 	const outcome = outcomeOf(p);
 	if (p.state !== 'applies' || p.degraded || p.missing.length || !outcome) return false;
 	if (outcome.normal !== undefined && !outcome.normal) return false;
-	const prefilled = p.settled.some((s) => s.by === 'exam') || (p.draft ?? []).some((v) => v.state === 'prefilled' || v.by === 'exam');
-	return !prefilled;
+	return !(p.draft ?? []).some((v) => v.state === 'prefilled' && v.by !== 'exam');
 }
 
 export const modalityLabel = (m: string) =>

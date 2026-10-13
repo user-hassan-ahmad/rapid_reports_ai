@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { StackUnit } from '$lib/hybrid-stack/types';
 import { abnormalFindings, cardRef, groupCards, kindOf, markSent, norm, outcomeOf, planMatch, quiet, stableFindings, type Finding } from './state';
-import type { Card, Preview, Proposal } from './types';
+import type { Card, DraftValue, Preview, Proposal } from './types';
 
 // SYNTHETIC: generic phrases and pack names only.
 const unit = (id: number, text: string, o: Partial<StackUnit> = {}): StackUnit => ({
@@ -198,20 +198,27 @@ describe('outcomeOf', () => {
 	});
 });
 
+const draft = (o: Partial<DraftValue> = {}): DraftValue => ({
+	input: 'a', label: '', role: '', scope: '', fact: '', state: 'read', value: '1', quote: '', why: [], needed: false, waiting: false, options: [], ...o
+});
 describe('quiet', () => {
 	const exam = card({ finding_id: 'exam' });
 	it('is true for a settled exam card', () => {
 		expect(quiet(exam, preview())).toBe(true);
 	});
 	it.each([
-		['a value is pre-filled', preview({ settled: [{ input: 'age', value: '60', quote: '', fact: 'age', by: 'exam' }] })],
-		['a draft value is pre-filled', preview({ draft: [{ input: 'a', label: '', role: '', scope: '', fact: '', state: 'prefilled', value: '1', quote: '', why: [], needed: false, waiting: false, options: [] }] })],
+		['a draft value is pre-filled', preview({ draft: [draft({ state: 'prefilled' })] })],
 		['missing is non-empty', preview({ missing: ['stenosis'] })],
 		['degraded', preview({ degraded: true })],
 		['state is not applies', preview({ state: 'check_first' })],
 		['there is no outcome', preview({ proposal: null })]
 	])('is false when %s', (_why, p) => {
 		expect(quiet(exam, p)).toBe(false);
+	});
+	it('stays quiet when the only preset values were set by the exam', () => {
+		expect(quiet(exam, preview({ settled: [{ input: 'age', value: '60', quote: '', fact: 'age', by: 'exam' }] }))).toBe(true);
+		expect(quiet(exam, preview({ draft: [draft({ state: 'prefilled', by: 'exam' })] }))).toBe(true);
+		expect(quiet(exam, preview({ draft: [draft({ state: 'read' })] }))).toBe(true);
 	});
 	it('prefers Proposal.normal when the backend sends it', () => {
 		expect(quiet(exam, preview({ proposal: { ...prop('CAD-RADS 0'), normal: true } }))).toBe(true);
