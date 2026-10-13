@@ -46,6 +46,7 @@ class ReviewInput(BaseModel):
     study_title: Optional[str] = None    # bounds laterality
     synthesis: Optional[dict] = None     # {"guidelines": [S4 cards]} when stored
     pre_edit_report: Optional[str] = None  # the report before today's automatic edits (Gate D shadow log)
+    removed: List[str] = []              # stack reports: sentences the radiologist removed (never inserted)
 
 
 class Candidate(BaseModel):

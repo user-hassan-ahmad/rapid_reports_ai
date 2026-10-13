@@ -251,6 +251,13 @@ def preapply_failures(report: str, edit: Optional[Edit], plan: _Plan, inp: Revie
                                       sections=list(inp.artifacts.sections or []), line_context=plan.line_context)
 
 
+def _is_removed(line: str, removed: List[str]) -> bool:
+    """Normalised exact match (case, whitespace, a final full stop ignored) against the removed sentences."""
+    def n(s: str) -> str:
+        return " ".join(s.lower().split()).rstrip(".")
+    return bool(removed) and n(line) in {n(r) for r in removed}
+
+
 def plan_preapply(inp: ReviewInput, o: adjudicator.Outcome, item: ReviewItem,
                   al: Optional[Alignment] = None) -> Optional[_Plan]:
     """Correction 12: is this item pre-apply eligible on the original report? For a coverage `absent` line the
@@ -266,6 +273,8 @@ def plan_preapply(inp: ReviewInput, o: adjudicator.Outcome, item: ReviewItem,
         return plan if item.edit is not None and not preapply_failures(report, item.edit, plan, inp) else None
     absent = next((c for c in o.group if c.lane == "coverage" and c.kind == "absent" and c.line_text), None)
     if absent is None or j.kind != "absent":
+        return None
+    if _is_removed(absent.line_text, inp.removed):   # D14: never pre-apply a sentence the radiologist removed
         return None
     names = list(inp.artifacts.sections or [])
     edit = verifier.insert_from_line(report, absent.line_text, _findings_name(names), names)
@@ -744,6 +753,13 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
     items += brief_items                 # never adjudicated, never pre-applied
     items += bridge
     items += prov                        # never adjudicated, never pre-applied
+    try:                                 # the post-gen check's review flags (stack reports): open items on the rail
+        flags = live.check_flag_items(inp, run_id)
+        for it in flags:
+            it.engine_version = ENGINE_VERSION
+        items += flags
+    except Exception as e:  # noqa: BLE001 - never fails the run
+        errors["post_check_flags"] = f"{type(e).__name__}: {str(e)[:200]}"
     timings["total"] = int((time.monotonic() - t0) * 1000)
     errors.update({f"adjudicator_{k}": o.error for k, o in enumerate(outcomes) if o.error})
     run = {"lanes": lanes, "timings_ms": timings, "errors": errors,
@@ -823,7 +839,8 @@ def input_from_parts(report_id: str, report_type: str, input_data: Optional[dict
                        scan_type=v.get("SCAN_TYPE") or data.get("extracted_scan_type") or "",
                        study_title=v.get("SCAN_TYPE") or data.get("extracted_scan_type"),
                        synthesis={"guidelines": guidelines} if guidelines else None,
-                       pre_edit_report=(cand.get("quality_check") or {}).get("pre_edit_report"))
+                       pre_edit_report=(cand.get("quality_check") or {}).get("pre_edit_report"),
+                       removed=list(cand.get("removed") or []))
 
 
 def _session():
