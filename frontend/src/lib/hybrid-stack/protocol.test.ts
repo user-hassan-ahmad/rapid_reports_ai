@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assumedKey, backToLibrary, caseDirty, needsFreeText, pickBody, pickKey, pickSummary, blockedSegments, placedRegions, segmentBlocked, shownNormals, visiblePills, withElsewhere, withoutRemoved, withoutSegments, withSegmentNormals, type ProtocolPick } from './protocol';
+import { assumedKey, backToLibrary, caseDirty, needsFreeText, pickBody, pickKey, pickSummary, asTailUnits, blockedSegments, placedRegions, segmentBlocked, shownNormals, visiblePills, withElsewhere, withoutRemoved, withoutSegments, withSegmentNormals, type ProtocolPick } from './protocol';
 import { buildFindingsBlock, regionStates } from './regionState';
 import type { GateRecord, StackUnit } from './types';
 
@@ -124,12 +124,12 @@ describe('segment backstop for misfiled findings (errs toward omission)', () => 
 		expect(blocked([u(0, 'Normal cervical lordosis.', 'Alignment')])).toEqual([]);
 		const split: StackUnit = { ...u(1, 'Normal cord; T12/L1 disc extrusion.', 'Cord'),
 			parts: [{ text: 'Normal cord', group: 'Cord' }, { text: 'T12/L1 disc extrusion.', group: 'Cord', abnormal: true }] };
-		expect(blocked([split])).toEqual(['Thoracic levels']);
+		expect(blocked([split])).toEqual(['Lumbar levels', 'Thoracic levels']); // T12/L1 names the L1 vertebra too
 	});
 	it('level labels match in every common format, and only whole labels', () => {
 		const hit = (t: string) => segmentBlocked('Cervical levels', ['C5/6'], [{ group: 'Cord', text: t }]);
 		for (const t of ['at C5/6', 'C5-6 protrusion', 'C5-C6 protrusion', 'c5 / 6', 'C5–6']) expect(hit(t)).toBe(true);
-		for (const t of ['C5/67', 'AC5/6', 'C15/6', 'L5/6']) expect(hit(t)).toBe(false);
+		for (const t of ['AC5/6', 'C15/6', 'L5/6']) expect(hit(t)).toBe(false); // "C5/67" still names the C5 vertebra
 		expect(segmentBlocked('Lumbar levels', ['L5/S1'], [{ group: 'Cord', text: 'L5-S1 annular fissure' }])).toBe(true);
 		expect(segmentBlocked('Lumbar levels', ['L4/5'], [{ group: 'Cord', text: 'lumbosacral junction transitional anomaly' }])).toBe(true);
 		expect(segmentBlocked('Thoracic levels', ['T12/L1'], [{ group: 'Cord', text: 'T12-L1 disc' }])).toBe(true);
@@ -138,6 +138,30 @@ describe('segment backstop for misfiled findings (errs toward omission)', () => 
 		expect(blocked([u(0, 'Thoracolumbar junction kyphosis.', 'Alignment', true)])).toEqual(['Lumbar levels', 'Thoracic levels']);
 		expect(blocked([u(0, 'CERVICOTHORACIC scoliosis.', 'Alignment', true)])).toEqual(['Cervical levels', 'Thoracic levels']);
 		expect(blocked([u(0, 'Subthoracolumbarish artefact.', 'Alignment', true)])).toEqual([]);
+	});
+	it('the live tail (never grouped) withholds too, and the gate record built with it holds no Lumbar line', () => {
+		const tail = asTailUnits(['Disc extrusion at L4/5 compressing the L5 root.']);
+		expect(tail[0].group).toBeNull();
+		expect(blocked([u(0, 'Normal cord signal.', 'Cord'), ...tail])).toEqual(['Lumbar levels']);
+		const units = [u(0, 'Normal cord signal.', 'Cord')];
+		const assumed = shownNormals({}, normals, levelGroups, segs, placedRegions(units), [], blockedSegments(levelGroups, [...units, ...tail]));
+		expect(Object.keys(assumed)).toEqual(['Cervical levels', 'Thoracic levels']);
+		const block = buildFindingsBlock([...units, ...tail], ['Cord', ...segs], { ...gate([]), assumed });
+		expect(block).toContain('Disc extrusion at L4/5');
+		expect(block).not.toContain('Lumbar normal.');
+	});
+	it('a single vertebra of the segment withholds its line, as a whole token', () => {
+		expect(blocked([u(0, 'Grade 1 anterolisthesis of L4 on L5.', 'General', true)])).toEqual(['Lumbar levels']);
+		expect(blocked([u(0, 'T7 haemangioma.', 'Alignment', true)])).toEqual(['Thoracic levels']);
+		expect(blocked([u(0, 'Bilateral L5 pars defects.', 'General', true)])).toEqual(['Lumbar levels']);
+		expect(blocked([u(0, 'S1 nerve root sleeve cyst.', 'Other findings', true)])).toEqual(['Lumbar levels']);
+		expect(blocked([u(0, 'C2 odontoid fracture.', 'General', true)])).toEqual(['Cervical levels']);
+		for (const t of ['T13 rib.', 'L6 segment.', 'C8 radiculopathy.', 'AL4 lesion.', 'C55 note.']) expect(blocked([u(0, t, 'General', true)])).toEqual([]);
+	});
+	it('a T1/T2 MR sequence name is not a vertebra', () => {
+		for (const t of ['T2 hyperintense cord lesion.', 'T2-weighted signal change in the cord.', 'Low T1 signal in the cord.', 'T1 post-contrast enhancement.', 'T2W hyperintensity.', 'STIR and T2 high signal.'])
+			expect(blocked([u(0, t, 'Cord', true)])).toEqual([]);
+		expect(blocked([u(0, 'T2 vertebral body fracture.', 'General', true)])).toEqual(['Thoracic levels']);
 	});
 	it('a sentence inside the segment\'s own regions does not withhold it, except "multilevel"', () => {
 		expect(segmentBlocked('Lumbar levels', ['L4/5'], [{ group: 'L4/5', text: 'Lumbar disc bulge at L4/5.' }])).toBe(false);

@@ -138,6 +138,20 @@ const SEGMENT_WORDS: Record<string, string[]> = {
 	lumbar: ['lumbar', 'lumbosacral', 'thoracolumbar']
 };
 
+/** A segment's single vertebrae as whole tokens (ruling): C1–C7, T1–T12, L1–L5 and S1 ("L4 on L5", "L5 pars", "T7
+ *  haemangioma"). T1/T2 followed by an MR sequence word ("T2 hyperintense", "T1-weighted", "T2 signal") is the
+ *  sequence, not the vertebra. */
+const SEQUENCE = String.raw`(?![\s-]*(?:weighted|signal|hyper|hypo|high|low|intens|bright|dark|sequence|image|imaging|flair|stir|fat|fs\b|post|pre|gad|contrast))`;
+const VERTEBRAE: Record<string, string> = {
+	cervical: 'C[1-7]',
+	thoracic: `T(?:1[0-2]|[3-9])|T[12]${SEQUENCE}`,
+	lumbar: 'L[1-5]|S1'
+};
+function vertebraPattern(segment: string): RegExp | null {
+	const v = VERTEBRAE[segment.trim().split(/\s+/)[0].toLowerCase()];
+	return v ? new RegExp(`(?<![A-Za-z0-9])(?:${v})(?![0-9A-Za-z])`, 'i') : null;
+}
+
 /** The segment named in prose, as whole words in any case: "Cervical levels" → cervical or cervicothoracic. */
 function segmentWords(segment: string): RegExp {
 	const word = segment.trim().split(/\s+/)[0].toLowerCase();
@@ -146,12 +160,13 @@ function segmentWords(segment: string): RegExp {
 }
 
 /** Misfiled-finding backstop for a segment's sheet line (controller ruling, re-review of 74eab7ec): withheld when an
- *  abnormal sentence placed outside the segment's own regions names one of its levels or the segment itself, or when
+ *  abnormal sentence placed outside the segment's own regions names one of its levels, one of its vertebrae or the
+ *  segment itself, or when
  *  any abnormal sentence says "multilevel". Deterministic and errs toward omission; `abnormal` holds abnormal (or not
  *  yet grouped) sentences only, so a placed normal mention ("normal cervical lordosis") never withholds the line. */
 export function segmentBlocked(segment: string, levels: string[], abnormal: { group: string | null; text: string }[]): boolean {
 	const own = new Set([segment, ...levels]);
-	const pats = [segmentWords(segment), ...levels.map(levelPattern)];
+	const pats = [segmentWords(segment), ...levels.map(levelPattern), vertebraPattern(segment)].filter((p): p is RegExp => !!p);
 	return abnormal.some(({ group, text }) => MULTILEVEL.test(text) || (!(group !== null && own.has(group)) && pats.some((p) => p.test(text))));
 }
 
@@ -167,4 +182,12 @@ export function blockedSegments(levelGroups: Record<string, string[]>, units: St
 	}
 	if (!abnormal.length) return new Set();
 	return new Set(Object.entries(levelGroups).filter(([seg, levels]) => segmentBlocked(seg, levels, abnormal)).map(([seg]) => seg));
+}
+
+/** Sentences the grouper never received (the live tail), as the ungrouped units `stackConfirm` writes into the report:
+ *  the segment backstop reads them like any other ungrouped unit. */
+export function asTailUnits(texts: string[]): StackUnit[] {
+	return texts.map((text, k) => ({
+		id: 100000 + k, text, group: null, structure: null, attach_to: null, parts: null, covers: [], pinned: false, heading: false
+	}));
 }

@@ -44,7 +44,7 @@
 	import { abnormalAll, assumedFrom, moreLine, openCount, rowSentences, splitReply, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
-	import { assumedKey, blockedSegments, pickBody, pickKey, placedRegions, shownNormals, visiblePills, withoutSegments, type ProtocolPick } from '$lib/hybrid-stack/protocol';
+	import { asTailUnits, assumedKey, blockedSegments, pickBody, pickKey, placedRegions, shownNormals, visiblePills, withoutSegments, type ProtocolPick } from '$lib/hybrid-stack/protocol';
 	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
@@ -340,8 +340,9 @@
 	// of its levels is dictated.
 	let stackLevelGroups: Record<string, string[]> = {};
 	$: placedGroups = placedRegions(stackUnits); // every split part counts, as in regionStates
-	// A segment line is withheld when an abnormal sentence filed elsewhere names its levels or the segment (backstop).
-	$: segmentsBlocked = blockedSegments(stackLevelGroups, stackUnits);
+	// A segment line is withheld when an abnormal sentence filed elsewhere, or one the grouper has not received yet (the
+	// live tail), names its levels, its vertebrae or the segment (backstop).
+	$: segmentsBlocked = blockedSegments(stackLevelGroups, [...stackUnits, ...asTailUnits(stripNow)]);
 	$: shownPills = visiblePills(stackGroups, pillRegions, stackQuiet, placedGroups);
 	// A segment's normal comes from the sheet while its own region is untouched, never from /assumed (E1); × or an
 	// edit on an "Elsewhere, …" line removes it in either form.
@@ -1974,6 +1975,11 @@
 		void requestDraft();
 	}
 	function stackConfirm(): void {
+		// Sentences the grouping never received (after failed retries) still reach the report, as said; the segment
+		// backstop reads them before the assumed record is written.
+		const tail = asTailUnits(liveTail(verbatimNow, stackUnits));
+		const assumed = shownNormals(confirmedAssumed, stackRegionNormals, stackLevelGroups, regionView.assumedNormal, placedGroups,
+			removedSentences, blockedSegments(stackLevelGroups, [...stackUnits, ...tail]));
 		const gate: GateRecord = {
 			confirmed_at: new Date().toISOString(),
 			conclusion_text: dictatedConclusion || draft?.text || '',
@@ -1990,7 +1996,7 @@
 					.map(({ item, how }): GateItem => ({ id: item.id, kind: item.kind, region: item.region, question: item.question, sentences: [],
 						answered_by: how === 'abnormal' ? 'dictation' : how }))
 			],
-			assumed: shownAssumed,
+			assumed,
 			removed: removedSentences,
 			capped: stackCapped.map((c) => ({ region: c.region, question: c.question })),
 			capped_opened: moreOpened,
@@ -2002,10 +2008,6 @@
 			...offeredAndDropped(assumedSnap?.offered ?? stackRegionNormals, assumedSnap?.dropped, assumedSnap?.check_failed)
 		};
 		stackGate = gate;
-		// Sentences the grouping never received (after failed retries) still reach the report, as said.
-		const tail = liveTail(verbatimNow, stackUnits).map((text, k): StackUnit => ({
-			id: 100000 + k, text, group: null, structure: null, attach_to: null, parts: null, covers: [], pinned: false, heading: false
-		}));
 		onStackGate(gate, buildFindingsBlock([...stackUnits, ...tail], stackGroups, gate));
 		void sendStackLog();
 	}
