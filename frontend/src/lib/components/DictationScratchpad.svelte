@@ -83,6 +83,7 @@
 	// Hybrid dictation stack (rr_hybrid_stack, spec 2026-10-10): one grouped view of the verbatim text.
 	// The old Verbatim/Structured tabs run in shadow: the Structured text is built once per sampled session.
 	export let hybridStack = false;
+	export let stackCopilot = false; // the guideline Copilot rail is on (copilot/flag); read from A7
 	export let stackRegions: Region[] = [];
 	export let stackGroups: string[] = [];
 	export let stackSchemaMeta: { key: string; source: string; provisional: boolean } | null = null;

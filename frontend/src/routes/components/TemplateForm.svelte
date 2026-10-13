@@ -11,6 +11,7 @@
 	import { sectionList } from '$lib/review/savedReport';
 	import { fetchSchema, postReportId } from '$lib/hybrid-stack/api';
 	import { hybridStackOn } from '$lib/hybrid-stack/flag';
+	import { copilotOn } from '$lib/copilot/flag';
 	import type { GateRecord, StackSchema } from '$lib/hybrid-stack/types';
 
 	// ── Feedback capture ──────────────────────────────────────────────
@@ -182,8 +183,10 @@
 	// The hybrid dictation stack (rr_hybrid_stack) on the template path: regions are the template's own
 	// paragraphs when its grammar structure is fresh (else the scan type's schema). sections-from-template
 	// and the Jev pills keep running in shadow.
-	$: stackStatus = apiKeyStatus as { hybrid_stack?: boolean; hybrid_stack_shadow_rate?: number };
+	$: stackStatus = apiKeyStatus as { hybrid_stack?: boolean; hybrid_stack_shadow_rate?: number; stack_copilot?: boolean };
 	$: hybridStack = hybridStackOn(undefined, stackStatus?.hybrid_stack === true);
+	// The guideline Copilot (rr_stack_copilot): opt-in per browser, and only on top of the stack.
+	$: stackCopilot = copilotOn(undefined, stackStatus?.stack_copilot === true, hybridStack);
 	let stackSchema: StackSchema | null = null;
 	let stackPills: string[] = [];
 	let stackSchemaFor = ''; // the template + history the schema was requested for
@@ -857,6 +860,7 @@
 					onPromptsChange={handlePromptsChange}
 					onScratchpadClear={handleScratchpadClear}
 					{hybridStack}
+					{stackCopilot}
 					stackRegions={stackSchema?.regions ?? []}
 					stackGroups={stackSchema?.groups ?? []}
 					stackSchemaMeta={stackSchema ? { key: stackSchema.key, source: stackSchema.source, provisional: stackSchema.provisional } : null}
