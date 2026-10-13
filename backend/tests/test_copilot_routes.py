@@ -59,6 +59,8 @@ def test_kill_switch(authed, monkeypatch):
     monkeypatch.setenv("RR_STACK_COPILOT", "0")
     assert authed.post("/api/canvas/stack/guidelines/match", json={"findings": []}).status_code == 404
     assert authed.post("/api/canvas/stack/guidelines/ask", json={"question": "q"}).status_code == 404
+    # the UI tells "Copilot off" from an unknown route's 404 by this detail
+    assert authed.post("/api/canvas/stack/guidelines/match", json={"findings": []}).json()["detail"] == "copilot_off"
     assert CR.copilot_allowed() is False
 
 
@@ -869,3 +871,34 @@ def test_prewarm_skips_a_needs_modality_card(monkeypatch, toy):
                 needs_modality="US")
     req = CR.MatchRequest(findings=[CR.FindingIn(id="u1", text="7 mm nodule.")])
     assert CR._prewarm(req, [card]) == 0
+
+
+def test_prewarm_starts_the_tier_1_siblings_too(monkeypatch, toy):
+    sib = {**toy, "id": "toy-sib", "display": "Sib 2021"}
+    lib = L.Library({"version": "v1", "entries": {"toy-nodule@1.0": {"entry": toy, "sources": TOY_SOURCES},
+                                                   "toy-sib@1.0": {"entry": sib, "sources": TOY_SOURCES}}})
+    monkeypatch.setattr(L, "get", lambda: lib)
+    started = []
+
+    async def settle(e, *a, **k):
+        started.append(e.key)
+        return PP.Settlement()
+    monkeypatch.setattr(CR, "settle_pack", settle)
+
+    async def go():
+        from rapid_reports_ai.hybrid_stack.copilot.library import preview_cache as PC
+        card = Card(key="toy-nodule@1.0", name="Toy 2020", version="2020", finding_id="u1", branch="Pack",
+                    siblings=["toy-sib@1.0", "gone@9"])
+        n = CR._prewarm(CR.MatchRequest(findings=[CR.FindingIn(id="u1", text="7 mm nodule.")]), [card])
+        await asyncio.gather(*list(PC._RUNNING))
+        return n
+    assert asyncio.run(go()) == 2 and sorted(started) == ["toy-nodule@1.0", "toy-sib@1.0"]
+
+
+def test_pack_cards_carry_their_siblings_display_names(toy):
+    from rapid_reports_ai.hybrid_stack.copilot import matcher as MM
+    sib = {**toy, "id": "toy-sib", "display": "Sib 2021"}
+    lib = L.Library({"version": "v1", "entries": {"toy-nodule@1.0": {"entry": toy, "sources": TOY_SOURCES},
+                                                   "toy-sib@1.0": {"entry": sib, "sources": TOY_SOURCES}}})
+    c = MM._pack_card(lib, lib.lookup("toy-nodule@1.0"), "u1", "7 mm nodule.")
+    assert c.siblings == ["toy-sib@1.0"] and c.sibling_names == ["Sib 2021"]

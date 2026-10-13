@@ -464,7 +464,7 @@ def _outcome_text(e: Entry, t: engine.Trace, sources: list[dict]) -> Proposal | 
         logger.info("[library.preview] %s: outcome %s cites an input still unknown; no proposal", e.key, o.id)
         return None
     return Proposal(classification=f"{e.display} · {cls}", line=f"{e.display}: {cls}.", recommendation=rec,
-                    caveats=caveats, citations=_fired(e, t, sources))
+                    caveats=caveats, citations=_fired(e, t, sources), normal=o.normal)
 
 
 def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict[str, str], sources: list[dict],

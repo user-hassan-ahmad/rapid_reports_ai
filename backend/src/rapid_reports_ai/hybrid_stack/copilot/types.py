@@ -99,6 +99,7 @@ class Card(BaseModel):
     known: bool = False           # already in the registry
     status: Literal["draft", "verified", "new"] = "new"
     siblings: list[str] = Field(default_factory=list)   # library packs: other bodies' packs on the same topic
+    sibling_names: list[str] = Field(default_factory=list)   # their display names, in the same order
     reference: bool = False       # a tier 2 library entry: read-only (reference fields and Ask), no preview, no Apply
     finding: str = ""             # library cards: the finding unit's text; lesion inputs are settled only from it
     needs_modality: str = ""      # library cards: the modality the pack needs (e.g. "US") when this study is another;
@@ -123,6 +124,7 @@ class Proposal(BaseModel):
     recommendation: str = ""
     caveats: list[str] = Field(default_factory=list)       # library packs: the outcome's caveats, rendered
     citations: list[dict[str, Any]] = Field(default_factory=list)   # library packs: where the fired steps come from
+    normal: bool = False          # library packs: the reached outcome is the framework's normal result (spec §5.3)
 
 
 class Preview(BaseModel):

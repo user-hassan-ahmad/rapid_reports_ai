@@ -249,6 +249,7 @@
   "outcomes": [
     {
       "id": "cac_drs_0",
+      "normal": true,
       "classification": "CAC-DRS 0: Agatston 0 / visual none; very low risk.",
       "recommendation": "Document the scoring system (A for Agatston, V for visual). CAC informs a clinician-patient discussion of preventive therapy.",
       "caveats": [

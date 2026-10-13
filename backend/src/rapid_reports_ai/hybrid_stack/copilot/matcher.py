@@ -398,7 +398,7 @@ async def _card(rows: _Rows, f: Finding, s: RawSystem, history: str, gate: bool 
         return Card(key=pack.key, name=pack.display, version=pack.edition, finding_id=f.id, why=s.why,
                     branch=branch, skeleton=[branch], publication=Publication(body=pack.issuer, year=pack.edition),
                     known=True, status="verified", siblings=[x.key for x in lib.siblings(pack)],
-                    reference=pack.tier == 2, finding=f.text)
+                    sibling_names=[x.display for x in lib.siblings(pack)], reference=pack.tier == 2, finding=f.text)
     if not s.name.strip():   # a key outside the library and no name: nothing to resolve
         return None
     if not R.web_fetch_on():   # spec §5: outside the library, no card; the name is logged as demand
@@ -449,7 +449,8 @@ def _pack_card(lib, e, finding_id: str, finding: str) -> Card:
     branch = PACK_BRANCH if e.tier == 1 else REFERENCE_BRANCH
     return Card(key=e.key, name=e.display, version=e.edition, finding_id=finding_id, why="", branch=branch,
                 skeleton=[branch], publication=Publication(body=e.issuer, year=e.edition), known=True,
-                status="verified", siblings=[x.key for x in lib.siblings(e)], reference=e.tier == 2, finding=finding)
+                status="verified", siblings=[x.key for x in lib.siblings(e)],
+                sibling_names=[x.display for x in lib.siblings(e)], reference=e.tier == 2, finding=finding)
 
 
 def _rank_capped(cards: list[Card], per_finding: list[list[Card]]) -> list[Card]:

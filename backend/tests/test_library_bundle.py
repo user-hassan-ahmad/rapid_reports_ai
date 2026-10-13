@@ -143,3 +143,9 @@ def test_every_entry_has_a_purpose_and_exam_level_set_is_the_six():
     assert {e.id: e.exam_presets for e in entries if e.exam_presets} == {"nhs-aaa-surveillance": {
         "screening_programme": "true", "sex": "male", "previous_aaa_treatment": "false"}}
     assert {e.id: e.matcher_topic for e in entries if e.match_topic} == {"cac-drs": "coronary", "cad-rads-2": "coronary"}
+
+
+def test_the_normal_outcomes_are_the_frameworks_normal_results():
+    flagged = {(e.id, o.id) for e in _live()._current() for o in e.outcomes if o.normal}
+    assert flagged == {("cad-rads-2", "stable_0"), ("cad-rads-2", "acute_0"), ("cac-drs", "cac_drs_0"),
+                       ("nhs-aaa-surveillance", "no_aaa"), ("pi-rads-2-1", "pirads_1_exam")}

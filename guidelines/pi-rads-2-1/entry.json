@@ -65,7 +65,7 @@
         "transition"
       ],
       "scope": "lesion",
-      "how_stated": "peripheral for a PZ lesion, transition for a TZ lesion; a central zone or anterior fibromuscular stroma lesion takes the zone it appears to arise from (eg 'scored with TZ criteria') If several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
+      "how_stated": "peripheral for a PZ lesion, transition for a TZ lesion; a central zone or anterior fibromuscular stroma lesion takes the zone it appears to arise from (eg 'scored with TZ criteria'); if several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
       "locator": {
         "source": "S1",
         "page": 21,
@@ -87,7 +87,7 @@
         "not_assessable"
       ],
       "scope": "lesion",
-      "how_stated": "the DWI (ADC and high b-value) score 1 to 5 as dictated, eg 'DWI 4', 'DWI 3/5'; not assessable when DWI is called X, technically inadequate, non-diagnostic or not performed If several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
+      "how_stated": "the DWI (ADC and high b-value) score 1 to 5 as dictated, eg 'DWI 4', 'DWI 3/5'; not assessable when DWI is called X, technically inadequate, non-diagnostic or not performed; if several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
       "locator": {
         "source": "S1",
         "page": 27,
@@ -124,7 +124,7 @@
           ]
         }
       ],
-      "how_stated": "the T2-weighted score 1 to 5 as dictated, eg 'T2 4', 'T2W 2/5'; not assessable when T2W is called X, technically inadequate or not performed If several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
+      "how_stated": "the T2-weighted score 1 to 5 as dictated, eg 'T2 4', 'T2W 2/5'; not assessable when T2W is called X, technically inadequate or not performed; if several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
       "locator": {
         "source": "S1",
         "page": 25,
@@ -166,7 +166,7 @@
           ]
         }
       ],
-      "how_stated": "positive for focal early (or contemporaneous) enhancement matching the T2W or DWI finding; negative for no early enhancement, diffuse enhancement, or enhancement of a BPH-type nodule; not assessable when DCE is X, inadequate or not given (biparametric MRI) If several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
+      "how_stated": "positive for focal early (or contemporaneous) enhancement matching the T2W or DWI finding; negative for no early enhancement, diffuse enhancement, or enhancement of a BPH-type nodule; not assessable when DCE is X, inadequate or not given (biparametric MRI); if several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
       "locator": {
         "source": "S1",
         "page": 29,
@@ -1065,6 +1065,7 @@
   "outcomes": [
     {
       "id": "pirads_1_exam",
+      "normal": true,
       "classification": "PI-RADS 1 overall for the examination: no finding above category 1; clinically significant cancer is highly unlikely.",
       "recommendation": "PI-RADS states biopsy should not be considered for category 1; it gives no management, which rests on clinical factors and local practice.",
       "caveats": [
@@ -1090,7 +1091,7 @@
       "locator": {
         "source": "S1",
         "page": 17,
-        "section": "Section III: Assessment and Reporting",
+        "section": "Section III: Assessment and Reporting; the index-lesion caveat from p 19 (Reporting: index lesion)",
         "table": "PI-RADS v2.1 Assessment Categories"
       }
     },
@@ -1106,7 +1107,7 @@
       "locator": {
         "source": "S1",
         "page": 17,
-        "section": "Section III: Assessment and Reporting",
+        "section": "Section III: Assessment and Reporting; the index-lesion caveat from p 19 (Reporting: index lesion)",
         "table": "PI-RADS v2.1 Assessment Categories"
       }
     },
@@ -1124,7 +1125,7 @@
       "locator": {
         "source": "S1",
         "page": 17,
-        "section": "Section III: Assessment and Reporting",
+        "section": "Section III: Assessment and Reporting; the index-lesion caveat from p 19 (Reporting: index lesion)",
         "table": "PI-RADS v2.1 Assessment Categories"
       }
     },
@@ -1141,7 +1142,7 @@
       "locator": {
         "source": "S1",
         "page": 17,
-        "section": "Section III: Assessment and Reporting",
+        "section": "Section III: Assessment and Reporting; the index-lesion caveat from p 19 (Reporting: index lesion)",
         "table": "PI-RADS v2.1 Assessment Categories"
       }
     },
@@ -1158,7 +1159,7 @@
       "locator": {
         "source": "S1",
         "page": 17,
-        "section": "Section III: Assessment and Reporting",
+        "section": "Section III: Assessment and Reporting; the index-lesion caveat from p 19 (Reporting: index lesion)",
         "table": "PI-RADS v2.1 Assessment Categories"
       }
     },

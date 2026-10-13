@@ -1548,6 +1548,7 @@
  "outcomes": [
   {
    "id": "stable_0",
+   "normal": true,
    "classification": "CAD-RADS 0: no plaque or stenosis (0%); absence of CAD.",
    "recommendation": "No further cardiac investigation. Reassurance; consider non-atherosclerotic causes of symptoms.",
    "caveats": [],
@@ -1559,6 +1560,7 @@
   },
   {
    "id": "acute_0",
+   "normal": true,
    "classification": "CAD-RADS 0: no plaque or stenosis (0%); absence of CAD; ACS highly unlikely.",
    "recommendation": "No further evaluation of ACS is required; reassurance. If troponin is positive, consider other sources of raised troponin.",
    "caveats": [],

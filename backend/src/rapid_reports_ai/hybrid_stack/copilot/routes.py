@@ -65,7 +65,7 @@ def copilot_allowed(env: Mapping[str, str] = os.environ) -> bool:
 
 def _require() -> None:
     if not copilot_allowed():
-        raise HTTPException(status_code=404, detail="Not Found")
+        raise HTTPException(status_code=404, detail="copilot_off")   # distinct from an unknown route's "Not Found"
 
 
 def _ms(t0: float) -> int:
@@ -350,7 +350,8 @@ async def _pack_result(pack, req: OpenRequest, t0: float, opened: bool) -> OpenR
 
 
 def _prewarm(req: MatchRequest, cards: list[Card]) -> int:
-    """Start each pack card's settlement now, keyed as /open will key it. Fail open."""
+    """Start each pack card's settlement now, and its tier 1 siblings' (the card's other columns), keyed as /open will
+    key each one. Fail open."""
     texts = {f.id: f.text for f in req.findings}
     dictation = (req.dictation or "\n".join(f.text for f in req.findings))[:M.DICTATION_MAX]
     history = req.clinical_history[:2000]
@@ -362,10 +363,12 @@ def _prewarm(req: MatchRequest, cards: list[Card]) -> int:
             finding = c.finding or texts.get(c.finding_id, "")
             if e is None or e.tier != 1 or not finding or c.needs_modality:
                 continue
-            t = PC.start(PC.key(e.key, finding, dictation, history),
-                         lambda e=e, finding=finding: settle_pack(e, dictation, history, finding=finding),
-                         prewarm=True, fallback=lambda: Settlement(failed=True))
-            n += t is not None
+            sibs = [s for s in (lib.lookup(k) for k in c.siblings) if s is not None and s.tier == 1]
+            for x in [e, *sibs]:
+                t = PC.start(PC.key(x.key, finding, dictation, history),
+                             lambda x=x, finding=finding: settle_pack(x, dictation, history, finding=finding),
+                             prewarm=True, fallback=lambda: Settlement(failed=True))
+                n += t is not None
         except Exception as ex:
             logger.warning("[copilot.routes] prewarm %s", type(ex).__name__)
     return n
