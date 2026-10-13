@@ -1,7 +1,8 @@
 <script lang="ts">
 	/**
 	 * An opened pack card's body, read-only (Slice A), in reading order (B0, Hassan 2026-10-13):
-	 * 1. the values read from the dictation (label and value; the quote on hover or focus; "set by the exam");
+	 * 1. the values (ValueRow: read plain, pre-filled amber-soft with its reasons, exam presets, answered, N/A; the
+	 *    quote on hover or focus); from Task 3's draft, else (pre-Task 3) preview.settled;
 	 * 2. the outcome and recommendation "on these values", then the remaining open questions that are not eligibility
 	 *    checks, quieter; with no outcome, the open questions and then one collapsed line "N outcomes still possible"
 	 *    (the full list was long and noisy, polish 2026-10-13; Task 3 will send one draft outcome instead);
@@ -13,6 +14,7 @@
 	import type { Citation, OpenResult } from '../types';
 	import { assumptionsOf, citeText, openQuestions, valueRows } from './format';
 	import Reference from './Reference.svelte';
+	import ValueRow from './ValueRow.svelte';
 
 	let {
 		result,
@@ -54,25 +56,11 @@
 			{/if}
 		{/if}
 		{#if rows.length}
-			<section class="cp-values" aria-label="Read from the report">
-				<div class="cp-label">Read from the report</div>
+			<section class="cp-values" aria-label="Values">
+				<div class="cp-label">Values</div>
 				<ul class="cp-val-list">
 					{#each rows as r (r.input)}
-						<!-- focusable (keyboard, and a tap on touch) so the quote shows without hover; screen readers get it as
-						     the row's description -->
-						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-						<li
-							class="cp-val"
-							tabindex={r.quote ? 0 : undefined}
-							title={r.quote ? `“${r.quote}”` : undefined}
-							aria-describedby={r.quote ? `${uid}-q-${r.input}` : undefined}
-						>
-							<span class="cp-val-label">{r.label}</span>
-							<span class="cp-val-value"
-								><b>{r.value}</b>{#if r.byExam}<span class="cp-chip cp-val-chip">set by the exam</span>{/if}</span
-							>
-							{#if r.quote}<span class="cp-quote" id="{uid}-q-{r.input}">“{r.quote}”</span>{/if}
-						</li>
+						<ValueRow row={r} {uid} />
 					{/each}
 				</ul>
 			</section>
@@ -168,64 +156,6 @@
 		flex-direction: column;
 		gap: 2px;
 	}
-	.cp-val {
-		position: relative;
-		display: flex;
-		flex-wrap: wrap;
-		align-items: baseline;
-		gap: 2px 8px;
-		padding: 2px 6px;
-		margin: 0 -6px;
-		border-radius: 4px;
-	}
-	.cp-val[tabindex]:hover,
-	.cp-val[tabindex]:focus {
-		background: var(--rv-surface-hover);
-		outline: none;
-	}
-	.cp-val[tabindex]:focus-visible {
-		box-shadow: 0 0 0 2px var(--rv-focus);
-	}
-	.cp-val-label {
-		flex: 0 0 44%; /* one column of labels, long ones wrap */
-		color: var(--rv-muted);
-	}
-	.cp-val-value {
-		flex: 1;
-		min-width: 0;
-		font-variant-numeric: tabular-nums;
-	}
-	.cp-val-value b {
-		font-weight: 600;
-	}
-	.cp-val-chip {
-		display: inline-block;
-		margin-left: 6px;
-		vertical-align: 1px;
-	}
-	/* a bubble under the row, out of the flow: revealing it never moves what is below (or under the pointer) */
-	.cp-quote {
-		display: none;
-		position: absolute;
-		left: 0;
-		right: 0;
-		top: 100%;
-		z-index: 5;
-		margin-top: 2px;
-		padding: 5px 8px;
-		border-radius: 6px;
-		border: 1px solid var(--rv-border-strong);
-		background: var(--rv-overlay);
-		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-		font-size: 0.8125rem;
-		font-style: italic;
-		color: var(--rv-text);
-		pointer-events: none;
-	}
-	.cp-val:hover .cp-quote,
-	.cp-val:focus .cp-quote {
-		display: block;
-	}
 	.cp-outcome {
 		font-size: 0.9375rem;
 		font-weight: 650;
@@ -260,9 +190,6 @@
 	}
 	.cp-compact {
 		font-size: 0.8125rem;
-	}
-	.cp-compact .cp-val-label {
-		flex-basis: 100%;
 	}
 	.cp-degraded {
 		font-size: 0.8125rem;

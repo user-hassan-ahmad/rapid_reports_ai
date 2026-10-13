@@ -3,7 +3,7 @@
 import { effectiveItems } from '$lib/hybrid-stack/regionState';
 import type { StackUnit } from '$lib/hybrid-stack/types';
 import { MAX_FINDINGS } from './api';
-import type { Card, Preview } from './types';
+import type { Card, DraftValue, Preview } from './types';
 
 export interface Finding { id: string; unitId: number; text: string; region: string }
 export const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ').replace(/[.;,]$/, '');
@@ -110,6 +110,26 @@ export function quiet(c: Card, p: Preview | null): boolean {
 	if (p.state !== 'applies' || p.degraded || p.missing.length || !outcome) return false;
 	if (outcome.normal !== undefined && !outcome.normal) return false;
 	return !(p.draft ?? []).some((v) => v.state === 'prefilled' && v.by !== 'exam');
+}
+
+export interface DraftRows { values: DraftValue[]; assumed: DraftValue[]; asked: DraftValue[] }
+const SHOWN_AS_VALUE = new Set(['read', 'prefilled', 'answered', 'edited', 'not_applicable']);
+/** The draft card's rows by section (Slice B1, §7.5), waiting rows hidden (behind a prerequisite still unknown):
+ *  values (read, pre-filled, answered, edited, N/A) in pack order; assumed eligibility inputs (under the warning
+ *  chip); asked ("Still open"): eligibility first while the card is check_first, then the inputs that can still
+ *  change the outcome (`needed`), each group in pack order. */
+export function rowsOf(p: Preview | null): DraftRows {
+	const shown = (p?.draft ?? []).filter((v) => !v.waiting);
+	const rank = (v: DraftValue) => (p?.state === 'check_first' && v.role === 'eligibility' ? 0 : 2) + (v.needed ? 0 : 1);
+	return {
+		values: shown.filter((v) => SHOWN_AS_VALUE.has(v.state)),
+		assumed: shown.filter((v) => v.state === 'assumed'),
+		asked: shown
+			.map((v, i) => ({ v, i }))
+			.filter(({ v }) => v.state === 'asked')
+			.sort((a, b) => rank(a.v) - rank(b.v) || a.i - b.i)
+			.map(({ v }) => v)
+	};
 }
 
 export const modalityLabel = (m: string) =>

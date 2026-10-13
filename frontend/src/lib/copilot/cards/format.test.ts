@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { card, outcome, preview, result } from './fixtures';
+import type { DraftValue } from '../types';
+
+const dv = (o: Partial<DraftValue>): DraftValue => ({
+	input: 'x', label: 'X', role: 'clinical', scope: 'lesion', fact: '', state: 'read', value: '', quote: '', why: [], needed: false, waiting: false, options: [], by: '', ...o
+});
 import { assumptionsOf, citeText, columnRef, columnTitles, issuerSlug, missingLabels, openQuestions, outcomeHint, setByExam, stateBadge, valueRows } from './format';
 
 // SYNTHETIC fixtures only.
@@ -65,10 +70,33 @@ describe('card text helpers', () => {
 		}));
 		r.entry!.content.branches = [{ name: 'Pack', rule: '', inputs: [{ id: 'size', question: 'Size', options: [] }] }];
 		expect(valueRows(r)).toEqual([
-			{ input: 'size', label: 'Size', value: '2.2 cm', quote: '2.2 cm nodule', byExam: false },
-			{ input: 'age', label: 'Patient age', value: '65', quote: '', byExam: true },
-			{ input: 'unenhanced_hu', label: 'Unenhanced hu', value: '8 HU', quote: '', byExam: false }
+			{ input: 'size', label: 'Size', value: '2.2 cm', quote: '2.2 cm nodule', byExam: false, state: 'read', why: [] },
+			{ input: 'age', label: 'Patient age', value: '65', quote: '', byExam: true, state: 'prefilled', why: ['set by the exam'] },
+			{ input: 'unenhanced_hu', label: 'Unenhanced hu', value: '8 HU', quote: '', byExam: false, state: 'read', why: [] }
 		]);
+	});
+
+	it('Task 3 draft: values, assumed ("Label: value") and asked come from draft rows; waiting rows are hidden', () => {
+		const c = card();
+		const p = preview({
+			state: 'check_first',
+			proposal: null,
+			draft: [
+				dv({ input: 'size', label: 'Size', state: 'read', value: '2.2 cm', quote: '2.2 cm nodule' }),
+				dv({ input: 'hu', label: 'Unenhanced HU', state: 'prefilled', value: '8', quote: '8 HU', why: ['attenuation not stated as unenhanced'] }),
+				dv({ input: 'cancer', label: 'Known cancer', role: 'eligibility', state: 'assumed', value: 'No', why: ['assumed: …'] }),
+				dv({ input: 'growth', label: 'Growth', state: 'asked', needed: false }),
+				dv({ input: 'washout', label: 'Washout', state: 'asked', needed: true }),
+				dv({ input: 'hormones', label: 'Hormone excess', role: 'eligibility', state: 'asked', needed: true }),
+				dv({ input: 'later', label: 'Behind a prerequisite', state: 'asked', waiting: true }),
+				dv({ input: 'side', label: 'Side', state: 'not_applicable' })
+			],
+			assumptions: ['cancer'],
+			assumed_eligible: true
+		});
+		expect(valueRows(result(c, p)).map((r) => [r.input, r.state])).toEqual([['size', 'read'], ['hu', 'prefilled'], ['side', 'not_applicable']]);
+		expect(assumptionsOf(p)).toEqual(['Known cancer: No']);
+		expect(openQuestions(p)).toEqual(['Hormone excess', 'Washout', 'Growth']); // eligibility first, then needed
 	});
 
 	it('setByExam reads Settled.by', () => {

@@ -32,7 +32,7 @@ export interface Proposal {
 export interface Settled { input: string; value: string; quote: string; fact: string; by: '' | 'exam' }
 /** pack_preview._asks: one per missing input (A5 reads input + label; the rest is for Slice B). */
 export interface Ask { input: string; label: string; role?: string; [k: string]: unknown } // role: 'eligibility' | 'clinical' | …
-export type ValueState = 'read' | 'prefilled' | 'asked' | 'answered' | 'edited' | 'not_applicable'; // Task 3
+export type ValueState = 'read' | 'prefilled' | 'assumed' | 'asked' | 'answered' | 'edited' | 'not_applicable'; // Task 3
 export interface DraftValue {
 	// Task 3
 	input: string;
@@ -70,7 +70,8 @@ export interface Preview {
 	trace: Record<string, unknown> | null;
 	degraded: boolean;
 	waiting?: string[]; // Task 1
-	assumptions?: string[]; // Task 3: eligibility checks assumed (labels); until then derived from asks (B0)
+	assumptions?: string[]; // Task 3: eligibility input ids assumed in scope (pack order); labels come from draft
+	assumed_eligible?: boolean; // Task 3: the draft rests on assumptions (state stays check_first)
 	draft?: DraftValue[]; // Task 3
 	draft_outcome?: Proposal | null; // Task 3
 	checker?: Checker | null; // Task 7

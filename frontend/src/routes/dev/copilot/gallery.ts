@@ -1,5 +1,5 @@
 // SYNTHETIC: the /dev/copilot gallery, one section per card state (Task A5). Pack names and generic phrases only.
-import { card, outcome, preview, reference, result } from '$lib/copilot/cards/fixtures';
+import { card, draft, outcome, preview, reference, result } from '$lib/copilot/cards/fixtures';
 import type { CardView } from '$lib/copilot/cards/view';
 import { cardRef, type Finding, type Group } from '$lib/copilot/state';
 import type { Card, OpenResult } from '$lib/copilot/types';
@@ -30,7 +30,7 @@ const one = (finding: Finding | null, c: Card, v: CardView): Pick<Section, 'grou
 });
 
 const cad = card({ key: 'cad-rads-2', name: 'CAD-RADS 2.0', version: '2.0', finding_id: 'exam', finding: 'Coronary CT angiography' });
-const cadQuiet = result(cad, preview({ proposal: outcome({ classification: 'CAD-RADS 0', recommendation: 'No further cardiac investigation.', normal: true }) }));
+const cadQuiet = result(cad, preview({ proposal: null, draft_outcome: outcome({ classification: 'CAD-RADS 0', recommendation: 'No further cardiac investigation.', normal: true }) })); // Task 3: draft_outcome.normal
 const cadExam = result(
 	cad,
 	preview({
@@ -46,42 +46,46 @@ const bosniak = card({ key: 'bosniak-renal-cyst', name: 'Bosniak 2019', version:
 const bta = card({ key: 'bta-thyroid-u-grading', name: 'BTA U grading', version: '2014', finding_id: 'u2', finding: thyroid.text, needs_modality: 'US' });
 const adrenal = f(6, '2.2 cm left adrenal nodule', 'ADRENALS');
 const ese = card({ key: 'ese-adrenal-incidentaloma', name: 'ESE adrenal incidentaloma', version: '2023', finding_id: 'u6', finding: adrenal.text });
-// check_first with values read from the dictation (the live adrenal case, Hassan 2026-10-13: the card showed only questions)
-const eseCheck = (() => {
-	const r = result(
-		ese,
-		preview({
-			state: 'check_first',
-			proposal: outcome({ classification: 'Benign adenoma (unenhanced ≤ 10 HU)', recommendation: 'No further imaging for this nodule.', caveats: [] }),
-			settled: [
-				{ input: 'size', value: '2.2 cm', quote: '2.2 cm left adrenal nodule', fact: '', by: '' },
-				{ input: 'unenhanced_hu', value: '8 HU', quote: 'measuring 8 HU on the unenhanced images', fact: '', by: '' },
-				{ input: 'age', value: '65', quote: '65 year old', fact: 'age', by: '' },
-				{ input: 'phase', value: 'unenhanced CT', quote: '', fact: '', by: 'exam' }
-			],
-			missing: ['known_cancer', 'hormone_excess', 'bilateral', 'prior_imaging'],
-			asks: [
-				{ input: 'known_cancer', label: 'Known extra-adrenal cancer', role: 'eligibility' },
-				{ input: 'hormone_excess', label: 'Clinical signs of hormone excess', role: 'eligibility' },
-				{ input: 'bilateral', label: 'Bilateral adrenal masses', role: 'eligibility' },
-				{ input: 'prior_imaging', label: 'Growth on prior imaging', role: 'clinical' }
-			]
-		})
-	);
-	r.entry!.content.branches = [
-		{
-			name: 'Pack',
-			rule: '',
-			inputs: [
-				{ id: 'size', question: 'Size', options: [] },
-				{ id: 'unenhanced_hu', question: 'Unenhanced attenuation', options: [] },
-				{ id: 'age', question: 'Age', options: [] },
-				{ id: 'phase', question: 'Phase', options: [] }
-			]
-		}
-	];
-	return r;
-})();
+// check_first in Task 3's shape (B1): values drafted (read, pre-filled, exam preset), eligibility assumed, one input
+// still open, one waiting (hidden); proposal is always null for packs, the outcome is draft_outcome.
+const eseCheck = result(
+	ese,
+	preview({
+		state: 'check_first',
+		proposal: null,
+		draft_outcome: outcome({ classification: 'Benign adenoma (unenhanced ≤ 10 HU)', recommendation: 'No further imaging for this nodule.', caveats: [] }),
+		draft: [
+			draft({ input: 'size', label: 'Size', state: 'read', value: '2.2 cm', quote: '2.2 cm left adrenal nodule' }),
+			draft({ input: 'unenhanced_hu', label: 'Unenhanced attenuation', state: 'prefilled', value: '8 HU', quote: 'measuring 8 HU', why: ['attenuation not stated as unenhanced'] }),
+			draft({ input: 'age', label: 'Age', scope: 'patient', fact: 'age', state: 'read', value: '65', quote: '65 year old' }),
+			draft({ input: 'phase', label: 'Phase', state: 'prefilled', value: 'unenhanced CT', by: 'exam', why: ['set by the exam'] }),
+			draft({ input: 'known_cancer', label: 'Known extra-adrenal cancer', role: 'eligibility', scope: 'patient', state: 'assumed', value: 'No', why: ['assumed: not stated, so taken as within the guideline\'s scope'] }),
+			draft({ input: 'hormone_excess', label: 'Clinical signs of hormone excess', role: 'eligibility', scope: 'patient', state: 'assumed', value: 'No' }),
+			draft({ input: 'bilateral', label: 'Bilateral adrenal masses', role: 'eligibility', state: 'assumed', value: 'No' }),
+			draft({ input: 'prior_imaging', label: 'Growth on prior imaging', state: 'asked', needed: true }),
+			draft({ input: 'growth_rate', label: 'Growth rate', state: 'asked', waiting: true })
+		],
+		assumptions: ['known_cancer', 'hormone_excess', 'bilateral'],
+		assumed_eligible: true,
+		missing: ['prior_imaging'],
+		waiting: ['growth_rate'],
+		asks: [{ input: 'prior_imaging', label: 'Growth on prior imaging', role: 'clinical' }]
+	})
+);
+// applies in Task 3's shape: a pre-filled size (another number in the finding), a read type, an N/A input
+const flDraft = result(
+	fl,
+	preview({
+		proposal: null,
+		draft_outcome: outcome({ classification: 'Optional CT at 12 months', recommendation: 'Low-risk patient: optional CT at 12 months.' }),
+		draft: [
+			draft({ input: 'size', label: 'Mean diameter', state: 'prefilled', value: '7 mm', quote: '7 mm solid nodule', why: ['another number in this finding'] }),
+			draft({ input: 'type', label: 'Nodule type', state: 'read', value: 'Solid', quote: 'solid nodule' }),
+			draft({ input: 'count', label: 'Number of nodules', state: 'read', value: 'Single', quote: 'nodule' }),
+			draft({ input: 'subsolid_part', label: 'Solid component', state: 'not_applicable' })
+		]
+	})
+);
 const tnm = card({ key: 'tnm-lung', name: 'TNM 9 · Lung', version: '9', finding_id: 'u3', finding: mass.text });
 const tier2 = card({ key: 'fazekas', name: 'Fazekas scale', version: '1987', finding_id: 'u5', finding: white.text, reference: true });
 
@@ -116,7 +120,8 @@ export const sections: Section[] = [
 	{ id: 'exam-set', title: 'Exam card, set by the exam', ...one(null, cad, view(cadExam)) },
 	{ id: 'applies', title: 'Pack, applies (open)', ...one(nodule, fl, view(flApplies, { open: true })) },
 	{ id: 'possible', title: 'Pack, applies with no outcome yet', ...one(nodule, fl, view(result(fl, preview({ proposal: null, possible: ['Category A', 'Category B'] })), { open: true })) },
-	{ id: 'check-first-values', title: 'Check first, with values read', ...one(adrenal, ese, view(eseCheck, { open: true })) },
+	{ id: 'check-first-values', title: 'Check first: values, assumed checks, still open', ...one(adrenal, ese, view(eseCheck, { open: true })) },
+	{ id: 'draft-values', title: 'Draft values: read, pre-filled, N/A', ...one(nodule, fl, view(flDraft, { open: true })) },
 	{
 		id: 'check-first',
 		title: 'Pack, check first',

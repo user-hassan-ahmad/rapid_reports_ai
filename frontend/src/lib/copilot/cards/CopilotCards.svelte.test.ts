@@ -7,7 +7,7 @@ const api = vi.hoisted(() => ({ postMatch: vi.fn(), postMatchOther: vi.fn(), pos
 vi.mock('$lib/copilot/api', async (orig) => ({ ...(await orig<object>()), ...api }));
 
 const { default: CopilotCards } = await import('./CopilotCards.svelte');
-const { card, outcome, preview, reference, result } = await import('./fixtures');
+const { card, draft, outcome, preview, reference, result } = await import('./fixtures');
 const { cardRef, groupCards } = await import('../state');
 type CardView = import('./view').CardView;
 type Card = import('../types').Card;
@@ -149,7 +149,7 @@ describe('CopilotCards', () => {
 		// order: values, outcome, open questions; the eligibility list stays collapsed
 		const body = text();
 		const at = (s: string) => body.indexOf(s);
-		expect(at('Read from the report')).toBeGreaterThan(-1);
+		expect(at('Values')).toBeGreaterThan(-1);
 		expect(at('2.2 cm')).toBeLessThan(at('Benign adenoma'));
 		expect(at('Benign adenoma')).toBeLessThan(at('Growth on prior imaging'));
 		const toggle = page.getByRole('button', { name: /Assumed eligible: 2 checks/ });
@@ -161,7 +161,7 @@ describe('CopilotCards', () => {
 		const quote = page.getByText('“2.2 cm left adrenal nodule”');
 		await expect.element(quote).not.toBeVisible();
 		const row = document.querySelector('.cp-val[tabindex]') as HTMLElement;
-		expect(document.getElementById(row.getAttribute('aria-describedby')!)!.textContent).toBe('“2.2 cm left adrenal nodule”');
+		expect(document.getElementById(row.getAttribute('aria-describedby')!)!.textContent!.trim()).toBe('“2.2 cm left adrenal nodule”');
 		row.focus();
 		await expect.element(quote).toBeVisible();
 		// the assumed checks expand on request, by keyboard
@@ -170,6 +170,48 @@ describe('CopilotCards', () => {
 		expect(toggle.element().getAttribute('aria-expanded')).toBe('true');
 		expect(list.hidden).toBe(false);
 		expect(list.textContent).toContain('Signs of hormone excess');
+	});
+
+	it('Task 3 draft card: values, then draft_outcome "on these values", then Still open; assumed under the chip; waiting hidden; no Apply', async () => {
+		const c = card({ finding: finding.text });
+		const pv = preview({
+			state: 'check_first',
+			proposal: null,
+			draft_outcome: outcome({ classification: 'Benign adenoma', recommendation: 'No further imaging.' }),
+			draft: [
+				draft({ input: 'size', label: 'Size', state: 'read', value: '2.2 cm', quote: '2.2 cm nodule' }),
+				draft({ input: 'hu', label: 'Unenhanced HU', state: 'prefilled', value: '8 HU', quote: '8 HU', why: ['attenuation not stated as unenhanced'] }),
+				draft({ input: 'cancer', label: 'Known cancer', role: 'eligibility', state: 'assumed', value: 'No' }),
+				draft({ input: 'growth', label: 'Growth on prior imaging', state: 'asked', needed: true }),
+				draft({ input: 'rate', label: 'Growth rate', state: 'asked', waiting: true })
+			],
+			assumptions: ['cancer'],
+			assumed_eligible: true
+		});
+		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
+		await expect.element(page.getByText('⚠ 1 check assumed')).toBeInTheDocument();
+		const body = text();
+		const at = (x: string) => body.indexOf(x);
+		expect(at('2.2 cm')).toBeLessThan(at('Benign adenoma'));
+		expect(at('Benign adenoma')).toBeLessThan(at('Growth on prior imaging'));
+		expect(body).toContain('On these values');
+		expect(body).not.toContain('Growth rate'); // waiting: hidden
+		expect(document.querySelector('.cp-prefill')!.textContent).toBe('8 HU');
+		const toggle = page.getByRole('button', { name: /Assumed eligible: 1 check/ });
+		await toggle.click();
+		expect(document.getElementById(toggle.element().getAttribute('aria-controls')!)!.textContent).toContain('Known cancer: No');
+		const names = [...document.querySelectorAll('button, [role="button"]')].map((b) => (b.textContent ?? '').trim());
+		expect(names.some((n) => /^(apply|calculate)\b/i.test(n))).toBe(false);
+		expect(document.querySelectorAll('input, select, textarea').length).toBe(0);
+	});
+
+	it('the quiet exam line follows draft_outcome.normal (proposal is always null for packs)', async () => {
+		const quietPv = preview({ proposal: null, draft_outcome: outcome({ classification: 'CAD-RADS 0', normal: true }) });
+		const r = render(CopilotCards, single(exam, v(result(exam, quietPv)), null));
+		await expect.element(page.getByRole('button', { name: 'CAD-RADS 2.0 · CAD-RADS 0' })).toBeInTheDocument();
+		await r.rerender({ views: { [cardRef(exam)]: v(result(exam, preview({ proposal: null, draft_outcome: outcome({ classification: 'CAD-RADS 3', normal: false }) }))) } });
+		await expect.element(page.getByText('on these values · CAD-RADS 3')).toBeInTheDocument();
+		expect(document.querySelector('[data-testid="cp-quiet"]')).toBeNull();
 	});
 
 	it('the version sits on its own line under the name; the assumed chip stays on the first line', async () => {

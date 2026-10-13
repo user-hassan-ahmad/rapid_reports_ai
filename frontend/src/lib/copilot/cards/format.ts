@@ -1,6 +1,6 @@
 // Small text helpers the card components share. Pure, so they are unit-tested apart from the markup.
-import { cardRef, outcomeOf } from '../state';
-import type { Ask, Card, Citation, OpenResult, Preview } from '../types';
+import { cardRef, outcomeOf, rowsOf } from '../state';
+import type { Ask, Card, Citation, OpenResult, Preview, ValueState } from '../types';
 
 /** One short citation line, as the backend's describe.cite_text: title (edition), p. N, section, table. */
 export function citeText(c: Citation | null | undefined): string {
@@ -34,31 +34,59 @@ export function missingLabels(p: Preview): string[] {
 
 const isEligibility = (p: Preview, input: string) => p.asks.some((a) => a.input === input && a.role === 'eligibility');
 
-/** Eligibility checks the card assumes rather than asks (B0, Hassan 2026-10-13: never lead with them). Task 3's
- *  `preview.assumptions` when sent; until then the missing eligibility inputs' labels. */
+const hasDraft = (p: Preview) => !!p.draft?.length;
+
+/** Eligibility checks the card assumed rather than asked (B0: never lead with them), as "Label: value". From the
+ *  draft's assumed rows (Task 3); else `assumptions` ids with their ask labels; else (pre-Task 3) the missing
+ *  eligibility inputs. */
 export function assumptionsOf(p: Preview | null | undefined): string[] {
 	if (!p) return [];
-	if (p.assumptions) return p.assumptions;
+	if (hasDraft(p)) return rowsOf(p).assumed.map((v) => (v.value ? `${v.label}: ${v.value}` : v.label));
 	const labels = new Map(p.asks.map((a) => [a.input, a.label]));
+	if (p.assumptions?.length) return p.assumptions.map((id) => labels.get(id) || id);
 	return p.missing.filter((m) => isEligibility(p, m)).map((m) => labels.get(m) || m);
 }
 
-/** The still-open questions that are not eligibility checks, in `missing` order (shown last, quietly). */
+/** The still-open questions shown last, quietly: the draft's asked rows (eligibility first in check_first, then
+ *  needed), else (pre-Task 3) the missing inputs that are not eligibility checks. */
 export function openQuestions(p: Preview): string[] {
+	if (hasDraft(p)) return rowsOf(p).asked.map((v) => v.label);
 	const labels = new Map(p.asks.map((a) => [a.input, a.label]));
 	return p.missing.filter((m) => !isEligibility(p, m)).map((m) => labels.get(m) || m);
 }
 
+/** The backend's WHY_EXAM (library/pack_preview.py): an exam preset, shown as the "set by the exam" chip instead. */
+export const WHY_EXAM = 'set by the exam';
 const humanise = (id: string) => (id.charAt(0).toUpperCase() + id.slice(1)).replace(/_/g, ' ');
-export interface ValueRow { input: string; label: string; value: string; quote: string; byExam: boolean }
-/** The values read from the dictation (preview.settled), labelled from the entry's inputs, else the ask, else the id. */
+export interface ValueRow { input: string; label: string; value: string; quote: string; byExam: boolean; state: ValueState; why: string[] }
+/** The values the card shows first. From the draft (Task 3): read, pre-filled, answered, edited and N/A rows with
+ *  their state and why[]; else (pre-Task 3) preview.settled as read values, labelled from the entry's inputs, else
+ *  the ask, else the id. */
 export function valueRows(r: OpenResult): ValueRow[] {
 	const p = r.preview;
 	if (!p) return [];
+	if (hasDraft(p))
+		return rowsOf(p).values.map((v) => ({
+			input: v.input,
+			label: v.label || humanise(v.input),
+			value: v.value,
+			quote: v.quote,
+			byExam: v.by === 'exam',
+			state: v.state,
+			why: v.why
+		}));
 	const labels = new Map<string, string>();
 	for (const b of r.entry?.content.branches ?? []) for (const i of b.inputs ?? []) if (i.question) labels.set(i.id, i.question);
 	for (const a of p.asks) if (!labels.has(a.input) && a.label) labels.set(a.input, a.label);
-	return p.settled.map((s) => ({ input: s.input, label: labels.get(s.input) ?? humanise(s.input), value: s.value, quote: s.quote, byExam: s.by === 'exam' }));
+	return p.settled.map((s) => ({
+		input: s.input,
+		label: labels.get(s.input) ?? humanise(s.input),
+		value: s.value,
+		quote: s.quote,
+		byExam: s.by === 'exam',
+		state: s.by === 'exam' ? 'prefilled' : 'read',
+		why: s.by === 'exam' ? [WHY_EXAM] : []
+	}));
 }
 
 export type Badge = { text: string; variant: 'v' | 'a' };
