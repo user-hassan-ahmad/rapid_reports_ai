@@ -1141,3 +1141,20 @@ async def test_a_comparison_line_that_does_not_mention_the_nodule_leaves_it_aske
     out = await PP.preview_pack(_bts(), f"{NEW_ON_FOLLOW_UP}\n\nComparison: CT 2023.", "", {},
                                 finding=NEW_ON_FOLLOW_UP)
     assert _states(out)["prior_study"] == "asked" and "prior_study" in out.missing
+
+
+# live checkpoint 3: Fleischner risk from a smoking history
+def test_fleischner_risk_definition_counts_a_former_smoker_as_high():
+    how = _pack("fleischner-pulmonary-nodule").input("risk").how_stated
+    assert "ex-smoker" in how and "intermediate risk counts as high" in how and "Low: only when" in how
+
+
+async def test_an_ex_smoker_history_prefills_fleischner_risk_high(monkeypatch, jev):
+    finding = "6 mm solid nodule in the left lower lobe."
+    prompts = []
+    _model(monkeypatch, {"input": "risk", "value": "high", "quote": "ex-smoker"}, prompts=prompts)
+    out = await PP.preview_pack(_pack("fleischner-pulmonary-nodule"), finding, "65 year old ex-smoker", {},
+                                finding=finding)
+    d = next(x for x in out.draft if x.input == "risk")
+    assert (d.state, d.value, d.quote) == ("prefilled", "high", "ex-smoker")       # never read: not the option word
+    assert "ex-smoker" in prompts[0]

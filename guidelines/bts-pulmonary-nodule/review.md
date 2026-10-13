@@ -269,3 +269,20 @@ or the report. As a boolean it is never read, so it is always pre-filled or aske
   this nodule seen on an earlier study ("unchanged since…", "previously 6 mm", "stable compared with…"). No means first
   shown ("new since the prior study", "no previous imaging"). A comparison line that does not mention this nodule
   settles neither, so it is asked.
+
+## Live checkpoint 3 (2026-10-13)
+
+- **A read diameter over 3 cm now excludes, whatever the prior imaging.** A nodule measured on this CT cannot be
+  `resolved`.
+  - The mass case no longer guards on `resolved`.
+  - The `resolved` case now requires the size not to be over 30 mm. For a resolved nodule, `diameter_mm` is its size
+    when last seen (`how_stated` updated). A resolved card with no size asks the size; a new golden case covers this.
+  - The over-30 mm cut-off now lives in `diameter_band`: `ge8` is relabelled "8 mm to 30 mm" (max 30 inclusive), and
+    `gt30` is added. Non-mass cases list the nodule bands. This replaces `mass_band` and keeps the gate-2 enumeration
+    under its cap. Outcome texts that render `{diameter_band}` now read "8 mm to 30 mm".
+  - Golden cases: 38 mm read with prior and eligibility unknown gives does_not_apply with nothing asked.
+- **A 6 mm solid nodule no longer asks the Brock inputs.** This is an engine change (unbounded needed): inputs that
+  reach the outcome only through a band the 6 mm pathway never reads are not asked.
+- Gates 1–4 pass.
+- An option I tried and dropped: an `absent` state on `diameter_mm` (no current nodule). It pushed gate 2 past its cap,
+  and the independently enumerated band states produced combinations that no case covers.

@@ -63,7 +63,7 @@
    "label": "Maximum diameter",
    "type": "number",
    "unit": "mm",
-   "how_stated": "maximum diameter of the nodule in millimetres, e.g. '9 mm nodule'; for multiple nodules, the largest",
+   "how_stated": "maximum diameter of the nodule in millimetres, e.g. '9 mm nodule'; for multiple nodules, the largest; for a nodule that has resolved, its size when last seen",
    "locator": {
     "source": "S1",
     "page": 8,
@@ -586,8 +586,16 @@
     },
     {
      "id": "ge8",
-     "label": "8 mm or more",
-     "min": 8
+     "label": "8 mm to 30 mm",
+     "min": 8,
+     "max": 30,
+     "max_inclusive": true
+    },
+    {
+     "id": "gt30",
+     "label": "over 30 mm (outside the BTS nodule definition)",
+     "min": 30,
+     "min_inclusive": false
     }
    ]
   },
@@ -702,30 +710,6 @@
    ]
   },
   {
-   "step": "band",
-   "id": "mass_band",
-   "ref": "diameter_mm",
-   "locator": {
-    "source": "S1",
-    "page": 11,
-    "table": "Table 1 Definition and terms relating to pulmonary nodules: a pulmonary nodule is a focal rounded opacity ≤3 cm in diameter (part-solid nodule and pGGN likewise ≤3 cm)"
-   },
-   "bands": [
-    {
-     "id": "le30",
-     "label": "30 mm or less (within the BTS nodule definition)",
-     "max": 30,
-     "max_inclusive": true
-    },
-    {
-     "id": "gt30",
-     "label": "over 30 mm (outside the BTS nodule definition)",
-     "min": 30,
-     "min_inclusive": false
-    }
-   ]
-  },
-  {
    "step": "rules",
    "id": "pathway",
    "cases": [
@@ -761,15 +745,7 @@
         "eq": false
        },
        {
-        "none": [
-         {
-          "ref": "resolved",
-          "eq": true
-         }
-        ]
-       },
-       {
-        "ref": "mass_band",
+        "ref": "diameter_band",
         "eq": "gt30"
        }
       ]
@@ -793,8 +769,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -833,8 +814,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -880,8 +866,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -928,8 +919,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -992,8 +988,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1056,8 +1057,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1124,8 +1130,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1192,8 +1203,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1260,8 +1276,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1358,8 +1379,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1464,8 +1490,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1539,8 +1570,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1614,8 +1650,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1693,8 +1734,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1766,6 +1812,14 @@
        {
         "ref": "resolved",
         "eq": true
+       },
+       {
+        "none": [
+         {
+          "ref": "diameter_band",
+          "eq": "gt30"
+         }
+        ]
        }
       ]
      },
@@ -1788,8 +1842,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1852,8 +1911,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1927,8 +1991,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -1995,8 +2064,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [
@@ -2063,8 +2137,13 @@
         "eq": false
        },
        {
-        "ref": "mass_band",
-        "eq": "le30"
+        "ref": "diameter_band",
+        "in": [
+         "lt5",
+         "5to6",
+         "6to8",
+         "ge8"
+        ]
        },
        {
         "all": [

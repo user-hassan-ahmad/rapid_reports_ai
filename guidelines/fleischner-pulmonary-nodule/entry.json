@@ -115,7 +115,7 @@
         "low",
         "high"
       ],
-      "how_stated": "low or high clinical risk of lung cancer as stated (e.g. heavy smoking, older age, upper lobe, irregular or spiculated margins favour high)",
+      "how_stated": "the ACCP risk category the guideline uses. High (intermediate risk counts as high): any stated high-risk factor, e.g. a current or former smoker ('ex-smoker', pack-years), older age, a family history of lung cancer, emphysema or fibrosis, exposure to asbestos, uranium or radon, upper lobe location, irregular or spiculated margins. Low: only when the history states little or no smoking and no other risk factor (young age, a small regular nodule outside the upper lobe)",
       "prerequisites": [
         {
           "ref": "nodule_type",
@@ -125,7 +125,7 @@
       "locator": {
         "source": "S1",
         "page": 12,
-        "section": "Risk Estimation and Risk Models"
+        "section": "Risk Estimation and Risk Models: low risk is associated with young age, less smoking, smaller size, regular margins and a location other than the upper lobe; high risk combines the ACCP intermediate and high categories (older age, heavy smoking, larger size, irregular or spiculated margins, upper lobe); smoking history, emphysema, fibrosis and inhaled carcinogens are risk factors"
       },
       "scope": "patient"
     }

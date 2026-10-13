@@ -3643,7 +3643,7 @@
      },
      {
       "dims": "max",
-      "how_stated": "maximum diameter of the nodule in millimetres, e.g. '9 mm nodule'; for multiple nodules, the largest",
+      "how_stated": "maximum diameter of the nodule in millimetres, e.g. '9 mm nodule'; for multiple nodules, the largest; for a nodule that has resolved, its size when last seen",
       "id": "diameter_mm",
       "label": "Maximum diameter",
       "locator": {
@@ -4296,10 +4296,18 @@
        },
        {
         "id": "ge8",
-        "label": "8 mm or more",
-        "max_inclusive": false,
+        "label": "8 mm to 30 mm",
+        "max": 30.0,
+        "max_inclusive": true,
         "min": 8.0,
         "min_inclusive": true
+       },
+       {
+        "id": "gt30",
+        "label": "over 30 mm (outside the BTS nodule definition)",
+        "max_inclusive": false,
+        "min": 30.0,
+        "min_inclusive": false
        }
       ],
       "id": "diameter_band",
@@ -4445,33 +4453,6 @@
       "step": "band"
      },
      {
-      "bands": [
-       {
-        "id": "le30",
-        "label": "30 mm or less (within the BTS nodule definition)",
-        "max": 30.0,
-        "max_inclusive": true,
-        "min_inclusive": true
-       },
-       {
-        "id": "gt30",
-        "label": "over 30 mm (outside the BTS nodule definition)",
-        "max_inclusive": false,
-        "min": 30.0,
-        "min_inclusive": false
-       }
-      ],
-      "id": "mass_band",
-      "locator": {
-       "page": 11,
-       "section": "",
-       "source": "S1",
-       "table": "Table 1 Definition and terms relating to pulmonary nodules: a pulmonary nodule is a focal rounded opacity ≤3 cm in diameter (part-solid nodule and pGGN likewise ≤3 cm)"
-      },
-      "ref": "diameter_mm",
-      "step": "band"
-     },
-     {
       "cases": [
        {
         "locator": {
@@ -4513,16 +4494,8 @@
            "ref": "proven_malignant"
           },
           {
-           "none": [
-            {
-             "eq": true,
-             "ref": "resolved"
-            }
-           ]
-          },
-          {
            "eq": "gt30",
-           "ref": "mass_band"
+           "ref": "diameter_band"
           }
          ]
         }
@@ -4546,8 +4519,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -4587,8 +4565,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -4635,8 +4618,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -4684,8 +4672,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -4749,8 +4742,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -4814,8 +4812,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -4883,8 +4886,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -4952,8 +4960,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -5021,8 +5034,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -5120,8 +5138,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -5227,8 +5250,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -5303,8 +5331,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -5379,8 +5412,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -5459,8 +5497,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -5533,6 +5576,14 @@
           {
            "eq": true,
            "ref": "resolved"
+          },
+          {
+           "none": [
+            {
+             "eq": "gt30",
+             "ref": "diameter_band"
+            }
+           ]
           }
          ]
         }
@@ -5556,8 +5607,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -5621,8 +5677,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -5697,8 +5758,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -5766,8 +5832,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -5835,8 +5906,13 @@
            "ref": "proven_malignant"
           },
           {
-           "eq": "le30",
-           "ref": "mass_band"
+           "in": [
+            "lt5",
+            "5to6",
+            "6to8",
+            "ge8"
+           ],
+           "ref": "diameter_band"
           },
           {
            "all": [
@@ -11322,12 +11398,12 @@
       "unit": "mm"
      },
      {
-      "how_stated": "low or high clinical risk of lung cancer as stated (e.g. heavy smoking, older age, upper lobe, irregular or spiculated margins favour high)",
+      "how_stated": "the ACCP risk category the guideline uses. High (intermediate risk counts as high): any stated high-risk factor, e.g. a current or former smoker ('ex-smoker', pack-years), older age, a family history of lung cancer, emphysema or fibrosis, exposure to asbestos, uranium or radon, upper lobe location, irregular or spiculated margins. Low: only when the history states little or no smoking and no other risk factor (young age, a small regular nodule outside the upper lobe)",
       "id": "risk",
       "label": "Patient risk",
       "locator": {
        "page": 12,
-       "section": "Risk Estimation and Risk Models",
+       "section": "Risk Estimation and Risk Models: low risk is associated with young age, less smoking, smaller size, regular margins and a location other than the upper lobe; high risk combines the ACCP intermediate and high categories (older age, heavy smoking, larger size, irregular or spiculated margins, upper lobe); smoking history, emphysema, fibrosis and inhaled carcinogens are risk factors",
        "source": "S1",
        "table": ""
       },
@@ -20811,5 +20887,5 @@
    ]
   }
  },
- "version": "d9a277cca4a3"
+ "version": "128bc91f2e11"
 }

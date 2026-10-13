@@ -208,3 +208,8 @@ Checklist:
   unsupported content. A per-band and per-row locator in the schema would fix it (reviewer's option a; not done here).
 - `pit.mass` now says the cut-off is applied to the average diameter used throughout the entry (clinical note: a
   36 × 22 mm opacity, average 29 mm, stays a nodule).
+- Live checkpoint 3: the `risk` `how_stated` now follows S1 p12 (ACCP categories; intermediate risk counts as high).
+  Any stated high-risk factor makes the patient high risk: a current or former smoker, older age, family history,
+  emphysema or fibrosis, inhaled carcinogens, upper lobe, irregular or spiculated margins. Low only when little or no
+  smoking and no other factor is stated. Live settle: "65 year old ex-smoker" pre-fills risk high with the quote
+  "ex-smoker" (pre-filled, never read).
