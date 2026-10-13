@@ -26,7 +26,7 @@ from typing import List, Literal, Set, TypedDict
 from . import template_sheet_grammar as tsg
 from . import template_sheet_lab_prompts as P
 from .hybrid_stack.template import norm_key
-from .template_sheet_checks import UnitFailure, check_units
+from .template_sheet_checks import MULTI_STRUCTURE, NOT_NORMAL, PLACEHOLDER, UnitFailure, check_units
 
 logger = logging.getLogger(__name__)
 Origin = Literal["analyser", "repair", "rebuild", "chat", "restore"]
@@ -40,6 +40,12 @@ UNREADABLE = "This change could not be applied: the template would not be readab
 UNSAFE = "This change could not be applied safely."
 LOST_STRUCTURE = "This change could not be applied: the template would lose its structure."
 ADJUSTED = "Applied, with a small adjustment so the template stays consistent."
+# A unit check's reason in the radiologist's language (a chat refusal is shown to them; the sheet never is).
+REASON_TEXT = {
+    PLACEHOLDER: "a normal statement can't contain a value to fill in",
+    NOT_NORMAL: "it describes an abnormality, so it can't be a normal statement",
+    MULTI_STRUCTURE: "a normal statement should cover one structure",
+}
 
 
 class DroppedUnit(TypedDict):
@@ -73,9 +79,9 @@ async def _repair(sheet: str, errors: List[dict]) -> str:
     return P.strip_fences(out)
 
 
-def _errors(res, fails: List[UnitFailure]) -> List[dict]:
-    errs = [dataclasses.asdict(e) for e in res.errors]
-    if not res.errors and not res.structure.usable:
+def _errors(res, errors, fails: List[UnitFailure]) -> List[dict]:
+    errs = [dataclasses.asdict(e) for e in errors]
+    if not errors and not _usable(res, errors):
         errs.append({"line": 0, "text": "", "reason": "structure not usable", "detail": ""})
     errs += [{"line": f.line, "text": f.text, "reason": f.reason, "detail": ""} for f in fails]
     return errs
@@ -104,52 +110,75 @@ def _refuse(previous: str, message: str) -> VetOutcome:
     return VetOutcome("refused", previous, message)
 
 
-async def _parse_and_check(sheet: str):
+def _ws(sheet: str) -> str:
+    """The sheet with spacing normalised: blank lines dropped, runs of whitespace in a line collapsed."""
+    return "\n".join(" ".join(ln.split()) for ln in sheet.splitlines() if ln.strip())
+
+
+def _err_key(e) -> tuple:
+    return (e.text.strip(), e.reason)
+
+
+def _usable(res, errors) -> bool:
+    """Usable, or unusable only through lint errors the previous sheet already had (a second structure block is
+    itself a lint error, so the rest of the grammar's usable test is the findings and impression roles)."""
+    if res.structure.usable:
+        return True
+    roles = {s.role for s in res.structure.sections}
+    return bool(res.errors) and not errors and "findings" in roles and "impression" in roles
+
+
+async def _parse_and_check(sheet: str, existing: Set[str] = frozenset(), old_errors: Set[tuple] = frozenset()):
+    """Parse and check the sheet, keeping only what this write adds or changes: unit failures whose unit the previous
+    sheet already had, and lint errors the previous sheet already had, are not the editor's and are left alone."""
     res = tsg.parse_sheet(sheet, mode="template")
-    fails = await check_units(res.structure, sheet) if res.structure.usable else []
-    return res, fails
+    errors = [e for e in res.errors if _err_key(e) not in old_errors]
+    fails = await check_units(res.structure, sheet) if _usable(res, errors) else []
+    fails = [f for f in fails if norm_key(f.text) not in existing]
+    return res, errors, fails
 
 
 async def vet_sheet(sheet: str, origin: Origin, previous: str = "") -> VetOutcome:
-    """Vet a sheet before it is stored. `previous` is the stored sheet ("" for a new template)."""
-    if previous and sheet == previous:
+    """Vet a sheet before it is stored. `previous` is the stored sheet ("" for a new template).
+
+    Only what this write adds or changes is checked: a unit the previous grammar sheet already had, or a lint error
+    it already had, is neither judged, repaired, dropped nor refused (it is not the editor's doing)."""
+    if previous and _ws(sheet) == _ws(previous):
         return VetOutcome("unchanged", previous)
     if not tsg.is_grammar_sheet(sheet):
         return _refuse(previous, LOST_STRUCTURE)
     requested = sheet
-    existing = _unit_texts(previous) if previous and tsg.is_grammar_sheet(previous) else set()
+    old_grammar = bool(previous) and tsg.is_grammar_sheet(previous)
+    existing = _unit_texts(previous) if old_grammar else set()
+    old_errors = {_err_key(e) for e in tsg.parse_sheet(previous, mode="template").errors} if old_grammar else set()
     dropped: List[DroppedUnit] = []
     try:
-        res, fails = await _parse_and_check(sheet)
-        if res.errors or not res.structure.usable or fails:
-            asked = {norm_key(f.text) for f in fails}
-            # units the repair may not remove or rewrite: those it was not asked to fix and, on an automatic write,
-            # every unit the previous sheet had (an existing unit that still fails is refused below)
-            keep = _unit_texts(sheet) - (asked - existing if origin in AUTOMATIC else asked)
-            sheet = await _repair(sheet, _errors(res, fails))
+        res, errors, fails = await _parse_and_check(sheet, existing, old_errors)
+        if errors or not _usable(res, errors) or fails:
+            # the repair may fix only the new failing units: every other unit must survive it
+            keep = _unit_texts(sheet) - {norm_key(f.text) for f in fails}
+            sheet = await _repair(sheet, _errors(res, errors, fails))
             if not tsg.is_grammar_sheet(sheet):
                 return _refuse(previous, UNREADABLE)
             if keep - _unit_texts(sheet):
                 logger.warning("[sheet-save] %s refused: repair removed %s", origin, sorted(keep - _unit_texts(sheet)))
                 return _refuse(previous, UNSAFE)
-            res, fails = await _parse_and_check(sheet)
-            if origin in AUTOMATIC and any(tsg.is_voice_error(e) for e in res.errors):
-                sheet, dropped = _drop_voice_lines(sheet, res.errors)
+            res, errors, fails = await _parse_and_check(sheet, existing, old_errors)
+            if origin in AUTOMATIC and any(tsg.is_voice_error(e) for e in errors):
+                sheet, dropped = _drop_voice_lines(sheet, errors)
                 logger.info("[sheet-save] %s dropped %d voice line(s): %s", origin, len(dropped), dropped)
-                res, fails = await _parse_and_check(sheet)
+                res, errors, fails = await _parse_and_check(sheet, existing, old_errors)
     except Exception as e:  # a check or repair that could not run never lets an unchecked sheet through
         logger.warning("[sheet-save] %s refused: %s: %s", origin, type(e).__name__, str(e)[:200])
         return _refuse(previous, "The template could not be checked just now. Please try again.")
-    if res.errors or not res.structure.usable:
+    if errors or not _usable(res, errors):
         return _refuse(previous, UNREADABLE)
     if fails:
         failed = {f.text for f in fails}
         failed_keys = {norm_key(t) for t in failed}
         if origin not in AUTOMATIC:
-            pairs = dict.fromkeys(f'"{f.text}" ({f.reason})' for f in fails)  # ordered, de-duplicated
+            pairs = dict.fromkeys(f'"{f.text}" ({REASON_TEXT.get(f.reason, f.reason)})' for f in fails)
             return _refuse(previous, f"Couldn't apply: {'; '.join(pairs)}.")
-        if existing & failed_keys:
-            return _refuse(previous, "This change would remove a statement every report includes.")
         sheet = _drop_lines(sheet, failed)
         if _unit_texts(sheet) & failed_keys:
             logger.warning("[sheet-save] %s refused: failing unit(s) survived the drop", origin)
@@ -157,7 +186,8 @@ async def vet_sheet(sheet: str, origin: Origin, previous: str = "") -> VetOutcom
         dropped += [DroppedUnit(text=f.text, reason=f.reason) for f in fails]
         logger.info("[sheet-save] %s dropped %d unit(s): %s", origin, len(fails), dropped[-len(fails):])
         res = tsg.parse_sheet(sheet, mode="template")
-        if res.errors or not res.structure.usable:
+        errors = [e for e in res.errors if _err_key(e) not in old_errors]
+        if errors or not _usable(res, errors):
             return _refuse(previous, UNREADABLE)
     coverage = [s.name for s in sorted(res.structure.sections, key=lambda s: s.order)]
     notice = ADJUSTED if origin not in AUTOMATIC and _shape(sheet) != _shape(requested) else ""

@@ -99,12 +99,13 @@ async def test_unusable_sheet_that_repair_cannot_fix_is_refused(no_jev, monkeypa
     assert out.status == "refused" and out.sheet == GOOD and "readable" in out.message
 
 
-async def test_losing_an_existing_unit_automatically_is_refused(monkeypatch):
+async def test_a_failing_existing_unit_is_not_rejudged_on_an_automatic_write(monkeypatch):
+    # was test_losing_an_existing_unit_automatically_is_refused: pre-existing failures are no longer re-judged
     monkeypatch.setattr(S, "check_units", _fails_on("The menisci are intact."))
     monkeypatch.setattr(S, "_repair", _no_repair)
     changed = GOOD + 'NORMAL [ligaments] "The cruciate ligaments are intact."\n'
     out = await S.vet_sheet(changed, origin="rebuild", previous=GOOD)
-    assert out.status == "refused" and out.sheet == GOOD and "every report" in out.message
+    assert out.status == "saved" and out.sheet == changed and out.dropped == []
 
 
 async def test_a_jev_error_refuses_the_write(monkeypatch):
@@ -192,19 +193,97 @@ async def test_chat_refusal_pairs_each_text_with_its_own_reason(monkeypatch):
     monkeypatch.setattr(S, "_repair", _no_repair)
     out = await S.vet_sheet(sheet, origin="chat", previous=GOOD)
     assert out.status == "refused"
-    assert f'"Mild chondral thinning." ({NOT_NORMAL})' in out.message
-    assert f'"The bones are {{x}}." ({PLACEHOLDER})' in out.message
+    assert f'"Mild chondral thinning." ({S.REASON_TEXT[NOT_NORMAL]})' in out.message
+    assert f'"The bones are {{x}}." ({S.REASON_TEXT[PLACEHOLDER]})' in out.message
+    assert PLACEHOLDER not in out.message and NOT_NORMAL not in out.message  # report language, not sheet terms
 
 
-async def test_automatic_repair_that_rewrites_a_failing_existing_unit_is_refused(monkeypatch):
-    monkeypatch.setattr(S, "check_units", _fails_on("The menisci are intact."))
+async def test_repair_that_rewrites_an_existing_unit_is_refused(monkeypatch):
+    # was ..._rewrites_a_failing_existing_unit_...: the existing unit no longer fails, so a new failure triggers repair
+    monkeypatch.setattr(S, "check_units", _fails_on("Mild chondral thinning."))
 
     async def rewrite(sheet, errors):
         return sheet.replace("The menisci are intact.", "The menisci are preserved.")
     monkeypatch.setattr(S, "_repair", rewrite)
-    changed = GOOD + 'NORMAL [ligaments] "The cruciate ligaments are intact."\n'
-    out = await S.vet_sheet(changed, origin="rebuild", previous=GOOD)
-    assert out.status == "refused" and out.sheet == GOOD
+    for origin in ("rebuild", "chat"):
+        out = await S.vet_sheet(BAD_UNIT, origin=origin, previous=GOOD)
+        assert out.status == "refused" and out.sheet == GOOD
+
+
+# ── only what a write adds or changes is checked (pre-existing failures are not the editor's) ──
+
+OLD_SLOT_LINE = 'NORMAL [lv] "Normal LV size ({value} ml/m2)."'
+PREV_SLOTTED = GOOD + OLD_SLOT_LINE + "\n"
+
+
+def _slot_fails():
+    from rapid_reports_ai.template_sheet_checks import PLACEHOLDER
+
+    async def fails(st, sheet=""):
+        return [UnitFailure(0, u.text, PLACEHOLDER) for u in [*st.normals, *st.negatives] if "{" in u.text]
+    return fails
+
+
+@pytest.mark.parametrize("origin", ["chat", "rebuild", "restore"])
+async def test_a_pre_existing_failing_unit_does_not_block_an_edit(monkeypatch, origin):
+    repairs = []
+
+    async def repair(sheet, errors):
+        repairs.append(errors)
+        return sheet
+    monkeypatch.setattr(S, "check_units", _slot_fails())
+    monkeypatch.setattr(S, "_repair", repair)
+    edited = PREV_SLOTTED + 'NORMAL [ligaments] "The cruciate ligaments are intact."\n'
+    out = await S.vet_sheet(edited, origin=origin, previous=PREV_SLOTTED)
+    assert out.status == "saved" and out.sheet == edited and out.message == "" and repairs == []
+    assert OLD_SLOT_LINE in out.sheet.splitlines()  # byte-identical
+
+
+async def test_a_new_failing_unit_beside_an_old_one_refuses_naming_only_the_new(monkeypatch):
+    monkeypatch.setattr(S, "check_units", _slot_fails())
+    monkeypatch.setattr(S, "_repair", _no_repair)
+    edited = PREV_SLOTTED + 'NORMAL [bone] "The bones are {x}."\n'
+    out = await S.vet_sheet(edited, origin="chat", previous=PREV_SLOTTED)
+    assert out.status == "refused" and out.sheet == PREV_SLOTTED
+    assert "The bones are {x}." in out.message and "Normal LV size" not in out.message
+
+
+async def test_repair_is_asked_only_about_new_failures_and_must_keep_old_units(monkeypatch):
+    seen = []
+
+    async def repair(sheet, errors):
+        seen.append([e["text"] for e in errors])
+        return sheet.replace('NORMAL [bone] "The bones are {x}."\n', 'NORMAL [bone] "The bones are normal."\n')
+    monkeypatch.setattr(S, "check_units", _slot_fails())
+    monkeypatch.setattr(S, "_repair", repair)
+    edited = PREV_SLOTTED + 'NORMAL [bone] "The bones are {x}."\n'
+    out = await S.vet_sheet(edited, origin="chat", previous=PREV_SLOTTED)
+    assert seen == [["The bones are {x}."]]
+    assert out.status == "saved" and OLD_SLOT_LINE in out.sheet.splitlines() and out.message == S.ADJUSTED
+
+
+async def test_a_lint_error_already_in_the_previous_sheet_is_ignored(no_jev, monkeypatch):
+    bad_line = "COVERS menisci without brackets"
+    prev = GOOD + bad_line + "\n"
+    assert any(e.text.strip() == bad_line for e in tsg.parse_sheet(prev, mode="template").errors)
+    repairs = []
+
+    async def repair(sheet, errors):
+        repairs.append(errors)
+        return sheet
+    monkeypatch.setattr(S, "_repair", repair)
+    edited = prev + 'NORMAL [ligaments] "The cruciate ligaments are intact."\n'
+    out = await S.vet_sheet(edited, origin="chat", previous=prev)
+    assert out.status == "saved" and out.sheet == edited and repairs == []
+
+
+async def test_a_whitespace_only_change_is_unchanged_without_checks(monkeypatch):
+    async def boom(st, sheet=""):
+        raise AssertionError("checked")
+    monkeypatch.setattr(S, "check_units", boom)
+    out = await S.vet_sheet("\n" + GOOD.replace("\n\n", "\n\n\n").replace('"Findings:"', '"Findings:"  ') + "\n\n",
+                            origin="chat", previous=GOOD)
+    assert out.status == "unchanged" and out.sheet == GOOD
 
 
 async def test_a_whitespace_only_repair_of_a_chat_edit_has_no_notice(monkeypatch):
