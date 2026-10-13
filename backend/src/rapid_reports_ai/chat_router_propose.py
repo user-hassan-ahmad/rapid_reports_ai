@@ -435,8 +435,11 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
                              "verified": s >= VERIFY_MIN})
         if s >= VERIFY_MIN:
             verified_blocks.append(to_change("style", c))
-        elif c.block in blocks_by_id and R.specific_claim(c.claim, blocks_by_id[c.block], blocks_by_id.values()):
-            # a specific claim Jev did not confirm: a prefilled card that applies exactly this block on a tap
+        elif (not habit_card and c.block in blocks_by_id
+              and R.specific_claim(c.claim, blocks_by_id[c.block], blocks_by_id.values())
+              and await R.style_card_ok(blocks_by_id[c.block].text, c.text, c.claim)):
+            # a specific claim Jev did not confirm, an edit that is only what it claims and adds no rule: a
+            # prefilled card that applies exactly this block on a tap (re-checked on the tap)
             sv = CH.Verdict("style", "edit", claim=c.claim, op={"op": "style_block", "block": c.block, "text": c.text,
                                                               "expect": blocks_by_id[c.block].text})
             verdicts.append(CH.to_card(sv))

@@ -109,6 +109,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
 
       Each arm is scored on the final sheet and ledger against the truth (`state_score`) as well as by its records. The stage reports latency p50/p90.
     - Misfit (misfit_B, at 0.5) is asked in the screen call. On a yes the reply asks the scan-type question, nothing is proposed, and the turn is recorded with route "misfit". Every hybrid turn records its screen scores (habit, undo, misfit), and so does the lab's `arms` stage, so the next lab can validate them.
+    - A style proposal card is offered only when the claim-against-edit check passes and `requires` finds no added rule, and never on a turn where the habit guard fired. A tap re-runs the same checks on the sheet in hand before applying.
     - The proposal schema is flat, with one list per kind (style has its own list). Identifier fields are required, and a change whose identifier is empty is dropped, not asked about.
 16. **Prose the style call never sees:** `## Scan Context` and `## Report Structure` (the fit check reads the scan context, and the structure block is layout).
 

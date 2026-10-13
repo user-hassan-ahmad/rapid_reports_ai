@@ -503,3 +503,46 @@ async def test_a_plausible_always_mention_request_is_proposed(stub):
                                          structure="alpha", to="reword", text="Alpha is fine."))
     t = await P.propose_turn(ROUTER_SHEET, [], "always mention the ECV; say Alpha is fine.")
     assert t.evidence["route"] == "propose" and t.evidence["screen"]["misfit"] == 0.2
+
+
+# ── review: a style card is offered (and applied on the tap) only after the edit and requires checks ────────────
+CARD_CLAIM = "The Impression Construction guidance is shorter."
+
+
+async def _unverified_style(stub, text="Lead with the main finding in one sentence."):
+    stub["proposal"] = _proposal(_change("style", CARD_CLAIM, id="b4", text=text))
+    stub["claim_scores"] = {CARD_CLAIM: 0.1}
+    return await P.propose_turn(ROUTER_SHEET, [], "make the impression more concise")
+
+
+async def test_no_style_card_when_the_edit_goes_beyond_its_claim(stub):
+    stub["edit_scores"] = {CARD_CLAIM: 0.2}
+    t = await _unverified_style(stub)
+    assert not t.cards and R.STYLE_UNVERIFIED.format(claim=CARD_CLAIM) in t.reply
+
+
+async def test_no_style_card_when_the_edit_adds_a_rule(stub):
+    hidden = "Always state the alpha size."
+    stub["requires"] = {hidden: 0.9}
+    t = await _unverified_style(stub, text=f"Lead with the main finding.\n{hidden}")
+    assert not t.cards and R.STYLE_UNVERIFIED.format(claim=CARD_CLAIM) in t.reply
+
+
+async def test_no_style_card_at_all_when_the_habit_guard_fired(stub):
+    stub["habit"] = 0.9
+    t = await _unverified_style(stub)
+    assert [c["kind"] for c in t.cards] == ["habit"]
+
+
+async def test_the_tap_rechecks_the_style_card_against_the_current_sheet(stub):
+    t = await _unverified_style(stub)
+    (card,) = t.cards
+    stub["edit_scores"] = {CARD_CLAIM: 0.2}                     # the same checks, run again on the tap
+    a = await R.answer_card(ROUTER_SHEET, [], {"proposal": card["apply"]})
+    assert not a.applied and a.sheet == ROUTER_SHEET and a.reply == R.CARD_REJECTED
+    stub["edit_scores"], stub["requires"] = {}, {"Lead with the main finding in one sentence.": 0.9}
+    a2 = await R.answer_card(ROUTER_SHEET, [], {"proposal": card["apply"]})
+    assert not a2.applied
+    stub["requires"] = {}
+    a3 = await R.answer_card(ROUTER_SHEET, [], {"proposal": card["apply"]})
+    assert a3.applied

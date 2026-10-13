@@ -505,6 +505,18 @@ async def undo_turn(sheet: str, ledger: List[dict], records: List[dict]) -> Turn
     return Turn(saved.sheet, saved.ledger, True, reply, notice=saved.message, unmatched=saved.unmatched, evidence=ev)
 
 
+async def style_card_ok(old: str, new: str, claim: str) -> bool:
+    """A style block may be offered (or applied) as a card only when the edit is just what its claim says and adds
+    no rule: the claim-against-edit check and the requires question, both >= their thresholds / below them."""
+    added = sh.new_lines(old, new)
+    try:
+        edit_scores, req = await asyncio.gather(J.verify_edits([(old, new, claim)]), J.requires(added))
+    except Exception as e:
+        logger.warning("[chat-router] style card checks failed: %s", type(e).__name__)
+        return False
+    return bool(edit_scores) and edit_scores[0] >= J.EDIT_MIN and all(s < J.REQUIRES_MIN for s in req)
+
+
 async def answer_card(sheet: str, ledger: List[dict], answer: dict) -> Turn:
     """Apply a tapped card (plan decision 11): {"kind", "key", "choice"} for a ledger card, or {"proposal": <the
     card's apply>} for a proposal card. Written as source "chat"; the wording check is skipped (the radiologist
@@ -520,6 +532,11 @@ async def answer_card(sheet: str, ledger: List[dict], answer: dict) -> Turn:
         if v.action == "reject":
             return Turn(sheet, ledger, False, CARD_REJECTED,
                         evidence={"version": ROUTER_VERSION, "route": "card", "detail": v.detail})
+        if (v.op or {}).get("op") == "style_block":   # the same checks again, on the sheet in hand
+            cur = {b.id: b for b in sh.prose_blocks(sheet)}.get(v.op.get("block"))
+            if cur is None or not await style_card_ok(cur.text, v.op.get("text", ""), v.claim):
+                return Turn(sheet, ledger, False, CARD_REJECTED,
+                            evidence={"version": ROUTER_VERSION, "route": "card", "detail": "style card checks failed"})
     else:
         try:
             key, choice = L.check((answer or {}).get("kind", ""), (answer or {}).get("key", ""),
