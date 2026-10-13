@@ -5,7 +5,23 @@ Principle for every piece: **Jev decides, code applies, the generator only write
 Builds on: `2026-10-12-template-pipeline-design.md`, `2026-10-12-template-requirements-design.md` (value cluster,
 required statements; not built). Flow diagram: https://claude.ai/artifact/9yLtQVb75ja2ktEzxMo4Db (private).
 
-## Build order
+## Roadmap (updated 2026-10-13, after the Rules-step and router brainstorm)
+
+Each item gets its own fresh session: spec → plan → build, with labs on synthetic data seeded from production.
+
+| # | Item | Spec | Why this position |
+|---|---|---|---|
+| 1 | Context rules resolved by Jev before generation | **needs a spec** (outline below, §1) | small, self-contained; fixes the merged-branch comparison line and unfilled `{date}` seen 2026-10-13; the 23 prior/no-prior e2e cases test it |
+| 2 | Value cluster in the scratchpad | `2026-10-12-template-requirements-design.md` part 1 | fully specified, no grammar change; the Rules step's required-value cards feed it |
+| 3 | Rules step at template creation (decision run → cards → writer; decision ledger) | `2026-10-13-template-rules-step-design.md` | absorbs the writer improvements (§5) and the creation-time half of the FIXED check (§4); its ledger operations are what item 4 calls |
+| 4 | Chat-to-edit router | `2026-10-13-chat-edit-router-design.md` | needs item 3's ledger operations and cards |
+| 5 | Findings-triggered rows (required statements, habit questions, guideline cards) | **needs a spec** (outline below, §3) | needs a lab first, and a decision on the overlap with the guideline draft cards; the Rules step records habit candidates for it |
+
+Still open, not yet placed: the save-time FIXED check on non-creation saves (rebuilds, the upgrade script) — §4
+(a) and (b) — fits with item 3 or 4; the remaining writer items in §5 (slot-conflict wording, temperature lab) run
+inside item 3's lab.
+
+## Detail per item (as first written; numbering differs from the roadmap above)
 
 ### 1. Context rules resolved by Jev before generation
 - Today: on the scratchpad path Jev judges a context RULE only when it hides an assumed normal
