@@ -149,3 +149,19 @@ def template_suppressions(st: SheetStructure) -> list[tuple[str, str]]:
         if t is not None and (r.condition, t) not in out:
             out.append((r.condition, t))
     return out
+
+
+def template_required_values(st: SheetStructure) -> list[str]:
+    """The values every report of this template carries (its LIST_MISSING items: the value cluster), in sheet
+    order, each once (norm_key)."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for r in st.rules:
+        if r.effect != "list_missing":
+            continue
+        for item in r.items:
+            k = norm_key(item)
+            if k and k not in seen:
+                seen.add(k)
+                out.append(item.strip())
+    return out
