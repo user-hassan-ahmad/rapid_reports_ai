@@ -13,8 +13,7 @@
       "abdomen"
     ],
     "modality": [
-      "CT",
-      "MRI"
+      "CT"
     ],
     "finding_type": [
       "renal cyst",

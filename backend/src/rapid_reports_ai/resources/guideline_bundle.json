@@ -943,8 +943,7 @@
       "cystic renal mass"
      ],
      "modality": [
-      "CT",
-      "MRI"
+      "CT"
      ],
      "region": [
       "abdomen"
@@ -14108,7 +14107,7 @@
       "unit": ""
      },
      {
-      "how_stated": "peripheral for a PZ lesion, transition for a TZ lesion; a central zone or anterior fibromuscular stroma lesion takes the zone it appears to arise from (eg 'scored with TZ criteria')",
+      "how_stated": "peripheral for a PZ lesion, transition for a TZ lesion; a central zone or anterior fibromuscular stroma lesion takes the zone it appears to arise from (eg 'scored with TZ criteria') If several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
       "id": "zone",
       "label": "Zone the lesion is scored in",
       "locator": {
@@ -14131,7 +14130,7 @@
       "unit": ""
      },
      {
-      "how_stated": "the DWI (ADC and high b-value) score 1 to 5 as dictated, eg 'DWI 4', 'DWI 3/5'; not assessable when DWI is called X, technically inadequate, non-diagnostic or not performed",
+      "how_stated": "the DWI (ADC and high b-value) score 1 to 5 as dictated, eg 'DWI 4', 'DWI 3/5'; not assessable when DWI is called X, technically inadequate, non-diagnostic or not performed If several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
       "id": "dwi",
       "label": "DWI score",
       "locator": {
@@ -14159,7 +14158,7 @@
       "unit": ""
      },
      {
-      "how_stated": "the T2-weighted score 1 to 5 as dictated, eg 'T2 4', 'T2W 2/5'; not assessable when T2W is called X, technically inadequate or not performed",
+      "how_stated": "the T2-weighted score 1 to 5 as dictated, eg 'T2 4', 'T2W 2/5'; not assessable when T2W is called X, technically inadequate or not performed If several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
       "id": "t2w",
       "label": "T2W score",
       "locator": {
@@ -14200,7 +14199,7 @@
       "unit": ""
      },
      {
-      "how_stated": "positive for focal early (or contemporaneous) enhancement matching the T2W or DWI finding; negative for no early enhancement, diffuse enhancement, or enhancement of a BPH-type nodule; not assessable when DCE is X, inadequate or not given (biparametric MRI)",
+      "how_stated": "positive for focal early (or contemporaneous) enhancement matching the T2W or DWI finding; negative for no early enhancement, diffuse enhancement, or enhancement of a BPH-type nodule; not assessable when DCE is X, inadequate or not given (biparametric MRI) If several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
       "id": "dce",
       "label": "DCE",
       "locator": {
@@ -15150,7 +15149,7 @@
       "id": "pirads_1_exam",
       "locator": {
        "page": 20,
-       "section": "Section III: Evaluation of the TZ (How to Score in the TZ: every MRI exam is assigned a category; with no finding above category 1 the exam is PI-RADS 1)",
+       "section": "Section III: Evaluation of the TZ (How to Score in the TZ: with no finding above category 1 the exam is PI-RADS 1); the MRI-findings-only caveat from p 17 (Assessment and Reporting); the inadequate-DWI caveat from p 22 (Caveats for Overall Assessment)",
        "source": "S1",
        "table": ""
       },
@@ -15159,7 +15158,8 @@
      {
       "caveats": [
        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
-       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation."
+       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation.",
+       "With several lesions this scores the index lesion only (highest category; among equals the one with EPE, else the largest; S1 p 19)."
       ],
       "classification": "PI-RADS 1: very low; clinically significant cancer is highly unlikely to be present.",
       "id": "pirads_1",
@@ -15174,7 +15174,8 @@
      {
       "caveats": [
        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
-       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation."
+       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation.",
+       "With several lesions this scores the index lesion only (highest category; among equals the one with EPE, else the largest; S1 p 19)."
       ],
       "classification": "PI-RADS 2: low; clinically significant cancer is unlikely to be present.",
       "id": "pirads_2",
@@ -15191,7 +15192,8 @@
        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
        "In the PZ, a DWI 3 lesion without adequate DCE (eg biparametric MRI) stays category 3 and is not upgraded.",
        "In the PZ or CZ, an encapsulated, circumscribed, round nodule is likely an extruded BPH nodule and should be category 2, even if hypointense on ADC.",
-       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation."
+       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation.",
+       "With several lesions this scores the index lesion only (highest category; among equals the one with EPE, else the largest; S1 p 19)."
       ],
       "classification": "PI-RADS 3: intermediate; the presence of clinically significant cancer is equivocal.",
       "id": "pirads_3",
@@ -15207,7 +15209,8 @@
       "caveats": [
        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
        "In the PZ or CZ, an encapsulated, circumscribed, round nodule is likely an extruded BPH nodule and should be category 2, even if hypointense on ADC.",
-       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation."
+       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation.",
+       "With several lesions this scores the index lesion only (highest category; among equals the one with EPE, else the largest; S1 p 19)."
       ],
       "classification": "PI-RADS 4: high; clinically significant cancer is likely to be present.",
       "id": "pirads_4",
@@ -15223,7 +15226,8 @@
       "caveats": [
        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
        "In the PZ or CZ, an encapsulated, circumscribed, round nodule is likely an extruded BPH nodule and should be category 2, even if hypointense on ADC.",
-       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation."
+       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation.",
+       "With several lesions this scores the index lesion only (highest category; among equals the one with EPE, else the largest; S1 p 19)."
       ],
       "classification": "PI-RADS 5: very high; clinically significant cancer is highly likely to be present.",
       "id": "pirads_5",
@@ -20387,5 +20391,5 @@
    ]
   }
  },
- "version": "73444169f25f"
+ "version": "c9f2c8f853bb"
 }

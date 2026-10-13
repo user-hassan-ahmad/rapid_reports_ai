@@ -671,6 +671,17 @@
    "needed": [
     "finding_above_1"
    ]
+  },
+  {
+   "name": "two lesions dictated (TZ T2W 3 DWI 3; PZ DWI 4 with EPE): values from the index PZ lesion (p 19) give 4",
+   "origin": "ours",
+   "inputs": {
+    "treated_cancer": false,
+    "finding_above_1": true,
+    "zone": "peripheral",
+    "dwi": "4"
+   },
+   "outcome": "pirads_4"
   }
  ]
 }
