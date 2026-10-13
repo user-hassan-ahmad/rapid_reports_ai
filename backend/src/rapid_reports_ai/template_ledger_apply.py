@@ -10,6 +10,13 @@ Where an entry's target cannot be found: values and concepts are written from sc
 line to keep, or a normal whose paragraph is gone, is returned in `unmatched` (a card at the next review), never
 guessed.
 
+A habit entry (kind "habit", spec 2026-10-13-findings-triggered-rows-design) is placed in the paragraph its key names,
+or in the one paragraph whose COVERS lists that name; otherwise it is unmatched. A habit is active only through its
+entry (confirmed_habits: the scratchpad triggers nothing else). A habit unit (RULE … ASK, NEGATIVE … WHEN [findings:
+…]) with no entry, written by the writer or a whole-sheet rewrite, is never removed silently (Hassan H3, 2026-10-13):
+it stays in the sheet, inactive, and is returned in `pending` (template_rules_cards.pending_habit_cards asks it at the
+next review). A habit edit the grammar refuses is `failed` and also `unmatched` (a card at the next review).
+
 observe() reads what a sheet currently says for a ledger item; reconcile_chat() folds a chat rewrite's changes to
 ledger items back into the ledger (source "chat") before the ledger is applied."""
 from __future__ import annotations
@@ -40,6 +47,7 @@ class LedgerResult:
     stale_quotes: List[str] = field(default_factory=list)
     restated: List[dict] = field(default_factory=list)   # lint warnings: paragraph prose quoting a decided concept's
                                                          # FIXED line ({"line", "text", "reason", "detail"})
+    pending: List[dict] = field(default_factory=list)    # habit lines with no entry: inactive, asked on a card
 
     @property
     def changed(self) -> int:
@@ -362,14 +370,121 @@ def _normal(lines, st, entry):
     return [x for x in out2 if x is not None], [{**row, "action": action}], [], stale
 
 
-_OPS: List[Tuple[str, Callable]] = [("concept", _concept), ("fixed", _fixed), ("normal", _normal)]
+def _habit_paragraph(st: tss.SheetStructure, name: str) -> Optional[tss.Paragraph]:
+    """The paragraph a habit key names: by paragraph name, else the one paragraph whose COVERS lists it."""
+    p = _paragraph(st, name)
+    if p is not None:
+        return p
+    hits = [q for q in st.paragraphs if any(td._name(c) == td._name(name) for c in q.covers)]
+    return hits[0] if len(hits) == 1 else None
+
+
+def _habit_units(st: tss.SheetStructure, pid: str, cond: str) -> Tuple[List[tss.Rule], List[tss.Negative]]:
+    k = td._name(cond)
+    rules = [r for r in st.rules if r.effect == "ask" and r.paragraph == pid and td._name(r.condition) == k]
+    negs = [n for n in st.negatives if n.paragraph == pid and n.origin == "template" and n.condition
+            and n.condition_source == "findings" and td._name(n.condition) == k]
+    return rules, negs
+
+
+def habit_line(cond: str, choice: dict) -> Optional[str]:
+    """The canonical line of a habit choice; None for "removed"."""
+    if choice["mode"] == "ask":
+        return tsg.render_rule(tss.Rule(id="ledger", section="", condition=cond, condition_source="findings",
+                                        effect="ask", question=choice["question"], then_text=choice["yes"],
+                                        else_text=choice["no"], source_lines=[]))
+    if choice["mode"] == "state":
+        return tsg.render_negative(tss.Negative(id="ledger", section="", text=choice["no"], condition=cond,
+                                                condition_source="findings", source_lines=[]))
+    return None
+
+
+def _habit(lines, st, entry):
+    para_name, cond = td.split_habit_key(entry["key"])
+    row = {"kind": "habit", "key": entry["key"], "action": "kept"}
+    para = _habit_paragraph(st, para_name)
+    if para is None:
+        return lines, [], [entry], []
+    rules, negs = _habit_units(st, para.id, cond)
+    idx: List[int] = []
+    for raw in [r.source_lines[0] for r in rules] + [n.source_lines[0] for n in negs]:
+        i = _index(lines, raw, set(idx))
+        if i is not None:
+            idx.append(i)
+    new = habit_line(cond, entry["choice"])
+    if not idx:
+        if new is None:
+            return lines, [row], [], []
+        span = _paragraph_span(lines, para.id)
+        if span is None:
+            return lines, [], [entry], []
+        at = _block_end(lines, *span)
+        out = list(lines)
+        out[at:at] = [new]
+        return out, [{**row, "action": "inserted"}], [], []
+    first = lines[idx[0]]
+    if new is not None and len(idx) == 1 and first == _prefix(first) + new:
+        return lines, [row], [], []
+    out2: List[Optional[str]] = list(lines)
+    for i in idx[1:]:
+        out2[i] = None
+    out2[idx[0]] = None if new is None else _prefix(first) + new
+    return [x for x in out2 if x is not None], [{**row, "action": "removed" if new is None else "rewritten"}], [], []
+
+
+def _habit_ids(st: tss.SheetStructure, ledger: List[dict], modes: Tuple[str, ...]) -> Set[Tuple[str, str]]:
+    out: Set[Tuple[str, str]] = set()
+    for e in ledger or []:
+        if e.get("kind") != "habit" or (e.get("choice") or {}).get("mode") not in modes:
+            continue
+        try:
+            para_name, cond = td.split_habit_key(e["key"])
+        except td.DecisionError:
+            continue
+        p = _habit_paragraph(st, para_name)
+        if p is not None:
+            out.add((p.id, td._name(cond)))
+    return out
+
+
+def confirmed_habits(st: tss.SheetStructure, ledger: List[dict]) -> Set[Tuple[str, str]]:
+    """(paragraph id, condition name) of every habit the ledger holds as "ask" or "state": the only active ones."""
+    return _habit_ids(st, ledger, ("ask", "state"))
+
+
+def pending_habits(st: tss.SheetStructure, ledger: List[dict]) -> List[dict]:
+    """Habit units with no ledger entry at all, as entries {kind, key, choice} read from the sheet (module doc)."""
+    decided = _habit_ids(st, ledger, td.HABIT_MODES)
+    names = {p.id: p.name for p in st.paragraphs}
+    out: List[dict] = []
+    seen: Set[Tuple[str, str]] = set()
+    units = [(r.paragraph, r.condition) for r in st.rules if r.effect == "ask"]
+    units += [(n.paragraph, n.condition) for n in st.negatives
+              if n.origin == "template" and n.condition and n.condition_source == "findings"]
+    for pid, cond in units:
+        k = (pid, td._name(cond))
+        if k in decided or k in seen or pid not in names:
+            continue
+        seen.add(k)
+        key = td.habit_key(names[pid], cond)
+        out.append({"kind": "habit", "key": key, "choice": observe(st, "habit", key)})
+    return out
+
+
+_OPS: List[Tuple[str, Callable]] = [("concept", _concept), ("fixed", _fixed), ("normal", _normal), ("habit", _habit)]
 
 
 def apply_ledger(sheet: str, ledger: List[dict], before: str = "") -> LedgerResult:
     """The sheet with every ledger entry applied (module doc). A non-grammar sheet or an empty ledger is unchanged.
     `before`: the sheet this one replaces, when known; it tells a reworded concept default's added line apart."""
     res = LedgerResult(sheet=sheet)
-    if not ledger or not tsg.is_grammar_sheet(sheet or ""):
+    if not tsg.is_grammar_sheet(sheet or ""):
+        return res
+    ledger = list(ledger or [])
+    if not ledger:   # nothing to apply; habit lines with no entry are still reported (Hassan H3)
+        res.pending = pending_habits(_parse(sheet), [])
+        if res.pending:
+            logger.info("[ledger] habits_pending=%d (inactive until a card confirms them)", len(res.pending))
         return res
     added: Optional[Set[str]] = None
     if before and tsg.is_grammar_sheet(before):
@@ -407,6 +522,8 @@ def apply_ledger(sheet: str, ledger: List[dict], before: str = "") -> LedgerResu
             logger.error("[ledger] %s not applied: %s: %s", [x.get("key") for x in entries], type(e).__name__,
                          str(e)[:200])
             res.failed += entries
+            # spec failure table: a habit the grammar refuses is not saved and shows as a card at the next review
+            res.unmatched += [x for x in entries if x.get("kind") == "habit"]
             continue
         res.sheet = new
         res.applied += applied
@@ -416,6 +533,9 @@ def apply_ledger(sheet: str, ledger: List[dict], before: str = "") -> LedgerResu
     res.stale_quotes = sorted({t for t in stale if t and any(f'"{t}"' in ln for ln in prose)})
     res.unmatched += [e for e in fragments if e not in res.failed]
     res.restated = restated_quotes(res.sheet, ledger)
+    res.pending = pending_habits(_parse(res.sheet), ledger)
+    if res.pending:
+        logger.info("[ledger] habits_pending=%d (inactive until a card confirms them)", len(res.pending))
     return res
 
 
@@ -470,12 +590,24 @@ def observe(st: tss.SheetStructure, kind: str, key: str) -> Optional[dict]:
         k = norm_key(key)
         present = any(norm_key(f.text) == k for f in st.fixed_blocks) or bool(_uses(st, k))
         return {"keep": "always" if present else "remove"}
+    if kind == "habit":
+        para_name, cond = td.split_habit_key(key)
+        para = _habit_paragraph(st, para_name)
+        if para is None:
+            return None
+        rules, negs = _habit_units(st, para.id, cond)
+        if rules:
+            return {"mode": "ask", "question": rules[0].question, "yes": rules[0].then_text, "no": rules[0].else_text}
+        if negs:
+            return {"mode": "state", "question": "", "yes": "", "no": negs[0].text}
+        return {"mode": "removed", "question": "", "yes": "", "no": ""}
     para_name, label, neg = td.split_normal_key(key)
     para = _paragraph(st, para_name)
     if para is None:
         return None
     if neg:
-        u = next((n for n in st.negatives if n.paragraph == para.id and norm_key(n.text) == norm_key(label)), None)
+        u = next((n for n in st.negatives if n.paragraph == para.id and not n.condition
+                  and norm_key(n.text) == norm_key(label)), None)
     else:
         u = next((n for n in st.normals if n.paragraph == para.id
                   and td._name(td.structure_label(n.structure)) == td._name(label)), None)
@@ -525,6 +657,8 @@ def _wholesale(e: dict, ob: dict, oa: dict, sb: tss.SheetStructure, sa: tss.Shee
         return had and not any(r.effect == "list_missing" for r in sa.rules) and e["choice"]["need"] == "every"
     if e["kind"] == "concept":
         return bool(ob.get("use")) and not oa.get("use") and bool(e["choice"].get("use"))
+    if e["kind"] == "habit":
+        return ob.get("mode") in ("ask", "state") and oa.get("mode") == "removed"
     return False
 
 
@@ -565,6 +699,8 @@ def reconcile_chat(before: str, after: str, ledger: List[dict]) -> Tuple[List[di
                 cards.append(trc.card_for_change(e["kind"], e["key"], e["choice"]))
                 continue
             else:
+                if e["kind"] == "habit":   # a sheet reading keeps the decided wording it cannot see
+                    oa = {**e["choice"], **{k: v for k, v in oa.items() if v}}
                 out, ch = td.set_decision(out, e["kind"], e["key"], oa, source="chat")
         except td.DecisionError as err:   # a change code cannot write: kept, asked (never skipped silently)
             logger.info("[ledger] chat change to %s %r refused: %s", e["kind"], e["key"], err)

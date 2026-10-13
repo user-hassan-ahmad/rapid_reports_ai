@@ -40,3 +40,11 @@ FIXED "No previous imaging available."
 ## Paragraph: Impression (IMPRESSION)
 Opening: "Normal study."
 """
+
+
+# LEDGER_SHEET with a second findings paragraph ("Lower", covering "delta"), so a habit can be placed by paragraph name
+# or by a structure a paragraph covers.
+HABIT_SHEET = LEDGER_SHEET.replace(
+    "## Paragraph: Impression (IMPRESSION)",
+    '## Paragraph: Lower (FINDINGS)\nCOVERS ["delta"]\nNORMAL [delta] "Delta is normal."\n\n'
+    "## Paragraph: Impression (IMPRESSION)")

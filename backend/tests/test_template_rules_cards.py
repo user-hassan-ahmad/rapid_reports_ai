@@ -292,3 +292,15 @@ def test_a_fragment_wording_is_never_offered_and_the_concept_falls_back_to_dicta
         td.validate("concept", "comparison", ch)                    # every offered choice is applicable
     assert card["selected"] is None
     assert any(e.get("quote") == "Compared with CT of 01/01/2020." for e in card["evidence"])
+
+
+def test_card_for_change_makes_a_habit_card_never_preticked():
+    c = C.card_for_change("habit", "Upper :: an alpha abnormality is reported",
+                          {"mode": "ask", "question": "Extension beyond alpha?",
+                           "yes": "The abnormality extends beyond alpha.", "no": "No extension beyond alpha."})
+    assert (c["kind"], c["ledger_kind"], c["selected"], c["step"]) == ("habit", "habit", None, "chat")
+    assert c["title"] == "Upper: when an alpha abnormality is reported"
+    assert [(x["id"], x["label"], x["choice"]["mode"]) for x in c["choices"]] == [
+        ("ask", "Ask every time", "ask"), ("state", "Always state", "state"), ("removed", "Not needed", "removed")]
+    assert c["habit"] == {"condition": "an alpha abnormality is reported", "question": "Extension beyond alpha?",
+                          "yes": "The abnormality extends beyond alpha.", "no": "No extension beyond alpha."}
