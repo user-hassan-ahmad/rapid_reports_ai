@@ -159,15 +159,28 @@ function segmentWords(segment: string): RegExp {
 	return new RegExp(`\\b(?:${words.map(esc).join('|')})\\b`, 'i');
 }
 
+/** Any segment, junction or vertebra named, in the backstop's own words (frozen: no new vocabulary). */
+const ANY_SEGMENT: RegExp[] = [...Object.keys(SEGMENT_WORDS).map(segmentWords),
+	...Object.keys(VERTEBRAE).map(vertebraPattern).filter((p): p is RegExp => !!p)];
+
 /** Misfiled-finding backstop for a segment's sheet line (controller ruling, re-review of 74eab7ec): withheld when an
  *  abnormal sentence placed outside the segment's own regions names one of its levels, one of its vertebrae or the
- *  segment itself, or when
- *  any abnormal sentence says "multilevel". Deterministic and errs toward omission; `abnormal` holds abnormal (or not
- *  yet grouped) sentences only, so a placed normal mention ("normal cervical lordosis") never withholds the line. */
-export function segmentBlocked(segment: string, levels: string[], abnormal: { group: string | null; text: string }[]): boolean {
+ *  segment itself, or when an abnormal sentence says "multilevel" (anywhere, its own regions included) and either
+ *  names this segment or names no segment, level or vertebra at all (review 2026-10-13: "Multilevel lumbar
+ *  spondylosis" withholds Lumbar only; a bare "multilevel" all). `allLevels`: every segment's level labels, so a
+ *  "multilevel" sentence naming another segment's level counts as named. Deterministic and errs toward omission;
+ *  `abnormal` holds abnormal (or not yet grouped) sentences only, so a placed normal mention ("normal cervical
+ *  lordosis") never withholds the line. */
+export function segmentBlocked(segment: string, levels: string[], abnormal: { group: string | null; text: string }[],
+	allLevels: string[] = levels): boolean {
 	const own = new Set([segment, ...levels]);
 	const pats = [segmentWords(segment), ...levels.map(levelPattern), vertebraPattern(segment)].filter((p): p is RegExp => !!p);
-	return abnormal.some(({ group, text }) => MULTILEVEL.test(text) || (!(group !== null && own.has(group)) && pats.some((p) => p.test(text))));
+	const any = [...ANY_SEGMENT, ...allLevels.map(levelPattern)];
+	return abnormal.some(({ group, text }) => {
+		const names = pats.some((p) => p.test(text));
+		if (MULTILEVEL.test(text)) return names || !any.some((p) => p.test(text));
+		return !(group !== null && own.has(group)) && names;
+	});
 }
 
 /** The segments whose sheet line is withheld, from every abnormal sentence (split parts, General, Other findings) and
@@ -181,7 +194,8 @@ export function blockedSegments(levelGroups: Record<string, string[]>, units: St
 		else if (u.abnormal) abnormal.push({ group: u.group, text: u.text });
 	}
 	if (!abnormal.length) return new Set();
-	return new Set(Object.entries(levelGroups).filter(([seg, levels]) => segmentBlocked(seg, levels, abnormal)).map(([seg]) => seg));
+	const allLevels = Object.values(levelGroups).flat();
+	return new Set(Object.entries(levelGroups).filter(([seg, levels]) => segmentBlocked(seg, levels, abnormal, allLevels)).map(([seg]) => seg));
 }
 
 /** Sentences the grouper never received (the live tail), as the ungrouped units `stackConfirm` writes into the report:

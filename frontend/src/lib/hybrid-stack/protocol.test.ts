@@ -108,6 +108,13 @@ describe('segment backstop for misfiled findings (errs toward omission)', () => 
 		expect(blocked([u(0, 'Multilevel degenerative disc disease.', 'General', true)])).toEqual(segs.slice().sort());
 		expect(blocked([u(0, 'Multi-level facet arthropathy.', 'Other findings', true)])).toEqual(segs.slice().sort());
 	});
+	it('"multilevel" naming a segment or a level withholds only those segments (review reversal)', () => {
+		expect(blocked([u(0, 'Multilevel lumbar spondylosis.', 'General', true)])).toEqual(['Lumbar levels']);
+		expect(blocked([u(0, 'Multilevel disc bulges from C4/5 to C5/6.', 'Other findings', true)])).toEqual(['Cervical levels']);
+		expect(blocked([u(0, 'Multilevel thoracolumbar spondylosis.', 'General', true)])).toEqual(['Lumbar levels', 'Thoracic levels']);
+		expect(blocked([u(0, 'Multilevel facet arthropathy, worst at L4/5.', 'L4/5', true)])).toEqual(['Lumbar levels']);   // own region too
+		expect(blocked([u(0, 'Multilevel degenerative disc disease.', 'General', true)])).toEqual(segs.slice().sort());   // bare: all
+	});
 	it('an L4/5 bulge filed in L4/5 withholds nothing; Lumbar reads "Elsewhere, …"', () => {
 		const units = [u(0, 'At L4/5 there is a broad-based disc bulge.', 'L4/5', true)];
 		expect(blocked(units)).toEqual([]);
