@@ -256,6 +256,45 @@ def alone(text: str, quote: str, value: float, unit: str, dims: str | None = Non
     return _NUMBER.search(rest) is None
 
 
+# a finding that names more than one lesion: a reason a lesion value is pre-filled, never read (spec §7.5, WHY_SEVERAL;
+# Task 4 review M1), beside Jev's one-lesion claim
+_MANY_WORDS = ("further|other|others|another|additional|second|scattered|numerous|few|couple|several|multiple|bilateral"
+               "|bilaterally|lesions")
+
+
+def _plural(noun: str) -> str:
+    w = noun.split()[-1].lower()
+    return w + "es" if re.search(r"(?:s|x|z|ch|sh)$", w) else w + "s"
+
+
+# a qualified negation still names other lesions ("no other new nodules"): it keeps the backstop
+_QUALIFIER = re.compile(r"\b(?:new|enlarging|growing|changed|change|suspicious|significant|worrying|larger|dominant"
+                        r"|solid|apart from|except|other than|since)\b", re.I)
+# the one word a negation may hold before the noun: an organ, or a modifier from the pack's own finding types
+_ORGANS = ("pulmonary", "lung", "lungs", "renal", "kidney", "kidneys")
+_CLAUSE = re.compile(r"[^.;,:\n]+(?:[.,](?=\d)[^.;,:\n]*)*")      # split at . ; , : and new lines, never in a decimal
+
+
+def many(text: str, nouns: list[str]) -> bool:
+    """The text has a multiplicity word, or the plural of one of the lesion nouns ("pulmonary nodule" -> nodules).
+    An unqualified negation ending its clause ("No other pulmonary nodules.", "no further nodules or masses are seen"),
+    with at most an organ word before the noun, is left out; any other word there keeps it; one with a qualifier (new, enlarging, changed, apart from, …) is not. A True makes every lesion
+    value of the card pre-filled (WHY_SEVERAL), never dropped; Jev's one-lesion claim does the same."""
+    plurals = "|".join(["lesions", *(re.escape(_plural(n)) for n in nouns if n.strip())])
+    words = "|".join([_MANY_WORDS, plurals])
+    organs = "|".join([*_ORGANS, *(re.escape(w.lower()) for n in nouns for w in n.split()[:-1])])
+    neg = re.compile(rf"\bno\s+(?:other|further|additional)\s+(?:(?:{organs})\s+)?(?:{plurals})"
+                     rf"(?:\s+or\s+(?:{plurals}|masses))?(?:\s+are)?(?:\s+(?:seen|identified|present|demonstrated))?"
+                     rf"(?:\s+bilaterally)?\s*$", re.I)
+    for m in _CLAUSE.finditer(text or ""):
+        c = m.group(0)
+        if not _QUALIFIER.search(c):
+            c = neg.sub(" ", c)
+        if re.search(rf"\b(?:{words})\b", c, re.I):
+            return True
+    return False
+
+
 def settle(quote: str, texts: list[str], unit: str, dims: str | None = None,
            model: float | None = None) -> float | None:
     """The value a quote settles, read from the whole measurement it sits in. None (asked) when the quote is not in

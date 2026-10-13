@@ -713,13 +713,13 @@
    "bands": [
     {
      "id": "le30",
-     "label": "30 mm or less (a nodule)",
+     "label": "30 mm or less (within the BTS nodule definition)",
      "max": 30,
      "max_inclusive": true
     },
     {
      "id": "gt30",
-     "label": "over 30 mm (a mass, not a nodule)",
+     "label": "over 30 mm (outside the BTS nodule definition)",
      "min": 30,
      "min_inclusive": false
     }
@@ -2376,7 +2376,7 @@
   },
   {
    "id": "does_not_apply",
-   "classification": "BTS 2015 does not apply: the guidelines do not cover patients under 18, a nodule already proven to be lung cancer or a metastasis, or an opacity over 3 cm (a mass, not a nodule)",
+   "classification": "BTS 2015 does not apply: the guidelines do not cover patients under 18, a nodule already proven to be lung cancer or a metastasis, or an opacity over 3 cm in diameter (BTS defines a pulmonary nodule as a focal, rounded opacity of 3 cm or less)",
    "recommendation": "Manage per the clinical context.",
    "locator": {
     "source": "S1",

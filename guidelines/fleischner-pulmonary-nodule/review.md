@@ -198,3 +198,5 @@ Checklist:
 - DECISION, confirmed 2026-10-13: the cut-off follows the source wording: up to 3 cm is a nodule, over 3 cm is a mass.
 - The glossary's "mass" entry is worded for chest radiographs, under the heading "Radiographs and CT scans". The CT
   "nodule" entry gives the same 3 cm limit, so both are cited together.
+- M3 follow-up: the exclusion wording is now Hansell's own, "a mass (an opacity greater than 3 cm in diameter)". The
+  band label reads ">30 mm (a mass)".

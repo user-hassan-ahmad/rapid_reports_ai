@@ -4448,14 +4448,14 @@
       "bands": [
        {
         "id": "le30",
-        "label": "30 mm or less (a nodule)",
+        "label": "30 mm or less (within the BTS nodule definition)",
         "max": 30.0,
         "max_inclusive": true,
         "min_inclusive": true
        },
        {
         "id": "gt30",
-        "label": "over 30 mm (a mass, not a nodule)",
+        "label": "over 30 mm (outside the BTS nodule definition)",
         "max_inclusive": false,
         "min": 30.0,
         "min_inclusive": false
@@ -6183,7 +6183,7 @@
      },
      {
       "caveats": [],
-      "classification": "BTS 2015 does not apply: the guidelines do not cover patients under 18, a nodule already proven to be lung cancer or a metastasis, or an opacity over 3 cm (a mass, not a nodule)",
+      "classification": "BTS 2015 does not apply: the guidelines do not cover patients under 18, a nodule already proven to be lung cancer or a metastasis, or an opacity over 3 cm in diameter (BTS defines a pulmonary nodule as a focal, rounded opacity of 3 cm or less)",
       "id": "does_not_apply",
       "locator": {
        "page": 13,
@@ -11406,7 +11406,7 @@
        },
        {
         "id": "gt30",
-        "label": ">30 mm (a mass, not a nodule)",
+        "label": ">30 mm (a mass)",
         "max_inclusive": false,
         "min": 30.0,
         "min_inclusive": false
@@ -12446,7 +12446,7 @@
        "The Fleischner Society advises the ACR Lung-RADS system for lung cancer screening CT.",
        "Under 35: decide case by case; infection is more likely than cancer, so keep serial CT to a minimum."
       ],
-      "classification": "Fleischner 2017 does not apply: lung cancer screening, age under 35, immunocompromised patient, known primary cancer, or an opacity over 3 cm (a mass, not a nodule).",
+      "classification": "Fleischner 2017 does not apply: lung cancer screening, age under 35, immunocompromised patient, known primary cancer, or a mass (an opacity greater than 3 cm in diameter).",
       "id": "does_not_apply",
       "locator": {
        "page": 2,
@@ -20811,5 +20811,5 @@
    ]
   }
  },
- "version": "52870f91e77c"
+ "version": "ce462ed66921"
 }

@@ -255,3 +255,13 @@ This reverses fix round 1's lesion scope for `prior_study`. "No previous imaging
 whole study, so `prior_study` is now `patient`-scoped: it may be settled from a verbatim quote anywhere in the request
 or the report. As a boolean it is never read, so it is always pre-filled or asked. `interval_days` stays per nodule.
 `how_stated` says so. Gates 1–4 pass.
+
+## Task 4 review follow-up (2026-10-13)
+
+- M3, wording: the exclusion now uses BTS's own Table 1 wording, "an opacity over 3 cm in diameter (BTS defines a
+  pulmonary nodule as a focal, rounded opacity of 3 cm or less)", in place of "a mass, not a nodule". The band labels
+  read "within / outside the BTS nodule definition". Case names follow.
+- M2: when every eligibility value would exclude, the engine settles does_not_apply and asks nothing. Example: 38 mm
+  with no previous imaging, so nothing can be resolved. New golden case. With prior imaging unknown, BTS still asks
+  prior_study, because only `resolved` keeps the card in scope (Hassan's ruling 3: the diameter is needed for every
+  outcome but resolved). prior_study is now a whole-study fact, so this is rarely asked.

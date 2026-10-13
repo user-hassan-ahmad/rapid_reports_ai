@@ -1332,7 +1332,7 @@
    "outcome": "pet_ct"
   },
   {
-   "name": "30.5 mm: over 3 cm, a mass, not a nodule",
+   "name": "30.5 mm: over 3 cm, outside the BTS nodule definition",
    "origin": "ours",
    "inputs": {
     "benign_features": false,
@@ -1351,7 +1351,7 @@
    "outcome": "does_not_apply"
   },
   {
-   "name": "38 mm solid opacity: a mass, outside the guideline",
+   "name": "38 mm solid opacity: outside the BTS nodule definition",
    "origin": "ours",
    "inputs": {
     "benign_features": false,
@@ -1370,7 +1370,7 @@
    "outcome": "does_not_apply"
   },
   {
-   "name": "38 mm part-solid opacity: a mass, outside the guideline",
+   "name": "38 mm part-solid opacity: outside the BTS nodule definition",
    "origin": "ours",
    "inputs": {
     "nodule_type": "part_solid",
@@ -1395,6 +1395,17 @@
     "proven_malignant",
     "prior_study"
    ]
+  },
+  {
+   "name": "38 mm opacity, no previous imaging, eligibility not stated: excluded, nothing asked",
+   "origin": "ours",
+   "inputs": {
+    "nodule_type": "solid",
+    "diameter_mm": 38,
+    "prior_study": false
+   },
+   "outcome": "does_not_apply",
+   "needed": []
   }
  ]
 }

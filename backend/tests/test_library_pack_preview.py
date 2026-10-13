@@ -1,4 +1,5 @@
 import pytest
+from types import SimpleNamespace
 
 from rapid_reports_ai.hybrid_stack.copilot import preview as P
 from rapid_reports_ai.hybrid_stack.copilot.library import engine as E
@@ -572,7 +573,8 @@ def test_a_lesion_number_in_a_finding_with_another_number_is_prefilled(finding, 
     for model in (None, PP.Q.settle(quote, [finding], unit, dims)):
         v = PP._value(i, PP.RawItem(input="n", value=model, quote=quote), [finding])
         if v is not None:
-            assert PP.WHY_OTHER_NUMBER in PP._read_reasons(None, i, v, quote, [finding])
+            e = SimpleNamespace(applies_to=SimpleNamespace(finding_type=["nodule"]))
+            assert PP.WHY_OTHER_NUMBER in PP._read_reasons(e, i, v, quote, [finding])
 
 
 @pytest.mark.parametrize("finding,quote,unit,dims,want", ALONE)
@@ -649,8 +651,9 @@ async def test_a_finding_with_several_lesions_prefills_its_size(monkeypatch, jev
 async def test_a_multiplicity_word_no_longer_asks_when_jev_says_one(monkeypatch, jev, finding):
     jev["scores"] = {ONE_CLAIM: 0.95}
     out = await _fleischner(monkeypatch, finding, "4 mm", 4)
-    assert {"diameter_mm", "nodule_type"} <= {x.input for x in out.settled}      # drafted: the backstop is retired
-    assert PP.WHY_SEVERAL not in _why(out, "diameter_mm")
+    assert {"diameter_mm", "nodule_type"} <= {x.input for x in out.settled}      # drafted: never an ask now
+    for k in ("diameter_mm", "nodule_type"):                     # review M1: a multiplicity word pre-fills, never reads
+        assert _states(out)[k] == "prefilled" and PP.WHY_SEVERAL in _why(out, k)
 
 
 @pytest.mark.parametrize("verdict,settles", [(0.95, True), (0.8, True), (0.79, False), (0.1, False)])
@@ -699,7 +702,7 @@ async def test_a_multiplicity_word_no_longer_asks_an_enum(monkeypatch, jev):
     _model(monkeypatch, {"input": "nodule_type", "value": "solid", "quote": "solid"})
     out = await PP.preview_pack(_pack("fleischner-pulmonary-nodule"), "Scattered solid nodules.", "", {},
                                 finding="Scattered solid nodules.")
-    assert _states(out)["nodule_type"] == "read"                    # Jev says one lesion; no word backstop now
+    assert _states(out)["nodule_type"] == "prefilled" and PP.WHY_SEVERAL in _why(out, "nodule_type")   # review M1
 
 
 # lab fix round item 1: lab case #36, a granuloma (not the pack's noun) lending its lobe and type to the nodule
@@ -763,7 +766,7 @@ async def test_an_unqualified_negation_settles_when_jev_says_one(monkeypatch, je
 async def test_a_qualified_negation_no_longer_asks(monkeypatch, jev, finding):
     jev["scores"] = {ONE_CLAIM: 0.95}
     out = await _fleischner(monkeypatch, finding, "4 mm", 4)
-    assert "diameter_mm" in {x.input for x in out.settled}            # drafted; Jev's one-lesion claim decides
+    assert _states(out)["diameter_mm"] == "prefilled" and PP.WHY_SEVERAL in _why(out, "diameter_mm")   # drafted
 
 
 # prior_study is a whole-study fact (Hassan 2026-10-13): patient-scoped, so the model may propose Yes or No with a quote
@@ -1074,10 +1077,9 @@ async def test_a_finding_naming_other_lesions_still_drafts_its_values(toy_entry,
 
 def test_the_retired_guards_are_gone():
     from rapid_reports_ai.hybrid_stack.copilot.library import quantity as Q
-    for name in ("_no_prior", "_quote_claim", "QUOTE_MIN", "_FOLLOW_UP", "_ELSEWHERE", "NO_PRIOR_INPUT", "_nouns"):
+    for name in ("_no_prior", "_quote_claim", "QUOTE_MIN", "_FOLLOW_UP", "_ELSEWHERE", "NO_PRIOR_INPUT"):
         assert not hasattr(PP, name)
-    for name in ("many", "_ORGANS", "_QUALIFIER", "_MANY_WORDS"):
-        assert not hasattr(Q, name)
+    assert hasattr(Q, "many")                  # kept as a pre-fill reason (Task 4 review M1), never an ask
 
 
 async def test_prior_study_is_proposed_like_any_input(monkeypatch, jev):

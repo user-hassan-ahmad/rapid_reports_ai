@@ -187,7 +187,7 @@
         },
         {
           "id": "gt30",
-          "label": ">30 mm (a mass, not a nodule)",
+          "label": ">30 mm (a mass)",
           "min": 30,
           "min_inclusive": false
         }
@@ -1165,7 +1165,7 @@
     },
     {
       "id": "does_not_apply",
-      "classification": "Fleischner 2017 does not apply: lung cancer screening, age under 35, immunocompromised patient, known primary cancer, or an opacity over 3 cm (a mass, not a nodule).",
+      "classification": "Fleischner 2017 does not apply: lung cancer screening, age under 35, immunocompromised patient, known primary cancer, or a mass (an opacity greater than 3 cm in diameter).",
       "recommendation": "Manage per the clinical context (screening programme protocol, or the patient's oncology or immunosuppression care).",
       "caveats": [
         "The Fleischner Society advises the ACR Lung-RADS system for lung cancer screening CT.",

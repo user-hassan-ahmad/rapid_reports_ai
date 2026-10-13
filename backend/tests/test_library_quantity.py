@@ -261,3 +261,45 @@ def test_a_label_number_without_a_connector_still_settles(text):
 @pytest.mark.parametrize("span", ["x 8 mm", "by 8 mm", "to 8 mm", "- 8 mm", "8 mm x", "8 mm -", "8 mm to"])
 def test_a_widened_span_on_a_connector_gives_no_reading(span):
     assert Q.settle(span, [span], "mm") is None
+
+
+NODULE = ["pulmonary nodule"]
+
+
+@pytest.mark.parametrize("text,nouns", [
+    ("8 mm solid nodule in the RUL. No other pulmonary nodules.", NODULE),
+    ("8 mm solid nodule in the RUL; no further nodules.", NODULE),
+    ("8 mm solid nodule. No additional nodules are seen.", NODULE),
+    ("8 mm solid nodule. No further pulmonary nodules or masses.", NODULE),
+    ("8 mm solid nodule. No other nodules identified bilaterally.", NODULE),
+    ("Left renal cyst of -20 HU. No other renal lesions.", ["renal cyst", "cystic renal mass"])])
+def test_an_unqualified_negation_does_not_fire_the_backstop(text, nouns):
+    assert not Q.many(text, nouns)
+
+
+@pytest.mark.parametrize("text", [
+    "4 mm solid nodule. No other new nodules.", "4 mm solid nodule. No other enlarging nodules.",
+    "New 4 mm solid nodule. No other nodules have changed.",
+    "4 mm solid nodule. No other nodules apart from stable subpleural nodularity.",
+    "4 mm solid nodule. No other suspicious nodules.", "4 mm solid nodule. No further nodules since 2019.",
+    "4 mm solid nodule. No other nodules except a calcified granuloma.",
+    "4 mm solid nodule. No other significant nodules.", "4 mm solid nodule. No larger nodules.",
+    "4 mm solid nodule. Further nodules bilaterally."])
+def test_a_qualified_negation_still_fires_the_backstop(text):
+    assert Q.many(text, NODULE)
+
+
+@pytest.mark.parametrize("word", ["increasing", "enlarged", "evolving", "worsening", "progressing", "developing",
+                                  "interval", "incident", "stable", "bigger", "concerning", "indeterminate",
+                                  "subsolid", "measurable"])
+def test_the_negation_slot_holds_only_an_organ_word(word):
+    assert Q.many(f"4 mm solid nodule in the right upper lobe. No other {word} nodules.", NODULE)
+
+
+@pytest.mark.parametrize("text,nouns", [
+    ("4 mm solid nodule. No other pulmonary nodules.", NODULE), ("4 mm solid nodule. No other lung nodules.", NODULE),
+    ("Cyst -20 HU. No other renal lesions.", ["renal cyst", "cystic renal mass"]),
+    ("Cyst -20 HU. No other kidney lesions.", ["renal cyst", "cystic renal mass"]),
+    ("4 mm solid nodule; no further nodules.", NODULE), ("4 mm solid nodule. No additional nodules are seen.", NODULE)])
+def test_an_organ_word_in_the_negation_slot_stays_exempt(text, nouns):
+    assert not Q.many(text, nouns)

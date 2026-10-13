@@ -334,6 +334,11 @@ def _has_option_words(option: str, quote: str) -> bool:
     return bool(w) and any(q[n:n + len(w)] == w for n in range(len(q) - len(w) + 1))
 
 
+def _nouns(e: Entry) -> list[str]:
+    """The pack's lesion nouns, from the finding types it applies to."""
+    return [t for t in e.applies_to.finding_type if t.strip()] or ["lesion"]
+
+
 def _read_reasons(e: Entry, i: InputDef, v: InputValue, quote: str, texts: list[str]) -> list[str]:
     """Why code cannot read this value with certainty (spec §7.5); empty when it can, before the Jev checks."""
     present = v.state == "present"
@@ -345,6 +350,8 @@ def _read_reasons(e: Entry, i: InputDef, v: InputValue, quote: str, texts: list[
     if (present and i.type == "number" and i.scope == "lesion"
             and not Q.alone(texts[0], quote, float(v.value), i.unit, i.dims)):
         out.append(WHY_OTHER_NUMBER)
+    if i.scope == "lesion" and Q.many(texts[0], _nouns(e)):    # a multiplicity word: never read on Jev alone
+        out.append(WHY_SEVERAL)
     return out
 
 
