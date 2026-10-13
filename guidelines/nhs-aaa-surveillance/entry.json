@@ -437,6 +437,9 @@
   "outcomes": [
     {
       "id": "does_not_apply",
+      "headline": "Outside NHS AAA screening programme",
+      "action": "Manage per clinical context",
+      "category": "not_applicable",
       "classification": "NHS AAA screening programme thresholds apply only to programme scans; the programme does not routinely screen women, men under 65 or anyone already treated for an AAA.",
       "recommendation": "Manage per the clinical context.",
       "locator": {
@@ -446,6 +449,9 @@
     },
     {
       "id": "non_visualised",
+      "headline": "Aorta not visualised: inconclusive screen",
+      "action": "Offer further programme scan",
+      "category": "workup",
       "classification": "Aorta not visualised: inconclusive AAA screen.",
       "recommendation": "A further programme scan will be offered.",
       "locator": {
@@ -458,6 +464,9 @@
     },
     {
       "id": "no_aaa",
+      "headline": "No AAA",
+      "action": "No further AAA screening",
+      "category": "none",
       "normal": true,
       "classification": "No AAA found: aortic diameter less than 3.0 cm.",
       "recommendation": "No further AAA screening scans or invitations needed.",
@@ -468,6 +477,9 @@
     },
     {
       "id": "small_surveillance",
+      "headline": "Small AAA",
+      "action": "Yearly surveillance scans",
+      "category": "surveillance",
       "classification": "Small AAA (3.0 to 4.4 cm).",
       "recommendation": "Yearly AAA surveillance scans; the programme also offers a vascular nurse specialist appointment for health and lifestyle advice.",
       "caveats": [
@@ -480,6 +492,9 @@
     },
     {
       "id": "medium_surveillance",
+      "headline": "Medium AAA",
+      "action": "Surveillance scans every 3 months",
+      "category": "surveillance",
       "classification": "Medium AAA (4.5 to 5.4 cm).",
       "recommendation": "AAA surveillance scans every 3 months; the programme also offers a vascular nurse specialist appointment for health and lifestyle advice.",
       "caveats": [
@@ -492,6 +507,9 @@
     },
     {
       "id": "growth_refer",
+      "headline": "AAA grown >1 cm in 12 months",
+      "action": "Vascular referral within one working day",
+      "category": "refer",
       "classification": "AAA {diameter_band} that has grown by more than 1 cm in 12 months.",
       "recommendation": "Offer referral to vascular services within one working day; a vascular specialist appointment should follow within 2 weeks of the scan.",
       "locator": {
@@ -501,6 +519,9 @@
     },
     {
       "id": "large_refer",
+      "headline": "Large AAA",
+      "action": "Vascular referral within one working day",
+      "category": "refer",
       "classification": "Large AAA (5.5 cm or larger).",
       "recommendation": "Offer referral to vascular services within one working day; a vascular specialist appointment should follow within 2 weeks of the scan.",
       "caveats": [
@@ -513,6 +534,9 @@
     },
     {
       "id": "does_not_fit",
+      "headline": "Under 3.0 cm during AAA surveillance",
+      "action": "Manage per screening SOP",
+      "category": "not_applicable",
       "classification": "Aortic diameter less than 3.0 cm in a man already under AAA surveillance: not defined by the pathway requirements.",
       "recommendation": "Manage per the AAA screening standard operating procedure.",
       "caveats": [

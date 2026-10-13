@@ -736,6 +736,9 @@
   "outcomes": [
     {
       "id": "no_follow_up",
+      "headline": "Simple cyst 3 cm or less",
+      "action": "No imaging follow-up",
+      "category": "none",
       "classification": "Simple, unilateral, unilocular ovarian cyst of 3 cm or less in a postmenopausal woman: clinically inconsequential.",
       "recommendation": "No imaging follow-up required (RCOG GTG 34, Dec 2025). If symptomatic, clinical assessment is advised.",
       "caveats": [
@@ -751,6 +754,9 @@
     },
     {
       "id": "ct_mdt",
+      "headline": "Increased risk of malignancy",
+      "action": "CT; refer to gynae-oncology MDT",
+      "category": "refer",
       "classification": "Postmenopausal ovarian cyst with RMI I of 200 or more, or with ascites or metastases on imaging: increased risk of malignancy.",
       "recommendation": "CT abdomen and pelvis, and referral to the gynaecological oncology MDT.",
       "caveats": [
@@ -767,6 +773,9 @@
     },
     {
       "id": "consider_surgery",
+      "headline": "Low RMI, conservative management excluded",
+      "action": "Consider salpingo-oophorectomy",
+      "category": "refer",
       "classification": "Postmenopausal ovarian cyst, RMI I under 200 (low risk), with a feature excluding conservative management: symptoms, non-simple features, over 5 cm, multilocular or bilateral.",
       "recommendation": "Consider surgery: salpingo-oophorectomy, usually bilateral.",
       "caveats": [
@@ -783,6 +792,9 @@
     },
     {
       "id": "conservative",
+      "headline": "Low-risk simple cyst, normal CA125",
+      "action": "CA125 and TVUS in 4–6 months",
+      "category": "surveillance",
       "classification": "Asymptomatic simple, unilateral, unilocular ovarian cyst over 3 cm and up to 5 cm with normal CA125: low risk of malignancy.",
       "recommendation": "Consider conservative management: repeat CA125 and transvaginal ultrasound in 4-6 months.",
       "caveats": [
@@ -798,6 +810,9 @@
     },
     {
       "id": "surgery_raised_ca125",
+      "headline": "Simple cyst with raised CA125",
+      "action": "Offer surgical treatment",
+      "category": "refer",
       "classification": "Asymptomatic simple, unilateral, unilocular cyst over 3 cm and up to 5 cm with raised CA125 (over 35 iu/ml): does not meet RCOG criteria for conservative management.",
       "recommendation": "Offer surgical treatment, with the setting and surgeon guided by the RMI.",
       "caveats": [
@@ -814,6 +829,9 @@
     },
     {
       "id": "does_not_apply",
+      "headline": "Outside RCOG GTG 34",
+      "action": "Manage per clinical context",
+      "category": "not_applicable",
       "classification": "RCOG GTG 34 does not apply: it covers ovarian cysts in postmenopausal women, not premenopausal women or confirmed ovarian malignancy.",
       "recommendation": "Manage per the clinical context.",
       "locator": {

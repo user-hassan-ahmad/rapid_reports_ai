@@ -73,8 +73,8 @@ SCORED = {
             {"when": {"ref": "s_band", "eq": "lo"}, "result": "a", "locator": {"source": "S1"}},
             {"when": {"ref": "s_band", "eq": "hi"}, "result": "b", "locator": {"source": "S1"}}]}],
     "result": "r",
-    "outcomes": [{"id": "a", "classification": "a", "locator": {"source": "S1"}},
-                 {"id": "b", "classification": "b", "locator": {"source": "S1"}}],
+    "outcomes": [{"id": "a", "headline": "A", "action": "A", "category": "info", "classification": "a", "locator": {"source": "S1"}},
+                 {"id": "b", "headline": "B", "action": "B", "category": "info", "classification": "b", "locator": {"source": "S1"}}],
 }
 
 
@@ -170,7 +170,9 @@ def _eligible_toy(toy, elig=ELIG):
         c["when"] = {"all": [{"ref": elig["id"], "eq": False}, c["when"]]}
     rules["cases"].insert(0, {"when": {"ref": elig["id"], "eq": True}, "result": "does_not_apply",
                               "locator": {"source": "S1", "page": 1}})
-    t["outcomes"].append({"id": "does_not_apply", "classification": "the toy guideline does not apply",
+    t["outcomes"].append({"id": "does_not_apply", "headline": "Outside the toy guideline",
+                          "action": "Manage per clinical context", "category": "not_applicable",
+                          "classification": "the toy guideline does not apply",
                           "recommendation": "Manage per the clinical context.",
                           "locator": {"source": "S1", "page": 1, "section": "Scope"}})
     return t
@@ -233,3 +235,17 @@ def test_the_does_not_apply_text_has_no_placeholder(toy):
 
 def test_an_eligible_toy_passes_the_enumeration_eligibility_checks(toy):
     assert V._enumerate(Entry.model_validate(_eligible_toy(toy))) == []
+
+
+def test_every_tier_1_outcome_needs_its_display_fields(toy, manifest):
+    toy["outcomes"][0].pop("headline")
+    toy["outcomes"][1]["action"] = "one two three four five six seven"
+    toy["outcomes"][2]["headline"] = "one two three four five six seven eight nine"
+    probs = V._display(Entry.model_validate(toy))
+    assert any("needs headline, action and category" in p for p in probs)
+    assert any("action over 6 words" in p for p in probs) and any("headline over 8 words" in p for p in probs)
+    toy["outcomes"][0]["headline"] = "x"
+    toy["outcomes"][0]["category"] = "maybe"
+    import pydantic
+    with pytest.raises(pydantic.ValidationError):
+        Entry.model_validate(toy)

@@ -258,3 +258,23 @@ def test_the_hedge_backstop_reads_the_sentence_around_a_short_quote():
 def test_the_hedge_backstop_reads_only_the_quote_and_the_words_before_it(text, quote, hedged):
     e = next(x for x in _tier1() if x.id == "ese-adrenal-incidentaloma")
     assert PP._hedged_cancer(e.input("known_primary_cancer"), InputValue(value=True), quote, [text, ""]) is hedged
+
+
+async def test_the_draft_outcome_and_the_result_carry_the_display_fields(toy_entry, monkeypatch, jev):
+    s = await _s(toy_entry, monkeypatch, KIND, SIZE, RISK)
+    p = PP.finish(toy_entry, s, {}, None, [])
+    o = p.draft_outcome
+    assert (o.headline, o.action, o.category) == ("Solid nodule, high risk", "CT at 6 months", "surveillance")
+    c = PP.calculate(toy_entry, s, {"kind": "solid", "size": "7 mm", "risk": "low"}, None, [], "b1")
+    assert (c.result.headline, c.result.category) == ("Solid nodule, low risk", "surveillance")
+
+
+def test_every_tier_1_pack_outcome_has_display_fields_and_info_marks_no_management():
+    cats = {}
+    for e in _tier1():
+        for o in e.outcomes:
+            assert o.headline and o.action and o.category, (e.key, o.id)
+            cats[(e.id, o.id)] = o.category
+    assert cats[("salter-harris", "sh4_through_plate")] == "info" and cats[("sins", "b0_6")] == "info"
+    assert cats[("cad-rads-2", "stable_3_e")] == "info" and cats[("pi-rads-2-1", "pirads_3")] == "info"
+    assert cats[("pi-rads-2-1", "pirads_1")] == "none" and cats[("bts-pulmonary-nodule", "discharge_small")] == "none"

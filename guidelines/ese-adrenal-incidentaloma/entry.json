@@ -588,6 +588,9 @@
   "outcomes": [
     {
       "id": "below_threshold",
+      "headline": "Adrenal nodule under 1 cm",
+      "action": "No routine adrenal work-up",
+      "category": "none",
       "classification": "Adrenal nodule under 1 cm: below ESE's 1 cm threshold for incidentaloma work-up.",
       "recommendation": "Further adrenal work-up is not routinely needed unless there are clinical signs or symptoms of adrenal hormone excess.",
       "caveats": [
@@ -602,6 +605,9 @@
     },
     {
       "id": "benign_attenuation",
+      "headline": "Benign lipid-rich adrenal lesion",
+      "action": "No further imaging",
+      "category": "none",
       "classification": "Homogeneous adrenal mass of 10 HU or less on unenhanced CT: consistent with a benign (lipid-rich) lesion, whatever its size.",
       "recommendation": "No further imaging required.",
       "caveats": [
@@ -619,6 +625,9 @@
     },
     {
       "id": "benign_other",
+      "headline": "Adrenal mass with clear benign features",
+      "action": "No further imaging",
+      "category": "none",
       "classification": "Adrenal mass with clear benign imaging features other than attenuation (e.g. myelolipoma).",
       "recommendation": "No further imaging during follow-up is recommended for a lesion with clear benign imaging features.",
       "caveats": [
@@ -635,6 +644,9 @@
     },
     {
       "id": "needs_unenhanced_ct",
+      "headline": "Uncharacterised adrenal mass",
+      "action": "Unenhanced CT",
+      "category": "workup",
       "classification": "Homogeneous adrenal mass of 1 cm or more, not characterised: no unenhanced CT attenuation available.",
       "recommendation": "Unenhanced (noncontrast) CT is recommended to establish whether the mass is homogeneous and lipid-rich, and therefore benign.",
       "caveats": [
@@ -651,6 +663,9 @@
     },
     {
       "id": "additional_imaging",
+      "headline": "Indeterminate adrenal mass, low malignancy likelihood",
+      "action": "Immediate additional imaging",
+      "category": "workup",
       "classification": "Homogeneous adrenal mass under 4 cm, 11-20 HU on unenhanced CT: indeterminate, low likelihood of malignancy.",
       "recommendation": "Suggest immediate additional imaging (FDG-PET/CT, chemical-shift MRI or washout CT); alternatively, noncontrast CT or MRI in 12 months.",
       "caveats": [
@@ -667,6 +682,9 @@
     },
     {
       "id": "indeterminate_mdt",
+      "headline": "Indeterminate adrenal mass",
+      "action": "MDT discussion; additional imaging",
+      "category": "refer",
       "classification": "Indeterminate adrenal mass: homogeneous 11-20 HU and 4 cm or more, homogeneous over 20 HU and under 4 cm, or heterogeneous and under 4 cm.",
       "recommendation": "Suggest MDT discussion; immediate additional imaging is usually preferred (or immediate surgery). If still indeterminate and not operated, ESE recommends noncontrast CT or MRI in 6-12 months.",
       "caveats": [
@@ -684,6 +702,9 @@
     },
     {
       "id": "high_risk",
+      "headline": "Adrenal mass: relevant malignancy risk",
+      "action": "MDT discussion; usually surgery after staging",
+      "category": "refer",
       "classification": "Adrenal mass 4 cm or more that is heterogeneous or over 20 HU on unenhanced CT: relevant risk of malignancy.",
       "recommendation": "Suggest MDT discussion; usually surgery after complete staging (at least thoracic CT and/or FDG-PET/CT); additional imaging is an option in some patients.",
       "caveats": [
@@ -701,6 +722,9 @@
     },
     {
       "id": "young_indeterminate",
+      "headline": "Indeterminate adrenal mass, patient under 40",
+      "action": "Urgent assessment; consider surgical resection",
+      "category": "refer",
       "classification": "Indeterminate adrenal mass in a patient under 40: higher likelihood of malignancy and of clinically significant hormone excess.",
       "recommendation": "Urgent assessment is recommended; ESE suggests surgical resection if the mass is indeterminate on imaging.",
       "caveats": [
@@ -716,6 +740,9 @@
     },
     {
       "id": "does_not_apply",
+      "headline": "Outside ESE incidentaloma pathway",
+      "action": "Manage per clinical context",
+      "category": "not_applicable",
       "classification": "Known extra-adrenal malignancy, imaging for suspected adrenal disease, or hereditary-syndrome screening: outside ESE's incidentaloma pathway (Figure 5); with known malignancy, ESE's Figure 9 pathway applies.",
       "recommendation": "Manage per the clinical context (library addition).",
       "caveats": [

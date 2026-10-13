@@ -127,6 +127,9 @@ class Proposal(BaseModel):
     caveats: list[str] = Field(default_factory=list)       # library packs: the outcome's caveats, rendered
     citations: list[dict[str, Any]] = Field(default_factory=list)   # library packs: where the fired steps come from
     normal: bool = False          # library packs: the reached outcome is the framework's normal result (spec §5.3)
+    headline: str = ""            # library packs: a short verdict (at most 8 words)
+    action: str = ""              # library packs: a short action (at most 6 words)
+    category: str = ""            # library packs: none | info | surveillance | workup | refer | not_applicable
 
 
 class DraftValue(BaseModel):

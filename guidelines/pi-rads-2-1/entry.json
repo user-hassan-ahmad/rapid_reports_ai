@@ -1065,6 +1065,9 @@
   "outcomes": [
     {
       "id": "pirads_1_exam",
+      "headline": "PI-RADS 1 overall",
+      "action": "Do not consider biopsy",
+      "category": "none",
       "normal": true,
       "classification": "PI-RADS 1 overall for the examination: no finding above category 1; clinically significant cancer is highly unlikely.",
       "recommendation": "PI-RADS states biopsy should not be considered for category 1; it gives no management, which rests on clinical factors and local practice.",
@@ -1081,6 +1084,9 @@
     },
     {
       "id": "pirads_1",
+      "headline": "PI-RADS 1: very low",
+      "action": "Do not consider biopsy",
+      "category": "none",
       "classification": "PI-RADS 1: very low; clinically significant cancer is highly unlikely to be present.",
       "recommendation": "PI-RADS states biopsy should not be considered for category 1; it gives no management, which rests on clinical factors and local practice.",
       "caveats": [
@@ -1097,6 +1103,9 @@
     },
     {
       "id": "pirads_2",
+      "headline": "PI-RADS 2: low",
+      "action": "Do not consider biopsy",
+      "category": "none",
       "classification": "PI-RADS 2: low; clinically significant cancer is unlikely to be present.",
       "recommendation": "PI-RADS states biopsy should not be considered for category 2; it gives no management, which rests on clinical factors and local practice.",
       "caveats": [
@@ -1113,6 +1122,9 @@
     },
     {
       "id": "pirads_3",
+      "headline": "PI-RADS 3: intermediate",
+      "action": "Biopsy depends on non-MRI factors",
+      "category": "info",
       "classification": "PI-RADS 3: intermediate; the presence of clinically significant cancer is equivocal.",
       "recommendation": "Biopsy may or may not be appropriate, depending on factors other than the MRI; PI-RADS gives no management recommendation.",
       "caveats": [
@@ -1131,6 +1143,9 @@
     },
     {
       "id": "pirads_4",
+      "headline": "PI-RADS 4: high",
+      "action": "Consider biopsy",
+      "category": "workup",
       "classification": "PI-RADS 4: high; clinically significant cancer is likely to be present.",
       "recommendation": "PI-RADS states biopsy should be considered; it gives no further management, which rests on clinical factors and local practice.",
       "caveats": [
@@ -1148,6 +1163,9 @@
     },
     {
       "id": "pirads_5",
+      "headline": "PI-RADS 5: very high",
+      "action": "Consider biopsy",
+      "category": "workup",
       "classification": "PI-RADS 5: very high; clinically significant cancer is highly likely to be present.",
       "recommendation": "PI-RADS states biopsy should be considered; it gives no further management, which rests on clinical factors and local practice.",
       "caveats": [
@@ -1165,6 +1183,9 @@
     },
     {
       "id": "staging_only",
+      "headline": "No PI-RADS category: staging only",
+      "action": "Stage only; state the limitation",
+      "category": "not_applicable",
       "classification": "No PI-RADS category: DWI and DCE are both inadequate or absent, so assessment is limited to staging (extraprostatic extension).",
       "recommendation": "Limit the assessment to staging for extraprostatic extension; state the limitation in the report.",
       "caveats": [
@@ -1178,6 +1199,9 @@
     },
     {
       "id": "not_categorised",
+      "headline": "No PI-RADS category: inadequate T2W",
+      "action": "State inadequate T2W in report",
+      "category": "not_applicable",
       "classification": "Does not fit a PI-RADS v2.1 category: T2W is inadequate (X), and the source gives no assessment table without T2W.",
       "recommendation": "No category from the PI-RADS tables; state the inadequate T2W sequence in the report.",
       "caveats": [
@@ -1191,6 +1215,9 @@
     },
     {
       "id": "does_not_apply",
+      "headline": "PI-RADS not applicable after treatment",
+      "action": "Do not assign PI-RADS category",
+      "category": "not_applicable",
       "classification": "PI-RADS v2.1 does not apply: it is designed for treatment-naive glands, and its assessment criteria do not apply to suspected recurrence after treatment.",
       "recommendation": "No PI-RADS category; v2.1 criteria do not apply to suspected recurrence after treatment.",
       "locator": {

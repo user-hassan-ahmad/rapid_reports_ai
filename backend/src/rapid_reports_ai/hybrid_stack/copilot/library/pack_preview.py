@@ -470,7 +470,8 @@ def _outcome_text(e: Entry, t: engine.Trace, sources: list[dict]) -> Proposal | 
         logger.info("[library.preview] %s: outcome %s cites an input still unknown; no proposal", e.key, o.id)
         return None
     return Proposal(classification=f"{e.display} · {cls}", line=f"{e.display}: {cls}.", recommendation=rec,
-                    caveats=caveats, citations=_fired(e, t, sources), normal=o.normal)
+                    caveats=caveats, citations=_fired(e, t, sources), normal=o.normal, headline=o.headline or "",
+                    action=o.action or "", category=o.category or "")
 
 
 @dataclass

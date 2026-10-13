@@ -834,6 +834,9 @@
   "outcomes": [
     {
       "id": "refer_gynae_oncology",
+      "headline": "Malignant by IOTA simple rules",
+      "action": "Refer to gynaecological oncology",
+      "category": "refer",
       "classification": "Ovarian mass with IOTA M-features and no B-features: malignant by the IOTA simple rules.",
       "recommendation": "Referral to a gynaecological oncology service.",
       "caveats": [
@@ -848,6 +851,9 @@
     },
     {
       "id": "iota_both",
+      "headline": "IOTA M- and B-features: unclassifiable",
+      "action": "Refer to gynaecological oncology",
+      "category": "refer",
       "classification": "Ovarian mass with both IOTA M-features and B-features: the simple rules cannot classify it.",
       "recommendation": "Referral to a gynaecological oncology service (any M-feature); further assessment by a specialist in gynaecological ultrasound is also appropriate.",
       "caveats": [
@@ -862,6 +868,9 @@
     },
     {
       "id": "iota_unclassified",
+      "headline": "No IOTA simple-rule feature",
+      "action": "Specialist gynaecological ultrasound",
+      "category": "workup",
       "classification": "No IOTA simple-rule feature applies: the ovarian mass cannot be classified by the simple rules.",
       "recommendation": "Further investigation by a specialist in gynaecological ultrasound is appropriate.",
       "caveats": [
@@ -876,6 +885,9 @@
     },
     {
       "id": "simple_lt50",
+      "headline": "Simple cyst under 50 mm",
+      "action": "No follow-up if asymptomatic",
+      "category": "none",
       "classification": "Simple ovarian cyst under 50 mm in a premenopausal woman: very likely physiological.",
       "recommendation": "If asymptomatic, generally no follow-up required (such cysts almost always resolve within 3 menstrual cycles); if symptomatic, clinical assessment is advised.",
       "caveats": [
@@ -892,6 +904,9 @@
     },
     {
       "id": "simple_50_70",
+      "headline": "Simple cyst 50–70 mm",
+      "action": "Yearly ultrasound if asymptomatic",
+      "category": "surveillance",
       "classification": "Simple ovarian cyst of 50-70 mm in a premenopausal woman.",
       "recommendation": "If asymptomatic, yearly ultrasound follow-up; if symptomatic, clinical assessment is advised.",
       "caveats": [
@@ -907,6 +922,9 @@
     },
     {
       "id": "simple_gt70",
+      "headline": "Simple cyst over 70 mm",
+      "action": "Consider MRI or surgery",
+      "category": "workup",
       "classification": "Simple ovarian cyst over 70 mm in a premenopausal woman.",
       "recommendation": "If asymptomatic, consider further imaging (MRI) or surgical intervention; if symptomatic, clinical assessment is advised.",
       "caveats": [
@@ -922,6 +940,9 @@
     },
     {
       "id": "benign_not_simple",
+      "headline": "Benign by IOTA simple rules",
+      "action": "No gynae-oncology referral indicated",
+      "category": "none",
       "classification": "Ovarian mass with IOTA B-features and no M-features, not a simple cyst: benign by the IOTA simple rules.",
       "recommendation": "Gynaecological oncology referral is not indicated on ultrasound grounds; any management needed sits within benign gynaecological care.",
       "caveats": [
@@ -939,6 +960,9 @@
     },
     {
       "id": "does_not_apply",
+      "headline": "Outside RCOG GTG 62",
+      "action": "Manage per clinical context",
+      "category": "not_applicable",
       "classification": "RCOG GTG 62 does not apply: it does not specifically address pregnancy or acute presentations, and excludes ongoing management of known borderline or malignant ovarian tumours.",
       "recommendation": "Manage per the clinical context.",
       "locator": {

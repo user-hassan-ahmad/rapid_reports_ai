@@ -21,7 +21,23 @@ def check(entry: Entry, manifest: Manifest, cases: Cases | None) -> list[str]:
         return p                      # the later gates assume every reference resolves
     p += _bands(entry) + _locators(entry, manifest) + _eligibility(entry)
     if entry.tier == 1:
-        p += _formulas(entry) + _enumerate(entry) + _golden(entry, cases)
+        p += _display(entry) + _formulas(entry) + _enumerate(entry) + _golden(entry, cases)
+    return p
+
+
+def _display(e: Entry) -> list[str]:
+    """Every tier 1 outcome carries its display fields: a headline of at most HEADLINE_MAX words, an action of at most
+    ACTION_MAX words and a category (the schema checks the category's value)."""
+    from .schema import ACTION_MAX, HEADLINE_MAX
+    p = []
+    for o in e.outcomes:
+        if not o.headline or not o.action or o.category is None:
+            p.append(f"outcome {o.id}: needs headline, action and category")
+            continue
+        if len(o.headline.split()) > HEADLINE_MAX:
+            p.append(f"outcome {o.id}: headline over {HEADLINE_MAX} words")
+        if len(o.action.split()) > ACTION_MAX:
+            p.append(f"outcome {o.id}: action over {ACTION_MAX} words")
     return p
 
 

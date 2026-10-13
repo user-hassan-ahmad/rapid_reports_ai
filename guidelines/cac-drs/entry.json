@@ -249,6 +249,9 @@
   "outcomes": [
     {
       "id": "cac_drs_0",
+      "headline": "CAC-DRS 0: very low risk",
+      "action": "Discuss preventive therapy",
+      "category": "info",
       "normal": true,
       "classification": "CAC-DRS 0: Agatston 0 / visual none; very low risk.",
       "recommendation": "Document the scoring system (A for Agatston, V for visual). CAC informs a clinician-patient discussion of preventive therapy.",
@@ -264,6 +267,9 @@
     },
     {
       "id": "cac_drs_1",
+      "headline": "CAC-DRS 1: mildly increased risk",
+      "action": "Discuss preventive therapy",
+      "category": "info",
       "classification": "CAC-DRS 1: Agatston 1-99 / visual mild; mildly increased risk.",
       "recommendation": "Document the scoring system (A for Agatston, V for visual) and the number of vessels with calcium (N). CAC informs a clinician-patient discussion of preventive therapy.",
       "caveats": [
@@ -278,6 +284,9 @@
     },
     {
       "id": "cac_drs_2",
+      "headline": "CAC-DRS 2: moderately increased risk",
+      "action": "Discuss preventive therapy",
+      "category": "info",
       "classification": "CAC-DRS 2: Agatston 100-299 / visual moderate; moderately increased risk.",
       "recommendation": "Document the scoring system (A for Agatston, V for visual) and the number of vessels with calcium (N). CAC informs a clinician-patient discussion of preventive therapy.",
       "caveats": [
@@ -292,6 +301,9 @@
     },
     {
       "id": "cac_drs_3",
+      "headline": "CAC-DRS 3: moderately to severely increased risk",
+      "action": "Discuss preventive therapy",
+      "category": "info",
       "classification": "CAC-DRS 3: Agatston 300 or above (printed '> 300') / visual severe; moderately to severely increased risk.",
       "recommendation": "Document the scoring system (A for Agatston, V for visual) and the number of vessels with calcium (N). CAC informs a clinician-patient discussion of preventive therapy.",
       "caveats": [

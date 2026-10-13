@@ -10,6 +10,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 State = Literal["present", "absent", "unknown", "not_assessable", "not_applicable"]
 OptState = Literal["absent", "not_assessable"]      # states an input may allow besides present and unknown
 Role = Literal["primary", "amendment", "explanatory"]
+# none: the source says no follow-up (benign, normal, discharge); info: the source states no management (neutral);
+# surveillance: imaging follow-up; workup: further tests; refer: a specialist or admission; not_applicable: outside it
+OutcomeCategory = Literal["none", "info", "surveillance", "workup", "refer", "not_applicable"]
+HEADLINE_MAX = 8
+ACTION_MAX = 6
 Scope = Literal["lesion", "patient"]                # lesion: the card's own finding; patient: history + dictation
 InputRole = Literal["clinical", "eligibility"]      # eligibility: the guideline's own scope, asked first (spec §3.6)
 Fact = Literal["known_primary_cancer", "immunocompromised", "screening_programme", "age_years", "sex"]
@@ -273,6 +278,10 @@ class Outcome(_M):
     caveats: list[str] = Field(default_factory=list)
     locator: Locator | None = None
     normal: bool = False              # the framework's normal result (e.g. CAD-RADS 0): a quiet card (spec §5.3)
+    # display (Hassan 2026-10-13), from the outcome's own text: a short verdict, a short action, and its kind
+    headline: str | None = None       # at most HEADLINE_MAX words
+    action: str | None = None         # at most ACTION_MAX words
+    category: OutcomeCategory | None = None
 
 
 class RefText(_M):

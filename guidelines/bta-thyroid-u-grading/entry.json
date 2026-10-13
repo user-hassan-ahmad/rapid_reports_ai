@@ -64,6 +64,9 @@
   "outcomes": [
     {
       "id": "u1_normal",
+      "headline": "U1: normal thyroid appearance",
+      "action": "No routine FNAC or follow-up",
+      "category": "none",
       "classification": "U1: normal thyroid appearance.",
       "recommendation": "Reassuring; FNAC not required unless the patient is at statistically high clinical risk of malignancy. No routine ultrasound follow-up.",
       "caveats": [
@@ -79,6 +82,9 @@
     },
     {
       "id": "u2_benign",
+      "headline": "U2: benign appearance",
+      "action": "No routine FNAC or follow-up",
+      "category": "none",
       "classification": "U2: benign appearance.",
       "recommendation": "Reassuring; FNAC not required unless the patient is at statistically high clinical risk of malignancy. No routine ultrasound follow-up.",
       "caveats": [
@@ -94,6 +100,9 @@
     },
     {
       "id": "u3_indeterminate",
+      "headline": "U3: indeterminate appearance",
+      "action": "Ultrasound-guided FNAC",
+      "category": "workup",
       "classification": "U3: indeterminate or equivocal appearance.",
       "recommendation": "Ultrasound-guided FNAC.",
       "caveats": [
@@ -109,6 +118,9 @@
     },
     {
       "id": "u4_suspicious",
+      "headline": "U4: suspicious appearance",
+      "action": "US-guided FNAC; assess neck nodes",
+      "category": "workup",
       "classification": "U4: suspicious appearance.",
       "recommendation": "Ultrasound-guided FNAC. Assess the rest of the neck for nodal metastases.",
       "caveats": [
@@ -125,6 +137,9 @@
     },
     {
       "id": "u5_malignant",
+      "headline": "U5: malignant appearance",
+      "action": "US-guided FNAC; assess neck nodes",
+      "category": "workup",
       "classification": "U5: malignant appearance.",
       "recommendation": "Ultrasound-guided FNAC. Assess the rest of the neck for nodal metastases.",
       "caveats": [

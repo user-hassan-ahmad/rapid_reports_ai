@@ -1548,6 +1548,9 @@
  "outcomes": [
   {
    "id": "stable_0",
+   "headline": "CAD-RADS 0: no CAD",
+   "action": "No further cardiac investigation",
+   "category": "none",
    "normal": true,
    "classification": "CAD-RADS 0: no plaque or stenosis (0%); absence of CAD.",
    "recommendation": "No further cardiac investigation. Reassurance; consider non-atherosclerotic causes of symptoms.",
@@ -1560,6 +1563,9 @@
   },
   {
    "id": "acute_0",
+   "headline": "CAD-RADS 0: ACS highly unlikely",
+   "action": "No further ACS evaluation",
+   "category": "none",
    "normal": true,
    "classification": "CAD-RADS 0: no plaque or stenosis (0%); absence of CAD; ACS highly unlikely.",
    "recommendation": "No further evaluation of ACS is required; reassurance. If troponin is positive, consider other sources of raised troponin.",
@@ -1572,6 +1578,9 @@
   },
   {
    "id": "stable_n",
+   "headline": "CAD-RADS N: non-diagnostic",
+   "action": "Consider additional or alternative evaluation",
+   "category": "workup",
    "classification": "CAD-RADS N: non-diagnostic study; obstructive CAD cannot be excluded.",
    "recommendation": "Additional or alternative evaluation may be needed.",
    "caveats": [
@@ -1585,6 +1594,9 @@
   },
   {
    "id": "acute_n",
+   "headline": "CAD-RADS N: ACS cannot be excluded",
+   "action": "Further evaluation for ACS",
+   "category": "workup",
    "classification": "CAD-RADS N: non-diagnostic study; obstructive CAD cannot be excluded; ACS cannot be excluded.",
    "recommendation": "Additional or alternative evaluation for ACS is needed.",
    "caveats": [
@@ -1598,6 +1610,9 @@
   },
   {
    "id": "stable_1_p1",
+   "headline": "CAD-RADS 1/P1",
+   "action": "No further cardiac investigation",
+   "category": "none",
    "classification": "CAD-RADS 1: minimal stenosis (1-24%) or plaque without stenosis; minimal non-obstructive CAD, P1 plaque burden.",
    "recommendation": "No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; consider risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1611,6 +1626,9 @@
   },
   {
    "id": "stable_1_p2",
+   "headline": "CAD-RADS 1/P2",
+   "action": "No further cardiac investigation",
+   "category": "none",
    "classification": "CAD-RADS 1: minimal stenosis (1-24%) or plaque without stenosis; minimal non-obstructive CAD, P2 plaque burden.",
    "recommendation": "No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1624,6 +1642,9 @@
   },
   {
    "id": "stable_1_p34",
+   "headline": "CAD-RADS 1/P3-P4",
+   "action": "No further cardiac investigation",
+   "category": "none",
    "classification": "CAD-RADS 1: minimal stenosis (1-24%) or plaque without stenosis; minimal non-obstructive CAD, P3-P4 plaque burden.",
    "recommendation": "No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; aggressive risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1637,6 +1658,9 @@
   },
   {
    "id": "stable_2_p12",
+   "headline": "CAD-RADS 2/P1-P2",
+   "action": "No further cardiac investigation",
+   "category": "none",
    "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive CAD, P1-P2 plaque burden.",
    "recommendation": "No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1650,6 +1674,9 @@
   },
   {
    "id": "stable_2_p34",
+   "headline": "CAD-RADS 2/P3-P4",
+   "action": "No further cardiac investigation",
+   "category": "none",
    "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive CAD, P3-P4 plaque burden.",
    "recommendation": "No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; aggressive risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1663,6 +1690,9 @@
   },
   {
    "id": "acute_1_p12",
+   "headline": "CAD-RADS 1/P1-P2: ACS unlikely",
+   "action": "No further ACS evaluation",
+   "category": "none",
    "classification": "CAD-RADS 1: minimal stenosis (1-24%) or plaque without stenosis; minimal non-obstructive CAD, P1-P2 plaque burden; ACS unlikely.",
    "recommendation": "No further evaluation of ACS is required. Outpatient follow-up for risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1678,6 +1708,9 @@
   },
   {
    "id": "acute_1_p34",
+   "headline": "CAD-RADS 1/P3-P4: ACS unlikely",
+   "action": "No further ACS evaluation",
+   "category": "none",
    "classification": "CAD-RADS 1: minimal stenosis (1-24%) or plaque without stenosis; minimal non-obstructive CAD, P3-P4 plaque burden; ACS unlikely.",
    "recommendation": "No further evaluation of ACS is required. Outpatient follow-up for aggressive risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1693,6 +1726,9 @@
   },
   {
    "id": "acute_2_p12",
+   "headline": "CAD-RADS 2/P1-P2: ACS less likely",
+   "action": "No further ACS evaluation",
+   "category": "none",
    "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive CAD, P1-P2 plaque burden; ACS less likely.",
    "recommendation": "No further evaluation of ACS is required; if suspicion is high, troponin positive or high-risk plaque, consider admission with cardiology consultation. Outpatient risk factor follow-up.",
    "caveats": [
@@ -1709,6 +1745,9 @@
   },
   {
    "id": "acute_2_p34",
+   "headline": "CAD-RADS 2/P3-P4: ACS less likely",
+   "action": "No further ACS evaluation",
+   "category": "none",
    "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive CAD, P3-P4 plaque burden; ACS less likely.",
    "recommendation": "No further evaluation of ACS is required; if suspicion is high, troponin positive or high-risk plaque, consider admission with cardiology consultation. Outpatient aggressive risk factor follow-up.",
    "caveats": [
@@ -1725,6 +1764,9 @@
   },
   {
    "id": "stable_2_p12_i",
+   "headline": "CAD-RADS 2/P1-P2/I",
+   "action": "No further cardiac investigation",
+   "category": "none",
    "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive CAD, P1-P2 plaque burden; I modifier reported.",
    "recommendation": "No source management for an I result in CAD-RADS 2; the CAD-RADS 2 line applies: no further cardiac investigation; risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1740,6 +1782,9 @@
   },
   {
    "id": "stable_2_p34_i",
+   "headline": "CAD-RADS 2/P3-P4/I",
+   "action": "No further cardiac investigation",
+   "category": "none",
    "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive CAD, P3-P4 plaque burden; I modifier reported.",
    "recommendation": "No source management for an I result in CAD-RADS 2; the CAD-RADS 2 line applies: no further cardiac investigation; aggressive risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1755,6 +1800,9 @@
   },
   {
    "id": "acute_2_p12_i",
+   "headline": "CAD-RADS 2/P1-P2/I: ACS less likely",
+   "action": "No further ACS evaluation",
+   "category": "none",
    "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive CAD, P1-P2 plaque burden; ACS less likely; I modifier reported.",
    "recommendation": "No source management for an I result in CAD-RADS 2; the CAD-RADS 2 line applies: no further ACS evaluation unless suspicion is high, troponin positive or high-risk plaque (then consider admission); outpatient risk factor follow-up.",
    "caveats": [
@@ -1773,6 +1821,9 @@
   },
   {
    "id": "acute_2_p34_i",
+   "headline": "CAD-RADS 2/P3-P4/I: ACS less likely",
+   "action": "No further ACS evaluation",
+   "category": "none",
    "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive CAD, P3-P4 plaque burden; ACS less likely; I modifier reported.",
    "recommendation": "No source management for an I result in CAD-RADS 2; the CAD-RADS 2 line applies: no further ACS evaluation unless suspicion is high, troponin positive or high-risk plaque (then consider admission); outpatient aggressive risk factor follow-up.",
    "caveats": [
@@ -1791,6 +1842,9 @@
   },
   {
    "id": "stable_3",
+   "headline": "CAD-RADS 3: moderate stenosis",
+   "action": "Consider functional assessment",
+   "category": "workup",
    "classification": "CAD-RADS 3: moderate stenosis (50-69%).",
    "recommendation": "Consider functional assessment. Aggressive risk factor modification and preventive pharmacotherapy; anti-anginal therapy should be considered per guideline-directed care.",
    "caveats": [
@@ -1808,6 +1862,9 @@
   },
   {
    "id": "stable_3_ipos",
+   "headline": "CAD-RADS 3/I+",
+   "action": "Consider ICA",
+   "category": "workup",
    "classification": "CAD-RADS 3: moderate stenosis (50-69%); I+.",
    "recommendation": "Consider ICA, especially if frequent symptoms persist after guideline-directed medical therapy. Aggressive risk factor modification and preventive pharmacotherapy; anti-anginal therapy should be considered per guideline-directed care.",
    "caveats": [
@@ -1823,6 +1880,9 @@
   },
   {
    "id": "stable_3_ineg_defer",
+   "headline": "CAD-RADS 3/I-",
+   "action": "Defer ICA; optimise medical therapy",
+   "category": "none",
    "classification": "CAD-RADS 3: moderate stenosis (50-69%); I-; CT-FFR >0.80 or stress CTP without a perfusion defect.",
    "recommendation": "Deferral of ICA would be appropriate; optimise medical therapy. Aggressive risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1839,6 +1899,9 @@
   },
   {
    "id": "stable_3_ineg_infarct",
+   "headline": "CAD-RADS 3/I-: fixed infarct defect",
+   "action": "Consider functional assessment",
+   "category": "workup",
    "classification": "CAD-RADS 3: moderate stenosis (50-69%); I-; CTP fixed perfusion defect from prior infarction.",
    "recommendation": "No source ICA deferral advice for I- from a fixed infarct; CAD-RADS 3 line applies: consider functional assessment; aggressive risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1857,6 +1920,9 @@
   },
   {
    "id": "stable_3_iborder_ffr",
+   "headline": "CAD-RADS 3/I+/-: borderline CT-FFR",
+   "action": "Consider ICA",
+   "category": "workup",
    "classification": "CAD-RADS 3: moderate stenosis (50-69%); I+/-; CT-FFR 0.76-0.80.",
    "recommendation": "Consider ICA according to symptoms, lesion location and trans-lesional CT-FFR gradient, if likely to benefit from revascularisation. Aggressive risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1872,6 +1938,9 @@
   },
   {
    "id": "stable_3_iborder_ctp",
+   "headline": "CAD-RADS 3/I+/-: borderline stress CTP",
+   "action": "Consider functional assessment",
+   "category": "workup",
    "classification": "CAD-RADS 3: moderate stenosis (50-69%); I+/-; stress CTP borderline or inconclusive.",
    "recommendation": "No source management for a borderline CTP; CAD-RADS 3 line applies: consider functional assessment; aggressive risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1889,6 +1958,9 @@
   },
   {
    "id": "stable_4a",
+   "headline": "CAD-RADS 4A: severe stenosis",
+   "action": "Consider ICA or functional assessment",
+   "category": "workup",
    "classification": "CAD-RADS 4A: severe stenosis (70-99%).",
    "recommendation": "Consider ICA or functional assessment. Aggressive risk factor modification and preventive pharmacotherapy; anti-anginal therapy and revascularisation options should be considered per guideline-directed care.",
    "caveats": [
@@ -1907,6 +1979,9 @@
   },
   {
    "id": "stable_4a_ipos",
+   "headline": "CAD-RADS 4A/I+",
+   "action": "Consider ICA",
+   "category": "workup",
    "classification": "CAD-RADS 4A: severe stenosis (70-99%); I+.",
    "recommendation": "Consider ICA; ICA may be favoured with I+ in a candidate for revascularisation. Aggressive risk factor modification and preventive pharmacotherapy; anti-anginal therapy and revascularisation options should be considered per guideline-directed care.",
    "caveats": [
@@ -1922,6 +1997,9 @@
   },
   {
    "id": "stable_4a_ineg_defer",
+   "headline": "CAD-RADS 4A/I-",
+   "action": "Defer ICA; optimise medical therapy",
+   "category": "none",
    "classification": "CAD-RADS 4A: severe stenosis (70-99%); I-; CT-FFR >0.80 or stress CTP without a perfusion defect.",
    "recommendation": "Deferral of ICA would be appropriate; optimise medical therapy. Aggressive risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1938,6 +2016,9 @@
   },
   {
    "id": "stable_4a_ineg_infarct",
+   "headline": "CAD-RADS 4A/I-: fixed infarct defect",
+   "action": "Consider ICA or functional assessment",
+   "category": "workup",
    "classification": "CAD-RADS 4A: severe stenosis (70-99%); I-; CTP fixed perfusion defect from prior infarction.",
    "recommendation": "No source ICA deferral advice for I- from a fixed infarct; CAD-RADS 4A line applies: consider ICA or functional assessment; aggressive risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1957,6 +2038,9 @@
   },
   {
    "id": "stable_4a_iborder_ffr",
+   "headline": "CAD-RADS 4A/I+/-: borderline CT-FFR",
+   "action": "Consider ICA",
+   "category": "workup",
    "classification": "CAD-RADS 4A: severe stenosis (70-99%); I+/-; CT-FFR 0.76-0.80.",
    "recommendation": "Consider ICA according to symptoms, lesion location and trans-lesional CT-FFR gradient, if likely to benefit from revascularisation. Aggressive risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1972,6 +2056,9 @@
   },
   {
    "id": "stable_4a_iborder_ctp",
+   "headline": "CAD-RADS 4A/I+/-: borderline stress CTP",
+   "action": "Consider ICA or functional assessment",
+   "category": "workup",
    "classification": "CAD-RADS 4A: severe stenosis (70-99%); I+/-; stress CTP borderline or inconclusive.",
    "recommendation": "No source management for a borderline CTP; CAD-RADS 4A line applies: consider ICA or functional assessment; aggressive risk factor modification and preventive pharmacotherapy.",
    "caveats": [
@@ -1990,6 +2077,9 @@
   },
   {
    "id": "acute_3",
+   "headline": "CAD-RADS 3: ACS possible",
+   "action": "Consider admission, cardiology consultation",
+   "category": "refer",
    "classification": "CAD-RADS 3: moderate stenosis (50-69%); ACS possible.",
    "recommendation": "Consider hospital admission with cardiology consultation and functional assessment. Aggressive preventive pharmacotherapy; anti-anginal therapy should be considered per guideline-directed care.",
    "caveats": [
@@ -2006,6 +2096,9 @@
   },
   {
    "id": "acute_3_ipos",
+   "headline": "CAD-RADS 3/I+: ACS possible",
+   "action": "Consider admission; consider ICA",
+   "category": "refer",
    "classification": "CAD-RADS 3: moderate stenosis (50-69%); ACS possible; I+.",
    "recommendation": "Consider hospital admission with cardiology consultation; consider ICA. Aggressive preventive pharmacotherapy; anti-anginal therapy should be considered per guideline-directed care.",
    "caveats": [
@@ -2021,6 +2114,9 @@
   },
   {
    "id": "acute_3_ineg",
+   "headline": "CAD-RADS 3/I-: ACS possible",
+   "action": "Consider admission, cardiology consultation",
+   "category": "refer",
    "classification": "CAD-RADS 3: moderate stenosis (50-69%); ACS possible; I-.",
    "recommendation": "Consider hospital admission with cardiology consultation and functional assessment. Aggressive preventive pharmacotherapy; anti-anginal therapy should be considered per guideline-directed care.",
    "caveats": [
@@ -2039,6 +2135,9 @@
   },
   {
    "id": "acute_3_iborder_ffr",
+   "headline": "CAD-RADS 3/I+/-: ACS possible",
+   "action": "Consider admission; consider ICA",
+   "category": "refer",
    "classification": "CAD-RADS 3: moderate stenosis (50-69%); ACS possible; I+/-; CT-FFR 0.76-0.80.",
    "recommendation": "Consider hospital admission with cardiology consultation. Consider ICA according to symptoms, lesion location and trans-lesional CT-FFR gradient, if likely to benefit from revascularisation. Aggressive preventive pharmacotherapy.",
    "caveats": [
@@ -2054,6 +2153,9 @@
   },
   {
    "id": "acute_3_iborder_ctp",
+   "headline": "CAD-RADS 3/I+/-: ACS possible",
+   "action": "Consider admission, cardiology consultation",
+   "category": "refer",
    "classification": "CAD-RADS 3: moderate stenosis (50-69%); ACS possible; I+/-; stress CTP borderline or inconclusive.",
    "recommendation": "No source management for a borderline CTP; CAD-RADS 3 line applies: consider admission with cardiology consultation and functional assessment; aggressive preventive pharmacotherapy.",
    "caveats": [
@@ -2070,6 +2172,9 @@
   },
   {
    "id": "acute_4a",
+   "headline": "CAD-RADS 4A: ACS likely",
+   "action": "Admit with cardiology consultation",
+   "category": "refer",
    "classification": "CAD-RADS 4A: severe stenosis (70-99%); ACS likely.",
    "recommendation": "Hospital admission with cardiology consultation; consider ICA or functional assessment. Aggressive preventive pharmacotherapy; anti-anginal therapy and revascularisation options should be considered per guideline-directed care.",
    "caveats": [
@@ -2087,6 +2192,9 @@
   },
   {
    "id": "acute_4a_ipos",
+   "headline": "CAD-RADS 4A/I+: ACS likely",
+   "action": "Admit with cardiology consultation",
+   "category": "refer",
    "classification": "CAD-RADS 4A: severe stenosis (70-99%); ACS likely; I+.",
    "recommendation": "Hospital admission with cardiology consultation; consider ICA, which may be favoured with I+ in a candidate for revascularisation. Aggressive preventive pharmacotherapy; anti-anginal therapy and revascularisation options should be considered per guideline-directed care.",
    "caveats": [
@@ -2102,6 +2210,9 @@
   },
   {
    "id": "acute_4a_ineg",
+   "headline": "CAD-RADS 4A/I-: ACS likely",
+   "action": "Admit with cardiology consultation",
+   "category": "refer",
    "classification": "CAD-RADS 4A: severe stenosis (70-99%); ACS likely; I-.",
    "recommendation": "Hospital admission with cardiology consultation; consider ICA or functional assessment. Aggressive preventive pharmacotherapy; anti-anginal therapy and revascularisation options should be considered per guideline-directed care.",
    "caveats": [
@@ -2121,6 +2232,9 @@
   },
   {
    "id": "acute_4a_iborder_ffr",
+   "headline": "CAD-RADS 4A/I+/-: ACS likely",
+   "action": "Admit with cardiology consultation",
+   "category": "refer",
    "classification": "CAD-RADS 4A: severe stenosis (70-99%); ACS likely; I+/-; CT-FFR 0.76-0.80.",
    "recommendation": "Hospital admission with cardiology consultation. Consider ICA according to symptoms, lesion location and trans-lesional CT-FFR gradient, if likely to benefit from revascularisation. Aggressive preventive pharmacotherapy.",
    "caveats": [
@@ -2136,6 +2250,9 @@
   },
   {
    "id": "acute_4a_iborder_ctp",
+   "headline": "CAD-RADS 4A/I+/-: ACS likely",
+   "action": "Admit with cardiology consultation",
+   "category": "refer",
    "classification": "CAD-RADS 4A: severe stenosis (70-99%); ACS likely; I+/-; stress CTP borderline or inconclusive.",
    "recommendation": "No source management for a borderline CTP; CAD-RADS 4A line applies: admission with cardiology consultation; consider ICA or functional assessment; aggressive preventive pharmacotherapy.",
    "caveats": [
@@ -2153,6 +2270,9 @@
   },
   {
    "id": "stable_4b",
+   "headline": "CAD-RADS 4B",
+   "action": "ICA recommended",
+   "category": "workup",
    "classification": "CAD-RADS 4B: left main stenosis ≥50% or three-vessel obstructive (≥70%) disease.",
    "recommendation": "ICA is recommended. Aggressive risk factor modification and preventive pharmacotherapy; anti-anginal therapy and revascularisation options should be considered per guideline-directed care.",
    "caveats": [
@@ -2167,6 +2287,9 @@
   },
   {
    "id": "stable_5",
+   "headline": "CAD-RADS 5: total or sub-total occlusion",
+   "action": "Consider ICA, functional or viability assessment",
+   "category": "workup",
    "classification": "CAD-RADS 5: total coronary occlusion (100%) or sub-total occlusion.",
    "recommendation": "Consider ICA, functional and/or viability assessment. Aggressive risk factor modification and preventive pharmacotherapy; anti-anginal therapy and revascularisation options should be considered per guideline-directed care.",
    "caveats": [
@@ -2182,6 +2305,9 @@
   },
   {
    "id": "acute_4b",
+   "headline": "CAD-RADS 4B: ACS likely",
+   "action": "Admit; ICA recommended",
+   "category": "refer",
    "classification": "CAD-RADS 4B: left main stenosis ≥50% or three-vessel obstructive (≥70%) disease; ACS likely.",
    "recommendation": "Hospital admission with cardiology consultation; ICA is recommended. Aggressive preventive pharmacotherapy; anti-anginal therapy and revascularisation options should be considered per guideline-directed care.",
    "caveats": [
@@ -2196,6 +2322,9 @@
   },
   {
    "id": "acute_5",
+   "headline": "CAD-RADS 5: ACS very likely",
+   "action": "Admit; expedited ICA if acute occlusion",
+   "category": "refer",
    "classification": "CAD-RADS 5: total coronary occlusion (100%) or sub-total occlusion; ACS very likely.",
    "recommendation": "Hospital admission with cardiology consultation; expedited ICA and revascularisation if acute occlusion is suspected. Aggressive preventive pharmacotherapy.",
    "caveats": [
@@ -2212,6 +2341,9 @@
   },
   {
    "id": "stable_1_e",
+   "headline": "CAD-RADS 1/E: non-atherosclerotic cause",
+   "action": "No management stated",
+   "category": "info",
    "classification": "CAD-RADS 1: minimal stenosis (1-24%) or plaque without stenosis; minimal non-obstructive CAD; non-atherosclerotic cause (modifier E).",
    "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
    "caveats": [
@@ -2227,6 +2359,9 @@
   },
   {
    "id": "stable_2_e",
+   "headline": "CAD-RADS 2/E: non-atherosclerotic cause",
+   "action": "No management stated",
+   "category": "info",
    "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive CAD; non-atherosclerotic cause (modifier E).",
    "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
    "caveats": [
@@ -2242,6 +2377,9 @@
   },
   {
    "id": "stable_3_e",
+   "headline": "CAD-RADS 3/E: non-atherosclerotic cause",
+   "action": "No management stated",
+   "category": "info",
    "classification": "CAD-RADS 3: moderate stenosis (50-69%); non-atherosclerotic cause (modifier E).",
    "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
    "caveats": [
@@ -2257,6 +2395,9 @@
   },
   {
    "id": "stable_4a_e",
+   "headline": "CAD-RADS 4A/E: non-atherosclerotic cause",
+   "action": "No management stated",
+   "category": "info",
    "classification": "CAD-RADS 4A: severe stenosis (70-99%); non-atherosclerotic cause (modifier E).",
    "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
    "caveats": [
@@ -2272,6 +2413,9 @@
   },
   {
    "id": "stable_4b_e",
+   "headline": "CAD-RADS 4B/E: non-atherosclerotic cause",
+   "action": "No management stated",
+   "category": "info",
    "classification": "CAD-RADS 4B: left main stenosis ≥50% or three-vessel obstructive (≥70%) disease; non-atherosclerotic cause (modifier E).",
    "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
    "caveats": [
@@ -2287,6 +2431,9 @@
   },
   {
    "id": "stable_5_e",
+   "headline": "CAD-RADS 5/E: non-atherosclerotic cause",
+   "action": "No management stated",
+   "category": "info",
    "classification": "CAD-RADS 5: total coronary occlusion (100%) or sub-total occlusion; non-atherosclerotic cause (modifier E).",
    "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
    "caveats": [
@@ -2302,6 +2449,9 @@
   },
   {
    "id": "acute_1_e",
+   "headline": "CAD-RADS 1/E: non-atherosclerotic cause",
+   "action": "No management stated",
+   "category": "info",
    "classification": "CAD-RADS 1: minimal stenosis (1-24%) or plaque without stenosis; minimal non-obstructive CAD; ACS unlikely; non-atherosclerotic cause (modifier E).",
    "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
    "caveats": [
@@ -2317,6 +2467,9 @@
   },
   {
    "id": "acute_2_e",
+   "headline": "CAD-RADS 2/E: non-atherosclerotic cause",
+   "action": "No management stated",
+   "category": "info",
    "classification": "CAD-RADS 2: mild stenosis (25-49%); mild non-obstructive CAD; ACS less likely; non-atherosclerotic cause (modifier E).",
    "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
    "caveats": [
@@ -2332,6 +2485,9 @@
   },
   {
    "id": "acute_3_e",
+   "headline": "CAD-RADS 3/E: non-atherosclerotic cause",
+   "action": "No management stated",
+   "category": "info",
    "classification": "CAD-RADS 3: moderate stenosis (50-69%); ACS possible; non-atherosclerotic cause (modifier E).",
    "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
    "caveats": [
@@ -2347,6 +2503,9 @@
   },
   {
    "id": "acute_4a_e",
+   "headline": "CAD-RADS 4A/E: non-atherosclerotic cause",
+   "action": "No management stated",
+   "category": "info",
    "classification": "CAD-RADS 4A: severe stenosis (70-99%); ACS likely; non-atherosclerotic cause (modifier E).",
    "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
    "caveats": [
@@ -2362,6 +2521,9 @@
   },
   {
    "id": "acute_4b_e",
+   "headline": "CAD-RADS 4B/E: non-atherosclerotic cause",
+   "action": "No management stated",
+   "category": "info",
    "classification": "CAD-RADS 4B: left main stenosis ≥50% or three-vessel obstructive (≥70%) disease; ACS likely; non-atherosclerotic cause (modifier E).",
    "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
    "caveats": [
@@ -2377,6 +2539,9 @@
   },
   {
    "id": "acute_5_e",
+   "headline": "CAD-RADS 5/E: non-atherosclerotic cause",
+   "action": "No management stated",
+   "category": "info",
    "classification": "CAD-RADS 5: total coronary occlusion (100%) or sub-total occlusion; ACS very likely; non-atherosclerotic cause (modifier E).",
    "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality.",
    "caveats": [
@@ -2392,6 +2557,9 @@
   },
   {
    "id": "management_not_defined",
+   "headline": "CAD-RADS: indication outside management tables",
+   "action": "Manage on clinical context",
+   "category": "info",
    "classification": "CAD-RADS category stated, but the CAD-RADS 2.0 management tables cover stable and acute chest pain only.",
    "recommendation": "No CAD-RADS 2.0 management suggestion for this indication; manage on clinical context.",
    "caveats": [

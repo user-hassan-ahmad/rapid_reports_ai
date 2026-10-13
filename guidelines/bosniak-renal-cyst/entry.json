@@ -1729,7 +1729,10 @@
         "page": null,
         "section": "General Points",
         "table": "4"
-      }
+      },
+      "headline": "Bosniak I: benign simple cyst",
+      "action": "No follow-up needed",
+      "category": "none"
     },
     {
       "id": "class_ii",
@@ -1745,7 +1748,10 @@
         "page": null,
         "section": "General Points",
         "table": "4"
-      }
+      },
+      "headline": "Bosniak II: benign or likely benign",
+      "action": "No follow-up needed",
+      "category": "none"
     },
     {
       "id": "class_iif",
@@ -1760,7 +1766,10 @@
         "page": null,
         "section": "General Points",
         "table": "4"
-      }
+      },
+      "headline": "Bosniak IIF",
+      "action": "Imaging at 6 and 12 months",
+      "category": "surveillance"
     },
     {
       "id": "class_iii",
@@ -1776,7 +1785,10 @@
         "page": null,
         "section": "General Points",
         "table": "4"
-      }
+      },
+      "headline": "Bosniak III: intermediate malignancy probability",
+      "action": "Consider urology referral",
+      "category": "refer"
     },
     {
       "id": "class_iv",
@@ -1791,7 +1803,10 @@
         "page": null,
         "section": "General Points",
         "table": "4"
-      }
+      },
+      "headline": "Bosniak IV: most are malignant",
+      "action": "Consider urology referral",
+      "category": "refer"
     },
     {
       "id": "unclassifiable",
@@ -1806,7 +1821,10 @@
         "page": null,
         "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
         "table": "2"
-      }
+      },
+      "headline": "Does not fit a Bosniak class",
+      "action": "Renal mass protocol CT or MRI",
+      "category": "workup"
     },
     {
       "id": "not_cystic",
@@ -1820,7 +1838,10 @@
         "page": null,
         "section": "Bosniak Classification, Version 2019: a cystic renal mass is one in which less than approximately 25% of the mass is composed of enhancing tissue",
         "table": ""
-      }
+      },
+      "headline": "Enhancing: not a cystic renal mass",
+      "action": "Manage as solid renal mass",
+      "category": "not_applicable"
     },
     {
       "id": "does_not_apply",
@@ -1831,7 +1852,10 @@
         "page": null,
         "section": "Proposed Update to the Bosniak Classification of Cystic Renal Masses",
         "table": "2"
-      }
+      },
+      "headline": "Outside Bosniak 2019",
+      "action": "Manage per clinical context",
+      "category": "not_applicable"
     }
   ],
   "reference": {
