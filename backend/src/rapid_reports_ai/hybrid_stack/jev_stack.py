@@ -436,7 +436,14 @@ async def ask_report_values(report: str, items: list[str], transport=None,
                            key, TIMEOUT_S * 2, transport)
         r.raise_for_status()
         ans = r.json().get("answers") or {}
-        return [float((ans.get(value_key(start + j)) or {}).get("noul") or 0.0) for j in range(len(chunk))]
+        out: list[float] = []
+        for j in range(len(chunk)):
+            # a missing or malformed answer is never "not stated": that would list a value the report gives
+            p = (ans.get(value_key(start + j)) or {}).get("noul")
+            if isinstance(p, bool) or not isinstance(p, (int, float)):
+                raise ValueError("jev: incomplete answers")
+            out.append(float(p))
+        return out
 
     parts = await asyncio.gather(*(batch(k, items[k:k + VALUE_BATCH]) for k in range(0, len(items), VALUE_BATCH)))
     return [x for p in parts for x in p]

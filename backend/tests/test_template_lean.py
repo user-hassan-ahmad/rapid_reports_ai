@@ -742,3 +742,23 @@ async def test_a_write_failure_is_recorded(monkeypatch):
                                                  stack={"conclusion": "", "declined": [], "values_na": ["RVEF"]})
     assert out["required_values"]["write_error"].startswith("RuntimeError")
     assert "Values not provided" not in out["report_content"]
+
+
+async def test_without_a_cluster_a_jev_failure_flags_and_writes_no_line(monkeypatch):
+    from rapid_reports_ai import template_required_values as trv
+    for stack in ({"conclusion": "", "declined": []}, None):
+        calls = {}
+        _gen_fakes(monkeypatch, calls)
+        _values_gen(monkeypatch, calls, "Findings:\nNormal LV.\n\nConclusion:\nNormal.")
+
+        async def partial(report, items):
+            raise ValueError("jev: incomplete answers")
+        monkeypatch.setattr(trv, "ask_report_values", partial)
+        out = await tl.generate_template_report_lean(sheet=VALUES, scan_type="CMR", findings="LVEF 45%.", history="",
+                                                     case=None, signature=None, stack=stack)
+        assert "Values not provided" not in out["report_content"] and "LIST_MISSING" not in calls["gen"]["sheet"]
+        assert [f["kind"] for f in out["quality_check"]["review"] if f.get("kind", "").startswith("value_")] \
+            == ["value_check_unavailable"]
+        assert "jev: incomplete answers" in out["required_values"]["backstop"]["error"]
+        if out.get("options_job") is not None:
+            await out["options_job"]

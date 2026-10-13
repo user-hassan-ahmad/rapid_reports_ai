@@ -3108,7 +3108,8 @@ async def skill_sheet_test_generate_endpoint(
             return {"success": False, "error": "The template isn't readable yet; refine it and try again."}
         logger.info("  model_used: %s, report_content: %d chars", out.get("model_used"),
                     len(out.get("report_content") or ""))
-        return {"success": True, "report_content": out["report_content"], "model_used": out.get("model_used")}
+        return {"success": True, "report_content": out["report_content"], "model_used": out.get("model_used"),
+                "review": out.get("review") or []}
     except Exception as e:
         import traceback
         traceback.print_exc()
