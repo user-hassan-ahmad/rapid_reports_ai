@@ -156,9 +156,23 @@ describe('TemplateRefinePanel style checks', () => {
 		const apply = calls.find((c) => c.url.endsWith('/apply-decisions'))!;
 		expect(apply.body.changes).toEqual([{ kind: 'normal', key: 'Heart :: pericardium', choice: { text: '' }, source: 'first_use_review' }]);
 		// the checks are re-run on the applied sheet; the rules review is still there to answer
-		await vi.waitFor(() => expect(calls.filter((c) => c.url.endsWith('/sheet-checks')).at(-1)?.body.skill_sheet).toBe('SHEET2'));
+		await vi.waitFor(() => expect(calls.filter((c) => c.url.endsWith('/sheet-checks')).at(-1)?.body.skill_sheet).toBe('SHEET2'), { timeout: 3000 });
 		await expect.element(page.getByText("Your template's rules")).toBeInTheDocument();
 		await expect.element(page.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+	});
+
+	it('does not re-run the checks when a turn leaves the sheet and the ledger unchanged', async () => {
+		checksBody = { success: true, fixed_cards: [], duplicate_cards: [], uncovered_cards: [], unmatched_cards: [], stale_quotes: [], errors: [],
+			normal_report: [{ section: 'FINDINGS', header: 'Findings:', sentences: [{ key: 'Heart :: pericardium', text: 'The pericardium is normal.', kind: 'normal', paragraph: 'Heart' }] }] };
+		const calls: Call[] = [];
+		vi.stubGlobal('fetch', routes(calls, { refine: { success: true, skill_sheet: 'SHEET', response: 'No change was needed.', applied: true, decisions: [] } }));
+		render(TemplateRefinePanel, { template });
+		await expect.element(page.getByText('How your report will read')).toBeInTheDocument();
+		await userEvent.fill(page.getByPlaceholder('e.g. Always mention', { exact: false }), 'nothing');
+		await page.getByRole('button', { name: 'Send' }).click();
+		await expect.element(page.getByText('No change was needed.')).toBeInTheDocument();
+		await new Promise((r) => setTimeout(r, 800));
+		expect(calls.filter((c) => c.url.endsWith('/sheet-checks'))).toHaveLength(1);
 	});
 
 	it('shows no checks when they fail', async () => {

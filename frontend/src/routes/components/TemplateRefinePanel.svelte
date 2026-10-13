@@ -1,5 +1,5 @@
 <script>
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, onDestroy } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
 	import { API_URL } from '$lib/config';
 	import { token } from '$lib/stores/auth';
@@ -7,6 +7,7 @@
 	import RulesStep from '$lib/template-rules/RulesStep.svelte';
 	import StyleChecks from '$lib/template-rules/StyleChecks.svelte';
 	import { postApplyDecisions, postDecide, postSheetChecks } from '$lib/template-rules/api';
+	import { createChecksLoader } from '$lib/template-rules/checksLoader';
 
 	const dispatch = createEventDispatcher();
 
@@ -60,7 +61,8 @@
 		reviewDone = false;
 		checks = null;
 		loadReview(template);
-		loadChecks();
+		checksLoader.reset();
+		loadChecks(true);
 	}
 
 	/** The Required-values card, the entries the last save could not place, and the first-use decision run when the
@@ -89,20 +91,18 @@
 		reviewKey += 1;
 	}
 
-	/** "How your report will read": the Style-step checks for the sheet in hand. Fail-soft: none shown. */
-	async function loadChecks() {
-		const sheet = skillSheet;
-		try {
-			const r = await postSheetChecks($token, { skill_sheet: sheet, decisions });
-			if (sheet === skillSheet) checks = r.success ? r : null;
-		} catch (e) {
-			checks = null;
-		}
+	/** The Style-step checks for the sheet in hand: re-runs debounced, skipped when nothing changed, only the newest
+	 * answer shown (checksLoader). Fail-soft: none shown. `now` runs at once (a sheet just opened or built). */
+	const checksLoader = createChecksLoader((body) => postSheetChecks($token, body), (r) => { checks = r; });
+	onDestroy(() => checksLoader.reset());   // no debounced run after the component is gone
+	function loadChecks(now = false) {
+		checksLoader.request(skillSheet, decisions, { now });
 	}
 
 	/** One Style-check tap: applied through the ledger at once, then the checks re-run (the rules review stays). */
+	/** @returns {Promise<boolean>} false when the change was not applied (the open editor keeps its draft) */
 	async function applyStyle(/** @type {import('$lib/template-rules/types').DecisionChange[]} */ changes) {
-		if (loading || reviewBusy || !changes.length) return;
+		if (loading || reviewBusy || !changes.length) return false;
 		reviewBusy = true;
 		error = '';
 		try {
@@ -111,9 +111,11 @@
 			if (r.skill_sheet !== skillSheet || JSON.stringify(r.decisions) !== JSON.stringify(decisions)) hasChanges = true;
 			skillSheet = r.skill_sheet;
 			decisions = r.decisions;
-			await loadChecks();
+			loadChecks();
+			return true;
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
+			return false;
 		} finally {
 			reviewBusy = false;
 		}
@@ -134,7 +136,7 @@
 			if (review?.ran) rulesStep = { ...(review.run ?? {}), first_use: true, reviewed_at: new Date().toISOString() };
 			if (reviewChanged) hasChanges = true;
 			reviewDone = true;
-			if (reviewChanged) await loadChecks();
+			if (reviewChanged) loadChecks();
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -325,7 +327,7 @@
 				<details class="rounded-lg border border-white/10 p-3">
 					<summary class="text-sm text-gray-200 cursor-pointer">How your report will read</summary>
 					<div class="pt-3">
-						<StyleChecks {checks} source="first_use_review" busy={reviewBusy || loading} onChange={applyStyle} />
+						<StyleChecks {checks} source="first_use_review" busy={reviewBusy || loading} {error} onChange={applyStyle} />
 					</div>
 				</details>
 			{/if}

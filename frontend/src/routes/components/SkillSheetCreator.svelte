@@ -1,5 +1,5 @@
 <script>
-	import { createEventDispatcher, onMount, tick } from 'svelte';
+	import { createEventDispatcher, onDestroy, onMount, tick } from 'svelte';
 	import { API_URL } from '$lib/config';
 	import { token } from '$lib/stores/auth';
 	import { tagsStore } from '$lib/stores/tags';
@@ -14,6 +14,7 @@
 	import RulesStep from '$lib/template-rules/RulesStep.svelte';
 	import StyleChecks from '$lib/template-rules/StyleChecks.svelte';
 	import { postApplyDecisions, postDecide, postSheetChecks } from '$lib/template-rules/api';
+	import { createChecksLoader } from '$lib/template-rules/checksLoader';
 
 	marked.setOptions({ breaks: true, gfm: true });
 
@@ -422,7 +423,8 @@
 			lastAnalyzedSnapshot = currentExamplesSnapshot;
 			phase = 2;
 			checks = null;
-			loadChecks();
+			checksLoader.reset();
+			loadChecks(true);
 		} catch (e) { error = e instanceof Error ? e.message : String(e); }
 		finally { loading = false; }
 	}
@@ -559,20 +561,18 @@
 		finally { chatCardsBusy = false; }
 	}
 
-	/** The Style step's checks for the sheet in hand. Fail-soft: on any failure none are shown. */
-	async function loadChecks() {
-		const sheet = skillSheet;
-		try {
-			const r = await postSheetChecks($token, { skill_sheet: sheet, decisions });
-			if (sheet === skillSheet) checks = r.success ? r : null;
-		} catch (e) {
-			checks = null;
-		}
+	/** The Style-step checks for the sheet in hand: re-runs debounced, skipped when nothing changed, only the newest
+	 * answer shown (checksLoader). Fail-soft: none shown. `now` runs at once (a sheet just opened or built). */
+	const checksLoader = createChecksLoader((body) => postSheetChecks($token, body), (r) => { checks = r; });
+	onDestroy(() => checksLoader.reset());   // no debounced run after the component is gone
+	function loadChecks(now = false) {
+		checksLoader.request(skillSheet, decisions, { now });
 	}
 
 	/** One Style-check tap: recorded on the ledger and applied by code at once; then the checks re-run. */
+	/** @returns {Promise<boolean>} false when the change was not applied (the open editor keeps its draft) */
 	async function applyStyle(/** @type {import('$lib/template-rules/types').DecisionChange[]} */ changes) {
-		if (loading || chatCardsBusy || !changes.length) return;
+		if (loading || chatCardsBusy || !changes.length) return false;
 		chatCardsBusy = true; error = '';
 		try {
 			const r = await postApplyDecisions($token, { skill_sheet: skillSheet, decisions, changes, source: 'creation' });
@@ -580,8 +580,9 @@
 			if (testReport && r.skill_sheet !== skillSheet) previewStale = true;
 			skillSheet = r.skill_sheet;
 			decisions = r.decisions;
-			await loadChecks();
-		} catch (e) { error = e instanceof Error ? e.message : String(e); }
+			loadChecks();
+			return true;
+		} catch (e) { error = e instanceof Error ? e.message : String(e); return false; }
 		finally { chatCardsBusy = false; }
 	}
 
@@ -935,7 +936,7 @@
 								<p class="text-sm text-gray-600">No summary available.</p>
 							{/if}
 							<div class="pt-4">
-								<StyleChecks {checks} source="creation" busy={chatCardsBusy || loading} onChange={applyStyle} />
+								<StyleChecks {checks} source="creation" busy={chatCardsBusy || loading} {error} onChange={applyStyle} />
 							</div>
 						</div>
 						<div class="flex justify-end px-5 py-3 border-t border-white/[0.06] shrink-0">

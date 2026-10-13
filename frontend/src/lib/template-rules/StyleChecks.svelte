@@ -5,55 +5,78 @@
 	 * once by the parent (postApplyDecisions), which then reloads these checks so the answered card goes away. A part
 	 * that failed on the server is simply empty: the Style step shows the summary without it.
 	 */
-	import { changeFor } from './cards';
-	import type { ChangeSource, DecisionCard, DecisionChange, NormalSentence, SheetChecksResponse } from './types';
+	import { changeFor, editWording } from './cards';
+	import type { CardWording, ChangeSource, DecisionCard, DecisionChange, NormalSentence, SheetChecksResponse } from './types';
 
 	let {
 		checks,
 		source = 'creation',
 		busy = false,
+		error = '',
 		onChange
 	}: {
 		checks: SheetChecksResponse | null;
 		source?: ChangeSource;
 		busy?: boolean;
-		onChange: (changes: DecisionChange[]) => void;
+		/** the parent's message when an apply failed (shown here, next to the open editor) */
+		error?: string;
+		/** applies the change; resolving to false means it failed, and the open editor keeps its draft */
+		onChange: (changes: DecisionChange[]) => void | boolean | Promise<void | boolean>;
 	} = $props();
 
 	let editing = $state<string | null>(null);
-	let draft = $state('');
+	let draft = $state<CardWording>({});
+	let failed = $state(false);
 
 	/** The edit field opens with the cursor in it. */
 	function focusOnOpen(node: HTMLInputElement) {
 		node.focus();
 	}
 
+	function open(id: string, wording: CardWording) {
+		editing = id;
+		draft = wording;
+		failed = false;
+	}
+
+	function close() {
+		editing = null;
+		failed = false;
+	}
+
+	function onKey(e: KeyboardEvent) {
+		if (e.key === 'Escape') {
+			e.preventDefault();
+			close();
+		}
+	}
+
+	/** Apply; the editor closes only when the apply succeeded. */
+	async function apply(change: DecisionChange | null) {
+		if (!change) return;
+		const ok = await onChange([change]);
+		if (ok === false) failed = true;
+		else close();
+	}
+
 	function tap(card: DecisionCard, choiceId: string) {
 		const ch = card.choices.find((x) => x.id === choiceId);
 		if (ch && ch.choice === null) {
-			editing = card.id;
-			draft = card.wording?.text ?? '';
+			// a concept is edited as its two wordings (the condition stays the card's); anything else as one sentence
+			open(card.id, card.ledger_kind === 'concept' ? editWording(card, null) : { text: card.wording?.text ?? '' });
 			return;
 		}
 		const change = changeFor(card, { choiceId }, source);
-		if (change) onChange([change]);
+		if (change) void onChange([change]);
 	}
 
-	function saveCard(card: DecisionCard) {
+	function cardChange(card: DecisionCard): DecisionChange | null {
 		const editId = card.choices.find((x) => x.choice === null)?.id ?? 'edit';
-		const change = changeFor(card, { choiceId: editId, edited: { text: draft } }, source);
-		if (change) onChange([change]);
-		editing = null;
+		return changeFor(card, { choiceId: editId, edited: { ...draft } }, source);
 	}
 
-	function editSentence(s: NormalSentence) {
-		editing = s.key;
-		draft = s.text;
-	}
-
-	function saveSentence(s: NormalSentence, text: string) {
-		onChange([{ kind: 'normal', key: s.key, choice: { text: text.trim() }, source }]);
-		editing = null;
+	function sentenceChange(s: NormalSentence, text: string): DecisionChange {
+		return { kind: 'normal', key: s.key, choice: { text: text.trim() }, source };
 	}
 </script>
 
@@ -70,11 +93,31 @@
 		{/each}
 	</div>
 	{#if editing === card.id}
-		<div class="flex gap-2 pt-1.5">
-			<input class="input flex-1 text-sm" aria-label="Wording for {card.title}" bind:value={draft} use:focusOnOpen />
-			<button type="button" class="btn-primary text-xs" onclick={() => saveCard(card)} disabled={busy || !draft.trim()}>Save</button>
+		<div class="space-y-1.5 pt-1.5" role="group" onkeydown={onKey}>
+			{#if card.ledger_kind === 'concept'}
+				<label class="block text-xs text-gray-400"
+					>Usually
+					<input class="input w-full text-sm" bind:value={draft.default} use:focusOnOpen />
+				</label>
+				<label class="block text-xs text-gray-400"
+					>When it applies
+					<input class="input w-full text-sm" bind:value={draft.when_met} />
+				</label>
+				{#if draft.condition}<p class="text-xs text-gray-500">It applies when {draft.condition}.</p>{/if}
+			{:else}
+				<input class="input w-full text-sm" aria-label="Wording for {card.title}" bind:value={draft.text} use:focusOnOpen />
+			{/if}
+			{@render editorButtons(() => apply(cardChange(card)), !cardChange(card))}
 		</div>
 	{/if}
+{/snippet}
+
+{#snippet editorButtons(save: () => void, invalid: boolean)}
+	<div class="flex gap-2">
+		<button type="button" class="btn-primary text-xs" onclick={save} disabled={busy || invalid}>Save</button>
+		<button type="button" class="btn-ghost text-xs" onclick={close} disabled={busy}>Cancel</button>
+	</div>
+	{#if failed && error}<p class="text-xs text-red-400" role="alert">{error}</p>{/if}
 {/snippet}
 
 {#snippet cardBox(card: DecisionCard, quoted: boolean)}
@@ -124,17 +167,22 @@
 						<p class="text-xs uppercase tracking-wider text-gray-500">{sec.header}</p>
 						{#each sec.sentences as s (s.key)}
 							{#if editing === s.key}
-								<div class="flex gap-2">
-									<input class="input flex-1 text-sm" aria-label="Edit sentence" bind:value={draft} use:focusOnOpen />
-									<button type="button" class="btn-primary text-xs" onclick={() => saveSentence(s, draft)} disabled={!draft.trim() || busy}>Save</button>
-									<button type="button" class="btn-ghost text-xs" onclick={() => saveSentence(s, '')} disabled={busy}>Remove</button>
+								<div class="space-y-1.5" role="group" onkeydown={onKey}>
+									<input class="input w-full text-sm" aria-label="Edit sentence" bind:value={draft.text} use:focusOnOpen />
+									<div class="flex gap-2">
+										<button type="button" class="btn-primary text-xs" onclick={() => apply(sentenceChange(s, draft.text ?? ''))}
+											disabled={!(draft.text ?? '').trim() || busy}>Save</button>
+										<button type="button" class="btn-ghost text-xs" onclick={() => apply(sentenceChange(s, ''))} disabled={busy}>Remove</button>
+										<button type="button" class="btn-ghost text-xs" onclick={close} disabled={busy}>Cancel</button>
+									</div>
+									{#if failed && error}<p class="text-xs text-red-400" role="alert">{error}</p>{/if}
 								</div>
 							{:else}
 								<button
 									type="button"
 									class="block text-left text-sm text-gray-300 hover:text-white"
 									aria-label="Edit: {s.text}"
-									onclick={() => editSentence(s)}
+									onclick={() => open(s.key, { text: s.text })}
 									disabled={busy}>{s.text}</button
 								>
 							{/if}

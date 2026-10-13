@@ -90,6 +90,46 @@ describe('StyleChecks', () => {
 		await expect.element(page.getByRole('button', { name: 'Edit: The liver is normal in size.' })).toBeDisabled();
 	});
 
+	it('an unmatched concept is edited with its two wordings and gives a valid change', async () => {
+		const onChange = vi.fn();
+		const PRIOR = 'the dictation names a previous imaging study for comparison';
+		const concept: DecisionCard = { id: 'concept:comparison', kind: 'concept', step: 'review', title: 'Comparison with previous imaging',
+			evidence: [], ledger_kind: 'concept', key: 'comparison', selected: null, rank: 2, note: "This rule couldn't be placed.",
+			wording: { default: 'No previous imaging.', when_met: 'Compared with {date}.', condition: PRIOR },
+			choices: [{ id: 'keep', label: 'Keep', choice: { use: true, default: 'No previous imaging.', when_met: 'Compared with {date}.', condition: PRIOR, dictated: false } },
+				{ id: 'edit', label: 'Edit wording', choice: null },
+				{ id: 'not_used', label: 'Not used', choice: { use: false, default: '', when_met: '', condition: '', dictated: false } }] };
+		render(StyleChecks, { checks: { ...checks(), unmatched_cards: [concept] }, onChange });
+		await page.getByRole('button', { name: 'Comparison with previous imaging: Edit wording' }).click();
+		await expect.element(page.getByLabelText('Usually')).toHaveFocus();
+		await userEvent.fill(page.getByLabelText('When it applies'), 'Compared with the study of {date}.');
+		await page.getByRole('button', { name: 'Save', exact: true }).click();
+		expect(onChange).toHaveBeenCalledWith([{ kind: 'concept', key: 'comparison', source: 'creation',
+			choice: { use: true, default: 'No previous imaging.', when_met: 'Compared with the study of {date}.', condition: PRIOR, dictated: false } }]);
+	});
+
+	it('Cancel and Escape close the sentence editor without a change', async () => {
+		const onChange = vi.fn();
+		render(StyleChecks, { checks: checks(), onChange });
+		await page.getByRole('button', { name: 'Edit: The liver is normal in size.' }).click();
+		await page.getByRole('button', { name: 'Cancel' }).click();
+		await expect.element(page.getByLabelText('Edit sentence')).not.toBeInTheDocument();
+		await page.getByRole('button', { name: 'Edit: The liver is normal in size.' }).click();
+		await userEvent.keyboard('{Escape}');
+		await expect.element(page.getByLabelText('Edit sentence')).not.toBeInTheDocument();
+		expect(onChange).not.toHaveBeenCalled();
+	});
+
+	it('a failed apply keeps the draft open and shows the error', async () => {
+		const onChange = vi.fn(async () => false);
+		render(StyleChecks, { checks: checks(), error: 'Could not apply that choice', onChange });
+		await page.getByRole('button', { name: 'Edit: The liver is normal in size.' }).click();
+		await userEvent.fill(page.getByLabelText('Edit sentence'), 'The liver is unremarkable.');
+		await page.getByRole('button', { name: 'Save', exact: true }).click();
+		await expect.element(page.getByLabelText('Edit sentence')).toHaveValue('The liver is unremarkable.');
+		await expect.element(page.getByRole('alert')).toHaveTextContent('Could not apply that choice');
+	});
+
 	it('renders nothing without checks', async () => {
 		render(StyleChecks, { checks: null, onChange: vi.fn() });
 		await expect.element(page.getByText('Your normal report')).not.toBeInTheDocument();
