@@ -73,6 +73,17 @@
 	background: var(--rv-amber-bg);
 	cursor: help;
 }
+.cp-cards .cp-sr-only {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0, 0, 0, 0);
+	white-space: nowrap;
+	border: 0;
+}
 .cp-cards .cp-skel-line {
 	height: 10px;
 	width: 70%;

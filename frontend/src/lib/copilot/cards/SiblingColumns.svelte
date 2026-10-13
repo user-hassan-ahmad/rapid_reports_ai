@@ -9,6 +9,7 @@
 	import GlCard from '$lib/rail/GlCard.svelte';
 	import { cardRef } from '../state';
 	import type { Card } from '../types';
+	import AssumedChip from './AssumedChip.svelte';
 	import CardStatus from './CardStatus.svelte';
 	import { assumptionsOf, columnRef, columnTitles, stateBadge } from './format';
 	import PackBody from './PackBody.svelte';
@@ -61,10 +62,8 @@
 			{@const assumed = assumptionsOf(p)}
 			<div class="cp-col-line">
 				<span class="cp-col-name">{c.title}</span>
-				{#if assumed.length}
-					<span class="cp-chip cp-chip-warn" title={`Assumed eligible:\n${assumed.join('\n')}`}
-						>⚠ {assumed.length} {assumed.length === 1 ? 'check' : 'checks'} assumed</span
-					>
+				{#if assumed.length || p?.state === 'check_first'}
+					<AssumedChip {assumed} checkFirst />
 				{:else if badge}
 					<span class="cp-chip">{badge.text}</span>
 				{/if}

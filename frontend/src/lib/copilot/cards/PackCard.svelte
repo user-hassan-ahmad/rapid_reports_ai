@@ -7,6 +7,7 @@
 	import GlCard from '$lib/rail/GlCard.svelte';
 	import { cardRef } from '../state';
 	import type { Card } from '../types';
+	import AssumedChip from './AssumedChip.svelte';
 	import CardStatus from './CardStatus.svelte';
 	import { assumptionsOf, outcomeHint, setByExam, stateBadge } from './format';
 	import PackBody from './PackBody.svelte';
@@ -41,11 +42,7 @@
 </script>
 
 {#snippet controls()}
-	{#if assumed.length}
-		<span class="cp-chip cp-chip-warn" title={`Assumed eligible:\n${assumed.join('\n')}`}
-			>⚠ {assumed.length} {assumed.length === 1 ? 'check' : 'checks'} assumed</span
-		>
-	{/if}
+	<AssumedChip {assumed} checkFirst={p?.state === 'check_first'} />
 	{#if card.finding_id === 'exam' && setByExam(p)}<span class="cp-chip">set by the exam</span>{/if}
 	{#if other}<span class="cp-chip">other</span>{/if}
 {/snippet}

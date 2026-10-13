@@ -141,6 +141,9 @@ describe('CopilotCards', () => {
 		const chip = page.getByText('⚠ 2 checks assumed');
 		await expect.element(chip).toBeInTheDocument();
 		expect(chip.element().getAttribute('title')).toContain('Known extra-adrenal cancer');
+		// screen readers get the checks in the head's name, not only from the tooltip
+		expect(chip.element().querySelector('.cp-sr-only')!.textContent).toContain('Known extra-adrenal cancer; Signs of hormone excess');
+		expect(chip.element().closest('[role="button"]')!.textContent).toContain('checks assumed: Known extra-adrenal cancer');
 		expect(text()).not.toContain('check first');
 		expect(text()).not.toContain('Some eligibility questions');
 		// order: values, outcome, open questions; the eligibility list stays collapsed
@@ -149,17 +152,24 @@ describe('CopilotCards', () => {
 		expect(at('Read from the report')).toBeGreaterThan(-1);
 		expect(at('2.2 cm')).toBeLessThan(at('Benign adenoma'));
 		expect(at('Benign adenoma')).toBeLessThan(at('Growth on prior imaging'));
-		await expect.element(page.getByText('Known extra-adrenal cancer')).not.toBeInTheDocument();
+		const toggle = page.getByRole('button', { name: /Assumed eligible: 2 checks/ });
+		const list = document.getElementById(toggle.element().getAttribute('aria-controls')!)!;
+		expect(list.hidden).toBe(true); // in the DOM, collapsed
+		expect(toggle.element().getAttribute('aria-expanded')).toBe('false');
 		await expect.element(page.getByText('set by the exam')).toBeInTheDocument();
 		// the quote shows on focus
 		const quote = page.getByText('“2.2 cm left adrenal nodule”');
 		await expect.element(quote).not.toBeVisible();
-		(document.querySelector('.cp-val[tabindex]') as HTMLElement).focus();
+		const row = document.querySelector('.cp-val[tabindex]') as HTMLElement;
+		expect(document.getElementById(row.getAttribute('aria-describedby')!)!.textContent).toBe('“2.2 cm left adrenal nodule”');
+		row.focus();
 		await expect.element(quote).toBeVisible();
-		// the assumed checks expand on request
-		await page.getByRole('button', { name: /Assumed eligible: 2 checks/ }).click();
-		await expect.element(page.getByText('Known extra-adrenal cancer')).toBeInTheDocument();
-		await expect.element(page.getByText('Signs of hormone excess')).toBeInTheDocument();
+		// the assumed checks expand on request, by keyboard
+		(toggle.element() as HTMLElement).focus();
+		await userEvent.keyboard('{Enter}');
+		expect(toggle.element().getAttribute('aria-expanded')).toBe('true');
+		expect(list.hidden).toBe(false);
+		expect(list.textContent).toContain('Signs of hormone excess');
 	});
 
 	it('the version sits on its own line under the name; the assumed chip stays on the first line', async () => {
@@ -179,12 +189,34 @@ describe('CopilotCards', () => {
 		await expect.element(page.getByText('⚠ 1 check assumed')).toBeInTheDocument();
 	});
 
-	it('applies with no outcome lists the possible outcomes; degraded shows its note', async () => {
+	it('no outcome: "Still open" first, then one collapsed "N outcomes still possible" line; degraded shows its note', async () => {
 		const c = card({ finding: finding.text });
-		render(CopilotCards, single(c, v(result(c, preview({ proposal: null, possible: ['Cat A', 'Cat B'], degraded: true })), { open: true })));
-		await expect.element(page.getByText('Possible:')).toBeInTheDocument();
-		await expect.element(page.getByText('Cat B')).toBeInTheDocument();
+		const pv = preview({ proposal: null, possible: ['Cat A', 'Cat B', 'Cat C'], missing: ['growth'], asks: [{ input: 'growth', label: 'Growth', role: 'clinical' }], degraded: true });
+		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
+		const toggle = page.getByRole('button', { name: '3 outcomes still possible — show' });
+		await expect.element(toggle).toBeInTheDocument();
+		await expect.element(page.getByText('Cat B')).not.toBeVisible();
+		expect(text().indexOf('Still open')).toBeLessThan(text().indexOf('outcomes still possible'));
+		(toggle.element() as HTMLElement).focus();
+		await userEvent.keyboard('{Enter}');
+		await expect.element(page.getByText('Cat B')).toBeVisible();
+		await expect.element(page.getByRole('button', { name: '3 outcomes still possible — hide' })).toHaveAttribute('aria-expanded', 'true');
 		await expect.element(page.getByText('Some values could not be checked')).toBeInTheDocument();
+	});
+
+	it('with a proposal only the proposal shows (no possible list); a single possible outcome shows inline', async () => {
+		const c = card({ finding: finding.text });
+		const r = render(CopilotCards, single(c, v(result(c, preview({ possible: ['Cat A', 'Cat B'] })), { open: true })));
+		await expect.element(page.getByText('Category A')).toBeInTheDocument();
+		expect(text()).not.toContain('still possible');
+		await r.rerender({ views: { [cardRef(c)]: v(result(c, preview({ proposal: null, possible: ['Only one'] })), { open: true }) } });
+		await expect.element(page.getByText('Only one')).toBeVisible();
+	});
+
+	it('a check_first card with nothing missing still shows a visible "check first" cue', async () => {
+		const c = card({ finding: finding.text });
+		render(CopilotCards, single(c, v(result(c, preview({ state: 'check_first', missing: [] })))));
+		await expect.element(page.getByText('⚠ check first')).toBeVisible();
 	});
 
 	it('the head opens and closes through the callbacks, by keyboard too', async () => {

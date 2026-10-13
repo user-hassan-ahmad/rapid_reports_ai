@@ -2,8 +2,9 @@
 	/**
 	 * An opened pack card's body, read-only (Slice A), in reading order (B0, Hassan 2026-10-13):
 	 * 1. the values read from the dictation (label and value; the quote on hover or focus; "set by the exam");
-	 * 2. the outcome and recommendation "on these values" (or the outcomes still possible);
-	 * 3. the remaining open questions that are not eligibility checks, quieter;
+	 * 2. the outcome and recommendation "on these values", then the remaining open questions that are not eligibility
+	 *    checks, quieter; with no outcome, the open questions and then one collapsed line "N outcomes still possible"
+	 *    (the full list was long and noisy, polish 2026-10-13; Task 3 will send one draft outcome instead);
 	 * then the eligibility checks the card assumed (collapsed: never the lead), the degraded note and the reference.
 	 * `does_not_apply` leads with its reason. `compact` (a sibling column) drops caveats, citations, the assumed list
 	 * and the reference. No inputs, Calculate or Apply.
@@ -29,6 +30,8 @@
 	const assumed = $derived(assumptions ?? assumptionsOf(p));
 	const questions = $derived(p ? openQuestions(p) : []);
 	let showAssumed = $state(false);
+	let showPossible = $state(false);
+	const uid = $props.id(); // ids for aria-controls / aria-describedby
 </script>
 
 {#snippet cites(list: Citation[])}
@@ -55,14 +58,20 @@
 				<div class="cp-label">Read from the report</div>
 				<ul class="cp-val-list">
 					{#each rows as r (r.input)}
-						<!-- focusable so the quote shows for keyboard users too -->
+						<!-- focusable (keyboard, and a tap on touch) so the quote shows without hover; screen readers get it as
+						     the row's description -->
 						<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-						<li class="cp-val" tabindex={r.quote ? 0 : undefined} title={r.quote ? `“${r.quote}”` : undefined}>
+						<li
+							class="cp-val"
+							tabindex={r.quote ? 0 : undefined}
+							title={r.quote ? `“${r.quote}”` : undefined}
+							aria-describedby={r.quote ? `${uid}-q-${r.input}` : undefined}
+						>
 							<span class="cp-val-label">{r.label}</span>
 							<span class="cp-val-value"
 								><b>{r.value}</b>{#if r.byExam}<span class="cp-chip cp-val-chip">set by the exam</span>{/if}</span
 							>
-							{#if r.quote}<span class="cp-quote">“{r.quote}”</span>{/if}
+							{#if r.quote}<span class="cp-quote" id="{uid}-q-{r.input}">“{r.quote}”</span>{/if}
 						</li>
 					{/each}
 				</ul>
@@ -81,13 +90,6 @@
 					{/if}
 					{@render cites(out.citations)}
 				</section>
-			{:else if p.possible.length}
-				<section>
-					<div class="cp-label">Possible:</div>
-					<ul class="cp-list">
-						{#each p.possible as o, i (i)}<li>{o}</li>{/each}
-					</ul>
-				</section>
 			{/if}
 			{#if questions.length}
 				<section class="cp-open-q" aria-label="Still open">
@@ -97,17 +99,40 @@
 					</ul>
 				</section>
 			{/if}
+			{#if !out && p.possible.length === 1}
+				<section>
+					<div class="cp-label">Possible:</div>
+					<p class="cp-p">{p.possible[0]}</p>
+				</section>
+			{:else if !out && p.possible.length > 1}
+				<section class="cp-possible">
+					<button
+						type="button"
+						class="cp-link cp-possible-toggle"
+						aria-expanded={showPossible}
+						aria-controls="{uid}-possible"
+						onclick={() => (showPossible = !showPossible)}
+						>{p.possible.length} outcomes still possible — {showPossible ? 'hide' : 'show'}</button
+					>
+					<ul class="cp-list cp-possible-list" id="{uid}-possible" hidden={!showPossible}>
+						{#each p.possible as o, i (i)}<li>{o}</li>{/each}
+					</ul>
+				</section>
+			{/if}
 		{/if}
 		{#if assumed.length && !compact}
 			<div class="cp-assumed">
-				<button type="button" class="cp-link cp-assumed-toggle" aria-expanded={showAssumed} onclick={() => (showAssumed = !showAssumed)}
+				<button
+					type="button"
+					class="cp-link cp-assumed-toggle"
+					aria-expanded={showAssumed}
+					aria-controls="{uid}-assumed"
+					onclick={() => (showAssumed = !showAssumed)}
 					>⚠ Assumed eligible: {assumed.length} {assumed.length === 1 ? 'check' : 'checks'}</button
 				>
-				{#if showAssumed}
-					<ul class="cp-list cp-assumed-list">
-						{#each assumed as a, i (i)}<li>{a}</li>{/each}
-					</ul>
-				{/if}
+				<ul class="cp-list cp-assumed-list" id="{uid}-assumed" hidden={!showAssumed}>
+					{#each assumed as a, i (i)}<li>{a}</li>{/each}
+				</ul>
 			</div>
 		{/if}
 		{#if p.degraded}
@@ -209,6 +234,19 @@
 	.cp-open-q {
 		font-size: 0.8125rem;
 		color: var(--rv-muted);
+	}
+	.cp-possible-toggle,
+	.cp-assumed-toggle {
+		align-self: flex-start;
+		text-align: left;
+	}
+	.cp-possible-toggle {
+		font-size: 0.8125rem;
+		color: var(--rv-muted);
+	}
+	.cp-possible-list {
+		margin-top: 4px;
+		font-size: 0.8125rem;
 	}
 	.cp-assumed-toggle {
 		font-size: 0.8125rem;
