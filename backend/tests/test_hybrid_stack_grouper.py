@@ -95,7 +95,7 @@ async def test_place_falls_back_to_groq_then_reports_error(monkeypatch):
         return httpx.Response(500)
     placements, model, err = await G.place("CT", REGIONS, [StackUnit(id=0, text="A.")], [0],
                                            transport=httpx.MockTransport(handler))
-    assert placements == [] and model is None and "qwen/qwen3.8-27b" in err
+    assert placements == [] and model is None and "openai/gpt-oss-120b" in err
     assert any("cerebras" in c for c in calls) and any("groq" in c for c in calls)
 
 
@@ -144,6 +144,29 @@ def test_unknown_new_id_is_logged_not_raised():
     assert units[0].group == "Liver" and any("[5]" in x for x in problems)
 
 
+async def test_cerebras_429_falls_back_to_groq_gpt_oss_with_its_own_settings(monkeypatch):
+    monkeypatch.setenv("CEREBRAS_API_KEY", "c")
+    monkeypatch.setenv("GROQ_API_KEY", "g")
+    seen = []
+
+    def handler(req):
+        body = json.loads(req.content)
+        seen.append((str(req.url), body))
+        if "cerebras" in str(req.url):
+            return httpx.Response(429, json={"error": "high traffic"})
+        out = {"placements": [{"id": 0, "group": "Kidneys", "abnormal": True}]}
+        return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": json.dumps(out)}}]})
+    placements, model, err = await G.place("CT", REGIONS, [StackUnit(id=0, text="A cyst.")], [0],
+                                           transport=httpx.MockTransport(handler))
+    assert err is None and model == "openai/gpt-oss-120b"
+    assert placements[0].group == "Kidneys" and placements[0].abnormal is True
+    (c_url, c_body), (g_url, g_body) = seen
+    assert "cerebras" in c_url and c_body["model"] == "qwen-3.8-27b" and c_body["reasoning_effort"] == "none"
+    assert "groq" in g_url and g_body["model"] == "openai/gpt-oss-120b"
+    assert g_body["reasoning_effort"] in ("low", "medium", "high")  # gpt-oss rejects "none"
+    assert g_body["max_tokens"] >= 4000 and g_body["response_format"]["type"] == "json_schema"
+
+
 async def test_empty_placements_fall_through_to_groq(monkeypatch):
     monkeypatch.setenv("CEREBRAS_API_KEY", "c")
     monkeypatch.setenv("GROQ_API_KEY", "g")
@@ -155,7 +178,7 @@ async def test_empty_placements_fall_through_to_groq(monkeypatch):
         return httpx.Response(200, json={"choices": [{"message": {"content": json.dumps(out)}}]})
     placements, model, err = await G.place("CT", REGIONS, [StackUnit(id=0, text="A.")], [0],
                                            transport=httpx.MockTransport(handler))
-    assert model == "qwen/qwen3.8-27b" and len(placements) == 1 and err is None and len(seen) == 2
+    assert model == "openai/gpt-oss-120b" and len(placements) == 1 and err is None and len(seen) == 2
 
 
 async def test_malformed_content_returns_error(monkeypatch):
@@ -172,7 +195,7 @@ async def test_only_groq_key_uses_groq(monkeypatch):
     seen = []
     out = {"placements": [{"id": 0, "group": "Liver"}]}
     placements, model, err = await G.place("CT", REGIONS, [StackUnit(id=0, text="A.")], [0], transport=_llm(out, seen))
-    assert model == "qwen/qwen3.8-27b" and len(seen) == 1 and "groq" in seen[0][0]
+    assert model == "openai/gpt-oss-120b" and len(seen) == 1 and "groq" in seen[0][0]
 
 
 async def test_no_keys_reports_unconfigured(monkeypatch):

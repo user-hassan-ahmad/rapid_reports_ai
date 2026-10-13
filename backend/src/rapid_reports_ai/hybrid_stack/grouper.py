@@ -149,11 +149,15 @@ PLACED (fixed, context only):
 NEW:
 {new}"""
 
+# Settings are per endpoint. The fallback is Groq gpt-oss-120b, not Groq Qwen: with reasoning off Groq Qwen filed
+# "a horizontal tear of the posterior horn of the medial meniscus" as abnormal=false 3/3 (live 2026-10-13).
+# gpt-oss rejects reasoning_effort "none" (low/medium/high only) and its reasoning counts toward max_tokens.
+_QWEN_SETTINGS = {"temperature": 0.0, "max_tokens": 4000, "reasoning_effort": "none"}
+_OSS_SETTINGS = {"temperature": 0.0, "max_tokens": 8000, "reasoning_effort": "low"}
 ENDPOINTS = (
-    ("https://api.cerebras.ai/v1/chat/completions", "CEREBRAS_API_KEY", "qwen-3.8-27b"),
-    ("https://api.groq.com/openai/v1/chat/completions", "GROQ_API_KEY", "qwen/qwen3.8-27b"),
+    ("https://api.cerebras.ai/v1/chat/completions", "CEREBRAS_API_KEY", "qwen-3.8-27b", _QWEN_SETTINGS),
+    ("https://api.groq.com/openai/v1/chat/completions", "GROQ_API_KEY", "openai/gpt-oss-120b", _OSS_SETTINGS),
 )
-SETTINGS = {"temperature": 0.0, "max_tokens": 4000, "reasoning_effort": "none"}
 TIMEOUT_S = 15.0
 
 
@@ -172,13 +176,13 @@ async def place(scan_type: str, regions: list[Region], units: list[StackUnit], n
     pydantic-ai tool output failed on this nested schema with Qwen (lab 2026-10-10)."""
     user = grouper_user(scan_type, regions, units, new_ids)
     err = None
-    for url, key_env, model in ENDPOINTS:
+    for url, key_env, model, settings in ENDPOINTS:
         key = os.environ.get(key_env)
         if not key:
             continue
         try:
             r = await post_json(url, key, {
-                "model": model, **SETTINGS,
+                "model": model, **settings,
                 "messages": [{"role": "system", "content": GROUPER_SYSTEM}, {"role": "user", "content": user}],
                 "response_format": {"type": "json_schema", "json_schema": {
                     "name": "placements", "schema": GrouperOut.model_json_schema()}}}, TIMEOUT_S, transport)
