@@ -3826,7 +3826,7 @@
       "unit": ""
      },
      {
-      "how_stated": "true when an earlier CT showing this nodule is available for comparison; false when this is the first CT to show it",
+      "how_stated": "true when an earlier CT showing this nodule is available for comparison; false when this is the first CT to show it. A whole-study fact: a statement anywhere in the request or the report counts, e.g. 'No previous imaging' or 'Comparison: CT 2023'",
       "id": "prior_study",
       "label": "Prior CT showing the nodule",
       "locator": {
@@ -3840,7 +3840,7 @@
       "options": [],
       "prerequisites": [],
       "role": "clinical",
-      "scope": "lesion",
+      "scope": "patient",
       "states": [],
       "type": "boolean",
       "unit": ""
@@ -20811,5 +20811,5 @@
    ]
   }
  },
- "version": "3c8602b17a21"
+ "version": "52870f91e77c"
 }

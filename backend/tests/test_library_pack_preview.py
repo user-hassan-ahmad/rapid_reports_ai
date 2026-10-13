@@ -766,16 +766,44 @@ async def test_a_qualified_negation_no_longer_asks(monkeypatch, jev, finding):
     assert "diameter_mm" in {x.input for x in out.settled}            # drafted; Jev's one-lesion claim decides
 
 
-# Task 4: prior_study is an ordinary lesion boolean (the asymmetric _no_prior check is retired): the model may propose
-# Yes or No with a quote from the nodule's own finding; as a boolean it is never read, so it is pre-filled or asked
+# prior_study is a whole-study fact (Hassan 2026-10-13): patient-scoped, so the model may propose Yes or No with a quote
+# from anywhere in the history or the dictation; as a boolean it is never read, so it is pre-filled or asked
 PRIOR_FINDING = "7 mm solid nodule in the right upper lobe."
 
 
-async def test_no_previous_imaging_outside_the_finding_is_asked(monkeypatch, jev):
+async def test_no_previous_imaging_in_another_paragraph_drafts_prior_study(monkeypatch, jev):
     from tests.test_library_partial import _bts
+    dictation = f"{PRIOR_FINDING}\n\nLiver normal.\n\nComparison: No previous imaging."
     _model(monkeypatch, {"input": "prior_study", "value": False, "quote": "No previous imaging"})
-    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging.", "", {}, finding=PRIOR_FINDING)
-    assert _states(out)["prior_study"] == "asked" and "prior_study" in out.missing      # not in the finding
+    out = await PP.preview_pack(_bts(), dictation, "", {}, finding=PRIOR_FINDING)
+    d = next(x for x in out.draft if x.input == "prior_study")
+    assert (d.state, d.value, d.quote) == ("prefilled", "No", "No previous imaging") and PP.WHY_KIND in d.why
+    assert "prior_study" not in out.missing
+    prompts = []
+    _model(monkeypatch, prompts=prompts)
+    await PP.preview_pack(_bts(), dictation, "", {}, finding=PRIOR_FINDING)
+    assert "- prior_study [patient]" in prompts[0] and "Comparison: No previous imaging." in prompts[0]
+
+
+async def test_prior_study_from_the_history_is_drafted_too(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    _model(monkeypatch, {"input": "prior_study", "value": True, "quote": "nodule on CT 2023"})
+    out = await PP.preview_pack(_bts(), PRIOR_FINDING, "Follow-up of nodule on CT 2023.", {}, finding=PRIOR_FINDING)
+    assert _states(out)["prior_study"] == "prefilled"
+
+
+async def test_prior_study_is_asked_when_nothing_is_said(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    _model(monkeypatch)
+    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} Liver normal.", "Cough.", {}, finding=PRIOR_FINDING)
+    assert _states(out)["prior_study"] == "asked" and "prior_study" in out.missing
+
+
+async def test_a_prior_study_quote_found_nowhere_is_still_asked(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    _model(monkeypatch, {"input": "prior_study", "value": False, "quote": "first CT to show it"})
+    out = await PP.preview_pack(_bts(), PRIOR_FINDING, "", {}, finding=PRIOR_FINDING)
+    assert _states(out)["prior_study"] == "asked"                       # never from inference: a verbatim quote
 
 
 async def test_the_model_may_propose_prior_study_no_from_the_finding(monkeypatch, jev):
@@ -786,7 +814,7 @@ async def test_the_model_may_propose_prior_study_no_from_the_finding(monkeypatch
     assert _states(out)["prior_study"] == "prefilled" and PP.WHY_KIND in _why(out, "prior_study")
 
 
-async def test_prior_study_yes_is_drafted_only_from_the_nodules_own_finding(monkeypatch, jev):
+async def test_prior_study_yes_is_drafted_from_the_finding_or_elsewhere_in_the_dictation(monkeypatch, jev):
     from tests.test_library_partial import _bts
     finding = "7 mm solid nodule in the right upper lobe, unchanged from the 2023 CT."
     _model(monkeypatch, {"input": "prior_study", "value": True, "quote": "unchanged from the 2023 CT"})
@@ -795,7 +823,7 @@ async def test_prior_study_yes_is_drafted_only_from_the_nodules_own_finding(monk
     assert _states(out)["prior_study"] == "prefilled"
     _model(monkeypatch, {"input": "prior_study", "value": True, "quote": "Comparison with CT 2023"})
     out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} Comparison with CT 2023.", "", {}, finding=PRIOR_FINDING)
-    assert "prior_study" in out.missing                    # quoted outside the finding: asked
+    assert _states(out)["prior_study"] == "prefilled"      # a whole-study fact: elsewhere in the dictation counts
 
 
 async def test_the_finding_saying_yes_is_drafted_whatever_the_dictation_says(monkeypatch, jev):

@@ -248,3 +248,10 @@ Checklist:
 - DECISION: the size is now needed for every outcome except `resolved`. A card with clear benign features but no
   stated size used to settle at discharge_benign; it now asks the diameter. With the diameter unknown, the Brock
   formula is unbounded, so its inputs are asked as well, until the diameter is known.
+
+## prior_study is a whole-study fact (Hassan, 2026-10-13)
+
+This reverses fix round 1's lesion scope for `prior_study`. "No previous imaging" and similar statements apply to the
+whole study, so `prior_study` is now `patient`-scoped: it may be settled from a verbatim quote anywhere in the request
+or the report. As a boolean it is never read, so it is always pre-filled or asked. `interval_days` stays per nodule.
+`how_stated` says so. Gates 1–4 pass.

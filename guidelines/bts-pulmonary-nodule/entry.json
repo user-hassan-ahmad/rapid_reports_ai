@@ -181,13 +181,13 @@
    "id": "prior_study",
    "label": "Prior CT showing the nodule",
    "type": "boolean",
-   "how_stated": "true when an earlier CT showing this nodule is available for comparison; false when this is the first CT to show it",
+   "how_stated": "true when an earlier CT showing this nodule is available for comparison; false when this is the first CT to show it. A whole-study fact: a statement anywhere in the request or the report counts, e.g. 'No previous imaging' or 'Comparison: CT 2023'",
    "locator": {
     "source": "S1",
     "page": 8,
     "table": "Figure 1 Initial approach to solid pulmonary nodules: previous imaging"
    },
-   "scope": "lesion"
+   "scope": "patient"
   },
   {
    "id": "resolved",
