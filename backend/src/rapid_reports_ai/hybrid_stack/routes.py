@@ -31,6 +31,7 @@ from .draft import DraftResult, draft_conclusion
 from .habits import template_habits
 from .service import GroupResult, SchemaResult, close_update, group_update, resolve_schema
 from .units import StackUnit, sentences as split_sentences
+from .gate_model import GateRecord
 
 import logging
 logger = logging.getLogger(__name__)
@@ -511,3 +512,36 @@ async def update_slim_sheet(sheet_id: str, upd: SlimUpdate, user: User = Depends
 
 from .protocol_library.routes import router as _protocols_router  # noqa: E402
 router.include_router(_protocols_router)
+
+
+class StackGenerateRequest(BaseModel):
+    """One Generate for quick and template stack sessions (integration spec §5)."""
+    kind: Literal["quick", "template"]
+    template_id: str | None = None
+    variables: dict[str, str] = Field(default_factory=dict)   # template inputs other than FINDINGS
+    scan_type: str = ""
+    history: str = ""
+    stack_sheet_id: str | None = None   # quick: the slim sheet (the signed structure_key replaces it in P2b)
+    units: list[StackUnit]
+    groups: list[str]
+    gate: GateRecord
+
+
+@router.post("/generate")
+async def stack_generate(req: StackGenerateRequest, current_user: User = Depends(get_current_user),
+                         db: Session = Depends(get_db)):
+    _require()
+    from sse_starlette.sse import EventSourceResponse
+    from . import report as SR
+
+    async def stream():
+        try:
+            async for ev in SR.run(req, current_user, db):
+                yield {"event": ev["event"], "data": json.dumps(ev["payload"])}
+        except SR.StackError as e:
+            yield {"event": "error", "data": json.dumps({"message": str(e)})}
+        except Exception:  # noqa: BLE001 -- never a silent fallback to the old flow
+            logger.exception("[stack.generate] failed")
+            yield {"event": "error", "data": json.dumps({"message": "Report generation failed. Please try again."})}
+
+    return EventSourceResponse(stream())
