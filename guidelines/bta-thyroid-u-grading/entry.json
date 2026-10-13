@@ -15,6 +15,7 @@
     "finding_type": ["thyroid nodule"],
     "context": []
   },
+  "off_modality": "redirect",
   "aliases": [
     "U classification",
     "U grade",

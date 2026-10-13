@@ -3,7 +3,8 @@
   "version": "2019.1",
   "topic": "prostate-lesion-mri",
   "purpose": "Assigns a likelihood of clinically significant cancer to a prostate lesion on multiparametric MRI, for detection, localisation and risk stratification in patients with suspected cancer in a treatment-naive prostate.",
-  "trigger": ["finding"],
+  "trigger": ["exam", "finding"],
+  "exam": "MRI of the prostate (multiparametric or biparametric)",
   "issuer": "American College of Radiology (PI-RADS Steering Committee: ACR, ESUR, AdMeTech Foundation)",
   "system": "PI-RADS Prostate Imaging - Reporting and Data System, Version 2.1",
   "display": "PI-RADS v2.1",
@@ -30,6 +31,18 @@
     "prostate imaging reporting and data system"
   ],
   "inputs": [
+    {
+      "id": "finding_above_1",
+      "label": "A finding with a PI-RADS category above 1 is reported",
+      "type": "boolean",
+      "scope": "lesion",
+      "how_stated": "true when any focal lesion, nodule or region of the gland is described for scoring (eg a PI-RADS 2 to 5 lesion, or a lesion given T2W, DWI or DCE scores); false when no such finding is reported, eg 'no focal lesion', 'no suspicious lesion', or only typical BPH change in the transition zone, which PI-RADS treats as a normal variant",
+      "locator": {
+        "source": "S1",
+        "page": 20,
+        "section": "Section III: Evaluation of the TZ (How to Score in the TZ: every MRI exam is assigned a category; with no finding above category 1 the exam is PI-RADS 1)"
+      }
+    },
     {
       "id": "treated_cancer",
       "label": "Prostate cancer already treated (MRI for suspected recurrence)",
@@ -169,6 +182,30 @@
       "cases": [
         {
           "when": {
+            "all": [
+              {
+                "none": [
+                  {
+                    "ref": "treated_cancer",
+                    "eq": true
+                  }
+                ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": false
+              }
+            ]
+          },
+          "result": "pirads_1_exam",
+          "locator": {
+            "source": "S1",
+            "page": 20,
+            "section": "Section III: Evaluation of the TZ (How to Score in the TZ: every MRI exam is assigned a category; with no finding above category 1 the exam is PI-RADS 1)"
+          }
+        },
+        {
+          "when": {
             "ref": "treated_cancer",
             "eq": true
           },
@@ -189,6 +226,10 @@
                     "eq": true
                   }
                 ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
               },
               {
                 "ref": "dwi",
@@ -217,6 +258,10 @@
                     "eq": true
                   }
                 ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
               },
               {
                 "ref": "t2w",
@@ -259,6 +304,10 @@
                 ]
               },
               {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
                 "ref": "zone",
                 "eq": "peripheral"
               },
@@ -288,6 +337,10 @@
                 ]
               },
               {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
                 "ref": "zone",
                 "eq": "peripheral"
               },
@@ -315,6 +368,10 @@
                     "eq": true
                   }
                 ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
               },
               {
                 "ref": "zone",
@@ -350,6 +407,10 @@
                 ]
               },
               {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
                 "ref": "zone",
                 "eq": "peripheral"
               },
@@ -381,6 +442,10 @@
                     "eq": true
                   }
                 ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
               },
               {
                 "ref": "zone",
@@ -416,6 +481,10 @@
                 ]
               },
               {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
                 "ref": "zone",
                 "eq": "peripheral"
               },
@@ -445,6 +514,10 @@
                 ]
               },
               {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
                 "ref": "zone",
                 "eq": "peripheral"
               },
@@ -472,6 +545,10 @@
                     "eq": true
                   }
                 ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
               },
               {
                 "ref": "zone",
@@ -513,6 +590,10 @@
                 ]
               },
               {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
                 "ref": "zone",
                 "eq": "transition"
               },
@@ -550,6 +631,10 @@
                 ]
               },
               {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
                 "ref": "zone",
                 "eq": "transition"
               },
@@ -584,6 +669,10 @@
                     "eq": true
                   }
                 ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
               },
               {
                 "ref": "zone",
@@ -624,6 +713,10 @@
                 ]
               },
               {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
                 "ref": "zone",
                 "eq": "transition"
               },
@@ -655,6 +748,10 @@
                     "eq": true
                   }
                 ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
               },
               {
                 "ref": "zone",
@@ -696,6 +793,10 @@
                 ]
               },
               {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
                 "ref": "zone",
                 "eq": "transition"
               },
@@ -733,6 +834,10 @@
                     "eq": true
                   }
                 ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
               },
               {
                 "ref": "dwi",
@@ -771,6 +876,10 @@
                 ]
               },
               {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
                 "ref": "dwi",
                 "state": "not_assessable"
               },
@@ -807,6 +916,10 @@
                 ]
               },
               {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
                 "ref": "dwi",
                 "state": "not_assessable"
               },
@@ -840,6 +953,10 @@
                 ]
               },
               {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
                 "ref": "dwi",
                 "state": "not_assessable"
               },
@@ -871,6 +988,10 @@
                     "eq": true
                   }
                 ]
+              },
+              {
+                "ref": "finding_above_1",
+                "eq": true
               },
               {
                 "ref": "dwi",
@@ -909,6 +1030,10 @@
                 ]
               },
               {
+                "ref": "finding_above_1",
+                "eq": true
+              },
+              {
                 "ref": "dwi",
                 "state": "not_assessable"
               },
@@ -938,6 +1063,21 @@
   ],
   "result": "category",
   "outcomes": [
+    {
+      "id": "pirads_1_exam",
+      "classification": "PI-RADS 1 overall for the examination: no finding above category 1; clinically significant cancer is highly unlikely.",
+      "recommendation": "PI-RADS states biopsy should not be considered for category 1; it gives no management, which rests on clinical factors and local practice.",
+      "caveats": [
+        "Every MRI exam is assigned a category; typical BPH nodules alone are a normal variant (T2W 1) and need not be reported separately.",
+        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
+        "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation."
+      ],
+      "locator": {
+        "source": "S1",
+        "page": 20,
+        "section": "Section III: Evaluation of the TZ (How to Score in the TZ: every MRI exam is assigned a category; with no finding above category 1 the exam is PI-RADS 1)"
+      }
+    },
     {
       "id": "pirads_1",
       "classification": "PI-RADS 1: very low; clinically significant cancer is highly unlikely to be present.",

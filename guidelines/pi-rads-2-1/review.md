@@ -124,3 +124,29 @@
 - **Minor 4:** the TZ-without-DCE case is now `origin: "source"` (p31).
 - **Minor 5:** the manifest and this file record that the mirror's sha256 has not been compared with ACR's live PDF.
 - Gates 1–4 pass; gate 5 re-run: the same 20 flags, resolved as above (case0 and does_not_apply now score 0.95 and 0.91).
+
+## Revision 3: exam-level with the study-level PI-RADS 1 (2026-10-13, task M4)
+
+Source, S1 p 20 (Section III, Evaluation of the TZ, How to Score in the TZ): "Since every MRI exam should be assigned a
+PI-RADS assessment category 1-5, when there are no findings with a PI-RADS assessment category >1, the overall PI-RADS
+assessment category for the MRI exam should be reported as PI-RADS 1: clinically significant cancer is highly
+unlikely." Recommendation wording reuses pirads_1's (S1 p 17: "biopsy should be considered for PI-RADS 4 or 5, but not
+for PI-RADS 1 or 2, PI-RADS v2.1 does not include recommendations for management").
+
+- `trigger` ["exam", "finding"]; `exam` "MRI of the prostate (multiparametric or biparametric)".
+- New first input `finding_above_1` (boolean, lesion scope: an exam card's finding is the whole dictation), located p 20.
+- New first rules case: not treated and `finding_above_1` false → `pirads_1_exam` (p 20). Every other non-treated case
+  now also requires `finding_above_1` true, so the rules still partition; the treated case is unchanged (a treated gland
+  is does_not_apply whether or not a finding is reported). ✓ gate 2.
+- New outcome `pirads_1_exam`, located p 20; caveats: p 20's BPH-as-normal-variant line plus pirads_1's own caveats.
+- Golden cases: every existing case gains `finding_above_1: true` (outcomes unchanged); five new cases (normal gland →
+  pirads_1_exam; normal gland with treatment unstated → needs treated_cancer; normal gland after treatment →
+  does_not_apply; PZ DWI 4 lesion → pirads_4 unchanged; lesion scores with the new input unsettled → needs it).
+- Gate 5 (Jev evidence) not re-run (no network in this task); the new input, case and outcome cite the p 20 sentence
+  quoted above.
+
+For Hassan:
+- DECISION: a lesion card whose dictation the settler cannot read for `finding_above_1` asks it (one extra question)
+  before the per-lesion inputs; lesion dictations should settle it true from the lesion itself.
+- A normal gland still needs `treated_cancer` (eligibility) from the history; a treatment-naive history settles it.
+- No independent clinical read was run for this revision (task constraint: no subagents).

@@ -38,6 +38,7 @@
     "issuer": "AOSpine Spinal Cord Injury & Trauma Knowledge Forum (Vaccaro AR et al.)",
     "logic": [],
     "match_topic": "",
+    "off_modality": "drop",
     "outcomes": [],
     "purpose": "Classifies an acute thoracolumbar spine injury by fracture morphology, with neurological status and case-specific modifiers, in spinal trauma; designed mainly around features seen on CT. Not for chronic fractures or low-energy osteoporotic insufficiency fractures.",
     "reference": {
@@ -629,6 +630,7 @@
     "issuer": "ASPECTS Study Group (Alberta Stroke Programme)",
     "logic": [],
     "match_topic": "",
+    "off_modality": "drop",
     "outcomes": [],
     "purpose": "Scores early ischaemic change in the middle cerebral artery territory on non-contrast CT in hyperacute ischaemic stroke, as part of the pre-treatment CT assessment before thrombolysis.",
     "reference": {
@@ -941,7 +943,8 @@
       "cystic renal mass"
      ],
      "modality": [
-      "CT"
+      "CT",
+      "MRI"
      ],
      "region": [
       "abdomen"
@@ -2677,6 +2680,7 @@
      }
     ],
     "match_topic": "",
+    "off_modality": "drop",
     "outcomes": [
      {
       "caveats": [
@@ -3122,6 +3126,7 @@
      }
     ],
     "match_topic": "",
+    "off_modality": "redirect",
     "outcomes": [
      {
       "caveats": [
@@ -5734,6 +5739,7 @@
      }
     ],
     "match_topic": "",
+    "off_modality": "drop",
     "outcomes": [
      {
       "caveats": [
@@ -6523,6 +6529,7 @@
      }
     ],
     "match_topic": "coronary",
+    "off_modality": "drop",
     "outcomes": [
      {
       "caveats": [
@@ -8452,6 +8459,7 @@
      }
     ],
     "match_topic": "coronary",
+    "off_modality": "drop",
     "outcomes": [
      {
       "caveats": [],
@@ -10133,6 +10141,7 @@
      }
     ],
     "match_topic": "",
+    "off_modality": "drop",
     "outcomes": [
      {
       "caveats": [
@@ -10559,6 +10568,7 @@
     "issuer": "Fazekas F et al. (Hospital of the University of Pennsylvania)",
     "logic": [],
     "match_topic": "",
+    "off_modality": "drop",
     "outcomes": [],
     "purpose": "Grades periventricular and deep white matter hyperintensity separately on MRI. Described in a research study of MR signal abnormalities in Alzheimer's dementia and normal ageing.",
     "reference": {
@@ -11865,6 +11875,7 @@
      }
     ],
     "match_topic": "",
+    "off_modality": "drop",
     "outcomes": [
      {
       "caveats": [
@@ -12331,6 +12342,7 @@
     "issuer": "Garden RS (Preston Royal Infirmary)",
     "logic": [],
     "match_topic": "",
+    "off_modality": "drop",
     "outcomes": [],
     "purpose": "Classifies a subcapital (intracapsular) femoral neck fracture into stages by its degree of displacement on radiographs taken before reduction.",
     "reference": {
@@ -12602,6 +12614,7 @@
     "issuer": "Kellgren and Lawrence (University of Manchester)",
     "logic": [],
     "match_topic": "",
+    "off_modality": "drop",
     "outcomes": [],
     "purpose": "Grades the severity of osteoarthritis on radiographs of the hand, wrist, spinal apophyseal joints, hip and knee. Developed for reading x-rays in a population survey of rheumatic disease.",
     "reference": {
@@ -12999,6 +13012,7 @@
     "issuer": "Lund VJ, Mackay IS (Rhinology)",
     "logic": [],
     "match_topic": "",
+    "off_modality": "drop",
     "outcomes": [],
     "purpose": "Stages the extent of chronic rhinosinusitis on CT of the paranasal sinuses, for assessing disease extent and guiding clinical management.",
     "reference": {
@@ -13793,6 +13807,7 @@
      }
     ],
     "match_topic": "",
+    "off_modality": "drop",
     "outcomes": [
      {
       "caveats": [],
@@ -14048,10 +14063,30 @@
     },
     "display": "PI-RADS v2.1",
     "edition": "2019 (v2.1)",
-    "exam": "",
+    "exam": "MRI of the prostate (multiparametric or biparametric)",
     "exam_presets": {},
     "id": "pi-rads-2-1",
     "inputs": [
+     {
+      "how_stated": "true when any focal lesion, nodule or region of the gland is described for scoring (eg a PI-RADS 2 to 5 lesion, or a lesion given T2W, DWI or DCE scores); false when no such finding is reported, eg 'no focal lesion', 'no suspicious lesion', or only typical BPH change in the transition zone, which PI-RADS treats as a normal variant",
+      "id": "finding_above_1",
+      "label": "A finding with a PI-RADS category above 1 is reported",
+      "locator": {
+       "page": 20,
+       "section": "Section III: Evaluation of the TZ (How to Score in the TZ: every MRI exam is assigned a category; with no finding above category 1 the exam is PI-RADS 1)",
+       "source": "S1",
+       "table": ""
+      },
+      "max_inclusive": true,
+      "min_inclusive": true,
+      "options": [],
+      "prerequisites": [],
+      "role": "clinical",
+      "scope": "lesion",
+      "states": [],
+      "type": "boolean",
+      "unit": ""
+     },
      {
       "how_stated": "true when the history gives prior treatment of prostate cancer (eg prostatectomy, radiotherapy, focal or ablative therapy) and the MRI looks for recurrence; false for a treatment-naive gland, including suspected cancer, a prior negative biopsy, or BPH treatment",
       "id": "treated_cancer",
@@ -14217,6 +14252,31 @@
       "cases": [
        {
         "locator": {
+         "page": 20,
+         "section": "Section III: Evaluation of the TZ (How to Score in the TZ: every MRI exam is assigned a category; with no finding above category 1 the exam is PI-RADS 1)",
+         "source": "S1",
+         "table": ""
+        },
+        "result": "pirads_1_exam",
+        "when": {
+         "all": [
+          {
+           "none": [
+            {
+             "eq": true,
+             "ref": "treated_cancer"
+            }
+           ]
+          },
+          {
+           "eq": false,
+           "ref": "finding_above_1"
+          }
+         ]
+        }
+       },
+       {
+        "locator": {
          "page": 31,
          "section": "Section IV C.3: Commentary on bi-parametric MRI (local recurrence after prior treatment, a setting in which current PI-RADS assessment criteria do not apply)",
          "source": "S1",
@@ -14247,6 +14307,10 @@
            ]
           },
           {
+           "eq": true,
+           "ref": "finding_above_1"
+          },
+          {
            "ref": "dwi",
            "state": "not_assessable"
           },
@@ -14274,6 +14338,10 @@
              "ref": "treated_cancer"
             }
            ]
+          },
+          {
+           "eq": true,
+           "ref": "finding_above_1"
           },
           {
            "ref": "t2w",
@@ -14317,6 +14385,10 @@
            ]
           },
           {
+           "eq": true,
+           "ref": "finding_above_1"
+          },
+          {
            "eq": "peripheral",
            "ref": "zone"
           },
@@ -14346,6 +14418,10 @@
            ]
           },
           {
+           "eq": true,
+           "ref": "finding_above_1"
+          },
+          {
            "eq": "peripheral",
            "ref": "zone"
           },
@@ -14373,6 +14449,10 @@
              "ref": "treated_cancer"
             }
            ]
+          },
+          {
+           "eq": true,
+           "ref": "finding_above_1"
           },
           {
            "eq": "peripheral",
@@ -14408,6 +14488,10 @@
            ]
           },
           {
+           "eq": true,
+           "ref": "finding_above_1"
+          },
+          {
            "eq": "peripheral",
            "ref": "zone"
           },
@@ -14439,6 +14523,10 @@
              "ref": "treated_cancer"
             }
            ]
+          },
+          {
+           "eq": true,
+           "ref": "finding_above_1"
           },
           {
            "eq": "peripheral",
@@ -14474,6 +14562,10 @@
            ]
           },
           {
+           "eq": true,
+           "ref": "finding_above_1"
+          },
+          {
            "eq": "peripheral",
            "ref": "zone"
           },
@@ -14503,6 +14595,10 @@
            ]
           },
           {
+           "eq": true,
+           "ref": "finding_above_1"
+          },
+          {
            "eq": "peripheral",
            "ref": "zone"
           },
@@ -14530,6 +14626,10 @@
              "ref": "treated_cancer"
             }
            ]
+          },
+          {
+           "eq": true,
+           "ref": "finding_above_1"
           },
           {
            "eq": "transition",
@@ -14571,6 +14671,10 @@
            ]
           },
           {
+           "eq": true,
+           "ref": "finding_above_1"
+          },
+          {
            "eq": "transition",
            "ref": "zone"
           },
@@ -14608,6 +14712,10 @@
            ]
           },
           {
+           "eq": true,
+           "ref": "finding_above_1"
+          },
+          {
            "eq": "transition",
            "ref": "zone"
           },
@@ -14642,6 +14750,10 @@
              "ref": "treated_cancer"
             }
            ]
+          },
+          {
+           "eq": true,
+           "ref": "finding_above_1"
           },
           {
            "eq": "transition",
@@ -14682,6 +14794,10 @@
            ]
           },
           {
+           "eq": true,
+           "ref": "finding_above_1"
+          },
+          {
            "eq": "transition",
            "ref": "zone"
           },
@@ -14713,6 +14829,10 @@
              "ref": "treated_cancer"
             }
            ]
+          },
+          {
+           "eq": true,
+           "ref": "finding_above_1"
           },
           {
            "eq": "transition",
@@ -14752,6 +14872,10 @@
              "ref": "treated_cancer"
             }
            ]
+          },
+          {
+           "eq": true,
+           "ref": "finding_above_1"
           },
           {
            "eq": "transition",
@@ -14793,6 +14917,10 @@
            ]
           },
           {
+           "eq": true,
+           "ref": "finding_above_1"
+          },
+          {
            "ref": "dwi",
            "state": "not_assessable"
           },
@@ -14827,6 +14955,10 @@
              "ref": "treated_cancer"
             }
            ]
+          },
+          {
+           "eq": true,
+           "ref": "finding_above_1"
           },
           {
            "ref": "dwi",
@@ -14865,6 +14997,10 @@
            ]
           },
           {
+           "eq": true,
+           "ref": "finding_above_1"
+          },
+          {
            "ref": "dwi",
            "state": "not_assessable"
           },
@@ -14898,6 +15034,10 @@
            ]
           },
           {
+           "eq": true,
+           "ref": "finding_above_1"
+          },
+          {
            "ref": "dwi",
            "state": "not_assessable"
           },
@@ -14929,6 +15069,10 @@
              "ref": "treated_cancer"
             }
            ]
+          },
+          {
+           "eq": true,
+           "ref": "finding_above_1"
           },
           {
            "ref": "dwi",
@@ -14967,6 +15111,10 @@
            ]
           },
           {
+           "eq": true,
+           "ref": "finding_above_1"
+          },
+          {
            "ref": "dwi",
            "state": "not_assessable"
           },
@@ -14990,7 +15138,24 @@
      }
     ],
     "match_topic": "",
+    "off_modality": "drop",
     "outcomes": [
+     {
+      "caveats": [
+       "Every MRI exam is assigned a category; typical BPH nodules alone are a normal variant (T2W 1) and need not be reported separately.",
+       "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
+       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation."
+      ],
+      "classification": "PI-RADS 1 overall for the examination: no finding above category 1; clinically significant cancer is highly unlikely.",
+      "id": "pirads_1_exam",
+      "locator": {
+       "page": 20,
+       "section": "Section III: Evaluation of the TZ (How to Score in the TZ: every MRI exam is assigned a category; with no finding above category 1 the exam is PI-RADS 1)",
+       "source": "S1",
+       "table": ""
+      },
+      "recommendation": "PI-RADS states biopsy should not be considered for category 1; it gives no management, which rests on clinical factors and local practice."
+     },
      {
       "caveats": [
        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
@@ -15694,6 +15859,7 @@
     "tier": 1,
     "topic": "prostate-lesion-mri",
     "trigger": [
+     "exam",
      "finding"
     ],
     "version": "2019.1"
@@ -16537,6 +16703,7 @@
      }
     ],
     "match_topic": "",
+    "off_modality": "redirect",
     "outcomes": [
      {
       "caveats": [
@@ -17868,6 +18035,7 @@
      }
     ],
     "match_topic": "",
+    "off_modality": "redirect",
     "outcomes": [
      {
       "caveats": [
@@ -18394,6 +18562,7 @@
      }
     ],
     "match_topic": "",
+    "off_modality": "drop",
     "outcomes": [
      {
       "caveats": [
@@ -18888,6 +19057,7 @@
      }
     ],
     "match_topic": "",
+    "off_modality": "drop",
     "outcomes": [
      {
       "caveats": [
@@ -19456,6 +19626,7 @@
     "issuer": "Stoller DW et al. (University of California San Francisco; Cedars-Sinai Medical Center)",
     "logic": [],
     "match_topic": "",
+    "off_modality": "drop",
     "outcomes": [],
     "purpose": "Grades abnormal meniscal signal on knee MRI, correlated with histological degeneration and tears. Derived from an autopsy and amputation specimen study.",
     "reference": {
@@ -19826,6 +19997,7 @@
     "issuer": "AO Foundation and Orthopaedic Trauma Association",
     "logic": [],
     "match_topic": "",
+    "off_modality": "drop",
     "outcomes": [],
     "purpose": "Classifies a malleolar (ankle) fracture by the level of the fibular injury relative to the syndesmosis, within the AO/OTA compendium used to standardise fracture communication and recording.",
     "reference": {
@@ -20215,5 +20387,5 @@
    ]
   }
  },
- "version": "f007702aa269"
+ "version": "73444169f25f"
 }

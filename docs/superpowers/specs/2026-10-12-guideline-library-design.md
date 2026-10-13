@@ -279,9 +279,10 @@ found 67/184 expected topics; one Jev choice per finding found 169/184). Hassan 
   for chronic rhinosinusitis, the NHS AAA Screening Programme on a programme aortic ultrasound). The study's identity
   binds them, whatever is dictated, and a normal study settles to its normal outcome (e.g. CAD-RADS 0). A pack may carry
   both triggers (CAC-DRS: exam-level on a calcium-score study, finding-triggered for coronary calcification seen on any
-  other CT). NHS AAA is exam-level only: an aneurysm seen on an ordinary scan gets no card. PI-RADS is
-  finding-triggered for now: its source does define an exam result (no finding above category 1 → overall PI-RADS 1),
-  but the pack's lesion inputs cannot settle a gland with no lesion (2026-10-13 review; exam-level pending Hassan).
+  other CT). NHS AAA is exam-level only: an aneurysm seen on an ordinary scan gets no card. PI-RADS is exam-level on
+  an MRI of the prostate (and finding-triggered elsewhere) with its source's study-level outcome: when no finding has a
+  category above 1, the exam is PI-RADS 1 overall; one input asks whether such a finding is reported, so a normal gland
+  settles with no lesion questions, and a lesion takes the per-lesion logic unchanged.
 - An exam-level entry may carry `exam_presets`: input values its exam implies (NHS AAA: programme scan, male, not
   treated). Only the exam card gets them; they are the one pre-fill without a quote, shown on the card as set by the
   exam (`Settled.by = "exam"`), and a value the dictation states, or an answer, overrides them (§7.10).
@@ -298,10 +299,12 @@ found 67/184 expected topics; one Jev choice per finding found 169/184). Hassan 
   finding-triggered topics, each option built in code from the entries' names, `purpose` and `applies_to`
   (finding type, region, modality), plus "none". Topics, not packs: siblings (BTS/Fleischner, RCOG pre/post) are one
   option and become columns on one card; CAC-DRS and CAD-RADS are offered as one coronary option. A pick below the
-  confidence floor is "none".
+  confidence floor (0.6) is "none".
 - **Code**: maps the topic to its packs; drops a pack whose `applies_to.modality` excludes the resolved modality (an
-  "other" or failed modality drops nothing); merges an exam-bound pack with the same pack picked by a finding into one
-  card; applies the per-finding and per-case caps.
+  "other" or failed modality drops nothing), except a pack marked `off_modality: "redirect"` (the ultrasound-defined
+  thyroid U grading and RCOG ovarian packs), which still gives a card marked `needs_modality` (e.g. "US"): read-only,
+  never settled, previewed or applied; merges an exam-bound pack with the same pack picked by a finding into one
+  card; keeps one TNM card per site per case (the first in rank order); applies the per-finding and per-case caps.
 - **Exam-level cards** settle from the whole dictation (normal units included), not from one finding unit.
 - **Failure**: a failed Jev request yields no library card for that finding or case and caches nothing (fails open).
 - **No gpt-oss in library matching.** The gpt-oss matcher (registry systems from model knowledge, TNM) moves to an
