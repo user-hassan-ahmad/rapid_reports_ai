@@ -95,7 +95,7 @@ Origin = Literal["template", "case"]  # case: written by the Phase-1 case analys
 LegacyEffect = Literal["suppress", "replace", "append", "use"]
 # Grammar v1 (spec 2026-10-01-template-sheet-grammar): effects only a grammar sheet expresses.
 Effect = Literal["suppress", "replace", "append", "use", "insert_before", "suppress_paragraph_negatives",
-                 "list_missing", "suppress_section", "suppress_headers", "order"]
+                 "list_missing", "suppress_section", "suppress_headers", "order", "ask"]
 
 
 class Rule(_Model):
@@ -111,6 +111,8 @@ class Rule(_Model):
     items: List[str] = []  # list_missing
     anchor: str = ""  # insert_before
     position: Optional[Literal["top", "end", "first", "last"]] = None  # list_missing: top/end; order: first/last
+    question: SkipJsonSchema[str] = ""   # ask (a habit question): the question; then_text is its YES sentence
+    else_text: SkipJsonSchema[str] = ""  # ask: the NO sentence
 
 
 # A rule as the LLM extractor drafts it: the four legacy effects only, and the grammar-only fields kept

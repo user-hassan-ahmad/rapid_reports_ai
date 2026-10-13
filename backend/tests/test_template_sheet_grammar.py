@@ -674,7 +674,6 @@ NOT_LEAN_LINES = [
     'RULE WHEN [context: a follow-up study of a known lesion] SUPPRESS NEGATIVES',
     'RULE WHEN [context: a follow-up study of a known lesion] ORDER FIRST',
     'RULE WHEN [history: any listed value is not stated in the request] LIST_MISSING ["volume"] AT END',
-    'NEGATIVE "No surrounding collection." WHEN [findings: an inflammatory process of the organ is reported]',
     'NEGATIVE "No surrounding collection." WHEN [history: recent surgery to the organ is stated]',
     'NEGATIVE "No contrast extravasation." WHEN [context: a contrast-enhanced study is performed]',
     'IF_PRESENT [focal lesion] "No regional lymphadenopathy." (core)',
@@ -696,6 +695,43 @@ def test_findings_and_history_conditioned_units_are_not_lean(line, mode):
 def test_v1_mode_keeps_the_full_grammar(line):
     r = g.parse_sheet(in_paragraph(line), mode="v1")
     assert r.errors == [] and r.structure.usable, r.errors
+
+
+# ── findings-triggered habits (spec 2026-10-13-findings-triggered-rows-design) ──
+
+HABIT_ASK = ('RULE WHEN [findings: a focal abnormality of the primary organ is reported] ASK "Extension beyond the organ?" '
+             'YES "The abnormality extends beyond the organ." NO "No extension beyond the organ."')
+HABIT_STATE = 'NEGATIVE "No extension beyond the organ." WHEN [findings: a focal abnormality of the primary organ is reported]'
+
+
+@pytest.mark.parametrize("mode", ["template", "master"])
+def test_habit_forms_are_lean_inside_a_findings_paragraph(mode):
+    base = MASTER if mode == "master" else LEAN
+    r = g.parse_sheet(in_paragraph(HABIT_ASK + "\n" + HABIT_STATE, base), mode=mode)
+    assert r.errors == [] and r.structure.usable, r.errors
+    (ask,) = [x for x in r.structure.rules if x.effect == "ask"]
+    assert (ask.condition_source, ask.condition, ask.paragraph, ask.section) == (
+        "findings", "a focal abnormality of the primary organ is reported", "p0", "FINDINGS")
+    assert (ask.question, ask.then_text, ask.else_text) == (
+        "Extension beyond the organ?", "The abnormality extends beyond the organ.", "No extension beyond the organ.")
+    assert [(n.text, n.condition_source, n.paragraph) for n in r.structure.negatives if n.condition] == [
+        ("No extension beyond the organ.", "findings", "p0")]
+
+
+def test_habit_forms_outside_a_findings_paragraph_are_not_lean():
+    in_measured = LEAN.replace("RULE WHEN [findings: any listed value is not stated] LIST_MISSING",
+                               HABIT_STATE + "\nRULE WHEN [findings: any listed value is not stated] LIST_MISSING")
+    assert [e.reason for e in g.parse_sheet(in_measured).errors] == [g.NOT_LEAN]
+    wide = 'FIXED "Images reviewed on a diagnostic workstation."\n'
+    assert [e.reason for e in g.parse_sheet(LEAN.replace(wide, wide + HABIT_STATE + "\n")).errors] == [g.NOT_LEAN]
+    assert [e.reason for e in g.parse_sheet(LEAN.replace(wide, wide + HABIT_ASK + "\n")).errors] == [g.MALFORMED_UNIT]
+
+
+def test_ask_needs_a_findings_condition_and_a_question_mark():
+    history = HABIT_ASK.replace("[findings:", "[history:")
+    no_mark = HABIT_ASK.replace('"Extension beyond the organ?"', '"Extension beyond the organ"')
+    for line in (history, no_mark):
+        assert [e.reason for e in g.parse_sheet(in_paragraph(line)).errors] == [g.MALFORMED_UNIT], line
 
 
 # ── COVERS ──
