@@ -1815,7 +1815,7 @@
 				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences, owned: ownedNow(),
 				touched: touchedRegions(), template_id: stackTemplateId, clinical_history: clinicalHistory,
 				region_text: regionText(stackUnits) }); // a normal is covered only by its own region's sentences
-			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed, dropped: res.dropped };
+			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed, dropped: res.dropped, check_failed: !!res.error };
 		} catch {
 			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {}, check_failed: true }; // nothing assumed
 		}

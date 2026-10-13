@@ -62,7 +62,7 @@ export function abnormalAll(units: StackUnit[]): string[] {
 	return effectiveItems(units).filter((i) => i.abnormal).map((i) => i.text);
 }
 
-export interface AssumedSnap { dictation: string; abnormal: string[]; untouched: string[]; assumed: Record<string, string[]>; offered?: Record<string, string[]>; dropped?: Dropped; check_failed?: boolean }
+export interface AssumedSnap { dictation: string; abnormal: string[]; untouched: string[]; assumed: Record<string, string[]>; offered: Record<string, string[]>; dropped?: Dropped; check_failed?: boolean }
 
 /** What the gate confirms as assumed: only the sentences /assumed answered for each region, in the state (abnormal
  *  or untouched) that region had when they were checked, minus removed ones. Never the raw sheet (review
