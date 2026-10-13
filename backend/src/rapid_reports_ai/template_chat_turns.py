@@ -1,6 +1,7 @@
 """Chat-to-edit turns stored with the template (template pipeline spec, block 4): the instruction a radiologist gave,
 the reply, and whether it was applied, identifier-shaped spans scrubbed first. Evidence for the later learning loop, so recording never fails the request
 and never logs the text (only the exception type)."""
+import json
 import logging
 import uuid
 
@@ -12,6 +13,29 @@ logger = logging.getLogger(__name__)
 
 MAX_CREATOR_TURNS = 50
 MAX_FIELD = 4000
+MAX_ROUTING = 20000
+
+
+def _scrub_obj(v):
+    if isinstance(v, str):
+        return scrub(v)
+    if isinstance(v, dict):
+        return {k: _scrub_obj(x) for k, x in v.items()}
+    if isinstance(v, list):
+        return [_scrub_obj(x) for x in v]
+    return v
+
+
+def _routing(r):
+    """The router's evidence, identifier-shaped spans scrubbed, capped (a capped record keeps version and route)."""
+    if not r:
+        return None
+    r = _scrub_obj(r)
+    try:
+        size = len(json.dumps(r))
+    except (TypeError, ValueError):
+        return {"unserialisable": True}
+    return r if size <= MAX_ROUTING else {"truncated": True, "version": r.get("version"), "route": r.get("route")}
 
 
 def _text(v) -> str:
@@ -24,12 +48,13 @@ def _clean(v) -> str:
 
 
 def record_turn(db, template_id, instruction: str, response: str, applied: bool,
-                sheet_before: str, sheet_after: str) -> None:
+                sheet_before: str, sheet_after: str, routing: dict | None = None) -> None:
     try:
         db.add(TemplateChatTurn(
             template_id=template_id, instruction=_clean(instruction),
             response=_clean(response), applied=applied,
             sheet_hash_before=sheet_hash(sheet_before or ""), sheet_hash_after=sheet_hash(sheet_after or ""),
+            routing=_routing(routing),
         ))
         db.commit()
     except Exception as e:   # evidence only

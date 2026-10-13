@@ -180,3 +180,10 @@ def guided_template(db_session: Session, test_user: User) -> Template:
 def legacy_template(db_session: Session, test_user: User) -> Template:
     """A retired (section-based) template: hidden from lists, generation refused, never deleted."""
     return _make_template(db_session, test_user, "Legacy", {"sections": []}, tags=["legacy-tag"])
+
+
+@pytest.fixture(autouse=True)
+def _chat_router_off(monkeypatch):
+    """The chat-edit router calls Jev and Qwen. It is off by default (D-R3), and pinned off here in case a developer's
+    environment switches it on: a test that wants it sets RR_CHAT_ROUTER=1 itself."""
+    monkeypatch.setenv("RR_CHAT_ROUTER", "0")
