@@ -540,7 +540,10 @@
 				message: fullMsg,
 				chat_history: toWireChatHistory(chatHistory.slice(0, -1)),
 				rejection_context: rejectionContext,
-				decisions
+				decisions,
+				// the last router turn's records unless rejected: "undo that" reverses them; the checks read their claims
+				last_changes: lastAssistant?.route === 'router' && lastAssistant.status !== 'rejected'
+					? lastAssistant.changes || [] : []
 			});
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;

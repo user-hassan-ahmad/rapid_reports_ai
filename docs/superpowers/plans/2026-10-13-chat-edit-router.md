@@ -101,6 +101,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
 
       A claim that names no block, an edit that went beyond its claim, and a target that does not exist stay as asks.
     - Reversals ("undo that", "put it back", "revert") are caught by a Jev yes/no in the screen call ("The INSTRUCTION asks to undo the previous change.", at 0.5, to be validated in the next lab). They run `undo_turn` on the last turn's records (sent back by the client as `last_changes`); the proposer is not called.
+    - Wired: the refine endpoint calls `chat_router_propose.propose_turn` behind the same kill switch (`RR_CHAT_ROUTER`, still OFF). `chat_router.route_turn` (tag-then-route) is left in the code but unused by the endpoint; the lab keeps it as a reference arm. Its helpers (style path, apply, undo, cards) are shared. The request gains `last_changes`, the last router turn's records, which the creator and refine panel send unless that turn was undone.
     - The proposal schema is flat, with one list per kind (style has its own list). Identifier fields are required, and a change whose identifier is empty is dropped, not asked about.
 16. **Prose the style call never sees:** `## Scan Context` and `## Report Structure` (the fit check reads the scan context, and the structure block is layout).
 

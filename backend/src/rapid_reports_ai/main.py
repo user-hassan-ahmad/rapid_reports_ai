@@ -76,6 +76,7 @@ from . import template_sheet_save as tsave
 from . import template_examples
 from . import template_chat_turns
 from . import chat_router
+from . import chat_router_propose
 from . import template_decisions as td
 from .auth import (
     verify_password,
@@ -758,6 +759,8 @@ class SkillSheetRefineRequest(BaseModel):
     rejection_context: Optional[SkillSheetRejectionContext] = None
     template_id: Optional[str] = None   # the saved template this chat edits (None in the creator): the turn is recorded
     decisions: Optional[List[Dict[str, Any]]] = Field(default=None, max_length=LEDGER_MAX_ITEMS)   # the template's decision ledger (None: not tracked)
+    # the last router turn's records (client-sent; "undo that" reverses them, V1/C1 read their claims as context)
+    last_changes: Optional[List[Dict[str, Any]]] = Field(default=None, max_length=50)
 
 class SkillSheetRouterUndoRequest(BaseModel):
     skill_sheet: str
@@ -2821,8 +2824,11 @@ async def skill_sheet_refine_endpoint(
                 # decisions None = a client that does not send the ledger (before the Rules step): the router treats
                 # it as an empty ledger and always returns `decisions`, so such a client ignores what it does not use;
                 # the save function seeds the value list before any value write (chat_router_ledger.seed_values)
-                turn = await chat_router.route_turn(request.skill_sheet, request.decisions or [], request.message,
-                                                    context=last_reply, rejection=rejection_ctx)
+                # the hybrid router (propose, verify, apply, plus cards; Hassan 2026-10-13). Tag-then-route
+                # (chat_router.route_turn) is retired: kept, unused here, for the lab's reference arm.
+                turn = await chat_router_propose.propose_turn(
+                    request.skill_sheet, request.decisions or [], request.message, context=last_reply,
+                    rejection=rejection_ctx, last_changes=request.last_changes or [])
             except chat_router.Fallback as e:
                 router_fallback = str(e)
                 logger.warning("[chat-router] fallback to the whole-sheet refine: %s", e)

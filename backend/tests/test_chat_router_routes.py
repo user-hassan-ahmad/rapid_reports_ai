@@ -37,6 +37,7 @@ def test_the_router_is_off_in_tests_by_default():
 import pytest
 
 from rapid_reports_ai import chat_router as R
+from rapid_reports_ai import chat_router_propose as P
 from rapid_reports_ai import template_sheet_save as S
 from tests.template_sheet_fixtures import ROUTER_SHEET
 
@@ -67,20 +68,23 @@ def test_a_routed_turn_returns_the_router_response_and_records_its_evidence(clie
                                                                              monkeypatch, guided_template, db_session):
     seen = {}
 
-    async def route(sheet, ledger, instruction, *, context="", rejection=None):
-        seen.update(sheet=sheet, ledger=ledger, instruction=instruction, context=context, rejection=rejection)
+    async def route(sheet, ledger, instruction, *, context="", rejection=None, last_changes=None):
+        seen.update(sheet=sheet, ledger=ledger, instruction=instruction, context=context, rejection=rejection,
+                    last_changes=last_changes)
         return _turn()
-    monkeypatch.setattr(R, "route_turn", route)
+    monkeypatch.setattr(P, "propose_turn", route)
     r = client.post(URL, headers=auth_headers, json={
         "skill_sheet": ROUTER_SHEET, "message": "drop width", "decisions": [],
         "chat_history": [{"role": "user", "content": "a"}, {"role": "assistant", "content": "Done before."}],
         "rejection_context": {"original_instruction": "o", "rejected_claim": "c"},
+        "last_changes": [{"type": "ledger", "claim": "Depth is no longer required."}],
         "template_id": str(guided_template.id)}).json()
     assert r["route"] == "router" and r["applied"] is True and r["skill_sheet"] == ROUTER_SHEET + "\n"
     assert r["unmatched"] == []
     assert r["decisions"][0]["key"] == "Width" and r["changes"][0]["type"] == "ledger"
     assert r["behavioral_claim"] == "Width is no longer required."
     assert seen["context"] == "Done before." and seen["rejection"] == {"original_instruction": "o", "rejected_claim": "c"}
+    assert seen["last_changes"] == [{"type": "ledger", "claim": "Depth is no longer required."}]
     (turn,) = _turns(db_session)
     assert turn.routing["route"] == "router" and turn.applied is True
 
@@ -99,7 +103,7 @@ def test_a_failed_tag_call_falls_back_to_the_whole_sheet_refine(client, auth_hea
 
     async def vet(sheet, origin, previous="", ledger=None):
         return S.VetOutcome("saved", sheet, "")
-    monkeypatch.setattr(R, "route_turn", route)
+    monkeypatch.setattr(P, "propose_turn", route)
     monkeypatch.setattr("rapid_reports_ai.template_manager.TemplateManager.refine_skill_sheet", refine)
     monkeypatch.setattr(S, "vet_sheet", vet)
     r = client.post(URL, headers=auth_headers, json={"skill_sheet": ROUTER_SHEET, "message": "drop width",
@@ -121,7 +125,7 @@ def test_the_kill_switch_and_a_non_grammar_sheet_take_todays_path(client, auth_h
 
     async def vet(sheet, origin, previous="", ledger=None):
         return S.VetOutcome("unchanged", previous, "")
-    monkeypatch.setattr(R, "route_turn", route)
+    monkeypatch.setattr(P, "propose_turn", route)
     monkeypatch.setattr("rapid_reports_ai.template_manager.TemplateManager.refine_skill_sheet", refine)
     monkeypatch.setattr(S, "vet_sheet", vet)
     monkeypatch.setenv("RR_CHAT_ROUTER", "0")
@@ -186,7 +190,7 @@ def test_any_router_exception_falls_back_to_todays_refine(client, auth_headers, 
 
     async def vet(sheet, origin, previous="", ledger=None):
         return S.VetOutcome("saved", sheet, "")
-    monkeypatch.setattr(R, "route_turn", route)
+    monkeypatch.setattr(P, "propose_turn", route)
     monkeypatch.setattr("rapid_reports_ai.template_manager.TemplateManager.refine_skill_sheet", refine)
     monkeypatch.setattr(S, "vet_sheet", vet)
     r = client.post(URL, headers=auth_headers, json={"skill_sheet": ROUTER_SHEET, "message": "drop width",
@@ -194,3 +198,19 @@ def test_any_router_exception_falls_back_to_todays_refine(client, auth_headers, 
     assert r["success"] and r["response"] == "Done." and "route" not in r
     (turn,) = _turns(db_session)
     assert turn.routing["fallback"] == "KeyError" and turn.routing["route"] == "refine"
+
+
+
+def test_the_old_tag_then_route_path_is_not_called_by_the_endpoint(client, auth_headers, monkeypatch):
+    monkeypatch.setenv("RR_CHAT_ROUTER", "1")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    monkeypatch.setattr("rapid_reports_ai.main.get_system_api_key", lambda *a, **k: "key")
+
+    async def old(*a, **k):
+        raise AssertionError("route_turn is retired (kept for the lab only)")
+
+    async def hybrid(*a, **k):
+        return _turn()
+    monkeypatch.setattr(R, "route_turn", old)
+    monkeypatch.setattr(P, "propose_turn", hybrid)
+    assert client.post(URL, headers=auth_headers, json={"skill_sheet": ROUTER_SHEET, "message": "m"}).json()["route"] == "router"

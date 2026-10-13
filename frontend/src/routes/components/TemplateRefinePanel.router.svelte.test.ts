@@ -55,6 +55,19 @@ describe('TemplateRefinePanel on the chat-edit router', () => {
 		const refines = calls.filter((c) => c.url.endsWith('/skill-sheet/refine'));
 		expect(refines[1].body.rejection_context).toEqual({ original_instruction: 'drop width', rejected_claim: 'Width is no longer required.' });
 		expect(refines[0].body.rejection_context).toBeNull();
+		expect(refines[0].body.last_changes).toEqual([]);
+		expect(refines[1].body.last_changes).toEqual([]);   // the last turn was undone: nothing to reverse
+	});
+
+	it('the next message carries the last router turn\'s records (for "undo that")', async () => {
+		const calls: Call[] = [];
+		vi.stubGlobal('fetch', routes(calls));
+		render(TemplateRefinePanel, { template });
+		await send('drop width');
+		await expect.element(page.getByText('Width is no longer required.', { exact: false })).toBeInTheDocument();
+		await send('put it back');
+		const refines = calls.filter((c) => c.url.endsWith('/skill-sheet/refine'));
+		expect(refines[1].body.last_changes).toEqual([{ type: 'ledger' }]);
 	});
 
 	it('a card applies on tap and the saved sheet is the card answer', async () => {

@@ -179,6 +179,8 @@
 		const rejectionContext = lastAssistant?.status === 'rejected'
 			? { original_instruction: lastAssistant.originalInstruction || '', rejected_claim: lastAssistant.behavioralClaim || '' }
 			: null;
+		// the last router turn's records, unless it was undone: "undo that" reverses them; V1/C1 read their claims
+		const lastChanges = lastAssistant?.route === 'router' && lastAssistant.status !== 'rejected' ? lastAssistant.changes || [] : [];
 		chatHistory = [...chatHistory, { role: 'user', content: msg }];
 		loading = true;
 		error = '';
@@ -190,7 +192,8 @@
 				chat_history: toWireChatHistory(chatHistory.slice(0, -1)),
 				template_id: template?.id ?? null,
 				decisions,
-				rejection_context: rejectionContext
+				rejection_context: rejectionContext,
+				last_changes: lastChanges
 			});
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
