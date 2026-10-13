@@ -112,11 +112,13 @@ def apply_rules(sheet: str, rules: List[Rule], met: Dict[str, bool]) -> Tuple[st
 
 def _left_on_stack(st: SheetStructure, rules: List[Rule]) -> Set[str]:
     """Rule ids the scratchpad path leaves as today: template_stack strips NORMAL / NEGATIVE units (a met REPLACE
-    of one would lose its WITH text) and a USE in a findings section would become a FIXED clinical assertion."""
+    of one would lose its WITH text) and a USE in a findings section would become a FIXED clinical assertion.
+    A REPLACE / SUPPRESS of a FIXED line is safe anywhere: FIXED lines survive template_stack._strip."""
     findings = {s.name for s in st.sections if s.role == "findings"}
     stripped = {norm_key(n.text) for n in st.normals} | {norm_key(n.text) for n in st.negatives}
     return {r.id for r in rules
-            if r.section in findings or (r.effect in ("replace", "suppress") and norm_key(r.target) in stripped)}
+            if (r.effect == "use" and r.section in findings)
+            or (r.effect in ("replace", "suppress") and norm_key(r.target) in stripped)}
 
 
 _NOT_DICTATED = ("DO NOT ASSERT (removed by the radiologist):",

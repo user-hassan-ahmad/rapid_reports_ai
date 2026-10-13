@@ -279,3 +279,11 @@ def test_slot_guard_times_ratios_and_mid_sentence_abbreviations():
     assert f("Comparison with Fig. 2 shows {x}. Normal.") == "Normal."
     assert f("Contrast given: No. Lesion in {seg}. Normal spleen.") == "Contrast given: No. Normal spleen."
     assert f("Normal kidneys, e.g. Normal {x}. Fine.") == "Fine."
+
+
+async def test_on_stack_a_replace_of_a_fixed_line_in_a_findings_paragraph_is_applied():
+    sheet = SHEET.replace('NORMAL [liver]', 'FIXED "No prior liver imaging."\nRULE WHEN [context: a prior liver scan was seen] '
+                          'REPLACE "No prior liver imaging." WITH "Prior liver scan seen."\nNORMAL [liver]')
+    res = await cr.resolve_context_rules(sheet, "", "x", ask=_ask({"a prior liver scan was seen": 0.9}), stack=True)
+    e = next(e for e in res.record["rules"] if e["condition"] == "a prior liver scan was seen")
+    assert e["outcome"] == "applied" and 'FIXED "Prior liver scan seen."' in res.sheet
