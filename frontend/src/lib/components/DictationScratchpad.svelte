@@ -44,7 +44,7 @@
 	import { abnormalAll, assumedFrom, moreLine, openCount, rowSentences, splitReply, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
-	import { assumedKey, pickBody, pickKey, shownNormals, visiblePills, withoutSegments, type ProtocolPick } from '$lib/hybrid-stack/protocol';
+	import { assumedKey, blockedSegments, pickBody, pickKey, placedRegions, shownNormals, visiblePills, withoutSegments, type ProtocolPick } from '$lib/hybrid-stack/protocol';
 	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
@@ -339,11 +339,14 @@
 	// Quiet regions show as pills once something is placed there; a segment's normal reads "Elsewhere, …" once one
 	// of its levels is dictated.
 	let stackLevelGroups: Record<string, string[]> = {};
-	$: placedGroups = new Set(stackUnits.map((u) => u.group).filter((g): g is string => !!g));
+	$: placedGroups = placedRegions(stackUnits); // every split part counts, as in regionStates
+	// A segment line is withheld when an abnormal sentence filed elsewhere names its levels or the segment (backstop).
+	$: segmentsBlocked = blockedSegments(stackLevelGroups, stackUnits);
 	$: shownPills = visiblePills(stackGroups, pillRegions, stackQuiet, placedGroups);
 	// A segment's normal comes from the sheet while its own region is untouched, never from /assumed (E1); × or an
 	// edit on an "Elsewhere, …" line removes it in either form.
-	$: shownAssumed = shownNormals(confirmedAssumed, stackRegionNormals, stackLevelGroups, regionView.assumedNormal, placedGroups, removedSentences);
+	$: shownAssumed = shownNormals(confirmedAssumed, stackRegionNormals, stackLevelGroups, regionView.assumedNormal, placedGroups, removedSentences,
+		segmentsBlocked);
 	$: assumedBehind = Object.keys(stackRegionNormals).length > 0 && (assumedSnap === null || assumedSnap.dictation !== verbatimNow);
 	// Regions are confirmed by name only when no sheet exists for this session (v2 behaviour); with a sheet, a region
 	// with no sentence left assumes nothing. An abnormal region's remainder is never named (review 2026-10-12).

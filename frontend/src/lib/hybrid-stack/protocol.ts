@@ -1,4 +1,6 @@
 // Protocol library (spec 2026-10-13-protocol-library-design §3–4): the pick, quiet regions and segment level lines.
+import { effectiveItems } from './regionState';
+import type { StackUnit } from './types';
 export type ProtocolVariant = { phases: string[]; line: string; default: boolean };
 export type ProtocolOption = {
 	id: string; display_name: string; protocol_line: string; laterality: 'none' | 'required'; variants: ProtocolVariant[];
@@ -93,10 +95,11 @@ export function withoutSegments(normals: Record<string, string[]>, levelGroups: 
 /** The checked normals plus each segment's sheet line while its own region is untouched (nothing placed there).
  *  A segment never takes its line from the check, even from a stale answer. */
 export function withSegmentNormals(
-	checked: Record<string, string[]>, normals: Record<string, string[]>, levelGroups: Record<string, string[]>, untouched: string[]
+	checked: Record<string, string[]>, normals: Record<string, string[]>, levelGroups: Record<string, string[]>, untouched: string[],
+	blocked: Set<string> = new Set()
 ): Record<string, string[]> {
 	const out = withoutSegments(checked, levelGroups);
-	for (const seg of Object.keys(levelGroups)) if (normals[seg]?.length && untouched.includes(seg)) out[seg] = normals[seg];
+	for (const seg of Object.keys(levelGroups)) if (normals[seg]?.length && untouched.includes(seg) && !blocked.has(seg)) out[seg] = normals[seg];
 	return out;
 }
 
@@ -104,7 +107,56 @@ export function withSegmentNormals(
  *  lines, a segment reading "Elsewhere, …" once one of its levels has something placed, minus every removal. */
 export function shownNormals(
 	checked: Record<string, string[]>, normals: Record<string, string[]>, levelGroups: Record<string, string[]>,
-	untouched: string[], placed: Set<string>, removed: string[]
+	untouched: string[], placed: Set<string>, removed: string[], blocked: Set<string> = new Set()
 ): Record<string, string[]> {
-	return withoutRemoved(withElsewhere(withSegmentNormals(checked, normals, levelGroups, untouched), levelGroups, placed), removed);
+	return withoutRemoved(withElsewhere(withSegmentNormals(checked, normals, levelGroups, untouched, blocked), levelGroups, placed), removed);
+}
+
+/** Regions with something placed in them: every split part counts, not only the unit's first group (re-review of
+ *  74eab7ec). The same source `regionStates` reads; headings and unplaced units place nothing. */
+export function placedRegions(units: StackUnit[]): Set<string> {
+	return new Set(effectiveItems(units).map((i) => i.group));
+}
+
+const MULTILEVEL = /\bmulti-?\s?level\b/i;
+const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** A level label ("C5/6", "T12/L1", "L5/S1") as written in dictation: "/", "-" or a dash between, the second letter
+ *  optional when it repeats the first ("C5-C6"), spaces allowed; never inside a longer label ("C5/67", "AC5/6"). */
+function levelPattern(label: string): RegExp {
+	const m = /^([A-Za-z])\s*(\d+)\s*\/\s*([A-Za-z])?\s*(\d+)$/.exec(label.trim());
+	if (!m) return new RegExp(`(?<![A-Za-z0-9])${esc(label.trim())}(?![0-9])`, 'i');
+	const [, a, n1, b, n2] = m;
+	const second = !b || b.toLowerCase() === a.toLowerCase() ? `(?:${a}\\s*)?` : `${b}\\s*`;
+	return new RegExp(`(?<![A-Za-z0-9])${a}\\s*${n1}\\s*[/\\-\u2013\u2014]\\s*${second}${n2}(?![0-9])`, 'i');
+}
+
+/** The segment named in prose: "Cervical levels" → cervical; lumbar also as lumbosacral. */
+function segmentWords(segment: string): RegExp {
+	const word = segment.trim().split(/\s+/)[0].toLowerCase();
+	const words = word === 'lumbar' ? ['lumbar', 'lumbosacral'] : [word];
+	return new RegExp(`\\b(?:${words.map(esc).join('|')})\\b`, 'i');
+}
+
+/** Misfiled-finding backstop for a segment's sheet line (controller ruling, re-review of 74eab7ec): withheld when an
+ *  abnormal sentence placed outside the segment's own regions names one of its levels or the segment itself, or when
+ *  any abnormal sentence says "multilevel". Deterministic and errs toward omission; `abnormal` holds abnormal
+ *  sentences only, so a normal mention ("normal cervical lordosis") never withholds the line. */
+export function segmentBlocked(segment: string, levels: string[], abnormal: { group: string | null; text: string }[]): boolean {
+	const own = new Set([segment, ...levels]);
+	const pats = [segmentWords(segment), ...levels.map(levelPattern)];
+	return abnormal.some(({ group, text }) => MULTILEVEL.test(text) || (!(group !== null && own.has(group)) && pats.some((p) => p.test(text))));
+}
+
+/** The segments whose sheet line is withheld, from every abnormal sentence: split parts, General, Other findings and
+ *  ungrouped tail units included. */
+export function blockedSegments(levelGroups: Record<string, string[]>, units: StackUnit[]): Set<string> {
+	const abnormal: { group: string | null; text: string }[] = [];
+	for (const u of units) {
+		if (u.heading) continue;
+		if (u.parts && u.parts.length > 1) for (const p of u.parts) { if (p.abnormal) abnormal.push({ group: p.group, text: p.text }); }
+		else if (u.abnormal) abnormal.push({ group: u.group, text: u.text });
+	}
+	if (!abnormal.length) return new Set();
+	return new Set(Object.entries(levelGroups).filter(([seg, levels]) => segmentBlocked(seg, levels, abnormal)).map(([seg]) => seg));
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { assumedKey, backToLibrary, caseDirty, needsFreeText, pickBody, pickKey, pickSummary, shownNormals, visiblePills, withElsewhere, withoutRemoved, withoutSegments, withSegmentNormals, type ProtocolPick } from './protocol';
+import { assumedKey, backToLibrary, caseDirty, needsFreeText, pickBody, pickKey, pickSummary, blockedSegments, placedRegions, segmentBlocked, shownNormals, visiblePills, withElsewhere, withoutRemoved, withoutSegments, withSegmentNormals, type ProtocolPick } from './protocol';
 import { buildFindingsBlock, regionStates } from './regionState';
 import type { GateRecord, StackUnit } from './types';
 
@@ -73,6 +73,67 @@ describe('segment normals (E1: decided here, never by the /assumed check)', () =
 		const block = buildFindingsBlock(units, groups, { ...gate([]), assumed: shown });
 		expect(block).toContain(cervical);
 		expect(block).toContain('Elsewhere, the lumbar discs');
+	});
+});
+
+describe('placedRegions (every split part counts)', () => {
+	it('a level placed as a later part of a split sentence is placed', () => {
+		const split: StackUnit = { ...u(0, 'Normal cord signal, and at L4/5 there is a broad-based disc bulge.', 'Cord'),
+			parts: [{ text: 'Normal cord signal', group: 'Cord' }, { text: 'at L4/5 there is a broad-based disc bulge.', group: 'L4/5', abnormal: true }] };
+		const placed = placedRegions([split]);
+		expect([...placed].sort()).toEqual(['Cord', 'L4/5']);
+		const spine = ['Cord', 'Lumbar levels', 'L4/5', 'L5/S1'];
+		expect(visiblePills(spine, spine, ['L4/5', 'L5/S1'], placed)).toEqual(['Cord', 'Lumbar levels', 'L4/5']);
+		const lumbar = 'The lumbar discs are normal throughout.';
+		expect(shownNormals({}, { 'Lumbar levels': [lumbar] }, { 'Lumbar levels': ['L4/5', 'L5/S1'] }, ['Lumbar levels'], placed, [])['Lumbar levels'])
+			.toEqual(['Elsewhere, the lumbar discs are normal throughout.']);
+	});
+	it('headings and unplaced units place nothing', () => {
+		expect(placedRegions([u(0, 'Findings', 'Cord'), u(1, 'tail', null)].map((x, k) => (k === 0 ? { ...x, heading: true } : x))).size).toBe(0);
+	});
+});
+
+describe('segment backstop for misfiled findings (errs toward omission)', () => {
+	const levelGroups = { 'Cervical levels': ['C4/5', 'C5/6'], 'Thoracic levels': ['T11/12', 'T12/L1'], 'Lumbar levels': ['L4/5', 'L5/S1'] };
+	const normals = { 'Cervical levels': ['Cervical normal.'], 'Thoracic levels': ['Thoracic normal.'], 'Lumbar levels': ['Lumbar normal.'] };
+	const segs = Object.keys(levelGroups);
+	const blocked = (units: StackUnit[]) => [...blockedSegments(levelGroups, units)].sort();
+	it('a C5/6 finding filed under Cord withholds Cervical only', () => {
+		const units = [u(0, 'Disc osteophyte complex at C5/6 indenting the cord.', 'Cord', true)];
+		expect(blocked(units)).toEqual(['Cervical levels']);
+		expect(Object.keys(shownNormals({}, normals, levelGroups, segs, placedRegions(units), [], blockedSegments(levelGroups, units))))
+			.toEqual(['Thoracic levels', 'Lumbar levels']);
+	});
+	it('"multilevel degenerative disc disease" in General withholds all three', () => {
+		expect(blocked([u(0, 'Multilevel degenerative disc disease.', 'General', true)])).toEqual(segs.slice().sort());
+		expect(blocked([u(0, 'Multi-level facet arthropathy.', 'Other findings', true)])).toEqual(segs.slice().sort());
+	});
+	it('an L4/5 bulge filed in L4/5 withholds nothing; Lumbar reads "Elsewhere, …"', () => {
+		const units = [u(0, 'At L4/5 there is a broad-based disc bulge.', 'L4/5', true)];
+		expect(blocked(units)).toEqual([]);
+		expect(shownNormals({}, normals, levelGroups, segs, placedRegions(units), [], blockedSegments(levelGroups, units))['Lumbar levels'])
+			.toEqual(['Elsewhere, lumbar normal.']);
+	});
+	it('a normal mention withholds nothing ("normal cervical lordosis")', () => {
+		expect(blocked([u(0, 'Normal cervical lordosis.', 'Alignment')])).toEqual([]);
+	});
+	it('an ungrouped tail unit and a split part count when abnormal', () => {
+		expect(blocked([u(0, 'Lumbar canal stenosis.', null, true)])).toEqual(['Lumbar levels']);
+		const split: StackUnit = { ...u(1, 'Normal cord; T12/L1 disc extrusion.', 'Cord'),
+			parts: [{ text: 'Normal cord', group: 'Cord' }, { text: 'T12/L1 disc extrusion.', group: 'Cord', abnormal: true }] };
+		expect(blocked([split])).toEqual(['Thoracic levels']);
+	});
+	it('level labels match in every common format, and only whole labels', () => {
+		const hit = (t: string) => segmentBlocked('Cervical levels', ['C5/6'], [{ group: 'Cord', text: t }]);
+		for (const t of ['at C5/6', 'C5-6 protrusion', 'C5-C6 protrusion', 'c5 / 6', 'C5–6']) expect(hit(t)).toBe(true);
+		for (const t of ['C5/67', 'AC5/6', 'C15/6', 'L5/6']) expect(hit(t)).toBe(false);
+		expect(segmentBlocked('Lumbar levels', ['L5/S1'], [{ group: 'Cord', text: 'L5-S1 annular fissure' }])).toBe(true);
+		expect(segmentBlocked('Lumbar levels', ['L4/5'], [{ group: 'Cord', text: 'lumbosacral junction transitional anomaly' }])).toBe(true);
+		expect(segmentBlocked('Thoracic levels', ['T12/L1'], [{ group: 'Cord', text: 'T12-L1 disc' }])).toBe(true);
+	});
+	it('a sentence inside the segment\'s own regions does not withhold it, except "multilevel"', () => {
+		expect(segmentBlocked('Lumbar levels', ['L4/5'], [{ group: 'L4/5', text: 'Lumbar disc bulge at L4/5.' }])).toBe(false);
+		expect(segmentBlocked('Lumbar levels', ['L4/5'], [{ group: 'L4/5', text: 'Multilevel disc bulges, worst at L4/5.' }])).toBe(true);
 	});
 });
 
