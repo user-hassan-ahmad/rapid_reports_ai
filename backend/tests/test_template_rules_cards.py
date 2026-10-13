@@ -216,3 +216,51 @@ def test_more_is_capped_and_concept_cards_sit_outside_the_cap():
     assert [c["kind"] for c in capped][-2:] == ["group", "group"]
     flat_ids = {c["id"] for c in C.flat(out["more"])}
     assert len(flat_ids) == 15 - C.MAX_CARDS + 2 + 1          # nothing lost: 7 values, 2 singles, 1 concept
+
+
+# ── the study setup as first evidence (Hassan, 2026-10-13) ─────────────────────────────────────────────────────
+
+def _contrast_run(none_reports, given_reports, setup):
+    none = R.ConceptWording(concept="contrast", state="not_given", text="No contrast agent was given.",
+                            quotes=[_q(r, "No contrast agent was given.") for r in none_reports])
+    given = R.ConceptWording(concept="contrast", state="given", text="Following a contrast agent.",
+                             quotes=[_q(r, "Following a contrast agent.") for r in given_reports])
+    ex = ["Technique: No contrast agent was given. Following a contrast agent."] * 3
+    run = R.check_quotes(R.RunOutput(concepts=[w for w in (none, given) if w.quotes]), ex)
+    run.states = {n: [] for n in td.CONCEPTS}
+    run.setup = setup
+    return C.build_cards(run, 3)["cards"][0]
+
+
+def test_the_setup_sets_contrast_when_the_examples_tie():
+    card = _contrast_run([1], [2], {"contrast": {"state": "given", "quote": "with IV contrast"}})
+    assert card["wording"]["default"] == "Following a contrast agent."
+    assert card["wording"]["condition"] == "the dictation states no contrast agent was given"
+    assert card["evidence"][0] == {"reports": [], "source": "setup", "quote": "with IV contrast"}
+    assert C.evidence_line(card["evidence"][0]) == "From the study setup: 'with IV contrast'"
+
+
+def test_the_setup_against_a_clear_example_majority_asks_showing_both():
+    card = _contrast_run([], [1, 2], {"contrast": {"state": "not_given", "quote": "non-contrast"}})
+    assert card["title"] == "Is contrast usually given for this scan?" and card["selected"] is None
+    assert card["evidence"][0]["source"] == "setup" and any(e["reports"] == [1, 2] for e in card["evidence"])
+
+
+def test_a_silent_setup_is_todays_rule():
+    assert _contrast_run([1], [2], {})["title"] == "Is contrast usually given for this scan?"
+    card = _contrast_run([1, 3], [2], {})
+    assert card["wording"]["default"] == "No contrast agent was given."
+    assert not any(e.get("source") == "setup" for e in card["evidence"])
+
+
+def test_a_setup_that_agrees_with_the_majority_is_shown_first():
+    card = _contrast_run([], [1, 2], {"contrast": {"state": "given", "quote": "with IV contrast"}})
+    assert card["wording"]["default"] == "Following a contrast agent." and card["evidence"][0]["source"] == "setup"
+
+
+def test_a_concept_stated_in_the_setup_is_evidence_never_a_report_number():
+    run = _run([], [NO_PRIOR, PRIOR], states=ALL)
+    run.setup = {"comparison": {"state": None, "quote": None}}
+    card = C.build_cards(run, 3)["cards"][0]
+    assert card["evidence"][0] == {"reports": [], "source": "setup", "quote": None}
+    assert C.evidence_line(card["evidence"][0]) == "study setup: stated"

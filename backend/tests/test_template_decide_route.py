@@ -18,8 +18,8 @@ def run_returns(monkeypatch):
     seen = {}
 
     def set_run(run):
-        async def fake(examples, scan_type):
-            seen.update(examples=examples, scan_type=scan_type)
+        async def fake(examples, scan_type, setup=None):
+            seen.update(examples=examples, scan_type=scan_type, setup=setup)
             return run
         monkeypatch.setattr(R, "run_decisions", fake)
     return set_run, seen
@@ -55,7 +55,7 @@ def test_a_failed_run_gives_no_cards_and_the_notice(client, auth_headers, run_re
 
 
 def test_an_exception_is_still_fail_soft(client, auth_headers, monkeypatch):
-    async def boom(examples, scan_type):
+    async def boom(examples, scan_type, setup=None):
         raise RuntimeError("x")
     monkeypatch.setattr(R, "run_decisions", boom)
     r = client.post(URL, headers=auth_headers, json={"scan_type": "<scan>", "examples": EX}).json()
@@ -201,3 +201,27 @@ def test_a_value_seen_in_one_report_stays_under_more_with_room_in_the_cards(clie
     r = client.post(URL, headers=auth_headers, json={"scan_type": "<scan>", "examples": EX}).json()
     assert [c["id"] for c in r["cards"]] == ["value:ecv"] and [c["kind"] for c in r["more"]] == ["group"]
     assert [c["id"] for c in r["more"][0]["cards"]] == ["value:heart rate"]
+
+
+def test_the_study_setup_reaches_the_run_truncated(client, auth_headers, run_returns):
+    set_run, seen = run_returns
+    set_run(_run())
+    client.post(URL, headers=auth_headers, json={"scan_type": "<scan>", "examples": EX, "template_name": "n" * 999,
+                                                 "protocol_notes": "p" * 9999})
+    s = seen["setup"]
+    assert len(s.name) == R.SETUP_NAME_MAX and len(s.protocol) == R.SETUP_PROTOCOL_MAX and s.scan_type == "<scan>"
+
+
+def test_a_saved_template_gives_its_name_and_description_as_setup(client, auth_headers, db_session, test_user,
+                                                                   run_returns):
+    set_run, seen = run_returns
+    set_run(_run())
+    t = _make_template(db_session, test_user, "Named study", {"generation_mode": "skill_sheet_guided",
+                                                              "scan_type": "<scan>", "skill_sheet": LEDGER_SHEET})
+    t.description = "Protocol text"
+    for i, e in enumerate(EX):
+        db_session.add(TemplateExample(template_id=t.id, text=e["content"], sha256=str(i) * 64, source="pasted"))
+    db_session.commit()
+    client.post(URL, headers=auth_headers, json={"template_id": str(t.id)})
+    s = seen["setup"]
+    assert (s.name, s.scan_type, s.protocol) == ("Named study", "<scan>", "Protocol text")

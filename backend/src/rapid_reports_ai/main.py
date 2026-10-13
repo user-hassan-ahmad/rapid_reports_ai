@@ -799,6 +799,10 @@ class SkillSheetDecideRequest(BaseModel):
     scan_type: str = ""
     examples: List[SkillSheetExample] = []
     template_id: Optional[str] = None      # a saved template: its stored examples and current values
+    # the study setup (SkillSheetCreator's template name and protocol notes; scan_type above), read first by the
+    # decision run. Truncated to template_decision_run's SETUP_* caps, never refused.
+    template_name: str = ""
+    protocol_notes: str = ""
 
 
 NO_PRECHECK = "We couldn't pre-check your rules; review them on the Style step."
@@ -2858,6 +2862,7 @@ async def skill_sheet_decide_endpoint(
     try:
         examples = [e.content for e in request.examples if e.content.strip()]
         scan_type = request.scan_type
+        name, protocol = request.template_name, request.protocol_notes
         current: list = []
         if request.template_id:
             owned = get_template(db, request.template_id, user_id=str(current_user.id))
@@ -2866,6 +2871,8 @@ async def skill_sheet_decide_endpoint(
             cfg = owned.template_config or {}
             current = trc.current_value_cards(cfg.get("skill_sheet") or "", td.clean_ledger(cfg.get("decisions")))
             scan_type = scan_type or cfg.get("scan_type") or ""
+            name = name or owned.name or ""
+            protocol = protocol or owned.description or ""
             # first-use review only: a template that has decisions or a decision-run record is not re-run
             reviewed = bool(cfg.get("decisions")) or bool(cfg.get("rules_step"))
             if not examples and not reviewed:
@@ -2873,7 +2880,7 @@ async def skill_sheet_decide_endpoint(
                             for x in template_examples.stored_texts(db, owned.id, limit=MAX_DECIDE_EXAMPLES)]
         if len(examples) < MIN_DECIDE_EXAMPLES:
             return {**empty, "cards": current}
-        run = await tdr.run_decisions(examples, scan_type)
+        run = await tdr.run_decisions(examples, scan_type, tdr.study_setup(name, scan_type, protocol))
         if not run.ok:
             return {**empty, "cards": current, "notice": NO_PRECHECK, "run": tdr.evidence(run)}
         built = trc.build_cards(run, len(examples))

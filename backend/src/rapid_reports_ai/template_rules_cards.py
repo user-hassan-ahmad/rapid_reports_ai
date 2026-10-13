@@ -32,7 +32,10 @@ def _reports(nums) -> str:
 
 
 def evidence_line(e: dict) -> str:
-    """"reports 1, 2, 4: 'ECV 28%'" or "report 3: not stated" (never percentages)."""
+    """"reports 1, 2, 4: 'ECV 28%'" or "report 3: not stated" (never percentages); the study setup is named as
+    such, never as a report number."""
+    if e.get("source") == "setup":
+        return f"From the study setup: '{e['quote']}'" if e.get("quote") else "study setup: stated"
     return f"{_reports(e['reports'])}: " + (f"'{e['quote']}'" if e.get("quote") else "not stated")
 
 
@@ -191,13 +194,21 @@ def _concept_cards(run: DecisionRun, n: int) -> List[dict]:
         stating = set(run.states.get(name) or []) | quoted     # a verified quote counts even when Jev missed it
         base = next((s for s, cond in c.states.items() if cond is None), None)
         silent = [k for k in range(1, n + 1) if k not in stating]
+        # the study setup, when it states the concept, is the first evidence (Hassan, 2026-10-13)
+        told = (run.setup or {}).get(name)
+        setup_ev = [{"reports": [], "source": "setup", "quote": told.get("quote")}] if told else []
         if base is None:
             counts = {s: len({r for w in ws for r in w["reports"]}) for s, ws in by_state.items()}
             top = max(c.states, key=lambda s: counts[s])
-            if counts[top] >= MAJORITY_MIN and all(counts[top] > v for s, v in counts.items() if s != top):
-                base = top
-            else:
-                ev = [{"reports": w["reports"], "quote": w["quote"]} for ws in by_state.values() for w in ws]
+            majority = top if (counts[top] >= MAJORITY_MIN
+                               and all(counts[top] > v for s, v in counts.items() if s != top)) else None
+            from_setup = (told or {}).get("state")
+            # the setup's state wins over a tie; a clear example majority that disagrees with it is asked
+            base = from_setup if from_setup and majority in (None, from_setup) else (
+                majority if not from_setup else None)
+            if base is None:
+                ev = [*setup_ev,
+                      *({"reports": w["reports"], "quote": w["quote"]} for ws in by_state.values() for w in ws)]
                 if silent:
                     ev.append({"reports": silent, "quote": None})
                 wordings = {s: max(ws, key=lambda w: len(w["reports"]))["text"] for s, ws in by_state.items() if ws}
@@ -205,7 +216,7 @@ def _concept_cards(run: DecisionRun, n: int) -> List[dict]:
                 continue
         other = next(s for s in c.states if s != base)
         condition = c.states[other]
-        ev = [{"reports": w["reports"], "quote": w["quote"]} for w in [*by_state[base], *by_state[other]]]
+        ev = [*setup_ev, *({"reports": w["reports"], "quote": w["quote"]} for w in [*by_state[base], *by_state[other]])]
         if silent:
             ev.append({"reports": silent, "quote": None})
         split = next((s for s in (base, other) if len(by_state[s]) > 1), None)

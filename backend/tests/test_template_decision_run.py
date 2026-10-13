@@ -78,7 +78,7 @@ async def test_ask_states_raises_on_incomplete_answers():
 
 
 async def test_run_decisions_combines_qwen_and_jev(monkeypatch):
-    async def qwen(examples, scan_type):
+    async def qwen(examples, scan_type, setup_text=""):
         return R.RunOutput(values=[R.ValueCandidate(name="LVEF", quotes=[R.Quote(report=1, text="LVEF 55%")])])
 
     async def states(examples, transport=None):
@@ -93,7 +93,7 @@ async def test_a_failed_qwen_call_gives_no_run_and_a_failed_jev_call_gives_no_st
     async def boom(*a, **k):
         raise TimeoutError()
 
-    async def qwen(examples, scan_type):
+    async def qwen(examples, scan_type, setup_text=""):
         return R.RunOutput()
     monkeypatch.setattr(R, "_qwen", boom)
     monkeypatch.setattr(R, "ask_states", boom)
@@ -200,7 +200,7 @@ def test_timeouts_after_the_lab():
 async def test_the_whole_run_is_bounded(monkeypatch):
     import asyncio
 
-    async def slow(examples, scan_type):
+    async def slow(examples, scan_type, setup_text=""):
         await asyncio.sleep(5)
 
     async def states(examples, transport=None):
@@ -210,3 +210,77 @@ async def test_the_whole_run_is_bounded(monkeypatch):
     monkeypatch.setattr(R, "RUN_TIMEOUT_S", 0.05)
     run = await R.run_decisions(EX, "<scan>")
     assert run.ok is False and run.error == "TimeoutError" and run.ms < 2000
+
+
+# ── the study setup as first evidence (Hassan, 2026-10-13) ─────────────────────────────────────────────────────
+
+def test_study_setup_truncates_each_field_and_is_empty_when_blank():
+    s = R.study_setup("n" * 500, "s" * 500, "p" * 5000)
+    assert (len(s.name), len(s.scan_type), len(s.protocol)) == (R.SETUP_NAME_MAX, R.SETUP_SCAN_MAX,
+                                                                R.SETUP_PROTOCOL_MAX)
+    assert R.study_setup("", "  ", None).text == ""
+    assert R.study_setup("Name", "Scan", "").text == "Study name: Name\nScan type: Scan"
+
+
+def test_the_prompt_carries_the_setup_as_authoritative_context():
+    u = R.user_prompt(["A."], "<scan>", "Scan type: <scan>")
+    assert "STUDY SETUP" in u and "authoritative" in u and "Scan type: <scan>" in u and "### Report 1\nA." in u
+    assert "STUDY SETUP" in R.SYSTEM
+
+
+def _setup_jev(scores):
+    import json
+
+    def handler(request):
+        body = json.loads(request.content)
+        assert body["state"].startswith("STUDY SETUP:")
+        assert all(q["type"] == "noul" for q in body["questions"].values())
+        return httpx.Response(200, json={"answers": {k: {"noul": scores.get(k, 0.0)} for k in body["questions"]}})
+    return httpx.MockTransport(handler)
+
+
+async def test_ask_setup_reads_the_contrast_state_and_the_concepts_stated():
+    t = _setup_jev({"given": 0.9, "not_given": 0.1, "c0": 0.0, "c1": 0.9})
+    out = await R.ask_setup("Scan type: <scan> with agent", transport=t)
+    assert out == {"contrast": "given"}
+    t = _setup_jev({"given": 0.8, "not_given": 0.8, "c1": 0.9, "c2": 0.7})
+    assert await R.ask_setup("x", transport=t) == {"contrast": None, "sequences": None}   # both sides: no state
+
+
+async def test_run_decisions_uses_the_setup_and_checks_its_quote(monkeypatch):
+    seen = {}
+
+    async def qwen(examples, scan_type, setup_text=""):
+        seen["setup_text"] = setup_text
+        return R.RunOutput(setup=[R.SetupMention(concept="contrast", state="given", quote="with IV contrast"),
+                                  R.SetupMention(concept="sequences", state="complete", quote="never written")])
+
+    async def states(examples, transport=None):
+        return {n: [] for n in td.CONCEPTS}
+
+    async def setup(text, transport=None):
+        return {"contrast": "given", "sequences": None}
+    monkeypatch.setattr(R, "_qwen", qwen)
+    monkeypatch.setattr(R, "ask_states", states)
+    monkeypatch.setattr(R, "ask_setup", setup)
+    run = await R.run_decisions(EX, "CT with IV contrast", R.study_setup("", "CT with IV contrast", ""))
+    assert seen["setup_text"] == "Scan type: CT with IV contrast"
+    assert run.setup == {"contrast": {"state": "given", "quote": "with IV contrast"},
+                         "sequences": {"state": None, "quote": None}}      # unverifiable quote dropped
+
+
+async def test_no_setup_is_todays_run(monkeypatch):
+    async def qwen(examples, scan_type, setup_text=""):
+        assert setup_text == ""
+        return R.RunOutput()
+
+    async def states(examples, transport=None):
+        return {n: [] for n in td.CONCEPTS}
+
+    async def setup(text, transport=None):
+        raise AssertionError("not asked")
+    monkeypatch.setattr(R, "_qwen", qwen)
+    monkeypatch.setattr(R, "ask_states", states)
+    monkeypatch.setattr(R, "ask_setup", setup)
+    assert (await R.run_decisions(EX, "<scan>")).setup == {}
+    assert (await R.run_decisions(EX, "<scan>", R.study_setup("", "", ""))).setup == {}

@@ -64,10 +64,17 @@ class HabitCandidate(BaseModel):
     reports: List[int] = []
 
 
+class SetupMention(BaseModel):
+    concept: ConceptName
+    state: str    # the state the setup states (one of the concept's states), or "" when it only mentions it
+    quote: str    # copied word for word from the STUDY SETUP
+
+
 class RunOutput(BaseModel):
     values: List[ValueCandidate] = []
     concepts: List[ConceptWording] = []
     habits: List[HabitCandidate] = []
+    setup: List[SetupMention] = []
 
 
 SYSTEM = """You read a radiologist's example reports for one scan type and list the decisions a report template needs from them. You never write the template.
@@ -85,13 +92,43 @@ The state says what the wording states, never how often it is used: do not decid
 
 3. HABITS: a statement the radiologist adds only when a particular finding is present (the finding, and what they always add), seen in at least two reports. Give the report numbers.
 
+4. SETUP: when a STUDY SETUP is given (the study name, scan type and protocol the radiologist entered), it is authoritative context about every report: it may state a concept's state outright (for example whether a contrast agent is given, which acquisitions are planned, whether comparison is expected) and may support a value. For each concept the STUDY SETUP states, give its state (as in CONCEPTS; empty when it only mentions the concept) and a quote copied word for word from the STUDY SETUP. Never use the STUDY SETUP as a report quote, and never invent a setup quote.
+
 One sentence counts for one concept only: never give the same sentence as the quote or wording of two concepts. Quote the shortest span that states the concept or the value, never a whole paragraph.
 
 Copy quotes exactly; never paraphrase or invent one. If nothing fits a list, return it empty."""
 
 
-def user_prompt(examples: List[str], scan_type: str) -> str:
-    parts = [f"SCAN TYPE: {scan_type}"]
+SETUP_NAME_MAX = 200
+SETUP_SCAN_MAX = 200
+SETUP_PROTOCOL_MAX = 2000
+
+
+@dataclass
+class StudySetup:
+    """What the radiologist entered when setting the template up: the study name, scan type and protocol notes (or
+    a saved template's description). It often states contrast, the protocol or comparison outright, so the decision
+    run reads it first (Hassan, 2026-10-13)."""
+    name: str = ""
+    scan_type: str = ""
+    protocol: str = ""
+
+    @property
+    def text(self) -> str:
+        rows = [("Study name", self.name), ("Scan type", self.scan_type), ("Protocol", self.protocol)]
+        return "\n".join(f"{k}: {v}" for k, v in rows if v)
+
+
+def study_setup(name: Optional[str], scan_type: Optional[str], protocol: Optional[str]) -> StudySetup:
+    """The setup fields, stripped and truncated to their caps (never refused: it is context, not input)."""
+    def clip(s, cap):
+        return (s or "").strip()[:cap].strip()
+    return StudySetup(clip(name, SETUP_NAME_MAX), clip(scan_type, SETUP_SCAN_MAX), clip(protocol, SETUP_PROTOCOL_MAX))
+
+
+def user_prompt(examples: List[str], scan_type: str, setup_text: str = "") -> str:
+    parts = ([f"STUDY SETUP (authoritative context from the radiologist, true of every report):\n{setup_text}"]
+             if setup_text else [f"SCAN TYPE: {scan_type}"])
     for i, ex in enumerate(examples, 1):
         parts.append(f"### Report {i}\n{ex.strip()}")
     return "\n\n".join(parts)
@@ -132,6 +169,7 @@ class DecisionRun:
     concepts: List[ConceptWording] = field(default_factory=list)
     habits: List[HabitCandidate] = field(default_factory=list)
     states: Optional[Dict[str, List[int]]] = None   # concept -> example numbers Jev says state it; None: Jev failed
+    setup: Dict[str, dict] = field(default_factory=dict)  # concept the study setup states -> {"state", "quote"}
     dropped_quotes: int = 0
     ms: int = 0
     error: str = ""
@@ -177,11 +215,11 @@ def check_quotes(out: RunOutput, examples: List[str]) -> DecisionRun:
     return DecisionRun(ok=True, values=values, concepts=concepts, habits=habits, dropped_quotes=dropped)
 
 
-async def _qwen(examples: List[str], scan_type: str) -> RunOutput:
+async def _qwen(examples: List[str], scan_type: str, setup_text: str = "") -> RunOutput:
     """The decision call on the analyser's model (Qwen); one retry on gpt-oss (another provider) if it fails."""
     from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model
 
-    prompt = user_prompt(examples, scan_type)
+    prompt = user_prompt(examples, scan_type, setup_text)
 
     deadline = time.monotonic() + RUN_TIMEOUT_S
 
@@ -227,11 +265,68 @@ async def ask_states(examples: List[str], transport=None) -> Dict[str, List[int]
     return {n: [k + 1 for k, s in enumerate(scores) if s[i] >= STATES_MIN] for i, n in enumerate(names)}
 
 
-async def run_decisions(examples: List[str], scan_type: str) -> DecisionRun:
-    """The decision run for these examples. Never raises."""
+def _setup_question(text: str) -> str:
+    return text.replace("The REPORT", "The STUDY SETUP").replace("this report", "this study setup")
+
+
+def _condition_statement(condition: str) -> str:
+    return "The STUDY SETUP" + condition[len("the dictation"):] + "." if condition.startswith("the dictation") \
+        else condition
+
+
+async def ask_setup(text: str, transport=None) -> Dict[str, Optional[str]]:
+    """concept -> state for each concept the STUDY SETUP states (Jev noul >= STATES_MIN). The four concept questions
+    (worded for the setup) and, for contrast, its two conditions as statements: one met and the other not sets the
+    state; otherwise the state is None (stated, no state). Raises on any Jev failure."""
+    from .jev_client import JEV_MODEL, jev_post
+
+    names = list(td.CONCEPTS)
+    qs = {f"c{i}": {"type": "noul", "instructions": _setup_question(td.CONCEPTS[n].question)}
+          for i, n in enumerate(names)}
+    sides = td.CONCEPTS["contrast"].states
+    for state, cond in sides.items():
+        qs[state] = {"type": "noul", "instructions": _condition_statement(cond)}
+    r = await jev_post({"model": JEV_MODEL, "state": f"STUDY SETUP:\n{text}", "questions": qs},
+                       os.environ.get("OPENROUTER_API_KEY", ""), JEV_TIMEOUT_S, transport)
+    r.raise_for_status()
+    ans = r.json().get("answers") or {}
+    score = {}
+    for k in qs:
+        v = (ans.get(k) or {}).get("noul")
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise ValueError("jev: incomplete answers")
+        score[k] = float(v)
+    out: Dict[str, Optional[str]] = {}
+    for i, n in enumerate(names):
+        met = [s for s in sides if score[s] >= STATES_MIN] if n == "contrast" else []
+        if score[f"c{i}"] >= STATES_MIN or met:
+            out[n] = met[0] if len(met) == 1 else None
+    return out
+
+
+def _setup_evidence(states: Dict[str, Optional[str]], mentions: List[SetupMention], text: str) -> Dict[str, dict]:
+    """Jev decides what the setup states; Qwen's quote is kept only when it is in the setup text (code checks it),
+    and for a stated state only when it quotes that state."""
+    out = {}
+    for name, state in states.items():
+        quote = next((" ".join(m.quote.split()) for m in mentions
+                      if m.concept == name and (state is None or m.state == state)
+                      and m.quote.strip() and _norm(m.quote) in _norm(text)), None)
+        out[name] = {"state": state, "quote": quote}
+    return out
+
+
+async def run_decisions(examples: List[str], scan_type: str, setup: Optional[StudySetup] = None) -> DecisionRun:
+    """The decision run for these examples (and the study setup, read first when given). Never raises. With no
+    setup, or an empty one, the run is as before the setup was added."""
     t0 = time.monotonic()
-    qwen, jev = await asyncio.gather(asyncio.wait_for(_qwen(examples, scan_type), RUN_TIMEOUT_S),
-                                     ask_states(examples), return_exceptions=True)
+    setup_text = setup.text if setup else ""
+
+    async def no_setup():
+        return {}
+    qwen, jev, from_setup = await asyncio.gather(
+        asyncio.wait_for(_qwen(examples, scan_type, setup_text), RUN_TIMEOUT_S), ask_states(examples),
+        ask_setup(setup_text) if setup_text else no_setup(), return_exceptions=True)
     ms = int((time.monotonic() - t0) * 1000)
     if isinstance(qwen, BaseException):
         logger.warning("[decision-run] failed: %s: %s", type(qwen).__name__, str(qwen)[:200])
@@ -242,6 +337,10 @@ async def run_decisions(examples: List[str], scan_type: str) -> DecisionRun:
         logger.warning("[decision-run] jev failed: %s", type(jev).__name__)
     else:
         run.states = jev
+    if isinstance(from_setup, BaseException):   # fail-soft: a silent setup
+        logger.warning("[decision-run] jev setup failed: %s", type(from_setup).__name__)
+    elif from_setup:
+        run.setup = _setup_evidence(from_setup, qwen.setup, setup_text)
     logger.info("[decision-run] values=%d concepts=%d habits=%d dropped_quotes=%d jev=%s ms=%d", len(run.values),
                 len(run.concepts), len(run.habits), run.dropped_quotes, run.states is not None, ms)
     return run
@@ -252,7 +351,7 @@ def evidence(run: DecisionRun, built: Optional[dict] = None) -> dict:
     for the findings-triggered rows lab. No example text."""
     out = {"version": RUN_VERSION, "ok": run.ok, "ms": run.ms, "error": run.error, "values": len(run.values),
            "concepts": len(run.concepts), "dropped_quotes": run.dropped_quotes, "jev": run.states is not None,
-           "habits": [h.model_dump() for h in run.habits]}
+           "habits": [h.model_dump() for h in run.habits], "setup": sorted(run.setup)}
     if built:
         out.update(cards=len(built["cards"]), more=len(built["more"]), kept=len(built["kept"]))
     return out
