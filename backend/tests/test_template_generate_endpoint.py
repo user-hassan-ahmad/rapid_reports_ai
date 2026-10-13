@@ -509,12 +509,41 @@ async def test_a_scratchpad_report_carries_its_generation_stamp(aclient, auth_he
 async def test_a_fallback_report_is_stamped_fallback(aclient, auth_headers, guided_template, stubs, db_session,
                                                      monkeypatch):
     from rapid_reports_ai.template_sheet_structure import sheet_hash
-    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "0")
     r = await _generate_stack(aclient, auth_headers, guided_template)   # no usable structure: today's path
+    assert r["pipeline"] == "current"
     await _drain_options()
     stamp = db_session.get(Report, uuid.UUID(r["report_id"])).generation_stamp
     assert stamp["path"] == "fallback"
     assert stamp["sheet_hash"] == sheet_hash(guided_template.template_config["skill_sheet"])
+
+
+async def test_a_flag_routed_lean_report_is_stamped_lean(aclient, auth_headers, mirror_template, stubs, db_session,
+                                                          monkeypatch):
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
+    r = await _generate(aclient, auth_headers, mirror_template)   # no stack: the flag routes it to the lean path
+    await _drain_options()
+    assert r["pipeline"] == "mirror"
+    assert db_session.get(Report, uuid.UUID(r["report_id"])).generation_stamp["path"] == "lean"
+
+
+async def test_a_stack_whose_lean_call_failed_is_stamped_scratchpad_fallback(aclient, auth_headers, mirror_template,
+                                                                              stubs, db_session, monkeypatch):
+    async def broken(**kw):
+        raise RuntimeError("provider down")
+    monkeypatch.setattr(tl, "generate_template_report_lean", broken)
+    r = await _generate_stack(aclient, auth_headers, mirror_template)
+    assert r["pipeline"] == "current"
+    assert db_session.get(Report, uuid.UUID(r["report_id"])).generation_stamp["path"] == "scratchpad_fallback"
+
+
+async def test_todays_path_without_a_stack_is_stamped_fallback(aclient, auth_headers, mirror_template, stubs,
+                                                               db_session, monkeypatch):
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "0")
+    monkeypatch.delenv("RR_PIPELINE_OVERRIDE_USERS", raising=False)
+    r = await _generate(aclient, auth_headers, mirror_template)
+    assert r["pipeline"] == "current"
+    assert db_session.get(Report, uuid.UUID(r["report_id"])).generation_stamp["path"] == "fallback"
 
 
 async def test_a_failing_stamp_never_stops_the_report_saving(aclient, auth_headers, mirror_template, stubs,

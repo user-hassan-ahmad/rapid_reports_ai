@@ -38,6 +38,8 @@ ORDER BY r.created_at DESC;
 
 
 -- ===== Q9a: Quality score averages by pipeline and template path ============
+-- path: scratchpad (stack, lean ran) | lean (flag/allowlist, no stack) | scratchpad_fallback (stack, lean
+-- failed -> today's path) | fallback (today's path, no stack) | '' (unstamped / quick)
 SELECT pipeline,
        COALESCE(dimensions_json->'_meta'->>'path', '') AS path,
        count(*) AS scored,

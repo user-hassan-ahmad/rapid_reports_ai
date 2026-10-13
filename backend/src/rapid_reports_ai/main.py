@@ -1967,6 +1967,10 @@ async def generate_report_from_template(
                 if options_job is not None:
                     options_job.cancel()
                 use_mirror, mirror_candidate, options_job = False, None, None
+        # The route actually taken, for the generation stamp: "scratchpad" (stack, lean ran), "lean" (flag /
+        # allowlist, no stack), "scratchpad_fallback" (stack, lean failed -> today's path), "fallback" (today's path)
+        _stamp_path = (("scratchpad" if use_mirror else "scratchpad_fallback") if _stack is not None
+                       else ("lean" if use_mirror else "fallback"))
         if not use_mirror:
             report_output_dict = await tm.generate_report_from_config(
                 template_config=template.template_config,
@@ -2174,7 +2178,7 @@ Apply each fix while preserving grammatical completeness and report structure.""
                     description=context_title,
                     candidate_reports=[mirror_candidate] if mirror_candidate else None,
                     generation_stamp=tss.generation_stamp(str(template.id), template.template_config,
-                                                          "scratchpad" if _stack else "fallback"),
+                                                          _stamp_path),
                 )
                 report_id = str(saved_report.id)
                 print(f"✅ Report saved with ID: {report_id}")
