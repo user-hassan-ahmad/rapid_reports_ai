@@ -715,7 +715,8 @@ Run: `.venv/bin/python -m pytest tests/test_template_lean.py tests/test_template
 Expected: all pass.
 
 If an existing test compares `candidate_record(...)` to an exact dict, add `"context_rules": None` to its
-expected dict. That is the only acceptable change to existing tests.
+expected dict. If the candidate-record contract in `tests/test_generation_artifacts.py` lists the allowed keys,
+add `context_rules` there (optional, may be None). Those are the only acceptable changes to existing tests.
 
 - [ ] **Step 5: Commit**
 
