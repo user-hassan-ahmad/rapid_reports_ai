@@ -263,6 +263,7 @@ def test_a_paragraph_name_used_twice_is_never_guessed():
     _clean(twice)
     res = tla.apply_ledger(twice, _led(("normal", "Liver :: liver", {"text": "The liver is unremarkable."})))
     assert res.sheet == twice and len(res.unmatched) == 1
+    assert tla.observe(_clean(twice), "normal", "Liver :: liver") is None
 
 
 def test_a_fixed_entry_on_a_concepts_line_is_skipped_not_fought_over():
@@ -282,3 +283,64 @@ def test_removing_a_fixed_entry_also_removes_a_use_rule_writing_it():
     _clean(sheet)
     res = tla.apply_ledger(sheet, _led(("fixed", "Coronal images were not acquired.", {"keep": "remove"})))
     assert "Coronal images were not acquired." not in res.sheet and res.applied[0]["action"] == "removed"
+
+
+def test_observe_reads_each_kind():
+    led = _led(("value", "LVEF", {"need": "every"}), ("concept", "comparison", COMPARISON))
+    st = _clean(tla.apply_ledger(LEDGER_SHEET, led).sheet)
+    assert tla.observe(st, "value", "lvef") == {"need": "every"}
+    assert tla.observe(st, "value", "ECV") == {"need": "not_needed"}
+    assert tla.observe(st, "concept", "comparison") == COMPARISON
+    assert tla.observe(st, "concept", "contrast") == {"use": False, "default": "", "when_met": "", "condition": "",
+                                                      "dictated": False}
+    drop = _clean(tla.apply_ledger(LEDGER_SHEET, _led(("concept", "comparison",
+                                                      {**COMPARISON, "when_met": ""}))).sheet)
+    assert tla.observe(drop, "concept", "comparison") == {**COMPARISON, "when_met": ""}   # the drop rule is read too
+    assert tla.observe(st, "fixed", "Axial images were acquired.") == {"keep": "always"}
+    assert tla.observe(st, "normal", "Liver :: liver") == {"text": "The liver is normal in size."}
+    assert tla.observe(st, "normal", "Liver :: gallbladder") == {"text": ""}
+    assert tla.observe(st, "normal", "Spleen :: spleen") is None
+
+
+def test_a_chat_rewrite_that_changes_a_decided_item_updates_the_ledger():
+    led = _led(("value", "LVEF", {"need": "every"}))
+    before = tla.apply_ledger(LEDGER_SHEET, led).sheet
+    after = before.replace('LIST_MISSING ["LVEF"]', 'LIST_MISSING ["RVEF"]')
+    new, changes, cards = tla.reconcile_chat(before, after, led)
+    assert {(e["key"], e["choice"]["need"], e["source"]) for e in new} == {("LVEF", "not_needed", "chat"),
+                                                                           ("RVEF", "every", "chat")}
+    assert td.describe_change(changes[0]) == ("This changes something you confirmed: LVEF every report → "
+                                              "not needed.")
+    assert tla.apply_ledger(after, new).sheet == after                # the rewrite stands
+    assert cards == []
+
+
+def test_items_a_chat_rewrite_left_alone_keep_their_entry():
+    led = _led(("value", "LVEF", {"need": "every"}), ("value", "ECV", {"need": "relevant"}))
+    before = tla.apply_ledger(LEDGER_SHEET, led).sheet
+    after = before.replace("Opening: \"The liver\"", "Opening: \"The liver is described first\"")
+    new, changes, cards = tla.reconcile_chat(before, after, led)
+    assert new == led and changes == []
+
+
+def test_no_value_entries_means_the_ledger_does_not_own_the_list():
+    led = _led(("fixed", "Axial images were acquired.", {"keep": "always"}))
+    before = LEDGER_SHEET
+    after = before.replace('TERM PREFER "hepatic"\n', 'TERM PREFER "hepatic"\nRULE WHEN [findings: any listed value '
+                                                     'is not stated] LIST_MISSING ["A"] AT TOP | section: FINDINGS\n')
+    new, changes, cards = tla.reconcile_chat(before, after, led)
+    assert new == led and changes == []
+
+
+
+def test_a_rewrite_that_drops_a_whole_decided_item_keeps_the_ledger_and_returns_a_card():
+    led = _led(("value", "LVEF", {"need": "every"}), ("concept", "comparison", COMPARISON))
+    before = tla.apply_ledger(LEDGER_SHEET, led).sheet
+    lines = [ln for ln in before.split("\n") if "LIST_MISSING" not in ln and "previous" not in ln.lower()]
+    after = "\n".join(lines)
+    new, changes, cards = tla.reconcile_chat(before, after, led)
+    assert new == led and changes == []                                # D3: never folded in silently
+    assert [c["id"] for c in cards] == ["value:lvef", "concept:comparison"]
+    back = _clean(tla.apply_ledger(after, new).sheet)                 # the save writes the decided lines again
+    assert tla.observe(back, "value", "LVEF") == {"need": "every"}
+    assert tla.observe(back, "concept", "comparison") == COMPARISON

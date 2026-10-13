@@ -362,3 +362,87 @@ def apply_ledger(sheet: str, ledger: List[dict]) -> LedgerResult:
     prose = _free_prose_lines(res.sheet.split("\n"))
     res.stale_quotes = sorted({t for t in stale if t and any(f'"{t}"' in ln for ln in prose)})
     return res
+
+
+# ── reading a sheet for a ledger item (chat reconciliation; the router's targeted calls) ───────────────────────
+
+def observe(st: tss.SheetStructure, kind: str, key: str) -> Optional[dict]:
+    """The choice the sheet currently expresses for (kind, key), in the ledger's choice form. A value: "every" when
+    the LIST_MISSING line lists it, else "not_needed". A concept: read from the rule carrying one of its standard
+    conditions (REPLACE: default + when_met; SUPPRESS: default only; USE: when_met only). A normal: the unit's text
+    ("" when absent); None when its paragraph is gone or its name is not unique."""
+    if kind == "value":
+        items = [td._name(x) for r in st.rules if r.effect == "list_missing" for x in r.items]
+        return {"need": "every" if td._name(key) in items else "not_needed"}
+    if kind == "concept":
+        rules = _concept_rules(st, key)
+        if not rules:
+            return {"use": False, "default": "", "when_met": "", "condition": "", "dictated": False}
+        r = rules[0]
+        cond = next(c for c in td.CONCEPTS[key].conditions if td._name(c) == td._name(r.condition))
+        default = r.target if r.effect in ("replace", "suppress") else ""
+        when_met = r.then_text if r.effect in ("replace", "use") else ""
+        return {"use": True, "default": default, "when_met": when_met, "condition": cond, "dictated": False}
+    if kind == "fixed":
+        k = norm_key(key)
+        present = any(norm_key(f.text) == k for f in st.fixed_blocks) or bool(_uses(st, k))
+        return {"keep": "always" if present else "remove"}
+    para_name, label, neg = td.split_normal_key(key)
+    para = _paragraph(st, para_name)
+    if para is None:
+        return None
+    if neg:
+        u = next((n for n in st.negatives if n.paragraph == para.id and norm_key(n.text) == norm_key(label)), None)
+    else:
+        u = next((n for n in st.normals if n.paragraph == para.id and td._name(n.structure) == td._name(label)), None)
+    return {"text": u.text if u else ""}
+
+
+def _wholesale(e: dict, ob: dict, oa: dict, sb: tss.SheetStructure, sa: tss.SheetStructure) -> bool:
+    """A rewrite that removed a whole decided item: the whole LIST_MISSING list, or every line of a used concept.
+    Product decision D3: never folded into the ledger silently; the ledger is kept and a card asks."""
+    if e["kind"] == "value":
+        had = any(r.effect == "list_missing" and r.items for r in sb.rules)
+        return had and not any(r.effect == "list_missing" for r in sa.rules) and e["choice"]["need"] == "every"
+    if e["kind"] == "concept":
+        return bool(ob.get("use")) and not oa.get("use") and bool(e["choice"].get("use"))
+    return False
+
+
+def reconcile_chat(before: str, after: str, ledger: List[dict]) -> Tuple[List[dict], List[td.Change], List[dict]]:
+    """Fold a chat rewrite into the ledger: an entry whose item the rewrite changed (before != after) takes the new
+    state (source "chat"; the reply names a confirmed one); values the rewrite added to LIST_MISSING become entries
+    when the ledger owns the value list. A rewrite that removed a whole item (_wholesale) leaves the entry as it was
+    and returns a one-tap card instead. Returns (ledger, changes, cards)."""
+    from . import template_rules_cards as trc
+    if not ledger or not tsg.is_grammar_sheet(before or "") or not tsg.is_grammar_sheet(after or ""):
+        return list(ledger or []), [], []
+    sb, sa = _parse(before), _parse(after)
+    out, changes, cards = list(ledger), [], []
+    for e in ledger:
+        try:
+            ob, oa = observe(sb, e["kind"], e["key"]), observe(sa, e["kind"], e["key"])
+            if oa is None or ob == oa:
+                continue
+            if _wholesale(e, ob, oa, sb, sa):
+                cards.append(trc.card_for_change(e["kind"], e["key"], e["choice"]))
+                continue
+            out, ch = td.set_decision(out, e["kind"], e["key"], oa, source="chat")
+        except (td.DecisionError, KeyError, StopIteration):
+            continue
+        if ch:
+            changes.append(ch)
+    if any(e["kind"] == "value" for e in ledger):
+        known = {td._name(e["key"]) for e in out if e["kind"] == "value"}
+        before_items = {td._name(x) for r in sb.rules if r.effect == "list_missing" for x in r.items}
+        for x in [x for r in sa.rules if r.effect == "list_missing" for x in r.items]:
+            if td._name(x) in known or td._name(x) in before_items:
+                continue
+            try:
+                out, ch = td.set_decision(out, "value", x, {"need": "every"}, source="chat")
+            except td.DecisionError:
+                continue
+            known.add(td._name(x))
+            if ch:
+                changes.append(ch)
+    return out, changes, cards
