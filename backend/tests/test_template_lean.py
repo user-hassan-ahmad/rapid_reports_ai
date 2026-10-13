@@ -619,7 +619,7 @@ async def test_a_stack_session_with_values_has_code_write_the_literal_na_line(mo
                                                  stack={"conclusion": "", "declined": [], "values_na": ["RVEF"]})
     assert "LIST_MISSING" not in calls["gen"]["sheet"]
     assert calls["gen"]["stack"]["values_decided"] is True
-    assert "Findings:\nValues not provided: RVEF.\nNormal LV." in out["report_content"]
+    assert "Values not provided: RVEF.\n\nFindings:\nNormal LV." in out["report_content"]   # report-wide: before the heading
     assert "LVEF, RVEF" not in out["report_content"]
     assert out["required_values"]["stripped"] == 1 and out["required_values"]["lists"][0]["na"] == ["RVEF"]
 
@@ -639,7 +639,7 @@ async def test_a_filled_value_the_report_lacks_is_listed_and_flagged(monkeypatch
                                                  stack={"conclusion": "", "declined": [], "values_na": [],
                                                         "values_filled": ["LVEF", "RVEF"]})
     assert seen["items"] == ["LVEF", "RVEF"] and seen["report"].startswith("Findings:\nNormal LV.")
-    assert "Findings:\nValues not provided: LVEF.\nNormal LV." in out["report_content"]
+    assert "Values not provided: LVEF.\n\nFindings:\nNormal LV." in out["report_content"]
     assert {"kind": "value_missing", "text": "LVEF", "message": "Required value LVEF not found in the report"} \
         in out["quality_check"]["review"]
     assert out["required_values"]["backstop"] == {"asked": 2, "missing": ["LVEF"], "error": None}
@@ -707,7 +707,7 @@ async def test_without_a_value_cluster_code_owns_the_list_and_checks_every_item(
         if stack is not None:
             assert calls["gen"]["stack"]["values_decided"] is True
         assert seen["items"] == ["LVEF", "RVEF"]
-        assert "Findings:\nValues not provided: RVEF.\nNormal aortic root." in out["report_content"]
+        assert "Values not provided: RVEF.\n\nFindings:\nNormal aortic root." in out["report_content"]
         assert out["required_values"]["source"] == "code" and out["required_values"]["backstop"]["missing"] == ["RVEF"]
         if out.get("options_job") is not None:
             await out["options_job"]

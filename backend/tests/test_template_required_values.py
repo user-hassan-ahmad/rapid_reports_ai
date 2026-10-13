@@ -77,7 +77,7 @@ def test_code_writes_the_literal_line_at_the_top_of_its_section_and_strips_the_g
     _, rec = apply_required_values(SHEET, ["RVEF", "LV mass index"])
     report = "Findings:\nValues not provided: LVEF, RVEF.\nNormal LV.\n\nConclusion:\nNormal."
     assert write_missing(report, SHEET, rec["lists"]) == (
-        "Findings:\nValues not provided: LV mass index, RVEF.\nNormal LV.\n\nConclusion:\nNormal.", 1)
+        "Values not provided: LV mass index, RVEF.\n\nFindings:\nNormal LV.\n\nConclusion:\nNormal.", 1)
     assert missing_line(["RVEF"]) == "Values not provided: RVEF."
 
 
@@ -85,13 +85,13 @@ def test_at_end_without_headers_and_by_section_header():
     end = SHEET.replace("AT TOP", "AT END")
     _, rec = apply_required_values(end, ["LVEF"])
     assert write_missing("Findings:\nNormal LV.\n\nConclusion:\nNormal.", end, rec["lists"])[0] == \
-        "Findings:\nNormal LV.\nValues not provided: LVEF.\n\nConclusion:\nNormal."
+        "Findings:\nNormal LV.\n\nValues not provided: LVEF.\n\nConclusion:\nNormal."
     _, rec = apply_required_values(SHEET, ["LVEF"])
-    assert write_missing("Normal LV.", SHEET, rec["lists"])[0] == "Values not provided: LVEF.\nNormal LV."
+    assert write_missing("Normal LV.", SHEET, rec["lists"])[0] == "Values not provided: LVEF.\n\nNormal LV."
     _, rec = apply_required_values(HEADED, ["RVEF"])
     report = "No previous CMR available.\n\nLEFT VENTRICLE\nNormal LV.\n\nRIGHT VENTRICLE\nNormal RV.\n\nConclusion:\nNormal."
     assert write_missing(report, HEADED, rec["lists"])[0] == (
-        "No previous CMR available.\n\nLEFT VENTRICLE\nValues not provided: RVEF.\nNormal LV.\n\nRIGHT VENTRICLE\n"
+        "No previous CMR available.\n\nValues not provided: RVEF.\n\nLEFT VENTRICLE\nNormal LV.\n\nRIGHT VENTRICLE\n"
         "Normal RV.\n\nConclusion:\nNormal.")
 
 
@@ -129,13 +129,13 @@ async def test_backstop_lists_and_flags_a_filled_value_the_report_lacks():
                       "message": "Required value LV mass index not found in the report"}]
     assert b == {"asked": 2, "missing": ["LV mass index"], "error": None}
     assert write_missing("Findings:\nLVEF 45%.", SHEET, lists)[0] == \
-        "Findings:\nValues not provided: RVEF, LV mass index.\nLVEF 45%."
+        "Values not provided: RVEF, LV mass index.\n\nFindings:\nLVEF 45%."
 
 
 async def test_backstop_creates_the_line_when_nothing_was_marked_na():
     _, rec = apply_required_values(SHEET, [])
     lists, flags, _ = await backstop("Findings:\nNormal.", rec["lists"], ["LVEF"], ask=_scores([0.1]))
-    assert write_missing("Findings:\nNormal.", SHEET, lists)[0] == "Findings:\nValues not provided: LVEF.\nNormal."
+    assert write_missing("Findings:\nNormal.", SHEET, lists)[0] == "Values not provided: LVEF.\n\nFindings:\nNormal."
     assert [f["text"] for f in flags] == ["LVEF"]
 
 
@@ -210,4 +210,60 @@ def test_write_missing_records_its_error(monkeypatch):
 def test_top_placement_after_an_inline_header_goes_on_its_own_line():
     _, rec = apply_required_values(SHEET, ["LVEF"])
     assert write_missing("Findings: Normal LV.\n\nConclusion: Normal.", SHEET, rec["lists"])[0] == \
-        "Findings:\nValues not provided: LVEF.\nNormal LV.\n\nConclusion: Normal."
+        "Values not provided: LVEF.\n\nFindings: Normal LV.\n\nConclusion: Normal."
+    # anchored to another section with an inline header: the line goes on its own line inside it
+    two = SHEET.replace('SECTION CONCLUSION', 'SECTION VESSELS | header: "Vessels:" | role: findings\nSECTION CONCLUSION')
+    two = two.replace("AT TOP", "AT TOP | section: VESSELS")
+    _, rec = apply_required_values(two, ["LVEF"])
+    assert write_missing("Findings: Normal LV.\n\nVessels: Normal.\n\nConclusion: Normal.", two, rec["lists"])[0] == \
+        "Findings: Normal LV.\n\nVessels:\nValues not provided: LVEF.\nNormal.\n\nConclusion: Normal."
+
+
+CMR = """## Report Structure
+SECTION COMPARISON | header: none | role: comparison
+SECTION LEFT VENTRICLE | header: "LEFT VENTRICLE" | role: findings
+SECTION RIGHT VENTRICLE | header: "RIGHT VENTRICLE" | role: findings
+SECTION ATRIA | header: "ATRIA" | role: findings
+SECTION SUMMARY | header: "SUMMARY" | role: impression
+
+## Report-wide
+RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["LVEF" | "aortic root diameter"] AT TOP | section: LEFT VENTRICLE
+
+## Paragraph: Left ventricle (LEFT VENTRICLE)
+COVERS ["left ventricle"]
+NORMAL [left ventricle] "Normal LV."
+"""
+CMR_REPORT = ("No previous CMR for comparison.\n\nLEFT VENTRICLE\nNormal LV.\n\nRIGHT VENTRICLE\nNormal RV.\n\n"
+              "ATRIA\nNormal atria.\n\nSUMMARY\nNormal study.")
+
+
+def test_a_report_wide_list_goes_at_the_top_of_the_body_never_under_the_first_findings_heading():
+    """Browser test 2026-10-13: the line landed under "LEFT VENTRICLE". A report-wide list naming the default (first
+    findings) section, as the analyser writes it, is not anchored there: it goes after the preamble line, before the
+    first section heading."""
+    _, rec = apply_required_values(CMR, ["aortic root diameter"])
+    assert write_missing(CMR_REPORT, CMR, rec["lists"])[0] == (
+        "No previous CMR for comparison.\n\nValues not provided: aortic root diameter.\n\nLEFT VENTRICLE\nNormal LV."
+        "\n\nRIGHT VENTRICLE\nNormal RV.\n\nATRIA\nNormal atria.\n\nSUMMARY\nNormal study.")
+    _, rec = apply_required_values(CMR.replace(" | section: LEFT VENTRICLE", ""), ["LVEF"])
+    out = write_missing(CMR_REPORT, CMR.replace(" | section: LEFT VENTRICLE", ""), rec["lists"])[0]
+    assert out.startswith("No previous CMR for comparison.\n\nValues not provided: LVEF.\n\nLEFT VENTRICLE\n")
+
+
+def test_at_end_goes_after_the_last_findings_section_before_the_summary():
+    end = CMR.replace("AT TOP", "AT END")
+    _, rec = apply_required_values(end, ["LVEF"])
+    assert write_missing(CMR_REPORT, end, rec["lists"])[0].endswith(
+        "ATRIA\nNormal atria.\n\nValues not provided: LVEF.\n\nSUMMARY\nNormal study.")
+
+
+def test_a_list_anchored_to_another_section_goes_at_the_top_of_that_section():
+    anchored = CMR.replace("section: LEFT VENTRICLE", "section: ATRIA")
+    _, rec = apply_required_values(anchored, ["LVEF"])
+    assert "ATRIA\nValues not provided: LVEF.\nNormal atria." in write_missing(CMR_REPORT, anchored, rec["lists"])[0]
+
+
+def test_a_report_without_a_preamble_starts_with_the_line():
+    _, rec = apply_required_values(CMR, ["LVEF"])
+    report = CMR_REPORT.split("\n\n", 1)[1]
+    assert write_missing(report, CMR, rec["lists"])[0].startswith("Values not provided: LVEF.\n\nLEFT VENTRICLE\nNormal LV.")

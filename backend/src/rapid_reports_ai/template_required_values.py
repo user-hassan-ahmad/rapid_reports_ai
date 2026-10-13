@@ -6,8 +6,9 @@ typed, or marked N/A. Code owns the missing-values list (Hassan 2026-10-13: alwa
   write no list); the record keeps the N/A items, the list's position and its section. An item on two lists is
   listed once.
 - write_missing: after generation, any generator line beginning "Values not provided" is removed and code writes
-  "Values not provided: <items>." at the TOP or END of the list's section (by its sheet name or header in the
-  report's sections; else the first findings section; else the report itself).
+  "Values not provided: <items>." as its own paragraph: AT TOP before the first findings heading (after any
+  preamble), AT END after the last findings section; a list anchored to another section (not the default first
+  findings one) goes at the TOP or END of that section; with no findings section found, the report itself.
 - backstop: before the line is written, Jev asks whether the generated report states each value whose chip was
   filled (a false "stated" must never let a value vanish from both the report and the line); each "no" joins its
   list's N/A items and becomes a value_missing review flag.
@@ -134,6 +135,25 @@ def _insert(text: str, a: int, b: int, line: str, end: bool) -> str:
     return head + line + ("\n" if text[k:b].strip() else "") + text[k:]
 
 
+def _between(text: str, findings: list, line: str, end: bool) -> str:
+    """The line as its own paragraph outside every findings section: before the first one's heading (after any
+    preamble such as a comparison line), or, at END, after the last one (before the summary/impression)."""
+    # the report's own headed findings sections; an implicit one is the text before them (e.g. a comparison line)
+    findings = [f for f in findings if f[0].header] or findings
+    if end:
+        _, a, b = findings[-1]
+        k = a + len(text[a:b].rstrip())
+        return text[:k] + "\n\n" + line + text[k:]
+    s, a, _ = findings[0]
+    p = a
+    if s.header:   # the heading's line start: a standalone header line, or an inline "Findings: …"
+        p = text.rfind("\n", 0, a - 1 if text[a - 1:a] == "\n" else a) + 1
+    head = text[:p]
+    if head.strip():
+        return head.rstrip("\n") + "\n\n" + line + "\n\n" + text[p:].lstrip("\n")
+    return line + "\n\n" + text[p:].lstrip("\n")
+
+
 def write_missing(report: str, sheet: str, lists: List[dict], rec: Optional[dict] = None) -> Tuple[str, int]:
     """(the report with code's "Values not provided" lines, generator lines in that wording removed). Never raises:
     on any error the report comes back as it was, and the error goes in rec["write_error"]."""
@@ -144,14 +164,23 @@ def write_missing(report: str, sheet: str, lists: List[dict], rec: Optional[dict
         st = _clean(sheet)
         names = {s.name.upper(): {s.name.upper(), (s.header or s.name).strip().rstrip(":").strip().upper()}
                  for s in (st.sections if st else [])}
+        # A report-wide list names the first findings section by default (the grammar's default, which the analyser
+        # also writes out): that is no anchor. Only another section anchors the line inside it.
+        default = next((s.name.upper() for s in (st.sections if st else []) if s.role == "findings"), "")
         for e in lists:
             if not e.get("na"):
                 continue
             spans = section_spans(text, report_sections(text, sheet))
-            want = names.get(e["section"].upper(), {e["section"].upper()})
+            line, end = missing_line(e["na"]), e.get("position") == "end"
+            section = (e.get("section") or "").upper()
+            findings = [(s, a, b) for s, a, b in spans if s.role == "findings"]
+            if (not section or section == default) and findings:
+                text = _between(text, findings, line, end)
+                continue
+            want = names.get(section, {section})
             hit = (next(((a, b) for s, a, b in spans if s.name in want), None)
-                   or next(((a, b) for s, a, b in spans if s.role == "findings"), None) or (0, len(text)))
-            text = _insert(text, hit[0], hit[1], missing_line(e["na"]), e.get("position") == "end")
+                   or next(((a, b) for _, a, b in findings), None) or (0, len(text)))
+            text = _insert(text, hit[0], hit[1], line, end)
         logger.info("[template.required_values] written=%d stripped=%d", sum(bool(e.get("na")) for e in lists), stripped)
         return text, stripped
     except Exception as e:  # noqa: BLE001 -- never break Generate
