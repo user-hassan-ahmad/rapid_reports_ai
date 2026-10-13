@@ -1,11 +1,13 @@
 <script>
-	import { createEventDispatcher } from 'svelte';
+	import { createEventDispatcher, onDestroy } from 'svelte';
 	import { fade, fly } from 'svelte/transition';
 	import { API_URL } from '$lib/config';
 	import { token } from '$lib/stores/auth';
 	import { templatesStore } from '$lib/stores/templates';
 	import RulesStep from '$lib/template-rules/RulesStep.svelte';
-	import { postApplyDecisions, postDecide } from '$lib/template-rules/api';
+	import StyleChecks from '$lib/template-rules/StyleChecks.svelte';
+	import { postApplyDecisions, postDecide, postSheetChecks } from '$lib/template-rules/api';
+	import { createChecksLoader } from '$lib/template-rules/checksLoader';
 
 	const dispatch = createEventDispatcher();
 
@@ -43,6 +45,12 @@
 	let reviewLoading = false;
 	let reviewBusy = false;
 	let reviewDone = false;
+	/** where the review's cards came from: the first-use review (/decide) or a chat edit that kept a confirmed item */
+	/** @type {'first_use_review' | 'chat'} */
+	let reviewSource = 'first_use_review';
+	/** @type {import('$lib/template-rules/types').SheetChecksResponse | null} */
+	let checks = null;
+	let reviewChanged = false;
 	let reviewOpen = false;
 	let reviewKey = 0;
 
@@ -54,13 +62,17 @@
 		hasChanges = false;
 		error = '';
 		reviewDone = false;
+		checks = null;
 		loadReview(template);
+		checksLoader.reset();
+		loadChecks(true);
 	}
 
 	/** The Required-values card, the entries the last save could not place, and the first-use decision run when the
 	 * template has never been reviewed. Fail-soft: without it the panel works as before. */
 	async function loadReview(/** @type {any} */ t) {
 		review = null;
+		reviewSource = 'first_use_review';
 		reviewOpen = false;
 		if (!t?.id) return;
 		reviewLoading = true;
@@ -78,23 +90,60 @@
 	function showKeptCards(/** @type {any[]} */ cards) {
 		if (!Array.isArray(cards) || !cards.length) return;
 		review = { success: true, ran: false, cards, more: [], kept: [], defaults: [], notice: '', run: {} };
+		reviewSource = 'chat';   // answers to these cards come from the chat edit, not the first-use review
 		reviewDone = false;
 		reviewOpen = true;
 		reviewKey += 1;
 	}
 
-	async function applyReview(/** @type {import('$lib/template-rules/types').DecisionChange[]} */ changes) {
-		if (!changes.length) { reviewDone = true; return; }
+	/** The Style-step checks for the sheet in hand: re-runs debounced, skipped when nothing changed, only the newest
+	 * answer shown (checksLoader). Fail-soft: none shown. `now` runs at once (a sheet just opened or built). */
+	const checksLoader = createChecksLoader((body) => postSheetChecks($token, body), (r) => { checks = r; });
+	onDestroy(() => checksLoader.reset());   // no debounced run after the component is gone
+	function loadChecks(now = false) {
+		checksLoader.request(skillSheet, decisions, { now });
+	}
+
+	/** One Style-check tap: applied through the ledger at once, then the checks re-run (the rules review stays). */
+	/** @returns {Promise<boolean>} false when the change was not applied (the open editor keeps its draft) */
+	async function applyStyle(/** @type {import('$lib/template-rules/types').DecisionChange[]} */ changes) {
+		if (loading || reviewBusy || !changes.length) return false;
 		reviewBusy = true;
 		error = '';
 		try {
 			const r = await postApplyDecisions($token, { skill_sheet: skillSheet, decisions, changes, source: 'first_use_review' });
 			if (!r.success) throw new Error(r.error || 'Could not apply that choice');
+			if (r.skill_sheet !== skillSheet || JSON.stringify(r.decisions) !== JSON.stringify(decisions)) hasChanges = true;
 			skillSheet = r.skill_sheet;
 			decisions = r.decisions;
-			if (review?.ran) rulesStep = { ...(review.run ?? {}), reviewed_at: new Date().toISOString() };
-			hasChanges = true;
+			loadChecks();
+			return true;
+		} catch (e) {
+			error = e instanceof Error ? e.message : String(e);
+			return false;
+		} finally {
+			reviewBusy = false;
+		}
+	}
+
+	async function applyReview(/** @type {import('$lib/template-rules/types').DecisionChange[]} */ changes) {
+		if (loading) return;
+		if (!changes.length) { reviewChanged = false; reviewDone = true; return; }
+		reviewBusy = true;
+		error = '';
+		try {
+			const src = reviewSource;
+			const r = await postApplyDecisions($token, { skill_sheet: skillSheet, decisions,
+				changes: changes.map((c) => (c.source === 'default' ? c : { ...c, source: src })), source: src });
+			if (!r.success) throw new Error(r.error || 'Could not apply that choice');
+			reviewChanged = r.skill_sheet !== skillSheet || JSON.stringify(r.decisions) !== JSON.stringify(decisions);
+			skillSheet = r.skill_sheet;
+			decisions = r.decisions;
+			// the server stamped this record with first_use when the run returned; the saved copy keeps it
+			if (review?.ran) rulesStep = { ...(review.run ?? {}), first_use: true, reviewed_at: new Date().toISOString() };
+			if (reviewChanged) hasChanges = true;
 			reviewDone = true;
+			if (reviewChanged) loadChecks();
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		} finally {
@@ -118,7 +167,7 @@
 	}
 
 	async function sendMessage() {
-		if (!chatInput.trim() || !skillSheet || loading) return;
+		if (!chatInput.trim() || !skillSheet || loading || reviewBusy) return;
 		const msg = chatInput.trim();
 		chatInput = '';
 
@@ -138,6 +187,7 @@
 			skillSheet = data.skill_sheet;
 			if (Array.isArray(data.decisions)) decisions = data.decisions;
 			showKeptCards(data.cards);
+			if (data.applied !== false) loadChecks();
 			chatHistory = [...chatHistory, { role: 'assistant', content: data.response }];
 			// a refused edit keeps the sheet and explains why (data.response); nothing changed to save
 			if (data.applied !== false) hasChanges = true;
@@ -157,7 +207,7 @@
 	}
 
 	async function saveChanges() {
-		if (!hasChanges || !template?.id) return;
+		if (!hasChanges || !template?.id || reviewBusy) return;
 		saving = true;
 		error = '';
 		saveError = '';
@@ -189,6 +239,7 @@
 			skillSheet = data.template?.template_config?.skill_sheet ?? skillSheet;
 			decisions = data.template?.template_config?.decisions ?? decisions;
 			showKeptCards(data.cards);
+			loadChecks();   // the stored sheet may differ from the one sent
 			await templatesStore.refreshTemplates();
 			if (data.notice) {
 				// keep the panel open so the adjustment notice is seen
@@ -237,7 +288,7 @@
 					<button
 						class="px-3 py-1.5 rounded-lg text-xs font-medium bg-purple-600/80 hover:bg-purple-600 text-white transition-colors disabled:opacity-40 flex items-center gap-1.5"
 						on:click={saveChanges}
-						disabled={saving}>
+						disabled={saving || reviewBusy}>
 						{#if saving}
 							<div class="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
 						{/if}
@@ -255,7 +306,7 @@
 		{#if saveError || saveNotice}
 			<div class="px-5 pt-2 text-right shrink-0">
 				{#if saveError}<p class="text-xs text-amber-400">{saveError}</p>{/if}
-				{#if saveNotice}<p class="text-xs text-gray-400">{saveNotice}</p>{/if}
+				{#if saveNotice}<p class="text-xs text-gray-400" role="status">{saveNotice}</p>{/if}
 			</div>
 		{/if}
 
@@ -263,17 +314,27 @@
 		<!-- Chat messages -->
 		<div class="flex-1 overflow-y-auto px-5 py-4 space-y-3" bind:this={chatScrollEl}>
 			{#if reviewLoading}
-				<p class="text-xs text-gray-500">Checking your template's rules…</p>
+				<p class="text-xs text-gray-500" role="status">Checking your template's rules…</p>
 			{:else if reviewDone}
-				<p class="text-xs text-gray-400">Rules updated. Save to apply them to future reports.</p>
+				<p class="text-xs text-gray-400" role="status">
+					{reviewChanged ? 'Rules updated. Save to apply them to future reports.' : 'No changes'}
+				</p>
 			{:else if review && (review.cards.length || review.more.length || review.kept.length)}
 				<details class="rounded-lg border border-white/10 p-3" open={review.ran || reviewOpen}>
 					<summary class="text-sm text-gray-200 cursor-pointer">Your template's rules</summary>
 					<div class="pt-3">
 						{#key reviewKey}
 							<RulesStep cards={review.cards} more={review.more} kept={review.kept} defaults={review.defaults}
-								notice={review.notice} mode="review" busy={reviewBusy} onContinue={applyReview} />
+								notice={review.notice} mode="review" busy={reviewBusy || loading} onContinue={applyReview} />
 						{/key}
+					</div>
+				</details>
+			{/if}
+			{#if checks && (checks.fixed_cards.length || checks.duplicate_cards.length || checks.normal_report.length || checks.uncovered_cards.length || checks.unmatched_cards.length)}
+				<details class="rounded-lg border border-white/10 p-3">
+					<summary class="text-sm text-gray-200 cursor-pointer">How your report will read</summary>
+					<div class="pt-3">
+						<StyleChecks {checks} source="first_use_review" busy={reviewBusy || loading} {error} onChange={applyStyle} />
 					</div>
 				</details>
 			{/if}
@@ -339,7 +400,7 @@
 				<button
 					class="px-4 py-2 rounded-lg text-sm font-medium bg-purple-600/80 hover:bg-purple-600 text-white transition-colors disabled:opacity-40"
 					on:click={sendMessage}
-					disabled={loading || !chatInput.trim()}>
+					disabled={loading || reviewBusy || !chatInput.trim()}>
 					Send
 				</button>
 			</div>

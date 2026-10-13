@@ -1,5 +1,5 @@
 <script>
-	import { createEventDispatcher, onMount, tick } from 'svelte';
+	import { createEventDispatcher, onDestroy, onMount, tick } from 'svelte';
 	import { API_URL } from '$lib/config';
 	import { token } from '$lib/stores/auth';
 	import { tagsStore } from '$lib/stores/tags';
@@ -12,7 +12,9 @@
 	import ConventionRules from './skill-sheet-summary/ConventionRules.svelte';
 	import ImpressionFlow from './skill-sheet-summary/ImpressionFlow.svelte';
 	import RulesStep from '$lib/template-rules/RulesStep.svelte';
-	import { postApplyDecisions, postDecide } from '$lib/template-rules/api';
+	import StyleChecks from '$lib/template-rules/StyleChecks.svelte';
+	import { postApplyDecisions, postDecide, postSheetChecks } from '$lib/template-rules/api';
+	import { createChecksLoader } from '$lib/template-rules/checksLoader';
 
 	marked.setOptions({ breaks: true, gfm: true });
 
@@ -103,7 +105,10 @@
 	/** cards a refine turn returned (a confirmed item the edit would have removed: kept, and asked about here) */
 	/** @type {import('$lib/template-rules/types').DecisionCard[]} */
 	let chatCards = [];
-	let chatCardsBusy = false;
+	let chatCardsBusy = false;   // a card answer (refine-stage card or Style check) is being applied
+	/** the Style step's checks for the sheet in hand (null: none, or they failed; the summary shows alone) */
+	/** @type {import('$lib/template-rules/types').SheetChecksResponse | null} */
+	let checks = null;
 	const NO_PRECHECK = "We couldn't pre-check your rules; review them on the Style step.";
 
 	let sampleFindings = '';
@@ -417,6 +422,9 @@
 			stage = 'summary';
 			lastAnalyzedSnapshot = currentExamplesSnapshot;
 			phase = 2;
+			checks = null;
+			checksLoader.reset();
+			loadChecks(true);
 		} catch (e) { error = e instanceof Error ? e.message : String(e); }
 		finally { loading = false; }
 	}
@@ -429,6 +437,8 @@
 			skillSheet = target.preMutationSkillSheet;
 		}
 		if (Array.isArray(target.preMutationDecisions)) decisions = target.preMutationDecisions;
+		chatCards = [];   // they asked about the rejected edit
+		loadChecks();
 
 		// Mark this turn as rejected; also mark the triggering user turn if present.
 		// Index-0 case (no preceding user message) shouldn't happen in the refine
@@ -460,12 +470,12 @@
 	}
 
 	async function sendAnswer(/** @type {string} */ msg) {
-		if (!msg.trim() || !skillSheet) return;
+		if (!msg.trim() || !skillSheet || chatCardsBusy) return;
 		chatInput = '';
 		const fullMsg = msg;
 
-		// Verification-loop metadata only applies in the refine stage.
-		// Questions-stage messages stay unadorned so no banner renders for them.
+		// Verification-loop metadata only applies in the refine stage; a message sent from any other stage stays
+		// unadorned so no banner renders for it.
 		const isRefineTurn = stage === 'refine';
 		const preMutationSkillSheet = isRefineTurn ? skillSheet : null;
 		const preMutationDecisions = isRefineTurn ? decisions : null;
@@ -499,6 +509,7 @@
 			skillSheet = data.skill_sheet;
 			if (Array.isArray(data.decisions)) decisions = data.decisions;
 			if (Array.isArray(data.cards)) chatCards = data.cards;
+			if (data.applied !== false) loadChecks();
 			/** @type {ChatMessage} */
 			// a refused edit (applied === false) keeps the sheet and explains why: no change to verify
 			const assistantMsg = isRefineTurn && data.applied !== false
@@ -532,6 +543,7 @@
 
 	/** A card a refine turn returned, answered: recorded on the ledger and applied to the sheet by code. */
 	async function applyChatCards(/** @type {import('$lib/template-rules/types').DecisionChange[]} */ changes) {
+		if (loading) return;
 		if (!changes.length) { chatCards = []; return; }
 		chatCardsBusy = true; error = '';
 		try {
@@ -544,7 +556,33 @@
 			skillSheet = r.skill_sheet;
 			decisions = r.decisions;
 			chatCards = [];
+			loadChecks();
 		} catch (e) { error = e instanceof Error ? e.message : String(e); }
+		finally { chatCardsBusy = false; }
+	}
+
+	/** The Style-step checks for the sheet in hand: re-runs debounced, skipped when nothing changed, only the newest
+	 * answer shown (checksLoader). Fail-soft: none shown. `now` runs at once (a sheet just opened or built). */
+	const checksLoader = createChecksLoader((body) => postSheetChecks($token, body), (r) => { checks = r; });
+	onDestroy(() => checksLoader.reset());   // no debounced run after the component is gone
+	function loadChecks(now = false) {
+		checksLoader.request(skillSheet, decisions, { now });
+	}
+
+	/** One Style-check tap: recorded on the ledger and applied by code at once; then the checks re-run. */
+	/** @returns {Promise<boolean>} false when the change was not applied (the open editor keeps its draft) */
+	async function applyStyle(/** @type {import('$lib/template-rules/types').DecisionChange[]} */ changes) {
+		if (loading || chatCardsBusy || !changes.length) return false;
+		chatCardsBusy = true; error = '';
+		try {
+			const r = await postApplyDecisions($token, { skill_sheet: skillSheet, decisions, changes, source: 'creation' });
+			if (!r.success) throw new Error(r.error || 'Could not apply that choice');
+			if (testReport && r.skill_sheet !== skillSheet) previewStale = true;
+			skillSheet = r.skill_sheet;
+			decisions = r.decisions;
+			loadChecks();
+			return true;
+		} catch (e) { error = e instanceof Error ? e.message : String(e); return false; }
 		finally { chatCardsBusy = false; }
 	}
 
@@ -612,7 +650,7 @@
 	}
 
 	async function saveAsTemplate() {
-		if (!templateName.trim() || !skillSheet) return;
+		if (!templateName.trim() || !skillSheet || chatCardsBusy) return;
 		// Saving is itself a confirmation of every still-pending refine turn.
 		chatHistory = chatHistory.map((m) =>
 			m.status === 'pending' ? { ...m, status: 'confirmed' } : m
@@ -790,9 +828,9 @@
 		</div>
 		<h3 class="text-lg text-white">Check your rules</h3>
 		{#if rulesLoading}
-			<p class="text-sm text-gray-400 flex items-center gap-2"><span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>Checking your examples…</p>
+			<p class="text-sm text-gray-400 flex items-center gap-2" role="status"><span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>Checking your examples…</p>
 		{:else if loading}
-			<p class="text-sm text-gray-400 flex items-center gap-2"><span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>Building your template…</p>
+			<p class="text-sm text-gray-400 flex items-center gap-2" role="status"><span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>Building your template…</p>
 		{:else if error}
 			<p class="text-sm text-red-400">{error}</p>
 			<button class="btn-primary text-sm" on:click={() => buildTemplate(lastChanges)}>Try again</button>
@@ -846,7 +884,7 @@
 				{#if stage === 'summary'}
 					<div class="flex-1 flex flex-col min-h-0" in:fly={{ x: -20, duration: 200 }}>
 						<p class="text-sm text-gray-400 px-5 pt-4 pb-3 shrink-0">{stageDescriptions.summary}</p>
-						{#if sheetNotice}<p class="text-xs text-gray-400 px-5 pb-3 shrink-0">{sheetNotice}</p>{/if}
+						{#if sheetNotice}<p class="text-xs text-gray-400 px-5 pb-3 shrink-0" role="status">{sheetNotice}</p>{/if}
 						<div class="flex-1 overflow-y-auto overflow-x-hidden min-w-0 px-5 pb-4">
 							{#if summary}
 								<div class="space-y-7 pt-1">
@@ -897,6 +935,9 @@
 							{:else}
 								<p class="text-sm text-gray-600">No summary available.</p>
 							{/if}
+							<div class="pt-4">
+								<StyleChecks {checks} source="creation" busy={chatCardsBusy || loading} {error} onChange={applyStyle} />
+							</div>
 						</div>
 						<div class="flex justify-end px-5 py-3 border-t border-white/[0.06] shrink-0">
 							<button class="btn-primary flex items-center gap-2" on:click={nextStage}>
@@ -973,7 +1014,7 @@
 							{#if chatCards.length}
 								<div class="pb-3 mb-3 border-b border-white/[0.06]">
 									{#key chatCards}
-										<RulesStep cards={chatCards} mode="review" busy={chatCardsBusy} onContinue={applyChatCards} />
+										<RulesStep cards={chatCards} mode="review" busy={chatCardsBusy || loading} onContinue={applyChatCards} />
 									{/key}
 								</div>
 							{/if}
@@ -1074,7 +1115,7 @@
 						<div class="px-5 py-3 border-t border-white/[0.06] shrink-0 space-y-2">
 							<div class="flex gap-2">
 								<input bind:this={chatInputEl} class="input-dark !py-2 !text-sm" bind:value={chatInput} on:keydown={handleChatKey} placeholder="Add a rule or correction..." disabled={loading} />
-								<button class="btn-accent !px-3.5 !py-2" on:click={() => sendAnswer(chatInput)} disabled={loading || !chatInput.trim()}>&uarr;</button>
+								<button class="btn-accent !px-3.5 !py-2" on:click={() => sendAnswer(chatInput)} disabled={loading || chatCardsBusy || !chatInput.trim()}>&uarr;</button>
 							</div>
 							{#if hasGenerated}
 								<button
@@ -1237,7 +1278,7 @@
 				{:else if !showSaveDialog}
 					<div class="flex items-center justify-between">
 						<p class="text-xs text-gray-500">Refine on the left, regenerate to check.</p>
-						<button class="btn-primary" on:click={openSaveDialog}>Save as template</button>
+						<button class="btn-primary" on:click={openSaveDialog} disabled={chatCardsBusy}>Save as template</button>
 					</div>
 				{:else}
 					<div class="space-y-2.5">
@@ -1289,7 +1330,7 @@
 						</div>
 						<div class="flex items-center justify-end gap-2 pt-0.5">
 							<button class="btn-ghost text-xs" on:click={() => (showSaveDialog = false)}>Cancel</button>
-							<button class="btn-primary !px-5 flex items-center gap-2" on:click={saveAsTemplate} disabled={saving || !templateName.trim()}>
+							<button class="btn-primary !px-5 flex items-center gap-2" on:click={saveAsTemplate} disabled={saving || chatCardsBusy || !templateName.trim()}>
 								{#if saving}<span class="inline-block w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>{/if}
 								Save
 							</button>

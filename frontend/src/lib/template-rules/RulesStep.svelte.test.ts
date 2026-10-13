@@ -128,6 +128,28 @@ describe('RulesStep', () => {
 			choice: { use: true, default: 'Non-contrast.', when_met: 'Post contrast.', condition: GIVEN, dictated: false } }]);
 	});
 
+	it('Edit wording moves focus into the fields; empty wording cannot be used', async () => {
+		render(RulesStep, { cards: [concept()], notice: 'Heads up.', onContinue: vi.fn() });
+		await expect.element(page.getByRole('status')).toHaveTextContent('Heads up.');
+		await page.getByRole('button', { name: 'Comparison with previous imaging: Edit wording' }).click();
+		await expect.element(page.getByLabelText('Usually')).toHaveFocus();
+		const use = page.getByRole('button', { name: 'Use this wording' });
+		await expect.element(use).not.toBeDisabled();
+		await userEvent.clear(page.getByLabelText('Usually'));
+		await expect.element(use).toBeDisabled();
+	});
+
+	it('a fragment cannot be used and the hint says why', async () => {
+		render(RulesStep, { cards: [concept()], onContinue: vi.fn() });
+		await page.getByRole('button', { name: 'Comparison with previous imaging: Edit wording' }).click();
+		await userEvent.fill(page.getByLabelText('When it applies'), 'compared with {date}');
+		await expect.element(page.getByRole('button', { name: 'Use this wording' })).toBeDisabled();
+		await expect.element(page.getByText('Write it as a full sentence.')).toBeInTheDocument();
+		await userEvent.fill(page.getByLabelText('When it applies'), 'Compared with {date}.');
+		await expect.element(page.getByRole('button', { name: 'Use this wording' })).not.toBeDisabled();
+		await expect.element(page.getByText('Write it as a full sentence.')).not.toBeInTheDocument();
+	});
+
 	it('adds a required value', async () => {
 		const onContinue = vi.fn();
 		render(RulesStep, { cards: [value('ECV')], onContinue });

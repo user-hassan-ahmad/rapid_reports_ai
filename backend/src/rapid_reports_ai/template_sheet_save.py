@@ -71,6 +71,8 @@ class VetOutcome:
     ledger_unmatched: List[dict] = field(default_factory=list)  # entries shown as cards at the next review
     ledger_drift: int = 0      # automatic writes: ledger lines the write had wrong and code rewrote (writer drift)
     stale_quotes: List[str] = field(default_factory=list)       # prose still quoting a sentence the ledger changed
+    ledger_warnings: List[dict] = field(default_factory=list)   # lint warnings, never blocking: prose quoting a
+                                                                # decided concept's line (tla.restated_quotes)
 
 
 def _shape(sheet: str) -> tuple:
@@ -240,18 +242,37 @@ def _with_ledger(out: VetOutcome, origin: str, previous: str, ledger: List[dict]
     if res.failed:
         logger.error("[sheet-save] %s: ledger entries not applied (a bug): %s", origin,
                      [e.get("key") for e in res.failed])
-    logger.info("[ledger] origin=%s entries=%d changed=%d drift=%d unmatched=%d failed=%d chat_changes=%d stale=%d",
-                origin, len(ledger), res.changed, drift, len(res.unmatched), len(res.failed), len(changes),
-                len(res.stale_quotes))
+    logger.info("[ledger] origin=%s entries=%d changed=%d drift=%d unmatched=%d failed=%d chat_changes=%d stale=%d "
+                "restated=%d", origin, len(ledger), res.changed, drift, len(res.unmatched), len(res.failed),
+                len(changes), len(res.stale_quotes), len(res.restated))
     status, coverage = out.status, out.coverage_sections
     if res.sheet != out.sheet:
         status = "saved"
         st = tsg.parse_sheet(res.sheet, mode="template").structure
         coverage = [s.name for s in sorted(st.sections, key=lambda s: s.order)]
+    if previous and res.sheet == previous:   # the ledger put back what the edit changed: nothing was applied
+        status = "unchanged"
     return dataclasses.replace(out, status=status, sheet=res.sheet, coverage_sections=coverage, ledger=ledger,
                                ledger_changes=[dict(c) for c in changes], ledger_cards=cards,
                                ledger_unmatched=res.unmatched,
-                               ledger_drift=drift, stale_quotes=res.stale_quotes)
+                               ledger_drift=drift, stale_quotes=res.stale_quotes, ledger_warnings=res.restated)
 
 
 LEDGER_KEPT = "This would remove something you confirmed, so it was kept; use the card below to change it."
+LEDGER_INVALID = ("That change to something you confirmed can't be written that way, so it was kept; use the card "
+                  "below to change it.")
+LEDGER_RESTATED = "Some example wording repeats a fixed line; it may be stated twice."
+
+
+def ledger_notes(out: VetOutcome) -> List[str]:
+    """The reply lines for a save with a ledger: each confirmed item a chat edit changed, the kept items' card
+    notice (removed whole, or a change code could not write), and the restated-line warning."""
+    from . import template_decisions as td
+    notes = [n for n in (td.describe_change(c) for c in out.ledger_changes) if n]
+    if any(c.get("reason") != "invalid" for c in out.ledger_cards):
+        notes.append(LEDGER_KEPT)
+    if any(c.get("reason") == "invalid" for c in out.ledger_cards):
+        notes.append(LEDGER_INVALID)
+    if out.ledger_warnings:
+        notes.append(LEDGER_RESTATED)
+    return notes

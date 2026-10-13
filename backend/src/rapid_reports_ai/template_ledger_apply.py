@@ -38,6 +38,8 @@ class LedgerResult:
     unmatched: List[dict] = field(default_factory=list)  # entries shown as cards at the next review
     failed: List[dict] = field(default_factory=list)     # entries whose edit would break the sheet (a bug)
     stale_quotes: List[str] = field(default_factory=list)
+    restated: List[dict] = field(default_factory=list)   # lint warnings: paragraph prose quoting a decided concept's
+                                                         # FIXED line ({"line", "text", "reason", "detail"})
 
     @property
     def changed(self) -> int:
@@ -112,7 +114,14 @@ def _values(lines, st, entries):
         first = rules[0]
         spell = {td._name(k): k for k in every}
         ordered = [spell[td._name(x)] for x in first.items if td._name(x) in spell]
-        ordered += [k for k in every if td._name(k) not in {td._name(x) for x in first.items}]
+        listed = {td._name(x) for x in first.items}
+        # a value not in the list goes before the next "every" value the ledger records after it (the ledger keeps
+        # each entry's place, so an undone removal returns to where it was); with none, at the end
+        for n, k in enumerate(every):
+            if td._name(k) in listed:
+                continue
+            nxt = next((f for f in every[n + 1:] if f in ordered), None)
+            ordered.insert(ordered.index(nxt) if nxt else len(ordered), k)
         out: List[Optional[str]] = list(lines)
         for i in idx[1:]:
             out[i] = None
@@ -379,6 +388,12 @@ def apply_ledger(sheet: str, ledger: List[dict], before: str = "") -> LedgerResu
                 res.applied.append({"kind": "fixed", "key": e["key"], "action": "kept"})
                 continue
             steps.append((functools.partial(op, added=added) if op is _concept else op, e, [e]))
+    # a stored concept whose wording is not a full sentence is never a rule: it applies its default-only shape (or,
+    # with no valid default, "whichever is dictated") and is returned as unmatched, a review card
+    # (template_rules_cards.unmatched_cards)
+    fragments = [e for e in ledger if td.fragment_wording(e)]
+    steps = [(op, ({**arg, "choice": td.fragment_fallback(arg)} if isinstance(arg, dict) and td.fragment_wording(arg)
+                   else arg), entries) for op, arg, entries in steps]
     stale: List[str] = []
     for op, arg, entries in steps:
         before_errors = _err_keys(res.sheet)
@@ -399,7 +414,37 @@ def apply_ledger(sheet: str, ledger: List[dict], before: str = "") -> LedgerResu
         stale += olds
     prose = _free_prose_lines(res.sheet.split("\n"))
     res.stale_quotes = sorted({t for t in stale if t and any(f'"{t}"' in ln for ln in prose)})
+    res.unmatched += [e for e in fragments if e not in res.failed]
+    res.restated = restated_quotes(res.sheet, ledger)
     return res
+
+
+RESTATED = "prose quotes a decided standard line"
+_EXAMPLE_PROSE = re.compile(r"^\s*(?:-\s+)?(?:Opening|Order|Measurement)\b")
+_QUOTED = re.compile(r'"([^"]*)"')
+
+
+def restated_quotes(sheet: str, ledger: List[dict]) -> List[dict]:
+    """Lint warnings (never blocking): an Opening, Order or Measurement line of a paragraph whose quote holds a used
+    decided concept's FIXED line word for word. The line prints itself, so the writer would state it twice."""
+    owned = {" ".join(e["choice"]["default"].split()) for e in td.clean_ledger(ledger)
+             if e["kind"] == "concept" and e["choice"]["use"] and e["choice"]["default"]
+             and (not td.fragment_wording(e) or td.fragment_fallback(e)["use"])}
+    if not owned:
+        return []
+    lines = sheet.split("\n")
+    out: List[dict] = []
+    for title, start, end in _blocks(lines):
+        if tsg.paragraph_heading(title) is None:
+            continue
+        for i in range(start, end):
+            ln = lines[i]
+            if not _EXAMPLE_PROSE.match(ln):
+                continue
+            quotes = [" ".join(q.split()) for q in _QUOTED.findall(ln)]
+            for text in sorted(t for t in owned if any(t in q for q in quotes)):
+                out.append({"line": i + 1, "text": ln, "reason": RESTATED, "detail": text})
+    return out
 
 
 # ── reading a sheet for a ledger item (chat reconciliation; the router's targeted calls) ───────────────────────
@@ -453,6 +498,25 @@ def _fixed_reword(sb: tss.SheetStructure, sa: tss.SheetStructure) -> Optional[Tu
     return (gone[0], new[0]) if len(gone) == 1 and len(new) == 1 else None
 
 
+def _negative_reword(sb: tss.SheetStructure, sa: tss.SheetStructure, e: dict) -> Optional[str]:
+    """The new text when exactly one template NEGATIVE of the entry's paragraph was removed (the entry's) and one
+    added; else None."""
+    para_name, label, neg = td.split_normal_key(e["key"])
+    if not neg:
+        return None
+    pb, pa = _paragraph(sb, para_name), _paragraph(sa, para_name)
+    if pb is None or pa is None:
+        return None
+
+    def texts(st, pid):
+        return {norm_key(n.text): n.text for n in st.negatives
+                if n.paragraph == pid and n.origin == "template" and not n.condition}
+    b, a = texts(sb, pb.id), texts(sa, pa.id)
+    gone, new = [k for k in b if k not in a], [a[k] for k in a if k not in b]
+    mine = {norm_key(label), norm_key(e["choice"].get("text", ""))}
+    return new[0] if len(gone) == 1 and len(new) == 1 and gone[0] in mine else None
+
+
 def _wholesale(e: dict, ob: dict, oa: dict, sb: tss.SheetStructure, sa: tss.SheetStructure) -> bool:
     """A rewrite that removed a whole decided item: the whole LIST_MISSING list, or every line of a used concept.
     Product decision D3: never folded into the ledger silently; the ledger is kept and a card asks."""
@@ -489,14 +553,27 @@ def reconcile_chat(before: str, after: str, ledger: List[dict]) -> Tuple[List[di
             elif (e["kind"] == "fixed" and ob == {"keep": "always"} and oa == {"keep": "remove"} and rw
                   and norm_key(rw[0]) == norm_key(e["key"])):   # an always-printed line reworded: same choice, new key
                 out, ch = td.rekey_decision(out, "fixed", e["key"], rw[1], source="chat")
-            elif oa is None or ob == oa:
+            elif (e["kind"] == "normal" and ob and ob.get("text") and oa is not None and not oa.get("text")
+                  and _negative_reword(sb, sa, e)):   # a decided NEGATIVE reworded: the new text, rekeyed
+                para, _, _ = td.split_normal_key(e["key"])
+                text = _negative_reword(sb, sa, e)
+                out, ch = td.rekey_decision(out, "normal", e["key"], td.negative_key(para, text), source="chat",
+                                            choice={"text": text})
+            elif ob is None or oa is None or ob == oa:   # a paragraph gone or back: nothing to read, entry kept
                 continue
             elif _wholesale(e, ob, oa, sb, sa):
                 cards.append(trc.card_for_change(e["kind"], e["key"], e["choice"]))
                 continue
             else:
                 out, ch = td.set_decision(out, e["kind"], e["key"], oa, source="chat")
-        except (td.DecisionError, KeyError, StopIteration):
+        except td.DecisionError as err:   # a change code cannot write: kept, asked (never skipped silently)
+            logger.info("[ledger] chat change to %s %r refused: %s", e["kind"], e["key"], err)
+            try:
+                cards.append({**trc.card_for_change(e["kind"], e["key"], e["choice"]), "reason": "invalid"})
+            except td.DecisionError:
+                pass
+            continue
+        except (KeyError, StopIteration):
             continue
         if ch:
             changes.append(ch)
@@ -514,3 +591,21 @@ def reconcile_chat(before: str, after: str, ledger: List[dict]) -> Tuple[List[di
             if ch:
                 changes.append(ch)
     return out, changes, cards
+
+
+# ── rendering for the writer's prompt (the same lines apply_ledger writes) ─────────────────────────────────────
+
+def render_list_missing(items: List[str]) -> str:
+    rule = tss.Rule(id="ledger", section="", condition="any listed value is not stated", condition_source="findings",
+                    effect="list_missing", items=list(items), position="top", source_lines=[])
+    return tsg.render_rule(rule)
+
+
+def render_concept(name: str, choice: dict) -> List[str]:
+    """A concept's lines inside a paragraph ([] for "not used" and "whichever is dictated")."""
+    entry = {"kind": "concept", "key": name, "choice": choice}
+    if td.fragment_wording(entry):
+        choice = td.fragment_fallback(entry)
+    if not choice.get("use"):
+        return []
+    return _concept_lines(td.validate("concept", name, choice)[1])

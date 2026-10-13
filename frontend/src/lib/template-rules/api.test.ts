@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DECIDE_EXAMPLE_MAX_CHARS, MAX_DECIDE_EXAMPLES, postApplyDecisions, postDecide } from './api';
+import { DECIDE_EXAMPLE_MAX_CHARS, MAX_DECIDE_EXAMPLES, postApplyDecisions, postDecide, postSheetChecks } from './api';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -44,5 +44,24 @@ describe('template-rules api', () => {
 		await expect(postApplyDecisions(null, { skill_sheet: 's', decisions: [], changes: [], source: 'creation' })).rejects.toThrow(
 			'apply-decisions 500'
 		);
+	});
+});
+
+describe('sheet checks api', () => {
+	it('posts the sheet and the ledger', async () => {
+		const fetchMock = vi.fn(async () => new Response(JSON.stringify({ success: true, fixed_cards: [], duplicate_cards: [], normal_report: [], uncovered_cards: [], unmatched_cards: [], stale_quotes: [], errors: [] })));
+		vi.stubGlobal('fetch', fetchMock);
+		await postSheetChecks('tok', { skill_sheet: 'S', decisions: [] });
+		const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+		expect(url.endsWith('/api/templates/skill-sheet/sheet-checks')).toBe(true);
+		expect(JSON.parse(init.body as string)).toEqual({ skill_sheet: 'S', decisions: [] });
+	});
+
+	it('fills a missing part with an empty list', async () => {
+		vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ success: true, errors: ['fixed'] }))));
+		const r = await postSheetChecks(null, { skill_sheet: 'S', decisions: [] });
+		expect(r.fixed_cards).toEqual([]);
+		expect(r.normal_report).toEqual([]);
+		expect(r.errors).toEqual(['fixed']);
 	});
 });

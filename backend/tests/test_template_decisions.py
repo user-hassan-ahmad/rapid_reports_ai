@@ -153,3 +153,48 @@ def test_clean_ledger_drops_what_code_cannot_apply():
 def test_a_quoted_structure_label_is_not_a_negative_key():
     assert td.normal_key("Shoulder", '"ROTATOR CUFF"') == "Shoulder :: ROTATOR CUFF"
     assert td.split_normal_key(td.normal_key("Shoulder", '"ROTATOR CUFF"')) == ("Shoulder", "ROTATOR CUFF", False)
+
+
+def test_a_forget_change_removes_the_entry():
+    led, _ = td.ledger_from_changes([{"kind": "fixed", "key": "A line.", "choice": {"keep": "always"}},
+                                     {"kind": "value", "key": "LVEF", "choice": {"need": "every"}}])
+    out, errors = td.ledger_from_changes([{"kind": "fixed", "key": "A line.", "choice": dict(td.FORGET)}], base=led)
+    assert errors == [] and [e["key"] for e in out] == ["LVEF"]
+
+
+def test_a_replacement_or_use_wording_must_be_a_full_sentence():
+    import pytest
+    from rapid_reports_ai import template_decisions as td
+    for frag in ("assessment is limited by {limitation}", "Assessment is limited by {limitation}",
+                 "compared with the {study}."):
+        with pytest.raises(td.DecisionError, match="full sentence"):
+            td.validate("concept", "limitation", {"use": True, "default": "", "when_met": frag})
+        with pytest.raises(td.DecisionError, match="full sentence"):
+            td.validate("concept", "limitation", {"use": True, "default": "Image quality is adequate.",
+                                                  "when_met": frag})
+    for ok in ("Assessment is limited by {limitation}.", "{Limitation} limits assessment.", "Limitations:"):
+        td.validate("concept", "limitation", {"use": True, "default": "", "when_met": ok})
+    assert td.is_sentence("No previous imaging.") and not td.is_sentence("no previous imaging.")
+    # a stored fragment is kept (it becomes a review card at save) but is never a rule
+    stored = [{"kind": "concept", "key": "limitation", "by": "radiologist", "at": "t", "source": "creation",
+               "choice": {"use": True, "default": "", "when_met": "assessment is limited by {limitation}"}}]
+    kept = td.clean_ledger(stored)
+    assert len(kept) == 1 and td.fragment_wording(kept[0]) == "assessment is limited by {limitation}"
+    from rapid_reports_ai import template_sheet_lab_prompts as P
+    block = P.decided_block(stored)
+    assert "assessment is limited" not in block and "Technical limitation: whichever is dictated." in block
+
+
+def test_full_sentence_edges():
+    """Starts with a capital, a {slot}, a digit, or a lowercase-led acronym (a word holding a capital); ends with
+    "." or ":". A wording ending on a bare slot is a fragment."""
+    for ok in ("3 phases were acquired.", "eGFR was {value} at the time of the study.", "{Count} phases were acquired.",
+               "Compared with the study of {date}.", "Technique:"):
+        assert td.is_sentence(ok), ok
+    for bad in ("assessment is limited.", "phases were acquired", "Compared with the study of {date}",
+                "egfr was {value}.", "", "  .", "- Compared."):
+        assert not td.is_sentence(bad), bad
+
+
+def test_a_lowercase_led_word_holding_a_capital_starts_a_sentence():
+    assert td.is_sentence("eGFR was 60.") and td.is_sentence("pH was 7.")

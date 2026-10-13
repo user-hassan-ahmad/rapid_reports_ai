@@ -26,19 +26,6 @@ _USUAL = {"contrast": ("Is contrast usually given for this scan?",
 _RANK = {"disagree": 0, "value": 1, "concept": 2, "fixed": 3, "normal": 4, "uncovered": 5}
 
 
-def _reports(nums) -> str:
-    nums = sorted(set(nums))
-    return ("report " if len(nums) == 1 else "reports ") + ", ".join(str(n) for n in nums)
-
-
-def evidence_line(e: dict) -> str:
-    """"reports 1, 2, 4: 'ECV 28%'" or "report 3: not stated" (never percentages); the study setup is named as
-    such, never as a report number."""
-    if e.get("source") == "setup":
-        return f"From the study setup: '{e['quote']}'" if e.get("quote") else "study setup: stated"
-    return f"{_reports(e['reports'])}: " + (f"'{e['quote']}'" if e.get("quote") else "not stated")
-
-
 def _choice(cid: str, label: str, choice: Optional[dict]) -> dict:
     return {"id": cid, "label": label, "choice": choice}
 
@@ -68,7 +55,7 @@ def concept_card(concept: str, default: str, when_met: str, evidence: List[dict]
 
 
 def disagree_card(concept: str, options: List[dict], other: str, role: str, evidence: List[dict],
-                  condition: str) -> dict:
+                  condition: str, title: str = "") -> dict:
     """options: [{"text", "reports"}] for one side; `other` the single wording of the other side ("" if none).
     "Use whichever is dictated" is its own choice ({"use": false, "dictated": true}), not "not used"."""
     choices = []
@@ -80,7 +67,8 @@ def disagree_card(concept: str, options: List[dict], other: str, role: str, evid
     choices.append(_choice("dictated", "Use whichever is dictated",
                            {"use": False, "default": "", "when_met": "", "condition": "", "dictated": True}))
     return {"id": f"disagree:{concept}", "kind": "disagree", "step": "rules",
-            "title": f"Your examples word {td.CONCEPTS[concept].label.lower()} differently", "evidence": evidence,
+            "title": title or f"Your examples word {td.CONCEPTS[concept].label.lower()} differently",
+            "evidence": evidence,
             "ledger_kind": "concept", "key": concept, "choices": choices, "selected": None, "rank": _RANK["disagree"]}
 
 
@@ -145,6 +133,21 @@ def card_for_change(kind: str, key: str, proposed: dict) -> dict:
     return normal_card(key, proposed.get("text", ""), step="chat")
 
 
+def duplicate_card(text: str, concept_label: str, ledger_kind: str = "fixed", key: str = "") -> dict:
+    """A line that may state a decided study-level concept a second time (Style step). A FIXED line (or a rule's
+    sentence) is recorded as a fixed entry; a NEGATIVE as its normal-kind entry (key td.negative_key), where an
+    empty text removes it."""
+    key = key or text
+    if ledger_kind == "normal":
+        choices = [_choice("remove", "Remove this line", {"text": ""}), _choice("keep", "Keep both", {"text": text})]
+    else:
+        choices = [_choice("remove", "Remove this line", {"keep": "remove"}),
+                   _choice("keep", "Keep both", {"keep": "always"})]
+    return {"id": f"duplicate:{td.match_key(ledger_kind, key)}", "kind": "duplicate", "step": "style",
+            "title": text, "evidence": [], "note": f"May be stated twice: {concept_label}", "ledger_kind": ledger_kind,
+            "key": key, "choices": choices, "selected": None, "rank": _RANK["fixed"]}
+
+
 UNMATCHED_NOTE = "This rule couldn't be placed in your template when it was last saved. Choose again or remove it."
 
 
@@ -154,10 +157,23 @@ def unmatched_cards(entries) -> List[dict]:
     An entry code cannot read is skipped."""
     out = []
     for e in entries if isinstance(entries, list) else []:
+        frag = td.fragment_wording(e) if isinstance(e, dict) else None
+        if frag and e.get("key") in td.CONCEPTS:   # a stored wording that is not a full sentence: reword or dictated
+            c = concept_card(e["key"], e["choice"].get("default", ""), frag, [], e["choice"].get("condition", ""))
+            out.append({**c, "title": f"Your wording '{frag}' can't be used as a full sentence",
+                        "choices": [_choice("edit", "Edit wording", None),
+                                    _choice("dictated", "Use whichever is dictated",
+                                            {"use": False, "default": "", "when_met": "", "condition": "",
+                                             "dictated": True})],
+                        "step": "review", "note": UNMATCHED_NOTE})
+            continue
         try:
             c = card_for_change(e["kind"], e["key"], e["choice"])
         except (td.DecisionError, KeyError, TypeError):
             continue
+        if c["kind"] == "fixed":   # "Always the same" again would only be unmatched again (Hassan, 2026-10-13)
+            c = {**c, "choices": [x for x in c["choices"] if x["id"] != "always"]
+                 + [_choice("forget", "Forget this decision", dict(td.FORGET))]}
         out.append({**c, "step": "review", "note": UNMATCHED_NOTE})
     return out
 
@@ -207,6 +223,9 @@ def _concept_cards(run: DecisionRun, n: int) -> List[dict]:
             by_state[w.state].append(seen[k])
         if not any(by_state.values()):
             continue
+        # a wording that is not a full sentence is never offered (it would print mid-sentence): the concept falls
+        # back to "Use whichever is dictated", beside the full-sentence base wording when there is one
+        fragments = [w for ws in by_state.values() for w in ws if not td.is_sentence(w["text"])]
         quoted = {r for ws in by_state.values() for w in ws for r in w["reports"]}
         stating = set(run.states.get(name) or []) | quoted     # a verified quote counts even when Jev missed it
         base = next((s for s, cond in c.states.items() if cond is None), None)
@@ -214,6 +233,17 @@ def _concept_cards(run: DecisionRun, n: int) -> List[dict]:
         # the study setup, when it states the concept, is the first evidence (Hassan, 2026-10-13)
         told = (run.setup or {}).get(name)
         setup_ev = [{"reports": [], "source": "setup", "quote": told.get("quote")}] if told else []
+        if fragments:
+            whole = {s: [w for w in ws if td.is_sentence(w["text"])] for s, ws in by_state.items()}
+            other = next((s for s in c.states if s != base), None) if base else None
+            rest = whole[other] if other else []
+            ev = [*setup_ev, *({"reports": w["reports"], "quote": w["quote"]} for ws in by_state.values() for w in ws)]
+            if silent:
+                ev.append({"reports": silent, "quote": None})
+            out.append(disagree_card(name, whole[base] if base else [], rest[0]["text"] if len(rest) == 1 else "",
+                                     "default", ev, c.states[other] or "" if other else "",
+                                     title=f"{c.label}: your examples word it only as part of a sentence"))
+            continue
         if base is None:
             counts = {s: len({r for w in ws for r in w["reports"]}) for s, ws in by_state.items()}
             top = max(c.states, key=lambda s: counts[s])

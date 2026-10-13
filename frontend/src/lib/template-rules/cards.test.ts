@@ -5,6 +5,8 @@ import {
 	changesOnSkip,
 	editWording,
 	evidenceLine,
+	isSentence,
+	wordingProblem,
 	flatCards,
 	validValueName
 } from './cards';
@@ -58,7 +60,7 @@ describe('template-rules cards', () => {
 		expect(evidenceLine({ reports: [], source: 'setup', quote: 'CT abdomen with contrast' })).toBe(
 			"From the study setup: 'CT abdomen with contrast'"
 		);
-		expect(evidenceLine({ reports: [], source: 'setup', quote: null })).toBe('study setup: stated');
+		expect(evidenceLine({ reports: [], source: 'setup', quote: null })).toBe('From the study setup');
 	});
 
 	it('records a tapped choice, and edited wording only when written', () => {
@@ -85,6 +87,31 @@ describe('template-rules cards', () => {
 			use: true, default: 'Unenhanced CT.', when_met: 'Post contrast.', condition: GIVEN, dictated: false
 		});
 		expect(editWording(concept, null)).toEqual(concept.wording);
+	});
+
+	it('mirrors the server sentence rule', () => {
+		for (const ok of ['Compared with {date}.', '{n} phases were acquired.', '3 phases were acquired.', 'eGFR was 60:', 'No prior.'])
+			expect(isSentence(ok)).toBe(true);
+		for (const bad of ['compared with {date}.', 'Compared with {date}', 'Compared with', 'with {date}:x', ''])
+			expect(isSentence(bad)).toBe(false);
+	});
+
+	it('an invalid concept wording records nothing and says why', () => {
+		const edit = (when_met: string) => ({ choiceId: 'edit', edited: { default: 'No previous imaging.', when_met } });
+		expect(changeFor(concept, edit('compared with {date}'), 'creation')).toBeNull();
+		expect(wordingProblem(concept, edit('compared with {date}').edited)).toBe('Write it as a full sentence.');
+		expect(wordingProblem(concept, edit('Compared with "the" study.').edited)).toBe('Leave out double quotes.');
+		expect(wordingProblem(concept, edit('Compared with {date}.').edited)).toBeNull();
+		expect(changeFor(concept, edit('Compared with {date}.'), 'creation')).not.toBeNull();
+	});
+
+	it('a normal sentence has no quotes and nothing to fill in', () => {
+		const normal: DecisionCard = { id: 'normal:x', kind: 'normal', step: 'style', title: 'Liver: liver', evidence: [], ledger_kind: 'normal',
+			key: 'Liver :: liver', selected: null, rank: 4, wording: { text: 'The liver is normal.' },
+			choices: [{ id: 'edit', label: 'Edit wording', choice: null }] };
+		expect(wordingProblem(normal, { text: 'The {organ} is normal.' })).toBe('Leave out values to fill in.');
+		expect(changeFor(normal, { choiceId: 'edit', edited: { text: 'The "liver" is normal.' } }, 'creation')).toBeNull();
+		expect(changeFor(normal, { choiceId: 'edit', edited: { text: 'The liver is unremarkable.' } }, 'creation')).not.toBeNull();
 	});
 
 	it('Continue sends answers, kept defaults and added values; unanswered open cards send nothing', () => {

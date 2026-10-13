@@ -27,6 +27,7 @@ full stop ignored for sentence keys), never by free-text similarity."""
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple, TypedDict
@@ -120,6 +121,11 @@ def _name(s: str) -> str:
     return " ".join((s or "").lower().split())
 
 
+def name_key(s: str) -> str:
+    """The comparison form of a value or structure name (lower case, single spaces)."""
+    return _name(s)
+
+
 def structure_label(structure: str) -> str:
     """A NORMAL's structure label without the quotes the grammar allows (NORMAL ["ROTATOR CUFF"])."""
     s = (structure or "").strip()
@@ -154,6 +160,47 @@ def match_key(kind: str, key: str) -> str:
     return _name(key)
 
 
+_ACRONYM_START = re.compile(r"[a-z]+[A-Z]")   # a lowercase-led word that holds a capital ("eGFR", "pH")
+
+
+def is_sentence(text: str) -> bool:
+    """A full sentence, the shape a wording that replaces a line or prints on its own (REPLACE ... WITH, USE) must
+    have, since a fragment would print mid-sentence. The rule:
+    - it starts with a capital letter, a {slot}, a digit ("3 phases were acquired."), or a lowercase-led word that
+      holds a capital (an acronym or unit such as "eGFR ..." or "pH ...");
+    - it ends with "." or ":". A wording that ends on a bare slot ("... of {date}") or with no full stop is a
+      fragment.
+    Only the edges are checked; the words between them are the radiologist's."""
+    t = (text or "").strip()
+    if not t or t[-1] not in ".:":
+        return False
+    return t[0].isupper() or t[0] == "{" or t[0].isdigit() or bool(_ACRONYM_START.match(t))
+
+
+def fragment_wording(entry: dict) -> Optional[str]:
+    """The wording of a stored used concept whose replacement / printed wording is not a full sentence (kept in the
+    ledger, never applied as a rule: apply_ledger writes no line for it and returns it as unmatched, a review card)."""
+    choice = (entry or {}).get("choice") or {}
+    if entry.get("kind") != "concept" or not choice.get("use"):
+        return None
+    when_met = choice.get("when_met") or ""
+    return when_met if when_met and not is_sentence(when_met) else None
+
+
+def fragment_fallback(entry: dict) -> dict:
+    """What a stored fragment entry applies until its card is answered: with a valid default, the default-only shape
+    (FIXED default + the concept's standard SUPPRESS, D2), so the confirmed line still prints unless the dictation
+    contradicts it; without one, "whichever is dictated" (no line)."""
+    choice = entry.get("choice") or {}
+    try:
+        _, fallback = validate("concept", entry.get("key", ""), {**choice, "when_met": ""})
+        if fallback["use"]:
+            return fallback
+    except DecisionError:
+        pass
+    return {"use": False, "default": "", "when_met": "", "condition": "", "dictated": True}
+
+
 def _text(v, what: str, allow_slots: bool = True) -> str:
     if not isinstance(v, str):
         raise DecisionError(f"{what}: text expected")
@@ -165,8 +212,10 @@ def _text(v, what: str, allow_slots: bool = True) -> str:
     return t
 
 
-def validate(kind: str, key: str, choice: dict) -> Tuple[str, dict]:
-    """(key, choice) in canonical form; DecisionError when code cannot apply it."""
+def validate(kind: str, key: str, choice: dict, strict: bool = True) -> Tuple[str, dict]:
+    """(key, choice) in canonical form; DecisionError when code cannot apply it. `strict` False (stored entries,
+    clean_ledger) lets a concept wording that is not a full sentence through, so it can be asked about again
+    (fragment_wording); a new choice is always strict."""
     if kind not in KINDS:
         raise DecisionError(f"unknown kind {kind!r}")
     if not isinstance(choice, dict):
@@ -191,6 +240,8 @@ def validate(kind: str, key: str, choice: dict) -> Tuple[str, dict]:
         when_met = _text(choice.get("when_met", ""), "concept wording")
         if not (default or when_met):
             raise DecisionError("concept: a used concept needs wording")
+        if strict and when_met and not is_sentence(when_met):
+            raise DecisionError("concept wording: a full sentence (a capital or a {slot} first, '.' or ':' last)")
         if default and when_met and norm_key(default) == norm_key(when_met):
             raise DecisionError("concept: the two wordings are the same")
         conds = CONCEPTS[key].conditions
@@ -250,9 +301,11 @@ def concept_texts(ledger: List[Entry]) -> set:
 
 
 def rekey_decision(ledger: List[Entry], kind: str, key: str, new_key: str, *, source: str,
-                   by: str = "radiologist", at: Optional[str] = None) -> Tuple[List[Entry], Change]:
-    """The entry (kind, key) moved to `new_key` with its choice kept (a reworded line), and the change (its old
-    entry carries the old key). Never mutates `ledger`. DecisionError when invalid."""
+                   by: str = "radiologist", at: Optional[str] = None,
+                   choice: Optional[dict] = None) -> Tuple[List[Entry], Change]:
+    """The entry (kind, key) moved to `new_key` (a reworded line), its choice kept unless `choice` is given (a
+    reworded NEGATIVE carries its new text), and the change (its old entry carries the old key). Never mutates
+    `ledger`. DecisionError when invalid."""
     if source not in SOURCES:
         raise DecisionError(f"unknown source {source!r}")
     if by not in BY:
@@ -260,7 +313,7 @@ def rekey_decision(ledger: List[Entry], kind: str, key: str, new_key: str, *, so
     old = find(ledger, kind, key)
     if old is None or find(ledger, kind, new_key) is not None:
         raise DecisionError(f"{kind} {key!r}: nothing to move, or {new_key!r} is already decided")
-    new_key, choice = validate(kind, new_key, old["choice"])
+    new_key, choice = validate(kind, new_key, old["choice"] if choice is None else choice)
     if kind == "fixed" and norm_key(new_key) in concept_texts(ledger):
         raise DecisionError("this line belongs to a study-level wording; change it there")
     entry: Entry = {"kind": kind, "key": new_key, "choice": choice, "by": by, "at": at or _now(), "source": source}
@@ -286,14 +339,21 @@ def undo_change(ledger: List[Entry], change: Change) -> List[Entry]:
     return [dict(change["old"]) if e is cur else e for e in ledger]
 
 
+FORGET = {"forget": True}   # a card answer that removes the ledger entry (an unmatched entry's "Forget this decision")
+
+
 def ledger_from_changes(changes: List[dict], base: Optional[List[Entry]] = None,
                         source: str = "creation") -> Tuple[List[Entry], List[str]]:
     """Record card answers [{"kind", "key", "choice", "source"?}] on `base`. A change with source "default" is
-    recorded as by "code". Returns (ledger, one message per change code could not apply; those are skipped)."""
+    recorded as by "code"; a change whose choice is FORGET removes the entry. Returns (ledger, one message per change
+    code could not apply; those are skipped)."""
     ledger: List[Entry] = list(base or [])
     errors: List[str] = []
     for c in changes or []:
         src = c.get("source") or source
+        if c.get("choice") == FORGET:
+            ledger = remove_decision(ledger, c.get("kind", ""), c.get("key", ""))
+            continue
         try:
             ledger, _ = set_decision(ledger, c.get("kind", ""), c.get("key", ""), c.get("choice") or {},
                                      source=src, by="code" if src == "default" else "radiologist")
@@ -353,7 +413,7 @@ def clean_ledger(entries) -> List[Entry]:
         try:
             if not isinstance(e, dict):
                 raise DecisionError("entry: object expected")
-            key, choice = validate(e.get("kind", ""), e.get("key", ""), e.get("choice") or {})
+            key, choice = validate(e.get("kind", ""), e.get("key", ""), e.get("choice") or {}, strict=False)
         except DecisionError as err:
             logger.warning("[ledger] stored entry dropped: %s", err)
             continue

@@ -29,17 +29,12 @@ ALL = {"comparison": [1, 2, 3], "contrast": [], "sequences": [], "limitation": [
 PRIOR_COND = "the dictation names a previous imaging study for comparison"
 
 
-def test_evidence_line_names_reports_never_percentages():
-    assert C.evidence_line({"reports": [4, 1, 2], "quote": "ECV 28%"}) == "reports 1, 2, 4: 'ECV 28%'"
-    assert C.evidence_line({"reports": [3], "quote": None}) == "report 3: not stated"
-
-
 def test_a_value_in_every_example_is_kept_pre_ticked_and_a_partial_one_is_a_card():
     out = C.build_cards(_run([LVEF, ECV], states=ALL), 3)
     assert [c["id"] for c in out["kept"]] == ["value:lvef"] and out["kept"][0]["selected"] == "every"
     ecv = out["cards"][0]
     assert ecv["id"] == "value:ecv" and ecv["selected"] is None
-    assert [C.evidence_line(e) for e in ecv["evidence"]] == ["reports 1, 3: 'ECV 28%'", "report 2: not stated"]
+    assert ecv["evidence"] == [{"reports": [1, 3], "quote": "ECV 28%"}, {"reports": [2], "quote": None}]
     assert [c["id"] for c in ecv["choices"]] == ["every", "relevant", "not_needed"]
     assert out["defaults"] == [{"kind": "value", "key": "LVEF", "choice": {"need": "every"}}]
 
@@ -237,7 +232,6 @@ def test_the_setup_sets_contrast_when_the_examples_tie():
     assert card["wording"]["default"] == "Following a contrast agent."
     assert card["wording"]["condition"] == "the dictation states no contrast agent was given"
     assert card["evidence"][0] == {"reports": [], "source": "setup", "quote": "with IV contrast"}
-    assert C.evidence_line(card["evidence"][0]) == "From the study setup: 'with IV contrast'"
 
 
 def test_the_setup_against_a_clear_example_majority_asks_showing_both():
@@ -263,7 +257,6 @@ def test_a_concept_stated_in_the_setup_is_evidence_never_a_report_number():
     run.setup = {"comparison": {"state": None, "quote": None}}
     card = C.build_cards(run, 3)["cards"][0]
     assert card["evidence"][0] == {"reports": [], "source": "setup", "quote": None}
-    assert C.evidence_line(card["evidence"][0]) == "study setup: stated"
 
 
 def test_unmatched_entries_become_review_cards_with_a_note():
@@ -274,3 +267,28 @@ def test_unmatched_entries_become_review_cards_with_a_note():
     assert [c["key"] for c in cards] == ["A line the sheet lacks."]
     assert cards[0]["step"] == "review" and cards[0]["note"] == trc.UNMATCHED_NOTE and cards[0]["selected"] is None
     assert trc.unmatched_cards(None) == [] and trc.unmatched_cards("x") == []
+
+
+def test_an_unmatched_fixed_line_is_never_offered_always_again():
+    from rapid_reports_ai import template_rules_cards as trc
+    c = trc.unmatched_cards([{"kind": "fixed", "key": "A line the sheet lacks.", "choice": {"keep": "always"}}])[0]
+    assert [(x["id"], x["choice"]) for x in c["choices"]] == [
+        ("dictated", {"keep": "dictated"}), ("remove", {"keep": "remove"}), ("forget", td.FORGET)]
+
+
+FRAG = R.ConceptWording(concept="comparison", state="compared", text="compared with {study} of {date}",
+                        quotes=[_q(2, "Compared with CT of 01/01/2020.")])
+
+
+def test_a_fragment_wording_is_never_offered_and_the_concept_falls_back_to_dictated():
+    run = _run([], [NO_PRIOR, FRAG], states=ALL)
+    assert any(w.text == FRAG.text for w in run.concepts)          # the quote is real: only the shape is wrong
+    out = C.build_cards(run, 3)
+    card = next(c for c in C.flat(out["cards"] + out["more"]) if c["key"] == "comparison")
+    offered = [x["choice"] for x in card["choices"] if x["choice"]]
+    assert all(FRAG.text not in (ch.get("default", ""), ch.get("when_met", "")) for ch in offered)
+    assert any(x["id"] == "dictated" and x["choice"]["dictated"] for x in card["choices"])
+    for ch in offered:
+        td.validate("concept", "comparison", ch)                    # every offered choice is applicable
+    assert card["selected"] is None
+    assert any(e.get("quote") == "Compared with CT of 01/01/2020." for e in card["evidence"])

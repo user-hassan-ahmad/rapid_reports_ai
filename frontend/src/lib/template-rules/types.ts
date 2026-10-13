@@ -3,7 +3,7 @@
 
 export type LedgerKind = 'value' | 'concept' | 'fixed' | 'normal';
 export type CardKind = 'value' | 'concept' | 'disagree' | 'fixed' | 'normal' | 'uncovered' | 'duplicate' | 'group';
-export type ChangeSource = 'creation' | 'first_use_review' | 'default';
+export type ChangeSource = 'creation' | 'first_use_review' | 'chat' | 'default';
 export type Choice = Record<string, unknown>;
 
 /** One line of evidence: report numbers (1-based) with a quote, or "not stated" when the quote is null. The study
@@ -83,4 +83,23 @@ export interface ApplyResponse {
 	unmatched: LedgerEntry[];
 	stale_quotes: string[];
 	error?: string;
+}
+
+export interface NormalSentence {
+	key: string;
+	text: string;
+	kind: 'normal' | 'negative';
+	paragraph: string;
+}
+
+/** /skill-sheet/sheet-checks: the Style step's checks. A part that failed is empty and named in `errors`. */
+export interface SheetChecksResponse {
+	success: boolean;
+	fixed_cards: DecisionCard[];
+	duplicate_cards: DecisionCard[];
+	normal_report: { section: string; header: string; sentences: NormalSentence[] }[];
+	uncovered_cards: DecisionCard[];
+	unmatched_cards: DecisionCard[];
+	stale_quotes: string[];
+	errors: string[];
 }

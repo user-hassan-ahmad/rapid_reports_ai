@@ -20,8 +20,10 @@ async def write_sheet(examples: List[Dict[str, str]], scan_type: str, protocol_n
     "ledger_drift"} (notice: the save function's report of a reworded unit, "" when none). `decisions`: the Rules
     step's ledger, applied by the save function after the write (ledger_drift counts the lines it had to
     overwrite). Raises ValueError with the save function's message when it refuses the sheet."""
-    raw = await model_call(P.ANALYSER_SYSTEM_PROMPT, P.analyser_user_prompt(examples, scan_type, protocol_notes),
-                           P.ANALYSER_SETTINGS)
+    decided = bool(decisions)
+    raw = await model_call(P.analyser_system_prompt(decided),
+                           P.writer_user_prompt(examples, scan_type, protocol_notes, decisions=decisions),
+                           P.DECIDED_WRITER_SETTINGS if decided else P.ANALYSER_SETTINGS)
     ans = P.split_answer(raw)
     v = await vet_sheet(ans["skill_sheet"] or "", origin="analyser", ledger=decisions or None)
     if v.status != "saved":

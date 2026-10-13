@@ -14,6 +14,7 @@
 		evidenceLine,
 		flatCards,
 		validValueName,
+		wordingProblem,
 		type Answer
 	} from './cards';
 	import type { CardWording, DecisionCard, DecisionChange } from './types';
@@ -84,6 +85,11 @@
 		editing = null;
 	}
 
+	/** The edit fields open with the cursor in the first one. */
+	function focusOnOpen(node: HTMLInputElement) {
+		node.focus();
+	}
+
 	function toggleGroup(id: string) {
 		openGroups = openGroups.includes(id) ? openGroups.filter((x) => x !== id) : [...openGroups, id];
 	}
@@ -149,7 +155,7 @@
 				{#if c.ledger_kind === 'concept'}
 					<label class="block text-xs text-gray-400"
 						>Usually
-						<input class="input w-full text-sm" bind:value={draft.default} />
+						<input class="input w-full text-sm" bind:value={draft.default} use:focusOnOpen />
 					</label>
 					<label class="block text-xs text-gray-400"
 						>When it applies
@@ -159,10 +165,16 @@
 				{:else}
 					<label class="block text-xs text-gray-400"
 						>Wording
-						<input class="input w-full text-sm" bind:value={draft.text} />
+						<input class="input w-full text-sm" bind:value={draft.text} use:focusOnOpen />
 					</label>
 				{/if}
-				<button type="button" class="btn-primary text-xs" onclick={() => useWording(c, editChoice)}>Use this wording</button>
+				{#if wordingProblem(c, draft)}<p class="text-xs text-amber-300/80" role="status">{wordingProblem(c, draft)}</p>{/if}
+				<button
+					type="button"
+					class="btn-primary text-xs"
+					onclick={() => useWording(c, editChoice)}
+					disabled={busy || !changeFor(c, { choiceId: editChoice, edited: draft }, source)}>Use this wording</button
+				>
 			</div>
 		{/if}
 	</section>
@@ -189,7 +201,7 @@
 {/snippet}
 
 <div class="space-y-3">
-	{#if notice}<p class="text-xs text-amber-300/80">{notice}</p>{/if}
+	{#if notice}<p class="text-xs text-amber-300/80" role="status">{notice}</p>{/if}
 
 	{#if valueCards.length || mode === 'review' || added.length}
 		<section class="rounded-lg border border-white/10 p-3 space-y-3" aria-label="Required values">
