@@ -46,4 +46,31 @@ describe('ProtocolPicker', () => {
 		await page.getByRole('button', { name: /Not listed/ }).click();
 		expect(onNotListed).toHaveBeenCalledWith('us abdo');
 	});
+
+	it('Enter in the search box does not submit the surrounding form', async () => {
+		stubFetch([CTAP]);
+		render(ProtocolPicker, { token: 't', value: null, onPick: vi.fn(), onNotListed: vi.fn() });
+		let prevented: boolean | null = null;
+		const seen = (e: KeyboardEvent) => { if (e.key === 'Enter') prevented = e.defaultPrevented; };
+		document.addEventListener('keydown', seen);
+		try {
+			await userEvent.type(page.getByRole('combobox'), 'ctap{Enter}');
+		} finally {
+			document.removeEventListener('keydown', seen);
+		}
+		expect(prevented).toBe(true);
+	});
+
+	it('is disabled while the workspace is loading', async () => {
+		stubFetch([CTAP]);
+		render(ProtocolPicker, { token: 't', value: null, disabled: true, onPick: vi.fn(), onNotListed: vi.fn() });
+		await expect.element(page.getByRole('combobox')).toBeDisabled();
+	});
+
+	it('shows a restored pick by its display name', async () => {
+		stubFetch([]);
+		const value = { id: 'TMKN', phases: [], laterality: 'left', displayName: 'MRI Knee', line: 'No contrast' };
+		render(ProtocolPicker, { token: 't', value, onPick: vi.fn(), onNotListed: vi.fn() });
+		await expect.element(page.getByRole('combobox')).toHaveValue('MRI Knee');
+	});
 });

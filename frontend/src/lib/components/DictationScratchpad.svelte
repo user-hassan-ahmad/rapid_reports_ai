@@ -1722,7 +1722,7 @@
 		const abnormal = abnormalAll(stackUnits);
 		if (review) reviewing = true;
 		try {
-			const res = await postItems($token, { scan_type: scanType, clinical_history: clinicalHistory, regions: pillRegions,
+			const res = await postItems($token, { scan_type: scanType, clinical_history: clinicalHistory, regions: shownPills,
 				dictation: text, abnormal, not_assessable: stackNotAssessable, removed: removedSentences,
 				tapped: Object.values(tappedRows).flatMap((r) => r.sentences), referrals: fixedReferrals, review });
 			if (seq !== itemsSeq) return; // superseded while in flight

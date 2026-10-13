@@ -20,6 +20,15 @@ export function needsFreeText(scanType: string, pick: ProtocolPick | null): bool
 	return !!scanType.trim() && !pick;
 }
 
+/** What a workspace is built from: the scan type, the history and the pick (null: free text). */
+export type CaseIdentity = { scanType: string; history: string; pick: ProtocolPick | null };
+
+/** The case details differ from the workspace's: the scan type, the history, or the pick (another phase set or side
+ *  is a different case even when the display name is the same). `built` holds trimmed values. */
+export function caseDirty(now: CaseIdentity, built: CaseIdentity): boolean {
+	return now.scanType.trim() !== built.scanType || now.history.trim() !== built.history || pickKey(now.pick) !== pickKey(built.pick);
+}
+
 /** Pills in schema order: every non-quiet pill, plus a quiet region once something has been placed there. */
 export function visiblePills(groups: string[], pills: string[], quiet: string[], placed: Set<string>): string[] {
 	if (!quiet.length) return pills;

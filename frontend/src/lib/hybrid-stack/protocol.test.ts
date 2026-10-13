@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { needsFreeText, pickBody, pickKey, visiblePills, withElsewhere, type ProtocolPick } from './protocol';
+import { caseDirty, needsFreeText, pickBody, pickKey, visiblePills, withElsewhere, type ProtocolPick } from './protocol';
 
 describe('visiblePills', () => {
 	const groups = ['Technique', 'Right breast', 'Implants', 'Other findings', 'General', 'Conclusion'];
@@ -58,5 +58,24 @@ describe('needsFreeText', () => {
 		expect(needsFreeText('CT abdomen and pelvis', pick)).toBe(false);
 		expect(needsFreeText('   ', null)).toBe(false);
 		expect(needsFreeText('', null)).toBe(false);
+	});
+});
+
+describe('caseDirty', () => {
+	const a: ProtocolPick = { id: 'TCAP', phases: ['portal_venous'], laterality: null, displayName: 'CT AP', line: 'IV contrast · portal venous' };
+	const built = { scanType: 'CT AP', history: 'Pain', pick: a };
+	it('is clean when the scan type, history and pick match what the workspace was built from', () => {
+		expect(caseDirty({ scanType: ' CT AP ', history: 'Pain ', pick: { ...a } }, built)).toBe(false);
+	});
+	it('a different phase set or side is dirty even when the display name is the same', () => {
+		expect(caseDirty({ ...built, pick: { ...a, phases: ['arterial', 'portal_venous'] } }, built)).toBe(true);
+		expect(caseDirty({ ...built, pick: { ...a, laterality: 'left' } }, built)).toBe(true);
+	});
+	it('switching between a pick and free text is dirty; free text compares as before', () => {
+		expect(caseDirty({ ...built, pick: null }, built)).toBe(true);
+		const free = { scanType: 'US abdomen', history: 'Pain', pick: null };
+		expect(caseDirty({ ...free }, free)).toBe(false);
+		expect(caseDirty({ ...free, scanType: 'US pelvis' }, free)).toBe(true);
+		expect(caseDirty({ ...free, history: 'Fever' }, free)).toBe(true);
 	});
 });

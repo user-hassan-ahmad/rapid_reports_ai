@@ -4,8 +4,8 @@
 	import { searchProtocols, postNotListed } from './api';
 	import type { ProtocolOption, ProtocolPick } from './protocol';
 
-	let { token, value = null, onPick, onNotListed }: {
-		token: string | null; value?: ProtocolPick | null; onPick: (p: ProtocolPick) => void; onNotListed: (q: string) => void;
+	let { token, value = null, disabled = false, onPick, onNotListed }: {
+		token: string | null; value?: ProtocolPick | null; disabled?: boolean; onPick: (p: ProtocolPick) => void; onNotListed: (q: string) => void;
 	} = $props();
 
 	let q = $state(value?.displayName ?? '');
@@ -62,13 +62,14 @@
 
 <div class="grid gap-2">
 	<input id="protocol-search" role="combobox" aria-expanded={options.length > 0} aria-controls="protocol-options"
-		autocomplete="off" placeholder="Start typing a protocol, e.g. CT abdomen and pelvis" bind:value={q} oninput={onInput}
+		autocomplete="off" placeholder="Start typing a protocol, e.g. CT abdomen and pelvis" bind:value={q} oninput={onInput} {disabled}
+		onkeydown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
 		class="input-dark w-full text-sm" />
 	{#if options.length || q.trim()}
 		<ul id="protocol-options" role="listbox" class="m-0 max-h-72 list-none overflow-auto rounded-lg border border-white/15 p-0">
 			{#each options as o (o.id)}
 				<li role="option" aria-selected={chosen?.id === o.id}>
-					<button type="button" onclick={() => choose(o)}
+					<button type="button" {disabled} onclick={() => choose(o)}
 						class="grid w-full gap-0.5 px-3 py-2 text-left text-sm text-gray-200 hover:bg-white/5 focus-visible:bg-white/5 {chosen?.id === o.id ? 'bg-purple-500/15' : ''}">
 						<span>{o.display_name}</span>
 						<em class="text-xs text-gray-400">{o.protocol_line}</em>
@@ -76,7 +77,7 @@
 				</li>
 			{/each}
 			<li>
-				<button type="button" onclick={notListed}
+				<button type="button" {disabled} onclick={notListed}
 					class="w-full border-t border-white/10 px-3 py-2 text-left text-xs text-gray-400 hover:bg-white/5 hover:text-gray-200">
 					Not listed{hint ? ' (this looks like a different examination)' : ''}: type the scan type instead
 				</button>
@@ -88,18 +89,18 @@
 			{#if chosen.variants.length > 1}
 				<fieldset class="flex flex-wrap gap-3 border-0 p-0"><legend class="mb-1 text-xs font-medium uppercase tracking-wider text-gray-400">Phases</legend>
 					{#each chosen.variants as v, i (i)}
-						<label class="flex items-center gap-1.5"><input type="radio" name="protocol-phase" checked={variant === i} onchange={() => (variant = i)} /> <em>{v.line}</em></label>
+						<label class="flex items-center gap-1.5"><input type="radio" name="protocol-phase" {disabled} checked={variant === i} onchange={() => (variant = i)} /> <em>{v.line}</em></label>
 					{/each}
 				</fieldset>
 			{/if}
 			{#if chosen.laterality === 'required'}
 				<fieldset class="flex flex-wrap gap-3 border-0 p-0"><legend class="mb-1 text-xs font-medium uppercase tracking-wider text-gray-400">Side</legend>
 					{#each ['left', 'right', 'bilateral'] as s (s)}
-						<label class="flex items-center gap-1.5"><input type="radio" name="protocol-side" checked={side === s} onchange={() => (side = s)} /> {s[0].toUpperCase() + s.slice(1)}</label>
+						<label class="flex items-center gap-1.5"><input type="radio" name="protocol-side" {disabled} checked={side === s} onchange={() => (side = s)} /> {s[0].toUpperCase() + s.slice(1)}</label>
 					{/each}
 				</fieldset>
 			{/if}
-			<button type="button" disabled={!ready} onclick={use}
+			<button type="button" disabled={disabled || !ready} onclick={use}
 				class="justify-self-start rounded-lg bg-purple-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-600 disabled:cursor-not-allowed disabled:opacity-40">Use this protocol</button>
 		</div>
 	{/if}
