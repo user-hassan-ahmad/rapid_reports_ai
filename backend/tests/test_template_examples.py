@@ -28,6 +28,39 @@ def test_code_backstop_keeps_clinical_shorthand():
     assert E.scrub(t) == t
 
 
+def test_code_backstop_removes_uk_phone_numbers():
+    out = E.scrub("Call 020 7946 0958 or 07700 900123. Pleural effusion.")
+    assert "7946" not in out and "0958" not in out and "900123" not in out and "Pleural effusion." in out
+
+
+class _Reply:
+    def __init__(self, body):
+        self.body = body
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self.body
+
+
+@pytest.mark.parametrize("body", [{}, {"answers": {}}, {"answers": {"q": {}}}, {"answers": {"q": {"noul": None}}},
+                                  {"answers": {"q": {"noul": float("nan")}}}, {"answers": {"q": {"noul": "inf"}}}])
+async def test_a_malformed_jev_reply_stores_nothing(db_session, guided_template, monkeypatch, body):
+    async def post(b, key, timeout, transport=None):
+        return _Reply(body)
+    monkeypatch.setattr(E, "jev_post", post)
+    assert await E.store_examples(db_session, guided_template.id, ["Normal study."]) == 0
+    assert db_session.query(TemplateExample).count() == 0
+
+
+async def test_a_jev_score_is_clamped(monkeypatch):
+    async def post(b, key, timeout, transport=None):
+        return _Reply({"answers": {"q": {"noul": 1.7}}})
+    monkeypatch.setattr(E, "jev_post", post)
+    assert await E._identifier_scores(["x"]) == [1.0]
+
+
 async def _low(texts):
     return [0.1 for _ in texts]
 

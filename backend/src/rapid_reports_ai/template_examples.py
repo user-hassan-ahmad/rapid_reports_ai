@@ -4,6 +4,7 @@ users. Evidence for the later learning loop, so storing never fails a template s
 import asyncio
 import hashlib
 import logging
+import math
 import os
 import re
 import uuid
@@ -24,8 +25,9 @@ _PATTERNS = [
     re.compile(r"(?im)^[ \t]*(?:name|patient name|patient|pt name|dob|d\.o\.b\.?|date of birth|nhs(?: no\.?| number)?|"
                r"mrn|hospital (?:no\.?|number)|accession(?: no\.?| number)?|address|tel|phone)[ \t]*[:#].*$"),
     re.compile(r"\b\d{3}[ -]?\d{3}[ -]?\d{4}\b"),                     # NHS-number shape (10 digits)
-    re.compile(r"\b[A-Z]{1,3}\d{6,9}\b"),
-    re.compile(r"\b\d{7,}\b"),                                      # GMC / registration / other long ID numbers                              # MRN / accession shape
+    re.compile(r"\b0\d{2,4}[ -]?\d{3,4}[ -]?\d{3,4}\b"),            # UK phone (020 7946 0958, 07700 900123)
+    re.compile(r"\b[A-Z]{1,3}\d{6,9}\b"),                              # MRN / accession shape
+    re.compile(r"\b\d{7,}\b"),                                         # GMC / registration / other long ID numbers
     re.compile(r"\b\d{1,2}([/.-])\d{1,2}\1\d{2,4}\b"),                 # numeric dates: one separator, so 1.2/3.4 stays
     re.compile(rf"(?i)\b\d{{1,2}}(?:st|nd|rd|th)?\s+{_MONTH},?\s+\d{{4}}\b"),   # 12 March 2023
     re.compile(rf"(?i)\b{_MONTH}\s+\d{{1,2}}(?:st|nd|rd|th)?,?\s+\d{{4}}\b"),   # March 12, 2023
@@ -54,9 +56,21 @@ async def _identifier_scores(texts: list[str]) -> list[float]:
         r = await jev_post({"model": JEV_MODEL, "state": f"TEXT:\n{t}",
                             "questions": {"q": {"type": "noul", "instructions": Q_IDENT}}}, key, TIMEOUT_S)
         r.raise_for_status()
-        return float(((r.json().get("answers") or {}).get("q") or {}).get("noul") or 0.0)
+        return _score(r.json())
 
     return list(await asyncio.gather(*(one(t) for t in texts)))
+
+
+def _score(body) -> float:
+    """The noul score from a Jev reply, strictly: a missing, null or non-finite score raises (so nothing is stored,
+    never read as clean); a finite one is clamped to [0, 1]."""
+    v = ((body.get("answers") or {}).get("q") or {}).get("noul") if isinstance(body, dict) else None
+    if v is None or isinstance(v, bool):
+        raise ValueError("Jev reply has no identifier score")
+    v = float(v)
+    if not math.isfinite(v):
+        raise ValueError("Jev identifier score is not finite")
+    return min(1.0, max(0.0, v))
 
 
 def _sha(text: str) -> str:
@@ -67,11 +81,12 @@ async def store_examples(db, template_id, texts: list[str]) -> int:
     """Scrub, Jev-check and store the template's pasted examples; returns how many were stored. A text Jev still
     flags is skipped; if the Jev check fails, nothing is stored. A text already stored for this template is skipped."""
     tid = template_id if isinstance(template_id, uuid.UUID) else uuid.UUID(str(template_id))
-    scrubbed, seen = [], set()
+    scrubbed, shas = [], []
     for t in texts[:MAX_EXAMPLES]:
         s = scrub(t or "").strip()
-        if s and _sha(s) not in seen:
-            seen.add(_sha(s))
+        h = _sha(s)
+        if s and h not in shas:
+            shas.append(h)
             scrubbed.append(s)
     if not scrubbed:
         return 0
@@ -84,10 +99,10 @@ async def store_examples(db, template_id, texts: list[str]) -> int:
         logger.warning("template examples not stored for %s: %d scores for %d examples", tid, len(scores), len(scrubbed))
         return 0
     have = {sha for (sha,) in db.query(TemplateExample.sha256).filter(TemplateExample.template_id == tid).all()}
-    kept = [s for s, score in zip(scrubbed, scores) if score < IDENTIFIER_MIN and _sha(s) not in have]
+    kept = [(s, h) for s, h, score in zip(scrubbed, shas, scores) if score < IDENTIFIER_MIN and h not in have]
     held = sum(score >= IDENTIFIER_MIN for score in scores)
-    for s in kept:
-        db.add(TemplateExample(template_id=tid, text=s, sha256=_sha(s), source="pasted"))
+    for s, h in kept:
+        db.add(TemplateExample(template_id=tid, text=s, sha256=h, source="pasted"))
     try:
         db.commit()
     except Exception:

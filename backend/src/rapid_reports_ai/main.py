@@ -2802,7 +2802,7 @@ async def skill_sheet_save_endpoint(
             try:
                 await template_examples.store_examples(db, template.id, [e.content for e in request.examples])
             except Exception as e:   # evidence only: never fails the save
-                logger.warning("template examples not stored for %s: %s", template.id, e)
+                logger.warning("template examples not stored for %s: %s", template.id, type(e).__name__)  # no str(e): it can carry example text
         return {"success": True, "template_id": str(template.id)}
     except Exception as e:
         import traceback
