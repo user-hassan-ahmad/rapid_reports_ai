@@ -268,3 +268,14 @@ async def test_a_short_jev_reply_leaves_the_sheet_unchanged_with_an_error():
         return [0.9]
     res = await cr.resolve_context_rules(SHEET, "", "x", ask=ask)
     assert res.sheet == SHEET and res.record["error"] == "jev: answer count mismatch"
+
+
+def test_slot_guard_times_ratios_and_mid_sentence_abbreviations():
+    f = lambda t, h=(): cr.strip_slot_sentences(t, h)[0]  # noqa: E731
+    assert f("Ratio 3:1 with {x}. Normal kidneys.") == "Normal kidneys."
+    assert f("Scanned at 10:30 on {date}. Normal kidneys.") == "Normal kidneys."
+    assert f("Comparison:{date}", {"Comparison:"}) == "Comparison:"
+    assert f("Reviewed by Dr. Smith on {date}. No change.") == "No change."
+    assert f("Comparison with Fig. 2 shows {x}. Normal.") == "Normal."
+    assert f("Contrast given: No. Lesion in {seg}. Normal spleen.") == "Contrast given: No. Normal spleen."
+    assert f("Normal kidneys, e.g. Normal {x}. Fine.") == "Fine."

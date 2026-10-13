@@ -492,3 +492,42 @@ async def test_the_stack_brief_of_the_resolved_sheet_has_the_decision_not_the_ru
 def test_candidate_record_carries_context_rules():
     rec = tp.candidate_record({"report_content": "x", "context_rules": {"asked": 1}}, 10)
     assert rec["context_rules"] == {"asked": 1}
+
+
+async def test_a_raising_sheet_headers_never_breaks_generate(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    monkeypatch.setattr(cr, "ask_conditions", _met(0.9))
+
+    def boom(sheet):
+        raise RuntimeError("x")
+    monkeypatch.setattr(tl, "sheet_headers", boom)
+    out = await tl.generate_template_report_lean(sheet=RULED, scan_type="CT", findings="Previous CT.", history="",
+                                                 case=CASE, signature=None, stack=None)
+    assert out["report_content"]
+    if out.get("options_job") is not None:
+        await out["options_job"]
+
+
+async def test_sections_and_number_check_read_the_stored_sheet_not_the_resolved_one(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    monkeypatch.setattr(cr, "ask_conditions", _met(0.9))
+    seen = {}
+    real_rs, real_un = tl.report_sections, tl.undictated_numbers
+
+    def rs(report, sheet=""):
+        seen["sections"] = sheet
+        return real_rs(report, sheet)
+
+    def un(final, srcs, sheet):
+        seen["numbers"] = sheet
+        return real_un(final, srcs, sheet)
+    monkeypatch.setattr(tl, "report_sections", rs)
+    monkeypatch.setattr(tl, "undictated_numbers", un)
+    out = await tl.generate_template_report_lean(sheet=RULED, scan_type="CT", findings="Compared with CT 02/12/2025.",
+                                                 history="", case=CASE, signature=None, stack=None)
+    assert "RULE WHEN" not in calls["gen"]["sheet"]
+    assert seen.get("sections") == RULED and seen.get("numbers") == RULED
+    if out.get("options_job") is not None:
+        await out["options_job"]

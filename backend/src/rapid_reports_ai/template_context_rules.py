@@ -210,7 +210,7 @@ async def resolve_context_rules(sheet: str, history: str, findings: str, ask: Op
 
 DECIDED_HEADING = "## Decided for This Case"
 _SENTENCE_END = re.compile(r'(?<=[.!?])\s+(?=[A-Z0-9"(])')
-_LEAD = re.compile(r"^\s*(?:[-*•]\s+)?(?:\d+[.)]\s+)?(?:[*_#]*\s*[^:{}.\n]{1,40}:[*_]*\s*)?")   # indent, bullet, "**Header:** "
+_LEAD = re.compile(r"^\s*(?:[-*•]\s+)?(?:\d+[.)]\s+)?(?:[*_#]*\s*[^:{}.\n]{1,40}:(?!\d)[*_]*\s*)?")   # indent, bullet, "**Header:** "
 
 
 def decided_block(decided: List[str]) -> str:
@@ -238,7 +238,8 @@ def _head_key(text: str) -> str:
     return re.sub(r"[*_#]", "", text).strip().rstrip(":").strip().lower()
 
 
-_ORPHAN = re.compile(r"\d+[.)]|(?:Dr|Mr|Mrs|Ms|Prof|St|Mt|Fig|No|vs|approx|cf)\.", re.I)
+_ORPHAN = re.compile(r"\d+[.)]")
+_ABBREV_END = re.compile(r"(?:^|\s)(?:Dr|Mr|Mrs|Ms|Prof|St|Fig|vs|approx|cf|e\.g|i\.e)\.$")
 
 
 def _merge_numbers(parts: List[str]) -> List[str]:
@@ -246,7 +247,7 @@ def _merge_numbers(parts: List[str]) -> List[str]:
     out: List[str] = []
     pending = ""
     for p in parts:
-        if _ORPHAN.fullmatch(p):
+        if _ORPHAN.fullmatch(p) or _ABBREV_END.search(p):
             pending = p + " "
             continue
         out.append(pending + p)
