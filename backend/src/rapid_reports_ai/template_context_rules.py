@@ -10,12 +10,18 @@ not parse clean, a Jev failure) is left exactly as today: the rule line reaches 
 """
 from __future__ import annotations
 
+import logging
 import re
-from typing import Dict, List, Optional, Tuple
+import time
+from dataclasses import dataclass, field
+from typing import Awaitable, Callable, Dict, List, Optional, Set, Tuple
 
+from .hybrid_stack.jev_stack import CONDITION_MIN, ask_conditions
 from .hybrid_stack.template import norm_key
 from .template_sheet_grammar import is_grammar_sheet, parse_sheet
-from .template_sheet_structure import Rule
+from .template_sheet_structure import Rule, SheetStructure
+
+logger = logging.getLogger(__name__)
 
 EFFECTS = ("replace", "suppress", "use")
 _UNIT = re.compile(r"^\s*(?:-\s+)?(?:FIXED|NORMAL|NEGATIVE)\b")
@@ -24,15 +30,25 @@ _RULE_USE = re.compile(r'RULE\s+WHEN\s*\[[^\]]*\]\s*USE\s*("[^"]+")')
 SLOT = re.compile(r"\{[^{}\n]*\}")
 
 
-def rules_in_scope(sheet: str) -> Optional[List[Rule]]:
-    """The context REPLACE / SUPPRESS / USE rules of a lint-clean grammar sheet, in sheet order. None when the
-    sheet is not a grammar sheet or does not parse clean (the sheet is then used as today)."""
+def _clean(sheet: str) -> Optional[SheetStructure]:
+    """The parsed structure of a lint-clean grammar sheet; None otherwise."""
     if not is_grammar_sheet(sheet or ""):
         return None
     res = parse_sheet(sheet, mode="template")
     if res.errors or not res.structure.usable:
         return None
-    return [r for r in res.structure.rules if r.condition_source == "context" and r.effect in EFFECTS]
+    return res.structure
+
+
+def _in_scope(st: SheetStructure) -> List[Rule]:
+    return [r for r in st.rules if r.condition_source == "context" and r.effect in EFFECTS]
+
+
+def rules_in_scope(sheet: str) -> Optional[List[Rule]]:
+    """The context REPLACE / SUPPRESS / USE rules of a lint-clean grammar sheet, in sheet order. None when the
+    sheet is not a grammar sheet or does not parse clean (the sheet is then used as today)."""
+    st = _clean(sheet)
+    return None if st is None else _in_scope(st)
 
 
 def _first_quote(line: str) -> Optional[str]:
@@ -90,3 +106,99 @@ def apply_rules(sheet: str, rules: List[Rule], met: Dict[str, bool]) -> Tuple[st
             entry["outcome"] = "applied"
     text = "\n".join(x for x in out if x is not None)
     return (text + "\n" if sheet.endswith("\n") else text), decided, per
+
+
+
+def _left_on_stack(st: SheetStructure, rules: List[Rule]) -> Set[str]:
+    """Rule ids the scratchpad path leaves as today: template_stack strips NORMAL / NEGATIVE units (a met REPLACE
+    of one would lose its WITH text) and a USE in a findings section would become a FIXED clinical assertion."""
+    findings = {s.name for s in st.sections if s.role == "findings"}
+    stripped = {norm_key(n.text) for n in st.normals} | {norm_key(n.text) for n in st.negatives}
+    return {r.id for r in rules
+            if r.section in findings or (r.effect in ("replace", "suppress") and norm_key(r.target) in stripped)}
+
+
+_NOT_DICTATED = ("DO NOT ASSERT (removed by the radiologist):",
+                 "Confirmed normal (not dictated; confirmed by the radiologist):")
+_ASSUMED = "Assumed normal (confirmed by the radiologist):"
+_BARE_LABEL = re.compile(r"^\s*[^:]{0,60}:\s*$")
+
+
+def jev_findings(findings: str) -> str:
+    """The findings block minus what the radiologist did not dictate (the prefixes the scratchpad's regionState
+    writes): removed and confirmed-normal lines go, an "Assumed normal" tail is cut to the end of its line, and a
+    region label left bare goes. A removed sentence must never meet a condition."""
+    out: List[str] = []
+    for line in (findings or "").splitlines():
+        if line.lstrip().startswith(_NOT_DICTATED):
+            continue
+        i = line.find(_ASSUMED)
+        if i >= 0:
+            line = line[:i].rstrip()
+            if not line.strip() or _BARE_LABEL.match(line):
+                continue
+        out.append(line)
+    return "\n".join(out)
+
+
+Ask = Callable[[str, List[str]], Awaitable[List[float]]]
+
+
+@dataclass
+class Resolved:
+    sheet: str                                          # what the generator reads (the stored sheet if unresolved)
+    decided: List[str] = field(default_factory=list)    # lines a met rule wrote that carry {slots}
+    record: dict = field(default_factory=dict)          # evidence: the candidate record's "context_rules"
+
+
+async def resolve_context_rules(sheet: str, history: str, findings: str, ask: Optional[Ask] = None,
+                                stack: bool = False) -> Resolved:
+    """Settle the sheet's context rules for this case. Never raises: any failure returns the stored sheet with
+    the error in the record. `findings`: the scratchpad's confirmed findings block, or the dictation. `stack`:
+    the scratchpad path, where findings-side rules are left as today (_left_on_stack)."""
+    t0 = time.perf_counter()
+    rec: dict = {"asked": 0, "ms": 0, "error": None, "skipped": None, "rules": [], "slot_leaks": 0}
+
+    def done(text: str, decided: Optional[List[str]] = None) -> Resolved:
+        rec["ms"] = int((time.perf_counter() - t0) * 1000)
+        outcomes = [e["outcome"] for e in rec["rules"]]
+        logger.log(logging.WARNING if rec["error"] else logging.INFO,
+                   "[template.context_rules] asked=%d met=%d applied=%d unmatched=%d conflict=%d left_stack=%d "
+                   "skipped=%s error=%s ms=%d", rec["asked"], sum(bool(e["met"]) for e in rec["rules"]),
+                   outcomes.count("applied"), outcomes.count("unmatched"), outcomes.count("conflict"),
+                   outcomes.count("left_stack"), rec["skipped"], rec["error"], rec["ms"])
+        return Resolved(sheet=text, decided=list(decided or []), record=rec)
+
+    try:
+        st = _clean(sheet)
+        if st is None:
+            rec["skipped"] = "parse"
+            return done(sheet)
+        rules = _in_scope(st)
+        if not rules:
+            rec["skipped"] = "no_rules"
+            return done(sheet)
+        left = _left_on_stack(st, rules) if stack else set()
+        applied = [r for r in rules if r.id not in left]
+        conds = list(dict.fromkeys(r.condition for r in applied))
+        rec["asked"] = len(conds)
+        scores: List[float] = []
+        if conds:
+            state = f"CLINICAL HISTORY:\n{history or '(not given)'}\nDICTATED FINDINGS:\n{jev_findings(findings)}"
+            scores = await (ask or ask_conditions)(state, conds)
+        score_of = dict(zip(conds, scores))
+        text, decided, per = apply_rules(sheet, applied, {c: score_of.get(c, 0.0) >= CONDITION_MIN for c in conds})
+        entries = iter({**e, "score": round(float(score_of.get(e["condition"], 0.0)), 3)} for e in per)
+        lines = sheet.splitlines()
+        for r in rules:
+            if r.id not in left:
+                rec["rules"].append(next(entries))
+                continue
+            raw = r.source_lines[0] if r.source_lines else None
+            i = next((k for k, ln in enumerate(lines) if ln == raw), None)
+            rec["rules"].append({"line": None if i is None else i + 1, "condition": r.condition, "effect": r.effect,
+                                 "met": None, "score": None, "outcome": "left_stack"})
+        return done(text, decided)
+    except Exception as e:  # noqa: BLE001 -- fail-soft: the generator reads the stored sheet, as today
+        rec["error"], rec["rules"] = f"{type(e).__name__}: {e}"[:300], []
+        return done(sheet)

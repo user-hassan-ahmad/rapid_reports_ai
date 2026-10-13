@@ -104,3 +104,112 @@ def test_rules_outside_scope_are_untouched():
                           "## Paragraph: Liver (FINDINGS)")
     out, _, per = _apply(set(), sheet)
     assert "SUPPRESS_SECTION CONCLUSION" in out and len(per) == 4
+
+
+def _ask(scores: dict, calls: list | None = None):
+    async def ask(state, conditions):
+        if calls is not None:
+            calls.append((state, list(conditions)))
+        return [scores.get(c, 0.0) for c in conditions]
+    return ask
+
+
+async def test_resolve_asks_each_distinct_condition_once_on_history_and_findings():
+    calls: list = []
+    res = await cr.resolve_context_rules(SHEET, "?lesion", "Compared with the CT of 02/12/2025.",
+                                         ask=_ask({PRIOR: 0.9}, calls))
+    (state, conds), = calls
+    assert conds == [PRIOR, NOCON, OFFSITE, NOLIVER]
+    assert state == "CLINICAL HISTORY:\n?lesion\nDICTATED FINDINGS:\nCompared with the CT of 02/12/2025."
+    assert "Comparison made with previous {study} dated {date}." in res.sheet
+    assert res.decided == ["Comparison made with previous {study} dated {date}."]
+    rec = res.record
+    assert rec["asked"] == 4 and rec["error"] is None and rec["skipped"] is None and rec["slot_leaks"] == 0
+    first = rec["rules"][0]
+    assert first == {"line": 8, "condition": PRIOR, "effect": "replace", "met": True, "score": 0.9,
+                     "outcome": "applied"}
+
+
+async def test_the_cut_off_is_the_scratchpads_and_silence_is_not_met():
+    res = await cr.resolve_context_rules(SHEET, "", "Liver normal.", ask=_ask({PRIOR: 0.49, NOCON: 0.5}))
+    assert "No previous imaging available for comparison." in res.sheet
+    assert 'FIXED "No contrast."' in res.sheet
+    assert "(not given)" not in res.sheet   # the history placeholder is state only
+
+
+async def test_a_jev_failure_leaves_the_stored_sheet_unchanged():
+    async def down(state, conditions):
+        raise RuntimeError("jev 503")
+    res = await cr.resolve_context_rules(SHEET, "", "x", ask=down)
+    assert res.sheet == SHEET and res.decided == []
+    assert res.record["error"].startswith("RuntimeError: jev 503") and res.record["rules"] == []
+
+
+async def test_a_non_grammar_sheet_or_a_sheet_without_rules_asks_nothing():
+    calls: list = []
+    legacy = "# Skill Sheet\nSome prose only.\n"
+    res = await cr.resolve_context_rules(legacy, "", "x", ask=_ask({}, calls))
+    assert res.sheet == legacy and res.record["skipped"] == "parse" and calls == []
+    bare = SHEET.split("## Report-wide")[0] + "## Paragraph: Liver (FINDINGS)\nCOVERS [\"liver\"]\n"
+    res = await cr.resolve_context_rules(bare, "", "x", ask=_ask({}, calls))
+    assert res.sheet == bare and res.record["skipped"] == "no_rules" and calls == []
+
+
+LIVER_SUPPRESS = 'RULE WHEN [context: the liver was not imaged] SUPPRESS "The liver is normal."'
+
+
+async def test_on_stack_a_findings_section_rule_is_left_as_written_and_not_asked():
+    calls: list = []
+    res = await cr.resolve_context_rules(SHEET, "", "x", ask=_ask({NOLIVER: 0.9}, calls), stack=True)
+    (_, conds), = calls
+    assert conds == [PRIOR, NOCON, OFFSITE]
+    assert LIVER_SUPPRESS in res.sheet and 'NORMAL [liver] "The liver is normal."' in res.sheet
+    left = res.record["rules"][-1]
+    assert left == {"line": 16, "condition": NOLIVER, "effect": "suppress", "met": None, "score": None,
+                    "outcome": "left_stack"}
+    assert res.record["asked"] == 3
+
+
+async def test_on_stack_a_replace_of_a_normal_or_negative_line_is_left_and_applied_off_stack():
+    liver = SHEET.replace(LIVER_SUPPRESS, 'RULE WHEN [context: the liver was not imaged] REPLACE '
+                                          '"The liver is normal." WITH "The liver was not imaged."')
+    neg = SHEET.replace('FIXED "Images reviewed on PACS." | section: COMPARISON',
+                        'NEGATIVE "No prior imaging." | section: COMPARISON\n'
+                        'RULE WHEN [context: a prior CT was seen] REPLACE "No prior imaging." WITH "Prior CT seen." '
+                        '| section: COMPARISON\nFIXED "Images reviewed on PACS." | section: COMPARISON')
+    for sheet, cond, rule_text, written in (
+            (liver, NOLIVER, "REPLACE \"The liver is normal.\"", "The liver was not imaged."),
+            (neg, "a prior CT was seen", "REPLACE \"No prior imaging.\"", "Prior CT seen.")):
+        on = await cr.resolve_context_rules(sheet, "", "x", ask=_ask({cond: 0.9}), stack=True)
+        assert rule_text in on.sheet
+        assert next(e for e in on.record["rules"] if e["condition"] == cond)["outcome"] == "left_stack"
+        off = await cr.resolve_context_rules(sheet, "", "x", ask=_ask({cond: 0.9}))
+        assert rule_text not in off.sheet and written in off.sheet
+
+
+async def test_on_stack_a_use_rule_in_a_findings_paragraph_is_left():
+    rule = 'RULE WHEN [context: the liver was resected] USE "The liver has been resected."'
+    sheet = SHEET.replace('NORMAL [liver]', rule + "\nNORMAL [liver]")
+    res = await cr.resolve_context_rules(sheet, "", "x", ask=_ask({"the liver was resected": 0.9}), stack=True)
+    assert rule in res.sheet and 'FIXED "The liver has been resected."' not in res.sheet
+
+
+async def test_jev_reads_only_what_the_radiologist_dictated():
+    calls: list = []
+    findings = ("DO NOT ASSERT (removed by the radiologist): Compared with MRI 01/01/2024.\n"
+                "  Assumed normal (confirmed by the radiologist): The spleen is normal.\n"
+                "Confirmed normal (not dictated; confirmed by the radiologist): The kidneys are normal.\n"
+                "Compared with CT 02/12/2025.")
+    await cr.resolve_context_rules(SHEET, "", findings, ask=_ask({}, calls))
+    (state, _), = calls
+    assert state.endswith("DICTATED FINDINGS:\nCompared with CT 02/12/2025.")
+
+
+def test_jev_findings_cuts_a_mid_line_assumed_tail_and_drops_a_bare_label():
+    mid = ("Liver: Compared with CT 02/12/2025. Assumed normal (confirmed by the radiologist): "
+           "No previous imaging available for comparison.")
+    assert cr.jev_findings(mid) == "Liver: Compared with CT 02/12/2025."
+    bare = "Spleen: Assumed normal (confirmed by the radiologist): The spleen is normal.\nKidneys: Normal."
+    assert cr.jev_findings(bare) == "Kidneys: Normal."
+    answered = "Liver: 2 cm cyst. Answered by the radiologist: segment 4."
+    assert cr.jev_findings(answered) == answered
