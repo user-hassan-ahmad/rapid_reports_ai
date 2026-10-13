@@ -26,8 +26,8 @@ it to the sheet before the generator reads it. The generator never merges a rule
 - Jev via `jev_stack.ask_conditions`.
 
 **Working directory for every command:**
-`/Users/hassan/Code/rapid_reports_ai/.claude/worktrees/hybrid-stack/backend`.
-- Branch `feat/template-stack`.
+`/Users/hassan/Code/rapid_reports_ai/.claude/worktrees/context-rules/backend`.
+- Branch `feat/context-rules` (from feat/template-stack).
 - Never push.
 - Tests: `.venv/bin/python -m pytest <path> -q`.
 
@@ -760,7 +760,7 @@ This task runs outside the repository, in the private folder `~/Code/rr-template
     Also patch `template_lean.resolve_context_rules`, because the lean module imports the name.
 - [ ] **Step 2:** Run every `final/*.e2e_prior*_case.json` twice: with `--before` into `<slug>.lean_before.json`,
   and without it into `<slug>.lean_after.json`. Use `DATABASE_URL=sqlite:///<scratchpad>/lab.db` and
-  `PYTHONPATH=src`, from the hybrid-stack `backend/`. Never overwrite an existing output file.
+  `PYTHONPATH=src`, from the context-rules `backend/`. Never overwrite an existing output file.
 - [ ] **Step 3:** Run `check_prior_e2e.py` (or a copy pointed at the new file names) on both sets. Write
   `final/E2E_CONTEXT_RULES.md`:
   - a table per case and arm: before / after, SP / PL, and the comparison line printed;
