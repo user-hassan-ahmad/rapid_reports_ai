@@ -11,7 +11,7 @@ from .jev_client import JEV_MODEL, jev_post
 
 TIMEOUT_S = 4.0
 TAG_MIN = 0.5        # a kind at or above is worked (spec: threshold 0.5 as elsewhere)
-TAG_UNSURE = 0.35    # [TAG_UNSURE, TAG_MIN): the kind's changes become cards, never applied
+TAG_UNSURE = 0.35    # [TAG_UNSURE, TAG_MIN): decided by the targeted call, marked llm_unsure (decision D-R2)
 REQUIRES_MIN = 0.5   # a new prose line at or above is a rule in disguise
 
 KINDS = ("value", "concept", "fixed", "normal", "layout", "style", "misfit")

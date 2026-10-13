@@ -39,6 +39,8 @@ def fake(monkeypatch):
         return r if r is not None else CH.OUTPUTS[kind]()
 
     async def requires(lines, transport=None):
+        if state.get("requires_fn"):
+            return await state["requires_fn"](lines)
         if isinstance(state["requires"], Exception):
             raise state["requires"]
         return [state["requires"].get(l, 0.0) for l in lines]
@@ -378,3 +380,66 @@ async def test_answer_card_checks_a_client_sent_proposal():
         "kind": "fixed", "key": "x", "choice": None, "claim": "x",
         "op": {"op": "unit_drop", "keyword": "FIXED", "text": "Axial images were acquired."}}})
     assert not t.applied and t.sheet == ROUTER_SHEET and "unit_drop" not in t.reply
+
+
+# ── review fixes (Tasks 6-11): cost caps and the style-undo guard ─────────────────────────────────────────────────
+import asyncio
+
+
+async def test_at_most_eight_new_prose_lines_are_checked_and_the_rest_left_out(fake):
+    lines = [f"Line number {i} is short." for i in range(10)]
+    asked = []
+
+    async def requires(ls, transport=None):
+        asked.extend(ls)
+        return [0.0 for _ in ls]
+    fake["tags"] = tags(style=0.9)
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text="\n".join(lines))], summary="Longer.")
+    fake["requires_fn"] = requires
+    t = await R.route_turn(ROUTER_SHEET, [], "add guidance")
+    assert len(asked) == R.MAX_REQUIRES_LINES == 8
+    assert "Line number 7 is short." in t.sheet and "Line number 8 is short." not in t.sheet
+    assert R.CAPPED_LINE in t.reply and t.evidence["truncated"]["requires"] == 2
+
+
+async def test_at_most_three_flagged_lines_are_rerouted(fake):
+    lines = [f"Always state item {i}." for i in range(5)]
+    fake["tags"] = tags(style=0.9)
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text="\n".join(lines))], summary="x")
+    fake["requires"] = {l: 0.9 for l in lines}
+    t = await R.route_turn(ROUTER_SHEET, [], "always state items")
+    rerouted = {i for k, i in fake["seen"] if k == "normal"}
+    assert len(rerouted) == R.MAX_REROUTES == 3
+    assert t.evidence["truncated"]["reroutes"] == 2 and t.reply.count("Which part of the report should state it?") == 5
+
+
+async def test_at_most_ten_changes_per_call_are_used(fake):
+    fake["tags"] = tags(value=0.9)
+    names = [f"Size {i}" for i in range(12)]
+    fake["calls"]["value"] = CH.ValueOut(changes=[CH.ValueChange(name=n, to="every") for n in names])
+    t = await R.route_turn(ROUTER_SHEET, [], "always give " + ", ".join(names))
+    assert len(t.evidence["changes"]) == R.MAX_CHANGES_PER_CALL == 10
+    assert t.evidence["truncated"]["changes"] == {"value": 2}
+
+
+async def test_a_turn_past_its_deadline_applies_what_is_done(fake, monkeypatch):
+    monkeypatch.setattr(R, "TURN_TIMEOUT_S", 0.2)
+    fast = CH.ValueOut(changes=[CH.ValueChange(name="Width", to="not_needed")])
+
+    async def call_kind(kind, instruction, view, context="", rejection=None):
+        if kind == "normal":
+            await asyncio.sleep(5)
+        return fast if kind == "value" else CH.OUTPUTS[kind]()
+    monkeypatch.setattr(C, "call_kind", call_kind)
+    fake["tags"] = tags(value=0.9, normal=0.9)
+    t = await R.route_turn(ROUTER_SHEET, [], "drop width and reword the alpha normal")
+    assert t.applied and 'LIST_MISSING ["Depth"]' in t.sheet
+    assert "I couldn't change the normal findings just now; please try that part again." in t.reply
+    assert t.evidence["timed_out"] == ["normal"]
+
+
+async def test_a_style_undo_that_would_change_a_unit_line_is_refused():
+    rec = {"type": "style", "claim": "x",
+           "blocks": [{"before": 'NORMAL [gamma] "Gamma is fine."', "after": "Keep it brief."}]}
+    u = await R.undo_turn(ROUTER_SHEET, [], [rec])
+    assert not u.applied and u.sheet == ROUTER_SHEET and u.evidence["skipped"] == 1

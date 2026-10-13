@@ -29,11 +29,18 @@ logger = logging.getLogger(__name__)
 
 ROUTER_VERSION = "router-1"
 UNSURE_ROUTE = "llm_unsure"
+# cost caps (review of Tasks 6-11): every truncation is logged and recorded in the evidence
+MAX_REQUIRES_LINES = 8     # new prose lines asked "does this require the report to state something?" per turn
+MAX_REROUTES = 3           # flagged lines sent back through the rule route per turn (in parallel)
+MAX_CHANGES_PER_CALL = 10  # structured changes used from one targeted call
+TURN_TIMEOUT_S = 45.0      # one turn's model work; past it, what is done is applied and the rest is asked again
 WORK_KINDS = ("value", "concept", "fixed", "normal", "layout", "style")
 KIND_LABEL = CH.KIND_LABEL
 CARDS_LINE = "I wasn't sure about part of that: choose below."
 UNMATCHED_LINE = ("Some decisions no longer match a line in the template; they will be asked again at the next "
                   "review.")
+CAPPED_LINE = "That wording change was long, so I applied the first part only. Please ask for the rest separately."
+STYLE_TIMEOUT = "I couldn't finish the wording change just now, so I left it out. Please try that part again."
 STYLE_TOUCHED_RULES = ("The style change also touched the template's rules, so I left it out. Could you say it as "
                        "a change of wording only?")
 REQUIRES_FAILED = "I couldn't check that wording change just now, so I left it out. Please try again."
@@ -146,18 +153,23 @@ def _apply(sheet: str, ledger: List[dict], verdicts: List[CH.Verdict]):
 async def _reroute(lines: List[str], ctx: CH.Ctx) -> List[CH.Verdict]:
     """A prose line that requires the report to state something goes back through the rule route (normal, fixed);
     its wording is the model's, so it is always a card. No rule kind fits: the reply asks (spec Flow 3)."""
-    out: List[CH.Verdict] = []
-    for line in lines:
+    def ask(line: str) -> CH.Verdict:
+        return CH.Verdict("style", "ask", reason=f'I left out "{line}": it reads as something every report must '
+                                                 "state. Which part of the report should state it?")
+
+    async def one(line: str) -> CH.Verdict:
         instr = f'Every report should state: "{line}"'
         res = await asyncio.gather(*(C.call_kind(k, instr, V.view(k, ctx.sheet, ctx.ledger)) for k in ("normal", "fixed")),
                                    return_exceptions=True)
         found = [CH.to_card(CH.validate(k, c, ctx)) for k, r in zip(("normal", "fixed"), res)
-                 if not isinstance(r, BaseException) for c in r.changes]
+                 if not isinstance(r, BaseException) for c in r.changes[:MAX_CHANGES_PER_CALL]]
         found = [v for v in found if v.action == "card"]
-        out.append(found[0] if found else CH.Verdict(
-            "style", "ask", reason=f'I left out "{line}": it reads as something every report must state. Which part '
-                                   "of the report should state it?"))
-    return out
+        return found[0] if found else ask(line)
+
+    head, rest = lines[:MAX_REROUTES], lines[MAX_REROUTES:]
+    if rest:
+        logger.info("[chat-router] reroutes capped: %d of %d lines asked without a call", len(rest), len(lines))
+    return list(await asyncio.gather(*(one(l) for l in head))) + [ask(l) for l in rest]
 
 
 async def _style(sheet: str, out: CH.StyleOut, ctx: CH.Ctx):
@@ -176,24 +188,30 @@ async def _style(sheet: str, out: CH.StyleOut, ctx: CH.Ctx):
     except E.EditError:
         return sheet, None, [STYLE_TOUCHED_RULES], [], {"style": "unit_line_changed"}
     new = [l for b, t in edits.items() for l in sh.new_lines(blocks[b].text, t)]
+    over = new[MAX_REQUIRES_LINES:]           # unchecked lines are never applied: left out like a flagged line
+    new = new[:MAX_REQUIRES_LINES]
+    if over:
+        logger.info("[chat-router] requires capped: %d new prose lines left out", len(over))
     try:
         scores = await J.requires(new)
     except Exception as e:
         logger.warning("[chat-router] requires check failed: %s", type(e).__name__)
         return sheet, None, [REQUIRES_FAILED], [], {"style": "requires_failed"}
     flagged = [l for l, s in zip(new, scores) if s >= J.REQUIRES_MIN]
-    ev = {"style": "applied", "disguise": [{"line": l[:200], "score": round(s, 3)} for l, s in zip(new, scores)]}
-    if flagged:
-        fl = {sh.norm(x) for x in flagged}
+    ev = {"style": "applied", "disguise": [{"line": l[:200], "score": round(s, 3)} for l, s in zip(new, scores)],
+          "truncated": {"requires": len(over), "reroutes": max(0, len(flagged) - MAX_REROUTES)}}
+    lines_out = [CAPPED_LINE] if over else []
+    if flagged or over:
+        fl = {sh.norm(x) for x in flagged + over}
         edits = {b: "\n".join(x for x in t.splitlines() if sh.norm(x) not in fl) for b, t in edits.items()}
         # a block left empty keeps its old prose (the radiologist did not ask to delete it)
         edits = {b: t for b, t in edits.items() if t.strip() and t.strip("\n") != blocks[b].text}
-    rerouted = await _reroute(flagged, ctx)
+    rerouted = await _reroute(flagged, ctx) if flagged else []
     if not edits:
-        return sheet, None, [], rerouted, {**ev, "style": "all_rerouted"}
+        return sheet, None, lines_out, rerouted, {**ev, "style": "all_rerouted"}
     rec = {"type": "style", "blocks": [{"before": blocks[b].text, "after": edits[b]} for b in edits],
            "claim": out.summary.strip() or "The wording guidance is updated."}
-    return sh.splice(sheet, edits), rec, [], rerouted, ev
+    return sh.splice(sheet, edits), rec, lines_out, rerouted, ev
 
 
 async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, context: str = "",
@@ -218,13 +236,24 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
     wording = instruction + ("\n" + (rejection.get("original_instruction") or "") if rejection else "")
     ctx = CH.Ctx(sheet, ledger, wording)
     kinds = yes + unsure
-    results = await asyncio.gather(*(C.call_kind(k, instruction, V.view(k, sheet, ledger), context, rejection)
-                                     for k in kinds), return_exceptions=True)
+    deadline = t0 + TURN_TIMEOUT_S
+    tasks = {k: asyncio.ensure_future(C.call_kind(k, instruction, V.view(k, sheet, ledger), context, rejection))
+             for k in kinds}
+    _, pending = await asyncio.wait(list(tasks.values()), timeout=max(0.0, deadline - time.monotonic()))
+    timed_out = [k for k, t in tasks.items() if t in pending]
+    for k in timed_out:     # fail soft: those parts are asked again, the rest is applied
+        tasks[k].cancel()
+    if timed_out:
+        logger.warning("[chat-router] turn deadline: %s not done", timed_out)
+    results = [None if k in timed_out else (tasks[k].exception() or tasks[k].result()) for k in kinds]
     verdicts: List[CH.Verdict] = []
     asks: List[str] = []
-    failed: List[str] = []
+    failed: List[str] = list(timed_out)
+    truncated_changes = {}
     style_out, style_route = None, ""
     for k, res in zip(kinds, results):
+        if res is None:
+            continue
         if isinstance(res, BaseException):
             logger.warning("[chat-router] %s call failed: %s", k, type(res).__name__)
             failed.append(k)
@@ -235,14 +264,23 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
         if k == "style":
             style_out, style_route = res, route
             continue
-        for c in res.changes:
+        if len(res.changes) > MAX_CHANGES_PER_CALL:
+            truncated_changes[k] = len(res.changes) - MAX_CHANGES_PER_CALL
+            logger.info("[chat-router] %s changes capped: %d dropped", k, truncated_changes[k])
+        for c in res.changes[:MAX_CHANGES_PER_CALL]:
             v = CH.validate(k, c, ctx)
             v.route = route
             verdicts.append(v)
 
     styled, style_rec, style_lines, style_ev = sheet, None, [], {}
     if style_out is not None and style_out.blocks:
-        styled, style_rec, style_lines, extra, style_ev = await _style(sheet, style_out, ctx)
+        try:
+            styled, style_rec, style_lines, extra, style_ev = await asyncio.wait_for(
+                _style(sheet, style_out, ctx), timeout=max(0.01, deadline - time.monotonic()))
+        except asyncio.TimeoutError:
+            logger.warning("[chat-router] turn deadline: the style check did not finish")
+            style_lines, extra, style_ev = [STYLE_TIMEOUT], [], {"style": "timed_out"}
+            timed_out.append("style")
         if style_rec:
             style_rec["route"] = style_route
         verdicts += extra
@@ -255,7 +293,9 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
     cards = [v.card for v in verdicts if v.action == "card" and v.card]
     asks += [v.reason for v in verdicts if v.action in ("ask", "reject") and v.reason]
     fails = [f"I couldn't change {KIND_LABEL[k]} just now; please try that part again." for k in failed]
-    ev.update(changes=[_ev(v) for v in verdicts], cards=len(cards), failed=failed, problems=detail, **style_ev)
+    truncated = {"changes": truncated_changes, **(style_ev.pop("truncated", None) or {})}
+    ev.update(changes=[_ev(v) for v in verdicts], cards=len(cards), failed=failed, problems=detail,
+              timed_out=timed_out, truncated=truncated, **style_ev)
 
     def tail(cards_: List[dict]) -> List[str]:
         return ([CARDS_LINE] if cards_ else []) + asks + style_lines + problems + fails
@@ -334,7 +374,11 @@ async def undo_turn(sheet: str, ledger: List[dict], records: List[dict]) -> Turn
                 hit = False
                 for b in rec.get("blocks") or []:
                     if b.get("after") and b["after"] in cur:
-                        cur, hit = cur.replace(b["after"], b["before"], 1), True
+                        candidate = cur.replace(b["after"], b["before"], 1)
+                        if not sh.units_unchanged(cur, candidate):   # a client-sent record cannot write a unit line
+                            logger.info("[chat-router] style undo refused: it would change a unit line")
+                            continue
+                        cur, hit = candidate, True
                 if not hit:
                     skipped += 1
                     continue
