@@ -398,7 +398,9 @@ async def test_at_most_eight_new_prose_lines_are_checked_and_the_rest_left_out(f
         asked.extend(ls)
         return [0.0 for _ in ls]
     fake["tags"] = tags(style=0.9)
-    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text="\n".join(lines))], summary="Longer.")
+    keep = "Lead with the most important finding.\nKeep it brief."   # nothing deleted: only the cap is under test
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=keep + "\n" + "\n".join(lines))],
+                                         summary="Longer.")
     fake["requires_fn"] = requires
     t = await R.route_turn(ROUTER_SHEET, [], "add guidance")
     assert len(asked) == R.MAX_REQUIRES_LINES == 8
@@ -528,3 +530,31 @@ async def test_no_habit_below_the_threshold(fake):
                                                                     to="reword", text="Alpha is fine.")])
     t = await R.route_turn(ROUTER_SHEET, [], "say Alpha is fine.")
     assert t.applied and "habit" not in t.evidence
+
+
+# ── prose deletion check (a structural backstop) ──────────────────────────────────────────────────────────────────
+async def test_a_value_instruction_cannot_strip_unrelated_prose(fake):
+    fake["tags"] = tags(value=0.9, style=0.9)
+    fake["calls"]["value"] = CH.ValueOut(changes=[CH.ValueChange(name="Width", to="not_needed")])
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text="Lead with the most important finding.")],
+                                         summary="Shorter.")
+    t = await R.route_turn(ROUTER_SHEET, [], "drop Width")
+    assert t.applied and 'LIST_MISSING ["Depth"]' in t.sheet and "Keep it brief." in t.sheet
+    assert R.PROSE_KEPT in t.reply and t.evidence["prose_kept"] == ["b4"]
+    assert not any(r["type"] == "style" for r in t.records)
+
+
+async def test_prose_the_instruction_names_may_be_removed(fake):
+    fake["tags"] = tags(style=0.9)
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b1", text="Sentences are declarative.")],
+                                         summary="No length rule.")
+    t = await R.route_turn(ROUTER_SHEET, [], "stop asking for short sentences")
+    assert t.applied and "Sentences are declarative." in t.sheet and "prose_kept" not in t.evidence
+
+
+def test_content_words_are_a_simple_overlap():
+    assert R.content_words("Keep it brief, please.") == {"keep", "brief", "please"}
+    assert R.mentioned("Lead with the most important findings.", "the impression should lead with findings", "")
+    assert not R.mentioned("Keep it brief.", "drop Width", "Impression Construction")
+    assert R.mentioned("Keep it brief.", "make it more concise", "Impression Construction") is False
+    assert R.mentioned("Keep it brief.", "shorter impression", "Impression Construction")

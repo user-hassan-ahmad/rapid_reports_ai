@@ -50,6 +50,8 @@ _HABIT_LEAD = re.compile(r"^\s*(?:with|when|whenever|if|in)\s+(?P<cond>[^,;]+?)\
 _HABIT_TAIL = re.compile(r"^(?P<rest>.+?)\s*,?\s+(?:when(?:ever)?|if)\s+(?P<cond>.+?)\s*$", re.I)
 _HABIT_MID = re.compile(r"^\s*(?:when(?:ever)?|if)\s+(?P<cond>.+?)\s+(?P<rest>(?:say|mention|comment|state|add|ask|"
                         r"report|describe|note)\b.*)$", re.I)
+PROSE_KEPT = ("I kept some of the template's wording guidance as it was: the change would have removed lines your "
+              "instruction didn't mention. Ask for that change on its own if you want it.")
 CAPPED_LINE = "That wording change was long, so I applied the first part only. Please ask for the rest separately."
 STYLE_TIMEOUT = "I couldn't finish the wording change just now, so I left it out. Please try that part again."
 STYLE_TOUCHED_RULES = ("The style change also touched the template's rules, so I left it out. Could you say it as "
@@ -90,6 +92,36 @@ def _ask_reply(scan: str, misfit: bool) -> str:
     if misfit:
         return f"That doesn't look like part of a {s}report. What should these reports do differently?"
     return f"I'm not sure what to change in these {s}reports. What should they do differently?"
+
+
+# ── prose deletion check: a structural backstop, not a judgement of meaning ─────────────────────────────────────
+# A style edit may only delete or reword prose the instruction is about. "About" is approximated by a simple overlap
+# of content words (words of 4+ letters, a few function words dropped, a plural "s" stripped) between the
+# instruction and the removed line or its block heading. It catches a call that rewrites unrelated guidance (a value
+# instruction stripping the impression rules); it is deliberately crude and never decides what a line means.
+_WORD = re.compile(r"[a-z][a-z0-9]{3,}")
+_STOP = frozenset("""with that this from have into than then them they what when which will your been were there
+their these those should would could about also only each more most very just""".split())
+
+
+def content_words(text: str) -> set:
+    out = set()
+    for w in _WORD.findall((text or "").lower()):
+        if w in _STOP:
+            continue
+        out.add(w[:-1] if w.endswith("s") and len(w) > 4 else w)
+    return out
+
+
+def mentioned(line: str, instruction: str, heading: str) -> bool:
+    """The instruction shares a content word with the line or with its block's heading."""
+    return bool(content_words(instruction) & (content_words(line) | content_words(heading)))
+
+
+def _deletions_ok(block: sh.Block, new_text: str, instruction: str) -> bool:
+    new = {sh.norm(x) for x in new_text.splitlines() if x.strip()}
+    removed = [x for x in block.text.splitlines() if x.strip() and sh.norm(x) not in new]
+    return all(mentioned(x, instruction, block.heading) for x in removed)
 
 
 def _park_habit(instruction: str, score: float) -> Tuple[dict, str, dict]:
@@ -230,6 +262,12 @@ async def _style(sheet: str, out: CH.StyleOut, ctx: CH.Ctx):
         edits = {b: "\n".join(x for x in t.splitlines() if sh.norm(x) not in fl) for b, t in edits.items()}
         # a block left empty keeps its old prose (the radiologist did not ask to delete it)
         edits = {b: t for b, t in edits.items() if t.strip() and t.strip("\n") != blocks[b].text}
+    kept = [b for b, t in edits.items() if not _deletions_ok(blocks[b], t, ctx.instruction)]
+    if kept:   # that part is not applied; the rest of the style edit is
+        logger.info("[chat-router] prose deletion check kept %s", kept)
+        edits = {b: t for b, t in edits.items() if b not in kept}
+        lines_out.append(PROSE_KEPT)
+        ev["prose_kept"] = kept
     rerouted = await _reroute(flagged, ctx) if flagged else []
     if not edits:
         return sheet, None, lines_out, rerouted, {**ev, "style": "all_rerouted"}
