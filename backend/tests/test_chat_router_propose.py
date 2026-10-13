@@ -546,3 +546,15 @@ async def test_the_tap_rechecks_the_style_card_against_the_current_sheet(stub):
     stub["requires"] = {}
     a3 = await R.answer_card(ROUTER_SHEET, [], {"proposal": card["apply"]})
     assert a3.applied
+
+
+async def test_cards_are_deduped_by_concept(stub):
+    instr = "set the comparison wording"
+    stub["proposal"] = _proposal(
+        _change("concept", "Comparison wording set.", concept="comparison", default=NO_PRIOR, when_met=COMPARED),
+        _change("concept", "Comparison when-met.", concept="comparison", when_met="compared with the prior"))
+    stub["claim_scores"] = {CH.concept_field_claim("comparison", "when_met", COMPARED): 0.1,
+                            CH.concept_field_claim("comparison", "default", NO_PRIOR): 0.1}
+    t = await P.propose_turn(ROUTER_SHEET, [], instr)
+    concept_cards = [c for c in t.cards if c.get("ledger_kind") == "concept"]
+    assert len(concept_cards) == 1

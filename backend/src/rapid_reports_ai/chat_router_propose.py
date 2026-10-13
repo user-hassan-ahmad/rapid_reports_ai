@@ -156,6 +156,17 @@ def single_field(p: PConcept, field: str) -> PConcept:
     return PConcept(concept=p.concept, claim=p.claim, sure=p.sure, condition=p.condition, **{field: getattr(p, field)})
 
 
+def dedupe_cards(cards: List[dict]) -> List[dict]:
+    """One card per item: a decision card by (ledger kind, key), so a concept never gets two; others by id."""
+    seen, out = set(), []
+    for c in cards:
+        k = (c.get("ledger_kind"), c.get("key")) if c.get("ledger_kind") else ("id", c.get("id"))
+        if k not in seen:
+            seen.add(k)
+            out.append(c)
+    return out
+
+
 def habit_blocks(kind: str, p) -> bool:
     """Under the habit guard, only a change that makes something new unconditional is blocked (Hassan 2026-10-13):
     a normal or negative added, a fixed line added or made always printed, a value required in every report.
@@ -465,7 +476,7 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
     if style_rec:
         records.insert(0, style_rec)
         claims_out.insert(0, style_rec["claim"])
-    cards = ([habit_card] if habit_card else []) + [v.card for v in verdicts if v.action == "card" and v.card]
+    cards = dedupe_cards(([habit_card] if habit_card else []) + [v.card for v in verdicts if v.action == "card" and v.card])
     if habit_line:
         asks.append(habit_line)
     asks += [v.reason for v in verdicts if v.action in ("ask", "reject") and v.reason]
