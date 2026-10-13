@@ -61,3 +61,20 @@ export function withElsewhere(
 	return out;
 }
 
+/** A normal's identity for removal: the same sentence with or without the "Elsewhere, " lead, case and the full stop
+ *  ignored, so × or an edit on either form removes both. */
+export function assumedKey(s: string): string {
+	return s.trim().replace(/^elsewhere,\s*/i, '').toLowerCase().replace(/\.$/, '').replace(/\s+/g, ' ');
+}
+
+/** The assumed normals minus every removed (or edited) sentence, in either form; regions left empty are dropped. */
+export function withoutRemoved(assumed: Record<string, string[]>, removed: string[]): Record<string, string[]> {
+	if (!removed.length) return assumed;
+	const gone = new Set(removed.map(assumedKey));
+	const out: Record<string, string[]> = {};
+	for (const [r, xs] of Object.entries(assumed)) {
+		const kept = xs.filter((x) => !gone.has(assumedKey(x)));
+		if (kept.length) out[r] = kept;
+	}
+	return out;
+}

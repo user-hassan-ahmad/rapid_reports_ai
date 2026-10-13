@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { backToLibrary, caseDirty, needsFreeText, pickBody, pickKey, pickSummary, visiblePills, withElsewhere, type ProtocolPick } from './protocol';
+import { assumedKey, backToLibrary, caseDirty, needsFreeText, pickBody, pickKey, pickSummary, visiblePills, withElsewhere, withoutRemoved, type ProtocolPick } from './protocol';
+import { buildFindingsBlock, regionStates } from './regionState';
+import type { GateRecord, StackUnit } from './types';
 
 describe('visiblePills', () => {
 	const groups = ['Technique', 'Right breast', 'Implants', 'Other findings', 'General', 'Conclusion'];
@@ -77,6 +79,62 @@ describe('caseDirty', () => {
 		expect(caseDirty({ ...free }, free)).toBe(false);
 		expect(caseDirty({ ...free, scanType: 'US pelvis' }, free)).toBe(true);
 		expect(caseDirty({ ...free, history: 'Fever' }, free)).toBe(true);
+	});
+});
+
+describe('quiet regions in the gate', () => {
+	const u = (id: number, text: string, group: string | null): StackUnit => ({
+		id, text, group, structure: null, attach_to: null, parts: null, covers: [], abnormal: false, pinned: false, heading: false
+	});
+	const groups = ['Technique', 'Right breast', 'Implants', 'Other findings', 'General', 'Conclusion'];
+	const gate = (assumedNormal: string[]): GateRecord => ({
+		confirmed_at: 't', conclusion_text: '', conclusion_source: 'draft', assumed_normal: assumedNormal, remainder_normal: [],
+		dictated_normal: [], units_hash: 'h', items: [], assumed: {}, removed: [], capped: []
+	});
+	it('an undictated quiet region is never named as confirmed normal (regionView from the shown pills)', () => {
+		const units = [u(0, 'No suspicious enhancement.', 'Right breast')];
+		const shown = visiblePills(groups, ['Right breast'], ['Implants'], new Set(['Right breast']));
+		const view = regionStates(units, shown);
+		expect(view.assumedNormal).not.toContain('Implants');
+		expect(buildFindingsBlock(units, groups, gate(view.assumedNormal))).not.toContain('Implants');
+	});
+	it('a quiet region with something placed there takes part as any other', () => {
+		const units = [u(0, 'Intact implants.', 'Implants')];
+		const shown = visiblePills(groups, ['Right breast'], ['Implants'], new Set(['Implants']));
+		expect(regionStates(units, shown).dictatedNormal.map((d) => d.region)).toEqual(['Implants']);
+	});
+});
+
+describe('removing and editing an "Elsewhere, …" line', () => {
+	const groups = { 'Lumbar levels': ['L4/5', 'L5/S1'] };
+	const raw = 'No disc protrusion or neural compromise throughout the lumbar spine.';
+	const assumed = { 'Lumbar levels': [raw], Cord: ['Normal cord.'] };
+	const shown = (removed: string[]) => withoutRemoved(withElsewhere(assumed, groups, new Set(['L4/5'])), removed);
+	it('× on the "Elsewhere, …" form removes it', () => {
+		const line = shown([])['Lumbar levels'][0];
+		expect(line.startsWith('Elsewhere, ')).toBe(true);
+		expect(shown([line])).toEqual({ Cord: ['Normal cord.'] });
+	});
+	it('a removal of the raw form also removes the "Elsewhere, …" form, and the reverse', () => {
+		expect(shown([raw])['Lumbar levels']).toBeUndefined();
+		expect(withoutRemoved(assumed, [`Elsewhere, ${raw[0].toLowerCase()}${raw.slice(1)}`])['Lumbar levels']).toBeUndefined();
+		expect(assumedKey(`Elsewhere, ${raw}`)).toBe(assumedKey(raw));
+	});
+	it('an edit replaces the original: the original is removed and the edited text is not assumed alongside it', () => {
+		const original = shown([])['Lumbar levels'][0];
+		const after = shown([original]); // editAssumed removes the original; the edit joins the dictation
+		expect(Object.values(after).flat()).not.toContain(original);
+		expect(Object.values(after).flat().some((x) => assumedKey(x) === assumedKey(raw))).toBe(false);
+	});
+	it('is idempotent: withElsewhere on a reply already in "Elsewhere, …" form leaves it unchanged', () => {
+		const once = withElsewhere(assumed, groups, new Set(['L4/5']));
+		expect(withElsewhere(once, groups, new Set(['L4/5']))).toEqual(once);
+		expect(withoutRemoved(withoutRemoved(once, [raw]), [raw])).toEqual(withoutRemoved(once, [raw]));
+	});
+	it('what /assumed is sent: the "Elsewhere, …" sentence for a segment with a dictated level, raw otherwise', () => {
+		expect(withElsewhere(assumed, groups, new Set(['L4/5']))['Lumbar levels']).toEqual([
+			'Elsewhere, no disc protrusion or neural compromise throughout the lumbar spine.']);
+		expect(withElsewhere(assumed, groups, new Set())['Lumbar levels']).toEqual([raw]);
 	});
 });
 

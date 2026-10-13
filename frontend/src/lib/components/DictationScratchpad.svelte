@@ -44,7 +44,7 @@
 	import { abnormalAll, assumedFrom, moreLine, openCount, rowSentences, splitReply, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
-	import { pickBody, pickKey, visiblePills, withElsewhere, type ProtocolPick } from '$lib/hybrid-stack/protocol';
+	import { assumedKey, pickBody, pickKey, visiblePills, withElsewhere, withoutRemoved, type ProtocolPick } from '$lib/hybrid-stack/protocol';
 	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
@@ -320,7 +320,9 @@
 	$: pillRegions = stackRegions.map((r) => r.name).filter((n) => n !== OTHER);
 	// The v2 view takes over only once a schema exists: a failed schema fetch leaves today's editor in place.
 	$: stackView = hybridStack && stackRegions.length > 0;
-	$: regionView = regionStates(stackUnits, pillRegions);
+	// From the shown pills, not every schema region: an undictated quiet region is never named as normal (review
+	// 2026-10-13: quiet regions reached assumed_normal and the findings block with no sheet sentence behind them).
+	$: regionView = regionStates(stackUnits, shownPills);
 	// Tapped rows stay on screen as the radiologist's answers even after the writer stops returning them.
 	// Rows over the caps wait behind one quiet line at the end (E1b); a tapped one stays there, green.
 	$: moreView = moreLine(stackCapped, stackItems, Object.keys(tappedRows), removedSentences, Object.keys(skippedRows));
@@ -339,7 +341,8 @@
 	let stackLevelGroups: Record<string, string[]> = {};
 	$: placedGroups = new Set(stackUnits.map((u) => u.group).filter((g): g is string => !!g));
 	$: shownPills = visiblePills(stackGroups, pillRegions, stackQuiet, placedGroups);
-	$: shownAssumed = withElsewhere(confirmedAssumed, stackLevelGroups, placedGroups);
+	// × or an edit on an "Elsewhere, …" line removes it in either form (the reply may carry the raw sheet sentence).
+	$: shownAssumed = withoutRemoved(withElsewhere(confirmedAssumed, stackLevelGroups, placedGroups), removedSentences);
 	$: assumedBehind = Object.keys(stackRegionNormals).length > 0 && (assumedSnap === null || assumedSnap.dictation !== verbatimNow);
 	// Regions are confirmed by name only when no sheet exists for this session (v2 behaviour); with a sheet, a region
 	// with no sentence left assumes nothing. An abnormal region's remainder is never named (review 2026-10-12).
@@ -1832,9 +1835,12 @@
 	async function refreshAssumed(): Promise<void> {
 		if (!Object.keys(stackRegionNormals).length) return;
 		const seq = ++assumedSeq;
-		const snap = { offered: { ...stackRegionNormals }, dictation: verbatimNow, abnormal: [...regionView.abnormal], untouched: [...regionView.assumedNormal] };
+		// A segment with a dictated level is checked as its "Elsewhere, …" sentence: the raw segment line would read as
+		// contradicted by the dictated level and be dropped.
+		const offered = withElsewhere(stackRegionNormals, stackLevelGroups, placedGroups);
+		const snap = { offered, dictation: verbatimNow, abnormal: [...regionView.abnormal], untouched: [...regionView.assumedNormal] };
 		try {
-			const res = await postAssumed($token, { dictation: snap.dictation, region_normals: stackRegionNormals, abnormal: snap.abnormal,
+			const res = await postAssumed($token, { dictation: snap.dictation, region_normals: offered, abnormal: snap.abnormal,
 				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences, owned: ownedNow(),
 				touched: touchedRegions(), template_id: stackTemplateId, clinical_history: clinicalHistory,
 				region_text: regionText(stackUnits) }); // a normal is covered only by its own region's sentences
@@ -1846,8 +1852,8 @@
 	/** Regions a row or a removal concerns: every one of their sentences is checked, not only word matches. */
 	function touchedRegions(): string[] {
 		const rows = [...stackItems, ...stackCapped, ...Object.values(tappedRows), ...Object.values(skippedRows).map((s) => s.item)].map((r) => r.region);
-		const gone = new Set(removedSentences.map(normS));
-		const fromSheet = Object.entries(stackRegionNormals).filter(([, xs]) => xs.some((x) => gone.has(normS(x)))).map(([r]) => r);
+		const gone = new Set(removedSentences.map(assumedKey));
+		const fromSheet = Object.entries(stackRegionNormals).filter(([, xs]) => xs.some((x) => gone.has(assumedKey(x)))).map(([r]) => r);
 		return [...new Set([...rows, ...fromSheet])].filter(Boolean);
 	}
 	$: if (Object.keys(stackRegionNormals).length) void refreshAssumed();
