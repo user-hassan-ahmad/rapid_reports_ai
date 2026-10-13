@@ -93,19 +93,19 @@
 		{/each}
 	</div>
 	{#if editing === card.id}
-		<div class="space-y-1.5 pt-1.5" role="group" onkeydown={onKey}>
+		<div class="space-y-1.5 pt-1.5" role="group">
 			{#if card.ledger_kind === 'concept'}
 				<label class="block text-xs text-gray-400"
 					>Usually
-					<input class="input w-full text-sm" bind:value={draft.default} use:focusOnOpen />
+					<input class="input w-full text-sm" bind:value={draft.default} use:focusOnOpen onkeydown={onKey} />
 				</label>
 				<label class="block text-xs text-gray-400"
 					>When it applies
-					<input class="input w-full text-sm" bind:value={draft.when_met} />
+					<input class="input w-full text-sm" bind:value={draft.when_met} onkeydown={onKey} />
 				</label>
 				{#if draft.condition}<p class="text-xs text-gray-500">It applies when {draft.condition}.</p>{/if}
 			{:else}
-				<input class="input w-full text-sm" aria-label="Wording for {card.title}" bind:value={draft.text} use:focusOnOpen />
+				<input class="input w-full text-sm" aria-label="Wording for {card.title}" bind:value={draft.text} use:focusOnOpen onkeydown={onKey} />
 			{/if}
 			{@render editorButtons(() => apply(cardChange(card)), !cardChange(card))}
 		</div>
@@ -167,8 +167,8 @@
 						<p class="text-xs uppercase tracking-wider text-gray-500">{sec.header}</p>
 						{#each sec.sentences as s (s.key)}
 							{#if editing === s.key}
-								<div class="space-y-1.5" role="group" onkeydown={onKey}>
-									<input class="input w-full text-sm" aria-label="Edit sentence" bind:value={draft.text} use:focusOnOpen />
+								<div class="space-y-1.5" role="group">
+									<input class="input w-full text-sm" aria-label="Edit sentence" bind:value={draft.text} use:focusOnOpen onkeydown={onKey} />
 									<div class="flex gap-2">
 										<button type="button" class="btn-primary text-xs" onclick={() => apply(sentenceChange(s, draft.text ?? ''))}
 											disabled={!(draft.text ?? '').trim() || busy}>Save</button>

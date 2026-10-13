@@ -45,7 +45,11 @@ export function createChecksLoader(
 				return;
 			}
 			if (opts.now) void run(sheet, decisions, key);
-			else timer = setTimeout(() => void run(sheet, decisions, key), delayMs);
+			else {
+				seq++;   // an older run in flight must not land during the wait
+				pendingKey = null;
+				timer = setTimeout(() => void run(sheet, decisions, key), delayMs);
+			}
 		},
 		/** Forget the last run (a different template); the next request always runs. */
 		reset() {

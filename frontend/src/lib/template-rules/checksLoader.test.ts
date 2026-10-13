@@ -78,6 +78,20 @@ describe('createChecksLoader', () => {
 		expect(seen.map((r) => r?.errors[0])).toEqual(['new', 'newest']);
 	});
 
+	it('an older response does not land while a newer request waits out the debounce', async () => {
+		const first = deferred<SheetChecksResponse>();
+		const post = vi.fn().mockReturnValueOnce(first.promise).mockResolvedValueOnce(ok('new'));
+		const seen: (SheetChecksResponse | null)[] = [];
+		const loader = createChecksLoader(post, (r) => seen.push(r), 500);
+		loader.request('S1', [], { now: true });
+		loader.request('S2', []);
+		first.resolve(ok('old'));
+		await vi.advanceTimersByTimeAsync(100);
+		expect(seen).toEqual([]);
+		await vi.advanceTimersByTimeAsync(400);
+		expect(seen.map((r) => r?.errors[0])).toEqual(['new']);
+	});
+
 	it('a failure shows no checks', async () => {
 		const loader = createChecksLoader(vi.fn(async () => { throw new Error('x'); }), (r) => seen.push(r), 500);
 		const seen: (SheetChecksResponse | null)[] = [];
