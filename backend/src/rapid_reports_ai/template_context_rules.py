@@ -161,7 +161,7 @@ class Resolved:
 
 
 async def resolve_context_rules(sheet: str, history: str, findings: str, ask: Optional[Ask] = None,
-                                stack: bool = False) -> Resolved:
+                                stack: bool = False, scan_type: str = "") -> Resolved:
     """Settle the sheet's context rules for this case. Never raises: any failure returns the stored sheet with
     the error in the record. `findings`: the scratchpad's confirmed findings block, or the dictation. `stack`:
     the scratchpad path, where findings-side rules are left as today (_left_on_stack)."""
@@ -194,7 +194,8 @@ async def resolve_context_rules(sheet: str, history: str, findings: str, ask: Op
         rec["asked"] = len(conds)
         scores: List[float] = []
         if conds:
-            state = f"CLINICAL HISTORY:\n{history or '(not given)'}\nDICTATED FINDINGS:\n{jev_findings(findings)}"
+            head = f"SCAN TYPE:\n{scan_type}\n" if (scan_type or "").strip() else ""
+            state = head + f"CLINICAL HISTORY:\n{history or '(not given)'}\nDICTATED FINDINGS:\n{jev_findings(findings)}"
             scores = await (ask or ask_conditions)(state, conds)
         if len(scores) != len(conds):
             rec["error"] = "jev: answer count mismatch"

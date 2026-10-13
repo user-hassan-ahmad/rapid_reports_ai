@@ -342,3 +342,11 @@ def test_a_default_a_met_rule_settled_is_never_kept_in_either_rule_order():
         for met in ({PRIOR}, {other}):
             assert _apply(met, sheet)[2] == ["Images reviewed on PACS."]
         assert _apply(set(), sheet)[2] == KEPT
+
+
+async def test_the_jev_state_leads_with_the_scan_type_when_given_and_is_unchanged_without():
+    calls: list = []
+    await cr.resolve_context_rules(SHEET, "?lesion", "Liver normal.", ask=_ask({}, calls), scan_type="CT abdomen with contrast")
+    await cr.resolve_context_rules(SHEET, "?lesion", "Liver normal.", ask=_ask({}, calls))
+    assert calls[0][0].startswith("SCAN TYPE:\nCT abdomen with contrast\nCLINICAL HISTORY:\n?lesion\n")
+    assert calls[1][0] == "CLINICAL HISTORY:\n?lesion\nDICTATED FINDINGS:\nLiver normal."

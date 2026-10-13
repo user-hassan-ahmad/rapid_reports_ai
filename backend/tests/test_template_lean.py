@@ -503,6 +503,22 @@ async def test_a_kept_default_reaches_the_generator_under_write_word_for_word(mo
         await out["options_job"]
 
 
+async def test_the_scan_type_reaches_the_context_rule_state(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    states = []
+
+    async def ask(state, conditions):
+        states.append(state)
+        return [0.1 for _ in conditions]
+    monkeypatch.setattr(cr, "ask_conditions", ask)
+    out = await tl.generate_template_report_lean(sheet=RULED, scan_type="CT abdomen", findings="x", history="",
+                                                 case=CASE, signature=None, stack=None)
+    assert states and states[0].startswith("SCAN TYPE:\nCT abdomen\n")
+    if out.get("options_job") is not None:
+        await out["options_job"]
+
+
 def test_candidate_record_carries_context_rules():
     rec = tp.candidate_record({"report_content": "x", "context_rules": {"asked": 1}}, 10)
     assert rec["context_rules"] == {"asked": 1}
