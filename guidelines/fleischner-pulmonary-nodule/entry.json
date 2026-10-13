@@ -2,7 +2,7 @@
   "id": "fleischner-pulmonary-nodule",
   "version": "2017.1",
   "topic": "pulmonary-nodule-incidental",
-  "purpose": "Gives follow-up recommendations for solid and subsolid pulmonary nodules found incidentally on CT in adults; not intended for lung cancer screening.",
+  "purpose": "Gives follow-up recommendations for solid and subsolid pulmonary nodules found incidentally on CT in adults.",
   "issuer": "Fleischner Society",
   "system": "Fleischner Society guidelines for incidentally detected pulmonary nodules on CT",
   "display": "Fleischner Society 2017",

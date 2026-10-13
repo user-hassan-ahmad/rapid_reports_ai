@@ -313,6 +313,8 @@ class Entry(_M):
     purpose: str                      # one line: what the system classifies/scores and in what setting (spec §5.2)
     trigger: list[Literal["finding", "exam"]] = Field(default_factory=lambda: ["finding"])
     exam: str = ""                    # the examination an exam-level pack applies to; set exactly when "exam" triggers
+    exam_presets: dict[str, str] = Field(default_factory=dict)   # exam cards only: input id -> the value its exam
+                                      # binding implies ("true"/"false", an option, a number); shown as set by the exam
     issuer: str
     system: str
     display: str                      # short name for cards and report lines, e.g. "Fleischner Society 2017"
@@ -343,6 +345,14 @@ class Entry(_M):
             raise ValueError("trigger: non-empty, no duplicates")
         if ("exam" in self.trigger) != bool(self.exam.strip()):
             raise ValueError("exam: given exactly when trigger includes 'exam'")
+        if self.exam_presets and "exam" not in self.trigger:
+            raise ValueError("exam_presets: only on an entry whose trigger includes 'exam'")
+        for k, s in self.exam_presets.items():
+            i = self.input(k)
+            if i is None:
+                raise ValueError(f"exam_presets: {k!r} is not an input of this entry")
+            if preset_value(i, s) is None:
+                raise ValueError(f"exam_presets: {s!r} is not a value input {k!r} can take")
         return self
 
     @model_validator(mode="after")
@@ -384,6 +394,20 @@ class InputValue(_M):
     state: State = "present"
     value: Any = None
     band: str | None = None           # a number answered as a band id (the radiologist picked "6-8 mm")
+
+
+def preset_value(i: InputDef, s: str) -> InputValue | None:
+    """An exam preset as the engine takes it: an enum option, "true" or "false" for a boolean, or a number inside the
+    input's range. None when the input cannot take it."""
+    if i.type == "enum":
+        return InputValue(value=s) if s in i.options else None
+    if i.type == "boolean":
+        return {"true": InputValue(value=True), "false": InputValue(value=False)}.get(s)
+    try:
+        x = float(s)
+    except ValueError:
+        return None
+    return InputValue(value=x) if i.in_range(x) else None
 
 
 def as_value(x: Any) -> InputValue:

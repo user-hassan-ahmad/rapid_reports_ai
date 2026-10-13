@@ -578,7 +578,7 @@ def test_open_settles_lesion_inputs_from_the_cards_own_finding(authed, toy_lib, 
 def test_open_passes_the_patient_map_and_rejects_unknown_facts(authed, toy_lib, monkeypatch):
     seen = {}
 
-    def fake_finish(e, s, answered, patient=None, sources=None):
+    def fake_finish(e, s, answered, patient=None, sources=None, presets=None):
         seen["patient"] = patient
         return Preview()
     monkeypatch.setattr(CR, "finish", fake_finish)
@@ -588,6 +588,30 @@ def test_open_passes_the_patient_map_and_rejects_unknown_facts(authed, toy_lib, 
     bad = authed.post("/api/canvas/stack/guidelines/open", json={
         "card": PACK_CARD, "findings": "x", "patient": {"shoe_size": "9"}})
     assert bad.status_code == 422
+
+
+def test_only_an_exam_card_gets_its_packs_exam_presets(authed, monkeypatch):
+    from pathlib import Path
+    src = Path(__file__).resolve().parents[2] / "guidelines" / "nhs-aaa-surveillance" / "entry.json"
+    import json as _json
+    lib = L.Library({"version": "v1", "entries": {"nhs-aaa-surveillance@2025.1": {
+        "entry": _json.loads(src.read_text()), "sources": TOY_SOURCES}}})
+    monkeypatch.setattr(L, "get", lambda: lib)
+
+    async def fake_settle(e, findings, history, finding=""):
+        return PP.Settlement(values={"diameter_cm": (PP.InputValue(value=2.4), "Aorta 2.4 cm")})
+    monkeypatch.setattr(CR, "settle_pack", fake_settle)
+    dictation = "Aorta 2.4 cm."
+    card = {"key": "nhs-aaa-surveillance@2025.1", "name": "NHS AAA Screening 2025", "version": "2025",
+            "branch": "Pack", "finding": dictation}
+    exam = authed.post("/api/canvas/stack/guidelines/open", json={
+        "card": {**card, "finding_id": "exam"}, "findings": dictation}).json()["preview"]
+    assert {s["input"]: s["by"] for s in exam["settled"]} == {
+        "screening_programme": "exam", "sex": "exam", "previous_aaa_treatment": "exam", "diameter_cm": ""}
+    assert exam["missing"] == ["prior_programme_scan"]
+    found = authed.post("/api/canvas/stack/guidelines/preview", json={
+        "card": {**card, "finding_id": "u1"}, "findings": dictation}).json()["preview"]
+    assert [s["input"] for s in found["settled"]] == ["diameter_cm"] and found["state"] == "check_first"
 
 
 async def test_match_starts_pack_previews_and_open_reuses_them(db_session, user, monkeypatch, toy):

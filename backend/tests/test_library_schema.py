@@ -128,6 +128,35 @@ def test_exam_is_required_exactly_when_trigger_has_exam(toy):
         S.Entry.model_validate(_toy_with(toy, trigger=["finding"], exam="CT of the sinuses"))
 
 
+def _exam_toy(toy, presets):
+    flag = {"id": "programme", "label": "Programme scan", "type": "boolean", "scope": "patient", "role": "eligibility"}
+    return _toy_with(toy, trigger=["exam"], exam="CT of the chest", inputs=[*toy["inputs"], flag],
+                     exam_presets=presets)
+
+
+def test_exam_presets_take_input_values_the_engine_can_use(toy):
+    e = S.Entry.model_validate(_exam_toy(toy, {"programme": "true", "kind": "solid", "size": "4"}))
+    assert e.exam_presets == {"programme": "true", "kind": "solid", "size": "4"}
+    assert S.Entry.model_validate(toy).exam_presets == {}
+    for k, s in (("programme", "Yes"), ("programme", "1"), ("kind", "Solid"), ("size", "big")):
+        with pytest.raises(ValidationError):
+            S.Entry.model_validate(_exam_toy(toy, {k: s}))
+
+
+def test_exam_presets_reject_unknown_inputs_and_finding_only_packs(toy):
+    with pytest.raises(ValidationError):
+        S.Entry.model_validate(_exam_toy(toy, {"nope": "true"}))
+    with pytest.raises(ValidationError):                                  # a finding card never gets presets
+        S.Entry.model_validate(_toy_with(toy, exam_presets={"kind": "solid"}))
+
+
+def test_preset_value_reads_booleans_enums_and_ranged_numbers():
+    b = S.InputDef(id="b", label="B", type="boolean")
+    n = S.InputDef(id="n", label="N", type="number", min_value=0, min_inclusive=False, max_value=20)
+    assert S.preset_value(b, "false").value is False and S.preset_value(b, "true").value is True
+    assert S.preset_value(n, "2.5").value == 2.5 and S.preset_value(n, "0") is None and S.preset_value(n, "21") is None
+
+
 def test_matcher_topic_falls_back_to_topic(toy):
     e = S.Entry.model_validate(toy)
     assert e.matcher_topic == e.topic

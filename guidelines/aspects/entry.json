@@ -4,7 +4,7 @@
   "topic": "acute-ischaemic-stroke-ct",
   "purpose": "Scores early ischaemic change in the middle cerebral artery territory on non-contrast CT in hyperacute ischaemic stroke, as part of the pre-treatment CT assessment before thrombolysis.",
   "trigger": ["exam"],
-  "exam": "non-contrast CT head for suspected acute ischaemic stroke",
+  "exam": "non-contrast CT head for hyperacute ischaemic stroke, before thrombolytic treatment",
   "issuer": "ASPECTS Study Group (Alberta Stroke Programme)",
   "system": "Alberta Stroke Program Early CT Score (ASPECTS) for early ischaemic change in the MCA territory on non-contrast CT",
   "display": "ASPECTS (Barber 2000)",

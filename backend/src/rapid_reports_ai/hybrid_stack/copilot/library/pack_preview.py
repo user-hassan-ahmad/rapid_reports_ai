@@ -27,11 +27,12 @@ from ..types import Branch, Entry as CardEntry, GuidelineContent, Input, Preview
 from . import engine
 from . import quantity as Q
 from .describe import citation
-from .schema import DOES_NOT_APPLY, BandStep, Entry, InputDef, InputValue, RulesStep, conds
+from .schema import DOES_NOT_APPLY, BandStep, Entry, InputDef, InputValue, RulesStep, conds, preset_value
 
 logger = logging.getLogger(__name__)
 
 PACK_BRANCH = "Pack"
+EXAM_CARD = "exam"        # an exam card's finding_id (matcher): only such a card gets its pack's exam_presets
 REFERENCE_BRANCH = "Reference"
 TIMEOUT_S = 10.0
 ONE_LESION_MIN = 0.8      # Jev ONE_LESION: below it, every lesion input on the card is asked
@@ -467,14 +468,15 @@ def _outcome_text(e: Entry, t: engine.Trace, sources: list[dict]) -> Proposal | 
 
 
 def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict[str, str], sources: list[dict],
-           degraded: bool) -> Preview:
+           degraded: bool, preset: frozenset[str] = frozenset()) -> Preview:
     """The card (spec §7.4): eligibility asks first; the state worked out in code; a does_not_apply outcome is shown as
     an exclusion, never as a proposal, so it can never be Applied."""
     elig = [i.id for i in e.inputs if i.role == "eligibility"]
     order = elig + [i.id for i in e.inputs if i.role != "eligibility"]
     needed = sorted(t.needed, key=order.index)
     settled = [Settled(input=k, value=_show(e, e.input(k), given[k]), quote=quotes.get(k, ""),
-                       fact=e.input(k).fact or "") for k in (i.id for i in e.inputs) if k in given]
+                       fact=e.input(k).fact or "", by="exam" if k in preset else "")
+               for k in (i.id for i in e.inputs) if k in given]
     possible = [engine.PH.sub("…", engine.render(e, t, e.outcome(o).classification)) for o in t.possible]
     text = _outcome_text(e, t, sources) if t.outcome is not None else None
     if t.outcome == DOES_NOT_APPLY:
@@ -532,21 +534,36 @@ async def settle_pack(e: Entry, findings: str, history: str, finding: str = "") 
     return Settlement(values=values, failed=degraded or jev_failed or prior_failed, no_unit=no_unit)
 
 
+def exam_presets(e: Entry, finding_id: str) -> dict[str, str]:
+    """The pack's exam presets when the card is its exam card; a finding card never gets them."""
+    return dict(e.exam_presets) if finding_id == EXAM_CARD and "exam" in e.trigger else {}
+
+
 def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str, str] | None = None,
-           sources: list[dict] | None = None) -> Preview:
+           sources: list[dict] | None = None, presets: dict[str, str] | None = None) -> Preview:
     """The card from a settlement and the radiologist's answers, by the engine alone: no model, no Jev. An answer
-    (the card's own, then the shared patient one) overrides the settled value for that input."""
+    (the card's own, then the shared patient one) overrides the settled value for that input, and a settled (quoted)
+    value overrides an exam preset. A preset is the one pre-fill without a quote: it is shown on the card as set by
+    the exam (spec §5.1, §7.10), never applied unseen. Presets are applied here, not in the settlement, so a cached
+    settlement shared with a finding card never carries them."""
     given = _given(e, answered, patient)
     quotes = {}
     for k, (v, q) in s.values.items():
         if k not in given:
             given[k], quotes[k] = v, q
+    preset = set()
+    for k, x in (presets or {}).items():
+        i = e.input(k)
+        v = preset_value(i, x) if i is not None else None
+        if v is not None and k not in given:
+            given[k] = v
+            preset.add(k)
     try:
         t = engine.evaluate(e, given)
     except (engine.EvaluationError, ValueError) as ex:
         logger.error("[library.preview] %s cannot be evaluated: %s", e.key, ex)
         return failed(e)
-    return _build(e, t, given, quotes, sources or [], s.failed or s.no_unit)
+    return _build(e, t, given, quotes, sources or [], s.failed or s.no_unit, frozenset(preset))
 
 
 async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str, str],

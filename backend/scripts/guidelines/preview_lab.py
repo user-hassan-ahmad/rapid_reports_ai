@@ -189,7 +189,7 @@ async def one(lib: Library, c: dict, shared: dict) -> dict:
 
     degraded = s.failed or sb.failed or sc.failed
     settled = {x.input: x.value for x in p.settled}
-    shared[c["name"]] = {x.fact: x.value for x in p.settled if x.fact}
+    shared[c["name"]] = {x.fact: x.value for x in p.settled if x.fact and not x.by}   # an exam preset is not a patient fact
     truth = c["truth"]
     answered = c.get("answered", {})
     model_settled = {x.input: (x.value, x.quote) for x in p.settled if x.input not in answered and x.quote}

@@ -275,10 +275,15 @@ found 67/184 expected topics; one Jev choice per finding found 169/184). Hassan 
   cyst, thyroid, ovarian, AAA, fractures, SINS…). An abnormal finding unit triggers them. A normal unit never does:
   "no nodule" gives no card.
 - **Exam-level** (`trigger` includes `"exam"`): reporting frameworks that score the whole examination (CAD-RADS on a
-  coronary CT angiogram, CAC-DRS on a calcium-score study, PI-RADS on prostate MRI, ASPECTS on stroke CT, Lund-Mackay on
-  sinus CT). The study's identity binds them, whatever is dictated, and a normal study settles to its normal outcome
-  (e.g. CAD-RADS 0). A pack may carry both triggers (CAC-DRS: exam-level on a calcium-score study, finding-triggered for
-  coronary calcification seen on any other CT).
+  coronary CT angiogram, CAC-DRS on a calcium-score study, ASPECTS on hyperacute stroke CT, Lund-Mackay on sinus CT
+  for chronic rhinosinusitis, the NHS AAA Screening Programme on a programme aortic ultrasound). The study's identity
+  binds them, whatever is dictated, and a normal study settles to its normal outcome (e.g. CAD-RADS 0). A pack may carry
+  both triggers (CAC-DRS: exam-level on a calcium-score study, finding-triggered for coronary calcification seen on any
+  other CT; NHS AAA: exam-level on a programme scan, finding-triggered for an aneurysm seen elsewhere). PI-RADS scores
+  lesions and defines no study-level normal outcome, so it is finding-triggered (2026-10-13 clinical review).
+- An exam-level entry may carry `exam_presets`: input values its exam implies (NHS AAA: programme scan, male, not
+  treated). Only the exam card gets them; they are the one pre-fill without a quote, shown on the card as set by the
+  exam (`Settled.by = "exam"`), and a value the dictation states, or an answer, overrides them (§7.10).
 - Each entry carries `purpose`: one or two sentences, from its own source, on what the system is for and in what
   setting. No thresholds, categories or eligibility lists (those stay on the card). Exam-level entries also carry
   `exam`: a one-line description of the study that binds them.

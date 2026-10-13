@@ -32,6 +32,7 @@
     "display": "AOSpine thoracolumbar injury classification (2013 consensus paper)",
     "edition": "2013",
     "exam": "",
+    "exam_presets": {},
     "id": "ao-spine-thoracolumbar",
     "inputs": [],
     "issuer": "AOSpine Spinal Cord Injury & Trauma Knowledge Forum (Vaccaro AR et al.)",
@@ -621,7 +622,8 @@
     },
     "display": "ASPECTS (Barber 2000)",
     "edition": "2000",
-    "exam": "non-contrast CT head for suspected acute ischaemic stroke",
+    "exam": "non-contrast CT head for hyperacute ischaemic stroke, before thrombolytic treatment",
+    "exam_presets": {},
     "id": "aspects",
     "inputs": [],
     "issuer": "ASPECTS Study Group (Alberta Stroke Programme)",
@@ -948,6 +950,7 @@
     "display": "Bosniak 2019",
     "edition": "2019",
     "exam": "",
+    "exam_presets": {},
     "id": "bosniak-renal-cyst",
     "inputs": [
      {
@@ -3040,6 +3043,7 @@
     "display": "BTA 2014 U classification",
     "edition": "2014",
     "exam": "",
+    "exam_presets": {},
     "id": "bta-thyroid-u-grading",
     "inputs": [
      {
@@ -3574,6 +3578,7 @@
     "display": "BTS 2015",
     "edition": "2015",
     "exam": "",
+    "exam_presets": {},
     "id": "bts-pulmonary-nodule",
     "inputs": [
      {
@@ -6277,6 +6282,7 @@
     "display": "CAC-DRS (SCCT 2018)",
     "edition": "2018",
     "exam": "dedicated ECG-gated CT coronary artery calcium scoring scan",
+    "exam_presets": {},
     "id": "cac-drs",
     "inputs": [
      {
@@ -6892,6 +6898,7 @@
     "display": "CAD-RADS 2.0",
     "edition": "2022",
     "exam": "coronary CT angiography (CTCA)",
+    "exam_presets": {},
     "id": "cad-rads-2",
     "inputs": [
      {
@@ -9502,6 +9509,7 @@
     "display": "ESE adrenal incidentaloma 2023",
     "edition": "2023",
     "exam": "",
+    "exam_presets": {},
     "id": "ese-adrenal-incidentaloma",
     "inputs": [
      {
@@ -10545,6 +10553,7 @@
     "display": "Fazekas scale (1987)",
     "edition": "1987",
     "exam": "",
+    "exam_presets": {},
     "id": "fazekas",
     "inputs": [],
     "issuer": "Fazekas F et al. (Hospital of the University of Pennsylvania)",
@@ -10951,6 +10960,7 @@
     "display": "Fleischner Society 2017",
     "edition": "2017",
     "exam": "",
+    "exam_presets": {},
     "id": "fleischner-pulmonary-nodule",
     "inputs": [
      {
@@ -12075,7 +12085,7 @@
       "recommendation": "Manage per the clinical context (screening programme protocol, or the patient's oncology or immunosuppression care)."
      }
     ],
-    "purpose": "Gives follow-up recommendations for solid and subsolid pulmonary nodules found incidentally on CT in adults; not intended for lung cancer screening.",
+    "purpose": "Gives follow-up recommendations for solid and subsolid pulmonary nodules found incidentally on CT in adults.",
     "reference": {
      "definitions": [
       {
@@ -12315,6 +12325,7 @@
     "display": "Garden 1961",
     "edition": "1961",
     "exam": "",
+    "exam_presets": {},
     "id": "garden-hip-fracture",
     "inputs": [],
     "issuer": "Garden RS (Preston Royal Infirmary)",
@@ -12585,6 +12596,7 @@
     "display": "Kellgren-Lawrence 1957",
     "edition": "1957",
     "exam": "",
+    "exam_presets": {},
     "id": "kellgren-lawrence",
     "inputs": [],
     "issuer": "Kellgren and Lawrence (University of Manchester)",
@@ -12980,7 +12992,8 @@
     },
     "display": "Lund-Mackay CT sinus staging (1993)",
     "edition": "1993",
-    "exam": "CT of the paranasal sinuses",
+    "exam": "CT paranasal sinuses for chronic rhinosinusitis",
+    "exam_presets": {},
     "id": "lund-mackay",
     "inputs": [],
     "issuer": "Lund VJ, Mackay IS (Rhinology)",
@@ -13311,7 +13324,12 @@
     },
     "display": "NHS AAA Screening 2025",
     "edition": "2025",
-    "exam": "",
+    "exam": "NHS AAA Screening Programme abdominal aortic ultrasound",
+    "exam_presets": {
+     "previous_aaa_treatment": "false",
+     "screening_programme": "true",
+     "sex": "male"
+    },
     "id": "nhs-aaa-surveillance",
     "inputs": [
      {
@@ -13991,6 +14009,7 @@
     "tier": 1,
     "topic": "abdominal-aortic-aneurysm",
     "trigger": [
+     "exam",
      "finding"
     ],
     "version": "2025.1"
@@ -14030,7 +14049,8 @@
     },
     "display": "PI-RADS v2.1",
     "edition": "2019 (v2.1)",
-    "exam": "MRI of the prostate (multiparametric or biparametric)",
+    "exam": "",
+    "exam_presets": {},
     "id": "pi-rads-2-1",
     "inputs": [
      {
@@ -15675,7 +15695,7 @@
     "tier": 1,
     "topic": "prostate-lesion-mri",
     "trigger": [
-     "exam"
+     "finding"
     ],
     "version": "2019.1"
    },
@@ -15715,6 +15735,7 @@
     "display": "RCOG GTG 34 (2016, updated 2025)",
     "edition": "2016 (minor update December 2025)",
     "exam": "",
+    "exam_presets": {},
     "id": "rcog-ovarian-mass-postmenopausal",
     "inputs": [
      {
@@ -16905,6 +16926,7 @@
     "display": "RCOG GTG 62 (2011)",
     "edition": "2011 (first edition, RCOG/BSGE joint guideline; RCOG lists a second edition as in development, checked 2026-10-12)",
     "exam": "",
+    "exam_presets": {},
     "id": "rcog-ovarian-mass-premenopausal",
     "inputs": [
      {
@@ -18294,6 +18316,7 @@
     "display": "Salter-Harris 1963",
     "edition": "1963",
     "exam": "",
+    "exam_presets": {},
     "id": "salter-harris",
     "inputs": [
      {
@@ -18768,6 +18791,7 @@
     "display": "Spinal Instability Neoplastic Score, SINS (2010)",
     "edition": "2010",
     "exam": "",
+    "exam_presets": {},
     "id": "sins",
     "inputs": [
      {
@@ -19427,6 +19451,7 @@
     "display": "Stoller meniscal signal grade (1987)",
     "edition": "1987",
     "exam": "",
+    "exam_presets": {},
     "id": "stoller-meniscus",
     "inputs": [],
     "issuer": "Stoller DW et al. (University of California San Francisco; Cedars-Sinai Medical Center)",
@@ -19786,7 +19811,8 @@
       "malleolar fracture"
      ],
      "modality": [
-      "XR"
+      "XR",
+      "CT"
      ],
      "region": [
       "ankle"
@@ -19795,6 +19821,7 @@
     "display": "AO/OTA 2018 ankle fracture (44A/B/C)",
     "edition": "2018",
     "exam": "",
+    "exam_presets": {},
     "id": "weber-ankle",
     "inputs": [],
     "issuer": "AO Foundation and Orthopaedic Trauma Association",
@@ -20189,5 +20216,5 @@
    ]
   }
  },
- "version": "fd4a765c5cc7"
+ "version": "9327550e7a27"
 }

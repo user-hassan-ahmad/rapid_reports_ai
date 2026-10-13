@@ -24,7 +24,7 @@ from . import library_match as LM
 from . import registry as R
 from . import tnm
 from .library import bundle as L
-from .library.pack_preview import PACK_BRANCH, REFERENCE_BRANCH
+from .library.pack_preview import EXAM_CARD, PACK_BRANCH, REFERENCE_BRANCH
 from .types import Card, Publication
 
 logger = logging.getLogger(__name__)
@@ -472,7 +472,7 @@ async def build_cards(facts, picks: list[tuple[Finding, tuple | None]], history:
     matcher_topic equals a bound exam entry's merges into that exam card (no finding card). Caps as match_other."""
     lib = lib or L.get()
     text = dictation or "\n".join(f.text for f, _ in picks)
-    exam = [_pack_card(lib, e, "exam", text) for e in LM.exam_entries(lib) if facts and e.key in facts.exams]
+    exam = [_pack_card(lib, e, EXAM_CARD, text) for e in LM.exam_entries(lib) if facts and e.key in facts.exams]
     owned = {e.matcher_topic for e in LM.exam_entries(lib) if facts and e.key in facts.exams}
     modality = facts.modality if facts else None
 

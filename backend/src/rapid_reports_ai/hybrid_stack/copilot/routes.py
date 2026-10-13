@@ -35,7 +35,8 @@ from .fetch import OVERVIEW, resolve_guideline
 from .library import bundle as L
 from .library import describe as D
 from .library import preview_cache as PC
-from .library.pack_preview import PACK_BRANCH, REFERENCE_BRANCH, Settlement, as_entry, failed, finish, settle_pack
+from .library.pack_preview import (PACK_BRANCH, REFERENCE_BRANCH, Settlement, as_entry, exam_presets, failed, finish,
+                                   settle_pack)
 from .library.schema import FACTS
 from .matcher import Finding, match, match_other
 from .preview import preview
@@ -327,7 +328,7 @@ async def _pack_result(pack, req: OpenRequest, t0: float, opened: bool) -> OpenR
         task = PC.start(k, lambda: settle_pack(e, findings, history, finding=finding), retry=opened,
                         fallback=lambda: Settlement(failed=True))
         settled = await asyncio.wait_for(asyncio.shield(task), PREVIEW_TIMEOUT_S)
-        prev = finish(e, settled, req.answered, req.patient, sources)
+        prev = finish(e, settled, req.answered, req.patient, sources, presets=exam_presets(e, req.card.finding_id))
     except Exception as ex:   # TimeoutError included
         logger.warning("[copilot.routes] pack preview %s", type(ex).__name__)   # no message: it may hold dictation
         prev = failed(e)

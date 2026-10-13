@@ -1040,3 +1040,60 @@ async def test_fu_inside_a_word_is_not_follow_up(monkeypatch, jev):
     out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging. Patient refusal of contrast.",
                                 "Fully independent.", {}, finding=PRIOR_FINDING)
     assert next(x for x in out.settled if x.input == "prior_study").value == "No"
+
+
+# ── exam presets (spec §5.1): an exam card pre-fills what its exam binding implies, shown as set by the exam ─────────
+
+def _aaa():
+    from pathlib import Path
+    from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
+    src = Path(__file__).resolve().parents[2] / "guidelines" / "nhs-aaa-surveillance" / "entry.json"
+    return Entry.model_validate_json(src.read_text())
+
+
+_PRESET_IDS = ("screening_programme", "sex", "previous_aaa_treatment")
+_DIAMETER = {"diameter_cm": (PP.InputValue(value=2.4), "aorta 2.4 cm")}
+
+
+def _exam_finish(e, values, answered=None, patient=None):
+    return PP.finish(e, PP.Settlement(values=values), answered or {}, patient,
+                     presets=PP.exam_presets(e, PP.EXAM_CARD))
+
+
+def test_a_normal_aaa_screen_is_prefilled_by_the_exam_and_the_presets_say_so():
+    e = _aaa()
+    p = _exam_finish(e, _DIAMETER)
+    by = {x.input: x for x in p.settled}
+    assert {k: (by[k].value, by[k].quote, by[k].by) for k in _PRESET_IDS} == {
+        "screening_programme": ("Yes", "", "exam"), "sex": ("male", "", "exam"),
+        "previous_aaa_treatment": ("No", "", "exam")}
+    assert (by["diameter_cm"].value, by["diameter_cm"].quote, by["diameter_cm"].by) == ("2.4 cm", "aorta 2.4 cm", "")
+    # initial screen or surveillance is not implied by the exam: the one input left is asked, never preset
+    assert p.missing == ["prior_programme_scan"] and p.state == "applies" and p.proposal is None
+    stated = _exam_finish(e, {**_DIAMETER, "prior_programme_scan": (PP.InputValue(value=False), "initial screen")})
+    answered = _exam_finish(e, _DIAMETER, answered={"prior_programme_scan": "No"})
+    for done in (stated, answered):
+        assert done.trace["outcome"] == "no_aaa" and done.missing == []
+        assert done.proposal.classification == "NHS AAA Screening 2025 · No AAA found: aortic diameter less than 3.0 cm."
+
+
+def test_a_dictated_value_or_an_answer_overrides_the_preset():
+    e = _aaa()
+    female = _exam_finish(e, {**_DIAMETER, "sex": (PP.InputValue(value="female"), "female")})
+    sex = next(x for x in female.settled if x.input == "sex")
+    assert (sex.value, sex.quote, sex.by) == ("female", "female", "") and female.state == "does_not_apply"
+    for p in (_exam_finish(e, _DIAMETER, patient={"sex": "female"}),
+              _exam_finish(e, _DIAMETER, answered={"screening_programme": "No"})):
+        assert p.state == "does_not_apply" and p.proposal is None
+
+
+def test_a_finding_card_gets_no_presets():
+    e = _aaa()
+    assert PP.exam_presets(e, "u1") == {} and PP.exam_presets(e, PP.EXAM_CARD) == dict(e.exam_presets)
+    p = PP.finish(e, PP.Settlement(values=_DIAMETER), {}, presets=PP.exam_presets(e, "u1"))
+    assert [x.input for x in p.settled] == ["diameter_cm"] and all(x.by == "" for x in p.settled)
+    assert p.state == "check_first" and set(_PRESET_IDS) <= set(p.missing)
+
+
+def test_presets_need_an_exam_level_entry(toy_entry):
+    assert PP.exam_presets(toy_entry, PP.EXAM_CARD) == {}

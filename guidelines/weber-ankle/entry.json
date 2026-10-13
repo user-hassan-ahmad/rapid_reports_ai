@@ -14,7 +14,8 @@
       "ankle"
     ],
     "modality": [
-      "XR"
+      "XR",
+      "CT"
     ],
     "finding_type": [
       "malleolar fracture"

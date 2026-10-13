@@ -112,6 +112,7 @@ class Settled(BaseModel):
     value: str
     quote: str = ""
     fact: str = ""                # library packs: the shared patient fact this input carries ("" for none)
+    by: str = ""                  # library packs: "exam" when the exam binding preset it (no quote); "" when read
 
 
 class Proposal(BaseModel):

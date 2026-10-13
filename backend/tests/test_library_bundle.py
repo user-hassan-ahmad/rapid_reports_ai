@@ -139,5 +139,7 @@ def test_every_entry_has_a_purpose_and_exam_level_set_is_the_five():
     assert entries and all(e.purpose.strip() and len(e.purpose) <= 400 for e in entries)
     assert all("no clinical" not in e.purpose.lower() and "is stated" not in e.purpose.lower() for e in entries)
     assert {e.id for e in entries if "exam" in e.trigger} == {
-        "cad-rads-2", "cac-drs", "pi-rads-2-1", "aspects", "lund-mackay"}
+        "cad-rads-2", "cac-drs", "nhs-aaa-surveillance", "aspects", "lund-mackay"}
+    assert {e.id: e.exam_presets for e in entries if e.exam_presets} == {"nhs-aaa-surveillance": {
+        "screening_programme": "true", "sex": "male", "previous_aaa_treatment": "false"}}
     assert {e.id: e.matcher_topic for e in entries if e.match_topic} == {"cac-drs": "coronary", "cad-rads-2": "coronary"}
