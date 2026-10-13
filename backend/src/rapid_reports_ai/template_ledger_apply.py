@@ -514,3 +514,16 @@ def reconcile_chat(before: str, after: str, ledger: List[dict]) -> Tuple[List[di
             if ch:
                 changes.append(ch)
     return out, changes, cards
+
+
+# ── rendering for the writer's prompt (the same lines apply_ledger writes) ─────────────────────────────────────
+
+def render_list_missing(items: List[str]) -> str:
+    rule = tss.Rule(id="ledger", section="", condition="any listed value is not stated", condition_source="findings",
+                    effect="list_missing", items=list(items), position="top", source_lines=[])
+    return tsg.render_rule(rule)
+
+
+def render_concept(name: str, choice: dict) -> List[str]:
+    """A concept's lines inside a paragraph ([] for "not used" and "whichever is dictated")."""
+    return _concept_lines(td.validate("concept", name, choice)[1]) if choice.get("use") else []

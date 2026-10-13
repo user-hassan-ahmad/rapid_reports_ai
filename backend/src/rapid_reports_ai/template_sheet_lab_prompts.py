@@ -210,7 +210,13 @@ SUMMARY_SPEC = """{
 
 def analyser_user_prompt(examples: List[Dict[str, str]], scan_type: str, protocol_notes: str = "") -> str:
     """Production's user prompt (examples, protocol notes, summary/questions contract), with the sheet
-    returned between delimiters before the JSON."""
+    returned between delimiters before the JSON. The live writer's prompt until the writer lab (Rules-step plan
+    Task 31 moves write_sheet to writer_user_prompt)."""
+    return _user_prompt(examples, scan_type, protocol_notes, decisions=None, questions=True)
+
+
+def _user_prompt(examples: List[Dict[str, str]], scan_type: str, protocol_notes: str,
+                 decisions: Optional[List[dict]], questions: bool) -> str:
     examples_text = ""
     for i, ex in enumerate(examples, 1):
         label = ex.get("label") or f"Example {i}"
@@ -224,8 +230,12 @@ def analyser_user_prompt(examples: List[Dict[str, str]], scan_type: str, protoco
             "variations the examples cannot reveal (use them to decide which text is FIXED and which needs {slots}). "
             f"Apply each piece of context wherever it is relevant.\n\nNotes:\n{protocol_notes.strip()}\n"
         )
+    decided = decided_block(decisions) if decisions else ""
+    keys = 'exactly two keys, "summary" and "questions"' if questions else 'exactly one key, "summary"'
+    spec = SUMMARY_SPEC if questions else WRITER_SUMMARY_SPEC
+    ask = f"\n{_QUESTIONS_RULE}" if questions else ""
     return f"""Analyse these example radiology reports for scan type: **{scan_type}**
-{notes}{examples_text}
+{notes}{decided}{examples_text}
 
 Answer in exactly two parts.
 
@@ -235,9 +245,9 @@ PART 1: the complete Skill Sheet as plain markdown, following the sheet layout a
 ...
 {SHEET_CLOSE}
 
-PART 2: after the closing delimiter, one JSON object with exactly two keys, "summary" and "questions":
+PART 2: after the closing delimiter, one JSON object with {keys}:
 
-{SUMMARY_SPEC}
+{spec}
 
 Rules for the summary (rendered as visual hierarchy in the UI; terse and scannable):
 - structure.sections: every top-level section in report order, matching the SECTION lines. Paragraphs is the list of internal paragraph descriptions within each section (empty list if none). Each is a short noun phrase (under 10 words).
@@ -245,8 +255,12 @@ Rules for the summary (rendered as visual hierarchy in the UI; terse and scannab
 - voice.phrases: 3-5 verbatim quoted phrases from the example reports that capture the signature voice.
 - conventions.rules: 4-6 of the most distinctive scan-specific rules. Title is a short label, detail is one sentence.
 - impression.flow: 2-4 nouns describing the construction sequence.
-- impression.detail: one short sentence about sentence count, grouping, recommendation integration.
-- questions: exactly 3 objects, each with "question" and "suggestions" (2-3 short clickable answer options). Target the most impactful Open Questions or where examples were ambiguous. Suggestions are concrete, specific answers. Do not ask about things clearly evidenced in the reports."""
+- impression.detail: one short sentence about sentence count, grouping, recommendation integration.{ask}"""
+
+
+_QUESTIONS_RULE = ('- questions: exactly 3 objects, each with "question" and "suggestions" (2-3 short clickable answer '
+                   'options). Target the most impactful Open Questions or where examples were ambiguous. Suggestions '
+                   'are concrete, specific answers. Do not ask about things clearly evidenced in the reports.')
 
 
 def split_answer(raw: str) -> Dict[str, Optional[object]]:
@@ -423,3 +437,115 @@ def split_conversion(raw: str) -> Dict[str, object]:
     except ValueError as e:
         out["json_error"] = f"{type(e).__name__}: {e}"[:300]
     return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The writer's next prompts (Rules-step plan Task 28). Built here and run by the writer lab (rules_step_lab write);
+# write_sheet keeps ANALYSER_SYSTEM_PROMPT + analyser_user_prompt until Task 31 wires these in after the lab.
+# The live prompts above are left byte for byte as they are.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _swap(text: str, pairs) -> str:
+    for old, new in pairs:
+        assert text.count(old) == 1, old[:60]
+        text = text.replace(old, new)
+    return text
+
+
+# The slot conflict (template rules roadmap §5): a normal sentence's measured part has a place of its own; and no
+# clarifying questions (the Rules step asks instead).
+WRITER_SYSTEM_PROMPT = _swap(ANALYSER_SYSTEM_PROMPT, (
+    ("put a named slot in curly braces in its place ({value}, {measurement}, {laterality}, {date} ...). Never "
+     "paraphrase quoted text.",
+     "put a named slot in curly braces in its place ({value}, {measurement}, {laterality}, {date} ...). Never "
+     "paraphrase quoted text. A NORMAL or NEGATIVE line is the exception: it never holds a slot. Where a normal "
+     "sentence carries a measured value, the NORMAL quotes the sentence without the measured part, and the measured "
+     "part goes in a FIXED field line (\"<Label>: {value} <unit>\") or in the paragraph's Measurement prose."),
+    ("flag it under Open Questions as [NEEDS CLARIFICATION] so it can be raised as a question.",
+     "flag it under Open Questions as [NEEDS CLARIFICATION]."),
+))
+
+WRITER_SUMMARY_SPEC = _swap(SUMMARY_SPEC, ((
+    '''  },
+  "questions": [
+    { "question": "<clarifying question>", "suggestions": ["<answer option>", "<answer option>"] }
+  ]
+}''', '''  }
+}'''),))
+
+
+# ── The Rules step's decisions as ground truth (spec 2026-10-13-template-rules-step-design, step 4) ─────────────
+# With decisions, the writer no longer guesses LIST_MISSING or the standard study-level context rules: it copies the
+# decided lines. The save function applies the same decisions by code afterwards (drift is logged), so this prompt
+# change lowers drift; it is not what makes the decisions hold.
+
+DECIDED_HEADING = "DECIDED BY THE RADIOLOGIST"
+
+_GUESS_LIST_MISSING = "- LIST_MISSING: the values the radiologist expects in every report of this type, unconditionally."
+_DECIDED_LIST_MISSING = (f"- LIST_MISSING: when {DECIDED_HEADING} gives a LIST_MISSING line, write exactly that line and no "
+                         "other value; when it says no value is required, write no LIST_MISSING line; when it says "
+                         "nothing about values, the values the radiologist expects in every report of this type, "
+                         "unconditionally.")
+_GUESS_CONTEXT = ("- Context rules: where examples differ because of what was performed, the protocol, a technical "
+                  "limitation or prior imaging, write the context RULE that produces the variant wording, quoting it.")
+_DECIDED_CONTEXT = (f"- Context rules: for each study-level circumstance listed under {DECIDED_HEADING}, write exactly the "
+                    "lines given there, word for word, and no other line or rule about that circumstance; a "
+                    "circumstance marked not used or whichever is dictated gets no line at all. For any other "
+                    "circumstance where the examples differ because of what was performed or the protocol, write the "
+                    "context RULE that produces the variant wording, quoting it.")
+_GUESS_GRAMMAR = ("Use it when an example shows a list of values not provided (under any label), or contains unfilled "
+                  "placeholders (curly-brace slots or blank values), or when every example states the same set of "
+                  "measured values.")
+_DECIDED_GRAMMAR = f"When {DECIDED_HEADING} decides the values, use exactly its line."
+
+
+def analyser_system_prompt(decided: bool = False) -> str:
+    """The writer's next system prompt; `decided`: the Rules step's decisions are in the user prompt, so the
+    guessing instructions for those items are replaced by "copy the decided lines"."""
+    if not decided:
+        return WRITER_SYSTEM_PROMPT
+    return _swap(WRITER_SYSTEM_PROMPT, ((_GUESS_LIST_MISSING, _DECIDED_LIST_MISSING), (_GUESS_CONTEXT, _DECIDED_CONTEXT),
+                                        (_GUESS_GRAMMAR, _DECIDED_GRAMMAR)))
+
+
+def writer_user_prompt(examples: List[Dict[str, str]], scan_type: str, protocol_notes: str = "",
+                       decisions: Optional[List[dict]] = None) -> str:
+    """The writer's next user prompt: the summary only (no questions), with the decided lines after the
+    radiologist's notes when there are decisions."""
+    return _user_prompt(examples, scan_type, protocol_notes, decisions=decisions, questions=False)
+
+
+def decided_block(decisions: List[dict]) -> str:
+    """The decisions as lines the writer copies: the LIST_MISSING line and each concept's lines, rendered by the same
+    code that applies them at save (template_ledger_apply). Fixed-line and normal entries (Style-step cards, after the
+    build) are left to the save function."""
+    from . import template_decisions as td
+    from . import template_ledger_apply as tla
+    ledger = td.clean_ledger(decisions)
+    values = [e for e in ledger if e["kind"] == "value"]
+    concepts = [e for e in ledger if e["kind"] == "concept"]
+    if not values and not concepts:
+        return ""
+    out = [f"\n\n**{DECIDED_HEADING}**: ground truth from the radiologist's own answers. Copy these lines word for "
+           "word; they take precedence over anything the examples suggest.\n"]
+    if values:
+        every = [e["key"] for e in values if e["choice"]["need"] == "every"]
+        other = [e["key"] for e in values if e["choice"]["need"] != "every"]
+        if every:
+            out.append("Required values: write this line under ## Report-wide, followed by \"| section: <NAME of the "
+                       "first findings section>\":\n" + tla.render_list_missing(every))
+        else:
+            out.append("Required values: none. Write no LIST_MISSING line.")
+        if other:
+            out.append("Not required in every report (never list them): " + ", ".join(other) + ".")
+    for e in concepts:
+        c = td.CONCEPTS[e["key"]]
+        lines = tla.render_concept(e["key"], e["choice"])
+        if lines:
+            out.append(f"{c.label}: write these lines at the end of the paragraph of the section that says how the "
+                       "study was done (else the first findings paragraph):\n" + "\n".join(lines))
+        elif e["choice"].get("dictated"):
+            out.append(f"{c.label}: whichever is dictated. Write no line and no rule about it.")
+        else:
+            out.append(f"{c.label}: not used. Write no line and no rule about it.")
+    return "\n".join(out) + "\n"

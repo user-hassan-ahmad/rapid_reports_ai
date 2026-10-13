@@ -175,3 +175,83 @@ def test_the_labelled_opening_shape_in_the_prompt_parses_clean():
              'COVERS ["<structure>"]\nOpening (normal): "<opening words>"\nOpening (abnormal): "<opening words>"\n')
     r = tsg.parse_sheet(sheet, mode="template")
     assert r.errors == [] and r.warnings == [] and r.structure.usable
+
+
+# ── Task 28: the writer's next prompts (built here, wired into write_sheet only after the writer lab) ──────────
+
+def test_the_live_writer_prompts_are_unchanged_until_the_writer_lab():
+    # write_sheet still sends ANALYSER_SYSTEM_PROMPT + analyser_user_prompt (questions included) until Task 31
+    assert "so it can be raised as a question" in P.ANALYSER_SYSTEM_PROMPT
+    assert "the measured part goes in a FIXED field line" not in P.ANALYSER_SYSTEM_PROMPT + P.GRAMMAR
+    assert '"questions"' in P.analyser_user_prompt([{"content": "X"}], "<scan>")
+
+
+def test_the_decided_prompt_replaces_the_guessing_and_stays_case_agnostic():
+    p = P.analyser_system_prompt(True)
+    assert P.analyser_system_prompt(False) == P.WRITER_SYSTEM_PROMPT
+    assert P.DECIDED_HEADING in p and "Use it when an example shows a list of values not provided" not in p
+    assert "write exactly the lines given there" in p and "LIST_MISSING [" in p
+    for prompt in (p, P.WRITER_SYSTEM_PROMPT, P.writer_user_prompt([], "<scan>")):
+        for clinical in CLINICAL:
+            assert clinical not in prompt.lower(), clinical
+
+
+def test_the_writer_asks_no_questions_and_places_a_normals_measured_part():
+    u = P.writer_user_prompt([{"content": "X"}], "<scan>")
+    assert '"questions"' not in u and 'exactly one key, "summary"' in u and "questions:" not in u
+    assert P.SHEET_OPEN in u and P.SHEET_CLOSE in u and "### Example 1\n```\nX\n```" in u
+    assert "so it can be raised as a question" not in P.WRITER_SYSTEM_PROMPT
+    assert "[NEEDS CLARIFICATION]." in P.WRITER_SYSTEM_PROMPT
+    assert "the measured part goes in a FIXED field line" in P.WRITER_SYSTEM_PROMPT
+    assert P.WRITER_SYSTEM_PROMPT.count("A NORMAL or NEGATIVE line is the exception: it never holds a slot.") == 1
+
+
+def _ledger():
+    from rapid_reports_ai import template_decisions as td
+    led, _ = td.set_decision([], "value", "Value A", {"need": "every"}, source="creation")
+    led, _ = td.set_decision(led, "value", "Value B", {"need": "relevant"}, source="creation")
+    led, _ = td.set_decision(led, "concept", "comparison", {"use": True, "default": "No previous imaging.",
+                                                            "when_met": "Compared with the {study} of {date}."},
+                             source="creation")
+    led, _ = td.set_decision(led, "concept", "limitation", {"use": False}, source="creation")
+    return led
+
+
+def test_the_user_prompt_carries_the_decided_lines():
+    u = P.writer_user_prompt([{"content": "X"}], "<scan>", decisions=_ledger())
+    assert P.DECIDED_HEADING in u
+    assert 'RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["Value A"] AT TOP' in u
+    assert "Not required in every report (never list them): Value B." in u
+    assert ('FIXED "No previous imaging."\nRULE WHEN [context: the dictation names a previous imaging study for '
+            'comparison] REPLACE "No previous imaging." WITH "Compared with the {study} of {date}."') in u
+    assert "Technical limitation: not used." in u
+    assert P.decided_block([]) == "" and P.SHEET_OPEN in u
+    assert u.index(P.DECIDED_HEADING) < u.index("### Example 1")
+    assert P.DECIDED_HEADING not in P.writer_user_prompt([{"content": "X"}], "<scan>")
+
+
+def test_the_decided_block_follows_the_current_card_shapes():
+    """Contrast has two conditions (a default-only wording is FIXED + SUPPRESS); "whichever is dictated" writes no
+    line; a ledger with only non-required values asks for no LIST_MISSING line; the lines are the ones apply_ledger
+    writes."""
+    from rapid_reports_ai import template_decisions as td
+    from rapid_reports_ai import template_ledger_apply as tla
+    from rapid_reports_ai import template_rules_cards as trc
+    given = td.CONCEPTS["contrast"].states["given"]
+    usual = trc.usual_card("contrast", {"given": "", "not_given": "No agent was given."}, [])
+    not_given = next(c["choice"] for c in usual["choices"] if c["id"] == "usual:not_given")
+    dictated = next(c["choice"] for c in trc.disagree_card("sequences", [{"text": "All parts done.", "reports": [1]}],
+                                                           "", "default", [], "")["choices"]
+                    if c["id"] == "dictated")
+    led, errors = td.ledger_from_changes([
+        {"kind": "value", "key": "Value B", "choice": {"need": "not_needed"}},
+        {"kind": "concept", "key": "contrast", "choice": not_given},
+        {"kind": "concept", "key": "sequences", "choice": dictated, "source": "default"}])
+    assert errors == []
+    block = P.decided_block(led)
+    assert "Required values: none. Write no LIST_MISSING line." in block
+    assert f'FIXED "No agent was given."\nRULE WHEN [context: {given}] SUPPRESS "No agent was given."' in block
+    assert "Parts of the study not performed: whichever is dictated. Write no line and no rule about it." in block
+    assert tla.render_concept("contrast", led[1]["choice"]) == ['FIXED "No agent was given."',
+                                                               f'RULE WHEN [context: {given}] SUPPRESS "No agent was given."']
+    assert tla.render_concept("sequences", led[2]["choice"]) == []
