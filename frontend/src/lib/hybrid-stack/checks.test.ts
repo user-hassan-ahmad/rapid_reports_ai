@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkLabel, replaced, segments, toChecks, unitFor } from './checks';
+import { backstopRun, checkKey, checkLabel, replaced, segments, toChecks, unitFor } from './checks';
 import type { StackUnit } from './types';
 
 const u = (id: number, text: string, group: string): StackUnit => ({ id, text, group, structure: null, attach_to: null, parts: null, covers: [], pinned: false, heading: false });
@@ -37,6 +37,14 @@ describe('dictation checks on the scratchpad', () => {
 		const [c] = toChecks(text, [{ kind: 'laterality_conflict', severity: 'medium', excerpt: 'left VUJ', message: 'Left or right?', start: at, end: at + 8, blocking: false }], units);
 		expect(c).toMatchObject({ blocking: true, tier: 2, quote: 'left VUJ', unitId: 0 });
 		expect(checkLabel(c.kind)).toBe('Sides as intended?');
+	});
+	it('the backstop never supersedes a model check in flight, and re-runs it when the scan type changes (round 1)', () => {
+		const text = 'Right knee. Small effusion.';
+		expect(backstopRun({ text, scan: 'MRI Knee (left)', semanticFor: text, semanticScan: 'MRI Knee (left)' })).toBe('none');
+		expect(backstopRun({ text, scan: 'MRI Knee (left)', semanticFor: null, semanticScan: 'MRI Knee' })).toBe('semantic');
+		expect(backstopRun({ text, scan: 'MRI Knee (left)', semanticFor: 'older text', semanticScan: 'MRI Knee (left)' })).toBe('tier1');
+		expect(backstopRun({ text, scan: 'MRI Knee', semanticFor: null, semanticScan: null })).toBe('tier1'); // the first review runs it
+		expect(checkKey('MRI Knee (left)', text)).not.toBe(checkKey('MRI Knee', text));
 	});
 	it('cuts a line into plain runs and underlined runs, both halves of a conflict included', () => {
 		const t = 'A left renal cyst; the right kidney is normal.';

@@ -43,7 +43,7 @@
 	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
 	import { abnormalAll, addedAtConfirm, assumedFrom, assumedStale, confirmReady, flaggedFrom, keepRules, moreLine, openCount, rowSentences, splitReply, rulesToSend, type AssumedSnap, type SessionRules } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
-	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
+	import { backstopRun, checkKey, toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
 	import { asTailUnits, assumedKey, blockedSegments, pickBody, pickKey, placedRegions, shownNormals, visiblePills, withoutSegments, type ProtocolPick } from '$lib/hybrid-stack/protocol';
 	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
@@ -293,6 +293,11 @@
 	let seenChecks: Record<string, CheckFlag> = {};
 	let checkedFor = '';
 	let checkSeq = 0;
+	// The model check in flight (round 1): its text while it runs, so Confirm shows "Checking…" and the walk waits for
+	// its flags (bounded by the check's own timeout; it fails open). The scan type it last ran with: a new pick re-runs it.
+	let semanticFor: string | null = null;
+	let semanticScan: string | null = null;
+	let semanticRun = 0;
 	let conclusionNote: { for: string; added: string[]; suggestion: string | null; loading: boolean } | null = null;
 	// The last /assumed answer and the state it was computed for (review 2026-10-12): a region assumes only what was
 	// checked for its current state, and Confirm waits while the answer is behind the dictation.
@@ -378,7 +383,7 @@
 	// The gate re-arms on any change to what it confirms (spec §5).
 	// A check sits on the sentence that now holds its words (units move as the grouping settles).
 	$: placedChecks = checks.map((c) => ({ ...c, unitId: unitFor(c.quote, stackUnits) }));
-	$: checksBehind = stackView && !isRecording && !!verbatimNow.trim() && checkedFor !== verbatimNow;
+	$: checksBehind = stackView && !isRecording && !!verbatimNow.trim() && checkedFor !== checkKey(scanType, verbatimNow);
 	// Backstop: the review path runs the check; if the text settled without one (nothing for the review to do), run
 	// tier 1 so Confirm never waits on a check nobody started.
 	let checksTimer: ReturnType<typeof setTimeout> | null = null;
@@ -387,7 +392,8 @@
 		if (checksTimer) clearTimeout(checksTimer);
 		checksTimer = setTimeout(() => {
 			checksTimer = null;
-			if (checksBehind && !reviewBehind && !isRecording) void runChecks(verbatimNow, false);
+			const run = backstopRun({ text: verbatimNow, scan: scanType, semanticFor, semanticScan });
+			if (checksBehind && !reviewBehind && !isRecording && run !== 'none') void runChecks(verbatimNow, run === 'semantic');
 		}, 1500);
 	}
 	$: gateKey = [verbatimNow, JSON.stringify(checks.map((c) => c.key)), JSON.stringify(checkAnswers), findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
@@ -1645,14 +1651,21 @@
 	/** The integrity check for this text. A failure shows nothing new and lets Confirm through (never a blocker it
 	 *  cannot clear); tier 2 flags already shown stay while their words do. */
 	async function runChecks(text: string, semantic: boolean): Promise<void> {
+		if (!semantic && semanticFor === text) return; // the model check on this text is running: it brings tier 1 too
 		const seq = ++checkSeq;
+		const scan = scanType;
+		if (semantic) {
+			semanticFor = text;
+			semanticScan = scan;
+			semanticRun = seq;
+		}
 		const keepSemantic = () => semanticChecks.filter((c) => text.includes(c.quote));
 		try {
 			// Unfinished sentences are Jev's (every variant, not a regex); the model tier runs with it, never gated on it.
 			const [unfinished, res] = await Promise.all([
 				postUnfinished($token, { text }).catch(() => ({ flags: [] })),
 				semantic
-					? postDictationCheck($token, { findings: text, include_semantic: true, skip_tier1: true, scan_type: scanType, clinical_history: clinicalHistory })
+					? postDictationCheck($token, { findings: text, include_semantic: true, skip_tier1: true, scan_type: scan, clinical_history: clinicalHistory })
 					: Promise.resolve(null)
 			]);
 			if (seq !== checkSeq) return;
@@ -1666,9 +1679,11 @@
 			if (seq !== checkSeq) return;
 			semanticChecks = keepSemantic();
 			checks = semanticChecks;
+		} finally {
+			if (semantic && semanticRun === seq) semanticFor = null; // done, failed or superseded: Confirm stops waiting on it
 		}
 		seenChecks = { ...seenChecks, ...Object.fromEntries(checks.map((c) => [c.key, c])) };
-		checkedFor = text;
+		checkedFor = checkKey(scan, text);
 	}
 	/** Keep as dictated, Skip, or Replace (the line edit itself goes through stackEditLine) on a check. */
 	function answerCheck(key: string, how: CheckAnswer): void {
@@ -2140,6 +2155,7 @@
 		checkAnswers = {};
 		seenChecks = {};
 		checkedFor = '';
+		semanticFor = semanticScan = null;
 		reviewFailed = false;
 		removedSentences = [];
 		assumedSnap = null;
@@ -2729,7 +2745,7 @@
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
 							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
 							onConfirm={stackConfirm} {confirmNote} onConfirmGenerate={onStackGenerate ? async () => { if (await stackConfirm()) onStackGenerate?.(); } : null} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
-							syncing={assumedBehind || checksBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
+							checking={semanticFor !== null && semanticFor === verbatimNow} syncing={assumedBehind || checksBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
 					{/if}
 				</div>
 
