@@ -213,7 +213,8 @@ async def one(lib: Library, c: dict, shared: dict) -> dict:
             "asks": len(p.missing), "filled": sorted(set(filled) - set(answered)),
             "unasked": [x for x in want_settled if x not in settled and x not in may],
             "asked_instead": [x for x in want_settled if x not in settled and x in may],
-            "settled": [x.model_dump() for x in p.settled], "possible": p.possible}
+            "settled": [x.model_dump() for x in p.settled], "possible": p.possible,
+            "tiers": {k: v for k, v in tier.items() if v in ("read", "prefilled") and k not in answered}}
 
 
 async def main(out_dir: Path) -> int:
@@ -259,6 +260,12 @@ async def main(out_dir: Path) -> int:
         xs = [r["asks"] for r in rows if r["pack"] == pack]
         print(f"  {pack}: asks mean {statistics.mean(xs):.2f} {sorted(xs)}  "
               f"(a) ms {sorted(int(r['ms_a']) for r in rows if r['pack'] == pack)}")
+    # pre-filled errors per pack and input (report, not gate): the rate §7.5 demotion decides on
+    shown = Counter((r["pack"], k) for r in rows for k, t in r["tiers"].items() if t == "prefilled")
+    bad = Counter((r["pack"], k) for r in rows for k, w in r["wrong_values"].items() if w[3] == "prefilled")
+    print("pre-filled values per input (wrong / shown):")
+    for (pack, k), n in sorted(shown.items()):
+        print(f"  {pack} {k}: {bad[(pack, k)]}/{n}")
     for r in rows:
         if r["wrong_proposal"] or r["wrong_values"] or r["unasked"] or r["degraded"]:
             print(f"- {r['pack']} / {r['name']}: outcome {r['outcome']} final {r['final_outcome']} "

@@ -116,8 +116,7 @@ def _show(e: Entry, i: InputDef, v: InputValue) -> str:
         return "Yes" if v.value else "No"
     if i.type == "number":
         if v.band is not None:
-            return next((b.label for s in e.logic if isinstance(s, BandStep) and s.ref == i.id for b in s.bands
-                         if b.id == v.band), v.band)
+            return next((b.label for b in _bands_for(e, i) if b.id == v.band), v.band)
         unit = "" if i.unit == "count" else i.unit
         return f"{float(v.value):g} {unit}".strip()
     return str(v.value)
@@ -573,11 +572,11 @@ def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str,
     draft = []
     for i in e.inputs:
         d, a = s.values.get(i.id), answers.get(i.id)
-        answered = a is not None and a.state != "unknown"
+        is_answered = a is not None and a.state != "unknown"
         g = given.get(i.id)
         if t.inputs[i.id].state == "not_applicable" and i.id not in t.assumed:
             st = "not_applicable"
-        elif answered:
+        elif is_answered:
             st = "answered"
         elif a is None and d is not None:
             st = d.tier
@@ -637,6 +636,7 @@ def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str
     excluded = t.outcome == DOES_NOT_APPLY
     return Calculation(outcome=t.outcome, result=None if excluded else text, exclusion=text if excluded else None,
                        possible=_possible(e, t), needed=list(t.needed), values=used,
+                       assumptions=[v.input for v in used if v.state == "assumed"],
                        trace=t.model_dump(mode="json") if t.outcome is not None else None,
                        pack=e.key, bundle=bundle)
 

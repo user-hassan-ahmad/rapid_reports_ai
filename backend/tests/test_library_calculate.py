@@ -112,3 +112,49 @@ def test_an_exam_preset_is_prefilled_by_the_exam_in_the_draft_and_in_calculate()
 def test_not_stated_is_unknown_for_every_input_type(toy_entry):
     for i in toy_entry.inputs:
         assert PP._answer(toy_entry, i, PP.NOT_STATED) == InputValue(state="unknown")
+
+
+def _tier1():
+    raw = json.loads(LB.BUNDLE.read_text())
+    lib = LB.Library(raw)
+    return [e for e in {lib.lookup(k.split("@")[0]).key: lib.lookup(k.split("@")[0]) for k in raw["entries"]}.values()
+            if e.result]
+
+
+def test_every_assumed_value_round_trips_through_calculate_on_every_pack():
+    """Review I1: a value the draft shows as assumed is one Calculate accepts back, as assumed; sending every shown
+    value reaches the draft's own outcome; no input is both assumed and still needed."""
+    seen = 0
+    for e in _tier1():
+        for presets in ({}, PP.exam_presets(e, PP.EXAM_CARD)):
+            p = PP.finish(e, PP.Settlement(), {}, None, [], presets=presets)
+            assumed = {d.input for d in p.draft if d.state == "assumed"}
+            assert assumed == set(p.assumptions) and not assumed & set(p.missing), e.key
+            assert all(d.value for d in p.draft if d.state == "assumed"), e.key
+            shown = {d.input: d.value for d in p.draft if d.value}
+            c = PP.calculate(e, PP.Settlement(), shown, None, [], "b1", presets=presets)
+            states = {v.input: v.state for v in c.values}
+            assert all(states[k] == "assumed" for k in assumed) and set(c.assumptions) == assumed, e.key
+            assert c.outcome == (p.trace or {}).get("outcome") and c.needed == p.missing, e.key
+            seen += len(assumed)
+    assert seen                                                       # some pack assumes something
+
+
+def test_bts_age_feeds_brock_so_it_is_asked_never_assumed():
+    e = next(x for x in _tier1() if x.id == "bts-pulmonary-nodule")
+    p = PP.finish(e, PP.Settlement(), {}, None, [])
+    by = {d.input: d for d in p.draft}
+    assert by["age"].state == "asked" and "age" in p.missing and "age" not in p.assumptions
+    assert by["proven_malignant"].state == "assumed"
+
+
+def test_the_reviewers_bts_repro_reaches_the_same_answer_in_the_draft_and_in_calculate():
+    e = next(x for x in _tier1() if x.id == "bts-pulmonary-nodule")
+    s = PP.Settlement(values={"nodule_type": PP.Drafted(InputValue(value="solid"), "solid", "read"),
+                              "diameter_mm": PP.Drafted(InputValue(value=4.0), "4 mm", "read"),
+                              "prior_study": PP.Drafted(InputValue(value=False), "first CT", "prefilled",
+                                                        [PP.WHY_KIND])})
+    p = PP.finish(e, s, {"benign_features": "No"}, None, [])
+    shown = {d.input: d.value for d in p.draft if d.value}
+    c = PP.calculate(e, s, shown, None, [], "b1")
+    assert c.outcome == (p.trace or {}).get("outcome") and c.needed == p.missing and "age" in p.missing

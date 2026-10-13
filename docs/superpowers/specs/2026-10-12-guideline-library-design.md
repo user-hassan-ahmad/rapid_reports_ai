@@ -212,8 +212,18 @@ Agreed with Hassan on 2026-10-12. Not built yet: it is part of the next slice (�
   the guideline does not apply and why, its recommendation says to manage on clinical context, and it carries the
   locator of the scope clause. It never has an Apply.
 - **Settling.** The model settles eligibility inputs exactly as it settles clinical ones: verbatim quotes from the
-  clinical history or the dictation, with the same checks and the same value states (§7.5). An unstated eligibility
-  input stays unknown (asked) and is never assumed eligible.
+  clinical history or the dictation, with the same checks and the same value states (§7.5).
+- **Assumed in scope (amendment, Hassan 2026-10-13).** This replaces "an unstated eligibility input stays unknown and is
+  never assumed eligible". On the draft card, an unknown eligibility input is assumed at its in-scope value and shown
+  as a visible `assumed` draft value, so the card drafts the outcome for an eligible patient instead of leading with
+  eligibility questions.
+  - The card stays `check_first`, as a warning.
+  - A read, pre-filled, answered or preset value always overrides the assumption.
+  - A value that excludes still gives `does_not_apply`.
+  - Only an answerable value is assumed: a choice, yes/no, or a number's band when band steps alone read the number.
+    A number that also feeds a formula, such as BTS age in Brock, stays asked.
+  - Calculate evaluates only the values the client sends. An assumed value sent back counts as sent, and keeps the
+    state `assumed` in the result.
 - **Size.** A pack has at most three eligibility inputs. If a guideline's scope needs more, the scope belongs in the
   matcher's `applies_to` or in a pitfall, not in questions.
 
@@ -374,8 +384,8 @@ citations. Apply writes that result and nothing else.
 2. **Draft.** The settlement (prewarmed by /match, cached per §12) gives each input one of the value states in §7.5.
 3. **Which lesion?** If the finding describes more than one lesion, the card asks that one pick before anything else
    (§7.9).
-4. **Eligibility.** Unknown eligibility inputs that could change the outcome lead the card, as "Does this apply?"
-   rows.
+4. **Eligibility.** Unknown eligibility inputs are assumed in scope as visible `assumed` values (§3.6, amendment of
+   2026-10-13). Only one with no answerable in-scope value is asked, as a "Does this apply?" row.
 5. **Edit.** The radiologist can change any value inline (§7.6).
 6. **Calculate.** The engine runs over the confirmed values (§7.7).
 7. **Apply.** Writes the last Calculate result (§7.7).
@@ -394,7 +404,7 @@ citations. Apply writes that result and nothing else.
 |---|---|---|
 | **Which lesion** | The finding describes more than one lesion, and no span has been picked yet | The verbatim lesion spans to pick from. Patient inputs are drafted; lesion inputs wait for the pick. |
 | **Does not apply** | An eligibility input (read, pre-filled, answered or edited) excludes | The card dims and shows the reason with the scope clause's citation. Changing that value brings the card back. There is no Calculate and no Apply. |
-| **Check first** | Some eligibility inputs are unknown and could change the outcome | One to three "Does this apply?" rows above everything else. The clinical values appear dimmed beneath them. |
+| **Check first** | Some eligibility inputs are assumed or still unknown, and could change the outcome | The draft, with the assumed values marked and a warning (amendment of 2026-10-13). An eligibility input that cannot be assumed is asked as a "Does this apply?" row. |
 | **Applies** | Every eligibility input is known and eligible, or none can change the outcome | The draft values in `needed` order, the draft outcome, and Calculate |
 
 **Unchanged from 2026-10-12:**
@@ -415,6 +425,8 @@ Each input on the card is in exactly one state:
 | **Pre-filled** | Any other value the model proposes with a quote that is verbatim and in scope (§3.6) | Highlighted, with its quote and the reasons it is not read |
 | **Asked** | No value was proposed; or the quote is not verbatim in scope; or a number cannot be read (a range, a bound, a fraction, an unknown unit, out of range); or the input is demoted (below) | Empty, with the `asks` explanation |
 | **Answered** | The radiologist set the value, on this card or as a shared patient answer | As set; an answer always wins over a draft |
+| **Assumed** | An unknown eligibility input, assumed at its in-scope value (§3.6, amendment of 2026-10-13) | Marked as assumed, with why; a stated value always wins |
+| **Edited** | In a Calculate result: a sent value that differs from its draft or preset | As sent |
 
 - **Quotes only.** A value is never pre-filled from inference alone. The model still leaves out anything not stated,
   and a proposal without a verbatim quote is dropped.

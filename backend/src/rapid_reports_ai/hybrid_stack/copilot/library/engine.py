@@ -459,7 +459,8 @@ def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V], fixe
     # enumerated prerequisite allows it, so only the prerequisite is asked
     held = {k for k, v in given.items() if v.state != "unknown"}
     unknown = [i for i in entry.inputs if env[i.id].state == "unknown" and i.id not in held]
-    elig = [i for i in unknown if i.role == "eligibility"]
+    # an eligibility number assumed through its band (pinned in `fixed`) is not held out again: it is assumed
+    elig = [i for i in unknown if i.role == "eligibility" and not _pinned(entry, i.id, fixed)]
     if hold_out and elig:
         # the clinical asks are worked out as for an eligible patient; the unknown eligibility inputs are asked first,
         # and does_not_apply stays possible (no outcome, so no proposal) until each is settled
@@ -514,11 +515,17 @@ def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V], fixe
 def _assume(entry: Entry, given: dict[str, InputValue]) -> tuple[dict[str, InputValue], dict[str, V],
                                                                   dict[str, InputValue]]:
     """(input values, band-step overrides, input -> the value assumed) for every unknown eligibility input that has
-    one in-scope value (_non_excluding); one without stays unknown and is enumerated like any other input."""
+    one in-scope value (_non_excluding) the radiologist could answer back: a choice, yes/no, or a number's band when
+    band steps alone read it. A number that also feeds a formula (BTS age, in Brock) has no answerable band, so it is
+    never assumed: it stays unknown and is asked like any other input (review I1)."""
     elig = [i for i in entry.inputs if i.role == "eligibility" and i.id not in given]
     if not elig:
         return {}, {}, {}
     fill, over = _non_excluding(entry, given, elig)
+
+    def answerable(input_id: str) -> bool:
+        return all(isinstance(s, BandStep) for s in entry.logic if input_id in s.refs())
+    over = {k: v for k, v in over.items() if answerable(entry.step(k).ref)}
     assumed = dict(fill)
     for s in entry.logic:
         if isinstance(s, BandStep) and s.id in over:
@@ -550,7 +557,9 @@ def evaluate(entry: Entry, given: dict[str, Any], assume_eligible: bool = False)
         return Trace(outcome=out.value, possible=[out.value], inputs=inputs, steps=steps, assumed=assumed)
     if out.state != "unknown":
         raise EvaluationError(f"result step {entry.result} ended {out.state}")
-    possible, bounded, needed, decides = _partial(entry, given, env, fixed, hold_out=not assume_eligible)
+    # an eligibility input left unassumed (no answerable in-scope value) is held out as without assume_eligible: asked
+    # first, the clinical asks worked out for an eligible patient
+    possible, bounded, needed, decides = _partial(entry, given, env, fixed)
     if bounded and len(possible) == 1:      # the unknown inputs cannot change the outcome: it is settled
         return Trace(outcome=possible[0], possible=possible, bounded=True, needed=[], inputs=inputs, steps=steps,
                      assumed=assumed)

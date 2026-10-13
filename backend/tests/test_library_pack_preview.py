@@ -607,10 +607,13 @@ async def test_bts_with_eligibility_unknown_drafts_under_assumptions(monkeypatch
     out = await PP.preview_pack(_bts(), "7 mm solid nodule.", "", {"nodule_type": "solid", "diameter_mm": "7",
                                                                   "benign_features": "Yes", "prior_study": "No"},
                                 finding="7 mm solid nodule.")
-    assert out.state == "check_first" and out.assumptions == ["age", "proven_malignant"] and out.missing == []
-    assert out.draft_outcome is not None and {_states(out)[k] for k in out.assumptions} == {"assumed"}
-    shown = {d.input: d.value for d in out.draft if d.input in out.assumptions}
-    assert shown == {"age": "18 years or over", "proven_malignant": "No"}   # a number: its in-scope band, labelled
+    assert out.state == "check_first" and out.assumptions == ["proven_malignant"] and out.missing == ["age"]
+    assert _states(out)["proven_malignant"] == "assumed" and _states(out)["age"] == "asked"
+    # review I1: age also feeds Brock, so no band of it can be answered back: it is asked, never assumed
+    out = await PP.preview_pack(_bts(), "7 mm solid nodule.", "", {"nodule_type": "solid", "diameter_mm": "7",
+                                                                  "benign_features": "Yes", "prior_study": "No",
+                                                                  "age": "60"}, finding="7 mm solid nodule.")
+    assert out.assumptions == ["proven_malignant"] and out.draft_outcome is not None and out.missing == []
 
 
 # fix round 5: a lesion number settles only for a finding that describes one lesion

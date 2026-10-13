@@ -154,6 +154,7 @@ class Calculation(BaseModel):
     possible: list[str] = Field(default_factory=list)
     needed: list[str] = Field(default_factory=list)
     values: list[DraftValue] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)   # inputs sent back at the draft's assumed in-scope value
     trace: dict[str, Any] | None = None
     pack: str = ""                     # pack_id@version
     bundle: str = ""                   # the bundle version
