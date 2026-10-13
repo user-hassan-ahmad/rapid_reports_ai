@@ -429,7 +429,9 @@ def _non_excluding(entry: Entry, given: dict[str, InputValue],
             run(entry, env, o)
         except EvaluationError:
             continue
-        if all(truth(w, env) is False for w in dna):
+        # a does_not_apply case that also reads a clinical input still unknown (BTS: an opacity over 3 cm is a mass)
+        # cannot be ruled out here: the eligibility value is in scope when no exclusion holds for it
+        if all(truth(w, env) is not True for w in dna):
             ok.append(combo)
     fill, over = {}, {}
     for n, (k, name, _) in enumerate(slots):

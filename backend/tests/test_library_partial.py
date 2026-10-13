@@ -276,3 +276,13 @@ def test_assume_eligible_drafts_for_an_eligible_patient_and_a_stated_value_wins(
     t = E.evaluate(fl, {"age": 30}, assume_eligible=True)                                 # stated: excludes
     assert t.outcome == "does_not_apply" and "age" not in t.assumed
     assert E.evaluate(fl, {}).assumed == {}                                               # off by default
+
+
+def test_an_exclusion_reading_an_unknown_clinical_input_does_not_block_the_in_scope_assumption():
+    """BTS: an opacity over 3 cm is a mass (does_not_apply reads diameter_mm). With the size unknown, the eligible
+    value of proven_malignant is still the in-scope one; with a 38 mm size the card is excluded."""
+    e = _bts()
+    t = E.evaluate(e, {"nodule_type": "solid"}, assume_eligible=True)
+    assert t.assumed["proven_malignant"].value is False and "diameter_mm" in t.needed
+    assert E.evaluate(e, {"nodule_type": "solid", "diameter_mm": 38, "age": 60, "proven_malignant": False,
+                          "prior_study": False}).outcome == "does_not_apply"

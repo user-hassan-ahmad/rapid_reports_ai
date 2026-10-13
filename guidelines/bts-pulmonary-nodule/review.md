@@ -220,3 +220,31 @@ variance); pathway.case16 cleared. Checked by hand as before.
   settles them.
 
 Independent clinical read (skill step 8): PENDING, dispatched by the controller.
+
+## Size scope (2026-10-13, live Chrome test: a 3.8 cm mass showed "applies")
+
+Source: S1 PDF p11, Table 1. A pulmonary nodule is a "focal, rounded opacity ≤3 cm diameter"; part-solid nodules
+and pGGNs are likewise "≤3 cm". The reference card already said so (`def.nodule`, `pit.scope`), but the logic did not
+exclude a larger opacity.
+
+Checklist:
+- band `mass_band` on `diameter_mm`: `le30` = ≤ 30 mm (max inclusive); `gt30` = > 30 mm. Locator: p11, Table 1. ✓
+- pathway: a new does_not_apply case, all(age ≥18, not proven malignant, not resolved, `mass_band` gt30), with the
+  Table 1 locator. It cannot overlap the first does_not_apply case (age ≥18 and not proven malignant) or `resolved`. ✓
+- every other case except `resolved` now also needs `mass_band` le30. A resolved nodule has no current size, so
+  `resolved` never needs one. ✓
+- does_not_apply outcome text adds "or an opacity over 3 cm (a mass, not a nodule)". ✓
+- golden cases: 30 mm → pet_ct (edge, still a nodule); 30.5 mm → does_not_apply; 38 mm solid and 38 mm part-solid →
+  does_not_apply; 38 mm with eligibility and prior imaging unknown → needed [age, proven_malignant, prior_study]. ✓
+- engine: `_non_excluding` now accepts an eligibility value when no does_not_apply case holds (`is not True`), so
+  an exclusion that also reads a still-unknown clinical input (this size) does not block the in-scope eligibility
+  value. No other pack has such a case today, so nothing else changes.
+- gates 1–4 pass (`check_pack.py`). The gate 5 Jev evidence and the clinical read are done by the controller and
+  reviewer.
+
+**For Hassan**
+- DECISION: the cut-off follows the source: "≤3 cm" is a nodule, so 30 mm still applies and only over 30 mm is a
+  mass. The live-test request said "≥ 30 mm".
+- DECISION: the size is now needed for every outcome except `resolved`. A card with clear benign features but no
+  stated size used to settle at discharge_benign; it now asks the diameter. With the diameter unknown, the Brock
+  formula is unbounded, so its inputs are asked as well, until the diameter is known.

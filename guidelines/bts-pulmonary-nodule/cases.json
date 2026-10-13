@@ -1311,6 +1311,90 @@
    "needed": [
     "proven_malignant"
    ]
+  },
+  {
+   "name": "30 mm edge: still a nodule (Table 1: up to 3 cm)",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "proven_malignant": false,
+    "diameter_mm": 30
+   },
+   "outcome": "pet_ct"
+  },
+  {
+   "name": "30.5 mm: over 3 cm, a mass, not a nodule",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "proven_malignant": false,
+    "diameter_mm": 30.5
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "38 mm solid opacity: a mass, outside the guideline",
+   "origin": "ours",
+   "inputs": {
+    "benign_features": false,
+    "nodule_type": "solid",
+    "age": 65,
+    "sex": "female",
+    "family_history": false,
+    "emphysema": true,
+    "upper_lobe": true,
+    "nodule_count": 1,
+    "spiculation": false,
+    "prior_study": false,
+    "proven_malignant": false,
+    "diameter_mm": 38
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "38 mm part-solid opacity: a mass, outside the guideline",
+   "origin": "ours",
+   "inputs": {
+    "nodule_type": "part_solid",
+    "diameter_mm": 38,
+    "benign_features": false,
+    "age": 65,
+    "proven_malignant": false,
+    "prior_study": false
+   },
+   "outcome": "does_not_apply"
+  },
+  {
+   "name": "38 mm opacity, eligibility and prior imaging not stated",
+   "origin": "ours",
+   "inputs": {
+    "nodule_type": "solid",
+    "diameter_mm": 38
+   },
+   "outcome": null,
+   "needed": [
+    "age",
+    "proven_malignant",
+    "prior_study"
+   ]
   }
  ]
 }

@@ -702,6 +702,30 @@
    ]
   },
   {
+   "step": "band",
+   "id": "mass_band",
+   "ref": "diameter_mm",
+   "locator": {
+    "source": "S1",
+    "page": 11,
+    "table": "Table 1 Definition and terms relating to pulmonary nodules: a pulmonary nodule is a focal rounded opacity ≤3 cm in diameter (part-solid nodule and pGGN likewise ≤3 cm)"
+   },
+   "bands": [
+    {
+     "id": "le30",
+     "label": "30 mm or less (a nodule)",
+     "max": 30,
+     "max_inclusive": true
+    },
+    {
+     "id": "gt30",
+     "label": "over 30 mm (a mass, not a nodule)",
+     "min": 30,
+     "min_inclusive": false
+    }
+   ]
+  },
+  {
    "step": "rules",
    "id": "pathway",
    "cases": [
@@ -735,6 +759,42 @@
        {
         "ref": "proven_malignant",
         "eq": false
+       },
+       {
+        "none": [
+         {
+          "ref": "resolved",
+          "eq": true
+         }
+        ]
+       },
+       {
+        "ref": "mass_band",
+        "eq": "gt30"
+       }
+      ]
+     },
+     "result": "does_not_apply",
+     "locator": {
+      "source": "S1",
+      "page": 11,
+      "table": "Table 1 Definition and terms relating to pulmonary nodules: a pulmonary nodule is a focal rounded opacity ≤3 cm in diameter (part-solid nodule and pGGN likewise ≤3 cm)"
+     }
+    },
+    {
+     "when": {
+      "all": [
+       {
+        "ref": "age_band",
+        "eq": "ge18"
+       },
+       {
+        "ref": "proven_malignant",
+        "eq": false
+       },
+       {
+        "ref": "mass_band",
+        "eq": "le30"
        },
        {
         "all": [
@@ -771,6 +831,10 @@
        {
         "ref": "proven_malignant",
         "eq": false
+       },
+       {
+        "ref": "mass_band",
+        "eq": "le30"
        },
        {
         "all": [
@@ -816,6 +880,10 @@
         "eq": false
        },
        {
+        "ref": "mass_band",
+        "eq": "le30"
+       },
+       {
         "all": [
          {
           "none": [
@@ -858,6 +926,10 @@
        {
         "ref": "proven_malignant",
         "eq": false
+       },
+       {
+        "ref": "mass_band",
+        "eq": "le30"
        },
        {
         "all": [
@@ -920,6 +992,10 @@
         "eq": false
        },
        {
+        "ref": "mass_band",
+        "eq": "le30"
+       },
+       {
         "all": [
          {
           "none": [
@@ -978,6 +1054,10 @@
        {
         "ref": "proven_malignant",
         "eq": false
+       },
+       {
+        "ref": "mass_band",
+        "eq": "le30"
        },
        {
         "all": [
@@ -1044,6 +1124,10 @@
         "eq": false
        },
        {
+        "ref": "mass_band",
+        "eq": "le30"
+       },
+       {
         "all": [
          {
           "none": [
@@ -1108,6 +1192,10 @@
         "eq": false
        },
        {
+        "ref": "mass_band",
+        "eq": "le30"
+       },
+       {
         "all": [
          {
           "none": [
@@ -1170,6 +1258,10 @@
        {
         "ref": "proven_malignant",
         "eq": false
+       },
+       {
+        "ref": "mass_band",
+        "eq": "le30"
        },
        {
         "all": [
@@ -1264,6 +1356,10 @@
        {
         "ref": "proven_malignant",
         "eq": false
+       },
+       {
+        "ref": "mass_band",
+        "eq": "le30"
        },
        {
         "all": [
@@ -1368,6 +1464,10 @@
         "eq": false
        },
        {
+        "ref": "mass_band",
+        "eq": "le30"
+       },
+       {
         "all": [
          {
           "none": [
@@ -1439,6 +1539,10 @@
         "eq": false
        },
        {
+        "ref": "mass_band",
+        "eq": "le30"
+       },
+       {
         "all": [
          {
           "none": [
@@ -1508,6 +1612,10 @@
        {
         "ref": "proven_malignant",
         "eq": false
+       },
+       {
+        "ref": "mass_band",
+        "eq": "le30"
        },
        {
         "all": [
@@ -1583,6 +1691,10 @@
        {
         "ref": "proven_malignant",
         "eq": false
+       },
+       {
+        "ref": "mass_band",
+        "eq": "le30"
        },
        {
         "all": [
@@ -1676,6 +1788,10 @@
         "eq": false
        },
        {
+        "ref": "mass_band",
+        "eq": "le30"
+       },
+       {
         "all": [
          {
           "none": [
@@ -1734,6 +1850,10 @@
        {
         "ref": "proven_malignant",
         "eq": false
+       },
+       {
+        "ref": "mass_band",
+        "eq": "le30"
        },
        {
         "all": [
@@ -1807,6 +1927,10 @@
         "eq": false
        },
        {
+        "ref": "mass_band",
+        "eq": "le30"
+       },
+       {
         "all": [
          {
           "none": [
@@ -1871,6 +1995,10 @@
         "eq": false
        },
        {
+        "ref": "mass_band",
+        "eq": "le30"
+       },
+       {
         "all": [
          {
           "none": [
@@ -1933,6 +2061,10 @@
        {
         "ref": "proven_malignant",
         "eq": false
+       },
+       {
+        "ref": "mass_band",
+        "eq": "le30"
        },
        {
         "all": [
@@ -2244,7 +2376,7 @@
   },
   {
    "id": "does_not_apply",
-   "classification": "BTS 2015 does not apply: the guidelines do not cover patients under 18 or a nodule already proven to be lung cancer or a metastasis",
+   "classification": "BTS 2015 does not apply: the guidelines do not cover patients under 18, a nodule already proven to be lung cancer or a metastasis, or an opacity over 3 cm (a mass, not a nodule)",
    "recommendation": "Manage per the clinical context.",
    "locator": {
     "source": "S1",
