@@ -112,9 +112,9 @@ async def test_the_habit_guard_drops_value_normal_and_fixed_changes(stub):
 
 async def test_a_style_block_is_verified_and_the_prose_deletion_check_applies(stub):
     new = "Lead with the main finding in one sentence."
-    stub["proposal"] = P.Proposal(changes=[_change("style", "The impression is shorter.", id="b4", text=new)])
+    stub["proposal"] = P.Proposal(changes=[_change("style", "The Impression Construction guidance is shorter.", id="b4", text=new)])
     t = await P.propose_turn(ROUTER_SHEET, [], "make the impression more concise")
-    assert t.applied and new in t.sheet and stub["verify_calls"] == [["The impression is shorter."]]
+    assert t.applied and new in t.sheet and stub["verify_calls"] == [["The Impression Construction guidance is shorter."]]
     stub["proposal"] = P.Proposal(changes=[
         _change("value", "Width is no longer required.", name="Width", to="not_needed"),
         _change("style", 'In Impression Construction, the line "Keep it brief." is removed.', id="b4", text="Lead with the most important finding.")])
@@ -125,9 +125,9 @@ async def test_a_style_block_is_verified_and_the_prose_deletion_check_applies(st
 
 
 async def test_an_unverified_style_block_is_not_applied(stub):
-    stub["proposal"] = P.Proposal(changes=[_change("style", "The impression is shorter.", id="b4",
+    stub["proposal"] = P.Proposal(changes=[_change("style", "The Impression Construction guidance is shorter.", id="b4",
                                                    text="Lead with the main finding in one sentence.")])
-    stub["claim_scores"] = {"The impression is shorter.": 0.1}
+    stub["claim_scores"] = {"The Impression Construction guidance is shorter.": 0.1}
     t = await P.propose_turn(ROUTER_SHEET, [], "make the impression more concise")
     assert not t.applied and t.sheet == ROUTER_SHEET and "I wasn't sure you asked for this" in t.reply
 
@@ -146,7 +146,7 @@ async def test_arm_2_verifies_style_claims_once(stub, monkeypatch):
         calls.append(a)
         return []
     monkeypatch.setattr(J, "verify_claims", verify_claims)
-    stub["proposal"] = P.Proposal(changes=[_change("style", "The impression is shorter.", id="b4",
+    stub["proposal"] = P.Proposal(changes=[_change("style", "The Impression Construction guidance is shorter.", id="b4",
                                                    text="Lead with the main finding in one sentence.")])
     t = await P.propose_turn(ROUTER_SHEET, [], "make the impression more concise")
     assert t.applied and calls == []           # its own verify call already asked V1 for the block's claim
@@ -217,7 +217,7 @@ async def test_arm_2_with_the_habit_guard_does_not_reroute_a_flagged_line(stub, 
         raise AssertionError("no re-route call under the habit guard")
     monkeypatch.setattr(C, "call_kind", no_call)
     hidden = "Always comment on a collection."
-    stub["proposal"] = P.Proposal(changes=[_change("style", "The impression guidance is shorter.", id="b4",
+    stub["proposal"] = P.Proposal(changes=[_change("style", "The Impression Construction guidance is shorter.", id="b4",
                                                    text=f"Lead with the main finding.\n{hidden}")])
     stub["habit"], stub["requires"] = 0.9, {hidden: 0.9}
     t = await P.propose_turn(ROUTER_SHEET, [], "with a collection always comment on it; shorter impression")
@@ -228,7 +228,7 @@ async def test_arm_2_names_the_parts_the_habit_guard_drops(stub):
     stub["proposal"] = P.Proposal(changes=[
         _change("normal", "A collection negative is added.", paragraph="Upper", negative="No collection.", to="add",
                 text="No collection."),
-        _change("style", "The impression guidance is shorter.", id="b4", text="Lead with the main finding.")])
+        _change("style", "The Impression Construction guidance is shorter.", id="b4", text="Lead with the main finding.")])
     stub["habit"] = 0.9
     t = await P.propose_turn(ROUTER_SHEET, [], "with a collection say no collection, and a shorter impression")
     assert t.applied and R.HABIT_DROPPED.format(label=R.KIND_LABEL["normal"]) in t.reply

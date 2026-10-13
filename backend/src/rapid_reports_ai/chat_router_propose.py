@@ -214,7 +214,8 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
     verified_blocks = []
     for j, c in enumerate(style_blocks):
         s = by_claim[len(applicable) + j]
-        if c.style.id not in blocks_by_id or not R.specific_claim(c.claim, blocks_by_id[c.style.id]):
+        if c.style.id not in blocks_by_id or not R.specific_claim(c.claim, blocks_by_id[c.style.id],
+                                                                  blocks_by_id.values()):
             s = 0.0                                    # a claim that names no block: unverified, whatever Jev said
         ev["claims"].append({"kind": "style", "claim": c.claim, "proposed": c.claim, "score": round(s, 3),
                              "verified": s >= VERIFY_MIN})

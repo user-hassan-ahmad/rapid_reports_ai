@@ -64,16 +64,27 @@ def block_label(block: sh.Block) -> str:
     return ph[0] if ph else block.heading
 
 
-def specific_claim(claim: str, block: sh.Block) -> bool:
-    """A style claim is specific when it names the block it changes (the block id, its label, or a 4+ letter word
-    of the label) - a structural check, run before any Jev call: "the wording is changed" names nothing."""
+def _names(label: str, claim: str) -> bool:
+    return bool(label) and re.search(rf"(?<![a-z0-9]){re.escape(label)}(?![a-z0-9])", claim) is not None
+
+
+def specific_claim(claim: str, block: sh.Block, blocks=()) -> bool:
+    """A style claim is specific when it names the block it changes - a structural check, run before any Jev call
+    ("the wording is changed" names nothing). In order of preference: the exact block id; the block's full label
+    (paragraph name, else heading), unless the claim names another block whose longer label contains it; a 4+
+    letter word of the label that no other block's label has. Matches are bounded on both sides, so two blocks that
+    share a word never satisfy each other."""
     c = (claim or "").lower()
     if not c.strip():
         return False
-    if re.search(rf"\b{re.escape(block.id.lower())}\b", c):
+    if _names(block.id.lower(), c):
         return True
     label = block_label(block).lower()
-    return label in c or any(re.search(rf"\b{re.escape(w)}", c) for w in _LABEL_WORD.findall(label))
+    others = [block_label(o).lower() for o in blocks if o.id != block.id]
+    if _names(label, c):
+        return not any(label in o and o != label and _names(o, c) for o in others)
+    shared = {w for o in others for w in _LABEL_WORD.findall(o)}
+    return any(_names(w, c) for w in _LABEL_WORD.findall(label) if w not in shared)
 CAPPED_LINE = "That wording change was long, so I applied the first part only. Please ask for the rest separately."
 STYLE_TIMEOUT = "I couldn't finish the wording change just now, so I left it out. Please try that part again."
 STYLE_TOUCHED_RULES = ("The style change also touched the template's rules, so I left it out. Could you say it as "
@@ -246,7 +257,7 @@ async def _style(sheet: str, out: CH.StyleOut, ctx: CH.Ctx, *, scan: str = "", v
         logger.info("[chat-router] requires capped: %d new prose lines left out", len(over))
     by_id = {b.id: b for b in out.blocks}
     claims = {b: (by_id[b].claim or out.summary or "").strip() for b in edits}
-    vague = [b for b in edits if not specific_claim(claims[b], blocks[b])] if not verified else []
+    vague = [b for b in edits if not specific_claim(claims[b], blocks[b], blocks.values())] if not verified else []
     asked = [b for b in edits if b not in vague] if not verified else []
 
     checked = [b for b in edits if b not in vague]   # the claim against the edit itself (OLD -> NEW), both arms

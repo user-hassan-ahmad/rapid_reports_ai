@@ -213,13 +213,13 @@ NEW_IC = "Lead with the main finding in one sentence."
 async def test_a_style_edit_touches_prose_only(fake):
     fake["tags"] = tags(style=0.9)
     fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=NEW_IC)],
-                                         summary="The impression will be one sentence.")
+                                         summary="Impression Construction: one sentence.")
     t = await R.route_turn(ROUTER_SHEET, [], "make the impression more concise")
     assert t.applied and NEW_IC in t.sheet and "Keep it brief." not in t.sheet
-    assert t.records[0] == {"type": "style", "claim": "The impression will be one sentence.",
+    assert t.records[0] == {"type": "style", "claim": "Impression Construction: one sentence.",
                             "blocks": [{"before": "Lead with the most important finding.\nKeep it brief.",
                                         "after": NEW_IC}]}
-    assert t.reply == "The impression will be one sentence." and t.evidence["style"] == "applied"
+    assert t.reply == "Impression Construction: one sentence." and t.evidence["style"] == "applied"
 
 
 async def test_a_style_edit_that_changes_a_unit_line_is_rejected(fake):
@@ -233,7 +233,7 @@ async def test_a_rule_in_disguise_is_left_out_and_rerouted_to_a_card(fake):
     hidden = "Always state the alpha size."
     fake["tags"] = tags(style=0.9)
     fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=f"{NEW_IC}\n{hidden}")],
-                                         summary="The impression will be one sentence.")
+                                         summary="Impression Construction: one sentence.")
     fake["requires"] = {hidden: 0.9, NEW_IC: 0.1}
     fake["calls"]["normal"] = CH.NormalOut(changes=[CH.NormalChange(paragraph="Upper", structure="alpha", to="reword",
                                                                     text="Alpha is normal in size.")])
@@ -522,7 +522,7 @@ async def test_a_finding_triggered_habit_is_parked_and_nothing_is_written(fake):
 async def test_a_habit_turn_still_applies_its_style_part(fake):
     fake["tags"] = {**tags(normal=0.9, style=0.9), "habit": 0.8}
     fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=NEW_IC)],
-                                         summary="The impression guidance is shorter.")
+                                         summary="The Impression Construction guidance is shorter.")
     t = await R.route_turn(ROUTER_SHEET, [], "when there is a mass say so, and keep the impression shorter")
     assert t.applied and NEW_IC in t.sheet and [k for k, _ in fake["seen"]] == ["style"]
     assert t.cards[0]["kind"] == "habit" and "when there is a mass" in t.cards[0]["title"]
@@ -548,10 +548,10 @@ async def test_no_habit_below_the_threshold(fake):
 async def test_a_concise_rewording_passes(fake):
     fake["tags"] = tags(style=0.9)
     fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(
-        id="b4", text="Lead with the key finding.", claim="The impression guidance is shorter.")], summary="Shorter.")
+        id="b4", text="Lead with the key finding.", claim="The Impression Construction guidance is shorter.")], summary="Shorter.")
     t = await R.route_turn(ROUTER_SHEET, [], "make the reports more concise")
     assert t.applied and "Lead with the key finding." in t.sheet and "Keep it brief." not in t.sheet
-    assert fake["claim_calls"] == [["The impression guidance is shorter."]]
+    assert fake["claim_calls"] == [["The Impression Construction guidance is shorter."]]
 
 
 async def test_a_stray_deletion_with_a_failing_claim_is_refused(fake):
@@ -572,20 +572,20 @@ async def test_all_block_claims_are_verified_in_one_call(fake):
     fake["tags"] = tags(style=0.9)
     fake["calls"]["style"] = CH.StyleOut(blocks=[
         CH.StyleBlock(id="b1", text="Sentences are short.", claim="The voice guidance is shorter."),
-        CH.StyleBlock(id="b4", text="Lead with the key finding.", claim="The impression guidance is shorter.")],
+        CH.StyleBlock(id="b4", text="Lead with the key finding.", claim="The Impression Construction guidance is shorter.")],
         summary="Shorter.")
     fake["claim_scores"] = {"The voice guidance is shorter.": 0.2}
     t = await R.route_turn(ROUTER_SHEET, [], "make the reports more concise")
-    assert fake["claim_calls"] == [["The voice guidance is shorter.", "The impression guidance is shorter."]]
+    assert fake["claim_calls"] == [["The voice guidance is shorter.", "The Impression Construction guidance is shorter."]]
     assert "Lead with the key finding." in t.sheet and "Sentences are short and declarative." in t.sheet
 
 
 async def test_a_block_without_a_claim_is_checked_by_the_summary(fake):
     fake["tags"] = tags(style=0.9)
     fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text="Lead with the key finding.")],
-                                         summary="The impression guidance is shorter.")
+                                         summary="The Impression Construction guidance is shorter.")
     t = await R.route_turn(ROUTER_SHEET, [], "make the reports more concise")
-    assert t.applied and fake["claim_calls"] == [["The impression guidance is shorter."]]
+    assert t.applied and fake["claim_calls"] == [["The Impression Construction guidance is shorter."]]
 
 
 async def test_a_vague_claim_is_not_applied_and_jev_is_not_asked(fake):
@@ -601,7 +601,7 @@ async def test_a_vague_claim_is_not_applied_and_jev_is_not_asked(fake):
 def test_a_claim_is_specific_when_it_names_the_block():
     blocks = {b.id: b for b in __import__("rapid_reports_ai.chat_router_sheet", fromlist=["x"]).prose_blocks(ROUTER_SHEET)}
     assert R.specific_claim("In Impression Construction: sentences are shorter.", blocks["b4"])
-    assert R.specific_claim("The impression guidance is shorter.", blocks["b4"])
+    assert R.specific_claim("The Impression Construction guidance is shorter.", blocks["b4"])
     assert R.specific_claim("b2 now opens with beta.", blocks["b2"])
     assert R.specific_claim("The Upper paragraph's opening is reworded.", blocks["b2"])
     assert not R.specific_claim("Style updated.", blocks["b4"]) and not R.specific_claim("", blocks["b1"])
@@ -616,7 +616,7 @@ async def test_with_the_habit_guard_a_flagged_prose_line_is_not_rerouted(fake):
     hidden = "Always comment on a collection."
     fake["tags"] = {**tags(normal=0.9, style=0.9), "habit": 0.9}
     fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=f"{NEW_IC}\n{hidden}",
-                                                               claim="The impression guidance is shorter.")])
+                                                               claim="The Impression Construction guidance is shorter.")])
     fake["requires"] = {hidden: 0.9}
     fake["calls"]["normal"] = CH.NormalOut(changes=[CH.NormalChange(paragraph="Upper", negative="No collection.",
                                                                     to="add", text="No collection.")])
@@ -629,7 +629,7 @@ async def test_with_the_habit_guard_a_flagged_prose_line_is_not_rerouted(fake):
 async def test_parts_the_habit_guard_drops_are_named_in_the_reply(fake):
     fake["tags"] = {**tags(normal=0.9, value=0.8, style=0.9), "habit": 0.8}
     fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=NEW_IC,
-                                                               claim="The impression guidance is shorter.")])
+                                                               claim="The Impression Construction guidance is shorter.")])
     t = await R.route_turn(ROUTER_SHEET, [], "when there is a mass give its size, and keep the impression short")
     assert t.applied
     assert R.HABIT_DROPPED.format(label=R.KIND_LABEL["normal"]) in t.reply
@@ -668,3 +668,16 @@ async def test_edit_checks_are_one_call_beside_the_claim_call_and_skip_vague_cla
         CH.StyleBlock(id="b4", text="Lead with the key finding.", claim="The wording is changed.")])
     await R.route_turn(ROUTER_SHEET, [], "make the reports more concise")
     assert fake["edit_calls"] == [["In Voice: shorter."]] and fake["claim_calls"] == [["In Voice: shorter."]]
+
+
+def test_blocks_sharing_a_word_do_not_satisfy_each_other():
+    from rapid_reports_ai import chat_router_sheet as sh
+    blocks = sh.prose_blocks(ROUTER_SHEET)
+    b = {x.id: x for x in blocks}            # b3: paragraph "Impression"; b4: "Impression Construction"
+    assert R.specific_claim("In Impression Construction: shorter.", b["b4"], blocks)
+    assert not R.specific_claim("In Impression Construction: shorter.", b["b3"], blocks)   # the longer heading wins
+    assert R.specific_claim("The Impression paragraph's opening is reworded.", b["b3"], blocks)
+    assert not R.specific_claim("The impression notes are shorter.", b["b4"], blocks)    # a shared word only
+    assert R.specific_claim("b4: shorter.", b["b4"], blocks) and not R.specific_claim("b44 is shorter.", b["b4"], blocks)
+    assert not R.specific_claim("Voiceless consonants.", b["b1"], blocks)                 # trailing word boundary
+    assert R.specific_claim("The construction guidance is shorter.", b["b4"], blocks)      # a word only it has
