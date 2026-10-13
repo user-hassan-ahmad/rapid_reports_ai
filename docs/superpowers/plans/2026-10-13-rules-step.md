@@ -39,20 +39,22 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
 - Frontend: `SkillSheetCreator.svelte` has stages `summary | questions | test | refine` (`:115-116`, `:176-183`). `analyzeExamples` posts `/skill-sheet/analyze` (`:345-381`), `sendAnswer` posts `/skill-sheet/refine` (`:421-490`), and `saveAsTemplate` posts `/skill-sheet/save` (`:576-599`). `TemplateRefinePanel.svelte` posts `/skill-sheet/refine` (`:57-85`) and PUTs `/api/templates/{id}` with `{...template.template_config, skill_sheet}` (`:94-136`). The "Every report will include" chips (requirements spec, step 3) were never built: the Required-values card replaces them.
 - The analyser-prompt case-agnostic test (`tests/test_template_sheet_lab_prompts.py:3-14`) forbids clinical words, including "contrast", in `ANALYSER_SYSTEM_PROMPT`. The decided-variant system prompt must pass the same test.
 
-## Decisions this plan makes where the spec is open
+## Decisions (Hassan's D1-D3 of 2026-10-13, review fixes, and choices this plan makes where the spec is open)
 
-1. **Concept conditions.** The four standard conditions are fixed strings in `template_decisions.CONCEPTS`. Comparison uses exactly "the dictation names a previous imaging study for comparison" (product owner). The others are "the dictation states that no contrast agent was given", "the dictation states that part of the planned acquisition was not performed" and "the dictation states a technical limitation of the study". A concept's lines are: `FIXED "<default>"` plus `RULE WHEN [context: <condition>] REPLACE "<default>" WITH "<when_met>"`; or a lone `USE "<when_met>"` rule when there is no default wording; or a lone FIXED line when there is no alternative.
-2. **Where a written-from-scratch line goes.** LIST_MISSING goes under `## Report-wide` (created before the first paragraph if missing) with `| section: <first findings SECTION>`, `AT TOP`. A concept goes at the end of the first paragraph of the first non-optional section with one of the concept's roles (comparison: comparison → technique → history; the others: technique), else of the first findings section.
-3. **The ledger owns the value list.** Once the ledger has any `value` entry, the LIST_MISSING items are exactly the "every" entries. An automatic write's extra items are dropped and counted as drift. A chat rewrite's added items become entries (source "chat"). With no value entries, LIST_MISSING is left as written.
-4. **NEGATIVE lines in the normal report.** NEGATIVE lines have no structure label, so they are keyed `<paragraph> :: "<text>"`. They match the key's text or the entry's current text, which keeps a reworded negative matched.
-5. **Restore** applies the restored version's own `decisions` when it has them, else the current ones. Only origin "chat" folds sheet changes back into the ledger; restore, rebuild and the writer never override it.
-6. **`by`** is `"radiologist"` (a card or a chat turn) or `"code"` (a default). No user ids go into template config.
-7. **Kept items on Continue** (collapsed, untouched) are recorded with source "default", the same as a skipped step. Only tapped cards are "creation" (or "first_use_review" in the refine panel).
-8. **Card budget:** at most 8 open cards, ranked: disagreements, then uncertain values, then concept wording. The rest sit under a collapsed "More decisions (N)". Nothing is lost, and the lab reports the count against the ≤ 8 target.
-9. **A default-only concept is never folded away.** An example set that always says "no previous imaging" still gets a card, because that sentence would otherwise be printed for every patient.
-10. **The writer's questions go.** PART 2 of the writer answer returns the summary only (the Questions step is gone). The temperature stays at 0.8 until the writer lab (Task 31) reports. The slot-conflict wording (§5) is fixed in the grammar text.
-11. **Thresholds are lab-set constants:** `template_decision_run.STATES_MIN` (0.5) and `template_sheet_review.FIXED_MIN` (0.5). The labs report score distributions, and Hassan sets the values.
-12. **First-use review of existing templates** runs when a template opens in the refine panel, has no `decisions` and no `rules_step` record, and has at least 2 stored examples. Its value cards are built from the stored sheet's LIST_MISSING line, so the Required-values card works for every template.
+1. **Concepts and their conditions (D1, D2).** `template_decisions.CONCEPTS` gives each concept two states, each with a fixed standard condition or none. Comparison: "the dictation names a previous imaging study for comparison" (exactly the text item 1 resolves). Contrast has a condition for both states: "the dictation states a contrast agent was given" and "the dictation states no contrast agent was given". Sequences: "the dictation states that part of the planned acquisition was not performed". Limitation: "the dictation states a technical limitation of the study". A concept choice stores `condition`, which is always the opposite of the default's state. A used concept is written as: `FIXED default` + `RULE WHEN [context: condition] REPLACE default WITH when_met`; or, with no alternative wording, `FIXED default` + `… SUPPRESS default`, so item 1 drops the line when the dictation contradicts it (D2); or a lone `USE when_met`. Every concept is therefore found by its condition, and `observe` reads its true state.
+2. **Which wording is the default (D1).** Qwen labels each wording only with the state it states, never which one is usual. Code decides. For comparison, sequences and limitation, the default is the base state (no prior, everything performed, no limitation). For contrast, it is the state the examples use most, so a non-contrast protocol gets "no agent given" as its default and the other wording only when dictated. No concept card is ever pre-ticked or folded into "kept".
+3. **Where a written-from-scratch line goes.** LIST_MISSING goes under `## Report-wide` (created before the first paragraph if missing) with `| section: <first findings SECTION>`, `AT TOP`. A concept goes at the end of the first paragraph of the first non-optional section with one of the concept's roles (comparison: comparison → technique → history; the others: technique), else of the first findings section. A rewritten line keeps its own `| section:` suffix, line by line (review fix 6).
+4. **The ledger owns the value list.** Once the ledger has any `value` entry, the LIST_MISSING items are exactly the "every" entries. An automatic write's extra items are dropped and counted as drift. A chat rewrite's added items become entries (source "chat"). With no value entries, LIST_MISSING is left as written.
+5. **NEGATIVE lines** are keyed `<paragraph> :: "<text>"` and match the key's text or the entry's current text. When neither is found, the entry is a card at the next review; a NEGATIVE is never inserted (review fix 1). Only a NORMAL, keyed by its structure label, is ever inserted. A paragraph name used more than once is never guessed: the entry goes to `unmatched` (review fix 5).
+6. **Chat edits (D3).** A chat edit to a decided item is applied, and the reply names it ("This changes something you confirmed: …"). An edit that removes the whole LIST_MISSING list, or all of a used concept's lines, never changes the ledger: the ledger is kept, the save writes the lines back, and the reply carries `card_for_change` cards. Restore applies the restored version's own `decisions` when it has them, else the current ones; restore, rebuild and the writer never override the ledger. A PUT that omits `decisions` or `rules_step` keeps the stored ones (review fix 3).
+7. **A fixed entry on a concept's wording** is refused by `set_decision`, and skipped by `apply_ledger` for old ledgers, so the two never fight (review fix 7).
+8. **"Use whichever is dictated"** is its own choice, `{"use": false, "dictated": true}`. It writes no line, and `describe_change` words it as "whichever is dictated" (review fix 12). A `Change` carries the old entry whole, and `undo_change` restores its source, by and at (review fix 11).
+9. **`by`** is `"radiologist"` (a card or a chat turn) or `"code"` (a default). No user ids go into template config. Kept items left untouched on Continue are recorded with source "default", as on Skip.
+10. **Card budget:** at most 8 open cards, ranked: disagreements, then uncertain values, then concept wording. The rest sit under a collapsed "More decisions (N)", and the lab reports the count against the ≤ 8 target. A report counts as stating a concept when Jev says so or when it holds a verified quote (review fix 9/10).
+11. **The writer's questions go.** PART 2 returns the summary only, and the slot-conflict wording (§5) is fixed. The writer lab (Tasks 29-30) runs before the writer is wired (Task 31, review fix 8); the temperature stays 0.8 until Hassan reads it.
+12. **Thresholds are lab-set constants:** `STATES_MIN`, `FIXED_MIN` and `DUP_MIN`, each 0.5. The labs report score distributions, and Hassan sets the values.
+13. **First-use review of existing templates** runs once. `/decide` with a `template_id` stamps `rules_step` on the server as soon as the run returns, saved or not (review fix 4). Its value cards come from the stored sheet's LIST_MISSING line.
+14. **The Style FIXED check** leaves out only lines the ledger owns. An undecided concept's default is checked like any other line, so a wrong polarity shows up. The code absence backstop skips a line that a context rule targets (§4a). Lines the ledger does not own that Jev says state a decided concept become "May be stated twice" cards; the writer lab counts them (review fix 2).
 
 ## File map
 
@@ -72,7 +74,7 @@ Backend (`backend/src/rapid_reports_ai/`):
 | `template_rules_cards.py` | create | the card shapes, `build_cards`, `current_value_cards`, `card_for_change` |
 | `template_examples.py` | modify | `stored_texts` |
 | `template_sheet_lab_prompts.py` | modify | decided-variant prompts, no questions, the slot wording |
-| `template_sheet_review.py` | create | the FIXED check, the normal report, uncovered structures |
+| `template_sheet_review.py` | create | the FIXED check, concept duplicates, the normal report, uncovered structures |
 | `scripts/rules_step_lab.py` | create | lab runner and scorer (decision run, writer arms, FIXED check) |
 
 Tests (`backend/tests/`): `template_sheet_fixtures.py` (add `LEDGER_SHEET`), `test_template_decisions.py`, `test_template_ledger_apply.py`, `test_template_ledger_save.py`, `test_template_ledger_routes.py`, `test_template_decision_run.py`, `test_template_rules_cards.py`, `test_template_decide_route.py`, `test_template_sheet_review.py`, `test_rules_step_lab.py`; existing tests updated where noted.
@@ -98,7 +100,7 @@ No new route, so there is no dev-route guard to add. The lab is a backend script
 | 1. Ledger + `apply_ledger` in the save function | 1-12 | every save applies `decisions`; `/apply-decisions` endpoint; no UI yet | **Yes.** Dormant: no template has decisions until a card writes one |
 | 2. Decision run + Jev concept questions (+ lab) | 13-21 | `/decide` returns cards; lab report in the private folder | **Yes** (backend only, nothing calls `/decide` yet). The lab runs here, **before wiring** |
 | 3. Rules-step cards UI | 22-27 | the creator flow Rules → Style → Test → Refine; refine panel Required values + first-use review; a rejected refine turn restores the ledger with the sheet | Needs phases 1 and 2. Ships without phase 4 (the ledger already applies the decisions at save) |
-| 4. Writer change | 28-31 | the writer gets decisions as ground truth, no questions, slot wording fixed; writer lab | Needs phase 1. The questions removal must ship with or after phase 3 (the old creator reads `questions`) |
+| 4. Writer change | 28-31 | prompts (28), writer lab (29-30), then the writer wiring (31): decisions as ground truth, no questions, slot wording fixed | Needs phase 1. The questions removal must ship with or after phase 3 (the old creator reads `questions`) |
 | 5. Style-step sheet checks | 32-36 | the FIXED check, normal report and uncovered cards on the Style step and in the refine panel | Backend (Tasks 32-34) needs Phase 1 only and **ships independently**. The UI wiring (Task 36) is written on top of Phase 3's edits. Its Jev lab (Task 33) runs **before** the cards reach the UI |
 
 The labs are reported, not gated. Each lab task ends with a report and recommendations for Hassan. No pass/fail threshold blocks the next task, but the wiring tasks that follow a lab use the constants Hassan sets from it.
@@ -191,9 +193,14 @@ from rapid_reports_ai import template_sheet_grammar as tsg
 
 def test_concepts_are_the_four_standard_ones_with_parseable_conditions():
     assert list(td.CONCEPTS) == ["comparison", "contrast", "sequences", "limitation"]
-    assert td.CONCEPTS["comparison"].condition == "the dictation names a previous imaging study for comparison"
+    assert td.CONCEPTS["comparison"].conditions == ("the dictation names a previous imaging study for comparison",)
+    # contrast has a condition for both states: its default is whatever is usual in the template's examples
+    assert td.CONCEPTS["contrast"].conditions == ("the dictation states a contrast agent was given",
+                                                  "the dictation states no contrast agent was given")
     for c in td.CONCEPTS.values():
-        assert len(tsg._content_words(c.condition)) >= 2, c.name   # the grammar's subject rule
+        for cond in c.conditions:
+            assert len(tsg._content_words(cond)) >= 2, c.name   # the grammar's subject rule
+            assert td.concept_of_condition(cond.upper()) == c.name
 
 
 def test_normal_and_negative_keys_round_trip():
@@ -218,6 +225,8 @@ def test_match_key_ignores_case_spacing_and_final_full_stop():
     ("concept", "comparison", {"use": "yes", "default": "x", "when_met": ""}),
     ("concept", "comparison", {"use": True, "default": "", "when_met": ""}),
     ("concept", "comparison", {"use": True, "default": "Same.", "when_met": "same"}),
+    ("concept", "contrast", {"use": True, "default": "With an agent.", "when_met": ""}),           # which condition?
+    ("concept", "comparison", {"use": True, "default": "x", "when_met": "", "condition": "some other text"}),
     ("fixed", "Line.", {"keep": "maybe"}),
     ("normal", "Liver :: liver", {"text": "The liver measures {size}."}),
     ("normal", "Liver :: liver", {"text": 'Has a "quote".'}),
@@ -231,7 +240,14 @@ def test_invalid_changes_are_refused(kind, key, choice):
 def test_validate_canonicalises():
     assert td.validate("value", "  LV  EF ", {"need": "every", "extra": 1}) == ("LV EF", {"need": "every"})
     assert td.validate("concept", "comparison", {"use": False, "default": "x", "when_met": "y"}) == (
-        "comparison", {"use": False, "default": "", "when_met": ""})
+        "comparison", {"use": False, "default": "", "when_met": "", "condition": "", "dictated": False})
+    assert td.validate("concept", "contrast", {"use": False, "dictated": True})[1]["dictated"] is True
+    assert td.validate("concept", "comparison", {"use": True, "default": "None.", "when_met": ""}) == (
+        "comparison", {"use": True, "default": "None.", "when_met": "",
+                       "condition": "the dictation names a previous imaging study for comparison", "dictated": False})
+    assert td.validate("concept", "contrast", {"use": True, "default": "No agent.", "when_met": "",
+                                               "condition": "The dictation states a contrast agent was given"}
+                       )[1]["condition"] == "the dictation states a contrast agent was given"
     assert td.validate("normal", "Liver :: liver", {"text": " The liver  is normal. "}) == (
         "Liver :: liver", {"text": "The liver is normal."})
 ```
@@ -252,16 +268,22 @@ One entry per (kind, key): {"kind", "key", "choice", "by", "at", "source"}.
 
     kind     key                                             choice
     value    the value's short name                          {"need": "every" | "relevant" | "not_needed"}
-    concept  comparison | contrast | sequences | limitation  {"use": bool, "default": str, "when_met": str}
+    concept  comparison | contrast | sequences | limitation  {"use": bool, "default": str, "when_met": str,
+                                                              "condition": str, "dictated": bool}
     fixed    the FIXED line's text                           {"keep": "always" | "dictated" | "remove"}
     normal   normal_key(paragraph, structure) for a NORMAL,  {"text": str}  ("" = removed / left unmentioned)
              negative_key(paragraph, text) for a NEGATIVE
+
+A used concept is written as: FIXED default + RULE WHEN [context: condition] REPLACE default WITH when_met; FIXED
+default + SUPPRESS default (no alternative wording: the line is dropped when the dictation contradicts it); or USE
+when_met (no default). `condition` is one of the concept's standard conditions, the opposite of the default's state.
+"Use whichever is dictated" is {"use": false, "dictated": true}: no line, recorded as its own choice.
 
 source: creation | chat | first_use_review | default (a skipped step's pre-ticked choice; never "confirmed").
 by: "radiologist" (a card or a chat turn) or "code" (a default).
 
 This module is the API the Rules-step cards and the chat-edit router both call: set_decision validates and records
-one change and returns it; remove_decision undoes a new entry; ledger_from_changes records a batch of card answers;
+one change and returns it (with the old entry whole); undo_change reverses it; ledger_from_changes records a batch of card answers;
 describe_change words a change for the radiologist. Keys are matched by match_key (case and spacing ignored; a final
 full stop ignored for sentence keys), never by free-text similarity."""
 from __future__ import annotations
@@ -300,8 +322,8 @@ class Entry(TypedDict):
 class Change(TypedDict):
     kind: str
     key: str
-    old: Optional[dict]   # None: a new entry
-    new: dict
+    old: Optional[dict]   # the old entry whole (choice, by, at, source); None: a new entry
+    new: dict             # the new choice
     source: str
     confirmed: bool       # the old entry was the radiologist's (any source but "default")
 
@@ -309,33 +331,49 @@ class Change(TypedDict):
 @dataclass(frozen=True)
 class Concept:
     name: str
-    label: str              # how a card and a chat reply name it
-    condition: str          # the standard context-rule condition; template_context_rules resolves it at Generate
-    question: str           # decision run: does an example report state this concept? (Jev noul)
-    roles: Tuple[str, ...]  # home section roles, in preference order
+    label: str                          # how a card and a chat reply name it
+    states: Dict[str, Optional[str]]    # state of a wording -> the standard condition under which it applies (None:
+                                        # the usual state, written as the default)
+    question: str                       # decision run: does an example report state this concept? (Jev noul)
+    roles: Tuple[str, ...]              # home section roles, in preference order
+
+    @property
+    def conditions(self) -> Tuple[str, ...]:
+        return tuple(c for c in self.states.values() if c)
 
 
 # The standard study-level concepts. Their condition texts are fixed: apply_ledger finds a concept's lines by them,
-# and Generate resolves them per case. Case-agnostic wording only.
+# and Generate resolves them per case (template_context_rules). Contrast has a condition for both states, so its
+# default is whichever wording is usual in the template's own examples (product decision D1, 2026-10-13); the other
+# three have one condition and a base state. Case-agnostic wording only.
 CONCEPTS: Dict[str, Concept] = {
     "comparison": Concept(
         "comparison", "Comparison with previous imaging",
-        "the dictation names a previous imaging study for comparison",
+        {"none": None, "compared": "the dictation names a previous imaging study for comparison"},
         "The REPORT says whether previous imaging was available or was compared with this study.",
         ("comparison", "technique", "history")),
     "contrast": Concept(
-        "contrast", "Contrast", "the dictation states that no contrast agent was given",
+        "contrast", "Contrast",
+        {"given": "the dictation states a contrast agent was given",
+         "not_given": "the dictation states no contrast agent was given"},
         "The REPORT says whether a contrast agent was given for this study.", ("technique",)),
     "sequences": Concept(
         "sequences", "Parts of the study not performed",
-        "the dictation states that part of the planned acquisition was not performed",
+        {"complete": None, "not_performed": "the dictation states that part of the planned acquisition was not performed"},
         "The REPORT says that part of the planned acquisition (a sequence, phase or view) was not performed.",
         ("technique",)),
     "limitation": Concept(
-        "limitation", "Technical limitation", "the dictation states a technical limitation of the study",
+        "limitation", "Technical limitation",
+        {"none": None, "limited": "the dictation states a technical limitation of the study"},
         "The REPORT states a technical limitation of the study (for example artefact or incomplete coverage).",
         ("technique",)),
 }
+STANDARD_CONDITIONS = {" ".join(c.lower().split()): name for name, k in CONCEPTS.items() for c in k.conditions}
+
+
+def concept_of_condition(condition: str) -> Optional[str]:
+    """The concept whose standard condition this is (case and spacing ignored), else None."""
+    return STANDARD_CONDITIONS.get(" ".join((condition or "").lower().split()))
 
 
 def _name(s: str) -> str:
@@ -400,13 +438,24 @@ def validate(kind: str, key: str, choice: dict) -> Tuple[str, dict]:
         use = choice.get("use")
         if not isinstance(use, bool):
             raise DecisionError("concept use: true or false")
+        if not use:
+            return key, {"use": False, "default": "", "when_met": "", "condition": "",
+                         "dictated": bool(choice.get("dictated"))}
         default = _text(choice.get("default", ""), "concept default")
         when_met = _text(choice.get("when_met", ""), "concept wording")
-        if use and not (default or when_met):
+        if not (default or when_met):
             raise DecisionError("concept: a used concept needs wording")
         if default and when_met and norm_key(default) == norm_key(when_met):
             raise DecisionError("concept: the two wordings are the same")
-        return key, {"use": use, "default": default if use else "", "when_met": when_met if use else ""}
+        conds = CONCEPTS[key].conditions
+        given = " ".join((choice.get("condition") or "").lower().split())
+        if not given and len(conds) == 1:
+            condition = conds[0]
+        else:
+            condition = next((c for c in conds if c == given), "")
+            if not condition:
+                raise DecisionError(f"concept {key}: condition must be one of {conds}")
+        return key, {"use": True, "default": default, "when_met": when_met, "condition": condition, "dictated": False}
     if kind == "fixed":
         key = _text(key, "fixed line")
         if not key:
@@ -421,7 +470,7 @@ def validate(kind: str, key: str, choice: dict) -> Tuple[str, dict]:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_template_decisions.py -q`
-Expected: PASS (5 tests, 11 parametrised cases)
+Expected: PASS (5 tests, 13 parametrised cases)
 
 - [ ] **Step 5: Commit**
 
@@ -450,7 +499,7 @@ def test_set_decision_adds_then_changes_and_reports_the_change():
                   "confirmed": False}
     led2, ch2 = td.set_decision(led, "value", "lvef", {"need": "not_needed"}, source="chat", at="t1")
     assert len(led2) == 1 and led2[0]["key"] == "LVEF" and led2[0]["source"] == "chat"
-    assert ch2["old"] == {"need": "every"} and ch2["confirmed"] is True
+    assert ch2["old"] == led[0] and ch2["confirmed"] is True             # the old entry whole
     assert led[0]["choice"] == {"need": "every"}          # never mutates the input
 
 
@@ -496,6 +545,23 @@ def test_describe_change_words_a_confirmed_change():
     _, ch = td.set_decision(led, "concept", "comparison", {"use": False}, source="chat")
     assert td.describe_change(ch) == ('This changes something you confirmed: Comparison with previous imaging '
                                       '"No previous imaging." → not used.')
+    _, ch = td.set_decision(led, "concept", "comparison", {"use": False, "dictated": True}, source="chat")
+    assert td.describe_change(ch).endswith("→ whichever is dictated.")
+
+
+def test_undo_change_restores_the_old_entry_whole():
+    led, _ = td.set_decision([], "value", "LVEF", {"need": "every"}, source="creation", at="t0")
+    led2, ch = td.set_decision(led, "value", "LVEF", {"need": "not_needed"}, source="chat", at="t1")
+    assert td.undo_change(led2, ch) == led                               # source, by and at come back too
+    led3, ch_new = td.set_decision(led, "value", "ECV", {"need": "every"}, source="chat")
+    assert td.undo_change(led3, ch_new) == led
+
+
+def test_a_fixed_entry_on_a_concepts_wording_is_refused():
+    led, _ = td.set_decision([], "concept", "comparison", {"use": True, "default": "No previous imaging.",
+                                                           "when_met": ""}, source="creation")
+    with pytest.raises(td.DecisionError):
+        td.set_decision(led, "fixed", "No previous imaging", {"keep": "remove"}, source="creation")
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -524,20 +590,39 @@ def set_decision(ledger: List[Entry], kind: str, key: str, choice: dict, *, sour
     if by not in BY:
         raise DecisionError(f"unknown by {by!r}")
     key, choice = validate(kind, key, choice)
+    if kind == "fixed" and norm_key(key) in concept_texts(ledger):
+        raise DecisionError("this line belongs to a study-level wording; change it there")
     old = find(ledger, kind, key)
     entry: Entry = {"kind": kind, "key": old["key"] if old else key, "choice": choice, "by": by,
                     "at": at or _now(), "source": source}
     out = [entry if e is old else e for e in ledger] if old else [*(ledger or []), entry]
     if old and old["choice"] == choice:
         return out, None
-    return out, Change(kind=kind, key=entry["key"], old=old["choice"] if old else None, new=choice, source=source,
+    return out, Change(kind=kind, key=entry["key"], old=dict(old) if old else None, new=choice, source=source,
                        confirmed=bool(old) and old.get("source") != "default")
 
 
+def concept_texts(ledger: List[Entry]) -> set:
+    """norm_key of every wording a decided concept owns (its lines are the concept's, never a fixed entry's)."""
+    return {norm_key(t) for e in ledger or [] if e.get("kind") == "concept"
+            for t in ((e.get("choice") or {}).get("default", ""), (e.get("choice") or {}).get("when_met", "")) if t}
+
+
 def remove_decision(ledger: List[Entry], kind: str, key: str) -> List[Entry]:
-    """The ledger without (kind, key): undoes a new entry (a rejected change)."""
+    """The ledger without (kind, key)."""
     old = find(ledger, kind, key)
     return [e for e in ledger if e is not old]
+
+
+def undo_change(ledger: List[Entry], change: Change) -> List[Entry]:
+    """Reverse one change (a rejected router change): the old entry back whole (choice, by, at, source), or the entry
+    removed when the change added it."""
+    if change["old"] is None:
+        return remove_decision(ledger, change["kind"], change["key"])
+    cur = find(ledger, change["kind"], change["key"])
+    if cur is None:
+        return [*ledger, dict(change["old"])]
+    return [dict(change["old"]) if e is cur else e for e in ledger]
 
 
 def ledger_from_changes(changes: List[dict], base: Optional[List[Entry]] = None,
@@ -582,7 +667,7 @@ def state_label(kind: str, choice: Optional[dict]) -> str:
         return _KEEP.get(choice.get("keep"), "not set")
     if kind == "concept":
         if not choice.get("use"):
-            return "not used"
+            return "whichever is dictated" if choice.get("dictated") else "not used"
         return f'"{choice.get("default") or choice.get("when_met")}"'
     return f'"{choice.get("text")}"' if choice.get("text") else "removed"
 
@@ -593,7 +678,7 @@ def describe_change(change: Change) -> str:
         return ""
     k = change["kind"]
     return (f"This changes something you confirmed: {item_label(k, change['key'])} "
-            f"{state_label(k, change['old'])} → {state_label(k, change['new'])}.")
+            f"{state_label(k, change['old']['choice'])} → {state_label(k, change['new'])}.")
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
@@ -897,8 +982,15 @@ def apply_ledger(sheet: str, ledger: List[dict]) -> LedgerResult:
     values = [e for e in ledger if e.get("kind") == "value"]
     if values:
         steps.append((_values, values, values))
+    owned = td.concept_texts(ledger)
     for kind, op in _OPS:
-        steps += [(op, e, [e]) for e in ledger if e.get("kind") == kind]
+        for e in ledger:
+            if e.get("kind") != kind:
+                continue
+            if kind == "fixed" and norm_key(e["key"]) in owned:   # a concept's line: the concept entry decides it
+                res.applied.append({"kind": "fixed", "key": e["key"], "action": "kept"})
+                continue
+            steps.append((op, e, [e]))
     stale: List[str] = []
     for op, arg, entries in steps:
         before_errors = _err_keys(res.sheet)
@@ -937,7 +1029,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ```
 
-### Task 5: Concepts: FIXED default plus one standard context rule (item 1 resolves it)
+### Task 5: Concepts: FIXED default plus one standard context rule (REPLACE, SUPPRESS or USE; item 1 resolves it)
 
 **Files:**
 - Modify: `backend/src/rapid_reports_ai/template_ledger_apply.py`
@@ -948,8 +1040,11 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ```python
 from rapid_reports_ai import template_context_rules as tcr
 
+PRIOR = "the dictation names a previous imaging study for comparison"
+GIVEN = "the dictation states a contrast agent was given"
+NOT_GIVEN = "the dictation states no contrast agent was given"
 COMPARISON = {"use": True, "default": "No previous imaging available.",
-              "when_met": "Compared with the previous {modality} of {date}."}
+              "when_met": "Compared with the previous {modality} of {date}.", "condition": PRIOR, "dictated": False}
 
 
 def test_comparison_reuses_the_writers_fixed_line_and_adds_the_standard_rule():
@@ -957,8 +1052,7 @@ def test_comparison_reuses_the_writers_fixed_line_and_adds_the_standard_rule():
     st = _clean(res.sheet)
     rule = next(r for r in st.rules if r.condition_source == "context")
     assert (rule.condition, rule.effect, rule.target, rule.then_text) == (
-        "the dictation names a previous imaging study for comparison", "replace",
-        "No previous imaging available.", "Compared with the previous {modality} of {date}.")
+        PRIOR, "replace", "No previous imaging available.", "Compared with the previous {modality} of {date}.")
     assert rule.paragraph == "p1"                      # where the writer's FIXED line was
     assert [f.text for f in st.fixed_blocks].count("No previous imaging available.") == 1
     assert res.applied == [{"kind": "concept", "key": "comparison", "action": "rewritten"}]
@@ -967,20 +1061,44 @@ def test_comparison_reuses_the_writers_fixed_line_and_adds_the_standard_rule():
 def test_item_one_resolves_the_comparison_concept_both_ways():
     sheet = tla.apply_ledger(LEDGER_SHEET, _led(("concept", "comparison", COMPARISON))).sheet
     rules = tcr.rules_in_scope(sheet)
-    cond = td.CONCEPTS["comparison"].condition
-    met, _, per = tcr.apply_rules(sheet, rules, {cond: True})
+    met, _, per = tcr.apply_rules(sheet, rules, {PRIOR: True})
     assert 'FIXED "Compared with the previous {modality} of {date}."' in met and per[0]["outcome"] == "applied"
-    not_met, _, _ = tcr.apply_rules(sheet, rules, {cond: False})
+    not_met, _, _ = tcr.apply_rules(sheet, rules, {PRIOR: False})
     assert 'FIXED "No previous imaging available."' in not_met and "RULE WHEN" not in not_met
 
 
-def test_a_concept_is_written_from_scratch_in_its_home_section():
-    contrast = {"use": True, "default": "Following a contrast agent.", "when_met": "No contrast agent was given."}
-    res = tla.apply_ledger(LEDGER_SHEET, _led(("concept", "contrast", contrast)))
-    st = _clean(res.sheet)
+def test_a_default_only_concept_gets_a_drop_rule_item_one_resolves():
+    # D2: every concept is found by its condition; the default line is dropped when the dictation contradicts it
+    led = _led(("concept", "comparison", {"use": True, "default": "No previous imaging available.", "when_met": ""}))
+    sheet = tla.apply_ledger(LEDGER_SHEET, led).sheet
+    rule = next(r for r in _clean(sheet).rules if r.condition_source == "context")
+    assert (rule.condition, rule.effect, rule.target) == (PRIOR, "suppress", "No previous imaging available.")
+    rules = tcr.rules_in_scope(sheet)
+    met, _, _ = tcr.apply_rules(sheet, rules, {PRIOR: True})
+    assert "No previous imaging available." not in met and "RULE WHEN" not in met
+    not_met, _, _ = tcr.apply_rules(sheet, rules, {PRIOR: False})
+    assert 'FIXED "No previous imaging available."' in not_met
+
+
+def test_contrast_takes_the_condition_opposite_its_default_either_way():
+    usual_given = {"use": True, "default": "Following a contrast agent.", "when_met": "No contrast agent was given.",
+                   "condition": NOT_GIVEN}
+    res = tla.apply_ledger(LEDGER_SHEET, _led(("concept", "contrast", usual_given)))
     tech = res.sheet.split("## Paragraph: Technique (TECHNIQUE)")[1].split("## Paragraph:")[0]
-    assert 'FIXED "Following a contrast agent."' in tech and "REPLACE \"Following a contrast agent.\"" in tech
+    assert ('FIXED "Following a contrast agent."\nRULE WHEN [context: the dictation states no contrast agent was given] '
+            'REPLACE "Following a contrast agent." WITH "No contrast agent was given."') in tech
     assert res.applied[0]["action"] == "inserted"
+    # a non-contrast protocol: the usual line is the no-agent wording; the other replaces it only when dictated
+    usual_none = {"use": True, "default": "No contrast agent was given.", "when_met": "Following a contrast agent.",
+                  "condition": GIVEN}
+    sheet = tla.apply_ledger(LEDGER_SHEET, _led(("concept", "contrast", usual_none))).sheet
+    rules = tcr.rules_in_scope(sheet)
+    assert [r.condition for r in rules] == [GIVEN]
+    assert 'FIXED "No contrast agent was given."' in tcr.apply_rules(sheet, rules, {GIVEN: False})[0]
+    assert 'FIXED "Following a contrast agent."' in tcr.apply_rules(sheet, rules, {GIVEN: True})[0]
+    # switching the stored polarity rewrites the pair; nothing doubles
+    back = tla.apply_ledger(sheet, _led(("concept", "contrast", usual_given)))
+    assert len(tcr.rules_in_scope(back.sheet)) == 1 and back.applied[0]["action"] == "rewritten"
 
 
 def test_a_when_met_only_concept_is_a_use_rule():
@@ -990,7 +1108,7 @@ def test_a_when_met_only_concept_is_a_use_rule():
     assert rule.effect == "use" and rule.then_text == "The study is limited by {cause}."
 
 
-def test_not_used_removes_the_concept_lines_and_a_writer_rule_on_its_target():
+def test_not_used_or_dictated_removes_the_concept_lines_and_a_writer_rule_on_its_target():
     sheet = LEDGER_SHEET.replace(
         'FIXED "No previous imaging available."\n',
         'FIXED "No previous imaging available."\n'
@@ -1000,14 +1118,31 @@ def test_not_used_removes_the_concept_lines_and_a_writer_rule_on_its_target():
     used = tla.apply_ledger(sheet, _led(("concept", "comparison", COMPARISON))).sheet
     assert "prior imaging is available" not in used               # the writer's own rule on the same line is gone
     assert len([r for r in _clean(used).rules if r.condition_source == "context"]) == 1
-    gone = tla.apply_ledger(used, _led(("concept", "comparison", {"use": False})))
-    assert "No previous imaging available." not in gone.sheet and "RULE WHEN" not in gone.sheet
-    assert gone.applied[0]["action"] == "removed"
+    for choice in ({"use": False}, {"use": False, "dictated": True}):
+        gone = tla.apply_ledger(used, _led(("concept", "comparison", choice)))
+        assert "No previous imaging available." not in gone.sheet and "RULE WHEN" not in gone.sheet
+        assert gone.applied[0]["action"] == "removed"
+
+
+def test_report_wide_lines_keep_their_own_section_suffix():
+    sheet = LEDGER_SHEET.replace(
+        'TERM PREFER "hepatic"\n',
+        'TERM PREFER "hepatic"\nFIXED "No previous imaging available." | section: TECHNIQUE\n'
+        'RULE WHEN [context: the dictation names a previous imaging study for comparison] REPLACE "No previous '
+        'imaging available." WITH "Compared with prior."\n').replace('FIXED "No previous imaging available."\n\n', '\n')
+    _clean(sheet)
+    res = tla.apply_ledger(sheet, _led(("concept", "comparison", {**COMPARISON, "when_met": "Compared with {date}."})))
+    wide = res.sheet.split("## Report-wide")[1].split("## Paragraph")[0]
+    assert 'FIXED "No previous imaging available." | section: TECHNIQUE\n' in wide
+    assert 'WITH "Compared with {date}."\n' in wide                    # no section added to the rule line
+    assert _clean(res.sheet) and tla.apply_ledger(res.sheet, _led(("concept", "comparison",
+                                                                   {**COMPARISON, "when_met": "Compared with {date}."}))).changed == 0
 
 
 def test_concepts_are_idempotent():
     led = _led(("concept", "comparison", COMPARISON),
-               ("concept", "contrast", {"use": True, "default": "With a contrast agent.", "when_met": ""}))
+               ("concept", "contrast", {"use": True, "default": "With a contrast agent.", "when_met": "",
+                                        "condition": NOT_GIVEN}))
     once = tla.apply_ledger(LEDGER_SHEET, led).sheet
     again = tla.apply_ledger(once, led)
     assert again.sheet == once and again.changed == 0
@@ -1027,22 +1162,27 @@ def _targeting(st: tss.SheetStructure, texts: Set[str]) -> List[tss.Rule]:
             and norm_key(r.target) in texts]
 
 
-def _concept_lines(c: td.Concept, choice: dict, section: str, outside: bool) -> List[str]:
-    suffix = f" | section: {section}" if outside else ""
-    default, when_met = choice.get("default", ""), choice.get("when_met", "")
+def _concept_rules(st: tss.SheetStructure, name: str) -> List[tss.Rule]:
+    """The context rules carrying one of the concept's standard conditions (how a concept is found)."""
+    return [r for r in st.rules if r.condition_source == "context" and td.concept_of_condition(r.condition) == name]
+
+
+def _concept_lines(choice: dict, fixed_suffix: str = "", rule_suffix: str = "") -> List[str]:
+    """A used concept's lines: FIXED default + REPLACE, FIXED default + SUPPRESS (no alternative wording), or USE."""
+    default, when_met, cond = choice.get("default", ""), choice.get("when_met", ""), choice["condition"]
     out = []
     if default:
-        out.append(f'FIXED "{default}"{suffix}')
-    if when_met:
-        rule = tss.Rule(id="ledger", section=section, condition=c.condition, condition_source="context",
-                        effect="replace" if default else "use", target=default, then_text=when_met, source_lines=[])
-        out.append(tsg.render_rule(rule) + suffix)
+        out.append(f'FIXED "{default}"{fixed_suffix}')
+    effect = "replace" if default and when_met else ("suppress" if default else "use")
+    rule = tss.Rule(id="ledger", section="", condition=cond, condition_source="context", effect=effect,
+                    target=default, then_text=when_met, source_lines=[])
+    out.append(tsg.render_rule(rule) + rule_suffix)
     return out
 
 
-def _home(lines, st, c: td.Concept) -> Optional[Tuple[int, str, bool]]:
-    """(insert index, section, outside a paragraph) for a concept written from scratch: the end of the first
-    paragraph of the first non-optional section with one of the concept's roles, else of the first findings section."""
+def _home(lines, st, c: td.Concept) -> Optional[int]:
+    """Insert index for a concept written from scratch: the end of the first paragraph of the first non-optional
+    section with one of the concept's roles, else of the first findings section."""
     ordered = sorted(st.sections, key=lambda s: s.order)
     for role in [*c.roles, "findings"]:
         for s in ordered:
@@ -1051,49 +1191,54 @@ def _home(lines, st, c: td.Concept) -> Optional[Tuple[int, str, bool]]:
             para = next((p for p in st.paragraphs if p.section == s.name), None)
             span = _paragraph_span(lines, para.id) if para else None
             if span:
-                return _block_end(lines, *span), s.name, False
+                return _block_end(lines, *span)
     return None
 
 
 def _concept(lines, st, entry):
-    c = td.CONCEPTS[entry["key"]]
-    choice = entry["choice"]
-    rules = [r for r in st.rules if r.condition_source == "context" and td._name(r.condition) == td._name(c.condition)]
-    texts = {norm_key(r.target) for r in rules if r.effect == "replace"}
+    name, choice = entry["key"], entry["choice"]
+    row = {"kind": "concept", "key": name, "action": "kept"}
+    rules = _concept_rules(st, name)
+    texts = {norm_key(r.target) for r in rules if r.target}
     if choice.get("default"):
         texts.add(norm_key(choice["default"]))
     drop: Set[int] = set()
+    rule_line = fixed_line = None
     for r in [*rules, *(x for x in _targeting(st, texts) if x not in rules)]:
         i = _index(lines, r.source_lines[0], drop)
         if i is not None:
             drop.add(i)
+            rule_line = rule_line or lines[i]
     for f in st.fixed_blocks:
         if norm_key(f.text) in texts:
             i = _index(lines, f.source_line, drop)
             if i is not None:
                 drop.add(i)
-    old = [lines[i] for i in sorted(drop)]
+                fixed_line = fixed_line or lines[i]
     olds = [t for r in rules for t in (r.target, r.then_text) if t]
     if drop:
-        r0 = rules[0] if rules else None
-        section = r0.section if r0 else next((f.section for f in st.fixed_blocks if norm_key(f.text) in texts), "")
-        at = (min(drop), section, bool(r0 and not r0.paragraph))
+        at = min(drop)
     elif choice["use"]:
-        at = _home(lines, st, c)
+        at = _home(lines, st, td.CONCEPTS[name])
         if at is None:
             return lines, [], [entry], []
     else:
-        return lines, [{"kind": "concept", "key": entry["key"], "action": "kept"}], [], []
-    new = _concept_lines(c, choice, at[1], at[2]) if choice["use"] else []
+        return lines, [row], [], []
+    # each new line keeps the trailing "| section:" of the line it replaces (a Report-wide unit without one belongs
+    # to the first findings section, so nothing is added)
+    fixed_suffix = _suffix(fixed_line) if fixed_line else (_suffix(rule_line) if rule_line else "")
+    rule_suffix = _suffix(rule_line) if rule_line else fixed_suffix
+    new = _concept_lines(choice, fixed_suffix, rule_suffix) if choice["use"] else []
+    old = [lines[i] for i in sorted(drop)]
     if [ln.strip() for ln in old] == [ln.strip() for ln in new]:
-        return lines, [{"kind": "concept", "key": entry["key"], "action": "kept"}], [], []
+        return lines, [row], [], []
     out = [ln for i, ln in enumerate(lines) if i not in drop]
     if new:
         prefix = _prefix(old[0]) if old else ""
-        out[at[0]:at[0]] = [prefix + ln for ln in new]
+        out[at:at] = [prefix + ln for ln in new]
     action = "removed" if not new else ("rewritten" if drop else "inserted")
     keep = {norm_key(choice.get("default", "")), norm_key(choice.get("when_met", ""))}
-    return out, [{"kind": "concept", "key": entry["key"], "action": action}], [], [t for t in olds if norm_key(t) not in keep]
+    return out, [{**row, "action": action}], [], [t for t in olds if norm_key(t) not in keep]
 ```
 
 and replace the `_OPS` line with
@@ -1105,7 +1250,7 @@ _OPS: List[Tuple[str, Callable]] = [("concept", _concept)]
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_template_ledger_apply.py -q`
-Expected: PASS (13 tests)
+Expected: PASS (15 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1117,7 +1262,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ```
 
-### Task 6: Fixed lines, normals, stale quotes, unmatched entries and the lint guard
+### Task 6: Fixed lines, normals, stale quotes, unmatched entries (reworded negatives, repeated paragraph names) and the lint guard
 
 **Files:**
 - Modify: `backend/src/rapid_reports_ai/template_ledger_apply.py`
@@ -1187,6 +1332,43 @@ def test_everything_together_is_idempotent_and_clean():
     _clean(once.sheet)
     assert not once.failed and not once.unmatched
     assert tla.apply_ledger(once.sheet, led).sheet == once.sheet
+
+
+def test_a_negative_whose_wordings_are_both_gone_is_a_card_never_inserted():
+    gone = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."\n', "")
+    reword = _led(("normal", td.negative_key("Liver", "No focal liver lesion."), {"text": "No focal hepatic lesion."}))
+    res = tla.apply_ledger(gone, reword)
+    assert res.sheet == gone and [e["key"] for e in res.unmatched] == ['Liver :: "No focal liver lesion."']
+    remove = _led(("normal", td.negative_key("Liver", "No focal liver lesion."), {"text": ""}))
+    res = tla.apply_ledger(gone, remove)                                   # already gone: nothing to do, nothing added
+    assert res.sheet == gone and not res.unmatched and res.changed == 0
+
+
+def test_a_paragraph_name_used_twice_is_never_guessed():
+    twice = LEDGER_SHEET.replace("## Paragraph: Impression (IMPRESSION)", "## Paragraph: Liver (IMPRESSION)")
+    _clean(twice)
+    res = tla.apply_ledger(twice, _led(("normal", "Liver :: liver", {"text": "The liver is unremarkable."})))
+    assert res.sheet == twice and len(res.unmatched) == 1
+    assert tla.observe(_clean(twice), "normal", "Liver :: liver") is None
+
+
+def test_a_fixed_entry_on_a_concepts_line_is_skipped_not_fought_over():
+    led = _led(("concept", "comparison", COMPARISON))
+    led.append({"kind": "fixed", "key": "No previous imaging available.", "choice": {"keep": "remove"}, "by": "code",
+                "at": "", "source": "default"})                       # a stored ledger from before the refusal
+    once = tla.apply_ledger(LEDGER_SHEET, led)
+    again = tla.apply_ledger(once.sheet, led)
+    assert 'FIXED "No previous imaging available."' in once.sheet and again.sheet == once.sheet and again.changed == 0
+
+
+def test_removing_a_fixed_entry_also_removes_a_use_rule_writing_it():
+    sheet = LEDGER_SHEET.replace(
+        'FIXED "Axial images were acquired."\n',
+        'FIXED "Axial images were acquired."\nRULE WHEN [context: the coronal series was not acquired] USE '
+        '"Coronal images were not acquired."\n')
+    _clean(sheet)
+    res = tla.apply_ledger(sheet, _led(("fixed", "Coronal images were not acquired.", {"keep": "remove"})))
+    assert "Coronal images were not acquired." not in res.sheet and res.applied[0]["action"] == "removed"
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -1197,28 +1379,41 @@ Expected: FAIL (fixed and normal entries are ignored: no `_OPS` for them)
 - [ ] **Step 3: Implement** (in `template_ledger_apply.py`, after `_concept`)
 
 ```python
+def _uses(st: tss.SheetStructure, key: str) -> List[tss.Rule]:
+    """Context USE rules writing this sentence (a line printed when its condition is met)."""
+    return [r for r in st.rules if r.condition_source == "context" and r.effect == "use" and norm_key(r.then_text) == key]
+
+
 def _fixed(lines, st, entry):
     key = norm_key(entry["key"])
     found = [f for f in st.fixed_blocks if norm_key(f.text) == key]
+    uses = _uses(st, key)
     row = {"kind": "fixed", "key": entry["key"], "action": "kept"}
     if entry["choice"]["keep"] == "always":
-        return (lines, [row], [], []) if found else (lines, [], [entry], [])
-    if not found:
+        return (lines, [row], [], []) if found or uses else (lines, [], [entry], [])
+    if not found and not uses:
         return lines, [row], [], []
     drop: Set[int] = set()
-    for raw in [f.source_line for f in found] + [r.source_lines[0] for r in _targeting(st, {key})]:
+    raws = [f.source_line for f in found] + [r.source_lines[0] for r in [*_targeting(st, {key}), *uses]]
+    for raw in raws:
         i = _index(lines, raw, drop)
         if i is not None:
             drop.add(i)
     out = [ln for i, ln in enumerate(lines) if i not in drop]
-    return out, [{**row, "action": "removed"}], [], [found[0].text]
+    return out, [{**row, "action": "removed"}], [], [found[0].text if found else uses[0].then_text]
+
+
+def _paragraph(st: tss.SheetStructure, name: str) -> Optional[tss.Paragraph]:
+    """The one paragraph with this name; None when there is none or more than one (never guessed)."""
+    hits = [p for p in st.paragraphs if td._name(p.name) == td._name(name)]
+    return hits[0] if len(hits) == 1 else None
 
 
 def _normal(lines, st, entry):
     para_name, label, neg = td.split_normal_key(entry["key"])
     text = entry["choice"]["text"]
     row = {"kind": "normal", "key": entry["key"], "action": "kept"}
-    para = next((p for p in st.paragraphs if td._name(p.name) == td._name(para_name)), None)
+    para = _paragraph(st, para_name)
     if para is None:
         return lines, [], [entry], []
     if neg:
@@ -1232,12 +1427,14 @@ def _normal(lines, st, entry):
     if not units:
         if not text:
             return lines, [row], [], []
+        if neg:   # a negative is keyed by its own wording: when neither wording is found, ask (never insert)
+            return lines, [], [entry], []
         span = _paragraph_span(lines, para.id)
         if span is None:
             return lines, [], [entry], []
         at = _block_end(lines, *span)
         out = list(lines)
-        out[at:at] = [f'NEGATIVE "{text}"' if neg else f'NORMAL [{label}] "{text}"']
+        out[at:at] = [f'NORMAL [{label}] "{text}"']
         return out, [{**row, "action": "inserted"}], [], []
     idx: List[int] = []
     for raw in raws:
@@ -1283,7 +1480,7 @@ _OPS: List[Tuple[str, Callable]] = [("concept", _concept), ("fixed", _fixed), ("
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_template_ledger_apply.py -q`
-Expected: PASS (20 tests)
+Expected: PASS (26 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1295,7 +1492,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ```
 
-### Task 7: `observe` and `reconcile_chat` (chat updates the ledger; automatic writes never do)
+### Task 7: `observe` and `reconcile_chat` (chat updates the ledger, except whole-item removals (D3); automatic writes never do)
 
 **Files:**
 - Modify: `backend/src/rapid_reports_ai/template_ledger_apply.py` (append)
@@ -1310,7 +1507,11 @@ def test_observe_reads_each_kind():
     assert tla.observe(st, "value", "lvef") == {"need": "every"}
     assert tla.observe(st, "value", "ECV") == {"need": "not_needed"}
     assert tla.observe(st, "concept", "comparison") == COMPARISON
-    assert tla.observe(st, "concept", "contrast") == {"use": False, "default": "", "when_met": ""}
+    assert tla.observe(st, "concept", "contrast") == {"use": False, "default": "", "when_met": "", "condition": "",
+                                                      "dictated": False}
+    drop = _clean(tla.apply_ledger(LEDGER_SHEET, _led(("concept", "comparison",
+                                                      {**COMPARISON, "when_met": ""}))).sheet)
+    assert tla.observe(drop, "concept", "comparison") == {**COMPARISON, "when_met": ""}   # the drop rule is read too
     assert tla.observe(st, "fixed", "Axial images were acquired.") == {"keep": "always"}
     assert tla.observe(st, "normal", "Liver :: liver") == {"text": "The liver is normal in size."}
     assert tla.observe(st, "normal", "Liver :: gallbladder") == {"text": ""}
@@ -1321,19 +1522,20 @@ def test_a_chat_rewrite_that_changes_a_decided_item_updates_the_ledger():
     led = _led(("value", "LVEF", {"need": "every"}))
     before = tla.apply_ledger(LEDGER_SHEET, led).sheet
     after = before.replace('LIST_MISSING ["LVEF"]', 'LIST_MISSING ["RVEF"]')
-    new, changes = tla.reconcile_chat(before, after, led)
+    new, changes, cards = tla.reconcile_chat(before, after, led)
     assert {(e["key"], e["choice"]["need"], e["source"]) for e in new} == {("LVEF", "not_needed", "chat"),
                                                                            ("RVEF", "every", "chat")}
     assert td.describe_change(changes[0]) == ("This changes something you confirmed: LVEF every report → "
                                               "not needed.")
     assert tla.apply_ledger(after, new).sheet == after                # the rewrite stands
+    assert cards == []
 
 
 def test_items_a_chat_rewrite_left_alone_keep_their_entry():
     led = _led(("value", "LVEF", {"need": "every"}), ("value", "ECV", {"need": "relevant"}))
     before = tla.apply_ledger(LEDGER_SHEET, led).sheet
     after = before.replace("Opening: \"The liver\"", "Opening: \"The liver is described first\"")
-    new, changes = tla.reconcile_chat(before, after, led)
+    new, changes, cards = tla.reconcile_chat(before, after, led)
     assert new == led and changes == []
 
 
@@ -1342,8 +1544,22 @@ def test_no_value_entries_means_the_ledger_does_not_own_the_list():
     before = LEDGER_SHEET
     after = before.replace('TERM PREFER "hepatic"\n', 'TERM PREFER "hepatic"\nRULE WHEN [findings: any listed value '
                                                      'is not stated] LIST_MISSING ["A"] AT TOP | section: FINDINGS\n')
-    new, changes = tla.reconcile_chat(before, after, led)
+    new, changes, cards = tla.reconcile_chat(before, after, led)
     assert new == led and changes == []
+
+
+
+def test_a_rewrite_that_drops_a_whole_decided_item_keeps_the_ledger_and_returns_a_card():
+    led = _led(("value", "LVEF", {"need": "every"}), ("concept", "comparison", COMPARISON))
+    before = tla.apply_ledger(LEDGER_SHEET, led).sheet
+    lines = [ln for ln in before.split("\n") if "LIST_MISSING" not in ln and "previous" not in ln.lower()]
+    after = "\n".join(lines)
+    new, changes, cards = tla.reconcile_chat(before, after, led)
+    assert new == led and changes == []                                # D3: never folded in silently
+    assert [c["id"] for c in cards] == ["value:lvef", "concept:comparison"]
+    back = _clean(tla.apply_ledger(after, new).sheet)                 # the save writes the decided lines again
+    assert tla.observe(back, "value", "LVEF") == {"need": "every"}
+    assert tla.observe(back, "concept", "comparison") == COMPARISON
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -1358,22 +1574,27 @@ Expected: FAIL with `AttributeError: module 'rapid_reports_ai.template_ledger_ap
 
 def observe(st: tss.SheetStructure, kind: str, key: str) -> Optional[dict]:
     """The choice the sheet currently expresses for (kind, key), in the ledger's choice form. A value: "every" when
-    the LIST_MISSING line lists it, else "not_needed". A normal: the unit's text ("" when absent); None when its
-    paragraph is gone."""
+    the LIST_MISSING line lists it, else "not_needed". A concept: read from the rule carrying one of its standard
+    conditions (REPLACE: default + when_met; SUPPRESS: default only; USE: when_met only). A normal: the unit's text
+    ("" when absent); None when its paragraph is gone or its name is not unique."""
     if kind == "value":
         items = [td._name(x) for r in st.rules if r.effect == "list_missing" for x in r.items]
         return {"need": "every" if td._name(key) in items else "not_needed"}
     if kind == "concept":
-        c = td.CONCEPTS[key]
-        r = next((r for r in st.rules if r.condition_source == "context"
-                  and td._name(r.condition) == td._name(c.condition)), None)
-        if r is None:
-            return {"use": False, "default": "", "when_met": ""}
-        return {"use": True, "default": r.target if r.effect == "replace" else "", "when_met": r.then_text}
+        rules = _concept_rules(st, key)
+        if not rules:
+            return {"use": False, "default": "", "when_met": "", "condition": "", "dictated": False}
+        r = rules[0]
+        cond = next(c for c in td.CONCEPTS[key].conditions if td._name(c) == td._name(r.condition))
+        default = r.target if r.effect in ("replace", "suppress") else ""
+        when_met = r.then_text if r.effect in ("replace", "use") else ""
+        return {"use": True, "default": default, "when_met": when_met, "condition": cond, "dictated": False}
     if kind == "fixed":
-        return {"keep": "always" if any(norm_key(f.text) == norm_key(key) for f in st.fixed_blocks) else "remove"}
+        k = norm_key(key)
+        present = any(norm_key(f.text) == k for f in st.fixed_blocks) or bool(_uses(st, k))
+        return {"keep": "always" if present else "remove"}
     para_name, label, neg = td.split_normal_key(key)
-    para = next((p for p in st.paragraphs if td._name(p.name) == td._name(para_name)), None)
+    para = _paragraph(st, para_name)
     if para is None:
         return None
     if neg:
@@ -1383,23 +1604,37 @@ def observe(st: tss.SheetStructure, kind: str, key: str) -> Optional[dict]:
     return {"text": u.text if u else ""}
 
 
-def reconcile_chat(before: str, after: str, ledger: List[dict]) -> Tuple[List[dict], List[td.Change]]:
+def _wholesale(e: dict, ob: dict, oa: dict, sb: tss.SheetStructure, sa: tss.SheetStructure) -> bool:
+    """A rewrite that removed a whole decided item: the whole LIST_MISSING list, or every line of a used concept.
+    Product decision D3: never folded into the ledger silently; the ledger is kept and a card asks."""
+    if e["kind"] == "value":
+        had = any(r.effect == "list_missing" and r.items for r in sb.rules)
+        return had and not any(r.effect == "list_missing" for r in sa.rules) and e["choice"]["need"] == "every"
+    if e["kind"] == "concept":
+        return bool(ob.get("use")) and not oa.get("use") and bool(e["choice"].get("use"))
+    return False
+
+
+def reconcile_chat(before: str, after: str, ledger: List[dict]) -> Tuple[List[dict], List[td.Change], List[dict]]:
     """Fold a chat rewrite into the ledger: an entry whose item the rewrite changed (before != after) takes the new
-    state (source "chat"); values the rewrite added to LIST_MISSING become entries when the ledger owns the value
-    list. Entries whose item the rewrite left alone are untouched, so apply_ledger then keeps them as decided."""
+    state (source "chat"; the reply names a confirmed one); values the rewrite added to LIST_MISSING become entries
+    when the ledger owns the value list. A rewrite that removed a whole item (_wholesale) leaves the entry as it was
+    and returns a one-tap card instead. Returns (ledger, changes, cards)."""
+    from . import template_rules_cards as trc
     if not ledger or not tsg.is_grammar_sheet(before or "") or not tsg.is_grammar_sheet(after or ""):
-        return list(ledger or []), []
+        return list(ledger or []), [], []
     sb, sa = _parse(before), _parse(after)
-    out, changes = list(ledger), []
+    out, changes, cards = list(ledger), [], []
     for e in ledger:
         try:
             ob, oa = observe(sb, e["kind"], e["key"]), observe(sa, e["kind"], e["key"])
             if oa is None or ob == oa:
                 continue
-            if e["kind"] == "concept" and not oa["use"] and e["choice"].get("use") and not e["choice"].get("when_met"):
-                continue   # a FIXED-only concept has no rule to observe
+            if _wholesale(e, ob, oa, sb, sa):
+                cards.append(trc.card_for_change(e["kind"], e["key"], e["choice"]))
+                continue
             out, ch = td.set_decision(out, e["kind"], e["key"], oa, source="chat")
-        except (td.DecisionError, KeyError):
+        except (td.DecisionError, KeyError, StopIteration):
             continue
         if ch:
             changes.append(ch)
@@ -1416,13 +1651,13 @@ def reconcile_chat(before: str, after: str, ledger: List[dict]) -> Tuple[List[di
             known.add(td._name(x))
             if ch:
                 changes.append(ch)
-    return out, changes
+    return out, changes, cards
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_template_ledger_apply.py -q`
-Expected: PASS (24 tests)
+Expected: PASS (31 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1520,6 +1755,13 @@ async def test_unmatched_entries_are_reported_for_the_next_review():
     led = _led(("fixed", "A line the sheet lacks.", {"keep": "always"}))
     out = await S.vet_sheet(LEDGER_SHEET, origin="analyser", ledger=led)
     assert [e["key"] for e in out.ledger_unmatched] == ["A line the sheet lacks."]
+
+
+async def test_a_chat_edit_that_drops_the_whole_value_list_is_kept_and_carded():
+    after = "\n".join(ln for ln in APPLIED.split("\n") if "LIST_MISSING" not in ln)
+    out = await S.vet_sheet(after, origin="chat", previous=APPLIED, ledger=LVEF)
+    assert out.status == "saved" and out.sheet == APPLIED and out.ledger == LVEF and out.ledger_changes == []
+    assert [c["id"] for c in out.ledger_cards] == ["value:lvef"]
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -1540,6 +1782,7 @@ Add to `VetOutcome`, after `coverage_sections`:
 ```python
     ledger: List[dict] = field(default_factory=list)            # the decisions after this save (chat may change them)
     ledger_changes: List[dict] = field(default_factory=list)    # decided items a chat rewrite changed (td.Change)
+    ledger_cards: List[dict] = field(default_factory=list)      # whole decided items a chat rewrite removed: kept, asked
     ledger_unmatched: List[dict] = field(default_factory=list)  # entries shown as cards at the next review
     ledger_drift: int = 0      # automatic writes: ledger lines the write had wrong and code rewrote (writer drift)
     stale_quotes: List[str] = field(default_factory=list)       # prose still quoting a sentence the ledger changed
@@ -1552,7 +1795,9 @@ async def vet_sheet(sheet: str, origin: Origin, previous: str = "", ledger: Opti
     """Vet a sheet before it is stored (see _vet), then apply the decision ledger by code as the last step
     (template_ledger_apply.apply_ledger), on every origin. `ledger` is template_config["decisions"]; None leaves the
     save exactly as before the Rules step. Only a chat edit folds its own changes to decided items back into the
-    ledger (reported in ledger_changes); every other origin is overwritten by the ledger (counted in ledger_drift)."""
+    ledger (reported in ledger_changes), except one that removes a whole decided item: that entry is kept and
+    returned as a card (ledger_cards; product decision D3). Every other origin is overwritten by the ledger
+    (counted in ledger_drift)."""
     out = await _vet(sheet, origin, previous)
     if ledger is None:
         return out
@@ -1564,8 +1809,9 @@ def _with_ledger(out: VetOutcome, origin: str, previous: str, ledger: List[dict]
     if out.status == "refused":
         return dataclasses.replace(out, ledger=ledger)
     changes: List[dict] = []
+    cards: List[dict] = []
     if origin == "chat" and previous and out.status == "saved":
-        ledger, changes = tla.reconcile_chat(previous, out.sheet, ledger)
+        ledger, changes, cards = tla.reconcile_chat(previous, out.sheet, ledger)
     res = tla.apply_ledger(out.sheet, ledger)
     drift = res.changed if origin in AUTOMATIC else 0
     if res.failed:
@@ -1580,8 +1826,12 @@ def _with_ledger(out: VetOutcome, origin: str, previous: str, ledger: List[dict]
         st = tsg.parse_sheet(res.sheet, mode="template").structure
         coverage = [s.name for s in sorted(st.sections, key=lambda s: s.order)]
     return dataclasses.replace(out, status=status, sheet=res.sheet, coverage_sections=coverage, ledger=ledger,
-                               ledger_changes=[dict(c) for c in changes], ledger_unmatched=res.unmatched,
+                               ledger_changes=[dict(c) for c in changes], ledger_cards=cards,
+                               ledger_unmatched=res.unmatched,
                                ledger_drift=drift, stale_quotes=res.stale_quotes)
+
+
+LEDGER_KEPT = "This would remove something you confirmed, so it was kept; use the card below to change it."
 ```
 
 - [ ] **Step 4: Give the existing fakes the new keyword**
@@ -1613,7 +1863,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 
 **Files:**
 - Modify: `backend/src/rapid_reports_ai/template_decisions.py` (append `clean_ledger`)
-- Modify: `backend/src/rapid_reports_ai/main.py:1673-1697` (`_vet_config`), `:764-771` (`SkillSheetSaveRequest`), `:2809-2816` (`/skill-sheet/save`)
+- Modify: `backend/src/rapid_reports_ai/main.py:1659-1667` (`_carry_structure`), `:1673-1697` (`_vet_config`), `:764-771` (`SkillSheetSaveRequest`), `:2809-2816` (`/skill-sheet/save`)
 - Test: `backend/tests/test_template_decisions.py` (append), `backend/tests/test_template_ledger_routes.py` (create)
 
 - [ ] **Step 1: Write the failing tests**
@@ -1708,6 +1958,17 @@ def test_creator_save_stores_decisions_and_the_rules_step_record(client, auth_he
     assert r["success"], r
     cfg = _get(client, auth_headers, r["template_id"])["template_config"]
     assert LINE in cfg["skill_sheet"] and cfg["decisions"] == _width() and cfg["rules_step"] == {"version": "v", "cards": 3}
+
+
+def test_a_put_without_decisions_keeps_the_ledger_and_the_rules_step_record(client, auth_headers):
+    t = _guided(client, auth_headers)["template"]
+    _put(client, auth_headers, t, {**t["template_config"], "decisions": _width(), "rules_step": {"version": "v"}})
+    stored = _get(client, auth_headers, t["id"])
+    cfg = {k: v for k, v in stored["template_config"].items() if k not in ("decisions", "rules_step")}
+    r = _put(client, auth_headers, stored, cfg)                       # same sheet, no ledger fields
+    assert r["success"], r
+    after = _get(client, auth_headers, t["id"])["template_config"]
+    assert after["decisions"] == _width() and after["rules_step"] == {"version": "v"}
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -1758,9 +2019,28 @@ In `main.py` add `from . import template_decisions as td` after `from . import t
     cfg = {**new_cfg, "decisions": out.ledger} if ledger else new_cfg
     if out.status == "unchanged":
         return cfg, "", ""
-    notes = [td.describe_change(c) for c in out.ledger_changes]
+    notes = [td.describe_change(c) for c in out.ledger_changes] + ([tsave.LEDGER_KEPT] if out.ledger_cards else [])
     notice = " ".join(x for x in [out.message or "", *notes] if x)
     return {**cfg, "skill_sheet": out.sheet, "coverage_sections": out.coverage_sections}, "", notice
+```
+
+In `_carry_structure` (main.py:1659-1667) the ledger and its run record must survive a PUT that omits them (the refine panel and older clients send the whole config, but a client may not). Replace
+
+```python
+    if not new.get("analyser_version") and old.get("analyser_version"):
+        new["analyser_version"] = old["analyser_version"]   # the writer of the base sheet survives edits
+    return new
+```
+
+with
+
+```python
+    if not new.get("analyser_version") and old.get("analyser_version"):
+        new["analyser_version"] = old["analyser_version"]   # the writer of the base sheet survives edits
+    for k in ("decisions", "rules_step"):   # the decision ledger and its run record survive a PUT that omits them
+        if k not in new and old.get(k):
+            new[k] = old[k]
+    return new
 ```
 
 In `SkillSheetSaveRequest` (main.py:764-771) add:
@@ -1890,6 +2170,23 @@ def test_refine_without_decisions_returns_none(client, auth_headers, monkeypatch
     r = client.post("/api/templates/skill-sheet/refine", headers=auth_headers,
                     json={"skill_sheet": GOOD, "message": "m"}).json()
     assert r["success"] and "decisions" not in r
+
+
+
+def test_refine_that_drops_a_whole_decided_list_keeps_it_and_returns_the_card(client, auth_headers, monkeypatch):
+    from rapid_reports_ai import template_ledger_apply as tla
+    monkeypatch.setattr("rapid_reports_ai.main.get_system_api_key", lambda *a, **k: "key")
+    led = _width()
+    before = tla.apply_ledger(GOOD, led).sheet
+    after = "\n".join(ln for ln in before.split("\n") if "LIST_MISSING" not in ln)
+
+    async def refine(self, skill_sheet, message, chat_history, api_key, rejection_context=None):
+        return {"skill_sheet": after, "response": "Done.", "behavioral_claim": "c"}
+    monkeypatch.setattr("rapid_reports_ai.template_manager.TemplateManager.refine_skill_sheet", refine)
+    r = client.post("/api/templates/skill-sheet/refine", headers=auth_headers, json={
+        "skill_sheet": before, "message": "remove the values", "decisions": led}).json()
+    assert r["success"] and LINE in r["skill_sheet"] and r["decisions"] == led
+    assert [c["id"] for c in r["cards"]] == ["value:width"] and r["response"].endswith(S.LEDGER_KEPT)
 ```
 
 The analyze endpoint now always passes `decisions=`, so give the two existing `write` fakes in `test_template_writer.py` (lines 92 and 105) the keyword:
@@ -2012,6 +2309,9 @@ with
                 out["notice"] = v.message
                 out["response"] = f"{result.get('response', '').rstrip()} {v.message}".strip()
             notes = [n for n in (td.describe_change(c) for c in v.ledger_changes) if n]
+            if v.ledger_cards:   # D3: a whole decided item removed by the rewrite is kept and asked about
+                notes.append(tsave.LEDGER_KEPT)
+                out["cards"] = v.ledger_cards
             if notes:   # a chat edit that changes a confirmed decision says so
                 out["response"] = f"{out.get('response', '').rstrip()} {' '.join(notes)}".strip()
         if decisions is not None:
@@ -2250,16 +2550,19 @@ def test_check_quotes_drops_unverifiable_quotes_and_empty_candidates():
         values=[R.ValueCandidate(name="LVEF", quotes=[R.Quote(report=1, text="LVEF 55%"), R.Quote(report=2, text="LVEF 99%")]),
                 R.ValueCandidate(name="Invented", quotes=[R.Quote(report=1, text="never written")]),
                 R.ValueCandidate(name='Bad "name"', quotes=[R.Quote(report=1, text="LVEF 55%")])],
-        concepts=[R.ConceptWording(concept="comparison", role="default", text="No previous imaging.",
+        concepts=[R.ConceptWording(concept="comparison", state="none", text="No previous imaging.",
                                    quotes=[R.Quote(report=1, text="No previous imaging.")]),
-                  R.ConceptWording(concept="comparison", role="when_met", text="Compared with {study}.",
+                  R.ConceptWording(concept="comparison", state="compared", text="Compared with {study}.",
                                    quotes=[R.Quote(report=3, text="Compared with CT")])],
         habits=[R.HabitCandidate(finding="x", habit="y", reports=[1, 3]), R.HabitCandidate(finding="z", habit="w", reports=[2])])
     run = R.check_quotes(out, EX)
     assert [v.name for v in run.values] == ["LVEF"] and len(run.values[0].quotes) == 1
-    assert [c.role for c in run.concepts] == ["default"]
+    assert [c.state for c in run.concepts] == ["none"]
     assert [h.finding for h in run.habits] == ["x"]
     assert run.dropped_quotes == 3 and run.ok
+    bad = R.RunOutput(concepts=[R.ConceptWording(concept="contrast", state="none", text="x.",
+                                                 quotes=[R.Quote(report=1, text="LVEF 55%")])])
+    assert R.check_quotes(bad, EX).concepts == []                     # a state the concept does not have
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -2272,7 +2575,8 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'rapid_reports_ai.temp
 ```python
 """The decision run (Rules-step spec, "New flow" step 2): from the pasted example reports alone, list what needs the
 radiologist before the sheet is written. One Qwen call (low temperature, structured output, one job) proposes
-candidate required values and the wording of the standard study-level concepts, each with quotes from the examples;
+candidate required values and the wording of the standard study-level concepts (each wording with the state it states,
+never which one is usual: code counts that), each with quotes from the examples;
 in parallel Jev answers, per example and per concept, whether the report states it. Code checks every quote against
 the example it cites (a candidate left with no verified quote is dropped) and the card builder
 (template_rules_cards) turns the result into cards. Jev decides which examples state a concept; Qwen only proposes
@@ -2317,7 +2621,7 @@ class ValueCandidate(BaseModel):
 
 class ConceptWording(BaseModel):
     concept: ConceptName
-    role: Literal["default", "when_met"]
+    state: str    # what the wording says (one of the concept's states in template_decisions.CONCEPTS)
     text: str     # the wording as a template line, {slots} for what varies
     quotes: List[Quote] = []
 
@@ -2340,12 +2644,12 @@ List three things, each grounded in quotes copied word for word from the example
 
 1. VALUES: measured or graded values the reports state, each by a short plain name (a few words, no number or unit in the name). One entry per distinct value, with one quote from every report that states it. A value stated in only some reports is still listed. Never list a finding, a diagnosis or a structure that is only described.
 
-2. CONCEPTS: how the reports word four study-level circumstances, when they word them at all:
-- comparison: whether previous imaging was available or compared;
-- contrast: whether a contrast agent was given;
-- sequences: a part of the planned acquisition (a sequence, phase or view) that was not performed;
-- limitation: a technical limitation of the study.
-Give each wording a role. "default" is the wording for the usual case: no previous imaging, the agent given as planned, everything performed, no limitation. "when_met" is the wording for when the circumstance applies: a previous study compared, no agent given, a part not performed, a limitation stated. Write the wording as a template line: copied from the reports, with the varying parts (dates, study names, the part not performed, the limitation) replaced by a named slot in curly braces such as {date}. Give the quotes it comes from. Different wordings with the same role are separate entries. Leave out a concept that no report words.
+2. CONCEPTS: how the reports word four study-level circumstances, when they word them at all, each wording with its state:
+- comparison: state "none" (no previous imaging available or compared) or "compared" (a previous study is compared);
+- contrast: state "given" (a contrast agent was given) or "not_given" (no contrast agent was given);
+- sequences: state "complete" (everything planned was performed) or "not_performed" (a sequence, phase or view was not performed);
+- limitation: state "none" (no limitation stated) or "limited" (a technical limitation is stated).
+The state says what the wording states, never how often it is used: do not decide which wording is the usual one. Write the wording as a template line: copied from the reports, with the varying parts (dates, study names, the part not performed, the limitation) replaced by a named slot in curly braces such as {date}. Give the quotes it comes from. Different wordings with the same state are separate entries. Leave out a concept that no report words.
 
 3. HABITS: a statement the radiologist adds only when a particular finding is present (the finding, and what they always add), seen in at least two reports. Give the report numbers.
 
@@ -2396,8 +2700,8 @@ def check_quotes(out: RunOutput, examples: List[str]) -> DecisionRun:
     for c in out.concepts:
         ok = [q for q in c.quotes if verified(q, examples)]
         dropped += len(c.quotes) - len(ok)
-        if ok and c.text.strip() and '"' not in c.text:
-            concepts.append(ConceptWording(concept=c.concept, role=c.role, text=" ".join(c.text.split()), quotes=ok))
+        if ok and c.text.strip() and '"' not in c.text and c.state in td.CONCEPTS[c.concept].states:
+            concepts.append(ConceptWording(concept=c.concept, state=c.state, text=" ".join(c.text.split()), quotes=ok))
     habits = [h for h in out.habits if len({r for r in h.reports if 1 <= r <= len(examples)}) >= 2]
     return DecisionRun(ok=True, values=values, concepts=concepts, habits=habits, dropped_quotes=dropped)
 ```
@@ -2675,11 +2979,12 @@ def _q(r, t):
 
 LVEF = R.ValueCandidate(name="LVEF", quotes=[_q(1, "LVEF 55%"), _q(2, "LVEF 60%"), _q(3, "LVEF 50%")])
 ECV = R.ValueCandidate(name="ECV", quotes=[_q(1, "ECV 28%"), _q(3, "ECV 30%")])
-NO_PRIOR = R.ConceptWording(concept="comparison", role="default", text="No previous imaging.",
+NO_PRIOR = R.ConceptWording(concept="comparison", state="none", text="No previous imaging.",
                             quotes=[_q(1, "No previous imaging."), _q(3, "No previous imaging.")])
-PRIOR = R.ConceptWording(concept="comparison", role="when_met", text="Compared with {study} of {date}.",
+PRIOR = R.ConceptWording(concept="comparison", state="compared", text="Compared with {study} of {date}.",
                          quotes=[_q(2, "Compared with CT of 01/01/2020.")])
 ALL = {"comparison": [1, 2, 3], "contrast": [], "sequences": [], "limitation": []}
+PRIOR_COND = "the dictation names a previous imaging study for comparison"
 
 
 def test_evidence_line_names_reports_never_percentages():
@@ -2700,7 +3005,8 @@ def test_a_value_in_every_example_is_kept_pre_ticked_and_a_partial_one_is_a_card
 def test_a_varying_concept_is_a_card_with_both_wordings_never_pre_ticked():
     out = C.build_cards(_run([], [NO_PRIOR, PRIOR], states=ALL), 3)
     card = next(c for c in out["cards"] if c["id"] == "concept:comparison")
-    assert card["wording"] == {"default": "No previous imaging.", "when_met": "Compared with {study} of {date}."}
+    assert card["wording"] == {"default": "No previous imaging.", "when_met": "Compared with {study} of {date}.",
+                               "condition": PRIOR_COND}
     assert card["selected"] is None
     keep = next(x for x in card["choices"] if x["id"] == "keep")["choice"]
     assert td.validate("concept", "comparison", keep)[1] == keep
@@ -2712,11 +3018,13 @@ def test_a_default_only_concept_is_still_asked():
 
 
 def test_two_wordings_for_one_role_are_a_disagreement_ranked_first():
-    other = R.ConceptWording(concept="comparison", role="default", text="LVEF 60%.", quotes=[_q(2, "LVEF 60%.")])
+    other = R.ConceptWording(concept="comparison", state="none", text="LVEF 60%.", quotes=[_q(2, "LVEF 60%.")])
     out = C.build_cards(_run([ECV], [NO_PRIOR, other, PRIOR], states=ALL), 3)
     assert out["cards"][0]["kind"] == "disagree" and out["cards"][0]["key"] == "comparison"
     labels = [x["label"] for x in out["cards"][0]["choices"]]
     assert labels[-1] == "Use whichever is dictated" and len(labels) == 3
+    dictated = out["cards"][0]["choices"][-1]["choice"]                 # its own choice, not "not used"
+    assert td.validate("concept", "comparison", dictated)[1]["dictated"] is True
 
 
 def test_no_jev_means_no_study_level_cards():
@@ -2724,9 +3032,42 @@ def test_no_jev_means_no_study_level_cards():
     assert [c["kind"] for c in out["cards"]] == ["value"]
 
 
-def test_a_concept_jev_says_no_example_states_is_left_out():
+def test_a_verified_quote_counts_as_stating_when_jev_misses_it():
     out = C.build_cards(_run([], [NO_PRIOR, PRIOR], states={n: [] for n in td.CONCEPTS}), 3)
-    assert out["cards"] == []
+    card = out["cards"][0]
+    assert card["id"] == "concept:comparison" and not any(e["quote"] is None for e in card["evidence"])
+
+
+def test_a_concept_every_example_words_the_same_way_is_still_a_card():
+    prior_all = R.ConceptWording(concept="comparison", state="compared", text="Compared with {study}.",
+                                 quotes=[_q(1, "LVEF 55%"), _q(2, "LVEF 60%"), _q(3, "LVEF 50%")])
+    out = C.build_cards(_run([], [prior_all], states=ALL), 3)
+    assert [c["id"] for c in out["cards"]] == ["concept:comparison"] and out["kept"] == []
+
+
+EX_C = ["Technique: No contrast agent was given. LVEF 55%.", "Technique: No contrast agent was given. LVEF 60%.",
+        "Technique: Following a contrast agent. LVEF 50%."]
+
+
+def test_contrast_default_is_the_usual_wording_and_the_condition_is_its_opposite():
+    none = R.ConceptWording(concept="contrast", state="not_given", text="No contrast agent was given.",
+                            quotes=[_q(1, "No contrast agent was given."), _q(2, "No contrast agent was given.")])
+    given = R.ConceptWording(concept="contrast", state="given", text="Following a contrast agent.",
+                             quotes=[_q(3, "Following a contrast agent.")])
+    run = R.check_quotes(R.RunOutput(concepts=[none, given]), EX_C)
+    run.states = {n: [] for n in td.CONCEPTS}
+    card = C.build_cards(run, 3)["cards"][0]
+    assert card["wording"] == {"default": "No contrast agent was given.", "when_met": "Following a contrast agent.",
+                               "condition": "the dictation states a contrast agent was given"}
+    # the same wordings, with the given wording usual: the other way round
+    given2 = given.model_copy(update={"quotes": [_q(3, "Following a contrast agent."), _q(1, "LVEF 55%"),
+                                                 _q(2, "LVEF 60%")]})
+    run = R.check_quotes(R.RunOutput(concepts=[none.model_copy(update={"quotes": [_q(1, "No contrast agent was given.")]}),
+                                               given2]), EX_C)
+    run.states = {n: [] for n in td.CONCEPTS}
+    card = C.build_cards(run, 3)["cards"][0]
+    assert card["wording"]["default"] == "Following a contrast agent."
+    assert card["wording"]["condition"] == "the dictation states no contrast agent was given"
 
 
 def test_the_budget_moves_the_rest_to_more():
@@ -2757,7 +3098,8 @@ Card: {"id", "kind", "step", "title", "evidence": [{"reports": [..], "quote": st
 build_cards(run, n_examples) -> {"cards", "more", "kept", "defaults"}: exceptions only, ranked (examples disagree,
 then uncertain values, then concept wording); at most MAX_CARDS open, the rest in "more"; items every example agrees
 on fold into "kept" (pre-ticked); nothing seen in fewer than every example is pre-ticked; "defaults" are the
-pre-ticked choices, recorded with source "default" when the step is skipped or the kept items are left alone."""
+pre-ticked choices, recorded with source "default" when the step is skipped or the kept items are left alone.
+Only values every example states are kept; a study-level concept is always a card (D1)."""
 from __future__ import annotations
 
 from typing import Dict, List, Optional
@@ -2792,25 +3134,33 @@ def value_card(name: str, evidence: List[dict], selected: Optional[str] = None, 
             "selected": selected, "rank": _RANK["value"]}
 
 
-def concept_card(concept: str, default: str, when_met: str, evidence: List[dict], selected: Optional[str] = None,
+def concept_card(concept: str, default: str, when_met: str, evidence: List[dict], condition: str = "",
                  step: str = "rules") -> dict:
+    """Study-level wording. Never pre-ticked (product decision D1): the radiologist always sees which wording is
+    printed and when the other replaces it (`condition`)."""
     return {"id": f"concept:{concept}", "kind": "concept", "step": step, "title": td.CONCEPTS[concept].label,
             "evidence": evidence, "ledger_kind": "concept", "key": concept,
-            "wording": {"default": default, "when_met": when_met},
-            "choices": [_choice("keep", "Keep", {"use": True, "default": default, "when_met": when_met}),
+            "wording": {"default": default, "when_met": when_met, "condition": condition},
+            "choices": [_choice("keep", "Keep", {"use": True, "default": default, "when_met": when_met,
+                                                 "condition": condition, "dictated": False}),
                         _choice("edit", "Edit wording", None),
-                        _choice("not_used", "Not used", {"use": False, "default": "", "when_met": ""})],
-            "selected": selected, "rank": _RANK["concept"]}
+                        _choice("not_used", "Not used", {"use": False, "default": "", "when_met": "", "condition": "",
+                                                         "dictated": False})],
+            "selected": None, "rank": _RANK["concept"]}
 
 
-def disagree_card(concept: str, options: List[dict], other: str, role: str, evidence: List[dict]) -> dict:
-    """options: [{"text", "reports"}] for one role; `other` the single wording of the other role ("" if none)."""
+def disagree_card(concept: str, options: List[dict], other: str, role: str, evidence: List[dict],
+                  condition: str) -> dict:
+    """options: [{"text", "reports"}] for one side; `other` the single wording of the other side ("" if none).
+    "Use whichever is dictated" is its own choice ({"use": false, "dictated": true}), not "not used"."""
     choices = []
     for k, o in enumerate(options):
         default, when_met = (o["text"], other) if role == "default" else (other, o["text"])
-        choices.append(_choice(f"w{k}", f"Use “{o['text']}”",
-                               {"use": True, "default": default, "when_met": when_met}))
-    choices.append(_choice("dictated", "Use whichever is dictated", {"use": False, "default": "", "when_met": ""}))
+        choices.append(_choice(f"w{k}", f"Use \u201c{o['text']}\u201d",
+                               {"use": True, "default": default, "when_met": when_met, "condition": condition,
+                                "dictated": False}))
+    choices.append(_choice("dictated", "Use whichever is dictated",
+                           {"use": False, "default": "", "when_met": "", "condition": "", "dictated": True}))
     return {"id": f"disagree:{concept}", "kind": "disagree", "step": "rules",
             "title": f"Your examples word {td.CONCEPTS[concept].label.lower()} differently", "evidence": evidence,
             "ledger_kind": "concept", "key": concept, "choices": choices, "selected": None, "rank": _RANK["disagree"]}
@@ -2866,42 +3216,47 @@ def _value_cards(run: DecisionRun, n: int) -> List[dict]:
 
 
 def _concept_cards(run: DecisionRun, n: int) -> List[dict]:
+    """One card per concept the examples word (never folded into "kept"). The default is the base state's wording
+    (no previous study, everything performed, no limitation); for contrast, whose two states both have a condition,
+    it is the state the examples use most (D1), and the condition stored is the opposite state's."""
     if run.states is None:
         return []
     out = []
-    for name in td.CONCEPTS:
-        stating = run.states.get(name) or []
-        if not stating:
-            continue
-        by_role: Dict[str, List[dict]] = {"default": [], "when_met": []}
+    for name, c in td.CONCEPTS.items():
+        by_state: Dict[str, List[dict]] = {s: [] for s in c.states}
         seen: Dict[str, dict] = {}
-        for c in run.concepts:
-            if c.concept != name:
+        for w in run.concepts:
+            if w.concept != name:
                 continue
-            k = f"{c.role}:{td.match_key('fixed', c.text)}"
+            k = f"{w.state}:{td.match_key('fixed', w.text)}"
             if k in seen:
-                seen[k]["reports"] = sorted(set(seen[k]["reports"]) | {q.report for q in c.quotes})
+                seen[k]["reports"] = sorted(set(seen[k]["reports"]) | {q.report for q in w.quotes})
                 continue
-            seen[k] = {"text": c.text, "reports": sorted({q.report for q in c.quotes}), "quote": c.quotes[0].text}
-            by_role[c.role].append(seen[k])
-        if not by_role["default"] and not by_role["when_met"]:
+            seen[k] = {"text": w.text, "reports": sorted({q.report for q in w.quotes}), "quote": w.quotes[0].text}
+            by_state[w.state].append(seen[k])
+        if not any(by_state.values()):
             continue
+        quoted = {r for ws in by_state.values() for w in ws for r in w["reports"]}
+        stating = set(run.states.get(name) or []) | quoted     # a verified quote counts even when Jev missed it
+        base = next((s for s, cond in c.states.items() if cond is None), None)
+        if base is None:
+            counts = {s: len({r for w in ws for r in w["reports"]}) for s, ws in by_state.items()}
+            base = max(c.states, key=lambda s: counts[s])
+        other = next(s for s in c.states if s != base)
+        condition = c.states[other]
         silent = [k for k in range(1, n + 1) if k not in stating]
-        ev = [{"reports": o["reports"], "quote": o["quote"]} for o in [*by_role["default"], *by_role["when_met"]]]
+        ev = [{"reports": w["reports"], "quote": w["quote"]} for w in [*by_state[base], *by_state[other]]]
         if silent:
             ev.append({"reports": silent, "quote": None})
-        split = next((r for r in ("default", "when_met") if len(by_role[r]) > 1), None)
+        split = next((s for s in (base, other) if len(by_state[s]) > 1), None)
         if split:
-            other_role = "when_met" if split == "default" else "default"
-            other = by_role[other_role][0]["text"] if len(by_role[other_role]) == 1 else ""
-            out.append(disagree_card(name, by_role[split], other, split, ev))
+            rest = by_state[other if split == base else base]
+            out.append(disagree_card(name, by_state[split], rest[0]["text"] if len(rest) == 1 else "",
+                                     "default" if split == base else "when_met", ev, condition))
             continue
-        default = by_role["default"][0]["text"] if by_role["default"] else ""
-        when_met = by_role["when_met"][0]["text"] if by_role["when_met"] else ""
-        # kept only when every example states it with one wording and no default: a default alone is a sentence
-        # printed for every patient (it varies by patient), so it is always asked
-        agreed = not silent and bool(when_met) and not default
-        out.append(concept_card(name, default, when_met, ev, selected="keep" if agreed else None))
+        default = by_state[base][0]["text"] if by_state[base] else ""
+        when_met = by_state[other][0]["text"] if by_state[other] else ""
+        out.append(concept_card(name, default, when_met, ev, condition))
     return out
 
 
@@ -2918,7 +3273,7 @@ def build_cards(run: DecisionRun, n_examples: int) -> dict:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_template_rules_cards.py -q`
-Expected: PASS (9 tests)
+Expected: PASS (11 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -2956,7 +3311,7 @@ def test_card_for_change_is_prefilled_and_not_preselected():
     card = C.card_for_change("value", "ECV", {"need": "not_needed"})
     assert card["id"] == "value:ecv" and card["step"] == "chat" and card["selected"] is None
     card = C.card_for_change("concept", "comparison", {"use": True, "default": "", "when_met": "Compared with {date}."})
-    assert card["wording"] == {"default": "", "when_met": "Compared with {date}."}
+    assert card["wording"] == {"default": "", "when_met": "Compared with {date}.", "condition": PRIOR_COND}
     card = C.card_for_change("normal", "Liver :: liver", {"text": "The liver is normal."})
     assert card["wording"] == {"text": "The liver is normal."} and card["kind"] == "normal"
 ```
@@ -2997,7 +3352,8 @@ def card_for_change(kind: str, key: str, proposed: dict) -> dict:
     if kind == "value":
         return value_card(key, [], step="chat")
     if kind == "concept":
-        return concept_card(key, proposed.get("default", ""), proposed.get("when_met", ""), [], step="chat")
+        return concept_card(key, proposed.get("default", ""), proposed.get("when_met", ""), [],
+                            proposed.get("condition", ""), step="chat")
     if kind == "fixed":
         return fixed_card(key, step="chat")
     return normal_card(key, proposed.get("text", ""), step="chat")
@@ -3006,7 +3362,7 @@ def card_for_change(kind: str, key: str, proposed: dict) -> dict:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_template_rules_cards.py -q`
-Expected: PASS (11 tests)
+Expected: PASS (13 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -3021,6 +3377,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ### Task 18: `/api/templates/skill-sheet/decide`
 
 **Files:**
+- Modify: `backend/src/rapid_reports_ai/template_decision_run.py` (append `stamp_review`)
 - Modify: `backend/src/rapid_reports_ai/main.py` (request model after `SkillSheetApplyDecisionsRequest`; endpoint after `/apply-decisions`)
 - Test: `backend/tests/test_template_decide_route.py`
 
@@ -3108,6 +3465,23 @@ def test_a_saved_template_uses_its_stored_examples_and_shows_its_current_values(
     assert r["kept"] == [] and r["defaults"] == []      # LVEF is already shown as the template's current value
 
 
+def test_the_first_use_review_is_stamped_on_the_server_and_never_repeats(client, auth_headers, db_session, test_user,
+                                                                          run_returns):
+    set_run, seen = run_returns
+    set_run(_run())
+    t = _make_template(db_session, test_user, "T", {"generation_mode": "skill_sheet_guided",
+                                                    "skill_sheet": LEDGER_SHEET})
+    for i, e in enumerate(EX):
+        db_session.add(TemplateExample(template_id=t.id, text=e["content"], sha256=str(i) * 64, source="pasted"))
+    db_session.commit()
+    assert client.post(URL, headers=auth_headers, json={"template_id": str(t.id)}).json()["ran"] is True
+    db_session.refresh(t)
+    assert t.template_config["rules_step"]["version"] == R.RUN_VERSION and t.template_config["rules_step"]["first_use"]
+    seen.clear()
+    r = client.post(URL, headers=auth_headers, json={"template_id": str(t.id)}).json()
+    assert r["ran"] is False and "examples" not in seen               # not run again, saved or not
+
+
 def test_a_saved_template_without_examples_shows_only_its_values(client, auth_headers, db_session, test_user,
                                                                   run_returns):
     set_run, seen = run_returns
@@ -3141,9 +3515,32 @@ def test_another_users_template_is_not_found(client, auth_headers, db_session, r
 Run: `cd backend && .venv/bin/python -m pytest tests/test_template_decide_route.py -q`
 Expected: FAIL (404 on the URL)
 
-- [ ] **Step 3: Implement** in `main.py`
+- [ ] **Step 3: Implement.** Append to `template_decision_run.py`:
 
-Request model (after `SkillSheetApplyDecisionsRequest`):
+```python
+def stamp_review(db, template_id, record: dict) -> bool:
+    """Mark a saved template's first-use review as run (template_config["rules_step"]), so the paid run is not
+    repeated on the next open, even when the panel is closed without saving. Never overwrites a record; never
+    raises (the review is evidence, not a reason to fail)."""
+    import uuid
+    from sqlalchemy.orm.attributes import flag_modified
+    from .database.models import Template
+    try:
+        tpl = (db.query(Template).filter(Template.id == uuid.UUID(str(template_id))).with_for_update().first())
+        if tpl is None or (tpl.template_config or {}).get("rules_step"):
+            db.rollback()
+            return False
+        tpl.template_config = {**(tpl.template_config or {}), "rules_step": {**record, "first_use": True}}
+        flag_modified(tpl, "template_config")
+        db.commit()
+        return True
+    except Exception as e:
+        db.rollback()
+        logger.warning("[decision-run] review not stamped for %s: %s", template_id, type(e).__name__)
+        return False
+```
+
+In `main.py`, the request model (after `SkillSheetApplyDecisionsRequest`):
 
 ```python
 class SkillSheetDecideRequest(BaseModel):
@@ -3191,6 +3588,8 @@ async def skill_sheet_decide_endpoint(
         run = await tdr.run_decisions(examples, scan_type)
         if not run.ok:
             return {**empty, "cards": current, "notice": NO_PRECHECK, "run": tdr.evidence(run)}
+        if request.template_id:   # first-use review: stamped on the server so it never runs twice
+            tdr.stamp_review(db, request.template_id, tdr.evidence(run))
         built = trc.build_cards(run, len(examples))
         have = {c["id"] for c in current}
         kept = [c for c in built["kept"] if c["id"] not in have]
@@ -3208,7 +3607,7 @@ The `get_template` call raises on a malformed id in some code paths. If `test_an
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_template_decide_route.py -q`
-Expected: PASS (7 tests)
+Expected: PASS (8 tests)
 
 - [ ] **Step 5: Run the full backend suite**
 
@@ -3218,7 +3617,7 @@ Expected: 0 failures
 - [ ] **Step 6: Commit**
 
 ```bash
-git add backend/src/rapid_reports_ai/main.py backend/tests/test_template_decide_route.py
+git add backend/src/rapid_reports_ai/template_decision_run.py backend/src/rapid_reports_ai/main.py backend/tests/test_template_decide_route.py
 git commit -m "feat(template): /skill-sheet/decide returns the Rules-step cards (fail-soft)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
@@ -3254,7 +3653,7 @@ from rapid_reports_ai.scripts import rules_step_lab as L
 SET = {"slug": "s", "examples": ["a", "b", "c", "d"], "truth": {
     "values": [{"name": "LVEF", "aliases": ["ejection fraction"], "reports": [1, 2, 3, 4], "need": "every"},
                {"name": "ECV", "aliases": [], "reports": [1, 3], "need": "relevant"}],
-    "concepts": {"comparison": {"stated_in": [2, 4]}, "contrast": {"stated_in": []}},
+    "concepts": {"comparison": {"stated_in": [2, 4]}, "contrast": {"stated_in": [], "usual_state": "not_given"}},
     "disagreements": ["contrast"], "patient_specific_fixed": [], "only_when_abnormal": []}}
 
 
@@ -3263,7 +3662,10 @@ def _card(cid, kind="value", key=None, evidence=()):
 
 
 def test_score_decide_counts_values_concepts_disagreements_and_budget():
-    payload = {"cards": [_card("value:ecv"), _card("value:heart rate"), _card("disagree:contrast", "disagree", "contrast")],
+    contrast = {**_card("concept:contrast", "concept", "contrast"),
+                "wording": {"condition": "the dictation states a contrast agent was given"}}
+    payload = {"cards": [_card("value:ecv"), _card("value:heart rate"), _card("disagree:contrast", "disagree", "contrast"),
+                         contrast],
                "more": [], "kept": [_card("value:ejection fraction", key="Ejection fraction")],
                "run": {"dropped_quotes": 2}, "states": {"comparison": [2, 4], "contrast": [1],
                                                          "sequences": [], "limitation": []}}
@@ -3272,7 +3674,8 @@ def test_score_decide_counts_values_concepts_disagreements_and_budget():
     assert s["every_kept"] == 1 and s["partial_carded"] == 1
     assert s["concept_cells"] == 8 and s["concept_correct"] == 7      # 2 truth concepts x 4 reports; contrast wrong in report 1
     assert s["disagreements_found"] == 1 and s["disagreements_total"] == 1
-    assert s["cards"] == 3 and s["over_budget"] is False and s["dropped_quotes"] == 2
+    assert s["polarity_correct"] == 1 and s["polarity_total"] == 1      # usual "not_given" -> condition "given"
+    assert s["cards"] == 4 and s["over_budget"] is False and s["dropped_quotes"] == 2
 
 
 def test_summarise_totals_by_kind():
@@ -3348,12 +3751,23 @@ def score_decide(s: dict, payload: dict) -> dict:
         for k in range(1, n + 1):
             cells += 1
             correct += (k in said) == (k in set(t.get("stated_in") or []))
+    # contrast polarity (D1): the stored condition is the opposite of the usual state the set was planted with
+    from rapid_reports_ai import template_decisions as td
+    pol_total = pol_ok = 0
+    for name, t in truth.get("concepts", {}).items():
+        card = next((c for c in cards if c.get("key") == name and c.get("wording")), None)
+        if not t.get("usual_state") or card is None:
+            continue
+        pol_total += 1
+        other = next(st for st in td.CONCEPTS[name].states if st != t["usual_state"])
+        pol_ok += card["wording"].get("condition") == td.CONCEPTS[name].states[other]
     dis = {c["key"] for c in cards if c.get("kind") == "disagree"}
     return {"slug": s["slug"], "kind": s.get("kind", "base"), "values_found": found,
             "values_total": len(truth.get("values", [])), "values_extra": len(set(value_cards) - matched),
             "every_kept": every_kept, "partial_carded": partial_carded, "concept_cells": cells,
             "concept_correct": correct, "disagreements_found": len(dis & set(truth.get("disagreements", []))),
-            "disagreements_total": len(truth.get("disagreements", [])), "cards": len(cards),
+            "disagreements_total": len(truth.get("disagreements", [])), "polarity_correct": pol_ok,
+            "polarity_total": pol_total, "cards": len(cards),
             "over_budget": len(cards) > 8, "dropped_quotes": (payload.get("run") or {}).get("dropped_quotes", 0)}
 
 
@@ -3388,7 +3802,8 @@ async def decide(root: Path, run_no: int, only: Optional[List[str]]) -> None:
 
 
 FIELDS = {"decide": ["values_found", "values_total", "values_extra", "every_kept", "partial_carded", "concept_cells",
-                     "concept_correct", "disagreements_found", "disagreements_total", "cards", "dropped_quotes"]}
+                     "concept_correct", "disagreements_found", "disagreements_total", "polarity_correct", "polarity_total",
+                     "cards", "dropped_quotes"]}
 
 
 def report(root: Path, stage: str) -> str:
@@ -3481,8 +3896,9 @@ Dispatch one subagent per seed (11, in parallel, `model: "opus"`), each with thi
 > You generate a synthetic test set for a lab of report-template creation. Read `~/Code/rr-template-conversion-private/data_all.json` (the template whose slug is `<slug>`: its `reports` and `skill_sheet`) and `~/Code/rr-template-conversion-private/final/<slug>.final.md` (the curated sheet). Write new example reports in the same radiologist's voice, section layout, headings, measurement style and modality. Never copy a sentence that holds patient details. Use no real names, dates of birth, hospital numbers or real dates. Write these files to `~/Code/rr-template-conversion-private/synthetic/rules_step/sets/`, each in the JSON format below:
 > 1. `<slug>__base.json`: 5 reports, a realistic mix of normal and abnormal studies, with what the curated sheet expects.
 > 2. Two variants. Pick the two of these that fit this scan type best, and do not reuse a variant another seed of the same modality already has: (a) `__value_partial`: a measured value stated in 4 of 6 reports; (b) `__contrast_split`: one report says the agent was given, another says none was given, worded differently; (c) `__patient_line`: a sentence repeated in 3 or more reports that would be false for some patients (for example a statement about previous imaging or about the patient's state); (d) `__priors`: 2 of 5 reports compare with a named previous study (with a date), the rest say there is none; (e) `__abnormal_only`: one structure mentioned only in the reports where it is abnormal; (f) `__near_duplicate`: 4 reports that differ only in numbers; (g) `__all_normal`: 4 all-normal reports.
-> Plant the ground truth and record it in `truth` exactly: every measured value with its report numbers and whether it should be in every report ("every") or only sometimes ("relevant"); for each study-level concept (comparison, contrast, sequences, limitation) the reports that state it and the default and when-met wordings; the concepts whose wording differs across reports (`disagreements`); `patient_specific_fixed` sentences; `only_when_abnormal` structures with their paragraph name.
-> JSON: `{"slug","seed","kind":"base"|"variant","scan_type","examples":[...],"truth":{"values":[{"name","aliases","reports","need"}],"concepts":{"<name>":{"stated_in","default","when_met"}},"disagreements":[],"patient_specific_fixed":[],"only_when_abnormal":[{"paragraph","structure"}]}}`.
+> 3. `<slug>__no_contrast.json` (every seed, product decision D1): 5 reports of a protocol run without a contrast agent, where 4 reports say no agent was given and 1 says one was given, in this radiologist's wording. Here the usual wording is the no-agent one, so the template's default flips.
+> Plant the ground truth and record it in `truth` exactly: every measured value with its report numbers and whether it should be in every report ("every") or only sometimes ("relevant"); for each study-level concept (comparison, contrast, sequences, limitation) the reports that state it, the usual wording in this set (`default`), the other wording (`when_met`) and the state the usual wording states (`usual_state`: for contrast `given` or `not_given`); the concepts whose wording differs across reports (`disagreements`); `patient_specific_fixed` sentences; `only_when_abnormal` structures with their paragraph name.
+> JSON: `{"slug","seed","kind":"base"|"variant","scan_type","examples":[...],"truth":{"values":[{"name","aliases","reports","need"}],"concepts":{"<name>":{"stated_in","default","when_met","usual_state"}},"disagreements":[],"patient_specific_fixed":[],"only_when_abnormal":[{"paragraph","structure"}]}}`.
 > Afterwards, note in `<slug>.notes.md` (same folder) how your set may be easier or cleaner than real reports. Report back only the file names you wrote.
 
 - [ ] **Step 4: Label the real sets.** Dispatch one subagent (`model: "opus"`) to fill `truth` in each `__real.json` from the reports and the curated sheet, using the same truth schema. It changes nothing else.
@@ -3556,7 +3972,7 @@ Expected: FAIL (`Failed to resolve import "./api"`)
 // /apply-decisions, /sheet-checks). The sheet itself is never shown: cards speak in report behaviour.
 
 export type LedgerKind = 'value' | 'concept' | 'fixed' | 'normal';
-export type CardKind = 'value' | 'concept' | 'disagree' | 'fixed' | 'normal' | 'uncovered';
+export type CardKind = 'value' | 'concept' | 'disagree' | 'fixed' | 'normal' | 'uncovered' | 'duplicate';
 export type ChangeSource = 'creation' | 'first_use_review' | 'default';
 export type Choice = Record<string, unknown>;
 
@@ -3582,7 +3998,8 @@ export interface DecisionCard {
 	choices: CardChoice[];
 	selected: string | null;
 	rank: number;
-	wording?: { default?: string; when_met?: string; text?: string };
+	wording?: { default?: string; when_met?: string; condition?: string; text?: string };
+	note?: string;
 }
 
 export interface LedgerEntry {
@@ -3689,7 +4106,7 @@ const value = (name: string, selected: string | null = null): DecisionCard => ({
 });
 const concept: DecisionCard = {
 	id: 'concept:comparison', kind: 'concept', step: 'rules', title: 'Comparison with previous imaging', evidence: [],
-	ledger_kind: 'concept', key: 'comparison', wording: { default: 'No previous imaging.', when_met: 'Compared with {date}.' },
+	ledger_kind: 'concept', key: 'comparison', wording: { default: 'No previous imaging.', when_met: 'Compared with {date}.', condition: 'the dictation names a previous imaging study for comparison' },
 	choices: [
 		{ id: 'keep', label: 'Keep', choice: { use: true, default: 'No previous imaging.', when_met: 'Compared with {date}.' } },
 		{ id: 'edit', label: 'Edit wording', choice: null },
@@ -3708,7 +4125,7 @@ describe('template-rules cards', () => {
 		expect(changeFor(value('ECV'), { choiceId: 'relevant' }, 'creation')).toEqual({ kind: 'value', key: 'ECV', choice: { need: 'relevant' }, source: 'creation' });
 		expect(changeFor(concept, { choiceId: 'edit' }, 'creation')).toBeNull();
 		expect(changeFor(concept, { choiceId: 'edit', edited: { default: ' None. ', when_met: '' } }, 'creation')).toEqual({
-			kind: 'concept', key: 'comparison', choice: { use: true, default: 'None.', when_met: '' }, source: 'creation'
+			kind: 'concept', key: 'comparison', choice: { use: true, default: 'None.', when_met: '', condition: 'the dictation names a previous imaging study for comparison' }, source: 'creation'
 		});
 	});
 
@@ -3771,7 +4188,9 @@ export function changeFor(card: DecisionCard, a: Answer, source: ChangeSource): 
 		const d = (a.edited.default ?? '').trim();
 		const w = (a.edited.when_met ?? '').trim();
 		if (!d && !w) return null;
-		return { kind: 'concept', key: card.key, choice: { use: true, default: d, when_met: w }, source };
+		// the condition stays the card's: which wording is usual was decided from the examples (D1)
+		const condition = card.wording?.condition ?? '';
+		return { kind: 'concept', key: card.key, choice: { use: true, default: d, when_met: w, condition }, source };
 	}
 	const text = (a.edited.text ?? '').trim();
 	return text ? { kind: card.ledger_kind, key: card.key, choice: { text }, source } : null;
@@ -3854,7 +4273,7 @@ const value = (name: string, selected: string | null = null, evidence = [{ repor
 const concept = (): DecisionCard => ({
 	id: 'concept:comparison', kind: 'concept', step: 'rules', title: 'Comparison with previous imaging',
 	evidence: [{ reports: [1, 3], quote: 'No previous imaging.' }], ledger_kind: 'concept', key: 'comparison',
-	wording: { default: 'No previous imaging.', when_met: '' },
+	wording: { default: 'No previous imaging.', when_met: '', condition: 'the dictation names a previous imaging study for comparison' },
 	choices: [
 		{ id: 'keep', label: 'Keep', choice: { use: true, default: 'No previous imaging.', when_met: '' } },
 		{ id: 'edit', label: 'Edit wording', choice: null },
@@ -3900,12 +4319,13 @@ describe('RulesStep', () => {
 		const onContinue = vi.fn();
 		render(RulesStep, { cards: [concept()], onContinue });
 		await expect.element(page.getByText('Usually: “No previous imaging.”')).toBeInTheDocument();
+		await expect.element(page.getByText('Left out when the dictation names a previous imaging study for comparison.')).toBeInTheDocument();
 		await page.getByRole('button', { name: 'Comparison with previous imaging: Edit wording' }).click();
 		await userEvent.fill(page.getByLabelText('When it applies'), 'Compared with the {study} of {date}.');
 		await page.getByRole('button', { name: 'Use this wording' }).click();
 		await page.getByRole('button', { name: 'Continue' }).click();
 		expect(onContinue).toHaveBeenCalledWith([{ kind: 'concept', key: 'comparison', source: 'creation',
-			choice: { use: true, default: 'No previous imaging.', when_met: 'Compared with the {study} of {date}.' } }]);
+			choice: { use: true, default: 'No previous imaging.', when_met: 'Compared with the {study} of {date}.', condition: 'the dictation names a previous imaging study for comparison' } }]);
 	});
 
 	it('adds a required value', async () => {
@@ -4049,7 +4469,11 @@ Expected: FAIL (`Failed to resolve import "./RulesStep.svelte"`)
 		{@render evidence(c)}
 		{#if c.wording && c.kind === 'concept'}
 			{#if c.wording.default}<p class="text-xs text-gray-300">Usually: “{c.wording.default}”</p>{/if}
-			{#if c.wording.when_met}<p class="text-xs text-gray-300">When it applies: “{c.wording.when_met}”</p>{/if}
+			{#if c.wording.when_met}
+				<p class="text-xs text-gray-300">When {c.wording.condition || 'it applies'}: “{c.wording.when_met}”</p>
+			{:else if c.wording.default && c.wording.condition}
+				<p class="text-xs text-gray-400">Left out when {c.wording.condition}.</p>
+			{/if}
 		{/if}
 		{@render chips(c)}
 		{#if editing === c.id}
@@ -4860,6 +5284,8 @@ Expected: 0 failures
 
 # Phase 4: the writer takes the decisions as ground truth
 
+Order (review fix 8): the prompts (Task 28), then the writer lab on them (Tasks 29-30), then the writer wiring (Task 31) with the arm Hassan picks.
+
 Outcome: with decisions, the writer copies the decided LIST_MISSING line and concept lines instead of guessing them. It never writes questions. The slot conflict is fixed in the grammar text. **Needs Phase 1.** Removing the questions changes the old creator's Questions stage, so this phase ships with or after Phase 3. The prompt changes are case-agnostic, and the existing case-agnostic test now also covers the decided variant. There is one live writer prompt (`template_sheet_lab_prompts.ANALYSER_SYSTEM_PROMPT`); the legacy `TemplateManager.analyze_examples_to_skill_sheet` copy never runs in production and is not edited.
 
 ### Task 28: Decided prompts, no questions, the slot wording
@@ -4940,7 +5366,7 @@ def render_list_missing(items: List[str]) -> str:
 
 def render_concept(name: str, choice: dict) -> List[str]:
     """A concept's lines inside a paragraph ([] for "not used")."""
-    return _concept_lines(td.CONCEPTS[name], choice, "", False) if choice.get("use") else []
+    return _concept_lines(td.validate("concept", name, choice)[1]) if choice.get("use") else []
 ```
 
 - [ ] **Step 4: Edit the prompts** in `template_sheet_lab_prompts.py` (each `old` occurs exactly once)
@@ -5130,63 +5556,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ```
 
 
-### Task 29: The writer uses the decided prompts
-
-**Files:**
-- Modify: `backend/src/rapid_reports_ai/template_writer.py`
-- Test: `backend/tests/test_template_writer.py` (append)
-
-- [ ] **Step 1: Write the failing test** (append)
-
-```python
-async def test_write_with_decisions_uses_the_decided_prompts(calls, monkeypatch):
-    async def vet(sheet, origin, previous="", ledger=None):
-        return VetOutcome("saved", sheet, ledger=list(ledger or []))
-    monkeypatch.setattr(W, "vet_sheet", vet)
-    led = [{"kind": "value", "key": "Value A", "choice": {"need": "every"}, "by": "radiologist", "at": "t",
-            "source": "creation"}]
-    await W.write_sheet([{"label": "", "content": "r1"}], "<scan>", decisions=led)
-    assert calls["system"] == P.analyser_system_prompt(True) and P.DECIDED_HEADING in calls["user"]
-    await W.write_sheet([{"label": "", "content": "r1"}], "<scan>")
-    assert calls["system"] == P.ANALYSER_SYSTEM_PROMPT and P.DECIDED_HEADING not in calls["user"]
-```
-- [ ] **Step 2: Run the test to verify it fails**
-
-Run: `cd backend && .venv/bin/python -m pytest tests/test_template_writer.py::test_write_with_decisions_uses_the_decided_prompts -q`
-Expected: FAIL (`calls["system"]` is the undecided prompt)
-
-- [ ] **Step 3: Implement.** In `write_sheet` replace
-
-```python
-    raw = await model_call(P.ANALYSER_SYSTEM_PROMPT, P.analyser_user_prompt(examples, scan_type, protocol_notes),
-                           P.ANALYSER_SETTINGS)
-```
-
-with
-
-```python
-    raw = await model_call(P.analyser_system_prompt(decided=bool(decisions)),
-                           P.analyser_user_prompt(examples, scan_type, protocol_notes, decisions=decisions),
-                           P.ANALYSER_SETTINGS)
-```
-
-- [ ] **Step 4: Run the writer tests and the full backend suite**
-
-Run: `cd backend && .venv/bin/python -m pytest tests/test_template_writer.py -q && .venv/bin/python -m pytest -q --deselect tests/test_provider_key_routing.py`
-Expected: all PASS
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add backend/src/rapid_reports_ai/template_writer.py backend/tests/test_template_writer.py
-git commit -m "feat(writer): decisions reach the writer as ground truth
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
-```
-
-
-### Task 30: Lab: the writer arms and their scorer
+### Task 29: Lab: the writer arms and their scorer
 
 **Files:**
 - Modify: `backend/src/rapid_reports_ai/scripts/rules_step_lab.py`
@@ -5297,10 +5667,12 @@ then replace everything from `FIELDS = {"decide": [` to the end of the file with
 
 ```python
 FIELDS = {"decide": ["values_found", "values_total", "values_extra", "every_kept", "partial_carded", "concept_cells",
-                     "concept_correct", "disagreements_found", "disagreements_total", "cards", "dropped_quotes"],
+                     "concept_correct", "disagreements_found", "disagreements_total", "polarity_correct",
+                     "polarity_total", "cards", "dropped_quotes"],
           "write": ["usable", "refused", "drift", "required_values_listed", "required_values_total",
                     "extra_values_listed", "patient_fixed_present", "comparison_rule", "context_rules",
-                    "duplicate_normals", "multi_structure_normals", "gold_normals_hit", "gold_normals_total"]}
+                    "duplicate_normals", "multi_structure_normals", "gold_normals_hit", "gold_normals_total",
+                    "concept_duplicates"]}
 
 
 def report(root: Path, stage: str) -> str:
@@ -5362,7 +5734,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ```
 
 
-### Task 31 (controller-run): Writer lab, with and without the decisions
+### Task 30 (controller-run): Writer lab, with and without the decisions, before the writer is wired
 
 Arms: **A** today's writer (no decisions, temperature 0.8), **B** decided at 0.8, **C** decided at 0.4 (roadmap §5's temperature item). The inputs are the synthetic and real sets and the card answers from Task 21. The gold sheets are `~/Code/rr-template-conversion-private/final/<seed>.final.md`. The earlier baseline was 33/43 required normals captured.
 
@@ -5378,13 +5750,71 @@ cd backend && .venv/bin/python -m rapid_reports_ai.scripts.rules_step_lab write 
 - [ ] **Step 3: Report** in `synthetic/rules_step/REPORT_write.md`. Cover: required normals captured against gold, per arm; patient-specific FIXED lines present; standard comparison rule present; required values listed / extra; drift (lines the ledger had to overwrite) for B and C; refusals; latency; synthetic and real apart; n = 1 per cell, so the noise is noted. Recommendations: whether to keep the decided prompt (B/C against A), the temperature (0.8 or 0.4), and any remaining slot-conflict symptoms. Tell Hassan the path. **He decides.** If he picks 0.4, change `ANALYSER_SETTINGS["temperature"]` in `template_sheet_lab_prompts.py` in a one-line commit; `test_write_returns_a_vetted_sheet_summary_and_questions` compares against `P.ANALYSER_SETTINGS`, so it follows.
 
 
+### Task 31: The writer uses the decided prompts (after the writer lab)
+
+Run this after Hassan has read `REPORT_write.md`. If he keeps arm A (today's writer), skip this task: the ledger still applies the decisions at save.
+
+**Files:**
+- Modify: `backend/src/rapid_reports_ai/template_writer.py`
+- Test: `backend/tests/test_template_writer.py` (append)
+
+- [ ] **Step 1: Write the failing test** (append)
+
+```python
+async def test_write_with_decisions_uses_the_decided_prompts(calls, monkeypatch):
+    async def vet(sheet, origin, previous="", ledger=None):
+        return VetOutcome("saved", sheet, ledger=list(ledger or []))
+    monkeypatch.setattr(W, "vet_sheet", vet)
+    led = [{"kind": "value", "key": "Value A", "choice": {"need": "every"}, "by": "radiologist", "at": "t",
+            "source": "creation"}]
+    await W.write_sheet([{"label": "", "content": "r1"}], "<scan>", decisions=led)
+    assert calls["system"] == P.analyser_system_prompt(True) and P.DECIDED_HEADING in calls["user"]
+    await W.write_sheet([{"label": "", "content": "r1"}], "<scan>")
+    assert calls["system"] == P.ANALYSER_SYSTEM_PROMPT and P.DECIDED_HEADING not in calls["user"]
+```
+- [ ] **Step 2: Run the test to verify it fails**
+
+Run: `cd backend && .venv/bin/python -m pytest tests/test_template_writer.py::test_write_with_decisions_uses_the_decided_prompts -q`
+Expected: FAIL (`calls["system"]` is the undecided prompt)
+
+- [ ] **Step 3: Implement.** In `write_sheet` replace
+
+```python
+    raw = await model_call(P.ANALYSER_SYSTEM_PROMPT, P.analyser_user_prompt(examples, scan_type, protocol_notes),
+                           P.ANALYSER_SETTINGS)
+```
+
+with
+
+```python
+    raw = await model_call(P.analyser_system_prompt(decided=bool(decisions)),
+                           P.analyser_user_prompt(examples, scan_type, protocol_notes, decisions=decisions),
+                           P.ANALYSER_SETTINGS)
+```
+
+- [ ] **Step 4: Run the writer tests and the full backend suite**
+
+Run: `cd backend && .venv/bin/python -m pytest tests/test_template_writer.py -q && .venv/bin/python -m pytest -q --deselect tests/test_provider_key_routing.py`
+Expected: all PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add backend/src/rapid_reports_ai/template_writer.py backend/tests/test_template_writer.py
+git commit -m "feat(writer): decisions reach the writer as ground truth
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
+```
+
+
 ---
 
 # Phase 5: Style-step sheet checks
 
-Outcome: after the build, the Style step (and the refine panel) shows "Always printed" cards for FIXED lines Jev says could be false for another patient, "Your normal report" built by code with tap-to-edit, structures mentioned with no normal sentence, and ledger entries that need a look. The backend (Tasks 32-34) needs Phase 1 only and ships independently. The UI wiring (Task 36) builds on Phase 3's edits. The Jev FIXED-question lab (Task 33) runs before the cards reach the UI (Task 36).
+Outcome: after the build, the Style step (and the refine panel) shows "Always printed" cards for FIXED lines Jev says could be false for another patient, "May be stated twice" cards for lines the ledger does not own that state a decided concept again, "Your normal report" built by code with tap-to-edit, structures mentioned with no normal sentence, and ledger entries that need a look. The backend (Tasks 32-34) needs Phase 1 only and ships independently. The UI wiring (Task 36) builds on Phase 3's edits. The Jev FIXED-question lab (Task 33) runs before the cards reach the UI (Task 36).
 
-### Task 32: `template_sheet_review` (FIXED check, normal report, uncovered, sheet checks)
+### Task 32: `template_sheet_review` (FIXED check, concept duplicates, normal report, uncovered, sheet checks)
 
 **Files:**
 - Create: `backend/src/rapid_reports_ai/template_sheet_review.py`
@@ -5425,6 +5855,24 @@ def test_fixed_candidates_skip_targeted_and_decided_lines():
     assert V.fixed_candidates(_st(), led2) == ["No previous imaging available."]
 
 
+def test_an_undecided_concepts_default_is_still_checked():
+    sheet = LEDGER_SHEET.replace(
+        'FIXED "No previous imaging available."\n',
+        'FIXED "No previous imaging available."\nRULE WHEN [context: the dictation names a previous imaging study for '
+        'comparison] REPLACE "No previous imaging available." WITH "Compared with {date}."\n')
+    assert "No previous imaging available." in V.fixed_candidates(_st(sheet), [])   # polarity stays checkable
+
+
+async def test_the_absence_backstop_skips_a_line_a_context_rule_targets():
+    sheet = LEDGER_SHEET.replace(
+        'FIXED "No previous imaging available."\n',
+        'FIXED "No previous imaging available."\nRULE WHEN [context: the dictation names a previous imaging study for '
+        'comparison] REPLACE "No previous imaging available." WITH "Compared with {date}."\n')
+    assert await V.fixed_flags(_st(sheet), [], transport=_jev(0.1)) == []
+    assert await V.fixed_flags(_st(sheet), [], transport=_jev(0.9)) == ["Axial images were acquired.",
+                                                                         "No previous imaging available."]
+
+
 async def test_absence_worded_lines_are_flagged_by_code_the_rest_by_jev():
     assert await V.fixed_flags(_st(), [], transport=_jev(0.1)) == ["No previous imaging available."]
     assert await V.fixed_flags(_st(), [], transport=_jev(0.9)) == ["Axial images were acquired.",
@@ -5450,13 +5898,47 @@ async def test_sheet_checks_is_fail_soft_and_reports_unmatched_entries():
     assert [c["key"] for c in out["unmatched_cards"]] == ["Spleen :: spleen"]
     assert out["normal_report"] and out["uncovered_cards"]
     assert (await V.sheet_checks("# free", []))["errors"] == ["parse"]
+
+
+
+def _jev_on(word):
+    def handler(request):
+        import json
+        qs = json.loads(request.content)["questions"]
+        return httpx.Response(200, json={"answers": {
+            k: {"noul": 0.9 if word in q["instructions"].split("REPORT: ")[-1].lower() else 0.1} for k, q in qs.items()}})
+    return httpx.MockTransport(handler)
+
+
+async def test_a_line_that_may_state_a_decided_concept_twice_is_a_card():
+    led, _ = td.set_decision([], "concept", "comparison", {"use": True, "default": "No previous imaging available.",
+                                                           "when_met": "Compared with {date}."}, source="creation")
+    sheet = tla.apply_ledger(LEDGER_SHEET, led).sheet.replace(
+        'FIXED "Axial images were acquired."\n', 'FIXED "Axial images were acquired."\nFIXED "There is no prior study."\n')
+    out = await V.sheet_checks(sheet, led, transport=_jev_on("prior"))
+    assert [(c["key"], c["note"]) for c in out["duplicate_cards"]] == [
+        ("There is no prior study.", "May be stated twice: Comparison with previous imaging")]
+    assert "There is no prior study." not in [c["key"] for c in out["fixed_cards"]]   # one card per line
+    assert await V.concept_duplicates(_st(LEDGER_SHEET), [], transport=_jev_on("prior")) == []   # nothing decided
 ```
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_template_sheet_review.py -q`
 Expected: FAIL with `ModuleNotFoundError: No module named 'rapid_reports_ai.template_sheet_review'`
 
-- [ ] **Step 3: Write the module** (`backend/src/rapid_reports_ai/template_sheet_review.py`)
+- [ ] **Step 3: Write the module.** Append the card shape to `template_rules_cards.py`:
+
+```python
+def duplicate_card(text: str, concept_label: str) -> dict:
+    """A line that may state a decided study-level concept a second time (Style step)."""
+    return {"id": f"duplicate:{td.match_key('fixed', text)}", "kind": "duplicate", "step": "style", "title": text,
+            "evidence": [], "note": f"May be stated twice: {concept_label}", "ledger_kind": "fixed", "key": text,
+            "choices": [_choice("remove", "Remove this line", {"keep": "remove"}),
+                        _choice("keep", "Keep both", {"keep": "always"})],
+            "selected": None, "rank": _RANK["fixed"]}
+```
+
+and create `backend/src/rapid_reports_ai/template_sheet_review.py`:
 
 ```python
 """Sheet checks after the build, shown on the Style step as report behaviour (Rules-step spec, step 5, cards
@@ -5470,6 +5952,8 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'rapid_reports_ai.temp
   tagged with its ledger key (tap to edit or remove).
 - uncovered: structures a findings paragraph COVERS with no NORMAL ("mentioned in your examples but no normal
   sentence": Add wording / Leave unmentioned).
+- concept_duplicates: a FIXED line or a non-standard context rule the ledger does not own that Jev says states a
+  decided concept again ("may be stated twice").
 - sheet_checks: all of the above plus the ledger entries that could not be matched (cards at the next review)."""
 from __future__ import annotations
 
@@ -5500,19 +5984,22 @@ def _clean(sheet: str) -> Optional[tss.SheetStructure]:
 
 
 def fixed_candidates(st: tss.SheetStructure, ledger: List[dict]) -> List[str]:
-    """FIXED texts that are printed for every patient and not yet decided: not the target of a context rule (the
-    standard default-plus-rule pattern is legal), not a decided fixed line, not a decided concept's default."""
-    targeted = {norm_key(r.target) for r in st.rules if r.condition_source == "context" and r.target}
-    decided = {norm_key(e["key"]) for e in ledger if e["kind"] == "fixed"}
-    decided |= {norm_key(e["choice"].get("default", "")) for e in ledger if e["kind"] == "concept"}
+    """FIXED texts printed for every patient and not yet decided. Only the ledger's own lines are left out (a decided
+    concept's wordings, a decided fixed line); the default of an undecided concept is checked like any other line,
+    so a default with the wrong polarity still shows up."""
+    owned = td.concept_texts(ledger) | {norm_key(e["key"]) for e in ledger if e["kind"] == "fixed"}
     out, seen = [], set()
     for f in st.fixed_blocks:
         k = norm_key(f.text)
-        if k in targeted or k in decided or k in seen:
+        if k in owned or k in seen:
             continue
         seen.add(k)
         out.append(f.text)
     return out
+
+
+def _targeted(st: tss.SheetStructure) -> Set[str]:
+    return {norm_key(r.target) for r in st.rules if r.condition_source == "context" and r.target}
 
 
 async def _jev_scores(texts: List[str], transport=None) -> List[float]:
@@ -5534,11 +6021,53 @@ async def _jev_scores(texts: List[str], transport=None) -> List[float]:
 async def fixed_flags(st: tss.SheetStructure, ledger: List[dict], transport=None) -> List[str]:
     """The FIXED lines to show as "Always printed" cards. Raises when Jev fails (the caller shows no such cards)."""
     texts = fixed_candidates(st, ledger)
-    backstop = [t for t in texts if tsg._ABSENCE_START.match(t)]
+    targeted = _targeted(st)   # roadmap §4(a): the default-plus-context-rule pattern is legal for the backstop
+    backstop = [t for t in texts if tsg._ABSENCE_START.match(t) and norm_key(t) not in targeted]
     rest = [t for t in texts if t not in backstop]
     scores = await _jev_scores(rest, transport) if rest else []
     flagged = set(backstop) | {t for t, s in zip(rest, scores) if s >= FIXED_MIN}
     return [t for t in texts if t in flagged]
+
+
+DUP_MIN = 0.5   # lab-set (scripts/rules_step_lab.py dups)
+
+
+def duplicate_candidates(st: tss.SheetStructure, ledger: List[dict]) -> List[str]:
+    """Lines the ledger does not own that a decided concept could also be stating: FIXED lines and the sentences of
+    context USE / REPLACE rules whose condition is not a standard one."""
+    owned = td.concept_texts(ledger)
+    out: List[str] = []
+    for t in [f.text for f in st.fixed_blocks] + [r.then_text for r in st.rules if r.condition_source == "context"
+                                                  and r.then_text and not td.concept_of_condition(r.condition)]:
+        if norm_key(t) not in owned and t not in out:
+            out.append(t)
+    return out
+
+
+async def concept_duplicates(st: tss.SheetStructure, ledger: List[dict], transport=None) -> List[dict]:
+    """Style cards for a line that may state a decided concept a second time (Jev: the concept's own question over
+    each line the ledger does not own). Raises when Jev fails."""
+    from .jev_client import JEV_MODEL, jev_post
+    decided = [e["key"] for e in ledger if e["kind"] == "concept" and e["key"] in td.CONCEPTS]
+    lines = duplicate_candidates(st, ledger)
+    if not decided or not lines:
+        return []
+    pairs = [(c, t) for c in decided for t in lines]
+    qs = {f"d{i}": {"type": "noul", "instructions": f"{td.CONCEPTS[c].question} REPORT: {t}"}
+          for i, (c, t) in enumerate(pairs)}
+    r = await jev_post({"model": JEV_MODEL, "state": "Each question quotes one REPORT sentence from a template.",
+                        "questions": qs}, os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
+    r.raise_for_status()
+    ans = r.json().get("answers") or {}
+    out, seen = [], set()
+    for i, (c, t) in enumerate(pairs):
+        v = (ans.get(f"d{i}") or {}).get("noul")
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            raise ValueError("jev: incomplete answers")
+        if v >= DUP_MIN and t not in seen:
+            seen.add(t)
+            out.append(trc.duplicate_card(t, td.CONCEPTS[c].label))
+    return out
 
 
 def _line_order(sheet: str, raws: List[str]) -> List[int]:
@@ -5592,8 +6121,8 @@ def uncovered(st: tss.SheetStructure) -> List[dict]:
 
 async def sheet_checks(sheet: str, ledger: List[dict], transport=None) -> dict:
     """Everything the Style step shows. Fail-soft per part: a part that fails is empty and named in "errors"."""
-    out = {"fixed_cards": [], "normal_report": [], "uncovered_cards": [], "unmatched_cards": [], "stale_quotes": [],
-           "errors": []}
+    out = {"fixed_cards": [], "duplicate_cards": [], "normal_report": [], "uncovered_cards": [], "unmatched_cards": [],
+           "stale_quotes": [], "errors": []}
     st = _clean(sheet)
     if st is None:
         out["errors"].append("parse")
@@ -5609,7 +6138,14 @@ async def sheet_checks(sheet: str, ledger: List[dict], transport=None) -> dict:
     out["normal_report"] = normal_report(sheet, st)
     out["uncovered_cards"] = uncovered(st)
     try:
-        out["fixed_cards"] = [trc.fixed_card(t) for t in await fixed_flags(st, ledger, transport)]
+        out["duplicate_cards"] = await concept_duplicates(st, ledger, transport)
+    except Exception as e:
+        logger.warning("[sheet-checks] duplicate check failed: %s", type(e).__name__)
+        out["errors"].append("duplicates")
+    dup = {td.match_key("fixed", c["key"]) for c in out["duplicate_cards"]}
+    try:
+        out["fixed_cards"] = [trc.fixed_card(t) for t in await fixed_flags(st, ledger, transport)
+                              if td.match_key("fixed", t) not in dup]
     except Exception as e:
         logger.warning("[sheet-checks] fixed check failed: %s", type(e).__name__)
         out["errors"].append("fixed")
@@ -5618,12 +6154,12 @@ async def sheet_checks(sheet: str, ledger: List[dict], transport=None) -> dict:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_template_sheet_review.py -q`
-Expected: PASS (5 tests)
+Expected: PASS (8 tests)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/src/rapid_reports_ai/template_sheet_review.py backend/tests/test_template_sheet_review.py
+git add backend/src/rapid_reports_ai/template_sheet_review.py backend/src/rapid_reports_ai/template_rules_cards.py backend/tests/test_template_sheet_review.py
 git commit -m "feat(template): Style-step sheet checks (FIXED check, normal report, uncovered structures)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
@@ -5690,6 +6226,26 @@ async def fixed(root: Path, run_no: int) -> None:
         rows = [{**i, "score": s} for i, s in zip(items, scores)]
         (out_dir / f"{name}.json").write_text(json.dumps({"rows": rows, "table": threshold_table(rows)}, indent=1))
         print(name, json.dumps(threshold_table(rows)))
+
+
+
+async def dups(root: Path, run_no: int) -> None:
+    """Count, in the writer lab's sheets, lines Jev says state a decided concept a second time (review fix 2): adds
+    "concept_duplicates" to each stored score; `report --stage write` then shows it."""
+    from rapid_reports_ai import template_decisions as td
+    from rapid_reports_ai import template_sheet_grammar as tsg
+    from rapid_reports_ai import template_sheet_review as tsr
+    for path in sorted((root / "runs" / "write" / f"run{run_no}").rglob("*.json")):
+        res = json.loads(path.read_text())
+        ans = root / "answers" / f"{path.stem}.json"
+        ledger = td.ledger_from_changes(json.loads(ans.read_text()), source="creation")[0] if ans.exists() else []
+        sheet = res.get("sheet") or ""
+        if not tsg.is_grammar_sheet(sheet) or not ledger:
+            continue
+        st = tsg.parse_sheet(sheet, mode="template").structure
+        res["score"]["concept_duplicates"] = len(await tsr.concept_duplicates(st, ledger))
+        path.write_text(json.dumps(res, indent=1))
+        print(path.parent.name, path.stem, res["score"]["concept_duplicates"])
 ```
 
 and replace `main` (from `def main() -> None:` to the end of the file) with:
@@ -5697,7 +6253,7 @@ and replace `main` (from `def main() -> None:` to the end of the file) with:
 ```python
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("stage", choices=["decide", "write", "fixed", "report"])
+    ap.add_argument("stage", choices=["decide", "write", "fixed", "dups", "report"])
     ap.add_argument("--root", type=Path, required=True)
     ap.add_argument("--run", type=int, default=1)
     ap.add_argument("--only", default="")
@@ -5712,6 +6268,8 @@ def main() -> None:
         asyncio.run(write(a.root, a.run, [x for x in a.arms.split(",") if x], only, a.gold_dir))
     elif a.stage == "fixed":
         asyncio.run(fixed(a.root, a.run))
+    elif a.stage == "dups":
+        asyncio.run(dups(a.root, a.run))
     else:
         print(report(a.root, a.report_stage))
 
@@ -5732,7 +6290,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ```
 
-- [ ] **Step 5 (controller): Label the FIXED lines.** Dispatch one Claude subagent (`model: "opus"`). It parses every FIXED line of the 31 curated sheets (`final/*.final.md`, through `template_sheet_grammar.parse_sheet`) and of the arm-C sheets from Task 31, adds every planted `patient_specific_fixed` sentence, and labels each line `variable: true` when it could be false for another patient having the scan, citing the reason in one phrase. It writes `synthetic/rules_step/fixed_lines.json` as `[{"text", "variable", "source"}]`. Hassan spot-checks 10 labels.
+- [ ] **Step 5 (controller): Label the FIXED lines.** Dispatch one Claude subagent (`model: "opus"`). It parses every FIXED line of the 31 curated sheets (`final/*.final.md`, through `template_sheet_grammar.parse_sheet`) and of the arm-C sheets from Task 30, adds every planted `patient_specific_fixed` sentence, and labels each line `variable: true` when it could be false for another patient having the scan, citing the reason in one phrase. It writes `synthetic/rules_step/fixed_lines.json` as `[{"text", "variable", "source"}]`. Hassan spot-checks 10 labels.
 
 - [ ] **Step 6 (controller): Run and report.** Two runs:
 
@@ -5741,6 +6299,15 @@ cd backend && for k in 1 2; do .venv/bin/python -m rapid_reports_ai.scripts.rule
 ```
 
 Write `synthetic/rules_step/REPORT_fixed.md` with: score distributions of variable and fixed lines per wording; precision and recall at 0.3-0.7; run-to-run drift; how often the code backstop (absence-worded lines) caught what Jev missed; synthetic and real apart. Recommend a wording and a `FIXED_MIN`. Hassan decides. Set `template_sheet_review.FIXED_QUESTION` and `FIXED_MIN` to his choice in a one-line commit (the review tests stub the Jev score, so they hold).
+
+- [ ] **Step 7 (controller): Count possible duplicates in the writer lab's sheets** (review fix 2). The `dups` stage re-reads Task 30's stored sheets, asks each decided concept's Jev question over the lines the ledger does not own, and adds `concept_duplicates` to each score:
+
+```bash
+cd backend && .venv/bin/python -m rapid_reports_ai.scripts.rules_step_lab dups --root ~/Code/rr-template-conversion-private/synthetic/rules_step --run 1
+.venv/bin/python -m rapid_reports_ai.scripts.rules_step_lab report --root ~/Code/rr-template-conversion-private/synthetic/rules_step --stage write
+```
+
+Append the per-arm duplicate counts to `REPORT_write.md`. Hand-read every hit for 3 sets (true duplicate or not), and report the precision with a recommended `DUP_MIN`. Hassan decides.
 
 
 ### Task 34: `/api/templates/skill-sheet/sheet-checks`
@@ -5763,7 +6330,7 @@ def test_sheet_checks_returns_the_style_step_cards(client, auth_headers, monkeyp
         return [0.9 for _ in texts]
     monkeypatch.setattr(V, "_jev_scores", scores)
     r = client.post(SHEET_CHECKS, headers=auth_headers, json={"skill_sheet": LEDGER_SHEET, "decisions": []}).json()
-    assert r["success"] and r["errors"] == []
+    assert r["success"] and r["errors"] == [] and r["duplicate_cards"] == []      # nothing decided yet
     assert [c["key"] for c in r["fixed_cards"]] == ["Axial images were acquired.", "No previous imaging available."]
     assert r["normal_report"][0]["sentences"][0]["text"] == "The liver is normal in size."
     assert [c["key"] for c in r["uncovered_cards"]] == ["Liver :: gallbladder"]
@@ -5776,7 +6343,7 @@ def test_sheet_checks_never_fails_the_request(client, auth_headers, monkeypatch)
         raise RuntimeError("x")
     monkeypatch.setattr(V, "sheet_checks", boom)
     r = client.post(SHEET_CHECKS, headers=auth_headers, json={"skill_sheet": "x"}).json()
-    assert r["success"] and r["errors"] == ["all"] and r["fixed_cards"] == []
+    assert r["success"] and r["errors"] == ["all"] and r["fixed_cards"] == [] and r["duplicate_cards"] == []
 ```
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -5796,20 +6363,21 @@ async def skill_sheet_checks_endpoint(
     request: SkillSheetChecksRequest,
     current_user: User = Depends(get_current_user),
 ):
-    """The Style step's checks: always-printed lines (Jev), the normal report, covered structures without a normal,
+    """The Style step's checks: always-printed lines (Jev), lines that may state a decided concept twice (Jev), the
+    normal report, covered structures without a normal,
     and ledger entries to review. Fail-soft: a part that fails is empty and named in "errors"."""
     from . import template_sheet_review as tsr
     try:
         return {"success": True, **(await tsr.sheet_checks(request.skill_sheet, request.decisions))}
     except Exception as e:
         logger.warning("sheet checks failed: %s", type(e).__name__)
-        return {"success": True, "fixed_cards": [], "normal_report": [], "uncovered_cards": [], "unmatched_cards": [],
-                "stale_quotes": [], "errors": ["all"]}
+        return {"success": True, "fixed_cards": [], "duplicate_cards": [], "normal_report": [], "uncovered_cards": [],
+                "unmatched_cards": [], "stale_quotes": [], "errors": ["all"]}
 ```
 - [ ] **Step 4: Run the tests and the full backend suite**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_template_ledger_routes.py -q && .venv/bin/python -m pytest -q --deselect tests/test_provider_key_routing.py`
-Expected: all PASS (the scratch run of this plan: 3989 passed)
+Expected: all PASS (the scratch run of this plan: 4009 passed)
 
 - [ ] **Step 5: Commit**
 
@@ -5870,7 +6438,7 @@ const uncoveredCard = {
 	choices: [{ id: 'add', label: 'Add wording', choice: null }, { id: 'leave', label: 'Leave unmentioned', choice: { text: '' } }]
 } as const;
 const checks = (): SheetChecksResponse => ({
-	success: true, errors: [], stale_quotes: [], unmatched_cards: [],
+	success: true, errors: [], stale_quotes: [], unmatched_cards: [], duplicate_cards: [],
 	fixed_cards: [structuredClone(fixedCard) as never],
 	uncovered_cards: [structuredClone(uncoveredCard) as never],
 	normal_report: [{ section: 'FINDINGS', header: 'Findings:', sentences: [
@@ -5908,6 +6476,18 @@ describe('StyleChecks', () => {
 		expect(onChange).toHaveBeenLastCalledWith([{ kind: 'normal', key: 'Liver :: gallbladder', choice: { text: '' }, source: 'creation' }]);
 	});
 
+	it('a line that may state a decided concept twice: remove it or keep both', async () => {
+		const onChange = vi.fn();
+		const dup = { id: 'duplicate:there is no prior study', kind: 'duplicate', step: 'style', title: 'There is no prior study.',
+			evidence: [], note: 'May be stated twice: Comparison with previous imaging', ledger_kind: 'fixed', key: 'There is no prior study.',
+			selected: null, rank: 3, choices: [{ id: 'remove', label: 'Remove this line', choice: { keep: 'remove' } },
+				{ id: 'keep', label: 'Keep both', choice: { keep: 'always' } }] };
+		render(StyleChecks, { checks: { ...checks(), duplicate_cards: [dup as never] }, onChange });
+		await expect.element(page.getByText('May be stated twice: Comparison with previous imaging')).toBeInTheDocument();
+		await page.getByRole('button', { name: 'There is no prior study.: Remove this line' }).click();
+		expect(onChange).toHaveBeenCalledWith([{ kind: 'fixed', key: 'There is no prior study.', choice: { keep: 'remove' }, source: 'creation' }]);
+	});
+
 	it('renders nothing without checks', async () => {
 		render(StyleChecks, { checks: null, onChange: vi.fn() });
 		await expect.element(page.getByText('Your normal report')).not.toBeInTheDocument();
@@ -5932,6 +6512,7 @@ export interface NormalSentence {
 export interface SheetChecksResponse {
 	success: boolean;
 	fixed_cards: DecisionCard[];
+	duplicate_cards: DecisionCard[];
 	normal_report: { section: string; header: string; sentences: NormalSentence[] }[];
 	uncovered_cards: DecisionCard[];
 	unmatched_cards: DecisionCard[];
@@ -6033,6 +6614,19 @@ Create `StyleChecks.svelte`:
 			</section>
 		{/if}
 
+		{#if checks.duplicate_cards.length}
+			<section class="space-y-2" aria-label="May be stated twice">
+				<h4 class="text-sm text-gray-200">May be stated twice</h4>
+				{#each checks.duplicate_cards as card (card.id)}
+					<div class="rounded-lg border border-white/10 p-3 space-y-1.5">
+						<p class="text-sm text-gray-300">“{card.title}”</p>
+						{#if card.note}<p class="text-xs text-gray-500">{card.note}</p>{/if}
+						{@render chips(card)}
+					</div>
+				{/each}
+			</section>
+		{/if}
+
 		{#if checks.fixed_cards.length}
 			<section class="space-y-2" aria-label="Always printed">
 				<h4 class="text-sm text-gray-200">Always printed</h4>
@@ -6087,7 +6681,7 @@ Create `StyleChecks.svelte`:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd frontend && npx vitest run src/lib/template-rules`
-Expected: PASS (cards 5, api 3, RulesStep 6, StyleChecks 4)
+Expected: PASS (cards 5, api 3, RulesStep 6, StyleChecks 5)
 
 - [ ] **Step 5: Commit**
 
@@ -6139,7 +6733,7 @@ then append:
 ```ts
 describe('TemplateRefinePanel style checks', () => {
 	it('shows how the report will read and applies a tap through the ledger', async () => {
-		checksBody = { success: true, fixed_cards: [], uncovered_cards: [], unmatched_cards: [], stale_quotes: [], errors: [],
+		checksBody = { success: true, fixed_cards: [], duplicate_cards: [], uncovered_cards: [], unmatched_cards: [], stale_quotes: [], errors: [],
 			normal_report: [{ section: 'FINDINGS', header: 'Findings:', sentences: [{ key: 'Heart :: pericardium', text: 'The pericardium is normal.', kind: 'normal', paragraph: 'Heart' }] }] };
 		const calls: { url: string; body: any; method: string }[] = [];
 		vi.stubGlobal('fetch', routes(calls));
@@ -6362,7 +6956,7 @@ with
 ```svelte
 				</details>
 			{/if}
-			{#if checks && (checks.fixed_cards.length || checks.normal_report.length || checks.uncovered_cards.length || checks.unmatched_cards.length)}
+			{#if checks && (checks.fixed_cards.length || checks.duplicate_cards.length || checks.normal_report.length || checks.uncovered_cards.length || checks.unmatched_cards.length)}
 				<details class="rounded-lg border border-white/10 p-3">
 					<summary class="text-sm text-gray-200 cursor-pointer">How your report will read</summary>
 					<div class="pt-3">
@@ -6376,7 +6970,7 @@ with
 - [ ] **Step 5: Run the frontend suites**
 
 Run: `cd frontend && npx vitest run 2>&1 | tail -6`
-Expected: 738 tests, 737 pass. The only failure is the known `page.svelte.spec` h1 test (the scratch run of this plan gave exactly that).
+Expected: 739 tests, 738 pass. The only failure is the known `page.svelte.spec` h1 test (the scratch run of this plan gave exactly that).
 
 Run: `cd frontend && npm run check 2>&1 | tail -3`
 Expected: at or below the 1194 baseline (the scratch run gave 1193 errors).
@@ -6410,28 +7004,33 @@ from rapid_reports_ai import template_sheet_grammar as tsg, template_sheet_save 
 
 # What a targeted call sees for its kind (only its part of the sheet):
 st = tsg.parse_sheet(sheet, mode="template").structure
-current = tla.observe(st, kind, key)              # the choice the sheet expresses now; None: paragraph gone
+current = tla.observe(st, kind, key)   # the choice the sheet expresses now; None: paragraph gone or not unique
 
 # A structured change {"change": kind, ...} becomes one validated ledger write:
-#   value   key = value name                         choice {"need": "every" | "relevant" | "not_needed"}
-#   concept key in td.CONCEPTS                        choice {"use": bool, "default": str, "when_met": str}
-#   fixed   key = the FIXED line's text               choice {"keep": "always" | "dictated" | "remove"}
+#   value   key = value name               choice {"need": "every" | "relevant" | "not_needed"}
+#   concept key in td.CONCEPTS              choice {"use": bool, "default": str, "when_met": str,
+#                                                   "condition": one of td.CONCEPTS[key].conditions (optional when
+#                                                   the concept has one), "dictated": bool}
+#   fixed   key = the FIXED line's text     choice {"keep": "always" | "dictated" | "remove"} (refused on a
+#                                                   concept's own wording)
 #   normal  key = td.normal_key(paragraph, structure) or td.negative_key(paragraph, text); choice {"text": str}
 ledger, change = td.set_decision(ledger, kind, key, choice, source="chat")   # never mutates; change None = no-op
-# td.DecisionError = code rejects the change (unknown target or concept, quotes or a {slot} in normal wording):
-# nothing is applied for that part; the reply asks, or shows trc.card_for_change for a valid proposal.
+# td.DecisionError = code rejects the change (unknown target or concept, wrong condition, quotes or a {slot} in
+# normal wording, a fixed entry on a concept's line): nothing is applied for that part; the reply asks, or shows
+# trc.card_for_change for a valid proposal.
 
 # Apply: either directly (pure, lint-guarded, idempotent) ...
-res = tla.apply_ledger(sheet, ledger)             # res.sheet, .applied, .unmatched (→ cards), .failed (bug), .stale_quotes
-# ... or through the save function, as every save does:
-out = await tsave.vet_sheet(sheet, origin="chat", previous=stored_sheet, ledger=ledger)   # out.sheet, out.ledger, out.ledger_changes
+res = tla.apply_ledger(sheet, ledger)   # res.sheet, .applied, .unmatched (→ cards), .failed (bug), .stale_quotes
+# ... or through the save function, as every save does (a chat rewrite is reconciled first, D3 included):
+out = await tsave.vet_sheet(sheet, origin="chat", previous=stored_sheet, ledger=ledger)
+#     out.sheet, out.ledger, out.ledger_changes (named in the reply), out.ledger_cards (whole items kept, D3)
+ledger, changes, cards = tla.reconcile_chat(before_sheet, after_sheet, ledger)   # the same step, standalone
 
 # Reply line for a change to a confirmed item ("" for new or default items):
 td.describe_change(change)       # "This changes something you confirmed: ECV every report → not needed."
 
-# Undo a rejected change (the behavioral_claim loop):
-ledger = (td.set_decision(ledger, kind, key, change["old"], source="chat")[0] if change["old"]
-          else td.remove_decision(ledger, kind, key))
+# Undo a rejected change (the behavioral_claim loop): the old entry comes back whole (choice, by, at, source)
+ledger = td.undo_change(ledger, change)
 
 # Uncertain or rejected parts become the same one-tap card the Rules step uses (prefilled, not pre-selected):
 card = trc.card_for_change(kind, key, proposed_choice)
@@ -6443,40 +7042,40 @@ Out of scope here, for the router's own plan: `layout` (section and paragraph op
 
 | Spec item | Task(s) |
 |---|---|
-| New flow 1-6 (paste → decision run → Rules → writer → Style checks → Test/Refine/Create) | 13-18, 22-25, 28-29, 32-36 |
+| New flow 1-6 (paste → decision run → Rules → writer → Style checks → Test/Refine/Create) | 13-18, 22-25, 28, 31, 32-36 |
 | Cards table: Required values, Study-level wording, Disagree, Always printed, Your normal report (+ "mentioned but no normal") | 16-17, 24, 32, 35 |
 | Exceptions only, ranked, ~8, kept-as-is collapsed, no confirm-all, evidence as report numbers, nothing partial pre-ticked, quotes checked by code | 13, 16, 23, 24 |
 | "Only when relevant" recorded, not required; habit candidates recorded hidden | 2, 4 (`relevant` never listed), 14 (`evidence.habits` stored in `rules_step`) |
 | Decision ledger `{kind, key, choice, by, at, source}`, four kinds, applied last on every origin (creation, chat, rebuild, restore, upgrade) | 2-12 |
 | Stable keys only; unmatched → re-insert (values, concepts) or card at next review (normals, fixed) | 4-6, 32 (`unmatched_cards`), 35-36 |
-| Automatic writes never override; chat updates the ledger and says so | 7, 8, 10 |
+| Automatic writes never override; chat updates the ledger and says so; whole-item removals kept and carded (D3) | 7, 8, 9 (PUT keeps the ledger), 10 |
 | Prose not rewritten; lint for stale quotes in free prose | 6 (`stale_quotes`), 8, 12, 32 |
 | Existing templates: decision run on first edit from stored examples; without examples only Style cards | 15, 18, 26, 36 |
 | Failure table (run fails, Jev fails, quote not found, writer drift, ledger edit fails lint, sheet checks fail, step skipped) | 14, 18, 25 (notice), 13, 8 (`ledger_drift`), 4 (`failed`), 32-34, 24-25 (Skip → defaults) |
 | Testing: unit (card builder, each ledger op round-tripped, key matching after rewording, unmatched → cards, never override, chat updates) | 3-8, 16-17, 32 |
 | Testing: frontend (card states, budget, kept list, three-way chip, tap-to-edit normal report, skipped step) | 23-24, 26, 35-36 |
-| Labs before wiring, synthetic seeded from production, planted truth, Hassan spot-checks, real held out, generator never under test | 19-21 (before Phase 3), 30-31, 33 (before Task 36) |
+| Labs before wiring, synthetic seeded from production, planted truth (non-contrast sets included), Hassan spot-checks, real held out, generator never under test | 19-21 (before Phase 3), 29-30 (before Task 31), 33 (before Task 36) |
 | Roadmap §4 creation-time FIXED check (absence backstop + Jev) | 32-33 |
-| Roadmap §5 writer items (concepts as defaults, values proposed, slot conflict, temperature lab) | 2/5 (concept defaults), 13 (values proposed), 28 (slot wording), 30-31 (temperature arms) |
-| Item 1 resolves the comparison concept (FIXED default + one REPLACE with the standard condition) | 2, 5 (`test_item_one_resolves_the_comparison_concept_both_ways`) |
+| Roadmap §5 writer items (concepts as defaults, values proposed, slot conflict, temperature lab) | 2/5 (concept defaults), 13 (values proposed), 28 (slot wording), 29-30 (temperature arms) |
+| Item 1 resolves the comparison concept (FIXED default + one REPLACE with the standard condition), the default-only drop rule (D2) and both contrast polarities (D1) | 2, 5 (`test_item_one_resolves_…`, `test_a_default_only_concept_gets_a_drop_rule…`, `test_contrast_takes_the_condition_opposite…`) |
 | Measuring after launch | evidence only: `[ledger]` and `[decision-run]` log lines, `rules_step` record, `ledger_drift`; the dashboards are not in this plan |
 
 ## Risks
 
-1. **A writer rule on a different line than the concept's default.** If the writer words "no prior" as a NEGATIVE, or writes its own rule with another target, the ledger adds the standard pair beside it and two sentences can print. Mitigation: Phase 4 tells the writer to copy the decided lines. Drift is logged. The writer lab counts context rules per sheet, and the Style step shows the normal report and the always-printed lines.
-2. **Contrast polarity.** The standard condition assumes the default is "contrast given". A non-contrast protocol yields a default-only concept, which is always carded (never folded away), and the FIXED check flags it.
-3. **The ledger owns the value list.** Once any value is decided, a rebuild cannot add a value without a card or a chat turn. This is by design, but a writer-found value can be lost on an automatic rebuild of a decided template; it is counted as drift.
-4. **Chat rewrites are trusted for decided items.** Following the spec, a chat rewrite that changes a decided item updates the ledger and the reply names the change. An accidental change is visible but still applied. The creator's reject restores both the sheet and the ledger (Task 25). The refine panel has no reject loop, so the router plan should add one.
-5. **Jev on a new question.** The concept-stated and FIXED-variable questions are new wordings. The lab sets both thresholds. Until it reports, 0.5 is a placeholder constant, reviewed but not validated.
-6. **Synthetic sets may be cleaner than production.** The generator notes how. Real held-out sets are reported apart, and Hassan spot-checks realism.
-7. **First-use review cost.** A paid Qwen + Jev run fires the first time each template with stored examples is opened in the refine panel. It is skipped once `decisions` or `rules_step` exists. That keeps it to one run per template, but only after the panel is saved: an unsaved review re-runs on the next open.
-8. **`get_template` on a malformed id** in `/decide` (Task 18 notes the guard if needed).
+1. **A writer line beside the concept's own.** If the writer words "no prior" on another line, the ledger adds the standard pair and two sentences can print. Mitigations: the decided prompt (Task 28), drift logging, the "May be stated twice" cards (Task 32), and the duplicate count in the writer lab (Task 33 Step 7). Jev decides what counts as a duplicate, so its precision is unknown until that lab.
+2. **Contrast polarity (D1).** The default comes from report counts, and the condition is the opposite state. A Qwen state label that is wrong flips the polarity. The card shows "Usually … / When <condition> …", the decide lab scores polarity against planted truth (`polarity_correct`), and non-contrast sets are planted.
+3. **The ledger owns the value list.** Once any value is decided, an automatic rebuild cannot add a value without a card or a chat turn. A value the writer finds can be dropped; it is counted as drift.
+4. **Chat rewrites of single decided items are trusted (spec).** Each one is named in the reply, and the creator's reject restores both the sheet and the ledger. The refine panel has no reject loop, so the router plan should add one. Whole-item removals are never trusted (D3).
+5. **New Jev questions** (concept stated, FIXED variable, concept duplicate). Their 0.5 thresholds are placeholders until the labs.
+6. **Synthetic sets may be cleaner than production.** The generator notes how; real held-out sets are reported apart.
+7. **First-use run cost:** one paid run per template with stored examples, stamped on the server (review fix 4).
+8. **Existing upgraded sheets** whose writer used non-standard conditions for these concepts are not recognised as concepts until the first-use review decides them. Their FIXED defaults stay checkable by the Style FIXED check (review fix 9).
 
 ## Execution handoff
 
 Plan complete and saved to `docs/superpowers/plans/2026-10-13-rules-step.md`. Two execution options:
 
-1. **Subagent-driven (recommended).** A fresh subagent per task, a review between tasks. Controller-run tasks (20, 21, 31, 33 Steps 5-6) stay with the controller.
+1. **Subagent-driven (recommended).** A fresh subagent per task, a review between tasks. Controller-run tasks (20, 21, 30, 33 Steps 5-7) stay with the controller.
 2. **Inline execution** with superpowers:executing-plans, in batches with checkpoints at the end of each phase.
 
 The labs are reported, not gated: each one ends with a report and recommendations, and Hassan decides before the wiring task that follows it.
