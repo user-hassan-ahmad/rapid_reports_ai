@@ -131,7 +131,7 @@ export const sections: Section[] = [
 	{ id: 'collapsed', title: 'Pack, collapsed with preview', ...one(nodule, fl, view(flApplies)) },
 	{
 		id: 'siblings',
-		title: 'Siblings as columns',
+		title: 'Siblings, stacked in the rail',
 		...one(
 			nodule,
 			flSib,

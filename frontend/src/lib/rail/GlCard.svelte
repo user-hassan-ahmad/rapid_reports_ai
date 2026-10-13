@@ -20,6 +20,7 @@
 
 	let {
 		title,
+		subtitle = null,
 		badge = null,
 		hint = null,
 		accent = null,
@@ -30,6 +31,8 @@
 		body
 	}: {
 		title: string;
+		/** A quiet line under the title, always shown (e.g. a version), so the title never wraps for it. */
+		subtitle?: string | null;
 		badge?: { text: string; variant: GlBadgeVariant } | null;
 		/** One line under the title, shown only while collapsed. */
 		hint?: string | null;
@@ -74,6 +77,9 @@
 					<span class="gl-grade-badge ch-{badge.variant}">{badge.text}</span>
 				{/if}
 			</div>
+			{#if subtitle}
+				<div class="gl-subtitle">{subtitle}</div>
+			{/if}
 			{#if !open && hint}
 				<div class="gl-action-hint">→ {hint}</div>
 			{/if}
@@ -159,6 +165,14 @@
 	.ch-c { background: rgba(6,182,212,0.1);   color: #67e8f9; border: 1px solid rgba(6,182,212,0.22); }
 	.ch-a { background: rgba(245,158,11,0.1);  color: #fcd34d; border: 1px solid rgba(245,158,11,0.22); }
 	.ch-r { background: rgba(244,63,94,0.1);   color: #fda4af; border: 1px solid rgba(244,63,94,0.22); }
+
+	.gl-subtitle {
+		margin-top: 2px;
+		font-size: 10.5px;
+		color: #71717a;
+		line-height: 1.3;
+	}
+	.gl-card--roomy .gl-subtitle { font-size: 12px; }
 
 	/* Row 2: colored action hint (collapsed only) — no extra opacity dimming */
 	.gl-action-hint {

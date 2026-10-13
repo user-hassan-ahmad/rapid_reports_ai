@@ -41,7 +41,6 @@
 </script>
 
 {#snippet controls()}
-	{#if showVersion}<span class="cp-muted cp-ver">{card.version}</span>{/if}
 	{#if assumed.length}
 		<span class="cp-chip cp-chip-warn" title={`Assumed eligible:\n${assumed.join('\n')}`}
 			>⚠ {assumed.length} {assumed.length === 1 ? 'check' : 'checks'} assumed</span
@@ -62,6 +61,7 @@
 <div class="cp-card" data-ref={ref}>
 	<GlCard
 		title={card.name}
+		subtitle={showVersion ? card.version : null}
 		badge={stateBadge(p)}
 		{hint}
 		dim={p?.state === 'does_not_apply'}
@@ -72,8 +72,3 @@
 	/>
 </div>
 
-<style>
-	.cp-ver {
-		font-size: 0.6875rem;
-	}
-</style>

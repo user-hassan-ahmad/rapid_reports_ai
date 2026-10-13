@@ -2,14 +2,15 @@
 	/**
 	 * A finding with sibling packs (other bodies' guidelines on the same topic, §7.1): one GlCard whose body holds
 	 * two (at most three) equal columns, the primary card's first, neither preselected. A column shows the outcome
-	 * only; its title expands it to the full body at full width (plan Q5). Unless each column gets ~200 px (B0) they stack
-	 * behind a switcher, again with nothing chosen until the radiologist picks.
+	 * only; its title expands it to the full body at full width (plan Q5). Unless each column gets ~200 px (B0) they
+	 * stack: every guideline at full width, one under the other, each with its own line (name, state chip) above its
+	 * values and outcome; no switcher and nothing chosen (controller ruling 2026-10-13).
 	 */
 	import GlCard from '$lib/rail/GlCard.svelte';
 	import { cardRef } from '../state';
 	import type { Card } from '../types';
 	import CardStatus from './CardStatus.svelte';
-	import { columnRef, columnTitles } from './format';
+	import { assumptionsOf, columnRef, columnTitles, stateBadge } from './format';
 	import PackBody from './PackBody.svelte';
 	import { closedView, errorOf, type CardView, type ColumnView } from './view';
 
@@ -46,14 +47,29 @@
 	const MIN_COLUMN_PX = 200;
 	const CARD_CHROME_PX = 34; // the GlCard body's left and right padding
 	const stacked = $derived(layout === 'stacked' || (layout === 'auto' && width > 0 && (width - CARD_CHROME_PX) / cols.length < MIN_COLUMN_PX));
-	const shown = $derived(chosen ? cols.filter((c) => c.key === chosen) : stacked ? [] : cols);
+	// stacked: every guideline at full width, one under the other, none chosen (§7.1); columns: a title expands one
+	const shown = $derived(!stacked && chosen ? cols.filter((c) => c.key === chosen) : cols);
 </script>
 
 {#snippet column(c: { key: string; title: string }, full: boolean)}
 	{@const cv = colView(c.key)}
 	{@const err = errorOf(cv)}
-	<div class="cp-col" data-key={c.key}>
-		{#if !stacked}
+	<div class="cp-col" class:cp-col--stacked={stacked} data-key={c.key}>
+		{#if stacked}
+			{@const p = cv.result?.preview ?? null}
+			{@const badge = stateBadge(p)}
+			{@const assumed = assumptionsOf(p)}
+			<div class="cp-col-line">
+				<span class="cp-col-name">{c.title}</span>
+				{#if assumed.length}
+					<span class="cp-chip cp-chip-warn" title={`Assumed eligible:\n${assumed.join('\n')}`}
+						>⚠ {assumed.length} {assumed.length === 1 ? 'check' : 'checks'} assumed</span
+					>
+				{:else if badge}
+					<span class="cp-chip">{badge.text}</span>
+				{/if}
+			</div>
+		{:else}
 			<button
 				type="button"
 				class="cp-col-head"
@@ -64,24 +80,14 @@
 		{/if}
 		<CardStatus loading={cv.loading && !cv.result} error={err} onRetry={() => onRetry(columnRef(card, c.key))} />
 		{#if !err && cv.result}
-			<PackBody result={cv.result} compact={!full} />
+			<PackBody result={cv.result} compact={!full && !stacked} />
 		{/if}
 	</div>
 {/snippet}
 
 {#snippet body()}
 	<div class="cp-sib">
-		{#if stacked}
-			<div class="cp-switch" role="tablist" aria-label="Guidelines on this finding">
-				{#each cols as c (c.key)}
-					<button type="button" role="tab" aria-selected={chosen === c.key} onclick={() => (chosen = c.key)}
-						>{c.title}</button
-					>
-				{/each}
-			</div>
-			{#if !chosen}<p class="cp-muted cp-pick">Choose a guideline to read</p>{/if}
-		{/if}
-		<div class="cp-cols" style="--cp-cols: {shown.length || 1}" data-testid="cp-columns">
+		<div class="cp-cols" class:cp-cols--stacked={stacked} style="--cp-cols: {stacked ? 1 : shown.length || 1}" data-testid="cp-columns">
 			{#each shown as c (c.key)}
 				{@render column(c, !!chosen)}
 			{/each}
@@ -120,6 +126,26 @@
 		border-left: 1px solid var(--rv-border);
 		padding-left: 8px;
 	}
+	.cp-cols--stacked {
+		gap: 14px;
+	}
+	.cp-col--stacked + .cp-col--stacked {
+		border-left: 0;
+		padding-left: 0;
+		padding-top: 12px;
+		border-top: 1px solid var(--rv-border);
+	}
+	.cp-col-line {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 8px;
+		margin-bottom: 2px;
+	}
+	.cp-col-name {
+		font-weight: 600;
+		min-width: 0;
+	}
 	.cp-col-head {
 		font: inherit;
 		font-size: 0.75rem;
@@ -136,32 +162,5 @@
 	}
 	.cp-col-head:hover {
 		color: var(--rv-accent-hover);
-	}
-	.cp-switch {
-		display: flex;
-		gap: 2px;
-		padding: 2px;
-		border-radius: 0.5rem;
-		background: var(--rv-segment);
-		margin-bottom: 6px;
-	}
-	.cp-switch [role='tab'] {
-		flex: 1;
-		font: inherit;
-		font-size: 0.75rem;
-		background: none;
-		border: 0;
-		border-radius: 0.375rem;
-		padding: 3px 6px;
-		color: var(--rv-muted);
-		cursor: pointer;
-	}
-	.cp-switch [role='tab'][aria-selected='true'] {
-		background: var(--rv-accent);
-		color: #fff;
-	}
-	.cp-pick {
-		margin: 0;
-		font-size: 0.75rem;
 	}
 </style>

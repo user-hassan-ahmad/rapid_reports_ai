@@ -162,6 +162,16 @@ describe('CopilotCards', () => {
 		await expect.element(page.getByText('Signs of hormone excess')).toBeInTheDocument();
 	});
 
+	it('the version sits on its own line under the name; the assumed chip stays on the first line', async () => {
+		const c = card({ name: 'ESE adrenal incidentaloma', version: '2023', finding: finding.text });
+		const pv = preview({ state: 'check_first', missing: ['e'], asks: [{ input: 'e', label: 'Known cancer', role: 'eligibility' }] });
+		render(CopilotCards, single(c, v(result(c, pv))));
+		await expect.element(page.getByText('2023')).toBeInTheDocument();
+		expect(document.querySelector('.gl-subtitle')!.textContent).toBe('2023');
+		expect(document.querySelector('.gl-controls')!.textContent).toContain('⚠ 1 check assumed');
+		expect(document.querySelector('.gl-controls')!.textContent).not.toContain('2023');
+	});
+
 	it('PackCard takes an assumptions list directly (B1 feeds Task 3)', async () => {
 		const { default: PackCard } = await import('./PackCard.svelte');
 		const c = card({ finding: finding.text });
