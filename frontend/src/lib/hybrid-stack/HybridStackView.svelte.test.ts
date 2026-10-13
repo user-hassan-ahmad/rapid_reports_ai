@@ -385,4 +385,36 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByRole('button', { name: '▾ 1 more check' })).toBeInTheDocument();   // N: still asked
 		await expect.element(page.getByText('✓ No splenic lesion.')).toBeInTheDocument();   // green, still behind the line
 	});
+
+	it('open and "stated?" required values block Confirm and are walked to, ringed; resolving them frees Confirm', async () => {
+		const onEnterValue = vi.fn();
+		const onKeepValue = vi.fn();
+		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })];
+		const values = [
+			{ item: 'LVEF', state: 'filled' as const, value: '45%', quote: 'LVEF 45%.' },
+			{ item: 'RVEF', state: 'open' as const, value: null, quote: null },
+			{ item: 'Conus level', state: 'check' as const, value: null, quote: null }
+		];
+		const props = { ...base(), units, onEnterValue, onKeepValue, conclusion: { kind: 'draft', text: 'Liver cyst.', edited: false } as const, namedNormals: true };
+		const r = render(HybridStackView, { ...props, values });
+		await expect.element(page.getByTestId('value-cluster')).toBeInTheDocument();
+		await expect.element(page.getByText('2 required values to resolve')).toBeInTheDocument();
+		await page.getByRole('button', { name: 'Confirm · 2 to resolve' }).click();
+		await expect.element(page.getByTestId('walkthrough')).toHaveTextContent('Checking 1 of 2 · Required value');
+		await expect.element(page.getByRole('button', { name: 'RVEF —' })).toHaveClass('ring-2');
+		await page.getByRole('button', { name: 'RVEF —' }).click();
+		await page.getByLabelText('Value for RVEF').fill('50%');
+		await userEvent.keyboard('{Enter}');
+		expect(onEnterValue).toHaveBeenCalledWith('RVEF', '50%');
+		const typed = [values[0], { item: 'RVEF', state: 'entered' as const, value: '50%', quote: null }, values[2]];
+		r.rerender({ ...props, values: typed });
+		await expect.element(page.getByTestId('walkthrough')).toHaveTextContent('Checking 2 of 2 · Required value · needs a look');
+		await page.getByRole('button', { name: 'Conus level stated?' }).click();
+		await page.getByRole('button', { name: 'Stated ✓' }).click();
+		expect(onKeepValue).toHaveBeenCalledWith('Conus level');
+		r.rerender({ ...props, values: [typed[0], typed[1], { item: 'Conus level', state: 'filled' as const, value: null, quote: null, kept: true }] });
+		await expect.element(page.getByTestId('walkthrough')).toHaveTextContent('All checked');
+		await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+		expect(props.onConfirm).toHaveBeenCalled();
+	});
 });
