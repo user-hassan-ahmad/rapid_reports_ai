@@ -21,13 +21,18 @@ from .template import paragraph_regions
 logger = logging.getLogger(__name__)
 
 TIMEOUT_S = 3.0
-# Trigger lab 2026-10-13 (REPORT in the private synthetic/triggered_rows folder): wording B at 0.5 gave P .95 / R .99
-# on synthetic dictations and P 1.0 / R 8/9 held out. Hassan: a habit fires only on a STATED finding, never a hedged or
-# possible one; the exact hedge-exclusion clause is being chosen in a Jev round. The wording is this ONE constant:
-# changing it is a one-line edit. Case-agnostic.
+# Trigger lab 2026-10-13: wording B at 0.5 gave P .95 / R .99 synthetic, P 1.0 / R 8/9 held out. Hassan: a habit fires
+# only on a STATED finding, never a hedged or possible one. Hedge round 2026-10-13 (private
+# synthetic/triggered_rows/runs/hedge_round.json): B1 = B plus these criteria, at 0.5: P .97 / R 1.0 synthetic, held out
+# P 1.0 / R 8/9. The question is these two constants (TRIGGER_WORDING, TRIGGER_CRITERIA). Case-agnostic.
 TRIGGER_MIN = 0.5
 TRIGGER_WORDING = ("The DICTATION reports this as present: {condition}. A finding the dictation negates, excludes or "
                    "only raises as a question is not reported.")
+TRIGGER_CRITERIA = {
+    "true": "The dictation reports the finding as present.",
+    "false": ("The dictation does not report it: it negates or excludes it, or only raises it as a question; or the "
+              "finding is only raised as possible, suspected, equivocal, or not excluded."),
+}
 TRIGGER_WORDINGS = {"A": "The DICTATION reports this: {condition}.", "B": TRIGGER_WORDING}   # the lab's arms
 
 
@@ -63,7 +68,11 @@ def template_habits(st: SheetStructure, ledger: Optional[list[dict]], *, all_hab
 
 
 def trigger_question(condition: str, wording: str = TRIGGER_WORDING) -> dict:
-    return {"type": "noul", "instructions": wording.format(condition=" ".join(condition.split()).rstrip("."))}
+    """The noul question for one condition; the shipped wording carries its criteria (hedge round B1)."""
+    q = {"type": "noul", "instructions": wording.format(condition=" ".join(condition.split()).rstrip("."))}
+    if wording == TRIGGER_WORDING:
+        q["criteria"] = dict(TRIGGER_CRITERIA)
+    return q
 
 
 async def ask_triggers(scan_type: str, findings: str, conditions: list[str], transport=None,

@@ -127,3 +127,18 @@ def test_the_trigger_wording_is_one_constant_and_arm_b_of_the_lab():
     # lab 2026-10-13: arm B at 0.5; Hassan: only stated findings fire (the hedge clause is a one-line change)
     assert H.TRIGGER_WORDINGS["B"] is H.TRIGGER_WORDING and H.TRIGGER_MIN == 0.5
     assert "negates, excludes or only raises as a question" in H.TRIGGER_WORDING
+
+
+def test_the_shipped_trigger_question_is_the_hedge_round_b1_criteria_noul():
+    # hedge round 2026-10-13 (runs/hedge_round.json): B1 at 0.5, P .97 / R 1.0 synthetic, held-out P 1.0 / R 8/9
+    q = H.trigger_question("a focal abnormality in the main structure is reported")
+    assert q == {"type": "noul",
+                 "instructions": ("The DICTATION reports this as present: a focal abnormality in the main structure is "
+                                  "reported. A finding the dictation negates, excludes or only raises as a question is "
+                                  "not reported."),
+                 "criteria": {"true": "The dictation reports the finding as present.",
+                              "false": ("The dictation does not report it: it negates or excludes it, or only raises it "
+                                        "as a question; or the finding is only raised as possible, suspected, "
+                                        "equivocal, or not excluded.")}}
+    assert H.TRIGGER_MIN == 0.5
+    assert "criteria" not in H.trigger_question("x y is reported", H.TRIGGER_WORDINGS["A"])   # the lab's old arm A
