@@ -62,6 +62,8 @@
 	 *   impression?: { flow: string[], detail: string }
 	 * } | null} */
 	let summary = null;
+	/** The save function's report of a statement it reworded while vetting the sheet ('' when none). */
+	let sheetNotice = '';
 	/**
 	 * Chat state shared between the questions stage (Q&A) and the refine stage.
 	 * Refine-stage turns carry verification-loop metadata on both the user and
@@ -354,6 +356,7 @@
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
 			analyserVersion = data.analyser_version || '';
+			sheetNotice = typeof data.notice === 'string' ? data.notice : '';
 			summary = (typeof data.summary === 'object' && data.summary !== null) ? data.summary : null;
 			sampleFindings = coerceToText(data.sample_findings);
 			sampleClinicalHistory = coerceToText(data.sample_clinical_history);
@@ -782,6 +785,7 @@
 				{#if stage === 'summary'}
 					<div class="flex-1 flex flex-col min-h-0" in:fly={{ x: -20, duration: 200 }}>
 						<p class="text-sm text-gray-400 px-5 pt-4 pb-3 shrink-0">{stageDescriptions.summary}</p>
+						{#if sheetNotice}<p class="text-xs text-gray-400 px-5 pb-3 shrink-0">{sheetNotice}</p>{/if}
 						<div class="flex-1 overflow-y-auto overflow-x-hidden min-w-0 px-5 pb-4">
 							{#if summary}
 								<div class="space-y-7 pt-1">

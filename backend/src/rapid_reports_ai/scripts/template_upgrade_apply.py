@@ -100,8 +100,11 @@ async def _plan_entry(db, entry: dict, analyser_version: Optional[str] = None) -
     if out.status == "unchanged":
         return {"template_id": tid, "action": "skipped-unchanged"}
     vetted = {**new_cfg, "skill_sheet": out.sheet, "coverage_sections": out.coverage_sections}
-    return {"template_id": tid, "action": "written", "config": vetted, "old_config": cfg,
-            "old_sheet_hash": entry.get("old_sheet_hash"), "dropped_units": len(out.dropped)}
+    row = {"template_id": tid, "action": "written", "config": vetted, "old_config": cfg,
+           "old_sheet_hash": entry.get("old_sheet_hash"), "dropped_units": len(out.dropped)}
+    if out.message:   # the repair reworded a unit: reported, never silent
+        row["notice"] = out.message
+    return row
 
 
 def _store_structure(db, template_id: str, config: dict) -> bool:
@@ -220,7 +223,7 @@ async def _run(manifest_path: Path, apply: bool, db) -> dict:
                 r.pop("structure_stored", None)
 
     out = [{k: v for k, v in r.items() if k in ("template_id", "action", "reason", "dropped_units",
-                                                   "structure_stored")} for r in rows]
+                                                   "notice", "structure_stored")} for r in rows]
     totals: dict = {}
     for r in out:
         totals[r["action"]] = totals.get(r["action"], 0) + 1
@@ -231,6 +234,8 @@ async def _run(manifest_path: Path, apply: bool, db) -> dict:
             extra += f"  reason: {r['reason']}"
         if r.get("dropped_units"):
             extra += f"  dropped units: {r['dropped_units']}"
+        if r.get("notice"):
+            extra += f"  notice: {r['notice']}"
         if "structure_stored" in r:
             extra += f"  structure stored: {r['structure_stored']}"
         action = prefix + r["action"] if r["action"] in ("written", "soft-deleted") else r["action"]

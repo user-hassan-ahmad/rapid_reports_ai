@@ -40,6 +40,11 @@ UNREADABLE = "This change could not be applied: the template would not be readab
 UNSAFE = "This change could not be applied safely."
 LOST_STRUCTURE = "This change could not be applied: the template would lose its structure."
 ADJUSTED = "Applied, with a small adjustment so the template stays consistent."
+
+
+def reworded_notice(n: int) -> str:
+    """An automatic write's notice when the repair reworded units (a drop is reported in `dropped` instead)."""
+    return f"Saved, with {n} statement{'s' if n != 1 else ''} reworded so the template stays consistent."
 # A unit check's reason in the radiologist's language (a chat refusal is shown to them; the sheet never is).
 REASON_TEXT = {
     PLACEHOLDER: "a normal statement can't contain a value to fill in",
@@ -192,5 +197,12 @@ async def vet_sheet(sheet: str, origin: Origin, previous: str = "") -> VetOutcom
         if errors or not _usable(res, errors):
             return _refuse(previous, UNREADABLE)
     coverage = [s.name for s in sorted(res.structure.sections, key=lambda s: s.order)]
-    notice = ADJUSTED if origin not in AUTOMATIC and _shape(sheet) != _shape(requested) else ""
+    if origin in AUTOMATIC:
+        # a repair that rewrote a unit (e.g. stripped the slots from a NORMAL line) is reported, never silent
+        reworded = _unit_texts(sheet) - _unit_texts(requested)
+        notice = reworded_notice(len(reworded)) if reworded else ""
+        if reworded:
+            logger.info("[sheet-save] %s reworded %d unit(s)", origin, len(reworded))
+    else:
+        notice = ADJUSTED if _shape(sheet) != _shape(requested) else ""
     return VetOutcome("saved", sheet, message=notice, dropped=dropped, coverage_sections=coverage)

@@ -12,7 +12,8 @@ ANALYSER_VERSION = "grammar-analyser-2026-10-13"
 
 
 async def write_sheet(examples: List[Dict[str, str]], scan_type: str, protocol_notes: str = "") -> Dict:
-    """{"skill_sheet", "summary", "questions", "dropped", "analyser_version"}. Raises ValueError with the save
+    """{"skill_sheet", "summary", "questions", "dropped", "notice", "analyser_version"} (notice: the save
+    function's report of a reworded unit, "" when none). Raises ValueError with the save
     function's message when it refuses the sheet."""
     raw = await model_call(P.ANALYSER_SYSTEM_PROMPT, P.analyser_user_prompt(examples, scan_type, protocol_notes),
                            P.ANALYSER_SETTINGS)
@@ -24,4 +25,4 @@ async def write_sheet(examples: List[Dict[str, str]], scan_type: str, protocol_n
     questions = ans.get("questions")
     return {"skill_sheet": v.sheet, "summary": summary if isinstance(summary, dict) else {},
             "questions": questions if isinstance(questions, list) else [], "dropped": v.dropped,
-            "analyser_version": ANALYSER_VERSION}
+            "notice": v.message, "analyser_version": ANALYSER_VERSION}

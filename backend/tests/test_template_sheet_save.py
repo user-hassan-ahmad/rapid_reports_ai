@@ -156,7 +156,25 @@ async def test_repair_that_only_fixes_the_failing_unit_is_saved(monkeypatch):
         return sheet.replace("Mild chondral thinning.", "The cartilage is preserved.")
     monkeypatch.setattr(S, "_repair", fix)
     out = await S.vet_sheet(BAD_UNIT, origin="analyser", previous="")
-    assert out.status == "saved" and "The menisci are intact." in out.sheet and out.message == ""
+    assert out.status == "saved" and "The menisci are intact." in out.sheet
+    assert out.message == S.reworded_notice(1)   # an automatic rewrite is reported, never silent
+
+
+async def test_a_rebuild_whose_repair_rewrites_a_unit_reports_it(monkeypatch):
+    """Lab case: the repair stripped the slots from a NORMAL line; the save must say so."""
+    monkeypatch.setattr(S, "check_units", _fails_on("Mild chondral thinning."))
+
+    async def strip(sheet, errors):
+        return sheet.replace("Mild chondral thinning.", "The cartilage is normal.")
+    monkeypatch.setattr(S, "_repair", strip)
+    out = await S.vet_sheet(BAD_UNIT, origin="rebuild", previous="")
+    assert out.status == "saved" and out.dropped == []
+    assert out.message == S.reworded_notice(1) and "reworded" in out.message
+
+
+async def test_a_clean_automatic_write_has_no_notice(no_jev):
+    out = await S.vet_sheet(GOOD, origin="rebuild", previous="")
+    assert out.status == "saved" and out.message == ""
 
 
 async def test_a_drop_that_leaves_the_failing_unit_is_refused(monkeypatch):

@@ -28,8 +28,8 @@ def calls(monkeypatch):
 
     async def vet(sheet, origin, previous=""):
         seen["vetted"], seen["origin"] = sheet, origin
-        return VetOutcome("saved", sheet, dropped=[{"text": "VOICE x", "reason": "lint"}],
-                          coverage_sections=["FINDINGS"])
+        return VetOutcome("saved", sheet, message="Saved, with 1 statement reworded so the template stays consistent.",
+                          dropped=[{"text": "VOICE x", "reason": "lint"}], coverage_sections=["FINDINGS"])
 
     monkeypatch.setattr(W, "model_call", call)
     monkeypatch.setattr(W, "vet_sheet", vet)
@@ -40,6 +40,7 @@ async def test_write_returns_a_vetted_sheet_summary_and_questions(calls):
     out = await W.write_sheet([{"label": "", "content": "r1"}], "MRI knee", "notes here")
     assert out["skill_sheet"] == GOOD.strip() and out["summary"] == SUMMARY and out["questions"] == QUESTIONS
     assert out["dropped"] == [{"text": "VOICE x", "reason": "lint"}]
+    assert out["notice"] == "Saved, with 1 statement reworded so the template stays consistent."
     assert out["analyser_version"] == W.ANALYSER_VERSION
     assert calls["system"] == P.ANALYSER_SYSTEM_PROMPT and calls["settings"] == P.ANALYSER_SETTINGS
     assert "MRI knee" in calls["user"] and "notes here" in calls["user"] and "r1" in calls["user"]
