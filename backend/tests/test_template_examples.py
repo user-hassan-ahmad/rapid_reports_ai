@@ -185,3 +185,8 @@ def test_save_tolerates_null_chat_turn_fields(client, auth_headers, quiet_save, 
     db_session.expire_all()
     (t,) = db_session.query(TemplateChatTurn).all()
     assert t.instruction == "shorter" and t.response == ""
+
+
+def test_scrub_keeps_a_word_starting_like_a_month():
+    assert E.scrub("Segment 3 septal 1070 ms.") == "Segment 3 septal 1070 ms."
+    assert "2023" not in E.scrub("Scanned 12 March 2023.")

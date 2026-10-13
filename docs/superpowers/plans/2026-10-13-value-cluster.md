@@ -176,7 +176,13 @@ Frontend:
     4. **Reference ranges.** Code masks a range or limit after a reference word ("normal 891–1035", "normal range: a to b", "normal (a–b)", "normal value <24"). Range ends are never asked.
     5. **`_masked` month fix.** Month names must now be whole words, so "septal 1070 ms" and "marked 1200 ms" are no longer read as dates.
     6. **Items with no number.** An item no number mapped to gets the stated question (`ask_values`, no clauses) on the strict bar (`VALUE_UNQUOTED_MIN = 0.8`): stated gives the "stated?" chip, otherwise the chip is open. Only those items are asked.
-    7. **Unchanged.** Clause picks on open chips (dictation order), "Mark N not provided", the backstop, typed-only statements to Generate, and fail-soft: any Jev failure or short reply leaves every chip open.
+    7. **Unchanged.** Clause picks on open chips (see 12.4 for the ranking), "Mark N not provided", the backstop, typed-only statements to Generate, and fail-soft: any Jev failure or short reply leaves every chip open.
+12. **After the independent review of Decision 11 (2026-10-13).**
+    1. **Masking is limited to reference text.** These are masked: a bracket that starts with a reference word (normal, ref, reference, range, NR, RR, ULN, LLN, upper/lower limit); a bare bracketed range with no unit ("(950–1050)"); and a number, limit or range after a reference word ("normal 55", "normal value <24", "normal range 891–1035"). One exception: "normal" directly followed by a number with a unit is a measurement and is kept ("LVEF normal 55–60%"). Other brackets keep their numbers ("(maximum 14 mm in the basal anteroseptum)").
+    2. **Shared units.** A trailing unit is shared only between adjacent numbers joined by "and", "-", "–", "to", "x" or "/", never across other words. So "volume at 87 with … 64%" gives 87 with no unit.
+    3. **A tapped number is `picked`, not `entered` (Hassan's "typed values only" rule).** A number tapped from the dictation (a conflict pick or an open-chip clause pick) gets its own state, `picked`. It resolves the chip and Confirm, and it is sent as a filled item for the backstop. It is never an "Answered by the radiologist" statement, because the dictation already carries it. Only typed values (`entered`) are stated.
+    4. **Same value and pick ranking.** A conflict in which every mapped number has the same value ("22 x 22 mm") fills, with no check chip. An open chip's picks are ranked by the number → item probabilities for that item (clauses whose numbers went to none or to other items come later), then by dictation order, capped at 8.
+    5. **Latency.** The stated question is asked for every item, in parallel with the number calls. Its answers are used only for items no number mapped to.
 
 ### Where the lab sits
 

@@ -10,6 +10,7 @@ failure leaves every chip open (the radiologist enters the value, picks a clause
 never blocks on the network."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
@@ -27,12 +28,16 @@ MAX_ITEMS = 20     # the largest prod LIST_MISSING has 12 items
 MAX_NUMBERS = 60   # numbers asked per dictation (a long CMR dictation holds ~30-50); later ones are not asked
 MAX_PICKS = 8      # number-bearing clauses offered on an open chip
 
-_REF = re.compile(r"\([^()]*[A-Za-z][^()]*\)")         # bracketed text with a word: a reference range
 _N = r"\d+(?:[.,]\d+)?"
-# A reference range or limit after a reference word: "normal 891-1035", "normal range: 891 to 1035", "normal (891-1035)",
-# "normal value <24" (the lab's main distractor: range ends mapped to an item)
-_REF_RANGE = re.compile(rf"(?i)\b(?:normal|reference|ref|range|nr|uln)\b(?:\s*(?:range|values?|limits?|of|is|:|=|\())*"
-                        rf"\s*(?:[<>≤≥]\s*{_N}|{_N}\s*(?:-|–|—|to)\s*{_N})")
+_REF_WORDS = r"normal|norm|reference|ref|range|nr|rr|uln|lln|upper limit|lower limit"
+# Reference text only (the review: a bracket holding any word lost "(maximum 14 mm in the ...)"):
+_REF_BRACKET = re.compile(rf"(?i)\(\s*(?:{_REF_WORDS})\b[^()]*\)")              # "(normal 55-70)", "(ref 55%)"
+_BARE_RANGE = re.compile(rf"\(\s*{_N}\s*(?:-|–|—|to)\s*{_N}\s*\)")               # "(950-1050)": no unit
+# A reference number, limit or range after a reference word: "normal 55", "normal range: 891 to 1035", "normal (a-b)",
+# "normal value <24". Kept: "normal" straight before a number with a unit ("LVEF normal 55-60%" is the measurement).
+_REF_AFTER = re.compile(rf"(?i)\b(?P<word>{_REF_WORDS})\b(?P<fill>(?:\s*(?:range|values?|limits?|of|is|:|=|\())*)"
+                        rf"\s*(?P<num>[<>≤≥]\s*{_N}|{_N}(?:\s*(?:-|–|—|to)\s*{_N})?)")
+_JOIN = re.compile(r"\s*(?:and|-|–|—|to|x|×|/)\s*", re.I)   # numbers that share a trailing unit
 _CLAUSE = re.compile(r"(?<!\d)[;,]|[;,](?!\d)")       # a comma or semicolon, except inside a number ("1,050")
 _NUMBER = re.compile(r"(?:(?<![^\s(])[-−+])?(?<![\w.,^])\d+(?:,\d{3})*(?:\.\d+)?")   # a sign only at a word start
 _UNIT = re.compile(r"\s*(%|per ?cent\b|(?:mm ?Hg|[cm]m(?:2|²|\^2)|mls|mL|ml|g|kg|L|l|mm|cm|msec|ms|s|m|cc|HU|bpm)"
@@ -51,7 +56,13 @@ def _numbers(clause: str) -> list[re.Match]:
     """Number tokens, after list markers, identifiers (T2, L4/5), dates, times, bracketed words with their numbers
     ("(normal 55)") and reference ranges after a reference word ("normal range 891-1035") are blanked (same length)."""
     blank = lambda m: " " * len(m.group(0))  # noqa: E731
-    return list(_NUMBER.finditer(_REF_RANGE.sub(blank, _REF.sub(blank, _masked(clause or "", set())))))
+    text = _BARE_RANGE.sub(blank, _REF_BRACKET.sub(blank, _masked(clause or "", set())))
+
+    def ref(m: re.Match) -> str:
+        measured = (m["word"].lower() == "normal" and not m["fill"].strip() and m["num"][0].isdigit()
+                    and _UNIT.match(text, m.end()))
+        return m.group(0) if measured else blank(m)
+    return list(_NUMBER.finditer(_REF_AFTER.sub(ref, text)))
 
 
 def has_number(clause: str) -> bool:
@@ -88,16 +99,15 @@ def read_value(clause: str) -> Optional[str]:
 
 
 def read_numbers(clause: str) -> list[str]:
-    """Every number of the clause with its unit, for the radiologist to pick one. A number without its own unit takes
-    the next unit written after it, a shared trailing unit ("98 and 40 ml/m2", "45-50%"); a unit never carries forward
-    ("45% and 98" gives "98")."""
+    """Every number of the clause with its unit, for the radiologist to pick one. A number without its own unit shares
+    the next number's unit only when the two are joined by "and", "-", "to", "x" or "/" ("98 and 40 ml/m2", "45-50%",
+    "3 x 4 cm"); never across other words ("87 with normal systolic function of 64%" gives "87")."""
     found = _numbers(clause)
     units = [_unit_after(clause, m) for m in found]
-    out: list[str] = []
-    for i, m in enumerate(found):
-        unit = units[i] or next((u for u in units[i + 1:] if u), None)
-        out.append(_with_unit(m.group(0), unit))
-    return out
+    for i in range(len(found) - 2, -1, -1):
+        if not units[i] and _JOIN.fullmatch(clause[found[i].end():found[i + 1].start()]):
+            units[i] = units[i + 1]
+    return [_with_unit(m.group(0), u) for m, u in zip(found, units)]
 
 
 class Mention(BaseModel):
@@ -153,16 +163,18 @@ class ValuesResult(BaseModel):
 
 
 Ask = Callable[[str, list[str], list[str]], Awaitable[list[tuple]]]   # the stated question: (p, k, ...) per item
-AskNumbers = Callable[[str, list[tuple[str, str]], list[str]], Awaitable[list[tuple[Optional[int], float]]]]
+AskNumbers = Callable[[str, list[tuple[str, str]], list[str]], Awaitable[list[tuple]]]   # (item, conf[, P(items)])
 
 
 async def smart_fill(dictation: str, items: list[str], ask: Optional[Ask] = None,
                      ask_numbers: Optional[AskNumbers] = None) -> ValuesResult:
-    """Each required value filled from the dictation, a check chip, or open. Never raises; a Jev failure leaves every
-    chip open with the error recorded."""
+    """Each required value filled from the dictation, a check chip, or open. The number calls and the stated question
+    (every item, answers kept only for items no number maps to) run in parallel. Never raises; a Jev failure leaves
+    every chip open with the error recorded."""
     t0 = time.perf_counter()
     items = [i for i in items if i.strip()][:MAX_ITEMS]
     cands: list[str] = []
+    p_clause: dict[int, dict[str, float]] = {}   # item -> clause -> best P(item) of its numbers
 
     def done(values: list[ValueFill], error: Optional[str] = None) -> ValuesResult:
         ms = int((time.perf_counter() - t0) * 1000)
@@ -172,43 +184,57 @@ async def smart_fill(dictation: str, items: list[str], ask: Optional[Ask] = None
                    sum(v.state == "check" for v in values), error, ms)
         return ValuesResult(values=values, ms=ms, error=error)
 
-    def opened(item: str, score: Optional[float] = None) -> ValueFill:
-        return ValueFill(item=item, score=score, picks=[pick(c) for c in cands[:MAX_PICKS]])
+    def opened(k: int, score: Optional[float] = None) -> ValueFill:
+        """Open, with the number clauses: those whose numbers Jev rates likelier for this item first, then dictation
+        order (the numbers' answers went to none or other items)."""
+        best = p_clause.get(k, {})
+        ranked = sorted(cands, key=lambda c: -best.get(c, 0.0))
+        return ValueFill(item=items[k], score=score, picks=[pick(c) for c in ranked[:MAX_PICKS]])
+
+    def all_open(error: Optional[str] = None) -> ValuesResult:
+        p_clause.clear()
+        return done([opened(k) for k in range(len(items))], error)
 
     if not items or not (dictation or "").strip():
-        return done([opened(i) for i in items])
+        return all_open()
     cands = [c for c in clauses(dictation) if has_number(c)]
     mentions = number_mentions(dictation)[:MAX_NUMBERS]
+
+    async def no_numbers() -> list:
+        return []
     try:
-        mapped = await (ask_numbers or ask_number_items)(dictation, [(m.number, m.marked) for m in mentions], items) \
-            if mentions else []
-        if len(mapped) != len(mentions):
-            return done([opened(i) for i in items], "jev: answer count mismatch")
-        by_item: dict[int, list[tuple[float, Mention]]] = {}
-        for m, (i, conf) in zip(mentions, mapped):
-            if i is not None and 0 <= i < len(items):
-                by_item.setdefault(i, []).append((conf, m))
-        rest = [k for k in range(len(items)) if k not in by_item]
-        stated = await (ask or ask_values)(dictation, [items[k] for k in rest], []) if rest else []
-        if len(stated) != len(rest):
-            return done([opened(i) for i in items], "jev: answer count mismatch")
+        mapped, stated = await asyncio.gather(
+            (ask_numbers or ask_number_items)(dictation, [(m.number, m.marked) for m in mentions], items)
+            if mentions else no_numbers(),
+            (ask or ask_values)(dictation, items, []))
     except Exception as e:  # noqa: BLE001 -- fail-soft: every chip open, the radiologist fills or marks N/A
-        return done([opened(i) for i in items], f"{type(e).__name__}: {e}"[:200])
-    p_stated = {k: float(a[0]) for k, a in zip(rest, stated)}
+        return all_open(f"{type(e).__name__}: {e}"[:200])
+    if len(mapped) != len(mentions) or len(stated) != len(items):
+        return all_open("jev: answer count mismatch")
+    by_item: dict[int, list[tuple[float, Mention]]] = {}
+    for m, a in zip(mentions, mapped):
+        i, conf = a[0], a[1]
+        probs = a[2] if len(a) > 2 else None
+        if i is not None and 0 <= i < len(items):
+            by_item.setdefault(i, []).append((conf, m))
+        for k, pk in enumerate(probs or []):
+            p_clause.setdefault(k, {})[m.clause] = max(p_clause.get(k, {}).get(m.clause, 0.0), float(pk))
     out: list[ValueFill] = []
     for k, item in enumerate(items):
         if k in by_item:
             ranked = sorted(by_item[k], key=lambda x: -x[0])   # stable: equal confidence keeps dictation order
             conf, best = ranked[0]
-            if len(ranked) == 1:
+            if len({float(m.number) for _, m in ranked}) == 1:   # one number, or the same value twice ("22 x 22 mm")
                 out.append(ValueFill(item=item, state="filled", value=best.value, quote=best.clause,
                                      score=round(conf, 3)))
             else:
                 out.append(ValueFill(item=item, state="check", value=best.value, quote=best.clause,
                                      score=round(conf, 3),
                                      picks=[ClausePick(clause=m.clause, value=m.value) for _, m in ranked]))
-        elif p_stated[k] >= VALUE_UNQUOTED_MIN:
-            out.append(ValueFill(item=item, state="filled", score=round(p_stated[k], 3)))   # "stated?": needs a look
+            continue
+        p = float(stated[k][0])
+        if p >= VALUE_UNQUOTED_MIN:
+            out.append(ValueFill(item=item, state="filled", score=round(p, 3)))   # "stated?": needs a look
         else:
-            out.append(opened(item, round(p_stated[k], 3)))
+            out.append(opened(k, round(p, 3)))
     return done(out)

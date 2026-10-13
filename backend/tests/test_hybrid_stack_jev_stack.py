@@ -162,12 +162,14 @@ async def test_ask_number_items_asks_one_choice_per_number_in_parallel_batches(m
         ans = {}
         for k in body["questions"]:
             i = int(k[2:])
-            ans[k] = ({"choice": "item_1", "confidence": 0.9} if i == 0 else {"choice": "none", "confidence": 0.7}
+            ans[k] = ({"choice": "item_1", "confidence": 0.9, "probabilities": {"item_0": 0.05, "item_1": 0.9, "none": 0.05}}
+                      if i == 0 else {"choice": "none", "confidence": 0.7}
                       if i == 1 else {"choice": "item_9", "confidence": 0.8} if i == 2 else {"choice": "item_0"})
         return httpx.Response(200, json={"answers": ans})
     mentions = [(str(n), f"A [[{n}]].") for n in range(12)]
     out = await J.ask_number_items("A 1.", mentions, ["LVEF", "RVEF"], transport=httpx.MockTransport(handler))
-    assert out[:4] == [(1, 0.9), (None, 0.7), (None, 0.8), (0, 0.0)]   # none and out-of-range map to no item
+    assert out[:4] == [(1, 0.9, [0.05, 0.9]), (None, 0.7, None), (None, 0.8, None), (0, 0.0, None)]
+    # none and out-of-range map to no item; the third element is P(each item) when Jev sends probabilities
     assert len(out) == 12 and J.NUMBER_BATCH == 10 and len(bodies) == 2
     assert sorted(len(b["questions"]) for b in bodies) == [2, 10]
     assert all(b["state"] == "DICTATION:\nA 1." for b in bodies)
@@ -177,7 +179,7 @@ async def test_ask_number_items_asks_one_choice_per_number_in_parallel_batches(m
     def fail(req):
         raise AssertionError("no call")
     assert await J.ask_number_items("x", [], ["LVEF"], transport=httpx.MockTransport(fail)) == []
-    assert await J.ask_number_items("x", [("1", "[[1]]")], [], transport=httpx.MockTransport(fail)) == [(None, 0.0)]
+    assert await J.ask_number_items("x", [("1", "[[1]]")], [], transport=httpx.MockTransport(fail)) == [(None, 0.0, None)]
     assert J.BACKSTOP_MIN == 0.5   # the post-generation backstop is recall-oriented
 
 

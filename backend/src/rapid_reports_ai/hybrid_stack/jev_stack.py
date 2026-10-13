@@ -385,27 +385,30 @@ def number_item_question(number: str, marked: str, items: list[str]) -> dict[str
 
 
 async def ask_number_items(dictation: str, mentions: list[tuple[str, str]], items: list[str],
-                           transport=None) -> list[tuple[Optional[int], float]]:
-    """(index into `items` the number gives, or None; Jev's confidence) per (number, marked sentence), in order. One
-    choice per number, NUMBER_BATCH per call, calls in parallel."""
+                           transport=None) -> list[tuple[Optional[int], float, Optional[list[float]]]]:
+    """(index into `items` the number gives, or None; Jev's confidence; P(each item) or None when Jev sent no
+    probabilities) per (number, marked sentence), in order. One choice per number, NUMBER_BATCH per call, calls in
+    parallel."""
     if not mentions:
         return []
     if not items:
-        return [(None, 0.0)] * len(mentions)
+        return [(None, 0.0, None)] * len(mentions)
     key = os.environ.get("OPENROUTER_API_KEY", "")
 
-    async def batch(start: int, chunk: list[tuple[str, str]]) -> list[tuple[Optional[int], float]]:
+    async def batch(start: int, chunk: list[tuple[str, str]]) -> list[tuple[Optional[int], float, Optional[list[float]]]]:
         qs = {f"n_{start + j}": number_item_question(n, m, items) for j, (n, m) in enumerate(chunk)}
         r = await jev_post({"model": JEV_MODEL, "state": f"DICTATION:\n{dictation}", "questions": qs},
                            key, TIMEOUT_S * 2, transport)
         r.raise_for_status()
         ans = r.json().get("answers") or {}
-        out: list[tuple[Optional[int], float]] = []
+        out: list[tuple[Optional[int], float, Optional[list[float]]]] = []
         for j in range(len(chunk)):
             a = ans.get(f"n_{start + j}") or {}
             c = a.get("choice")
             i = int(c[5:]) if isinstance(c, str) and c.startswith("item_") and c[5:].isdigit() else None
-            out.append((i if i is not None and i < len(items) else None, float(a.get("confidence") or 0.0)))
+            probs = a.get("probabilities")
+            p_items = [float(probs.get(f"item_{x}") or 0.0) for x in range(len(items))] if isinstance(probs, dict) else None
+            out.append((i if i is not None and i < len(items) else None, float(a.get("confidence") or 0.0), p_items))
         return out
 
     parts = await asyncio.gather(*(batch(k, mentions[k:k + NUMBER_BATCH])

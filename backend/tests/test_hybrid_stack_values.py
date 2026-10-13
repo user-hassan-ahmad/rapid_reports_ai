@@ -73,7 +73,7 @@ def test_required_values_are_the_list_missing_items_in_sheet_order_once():
 
 
 def _ask(answers, seen=None):
-    """The stated question (ask_values), asked only for items no number mapped to."""
+    """The stated question (ask_values), asked for every item; used only for items no number mapped to."""
     async def ask(dictation, items, cands):
         if seen is not None:
             seen.update(stated_items=items, cands=cands)
@@ -97,7 +97,7 @@ async def _never(*a):
 def test_number_mentions_mark_each_number_in_its_sentence():
     ms = V.number_mentions("LVEF 45%. LVEDVi 98 and LVESVi 40 ml/m2. Native T1 1,050 ms.")
     assert [(m.number, m.value, m.clause) for m in ms] == [
-        ("45", "45%", "LVEF 45%."), ("98", "98 ml/m2", "LVEDVi 98 and LVESVi 40 ml/m2."),
+        ("45", "45%", "LVEF 45%."), ("98", "98", "LVEDVi 98 and LVESVi 40 ml/m2."),
         ("40", "40 ml/m2", "LVEDVi 98 and LVESVi 40 ml/m2."), ("1050", "1,050 ms", "Native T1 1,050 ms.")]
     assert ms[2].marked == "LVEDVi 98 and LVESVi [[40]] ml/m2."
     assert V.number_mentions("RV normal, RVEF 50%.")[0].marked == "RV normal, RVEF [[50]]%."
@@ -114,6 +114,20 @@ def test_reference_range_ends_are_never_asked(dictation):
     assert [m.number for m in V.number_mentions(dictation)] == ["1010"]
 
 
+@pytest.mark.parametrize("dictation,values", [
+    ("Normal LV wall thickness (maximum 14 mm in the basal anteroseptum).", ["14 mm"]),   # not reference text
+    ("LVEDV 230 ml (EDVi 120 ml/m2).", ["230 ml", "120 ml/m2"]),
+    ("LVEF 62% (normal 55-70).", ["62%"]),
+    ("LVEF 62% (ref 55%).", ["62%"]),
+    ("LVEF 62%, normal 55.", ["62%"]),                       # a single reference number after "normal"
+    ("Native T1 1010 ms (950-1050).", ["1010 ms"]),          # a bare bracketed range without a unit
+    ("LVEF normal 55-60%.", ["55%", "60%"]),                 # a measured range: no reference word, a unit
+    ("LVEF 58%, normal range 55-60%.", ["58%"]),             # a reference word follows "normal"
+])
+def test_only_reference_text_is_masked(dictation, values):
+    assert [m.value for m in V.number_mentions(dictation)] == values
+
+
 def test_a_reference_limit_after_a_reference_word_is_masked():
     assert [m.number for m in V.number_mentions("Left atrium 20 cm2, normal value <24 cm2.")] == ["20"]
 
@@ -127,21 +141,21 @@ def test_words_starting_like_a_month_are_not_dates():
 async def test_each_number_fills_the_item_jev_maps_it_to():
     seen = {}
     d = "Normal LV size, LVEF 45%. RV normal. LVEDVi 98 and LVESVi 40 ml/m2."
-    res = await V.smart_fill(d, ["LVEF", "LVEDVi", "RVEF"], ask=_ask([(0.2, None)], seen),
+    res = await V.smart_fill(d, ["LVEF", "LVEDVi", "RVEF"], ask=_ask([(0.9, None), (0.9, None), (0.2, None)], seen),
                              ask_numbers=_nums([(0, 0.9), (1, 0.8), (None, 0.7)], seen))
     assert seen["mentions"] == [("45", "Normal LV size, LVEF [[45]]%."),
                                 ("98", "LVEDVi [[98]] and LVESVi 40 ml/m2."), ("40", "LVEDVi 98 and LVESVi [[40]] ml/m2.")]
-    assert seen["stated_items"] == ["RVEF"] and seen["cands"] == []     # only the item no number mapped to
+    assert seen["stated_items"] == ["LVEF", "LVEDVi", "RVEF"] and seen["cands"] == []   # all items, in parallel
     lvef, lvedvi, rvef = [v.model_dump() for v in res.values]
     assert lvef == {"item": "LVEF", "state": "filled", "value": "45%", "quote": "LVEF 45%.", "score": 0.9, "picks": []}
-    assert (lvedvi["state"], lvedvi["value"], lvedvi["quote"]) == ("filled", "98 ml/m2", "LVEDVi 98 and LVESVi 40 ml/m2.")
+    assert (lvedvi["state"], lvedvi["value"], lvedvi["quote"]) == ("filled", "98", "LVEDVi 98 and LVESVi 40 ml/m2.")
     assert rvef["state"] == "open" and [p["clause"] for p in rvef["picks"]] == ["LVEF 45%.", "LVEDVi 98 and LVESVi 40 ml/m2."]
     assert res.error is None
 
 
 async def test_two_numbers_on_one_item_keep_the_most_confident_as_a_check_chip_with_the_alternatives():
     d = "LVEF 45%. Previously LVEF 55%."
-    res = await V.smart_fill(d, ["LVEF"], ask=_never, ask_numbers=_nums([(0, 0.6), (0, 0.9)]))
+    res = await V.smart_fill(d, ["LVEF"], ask=_ask([(0.9, None)]), ask_numbers=_nums([(0, 0.6), (0, 0.9)]))
     [v] = res.values
     assert (v.state, v.value, v.quote, v.score) == ("check", "55%", "Previously LVEF 55%.", 0.9)
     assert [(p.clause, p.value) for p in v.picks] == [("Previously LVEF 55%.", "55%"), ("LVEF 45%.", "45%")]
@@ -149,9 +163,9 @@ async def test_two_numbers_on_one_item_keep_the_most_confident_as_a_check_chip_w
 
 async def test_an_item_no_number_maps_to_keeps_the_strict_stated_question():
     d = "Conus terminates at L1. LVEF 45%."
-    res = await V.smart_fill(d, ["Conus level", "LVEF"], ask=_ask([(0.8, None)]), ask_numbers=_nums([(1, 0.9)]))
+    res = await V.smart_fill(d, ["Conus level", "LVEF"], ask=_ask([(0.8, None), (0.1, None)]), ask_numbers=_nums([(1, 0.9)]))
     assert (res.values[0].state, res.values[0].value, res.values[0].quote) == ("filled", None, None)   # "stated?"
-    res = await V.smart_fill(d, ["Conus level", "LVEF"], ask=_ask([(0.79, None)]), ask_numbers=_nums([(1, 0.9)]))
+    res = await V.smart_fill(d, ["Conus level", "LVEF"], ask=_ask([(0.79, None), (0.1, None)]), ask_numbers=_nums([(1, 0.9)]))
     assert res.values[0].state == "open" and V.VALUE_UNQUOTED_MIN == 0.8
 
 
@@ -166,7 +180,7 @@ async def test_a_jev_failure_or_a_short_reply_leaves_every_chip_open_with_picks(
     async def boom(*a):
         raise RuntimeError("jev down")
     d = "LVEF 45%."
-    res = await V.smart_fill(d, ["LVEF", "RVEF"], ask=_ask([(0.1, None)]), ask_numbers=boom)
+    res = await V.smart_fill(d, ["LVEF", "RVEF"], ask=_ask([(0.1, None)] * 2), ask_numbers=boom)
     assert [v.state for v in res.values] == ["open", "open"] and "RuntimeError" in res.error
     assert [p.clause for p in res.values[0].picks] == ["LVEF 45%."]
     res = await V.smart_fill(d, ["LVEF", "RVEF"], ask=boom, ask_numbers=_nums([(0, 0.9)]))
@@ -192,11 +206,11 @@ async def test_the_default_asks_are_the_jev_calls(monkeypatch):
 
     async def stated(dictation, items, cands):
         seen["stated"] = items
-        return [(0.1, None, None)]
+        return [(0.9, None, None), (0.1, None, None)]
     monkeypatch.setattr(V, "ask_number_items", numbers)
     monkeypatch.setattr(V, "ask_values", stated)
     res = await V.smart_fill("LVEF 45%.", ["LVEF", "RVEF"])
-    assert seen == {"mentions": [("45", "LVEF [[45]]%.")], "stated": ["RVEF"]} and res.values[0].value == "45%"
+    assert seen == {"mentions": [("45", "LVEF [[45]]%.")], "stated": ["LVEF", "RVEF"]} and res.values[0].value == "45%"
 
 
 async def test_numbers_are_capped_and_picks_stay_capped():
@@ -218,9 +232,13 @@ def test_area_units_are_read_and_written_as_squared(clause, value):
 
 
 @pytest.mark.parametrize("clause,numbers", [
-    ("LVEDVi 98 and LVESVi 40 ml/m2", ["98 ml/m2", "40 ml/m2"]),   # a trailing unit is shared
+    ("LVEDVi 98 and LVESVi 40 ml/m2", ["98", "40 ml/m2"]),         # another word between: not shared
+    ("LVEDVi and LVESVi 98 and 40 ml/m2", ["98 ml/m2", "40 ml/m2"]),   # a trailing unit is shared
     ("EF 45-50%", ["45%", "50%"]),
     ("LVEF 45% and LVEDVi 98", ["45%", "98"]),                      # a unit never reaches back to an earlier number
+    ("volume at 87 with normal systolic function of 64%", ["87", "64%"]),   # only across "and", "-", "to", "x", "/"
+    ("3 x 4 x 5 cm", ["3 cm", "4 cm", "5 cm"]),
+    ("22 to 25 mm", ["22 mm", "25 mm"]),
     ("LVEF 45%", ["45%"]),
     ("No late gadolinium enhancement", []),
 ])
@@ -243,3 +261,37 @@ def test_read_numbers_gives_every_number_with_its_unit(clause, numbers):
 def test_read_value_keeps_signs_pressure_units_and_ignores_bracketed_ranges(clause, value):
     assert V.read_value(clause) == value
 
+
+
+async def test_a_conflict_of_the_same_value_fills():
+    res = await V.smart_fill("Ascending aorta 22 x 22 mm.", ["Ascending aorta diameter"], ask=_ask([(0.1, None)]),
+                             ask_numbers=_nums([(0, 0.7), (0, 0.9)]))
+    [v] = res.values
+    assert (v.state, v.value, v.picks) == ("filled", "22 mm", [])
+
+
+async def test_open_chip_picks_rank_by_the_items_probability_then_dictation_order():
+    d = "LVEF 45%. RV dilated, 120 ml/m2. Mass 60 g/m2."
+    ans = [(0, 0.9, [0.9, 0.05]), (None, 0.5, [0.1, 0.4]), (None, 0.8, [0.0, 0.1])]
+    res = await V.smart_fill(d, ["LVEF", "RVEDVi"], ask=_ask([(0.1, None)] * 2), ask_numbers=_nums(ans))
+    assert [p.clause for p in res.values[1].picks] == ["120 ml/m2.", "Mass 60 g/m2.", "LVEF 45%."]
+
+
+async def test_the_stated_question_runs_with_the_number_calls_for_every_item():
+    import asyncio
+    seen, order = {}, []
+
+    async def numbers(dictation, mentions, items):
+        order.append("numbers start")
+        await asyncio.sleep(0)
+        order.append("numbers end")
+        return [(0, 0.9)]
+
+    async def stated(dictation, items, cands):
+        order.append("stated start")
+        seen["items"] = items
+        return [(0.95, None), (0.9, None)]
+    res = await V.smart_fill("LVEF 45%.", ["LVEF", "Conus level"], ask=stated, ask_numbers=numbers)
+    assert seen["items"] == ["LVEF", "Conus level"] and order.index("stated start") < order.index("numbers end")
+    assert (res.values[0].state, res.values[0].value) == ("filled", "45%")   # the mapped item's stated answer is dropped
+    assert (res.values[1].state, res.values[1].quote) == ("filled", None)
