@@ -66,7 +66,7 @@ async def test_settled_inputs_reach_a_proposal_copied_from_the_entry(toy_entry, 
     assert out.missing == [] and out.draft_outcome.recommendation == "CT at 6 months"
     assert out.draft_outcome.classification == "Toy 2020 · solid nodule 6-8 mm, high risk"
     assert out.draft_outcome.line == "Toy 2020: solid nodule 6-8 mm, high risk."
-    assert out.trace["outcome"] == "ct6" and jev["calls"] == 4     # one batch per scope, then one per enum quote
+    assert out.trace["outcome"] == "ct6" and jev["calls"] == 2     # one batch per scope, no per-quote call
     assert out.draft_outcome.normal is False
 
 
@@ -333,28 +333,15 @@ async def test_every_value_is_put_to_jev_with_its_scope_as_state(toy_entry, monk
     by_state = {p["state"]: [q["instructions"] for q in p["questions"].values()] for p in jev["payloads"]}
     assert by_state[f"FINDING:\n{FINDING}"] == ["The FINDING states Nodule type: solid",
                                                  "The FINDING states Diameter: 7 mm", PP.ONE_LESION]
-    quotes = {s: c for s, c in by_state.items() if s.startswith("QUOTE")}
-    assert sorted(c[0] for c in quotes.values()) == ["The QUOTE states Nodule type: solid",
-                                                      "The QUOTE states Patient risk: high"]
+    assert not any(s.startswith("QUOTE") for s in by_state)              # the per-quote claim is retired
     patient = next(s for s in by_state if s.startswith("CLINICAL HISTORY"))
     assert by_state[patient] == ["The CLINICAL HISTORY or DICTATION state Patient risk: high"]
 
 
-# lab fix round item 2: an enum or boolean settles only when its quote, alone, states it
-async def test_an_enum_or_boolean_is_checked_against_its_quote_alone(toy_entry, monkeypatch, jev):
-    _model(monkeypatch, KIND, {"input": "risk", "value": "high", "quote": "smoker"})
-    await PP.preview_pack(toy_entry, TWO, "Smoker.", {}, finding=FINDING)
-    kind = next(p["state"] for p in jev["payloads"]
-                if "QUOTE states Nodule type: solid" in str(p["questions"]))
-    assert kind.startswith("QUOTE (a verbatim phrase from a radiology report about one lesion; the only evidence):\nsolid")
-    assert "\n\nDEFINITION of Nodule type: " in kind and "right upper lobe" not in kind
-    risk = next(p["state"] for p in jev["payloads"] if "QUOTE states Patient risk: high" in str(p["questions"]))
-    assert "\nsmoker\n" in risk and "Smoker." not in risk and "about the patient or the examination" in risk
-
-
 @pytest.mark.parametrize("verdict,settles", [(0.79, False), (0.8, True)])
-async def test_a_quote_claim_settles_at_point_eight(toy_entry, monkeypatch, jev, verdict, settles):
-    jev["scores"] = {"The QUOTE states Nodule type": verdict}
+async def test_an_enum_is_read_when_the_finding_claim_reaches_point_eight(toy_entry, monkeypatch, jev, verdict,
+                                                                          settles):
+    jev["scores"] = {"The FINDING states Nodule type": verdict}
     _model(monkeypatch, KIND)
     out = await PP.preview_pack(toy_entry, FINDING, "", {}, finding=FINDING)
     assert (_states(out)["kind"] == "read") is settles and (PP.WHY_UNCONFIRMED in _why(out, "kind")) is not settles
@@ -364,19 +351,19 @@ async def test_a_quote_claim_settles_at_point_eight(toy_entry, monkeypatch, jev,
     # lab #29: proven_malignant = No from a quote that says nothing of histology (live Jev 0.57/0.62: asked)
     ("bts-pulmonary-nodule", "6 mm smooth triangular nodule abutting the right horizontal fissure, typical of an "
      "intrapulmonary lymph node.", "proven_malignant", False, "typical of an intrapulmonary lymph node",
-     "The QUOTE states Nodule already proven to be lung cancer or a metastasis: No"),
+     "The FINDING states Nodule already proven to be lung cancer or a metastasis: No"),
     # lab #13: too_small = no from a quote that is not the size
     ("bosniak-renal-cyst", "4 cm well-defined cyst in the right lower pole with a single thin (1 mm) septum and a "
      "fleck of calcification.", "too_small", "no", "a single thin (1 mm) septum and a fleck of calcification",
-     "The QUOTE states Too small to characterise: no")])
-async def test_lab_weak_quote_settles_are_asked_when_the_quote_does_not_state_them(monkeypatch, jev, key, finding,
+     "The FINDING states Too small to characterise: no")])
+async def test_lab_weak_settles_are_prefilled_when_the_finding_does_not_state_them(monkeypatch, jev, key, finding,
                                                                                   inp, value, quote, claim):
     jev["scores"] = {claim: 0.6}
     _model(monkeypatch, {"input": inp, "value": value, "quote": quote})
     out = await PP.preview_pack(_pack(key), finding, "", {}, finding=finding)
     assert _states(out)[inp] == "prefilled" and PP.WHY_UNCONFIRMED in _why(out, inp)
     state = next(p["state"] for p in jev["payloads"] if claim in str(p["questions"]))
-    assert state.split("\n")[1] == quote                       # the quote alone is the evidence, not the finding
+    assert state == f"FINDING:\n{finding}"                    # the scope's batch: the finding is the evidence
 
 
 async def test_a_value_jev_does_not_find_stated_is_prefilled(toy_entry, monkeypatch, jev):
@@ -388,7 +375,7 @@ async def test_a_value_jev_does_not_find_stated_is_prefilled(toy_entry, monkeypa
 
 
 async def test_a_jev_failure_on_one_scope_prefills_only_that_scopes_values(toy_entry, monkeypatch, jev):
-    jev["fail_if"] = "DEFINITION of Patient risk"
+    jev["fail_if"] = "CLINICAL HISTORY"
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
     out = await PP.preview_pack(toy_entry, FINDING, "Smoker.", {}, finding=FINDING)
     assert _states(out)["kind"] == _states(out)["size"] == "read" and out.degraded is True
@@ -649,17 +636,18 @@ async def _fleischner(monkeypatch, finding, quote, value):
 
 @pytest.mark.parametrize("finding", MANY)
 @pytest.mark.parametrize("verdict", [0.1, 0.7])                      # Jev says no, or is unsure
-async def test_a_finding_with_several_lesions_asks_its_size(monkeypatch, jev, finding, verdict):
+async def test_a_finding_with_several_lesions_prefills_its_size(monkeypatch, jev, finding, verdict):
     jev["scores"] = {ONE_CLAIM: verdict}
     out = await _fleischner(monkeypatch, finding, "4 mm", 4)
-    assert "diameter_mm" not in {x.input for x in out.settled} and "diameter_mm" in out.missing
+    assert _states(out)["diameter_mm"] == "prefilled" and PP.WHY_SEVERAL in _why(out, "diameter_mm")
 
 
 @pytest.mark.parametrize("finding", MANY)
-async def test_the_multiplicity_backstop_asks_even_when_jev_says_one(monkeypatch, jev, finding):
+async def test_a_multiplicity_word_no_longer_asks_when_jev_says_one(monkeypatch, jev, finding):
     jev["scores"] = {ONE_CLAIM: 0.95}
     out = await _fleischner(monkeypatch, finding, "4 mm", 4)
-    assert not {"diameter_mm", "nodule_type"} & {x.input for x in out.settled}   # every lesion input is asked
+    assert {"diameter_mm", "nodule_type"} <= {x.input for x in out.settled}      # drafted: the backstop is retired
+    assert PP.WHY_SEVERAL not in _why(out, "diameter_mm")
 
 
 @pytest.mark.parametrize("verdict,settles", [(0.95, True), (0.8, True), (0.79, False), (0.1, False)])
@@ -684,7 +672,7 @@ async def test_one_lesion_still_settles_its_number(monkeypatch, jev, key, findin
 
 async def test_the_one_lesion_claim_rides_in_the_lesion_batch(monkeypatch, jev):
     out = await _fleischner(monkeypatch, "Solitary 8 mm solid nodule.", "8 mm", 8)
-    assert jev["calls"] == 2 and "diameter_mm" in {x.input for x in out.settled}     # the batch and one quote
+    assert jev["calls"] == 1 and "diameter_mm" in {x.input for x in out.settled}     # the lesion batch alone
     lesion = next(p for p in jev["payloads"] if p["state"].startswith("FINDING"))
     assert [q["instructions"] for q in lesion["questions"].values()] == [
         "The FINDING states Nodule type: solid", "The FINDING states Nodule diameter: 8 mm", PP.ONE_LESION]
@@ -703,12 +691,12 @@ async def test_an_enum_alone_still_carries_the_one_lesion_claim(monkeypatch, jev
     assert PP.ONE_LESION in claims and "nodule_type" in {x.input for x in out.settled}
 
 
-async def test_the_multiplicity_backstop_asks_an_enum_too(monkeypatch, jev):
+async def test_a_multiplicity_word_no_longer_asks_an_enum(monkeypatch, jev):
     jev["scores"] = {ONE_CLAIM: 0.95}
     _model(monkeypatch, {"input": "nodule_type", "value": "solid", "quote": "solid"})
     out = await PP.preview_pack(_pack("fleischner-pulmonary-nodule"), "Scattered solid nodules.", "", {},
                                 finding="Scattered solid nodules.")
-    assert "nodule_type" not in {x.input for x in out.settled} and "nodule_type" in out.missing
+    assert _states(out)["nodule_type"] == "read"                    # Jev says one lesion; no word backstop now
 
 
 # lab fix round item 1: lab case #36, a granuloma (not the pack's noun) lending its lobe and type to the nodule
@@ -744,10 +732,11 @@ async def test_below_the_one_lesion_bar_every_lesion_value_is_prefilled(monkeypa
 
 
 @pytest.mark.parametrize("finding", ["Renal cysts, the largest -20 HU.", "Cystic renal masses, the dominant -20 HU."])
-async def test_the_plural_comes_from_the_packs_finding_types(monkeypatch, jev, finding):
+async def test_a_plural_finding_still_drafts_its_number(monkeypatch, jev, finding):
+    jev["scores"] = {ONE_CLAIM: 0.3}
     _model(monkeypatch, {"input": "hu", "value": -20, "quote": "-20 HU"})
     out = await PP.preview_pack(_pack("bosniak-renal-cyst"), finding, "", {}, finding=finding)
-    assert "hu" not in {x.input for x in out.settled}
+    assert _states(out)["hu"] == "prefilled" and PP.WHY_SEVERAL in _why(out, "hu")
 
 
 @pytest.mark.parametrize("key,finding,inp,quote,value", [
@@ -768,86 +757,54 @@ async def test_an_unqualified_negation_settles_when_jev_says_one(monkeypatch, je
     "4 mm solid nodule. No other new nodules.", "4 mm solid nodule. No other enlarging nodules.",
     "New 4 mm solid nodule. No other nodules have changed.",
     "4 mm solid nodule. No other nodules apart from stable subpleural nodularity."])
-async def test_a_qualified_negation_asks_even_when_jev_says_one(monkeypatch, jev, finding):
+async def test_a_qualified_negation_no_longer_asks(monkeypatch, jev, finding):
     jev["scores"] = {ONE_CLAIM: 0.95}
     out = await _fleischner(monkeypatch, finding, "4 mm", 4)
-    assert "diameter_mm" not in {x.input for x in out.settled}
+    assert "diameter_mm" in {x.input for x in out.settled}            # drafted; Jev's one-lesion claim decides
 
 
-# lab fix round item 3: asymmetric prior_study. "No" from the whole dictation (Jev, and no word of imaging elsewhere);
-# "Yes" from the nodule's own finding only
+# Task 4: prior_study is an ordinary lesion boolean (the asymmetric _no_prior check is retired): the model may propose
+# Yes or No with a quote from the nodule's own finding; as a boolean it is never read, so it is pre-filled or asked
 PRIOR_FINDING = "7 mm solid nodule in the right upper lobe."
-NO_PRIOR = "previous imaging that includes the chest"
 
 
-def _prior_jev(jev, no=0.85, mentioned=0.1):
-    jev["scores"] = {NO_PRIOR: no, PP.PRIOR_MENTIONED: mentioned, PP.HISTORY_MENTIONED: 0.05}
-
-
-@pytest.mark.parametrize("sentence", ["No previous imaging.", "No prior CT for comparison.", "No prev CT."])
-async def test_no_prior_imaging_in_the_dictation_settles_prior_study_no(monkeypatch, jev, sentence):
+async def test_no_previous_imaging_outside_the_finding_is_asked(monkeypatch, jev):
     from tests.test_library_partial import _bts
-    _prior_jev(jev)
-    _model(monkeypatch)
-    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} {sentence}", "", {}, finding=PRIOR_FINDING)
-    prior = next(x for x in out.settled if x.input == "prior_study")
-    assert prior.value == "No" and prior.quote == sentence.rstrip(".")
-    claims = [q["instructions"] for p in jev["payloads"] for q in p["questions"].values()]
-    assert "The DICTATION states there is no previous imaging that includes the chest" in claims
-
-
-@pytest.mark.parametrize("sentence,mentioned", [("Previous imaging requested.", 0.1),
-                                                ("Prior CT at another trust.", 0.1),
-                                                ("No prior CT chest; prior CT abdomen 2022.", 0.97)])
-async def test_prior_imaging_that_may_exist_elsewhere_asks_prior_study(monkeypatch, jev, sentence, mentioned):
-    from tests.test_library_partial import _bts
-    _prior_jev(jev, no=0.95, mentioned=mentioned)       # even when Jev reads "no previous imaging"
-    _model(monkeypatch)
-    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} {sentence}", "", {}, finding=PRIOR_FINDING)
-    assert "prior_study" not in {x.input for x in out.settled} and "prior_study" in out.missing
-
-
-@pytest.mark.parametrize("no", [0.79, 0.1])
-async def test_below_the_bar_prior_study_is_asked(monkeypatch, jev, no):
-    from tests.test_library_partial import _bts
-    _prior_jev(jev, no=no)
-    _model(monkeypatch)
+    _model(monkeypatch, {"input": "prior_study", "value": False, "quote": "No previous imaging"})
     out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging.", "", {}, finding=PRIOR_FINDING)
-    assert "prior_study" in out.missing
+    assert _states(out)["prior_study"] == "asked" and "prior_study" in out.missing      # not in the finding
 
 
-async def test_the_model_never_settles_prior_study_no(monkeypatch, jev):
+async def test_the_model_may_propose_prior_study_no_from_the_finding(monkeypatch, jev):
     from tests.test_library_partial import _bts
-    _prior_jev(jev, no=0.1)
     finding = "7 mm solid nodule in the right upper lobe, new since the previous CT."
     _model(monkeypatch, {"input": "prior_study", "value": False, "quote": "new"})
     out = await PP.preview_pack(_bts(), finding, "", {}, finding=finding)
-    assert "prior_study" not in {x.input for x in out.settled}
+    assert _states(out)["prior_study"] == "prefilled" and PP.WHY_KIND in _why(out, "prior_study")
 
 
-async def test_prior_study_yes_settles_only_from_the_nodules_own_finding(monkeypatch, jev):
+async def test_prior_study_yes_is_drafted_only_from_the_nodules_own_finding(monkeypatch, jev):
     from tests.test_library_partial import _bts
     finding = "7 mm solid nodule in the right upper lobe, unchanged from the 2023 CT."
     _model(monkeypatch, {"input": "prior_study", "value": True, "quote": "unchanged from the 2023 CT"})
     out = await PP.preview_pack(_bts(), finding, "", {}, finding=finding)
     assert next(x for x in out.settled if x.input == "prior_study").value == "Yes"
+    assert _states(out)["prior_study"] == "prefilled"
     _model(monkeypatch, {"input": "prior_study", "value": True, "quote": "Comparison with CT 2023"})
     out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} Comparison with CT 2023.", "", {}, finding=PRIOR_FINDING)
     assert "prior_study" in out.missing                    # quoted outside the finding: asked
 
 
-async def test_the_finding_saying_yes_and_the_dictation_no_asks(monkeypatch, jev):
+async def test_the_finding_saying_yes_is_drafted_whatever_the_dictation_says(monkeypatch, jev):
     from tests.test_library_partial import _bts
-    _prior_jev(jev)
     finding = "7 mm solid nodule in the right upper lobe, unchanged from the 2023 CT."
     _model(monkeypatch, {"input": "prior_study", "value": True, "quote": "unchanged from the 2023 CT"})
     out = await PP.preview_pack(_bts(), f"{finding} No previous imaging.", "", {}, finding=finding)
-    assert "prior_study" in out.missing
+    assert _states(out)["prior_study"] == "prefilled"         # no cross-check any more: shown, highlighted
 
 
 async def test_an_answered_prior_study_overrides_the_dictation(monkeypatch, jev):
     from tests.test_library_partial import _bts
-    _prior_jev(jev)
     _model(monkeypatch)
     out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging.", "", {"prior_study": "Yes"},
                                 finding=PRIOR_FINDING)
@@ -885,14 +842,14 @@ async def test_a_size_in_another_family_no_longer_asks_the_attenuation(monkeypat
 async def _settled_bts(monkeypatch, jev):
     from tests.test_library_partial import _bts
     e = _bts()
-    finding = "Solitary 9 mm solid nodule in the right upper lobe with a spiculated margin."
-    _prior_jev(jev)
-    _model(monkeypatch, {"input": "nodule_type", "value": "solid", "quote": "solid"},
+    finding = "Solitary 9 mm solid nodule in the right upper lobe with a spiculated margin. No previous imaging."
+    _model(monkeypatch, {"input": "prior_study", "value": False, "quote": "No previous imaging"},
+           {"input": "nodule_type", "value": "solid", "quote": "solid"},
            {"input": "diameter_mm", "value": 9, "quote": "9 mm"},
            {"input": "upper_lobe", "value": True, "quote": "right upper lobe"},
            {"input": "spiculation", "value": True, "quote": "spiculated"},
            {"input": "age", "value": 68, "quote": "68 years"})
-    s = await PP.settle_pack(e, f"{finding} No previous imaging.", "Aged 68 years.", finding=finding)
+    s = await PP.settle_pack(e, finding, "Aged 68 years.", finding=finding)
     return e, s
 
 
@@ -972,17 +929,16 @@ async def test_a_context_stripped_quote_fails_the_finding_claim(monkeypatch, jev
     """The reviewer's 'upper lobe' from 'separating it from the upper lobe': no modifier; the finding claim asks."""
     from tests.test_library_partial import _bts
     finding = "7 mm solid nodule in the right lower lobe, adjacent to the oblique fissure separating it from the upper lobe."
-    jev["scores"] = {"The FINDING states Upper lobe location": 0.04, "The QUOTE states Upper lobe location": 0.95}
+    jev["scores"] = {"The FINDING states Upper lobe location": 0.04}
     _model(monkeypatch, {"input": "upper_lobe", "value": True, "quote": "upper lobe"})
     out = await PP.preview_pack(_bts(), finding, "", {}, finding=finding)
     assert _states(out)["upper_lobe"] == "prefilled" and PP.WHY_UNCONFIRMED in _why(out, "upper_lobe")
 
 
-@pytest.mark.parametrize("finding_score,quote_score,settles", [(0.95, 0.95, True), (0.79, 0.95, False),
-                                                               (0.95, 0.79, False), (0.8, 0.8, True)])
-async def test_an_enum_settles_only_when_both_claims_reach_point_eight(toy_entry, monkeypatch, jev, finding_score,
-                                                                      quote_score, settles):
-    jev["scores"] = {"The FINDING states Nodule type": finding_score, "The QUOTE states Nodule type": quote_score}
+@pytest.mark.parametrize("finding_score,settles", [(0.95, True), (0.79, False), (0.8, True)])
+async def test_an_enum_is_read_only_when_the_finding_claim_reaches_point_eight(toy_entry, monkeypatch, jev,
+                                                                              finding_score, settles):
+    jev["scores"] = {"The FINDING states Nodule type": finding_score}
     _model(monkeypatch, KIND)
     out = await PP.preview_pack(toy_entry, FINDING, "", {}, finding=FINDING)
     assert (_states(out)["kind"] == "read") is settles and (PP.WHY_UNCONFIRMED in _why(out, "kind")) is not settles
@@ -998,110 +954,6 @@ async def test_an_enum_settles_only_when_both_claims_reach_point_eight(toy_entry
     ("solid", "Nodule is solid.", False)])
 def test_the_modifier_guard(quote, text, modified):
     assert PP._modified(quote, [text]) is modified
-
-
-# review I2: the clinical history is in the prior check; a history that implies a previous study asks
-@pytest.mark.parametrize("history", ["Known RUL nodule on CT 2023, for follow-up.", "Surveillance of a lung nodule.",
-                                     "Interval CT."])
-async def test_a_history_implying_a_previous_study_asks_prior_study(monkeypatch, jev, history):
-    from tests.test_library_partial import _bts
-    _prior_jev(jev)                                   # even when Jev reads "no previous imaging" in the dictation
-    _model(monkeypatch)
-    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging available for comparison.", history, {},
-                                finding=PRIOR_FINDING)
-    assert "prior_study" in out.missing
-
-
-async def test_the_prior_check_sees_the_history(monkeypatch, jev):
-    from tests.test_library_partial import _bts
-    _prior_jev(jev, mentioned=0.9)
-    _model(monkeypatch)
-    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging.", "Lung nodule on CT 2023.", {},
-                                finding=PRIOR_FINDING)
-    state = next(p["state"] for p in jev["payloads"] if any(NO_PRIOR in q["instructions"]
-                                                              for q in p["questions"].values()))
-    assert state.startswith("CLINICAL HISTORY:\nLung nodule on CT 2023.\n\nDICTATION (a CT report")
-    assert "prior_study" in out.missing
-
-
-# review M1: phrasings that say a previous study may exist elsewhere or later ask, whatever Jev reads
-@pytest.mark.parametrize("sentence", ["No prior imaging available at time of reporting.",
-                                      "No prior imaging available on PACS.", "Prior imaging from Royal X to follow.",
-                                      "Previous CT awaiting transfer via IEP.", "Prior imaging pending.",
-                                      "Previous imaging unavailable."])
-async def test_a_prior_that_may_exist_elsewhere_or_later_asks(monkeypatch, jev, sentence):
-    from tests.test_library_partial import _bts
-    _prior_jev(jev, no=0.95, mentioned=0.05)
-    _model(monkeypatch)
-    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} {sentence}", "", {}, finding=PRIOR_FINDING)
-    assert "prior_study" in out.missing
-
-
-# re-review I2: a history that mentions any previous imaging asks; so do follow-up words in the dictation; a model
-# failure never leaves a "No" resting on the mention guard alone
-async def test_a_history_mentioning_previous_imaging_asks_prior_study(monkeypatch, jev):
-    from tests.test_library_partial import _bts
-    _prior_jev(jev)
-    jev["scores"][PP.HISTORY_MENTIONED] = 0.9
-    _model(monkeypatch)
-    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous chest imaging.",
-                                "Incidental lung nodule on CT abdomen 2024.", {}, finding=PRIOR_FINDING)
-    assert "prior_study" in out.missing
-    claims = [q["instructions"] for p in jev["payloads"] for q in p["questions"].values()]
-    assert PP.HISTORY_MENTIONED in claims and "scan, X-ray or other imaging" in PP.HISTORY_MENTIONED
-
-
-@pytest.mark.parametrize("sentence", ["Known 7 mm nodule. No previous imaging.",
-                                      "For follow-up. No previous imaging.", "Surveillance CT. No prior CT.",
-                                      "Interval CT. No previous imaging."])
-async def test_follow_up_words_in_the_dictation_ask_prior_study(monkeypatch, jev, sentence):
-    from tests.test_library_partial import _bts
-    _prior_jev(jev, no=0.95, mentioned=0.05)
-    _model(monkeypatch)
-    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} {sentence}", "", {}, finding=PRIOR_FINDING)
-    assert "prior_study" in out.missing
-
-
-@pytest.mark.parametrize("history", ["", "64-year-old woman.", "Cough."])
-async def test_no_previous_imaging_with_a_plain_history_still_settles_no(monkeypatch, jev, history):
-    from tests.test_library_partial import _bts
-    _prior_jev(jev)
-    jev["scores"][PP.HISTORY_MENTIONED] = 0.05
-    _model(monkeypatch)
-    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging.", history, {}, finding=PRIOR_FINDING)
-    assert next(x for x in out.settled if x.input == "prior_study").value == "No"
-
-
-async def test_a_model_failure_never_settles_prior_study_no(monkeypatch, jev):
-    from tests.test_library_partial import _bts
-    _prior_jev(jev)
-
-    async def boom(system, prompt):
-        raise TimeoutError("slow")
-    monkeypatch.setattr(PP, "_call", boom)
-    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging.", "", {}, finding=PRIOR_FINDING)
-    assert "prior_study" not in {x.input for x in out.settled}
-
-
-# check of 606696f: "f/u" and "FU" are follow-up too, as whole tokens only
-@pytest.mark.parametrize("dictation,history", [
-    ("f/u nodule. Comparison: none.", ""), ("FU RUL nodule. No previous imaging.", ""),
-    ("No previous imaging.", "f/u RUL nodule.")])
-async def test_f_u_asks_prior_study(monkeypatch, jev, dictation, history):
-    from tests.test_library_partial import _bts
-    _prior_jev(jev, no=0.95, mentioned=0.05)
-    _model(monkeypatch)
-    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} {dictation}", history, {}, finding=PRIOR_FINDING)
-    assert "prior_study" in out.missing
-
-
-async def test_fu_inside_a_word_is_not_follow_up(monkeypatch, jev):
-    from tests.test_library_partial import _bts
-    _prior_jev(jev)
-    _model(monkeypatch)
-    out = await PP.preview_pack(_bts(), f"{PRIOR_FINDING} No previous imaging. Patient refusal of contrast.",
-                                "Fully independent.", {}, finding=PRIOR_FINDING)
-    assert next(x for x in out.settled if x.input == "prior_study").value == "No"
 
 
 # ── exam presets (spec §5.1): an exam card pre-fills what its exam binding implies, shown as set by the exam ─────────
@@ -1172,3 +1024,38 @@ def test_a_finding_card_gets_no_presets():
 
 def test_presets_need_an_exam_level_entry(toy_entry):
     assert PP.exam_presets(toy_entry, PP.EXAM_CARD) == {}
+
+
+# ── Task 4: the per-quote claim, _no_prior and quantity.many are retired; guards are highlight reasons ─────────────
+
+async def test_each_scope_is_one_jev_call_and_there_is_no_per_quote_call(toy_entry, monkeypatch, jev):
+    _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
+    await PP.settle_pack(toy_entry, FINDINGS, "Smoker.", finding=FINDINGS)
+    assert jev["calls"] == 2                                     # lesion batch + patient batch
+
+
+async def test_a_finding_naming_other_lesions_still_drafts_its_values(toy_entry, monkeypatch, jev):
+    finding = "7 mm solid nodule in the right upper lobe. Further tiny nodules."
+    _model(monkeypatch, {"input": "size", "value": 7, "quote": "7 mm"})
+    s = await PP.settle_pack(toy_entry, finding, "", finding=finding)
+    assert "size" in s.values                                   # no multiplicity-word refusal any more
+
+
+def test_the_retired_guards_are_gone():
+    from rapid_reports_ai.hybrid_stack.copilot.library import quantity as Q
+    for name in ("_no_prior", "_quote_claim", "QUOTE_MIN", "_FOLLOW_UP", "_ELSEWHERE", "NO_PRIOR_INPUT", "_nouns"):
+        assert not hasattr(PP, name)
+    for name in ("many", "_ORGANS", "_QUALIFIER", "_MANY_WORDS"):
+        assert not hasattr(Q, name)
+
+
+async def test_prior_study_is_proposed_like_any_input(monkeypatch, jev):
+    """prior_study is an ordinary lesion boolean: the model may propose Yes or No with a quote; never read."""
+    from tests.test_library_partial import _bts
+    e = _bts()
+    assert e.input("prior_study").type == "boolean"
+    finding = "7 mm solid nodule in the right upper lobe. No previous imaging."
+    _model(monkeypatch, {"input": "prior_study", "value": False, "quote": "No previous imaging"})
+    s = await PP.settle_pack(e, finding, "", finding=finding)
+    assert s.values["prior_study"].value.value is False and s.values["prior_study"].tier == "prefilled"
+    assert PP.WHY_KIND in s.values["prior_study"].why and jev["calls"] == 1
