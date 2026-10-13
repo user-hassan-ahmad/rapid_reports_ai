@@ -127,7 +127,7 @@ async def test_resolve_asks_each_distinct_condition_once_on_history_and_findings
     assert rec["asked"] == 4 and rec["error"] is None and rec["skipped"] is None and rec["slot_leaks"] == 0
     first = rec["rules"][0]
     assert first == {"line": 8, "condition": PRIOR, "effect": "replace", "met": True, "score": 0.9,
-                     "outcome": "applied"}
+                     "outcome": "applied", "targets": 1}
 
 
 async def test_the_cut_off_is_the_scratchpads_and_silence_is_not_met():
@@ -252,3 +252,19 @@ def test_slot_guard_leaves_a_report_without_slots_untouched():
 def test_sheet_headers_are_the_declared_section_and_paragraph_headers():
     assert cr.sheet_headers(SHEET) == {"Comparison:", "Findings:", "Conclusion:"}
     assert cr.sheet_headers("# Skill Sheet\nSome prose only.\n") == set()
+
+
+def test_slot_guard_handles_list_numbers_abbreviations_and_tight_headers():
+    f = cr.strip_slot_sentences
+    assert f("1. Comparison made with previous CT dated {date}.\n2. No acute abnormality.")[0] == "2. No acute abnormality."
+    assert f("Impression: 1. Stable {x}. 2. Normal.", {"Impression:"})[0] == "Impression: 2. Normal."
+    assert f("The lesion measures approx. {size} mm. No other lesion.")[0] == "No other lesion."
+    assert f("Dr. Smith reviewed on {date}. OK.")[0] == "OK."
+    assert f("Comparison:{date}", {"Comparison:"})[0] == "Comparison:"
+
+
+async def test_a_short_jev_reply_leaves_the_sheet_unchanged_with_an_error():
+    async def ask(state, conds):
+        return [0.9]
+    res = await cr.resolve_context_rules(SHEET, "", "x", ask=ask)
+    assert res.sheet == SHEET and res.record["error"] == "jev: answer count mismatch"

@@ -89,6 +89,7 @@ def apply_rules(sheet: str, rules: List[Rule], met: Dict[str, bool]) -> Tuple[st
         key = norm_key(r.target)
         targets = [k for k, ln in enumerate(lines)
                    if k not in taken and _UNIT.match(ln) and (q := _first_quote(ln)) is not None and norm_key(q) == key]
+        entry["targets"] = len(targets)
         if not targets:
             entry["outcome"] = "unmatched"
         elif not entry["met"]:
@@ -186,6 +187,9 @@ async def resolve_context_rules(sheet: str, history: str, findings: str, ask: Op
         if conds:
             state = f"CLINICAL HISTORY:\n{history or '(not given)'}\nDICTATED FINDINGS:\n{jev_findings(findings)}"
             scores = await (ask or ask_conditions)(state, conds)
+        if len(scores) != len(conds):
+            rec["error"] = "jev: answer count mismatch"
+            return done(sheet)
         score_of = dict(zip(conds, scores))
         text, decided, per = apply_rules(sheet, applied, {c: score_of.get(c, 0.0) >= CONDITION_MIN for c in conds})
         entries = iter({**e, "score": round(float(score_of.get(e["condition"], 0.0)), 3)} for e in per)
@@ -205,8 +209,8 @@ async def resolve_context_rules(sheet: str, history: str, findings: str, ask: Op
 
 
 DECIDED_HEADING = "## Decided for This Case"
-_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
-_LEAD = re.compile(r"^\s*(?:[-*•]\s+)?(?:[*_#]*\s*[^:{}.\n]{1,40}:[*_]*\s+)?")   # indent, bullet, "**Header:** "
+_SENTENCE_END = re.compile(r'(?<=[.!?])\s+(?=[A-Z0-9"(])')
+_LEAD = re.compile(r"^\s*(?:[-*•]\s+)?(?:\d+[.)]\s+)?(?:[*_#]*\s*[^:{}.\n]{1,40}:[*_]*\s*)?")   # indent, bullet, "**Header:** "
 
 
 def decided_block(decided: List[str]) -> str:
@@ -234,6 +238,24 @@ def _head_key(text: str) -> str:
     return re.sub(r"[*_#]", "", text).strip().rstrip(":").strip().lower()
 
 
+_ORPHAN = re.compile(r"\d+[.)]|(?:Dr|Mr|Mrs|Ms|Prof|St|Mt|Fig|No|vs|approx|cf)\.", re.I)
+
+
+def _merge_numbers(parts: List[str]) -> List[str]:
+    """A part that is only a list number ("2.") or a title/abbreviation ("Dr.") belongs to the sentence after it."""
+    out: List[str] = []
+    pending = ""
+    for p in parts:
+        if _ORPHAN.fullmatch(p):
+            pending = p + " "
+            continue
+        out.append(pending + p)
+        pending = ""
+    if pending:
+        out.append(pending.strip())
+    return out
+
+
 def strip_slot_sentences(report: str, headers=()) -> Tuple[str, int]:
     """Remove every sentence that still holds a {slot}, keeping the line's indent, bullet and "Header: " prefix.
     A line left empty is dropped, unless its lead is a declared header (`headers`), which is kept bare: a label
@@ -248,7 +270,7 @@ def strip_slot_sentences(report: str, headers=()) -> Tuple[str, int]:
             out.append(line)
             continue
         lead = _LEAD.match(line).group(0)
-        parts = _SENTENCE_END.split(line[len(lead):])
+        parts = _merge_numbers(_SENTENCE_END.split(line[len(lead):]))
         keep = [p for p in parts if not SLOT.search(p)]
         removed += len(parts) - len(keep)
         if keep:

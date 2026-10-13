@@ -477,7 +477,11 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
             opts_t.cancel()
         raise
     # No {slot} ever reaches a report: a sentence still holding one is removed (and counted)
-    report, leaks = strip_slot_sentences(out["report_content"], sheet_headers(sheet))
+    try:
+        heads = sheet_headers(sheet)
+    except Exception:  # noqa: BLE001 -- never raise into Generate
+        heads = set()
+    report, leaks = strip_slot_sentences(out["report_content"], heads)
     rec["context_rules"]["slot_leaks"] = leaks
     if leaks:
         logger.warning("[template.context_rules] slot_leaks=%d removed from the generated report", leaks)
