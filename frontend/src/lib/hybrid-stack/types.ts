@@ -57,10 +57,12 @@ export interface StackItem {
 }
 export interface ItemsResult { items: StackItem[]; capped: StackItem[]; contradicted: string[]; cached: boolean; ms: number; error: string | null }
 export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean }
+/** Region -> normals the assumed-normal check dropped, with why. */
+export type Dropped = Record<string, { sentence: string; reason: string }[]>;
 export interface AssumedResult {
 	assumed: Record<string, string[]>;
 	/** Region -> normals not assumed, with why: covered | hedged | contradicted | removed | rule. */
-	dropped?: Record<string, { sentence: string; reason: string }[]>;
+	dropped?: Dropped;
 	ms: number;
 	error: string | null;
 }
@@ -79,7 +81,8 @@ export interface GateRecord {
 	capped: { region: string; question: string }[];
 	review_failed?: boolean; // the end-of-dictation review failed: no finding checks were offered
 	offered?: Record<string, string[]>; // region normals the sheet offered, before the assumed-normal check
-	jev_dropped?: Record<string, { sentence: string; reason: string }[]>; // what the check dropped, with why
+	jev_dropped?: Dropped | null; // what the check dropped, with why (null: the check failed)
+	assumed_check_failed?: boolean; // the assumed-normal check failed: nothing was dropped by it
 	// Dictation checks seen this session and how each ended: answered, skipped, edited away, or still open (advisory).
 	checks?: { kind: string; quote: string; other: string | null; answered_by: 'as_dictated' | 'skip' | 'replaced' | 'edited' | 'open' }[];
 	units_hash: string;

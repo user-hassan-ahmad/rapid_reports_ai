@@ -1809,7 +1809,7 @@
 	async function refreshAssumed(): Promise<void> {
 		if (!Object.keys(stackRegionNormals).length) return;
 		const seq = ++assumedSeq;
-		const snap = { dictation: verbatimNow, abnormal: [...regionView.abnormal], untouched: [...regionView.assumedNormal] };
+		const snap = { offered: { ...stackRegionNormals }, dictation: verbatimNow, abnormal: [...regionView.abnormal], untouched: [...regionView.assumedNormal] };
 		try {
 			const res = await postAssumed($token, { dictation: snap.dictation, region_normals: stackRegionNormals, abnormal: snap.abnormal,
 				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences, owned: ownedNow(),
@@ -1817,7 +1817,7 @@
 				region_text: regionText(stackUnits) }); // a normal is covered only by its own region's sentences
 			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed, dropped: res.dropped };
 		} catch {
-			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {} }; // nothing assumed
+			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {}, check_failed: true }; // nothing assumed
 		}
 	}
 	/** Regions a row or a removal concerns: every one of their sentences is checked, not only word matches. */
@@ -1959,7 +1959,7 @@
 			checks: Object.values(seenChecks).map((c) => ({ kind: c.kind, quote: c.quote, other: c.other,
 				answered_by: checkAnswers[c.key] ?? (checks.some((x) => x.key === c.key) ? 'open' : 'edited') })),
 			units_hash: gateKey,
-			...offeredAndDropped(stackRegionNormals, assumedSnap?.dropped)
+			...offeredAndDropped(assumedSnap?.offered ?? stackRegionNormals, assumedSnap?.dropped, assumedSnap?.check_failed)
 		};
 		stackGate = gate;
 		// Sentences the grouping never received (after failed retries) still reach the report, as said.
