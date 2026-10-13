@@ -210,16 +210,18 @@ def test_a_slot_placeholder_sentence_is_never_offered():
 
 
 def test_the_prompt_carries_the_standard_section_order_and_rules():
-    assert SL.PROMPT_VERSION == "slim-6"   # bumped so cached free-text sheets regenerate
-    assert "- **Sections:** Comparison; Technique; Limitations (only when applicable); Findings; Impression" \
+    assert SL.PROMPT_VERSION == "slim-7"   # bumped so cached free-text sheets regenerate
+    assert "- **Sections:** Comparison; Technique; Limitations (only when applicable); Findings; Conclusion" \
         in SL.SLIM_SYS
+    assert "Findings; Impression" not in SL.SLIM_SYS
     rules = next(ln for ln in SL.SLIM_SYS.splitlines() if ln.startswith("- **Section rules:**"))
     for needle in ("no prior imaging is available for comparison", "Modality line in Scan Context",
-                   "never the not-assessable list", "Never a clinical history"):
+                   "never the not-assessable list", "Never a clinical history",
+                   "CONCLUSION never restates the modality, region or technique; it opens with the finding."):
         assert needle in rules
 
 
 def test_a_generated_sheet_with_the_standard_sections_still_parses():
     md = SHEET.replace("TECHNIQUE, FINDINGS, IMPRESSION",
-                       "Comparison; Technique; Limitations (only when applicable); Findings; Impression")
+                       "Comparison; Technique; Limitations (only when applicable); Findings; Conclusion")
     assert SL.parse_slim(md, [r.name for r in REGIONS]) == SL.parse_slim(SHEET, [r.name for r in REGIONS])

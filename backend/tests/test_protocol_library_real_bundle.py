@@ -1,5 +1,6 @@
 """Checks against the real (private) bundle. Skipped in CI and whenever RR_PROTOCOL_LIBRARY_PATH is unset."""
 import os
+import re
 
 import pytest
 
@@ -36,15 +37,38 @@ def test_every_pick_resolves_and_composes(b):
             assert STANDARD_SECTIONS in brief and "Section rules" in brief and "Technique statement" in brief, e.id
             assert f"- **Sections:** {STANDARD_SECTIONS}" in s.markdown.splitlines(), (e.id, ph)
             assert s.markdown.count("## Structural Pattern") == 1 and "- **Section rules:**" in s.markdown
-            assert "- **Technique statement:**" in s.markdown
+            assert STANDARD_SECTIONS.endswith("; Findings; Conclusion") and C.CONCLUSION_RULE in brief, e.id
+            sweep = [ln for ln in s.markdown.splitlines() if ln.startswith("- **Sweep order:**")]
+            want = " → ".join(r.name for r in res.regions if not r.quiet and r.name != "Other findings")
+            assert sweep == [f"- **Sweep order:** {want}"], (e.id, ph, sweep)
+            assert sweep[0] in brief, e.id
+            tech = [ln for ln in s.markdown.splitlines() if ln.startswith("- **Technique statement:**")]
+            assert len(tech) == 1, (e.id, ph)
+            t = tech[0].removeprefix("- **Technique statement:** ")
+            assert t.endswith(".") and " with " not in t and "contrast contrast" not in t, (e.id, ph, t)
+            assert not re.search(r"(?i)\b(?:with|without)\s+(?:[\w-]+\s+){0,2}contrast\b.*\b(?:with|without|following)\b", t), t
+            enhanced = C.effective_agent(e, ph) != "none"
+            if e.modality.upper() in ("MR", "MRI"):
+                assert t.startswith("Multiplanar multisequence "), (e.id, ph, t)
+                assert (" following " in t) == enhanced, (e.id, ph, t)
+                assert "without" not in t and "phase" not in t, (e.id, ph, t)
+            else:
+                assert t.startswith("CT "), (e.id, ph, t)
+                if enhanced:
+                    assert " following " in t and "without" not in t, (e.id, ph, t)
+                    if ph:
+                        assert re.search(r": .+ phases?\.$", t), (e.id, ph, t)
+                else:
+                    assert t.endswith(" without intravenous contrast."), (e.id, ph, t)
+            if lat:
+                assert lat in t, (e.id, ph, t)
             if ph:
-                lines = [ln for ln in s.markdown.splitlines() if ln.startswith(("- **Technique statement:**", "- **Modality:**"))]
-                assert len(lines) == 2, (e.id, ph)
-                for ln in lines:
-                    if set(ph) <= C.UNENHANCED:
-                        assert "without contrast" in ln and " with " not in ln.replace("without", ""), (e.id, ph, ln)
-                    else:
-                        assert "without contrast" not in ln and " with " in ln, (e.id, ph, ln)
+                mod = [ln for ln in s.markdown.splitlines() if ln.startswith("- **Modality:**")]
+                assert len(mod) == 1, (e.id, ph)
+                if set(ph) <= C.UNENHANCED:
+                    assert "without contrast" in mod[0] and " with " not in mod[0].replace("without", ""), (e.id, ph)
+                else:
+                    assert "without contrast" not in mod[0] and " with " in mod[0], (e.id, ph)
     assert not bad, bad[:10]
 
 

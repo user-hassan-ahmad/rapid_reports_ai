@@ -21,7 +21,7 @@ from .sex_screen import screen_normals
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "slim-6"   # slim-2: no sex-specific organs in region normals; slim-3: Report Flow (house prose flow); slim-4: condensed region normals; slim-5: never a clinical history section; slim-6: the standard report sections (Comparison, Technique, Limitations, Findings, Impression) in order
+PROMPT_VERSION = "slim-7"   # slim-2: no sex-specific organs in region normals; slim-3: Report Flow (house prose flow); slim-4: condensed region normals; slim-5: never a clinical history section; slim-6: the standard report sections (Comparison, Technique, Limitations, Findings, Impression) in order; slim-7: the impression is headed Conclusion (consultant house style) and never restates the modality, region or technique
 URL = "https://api.cerebras.ai/v1/chat/completions"
 TIMEOUT_S = 120.0   # cached per family: the first case of a new scan type waits, nobody after
 
@@ -45,8 +45,8 @@ Write Markdown with exactly these sections, in this order:
 - **Not assessable on this scan:** the features this protocol cannot show (for example enhancement on an unenhanced study, or a phase that is not acquired), separated by semicolons
 
 ## Structural Pattern
-- **Sections:** Comparison; Technique; Limitations (only when applicable); Findings; Impression
-- **Section rules:** COMPARISON comes first: carry a prior study if one is dictated; acknowledge comparison generically when the findings use comparison language (new, stable, unchanged, increased, resolved and the like); otherwise state that no prior imaging is available for comparison. TECHNIQUE is the protocol description only: modality, region, contrast and phases or sequences, written from the Modality line in Scan Context, with no assessment or limitation wording. LIMITATIONS appears only when the radiologist dictates a limitation or a genuine study-specific degradation is stated; it is never the not-assessable list. Never a clinical history or indication section (the history is never written into the report).
+- **Sections:** Comparison; Technique; Limitations (only when applicable); Findings; Conclusion
+- **Section rules:** COMPARISON comes first: carry a prior study if one is dictated; acknowledge comparison generically when the findings use comparison language (new, stable, unchanged, increased, resolved and the like); otherwise state that no prior imaging is available for comparison. TECHNIQUE is the protocol description only: modality, region, contrast and phases or sequences, written from the Modality line in Scan Context, with no assessment or limitation wording. LIMITATIONS appears only when the radiologist dictates a limitation or a genuine study-specific degradation is stated; it is never the not-assessable list. CONCLUSION never restates the modality, region or technique; it opens with the finding. Never a clinical history or indication section (the history is never written into the report).
 - **Sweep order:** the order regions are reported in
 - **Macro-structure:** FLAT or HEADED
 

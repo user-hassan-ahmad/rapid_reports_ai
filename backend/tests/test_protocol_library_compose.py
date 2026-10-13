@@ -104,7 +104,8 @@ def test_sheet_from_id_round_trip_and_garbage(b):
     assert C.sheet_from_id(b, "lib:garbage") is None
 
 
-STANDARD_SECTIONS = "- **Sections:** Comparison; Technique; Limitations (only when applicable); Findings; Impression"
+STANDARD_SECTIONS = "- **Sections:** Comparison; Technique; Limitations (only when applicable); Findings; Conclusion"
+CONCLUSION_RULE = "CONCLUSION never restates the modality, region or technique; it opens with the finding."
 
 
 def _bullets(md, heading, label):
@@ -116,21 +117,50 @@ def test_technique_statement_is_composed_from_the_entry_and_phases(b):
     def tech(entry, phases=None, lat=None):
         return _bullets(C.compose_sheet(b, C.resolve(b, entry, phases, lat)).markdown, "Scan Context",
                         "Technique statement")
-    assert tech("TCAPT") == ["- **Technique statement:** CT of the abdomen and pelvis with intravenous contrast "
-                             "in the unenhanced, arterial and portal venous phases."]
-    assert tech("TCAP", ["portal_venous"]) == ["- **Technique statement:** CT of the abdomen and pelvis with "
-                                               "intravenous contrast in the portal venous phase."]
-    assert tech("TMWS") == ["- **Technique statement:** MRI of the whole spine without contrast."]
-    assert tech("TCTH") == ["- **Technique statement:** CT of the head without contrast."]
-    assert tech("TMKN", None, "left") == ["- **Technique statement:** MRI of the left knee without contrast."]
-    assert tech("TMBR") == ["- **Technique statement:** MRI of the breast with intravenous gadolinium contrast "
-                            "in the DCE sequence."]
+    # CT multiphase / single phase: "CT <region> following intravenous contrast: <phases in words> phase(s)."
+    assert tech("TCAPT") == ["- **Technique statement:** CT abdomen and pelvis following intravenous contrast: "
+                             "unenhanced, arterial and portal venous phases."]
+    assert tech("TCAP", ["portal_venous"]) == ["- **Technique statement:** CT abdomen and pelvis following "
+                                               "intravenous contrast: portal venous phase."]
+    # CT unenhanced
+    assert tech("TCTH") == ["- **Technique statement:** CT head without intravenous contrast."]
+    # MR: multiplanar multisequence, the gadolinium clause only with contrast
+    assert tech("TMWS") == ["- **Technique statement:** Multiplanar multisequence MRI of the whole spine."]
+    assert tech("TMKN", None, "left") == ["- **Technique statement:** Multiplanar multisequence MRI of the left knee."]
+    assert tech("TMBR") == ["- **Technique statement:** Multiplanar multisequence MRI of the breast following "
+                            "intravenous gadolinium."]
+
+
+def test_technique_statement_region_drops_contrast_and_phase_words_and_takes_laterality(b):
+    knee = _variant(b, "TMKN", display_name="MRI Knee with IV contrast", agent="gadolinium")
+    assert C.technique_statement(knee, ["pre_contrast", "post_contrast"], "right") == \
+        "Multiplanar multisequence MRI of the right knee following intravenous gadolinium."
+    ct = _variant(b, "TCTH", display_name="CT Liver four phase", agent="iv_iodinated")
+    assert C.technique_statement(ct, ["non_contrast", "late_arterial", "portal_venous", "delayed"]) == \
+        "CT liver following intravenous contrast: unenhanced, late arterial, portal venous and delayed phases."
+    for name in ("CT Liver dual phase", "CT Liver triple-phase", "CT Liver with IV and oral contrast"):
+        assert C.technique_statement(_variant(b, "TCTH", display_name=name, agent="iv_iodinated"), ["arterial"]) == \
+            "CT liver following intravenous contrast: arterial phase.", name
+    wrist = _variant(b, "TCTH", display_name="CT Wrist without contrast")
+    assert C.technique_statement(wrist, [], "left") == "CT left wrist without intravenous contrast."
 
 
 def test_technique_statement_keeps_a_procedure_name_that_is_not_a_region(b):
     e = b.entry("TMKN").model_copy(update={"display_name": "MR Arthrogram hip", "agent": "intra_articular"})
     assert C.technique_statement(e, ["post_contrast"], "right") == \
-        "MRI Arthrogram hip (right) with intra-articular contrast in the post-contrast sequence."
+        "Multiplanar multisequence MR arthrogram hip (right) following intra-articular gadolinium."
+    cta = b.entry("TCAP").model_copy(update={"display_name": "CT Angiogram thoracic aorta"})
+    assert C.technique_statement(cta, ["non_contrast", "arterial"]) == \
+        "CT angiogram thoracic aorta following intravenous contrast: unenhanced and arterial phases."
+
+
+def test_sweep_order_is_the_region_list_minus_other_findings_and_quiet_regions(b):
+    def sweep(entry, lat=None):
+        return _bullets(C.compose_sheet(b, C.resolve(b, entry, None, lat)).markdown, "Structural Pattern",
+                        "Sweep order")
+    assert sweep("TCAP") == ["- **Sweep order:** Liver → Vessels"]
+    assert sweep("TMWS") == ["- **Sweep order:** Alignment and vertebrae → Lumbar levels"]   # L4/5, L5/S1 quiet
+    assert sweep("TMBR") == ["- **Sweep order:** Right breast"]                               # Implants quiet
 
 
 def test_standard_sections_and_rules_replace_the_sheets_own_list(b):
@@ -142,9 +172,10 @@ def test_standard_sections_and_rules_replace_the_sheets_own_list(b):
     rules = _bullets(md, "Structural Pattern", "Section rules")
     assert len(rules) == 1
     for needle in ("COMPARISON", "no prior imaging is available for comparison", "TECHNIQUE", "Technique statement",
-                   "LIMITATIONS", "not-assessable", "clinical history"):
+                   "LIMITATIONS", "not-assessable", "clinical history", CONCLUSION_RULE):
         assert needle in rules[0]
-    assert _bullets(md, "Structural Pattern", "Sweep order") == ["- **Sweep order:** Liver, Vessels"]
+    assert "IMPRESSION" not in rules[0]
+    assert _bullets(md, "Structural Pattern", "Sweep order") == ["- **Sweep order:** Liver → Vessels"]
     assert md.count("Findings, Impression") == 0 and md.count("## Structural Pattern") == 1
 
 
@@ -170,7 +201,8 @@ def test_the_generator_brief_keeps_the_sections_rules_and_technique_statement(b)
     text = stack_fallback(C.compose_sheet(b, C.resolve(b, "TCAPT", None, None)).markdown, "").text
     assert STANDARD_SECTIONS in text
     assert "Section rules" in text and "no prior imaging is available for comparison" in text
-    assert "Technique statement" in text and "in the unenhanced, arterial and portal venous phases." in text
+    assert CONCLUSION_RULE in text and "- **Sweep order:** Liver → Vessels" in text
+    assert "Technique statement" in text and "following intravenous contrast: unenhanced, arterial and portal venous phases." in text
 
 
 def _variant(b, entry, **update):
@@ -180,22 +212,24 @@ def _variant(b, entry, **update):
 def test_contrast_wording_follows_the_phase_set_not_only_the_entry_agent(b):
     # an unenhanced-only phase set is "without contrast", whatever the entry's agent
     ct = _variant(b, "TCAP", agent="iv_iodinated")
-    assert C.technique_statement(ct, ["non_contrast"]) == "CT of the abdomen and pelvis without contrast in the unenhanced phase."
+    assert C.technique_statement(ct, ["non_contrast"]) == "CT abdomen and pelvis without intravenous contrast."
     assert C.modality_line(ct, ["non_contrast"]) == "CT without contrast: unenhanced"
     mr = _variant(b, "TMKN", agent="gadolinium")
-    assert C.technique_statement(mr, ["cine", "flow"]) == "MRI of the knee without contrast in the cine and flow sequences."
+    assert C.technique_statement(mr, ["cine", "flow"]) == "Multiplanar multisequence MRI of the knee."
     assert C.modality_line(mr, ["t2star"]) == "MR without contrast: T2*"
     # a contrast phase on an agent-none entry takes the modality default
     mr0 = _variant(b, "TMKN", agent="none")
     assert C.technique_statement(mr0, ["pre_contrast", "post_contrast"]) == \
-        "MRI of the knee with intravenous gadolinium contrast in the pre-contrast and post-contrast sequences."
+        "Multiplanar multisequence MRI of the knee following intravenous gadolinium."
     assert C.modality_line(mr0, ["cine", "flow", "lge"]) == "MR with gadolinium: cine, flow, LGE"
     ct0 = _variant(b, "TCAP", agent="none")
     assert C.technique_statement(ct0, ["arterial", "portal_venous"]) == \
-        "CT of the abdomen and pelvis with intravenous contrast in the arterial and portal venous phases."
+        "CT abdomen and pelvis following intravenous contrast: arterial and portal venous phases."
     assert C.modality_line(ct0, ["non_contrast", "arterial"]) == "CT with IV contrast: unenhanced, arterial"
     # an empty phase set keeps the entry's agent; a named agent with contrast phases is unchanged
     assert C.technique_statement(_variant(b, "TCAP", agent="iv_iodinated"), []) == \
-        "CT of the abdomen and pelvis with intravenous contrast."
+        "CT abdomen and pelvis following intravenous contrast."
     assert C.modality_line(_variant(b, "TCTH", agent="none"), []) == "CT without contrast"
     assert C.modality_line(_variant(b, "TCAP", agent="iv_and_oral"), ["arterial"]) == "CT with IV and oral contrast: arterial"
+    assert C.technique_statement(_variant(b, "TCAP", agent="iv_and_oral"), ["portal_venous"]) == \
+        "CT abdomen and pelvis following intravenous and oral contrast: portal venous phase."

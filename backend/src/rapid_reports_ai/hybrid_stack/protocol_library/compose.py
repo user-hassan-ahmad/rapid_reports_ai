@@ -7,7 +7,7 @@ import re
 
 from pydantic import BaseModel, Field
 
-from ..schemas import Region
+from ..schemas import Region, pill_regions
 from .bundle import Bundle, Entry, phase_id
 from .match import PHASE_WORDS, agent_words, phase_words
 
@@ -89,17 +89,20 @@ def modality_line(e: Entry, phases: list[str]) -> str:
     return f"{head}: {words}" if words else head
 
 
-_CONTRAST_WORDS = {"none": "without contrast", "iv_iodinated": "with intravenous contrast",
-                   "gadolinium": "with intravenous gadolinium contrast",
-                   "gadolinium_hepatobiliary": "with intravenous hepatobiliary gadolinium contrast",
-                   "oral_only": "with oral contrast", "iv_and_oral": "with intravenous and oral contrast",
-                   "intra_articular": "with intra-articular contrast", "intrathecal": "with intrathecal contrast",
-                   "rectal_or_luminal": "with luminal contrast", "air": "with air insufflation"}
+# What follows "following" in the Technique statement, per effective agent (UK house style, 2026-10-13).
+_CT_AGENT = {"iv_iodinated": "intravenous contrast", "gadolinium": "intravenous contrast",
+             "gadolinium_hepatobiliary": "intravenous contrast", "oral_only": "oral contrast",
+             "iv_and_oral": "intravenous and oral contrast", "intra_articular": "intra-articular contrast",
+             "intrathecal": "intrathecal contrast", "rectal_or_luminal": "luminal contrast", "air": "air insufflation"}
+_MR_AGENT = {"gadolinium": "intravenous gadolinium", "iv_iodinated": "intravenous gadolinium",
+             "gadolinium_hepatobiliary": "intravenous hepatobiliary gadolinium", "oral_only": "oral contrast",
+             "iv_and_oral": "intravenous gadolinium and oral contrast", "intra_articular": "intra-articular gadolinium",
+             "intrathecal": "intrathecal gadolinium", "rectal_or_luminal": "luminal contrast", "air": "air insufflation"}
 # A display name that begins with the procedure rather than the region ("MR Arthrogram hip", "CT Angiogram aorta"):
 # kept as written, never "of the arthrogram hip".
 _PROCEDURE_FIRST = re.compile(r"(?i)^(?:low\b|dual\b|perfusion\b|cardiac\b|abbreviated\b)|\b(?:angio\w*|\w*gram|\w*graphy|mra|cta|mrcp)\b")
-_NAME_TAIL = re.compile(r"(?i)\s+(?:(?:with|without)\s+(?:[\w-]+\s+){0,2}contrast(?:\s*\([^)]*\))?"
-                        r"|(?:two|three|triple|four|multi)[\s-]?phase)$")
+_NAME_TAIL = re.compile(r"(?i)\s+(?:(?:with|without)\s+(?:[\w-]+\s+){0,3}contrast(?:\s*\([^)]*\))?"
+                        r"|(?:dual|two|three|triple|four|multi)[\s-]?phase)$")
 
 
 def _lower_title(words: str) -> str:
@@ -108,47 +111,68 @@ def _lower_title(words: str) -> str:
 
 
 def technique_statement(e: Entry, phases: list[str], laterality: str | None = None) -> str:
-    """One sentence, e.g. "CT of the abdomen and pelvis with intravenous contrast in the unenhanced, arterial and portal
-    venous phases." (spec 2026-10-13, sections fix): the generator writes TECHNIQUE from this, never from a guess."""
-    mod = "MRI" if e.modality.upper() in ("MR", "MRI") else e.modality
+    """One sentence in UK house style (2026-10-13): the generator writes TECHNIQUE from this, never from a guess.
+    MR: "Multiplanar multisequence MRI of the left knee[ following intravenous gadolinium]." (the agent clause only
+    when the effective agent has contrast; no sequence list). CT: "CT head without intravenous contrast." or "CT
+    abdomen and pelvis following intravenous contrast: arterial and portal venous phases." The region is the display
+    name minus its modality and its contrast / phase-count words, plus the laterality; a display name that begins
+    with the procedure ("MR Arthrogram hip", "CT Angiogram aorta") is kept as written, the laterality in brackets."""
+    mr = e.modality.upper() in ("MR", "MRI")
     name = _NAME_TAIL.sub("", e.display_name.strip())
     rest = re.sub(r"(?i)^(?:ct|mri|mr)\s+", "", name)
+    side = f"{laterality} " if laterality else ""
     if rest != name and rest and not _PROCEDURE_FIRST.search(rest):
-        side = f"{laterality} " if laterality else ""
-        subject = f"{mod} of the {side}{_lower_title(rest)}"
+        region = f"{side}{_lower_title(rest)}"
+        subject = f"Multiplanar multisequence MRI of the {region}" if mr else f"CT {region}"
     else:
-        subject = re.sub(r"(?i)^mr\b", "MRI", name) + (f" ({laterality})" if laterality else "")
+        named = _lower_title(name) + (f" ({laterality})" if laterality else "")
+        subject = f"Multiplanar multisequence {named}" if mr else named
+    agent = effective_agent(e, phases)
+    if mr:
+        return f"{subject} following {_MR_AGENT.get(agent, 'intravenous gadolinium')}." if agent != "none" \
+            else f"{subject}."
+    if agent == "none":
+        return f"{subject} without intravenous contrast."
     words = [PHASE_WORDS.get(p, p.replace("_", " ")) for p in phases]
     listed = words[0] if len(words) == 1 else ", ".join(words[:-1]) + " and " + words[-1] if words else ""
-    unit = "sequences" if mod == "MRI" else "phases"
-    if len(words) == 1:
-        unit = unit[:-1]
-    when = f" in the {listed} {unit}" if listed else ""
-    return f"{subject} {_CONTRAST_WORDS.get(effective_agent(e, phases), 'without contrast')}{when}."
+    when = f": {listed} phase{'s' if len(words) > 1 else ''}" if listed else ""
+    return f"{subject} following {_CT_AGENT.get(agent, 'intravenous contrast')}{when}."
 
 
-STANDARD_SECTIONS = "Comparison; Technique; Limitations (only when applicable); Findings; Impression"
+# The consultant's headings (2026-10-13): the impression is headed CONCLUSION. The review engine and the
+# post-generation check read CONCLUSION as the impression (report_review.IMPRESSION_HEADINGS).
+STANDARD_SECTIONS = "Comparison; Technique; Limitations (only when applicable); Findings; Conclusion"
+CONCLUSION_RULE = "CONCLUSION never restates the modality, region or technique; it opens with the finding."
 SECTION_RULES = (
     "COMPARISON comes first: carry a prior study if one is dictated; acknowledge comparison generically when the "
     "findings use comparison language (new, stable, unchanged, increased, resolved and the like); otherwise state "
     "that no prior imaging is available for comparison. TECHNIQUE is the protocol description only: modality, "
     "region, contrast and phases or sequences, written from the Technique statement in Scan Context, with no "
     "assessment or limitation wording. LIMITATIONS appears only when the radiologist dictates a limitation or a "
-    "genuine study-specific degradation is stated; it is never the not-assessable list. Never a clinical history "
-    "section.")
+    "genuine study-specific degradation is stated; it is never the not-assessable list. " + CONCLUSION_RULE +
+    " Never a clinical history section.")
 _STRUCTURAL = re.compile(r"^##\s+Structural Pattern\s*$([\s\S]*?)(?=^##\s|\Z)", re.M | re.I)
 _SECTIONS_BULLET = re.compile(r"^\s*-\s+\*\*Sections:\*\*.*$\n?", re.M | re.I)
 _RULES_BULLET = re.compile(r"^\s*-\s+\*\*Section rules:\*\*.*$\n?", re.M | re.I)
+_SWEEP_BULLET = re.compile(r"^\s*-\s+\*\*Sweep order:\*\*.*$\n?", re.M | re.I)
 
 
-def _standard_sections(md: str) -> str:
-    """The Structural Pattern's section list is composed in code for every library sheet, as the Scan Context is:
-    177 of 185 base sheets said "Findings, Impression", so reports lost COMPARISON and TECHNIQUE."""
+def sweep_order(regions: list[Region]) -> str:
+    """The key's regions in region-list order, minus "Other findings" and quiet regions: the scratchpad's pills."""
+    return " → ".join(pill_regions(regions))
+
+
+def _standard_sections(md: str, regions: list[Region]) -> str:
+    """The Structural Pattern's section list, section rules and sweep order are composed in code for every library
+    sheet, as the Scan Context is: 177 of 185 base sheets said "Findings, Impression", so reports lost COMPARISON and
+    TECHNIQUE; the sweep order follows the key's region list."""
     head = f"- **Sections:** {STANDARD_SECTIONS}\n- **Section rules:** {SECTION_RULES}\n"
+    if sweep := sweep_order(regions):
+        head += f"- **Sweep order:** {sweep}\n"
     m = _STRUCTURAL.search(md)
     if not m:
         return md.rstrip("\n") + f"\n\n## Structural Pattern\n{head}"
-    body = _RULES_BULLET.sub("", _SECTIONS_BULLET.sub("", m.group(1))).lstrip("\n")
+    body = _SWEEP_BULLET.sub("", _RULES_BULLET.sub("", _SECTIONS_BULLET.sub("", m.group(1)))).lstrip("\n")
     return md[:m.start()] + f"## Structural Pattern\n{head}{body}" + md[m.end():]
 
 
@@ -174,7 +198,7 @@ def compose_sheet(bundle: Bundle, res: Resolution) -> ComposedSheet:
            f"- **Imaged volume:** {e.coverage}\n- **Not assessable on this scan:** {na or 'none stated'}\n\n")
     md = _SCAN_CONTEXT.sub(lambda _m: ctx, base.markdown, count=1) if _SCAN_CONTEXT.search(base.markdown) \
         else ctx + base.markdown
-    md = _standard_sections(md)
+    md = _standard_sections(md, res.regions)
     return ComposedSheet(id=res.sheet_id, markdown=md, region_normals=normals, not_assessable=na,
                          level_groups=res.level_groups)
 
