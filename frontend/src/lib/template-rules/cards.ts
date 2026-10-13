@@ -24,6 +24,11 @@ export function flatCards(cards: DecisionCard[]): DecisionCard[] {
 /** The wording an "Edit wording" form starts from. A usual-state card (contrast with no clear majority) has no
  * single wording: it starts from the chosen state, else the first one, and keeps that state's condition. */
 export function editWording(card: DecisionCard, selectedId: string | null): CardWording {
+	if (card.ledger_kind === 'habit' && card.habit) {
+		const chosen = card.choices.find((x) => x.id === selectedId)?.choice?.mode;
+		const mode = chosen === 'ask' || chosen === 'state' ? chosen : card.habit.question ? 'ask' : 'state';
+		return { ...card.habit, mode };
+	}
 	if (card.wording) return { ...card.wording };
 	const withWording = card.choices.filter((x) => x.choice && x.choice.use === true);
 	const pick = withWording.find((x) => x.id === selectedId) ?? withWording[0];
@@ -50,6 +55,14 @@ const QUOTES = /["“”]/;
  * judged here (changeFor asks for some wording). */
 export function wordingProblem(card: DecisionCard, edited: CardWording | undefined): string | null {
 	const e = edited ?? {};
+	if (card.ledger_kind === 'habit') {
+		const all = [e.condition ?? '', e.question ?? '', e.yes ?? '', e.no ?? ''].map((t) => t.trim());
+		if (all.some((t) => QUOTES.test(t))) return 'Leave out double quotes.';
+		if (all.some((t) => /[{}[\]|]/.test(t))) return 'Leave out values to fill in.';
+		const q = (e.question ?? '').trim();
+		if (q && !q.endsWith('?')) return 'End the question with "?".';
+		return null;
+	}
 	const texts = card.ledger_kind === 'concept' ? [e.default ?? '', e.when_met ?? ''] : [e.text ?? ''];
 	const written = texts.map((t) => t.trim()).filter(Boolean);
 	if (written.some((t) => QUOTES.test(t))) return 'Leave out double quotes.';
@@ -67,6 +80,15 @@ export function changeFor(card: DecisionCard, a: Answer, source: ChangeSource): 
 	if (!c) return null;
 	if (c.choice) return { kind: card.ledger_kind, key: card.key, choice: c.choice, source };
 	if (!a.edited || wordingProblem(card, a.edited)) return null;
+	if (card.ledger_kind === 'habit') {
+		// an edited habit keeps the mode chosen on the card (asked, or always stated), under its (re)worded condition, in
+		// the card's paragraph
+		const [condition, question, yes, no] = [a.edited.condition, a.edited.question, a.edited.yes, a.edited.no].map((t) => (t ?? '').trim());
+		const mode = a.edited.mode ?? (question ? 'ask' : 'state');
+		if (!condition || !no || (mode === 'ask' && (!question || !yes))) return null;
+		const paragraph = card.key.split(' :: ')[0];
+		return { kind: 'habit', key: `${paragraph} :: ${condition}`, choice: { mode, question, yes, no }, source };
+	}
 	if (card.ledger_kind === 'concept') {
 		const d = (a.edited.default ?? '').trim();
 		const w = (a.edited.when_met ?? '').trim();
@@ -78,6 +100,21 @@ export function changeFor(card: DecisionCard, a: Answer, source: ChangeSource): 
 	const text = (a.edited.text ?? '').trim();
 	return text ? { kind: card.ledger_kind, key: card.key, choice: { text }, source } : null;
 }
+
+const habitKey = (k: string) => k.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/** Every change an answer records: changeFor's, and, when an Edit wording rewords a habit's condition (a new key), the
+ *  old key recorded as removed first, so the old line (a pending one included) never stays beside the new one. */
+export function changesFor(card: DecisionCard, a: Answer, source: ChangeSource): DecisionChange[] {
+	const main = changeFor(card, a, source);
+	if (!main) return [];
+	if (card.ledger_kind !== 'habit' || habitKey(main.key) === habitKey(card.key)) return [main];
+	const h = card.habit ?? { question: '', yes: '', no: '' };
+	return [{ kind: 'habit', key: card.key, choice: { mode: 'removed', question: h.question, yes: h.yes, no: h.no }, source }, main];
+}
+
+/** The habit card's edit hint (trigger lab 2026-10-13): a condition names where the finding is. Case-agnostic. */
+export const HABIT_WHERE_HINT = "Name where: e.g. 'in the <structure>'";
 
 /** A value name code can store: a few plain words, no quotes, bars, brackets or braces. */
 export function validValueName(name: string): boolean {
@@ -101,11 +138,11 @@ export function changesOnContinue(
 		if (seen.has(card.id)) continue;
 		seen.add(card.id);
 		const a = answers[card.id];
-		const ch = a
-			? changeFor(card, a, source)
-			: keptIds.has(card.id) && card.selected
-				? changeFor(card, { choiceId: card.selected }, 'default')
-				: null;
+		if (a) {
+			out.push(...changesFor(card, a, source));
+			continue;
+		}
+		const ch = keptIds.has(card.id) && card.selected ? changeFor(card, { choiceId: card.selected }, 'default') : null;
 		if (ch) out.push(ch);
 	}
 	for (const name of added) out.push({ kind: 'value', key: name.trim(), choice: { need: 'every' }, source });

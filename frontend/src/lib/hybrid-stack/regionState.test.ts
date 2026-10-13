@@ -79,6 +79,22 @@ describe('findings block', () => {
 		expect(block).toContain('Conclusion (confirmed by the radiologist): Acute diverticulitis.');
 		expect(block.endsWith('DO NOT ASSERT (removed by the radiologist): No fistula.')).toBe(true);
 	});
+	it('a template answer is stated in its region; Not assessed states nothing', () => {
+		const cyst = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true, covers: ['Liver'] })];
+		const gate: GateRecord = {
+			confirmed_at: 't', conclusion_text: '', conclusion_source: 'draft', assumed_normal: [], remainder_normal: [], dictated_normal: [],
+			units_hash: 'h', capped: [], removed: [], assumed: {},
+			items: [
+				{ id: 't', kind: 'template', region: 'Liver', question: 'Septation?', sentences: ['No septation.'], answered_by: 'tap' },
+				{ id: 'k', kind: 'template', region: 'Kidneys', question: 'Calculus?', sentences: ['No calculus.'], answered_by: 'tap' },
+				{ id: 'n', kind: 'template', region: 'Spleen', question: 'Size?', sentences: [], answered_by: 'not_assessed' }
+			]
+		};
+		const block = buildFindingsBlock(cyst, GROUPS, gate);
+		expect(block).toContain('Liver: An 8 mm liver cyst. Answered by the radiologist: No septation.');
+		expect(block).toContain('Kidneys: Answered by the radiologist: No calculus.');
+		expect(block).not.toContain('Spleen');
+	});
 	it('the findings hash ignores the conclusion and changes with the findings', () => {
 		const h = findingsHash(units);
 		expect(findingsHash([...units, u(8, 'Recommend follow-up.', 'Conclusion')])).toBe(h);

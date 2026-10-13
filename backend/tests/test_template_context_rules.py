@@ -380,3 +380,18 @@ async def test_on_stack_a_standard_concept_use_rule_in_a_findings_paragraph_is_r
     sheet = SHEET.replace('NORMAL [liver]', rule + "\nNORMAL [liver]")
     res = await cr.resolve_context_rules(sheet, "", "x", ask=_ask({PRIOR: 0.9}), stack=True)
     assert rule not in res.sheet and 'FIXED "Compared with the previous study of {date}."' in res.sheet
+
+
+def test_without_habits_drops_both_habit_forms_and_nothing_else():
+    sheet = "\n".join([
+        "## Paragraph: Upper (FINDINGS)",
+        'NEGATIVE "No beta abnormality."',
+        'RULE WHEN [findings: an alpha abnormality is reported] ASK "Extension?" YES "It extends." NO "No extension."',
+        '  - NEGATIVE "No extension beyond alpha." WHEN [findings: an alpha abnormality is reported]',
+        'RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["Width"] AT TOP',
+        'RULE WHEN [context: a previous study is available] SUPPRESS "No beta abnormality."',
+        "Voice: when present, say ASK nothing."])
+    out, n = cr.without_habits(sheet)
+    assert n == 2 and 'ASK "' not in out and "WHEN [findings: an alpha" not in out
+    assert out.split("\n") == [sheet.split("\n")[i] for i in (0, 1, 4, 5, 6)]
+    assert cr.without_habits("") == ("", 0)

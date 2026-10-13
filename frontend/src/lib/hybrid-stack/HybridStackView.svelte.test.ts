@@ -15,6 +15,30 @@ const row = (id: string, sentences: string[], extra: Partial<StackItem> = {}): S
 });
 
 describe('HybridStackView v2', () => {
+	it('a template row asks the template question: Yes / No write its sentence, Not assessed writes nothing', async () => {
+		const props = { ...base(), onAnswerTemplate: vi.fn(), onSkip: vi.fn(), onAnswer: vi.fn() };
+		const tpl = row('t', ['The cyst is septated.', 'No septation.'], {
+			kind: 'template', question: 'Septation?', why: 'Your template asks this when a liver cyst is reported.',
+			yes: 'The cyst is septated.', no: 'No septation.'
+		});
+		render(HybridStackView, { ...props, units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true, covers: ['Liver'] })], items: [tpl] });
+		await expect.element(page.getByText('Septation?')).toBeInTheDocument();
+		await page.getByRole('button', { name: 'No', exact: true }).click();
+		expect(props.onAnswerTemplate).toHaveBeenCalledWith('t', 'no');
+		await page.getByRole('button', { name: 'Yes', exact: true }).click();
+		expect(props.onAnswerTemplate).toHaveBeenCalledWith('t', 'yes');
+		await page.getByRole('button', { name: 'Not assessed' }).click();
+		expect(props.onSkip).toHaveBeenCalledWith('t');
+		expect(props.onAnswer).not.toHaveBeenCalled();
+	});
+
+	it('an answered template row shows the sentence chosen', async () => {
+		render(HybridStackView, {
+			...base(), units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true, covers: ['Liver'] })], tapped: ['t'],
+			items: [row('t', ['No septation.'], { kind: 'template', question: 'Septation?', yes: 'The cyst is septated.', no: 'No septation.' })]
+		});
+		await expect.element(page.getByText('✓ No septation.')).toBeInTheDocument();
+	});
 	it('abnormal regions in the scratchpad, normals in the tray, rows asked with the sentence on the button', async () => {
 		const props = { ...base(), onAnswer: vi.fn() };
 		render(HybridStackView, {

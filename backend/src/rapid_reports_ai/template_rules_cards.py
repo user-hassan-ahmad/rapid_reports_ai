@@ -23,7 +23,7 @@ MAJORITY_MIN = 2   # a concept with no base state (contrast) takes the usual sta
                    # this many state it and more than state the other; otherwise the card asks (after the lab, 2026-10-13)
 _USUAL = {"contrast": ("Is contrast usually given for this scan?",
                        {"given": "Usually given", "not_given": "Usually not given"})}
-_RANK = {"disagree": 0, "value": 1, "concept": 2, "fixed": 3, "normal": 4, "uncovered": 5}
+_RANK = {"disagree": 0, "value": 1, "concept": 2, "habit": 2, "fixed": 3, "normal": 4, "uncovered": 5}
 
 
 def _choice(cid: str, label: str, choice: Optional[dict]) -> dict:
@@ -125,6 +125,24 @@ def uncovered_card(paragraph: str, structure: str) -> dict:
             "selected": None, "rank": _RANK["uncovered"]}
 
 
+def habit_card(paragraph: str, condition: str, question: str, yes: str, no: str, evidence: List[dict],
+               step: str = "rules") -> dict:
+    """A findings-triggered habit (spec 2026-10-13-findings-triggered-rows-design): "When <condition>: Ask every time
+    / Always state / Not needed". Never pre-ticked: nothing is active until the radiologist confirms it. Every choice
+    keeps the wording, so "Not needed" can be undone by choosing again. "Edit wording" lets the radiologist reword the
+    condition (naming where the finding is: the trigger lab, 2026-10-13), the question and the sentences."""
+    key = td.habit_key(paragraph, condition)
+    texts = {"question": question, "yes": yes, "no": no}
+    return {"id": f"habit:{td.match_key('habit', key)}", "kind": "habit", "step": step,
+            "title": f"{' '.join(paragraph.split())}: when {' '.join(condition.split())}", "evidence": evidence,
+            "ledger_kind": "habit", "key": key, "habit": {"condition": " ".join(condition.split()), **texts},
+            "choices": [_choice("ask", "Ask every time", {"mode": "ask", **texts}),
+                        _choice("state", "Always state", {"mode": "state", **texts}),
+                        _choice("removed", "Not needed", {"mode": "removed", **texts}),
+                        _choice("edit", "Edit wording", None)],
+            "selected": None, "rank": _RANK["habit"]}
+
+
 def card_for_change(kind: str, key: str, proposed: dict) -> dict:
     """The one-tap card for a change code could not apply as given (the chat-edit router's uncertain or rejected
     parts), prefilled with the proposed wording and not pre-selected. DecisionError on an invalid proposal."""
@@ -136,6 +154,10 @@ def card_for_change(kind: str, key: str, proposed: dict) -> dict:
                             proposed.get("condition", ""), step="chat")
     if kind == "fixed":
         return fixed_card(key, step="chat")
+    if kind == "habit":
+        para, cond = td.split_habit_key(key)
+        return habit_card(para, cond, proposed.get("question", ""), proposed.get("yes", ""), proposed.get("no", ""),
+                          [], step="chat")
     return normal_card(key, proposed.get("text", ""), step="chat")
 
 
@@ -181,6 +203,29 @@ def unmatched_cards(entries) -> List[dict]:
             c = {**c, "choices": [x for x in c["choices"] if x["id"] != "always"]
                  + [_choice("forget", "Forget this decision", dict(td.FORGET))]}
         out.append({**c, "step": "review", "note": UNMATCHED_NOTE})
+    return out
+
+
+PENDING_HABIT_NOTE = "Your template has this habit, but it is not active until you choose."
+
+
+def pending_habit_cards(sheet: str, ledger: List[dict]) -> List[dict]:
+    """A review card for each habit line the ledger does not hold (written by the writer or a whole-sheet chat edit;
+    Hassan H3): "When <condition>: Ask every time / Always state / Not needed", never pre-ticked. The habit stays
+    inactive until a choice is recorded; "Not needed" removes its line at the next save. A required statement read
+    from the sheet has no question, so it is offered "Always state" or "Not needed" only."""
+    from . import template_ledger_apply as tla
+    from . import template_sheet_grammar as tsg
+    if not tsg.is_grammar_sheet(sheet or ""):
+        return []
+    out = []
+    for e in tla.pending_habits(tsg.parse_sheet(sheet, mode="template").structure, ledger):
+        para, cond = td.split_habit_key(e["key"])
+        c = e["choice"]
+        card = habit_card(para, cond, c["question"], c["yes"], c["no"], [], step="review")
+        if not c["question"]:
+            card["choices"] = [x for x in card["choices"] if x["id"] != "ask"]
+        out.append({**card, "note": PENDING_HABIT_NOTE})
     return out
 
 
@@ -284,10 +329,18 @@ def _concept_cards(run: DecisionRun, n: int) -> List[dict]:
     return out
 
 
+def _habit_cards(run: DecisionRun) -> List[dict]:
+    """One card per proposed habit (verified quotes from at least two examples, template_decision_run._habit), with
+    up to three quotes. Never pre-ticked and never "kept": nothing is active until the radiologist confirms it."""
+    return [habit_card(h.paragraph, h.condition, h.question, h.yes, h.no,
+                       [{"reports": [q.report], "quote": q.text} for q in h.quotes[:3]])
+            for h in run.habits]
+
+
 def build_cards(run: DecisionRun, n_examples: int) -> dict:
     if not run.ok:
         return {"cards": [], "more": [], "kept": [], "defaults": []}
-    every = [*_value_cards(run, n_examples), *_concept_cards(run, n_examples)]
+    every = [*_value_cards(run, n_examples), *_concept_cards(run, n_examples), *_habit_cards(run)]
     kept = [c for c in every if c["selected"] is not None]
     open_ = sorted((c for c in every if c["selected"] is None),
                    key=lambda c: (c["rank"], -_stated_in(c)))

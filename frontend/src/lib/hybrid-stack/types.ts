@@ -47,15 +47,29 @@ export interface RegionStates {
 /** Checklist rows (spec 2026-10-11-scratchpad-checklist §2–§4): asked, never assumed. */
 export interface StackItem {
 	id: string;
-	kind: 'finding' | 'referral';
+	kind: 'finding' | 'referral' | 'template';
 	region: string;
 	source_text?: string; // the dictated phrase that set a finding check off
 	question: string;
 	why: string;
 	sentences: string[]; // still to be answered (at most 2)
 	answered: boolean; // the dictation answered every sentence: the row folds
+	/** kind 'template' (a findings-triggered habit of the template): the sentence a Yes writes, and a No */
+	yes?: string;
+	no?: string;
 }
-export interface ItemsResult { items: StackItem[]; capped: StackItem[]; contradicted: string[]; cached: boolean; ms: number; error: string | null }
+export interface ItemsResult {
+	items: StackItem[];
+	capped: StackItem[];
+	contradicted: string[];
+	cached: boolean;
+	ms: number;
+	error: string | null;
+	/** met template required statements, region -> sentences (offered in the assumed tray) */
+	required?: Record<string, string[]>;
+	/** the template trigger call failed: no template rows this review (what is on screen stays) */
+	trigger_error?: string | null;
+}
 export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean }
 /** Region -> normals the assumed-normal check dropped, with why. */
 export type Dropped = Record<string, { sentence: string; reason: string }[]>;

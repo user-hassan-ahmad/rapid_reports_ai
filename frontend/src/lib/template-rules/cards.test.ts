@@ -8,7 +8,9 @@ import {
 	isSentence,
 	wordingProblem,
 	flatCards,
-	validValueName
+	validValueName,
+	HABIT_WHERE_HINT,
+	changesFor
 } from './cards';
 import type { DecisionCard } from './types';
 
@@ -143,5 +145,59 @@ describe('template-rules cards', () => {
 		expect(validValueName('a "b"')).toBe(false);
 		expect(validValueName('one two three four five six seven eight nine')).toBe(false);
 		expect(validValueName('  ')).toBe(false);
+	});
+});
+
+describe('habit cards', () => {
+	const HKEY = 'Upper :: an alpha abnormality is reported';
+	const T = { question: 'Extension beyond alpha?', yes: 'The abnormality extends beyond alpha.', no: 'No extension beyond alpha.' };
+	const habit = (): DecisionCard => ({
+		id: 'habit:x', kind: 'habit', step: 'rules', title: 'Upper: when an alpha abnormality is reported', evidence: [],
+		ledger_kind: 'habit', key: HKEY, habit: { condition: 'an alpha abnormality is reported', ...T },
+		choices: [
+			{ id: 'ask', label: 'Ask every time', choice: { mode: 'ask', ...T } },
+			{ id: 'edit', label: 'Edit wording', choice: null }
+		],
+		selected: null, rank: 2
+	});
+	it('the edit form starts from the habit; an edit is a question asked under the reworded condition', () => {
+		expect(editWording(habit(), null)).toEqual({ condition: 'an alpha abnormality is reported', ...T, mode: 'ask' });
+		const edited = { condition: 'an alpha abnormality in the upper part is reported', ...T };
+		expect(changeFor(habit(), { choiceId: 'edit', edited }, 'creation')).toEqual({
+			kind: 'habit', key: 'Upper :: an alpha abnormality in the upper part is reported',
+			choice: { mode: 'ask', ...T }, source: 'creation'
+		});
+		expect(changeFor(habit(), { choiceId: 'edit', edited: { ...edited, no: '' } }, 'creation')).toBeNull();
+	});
+	it('an edit that rewords the condition also removes the old key, so one line remains', () => {
+		const edited = { condition: 'an alpha abnormality in the upper part is reported', ...T, mode: 'ask' as const };
+		expect(changesFor(habit(), { choiceId: 'edit', edited }, 'first_use_review')).toEqual([
+			{ kind: 'habit', key: HKEY, choice: { mode: 'removed', ...T }, source: 'first_use_review' },
+			{ kind: 'habit', key: 'Upper :: an alpha abnormality in the upper part is reported', choice: { mode: 'ask', ...T }, source: 'first_use_review' }
+		]);
+		// the same condition: a single change; a plain choice: a single change
+		expect(changesFor(habit(), { choiceId: 'edit', edited: { condition: 'an alpha abnormality is reported', ...T } }, 'creation')).toHaveLength(1);
+		expect(changesFor(habit(), { choiceId: 'ask' }, 'creation')).toHaveLength(1);
+		expect(changesFor(habit(), { choiceId: 'edit', edited: { ...edited, no: '' } }, 'creation')).toEqual([]);
+	});
+	it('an edit keeps the chosen mode: an "Always state" habit stays stated', () => {
+		const stateCard = (): DecisionCard => ({ ...habit(), choices: [
+			{ id: 'state', label: 'Always state', choice: { mode: 'state', question: '', yes: '', no: T.no } },
+			{ id: 'edit', label: 'Edit wording', choice: null }], habit: { condition: 'an alpha abnormality is reported', question: '', yes: '', no: T.no } });
+		const start = editWording(stateCard(), 'state');
+		expect(start.mode).toBe('state');
+		const edited = { ...start, condition: 'an alpha abnormality in the upper part is reported' };
+		expect(changeFor(stateCard(), { choiceId: 'edit', edited }, 'creation')).toEqual({
+			kind: 'habit', key: 'Upper :: an alpha abnormality in the upper part is reported',
+			choice: { mode: 'state', question: '', yes: '', no: T.no }, source: 'creation' });
+		const both: DecisionCard = { ...habit(), choices: [...habit().choices, { id: 'state', label: 'Always state', choice: { mode: 'state', ...T } }] };
+		expect(editWording(both, 'state').mode).toBe('state');   // an ask-able habit chosen as "Always state" stays stated
+		expect(editWording(both, null).mode).toBe('ask');
+	});
+	it('names what the server would refuse, and hints at naming where', () => {
+		expect(wordingProblem(habit(), { condition: 'an alpha abnormality is reported', ...T, question: 'Extension' })).toBe('End the question with "?".');
+		expect(wordingProblem(habit(), { condition: 'an alpha "x" is reported', ...T })).toBe('Leave out double quotes.');
+		expect(wordingProblem(habit(), { condition: 'an alpha abnormality is reported', ...T, yes: 'It is {x} mm.' })).toBe('Leave out values to fill in.');
+		expect(HABIT_WHERE_HINT).toBe("Name where: e.g. 'in the <structure>'");
 	});
 });

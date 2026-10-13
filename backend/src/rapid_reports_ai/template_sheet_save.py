@@ -73,6 +73,7 @@ class VetOutcome:
     stale_quotes: List[str] = field(default_factory=list)       # prose still quoting a sentence the ledger changed
     ledger_warnings: List[dict] = field(default_factory=list)   # lint warnings, never blocking: prose quoting a
                                                                 # decided concept's line (tla.restated_quotes)
+    habits_pending: List[dict] = field(default_factory=list)    # habit lines with no ledger entry: inactive, asked
 
 
 def _shape(sheet: str) -> tuple:
@@ -225,8 +226,20 @@ async def vet_sheet(sheet: str, origin: Origin, previous: str = "", ledger: Opti
     (counted in ledger_drift)."""
     out = await _vet(sheet, origin, previous)
     if ledger is None:
-        return out
+        return _with_pending_habits(out)
     return _with_ledger(out, origin, previous, list(ledger))
+
+
+def _with_pending_habits(out: VetOutcome) -> VetOutcome:
+    """No ledger: the save is as before the Rules step; a habit line nobody confirmed is kept, inactive, and reported
+    (Hassan H3, 2026-10-13: never stripped silently; the next review asks it on a card)."""
+    from . import template_ledger_apply as tla
+    if out.status == "refused" or not tsg.is_grammar_sheet(out.sheet or ""):
+        return out
+    pending = tla.pending_habits(tsg.parse_sheet(out.sheet, mode="template").structure, [])
+    if pending:
+        logger.info("[sheet-save] habits_pending=%d (inactive until a card confirms them)", len(pending))
+    return dataclasses.replace(out, habits_pending=pending)
 
 
 def _with_ledger(out: VetOutcome, origin: str, previous: str, ledger: List[dict]) -> VetOutcome:
@@ -255,7 +268,8 @@ def _with_ledger(out: VetOutcome, origin: str, previous: str, ledger: List[dict]
     return dataclasses.replace(out, status=status, sheet=res.sheet, coverage_sections=coverage, ledger=ledger,
                                ledger_changes=[dict(c) for c in changes], ledger_cards=cards,
                                ledger_unmatched=res.unmatched,
-                               ledger_drift=drift, stale_quotes=res.stale_quotes, ledger_warnings=res.restated)
+                               ledger_drift=drift, stale_quotes=res.stale_quotes, ledger_warnings=res.restated,
+                               habits_pending=res.pending)
 
 
 LEDGER_KEPT = "This would remove something you confirmed, so it was kept; use the card below to change it."

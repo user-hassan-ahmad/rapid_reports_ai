@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import time
 
+import pytest
+
 from rapid_reports_ai import report_reconcile as rc
 from rapid_reports_ai import template_lean as tl
 
@@ -559,5 +561,29 @@ async def test_sections_and_number_check_read_the_stored_sheet_not_the_resolved_
                                                  history="", case=CASE, signature=None, stack=None)
     assert "RULE WHEN" not in calls["gen"]["sheet"]
     assert seen.get("sections") == RULED and seen.get("numbers") == RULED
+    if out.get("options_job") is not None:
+        await out["options_job"]
+
+
+@pytest.mark.parametrize("stack", [None, {"conclusion": "Lesion.", "declined": []}])
+async def test_no_habit_line_reaches_the_generator_pending_or_confirmed(monkeypatch, stack):
+    from rapid_reports_ai import template_decisions as td
+    from rapid_reports_ai import template_ledger_apply as tla
+    from tests.template_sheet_fixtures import HABIT_SHEET
+    ask = {"mode": "ask", "question": "Extension into the gallbladder?",
+           "yes": "The abnormality extends into the gallbladder.", "no": "No extension into the gallbladder."}
+    led, _ = td.set_decision([], "habit", "Liver :: a focal liver abnormality is reported", ask, source="creation", at="t")
+    confirmed = tla.apply_ledger(HABIT_SHEET, led).sheet
+    pending = 'NEGATIVE "No delta extension." WHEN [findings: a focal delta abnormality is reported]'
+    sheet = confirmed.replace('NORMAL [delta] "Delta is normal."\n', 'NORMAL [delta] "Delta is normal."\n' + pending + "\n")
+    assert " ASK " in sheet and pending in sheet
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    out = await tl.generate_template_report_lean(sheet=sheet, scan_type="CT", findings="A focal liver abnormality.",
+                                                 history="", case=CASE, signature="Dr A", stack=stack)
+    gen_sheet = calls["gen"]["sheet"]
+    assert " ASK " not in gen_sheet and "WHEN [findings: a focal" not in gen_sheet
+    assert 'NEGATIVE "No focal liver lesion."' in gen_sheet   # unconditional units are untouched
+    assert out["report_generated"] == REPORT
     if out.get("options_job") is not None:
         await out["options_job"]

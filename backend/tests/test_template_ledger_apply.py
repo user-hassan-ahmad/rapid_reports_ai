@@ -2,7 +2,7 @@
 from rapid_reports_ai import template_decisions as td
 from rapid_reports_ai import template_ledger_apply as tla
 from rapid_reports_ai import template_sheet_grammar as tsg
-from tests.template_sheet_fixtures import GOOD, LEDGER_SHEET
+from tests.template_sheet_fixtures import GOOD, HABIT_SHEET, LEDGER_SHEET
 
 
 def _led(*changes):
@@ -424,3 +424,134 @@ def test_undoing_a_value_change_puts_the_value_back_in_its_place():
     new, changes, _ = tla.reconcile_chat(before, after, led)
     undone = td.undo_change(new, changes[0])
     assert 'LIST_MISSING ["A" | "B" | "C"]' in tla.apply_ledger(after, undone).sheet
+
+
+# ── habit (spec 2026-10-13-findings-triggered-rows-design) ──
+HK = "Liver :: a focal liver abnormality is reported"
+HASK = {"mode": "ask", "question": "Extension into the gallbladder?",
+        "yes": "The abnormality extends into the gallbladder.", "no": "No extension into the gallbladder."}
+ASK_LINE = ('RULE WHEN [findings: a focal liver abnormality is reported] ASK "Extension into the gallbladder?" '
+            'YES "The abnormality extends into the gallbladder." NO "No extension into the gallbladder."')
+STATE_LINE = 'NEGATIVE "No extension into the gallbladder." WHEN [findings: a focal liver abnormality is reported]'
+
+
+def _liver(sheet):
+    return sheet.split("## Paragraph: Liver (FINDINGS)")[1].split("## Paragraph: Lower")[0]
+
+
+def test_habit_fixture_is_clean():
+    _clean(HABIT_SHEET)
+
+
+def test_a_habit_is_inserted_at_the_end_of_its_paragraph_and_read_back():
+    res = tla.apply_ledger(HABIT_SHEET, _led(("habit", HK, HASK)))
+    st = _clean(res.sheet)
+    assert res.applied == [{"kind": "habit", "key": HK, "action": "inserted"}]
+    assert _liver(res.sheet).rstrip().endswith(ASK_LINE)
+    assert tla.observe(st, "habit", HK) == HASK
+    again = tla.apply_ledger(res.sheet, _led(("habit", HK, HASK)))
+    assert again.sheet == res.sheet and again.applied == [{"kind": "habit", "key": HK, "action": "kept"}]
+
+
+def test_state_rewrites_the_question_and_removed_takes_it_out():
+    asked = tla.apply_ledger(HABIT_SHEET, _led(("habit", HK, HASK))).sheet
+    stated = tla.apply_ledger(asked, _led(("habit", HK, {**HASK, "mode": "state"})))
+    assert stated.applied[0]["action"] == "rewritten" and STATE_LINE in stated.sheet and " ASK " not in stated.sheet
+    assert tla.observe(_clean(stated.sheet), "habit", HK) == {
+        "mode": "state", "question": "", "yes": "", "no": "No extension into the gallbladder."}
+    gone = tla.apply_ledger(stated.sheet, _led(("habit", HK, {**HASK, "mode": "removed"})))
+    assert gone.applied[0]["action"] == "removed" and "WHEN [findings: a focal" not in gone.sheet
+    assert tla.observe(_clean(gone.sheet), "habit", HK)["mode"] == "removed"
+
+
+def test_a_habit_finds_its_paragraph_by_a_covered_structure_else_it_is_unmatched():
+    key = "delta :: a focal delta abnormality is reported"
+    res = tla.apply_ledger(HABIT_SHEET, _led(("habit", key, {"mode": "state", "no": "No delta extension."})))
+    lower = res.sheet.split("## Paragraph: Lower (FINDINGS)")[1]
+    assert 'NEGATIVE "No delta extension." WHEN [findings: a focal delta abnormality is reported]' in lower
+    miss = tla.apply_ledger(HABIT_SHEET, _led(("habit", "Nowhere :: a focal liver abnormality is reported", HASK)))
+    assert miss.sheet == HABIT_SHEET and [e["key"] for e in miss.unmatched] == [
+        "Nowhere :: a focal liver abnormality is reported"]
+
+
+def test_a_habit_line_the_ledger_does_not_hold_stays_inactive_and_pending():
+    # Hassan H3: never stripped silently; inactive until a card at the next review confirms it
+    stray = HABIT_SHEET.replace('NEGATIVE "No focal liver lesion."\n',
+                                'NEGATIVE "No focal liver lesion."\n' + STATE_LINE + "\n")
+    st = _clean(stray)
+    res = tla.apply_ledger(stray, [])
+    assert res.sheet == stray and res.applied == []
+    assert res.pending == [{"kind": "habit", "key": HK, "choice": {
+        "mode": "state", "question": "", "yes": "", "no": "No extension into the gallbladder."}}]
+    assert tla.confirmed_habits(st, []) == set()
+    led = _led(("habit", HK, {**HASK, "mode": "state"}))
+    confirmed = tla.apply_ledger(stray, led)
+    assert confirmed.sheet == stray and confirmed.pending == []
+    liver = next(p.id for p in st.paragraphs if p.name == "Liver")
+    assert tla.confirmed_habits(st, led) == {(liver, "a focal liver abnormality is reported")}
+    removed = _led(("habit", HK, {**HASK, "mode": "removed"}))   # "Not needed" on its card
+    gone = tla.apply_ledger(stray, removed)
+    assert STATE_LINE not in gone.sheet and gone.pending == []
+    assert tla.confirmed_habits(_clean(gone.sheet), removed) == set()
+
+
+def test_a_paragraph_negative_entry_never_reads_a_required_statement():
+    sheet = HABIT_SHEET.replace('NEGATIVE "No focal liver lesion."\n',
+                                'NEGATIVE "No focal liver lesion."\n'
+                                'NEGATIVE "No focal liver lesion." WHEN [findings: a focal liver abnormality is reported]\n')
+    st = _clean(sheet)
+    key = td.negative_key("Liver", "No focal liver lesion.")
+    assert tla.observe(st, "normal", key) == {"text": "No focal liver lesion."}
+    no_plain = sheet.replace('NEGATIVE "No focal liver lesion."\nNEGATIVE', "NEGATIVE")
+    assert tla.observe(_clean(no_plain), "normal", key) == {"text": ""}
+
+
+def test_a_habit_the_grammar_refuses_is_not_saved_and_comes_back_as_a_card():
+    key = "Technique :: a focal liver abnormality is reported"   # a technique paragraph: NOT_LEAN there
+    res = tla.apply_ledger(HABIT_SHEET, _led(("habit", key, HASK)))
+    assert res.sheet == HABIT_SHEET
+    assert [e["key"] for e in res.failed] == [key] and [e["key"] for e in res.unmatched] == [key]
+
+
+def test_a_chat_rewrite_that_drops_a_confirmed_habit_is_kept_and_asked():
+    led = _led(("habit", HK, HASK))
+    before = tla.apply_ledger(HABIT_SHEET, led).sheet
+    after = before.replace(ASK_LINE + "\n", "").replace(ASK_LINE, "")
+    out, changes, cards = tla.reconcile_chat(before, after, led)
+    assert out == led and changes == [] and [c["kind"] for c in cards] == ["habit"]
+    restated = before.replace(ASK_LINE, STATE_LINE)
+    out, changes, cards = tla.reconcile_chat(before, restated, led)
+    assert cards == [] and out[0]["choice"] == {**HASK, "mode": "state"} and out[0]["source"] == "chat"
+
+
+def test_a_chat_reword_of_a_confirmed_habits_condition_is_folded_as_a_reword():
+    led = _led(("habit", HK, HASK))
+    before = tla.apply_ledger(HABIT_SHEET, led).sheet
+    new_cond = "a focal liver mass abnormality is reported"
+    after = before.replace("[findings: a focal liver abnormality is reported]", f"[findings: {new_cond}]")
+    out, changes, cards = tla.reconcile_chat(before, after, led)
+    assert cards == [] and len(changes) == 1 and changes[0]["old"]["key"] == HK
+    assert [(e["key"], e["choice"], e["source"]) for e in out] == [(f"Liver :: {new_cond}", HASK, "chat")]
+    applied = tla.apply_ledger(after, out)
+    assert applied.sheet == after and applied.pending == []   # one line, not two
+    reworded_q = after.replace('"Extension into the gallbladder?"', '"Gallbladder extension?"')
+    out, _, _ = tla.reconcile_chat(before, reworded_q, led)   # condition and question reworded together
+    assert out[0]["key"] == f"Liver :: {new_cond}" and out[0]["choice"]["question"] == "Gallbladder extension?"
+
+
+def test_editing_a_pending_habit_card_leaves_exactly_one_habit_line():
+    # the Rules step sends the old key as removed, then the reworded one (frontend cards.changesFor)
+    stray = HABIT_SHEET.replace('NEGATIVE "No focal liver lesion."\n',
+                                'NEGATIVE "No focal liver lesion."\n' + STATE_LINE + "\n")
+    new_key = "Liver :: a focal liver abnormality in the left part is reported"
+    changes = [{"kind": "habit", "key": HK, "choice": {"mode": "removed", "question": "", "yes": "",
+                                                        "no": "No extension into the gallbladder."}},
+               {"kind": "habit", "key": new_key, "choice": {"mode": "state", "question": "", "yes": "",
+                                                             "no": "No extension into the gallbladder."}}]
+    led, errors = td.ledger_from_changes(changes, source="first_use_review")
+    assert errors == []
+    res = tla.apply_ledger(stray, led)
+    st = _clean(res.sheet)
+    habit_lines = [n for n in st.negatives if n.condition] + [r for r in st.rules if r.effect == "ask"]
+    assert [(u.condition) for u in habit_lines] == ["a focal liver abnormality in the left part is reported"]
+    assert res.pending == []

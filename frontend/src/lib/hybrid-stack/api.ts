@@ -31,6 +31,7 @@ export const postItems = (token: string | null, body: {
 	scan_type: string; clinical_history: string; regions: string[]; dictation: string; abnormal: string[]; not_assessable?: string; removed?: string[]; tapped?: string[];
 	referrals?: { question: string; region: string; sentences: string[] }[] | null;
 	review?: boolean;
+	template_id?: string | null;
 }) => post<ItemsResult>(token, 'items', body);
 
 export const postAssumed = (token: string | null, body: {

@@ -15,6 +15,7 @@ from ..database import get_db
 from ..database.crud import get_template
 from ..database.models import DictationStackLog, StackSchemaFamily, StackSlimSheet, User
 from ..dictation_v2 import v2_allowed
+from ..template_decisions import clean_ledger
 from ..template_sheet_structure import generation_stamp
 from .schemas import Region
 from .items import Item, ItemsResult, Referral, recheck as items_recheck, update as items_update
@@ -23,6 +24,7 @@ from .normals import AssumedResult, assumed as assumed_normals
 from .slim_sheet import clean_sentences, get_or_make as slim_get_or_make
 from .template import template_normal_labels, template_region_normals, template_structure, template_suppressions
 from .draft import DraftResult, draft_conclusion
+from .habits import template_habits
 from .service import GroupResult, SchemaResult, close_update, group_update, resolve_schema
 from .units import StackUnit, sentences as split_sentences
 
@@ -75,6 +77,7 @@ class ItemsRequest(BaseModel):
     tapped: list[str] = Field(default_factory=list)     # sentences answered with a tap: re-checked for contradiction
     referrals: list[Referral] | None = None              # the session's fixed referral rows (None: first call)
     review: bool = False                                 # the end-of-dictation review (reasoning low)
+    template_id: str | None = None                       # its confirmed findings-triggered habits are asked
 
 
 class RecheckRequest(BaseModel):
@@ -179,11 +182,24 @@ async def stack_group(req: GroupRequest, user: User = Depends(get_current_user))
 
 
 @router.post("/items", response_model=ItemsResult)
-async def stack_items(req: ItemsRequest, user: User = Depends(get_current_user)):
+async def stack_items(req: ItemsRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _require()
+    extra = {}
+    if req.template_id:
+        try:
+            t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
+            st = template_structure(t.template_config) if t is not None else None
+            # only habits the radiologist confirmed are asked (Hassan H3: a line with no entry is inactive)
+            habits = template_habits(st, clean_ledger((t.template_config or {}).get("decisions"))) if st is not None else []
+        except Exception as e:  # noqa: BLE001 -- fail-soft: no template rows, generic rows as usual
+            logger.warning("[stack.items] template %s habits not read: %s: %s", req.template_id, type(e).__name__,
+                           str(e)[:200])
+            habits = []
+        if habits:
+            extra["habits"] = habits
     return await items_update(req.scan_type, req.clinical_history, req.regions[:40], req.dictation,
                               req.abnormal[:40], req.not_assessable[:2000], req.removed[:50], req.tapped[:20],
-                              req.referrals[:2] if req.referrals is not None else None, req.review)
+                              req.referrals[:2] if req.referrals is not None else None, req.review, **extra)
 
 
 @router.post("/recheck", response_model=ItemsResult)

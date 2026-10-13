@@ -89,3 +89,11 @@ ROUTER_SHEET_CONCEPT = ROUTER_SHEET.replace(
     'FIXED "No previous imaging available."\n'
     'RULE WHEN [context: the dictation names a previous imaging study for comparison] '
     'REPLACE "No previous imaging available." WITH "Compared with the {study} of {date}."\n')
+
+
+# LEDGER_SHEET with a second findings paragraph ("Lower", covering "delta"), so a habit can be placed by paragraph name
+# or by a structure a paragraph covers.
+HABIT_SHEET = LEDGER_SHEET.replace(
+    "## Paragraph: Impression (IMPRESSION)",
+    '## Paragraph: Lower (FINDINGS)\nCOVERS ["delta"]\nNORMAL [delta] "Delta is normal."\n\n'
+    "## Paragraph: Impression (IMPRESSION)")

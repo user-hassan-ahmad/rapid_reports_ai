@@ -297,3 +297,49 @@ def test_a_fragment_wording_is_never_offered_and_the_concept_falls_back_to_dicta
 def test_usual_question_is_public():
     assert C.usual_question("contrast") == "Is contrast usually given for this scan?"
     assert C.usual_question("comparison") == "Which is usual: comparison with previous imaging?"
+
+
+def test_card_for_change_makes_a_habit_card_never_preticked():
+    c = C.card_for_change("habit", "Upper :: an alpha abnormality is reported",
+                          {"mode": "ask", "question": "Extension beyond alpha?",
+                           "yes": "The abnormality extends beyond alpha.", "no": "No extension beyond alpha."})
+    assert (c["kind"], c["ledger_kind"], c["selected"], c["step"]) == ("habit", "habit", None, "chat")
+    assert c["title"] == "Upper: when an alpha abnormality is reported"
+    assert [(x["id"], x["label"], (x["choice"] or {}).get("mode")) for x in c["choices"]] == [
+        ("ask", "Ask every time", "ask"), ("state", "Always state", "state"), ("removed", "Not needed", "removed"),
+        ("edit", "Edit wording", None)]   # the radiologist may name where the finding is (lab 2026-10-13)
+    assert c["habit"] == {"condition": "an alpha abnormality is reported", "question": "Extension beyond alpha?",
+                          "yes": "The abnormality extends beyond alpha.", "no": "No extension beyond alpha."}
+
+
+def test_pending_habit_cards_ask_about_habit_lines_nobody_confirmed():
+    from tests.template_sheet_fixtures import HABIT_SHEET
+    ask = ('RULE WHEN [findings: a focal liver abnormality is reported] ASK "Extension into the gallbladder?" '
+           'YES "The abnormality extends into the gallbladder." NO "No extension into the gallbladder."')
+    state = 'NEGATIVE "No delta extension." WHEN [findings: a focal delta abnormality is reported]'
+    sheet = (HABIT_SHEET.replace('NEGATIVE "No focal liver lesion."\n', 'NEGATIVE "No focal liver lesion."\n' + ask + "\n")
+             .replace('NORMAL [delta] "Delta is normal."\n', 'NORMAL [delta] "Delta is normal."\n' + state + "\n"))
+    cards = C.pending_habit_cards(sheet, [])
+    assert [(c["kind"], c["key"], c["step"], c["note"], c["selected"]) for c in cards] == [
+        ("habit", "Liver :: a focal liver abnormality is reported", "review", C.PENDING_HABIT_NOTE, None),
+        ("habit", "Lower :: a focal delta abnormality is reported", "review", C.PENDING_HABIT_NOTE, None)]
+    assert [x["id"] for x in cards[0]["choices"]] == ["ask", "state", "removed", "edit"]
+    assert [x["id"] for x in cards[1]["choices"]] == ["state", "removed", "edit"]   # a required statement has no question
+    led, _ = td.set_decision([], "habit", cards[0]["key"], cards[0]["choices"][0]["choice"], source="first_use_review")
+    assert [c["key"] for c in C.pending_habit_cards(sheet, led)] == [cards[1]["key"]]
+    assert C.pending_habit_cards("# Not a grammar sheet", []) == []
+
+
+def test_the_run_s_habits_become_cards_with_quotes_never_preticked():
+    run = R.DecisionRun(ok=True, states={}, habits=[R.HabitCandidate(
+        paragraph="Upper", condition="an alpha abnormality is reported", question="Extension beyond alpha?",
+        yes="The abnormality extends beyond alpha.", no="No extension beyond alpha.",
+        quotes=[R.Quote(report=1, text="No extension beyond alpha."), R.Quote(report=3, text="No extension beyond alpha.")])])
+    built = C.build_cards(run, 3)
+    (c,) = [c for c in built["cards"] if c["kind"] == "habit"]
+    assert c["selected"] is None and c["step"] == "rules" and c["key"] == "Upper :: an alpha abnormality is reported"
+    assert c["evidence"] == [{"reports": [1], "quote": "No extension beyond alpha."},
+                             {"reports": [3], "quote": "No extension beyond alpha."}]
+    assert built["kept"] == [] and built["defaults"] == []
+    led, errors = td.ledger_from_changes([{"kind": "habit", "key": c["key"], "choice": c["choices"][0]["choice"]}])
+    assert errors == [] and led[0]["choice"]["mode"] == "ask" and led[0]["source"] == "creation"

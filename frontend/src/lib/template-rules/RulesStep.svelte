@@ -15,6 +15,7 @@
 		flatCards,
 		validValueName,
 		wordingProblem,
+		HABIT_WHERE_HINT,
 		type Answer
 	} from './cards';
 	import type { CardWording, DecisionCard, DecisionChange } from './types';
@@ -145,6 +146,13 @@
 			{:else if c.wording.default && c.wording.condition}
 				<p class="text-xs text-gray-400">Left out when {c.wording.condition}.</p>
 			{/if}
+		{:else if c.kind === 'habit' && c.habit}
+			{#if c.habit.question}<p class="text-xs text-gray-300">Ask: “{c.habit.question}”</p>{/if}
+			{#if c.habit.yes}
+				<p class="text-xs text-gray-400">Yes: “{c.habit.yes}” · No: “{c.habit.no}”</p>
+			{:else}
+				<p class="text-xs text-gray-400">State: “{c.habit.no}”</p>
+			{/if}
 		{:else if c.wording?.text}
 			<p class="text-xs text-gray-300">“{c.wording.text}”</p>
 		{/if}
@@ -162,6 +170,24 @@
 						<input class="input w-full text-sm" bind:value={draft.when_met} />
 					</label>
 					{#if draft.condition}<p class="text-xs text-gray-500">It applies when {draft.condition}.</p>{/if}
+				{:else if c.ledger_kind === 'habit'}
+					<label class="block text-xs text-gray-400"
+						>When this is reported
+						<input class="input w-full text-sm" bind:value={draft.condition} use:focusOnOpen />
+					</label>
+					<p class="text-xs text-gray-500">{HABIT_WHERE_HINT}</p>
+					<label class="block text-xs text-gray-400"
+						>Question
+						<input class="input w-full text-sm" bind:value={draft.question} />
+					</label>
+					<label class="block text-xs text-gray-400"
+						>Yes writes
+						<input class="input w-full text-sm" bind:value={draft.yes} />
+					</label>
+					<label class="block text-xs text-gray-400"
+						>No writes
+						<input class="input w-full text-sm" bind:value={draft.no} />
+					</label>
 				{:else}
 					<label class="block text-xs text-gray-400"
 						>Wording
