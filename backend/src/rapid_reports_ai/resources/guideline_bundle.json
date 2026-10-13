@@ -3826,7 +3826,7 @@
       "unit": ""
      },
      {
-      "how_stated": "true when an earlier CT showing this nodule is available for comparison; false when this is the first CT to show it. A whole-study fact: a statement anywhere in the request or the report counts, e.g. 'No previous imaging' or 'Comparison: CT 2023'",
+      "how_stated": "true only when this nodule itself is described on an earlier study, e.g. 'unchanged since 2023', 'previously 6 mm', 'stable compared with the prior CT'; false when this is the first study to show it, e.g. 'new since the prior study', 'no previous imaging'. A whole-study fact: such a statement anywhere in the request or the report counts. A comparison line that does not mention this nodule (e.g. 'Comparison: CT 2023') settles neither: leave it out",
       "id": "prior_study",
       "label": "Prior CT showing the nodule",
       "locator": {
@@ -12541,7 +12541,7 @@
         "source": "S2",
         "table": ""
        },
-       "text": "An opacity over 3 cm is a mass, not a nodule (Fleischner glossary): these nodule guidelines do not apply."
+       "text": "An opacity over 3 cm is a mass, not a nodule (Fleischner glossary); the 2017 guidelines are for nodules. The cut-off is applied to the average diameter this entry uses throughout."
       },
       {
        "id": "pit.volume",
@@ -20811,5 +20811,5 @@
    ]
   }
  },
- "version": "ce462ed66921"
+ "version": "0bc05a54edf4"
 }

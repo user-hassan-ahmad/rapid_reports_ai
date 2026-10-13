@@ -1283,7 +1283,7 @@
       },
       {
         "id": "pit.mass",
-        "text": "An opacity over 3 cm is a mass, not a nodule (Fleischner glossary): these nodule guidelines do not apply.",
+        "text": "An opacity over 3 cm is a mass, not a nodule (Fleischner glossary); the 2017 guidelines are for nodules. The cut-off is applied to the average diameter this entry uses throughout.",
         "locator": {
           "source": "S2",
           "page": 13,

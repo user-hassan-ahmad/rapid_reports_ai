@@ -265,3 +265,7 @@ or the report. As a boolean it is never read, so it is always pre-filled or aske
   with no previous imaging, so nothing can be resolved. New golden case. With prior imaging unknown, BTS still asks
   prior_study, because only `resolved` keeps the card in scope (Hassan's ruling 3: the diameter is needed for every
   outcome but resolved). prior_study is now a whole-study fact, so this is rarely asked.
+- Re-review I-a: `prior_study` `how_stated` no longer gives a generic comparison line as an example of Yes. Yes needs
+  this nodule seen on an earlier study ("unchanged since…", "previously 6 mm", "stable compared with…"). No means first
+  shown ("new since the prior study", "no previous imaging"). A comparison line that does not mention this nodule
+  settles neither, so it is asked.

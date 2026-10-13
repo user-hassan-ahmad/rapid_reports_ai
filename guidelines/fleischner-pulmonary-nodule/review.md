@@ -200,3 +200,11 @@ Checklist:
   "nodule" entry gives the same 3 cm limit, so both are cited together.
 - M3 follow-up: the exclusion wording is now Hansell's own, "a mass (an opacity greater than 3 cm in diameter)". The
   band label reads ">30 mm (a mass)".
+- Locator note (re-review): the `gt30` band in `size_band` and the 8 `mass` rows in `management` rest on S2 (Hansell
+  2008, PDF p13 / printed p709: a mass is an opacity greater than 3 cm). The schema has no per-band or per-row
+  locator, so they show their step's entry-level S1 locator (S1 p5 for size banding, S1 p3 for the table). On these
+  rows, read that S1 citation as "size banding (S1)", not as the source of the mass definition. The does_not_apply
+  case and `pit.mass` cite S2 directly. Gate 5's low Jev scores on these rows come from this artefact, not from
+  unsupported content. A per-band and per-row locator in the schema would fix it (reviewer's option a; not done here).
+- `pit.mass` now says the cut-off is applied to the average diameter used throughout the entry (clinical note: a
+  36 × 22 mm opacity, average 29 mm, stays a nodule).

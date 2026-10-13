@@ -1092,3 +1092,49 @@ async def test_prior_study_is_proposed_like_any_input(monkeypatch, jev):
     s = await PP.settle_pack(e, finding, "", finding=finding)
     assert s.values["prior_study"].value.value is False and s.values["prior_study"].tier == "prefilled"
     assert PP.WHY_KIND in s.values["prior_study"].why and jev["calls"] == 1
+
+
+# re-review I-a: a generic comparison line is not "this nodule on an earlier study"
+NEW_ON_FOLLOW_UP = "New 7 mm solid nodule in the right upper lobe."
+
+
+def test_the_prior_study_definition_never_offers_a_comparison_line_as_yes():
+    from tests.test_library_partial import _bts
+    how = _bts().input("prior_study").how_stated
+    assert "this nodule itself is described on an earlier study" in how and "unchanged since" in how
+    assert "new since the prior study" in how and "no previous imaging" in how
+    assert "'Comparison: CT 2023') settles neither" in how
+
+
+async def test_the_settle_prompt_carries_the_prior_study_definition(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    prompts = []
+    _model(monkeypatch, prompts=prompts)
+    await PP.preview_pack(_bts(), f"{NEW_ON_FOLLOW_UP} Comparison: CT 2023.", "", {}, finding=NEW_ON_FOLLOW_UP)
+    assert "settles neither" in prompts[0] and "- prior_study [patient]" in prompts[0]
+
+
+async def test_unchanged_since_an_earlier_ct_drafts_yes(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    finding = "7 mm solid nodule in the right upper lobe, unchanged since the CT of 2023."
+    _model(monkeypatch, {"input": "prior_study", "value": True, "quote": "unchanged since the CT of 2023"})
+    out = await PP.preview_pack(_bts(), finding, "", {}, finding=finding)
+    d = next(x for x in out.draft if x.input == "prior_study")
+    assert (d.state, d.value) == ("prefilled", "Yes")
+
+
+async def test_new_since_the_prior_study_drafts_no(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    finding = "7 mm solid nodule in the right upper lobe, new since the prior study."
+    _model(monkeypatch, {"input": "prior_study", "value": False, "quote": "new since the prior study"})
+    out = await PP.preview_pack(_bts(), finding, "", {}, finding=finding)
+    d = next(x for x in out.draft if x.input == "prior_study")
+    assert (d.state, d.value) == ("prefilled", "No") and "resolved" not in out.missing
+
+
+async def test_a_comparison_line_that_does_not_mention_the_nodule_leaves_it_asked(monkeypatch, jev):
+    from tests.test_library_partial import _bts
+    _model(monkeypatch)                    # the model follows the definition: nothing proposed for prior_study
+    out = await PP.preview_pack(_bts(), f"{NEW_ON_FOLLOW_UP}\n\nComparison: CT 2023.", "", {},
+                                finding=NEW_ON_FOLLOW_UP)
+    assert _states(out)["prior_study"] == "asked" and "prior_study" in out.missing
