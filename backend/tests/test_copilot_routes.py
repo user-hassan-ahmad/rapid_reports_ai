@@ -843,3 +843,29 @@ def test_a_long_exam_card_from_match_opens_and_is_asked_about(authed, toy_lib, t
                                                                "findings": dictation})
     assert r.status_code == 200
     M.clear_cache()
+
+
+def test_a_needs_modality_card_opens_read_only_and_is_never_settled(authed, toy_lib, monkeypatch):
+    async def settle(*a, **k):
+        raise AssertionError("a card that needs another modality is never settled")
+    monkeypatch.setattr(CR, "settle_pack", settle)
+    card = {**PACK_CARD, "finding": "7 mm solid nodule.", "needs_modality": "US"}
+    for path in ("open", "preview"):
+        d = authed.post(f"/api/canvas/stack/guidelines/{path}", json={
+            "card": card, "findings": "7 mm solid nodule.", "answered": {"risk": "high"}}).json()
+        assert d["error"] is None and d["preview"] is None and d["needs_modality"] == "US"
+        assert d["branch"] == "Pack" and d["entry"]["key"] == "toy-nodule@1.0"
+        assert d["reference"]["summary"][0]["id"] == "sum.1"
+
+
+def test_prewarm_skips_a_needs_modality_card(monkeypatch, toy):
+    lib = L.Library({"version": "v1", "entries": {"toy-nodule@1.0": {"entry": toy, "sources": TOY_SOURCES}}})
+    monkeypatch.setattr(L, "get", lambda: lib)
+
+    async def settle(*a, **k):
+        raise AssertionError("never prewarmed")
+    monkeypatch.setattr(CR, "settle_pack", settle)
+    card = Card(key="toy-nodule@1.0", name="Toy 2020", version="2020", finding_id="u1", branch="Pack",
+                needs_modality="US")
+    req = CR.MatchRequest(findings=[CR.FindingIn(id="u1", text="7 mm nodule.")])
+    assert CR._prewarm(req, [card]) == 0

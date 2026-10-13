@@ -174,10 +174,12 @@ async def _cards_for(case: dict, sem: asyncio.Semaphore) -> list[dict]:
                 out.append({"id": cid, "case": case["id"], "pack": pack, "source": case.get("source", "prod"),
                             "scan_type": case["scan_type"], "clinical_history": case["clinical_history"],
                             "findings": case["findings"], "finding": c.finding or texts.get(fid, ""),
-                            "via_sibling_of": via, "trigger": "exam" if fid == "exam" else "finding"})
+                            "via_sibling_of": via, "trigger": "exam" if fid == "exam" else "finding",
+                            "needs_modality": c.needs_modality})
 
         # Tier 1 cards are settled and labelled; a tier 2 card used a cap slot live but gets no lab card. TNM cards are
-        # recorded as "tnm:<site>" (counted, never settled or labelled). Siblings are columns on the hit's card live:
+        # recorded as "tnm:<site>" (counted, never settled or labelled); so are cards marked needs_modality (an
+        # off-modality "redirect" pack: read-only live, so never settled, labelled or counted as asked). Siblings are columns on the hit's card live:
         # emitted here as their own cards (each is settled and labelled) after the hits, never counted toward the caps.
         for c in cards:
             site = tnm.site_for(c.key) if tnm.is_tnm(c.key) else None
@@ -194,8 +196,8 @@ async def _cards_for(case: dict, sem: asyncio.Semaphore) -> list[dict]:
 
 
 def settleable(cards: list[dict]) -> list[dict]:
-    """The cards the lab settles and labels: library packs, not TNM (TNM cards are only counted)."""
-    return [c for c in cards if not str(c["pack"]).startswith("tnm:")]
+    """The cards the lab settles and labels: library packs, not TNM and not needs_modality (those are only counted)."""
+    return [c for c in cards if not str(c["pack"]).startswith("tnm:") and not c.get("needs_modality")]
 
 
 def sample_cards(cards: list[dict], per_pack: int, total: int, seed: int = 13) -> list[dict]:

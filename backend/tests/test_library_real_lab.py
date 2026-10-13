@@ -351,6 +351,53 @@ def test_cards_for_runs_the_live_library_path_through_the_shared_builder(monkeyp
     assert [c["pack"] for c in RL.settleable(out)] == ["ex@1.0", "nod-a@1.0", "nod-b@1.0"]
 
 
+def test_cards_for_merges_tnm_by_site_and_counts_needs_modality_cards_without_settling(monkeypatch):
+    import asyncio
+    import copy
+    from types import SimpleNamespace as NS
+
+    import rapid_reports_ai.hybrid_stack.service as S
+    from rapid_reports_ai.hybrid_stack.copilot import library_match as LM
+    from rapid_reports_ai.hybrid_stack.copilot import tnm
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as L
+
+    from .conftest import TOY_ENTRY
+
+    d = copy.deepcopy(TOY_ENTRY)
+    d.update(id="thy", topic="thy", display="thy 2020", system="thy system", aliases=[], off_modality="redirect")
+    d["applies_to"] = {**d["applies_to"], "modality": ["US"]}
+    lib = L.Library({"version": "v", "entries": {"thy@1.0": {"entry": d}}})
+    site = tnm.sites()[0]
+
+    async def schema(*a, **k):
+        return NS(regions=[])
+
+    async def group_update(*a, **k):
+        return NS(units=[])
+
+    async def facts(scan, history):
+        return LM.CaseFacts(modality="CT")
+
+    async def pick(scan, history, finding):
+        return ([lib.lookup("thy")], site)
+
+    async def gate(finding, s, history):
+        return 0.9
+    monkeypatch.setattr(S, "resolve_schema", schema)
+    monkeypatch.setattr(S, "group_update", group_update)
+    monkeypatch.setattr(RL, "_coverage_lab", lambda: NS(findings=lambda units: [{"id": "F1", "text": "t1"},
+                                                                                {"id": "F2", "text": "t2"}]))
+    monkeypatch.setattr(RL.LB, "get", lambda: lib)
+    monkeypatch.setattr(LM, "case_facts", facts)
+    monkeypatch.setattr(LM, "pick", pick)
+    monkeypatch.setattr(RL.M, "_gate", gate)
+    case = {"id": "c", "scan_type": "CT", "clinical_history": "", "findings": "t1. t2."}
+    out = asyncio.run(RL._cards_for(case, asyncio.Semaphore(1)))
+    assert [(c["id"], c["needs_modality"]) for c in out] == [
+        (f"c:F1:tnm:{site}", ""), ("c:F2:thy@1.0", "US"), ("c:F1:thy@1.0", "US")]   # rank order; one TNM card
+    assert RL.settleable(out) == []
+
+
 def _aaa():
     from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry
     src = Path(__file__).resolve().parents[2] / "guidelines" / "nhs-aaa-surveillance" / "entry.json"

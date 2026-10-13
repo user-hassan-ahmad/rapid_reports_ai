@@ -468,8 +468,10 @@ async def build_cards(facts, picks: list[tuple[Finding, tuple | None]], history:
 
     Exam cards first (each bound exam-level entry; settled from the whole dictation; never modality-filtered). Then
     per finding: a TNM card (site confirmed by the existing site gate) ranked first, then the picked topic's first
-    entry the modality allows. An exam-level framework owns its topic on that study: a picked topic whose
-    matcher_topic equals a bound exam entry's merges into that exam card (no finding card). Caps as match_other."""
+    entry the modality allows; when none does, its first "redirect" entry as a read-only card marked needs_modality
+    (a "drop" topic gives no card). One TNM card per site per case: a later finding of a staged site adds none. An
+    exam-level framework owns its topic on that study: a picked topic whose matcher_topic equals a bound exam
+    entry's merges into that exam card (no finding card). Caps as match_other."""
     lib = lib or L.get()
     text = dictation or "\n".join(f.text for f, _ in picks)
     exam = [_pack_card(lib, e, EXAM_CARD, text) for e in LM.exam_entries(lib) if facts and e.key in facts.exams]
@@ -491,11 +493,22 @@ async def build_cards(facts, picks: list[tuple[Finding, tuple | None]], history:
                 out.append(c)
         if entries and not any(e.matcher_topic in owned for e in entries):
             ok = [e for e in entries if LM.modality_ok(e, modality)]
+            redirect = [e for e in entries if e.off_modality == "redirect"]
             if ok:
                 out.append(_pack_card(lib, ok[0], f.id, f.text))
+            elif redirect:   # off-modality but defined on another: a read-only card naming the modality it needs
+                c = _pack_card(lib, redirect[0], f.id, f.text)
+                c.needs_modality = LM.needs_modality(redirect[0])
+                out.append(c)
         return out
-    per_finding = await asyncio.gather(*(one(f, got) for f, got in picks))
-    return _rank_capped(exam[:MAX_PER_CASE], list(per_finding))
+    per_finding = list(await asyncio.gather(*(one(f, got) for f, got in picks)))
+    staged: set[str] = set()   # one TNM card per site per case: the first in rank order (TNM ranks first per finding)
+    for ranked in per_finding:
+        for c in [c for c in ranked if tnm.is_tnm(c.key)]:
+            if c.key in staged:
+                ranked.remove(c)
+            staged.add(c.key)
+    return _rank_capped(exam[:MAX_PER_CASE], per_finding)
 
 
 async def library_cards(scan_type: str, history: str, findings: list[Finding], dictation: str = "") -> list[Card]:

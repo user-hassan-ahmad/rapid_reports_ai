@@ -22,7 +22,7 @@ from . import registry as R
 from . import tnm
 from .library import bundle as L
 
-CHOICE_MIN = 0.5     # the finding's topic choice: below this it is "none"
+CHOICE_MIN = 0.6     # the finding's topic choice: below this it is "none"
 EXAM_MIN = 0.7       # "this study is the pack's exam"
 TNM_Q_MIN = 0.7      # "the FINDING describes a primary malignant tumour that would be staged"
 JEV_TIMEOUT_S = 4.0
@@ -188,3 +188,8 @@ async def pick(scan: str, history: str, finding: str) -> tuple[list, str | None]
 def modality_ok(entry, modality: str | None) -> bool:
     mods = entry.applies_to.modality
     return modality is None or modality == "other" or not mods or modality in mods
+
+
+def needs_modality(entry) -> str:
+    """The modality a "redirect" entry needs, as its card says it ("US", "CT / MRI")."""
+    return " / ".join(entry.applies_to.modality)

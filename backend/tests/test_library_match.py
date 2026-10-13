@@ -13,8 +13,10 @@ from .conftest import TOY_ENTRY, TOY_REFERENCE
 
 
 def _e(id_, topic, *, tier=2, purpose="Grades a thing.", modality=("CT",), finding=("lesion",), region=("chest",),
-       aliases=(), trigger=("finding",), exam="", match_topic="", display=None, system=None, status="current"):
+       aliases=(), trigger=("finding",), exam="", match_topic="", display=None, system=None, status="current",
+       off_modality="drop"):
     d = copy.deepcopy(TOY_REFERENCE if tier == 2 else TOY_ENTRY)
+    d["off_modality"] = off_modality
     d.update(id=id_, topic=topic, purpose=purpose, trigger=list(trigger), exam=exam, match_topic=match_topic,
              display=display or f"{id_} 2020", system=system or f"{id_} system", aliases=list(aliases), status=status)
     d["applies_to"] = {"region": list(region), "modality": list(modality), "finding_type": list(finding),
@@ -201,7 +203,7 @@ def test_pick_maps_topic_to_entries_and_caches(monkeypatch):
     assert len(calls) == 1
 
 
-@pytest.mark.parametrize("pick,conf", [("none", 0.99), ("t0", 0.49)])
+@pytest.mark.parametrize("pick,conf", [("none", 0.99), ("t0", 0.59)])
 def test_pick_none_or_below_floor_is_empty(monkeypatch, pick, conf):
     monkeypatch.setattr(L, "get", lambda: _lib(NODULE_A))
     _jev(monkeypatch, _pick_ans(pick, conf))
@@ -249,7 +251,8 @@ def _no_gptoss(monkeypatch):
     monkeypatch.setattr(M, "_call", call)
 
 
-def _wire(monkeypatch, lib, modality="CT", bound=(), picks=None, facts_fail=False, tnm_score=0.1, site="none"):
+def _wire(monkeypatch, lib, modality="CT", bound=(), picks=None, facts_fail=False, tnm_score=0.1, site="none",
+          sites=None):
     """One fake Jev endpoint for both request kinds: the case request (has "modality") and per-finding requests."""
     monkeypatch.setattr(L, "get", lambda: lib)
     _no_gptoss(monkeypatch)
@@ -266,7 +269,7 @@ def _wire(monkeypatch, lib, modality="CT", bound=(), picks=None, facts_fail=Fals
             out.update({f"x_{i}": {"noul": 0.95 if e.id in bound else 0.05} for i, e in enumerate(exams)})
             return out
         finding = p["state"].rsplit("FINDING:\n", 1)[1]
-        out = {"tnm": {"noul": tnm_score}, "site": _choice(site)}
+        out = {"tnm": {"noul": tnm_score}, "site": _choice((sites or {}).get(finding, site))}
         if "pick" in qs:
             got = picks.get(finding)
             out["pick"] = _choice(_tid(lib, got) if got else "none")
@@ -459,3 +462,75 @@ def test_options_rebuild_when_the_bundle_identity_changes(monkeypatch):
     b = L.Library({"version": "v-other", "entries": {"nod-a@1.0": {"entry": {**NODULE_A, "purpose": "Changed."}}}})
     assert "Manages" in LM._options(a)[1]["t0"]
     assert "Changed." in LM._options(b)[1]["t0"]
+
+
+def test_choice_floor_is_point_six():
+    assert LM.CHOICE_MIN == 0.6
+
+
+# --- TNM merged per case by site --------------------------------------------------------------------------------------
+
+def test_two_units_naming_the_same_site_give_one_tnm_card(db_session, monkeypatch):
+    site = tnm.sites()[0]
+    _wire(monkeypatch, _lib(NODULE_A), tnm_score=0.9, site="s0")
+    _gate(monkeypatch, 0.9)
+    fs = [M.Finding(id="u1", text="mass"), M.Finding(id="u2", text="mass invades the vein")]
+    cards = asyncio_run(M.match(db_session, "CT", "", fs))
+    assert [(c.key, c.finding_id) for c in cards] == [(tnm.entry(site).key, "u1")]
+
+
+def test_two_sites_give_two_tnm_cards(db_session, monkeypatch):
+    s0, s1 = tnm.sites()[0], tnm.sites()[1]
+    _wire(monkeypatch, _lib(NODULE_A), tnm_score=0.9, sites={"a": "s0", "b": "s1", "c": "s0"})
+    _gate(monkeypatch, 0.9)
+    fs = [M.Finding(id=f"u{i}", text=t) for i, t in enumerate("abc")]
+    cards = asyncio_run(M.match(db_session, "CT", "", fs))
+    assert [(c.key, c.finding_id) for c in cards] == [(tnm.entry(s0).key, "u0"), (tnm.entry(s1).key, "u1")]
+
+
+# --- off-modality: "redirect" packs give a read-only needs_modality card; "drop" packs give none -----------------------
+
+US_REDIRECT = _e("us-r", "thy", tier=1, modality=("US",), display="US R", off_modality="redirect")
+
+
+def test_a_redirect_pack_off_modality_gives_a_needs_modality_card(db_session, monkeypatch):
+    lib = _lib(US_REDIRECT)
+    fs = [M.Finding(id="u1", text="x")]
+    _wire(monkeypatch, lib, modality="CT", picks={"x": "us-r"})
+    cards = asyncio_run(M.match(db_session, "CT neck", "", fs))
+    assert [(c.key, c.needs_modality) for c in cards] == [("us-r@1.0", "US")]
+    M.clear_cache()
+    _wire(monkeypatch, lib, modality="US", picks={"x": "us-r"})
+    assert [(c.key, c.needs_modality) for c in asyncio_run(M.match(db_session, "US neck", "", fs))] == [("us-r@1.0", "")]
+
+
+def test_a_redirect_topic_with_an_allowed_entry_gives_that_entry_normally(db_session, monkeypatch):
+    lib = _lib(US_REDIRECT, _e("ct-ok", "thy", tier=1, modality=("CT",), display="CT OK"))
+    _wire(monkeypatch, lib, modality="CT", picks={"x": "us-r"})
+    cards = asyncio_run(M.match(db_session, "CT", "", [M.Finding(id="u1", text="x")]))
+    assert [(c.key, c.needs_modality) for c in cards] == [("ct-ok@1.0", "")]
+
+
+def _live():
+    import json
+    return L.Library(json.loads(L.BUNDLE.read_text()))
+
+
+@pytest.mark.parametrize("entry_id,scan,modality,expect", [
+    ("bta-thyroid-u-grading", "CT neck", "CT", "US"),
+    ("bta-thyroid-u-grading", "US thyroid", "US", ""),
+    ("kellgren-lawrence", "CT knee", "CT", None),
+])
+def test_real_packs_redirect_or_drop_off_modality(db_session, monkeypatch, entry_id, scan, modality, expect):
+    lib = _live()
+    _wire(monkeypatch, lib, modality=modality, picks={"x": entry_id})
+    cards = asyncio_run(M.match(db_session, scan, "", [M.Finding(id="u1", text="x")]))
+    e = lib.lookup(entry_id)
+    assert [(c.key, c.needs_modality) for c in cards] == ([] if expect is None else [(e.key, expect)])
+
+
+def test_the_redirect_packs_are_exactly_the_ultrasound_defined_ones():
+    lib = _live()
+    assert sorted(e.id for e in lib.list() if e.off_modality == "redirect") == [
+        "bta-thyroid-u-grading", "rcog-ovarian-mass-postmenopausal", "rcog-ovarian-mass-premenopausal"]
+    assert lib.lookup("bosniak-renal-cyst").applies_to.modality == ["CT", "MRI"]

@@ -128,6 +128,7 @@ class CardIn(BaseModel):
     status: Literal["draft", "verified", "new"] = "new"
     finding: _s(M.DICTATION_MAX) = ""   # library cards: the finding unit's text (exam cards: the dictation), as /match
                                         # returned it
+    needs_modality: _s(40) = ""         # library cards: the modality the pack needs, as /match returned it (read-only)
 
     def card(self) -> Card:
         return Card(**self.model_dump())
@@ -214,6 +215,7 @@ class OpenResult(BaseModel):
     ms: int = 0
     error: str | None = None      # "unavailable" (nothing fetched), "loading" (still fetching), "unknown guideline"
     reference: dict[str, Any] | None = None   # library entries: reference fields with citations
+    needs_modality: str = ""      # the card's pack needs another modality ("US"): read-only, no preview, no Apply
 
 
 class AskRequest(BaseModel):
@@ -308,11 +310,22 @@ def _reference(key: str):
     return (e, as_entry(e, lib.sources(e.key))) if e is not None and e.tier == 2 else None
 
 
-def _reference_result(ref, t0: float) -> OpenResult:
-    """Read-only: the reference fields and the entry; no preview, so no Apply."""
+def _reference_result(ref, t0: float, needs_modality: str = "") -> OpenResult:
+    """Read-only: the reference fields and the entry; no preview, so no Apply. Also a pack card that needs another
+    modality (`needs_modality`): never settled or previewed on this study."""
     e, view = ref
-    return OpenResult(entry=_public(view), preview=None, branch=REFERENCE_BRANCH,
-                      reference=D.reference_view(e, L.get().sources(e.key)), ms=_ms(t0))
+    return OpenResult(entry=_public(view), preview=None, branch=REFERENCE_BRANCH if e.tier == 2 else PACK_BRANCH,
+                      reference=D.reference_view(e, L.get().sources(e.key)), needs_modality=needs_modality,
+                      ms=_ms(t0))
+
+
+def _off_modality(card: Card):
+    """A library card /match marked needs_modality, as (entry, card-shaped entry), or None."""
+    if not card.needs_modality:
+        return None
+    lib = L.get()
+    e = lib.lookup(card.key)
+    return (e, as_entry(e, lib.sources(e.key))) if e is not None else None
 
 
 async def _pack_result(pack, req: OpenRequest, t0: float, opened: bool) -> OpenResult:
@@ -347,7 +360,7 @@ def _prewarm(req: MatchRequest, cards: list[Card]) -> int:
             lib = L.get()
             e = lib.lookup(c.key)
             finding = c.finding or texts.get(c.finding_id, "")
-            if e is None or e.tier != 1 or not finding:
+            if e is None or e.tier != 1 or not finding or c.needs_modality:
                 continue
             t = PC.start(PC.key(e.key, finding, dictation, history),
                          lambda e=e, finding=finding: settle_pack(e, dictation, history, finding=finding),
@@ -387,6 +400,9 @@ async def copilot_open(req: OpenRequest, user: User = Depends(get_current_user))
     _check_card(req.card)
     t0 = time.perf_counter()
     card = req.card.card()
+    off = _off_modality(card)
+    if off is not None:
+        return _reference_result(off, t0, card.needs_modality)
     pack = _pack(card.key)
     if pack is not None:
         return await _pack_result(pack, req, t0, opened=True)
@@ -413,6 +429,9 @@ async def copilot_preview(req: OpenRequest, user: User = Depends(get_current_use
     _require()
     t0 = time.perf_counter()
     card = req.card.card()
+    off = _off_modality(card)
+    if off is not None:
+        return _reference_result(off, t0, card.needs_modality)
     pack = _pack(card.key)
     if pack is not None:
         return await _pack_result(pack, req, t0, opened=False)

@@ -322,6 +322,8 @@ class Entry(_M):
     tier: Literal[1, 2]
     status: Literal["current", "superseded"] = "current"
     applies_to: AppliesTo
+    off_modality: Literal["drop", "redirect"] = "drop"   # the study's modality is not in applies_to.modality: no card
+                                      # ("drop"), or a read-only card saying the classification needs that modality
     aliases: list[str] = Field(default_factory=list)
     inputs: list[InputDef] = Field(default_factory=list)
     logic: list[Step] = Field(default_factory=list)
