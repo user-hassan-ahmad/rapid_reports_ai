@@ -45,7 +45,7 @@ from rapid_reports_ai.hybrid_stack.copilot import matcher as M  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot import tnm  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB  # noqa: E402
 from rapid_reports_ai.hybrid_stack.copilot.library.pack_preview import (  # noqa: E402
-    EXAM_CARD, _answer, _show, display_options, exam_presets, finish, preset_values, settle_pack, Settlement)
+    EXAM_CARD, Drafted, _answer, _show, display_options, exam_presets, finish, preset_values, settle_pack, Settlement)
 from rapid_reports_ai.hybrid_stack.copilot.library.schema import Entry, InputValue  # noqa: E402
 
 MAX_FILL = 10
@@ -103,14 +103,6 @@ class LabelFile(BaseModel):
     model_config = ConfigDict(extra="forbid")
     served_by: str = Field(min_length=1)          # the model and agent id that labelled
     labels: dict[str, CardLabel]                  # card id -> its label
-
-
-@dataclasses.dataclass
-class _Drafted:
-    """A stored non-'read' draft, rebuilt for scoring (same attributes as the settler's Drafted)."""
-    value: InputValue
-    quote: str
-    tier: str
 
 
 def _coverage_lab():
@@ -409,8 +401,8 @@ def card_presets(e: Entry, card: dict) -> dict[str, str]:
 
 
 def drafts(s, e: Entry | None = None, presets: dict[str, str] | None = None) -> dict[str, tuple[InputValue, str, str]]:
-    """input -> (value, quote, tier). Today's settler has no tiers: every settled value is shown as read. An exam
-    preset the settlement leaves open is pre-filled (no quote), exactly as live `finish` fills it."""
+    """input -> (value, quote, tier). A stored settlement from before value states (tuples) has every value read. An
+    exam preset the settlement leaves open is pre-filled (no quote), exactly as live `finish` fills it."""
     out = {}
     for k, v in s.values.items():
         if isinstance(v, tuple):
@@ -453,7 +445,8 @@ def verdicts(e: Entry, s, label: dict, presets: dict[str, str] | None = None) ->
 def taps(e: Entry, s, label: dict, patient: dict, picked: bool = False,
          presets: dict[str, str] | None = None) -> tuple[int, str | None]:
     """Taps to an outcome (spec §12): one per asked input the engine needs (truth, else assumed), one per wrong
-    drafted value (corrected to truth), one for the lesion pick if shown. Calculate is not counted. A wrong draft is
+    drafted value (corrected to truth), one per eligibility value the card assumed in scope that the truth
+    contradicts (corrected to truth), one for the lesion pick if shown. Calculate is not counted. A wrong draft is
     dropped from a copy of the settlement, so the engine never sees it; the original is untouched."""
     truth, d = _truth(label), drafts(s, e, presets)
     wrong = [k for k, (v, _, t) in d.items() if not _right(e, k, v, t, label)]
@@ -464,6 +457,9 @@ def taps(e: Entry, s, label: dict, patient: dict, picked: bool = False,
     p = finish(e, s, answered, patient, presets=presets)
     for _ in range(MAX_FILL):
         new = {k: truth[k] for k in p.missing if k not in answered and truth.get(k) is not None}
+        shown = {d.input: d.value for d in p.draft}
+        new.update({k: truth[k] for k in p.assumptions if k not in answered and truth.get(k) is not None
+                    and not _same(e, k, _answer(e, e.input(k), shown[k]) or InputValue(state="unknown"), truth[k])})
         if not new:
             break
         answered.update(new)
@@ -576,7 +572,8 @@ async def run(cards_path: Path, out_dir: Path) -> Path:
                         "missing": p.missing,
                         "draft_outcome": do.model_dump(mode="json") if do is not None else None,
                         "draft_outcome_id": (p.trace or {}).get("outcome"),
-                        "drafts": {k: {"value": v.model_dump(mode="json"), "quote": q, "tier": t}
+                        "drafts": {k: {"value": v.model_dump(mode="json"), "quote": q, "tier": t,
+                                       "why": list(getattr(s.values[k], "why", []))}
                                    for k, (v, q, t) in drafts(s).items()},     # settled only: score re-adds
                         "presets": pre})                                           # the card's presets live's way
         except Exception as ex:                       # one bad card must not lose the run; type only, no text
@@ -592,7 +589,7 @@ def _settlement(rec: dict) -> Settlement:
     vals = {}
     for k, d in rec["drafts"].items():
         v = InputValue.model_validate(d["value"])
-        vals[k] = (v, d["quote"]) if d["tier"] == "read" else _Drafted(v, d["quote"], d["tier"])
+        vals[k] = Drafted(v, d["quote"], d["tier"], list(d.get("why", [])))
     return Settlement(values=vals, failed=rec["degraded"])
 
 

@@ -5,8 +5,12 @@ reads every number and its unit from the whole measurement its quote sits in (th
 batched Jev call per scope checks every number as stated for its scope, and a lesion number also needs the finding
 to hold no other number; each enum or boolean value is checked by Jev against its quote alone (the quote must state it). Every lesion input, of any type, also needs the finding to describe one lesion of
 any kind (no multiplicity word, and Jev's one-lesion claim): another lesion's lobe, type or size is never lent to
-this one. The radiologist's answers win; the engine evaluates. Every word of the proposal comes from the entry. Any failure leaves
-the input asked, never assumed."""
+this one. The radiologist's answers win; the engine evaluates. Every word of the outcome comes from the entry.
+
+The draft card (spec §7.4–§7.7): a value whose quote is verbatim in scope is drafted, `read` only when every check
+passes, else `prefilled` with the reason each check failed (`WHY_*`); a value with no such quote, or a number code
+cannot read, is asked. The preview shows the draft outcome "on these values", never an Apply-able proposal; Apply
+writes only what `calculate` returns over the values the card shows."""
 from __future__ import annotations
 
 import asyncio
@@ -15,6 +19,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -23,7 +28,8 @@ from ....report_reconcile import QWEN
 from .. import jev as J
 from .. import preview as P
 from .. import registry as R
-from ..types import Branch, Entry as CardEntry, GuidelineContent, Input, Preview, Proposal, Publication, Settled, Source
+from ..types import (Branch, Calculation, DraftValue, Entry as CardEntry, GuidelineContent, Input, Preview, Proposal,
+                     Publication, Settled, Source)
 from . import engine
 from . import quantity as Q
 from .describe import citation
@@ -41,6 +47,18 @@ ONE_LESION = "The FINDING describes only one lesion of any kind (nodule, granulo
 _STATE_LABEL = {"absent": "Absent", "not_assessable": "Not assessable"}
 _LEAD = {"lesion": "The FINDING states", "patient": "The CLINICAL HISTORY or DICTATION state"}
 QUOTE_MIN = 0.8           # Jev "The QUOTE states <label>: <value>" on the quote alone: below it, asked
+NOT_STATED = "Not stated"   # always offered (spec §7.6): clears a value to unknown
+# why a drafted value is pre-filled rather than read (spec §7.5); shown with the value
+WHY_KIND = "yes/no and absent values are never read"
+WHY_NOT_OPTION_WORD = "the quote does not use the option's own words"
+WHY_MODIFIED = "a negation or hedge before the quote"
+WHY_OTHER_NUMBER = "another number in this finding"
+WHY_UNCONFIRMED = "the finding does not clearly state it"
+WHY_PHASE = "attenuation not stated as unenhanced"
+WHY_SEVERAL = "the finding may describe more than one lesion"
+WHY_NO_CHECK = "the check did not run"
+WHY_EXAM = "set by the exam"   # an exam preset: the one pre-fill with no quote (spec §5.1, §7.10)
+WHY_ASSUMED = "assumed: not stated, so taken as within the guideline's scope"   # an assumed eligibility input
 _QUOTE_OF = {"lesion": "a verbatim phrase from a radiology report about one lesion",
              "patient": "a verbatim phrase from a radiology request or report about the patient or the examination"}
 
@@ -99,15 +117,18 @@ def _show(e: Entry, i: InputDef, v: InputValue) -> str:
         return "Yes" if v.value else "No"
     if i.type == "number":
         if v.band is not None:
-            return next((b.label for b in _bands_for(e, i) if b.id == v.band), v.band)
+            return next((b.label for s in e.logic if isinstance(s, BandStep) and s.ref == i.id for b in s.bands
+                         if b.id == v.band), v.band)
         unit = "" if i.unit == "count" else i.unit
         return f"{float(v.value):g} {unit}".strip()
     return str(v.value)
 
 
 def _answer(e: Entry, i: InputDef, s: str) -> InputValue | None:
-    """A radiologist's choice, as display_options offers it (or a typed number)."""
+    """A radiologist's choice, as display_options offers it (or a typed number); NOT_STATED is unknown."""
     s = s.strip()
+    if s == NOT_STATED:
+        return InputValue(state="unknown")
     for st, label in _STATE_LABEL.items():
         if s == label:
             return InputValue(state=st) if st in i.states else None
@@ -138,8 +159,8 @@ def _num(v) -> float | None:
 def _value(i: InputDef, item: RawItem, texts: list[str] | None = None) -> InputValue | None:
     """The model's value if it is a real one: an allowed state, an option, a boolean, or a number read by code from
     the whole measurement its quote sits in within `texts` (the quote alone when no texts are given). The model's own
-    number must agree with that one reading, or choose between several. A lesion number settles only when its
-    finding holds no other number (quantity.alone)."""
+    number must agree with that one reading, or choose between several. Another number in a lesion's finding no
+    longer drops it: it is a reason the value is pre-filled (_read_reasons)."""
     if item.state in _STATE_LABEL:
         return InputValue(state=item.state) if item.state in i.states else None
     if item.state != "present":
@@ -147,9 +168,6 @@ def _value(i: InputDef, item: RawItem, texts: list[str] | None = None) -> InputV
     if i.type == "number":
         x = (Q.pick(Q.readings(item.quote, i.unit, i.dims), _num(item.value), i.unit) if texts is None
              else Q.settle(item.quote, texts, i.unit, i.dims, _num(item.value)))
-        if x is not None and texts is not None and i.scope == "lesion" and not Q.alone(texts[0], item.quote, x,
-                                                                                       i.unit, i.dims):
-            return None              # another number in this finding: which one is meant is asked, never guessed
         return InputValue(value=x) if x is not None and i.in_range(x) else None   # out of range: asked
     if item.value is None:
         return None
@@ -298,15 +316,41 @@ async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings
         q = item.quote.strip()
         if i is None or i.id not in ids or not q or not _in_scope(i, q, finding, findings, history):
             continue
-        texts = [finding] if i.scope == "lesion" else [findings, history]
-        if i.type != "number" and _modified(q, texts):
-            continue                 # "spiculated" from "not spiculated", "solid" from "part-solid": asked
-        v = _value(i, item, texts)
+        v = _value(i, item, _texts(i, finding, findings, history))
         if v is not None and i.scope == "lesion" and several:
             continue                 # the finding names other lesions: which one's value is meant is asked
         if v is not None:
             out[i.id] = (v, Settled(input=i.id, value=_show(e, i, v), quote=q))
     return out, False
+
+
+def _texts(i: InputDef, finding: str, findings: str, history: str) -> list[str]:
+    """The texts an input's quote may come from: its finding (lesion), else the dictation and the history."""
+    return [finding] if i.scope == "lesion" else [findings, history]
+
+
+def _words(s: str) -> list[str]:
+    return R.norm(s.replace("_", " ")).split()
+
+
+def _has_option_words(option: str, quote: str) -> bool:
+    """The option's own words appear in the quote, in order, as whole tokens."""
+    w, q = _words(option), _words(quote)
+    return bool(w) and any(q[n:n + len(w)] == w for n in range(len(q) - len(w) + 1))
+
+
+def _read_reasons(e: Entry, i: InputDef, v: InputValue, quote: str, texts: list[str]) -> list[str]:
+    """Why code cannot read this value with certainty (spec §7.5); empty when it can, before the Jev checks."""
+    present = v.state == "present"
+    out = [] if present and i.type != "boolean" else [WHY_KIND]
+    if present and i.type == "enum" and not _has_option_words(str(v.value), quote):
+        out.append(WHY_NOT_OPTION_WORD)
+    if i.type != "number" and _modified(quote, texts):
+        out.append(WHY_MODIFIED)
+    if (present and i.type == "number" and i.scope == "lesion"
+            and not Q.alone(texts[0], quote, float(v.value), i.unit, i.dims)):
+        out.append(WHY_OTHER_NUMBER)
+    return out
 
 
 async def _jev(claims: list[str], state: str) -> list[float]:
@@ -346,28 +390,34 @@ def _quote_claim(e: Entry, i: InputDef, v: InputValue) -> str:
 
 
 async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding: str, findings: str,
-                   history: str) -> tuple[set[str], bool]:
-    """(confirmed ids, whether a Jev call failed). Run together:
+                   history: str) -> tuple[dict[str, list[str]], bool]:
+    """(input -> the reasons it is not read, empty when confirmed; whether a Jev call failed). Run together:
     - per scope, one batched call: "The FINDING states <label>: <value>" with the finding unit alone as state
       (lesion), or the same of the history and the dictation (patient). A number needs SETTLED_MIN, an enum or a
-      boolean QUOTE_MIN. The lesion batch also carries ONE_LESION whenever any lesion input is pending: below
-      ONE_LESION_MIN every lesion input is asked;
-    - per enum or boolean value, one more call on its QUOTE alone: "The QUOTE states <label>: <value>"; QUOTE_MIN.
-      An enum or boolean settles only when both claims pass: the quote must state it, and the finding must too
-      (a quote stripped of its context, "spiculated" from "not spiculated", fails the second).
-    A failed call leaves its inputs asked (the lesion batch: every lesion input)."""
+      boolean QUOTE_MIN; below it, WHY_UNCONFIRMED. An attenuation adds the phase claim (WHY_PHASE). The lesion batch
+      also carries ONE_LESION whenever any lesion input is pending: below ONE_LESION_MIN every lesion input gets
+      WHY_SEVERAL;
+    - per enum or boolean value, one more call on its QUOTE alone: "The QUOTE states <label>: <value>"; below
+      QUOTE_MIN, WHY_UNCONFIRMED (Task 4 retires this claim).
+    A failed call gives each of its inputs WHY_NO_CHECK (the lesion batch: every lesion input). Nothing is dropped:
+    every reason only makes the value pre-filled rather than read (spec §7.5)."""
     states = {"lesion": f"FINDING:\n{finding}",
               "patient": f"CLINICAL HISTORY:\n{history or 'none given'}\n\nDICTATION:\n{findings}"}
+    why: dict[str, list[str]] = {k: [] for k in pending}
 
-    async def batch(scope: str) -> tuple[set[str], bool, bool]:
-        """(confirmed ids, one lesion, failed)"""
+    def add(k: str, reason: str) -> None:
+        if reason not in why[k]:
+            why[k].append(reason)
+
+    async def batch(scope: str) -> bool:
+        """Whether the call failed."""
         ids = [k for k in pending if e.input(k).scope == scope]
-        one_lesion = scope == "lesion" and bool(ids)
         if not ids:
-            return set(), True, False
+            return False
+        one_lesion = scope == "lesion"
         claims = [f"{_LEAD[scope]} {e.input(k).label}: {_show(e, e.input(k), pending[k][0]).replace('_', ' ')}"
                   for k in ids]
-        # an attenuation not stated as unenhanced may be an enhanced value, not the one the input means: asked
+        # an attenuation not stated as unenhanced may be an enhanced value, not the one the input means
         hu = [k for k in ids if scope == "lesion" and e.input(k).type == "number"
               and Q.FAMILY.get(Q.canon(e.input(k).unit)) == "attenuation"]
         claims += [_phase_claim(_show(e, e.input(k), pending[k][0])) for k in hu]
@@ -377,31 +427,39 @@ async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding
             got = await _jev(claims, states[scope])
         except Exception as ex:
             logger.info("[library.preview] %s value check failed (%s)", scope, type(ex).__name__)
-            return set(), False, True
+            for k in ids:
+                add(k, WHY_NO_CHECK)
+            return True
+        for k, sc in zip(ids, got):
+            if sc < (P.SETTLED_MIN if e.input(k).type == "number" else QUOTE_MIN):
+                add(k, WHY_UNCONFIRMED)
+        for k, sc in zip(hu, got[len(ids):len(ids) + len(hu)]):
+            if sc < UNENHANCED_MIN:
+                add(k, WHY_PHASE)
         if one_lesion and got[-1] < ONE_LESION_MIN:
-            logger.info("[library.preview] %s: finding not one lesion (%.2f); lesion inputs asked", e.key, got[-1])
-        phased = {k for k, s in zip(hu, got[len(ids):]) if s < UNENHANCED_MIN}
-        bar = {k: P.SETTLED_MIN if e.input(k).type == "number" else QUOTE_MIN for k in ids}
-        return ({k for k, s in zip(ids, got) if s >= bar[k]} - phased,
-                not one_lesion or got[-1] >= ONE_LESION_MIN, False)
+            logger.info("[library.preview] %s: finding may not be one lesion (%.2f); lesion values pre-filled",
+                        e.key, got[-1])
+            for k in ids:
+                add(k, WHY_SEVERAL)
+        return False
 
-    async def quote(k: str) -> tuple[str, float | None]:
+    async def quote(k: str) -> bool:
+        """Whether the call failed."""
         i = e.input(k)
         v, q = pending[k]
         try:
-            return k, (await _jev([_quote_claim(e, i, v)], _quote_state(i, q)))[0]
+            sc = (await _jev([_quote_claim(e, i, v)], _quote_state(i, q)))[0]
         except Exception as ex:
             logger.info("[library.preview] quote check failed (%s)", type(ex).__name__)
-            return k, None
+            add(k, WHY_NO_CHECK)
+            return True
+        if sc < QUOTE_MIN:
+            add(k, WHY_UNCONFIRMED)
+        return False
 
     choices = [k for k in pending if e.input(k).type != "number"]
-    (a, one, fa), (b, _, fb), *qs = await asyncio.gather(batch("lesion"), batch("patient"),
-                                                        *(quote(k) for k in choices))
-    quoted = {k for k, s in qs if s is not None and s >= QUOTE_MIN}
-    ok = {k for k in a | b if e.input(k).type == "number" or k in quoted}
-    if not one or fa:
-        ok = {k for k in ok if e.input(k).scope != "lesion"}
-    return ok, fa or fb or any(s is None for _, s in qs)
+    fails = await asyncio.gather(batch("lesion"), batch("patient"), *(quote(k) for k in choices))
+    return why, any(fails)
 
 
 # A prior study is asymmetric (lab fix round item 3): "Yes" settles only from the nodule's own finding, as any lesion
@@ -467,27 +525,61 @@ def _outcome_text(e: Entry, t: engine.Trace, sources: list[dict]) -> Proposal | 
                     caveats=caveats, citations=_fired(e, t, sources), normal=o.normal)
 
 
+@dataclass
+class Drafted:
+    """One value the dictation drafts for a card (spec §7.5): its quote is verbatim in scope; `read` when code read it
+    with certainty and every check passed, else `prefilled` with the reason each check failed."""
+    value: InputValue
+    quote: str
+    tier: Literal["read", "prefilled"]
+    why: list[str] = field(default_factory=list)
+
+
+def _draft_value(e: Entry, i: InputDef, t: engine.Trace, state: str, g: InputValue | None,
+                 d: Drafted | None, by: str = "") -> DraftValue:
+    """One input as the card shows it. A drafted value carries its quote (and, pre-filled, its reasons) only while it
+    is shown as drafted; an answer or an edit has no quote."""
+    shown = state not in ("asked", "not_applicable") and g is not None and g.state != "unknown"
+    drafted = state in ("read", "prefilled")
+    return DraftValue(input=i.id, label=i.label, role=i.role, scope=i.scope, fact=i.fact or "", state=state,
+                      value=_show(e, i, g) if shown else "", quote=d.quote if drafted and d is not None else "",
+                      why=([WHY_ASSUMED] if state == "assumed" else
+                           (list(d.why) if d is not None else [WHY_EXAM] if by else []) if state == "prefilled" else []),
+                      by=by if drafted else "", needed=i.id in t.needed, waiting=i.id in t.waiting,
+                      options=[*display_options(e, i), NOT_STATED])
+
+
+def _known(given: dict[str, InputValue]) -> dict[str, InputValue]:
+    """The values the engine sees: NOT_STATED (unknown) is left out, as an input never given."""
+    return {k: v for k, v in given.items() if v.state != "unknown"}
+
+
+def _possible(e: Entry, t: engine.Trace) -> list[str]:
+    return [engine.PH.sub("…", engine.render(e, t, e.outcome(o).classification)) for o in t.possible]
+
+
 def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict[str, str], sources: list[dict],
-           degraded: bool, preset: frozenset[str] = frozenset()) -> Preview:
-    """The card (spec §7.4): eligibility asks first; the state worked out in code; a does_not_apply outcome is shown as
-    an exclusion, never as a proposal, so it can never be Applied."""
+           degraded: bool, preset: frozenset[str] = frozenset(), draft: list[DraftValue] | None = None) -> Preview:
+    """The card (spec §7.4): eligibility asks first; the state worked out in code; the reached outcome is a draft
+    "on these values" (never a proposal, so never Applied); a does_not_apply outcome is shown as an exclusion."""
     elig = [i.id for i in e.inputs if i.role == "eligibility"]
     needed = list(t.needed)                       # engine order (spec §7.4): eligibility, parents, the rest
     settled = [Settled(input=k, value=_show(e, e.input(k), given[k]), quote=quotes.get(k, ""),
                        fact=e.input(k).fact or "", by="exam" if k in preset else "")
-               for k in (i.id for i in e.inputs) if k in given]
-    possible = [engine.PH.sub("…", engine.render(e, t, e.outcome(o).classification)) for o in t.possible]
+               for k in (i.id for i in e.inputs) if k in given and given[k].state != "unknown"]
     text = _outcome_text(e, t, sources) if t.outcome is not None else None
     if t.outcome == DOES_NOT_APPLY:
-        state, proposal, exclusion = "does_not_apply", None, text
+        state, draft_outcome, exclusion = "does_not_apply", None, text
         logger.info("[library.preview] %s does not apply (eligibility given: %s)", e.key,
                     ", ".join(k for k in elig if k in given) or "none")
-    else:
-        state = "check_first" if set(elig) & set(needed) else "applies"
-        proposal, exclusion = text, None
-    return Preview(settled=settled, missing=needed, proposal=proposal, exclusion=exclusion, state=state,
-                   possible=possible, bounded=t.bounded, asks=_asks(e, t, sources, needed),
-                   waiting=list(t.waiting),
+    else:          # check_first stays honest: an assumed or still-unknown eligibility input (the UI's warning)
+        state = "check_first" if t.assumed or set(elig) & set(needed) else "applies"
+        draft_outcome, exclusion = text, None
+    assumptions = [i.id for i in e.inputs if i.id in t.assumed] if t.outcome != DOES_NOT_APPLY else []
+    return Preview(settled=settled, draft=draft or [], draft_outcome=draft_outcome, missing=needed, proposal=None,
+                   assumptions=assumptions, assumed_eligible=bool(assumptions),
+                   exclusion=exclusion, state=state, possible=_possible(e, t), bounded=t.bounded,
+                   asks=_asks(e, t, sources, needed), waiting=list(t.waiting),
                    trace=t.model_dump(mode="json") if t.outcome is not None else None, degraded=degraded)
 
 
@@ -500,17 +592,17 @@ def failed(e: Entry) -> Preview:
 
 @dataclass
 class Settlement:
-    """What the dictation settles for one card, read once per (dictation, finding, history) and never again: the
-    preview cache holds it, and each answer re-runs only the engine over it (`finish`), so a settled value cannot
+    """What the dictation drafts for one card, read once per (dictation, finding, history) and never again: the
+    preview cache holds it, and each answer re-runs only the engine over it (`finish`), so a drafted value cannot
     change between answers."""
-    values: dict[str, tuple[InputValue, str]] = field(default_factory=dict)   # input -> (value, quote)
-    failed: bool = False       # the model or a Jev check failed: inputs it could have settled are asked; cached all
-                               # the same (answers never settle again), and a fresh /open may retry it once
+    values: dict[str, Drafted] = field(default_factory=dict)   # input -> its drafted value
+    failed: bool = False       # the model or a Jev check failed (a Jev failure pre-fills; a model failure drafts
+                               # nothing); cached all the same, and a fresh /open may retry it once
     no_unit: bool = False      # no finding unit: every lesion input is asked (deterministic, so cached)
 
 
 async def settle_pack(e: Entry, findings: str, history: str, finding: str = "") -> Settlement:
-    """Every input the dictation settles, whatever the radiologist has answered (answers win in `finish`)."""
+    """Every input the dictation drafts, whatever the radiologist has answered (answers win in `finish`)."""
     finding = finding.strip()
     # no finding unit: lesion inputs are never read from the whole dictation (another lesion's values); they are asked
     no_unit = not finding and any(i.scope == "lesion" for i in e.inputs)
@@ -525,12 +617,17 @@ async def settle_pack(e: Entry, findings: str, history: str, finding: str = "") 
     # every number (read by code from the quote) is put to Jev as stated for its scope: this catches a number of the
     # wrong time point or role ("was 5 mm, now 9 mm"; swapped volumes); every enum or boolean, as stated by its quote
     pending = {k: (v, st.quote) for k, (v, st) in model.items()}
-    confirmed, jev_failed = await _confirm(e, pending, finding, findings, history) if pending else (set(), False)
-    values = {k: pending[k] for k in model if k in confirmed}
+    reasons, jev_failed = await _confirm(e, pending, finding, findings, history) if pending else ({}, False)
+    values: dict[str, Drafted] = {}
+    for k, (v, q) in pending.items():
+        i = e.input(k)
+        why = _read_reasons(e, i, v, q, _texts(i, finding, findings, history))
+        why += [r for r in reasons.get(k, []) if r not in why]
+        values[k] = Drafted(v, q, "prefilled" if why else "read", why)
     if no_prior is not None and NO_PRIOR_INPUT in values:
         del values[NO_PRIOR_INPUT]           # the finding says yes, the dictation no: asked
     elif no_prior is not None and NO_PRIOR_INPUT not in model:
-        values[NO_PRIOR_INPUT] = (InputValue(value=False), no_prior)
+        values[NO_PRIOR_INPUT] = Drafted(InputValue(value=False), no_prior, "prefilled", [WHY_KIND])
     return Settlement(values=values, failed=degraded or jev_failed or prior_failed, no_unit=no_unit)
 
 
@@ -553,26 +650,94 @@ def preset_values(e: Entry, presets: dict[str, str] | None) -> dict[str, InputVa
 def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str, str] | None = None,
            sources: list[dict] | None = None, presets: dict[str, str] | None = None) -> Preview:
     """The card from a settlement and the radiologist's answers, by the engine alone: no model, no Jev. An answer
-    (the card's own, then the shared patient one) overrides the settled value for that input, and a settled (quoted)
-    value overrides an exam preset. A preset is the one pre-fill without a quote: it is shown on the card as set by
-    the exam (spec §5.1, §7.10), never applied unseen. Presets are applied here, not in the settlement, so a cached
-    settlement shared with a finding card never carries them."""
-    given = _given(e, answered, patient)
-    quotes = {}
-    for k, (v, q) in s.values.items():
+    (the card's own, then the shared patient one; NOT_STATED included) overrides the drafted value for that input,
+    and a drafted (quoted) value overrides an exam preset. A preset is the one pre-fill without a quote: it is shown
+    pre-filled, set by the exam (spec §5.1, §7.10), never applied unseen. Presets are applied here, not in the
+    settlement, so a cached settlement shared with a finding card never carries them."""
+    answers = _given(e, answered, patient)
+    given, quotes = dict(answers), {}
+    for k, d in s.values.items():
         if k not in given:
-            given[k], quotes[k] = v, q
+            given[k], quotes[k] = d.value, d.quote
     preset = set()
     for k, v in preset_values(e, presets).items():
         if k not in given:
             given[k] = v
             preset.add(k)
-    try:
-        t = engine.evaluate(e, given)
+    try:      # the draft never leads with eligibility: an unknown one is assumed in scope, visibly (Hassan 2026-10-13)
+        t = engine.evaluate(e, _known(given), assume_eligible=True)
     except (engine.EvaluationError, ValueError) as ex:
         logger.error("[library.preview] %s cannot be evaluated: %s", e.key, ex)
         return failed(e)
-    return _build(e, t, given, quotes, sources or [], s.failed or s.no_unit, frozenset(preset))
+    draft = []
+    for i in e.inputs:
+        d, a = s.values.get(i.id), answers.get(i.id)
+        answered = a is not None and a.state != "unknown"
+        g = given.get(i.id)
+        if t.inputs[i.id].state == "not_applicable" and i.id not in t.assumed:
+            st = "not_applicable"
+        elif answered:
+            st = "answered"
+        elif a is None and d is not None:
+            st = d.tier
+        elif a is None and i.id in preset:
+            st = "prefilled"
+        elif i.id in t.assumed:
+            st, g = "assumed", t.assumed[i.id]
+        else:
+            st = "asked"
+        draft.append(_draft_value(e, i, t, st, g, d if a is None else None, "exam" if i.id in preset else ""))
+    return _build(e, t, given, quotes, sources or [], s.failed or s.no_unit, frozenset(preset), draft)
+
+
+def _same_shown(e: Entry, i: InputDef, v: InputValue | None, g: InputValue) -> bool:
+    """The two values show alike on the card."""
+    return v is not None and _show(e, i, v) == _show(e, i, g)
+
+
+def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str, str] | None,
+              sources: list[dict], bundle: str, presets: dict[str, str] | None = None) -> Calculation:
+    """Spec §7.7: the engine over exactly the values the card shows; an input not sent is unknown, never taken from
+    the settlement, a preset or a shared answer. No model, no Jev. The settlement, the presets and the shared patient
+    answers only label each value: one equal to its draft keeps the draft's state (a preset's: pre-filled, by the
+    exam); one equal to the shared patient answer is answered; any other is edited (answered when nothing was
+    drafted)."""
+    given = _given(e, values)                         # NOT_STATED -> unknown
+    try:
+        t = engine.evaluate(e, _known(given))
+    except (engine.EvaluationError, ValueError) as ex:
+        logger.error("[library.calculate] %s cannot be evaluated: %s", e.key, ex)
+        return Calculation(pack=e.key, bundle=bundle)
+    pre = preset_values(e, presets)
+    shared = _given(e, {}, patient)
+    # what the draft assumed (over the drafted values and presets): a value sent back equal to it stays "assumed"
+    asm = engine.assumptions(e, {**pre, **{k: d.value for k, d in s.values.items()}})
+    used = []
+    for i in e.inputs:
+        d, g = s.values.get(i.id), given.get(i.id)
+        p = pre.get(i.id)
+        by = ""
+        if t.inputs[i.id].state == "not_applicable":
+            st = "not_applicable"
+        elif g is None or g.state == "unknown":
+            st = "asked"
+        elif _same_shown(e, i, shared.get(i.id), g):
+            st = "answered"
+        elif d is not None and _same_shown(e, i, d.value, g):
+            st = d.tier
+        elif d is None and _same_shown(e, i, p, g):
+            st, by = "prefilled", "exam"
+        elif d is None and p is None and _same_shown(e, i, asm.get(i.id), g):
+            st = "assumed"
+        else:
+            st = "edited" if d is not None or p is not None else "answered"
+        used.append(_draft_value(e, i, t, st, g, d if st in ("read", "prefilled") else None, by))
+    text = _outcome_text(e, t, sources) if t.outcome is not None else None
+    excluded = t.outcome == DOES_NOT_APPLY
+    return Calculation(outcome=t.outcome, result=None if excluded else text, exclusion=text if excluded else None,
+                       possible=_possible(e, t), needed=list(t.needed), values=used,
+                       trace=t.model_dump(mode="json") if t.outcome is not None else None,
+                       pack=e.key, bundle=bundle)
 
 
 async def preview_pack(e: Entry, findings: str, history: str, answered: dict[str, str],

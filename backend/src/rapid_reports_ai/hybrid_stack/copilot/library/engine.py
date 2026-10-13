@@ -55,6 +55,8 @@ class Trace(BaseModel):
     decides: dict[str, list[str]] = Field(default_factory=dict)   # needed input -> the outcomes its value decides between
     waiting: list[str] = Field(default_factory=list)   # unanswered inputs behind a prerequisite still unknown: not
                                                        # asked yet (§7.4); an input with a value is never listed
+    assumed: dict[str, InputValue] = Field(default_factory=dict)   # assume_eligible: each unknown eligibility input
+    # evaluated at its in-scope value (a number through its band: InputValue(band=...)), never a stated value
     inputs: dict[str, InputValue] = Field(default_factory=dict)
     steps: list[StepTrace] = Field(default_factory=list)
 
@@ -507,25 +509,54 @@ def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V], fixe
     return possible, bounded, needed, {n: decides.get(n) or possible for n in needed}
 
 
-def evaluate(entry: Entry, given: dict[str, Any]) -> Trace:
+def _assume(entry: Entry, given: dict[str, InputValue]) -> tuple[dict[str, InputValue], dict[str, V],
+                                                                  dict[str, InputValue]]:
+    """(input values, band-step overrides, input -> the value assumed) for every unknown eligibility input that has
+    one in-scope value (_non_excluding); one without stays unknown and is enumerated like any other input."""
+    elig = [i for i in entry.inputs if i.role == "eligibility" and i.id not in given]
+    if not elig:
+        return {}, {}, {}
+    fill, over = _non_excluding(entry, given, elig)
+    assumed = dict(fill)
+    for s in entry.logic:
+        if isinstance(s, BandStep) and s.id in over:
+            assumed[s.ref] = InputValue(band=over[s.id].value)
+    return fill, over, assumed
+
+
+def assumptions(entry: Entry, given: dict[str, Any]) -> dict[str, InputValue]:
+    """input -> the in-scope value evaluate(assume_eligible=True) would assume for it, over these given values."""
+    g = {k: as_value(v) for k, v in given.items() if entry.input(k) is not None}
+    return _assume(entry, {k: v for k, v in g.items() if v.state != "unknown"})[2]
+
+
+def evaluate(entry: Entry, given: dict[str, Any], assume_eligible: bool = False) -> Trace:
     """The outcome for these inputs (unknown inputs simply left out), with a trace. Raises ValueError for an input
-    value the entry does not allow, EvaluationError for a defect in the entry."""
+    value the entry does not allow, EvaluationError for a defect in the entry. `assume_eligible` (the draft card,
+    Hassan 2026-10-13): each unknown eligibility input is evaluated at its in-scope value (`Trace.assumed`), so the
+    card can draft the outcome for an eligible patient; a stated value always wins, and one that excludes still gives
+    does_not_apply."""
     given = {k: as_value(v) for k, v in given.items() if entry.input(k) is not None}
-    env, steps = _once(entry, given)
+    fixed, assumed = None, {}
+    if assume_eligible:
+        fill, over, assumed = _assume(entry, {k: v for k, v in given.items() if v.state != "unknown"})
+        given, fixed = {**given, **fill}, (over or None)
+    env, steps = _once(entry, given, fixed)
     out = env[entry.result]
     inputs = {i.id: _iv(env[i.id]) for i in entry.inputs}
     if out.state == "present":
-        return Trace(outcome=out.value, possible=[out.value], inputs=inputs, steps=steps)
+        return Trace(outcome=out.value, possible=[out.value], inputs=inputs, steps=steps, assumed=assumed)
     if out.state != "unknown":
         raise EvaluationError(f"result step {entry.result} ended {out.state}")
-    possible, bounded, needed, decides = _partial(entry, given, env)
+    possible, bounded, needed, decides = _partial(entry, given, env, fixed, hold_out=not assume_eligible)
     if bounded and len(possible) == 1:      # the unknown inputs cannot change the outcome: it is settled
-        return Trace(outcome=possible[0], possible=possible, bounded=True, needed=[], inputs=inputs, steps=steps)
+        return Trace(outcome=possible[0], possible=possible, bounded=True, needed=[], inputs=inputs, steps=steps,
+                     assumed=assumed)
     needed, waiting = parents_first(entry, needed, env,
                                     frozenset(k for k, v in given.items() if v.state != "unknown"))
     decides = {k: decides.get(k) or possible for k in needed}
     return Trace(possible=possible, bounded=bounded, needed=needed, waiting=waiting, decides=decides, inputs=inputs,
-                 steps=steps)
+                 steps=steps, assumed=assumed)
 
 
 def _fmt(x: Any) -> str:

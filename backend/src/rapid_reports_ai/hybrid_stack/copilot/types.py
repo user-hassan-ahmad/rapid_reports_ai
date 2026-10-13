@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 
 BranchState = Literal["checked", "not_available", "pending"]
 CardState = Literal["applies", "check_first", "does_not_apply"]
+ValueState = Literal["read", "prefilled", "assumed", "asked", "answered", "edited", "not_applicable"]   # spec §7.5;
+# assumed: an unknown eligibility input drafted at its in-scope value (Hassan 2026-10-13), never stated
 
 
 class Input(BaseModel):
@@ -127,11 +129,46 @@ class Proposal(BaseModel):
     normal: bool = False          # library packs: the reached outcome is the framework's normal result (spec §5.3)
 
 
+class DraftValue(BaseModel):
+    """One input on a library pack's draft card (spec §7.4–§7.6)."""
+    input: str
+    label: str
+    role: str = "clinical"
+    scope: str = "lesion"
+    fact: str = ""
+    state: ValueState
+    value: str = ""                    # display form; "" when asked or not applicable
+    quote: str = ""                    # read or pre-filled from the dictation: the verbatim span behind it
+    why: list[str] = Field(default_factory=list)      # pre-filled: why it is not read (spec §7.5)
+    by: str = ""                       # "exam" when the exam binding preset it (pre-filled, no quote); else ""
+    needed: bool = False               # in `needed`: can still change the outcome
+    waiting: bool = False              # behind a prerequisite still unknown: not asked yet
+    options: list[str] = Field(default_factory=list)  # display_options + "Not stated" (spec §7.6)
+
+
+class Calculation(BaseModel):
+    """Calculate (spec §7.7): the engine over exactly the values the card shows."""
+    outcome: str | None = None
+    result: Proposal | None = None     # what Apply writes (spec §7.7); None while incomplete or excluded
+    exclusion: Proposal | None = None  # does_not_apply: the reason; never Applied
+    possible: list[str] = Field(default_factory=list)
+    needed: list[str] = Field(default_factory=list)
+    values: list[DraftValue] = Field(default_factory=list)
+    trace: dict[str, Any] | None = None
+    pack: str = ""                     # pack_id@version
+    bundle: str = ""                   # the bundle version
+
+
 class Preview(BaseModel):
     settled: list[Settled] = Field(default_factory=list)
+    draft: list[DraftValue] = Field(default_factory=list)    # library packs: every input with its value state
+    draft_outcome: Proposal | None = None   # library packs: the outcome "on these values"; never Apply-able (§7.7)
+    assumptions: list[str] = Field(default_factory=list)   # library packs: eligibility inputs assumed in scope (their
+                                                           # draft values have state "assumed"), in pack order
+    assumed_eligible: bool = False   # library packs: the draft rests on assumptions; the card shows a warning
     missing: list[str] = Field(default_factory=list)
     waiting: list[str] = Field(default_factory=list)   # library packs: inputs behind a prerequisite still unknown
-    proposal: Proposal | None = None
+    proposal: Proposal | None = None      # never set for library packs: Apply writes only a Calculation's result
     state: CardState = "applies"  # library packs (spec §7.4): does_not_apply (an eligibility input excludes), check_first
                                   # (an unknown eligibility input could change the outcome), else applies
     exclusion: Proposal | None = None   # does_not_apply: the reason and the scope clause's citations; never Applied

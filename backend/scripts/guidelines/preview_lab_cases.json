@@ -1287,8 +1287,6 @@
     "count"
    ],
    "expect_missing": [
-    "age",
-    "exclusion",
     "risk"
    ],
    "expect_outcome": null,
@@ -1668,7 +1666,6 @@
     "interval_days": "365 days"
    },
    "expect_missing": [
-    "proven_malignant",
     "prior_study",
     "benign_features",
     "nodule_type",
@@ -1715,7 +1712,6 @@
     "interval_days": "365 days"
    },
    "expect_missing": [
-    "proven_malignant",
     "prior_study",
     "benign_features",
     "nodule_type",
@@ -1762,7 +1758,6 @@
     "interval_days": "365 days"
    },
    "expect_missing": [
-    "proven_malignant",
     "prior_study",
     "benign_features",
     "nodule_type",
@@ -1809,7 +1804,6 @@
     "interval_days": "365 days"
    },
    "expect_missing": [
-    "proven_malignant",
     "prior_study",
     "benign_features",
     "nodule_type",

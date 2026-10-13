@@ -213,7 +213,7 @@ def test_open_preview_failure_still_returns_the_entry(authed, monkeypatch):
     monkeypatch.setattr(CR, "preview", prev)
     d = authed.post("/api/canvas/stack/guidelines/open", json={
         "card": {"key": "k@1", "name": "K", "version": "1", "finding_id": "u1", "branch": "B"}, "findings": "x"}).json()
-    assert d["entry"]["key"] == "k@1" and d["preview"] == {"settled": [], "missing": [], "waiting": [], "proposal": None, "possible": [], "bounded": True, "asks": [], "trace": None, "degraded": False,
+    assert d["entry"]["key"] == "k@1" and d["preview"] == {"settled": [], "draft": [], "draft_outcome": None, "assumptions": [], "assumed_eligible": False, "missing": [], "waiting": [], "proposal": None, "possible": [], "bounded": True, "asks": [], "trace": None, "degraded": False,
                                                               "state": "applies", "exclusion": None}
 
 
@@ -556,7 +556,7 @@ def test_open_a_library_pack(authed, toy_lib):
         "card": {**PACK_CARD, "finding": "7 mm solid nodule."}, "findings": "7 mm solid nodule.",
         "answered": {"risk": "high"}}).json()
     assert d["error"] is None and d["entry"]["key"] == "toy-nodule@1.0" and d["branch"] == "Pack"
-    assert d["preview"]["proposal"]["recommendation"] == "CT at 6 months"
+    assert d["preview"]["draft_outcome"]["recommendation"] == "CT at 6 months"
     assert d["entry"]["sources"][0]["url"] == "https://example.org/toy"
 
 
@@ -602,7 +602,7 @@ def test_only_an_exam_card_gets_its_packs_exam_presets(authed, monkeypatch):
     monkeypatch.setattr(L, "get", lambda: lib)
 
     async def fake_settle(e, findings, history, finding=""):
-        return PP.Settlement(values={"diameter_cm": (PP.InputValue(value=2.4), "Aorta 2.4 cm")})
+        return PP.Settlement(values={"diameter_cm": PP.Drafted(PP.InputValue(value=2.4), "Aorta 2.4 cm", "read")})
     monkeypatch.setattr(CR, "settle_pack", fake_settle)
     dictation = "Aorta 2.4 cm."
     card = {"key": "nhs-aaa-surveillance@2025.1", "name": "NHS AAA Screening 2025", "version": "2025",
@@ -629,8 +629,8 @@ async def test_match_starts_pack_previews_and_open_reuses_them(db_session, user,
 
     async def fake_settle(e, findings, history, finding=""):
         calls.append((finding, findings))
-        return PP.Settlement(values={"kind": (PP.InputValue(value="solid"), "solid"),
-                                     "size": (PP.InputValue(value=7.0), "7 mm")})
+        return PP.Settlement(values={"kind": PP.Drafted(PP.InputValue(value="solid"), "solid", "read"),
+                                     "size": PP.Drafted(PP.InputValue(value=7.0), "7 mm", "read")})
     monkeypatch.setattr(CR, "match", fake_match)
     monkeypatch.setattr(CR, "settle_pack", fake_settle)
     dictation = "7 mm solid nodule. Liver normal."
@@ -645,7 +645,7 @@ async def test_match_starts_pack_previews_and_open_reuses_them(db_session, user,
     again = await CR.copilot_preview(CR.OpenRequest(card=CR.CardIn(**PACK_CARD), finding="7 mm solid nodule.",
                                                     findings=dictation, answered={"risk": "low"},
                                                     patient={"age_years": "60"}), user=user, db=db_session)
-    assert again.preview.missing == [] and again.preview.proposal.recommendation == "CT at 12 months"
+    assert again.preview.missing == [] and again.preview.draft_outcome.recommendation == "CT at 12 months"
     assert len(calls) == 1                                                       # an answer re-runs the engine only
     assert [(x.input, x.value) for x in again.preview.settled][:2] == [("kind", "solid"), ("size", "7 mm")]
 
@@ -679,7 +679,7 @@ def test_a_pack_open_carries_its_reference_fields(authed, toy_lib):
 def test_a_pack_open_with_no_finding_asks_lesion_inputs_and_says_degraded(authed, toy_lib):
     d = authed.post("/api/canvas/stack/guidelines/open", json={
         "card": PACK_CARD, "findings": "7 mm solid nodule.", "answered": {"risk": "high"}}).json()
-    assert d["preview"]["proposal"] is None and "kind" in d["preview"]["missing"] and d["preview"]["degraded"] is True
+    assert d["preview"]["draft_outcome"] is None and "kind" in d["preview"]["missing"] and d["preview"]["degraded"] is True
 
 
 def test_a_failed_pack_preview_is_check_first_when_the_pack_has_eligibility(authed, monkeypatch, toy):
@@ -761,7 +761,7 @@ async def test_an_answer_after_open_calls_neither_the_model_nor_jev(db_session, 
     monkeypatch.setattr(P, "jev_post", no_call)
     for answered in ({"risk": "low"}, {"risk": "high"}):
         d = (await CR.copilot_preview(CR.OpenRequest(**body, answered=answered), user=user, db=db_session)).preview
-        assert d.degraded is False and d.proposal is not None
+        assert d.degraded is False and d.proposal is None and d.draft_outcome is not None
         assert [x for x in d.settled if x.input != "risk"] == first.settled
 
 
@@ -926,3 +926,62 @@ def test_prewarm_starts_every_primary_before_any_sibling(monkeypatch, toy):
         await asyncio.gather(*list(PC._RUNNING))
         return n
     assert asyncio.run(go()) == 2 and started == ["toy-nodule@1.0", "toy-nodule@1.0"]   # both primaries, no sibling
+
+
+# ── Calculate (spec §7.7, §7.10): the engine over exactly the values the card shows; never a model or Jev call ──────
+
+def _calc_settle(calls):
+    async def settle(e, findings, history, finding=""):
+        calls.append(finding)
+        return PP.Settlement(values={"kind": PP.Drafted(PP.InputValue(value="solid"), "solid", "read"),
+                                     "size": PP.Drafted(PP.InputValue(value=7.0), "7 mm", "read"),
+                                     "risk": PP.Drafted(PP.InputValue(value="high"), "smoker", "prefilled",
+                                                        [PP.WHY_NOT_OPTION_WORD])})
+    return settle
+
+
+async def test_calculate_uses_the_values_sent_and_the_cached_settlement_only_labels_them(user, toy_lib, monkeypatch):
+    calls = []
+    monkeypatch.setattr(CR, "settle_pack", _calc_settle(calls))
+    body = {"card": CR.CardIn(**PACK_CARD), "finding": "7 mm solid nodule.", "findings": "7 mm solid nodule.",
+            "clinical_history": "Smoker."}
+    opened = (await CR.copilot_open(CR.OpenRequest(**body), user=user)).preview
+    assert opened.proposal is None and opened.draft_outcome.recommendation == "CT at 6 months" and calls == ["7 mm solid nodule."]
+
+    async def no_call(*a, **k):
+        raise AssertionError("Calculate never calls the model or Jev")
+    monkeypatch.setattr(CR, "settle_pack", no_call)
+    monkeypatch.setattr(PP, "_call", no_call)
+    monkeypatch.setattr(P, "jev_post", no_call)
+    part = await CR.copilot_calculate(CR.CalculateRequest(**body, values={"kind": "solid", "size": "7 mm"}), user=user)
+    assert part.error is None and part.calculation.result is None and part.calculation.needed == ["risk"]
+    full = await CR.copilot_calculate(CR.CalculateRequest(**body, values={"kind": "solid", "size": "7 mm",
+                                                                            "risk": "high"}), user=user)
+    c = full.calculation
+    assert c.result.recommendation == "CT at 6 months" and c.outcome == "ct6" and c.bundle == "v1"
+    assert c.pack == "toy-nodule@1.0" and {v.input: v.state for v in c.values} == {
+        "kind": "read", "size": "read", "risk": "prefilled", "margin": "asked"}
+
+
+async def test_calculate_on_a_cold_cache_starts_no_settle_and_labels_the_values_answered(user, toy_lib, monkeypatch):
+    async def no_call(*a, **k):
+        raise AssertionError("Calculate never starts a settle")
+    monkeypatch.setattr(CR, "settle_pack", no_call)
+    req = CR.CalculateRequest(card=CR.CardIn(**PACK_CARD), finding="7 mm solid nodule.", findings="7 mm solid nodule.",
+                              values={"kind": "solid", "size": "7 mm", "risk": "low"})
+    c = (await CR.copilot_calculate(req, user=user)).calculation
+    assert c.outcome == "ct12" and {v.input: v.state for v in c.values if v.input != "margin"} == dict.fromkeys(
+        ("kind", "size", "risk"), "answered")
+
+
+def test_calculate_refuses_a_needs_modality_card_and_a_non_pack(authed, toy_lib, monkeypatch):
+    async def settle(*a, **k):
+        raise AssertionError("never settled")
+    monkeypatch.setattr(CR, "settle_pack", settle)
+    url = "/api/canvas/stack/guidelines/calculate"
+    d = authed.post(url, json={"card": {**PACK_CARD, "needs_modality": "US"}, "values": {"kind": "solid"}}).json()
+    assert d["calculation"] is None and d["error"] == "needs modality"
+    d = authed.post(url, json={"card": {**PACK_CARD, "key": "k@1"}, "values": {}}).json()
+    assert d["calculation"] is None and d["error"] == "not a pack"
+    bad = authed.post(url, json={"card": PACK_CARD, "values": {f"i{n}": "x" for n in range(41)}})
+    assert bad.status_code == 422

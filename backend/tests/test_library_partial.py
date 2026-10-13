@@ -266,3 +266,13 @@ def test_a_gate_that_can_settle_the_exam_is_asked_straight_after_eligibility():
     t = E.evaluate(pirads, {})
     assert t.needed[:2] == ["treated_cancer", "finding_above_1"]        # eligibility, then the gate, then zone, dwi
     assert E.evaluate(pirads, {"treated_cancer": False}).needed[0] == "finding_above_1"
+
+
+def test_assume_eligible_drafts_for_an_eligible_patient_and_a_stated_value_wins():
+    fl = next(e for e in _packs() if e.id == "fleischner-pulmonary-nodule")
+    t = E.evaluate(fl, {}, assume_eligible=True)
+    assert set(t.assumed) == {"age", "exclusion"} and t.assumed["age"].band == "ge35"      # a number: by its band
+    assert not {"age", "exclusion"} & set(t.needed) and "does_not_apply" not in t.possible
+    t = E.evaluate(fl, {"age": 30}, assume_eligible=True)                                 # stated: excludes
+    assert t.outcome == "does_not_apply" and "age" not in t.assumed
+    assert E.evaluate(fl, {}).assumed == {}                                               # off by default
