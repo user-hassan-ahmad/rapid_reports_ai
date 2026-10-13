@@ -10,8 +10,10 @@ and the endpoint runs today's whole-sheet refine (the fallback stays until the l
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
@@ -38,6 +40,16 @@ KIND_LABEL = CH.KIND_LABEL
 CARDS_LINE = "I wasn't sure about part of that: choose below."
 UNMATCHED_LINE = ("Some decisions no longer match a line in the template; they will be asked again at the next "
                   "review.")
+HABIT_KINDS = ("value", "normal", "fixed")   # never written for a finding-triggered habit (until item 5)
+HABIT_LINE = ("That reads as a habit for when a particular finding is present. I've saved it to set up later; nothing "
+              "in the template changed for it.")
+HABIT_ASK = ("That reads as a habit for when a particular finding is present. Which finding should it apply to? I've "
+             "saved it to set up later; nothing in the template changed for it.")
+_HABIT_LEAD = re.compile(r"^\s*(?:with|when|whenever|if|in)\s+(?P<cond>[^,;]+?)\s*[,;]?\s+(?P<rest>(?:always|please|"
+                         r"then|also|mention|comment|say|state|add|ask|report|describe|note)\b.*)$", re.I)
+_HABIT_TAIL = re.compile(r"^(?P<rest>.+?)\s*,?\s+(?:when(?:ever)?|if)\s+(?P<cond>.+?)\s*$", re.I)
+_HABIT_MID = re.compile(r"^\s*(?:when(?:ever)?|if)\s+(?P<cond>.+?)\s+(?P<rest>(?:say|mention|comment|state|add|ask|"
+                        r"report|describe|note)\b.*)$", re.I)
 CAPPED_LINE = "That wording change was long, so I applied the first part only. Please ask for the rest separately."
 STYLE_TIMEOUT = "I couldn't finish the wording change just now, so I left it out. Please try that part again."
 STYLE_TOUCHED_RULES = ("The style change also touched the template's rules, so I left it out. Could you say it as "
@@ -78,6 +90,21 @@ def _ask_reply(scan: str, misfit: bool) -> str:
     if misfit:
         return f"That doesn't look like part of a {s}report. What should these reports do differently?"
     return f"I'm not sure what to change in these {s}reports. What should they do differently?"
+
+
+def _park_habit(instruction: str, score: float) -> Tuple[dict, str, dict]:
+    """(parked-habit card, reply line, evidence) for a finding-triggered habit. The condition is read by a simple
+    pattern ("with X, always Y" / "Y when X"); without one the reply asks which finding. Nothing is written: the
+    instruction is kept in the turn's evidence (routing) for item 5 to set up."""
+    text = " ".join((instruction or "").split()).rstrip(".")
+    m = _HABIT_LEAD.match(text) or _HABIT_MID.match(text) or _HABIT_TAIL.match(text)
+    cond, rest = (m.group("cond").strip(), m.group("rest").strip()) if m else ("", text)
+    title = f"Saved as a habit to set up: when {cond}, {rest}" if cond else f"Saved as a habit to set up: {text}"
+    card = {"id": "habit:" + hashlib.sha1(text.encode()).hexdigest()[:10], "kind": "habit", "title": title,
+            "instruction": instruction}
+    logger.info("[chat-router] habit parked (score %.2f, condition found: %s)", score, bool(cond))
+    return card, (HABIT_LINE if cond else HABIT_ASK), {"score": round(score, 3), "condition": cond,
+                                                      "parked": instruction}
 
 
 def _ledger_for_edit(ledger: List[dict], before: str, op: dict, rec: dict,
@@ -229,6 +256,13 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
     if tags["misfit"] >= J.TAG_MIN:      # a misfit blocks the turn (misfit_B wording, >= 0.5)
         ev.update(route="ask", applied=0, ms=_ms(t0))
         return Turn(sheet, ledger, False, _ask_reply(scan, True), evidence=ev)
+    habit_card, habit_line = None, ""
+    if tags.get("habit", 0.0) >= J.HABIT_MIN:   # parked, never written as a rule line (until item 5)
+        habit_card, habit_line, ev["habit"] = _park_habit(instruction, tags["habit"])
+        yes = [k for k in yes if k not in HABIT_KINDS]
+        if not yes:
+            ev.update(applied=0, ms=_ms(t0))
+            return Turn(sheet, ledger, False, habit_line, cards=[habit_card], evidence=ev)
     if not yes:   # nothing tagged at the threshold: today's whole-sheet refine for now (Hassan 2026-10-13)
         raise Fallback("no_tag")
 
@@ -285,7 +319,9 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
     if style_rec:
         records.insert(0, style_rec)
         claims.insert(0, style_rec["claim"])
-    cards = [v.card for v in verdicts if v.action == "card" and v.card]
+    cards = ([habit_card] if habit_card else []) + [v.card for v in verdicts if v.action == "card" and v.card]
+    if habit_line:
+        asks.append(habit_line)
     asks += [v.reason for v in verdicts if v.action in ("ask", "reject") and v.reason]
     fails = [f"I couldn't change {KIND_LABEL[k]} just now; please try that part again." for k in failed]
     truncated = {"changes": truncated_changes, **(style_ev.pop("truncated", None) or {})}

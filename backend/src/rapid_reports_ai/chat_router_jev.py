@@ -44,6 +44,13 @@ QUESTIONS: Dict[str, dict] = {
                  "cannot show, from another body region, modality or kind of document? A request to add, require or "
                  "mention something this scan could plausibly assess is not unrelated."),
 }
+# Habit guard until item 5 (findings-triggered rows): a rule that applies only when a finding is present must not be
+# written as a normal, negative, value or always-printed line. Asked in the same tag call.
+GUARDS = ("habit",)
+QUESTIONS["habit"] = _q("The INSTRUCTION asks for something to be stated or asked only when a particular finding is "
+                        "present.")
+HABIT_MIN = 0.5
+
 # requires_A from the same lab (req_A), word for word
 REQUIRES: dict = _q("Does this LINE require the report to state something that the report could otherwise leave out?",
                     "Yes: it makes a finding, structure, value, comparison or statement mandatory in every report, or "
@@ -60,16 +67,16 @@ def _score(answers: dict, key: str) -> float:
 
 
 async def tag(instruction: str, scan_type: str = "", context: str = "", transport=None) -> Dict[str, float]:
-    """P(yes) per kind in KINDS, one Jev call. Raises on any failure (the caller falls back)."""
+    """P(yes) per kind in KINDS and per guard in GUARDS, one Jev call. Raises on any failure (the caller falls back)."""
     state = f"SCAN TYPE: {scan_type or 'not given'}\n\nINSTRUCTION:\n{(instruction or '').strip()}"
     if (context or "").strip():
         state += f"\n\nPREVIOUS REPLY (context only):\n{context.strip()}"
     r = await jev_post({"model": JEV_MODEL, "state": state,
-                        "questions": {k: dict(QUESTIONS[k]) for k in KINDS}},
+                        "questions": {k: dict(QUESTIONS[k]) for k in KINDS + GUARDS}},
                        os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
     r.raise_for_status()
     answers = r.json().get("answers") or {}
-    return {k: _score(answers, k) for k in KINDS}
+    return {k: _score(answers, k) for k in KINDS + GUARDS}
 
 
 async def requires(lines: List[str], transport=None) -> List[float]:

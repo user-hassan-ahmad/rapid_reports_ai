@@ -89,7 +89,9 @@ def test_habit_vs_normal_confusion_placeholder():
     scores = {"i1": {k: 0.8 if k == "normal" else 0.1 for k in KINDS},
               "i2": {k: 0.2 for k in KINDS}, "i3": {k: 0.9 for k in KINDS}}
     assert lab.habit_confusion(items, scores) == {"habit_items": 2, "tagged_normal": 1, "labelled_normal": 1,
-                                                  "tagged_normal_but_not_labelled": 1}
+                                                  "tagged_normal_but_not_labelled": 1, "habit_guard_yes": 0}
+    scores["i1"]["habit"] = 0.9
+    assert lab.habit_confusion(items, scores)["habit_guard_yes"] == 1
 
 
 def test_the_default_root_is_the_private_lab_folder():

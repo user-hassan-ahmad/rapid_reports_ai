@@ -4,7 +4,7 @@
 	// until a tap; the parent posts the answer to /skill-sheet/refine/card.
 	import { changeFor, editWording, wordingProblem, type Answer } from '$lib/template-rules/cards';
 	import type { CardWording, DecisionCard } from '$lib/template-rules/types';
-	import { isProposal, type CardAnswer, type ProposalCard, type RouterCard } from './types';
+	import { isHabit, isProposal, type CardAnswer, type ProposalCard, type RouterCard } from './types';
 
 	let {
 		cards,
@@ -50,7 +50,9 @@
 	{#each cards as card (card.id)}
 		<div class="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm text-gray-200">
 			<p>{card.title}</p>
-			{#if done[card.id]}
+			{#if isHabit(card)}
+				<p class="text-xs text-gray-400 mt-1">Nothing in the template changed for it.</p>
+			{:else if done[card.id]}
 				<p class="text-xs text-gray-400 mt-1">{done[card.id]}</p>
 			{:else if isProposal(card)}
 				<div class="flex gap-2 mt-2">

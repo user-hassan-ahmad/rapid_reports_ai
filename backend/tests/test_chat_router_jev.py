@@ -60,9 +60,9 @@ async def test_the_tag_call_sends_each_question_spec_as_is():
 async def test_tag_asks_all_kinds_in_one_call_with_the_scan_type_and_context():
     seen = []
     scores = {k: 0.1 * i for i, k in enumerate(J.KINDS)}
-    t = _transport(lambda body: {k: {"noul": scores[k]} for k in body["questions"]}, seen)
+    t = _transport(lambda body: {k: {"noul": scores.get(k, 0.0)} for k in body["questions"]}, seen)
     out = await J.tag("drop width and keep it short", "Router test", context="Done.", transport=t)
-    assert out == scores and len(seen) == 1
+    assert out == {**scores, "habit": 0.0} and len(seen) == 1
     assert "SCAN TYPE: Router test" in seen[0]["state"] and "drop width" in seen[0]["state"]
     assert "PREVIOUS REPLY" in seen[0]["state"]
     assert all(q["type"] == "noul" for q in seen[0]["questions"].values())
@@ -80,3 +80,12 @@ async def test_requires_asks_one_call_per_line_in_order():
     assert await J.requires(["Keep it brief.", "Always state the size."], transport=t) == [0.1, 0.9]
     assert len(seen) == 2 and seen[0]["questions"]["q"] == J.REQUIRES
     assert await J.requires([], transport=t) == []
+
+
+async def test_the_habit_guard_is_asked_in_the_same_call():
+    assert J.GUARDS == ("habit",) and J.QUESTIONS["habit"] == {"type": "noul", "instructions": (
+        "The INSTRUCTION asks for something to be stated or asked only when a particular finding is present.")}
+    seen = []
+    t = _transport(lambda body: {k: {"noul": 0.7 if k == "habit" else 0.1} for k in body["questions"]}, seen)
+    out = await J.tag("with diverticulitis always comment on collection", "CT", transport=t)
+    assert out["habit"] == 0.7 and set(seen[0]["questions"]) == set(J.KINDS) | {"habit"} and len(seen) == 1

@@ -10,7 +10,15 @@ export interface ProposalCard {
 	apply: Record<string, unknown>;
 }
 
-export type RouterCard = DecisionCard | ProposalCard;
+/** A finding-triggered habit the router parked (nothing written; set up later, item 5): shown, never applied. */
+export interface HabitCard {
+	id: string;
+	kind: 'habit';
+	title: string;
+	instruction: string;
+}
+
+export type RouterCard = DecisionCard | ProposalCard | HabitCard;
 
 /** One applied change of a router turn; opaque here, /refine/undo reverses it. */
 export type RouterRecord = Record<string, unknown>;
@@ -35,3 +43,4 @@ export interface RouterTurnResponse {
 }
 
 export const isProposal = (c: RouterCard): c is ProposalCard => c.kind === 'proposal';
+export const isHabit = (c: RouterCard): c is HabitCard => c.kind === 'habit';

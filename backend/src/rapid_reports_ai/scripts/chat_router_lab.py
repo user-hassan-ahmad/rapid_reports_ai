@@ -82,7 +82,8 @@ def habit_confusion(items: List[dict], scores: Dict[str, dict]) -> dict:
     tagged = [it for it in habit if scores[it["id"]]["normal"] >= J.TAG_MIN]
     return {"habit_items": len(habit), "tagged_normal": len(tagged),
             "labelled_normal": sum(bool(it["labels"]["normal"]) for it in habit),
-            "tagged_normal_but_not_labelled": sum(not it["labels"]["normal"] for it in tagged)}
+            "tagged_normal_but_not_labelled": sum(not it["labels"]["normal"] for it in tagged),
+            "habit_guard_yes": sum(scores[it["id"]].get("habit", 0.0) >= J.HABIT_MIN for it in habit)}
 
 
 def _norm_obj(x):

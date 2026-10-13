@@ -487,3 +487,44 @@ async def test_a_plausible_always_mention_request_passes_the_misfit_check(fake):
     fake["tags"], fake["seen"] = tags(misfit=0.5, normal=0.9), []
     blocked = await R.route_turn(ROUTER_SHEET, [], "always mention the ECV")
     assert blocked.evidence["route"] == "ask" and fake["seen"] == [] and not blocked.applied
+
+
+# ── habit guard (until item 5: findings-triggered rows) ──────────────────────────────────────────────────────────
+async def test_a_finding_triggered_habit_is_parked_and_nothing_is_written(fake):
+    led, _ = L.set_choice([], "value", "Width", {"need": "every"})
+    fake["tags"] = {**tags(normal=0.9, value=0.8, fixed=0.7), "habit": 0.9}
+    fake["calls"]["normal"] = CH.NormalOut(changes=[CH.NormalChange(paragraph="Upper", negative="No collection.",
+                                                                    to="add", text="No collection.")])
+    t = await R.route_turn(ROUTER_SHEET, led, "with diverticulitis always comment on collection")
+    assert not t.applied and t.sheet == ROUTER_SHEET and t.ledger == L.clean(led) and t.records == []
+    assert fake["seen"] == []                                   # no normal, negative, value or fixed call at all
+    (card,) = t.cards
+    assert card["kind"] == "habit" and card["title"] == (
+        "Saved as a habit to set up: when diverticulitis, always comment on collection")
+    assert t.evidence["habit"] == {"score": 0.9, "condition": "diverticulitis",
+                                   "parked": "with diverticulitis always comment on collection"}
+    assert R.HABIT_LINE in t.reply
+
+
+async def test_a_habit_turn_still_applies_its_style_part(fake):
+    fake["tags"] = {**tags(normal=0.9, style=0.9), "habit": 0.8}
+    fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=NEW_IC)], summary="Shorter.")
+    t = await R.route_turn(ROUTER_SHEET, [], "when there is a mass say so, and keep the impression shorter")
+    assert t.applied and NEW_IC in t.sheet and [k for k, _ in fake["seen"]] == ["style"]
+    assert t.cards[0]["kind"] == "habit" and "when there is a mass" in t.cards[0]["title"]
+
+
+async def test_a_habit_with_no_clear_condition_gets_an_ask_line(fake):
+    fake["tags"] = {**tags(normal=0.9), "habit": 0.6}
+    t = await R.route_turn(ROUTER_SHEET, [], "comment on collections in the right cases")
+    assert not t.applied and t.cards[0]["title"] == (
+        "Saved as a habit to set up: comment on collections in the right cases")
+    assert R.HABIT_ASK in t.reply
+
+
+async def test_no_habit_below_the_threshold(fake):
+    fake["tags"] = {**tags(normal=0.9), "habit": 0.49}
+    fake["calls"]["normal"] = CH.NormalOut(changes=[CH.NormalChange(paragraph="Upper", structure="alpha",
+                                                                    to="reword", text="Alpha is fine.")])
+    t = await R.route_turn(ROUTER_SHEET, [], "say Alpha is fine.")
+    assert t.applied and "habit" not in t.evidence

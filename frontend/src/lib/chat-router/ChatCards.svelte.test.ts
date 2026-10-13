@@ -76,6 +76,14 @@ describe('ChatCards', () => {
 		await expect.element(page.getByText('Leave out values to fill in.')).toBeInTheDocument();
 	});
 
+	it('a parked habit card is shown with no choices', async () => {
+		const onAnswer = vi.fn();
+		render(ChatCards, { cards: [{ id: 'habit:1', kind: 'habit', title: 'Saved as a habit to set up: when X, say Y', instruction: 'x' }], onAnswer });
+		await expect.element(page.getByText('Saved as a habit to set up: when X, say Y')).toBeInTheDocument();
+		await expect.element(page.getByText('Nothing in the template changed for it.')).toBeInTheDocument();
+		expect(onAnswer).not.toHaveBeenCalled();
+	});
+
 	it('a proposal card applies on tap, or is left alone without a call', async () => {
 		const onAnswer = vi.fn();
 		render(ChatCards, { cards: [proposal, { ...proposal, id: 'proposal:2' }], onAnswer });
