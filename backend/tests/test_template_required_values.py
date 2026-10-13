@@ -1,0 +1,167 @@
+import pytest
+
+from rapid_reports_ai.template_required_values import (apply_required_values, backstop, missing_line, values_applied,
+                                                       write_missing)
+from rapid_reports_ai.template_sheet_grammar import parse_sheet
+
+SHEET = """## Report Structure
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION CONCLUSION | header: "Conclusion:" | role: impression
+
+## Report-wide
+RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["LVEF" | "LV mass index" | "RVEF"] AT TOP
+
+## Paragraph: Left ventricle (FINDINGS)
+COVERS ["left ventricle"]
+NORMAL [left ventricle] "Normal left ventricular size and function."
+"""
+LINE = 'RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["LVEF" | "LV mass index" | "RVEF"] AT TOP'
+
+HEADED = """## Report Structure
+SECTION OPENING | header: none | role: other
+SECTION LV | header: "LEFT VENTRICLE" | role: findings
+SECTION RV | header: "RIGHT VENTRICLE" | role: findings
+SECTION CONCLUSION | header: "Conclusion:" | role: impression
+
+## Report-wide
+RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["RVEF"] AT TOP
+
+## Paragraph: Left ventricle (LV)
+COVERS ["left ventricle"]
+NORMAL [left ventricle] "Normal LV."
+"""
+
+
+def test_the_list_line_leaves_the_sheet_and_the_record_keeps_the_na_items():
+    text, rec = apply_required_values(SHEET, ["rvef.", " LV MASS INDEX"])
+    assert LINE not in text and "LIST_MISSING" not in text and text.endswith("\n")
+    assert rec == {"lists": [{"line": 6, "items": ["LVEF", "LV mass index", "RVEF"], "na": ["LV mass index", "RVEF"],
+                              "position": "top", "section": "FINDINGS", "outcome": "applied"}],
+                   "skipped": None, "error": None}
+    assert values_applied(rec)
+    res = parse_sheet(text, mode="template")
+    assert res.errors == [] and res.structure.usable
+
+
+def test_nothing_marked_na_still_removes_the_line():
+    text, rec = apply_required_values(SHEET, [])
+    assert "LIST_MISSING" not in text and rec["lists"][0]["na"] == [] and values_applied(rec)
+
+
+def test_an_item_on_two_lists_is_listed_once():
+    two = SHEET + 'RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["lvef" | "LV wall thickness"] AT END\n'
+    text, rec = apply_required_values(two, ["LVEF", "LV wall thickness"])
+    assert "LIST_MISSING" not in text
+    assert [e["na"] for e in rec["lists"]] == [["LVEF"], ["LV wall thickness"]]
+
+
+def test_a_sheet_without_a_list_or_not_parsing_clean_is_unchanged_and_not_applied():
+    plain = SHEET.replace(LINE + "\n", "")
+    assert apply_required_values(plain, ["LVEF"]) == (plain, {"lists": [], "skipped": "no_list", "error": None})
+    legacy = "## FINDINGS\nLVEF: {value}\n"
+    text, rec = apply_required_values(legacy, [])
+    assert (text, rec) == (legacy, {"lists": [], "skipped": "parse", "error": None}) and not values_applied(rec)
+
+
+def test_never_raises(monkeypatch):
+    import rapid_reports_ai.template_required_values as M
+
+    def boom(sheet):
+        raise RuntimeError("parser down")
+    monkeypatch.setattr(M, "_clean", boom)
+    text, rec = apply_required_values(SHEET, [])
+    assert text == SHEET and rec["error"].startswith("RuntimeError") and not values_applied(rec)
+
+
+def test_code_writes_the_literal_line_at_the_top_of_its_section_and_strips_the_generators():
+    _, rec = apply_required_values(SHEET, ["RVEF", "LV mass index"])
+    report = "Findings:\nValues not provided: LVEF, RVEF.\nNormal LV.\n\nConclusion:\nNormal."
+    assert write_missing(report, SHEET, rec["lists"]) == (
+        "Findings:\nValues not provided: LV mass index, RVEF.\nNormal LV.\n\nConclusion:\nNormal.", 1)
+    assert missing_line(["RVEF"]) == "Values not provided: RVEF."
+
+
+def test_at_end_without_headers_and_by_section_header():
+    end = SHEET.replace("AT TOP", "AT END")
+    _, rec = apply_required_values(end, ["LVEF"])
+    assert write_missing("Findings:\nNormal LV.\n\nConclusion:\nNormal.", end, rec["lists"])[0] == \
+        "Findings:\nNormal LV.\nValues not provided: LVEF.\n\nConclusion:\nNormal."
+    _, rec = apply_required_values(SHEET, ["LVEF"])
+    assert write_missing("Normal LV.", SHEET, rec["lists"])[0] == "Values not provided: LVEF.\nNormal LV."
+    _, rec = apply_required_values(HEADED, ["RVEF"])
+    report = "No previous CMR available.\n\nLEFT VENTRICLE\nNormal LV.\n\nRIGHT VENTRICLE\nNormal RV.\n\nConclusion:\nNormal."
+    assert write_missing(report, HEADED, rec["lists"])[0] == (
+        "No previous CMR available.\n\nLEFT VENTRICLE\nValues not provided: RVEF.\nNormal LV.\n\nRIGHT VENTRICLE\n"
+        "Normal RV.\n\nConclusion:\nNormal.")
+
+
+def test_nothing_na_writes_nothing_but_strips_an_unrequested_list():
+    _, rec = apply_required_values(SHEET, [])
+    assert write_missing("Findings:\nValues not provided: RVEF.\nNormal LV.", SHEET, rec["lists"]) == ("Findings:\nNormal LV.", 1)
+
+
+def test_write_missing_never_raises(monkeypatch):
+    import rapid_reports_ai.template_required_values as M
+
+    def boom(sheet):
+        raise RuntimeError("parser down")
+    monkeypatch.setattr(M, "_clean", boom)
+    assert write_missing("Normal LV.", SHEET, [{"na": ["LVEF"], "position": "top", "section": "FINDINGS",
+                                                "outcome": "applied"}]) == ("Normal LV.", 0)
+
+
+def _scores(ps, seen=None):
+    async def ask(report, items):
+        if seen is not None:
+            seen.update(report=report, items=items)
+        return ps
+    return ask
+
+
+async def test_backstop_lists_and_flags_a_filled_value_the_report_lacks():
+    _, rec = apply_required_values(SHEET, ["RVEF"])
+    seen = {}
+    lists, flags, b = await backstop("Findings:\nLVEF 45%.", rec["lists"], ["LVEF", "LV mass index"],
+                                     ask=_scores([0.9, 0.2], seen))
+    assert seen == {"report": "Findings:\nLVEF 45%.", "items": ["LVEF", "LV mass index"]}
+    assert lists[0]["na"] == ["RVEF", "LV mass index"] and rec["lists"][0]["na"] == ["RVEF"]   # the input is untouched
+    assert flags == [{"kind": "value_missing", "text": "LV mass index",
+                      "message": "Required value LV mass index not found in the report"}]
+    assert b == {"asked": 2, "missing": ["LV mass index"], "error": None}
+    assert write_missing("Findings:\nLVEF 45%.", SHEET, lists)[0] == \
+        "Findings:\nValues not provided: RVEF, LV mass index.\nLVEF 45%."
+
+
+async def test_backstop_creates_the_line_when_nothing_was_marked_na():
+    _, rec = apply_required_values(SHEET, [])
+    lists, flags, _ = await backstop("Findings:\nNormal.", rec["lists"], ["LVEF"], ask=_scores([0.1]))
+    assert write_missing("Findings:\nNormal.", SHEET, lists)[0] == "Findings:\nValues not provided: LVEF.\nNormal."
+    assert [f["text"] for f in flags] == ["LVEF"]
+
+
+async def test_backstop_leaves_a_value_the_report_states_alone():
+    _, rec = apply_required_values(SHEET, [])
+    lists, flags, b = await backstop("Findings:\nLVEF 45%.", rec["lists"], ["LVEF"], ask=_scores([0.9]))
+    assert lists == rec["lists"] and flags == [] and b["missing"] == []
+    assert write_missing("Findings:\nLVEF 45%.", SHEET, lists)[0] == "Findings:\nLVEF 45%."
+
+
+async def test_backstop_jev_failure_changes_nothing_and_flags_nothing():
+    _, rec = apply_required_values(SHEET, [])
+
+    async def boom(report, items):
+        raise RuntimeError("jev down")
+    lists, flags, b = await backstop("Findings:\nNormal.", rec["lists"], ["LVEF"], ask=boom)
+    assert lists is rec["lists"] and flags == [] and b["error"].startswith("RuntimeError")
+    lists, flags, b = await backstop("Findings:\nNormal.", rec["lists"], ["LVEF"], ask=_scores([]))
+    assert lists is rec["lists"] and flags == [] and b["error"] == "jev: answer count mismatch"
+
+
+@pytest.mark.parametrize("filled", [[], [" "], None])
+async def test_backstop_without_filled_items_asks_nothing(filled):
+    _, rec = apply_required_values(SHEET, [])
+
+    async def fail(report, items):
+        raise AssertionError("no call")
+    lists, flags, b = await backstop("Findings:\nNormal.", rec["lists"], filled or [], ask=fail)
+    assert lists is rec["lists"] and flags == [] and b == {"asked": 0, "missing": [], "error": None}
