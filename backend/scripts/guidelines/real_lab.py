@@ -206,11 +206,20 @@ def _read_checkpoint(path: Path | None) -> dict:
     done: dict = {}
     if path is None:
         return done
+    bad = 0
     for line in path.read_text().splitlines():
-        if line.strip():
+        if not line.strip():
+            continue
+        try:
             rec = json.loads(line)
-            if "error" not in rec:
+            if "error" in rec:
+                _ = rec["case"]
+            else:
                 done[rec["case"]] = rec["cards"]
+        except (ValueError, KeyError, TypeError):        # truncated or malformed line: that case is retried
+            bad += 1
+    if bad:
+        print(f"{bad} unreadable checkpoint lines skipped", file=sys.stderr)
     return done
 
 

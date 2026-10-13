@@ -219,3 +219,15 @@ def test_checkpoint_is_written_per_case_and_resume_skips_done_and_retries_errore
     out = asyncio.run(RL.group(src, tmp_path / "o2", cases_file=sel, resume=ck))
     assert ran == ["b"]
     assert {c["case"] for c in json.loads(out.read_text())} == {"a", "b"}
+    ck2 = next((tmp_path / "o2").glob("group_cases_*.jsonl"))
+    recs2 = [json.loads(line) for line in ck2.read_text().splitlines()]
+    assert {r["case"] for r in recs2} == {"a", "b"} and all("cards" in r for r in recs2)
+
+
+def test_resume_survives_a_truncated_last_line_and_retries_that_case(tmp_path, monkeypatch, capsys):
+    import asyncio
+    import json
+    ck = tmp_path / "ck.jsonl"
+    ck.write_text(json.dumps({"case": "a", "cards": [_card("a")]}) + "\n" + '{"case": "b", "car')
+    assert RL._read_checkpoint(ck) == {"a": [_card("a")]}
+    assert "1 unreadable checkpoint lines skipped" in capsys.readouterr().err
