@@ -21,6 +21,7 @@ SELECT r.id AS report_id,
        q.sheet_fit,
        q.output_adherence,
        q.input_faithfulness,
+       q.dimensions_json->>'path' AS path,  -- template path from the generation stamp ('' = unstamped / quick)
        q.dimensions_json
 FROM reports r
 JOIN users u ON u.id = r.user_id AND lower(u.email) NOT IN (SELECT e FROM excluded)
@@ -36,16 +37,17 @@ WHERE (r.report_type='auto' AND r.generation_mode='quick_ephemeral')
 ORDER BY r.created_at DESC;
 
 
--- ===== Q9a: Quality score averages by pipeline ==============================
+-- ===== Q9a: Quality score averages by pipeline and template path ============
 SELECT pipeline,
+       COALESCE(dimensions_json->>'path', '') AS path,
        count(*) AS scored,
        round(avg(sheet_fit), 2)            AS avg_sheet_fit,
        round(avg(output_adherence), 2)     AS avg_output_adherence,
        round(avg(input_faithfulness), 2)   AS avg_input_faithfulness,
        round(avg(edit_burden)::numeric, 3) AS avg_edit_burden
 FROM report_quality_scores
-GROUP BY pipeline
-ORDER BY pipeline;
+GROUP BY pipeline, COALESCE(dimensions_json->>'path', '')
+ORDER BY pipeline, path;
 
 
 -- ===== Q9b: Score distributions (one row per report; histogram in Metabase) =

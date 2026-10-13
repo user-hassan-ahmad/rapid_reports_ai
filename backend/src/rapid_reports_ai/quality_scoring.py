@@ -310,6 +310,30 @@ def _format_input_data(input_data) -> str:
     return "\n".join(parts)
 
 
+def _stamp(report) -> dict:
+    stamp = getattr(report, "generation_stamp", None)
+    return stamp if isinstance(stamp, dict) else {}
+
+
+def _sheet_for(db, report, current: str) -> str:
+    """The sheet a template report was written from: by its generation stamp, from the template's versions;
+    otherwise the current sheet (older reports, no stamp, an empty sheet, or a hash no version holds)."""
+    from .database.models import TemplateVersion
+    from .template_sheet_structure import sheet_hash
+
+    want = _stamp(report).get("sheet_hash")
+    if not want or sheet_hash(current) == want:
+        return current
+    versions = (db.query(TemplateVersion).filter_by(template_id=report.template_id)
+                .order_by(TemplateVersion.version_number.desc()))
+    for v in versions:
+        cfg = v.template_config if isinstance(v.template_config, dict) else {}
+        s = cfg.get("skill_sheet") or ""
+        if s and sheet_hash(s) == want:
+            return s
+    return current
+
+
 def _assemble_case(db, report) -> dict:
     """Pull the input / skill-sheet / output / final text for one report.
 
@@ -325,6 +349,10 @@ def _assemble_case(db, report) -> dict:
         report (verified: a trauma report whose final_output was an unrelated lumbar
         study; listener scoped to the report viewer 2026-10-13). ``final=None`` gives a
         null edit_burden and the judge still assesses ``ai_output``.
+
+    For templates ``skill_sheet`` is the sheet that wrote the report (``_sheet_for``: matched
+    by the generation stamp's ``sheet_hash`` in the template's versions, else the current
+    sheet), and ``path`` is the stamp's template path ("" when unstamped, and for quick).
     """
     ai_output = report.report_content or ""
     inputs = _format_input_data(report.input_data)  # dictation lives here for BOTH pipelines
@@ -339,7 +367,7 @@ def _assemble_case(db, report) -> dict:
         pipeline = "template"
         tmpl = report.template
         cfg = (tmpl.template_config or {}) if tmpl and isinstance(tmpl.template_config, dict) else {}
-        skill_sheet = cfg.get("skill_sheet") or ""
+        skill_sheet = _sheet_for(db, report, cfg.get("skill_sheet") or "")
         versions = sorted(report.versions or [], key=lambda v: v.version_number)
         if len(versions) > 1:
             ai_output = versions[0].report_content or ai_output
@@ -352,6 +380,7 @@ def _assemble_case(db, report) -> dict:
         "skill_sheet": skill_sheet or "",
         "ai_output": ai_output,
         "final_output": final,
+        "path": _stamp(report).get("path") or "",  # which template path wrote it (generation stamp); "" = unknown/quick
     }
 
 
@@ -477,6 +506,7 @@ def score_report(db, report, *, rescore: bool = False, judge=None,
             "rationale": js.rationale,
             "issues": [i.model_dump() for i in js.issues],
         }
+    dimensions["path"] = case["path"]  # not a dimension: groups scores by template path (Metabase dimensions_json->>'path')
     edit_burden = compute_edit_burden(case["ai_output"], case["final_output"])
     return upsert_score(
         db, report_id=report.id, pipeline=case["pipeline"], scores=scores,

@@ -82,7 +82,7 @@ def test_score_report_quick_path_with_fake_judge(db_session):
     assert row.sheet_fit is None and row.input_faithfulness is None  # retired/split in v2
     assert row.edit_burden is not None and row.edit_burden > 0  # final differs from draft
     # v2.2 adds unwarranted_assertion, which has no DB column and lives here only.
-    assert set(row.dimensions_json) == set(qs.DIMENSIONS_V22)
+    assert set(row.dimensions_json) == set(qs.DIMENSIONS_V22) | {"path"}  # path: grouping key, not a dimension
     assert len(captured) == len(qs.DIMENSIONS_V22)   # one judge call per dimension
     assert "check lungs" in captured[0]           # skill sheet shown to the v2 judge
 
@@ -159,3 +159,41 @@ def test_score_template_report_without_final_scores_with_null_edit_burden(db_ses
     db_session.commit()
     row = qs.score_report(db_session, rep, judge=lambda p, c: qs.JudgeScore(score=3, rationale="ok", issues=[]))
     assert row.pipeline == "template" and row.edit_burden is None and row.output_adherence == 3
+
+
+# --- Judge against the stamped sheet (D7, 2026-10-13) ---
+
+_OLD_SHEET = "## FINDINGS\nOld sheet wording."
+
+
+def _with_old_version(db, template):
+    from rapid_reports_ai.database.models import TemplateVersion
+    db.add(TemplateVersion(template_id=template.id, name=template.name, version_number=1,
+                           template_config={**template.template_config, "skill_sheet": _OLD_SHEET}))
+    db.commit()
+
+
+def test_template_judged_against_the_stamped_sheet(db_session, test_user, guided_template):
+    from rapid_reports_ai.template_sheet_structure import sheet_hash
+    _with_old_version(db_session, guided_template)
+    rep = _mk_template_report(db_session, test_user, guided_template,
+                              stamp={"sheet_hash": sheet_hash(_OLD_SHEET), "path": "scratchpad"})
+    case = qs._assemble_case(db_session, rep)
+    assert case["skill_sheet"] == _OLD_SHEET and case["path"] == "scratchpad"
+
+
+def test_template_sheet_falls_back_to_current(db_session, test_user, guided_template):
+    current = guided_template.template_config["skill_sheet"]
+    _with_old_version(db_session, guided_template)
+    for stamp in (None, {"sheet_hash": None, "path": "lean"}, {"sheet_hash": "f" * 64}, "not-a-dict"):
+        rep = _mk_template_report(db_session, test_user, guided_template, stamp=stamp)
+        case = qs._assemble_case(db_session, rep)
+        assert case["skill_sheet"] == current, stamp
+    assert qs._assemble_case(db_session, _mk_template_report(db_session, test_user, guided_template))["path"] == ""
+
+
+def test_score_row_carries_path(db_session, test_user, guided_template):
+    rep = _mk_template_report(db_session, test_user, guided_template, stamp={"sheet_hash": None, "path": "scratchpad"})
+    db_session.commit()
+    row = qs.score_report(db_session, rep, judge=lambda p, c: qs.JudgeScore(score=3, rationale="ok", issues=[]))
+    assert row.dimensions_json["path"] == "scratchpad"

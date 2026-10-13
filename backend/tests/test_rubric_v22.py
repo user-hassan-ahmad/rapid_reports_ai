@@ -114,4 +114,4 @@ def test_v21_scoring_is_unaffected(db_session):
     r = _mk_report(db_session)
     row = qs.score_report(db_session, r, judge=_fake_judge, version="v2.1")
     assert row.rubric_version == "v2.1"
-    assert set(row.dimensions_json) == set(qs.DIMENSIONS_V2)
+    assert set(row.dimensions_json) == set(qs.DIMENSIONS_V2) | {"path"}  # path: grouping key, not a dimension
