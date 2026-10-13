@@ -725,4 +725,36 @@ describe('session: background previews (checkpoint 4)', () => {
 		expect(api.calls.open.map((c) => c.body.card.key)).toEqual(['fleischner-pulmonary-nodule', 'bts-pulmonary-nodule']);
 		expect(state().views[cardRef(sib)]?.open ?? false).toBe(false);
 	});
+
+	it('queued background previews for cards a later /match removed are dropped', async () => {
+		const packs = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'].map((k) => pack(k));
+		await matchA(packs);
+		expect(api.calls.open).toHaveLength(4); // p5, p6 queued
+		s.round([unit(1, A), unit(2, B)], false, `${A} ${B}`);
+		api.calls.match[2].resolve(matched(packs.slice(0, 4))); // p5, p6 gone
+		await flush();
+		for (const c of api.calls.open) c.resolve(result(packs[0], preview()));
+		await flush();
+		expect(api.calls.open.map((c) => c.body.card.key)).toEqual(['p1', 'p2', 'p3', 'p4']);
+	});
+
+	it('a failed background preview is not retried on every /match; it is on open, or after the backoff', async () => {
+		const a = pack('p1');
+		await matchA([a]);
+		api.calls.open[0].reject(new CopilotError('timeout'));
+		await flush();
+		s.round([unit(1, A), unit(2, B)], false, `${A} ${B}`);
+		api.calls.match[2].resolve(matched([a]));
+		await flush();
+		expect(api.calls.open).toHaveLength(1); // not retried by the next /match
+		await vi.advanceTimersByTimeAsync(MATCH_BACKOFF_MS);
+		s.round([unit(1, A), unit(2, B), unit(3, 'a 1 cm lymph node')], false, `${A} ${B} x`);
+		api.calls.match[3].resolve(matched([a]));
+		await flush();
+		expect(api.calls.open).toHaveLength(2); // after the backoff it is
+		api.calls.open[1].reject(new CopilotError('timeout'));
+		await flush();
+		s.open(cardRef(a)); // a click always asks
+		expect(api.calls.open).toHaveLength(3);
+	});
 });

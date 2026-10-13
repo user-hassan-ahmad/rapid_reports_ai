@@ -66,7 +66,7 @@
 			<div class="cp-col-line">
 				<span class="cp-col-name">{c.title}</span>
 				<span class="cp-col-marks">
-					{#if verdictOf(p)}<VerdictPill verdict={verdictOf(p)!} />{/if}
+					{#if verdictOf(p)}<VerdictPill verdict={verdictOf(p)!} busy={cv.loading && !!cv.result} />{/if}
 					<AssumedChip {assumed} checkFirst={p?.state === 'check_first'} />
 				</span>
 			</div>

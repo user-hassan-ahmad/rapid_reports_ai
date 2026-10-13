@@ -254,12 +254,14 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 
 	// ── /open ──
 	// ── background previews (checkpoint 4): every pack card and sibling column gets its verdict without opening ──
-	let prefetchQueue: (() => Promise<unknown>)[] = [];
+	let prefetchQueue: { ref: string; job: () => Promise<unknown> }[] = [];
+	// a background preview that failed is not retried on every /match: only on open, or after the /match backoff
+	const prefetchFailedAt = new Map<string, number>();
 	const wanted = new Set<string>(); // refs the radiologist opened: a background preview's failure then shows
 	let prefetching = 0;
 	function pump() {
 		while (prefetching < MAX_PREFETCH && prefetchQueue.length && live()) {
-			const job = prefetchQueue.shift()!;
+			const { job } = prefetchQueue.shift()!;
 			prefetching++;
 			void job().finally(() => {
 				prefetching--;
@@ -270,6 +272,11 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	/** Queue a quiet /open for every pack card (finding or exam) and sibling column with no preview yet; never a
 	 *  needs-modality, reference, TNM or "other" card. Cards still expand only on click. */
 	function prefetchPacks() {
+		// cards a later /match removed drop their queued previews
+		const present = new Set(cards.map(cardRef));
+		prefetchQueue = prefetchQueue.filter((q) => present.has(q.ref));
+		const queued = new Set(prefetchQueue.map((q) => q.ref));
+		const due = (seqKey: string) => !queued.has(seqKey) && Date.now() - (prefetchFailedAt.get(seqKey) ?? -Infinity) >= MATCH_BACKOFF_MS;
 		for (const c of cards) {
 			if (c.needs_modality) continue;
 			const kind = kindOf(c);
@@ -277,8 +284,9 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 			const ref = cardRef(c);
 			const v = views[ref] ?? closedView;
 			if (c.siblings.length) {
-				for (const key of columnsToFetch(c, v, false)) prefetchQueue.push(() => fetchColumn(c, key, true));
-			} else if (kind === 'finding' && !v.result && !v.loading && !v.error) prefetchQueue.push(() => fetchCard(c, true));
+				for (const key of columnsToFetch(c, v, false))
+					if (due(`${ref}#${key}`)) prefetchQueue.push({ ref, job: () => fetchColumn(c, key, true) });
+			} else if (kind === 'finding' && !v.result && !v.loading && !v.error && due(ref)) prefetchQueue.push({ ref, job: () => fetchCard(c, true) });
 		}
 		pump();
 	}
@@ -305,12 +313,15 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 			if (openSeq.get(seqKey) !== seq || !live()) return null;
 			set({ loading: false, error: null, result: res });
 			previewed.set(seqKey, { ...body.answered });
+			prefetchFailedAt.delete(seqKey);
 			log.ms[body.card.key] = res.ms ?? Date.now() - t0;
 			if (!log.opened.includes(body.card.key)) log.opened.push(body.card.key);
 			return res;
 		} catch (e) {
 			if (openSeq.get(seqKey) === seq && failed(e)) {
-				set(background && !wanted.has(seqKey) ? { loading: false, error: null } : { loading: false, error: reason(e) }); // fail open: a background preview that fails just leaves the card to its click
+				const silent = background && !wanted.has(seqKey);
+				set(silent ? { loading: false, error: null } : { loading: false, error: reason(e) }); // fail open: a background preview that fails just leaves the card to its click
+				if (silent) prefetchFailedAt.set(seqKey, Date.now());
 				fail(body.card.key);
 			}
 			return null;
@@ -466,6 +477,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		publish();
 	}
 
+	// Kept for the future Apply (Calculate is not on the card since the simplified card; Apply stays off).
 	async function calculateCard(ref: string) {
 		if (!live()) return;
 		const t = targetOf(ref);

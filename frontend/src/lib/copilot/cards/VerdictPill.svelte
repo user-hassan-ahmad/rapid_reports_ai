@@ -5,7 +5,8 @@
 	import { categoryColor, categoryText, type Verdict } from './format';
 
 	/** `text` replaces the pill's words (the quiet exam line shows the grade, its headline). */
-	let { verdict, text = null }: { verdict: Verdict; text?: string | null } = $props();
+	/** `busy`: the card is re-previewing after an edit (the pill is about to change): subtle, and aria-busy. */
+	let { verdict, text = null, busy = false }: { verdict: Verdict; text?: string | null; busy?: boolean } = $props();
 	const words = $derived(text || verdict.pill);
 	// a native title only when the text is cut off: otherwise it repeats what is on screen
 	let truncated = $state(false);
@@ -30,6 +31,8 @@
 	class="cp-pill cp-pill--{verdict.category}"
 	class:cp-pill--tentative={verdict.tentative}
 	class:cp-pill--excluded={verdict.excluded}
+	class:cp-pill--busy={busy}
+	aria-busy={busy || undefined}
 	style:--cp-cat={categoryColor(verdict.category)}
 	style:--cp-cat-text={categoryText(verdict.category)}
 	title={truncated ? words : undefined}
@@ -56,6 +59,24 @@
 		background: color-mix(in srgb, var(--cp-cat) 14%, transparent);
 		border: 1px solid color-mix(in srgb, var(--cp-cat) 38%, transparent);
 		white-space: nowrap;
+	}
+	.cp-pill--busy {
+		animation: cp-pill-pulse 1.4s ease-in-out infinite;
+	}
+	@keyframes cp-pill-pulse {
+		0%,
+		100% {
+			opacity: 1;
+		}
+		50% {
+			opacity: 0.55;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.cp-pill--busy {
+			animation: none;
+			opacity: 0.7;
+		}
 	}
 	.cp-pill-icon {
 		display: inline-flex;

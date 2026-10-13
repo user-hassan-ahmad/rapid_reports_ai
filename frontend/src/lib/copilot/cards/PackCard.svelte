@@ -57,7 +57,7 @@
 
 {#snippet aside()}
 	<span class="cp-head-marks">
-		{#if verdict}<VerdictPill {verdict} />{/if}
+		{#if verdict}<VerdictPill {verdict} busy={view.loading && !!view.result} />{/if}
 		<AssumedChip {assumed} checkFirst={p?.state === 'check_first'} />
 	</span>
 {/snippet}
@@ -103,5 +103,6 @@
 		align-items: center;
 		gap: 4px 6px;
 		max-width: 65%;
+		min-width: 0;
 	}
 </style>

@@ -59,7 +59,7 @@
 	{@const other = !!v.fromOther}
 	{@const kind = kindOf(c, other)}
 	{#if kind === 'exam' && v.result && quiet(c, v.result.preview)}
-		<QuietLine card={c} result={v.result} />
+		<QuietLine card={c} result={v.result} busy={v.loading} />
 	{:else if kind === 'exam' || kind === 'finding'}
 		{#if c.siblings.length}
 			<SiblingColumns card={c} view={v} {other} layout={siblingLayout} {onEdit} {...handlers} />

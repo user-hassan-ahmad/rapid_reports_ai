@@ -11,7 +11,7 @@
 	import VerdictPill from './VerdictPill.svelte';
 	import PackBody from './PackBody.svelte';
 
-	let { card, result }: { card: Card; result: OpenResult } = $props();
+	let { card, result, busy = false }: { card: Card; result: OpenResult; busy?: boolean } = $props();
 	let expanded = $state(false);
 	const p = $derived(result.preview);
 	const verdict = $derived(verdictOf(p));
@@ -25,7 +25,7 @@
 	<div class="cp-quiet-row">
 		<button type="button" class="cp-quiet-line" aria-expanded={expanded} onclick={() => (expanded = !expanded)}>
 			<span class="cp-quiet-text">{card.name}<span class="cp-sr-only">{' · '}</span></span>
-			{#if verdict}<VerdictPill {verdict} text={verdict.headline} />{/if}
+			{#if verdict}<VerdictPill {verdict} text={verdict.headline} {busy} />{/if}
 			{#if setByExam(p)}<span class="cp-chip">set by the exam</span>{/if}
 			<svg class="cp-quiet-chev" class:open={expanded} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" /></svg>
 		</button>

@@ -359,6 +359,8 @@ describe('CopilotCards', () => {
 		const r = render(CopilotCards, { ...single(c, v(result(c, pv), { open: true, loading: true })), onEdit: vi.fn() });
 		const verdict = page.getByRole('region', { name: 'Verdict' });
 		await expect.element(verdict).toHaveAttribute('aria-busy', 'true');
+		expect(document.querySelector('.cp-pill')!.getAttribute('aria-busy')).toBe('true'); // the pill is about to change
+		expect(document.querySelector('.cp-pill')!.classList.contains('cp-pill--busy')).toBe(true);
 		await expect.element(page.getByText('Updating on the new values…')).toBeInTheDocument();
 		await r.rerender({ views: { [cardRef(c)]: v(result(c, pv), { open: true, editError: "Couldn't apply that change; it was undone" }) } });
 		await expect.element(page.getByRole('alert')).toHaveTextContent('it was undone');
@@ -443,6 +445,15 @@ describe('CopilotCards', () => {
 		expect(list.hidden).toBe(true);
 		await valuesToggle.click();
 		expect(list.hidden).toBe(false);
+	});
+
+	it('a single assumption is named in full in the head (the chip truncates only on overflow)', async () => {
+		const c = card({ finding: finding.text });
+		const pv = preview({ proposal: null, draft_outcome: outcome({ category: 'none' }), draft: [draft({ input: 'x', label: 'History of extra-adrenal malignancy', role: 'eligibility', state: 'assumed', value: 'No' })] });
+		render(CopilotCards, single(c, v(result(c, pv))));
+		const one = page.getByText('⚠ assumes: History of extra-adrenal malignancy No');
+		await expect.element(one).toBeInTheDocument();
+		expect(getComputedStyle(one.element()).textOverflow).toBe('ellipsis');
 	});
 
 	it('PackCard takes an assumptions list directly (B1 feeds Task 3)', async () => {
