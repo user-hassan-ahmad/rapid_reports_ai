@@ -21,14 +21,14 @@ from .template import paragraph_regions
 logger = logging.getLogger(__name__)
 
 TIMEOUT_S = 3.0
-TRIGGER_MIN = 0.5   # = jev_stack.CONDITION_MIN until the trigger lab reports (Hassan sets it)
-# Two wordings labbed (scripts/triggered_rows_lab.py); B names what does not count. Case-agnostic.
-TRIGGER_WORDINGS = {
-    "A": "The DICTATION reports this: {condition}.",
-    "B": ("The DICTATION reports this as present: {condition}. A finding the dictation negates, excludes or only raises "
-          "as a question is not reported."),
-}
-TRIGGER_WORDING = TRIGGER_WORDINGS["B"]
+# Trigger lab 2026-10-13 (REPORT in the private synthetic/triggered_rows folder): wording B at 0.5 gave P .95 / R .99
+# on synthetic dictations and P 1.0 / R 8/9 held out. Hassan: a habit fires only on a STATED finding, never a hedged or
+# possible one; the exact hedge-exclusion clause is being chosen in a Jev round. The wording is this ONE constant:
+# changing it is a one-line edit. Case-agnostic.
+TRIGGER_MIN = 0.5
+TRIGGER_WORDING = ("The DICTATION reports this as present: {condition}. A finding the dictation negates, excludes or "
+                   "only raises as a question is not reported.")
+TRIGGER_WORDINGS = {"A": "The DICTATION reports this: {condition}.", "B": TRIGGER_WORDING}   # the lab's arms
 
 
 class Habit(BaseModel):

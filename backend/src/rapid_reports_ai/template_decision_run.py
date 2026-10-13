@@ -142,7 +142,7 @@ The state says what the wording states, never how often it is used: do not decid
 
 3. HABITS: a check the radiologist writes only when a particular finding is reported (for example, whether that finding extends into a neighbouring structure), seen in at least two reports. Never a statement every report makes whatever the findings (that is a normal), never a measured value. For each habit give:
 - paragraph: the part of the report it is written in (the structure or region the reports name there, a few words);
-- condition: the finding that sets it off, as a statement naming the finding in at least two words and ending "is reported" (for example "a focal abnormality of the main structure is reported");
+- condition: the finding that sets it off, as a statement naming the finding and the structure where it is, in at least two words, ending "is reported" (for example "a focal abnormality in the main structure is reported", not the finding alone);
 - question: the check as a short question (at most 12 words, ending with "?");
 - yes: the sentence a report writes when the check is positive; no: the sentence when it is negative. Copy at least one of them word for word from the reports and write the other in the same style;
 - quotes: the sentence that writes the habit in every report that has it, copied word for word, with the report's number.

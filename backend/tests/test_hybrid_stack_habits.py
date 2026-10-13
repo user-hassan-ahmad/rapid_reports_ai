@@ -121,3 +121,9 @@ def test_trigger_wordings_are_case_agnostic_and_the_cut_off_is_the_context_rules
         for word in CLINICAL:
             assert word not in w.lower(), word
     assert H.TRIGGER_WORDING in H.TRIGGER_WORDINGS.values() and H.TRIGGER_MIN == 0.5
+
+
+def test_the_trigger_wording_is_one_constant_and_arm_b_of_the_lab():
+    # lab 2026-10-13: arm B at 0.5; Hassan: only stated findings fire (the hedge clause is a one-line change)
+    assert H.TRIGGER_WORDINGS["B"] is H.TRIGGER_WORDING and H.TRIGGER_MIN == 0.5
+    assert "negates, excludes or only raises as a question" in H.TRIGGER_WORDING

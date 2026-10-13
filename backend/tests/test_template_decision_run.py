@@ -381,3 +381,8 @@ def test_flat_string_quotes_are_read_for_habits_too():
 def test_the_prompt_asks_for_each_habit_field():
     for field in ("paragraph:", "condition:", "question:", "yes:", "no:", "at least two reports", "is reported"):
         assert field in R.SYSTEM, field
+
+
+def test_the_prompt_asks_habit_conditions_to_name_where_the_finding_is():
+    s = R.SYSTEM
+    assert "the structure where it is" in s and "not the finding alone" in s
