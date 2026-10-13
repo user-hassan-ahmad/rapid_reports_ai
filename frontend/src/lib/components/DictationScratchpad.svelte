@@ -2484,8 +2484,14 @@
 	}
 </script>
 
-<div class="flex flex-row flex-1 min-h-0 gap-3">
-<div class="flex flex-col flex-1 min-h-0 min-w-0">
+<!-- the Copilot row exists only while the rail can show: otherwise the wrapper is display: contents (no box) and the
+     column keeps today's classes, so the layout is exactly as it was for everyone with the Copilot off -->
+<div
+	class={copilotActive ? 'flex flex-row flex-1 min-h-0 gap-3' : undefined}
+	style={copilotActive ? undefined : 'display: contents'}
+	data-testid="scratchpad-root"
+>
+<div class="flex flex-col flex-1 min-h-0" class:min-w-0={copilotActive}>
 
 	<!-- Floating dictate button — centered, overlaps the top edge of the editor+margin row -->
 	<div class="flex flex-col items-center gap-1.5 relative z-10">

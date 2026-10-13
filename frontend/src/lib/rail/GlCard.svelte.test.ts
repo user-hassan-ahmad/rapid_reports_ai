@@ -62,6 +62,13 @@ describe('GlCard', () => {
 		expect(card().hasAttribute('aria-disabled')).toBe(false);
 	});
 
+	it('the head reports its state with aria-expanded', async () => {
+		render(GlCard, { title: 'Synthetic nodule', body });
+		expect(head().getAttribute('aria-expanded')).toBe('false');
+		head().click();
+		await expect.poll(() => head().getAttribute('aria-expanded')).toBe('true');
+	});
+
 	it('honours a bound open from the host', async () => {
 		render(GlCard, { title: 'Synthetic nodule', open: true, body });
 		await expect.element(page.getByText('Card body')).toBeInTheDocument();

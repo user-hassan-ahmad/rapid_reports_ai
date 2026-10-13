@@ -73,6 +73,7 @@
 		class="gl-head {open ? 'gl-head--open' : ''}"
 		role="button"
 		tabindex="0"
+		aria-expanded={open}
 		aria-describedby={dim ? dimId : undefined}
 		onclick={toggle}
 		onkeydown={(e) => {
