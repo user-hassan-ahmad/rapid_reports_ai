@@ -8,7 +8,8 @@ import {
 	isSentence,
 	wordingProblem,
 	flatCards,
-	validValueName
+	validValueName,
+	HABIT_WHERE_HINT
 } from './cards';
 import type { DecisionCard } from './types';
 
@@ -143,5 +144,34 @@ describe('template-rules cards', () => {
 		expect(validValueName('a "b"')).toBe(false);
 		expect(validValueName('one two three four five six seven eight nine')).toBe(false);
 		expect(validValueName('  ')).toBe(false);
+	});
+});
+
+describe('habit cards', () => {
+	const HKEY = 'Upper :: an alpha abnormality is reported';
+	const T = { question: 'Extension beyond alpha?', yes: 'The abnormality extends beyond alpha.', no: 'No extension beyond alpha.' };
+	const habit = (): DecisionCard => ({
+		id: 'habit:x', kind: 'habit', step: 'rules', title: 'Upper: when an alpha abnormality is reported', evidence: [],
+		ledger_kind: 'habit', key: HKEY, habit: { condition: 'an alpha abnormality is reported', ...T },
+		choices: [
+			{ id: 'ask', label: 'Ask every time', choice: { mode: 'ask', ...T } },
+			{ id: 'edit', label: 'Edit wording', choice: null }
+		],
+		selected: null, rank: 2
+	});
+	it('the edit form starts from the habit; an edit is a question asked under the reworded condition', () => {
+		expect(editWording(habit(), null)).toEqual({ condition: 'an alpha abnormality is reported', ...T });
+		const edited = { condition: 'an alpha abnormality in the upper part is reported', ...T };
+		expect(changeFor(habit(), { choiceId: 'edit', edited }, 'creation')).toEqual({
+			kind: 'habit', key: 'Upper :: an alpha abnormality in the upper part is reported',
+			choice: { mode: 'ask', ...T }, source: 'creation'
+		});
+		expect(changeFor(habit(), { choiceId: 'edit', edited: { ...edited, no: '' } }, 'creation')).toBeNull();
+	});
+	it('names what the server would refuse, and hints at naming where', () => {
+		expect(wordingProblem(habit(), { condition: 'an alpha abnormality is reported', ...T, question: 'Extension' })).toBe('End the question with "?".');
+		expect(wordingProblem(habit(), { condition: 'an alpha "x" is reported', ...T })).toBe('Leave out double quotes.');
+		expect(wordingProblem(habit(), { condition: 'an alpha abnormality is reported', ...T, yes: 'It is {x} mm.' })).toBe('Leave out values to fill in.');
+		expect(HABIT_WHERE_HINT).toBe("Name where: e.g. 'in the <structure>'");
 	});
 });

@@ -1,8 +1,8 @@
 // Wire types of the Rules step (backend: template_decisions, template_rules_cards, main /skill-sheet/decide,
 // /apply-decisions). The sheet itself is never shown: cards speak in report behaviour.
 
-export type LedgerKind = 'value' | 'concept' | 'fixed' | 'normal';
-export type CardKind = 'value' | 'concept' | 'disagree' | 'fixed' | 'normal' | 'uncovered' | 'duplicate' | 'group';
+export type LedgerKind = 'value' | 'concept' | 'fixed' | 'normal' | 'habit';
+export type CardKind = 'value' | 'concept' | 'disagree' | 'fixed' | 'normal' | 'uncovered' | 'duplicate' | 'group' | 'habit';
 export type ChangeSource = 'creation' | 'first_use_review' | 'chat' | 'default';
 export type Choice = Record<string, unknown>;
 
@@ -25,6 +25,10 @@ export interface CardWording {
 	when_met?: string;
 	condition?: string;
 	text?: string;
+	/** a habit card's wording (with `condition`): the question and the sentence each answer writes */
+	question?: string;
+	yes?: string;
+	no?: string;
 }
 
 export interface DecisionCard {
@@ -41,6 +45,8 @@ export interface DecisionCard {
 	wording?: CardWording;
 	/** a concept with no clear usual state (contrast): the wording of each state, e.g. {given, not_given} */
 	usual?: Record<string, string>;
+	/** kind "habit" (findings-triggered rows): the condition, the question and the sentence each answer writes */
+	habit?: { condition: string; question: string; yes: string; no: string };
 	note?: string;
 	/** kind "group": a collapsed group of cards under "More", each choosable when expanded */
 	cards?: DecisionCard[];

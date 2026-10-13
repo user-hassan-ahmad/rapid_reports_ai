@@ -48,6 +48,22 @@ const group = (cards: DecisionCard[]): DecisionCard => ({
 	evidence: [], ledger_kind: '', key: '', choices: [], selected: null, rank: 1, collapsed: true, cards
 });
 
+const HKEY = 'Upper :: an alpha abnormality is reported';
+const HTEXTS = { question: 'Extension beyond alpha?', yes: 'The abnormality extends beyond alpha.', no: 'No extension beyond alpha.' };
+const habit = (): DecisionCard => ({
+	id: 'habit:upper :: an alpha abnormality is reported', kind: 'habit', step: 'rules',
+	title: 'Upper: when an alpha abnormality is reported',
+	evidence: [{ reports: [1], quote: 'No extension beyond alpha.' }, { reports: [3], quote: 'No extension beyond alpha.' }],
+	ledger_kind: 'habit', key: HKEY, habit: { condition: 'an alpha abnormality is reported', ...HTEXTS },
+	choices: [
+		{ id: 'ask', label: 'Ask every time', choice: { mode: 'ask', ...HTEXTS } },
+		{ id: 'state', label: 'Always state', choice: { mode: 'state', ...HTEXTS } },
+		{ id: 'removed', label: 'Not needed', choice: { mode: 'removed', ...HTEXTS } },
+		{ id: 'edit', label: 'Edit wording', choice: null }
+	],
+	selected: null, rank: 2
+});
+
 describe('RulesStep', () => {
 	it('shows evidence as reports, a three-way value chip, nothing pre-ticked for a partial value', async () => {
 		const onContinue = vi.fn();
@@ -171,5 +187,30 @@ describe('RulesStep', () => {
 		await page.getByRole('button', { name: 'LVEF: Not needed' }).click();
 		await page.getByRole('button', { name: 'Apply' }).click();
 		expect(onContinue).toHaveBeenCalledWith([{ kind: 'value', key: 'LVEF', choice: { need: 'not_needed' }, source: 'first_use_review' }]);
+	});
+
+	it('a habit card shows the question and both sentences, and records the habit chosen', async () => {
+		const onContinue = vi.fn();
+		render(RulesStep, { cards: [habit()], kept: [], onContinue });
+		await expect.element(page.getByText("report 3: 'No extension beyond alpha.'")).toBeInTheDocument();
+		await expect.element(page.getByText('Ask: “Extension beyond alpha?”')).toBeInTheDocument();
+		await expect.element(page.getByText('Yes: “The abnormality extends beyond alpha.” · No: “No extension beyond alpha.”')).toBeInTheDocument();
+		await page.getByRole('button', { name: 'Upper: when an alpha abnormality is reported: Always state' }).click();
+		await page.getByRole('button', { name: 'Continue' }).click();
+		expect(onContinue).toHaveBeenCalledWith([{ kind: 'habit', key: HKEY, choice: { mode: 'state', ...HTEXTS }, source: 'creation' }]);
+	});
+
+	it('editing a habit hints at naming where, and records the reworded condition', async () => {
+		const onContinue = vi.fn();
+		render(RulesStep, { cards: [habit()], kept: [], onContinue });
+		await page.getByRole('button', { name: 'Upper: when an alpha abnormality is reported: Edit wording' }).click();
+		await expect.element(page.getByText("Name where: e.g. 'in the <structure>'")).toBeInTheDocument();
+		const when = page.getByLabelText('When this is reported');
+		await userEvent.clear(when);
+		await userEvent.type(when, 'an alpha abnormality in the upper part is reported');
+		await page.getByRole('button', { name: 'Use this wording' }).click();
+		await page.getByRole('button', { name: 'Continue' }).click();
+		expect(onContinue).toHaveBeenCalledWith([{ kind: 'habit', key: 'Upper :: an alpha abnormality in the upper part is reported',
+			choice: { mode: 'ask', ...HTEXTS }, source: 'creation' }]);
 	});
 });
