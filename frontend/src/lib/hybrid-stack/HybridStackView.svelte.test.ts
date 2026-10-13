@@ -366,4 +366,22 @@ describe('HybridStackView v2', () => {
 		await page.getByLabelText('New line').fill('Small left renal cyst');
 		await expect.element(page.getByRole('button', { name: 'Confirm', exact: true })).toBeDisabled();
 	});
+
+	it('rows over the cap wait behind one quiet "N more checks" line; opened, they are ordinary rows; never block Confirm', async () => {
+		const props = { ...base(), onAnswer: vi.fn(), onToggleMore: vi.fn() };
+		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true }), u(1, 'Simple cyst.', 'Conclusion')];
+		const more = [row('c1', ['No splenic lesion.'], { region: 'Spleen', question: 'Splenic lesion?' }), row('c2', ['No hydronephrosis.'], { region: 'Kidneys', question: 'Hydronephrosis?' })];
+		const r = render(HybridStackView, { ...props, units, conclusion: { kind: 'dictated' }, items: [], more, namedNormals: true });
+		await expect.element(page.getByRole('button', { name: '▸ 2 more checks' })).toBeInTheDocument();
+		await expect.element(page.getByText('Splenic lesion?')).not.toBeInTheDocument();   // collapsed
+		await expect.element(page.getByText('0 referral questions open')).toBeInTheDocument();
+		await page.getByRole('button', { name: '▸ 2 more checks' }).click();
+		expect(props.onToggleMore).toHaveBeenCalled();
+		r.rerender({ ...props, units, conclusion: { kind: 'dictated' }, items: [], more, moreOpen: true, namedNormals: true });
+		await expect.element(page.getByText('Splenic lesion?')).toBeInTheDocument();
+		await page.getByRole('button', { name: '✓ Normal' }).first().click();
+		expect(props.onAnswer).toHaveBeenCalledWith('c1');
+		r.rerender({ ...props, units, conclusion: { kind: 'dictated' }, items: [], more, moreOpen: true, tapped: ['c1'], namedNormals: true });
+		await expect.element(page.getByText('✓ No splenic lesion.')).toBeInTheDocument();   // green, still behind the line
+	});
 });

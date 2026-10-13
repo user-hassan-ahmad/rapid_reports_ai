@@ -79,6 +79,8 @@ export interface GateRecord {
 	assumed: Record<string, string[]>; // region normals confirmed (not dictated)
 	removed: string[]; // sentences the radiologist removed: never stated
 	capped: { region: string; question: string }[];
+	capped_opened?: boolean; // the "N more checks" line was opened (E1b)
+	capped_tapped?: { region: string; question: string }[]; // rows over the cap answered with a tap
 	review_failed?: boolean; // the end-of-dictation review failed: no finding checks were offered
 	offered?: Record<string, string[]>; // region normals the sheet offered, before the assumed-normal check
 	jev_dropped?: Dropped | null; // what the check dropped, with why (null: the check failed)

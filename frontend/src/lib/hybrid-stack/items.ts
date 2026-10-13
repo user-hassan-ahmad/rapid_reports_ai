@@ -80,3 +80,22 @@ export function assumedFrom(snap: AssumedSnap | null, abnormal: string[], untouc
 	}
 	return out;
 }
+
+/** Rows over the writer's caps (E1b): shown behind "N more checks" instead of vanishing. The capped rows still to
+ *  show there: not already among the open rows (a later reply may promote one), not skipped. */
+export function moreRows(capped: StackItem[], items: StackItem[], skipped: string[]): StackItem[] {
+	const open = new Set(items.map((i) => i.id));
+	return capped.filter((c) => !open.has(c.id) && !skipped.includes(c.id));
+}
+
+/** A quiet re-check sends the open and the capped rows together; its reply is split back by where each row came from,
+ *  so the re-check never promotes a capped row onto the checklist. A capped row the dictation answered joins the
+ *  rows (it shows green and folds like any row); one still asked stays capped. */
+export function splitRecheck(res: { items: StackItem[]; capped: StackItem[] }, cappedIds: string[]): { items: StackItem[]; capped: StackItem[] } {
+	const was = new Set(cappedIds);
+	const all = [...res.items, ...res.capped];
+	return {
+		items: all.filter((r) => !was.has(r.id) || r.answered),
+		capped: all.filter((r) => was.has(r.id) && !r.answered)
+	};
+}

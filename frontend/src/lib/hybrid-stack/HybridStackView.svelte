@@ -29,6 +29,9 @@
 		ghost = '',
 		editGhost = '',
 		items = [],
+		more = [],
+		moreOpen = false,
+		onToggleMore = () => {},
 		tapped = [],
 		removed = [],
 		assumed = {},
@@ -79,6 +82,11 @@
 		editGhost?: string;
 		/** Checklist rows: referral and finding (answered ones fold away; the parent drops them). */
 		items?: StackItem[];
+		/** Rows over the writer's caps (E1b): behind one quiet "N more checks" line at the end of the checklist; opened,
+		 *  they are ordinary rows. Never needed for Confirm. */
+		more?: StackItem[];
+		moreOpen?: boolean;
+		onToggleMore?: () => void;
 		/** Rows the radiologist answered with a tap: their listed sentences are stated. */
 		tapped?: string[];
 		/** Sentences the radiologist removed (×): never stated. */
@@ -941,6 +949,17 @@
 			{/if}
 		</section>
 	{/each}
+
+	<!-- Rows over the caps (E1b): one quiet line; opened, ordinary rows with their region. -->
+	{#if more.length}
+		<section aria-label="More checks" class="space-y-1">
+			<button type="button" class="px-1 text-xs text-gray-500 hover:text-gray-300" aria-expanded={moreOpen} onclick={onToggleMore}>
+				{moreOpen ? '▾' : '▸'} {more.length} more {more.length === 1 ? 'check' : 'checks'}</button>
+			{#if moreOpen}
+				{#each more as it (it.id)}{@render row(it, it.region || null)}{/each}
+			{/if}
+		</section>
+	{/if}
 
 	<!-- While the end-of-dictation review runs: placeholder rows where the checks will appear, so they never arrive as a
 	     shock (hand read 2026-10-12). -->

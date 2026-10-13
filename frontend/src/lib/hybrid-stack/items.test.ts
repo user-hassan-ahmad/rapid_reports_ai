@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abnormalAll, anchorRegion, answerLabel, assumedFrom, openCount, quietLine, rowSentences, unansweredChecks } from './items';
+import { abnormalAll, anchorRegion, answerLabel, assumedFrom, moreRows, openCount, quietLine, rowSentences, splitRecheck, unansweredChecks } from './items';
 import type { StackItem, StackUnit } from './types';
 
 const item = (id: string, sentences: string[], extra: Partial<StackItem> = {}): StackItem => ({
@@ -49,5 +49,21 @@ describe('checklist rows', () => {
 		// Liver turned abnormal since the answer: its untouched normals are no longer assumed
 		expect(assumedFrom(snap, ['Spleen', 'Liver'], ['Bowel'], [])).toEqual({ Spleen: ['The spleen is normal.', 'No splenic lesion.'] });
 		expect(assumedFrom(null, ['Spleen'], [], [])).toEqual({});
+	});
+	it('rows over the cap wait behind "more checks": never twice, never once skipped', () => {
+		const capped = [item('c1', ['No free fluid.']), item('c2', ['No collection.']), item('c3', ['No fistula.'])];
+		// c1 was promoted onto the checklist by a later reply; c3 was skipped
+		expect(moreRows(capped, [item('a', ['x']), item('c1', ['No free fluid.'])], ['c3']).map((r) => r.id)).toEqual(['c2']);
+		expect(moreRows([], [item('a', ['x'])], [])).toEqual([]);
+	});
+	it('a re-check reply is split back by origin: answered capped rows fold as rows, the rest stay capped', () => {
+		const res = {
+			items: [item('a', ['No torsion.']), item('c1', [], { answered: true }), item('c2', ['No collection.'])], // c2 promoted by the caps
+			capped: [item('c3', ['No fistula.'])]
+		};
+		const out = splitRecheck(res, ['c1', 'c2', 'c3']);
+		expect(out.items.map((r) => r.id)).toEqual(['a', 'c1']);
+		expect(out.capped.map((r) => r.id)).toEqual(['c2', 'c3']);
+		expect(splitRecheck({ items: [item('a', ['x'])], capped: [] }, [])).toEqual({ items: [item('a', ['x'])], capped: [] });
 	});
 });
