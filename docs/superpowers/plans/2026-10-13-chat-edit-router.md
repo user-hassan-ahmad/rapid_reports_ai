@@ -39,7 +39,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
 
 - Lab data lives only in `~/Code/rr-template-conversion-private/synthetic/chat_router/`, never in the repo. Seeds: `~/Code/rr-template-conversion-private/data_all.json` (31 templates, `templates[i].skill_sheet`, `scan_type`) and the curated sheets `~/Code/rr-template-conversion-private/final/<slug>.final.md` (31). **No stored refine chat turns exist locally** (searched `rr-template-conversion-private` and `docs/`). Task 13 pulls any production `template_chat_turns` rows through Metabase into the private folder. Those rows are the real held-out set, and an empty pull is reported as such.
 
-## Facts this plan relies on (checked in the code at 591a1549, Rules-step plan read in full)
+## Facts this plan relies on (router base checked at 591a1549; Rules-step code checked at 68493ba9)
 
 - `/skill-sheet/refine` is `main.skill_sheet_refine_endpoint` (`backend/src/rapid_reports_ai/main.py:2688-2765`), with request `SkillSheetRefineRequest` (`main.py:746-751`) and `SkillSheetRejectionContext` (`main.py:742-744`). It needs a Cerebras key (`:2704-2706`) and calls `TemplateManager.refine_skill_sheet` (`:2714-2720`). It vets the rewrite with `tsave.vet_sheet(..., origin="chat", previous=request.skill_sheet)` (`:2730`), maps refused / unchanged / saved to a reply (`:2732-2746`), and records the turn when `template_id` is set (`:2747-2757`). Rules-step Task 10 adds `decisions` to the request and `ledger=` to the vet call.
 - `TemplateManager.refine_skill_sheet` (`backend/src/rapid_reports_ai/template_manager.py:3630-3720+`) runs a single whole-sheet rewrite on `MODEL_CONFIG["SKILL_SHEET_REFINER"]` (`qwen-3.8-27b` on Cerebras, `enhancement_utils.py:150,173`) and returns `{skill_sheet, response, behavioral_claim}`. Its `rejection_context` is `{original_instruction, rejected_claim}`. This plan keeps it unchanged as the fallback.
@@ -49,33 +49,38 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
 - The Qwen structured call with a gpt-oss retry follows `hybrid_stack/items.py:136-158` and Rules Task 14: `_run_agent_with_model(model_name, output_type, system_prompt, user_prompt, api_key="", model_settings)` inside `asyncio.wait_for`, falling back to `MODEL_CONFIG["STACK_REVIEW_FALLBACK"]` (`openai/gpt-oss-120b` on Groq). Tests patch `rapid_reports_ai.enhancement_utils._run_agent_with_model`.
 - Grammar: `template_sheet_grammar.KEYWORDS` (`:83-84`) are the unit keywords. `paragraph_heading(title)` (`:241-255`) parses `Paragraph: <name> (<SECTION>) [| header: "…"]`. `_undecorate` (`:304-308`). `parse_sheet(sheet, mode="template").errors` lists `LintError(text, reason)`. `FREE_PROSE_SECTIONS` (`:221-222`). `ROLES` (`:91`). `### ` headings are prose (`:158`). The sheet title is `# Skill Sheet: <scan type>` (all 31 curated sheets).
 - **The behavioral_claim verification loop is in `SkillSheetCreator.svelte`, not in `TemplateRefinePanel.svelte`.** Creator: `rejectTurn` (`:384-406`) restores `preMutationSkillSheet`, and `sendAnswer` (`:421-490`) builds `rejection_context` from the last rejected assistant turn and posts `/skill-sheet/refine`. The pending card renders "Not quite" / "Looks right" (`:1012-1080`). Rules Task 25 adds `preMutationDecisions`. `TemplateRefinePanel.svelte` (`:57-85`) has no reject loop. The Rules-step plan's risk 4 hands that loop to this plan.
-- Rules-step ledger API (Rules plan "Ledger API for the chat-edit router"; amended after its review, see below): `td.set_decision(ledger, kind, key, choice, *, source, by="radiologist", at=None) -> (ledger, change|None)`, `td.remove_decision`, `td.find`, `td.validate`, `td.clean_ledger`, `td.normal_key`, `td.negative_key`, `td.split_normal_key`, `td.describe_change`, `td.CONCEPTS[name].label`, `td.KINDS/NEEDS/KEEPS`, `tla.observe(structure, kind, key)`, `tla.apply_ledger`, `trc.card_for_change(kind, key, proposed)`. Card shape: `{id, kind, step, title, evidence, ledger_kind, key, choices: [{id, label, choice|None}], selected, rank, wording?}`. `/apply-decisions` refuses source "chat". **The value list:** once the ledger holds any value entry it owns the whole LIST_MISSING list (Rules decision 3).
-- **Rules-plan amendments after review (coordinator, 2026-10-13), absorbed by the adapter only:**
-  1. `Change["old"]` is the whole old entry. Undo restores it with source, by and at intact, or uses `remove_decision` for a new entry.
-  2. Concepts gain a `dictated` choice ("use whichever is dictated"), separate from "not used".
-  3. Default-only concepts are FIXED plus a context SUPPRESS rule, so a concept is always found by its condition text.
-  4. Contrast has two standard conditions (agent given and not given), and its default is per template.
-  5. A chat edit that removes a whole LIST_MISSING list, or all of a concept's lines, is never applied silently: the ledger is kept and `card_for_change` is returned.
-
-  Only `chat_router_ledger.concept_choice` / `concept_state` / `undo` / `Saved.cards` know these shapes. Task 1 Step 1 checks them against the implemented code.
+- **Rules-step ledger API, verified in the code on `feat/rules-step` at 68493ba9** (`.claude/worktrees/rules-step/backend/src/rapid_reports_ai/`):
+  - `template_decisions.py`: `set_decision(ledger, kind, key, choice, *, source, by="radiologist", at=None) -> (ledger, Change|None)` (`:223`; refuses a FIXED key a concept owns, via `concept_texts` `:244`); `rekey_decision(...)` (`:250`, a reworded line keeps its choice); `remove_decision` (`:270`); `undo_change(ledger, change)` (`:276`; restores `change["old"]`, the whole old entry, or removes a new one); `find`, `validate` (`:166`), `clean_ledger` (`:346`), `describe_change` (`:334`, which also names a rekey), `concept_of_condition` (`:112`).
+  - A concept choice is `{use, default, when_met, condition, dictated}`. "Whichever is dictated" is `use: False, dictated: True`, with the wording blanked. A used concept needs `condition` to be one of `CONCEPTS[name].conditions`, auto-filled when there is exactly one. Contrast has two (`states`: `given` / `not_given`), and `validate` raises without one. The Rules step asks "Is contrast usually given?" when the examples show no clear majority.
+  - `template_ledger_apply.py`: `observe(st, kind, key)` (`:407`, which reads a concept from the rule carrying its standard condition: REPLACE / SUPPRESS / USE) and `apply_ledger(sheet, ledger, before="")` (`:359`). `reconcile_chat` (`:466`) folds a reworded concept default into the ledger as the new default (8bc22083). It keeps, and cards, a rewrite that drops a whole list or concept unasked (`_wholesale`).
+  - `template_rules_cards.py`: `card_for_change(kind, key, proposed)` (`:106`). Card shape: `{id, kind, step, title, evidence, ledger_kind, key, choices: [{id, label, choice|None}], selected, rank, wording?}`.
+  - `template_sheet_save.VetOutcome` has `ledger`, `ledger_changes`, `ledger_cards`, `ledger_unmatched` and `ledger_drift` (`:69-73`).
+  - `/apply-decisions` refuses source "chat". **The value list:** once the ledger holds any value entry, it owns the whole LIST_MISSING list.
+  - Only `chat_router_ledger` imports these modules. This plan adds one thing to the ledger: `td.ROUTES` and a kept `route` field (D-R2, Task 1).
 - `backend/tests/conftest.py` creates `TemplateChatTurn.__table__` from metadata (`:41,69`). Fixtures: `client`, `auth_headers`, `guided_template`, `db_session`. `pytest` runs with `asyncio_mode = "auto"` (`pyproject.toml:53`). The case-agnostic word list lives in `tests/test_template_sheet_lab_prompts.py:3-7` (`CLINICAL`).
 - `main.py` already imports a module named `chat_edits` (`:93`). This plan's modules are all prefixed `chat_router_` to avoid confusion.
 
 ## Decisions this plan makes where the spec is open
 
-1. **Kill switch, not a flag-off launch.** The router runs when `RR_CHAT_ROUTER` is not `"0"` and `OPENROUTER_API_KEY` is set. Otherwise every turn takes today's path. Tests default to `RR_CHAT_ROUTER=0` through an autouse fixture. The wiring tasks (Phase 4) start only after Hassan has seen the tagging lab.
-2. **Tag bands.** At or above `TAG_MIN` (0.5) a kind is worked. From `TAG_UNSURE` (0.35) up to `TAG_MIN` its targeted call still runs, but every resulting change becomes a card, never applied. Below 0.35 the kind is ignored. A `misfit` yes, or no kind at 0.35 or above, gives no change and a question that names the scan type (from the sheet title).
+1. **Kill switch, default OFF (Hassan, D-R3).** The router runs only when `RR_CHAT_ROUTER=1` and `OPENROUTER_API_KEY` is set. Otherwise every turn takes today's path. Hassan switches it on after reading the tagging lab. Tests pin `RR_CHAT_ROUTER=0` through an autouse fixture.
+2. **Tag bands (Hassan, D-R2).** A kind at or above `TAG_MIN` (0.5) is worked. A kind from `TAG_UNSURE` (0.35) up to `TAG_MIN` is also sent to its targeted call, which decides; there is no card for the band itself. Its changes go through the same code validation and are applied or not. Each applied change is marked `route: "llm_unsure"`: on the ledger entry (`td.ROUTES`, kept by `clean_ledger`), on the turn's undo record, and in the chat-turn `routing` evidence. The labs report how often the band occurs, and how often its decisions are wrong (e2e) or later undone (production). Below 0.35 the kind is ignored. A `misfit` yes, or no kind at 0.35 or above, gives no change and a question that names the scan type (from the sheet title).
 3. **Wording rule.** New wording is accepted as given only when it appears in the instruction word for word. The match ignores case, spacing, quote marks and a final full stop. Wording already printed in the sheet is not new: a concept default that copies an existing FIXED sentence passes. Anything else becomes a card prefilled with the proposed wording. When a call claimed `sure` but its wording is not in the instruction, the evidence counts it as `invented`.
 4. **Allowed slots** are `{study}`, `{date}` and any `{…}` slot already present in the sheet. Normal wording takes no slots (the ledger enforces this). A change with any other slot is rejected with a reply line.
-5. **Two card shapes.** Ledger kinds use the Rules step's card (`trc.card_for_change`, prefilled, nothing pre-selected). Changes with no ledger card (layout, a new FIXED line, a new normal or negative line, a FIXED rewording) use a router **proposal card**: `{id, kind: "proposal", title, apply}`. Tapping Apply runs the stored change through the same code (the wording and `sure` checks are skipped, because the radiologist confirmed it).
-6. **Rewording a FIXED line, and adding a FIXED, NORMAL or NEGATIVE line,** are code edits of one sheet line, not ledger writes. The ledger has no "insert" for fixed lines or normals (those entries report as unmatched). The edit is lint-guarded. A new line is then also recorded as a decision (source "chat"), and a reworded FIXED line has its ledger entry rekeyed.
+5. **Two card shapes** (used for invented wording, a call's own `sure: false`, and the save function's cards). Ledger kinds use the Rules step's card (`trc.card_for_change`, prefilled, nothing pre-selected). Changes with no ledger card (layout, a new FIXED line, a new normal or negative line, a FIXED rewording) use a router **proposal card**: `{id, kind: "proposal", title, apply}`. Tapping Apply runs the stored change through the same code (the wording and `sure` checks are skipped, because the radiologist confirmed it).
+6. **Rewording a FIXED line, and adding a FIXED, NORMAL or NEGATIVE line,** are code edits of one sheet line, not ledger writes. The ledger has no "insert" for fixed lines or normals (those entries report as unmatched). The edit is lint-guarded. A new line is then also recorded as a decision (source "chat"). A reworded FIXED line has its entry moved by `td.rekey_decision`, which is checked during validation so a clash becomes a reply, not a broken turn. **A FIXED edit on a line a concept owns** (`td.concept_texts(ledger)`, or the target / wording of a standard-condition rule) is re-routed to the concept kind:
+   - a reword becomes the concept's new default or when-met wording (the path the Rules step uses at 8bc22083);
+   - "only when dictated" becomes the concept's `dictated` state;
+   - a removal blanks that wording, or sets the concept to not used when it was the concept's only wording.
 7. **Layout operations** are rename, move, remove and add, for a paragraph or for a section. A section rename changes its printed heading; the SECTION name used in paragraph headings stays. Removing the only findings or impression section is refused. A new findings section or paragraph needs the structures it reports (COVERS), or the grammar check refuses it. Section names are shown to the model in Title Case and matched back case-insensitively (Cerebras Qwen corrupts upper-case words; see memory `reference_cerebras_uppercase_corruption`).
 8. **Order of application within a turn:** the style splice runs first, on the sheet the call saw, so the block ids stay valid. Then come the layout edits, then the unit edits, then the ledger writes. Ledger keys follow a paragraph rename or removal.
 9. **Rule-in-disguise.** Each new or changed prose line is asked "Does this LINE require the report to state something?" in one Jev call per line, in parallel. A line at or above `REQUIRES_MIN` (0.5) is dropped from the style edit and re-routed: the normal and fixed calls get `Every report should state: "<line>"`, and their change is always carded, because its wording is the model's. When neither call proposes a change, the reply asks where the line belongs. If the requires call fails, the style part is not applied and the reply asks the radiologist to try again.
-10. **Undo is per change, through the backend** (`POST /api/templates/skill-sheet/refine/undo`). A ledger write is reversed only if its entry still holds the turn's value. A code edit runs its stored inverse operations. A style block is restored only if its edited text is still present. A part that a later turn changed is left alone, and the reply says so. Rejecting an older turn therefore no longer clobbers later turns. The creator uses it for router turns and keeps the snapshot restore for today's path. The refine panel gains "Not quite" on router turns that applied a change.
+10. **Undo is per change, through the backend, wrapping `td.undo_change`** (`POST /api/templates/skill-sheet/refine/undo`). A ledger write is reversed only if its entry still holds the turn's value. Dropped entries sent back by the client are re-validated (`L.restore` → `L.check`). A code edit runs its stored inverse operations. A style block is restored only if its edited text is still present. A part that a later turn changed is left alone, and the reply says so. Rejecting an older turn therefore no longer clobbers later turns. The creator uses it for router turns and keeps the snapshot restore for today's path. The refine panel gains a one-tap **Undo** on router turns that applied a change.
 11. **Card answers** go to `POST /api/templates/skill-sheet/refine/card` and are written with source "chat". A card answer appends a plain assistant message: a tap is the radiologist's own choice, so it has no verification banner.
-12. **Evidence:** `template_chat_turns.routing` (JSON, new migration). It holds the tags, each change's verdict (kind, action, key or op, invented, reason), the number applied, the cards, the failed kinds, the disguise scores, refused, ms and the version. It is scrubbed with `template_examples.scrub` and capped at 20 000 characters. Undo and card answers are recorded as turns too (instruction `[undo] …` / `[card] …`, routing route `undo` / `card`).
-13. **Prose the style call never sees:** `## Scan Context` and `## Report Structure` (the fit check reads the scan context, and the structure block is layout).
+12. **Evidence:** `template_chat_turns.routing` (JSON, new migration). It holds the tags, each change's verdict (kind, action, key or op, route, invented, reason, detail), the number applied, the cards, the failed kinds, the disguise scores, refused, ms and the version. It is scrubbed with `template_examples.scrub` and capped at 20 000 characters. Undo and card answers are recorded as turns too (instruction `[undo] …` / `[card] …`, routing route `undo` / `card`).
+13. **Explicit removals are applied (Hassan, D-R1).** "Stop listing <value>" and "never mention comparison" are ledger writes like any other. The reply names the change ("This changes something you confirmed: …", from `td.describe_change`), and the turn has a one-tap Undo. Only an implicit whole-item removal, where a rewrite drops a whole list or concept unasked, becomes a card. The save function does this already (`ledger_cards`), and the router passes those cards on.
+14. **`applied` means something changed.** A turn is `applied: true` only when the saved sheet or the ledger differs from the turn's input. A turn that changed nothing returns no undo records. Decided items the sheet no longer has (`ledger_unmatched`) get a reply line, and the response carries them.
+15. **No internal error text in replies.** A code rejection reads "I couldn't apply the change to <kind> as asked. Could you say it another way?", and the internal reason goes only to the evidence (`detail`).
+16. **Prose the style call never sees:** `## Scan Context` and `## Report Structure` (the fit check reads the scan context, and the structure block is layout).
 
 ## File map
 
@@ -84,6 +89,7 @@ Backend (`backend/src/rapid_reports_ai/`):
 | File | Status | Responsibility |
 |---|---|---|
 | `chat_router_ledger.py` | create | **the only module that imports the Rules step**: ledger writes, undo, value seeding, concept choice shape, cards, observe, save |
+| `template_decisions.py` | modify | `ROUTES`; `clean_ledger` keeps a valid `route` (D-R2) |
 | `chat_router_sheet.py` | create | line walk, unit vs prose lines, prose blocks, splice, unit-line guard, paragraph spans, scan type |
 | `chat_router_edits.py` | create | one-line unit edits (FIXED reword/add, NORMAL/NEGATIVE add, COVERS), lint guard, `apply_op` dispatcher |
 | `chat_router_layout.py` | create | section and paragraph operations with their inverses |
@@ -128,26 +134,30 @@ Labs are reported, not gated. Each lab task ends with a report and recommendatio
 
 # Phase 1: pure code
 
-### Task 1: The adapter — the router's one door to the Rules step
+### Task 1: The adapter: the router's one door to the Rules step
 
 **Files:**
+- Modify: `backend/src/rapid_reports_ai/template_decisions.py` (`ROUTES`; `clean_ledger` keeps a valid `route`)
 - Modify: `backend/tests/template_sheet_fixtures.py` (append `ROUTER_SHEET`)
 - Create: `backend/src/rapid_reports_ai/chat_router_ledger.py`
 - Test: `backend/tests/test_chat_router_ledger.py`
 
-- [ ] **Step 1: Check the ledger shapes the adapter wraps** (the Rules plan was amended after review)
+- [ ] **Step 1: Confirm the ledger API this adapter wraps** (verified at `feat/rules-step` 68493ba9; a later amendment must touch only this module)
 
 ```bash
-cd /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/chat-router/backend && grep -n "def set_decision\|def remove_decision\|def find\|def validate\|def clean_ledger\|def describe_change\|class Change" -A3 src/rapid_reports_ai/template_decisions.py | head -60 && grep -n "dictated" src/rapid_reports_ai/template_decisions.py | head && grep -n "def card_for_change\|def observe" src/rapid_reports_ai/template_rules_cards.py src/rapid_reports_ai/template_ledger_apply.py && grep -n "ledger_cards\|cards" src/rapid_reports_ai/template_sheet_save.py | head
+cd /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/chat-router/backend/src/rapid_reports_ai && grep -n "^def set_decision\|^def rekey_decision\|^def undo_change\|^def concept_texts\|^def concept_of_condition\|^def clean_ledger\|^def validate\|^def find" template_decisions.py && grep -n "^def observe\|^def apply_ledger\|^def reconcile_chat" template_ledger_apply.py && grep -n "^def card_for_change" template_rules_cards.py && grep -n "ledger_cards\|ledger_unmatched" template_sheet_save.py | head -4
 ```
 
-Write down four things:
-- the concept choice for "use whichever is dictated" (the code below assumes `{"use": True, "dictated": True, "default", "when_met"}`);
-- whether `Change["old"]` is the whole entry (assumed) or a choice;
-- the name of the `VetOutcome` field that carries cards from a refused chat removal (assumed `ledger_cards`; the adapter reads it with `getattr`, so a different name only loses those cards);
-- the `observe` signature.
+Expected: every name above is found. These are the shapes the adapter relies on, as read at 68493ba9:
+- A concept choice is `{use, default, when_met, condition, dictated}`. "Whichever is dictated" is `use: False, dictated: True`, with the wording and condition blanked.
+- A used concept needs `condition` to be one of `td.CONCEPTS[name].conditions`, which is filled automatically when there is exactly one. Contrast has two (`states` given / not_given).
+- `Change["old"]` is the whole old entry, or None.
+- `td.undo_change(ledger, change)` reverses a change.
+- `td.rekey_decision` moves a fixed entry to reworded text.
+- `set_decision` / `rekey_decision` refuse a FIXED key that a concept owns (`td.concept_texts`).
+- `VetOutcome` carries `ledger_cards` (a whole decided item a chat rewrite removed: kept, asked) and `ledger_unmatched`.
 
-If any differs, change only `concept_choice`, `concept_state`, `undo` or `Saved.cards` in Step 4 to match, and keep the tests' expected values the same. The tests check the router's view (state names), not the ledger's internal form.
+If any differs, change only this module and keep the tests' expected router-side values.
 
 - [ ] **Step 2: Add the fixture** (append to `backend/tests/template_sheet_fixtures.py`)
 
@@ -192,6 +202,13 @@ Opening: The impression opens with the main finding.
 Lead with the most important finding.
 Keep it brief.
 """
+
+# The same sheet with the comparison concept written by the Rules step: its FIXED default plus a standard REPLACE.
+ROUTER_SHEET_CONCEPT = ROUTER_SHEET.replace(
+    'FIXED "No previous imaging available."\n',
+    'FIXED "No previous imaging available."\n'
+    'RULE WHEN [context: the dictation names a previous imaging study for comparison] '
+    'REPLACE "No previous imaging available." WITH "Compared with the {study} of {date}."\n')
 ```
 
 - [ ] **Step 3: Write the failing tests** (`backend/tests/test_chat_router_ledger.py`)
@@ -201,8 +218,12 @@ Keep it brief.
 import pytest
 
 from rapid_reports_ai import chat_router_ledger as L
+from rapid_reports_ai import template_decisions as td
 from rapid_reports_ai import template_sheet_grammar as tsg
-from tests.template_sheet_fixtures import ROUTER_SHEET
+from tests.template_sheet_fixtures import ROUTER_SHEET, ROUTER_SHEET_CONCEPT
+
+COMPARED = "Compared with the {study} of {date}."
+NO_PRIOR = "No previous imaging available."
 
 
 @pytest.fixture(autouse=True)
@@ -215,8 +236,9 @@ def no_unit_checks(monkeypatch):
     monkeypatch.setattr(S, "check_units", none)
 
 
-def test_the_fixture_is_lint_clean():
+def test_the_fixtures_are_lint_clean():
     assert not tsg.parse_sheet(ROUTER_SHEET, mode="template").errors
+    assert not tsg.parse_sheet(ROUTER_SHEET_CONCEPT, mode="template").errors
 
 
 def test_seed_values_records_the_listed_values_as_defaults_once():
@@ -229,21 +251,28 @@ def test_seed_values_records_the_listed_values_as_defaults_once():
 
 def test_set_choice_writes_a_chat_entry_and_returns_the_change():
     led, change = L.set_choice([], "value", "Width", {"need": "not_needed"})
-    assert led[0]["source"] == "chat" and led[0]["by"] == "radiologist"
-    assert change["kind"] == "value" and change["key"] == "Width"
+    assert led[0]["source"] == "chat" and led[0]["by"] == "radiologist" and "route" not in led[0]
+    assert change["kind"] == "value" and change["key"] == "Width" and change["old"] is None
     with pytest.raises(L.Rejected):
         L.set_choice([], "value", 'a "quoted" name', {"need": "every"})
     with pytest.raises(L.Rejected):
         L.set_choice([], "concept", "no-such-concept", {"use": False})
 
 
-def test_undo_removes_a_new_entry_and_restores_an_old_one_whole():
+def test_a_route_marks_the_entry_and_survives_clean():
+    led, _ = L.set_choice([], "value", "Width", {"need": "relevant"}, route="llm_unsure")
+    assert led[0]["route"] == "llm_unsure" and L.clean(led)[0]["route"] == "llm_unsure"
+    assert "route" not in td.clean_ledger([{**led[0], "route": "made-up"}])[0]
+    with pytest.raises(L.Rejected):
+        L.set_choice([], "value", "Width", {"need": "every"}, route="made-up")
+
+
+def test_undo_wraps_undo_change_and_restores_the_old_entry_whole():
     led, change = L.set_choice([], "value", "Width", {"need": "not_needed"})
     assert L.undo(led, change) == []
     seeded = L.seed_values([], ROUTER_SHEET)
     led2, change2 = L.set_choice(seeded, "value", "Width", {"need": "relevant"})
-    back = L.undo(led2, change2)
-    width = L.entry(back, "value", "Width")
+    width = L.entry(L.undo(led2, change2), "value", "Width")
     assert width["choice"] == {"need": "every"} and width["source"] == "default" and width["by"] == "code"
 
 
@@ -253,18 +282,48 @@ def test_undo_leaves_an_entry_a_later_turn_changed():
     assert L.entry(L.undo(led, change), "value", "Width")["choice"] == {"need": "relevant"}
 
 
-def test_concept_choice_round_trips_every_state_through_the_ledger():
-    for state, d, w in (("used", "No previous imaging available.", "Compared with the {study} of {date}."),
-                        ("dictated", "No previous imaging available.", "Compared with the {study} of {date}."),
-                        ("not_used", "", "")):
-        key, choice = L.check("concept", "comparison", L.concept_choice(state, d, w))
-        assert L.concept_state(choice) == (state, d, w)
+def test_concept_choice_round_trips_every_state_through_the_real_validate():
+    cond = L.condition_for("comparison", "compared")
+    assert cond == "the dictation names a previous imaging study for comparison"
+    _, used = L.check("concept", "comparison", L.concept_choice("used", NO_PRIOR, COMPARED, cond))
+    assert L.concept_state(used) == ("used", NO_PRIOR, COMPARED, cond)
+    _, auto = L.check("concept", "comparison", L.concept_choice("used", NO_PRIOR, COMPARED))
+    assert auto["condition"] == cond      # one standard condition: filled by the ledger
+    _, dictated = L.check("concept", "comparison", L.concept_choice("dictated", NO_PRIOR, COMPARED))
+    assert dictated["use"] is False and dictated["dictated"] is True
+    assert L.concept_state(dictated) == ("dictated", "", "", "")
+    _, off = L.check("concept", "comparison", L.concept_choice("not_used", NO_PRIOR, COMPARED))
+    assert L.concept_state(off) == ("not_used", "", "", "")
+
+
+def test_contrast_needs_one_of_its_two_conditions():
+    with pytest.raises(L.Rejected):
+        L.check("concept", "contrast", L.concept_choice("used", "Contrast was given.", "No contrast was given."))
+    cond = L.condition_for("contrast", "not_given")
+    assert cond == "the dictation states no contrast agent was given" and L.condition_for("contrast", cond) == cond
+    _, choice = L.check("concept", "contrast",
+                        L.concept_choice("used", "Contrast was given.", "No contrast was given.", cond))
+    assert choice["condition"] == cond
+    assert L.concept_states("contrast") == {"given": "the dictation states a contrast agent was given",
+                                            "not_given": cond}
+    assert L.condition_for("contrast", "sometimes") == ""
+
+
+def test_concept_owner_finds_a_line_by_the_ledger_or_the_sheet():
+    led, _ = L.set_choice([], "concept", "comparison", L.concept_choice("used", NO_PRIOR, COMPARED))
+    assert L.concept_owner(ROUTER_SHEET, led, "no previous imaging available") == "comparison"
+    assert L.concept_owner(ROUTER_SHEET_CONCEPT, [], NO_PRIOR) == "comparison"
+    assert L.concept_owner(ROUTER_SHEET_CONCEPT, [], COMPARED) == "comparison"
+    assert L.concept_owner(ROUTER_SHEET, [], NO_PRIOR) is None
+    with pytest.raises(L.Rejected):     # the ledger refuses a FIXED decision on a concept's line
+        L.set_choice(led, "fixed", NO_PRIOR, {"keep": "remove"})
 
 
 def test_current_reads_the_sheet():
     assert L.current(ROUTER_SHEET, "fixed", "Axial images were acquired.") == {"keep": "always"}
     assert L.current(ROUTER_SHEET, "normal", L.normal_key("Upper", "alpha")) == {"text": "Alpha is normal."}
     assert L.current(ROUTER_SHEET, "normal", L.normal_key("Nowhere", "alpha")) is None
+    assert L.concept_state(L.current(ROUTER_SHEET_CONCEPT, "concept", "comparison"))[:3] == ("used", NO_PRIOR, COMPARED)
 
 
 def test_card_is_the_rules_step_card_or_none():
@@ -273,39 +332,77 @@ def test_card_is_the_rules_step_card_or_none():
     assert L.card("normal", "no separator", {"text": "x"}) is None
 
 
-def test_rekey_follows_a_paragraph_rename_and_a_fixed_reword():
+def test_rekeys_follow_a_paragraph_rename_and_a_fixed_reword():
     led, _ = L.set_choice([], "normal", L.normal_key("Upper", "alpha"), {"text": "Alpha is fine."})
     led, _ = L.set_choice(led, "fixed", "Axial images were acquired.", {"keep": "always"})
     led = L.rekey_paragraph(led, "upper", "Top")
     assert L.entry(led, "normal", L.normal_key("Top", "alpha"))["choice"] == {"text": "Alpha is fine."}
-    led = L.rekey_fixed(led, "Axial images were acquired.", "Axial and coronal images were acquired.")
+    led, change = L.rekey_fixed(led, "Axial images were acquired.", "Axial and coronal images were acquired.")
     assert L.entry(led, "fixed", "Axial and coronal images were acquired.") is not None
+    assert change["old"]["key"] == "Axial images were acquired."
+    assert L.entry(L.undo(led, change), "fixed", "Axial images were acquired.") is not None
+    assert L.rekey_fixed(led, "Not decided.", "Other.") == (led, None)
     assert [e["key"] for e in L.paragraph_entries(led, "TOP")] == [L.normal_key("Top", "alpha")]
     assert L.normal_label(L.negative_key("Upper", "No beta abnormality.")) == ("Upper", "No beta abnormality.")
 
 
-async def test_save_applies_the_ledger_through_the_save_function():
+def test_restore_validates_a_client_sent_entry():
+    good = {"kind": "normal", "key": L.normal_key("Lower", "gamma"), "choice": {"text": "Gamma is fine."},
+            "by": "radiologist", "at": "t", "source": "chat"}
+    assert L.entry(L.restore([], good), "normal", good["key"])["choice"] == {"text": "Gamma is fine."}
+    assert L.restore([good], good) == [good]
+    with pytest.raises(L.Rejected):
+        L.restore([], {"kind": "value", "key": 'a "b"', "choice": {"need": "every"}})
+
+
+async def test_save_applies_the_ledger_and_reports_unmatched_and_cards():
     led, _ = L.set_choice(L.seed_values([], ROUTER_SHEET), "value", "Width", {"need": "not_needed"})
     saved = await L.save(ROUTER_SHEET, ROUTER_SHEET, led)
     assert saved.status == "saved" and 'LIST_MISSING ["Depth"]' in saved.sheet
     assert L.entry(saved.ledger, "value", "Width")["choice"] == {"need": "not_needed"}
-    assert isinstance(saved.cards, list)
+    assert saved.cards == [] and saved.unmatched == []
 ```
 
 - [ ] **Step 4: Run the tests to verify they fail**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_chat_router_ledger.py -q`
-Expected: FAIL with `ModuleNotFoundError: No module named 'rapid_reports_ai.chat_router_ledger'` (and `ImportError` for `ROUTER_SHEET` if Step 2 was skipped)
+Expected: FAIL with `ModuleNotFoundError: No module named 'rapid_reports_ai.chat_router_ledger'`
 
-- [ ] **Step 5: Write the module** (`backend/src/rapid_reports_ai/chat_router_ledger.py`)
+- [ ] **Step 5: Let the ledger keep how a chat decision was reached** (D-R2). In `backend/src/rapid_reports_ai/template_decisions.py`, add after the `SOURCES = (...)` line:
+
+```python
+ROUTES = ("llm_unsure",)   # how a chat decision was reached, when not plainly: the chat-edit router's unsure band
+```
+
+and in `clean_ledger` replace
+
+```python
+        out.append({"kind": e["kind"], "key": key, "choice": choice,
+                    "by": e.get("by") if e.get("by") in BY else "code", "at": str(e.get("at") or ""),
+                    "source": e.get("source") if e.get("source") in SOURCES else "default"})
+```
+
+with
+
+```python
+        kept = {"kind": e["kind"], "key": key, "choice": choice,
+                "by": e.get("by") if e.get("by") in BY else "code", "at": str(e.get("at") or ""),
+                "source": e.get("source") if e.get("source") in SOURCES else "default"}
+        if e.get("route") in ROUTES:   # the chat-edit router's mark (decision D-R2); anything else is dropped
+            kept["route"] = e["route"]
+        out.append(kept)
+```
+
+- [ ] **Step 6: Write the module** (`backend/src/rapid_reports_ai/chat_router_ledger.py`)
 
 ```python
 """The chat-edit router's one door to the Rules step (spec 2026-10-13-chat-edit-router-design, Flow 2 and 5).
 
 Router modules call the decision ledger, its one-tap cards and the save function only through this module, never
 template_decisions / template_ledger_apply / template_rules_cards / template_sheet_save directly, so a rename or a
-shape change there is one edit here. Ledger kinds: value, concept, fixed, normal (layout and style have none).
-The concept choice shape and the undo of a change are the two places that know the ledger's internals."""
+shape change there is one edit here (verified against feat/rules-step 68493ba9). Ledger kinds: value, concept,
+fixed, normal; layout and style have none. Only concept_choice / concept_state / condition_for know the concept
+choice shape."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -316,16 +413,18 @@ from . import template_ledger_apply as tla
 from . import template_rules_cards as trc
 from . import template_sheet_grammar as tsg
 from . import template_sheet_save as tsave
+from .hybrid_stack.template import norm_key
 
 LEDGER_KINDS: Tuple[str, ...] = tuple(td.KINDS)
 NEEDS: Tuple[str, ...] = tuple(td.NEEDS)
 KEEPS: Tuple[str, ...] = tuple(td.KEEPS)
+ROUTES: Tuple[str, ...] = tuple(td.ROUTES)
 CONCEPTS: Dict[str, str] = {name: c.label for name, c in td.CONCEPTS.items()}
 CONCEPT_STATES = ("used", "dictated", "not_used")
 
 
 class Rejected(ValueError):
-    """Code cannot apply this change as given (unknown target, malformed key or wording)."""
+    """Code cannot apply this change as given. Its text is internal (evidence only), never a reply."""
 
 
 @dataclass
@@ -333,9 +432,10 @@ class Saved:
     status: str                 # the save function's status: "saved" | "unchanged" | "refused"
     sheet: str
     ledger: List[dict]
-    message: str = ""           # an adjustment notice or the refusal reason
+    message: str = ""           # an adjustment notice or the refusal reason (written for the radiologist)
     ledger_changes: List[dict] = field(default_factory=list)   # confirmed items a sheet change moved
-    cards: List[dict] = field(default_factory=list)            # cards the save function returned instead of applying
+    cards: List[dict] = field(default_factory=list)            # whole items a rewrite removed unasked: kept, asked
+    unmatched: List[dict] = field(default_factory=list)        # decided items the sheet no longer has
 
 
 def _n(s: str) -> str:
@@ -375,28 +475,67 @@ def check(kind: str, key: str, choice: dict) -> Tuple[str, dict]:
         raise Rejected(str(e)) from e
 
 
-def concept_choice(state: str, default: str, when_met: str) -> dict:
-    """The ledger choice for a concept in one of CONCEPT_STATES (the one place that knows its shape)."""
-    if state == "not_used":
-        return {"use": False, "default": "", "when_met": ""}
+# ── concepts ────────────────────────────────────────────────────────────────────────────────────────────────────
+def concept_states(name: str) -> Dict[str, Optional[str]]:
+    """state name -> the standard condition under which that state's wording applies (None: the usual state)."""
+    return dict(td.CONCEPTS[name].states)
+
+
+def condition_for(name: str, given: str) -> str:
+    """The standard condition named by `given` (a state name such as "compared" / "not_given", or the condition
+    text itself); "" when it names none."""
+    g = _n(given)
+    states = td.CONCEPTS[name].states
+    if g in states:
+        return states[g] or ""
+    return next((c for c in td.CONCEPTS[name].conditions if _n(c) == g), "")
+
+
+def concept_choice(state: str, default: str, when_met: str, condition: str = "") -> dict:
+    """The ledger choice for a concept in one of CONCEPT_STATES. "dictated" is use False + dictated True with the
+    wording blanked (the ledger's form)."""
     if state == "dictated":
-        return {"use": True, "dictated": True, "default": default or "", "when_met": when_met or ""}
-    return {"use": True, "default": default or "", "when_met": when_met or ""}
+        return {"use": False, "dictated": True, "default": "", "when_met": "", "condition": ""}
+    if state == "not_used":
+        return {"use": False, "dictated": False, "default": "", "when_met": "", "condition": ""}
+    return {"use": True, "dictated": False, "default": default or "", "when_met": when_met or "",
+            "condition": condition or ""}
 
 
-def concept_state(choice: Optional[dict]) -> Tuple[str, str, str]:
-    """(state, default wording, wording when it applies) of a concept choice."""
+def concept_state(choice: Optional[dict]) -> Tuple[str, str, str, str]:
+    """(state, default wording, wording when its condition is met, condition) of a concept choice."""
     c = choice or {}
+    if c.get("dictated"):
+        return "dictated", "", "", ""
     if not c.get("use"):
-        return "not_used", "", ""
-    return ("dictated" if c.get("dictated") else "used"), c.get("default", "") or "", c.get("when_met", "") or ""
+        return "not_used", "", "", ""
+    return "used", c.get("default", "") or "", c.get("when_met", "") or "", c.get("condition", "") or ""
 
 
+def concept_owner(sheet: str, ledger: List[dict], text: str) -> Optional[str]:
+    """The concept whose wording `text` is: decided in the ledger, or the target / wording of a rule carrying a
+    standard condition in the sheet. Such a line is the concept's, never a FIXED decision's."""
+    k = norm_key(text or "")
+    if not k:
+        return None
+    for e in ledger or []:
+        if e.get("kind") == "concept":
+            ch = e.get("choice") or {}
+            if k in {norm_key(ch.get("default", "")), norm_key(ch.get("when_met", ""))} - {""}:
+                return e["key"]
+    for r in structure(sheet).rules:
+        name = td.concept_of_condition(r.condition) if r.condition_source == "context" else None
+        if name and k in {norm_key(r.target or ""), norm_key(r.then_text or "")} - {""}:
+            return name
+    return None
+
+
+# ── reading and writing ─────────────────────────────────────────────────────────────────────────────────────────
 def current(sheet: str, kind: str, key: str) -> Optional[dict]:
     """The choice the sheet expresses now for (kind, key); None when a normal's paragraph is gone."""
     try:
         return tla.observe(structure(sheet), kind, key)
-    except (td.DecisionError, KeyError) as e:
+    except (td.DecisionError, KeyError, StopIteration) as e:
         raise Rejected(str(e)) from e
 
 
@@ -430,30 +569,50 @@ def values(sheet: str, ledger: List[dict]) -> List[Tuple[str, str]]:
     return [(e["key"], e["choice"]["need"]) for e in seed_values(ledger, sheet) if e["kind"] == "value"]
 
 
-def set_choice(ledger: List[dict], kind: str, key: str, choice: dict) -> Tuple[List[dict], Optional[dict]]:
-    """One chat decision (source "chat", by the radiologist); the change, or None when nothing changed."""
+def set_choice(ledger: List[dict], kind: str, key: str, choice: dict,
+               route: Optional[str] = None) -> Tuple[List[dict], Optional[dict]]:
+    """One chat decision (source "chat", by the radiologist); `route` marks how it was reached (ROUTES). Returns the
+    ledger and the change, or None when the choice was already so."""
+    if route is not None and route not in ROUTES:
+        raise Rejected(f"unknown route {route!r}")
     try:
         out, change = td.set_decision(list(ledger or []), kind, key, choice, source="chat")
     except td.DecisionError as e:
         raise Rejected(str(e)) from e
+    if route:
+        e = td.find(out, kind, key)
+        out = [{**x, "route": route} if x is e else x for x in out]
     return out, (dict(change) if change else None)
 
 
-def _choice(x):
-    return x.get("choice") if isinstance(x, dict) and "choice" in x else x
-
-
 def undo(ledger: List[dict], change: dict) -> List[dict]:
-    """Reverse one change this router made, only while its entry still holds it (a later turn's change stays)."""
+    """Reverse one change this router made (td.undo_change), only while its entry still holds it: a later turn's
+    change is never undone."""
     e = entry(ledger, change["kind"], change["key"])
-    if e is None or e.get("choice") != _choice(change.get("new")):
+    if e is None or e.get("choice") != change.get("new"):
         return list(ledger or [])
-    old = change.get("old")
-    if not old:
-        return td.remove_decision(list(ledger), change["kind"], change["key"])
-    if isinstance(old, dict) and "choice" in old:      # the old entry whole: source, by and at come back
-        return [dict(old) if x is e else x for x in ledger]
-    return set_choice(ledger, change["kind"], change["key"], old)[0]
+    return td.undo_change(list(ledger), change)
+
+
+def rekey_fixed(ledger: List[dict], old: str, new: str) -> Tuple[List[dict], Optional[dict]]:
+    """A decided FIXED line follows its rewording (td.rekey_decision); (ledger, None) when it is not decided."""
+    if entry(ledger, "fixed", old) is None:
+        return list(ledger or []), None
+    try:
+        out, change = td.rekey_decision(list(ledger), "fixed", old, new, source="chat")
+    except td.DecisionError as e:
+        raise Rejected(str(e)) from e
+    return out, dict(change)
+
+
+def restore(ledger: List[dict], e: dict) -> List[dict]:
+    """A dropped entry put back (undo of a removed paragraph). Client-sent, so validated first."""
+    if not isinstance(e, dict):
+        raise Rejected("entry: object expected")
+    check(e.get("kind", ""), e.get("key", ""), e.get("choice") or {})
+    if entry(ledger, e["kind"], e["key"]) is not None:
+        return list(ledger or [])
+    return [*(ledger or []), *clean([e])]
 
 
 def note(change: Optional[dict]) -> str:
@@ -494,28 +653,23 @@ def rekey_paragraph(ledger: List[dict], old: str, new: str) -> List[dict]:
     return out
 
 
-def rekey_fixed(ledger: List[dict], old: str, new: str) -> List[dict]:
-    e = entry(ledger, "fixed", old)
-    return [{**x, "key": " ".join(new.split())} if x is e else x for x in ledger or []]
-
-
 async def save(sheet: str, previous: str, ledger: List[dict]) -> Saved:
     """The save function (origin "chat"), which applies the ledger last."""
     v = await tsave.vet_sheet(sheet, origin="chat", previous=previous, ledger=list(ledger or []))
     return Saved(v.status, v.sheet, list(v.ledger), v.message or "", [dict(c) for c in v.ledger_changes],
-                 list(getattr(v, "ledger_cards", None) or []))
+                 list(v.ledger_cards or []), list(v.ledger_unmatched or []))
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [ ] **Step 7: Run the tests to verify they pass**
 
-Run: `cd backend && .venv/bin/python -m pytest tests/test_chat_router_ledger.py -q`
-Expected: PASS (10 tests). If `test_concept_choice_round_trips…` fails on `dictated`, the implemented ledger spells it differently: fix `concept_choice`/`concept_state` (Step 1), never the test.
+Run: `cd backend && .venv/bin/python -m pytest tests/test_chat_router_ledger.py tests/test_template_decisions.py -q`
+Expected: PASS (14 new tests, and the Rules-step decision tests unchanged)
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add backend/src/rapid_reports_ai/chat_router_ledger.py backend/tests/test_chat_router_ledger.py backend/tests/template_sheet_fixtures.py
-git commit -m "feat(chat-router): adapter over the Rules-step ledger, cards and save function
+git add backend/src/rapid_reports_ai/chat_router_ledger.py backend/src/rapid_reports_ai/template_decisions.py backend/tests/test_chat_router_ledger.py backend/tests/template_sheet_fixtures.py
+git commit -m "feat(chat-router): adapter over the Rules-step ledger, cards and save function; ledger keeps a route
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
@@ -1435,7 +1589,34 @@ def test_concept_wording_from_the_instruction_or_the_sheet_is_applied():
                                                 default="No previous imaging available.",
                                                 when_met="Compared with the {study} of {date}."), _ctx(instr))
     assert v.action == "ledger" and L.concept_state(v.choice) == (
-        "used", "No previous imaging available.", "Compared with the {study} of {date}.")
+        "used", "No previous imaging available.", "Compared with the {study} of {date}.",
+        L.condition_for("comparison", "compared"))
+
+
+def test_contrast_carries_its_condition_and_asks_which_is_usual():
+    instr = 'say "Contrast was given." normally and "No contrast was given." when none'
+    change = dict(concept="contrast", state="used", default="Contrast was given.", when_met="No contrast was given.")
+    ask = CH.validate("concept", CH.ConceptChange(**change), _ctx(instr))
+    assert ask.action == "ask" and ask.reason == CH.USUAL_QUESTION.format(label="contrast")
+    ok = CH.validate("concept", CH.ConceptChange(**change, condition="not_given"), _ctx(instr))
+    assert ok.action == "ledger" and ok.choice["condition"] == L.condition_for("contrast", "not_given")
+    led, _ = L.set_choice([], "concept", "contrast", ok.choice)
+    kept = CH.validate("concept", CH.ConceptChange(concept="contrast", when_met="No contrast agent was given."),
+                       _ctx('use "No contrast agent was given."', led))
+    assert kept.action == "ledger" and kept.choice["condition"] == ok.choice["condition"]   # carried forward
+
+
+def test_dictated_and_not_used_concepts():
+    d = CH.validate("concept", CH.ConceptChange(concept="comparison", state="dictated"), _ctx("whichever is dictated"))
+    assert d.action == "ledger" and L.concept_state(d.choice) == ("dictated", "", "", "")
+    off = CH.validate("concept", CH.ConceptChange(concept="comparison", state="not_used"), _ctx("never mention it"))
+    assert off.action == "ledger" and off.claim == f"{L.CONCEPTS['comparison']}: no longer stated."
+
+
+def test_a_code_rejection_never_leaks_its_internal_text():
+    v = CH.validate("concept", CH.ConceptChange(concept="comparison", state="used"), _ctx("use it"))
+    assert v.action == "reject" and v.reason == CH.REJECT.format(label=CH.KIND_LABEL["concept"])
+    assert "wording" in v.detail and "wording" not in v.reason
 
 
 def test_invented_concept_wording_becomes_a_prefilled_card_and_a_bad_slot_is_rejected():
@@ -1462,6 +1643,32 @@ def test_fixed_keep_reword_and_add():
     assert add.action == "edit" and add.op["op"] == "fixed_add" and add.choice == {"keep": "always"}
     missing = CH.validate("fixed", CH.FixedChange(to="remove", line="Not a sentence here."), _ctx("x"))
     assert missing.action == "ask"
+
+
+def test_a_fixed_edit_on_a_concepts_line_goes_through_the_concept():
+    led, _ = L.set_choice([], "concept", "comparison",
+                          L.concept_choice("used", "No previous imaging available.", ""))
+    rm = CH.validate("fixed", CH.FixedChange(to="remove", line="No previous imaging available."),
+                     _ctx("stop saying no previous imaging", led))
+    assert rm.kind == "concept" and rm.action == "ledger" and L.concept_state(rm.choice)[0] == "not_used"
+    rw = CH.validate("fixed", CH.FixedChange(to="reword", line="No previous imaging available.",
+                                             text="No prior imaging."), _ctx("say No prior imaging. instead", led))
+    assert rw.kind == "concept" and L.concept_state(rw.choice)[1] == "No prior imaging."
+    dic = CH.validate("fixed", CH.FixedChange(to="dictated", line="No previous imaging available."),
+                      _ctx("only when dictated", led))
+    assert dic.kind == "concept" and L.concept_state(dic.choice)[0] == "dictated"
+    add = CH.validate("fixed", CH.FixedChange(to="add", paragraph="Technique", text="No previous imaging available."),
+                      _ctx("add No previous imaging available.", led))
+    assert add.action == "ask"
+
+
+def test_a_reword_that_would_clash_with_a_decided_line_is_rejected():
+    led, _ = L.set_choice([], "fixed", "Axial images were acquired.", {"keep": "always"})
+    led, _ = L.set_choice(led, "fixed", "Axial and coronal images were acquired.", {"keep": "dictated"})
+    v = CH.validate("fixed", CH.FixedChange(to="reword", line="Axial images were acquired.",
+                                            text="Axial and coronal images were acquired."),
+                    _ctx("say Axial and coronal images were acquired.", led))
+    assert v.action == "reject" and v.detail
 
 
 def test_a_reword_not_in_the_instruction_is_a_proposal_card():
@@ -1562,6 +1769,7 @@ class ConceptChange(BaseModel):
     state: Optional[Literal["used", "dictated", "not_used"]] = None
     default: Optional[str] = None
     when_met: Optional[str] = None
+    condition: Optional[str] = None   # the state (from CURRENT) in which when_met applies; null keeps the current one
     sure: bool = True
 
 
@@ -1648,6 +1856,8 @@ class Verdict:
     reason: str = ""                # ask / reject
     invented: bool = False          # the call said sure, but its wording is neither in the instruction nor the sheet
     change: Optional[dict] = None   # the structured change as the call returned it (evidence)
+    route: str = ""                 # "llm_unsure": its kind was tagged in the unsure band (decision D-R2)
+    detail: str = ""                # the internal reason for a reject (evidence only, never a reply)
 
 
 @dataclass
@@ -1660,6 +1870,11 @@ class Ctx:
 
 _SLOT = re.compile(r"\{[^{}\n]*\}")
 STANDARD_SLOTS = frozenset({"{study}", "{date}"})
+KIND_LABEL = {"value": "the required values", "concept": "the study-level statements",
+              "fixed": "the sentences printed in every report", "normal": "the normal findings",
+              "layout": "the sections and paragraphs", "style": "the style"}
+REJECT = "I couldn't apply the change to {label} as asked. Could you say it another way?"
+USUAL_QUESTION = "Is {label} usually given for this scan? Then I'll know which wording is the usual one."
 
 
 def _plain(s: str) -> str:
@@ -1696,7 +1911,7 @@ def claim_for(kind: str, key: str, choice: dict) -> str:
         return _KEEP_CLAIM[choice["keep"]].format(key=key)
     if kind == "concept":
         label = L.CONCEPTS.get(key, key)
-        state, d, w = L.concept_state(choice)
+        state, d, w, _ = L.concept_state(choice)
         if state == "not_used":
             return f"{label}: no longer stated."
         if state == "dictated":
@@ -1762,26 +1977,51 @@ def _value(c: ValueChange, ctx: Ctx) -> Verdict:
                  texts, c.sure, ctx)
 
 
+def _concept_now(name: str, ctx: Ctx):
+    e = L.entry(ctx.ledger, "concept", name)
+    return L.concept_state(e["choice"] if e else L.current(ctx.sheet, "concept", name))
+
+
 def _concept(c: ConceptChange, ctx: Ctx) -> Verdict:
     if c.concept not in L.CONCEPTS:
         return _ask("concept", "I can change these study-level statements: " + ", ".join(L.CONCEPTS.values())
                     + ". Which did you mean?")
-    e = L.entry(ctx.ledger, "concept", c.concept)
-    state0, d0, w0 = L.concept_state(e["choice"] if e else L.current(ctx.sheet, "concept", c.concept))
+    state0, d0, w0, cond0 = _concept_now(c.concept, ctx)
     d = d0 if c.default is None else c.default.strip()
     w = w0 if c.when_met is None else c.when_met.strip()
     state = c.state or ("used" if (c.default or c.when_met) else state0)
-    key, choice = L.check("concept", c.concept, L.concept_choice(state, d, w))
+    cond = L.condition_for(c.concept, c.condition) if c.condition else cond0   # carried forward
+    conditions = [x for x in L.concept_states(c.concept).values() if x]
+    if state == "used" and not cond and len(conditions) > 1:
+        return _ask("concept", USUAL_QUESTION.format(label=L.CONCEPTS[c.concept].lower()))
+    key, choice = L.check("concept", c.concept, L.concept_choice(state, d, w, cond))
     texts = [t for t, old in ((c.default, d0), (c.when_met, w0)) if t and norm_key(t) != norm_key(old)]
     return _gate(Verdict("concept", "ledger", key=key, choice=choice, claim=claim_for("concept", key, choice)),
                  texts, c.sure, ctx)
+
+
+def _fixed_as_concept(c: FixedChange, owner: str, line: str, ctx: Ctx) -> ConceptChange:
+    """A FIXED edit on a line a concept owns, as the concept change it means (plan decision 6)."""
+    _, d0, w0, _ = _concept_now(owner, ctx)
+    is_default = norm_key(line) == norm_key(d0)
+    field_ = "default" if is_default else "when_met"
+    if c.to == "reword":
+        return ConceptChange(concept=owner, sure=c.sure, **{field_: c.text})
+    if c.to == "dictated":
+        return ConceptChange(concept=owner, state="dictated", sure=c.sure)
+    if c.to == "remove":
+        if w0 if is_default else d0:     # the concept keeps its other wording
+            return ConceptChange(concept=owner, sure=c.sure, **{field_: ""})
+        return ConceptChange(concept=owner, state="not_used", sure=c.sure)
+    return ConceptChange(concept=owner, sure=c.sure)   # "always": the concept keeps its wording as it is
 
 
 def _fixed(c: FixedChange, ctx: Ctx) -> Verdict:
     lines = [sh.quoted(l.text) for l in sh.walk(ctx.sheet) if l.keyword == "FIXED"]
     match = next((t for t in lines if c.line and norm_key(t) == norm_key(c.line)), None)
     if c.to == "add":
-        if match or any(norm_key(t) == norm_key(c.text) for t in lines):
+        if match or any(norm_key(t) == norm_key(c.text) for t in lines) or L.concept_owner(
+                ctx.sheet, ctx.ledger, c.text):
             return _ask("fixed", f'"{c.text or c.line}" is already printed in every report.')
         para = _para(ctx.sheet, c.paragraph)
         if para is None:
@@ -1792,8 +2032,12 @@ def _fixed(c: FixedChange, ctx: Ctx) -> Verdict:
         return _gate(v, [key], c.sure, ctx)
     if match is None:
         return _ask("fixed", f'I couldn\'t find "{c.line}" among the sentences printed in every report.')
+    owner = L.concept_owner(ctx.sheet, ctx.ledger, match)
+    if owner:
+        return _concept(_fixed_as_concept(c, owner, match, ctx), ctx)
     if c.to == "reword":
         key, _ = L.check("fixed", c.text, {"keep": "always"})
+        L.rekey_fixed(ctx.ledger, match, key)          # a clash with a decided line is a reject now, not later
         v = Verdict("fixed", "edit", key=key, op={"op": "fixed_reword", "line": match, "text": key},
                     claim=f'"{match}" now reads "{key}".')
         return _gate(v, [key], c.sure, ctx)
@@ -1885,8 +2129,8 @@ _VALIDATORS = {"value": _value, "concept": _concept, "fixed": _fixed, "normal": 
 def validate(kind: str, change: BaseModel, ctx: Ctx) -> Verdict:
     try:
         v = _VALIDATORS[kind](change, ctx)
-    except L.Rejected as e:
-        v = Verdict(kind, "reject", reason=f"I couldn't apply part of that: {e}.")
+    except L.Rejected as e:   # internal text goes to the evidence only (plan decision 15)
+        v = Verdict(kind, "reject", reason=REJECT.format(label=KIND_LABEL[kind]), detail=str(e)[:300])
     v.change = {"kind": kind, **change.model_dump()}
     return v
 
@@ -1901,7 +2145,7 @@ def parse_change(kind: str, data: dict) -> BaseModel:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_chat_router_changes.py -q`
-Expected: PASS (10 tests)
+Expected: PASS (15 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1939,7 +2183,16 @@ def test_concept_view_names_every_concept_and_the_printed_sentences():
     v = V.view("concept", ROUTER_SHEET, [])
     for name in L.CONCEPTS:
         assert f"- {name} (" in v
+    assert "- contrast (Contrast; states: given, not_given): not stated" in v
     assert '- "No previous imaging available."' in v
+
+
+def test_concept_view_names_the_usual_state_and_the_condition():
+    from tests.template_sheet_fixtures import ROUTER_SHEET_CONCEPT
+    v = V.view("concept", ROUTER_SHEET_CONCEPT, [])
+    assert ('- comparison (Comparison with previous imaging; states: none, compared): default '
+            '"No previous imaging available." (printed when none); when_met "Compared with the {study} of {date}." '
+            '(condition: compared)') in v
 
 
 def test_fixed_view_lists_sentences_with_their_paragraph():
@@ -2008,12 +2261,18 @@ def _concepts(sheet: str, ledger: List[dict]) -> str:
             choice = e["choice"] if e else L.current(sheet, "concept", name)
         except L.Rejected:
             choice = None
-        state, d, w = L.concept_state(choice)
+        state, d, w, cond = L.concept_state(choice)
+        states = L.concept_states(name)
+        when = next((s for s, c in states.items() if c and c == cond), "")
+        usual = next((s for s in states if s != when), "") if when else ""
+        head = f"- {name} ({label}; states: {', '.join(states)})"
         if state == "not_used":
-            rows.append(f"- {name} ({label}): not stated")
+            rows.append(f"{head}: not stated")
+        elif state == "dictated":
+            rows.append(f"{head}: whichever wording is dictated")
         else:
-            lead = "whichever is dictated; " if state == "dictated" else ""
-            rows.append(f'- {name} ({label}): {lead}default "{d}"; when it applies "{w}"')
+            rows.append(f'{head}: default "{d}" (printed when {usual or "nothing else is dictated"}); '
+                        f'when_met "{w}" (condition: {when or "none"})')
     printed = [f'- "{t}"' for t in _printed(sheet)]
     return ("STUDY-LEVEL STATEMENTS (key (label): current wording):\n" + "\n".join(rows)
             + "\n\nSENTENCES PRINTED IN EVERY REPORT (a default may reuse one):\n" + ("\n".join(printed) or "- (none)"))
@@ -2068,7 +2327,7 @@ def view(kind: str, sheet: str, ledger: List[dict]) -> str:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_chat_router_views.py -q`
-Expected: PASS (6 tests)
+Expected: PASS (7 tests)
 
 - [ ] **Step 5: Run Phase 1 together and commit**
 
@@ -2342,9 +2601,11 @@ _KIND = {
         "how the study-level statements listed under CURRENT are worded, or whether they are stated",
         'Each change names one statement by its key (the word before the brackets under CURRENT) and sets any of: '
         '"state" ("used"; "dictated": use whichever wording is dictated; "not_used": not stated), "default" (the '
-        'sentence printed when the dictation does not say otherwise; it may reuse a sentence listed under CURRENT) '
-        'and "when_met" (the sentence printed when the dictation states it; it may hold {study} and {date} for '
-        'values the dictation gives). Leave a field null to keep it as it is.'),
+        'usual sentence, printed unless the dictation says otherwise; it may reuse a sentence listed under '
+        'CURRENT), "when_met" (the sentence printed when the dictation states the other state; it may hold {study} '
+        'and {date} for values the dictation gives) and "condition" (that other state, one of the states listed '
+        'for the statement; the default belongs to the remaining, usual state). Leave a field null to keep it as it '
+        'is. If a statement has two states and you cannot tell which is usual, leave "condition" null.'),
     "fixed": (
         "the sentences printed in every report",
         '"to": "always" (printed in every report), "dictated" (printed only when the dictation says it), "remove" '
@@ -2531,12 +2792,54 @@ async def test_a_mixed_instruction_applies_each_tagged_kind(fake):
     assert t.reply.splitlines() == ["Width is no longer required.", '"No previous imaging available." is no longer printed.']
 
 
-async def test_an_unsure_tag_cards_its_changes(fake):
+async def test_an_unsure_tag_lets_the_call_decide_and_marks_the_route(fake):
     fake["tags"] = tags(value=0.4)
     fake["calls"]["value"] = CH.ValueOut(changes=[CH.ValueChange(name="Width", to="not_needed")])
     t = await R.route_turn(ROUTER_SHEET, [], "width maybe")
-    assert not t.applied and t.sheet == ROUTER_SHEET and t.cards[0]["ledger_kind"] == "value"
-    assert t.reply == R.CARDS_LINE
+    assert t.applied and 'LIST_MISSING ["Depth"]' in t.sheet and not t.cards
+    assert L.entry(t.ledger, "value", "Width")["route"] == "llm_unsure"
+    assert t.records[0]["route"] == "llm_unsure" and t.evidence["changes"][0]["route"] == "llm_unsure"
+    assert t.evidence["unsure"] == ["value"]
+
+
+async def test_an_unsure_call_that_decides_nothing_changes_nothing(fake):
+    fake["tags"] = tags(value=0.4)
+    t = await R.route_turn(ROUTER_SHEET, [], "width maybe")
+    assert not t.applied and t.records == [] and t.reply == "No change was needed."
+
+
+async def test_applied_only_when_the_sheet_or_ledger_changed(fake, monkeypatch):
+    async def same(sheet, previous, ledger):
+        return L.Saved("unchanged", previous, [], "")
+    monkeypatch.setattr(L, "save", same)
+    fake["tags"] = tags(value=0.9)
+    fake["calls"]["value"] = CH.ValueOut(changes=[CH.ValueChange(name="Width", to="not_needed")])
+    t = await R.route_turn(ROUTER_SHEET, [], "drop width")
+    assert not t.applied and t.records == [] and t.claim == ""
+
+
+async def test_unmatched_decisions_are_surfaced(fake, monkeypatch):
+    real = L.save
+
+    async def with_unmatched(sheet, previous, ledger):
+        out = await real(sheet, previous, ledger)
+        out.unmatched = [{"kind": "normal", "key": "Gone :: x"}]
+        return out
+    monkeypatch.setattr(L, "save", with_unmatched)
+    fake["tags"] = tags(value=0.9)
+    fake["calls"]["value"] = CH.ValueOut(changes=[CH.ValueChange(name="Width", to="not_needed")])
+    t = await R.route_turn(ROUTER_SHEET, [], "drop width")
+    assert t.applied and t.unmatched == [{"kind": "normal", "key": "Gone :: x"}] and R.UNMATCHED_LINE in t.reply
+
+
+async def test_an_explicit_removal_of_a_confirmed_concept_is_applied_and_named(fake):
+    led, _ = L.set_choice([], "concept", "comparison",
+                          L.concept_choice("used", "No previous imaging available.", "Compared with the {study} of {date}."))
+    fake["tags"] = tags(concept=0.9)
+    fake["calls"]["concept"] = CH.ConceptOut(changes=[CH.ConceptChange(concept="comparison", state="not_used")])
+    t = await R.route_turn(ROUTER_SHEET, led, "never mention comparison")
+    assert t.applied and "This changes something you confirmed" in t.reply and t.records
+    assert L.concept_state(L.entry(t.ledger, "concept", "comparison")["choice"])[0] == "not_used"
 
 
 async def test_a_failed_targeted_call_leaves_the_other_parts_applied(fake):
@@ -2546,6 +2849,7 @@ async def test_a_failed_targeted_call_leaves_the_other_parts_applied(fake):
     t = await R.route_turn(ROUTER_SHEET, [], "drop width and reword the alpha normal")
     assert t.applied and "Width is no longer required." in t.reply
     assert "I couldn't change the normal findings just now" in t.reply and t.evidence["failed"] == ["normal"]
+    assert "TimeoutError" not in t.reply
 
 
 async def test_invented_wording_cards_that_part_and_applies_the_rest(fake):
@@ -2605,11 +2909,11 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'rapid_reports_ai.chat
 rules is applied by code through the decision ledger, the way a card tap is; a change of style is applied by a
 lightweight call that can only touch prose. No model rewrites the whole sheet.
 
-route_turn: Jev tags -> one targeted call per tagged kind (parallel) -> code validates each structured change ->
-applied (style first, then layout and unit edits, then ledger writes; plan decision 8), carded or asked -> the save
-function (origin "chat"), which applies the ledger last -> the reply, one line per applied change. A failed tag call
-raises Fallback and the endpoint runs today's whole-sheet refine (the fallback stays until the lab and live data
-say otherwise)."""
+route_turn: Jev tags -> one targeted call per tagged kind (parallel; a kind in the unsure band is decided by its
+call and marked route "llm_unsure", decision D-R2) -> code validates each structured change -> applied (style first,
+then layout and unit edits, then ledger writes; plan decision 8), carded or asked -> the save function (origin
+"chat"), which applies the ledger last -> the reply, one line per applied change. A failed tag call raises Fallback
+and the endpoint runs today's whole-sheet refine (the fallback stays until the lab and live data say otherwise)."""
 from __future__ import annotations
 
 import asyncio
@@ -2631,11 +2935,12 @@ from . import chat_router_views as V
 logger = logging.getLogger(__name__)
 
 ROUTER_VERSION = "router-1"
+UNSURE_ROUTE = "llm_unsure"
 WORK_KINDS = ("value", "concept", "fixed", "normal", "layout", "style")
-KIND_LABEL = {"value": "the required values", "concept": "the study-level statements",
-              "fixed": "the sentences printed in every report", "normal": "the normal findings",
-              "layout": "the sections and paragraphs", "style": "the style"}
+KIND_LABEL = CH.KIND_LABEL
 CARDS_LINE = "I wasn't sure about part of that: choose below."
+UNMATCHED_LINE = ("Some decisions no longer match a line in the template; they will be asked again at the next "
+                  "review.")
 STYLE_TOUCHED_RULES = ("The style change also touched the template's rules, so I left it out. Could you say it as "
                        "a change of wording only?")
 
@@ -2648,13 +2953,14 @@ class Fallback(Exception):
 class Turn:
     sheet: str
     ledger: List[dict]
-    applied: bool
+    applied: bool                 # the saved sheet or the ledger differs from the turn's input (decision 14)
     reply: str
     claim: str = ""
     records: List[dict] = field(default_factory=list)   # what undo_turn reverses
     cards: List[dict] = field(default_factory=list)
     notice: str = ""
     refused: bool = False
+    unmatched: List[dict] = field(default_factory=list)
     evidence: dict = field(default_factory=dict)
 
 
@@ -2663,8 +2969,8 @@ def _ms(t0: float) -> int:
 
 
 def _ev(v: CH.Verdict) -> dict:
-    return {"kind": v.kind, "action": v.action, "key": v.key, "op": (v.op or {}).get("op"), "invented": v.invented,
-            "reason": (v.reason or "")[:200]}
+    return {"kind": v.kind, "action": v.action, "key": v.key, "op": (v.op or {}).get("op"), "route": v.route,
+            "invented": v.invented, "reason": (v.reason or "")[:200], "detail": (v.detail or "")[:300]}
 
 
 def _ask_reply(scan: str, misfit: bool) -> str:
@@ -2674,10 +2980,13 @@ def _ask_reply(scan: str, misfit: bool) -> str:
     return f"I'm not sure what to change in these {s}reports. What should they do differently?"
 
 
-def _ledger_for_edit(ledger: List[dict], before: str, op: dict, rec: dict) -> Tuple[List[dict], dict]:
-    """Ledger keys follow a code edit: a paragraph rename rekeys its normals, a removal drops them (kept on the
-    record for undo), a FIXED rewording rekeys its entry."""
+def _ledger_for_edit(ledger: List[dict], before: str, op: dict, rec: dict,
+                     undoing: bool = False) -> Tuple[List[dict], dict, Optional[dict]]:
+    """Ledger keys follow a code edit: a paragraph rename rekeys its normals; a removal drops them (kept on the record
+    for undo); a FIXED rewording moves its decided entry (td.rekey_decision), returned as a change so undo reverses it
+    through the ledger (so `undoing` skips it). (ledger, record, change or None)."""
     name = op.get("op")
+    change = None
     if name == "rename_paragraph":
         ledger = L.rekey_paragraph(ledger, op["paragraph"], op["to"])
     elif name in ("remove_paragraph", "remove_section"):
@@ -2689,48 +2998,55 @@ def _ledger_for_edit(ledger: List[dict], before: str, op: dict, rec: dict) -> Tu
         dropped = [e for p in paras for e in L.paragraph_entries(ledger, p)]
         ledger = [e for e in ledger if not any(e is d for d in dropped)]
         rec["dropped"] = list(rec.get("dropped") or []) + dropped
-    elif name == "fixed_reword":
-        ledger = L.rekey_fixed(ledger, op["line"], op["text"])
-    return ledger, rec
+    elif name == "fixed_reword" and not undoing:
+        ledger, change = L.rekey_fixed(ledger, op["line"], op["text"])
+    return ledger, rec, change
 
 
 def _apply(sheet: str, ledger: List[dict], verdicts: List[CH.Verdict]):
-    """Layout edits, then unit edits, then ledger writes. (sheet, ledger, records, claims, notes, problems)."""
+    """Layout edits, then unit edits, then ledger writes. (sheet, ledger, records, claims, notes, problems, detail)."""
     records: List[dict] = []
     claims: List[str] = []
     notes: List[str] = []
     problems: List[str] = []
+    detail: List[str] = []
     seeded = False
 
     def rank(v: CH.Verdict) -> int:
         return 0 if (v.action == "edit" and v.kind == "layout") else 1 if v.action == "edit" else 2
 
     for v in sorted(verdicts, key=rank):
+        route = v.route or None
         try:
             if v.action == "edit":
                 before = sheet
                 sheet, inverse = E.apply_op(sheet, v.op)
-                rec = {"type": "edit", "kind": v.kind, "op": v.op, "inverse": inverse, "claim": v.claim}
-                ledger, rec = _ledger_for_edit(ledger, before, v.op, rec)
+                rec = {"type": "edit", "kind": v.kind, "op": v.op, "inverse": inverse, "claim": v.claim,
+                       "route": v.route}
+                ledger, rec, moved = _ledger_for_edit(ledger, before, v.op, rec)
                 records.append(rec)
+                if moved:
+                    records.append({"type": "ledger", "change": moved, "claim": "", "route": v.route})
+                    notes.append(L.note(moved))
                 if v.choice is not None:            # a new unit line is also a decision
-                    ledger, change = L.set_choice(ledger, v.kind, v.key, v.choice)
+                    ledger, change = L.set_choice(ledger, v.kind, v.key, v.choice, route=route)
                     if change:
-                        records.append({"type": "ledger", "change": change, "claim": ""})
+                        records.append({"type": "ledger", "change": change, "claim": "", "route": v.route})
                 claims.append(v.claim)
                 continue
             if v.kind == "value" and not seeded:
                 ledger, seeded = L.seed_values(ledger, sheet), True
-            ledger, change = L.set_choice(ledger, v.kind, v.key, v.choice)
+            ledger, change = L.set_choice(ledger, v.kind, v.key, v.choice, route=route)
             if change is None:
                 problems.append(f"Already the case: {v.claim}")
                 continue
-            records.append({"type": "ledger", "change": change, "claim": v.claim})
+            records.append({"type": "ledger", "change": change, "claim": v.claim, "route": v.route})
             claims.append(v.claim)
             notes.append(L.note(change))
-        except (E.EditError, L.Rejected) as e:
-            problems.append(f"I couldn't make this change: {v.claim.rstrip('.')} ({e}).")
-    return sheet, ledger, records, claims, [n for n in notes if n], problems
+        except (E.EditError, L.Rejected) as e:   # the reason is internal: evidence only (decision 15)
+            problems.append(f"I couldn't make this change: {v.claim.rstrip('.')}.")
+            detail.append(f"{v.kind}: {str(e)[:200]}")
+    return sheet, ledger, records, claims, [n for n in notes if n], problems, detail
 
 
 async def _style(sheet: str, out: CH.StyleOut, ctx: CH.Ctx):
@@ -2775,7 +3091,7 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
     verdicts: List[CH.Verdict] = []
     asks: List[str] = []
     failed: List[str] = []
-    style_out = None
+    style_out, style_route = None, ""
     for k, res in zip(kinds, results):
         if isinstance(res, BaseException):
             logger.warning("[chat-router] %s call failed: %s", k, type(res).__name__)
@@ -2783,23 +3099,23 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
             continue
         if (res.question or "").strip():
             asks.append(res.question.strip())
+        route = UNSURE_ROUTE if k in unsure else ""
         if k == "style":
-            style_out = res
+            style_out, style_route = res, route
             continue
         for c in res.changes:
             v = CH.validate(k, c, ctx)
-            verdicts.append(CH.to_card(v) if k in unsure else v)
+            v.route = route
+            verdicts.append(v)
 
     styled, style_rec, style_lines, style_ev = sheet, None, [], {}
     if style_out is not None and style_out.blocks:
-        if "style" in unsure:
-            asks.append(f"Did you want this change: {style_out.summary.strip().rstrip('.') or 'a change of wording'}? "
-                        "Say so and I'll make it.")
-        else:
-            styled, style_rec, style_lines, extra, style_ev = await _style(sheet, style_out, ctx)
-            verdicts += extra
+        styled, style_rec, style_lines, extra, style_ev = await _style(sheet, style_out, ctx)
+        if style_rec:
+            style_rec["route"] = style_route
+        verdicts += extra
 
-    new_sheet, new_ledger, records, claims, notes, problems = _apply(
+    new_sheet, new_ledger, records, claims, notes, problems, detail = _apply(
         styled, ledger, [v for v in verdicts if v.action in ("ledger", "edit")])
     if style_rec:
         records.insert(0, style_rec)
@@ -2807,32 +3123,38 @@ async def route_turn(sheet: str, ledger: List[dict], instruction: str, *, contex
     cards = [v.card for v in verdicts if v.action == "card" and v.card]
     asks += [v.reason for v in verdicts if v.action in ("ask", "reject") and v.reason]
     fails = [f"I couldn't change {KIND_LABEL[k]} just now; please try that part again." for k in failed]
-    ev.update(changes=[_ev(v) for v in verdicts], cards=len(cards), failed=failed, **style_ev)
+    ev.update(changes=[_ev(v) for v in verdicts], cards=len(cards), failed=failed, problems=detail, **style_ev)
+
+    def tail(cards_: List[dict]) -> List[str]:
+        return ([CARDS_LINE] if cards_ else []) + asks + style_lines + problems + fails
 
     if not records:
         ev.update(applied=0, ms=_ms(t0))
-        tail = ([CARDS_LINE] if cards else []) + asks + style_lines + problems + fails
-        return Turn(sheet, ledger, False, "\n".join(tail) or "No change was needed.", cards=cards, evidence=ev)
+        return Turn(sheet, ledger, False, "\n".join(tail(cards)) or "No change was needed.", cards=cards, evidence=ev)
 
     saved = await L.save(new_sheet, sheet, new_ledger)
     if saved.status == "refused":
         ev.update(applied=0, refused=True, ms=_ms(t0))
         return Turn(sheet, ledger, False, saved.message, cards=cards, refused=True, evidence=ev)
-    notes += [n for n in (L.note(c) for c in saved.ledger_changes) if n]
     cards += saved.cards
-    tail = ([CARDS_LINE] if cards else []) + asks + style_lines + problems + fails
-    ev.update(applied=len(records), ms=_ms(t0))
+    if saved.sheet == sheet and saved.ledger == ledger:      # nothing actually changed (decision 14)
+        ev.update(applied=0, ms=_ms(t0))
+        return Turn(sheet, ledger, False, "\n".join(tail(cards)) or "No change was needed.", cards=cards,
+                    evidence=ev)
+    notes += [n for n in (L.note(c) for c in saved.ledger_changes) if n]
+    lines = claims + notes + tail(cards) + ([UNMATCHED_LINE] if saved.unmatched else []) + (
+        [saved.message] if saved.message else [])
+    ev.update(applied=len(records), unmatched=len(saved.unmatched), ms=_ms(t0))
     logger.info("[chat-router] yes=%s unsure=%s applied=%d cards=%d failed=%s ms=%d", yes, unsure, len(records),
                 len(cards), failed, ev["ms"])
-    return Turn(saved.sheet, saved.ledger, True, "\n".join(claims + notes + tail + ([saved.message] if saved.message
-                                                                                     else [])),
-                claim=" ".join(claims), records=records, cards=cards, notice=saved.message, evidence=ev)
+    return Turn(saved.sheet, saved.ledger, True, "\n".join(lines), claim=" ".join(claims), records=records,
+                cards=cards, notice=saved.message, unmatched=saved.unmatched, evidence=ev)
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_chat_router.py -q`
-Expected: PASS (11 tests)
+Expected: PASS (15 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -2862,7 +3184,7 @@ async def test_a_style_edit_touches_prose_only(fake):
                                          summary="The impression will be one sentence.")
     t = await R.route_turn(ROUTER_SHEET, [], "make the impression more concise")
     assert t.applied and NEW_IC in t.sheet and "Keep it brief." not in t.sheet
-    assert t.records[0] == {"type": "style", "claim": "The impression will be one sentence.",
+    assert t.records[0] == {"type": "style", "claim": "The impression will be one sentence.", "route": "",
                             "blocks": [{"before": "Lead with the most important finding.\nKeep it brief.",
                                         "after": NEW_IC}]}
     assert t.reply == "The impression will be one sentence." and t.evidence["style"] == "applied"
@@ -2907,11 +3229,11 @@ async def test_a_failed_requires_check_leaves_the_style_out(fake):
     assert not t.applied and t.reply == R.REQUIRES_FAILED
 
 
-async def test_an_unsure_style_tag_asks_first(fake):
+async def test_an_unsure_style_tag_is_decided_by_the_call(fake):
     fake["tags"] = tags(style=0.4)
     fake["calls"]["style"] = CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=NEW_IC)], summary="Shorter impression.")
     t = await R.route_turn(ROUTER_SHEET, [], "maybe shorter")
-    assert not t.applied and "Did you want this change: Shorter impression?" in t.reply
+    assert t.applied and NEW_IC in t.sheet and t.records[0]["route"] == "llm_unsure"
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -2980,7 +3302,7 @@ async def _style(sheet: str, out: CH.StyleOut, ctx: CH.Ctx):
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_chat_router.py -q`
-Expected: PASS (17 tests)
+Expected: PASS (21 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -3023,6 +3345,32 @@ async def test_undo_reverses_a_layout_edit_and_its_rekey(fake):
     assert "## Paragraph: Upper (FINDINGS)" in u.sheet and L.entry(u.ledger, "normal", L.normal_key("Upper", "alpha"))
 
 
+async def test_undo_reverses_a_fixed_reword_and_its_decided_entry(fake):
+    led, _ = L.set_choice([], "fixed", "Axial images were acquired.", {"keep": "always"})
+    t = await _turn(fake, "fixed", CH.FixedOut(changes=[CH.FixedChange(
+        to="reword", line="Axial images were acquired.", text="Axial and coronal images were acquired.")]),
+        "say Axial and coronal images were acquired.", led)
+    assert L.entry(t.ledger, "fixed", "Axial and coronal images were acquired.") is not None
+    assert [r["type"] for r in t.records] == ["edit", "ledger"]
+    u = await R.undo_turn(t.sheet, t.ledger, t.records)
+    assert 'FIXED "Axial images were acquired."' in u.sheet
+    assert L.entry(u.ledger, "fixed", "Axial images were acquired.")["choice"] == {"keep": "always"}
+    assert L.entry(u.ledger, "fixed", "Axial and coronal images were acquired.") is None
+
+
+async def test_undo_puts_back_validated_dropped_entries_only(fake):
+    led, _ = L.set_choice([], "normal", L.normal_key("Lower", "gamma"), {"text": "Gamma is fine."})
+    t = await _turn(fake, "layout", CH.LayoutOut(changes=[CH.LayoutChange(op="remove_paragraph", target="Lower")]),
+                    "remove the lower paragraph", led)
+    assert L.entry(t.ledger, "normal", L.normal_key("Lower", "gamma")) is None
+    tampered = [{**t.records[0], "dropped": [*t.records[0]["dropped"],
+                                             {"kind": "value", "key": 'a "b"', "choice": {"need": "every"}}]}]
+    u = await R.undo_turn(t.sheet, t.ledger, tampered)
+    assert "## Paragraph: Lower (FINDINGS)" in u.sheet
+    assert L.entry(u.ledger, "normal", L.normal_key("Lower", "gamma"))["choice"] == {"text": "Gamma is fine."}
+    assert not any(e["kind"] == "value" for e in u.ledger)
+
+
 async def test_undo_restores_the_previous_prose(fake):
     fake["requires"] = {}
     t = await _turn(fake, "style", CH.StyleOut(blocks=[CH.StyleBlock(id="b4", text=NEW_IC)], summary="Shorter."),
@@ -3052,17 +3400,20 @@ async def test_answer_card_applies_a_proposal():
     assert t.applied and 'FIXED "Axial images were obtained."' in t.sheet and t.records[0]["type"] == "edit"
 
 
-async def test_answer_card_refuses_what_code_cannot_apply():
+async def test_answer_card_refuses_what_code_cannot_apply_without_internal_text():
     t = await R.answer_card(ROUTER_SHEET, [], {"kind": "value", "key": 'a "bad" name', "choice": {"need": "every"}})
-    assert not t.applied and t.sheet == ROUTER_SHEET and t.reply.startswith("I couldn't apply that")
+    assert not t.applied and t.sheet == ROUTER_SHEET and t.reply == R.CARD_REJECTED
+    assert "short plain name" in t.evidence["detail"]
 
 
-def test_response_and_enabled(monkeypatch):
+def test_response_and_the_kill_switch_defaults_off(monkeypatch):
     t = R.Turn("S", [{"kind": "value"}], True, "Done.", claim="c", records=[{"type": "ledger"}], cards=[{"id": "x"}])
     assert R.response(t) == {"success": True, "skill_sheet": "S", "response": "Done.", "behavioral_claim": "c",
                              "applied": True, "route": "router", "changes": [{"type": "ledger"}],
-                             "cards": [{"id": "x"}], "decisions": [{"kind": "value"}]}
+                             "cards": [{"id": "x"}], "decisions": [{"kind": "value"}], "unmatched": []}
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    monkeypatch.delenv("RR_CHAT_ROUTER", raising=False)
+    assert not R.enabled()                                  # D-R3: off unless switched on
     monkeypatch.setenv("RR_CHAT_ROUTER", "1")
     assert R.enabled()
     monkeypatch.setenv("RR_CHAT_ROUTER", "0")
@@ -3080,16 +3431,20 @@ Expected: FAIL with `AttributeError: module 'rapid_reports_ai.chat_router' has n
 - [ ] **Step 3: Implement** (append to `chat_router.py`)
 
 ```python
+CARD_REJECTED = "I couldn't apply that choice. Could you tell me in the chat what you want instead?"
+
+
 def enabled() -> bool:
-    """The kill switch (plan decision 1): RR_CHAT_ROUTER=0, or no Jev key, sends every turn down today's path."""
-    return os.environ.get("RR_CHAT_ROUTER", "1") != "0" and bool(os.environ.get("OPENROUTER_API_KEY"))
+    """The kill switch (plan decision 1, D-R3): off unless RR_CHAT_ROUTER=1 and a Jev key is set; off sends every
+    turn down today's path."""
+    return os.environ.get("RR_CHAT_ROUTER", "0") == "1" and bool(os.environ.get("OPENROUTER_API_KEY"))
 
 
 def response(turn: Turn) -> dict:
     """The /skill-sheet/refine (and /undo, /card) response for a router turn."""
     out = {"success": True, "skill_sheet": turn.sheet, "response": turn.reply,
            "behavioral_claim": turn.claim if turn.applied else "", "applied": turn.applied, "route": "router",
-           "changes": turn.records, "cards": turn.cards, "decisions": turn.ledger}
+           "changes": turn.records, "cards": turn.cards, "decisions": turn.ledger, "unmatched": turn.unmatched}
     if turn.notice:
         out["notice"] = turn.notice
     return out
@@ -3117,10 +3472,12 @@ async def undo_turn(sheet: str, ledger: List[dict], records: List[dict]) -> Turn
                 for inv in reversed(rec.get("inverse") or []):
                     prev = cur
                     cur, _ = E.apply_op(cur, inv)
-                    led, _ = _ledger_for_edit(led, prev, inv, {})
-                for e in rec.get("dropped") or []:
-                    if L.entry(led, e["kind"], e["key"]) is None:
-                        led = [*led, e]
+                    led, _, _ = _ledger_for_edit(led, prev, inv, {}, undoing=True)
+                for e in rec.get("dropped") or []:   # client-sent: validated before it goes back (L.restore)
+                    try:
+                        led = L.restore(led, e)
+                    except L.Rejected as err:
+                        logger.info("[chat-router] undo refused a dropped entry: %s", err)
             elif kind == "style":
                 hit = False
                 for b in rec.get("blocks") or []:
@@ -3147,7 +3504,7 @@ async def undo_turn(sheet: str, ledger: List[dict], records: List[dict]) -> Turn
     reply = "\n".join(f"Undone: {c}" for c in undone) or "Undone."
     if skipped:
         reply += "\nPart of it had changed since, so I left that part as it is."
-    return Turn(saved.sheet, saved.ledger, True, reply, notice=saved.message, evidence=ev)
+    return Turn(saved.sheet, saved.ledger, True, reply, notice=saved.message, unmatched=saved.unmatched, evidence=ev)
 
 
 async def answer_card(sheet: str, ledger: List[dict], answer: dict) -> Turn:
@@ -3166,11 +3523,13 @@ async def answer_card(sheet: str, ledger: List[dict], answer: dict) -> Turn:
         try:
             key, choice = L.check((answer or {}).get("kind", ""), (answer or {}).get("key", ""),
                                   (answer or {}).get("choice") or {})
-        except L.Rejected as e:
-            return Turn(sheet, ledger, False, f"I couldn't apply that: {e}.")
+        except L.Rejected as e:   # internal text stays in the evidence (decision 15)
+            return Turn(sheet, ledger, False, CARD_REJECTED,
+                        evidence={"version": ROUTER_VERSION, "route": "card", "detail": str(e)[:300]})
         v = CH.Verdict(answer["kind"], "ledger", key=key, choice=choice, claim=CH.claim_for(answer["kind"], key, choice))
-    new_sheet, new_ledger, records, claims, notes, problems = _apply(sheet, ledger, [v])
-    ev = {"version": ROUTER_VERSION, "route": "card", "kind": v.kind, "proposal": bool(p), "applied": len(records)}
+    new_sheet, new_ledger, records, claims, notes, problems, detail = _apply(sheet, ledger, [v])
+    ev = {"version": ROUTER_VERSION, "route": "card", "kind": v.kind, "proposal": bool(p), "applied": len(records),
+          "detail": "; ".join(detail)}
     if not records:
         ev["ms"] = _ms(t0)
         return Turn(sheet, ledger, False, "\n".join(problems) or "No change was needed.", evidence=ev)
@@ -3179,14 +3538,18 @@ async def answer_card(sheet: str, ledger: List[dict], answer: dict) -> Turn:
     if saved.status == "refused":
         return Turn(sheet, ledger, False, saved.message, refused=True, evidence={**ev, "refused": True})
     notes += [n for n in (L.note(c) for c in saved.ledger_changes) if n]
-    return Turn(saved.sheet, saved.ledger, True, "\n".join(claims + notes + ([saved.message] if saved.message else [])),
-                claim=" ".join(claims), records=records, cards=saved.cards, notice=saved.message, evidence=ev)
+    if saved.sheet == sheet and saved.ledger == ledger:
+        return Turn(sheet, ledger, False, "No change was needed.", evidence=ev)
+    return Turn(saved.sheet, saved.ledger, True, "\n".join(claims + notes + ([UNMATCHED_LINE] if saved.unmatched else [])
+                                                              + ([saved.message] if saved.message else [])),
+                claim=" ".join(claims), records=records, cards=saved.cards, notice=saved.message,
+                unmatched=saved.unmatched, evidence=ev)
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_chat_router.py -q`
-Expected: PASS (25 tests)
+Expected: PASS (31 tests)
 
 - [ ] **Step 5: Run Phases 1-2 and commit**
 
@@ -3260,6 +3623,17 @@ def test_match_ledger_layout_card_and_style():
     assert lab.match(card, {"kind": "normal", "expect": "card"}) and not lab.match(card, {"kind": "normal",
                                                                                           "key": "k", "choice": {"text": "x"}})
     assert lab.match({"kind": "style", "action": "style"}, {"kind": "style"})
+    cond = "the dictation states no contrast agent was given"
+    rec_c = {"kind": "concept", "action": "ledger", "key": "contrast", "op": None,
+             "choice": {"use": True, "dictated": False, "default": "Contrast was given.",
+                        "when_met": "No contrast was given.", "condition": cond}}
+    assert lab.match(rec_c, {"kind": "concept", "key": "contrast", "choice": {
+        "use": True, "default": "contrast was given", "when_met": "No contrast was given.", "condition": "not_given"}})
+    assert not lab.match(rec_c, {"kind": "concept", "key": "contrast", "choice": {
+        "use": True, "default": "Contrast was given.", "when_met": "No contrast was given.", "condition": "given"}})
+    dictated = {"kind": "concept", "action": "ledger", "key": "comparison", "op": None,
+                "choice": {"use": False, "dictated": True, "default": "", "when_met": "", "condition": ""}}
+    assert lab.match(dictated, {"kind": "concept", "key": "comparison", "choice": {"use": False, "dictated": True}})
 
 
 def test_score_changes_counts_correct_missing_extra_cards_and_invented():
@@ -3276,6 +3650,14 @@ def test_unrelated_changes_counts_lines_outside_the_touched_parts():
     edited = ROUTER_SHEET.replace('NORMAL [alpha] "Alpha is normal."', 'NORMAL [alpha] "Alpha is fine."')
     assert lab.unrelated_changes(ROUTER_SHEET, edited, ["Upper"]) == 0
     assert lab.unrelated_changes(ROUTER_SHEET, edited, ["Lower"]) == 2
+
+
+def test_unsure_counts_how_many_band_decisions_were_wrong():
+    truth = [{"kind": "value", "key": "Width", "choice": {"need": "not_needed"}}]
+    recs = [{"kind": "value", "action": "ledger", "key": "Width", "choice": {"need": "not_needed"}, "route": "llm_unsure"},
+            {"kind": "normal", "action": "ledger", "key": "P :: x", "choice": {"text": ""}, "route": "llm_unsure"},
+            {"kind": "fixed", "action": "ledger", "key": "A.", "choice": {"keep": "remove"}, "route": ""}]
+    assert lab.unsure_counts(recs, truth) == {"unsure": 2, "unsure_wrong": 1}
 
 
 def test_load_items_requires_every_label(tmp_path):
@@ -3326,6 +3708,7 @@ from rapid_reports_ai import chat_router as R
 from rapid_reports_ai import chat_router_calls as C
 from rapid_reports_ai import chat_router_changes as CH
 from rapid_reports_ai import chat_router_jev as J
+from rapid_reports_ai import chat_router_ledger as L
 from rapid_reports_ai import chat_router_sheet as sh
 from rapid_reports_ai import chat_router_views as V
 
@@ -3375,9 +3758,27 @@ def _norm_obj(x):
     return x
 
 
+def _concept_view(choice: Optional[dict]):
+    state, d, w, cond = L.concept_state(choice or {})
+    return state, _norm_obj(d), _norm_obj(w), cond
+
+
+def _concept_match(rec: dict, truth: dict) -> bool:
+    """A concept compares by state and wordings; a truth "condition" (a state name or the text) must match too."""
+    if rec.get("action") not in ("ledger", "edit") or _norm_obj(rec.get("key")) != _norm_obj(truth.get("key")):
+        return False
+    tc = truth.get("choice") or {}
+    rs, rd, rw, rc = _concept_view(rec.get("choice"))
+    ts, tdf, tw, _ = _concept_view(tc)
+    cond_ok = not tc.get("condition") or L.condition_for(truth["key"], tc["condition"]) == rc
+    return (rs, rd, rw) == (ts, tdf, tw) and cond_ok
+
+
 def match(rec: dict, truth: dict) -> bool:
     if rec.get("kind") != truth.get("kind"):
         return False
+    if truth["kind"] == "concept" and truth.get("expect") != "card":
+        return _concept_match(rec, truth)
     if truth.get("expect") == "card":
         return rec.get("action") == "card"
     if truth["kind"] == "style":
@@ -3422,9 +3823,16 @@ def unrelated_changes(start: str, end: str, touches: List[str]) -> int:
     return n
 
 
+def unsure_counts(records: List[dict], truth: List[dict]) -> dict:
+    """Changes applied for a kind tagged in the unsure band (route llm_unsure, decision D-R2), and how many match no
+    planted truth: the lab's stand-in for "later undone"."""
+    unsure = [r for r in records if r.get("route") == "llm_unsure" and r.get("action") in ("ledger", "edit", "style")]
+    return {"unsure": len(unsure), "unsure_wrong": sum(1 for r in unsure if not any(match(r, t) for t in truth))}
+
+
 def verdict_record(v: CH.Verdict) -> dict:
-    return {"kind": v.kind, "action": v.action, "key": v.key, "choice": v.choice, "op": v.op,
-            "invented": v.invented, "reason": v.reason}
+    return {"kind": v.kind, "action": v.action, "key": v.key, "choice": v.choice, "op": v.op, "route": v.route,
+            "invented": v.invented, "reason": v.reason, "detail": v.detail}
 
 
 def turn_records(t: R.Turn) -> List[dict]:
@@ -3434,11 +3842,13 @@ def turn_records(t: R.Turn) -> List[dict]:
         if r["type"] == "ledger":
             new = r["change"].get("new")
             out.append({"kind": r["change"]["kind"], "action": "ledger", "key": r["change"]["key"],
-                        "choice": new.get("choice") if isinstance(new, dict) and "choice" in new else new, "op": None})
+                        "choice": new.get("choice") if isinstance(new, dict) and "choice" in new else new, "op": None,
+                        "route": r.get("route", "")})
         elif r["type"] == "edit":
-            out.append({"kind": r["kind"], "action": "edit", "key": "", "choice": None, "op": r["op"]})
+            out.append({"kind": r["kind"], "action": "edit", "key": "", "choice": None, "op": r["op"],
+                        "route": r.get("route", "")})
         elif r["type"] == "style":
-            out.append({"kind": "style", "action": "style"})
+            out.append({"kind": "style", "action": "style", "route": r.get("route", "")})
     for c in t.cards:
         out.append({"kind": c.get("ledger_kind") or (c.get("apply") or {}).get("kind"), "action": "card",
                     "key": c.get("key", ""), "choice": None, "op": None})
@@ -3553,9 +3963,11 @@ async def run_e2e(root: Path, run: int) -> None:
                 turns.append({"instruction": turn["instruction"], "fallback": str(e)})
                 continue
             sheet, ledger = t.sheet, t.ledger
-            turns.append({"instruction": turn["instruction"], "records": turn_records(t), "reply": t.reply,
-                          "applied": t.applied, "ms": t.evidence.get("ms"),
-                          "score": score_changes(turn.get("truth") or [], turn_records(t))})
+            recs = turn_records(t)
+            turns.append({"instruction": turn["instruction"], "records": recs, "reply": t.reply,
+                          "applied": t.applied, "ms": t.evidence.get("ms"), "unsure_kinds": t.evidence.get("unsure", []),
+                          "score": {**score_changes(turn.get("truth") or [], recs),
+                                    **unsure_counts(recs, turn.get("truth") or [])}})
         return {"turns": turns, "final_sheet": sheet, "unrelated": unrelated_changes(start, sheet, seq["touches"])}
     await _each(_load(root, "sequences"), _out(root, "e2e", run), fn)
 
@@ -3585,7 +3997,7 @@ def report_tag(root: Path, runs: List[int]) -> str:
             parts.append(f"### run {run}, {subset}: precision / recall per kind\n\n"
                          + md_table(["kind", "threshold", "P", "R", "F1", "n"], rows))
             b = band(its, scores, J.TAG_UNSURE, J.TAG_MIN)
-            parts.append(f"### run {run}, {subset}: card band [{J.TAG_UNSURE}, {J.TAG_MIN})\n\n"
+            parts.append(f"### run {run}, {subset}: unsure band [{J.TAG_UNSURE}, {J.TAG_MIN}), decided by the call\n\n"
                          + md_table(["kind", "labelled yes", "labelled no"], [[k, b[k]["pos"], b[k]["neg"]] for k in J.KINDS]))
             cats = sorted({it["category"] for it in its})
             rows = []
@@ -3658,9 +4070,11 @@ def report_e2e(root: Path, runs: List[int]) -> str:
             s = _sum([t["score"] for t in turns if "score" in t])
             ms += [t["ms"] for t in turns if t.get("ms") is not None]
             rows.append([i, len(turns), sum("fallback" in t for t in turns), s.get("truth", 0), s.get("correct", 0),
-                         s.get("extra_applied", 0), s.get("cards", 0), out.get("unrelated")])
+                         s.get("extra_applied", 0), s.get("cards", 0), sum(bool(t.get("unsure_kinds")) for t in turns),
+                         s.get("unsure", 0), s.get("unsure_wrong", 0), out.get("unrelated")])
         parts.append(f"### run {run} (median ms per turn: {statistics.median(ms) if ms else None})\n\n" + md_table(
-            ["sequence", "turns", "fallbacks", "truth", "correct", "extra applied", "cards", "unrelated lines"], rows))
+            ["sequence", "turns", "fallbacks", "truth", "correct", "extra applied", "cards", "turns with an unsure band",
+             "unsure-band changes", "of them wrong", "unrelated lines"], rows))
     return "\n\n".join(parts)
 
 
@@ -3692,7 +4106,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_chat_router_lab.py -q`
-Expected: PASS (7 tests)
+Expected: PASS (8 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -3760,7 +4174,7 @@ Expected: a count. **Zero is a valid result:** the table was created on 2026-10-
 > - misfit: does it ask for something that does not belong in a report of this scan type?
 >
 > A rule disguised as style ("always mention X") is labelled for the rule kind, not for style. In `truth`, give the change code should make, using the sheet's own names, in one of these forms:
-> - `{"kind","key","choice"}`. Value: `{"need": "every"|"relevant"|"not_needed"}`. Concept: key comparison|contrast|sequences|limitation, `{"use", "default", "when_met"}`. Fixed: key = the FIXED sentence, `{"keep": "always"|"dictated"|"remove"}`. Normal: key `"<Paragraph> :: <structure>"` or `<Paragraph> :: "<negative text>"`, `{"text"}`.
+> - `{"kind","key","choice"}`. Value: `{"need": "every"|"relevant"|"not_needed"}`. Concept: key comparison|contrast|sequences|limitation, `{"use", "default", "when_met", "condition"}`, where `condition` is the state in which `when_met` applies (comparison: compared; contrast: given or not_given; sequences: not_performed; limitation: limited). "Whichever is dictated" is `{"use": false, "dictated": true}`. Fixed: key = the FIXED sentence, `{"keep": "always"|"dictated"|"remove"}`. Normal: key `"<Paragraph> :: <structure>"` or `<Paragraph> :: "<negative text>"`, `{"text"}`.
 > - `{"kind": "layout", "op": {...}}`, with op one of rename_paragraph{paragraph,to}, move_paragraph{paragraph,before|after}, remove_paragraph{paragraph}, add_paragraph{name,section,covers}, rename_section{section,header}, move_section{section,before|after}, remove_section{section}, add_section{name,header,role}.
 > - `{"kind": "style"}`.
 > - `{"kind": <k>, "expect": "card"}` when the instruction does not give the exact wording.
@@ -3804,7 +4218,7 @@ Expected: `REPORT_tag_tables.md` and `REPORT_requires_tables.md` in `$R`. `OPENR
 
 - [ ] **Step 2: Write `$R/REPORT_tag.md`** covering:
   - per-kind precision and recall at 0.3 to 0.7;
-  - what the [0.35, 0.5) card band catches (labelled yes against labelled no);
+  - how often the unsure band [0.35, 0.5) occurs, per kind and per item, and what it catches (labelled yes against labelled no). Under D-R2 those kinds go to their targeted call, which decides; Task 15 reports how often its decisions are wrong;
   - recall by category: single, mixed (are all of a mixed item's kinds tagged?), disguised (is the rule kind tagged rather than style alone?), misfit, vague;
   - run-to-run agreement;
   - synthetic and real reported apart (or "no real turns");
@@ -3843,10 +4257,11 @@ for k in 1 2; do .venv/bin/python -m rapid_reports_ai.scripts.chat_router_lab ca
   - style edits that touched a unit line;
   - targeted-call errors and fallbacks;
   - end to end: unrelated lines changed (target 0 by construction for rule kinds) and correct changes per turn;
+  - the unsure band (D-R2): turns where it occurred, the changes applied for its kinds, and how many match no planted truth, which stands in for "later undone";
   - median latency per turn;
   - synthetic and real apart.
 
-  End with recommendations: prompt changes per kind, whether `sure=false` is used well, and whether the card rate looks bearable. Do **not** recommend removing the fallback: per the spec, that needs live data. Tell Hassan. **He decides** before Phase 4. A prompt change he asks for is one commit, with `test_chat_router_calls.py` still passing.
+  End with recommendations: prompt changes per kind, whether `sure=false` is used well, and whether the card rate looks bearable. Do **not** recommend removing the fallback: per the spec, that needs live data. Add the after-launch query for how often an unsure-band decision is later undone, to be run on production through Metabase once the router is on: `select count(*) filter (where t.routing->>'route' = 'router' and t.routing::text like '%llm_unsure%') as unsure_turns, count(*) filter (where t.instruction like '[undo]%') as undos from template_chat_turns t where t.created_at > now() - interval '30 days'`. An undo turn is joined to the turn it reverses by template and time order. Tell Hassan. **He decides** before Phase 4. A prompt change he asks for is one commit, with `test_chat_router_calls.py` still passing.
 
 ---
 
@@ -4020,7 +4435,8 @@ def record_turn(db, template_id, instruction: str, response: str, applied: bool,
 ```python
 @pytest.fixture(autouse=True)
 def _chat_router_off(monkeypatch):
-    """The chat-edit router calls Jev and Qwen: off in every test unless the test turns it on."""
+    """The chat-edit router calls Jev and Qwen. It is off by default (D-R3), and pinned off here in case a developer's
+    environment switches it on: a test that wants it sets RR_CHAT_ROUTER=1 itself."""
     monkeypatch.setenv("RR_CHAT_ROUTER", "0")
 ```
 
@@ -4091,6 +4507,7 @@ def test_a_routed_turn_returns_the_router_response_and_records_its_evidence(clie
         "rejection_context": {"original_instruction": "o", "rejected_claim": "c"},
         "template_id": str(guided_template.id)}).json()
     assert r["route"] == "router" and r["applied"] is True and r["skill_sheet"] == ROUTER_SHEET + "\n"
+    assert r["unmatched"] == []
     assert r["decisions"][0]["key"] == "Width" and r["changes"][0]["type"] == "ledger"
     assert r["behavioral_claim"] == "Width is no longer required."
     assert seen["context"] == "Done before." and seen["rejection"] == {"original_instruction": "o", "rejected_claim": "c"}
@@ -4202,6 +4619,9 @@ with
         if chat_router.enabled() and tsg.is_grammar_sheet(request.skill_sheet):
             last_reply = next((m.content for m in reversed(request.chat_history or []) if m.role == "assistant"), "")
             try:
+                # decisions None = a client that does not send the ledger (before the Rules step): the router treats
+                # it as an empty ledger and always returns `decisions`, so such a client ignores what it does not use;
+                # the save function seeds the value list before any value write (chat_router_ledger.seed_values)
                 turn = await chat_router.route_turn(request.skill_sheet, request.decisions or [], request.message,
                                                     context=last_reply, rejection=rejection_ctx)
             except chat_router.Fallback as e:
@@ -4510,6 +4930,7 @@ export interface RouterTurnResponse {
 	changes?: RouterRecord[];
 	cards?: RouterCard[];
 	decisions?: LedgerEntry[];
+	unmatched?: Record<string, unknown>[];
 	notice?: string;
 	error?: string;
 }
@@ -4917,7 +5338,7 @@ Expected: the problem count is not above the baseline recorded before Task 1. A 
   - "drop <a listed value> and make the impression more concise" shows two claim lines.
   - "Not quite" on that turn restores both parts (devtools Network: `/refine/undo` with the turn's `changes`).
   - An instruction with no exact wording ("make the <region> normal friendlier") shows a card. Tapping its first choice posts `/refine/card` and appends the reply.
-  - With `RR_CHAT_ROUTER=0`, a refine turn behaves exactly as before (no `route` in the response).
+  - With `RR_CHAT_ROUTER` unset (the default, D-R3), a refine turn behaves exactly as before, with no `route` in the response.
 
   Record what you saw in the task report.
 
@@ -4940,7 +5361,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 - [ ] **Step 1: Write the failing test** (`frontend/src/routes/components/TemplateRefinePanel.router.svelte.test.ts`)
 
 ```ts
-// The refine panel on the chat-edit router: Not quite undoes a turn on the backend, cards apply on tap, and the next
+// The refine panel on the chat-edit router: Undo reverses a turn on the backend, cards apply on tap, and the next
 // message after a rejection carries the rejection context.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
@@ -4983,13 +5404,13 @@ async function send(text: string) {
 }
 
 describe('TemplateRefinePanel on the chat-edit router', () => {
-	it('Not quite undoes the turn on the backend, and the next message carries the rejection', async () => {
+	it('Undo reverses the turn on the backend, and the next message carries the rejection', async () => {
 		const calls: Call[] = [];
 		vi.stubGlobal('fetch', routes(calls));
 		render(TemplateRefinePanel, { template });
 		await send('drop width');
 		await expect.element(page.getByText('Width is no longer required.', { exact: false })).toBeInTheDocument();
-		await page.getByRole('button', { name: 'Not quite' }).click();
+		await page.getByRole('button', { name: 'Undo' }).click();
 		await expect.element(page.getByText('Undone: Width is no longer required.')).toBeInTheDocument();
 		const undo = calls.find((c) => c.url.endsWith('/refine/undo'))!;
 		expect(undo.body).toMatchObject({ skill_sheet: 'SHEET2', changes: [{ type: 'ledger' }], decisions: [entry], template_id: 't1' });
@@ -5141,7 +5562,7 @@ with
 	function handleKeydown(e) {
 ```
 
-6. Markup: messages show their cards and, for a pending router turn, "Not quite". Replace
+6. Markup: messages show their cards and, for a pending router turn, a one-tap **Undo** (D-R1). Replace
 
 ```svelte
 			{#each chatHistory as msg}
@@ -5175,7 +5596,7 @@ with
 						{#if msg.status === 'pending'}
 							<button class="px-2.5 py-1 rounded-md bg-white/[0.04] hover:bg-amber-500/15 border border-white/10 hover:border-amber-500/40 text-gray-400 hover:text-amber-200 text-xs transition-colors disabled:opacity-40"
 								on:click={() => rejectTurn(i)} disabled={loading}>
-								Not quite
+								Undo
 							</button>
 						{/if}
 					</div>
@@ -5229,7 +5650,9 @@ Expected: 0 failures.
 | Flow 3: rule-in-disguise Jev check per new or changed prose line; re-route to normal/fixed, or a card | 7, 10 |
 | Flow 4: the save function vets (origin "chat") and applies the ledger last | 1 (`save`), 9 |
 | Flow 5: one reply line per applied change; "This changes something you confirmed"; the behavioral_claim / rejection loop stays; undo by reversing ledger entries or restoring prose | 9, 11, 18, 22, 23 |
-| Uncertain or rejected changes become cards (tag 0.35-0.5, unsure call, proposed wording, code reject); the clear parts are still applied | 5, 9, 21-23 |
+| Uncertain or rejected changes become cards (proposed wording, a call's own `sure: false`, code reject); the clear parts are still applied. **Amended by D-R2:** a tag in 0.35-0.5 goes to its call, which decides; it is marked `llm_unsure` on the ledger entry, the undo record and `routing` | 5, 9, 12, 21-23 |
+| D-R1: explicit removals are applied and named, with one-tap Undo; only implicit whole-item removals become cards (`ledger_cards`) | 1 (`Saved.cards`), 9, 23 |
+| D-R3: `RR_CHAT_ROUTER` defaults off | 11, 16, 17 |
 | Failure table: Jev tag fails → today's path, logged; a targeted call fails → that part only; style changed a unit line → rejected and asks to rephrase; save refuses → previous sheet kept | 9, 10, 17 |
 | The fallback is removed only after the lab and live data | decision 1; Task 15 report does not recommend removal |
 | Evidence: each turn stored (scrubbed) with tags, structured changes, applied/carded, rule-in-disguise results | 16, 17, 18 |
@@ -5242,7 +5665,7 @@ Expected: 0 failures.
 
 1. **Rules-step API drift.** That plan is under review, and its amendments are absorbed in the adapter (decision list above). Any further change should touch only `chat_router_ledger.py`. Task 1 Step 1 checks the shapes, and its round-trip test fails loudly on a mismatch.
 2. **The ledger owns the value list.** If a template has no value entries, the router seeds the listed values as defaults before its first value write (`seed_values`). If the Rules step ever seeds differently (for example, from the first-use review), two sources could disagree. The seed only runs when the ledger has no value entry at all.
-3. **Card fatigue.** The wording rule cards any wording the radiologist did not type. "Make the alpha normal friendlier" always ends in a card. The Task 15 lab reports the card rate, and Hassan may relax the rule for low-risk kinds.
+3. **Card fatigue, and unsure-band mistakes.** The wording rule cards any wording the radiologist did not type, so "make the alpha normal friendlier" always ends in a card. Under D-R2, an unsure-band kind is decided by its call and applied under the same checks, so a wrong decision lands in the template. It is visible (`llm_unsure`, a reply line, Undo), and the labs and the after-launch query count how often it happens.
 4. **Jev on new questions.** The seven tag questions and the requires question are new wordings. Concept and fixed overlap ("no prior imaging" is both), and Jev is weak at overlapping choices. Both kinds then run, and a duplicated change resolves to one ledger key. The lab measures this before any wiring.
 5. **Upper-case section names on Cerebras Qwen.** Views use Title Case and code matches case-insensitively. A model that still writes "FINDINGS" is matched. A garbled name ("FINDINGSINGS") fails the dry run and becomes a question.
 6. **Latency.** A turn is one Jev call plus N parallel Qwen calls, plus requires calls for a style edit, plus the save function's unit checks (and a repair model on refusal). Expect two to four seconds against today's single rewrite. The lab reports the median.
