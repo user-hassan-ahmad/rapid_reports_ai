@@ -19,7 +19,8 @@ export interface Card {
 	needs_modality: string; // e.g. "US": read-only, never opened (M4)
 	sibling_names?: string[]; // display names for siblings, same order (contract R: new backend field)
 }
-export interface Citation { [k: string]: unknown } // rendered as given (label, locator, url)
+/** library/describe.py citation(): a locator with its source's public fields; {} for none. */
+export interface Citation { source?: string; title?: string; issuer?: string; edition?: string; url?: string; page?: string | number; section?: string; table?: string }
 export interface Proposal {
 	classification: string;
 	line: string;
@@ -29,7 +30,8 @@ export interface Proposal {
 	normal?: boolean; // R3: the outcome is the guideline's normal one (backend default false); quiet prefers it
 }
 export interface Settled { input: string; value: string; quote: string; fact: string; by: '' | 'exam' }
-export interface Ask { [k: string]: unknown } // label, definition, options, decides, citations (rendered as given)
+/** pack_preview._asks: one per missing input (A5 reads input + label; the rest is for Slice B). */
+export interface Ask { input: string; label: string; [k: string]: unknown }
 export type ValueState = 'read' | 'prefilled' | 'asked' | 'answered' | 'edited' | 'not_applicable'; // Task 3
 export interface DraftValue {
 	// Task 3
@@ -75,15 +77,21 @@ export interface Preview {
 	lesion?: string; // Task 8
 	highlight?: Highlight | null; // Task 5
 }
-export interface RefItem { id?: string; citation?: string; [k: string]: unknown }
-export interface ReferenceView { summary: RefItem[]; definitions: RefItem[]; tables: RefItem[]; pitfalls: RefItem[] }
+/** library/describe.reference_view: RefText / RefTable with `citation` in place of the locator. */
+export interface RefText { id: string; text: string; citation: Citation }
+export interface RefTable { id: string; title: string; columns: string[]; rows: string[][]; citation: Citation }
+export type RefItem = RefText | RefTable;
+export interface ReferenceView { summary: RefText[]; definitions: RefText[]; tables: RefTable[]; pitfalls: RefText[] }
+/** types.py Branch / Input: a TNM card shows its branch criteria as text. */
+export interface BranchInput { id: string; question: string; options: string[] }
+export interface Branch { name: string; inputs: BranchInput[]; rule: string }
 export interface Entry {
 	key: string;
 	name: string;
 	version: string;
 	status: 'draft' | 'verified';
 	publication: Publication;
-	content: { applies_to: string; summary: string; branches: unknown[] };
+	content: { applies_to: string; summary: string; branches: Branch[] };
 	sources: { url: string; title: string; tier: number }[];
 }
 export interface OpenResult {
