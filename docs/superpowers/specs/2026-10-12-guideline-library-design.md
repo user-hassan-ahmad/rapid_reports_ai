@@ -449,6 +449,8 @@ Each input on the card is in exactly one state:
   value always wins, and an explicit "Not stated" makes it asked. This is the product's silence policy.
   - It never applies to what the imaging may not show: enhancement on an unenhanced scan, Doppler flow, or emphysema
     when chest coverage may be partial.
+  - It never applies when nothing was read: if the settle model failed (degraded) or the card has no finding unit,
+    visible signs are asked, not assumed absent.
   - It never applies to a count that a mention may leave open (papillary projections), or to a feature that would make
     a class less conservative (Bosniak septa and protrusion).
 - The deciding question is skipped while the result is unbounded. The extras computed for a tap are capped.
