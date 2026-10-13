@@ -757,4 +757,10 @@ describe('session: background previews (checkpoint 4)', () => {
 		s.open(cardRef(a)); // a click always asks
 		expect(api.calls.open).toHaveLength(3);
 	});
+
+	it('"Other guidelines" sends nothing while nothing is dictated', () => {
+		s.other();
+		expect(api.calls.other).toHaveLength(0);
+		expect(state().otherState).toBe('idle');
+	});
 });

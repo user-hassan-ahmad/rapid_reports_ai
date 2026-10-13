@@ -2,7 +2,7 @@
 // under their findings, and which cards stay quiet. No I/O here; the rail components own requests.
 import { effectiveItems } from '$lib/hybrid-stack/regionState';
 import type { StackUnit } from '$lib/hybrid-stack/types';
-import { MAX_FINDINGS } from './api';
+import { MAX_FINDING_TEXT, MAX_FINDINGS } from './api';
 import type { Card, DraftValue, Preview } from './types';
 
 export interface Finding { id: string; unitId: number; text: string; region: string }
@@ -81,9 +81,11 @@ export function groupCards(cards: Card[], findings: Finding[]): Group[] {
 			put('exam', exam, c);
 			continue;
 		}
-		const text = norm(c.finding);
+		// /match was sent each text cut to MAX_FINDING_TEXT, so a long finding is compared on that cut
+		const sent = (t: string) => norm(t.slice(0, MAX_FINDING_TEXT));
+		const text = sent(c.finding);
 		const home = c.finding
-			? (findings.find((f) => f.id === c.finding_id && norm(f.text) === text) ?? findings.find((f) => norm(f.text) === text))
+			? (findings.find((f) => f.id === c.finding_id && sent(f.text) === text) ?? findings.find((f) => sent(f.text) === text))
 			: findings.find((f) => f.id === c.finding_id);
 		if (!home) continue;
 		if (!byId.has(home.id)) byId.set(home.id, []);

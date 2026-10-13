@@ -108,8 +108,14 @@
 	<!-- collapsed: each guideline's verdict at a glance; open, each column's own line carries it -->
 	<div class="cp-sib-pills" hidden={view.open}>
 		{#each cols as c (c.key)}
-			{@const vd = verdictOf(colView(c.key).result?.preview ?? null)}
-			<span class="cp-sib-pill"><span class="cp-muted">{c.title}</span>{#if vd}<VerdictPill verdict={vd} />{/if}</span>
+			{@const cp = colView(c.key).result?.preview ?? null}
+			{@const vd = verdictOf(cp)}
+			<!-- the same marks as the open column line: a collapsed card never hides a doubt or an assumption -->
+			<span class="cp-sib-pill"
+				><span class="cp-muted">{c.title}</span>{#if vd}<VerdictPill verdict={vd} busy={colView(c.key).loading && !!colView(c.key).result} />{/if}
+				{#if scopeDoubts(cp).length}<span class="cp-chip cp-chip-warn">⚠ check applicability</span>{/if}
+				<AssumedChip assumed={assumptionsOf(cp)} checkFirst={cp?.state === 'check_first' && !scopeDoubts(cp).length} /></span
+			>
 		{/each}
 	</div>
 {/snippet}

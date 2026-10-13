@@ -187,7 +187,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		patient: { ...patient }
 	});
 	const openBody = (card: Card, edits: Record<string, string> = views[cardRef(card)]?.edits ?? {}): OpenBody => ({
-		card, // echoed whole: needs_modality and siblings intact (the server trusts them)
+		card, // echoed as received: the server trusts needs_modality (CardIn has no siblings or reference: dropped)
 		finding: card.finding_id === 'exam' ? text : card.finding,
 		findings: text,
 		clinical_history: ctx.history,
@@ -564,6 +564,8 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		for (const k of Object.keys(patient)) delete patient[k];
 		for (const k of Object.keys(patientConfirmed)) delete patientConfirmed[k];
 		previewed.clear();
+		wanted.clear();
+		prefetchFailedAt.clear();
 		abortAll();
 		sent = new Set();
 		sentCtx = null;
@@ -630,7 +632,8 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 			if (stable.length || hasText) void runMatch(stable.slice(0, MAX_FINDINGS));
 		},
 		async other() {
-			if (!live() || otherState === 'loading') return;
+			// nothing dictated yet: nothing to ask about
+			if (!live() || otherState === 'loading' || (!stable.length && !hasText)) return;
 			otherState = 'loading';
 			const ac = new AbortController();
 			otherAc = ac;

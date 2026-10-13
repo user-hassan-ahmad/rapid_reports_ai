@@ -5,7 +5,7 @@ import type { DraftValue } from '../types';
 const dv = (o: Partial<DraftValue>): DraftValue => ({
 	input: 'x', label: 'X', role: 'clinical', scope: 'lesion', fact: '', state: 'read', value: '', quote: '', why: [], needed: false, waiting: false, options: [], by: '', ...o
 });
-import { assumptionsOf, citeText, columnRef, columnTitles, issuerSlug, missingLabels, openQuestions, outcomeHint, setByExam, stateBadge, valueRows } from './format';
+import { assumptionsOf, citeText, columnRef, columnTitles, issuerSlug, openQuestions, setByExam, valueRows } from './format';
 
 // SYNTHETIC fixtures only.
 describe('card text helpers', () => {
@@ -29,21 +29,6 @@ describe('card text helpers', () => {
 		const opened = { 'bts-pulmonary-nodule': result(card({ name: 'BTS guideline 2015' }), null) };
 		expect(columnTitles(c, opened)[1].title).toBe('BTS guideline 2015');
 		expect(columnRef(c, 'acr-x')).toBe('fleischner-pulmonary-nodule|solid pulmonary nodule#acr-x');
-	});
-
-	it('missingLabels uses the ask label, else the input id', () => {
-		const p = preview({ missing: ['a', 'b'], asks: [{ input: 'a', label: 'Label A' }] });
-		expect(missingLabels(p)).toEqual(['Label A', 'b']);
-	});
-
-	it('stateBadge and outcomeHint follow the preview', () => {
-		expect(stateBadge(null)).toBeNull();
-		expect(stateBadge(preview())?.text).toBe('applies');
-		expect(stateBadge(preview({ state: 'check_first' }))).toBeNull(); // shown as eligible; the checks are a chip
-		expect(stateBadge(preview({ state: 'does_not_apply' }))?.text).toBe('does not apply');
-		expect(outcomeHint(preview({ proposal: outcome({ classification: 'X' }) }))).toBe('on these values · X');
-		expect(outcomeHint(preview({ proposal: null }))).toBeNull();
-		expect(outcomeHint(preview({ proposal: null, draft_outcome: outcome({ classification: 'Y' }) }))).toBe('on these values · Y');
 	});
 
 	it('assumptionsOf: Task 3 assumptions when sent, else the missing eligibility inputs; openQuestions: the rest', () => {

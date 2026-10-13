@@ -14,9 +14,9 @@
 </script>
 
 {#if n}
-	<span class="cp-chip cp-chip-warn cp-assumed-chip" title={`Assumed eligible:\n${assumed.join('\n')}`}
+	<span class="cp-chip cp-chip-warn cp-assumed-chip" title={`Assumed:\n${assumed.join('\n')}`}
 		>{#if n === 1}<span class="cp-assumed-one">⚠ assumes: {one}</span>{:else}⚠ {n} assumed{/if}<span class="cp-sr-only"
-			>{` eligibility ${n === 1 ? 'check' : 'checks'}: ${assumed.join('; ')}`}</span
+			>{` assumed: ${assumed.join('; ')}`}</span
 		></span
 	>
 {:else if checkFirst}

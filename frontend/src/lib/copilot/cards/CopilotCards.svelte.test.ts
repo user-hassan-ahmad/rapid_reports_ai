@@ -503,6 +503,33 @@ describe('CopilotCards', () => {
 		expect(p.onEdit).toHaveBeenCalledWith(cardRef(c), 'diameter_mm', '55 mm');
 	});
 
+	it('a COLLAPSED sibling card shows each column\'s "⚠ check applicability" and assumption chips', async () => {
+		const c = card({ finding: finding.text, siblings: ['bts-pulmonary-nodule'], sibling_names: ['BTS 2015'] });
+		const bts = card({ key: 'bts-pulmonary-nodule', name: 'BTS 2015' });
+		const doubtful = preview({
+			state: 'check_first',
+			proposal: null,
+			draft_outcome: outcome({ action: 'CT at 3 months', category: 'surveillance' }),
+			scope_doubt: ['age'],
+			draft: [draft({ input: 'age', label: 'Age', state: 'prefilled', value: '30' })]
+		});
+		const assumedOne = preview({
+			proposal: null,
+			draft_outcome: outcome({ category: 'surveillance' }),
+			assumptions: [assumption('cancer', 'Known cancer', 'No', { decisive: true })],
+			draft: [draft({ input: 'cancer', label: 'Known cancer', state: 'assumed', value: 'No' })]
+		});
+		render(
+			CopilotCards,
+			single(c, v(null, { open: false, columns: { [c.key]: { loading: false, error: null, result: result(c, assumedOne) }, [bts.key]: { loading: false, error: null, result: result(bts, doubtful) } } }))
+		);
+		const meta = document.querySelector('.cp-sib-pills')!;
+		await expect.element(page.getByText('⚠ check applicability')).toBeInTheDocument();
+		expect(meta.textContent).toContain('⚠ check applicability');
+		expect(meta.textContent).toContain('⚠ assumes: Known cancer No');
+		expect(document.querySelector('.gl-body')).toBeNull(); // still collapsed
+	});
+
 	it('PackCard takes an assumptions list directly (B1 feeds Task 3)', async () => {
 		const { default: PackCard } = await import('./PackCard.svelte');
 		const c = card({ finding: finding.text });

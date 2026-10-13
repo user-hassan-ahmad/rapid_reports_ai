@@ -81,6 +81,14 @@ describe('bodies', () => {
 		expect(sent[0].id).toBe('u0');
 		expect(sent.every((x) => x.text.length === 1000)).toBe(true);
 	});
+	it('caps an exam card\'s finding (the whole findings text) at 6000 characters', async () => {
+		const f = ok({});
+		vi.stubGlobal('fetch', f);
+		const long = 'y'.repeat(7000);
+		await open({ ...openBody, finding: long, card: { ...openBody.card, finding: long } });
+		expect((call(f).body.finding as string).length).toBe(6000);
+		expect((call(f).body.card as { finding: string }).finding.length).toBe(6000);
+	});
 	it('caps answered at 20 inputs', async () => {
 		const f = ok({});
 		vi.stubGlobal('fetch', f);

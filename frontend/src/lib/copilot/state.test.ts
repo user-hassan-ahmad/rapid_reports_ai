@@ -198,6 +198,16 @@ describe('outcomeOf', () => {
 	});
 });
 
+describe('groupCards: long findings', () => {
+	it('a finding over 1000 characters is placed by the text /match was sent (cut to 1000)', () => {
+		const long = 'nodule '.repeat(200); // 1400 characters
+		const c = card({ finding: long.slice(0, 1000), finding_id: 'u1' });
+		const groups = groupCards([c], [f(1, long)]);
+		expect(groups).toHaveLength(1);
+		expect(groups[0].cards).toEqual([c]);
+	});
+});
+
 const draft = (o: Partial<DraftValue> = {}): DraftValue => ({
 	input: 'a', label: '', role: '', scope: '', fact: '', state: 'read', value: '1', quote: '', why: [], needed: false, waiting: false, options: [], ...o
 });

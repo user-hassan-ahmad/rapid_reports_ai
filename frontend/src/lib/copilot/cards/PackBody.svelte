@@ -113,7 +113,7 @@
 							/>
 						{:else}
 							<!-- confirming sends the value back as the radiologist's answer: only then can it exclude -->
-							<button type="button" class="rv-btn" aria-label={`Confirm ${d.label} ${d.value}`} onclick={() => onEdit?.(d.input, d.value)}>Confirm</button>
+							{#if d.value}<button type="button" class="rv-btn" aria-label={`Confirm ${d.label} ${d.value}`} onclick={() => onEdit?.(d.input, d.value)}>Confirm</button>{/if}
 							<button type="button" class="rv-btn" aria-label={`Change ${d.label}`} onclick={() => (doubtEditing = d.input)}>Change</button>
 						{/if}
 					</div>

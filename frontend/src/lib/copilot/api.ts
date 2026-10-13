@@ -42,6 +42,7 @@ export const TIMEOUT_MS = { match: 45_000, other: 60_000, open: 90_000, preview:
 export const MAX_FINDINGS = 20;
 export const MAX_FINDING_TEXT = 1000;
 export const MAX_ANSWERED = 20;
+export const MAX_DICTATION = 6000; // OpenRequest.finding (DICTATION_MAX): an exam card sends the whole findings text
 
 async function post<T>(path: string, body: unknown, timeoutMs: number, signal?: AbortSignal): Promise<T> {
 	const ac = new AbortController();
@@ -95,8 +96,8 @@ function matchBody(b: MatchBody): MatchBody {
 
 function openBody(b: OpenBody): OpenBody {
 	const out: OpenBody = {
-		card: b.card,
-		finding: b.finding,
+		card: { ...b.card, finding: b.card.finding.slice(0, MAX_DICTATION) },
+		finding: b.finding.slice(0, MAX_DICTATION),
 		findings: b.findings,
 		clinical_history: b.clinical_history,
 		answered: Object.fromEntries(Object.entries(b.answered).slice(0, MAX_ANSWERED)),

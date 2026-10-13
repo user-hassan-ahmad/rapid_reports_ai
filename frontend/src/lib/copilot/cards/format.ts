@@ -26,12 +26,6 @@ export function columnTitles(card: Card, opened: Record<string, OpenResult | nul
 	}));
 }
 
-/** The labels of the missing inputs, in `missing` order; an input with no ask shows its id. */
-export function missingLabels(p: Preview): string[] {
-	const byInput = new Map<string, Ask>(p.asks.map((a) => [a.input, a]));
-	return p.missing.map((m) => byInput.get(m)?.label || m);
-}
-
 const isEligibility = (p: Preview, input: string) => p.asks.some((a) => a.input === input && a.role === 'eligibility');
 
 const hasDraft = (p: Preview) => !!p.draft?.length;
@@ -145,22 +139,6 @@ export function valueRows(r: OpenResult): ValueRow[] {
 		state: s.by === 'exam' ? 'prefilled' : 'read',
 		why: s.by === 'exam' ? [WHY_EXAM] : []
 	}));
-}
-
-export type Badge = { text: string; variant: 'v' | 'a' };
-/** The collapsed head's state badge, once a preview exists. */
-export function stateBadge(p: Preview | null | undefined): Badge | null {
-	if (!p) return null;
-	if (p.state === 'applies') return { text: 'applies', variant: 'v' };
-	if (p.state === 'check_first') return null; // rendered as if eligible; the assumed checks are a chip (B0)
-	if (p.state === 'does_not_apply') return { text: 'does not apply', variant: 'v' };
-	return { text: 'which lesion?', variant: 'a' };
-}
-
-/** The collapsed hint: the reached outcome's classification, read-only. */
-export function outcomeHint(p: Preview | null | undefined): string | null {
-	const o = outcomeOf(p ?? null);
-	return o?.classification ? `on these values · ${o.classification}` : null;
 }
 
 export const setByExam = (p: Preview | null | undefined) => !!p?.settled.some((s) => s.by === 'exam');
