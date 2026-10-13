@@ -186,6 +186,12 @@ def _library_pick(protocol_id, phases, laterality):
 @router.post("/schema", response_model=SchemaResult)
 async def stack_schema(req: SchemaRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _require()
+    # Resolution order (integration contract §8.1): template structure, else the library pick, else free text.
+    if req.template_id:
+        t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
+        structure = template_structure(t.template_config) if t is not None else None
+        if structure is not None:
+            return await resolve_schema(req.scan_type, req.clinical_history, structure, db)
     b, pick = _library_pick(req.protocol_id, req.phases, req.laterality)
     if pick is not None:
         return SchemaResult(regions=pick.regions, groups=groups_for(pick.regions), pills=pill_regions(pick.regions),
@@ -193,11 +199,7 @@ async def stack_schema(req: SchemaRequest, user: User = Depends(get_current_user
                             protocol={"id": pick.entry_id, "display_name": pick.display_name,
                                       "scan_type_line": pick.scan_type_line, "phases": pick.phases,
                                       "laterality": pick.laterality})
-    structure = None
-    if req.template_id:
-        t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
-        structure = template_structure(t.template_config) if t is not None else None
-    return await resolve_schema(req.scan_type, req.clinical_history, structure, db)
+    return await resolve_schema(req.scan_type, req.clinical_history, None, db)
 
 
 @router.post("/group", response_model=GroupResult)
@@ -369,18 +371,19 @@ async def stack_slim_sheet(req: SlimRequest, user: User = Depends(get_current_us
     read their own structure; quick sessions get the shared slim sheet (made on first use). Never errors: not
     ready means no quiet lines yet."""
     _require()
-    b, pick = _library_pick(req.protocol_id, req.phases, req.laterality)
-    if pick is not None:
-        from .protocol_library.compose import compose_sheet
-        s = compose_sheet(b, pick)
-        return SlimResult(id=s.id, region_normals=s.region_normals, not_assessable=s.not_assessable,
-                          status="library", ready=True, level_groups=s.level_groups)
+    # The same order as /schema (contract §8.1): template structure, else the library pick, else free text.
     if req.template_id:
         t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
         st = template_structure(t.template_config) if t is not None else None
         if st is None:   # Generate takes today's template path; the scratchpad says so
             return SlimResult(status="template_unusable")
         return SlimResult(region_normals=template_region_normals(st), status="template", ready=True)
+    b, pick = _library_pick(req.protocol_id, req.phases, req.laterality)
+    if pick is not None:
+        from .protocol_library.compose import compose_sheet
+        s = compose_sheet(b, pick)
+        return SlimResult(id=s.id, region_normals=s.region_normals, not_assessable=s.not_assessable,
+                          status="library", ready=True, level_groups=s.level_groups)
     if not req.scan_type.strip():
         return SlimResult()
     schema = await resolve_schema(req.scan_type[:300], req.clinical_history[:2000], None, db)

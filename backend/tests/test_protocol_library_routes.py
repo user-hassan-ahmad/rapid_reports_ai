@@ -106,3 +106,31 @@ def test_not_listed_logs_length_and_hash_never_the_text(lib_env, authed, caplog)
     assert any(f"len={len(q)}" in m and hashlib.sha256(q.encode()).hexdigest()[:10] in m for m in msgs)
     assert not any("Smith" in m or "orbits" in m for m in caplog.text.splitlines())
 
+
+_SHEET = """## Report Structure
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION CONCLUSION | header: "Conclusion:" | role: impression
+
+## Paragraph: Brain (FINDINGS)
+COVERS ["brain"]
+NORMAL [ventricles] "Fixture ventricles sentence."
+"""
+
+
+def test_template_structure_wins_over_the_library_pick(lib_env, authed, db_session):
+    """Contract §8.1: template structure first, then the library pick, then free text — in /schema and /slim-sheet."""
+    from rapid_reports_ai.database.models import Template, User
+    owner = db_session.query(User).filter(User.email == "lib@nhs.net").one()
+    t = Template(name="T", user_id=owner.id, is_active=True, tags=[],
+                 template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": _SHEET})
+    db_session.add(t)
+    db_session.commit()
+    pick = {"protocol_id": "TMWS", "template_id": str(t.id), "scan_type": "MRI whole spine"}
+    j = authed.post("/api/canvas/stack/schema", json=pick).json()
+    assert j["source"] == "template" and j["protocol"] is None and "Brain" in [r["name"] for r in j["regions"]]
+    s = authed.post("/api/canvas/stack/slim-sheet", json=pick).json()
+    assert s["status"] == "template" and s["region_normals"] == {"Brain": ["Fixture ventricles sentence."]}
+    # a bad pick is not even read when the template decides
+    bad = {**pick, "protocol_id": "TMKN"}
+    assert authed.post("/api/canvas/stack/schema", json=bad).status_code == 200
+    assert authed.post("/api/canvas/stack/slim-sheet", json=bad).status_code == 200
