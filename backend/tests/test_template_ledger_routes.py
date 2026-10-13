@@ -356,4 +356,4 @@ def test_decide_asks_about_a_habit_line_nobody_confirmed(client, auth_headers):
     d = client.post("/api/templates/skill-sheet/decide", headers=auth_headers, json={"template_id": t["id"]}).json()
     (c,) = [c for c in d["cards"] if c["kind"] == "habit"]
     assert c["key"] == "Knee :: a meniscal tear is reported" and c["note"] == trc.PENDING_HABIT_NOTE
-    assert c["selected"] is None and [x["id"] for x in c["choices"]] == ["state", "removed"]
+    assert c["selected"] is None and [x["id"] for x in c["choices"]] == ["state", "removed", "edit"]

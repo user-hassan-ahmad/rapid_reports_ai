@@ -123,7 +123,8 @@ def habit_card(paragraph: str, condition: str, question: str, yes: str, no: str,
                step: str = "rules") -> dict:
     """A findings-triggered habit (spec 2026-10-13-findings-triggered-rows-design): "When <condition>: Ask every time
     / Always state / Not needed". Never pre-ticked: nothing is active until the radiologist confirms it. Every choice
-    keeps the wording, so "Not needed" can be undone by choosing again."""
+    keeps the wording, so "Not needed" can be undone by choosing again. "Edit wording" lets the radiologist reword the
+    condition (naming where the finding is: the trigger lab, 2026-10-13), the question and the sentences."""
     key = td.habit_key(paragraph, condition)
     texts = {"question": question, "yes": yes, "no": no}
     return {"id": f"habit:{td.match_key('habit', key)}", "kind": "habit", "step": step,
@@ -131,7 +132,8 @@ def habit_card(paragraph: str, condition: str, question: str, yes: str, no: str,
             "ledger_kind": "habit", "key": key, "habit": {"condition": " ".join(condition.split()), **texts},
             "choices": [_choice("ask", "Ask every time", {"mode": "ask", **texts}),
                         _choice("state", "Always state", {"mode": "state", **texts}),
-                        _choice("removed", "Not needed", {"mode": "removed", **texts})],
+                        _choice("removed", "Not needed", {"mode": "removed", **texts}),
+                        _choice("edit", "Edit wording", None)],
             "selected": None, "rank": _RANK["habit"]}
 
 
@@ -321,10 +323,18 @@ def _concept_cards(run: DecisionRun, n: int) -> List[dict]:
     return out
 
 
+def _habit_cards(run: DecisionRun) -> List[dict]:
+    """One card per proposed habit (verified quotes from at least two examples, template_decision_run._habit), with
+    up to three quotes. Never pre-ticked and never "kept": nothing is active until the radiologist confirms it."""
+    return [habit_card(h.paragraph, h.condition, h.question, h.yes, h.no,
+                       [{"reports": [q.report], "quote": q.text} for q in h.quotes[:3]])
+            for h in run.habits]
+
+
 def build_cards(run: DecisionRun, n_examples: int) -> dict:
     if not run.ok:
         return {"cards": [], "more": [], "kept": [], "defaults": []}
-    every = [*_value_cards(run, n_examples), *_concept_cards(run, n_examples)]
+    every = [*_value_cards(run, n_examples), *_concept_cards(run, n_examples), *_habit_cards(run)]
     kept = [c for c in every if c["selected"] is not None]
     open_ = sorted((c for c in every if c["selected"] is None),
                    key=lambda c: (c["rank"], -_stated_in(c)))
