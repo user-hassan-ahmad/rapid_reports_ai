@@ -14,8 +14,10 @@
 
 ## Where and how
 
-- Worktree: `/Users/hassan/Code/rapid_reports_ai/.claude/worktrees/triggered-rows`, branch `feat/triggered-rows` (from `feat/rules-step`, Rules-step Phases 1–2 built; its Phase 3 is being built in another worktree at the same time). Never push, never `git stash`, never touch another worktree.
+- Worktree: `/Users/hassan/Code/rapid_reports_ai/.claude/worktrees/triggered-rows`, branch `feat/triggered-rows`. It was cut from `feat/rules-step` at `ada8980e`; **Task 0 brings it up to the latest `feat/rules-step` after the controller has merged `feat/context-rules` into it.** Never push, never `git stash`, never touch another worktree.
+- **Locating code.** Line numbers in this plan were read at `ada8980e` and are hints only. Every step locates code by function name and by the exact text it quotes ("replace … with …"); when a quoted anchor is not found after Task 0, find the same function by name, read it, and apply the same change to its current text.
 - Backend commands run from `backend/`: one file `.venv/bin/python -m pytest <path> -q`. Full suite: `.venv/bin/python -m pytest -q --deselect tests/test_provider_key_routing.py` (baseline about 4046 passed; the count must not fall).
+- Baselines are recorded by Task 0 (they replace the counts below for every later check).
 - Frontend commands run from `frontend/`: a node test `npx vitest run --project server <path>`; a component test `npx vitest run <path>`; full suite `npx vitest run`; `npm run check` (svelte-check baseline: 1194 problems; the count must not rise).
 - Commit after every task with these trailer lines:
 
@@ -35,7 +37,8 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
 - Decision run: `template_decision_run.HabitCandidate(finding, habit, reports)` exists and is only stored as evidence (`:100-103`, `:253`, `:397`); prompt section 3 is `SYSTEM` (`:132`).
 - Scratchpad rows: `hybrid_stack/items.py` — `Item` (`:89-97`), `_rows` (`:177-188`), `_split` (`:191-206`), `_dedupe` (`:209-221`), `_check` (`:224-247`), `_limit` (`:250-270`, caps `MAX_ROWS_PER_REGION = 2`, `MAX_ROWS = 4`), `update` (`:273-302`), `recheck` (`:305-315`). Jev: `jev_stack.ask_rows` (`:184-207`), `STATED_MIN = 0.8`, `CONDITION_MIN = 0.5`. Region names: `hybrid_stack/template.template_regions` (`:33-45`); conditioned negatives are never offered as normals (`_offered`, `:110`).
 - Routes: `hybrid_stack/routes.stack_items` (`:181-186`) takes no template; `stack_assumed` caps 16 normals per region (`:254`). The route test fakes `items_update` positionally with no `habits` argument (`tests/test_hybrid_stack_routes.py:108`).
-- Generate: `template_stack._strip` drops NORMAL / NEGATIVE / IF_PRESENT / case units but keeps RULE lines (`template_stack.py:20-50`). `template_context_rules.resolve_context_rules` builds its Jev state inline (`:190`); **there is no `condition_state` function yet** (searched every worktree): Task 6 creates it there.
+- Generate: `template_stack._strip` drops NORMAL / NEGATIVE / IF_PRESENT / case units but keeps RULE lines (`template_stack.py:20-50`). Generation never trusts a stale stored structure: `hybrid_stack/template.template_structure` uses `fresh()` (which requires `version == STRUCTURE_VERSION`) and otherwise re-parses the sheet; `template_pipeline.py` and `template_preview.py` call `parse_sheet` on the fly.
+- Item 1's shared Jev state builder (on `feat/context-rules`, commit `f61451c9`, arrives with Task 0): `template_context_rules.condition_state(scan_type: str, history: str, findings: str) -> str` returns `"SCAN TYPE:\n<scan>\n"` (only when given) + `"CLINICAL HISTORY:\n<history or (not given)>\nDICTATED FINDINGS:\n<jev_findings(findings)>"`. Its callers: `resolve_context_rules` and `hybrid_stack/normals.assumed`. Task 6 adds one optional behaviour: `history=None` leaves the history block out.
 - Frontend: `DictationScratchpad.svelte` — `gateKey` (`:365-367`), `gateReview` (`:1579-1600`) calls `refreshItems(true)`, `refreshItems` (`:1701-1730`), `skipRow` (`:1778-1782`), `refreshAssumed` (`:1812-1825`), `answerRow` (`:1859-1864`), `openItemsForVoice`, `viewItems` (`:324`), the `HybridStackView` props (`:2633-2640`). `regionState.buildFindingsBlock` (`regionState.ts:113-140`). `HybridStackView.svelte` — `rowsFor` / `looseRows` (`:195-199`) show `kind === 'finding'` only; the `row` snippet (`:585-660`).
 - Rules-step frontend: `template-rules/types.ts` (`LedgerKind`, `CardKind`, `DecisionCard`), `cards.changeFor` returns a card choice's own `choice` unchanged, `RulesStep.svelte` card body (`:126-169`), button names `"{title}: {label}"`.
 - Chat router (item 4) is an approved plan, not built: `/Users/hassan/Code/rapid_reports_ai/.claude/worktrees/chat-router/docs/superpowers/plans/2026-10-13-chat-edit-router.md`. Its names used in Phase 5: `chat_router_ledger` (`L.structure`, `L.entry`, `L.check`, `L.card`, `paragraph_entries`, `rekey_paragraph`, `Rejected`), `chat_router_changes` (`OUTPUTS`, `_VALIDATORS`, `validate`, `_gate`, `_ask`, `Verdict`, `Ctx`, `KIND_LABEL`, `claim_for`, `parse_change`), `chat_router_views.VIEWS`, `chat_router_calls._KIND` / `SYSTEM`, `chat_router_jev.KINDS` / `QUESTIONS`, `chat_router.WORK_KINDS`, `scripts/chat_router_lab.py`.
@@ -45,15 +48,15 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
 1. **Habit choice shape:** `{"mode": "ask" | "state" | "removed", "question", "yes", "no"}`. `state` writes the NO sentence (the pertinent negative) as `NEGATIVE "<no>" WHEN [findings: <condition>]`; `ask` writes the RULE form; `removed` writes nothing and keeps the wording, so a later "ask" restores it.
 2. **Conditions name the finding in at least two content words**, ending "is reported" (the grammar's subject rule). The spec's example "a fracture is reported" would fail the lint; prompts ask for e.g. "a fracture of the named structure is reported".
 3. **Paragraph of a habit key:** the decision run runs before the sheet exists, so a key's paragraph is matched by paragraph name, else by the one paragraph whose COVERS lists it; otherwise the entry is `unmatched` and becomes a card at the next review (Rules-step rule).
-4. **A habit line exists only through the ledger.** `apply_ledger` (and `vet_sheet` when no ledger is passed) removes habit units without a confirmed `ask`/`state` entry, so a writer or a whole-sheet chat rewrite never activates one unasked. A chat rewrite that removes a confirmed habit is kept and asked on a card (product decision D3, as for values and concepts).
+4. **A habit is active only through the ledger (Hassan H3, 2026-10-13).** A habit line with no ledger entry (written by the writer or a whole-sheet chat rewrite) is never stripped silently: it stays in the sheet, inactive (the scratchpad triggers only habits with a confirmed `ask`/`state` entry; the stack brief never shows habit lines to the generator), and becomes a habit card at the next review ("When <condition>: Ask every time / Always state / Not needed", `/decide`). The save reports the pending ones (`LedgerResult.pending`, `VetOutcome.habits_pending`) and logs their count. A chat rewrite that removes a confirmed habit is kept and asked on a card (product decision D3, as for values and concepts).
 5. **The trigger runs inside `/items` in review mode** (the `gateReview` hook calls `refreshItems(true)`), in parallel with the row writer, so `_limit` ranks template and generic rows together. The quiet re-check folds template rows but never re-triggers; a material change re-runs the review and so the trigger. No new endpoint.
 6. **Already answered** reuses `_check`'s one Jev call: a template row folds when the dictation states either sentence (`STATED_MIN`); a contradiction never folds or edits a template row (both sentences stay as the buttons).
 7. **Template rows never block Confirm** (like finding checks). "Not assessed" is a skip recorded as `not_assessed`. A voice "accept" never answers a template row (it cannot choose Yes or No).
 8. **A tapped or skipped template row whose condition a successful full review no longer meets loses its answer** (spec: "until its condition stops being met"). A failed trigger call changes nothing on screen.
 9. **Required statements join the assumed check** by being merged first into the region normals sent to `/assumed` (never cut by the 16-per-region cap), so they are covered / contradicted / removed exactly like assumed normals, then confirmed or removed in the tray.
-10. **Trigger state:** `condition_state(findings, history=None)` in `template_context_rules` gives `DICTATED FINDINGS:` only; a habit is never triggered by the clinical history. Context rules keep their history + findings state through the same function.
+10. **Trigger state (Hassan H1):** triggers read the dictation and the scan type only, never the clinical history: `condition_state(scan_type, None, findings)`, item 1's shared builder with `history=None` leaving the history block out. `scan_type` flows from `items.update` through `met_habits` and `ask_triggers`.
 11. **Proposal verification:** a habit is kept only with verified quotes from at least 2 distinct reports, with its YES or NO sentence appearing in a cited report, and only if `td.validate` accepts it; duplicates (by `match_key`) merge; at most 4 per run. Habit cards rank with concept cards inside `MAX_CARDS`, are never pre-ticked, and have no "Edit wording" choice (chat changes wording).
-12. **Two trigger wordings (A, B) are labbed**; `TRIGGER_MIN = 0.5` (the context-rule cut-off) until Hassan sets it from the report.
+12. **Two trigger wordings (A, B) are labbed**; `TRIGGER_MIN = 0.5` (the context-rule cut-off) until Hassan sets it from the report. **A score below `TRIGGER_MIN` is silent, even in the 0.35–0.5 band (Hassan H2);** the lab reports how often that band occurs and how often its rows were truly met.
 13. **A writer failure** returns no rows that round, as today (`res.error`: what is on screen stays), template rows included.
 
 ## File map
@@ -66,11 +69,12 @@ Backend (`backend/src/rapid_reports_ai/`):
 | `template_sheet_grammar.py` | modify | ASK effect; habit forms lean only in a findings paragraph; `render_rule` renders ASK |
 | `template_stack.py` | modify | the stack brief drops habit RULE lines (NEGATIVE lines already go) |
 | `template_decisions.py` | modify | ledger kind `habit`: key, validation, labels |
-| `template_ledger_apply.py` | modify | `_habit` apply, stray-habit strip (`strip_habits`), `observe` habit, chat reconciliation |
-| `template_sheet_save.py` | modify | strays stripped when no ledger is passed |
-| `template_rules_cards.py` | modify | `habit_card`, `card_for_change` habit, habit cards in `build_cards` |
+| `template_ledger_apply.py` | modify | `_habit` apply, `confirmed_habits`, `pending_habits` (lines with no entry: inactive, asked on a card), `observe` habit, chat reconciliation |
+| `template_sheet_save.py` | modify | `VetOutcome.habits_pending` on every save, ledger or not; logged |
+| `main.py` | modify | `/skill-sheet/decide` shows pending habit cards and counts them in the run record |
+| `template_rules_cards.py` | modify | `habit_card`, `card_for_change` habit, `pending_habit_cards`, habit cards in `build_cards` |
 | `template_decision_run.py` | modify | habit proposal: prompt section, `HabitCandidate`, verification, evidence |
-| `template_context_rules.py` | modify | `condition_state` (shared Jev state builder) |
+| `template_context_rules.py` | modify | item 1's `condition_state`: `history=None` leaves the history out |
 | `hybrid_stack/template.py` | modify | `paragraph_regions` |
 | `hybrid_stack/habits.py` | create | `Habit`, `template_habits`, trigger wordings, `ask_triggers`, `met_habits` |
 | `hybrid_stack/items.py` | modify | `Item.yes/no`, template rows, ranking, folding, `update(habits=)` |
@@ -98,11 +102,78 @@ Frontend (`frontend/src/lib/`):
 
 | Phase | Tasks | Leaves working software |
 |---|---|---|
-| 1. Grammar, renderer, ledger kind `habit` | 1–5 | habit lines parse, render and save only through the ledger; nothing proposes or triggers them yet |
+| 0. Bring the branch up to date | 0 | the branch has `feat/context-rules` and the latest `feat/rules-step`; baselines recorded |
+| 1. Grammar, renderer, ledger kind `habit` | 1–5 | habit lines parse, render and save; only ledger-confirmed habits are active, others are asked on a card; nothing proposes or triggers them yet |
 | 2. Labs (controller-run, reported) | 6–10 | trigger and proposal code exists and is measured; nothing in the scratchpad calls it; the decision run stores richer habit evidence |
 | 3. Decision-run proposal and Rules-step card | 11–12 | habits are proposed and confirmed at creation; saved sheets carry them |
 | 4. Scratchpad trigger, rows, ranking, Generate | 13–17 | confirmed habits are asked and stated in the scratchpad and reach the report |
-| 5. Chat tag (**requires item 4 built**) | 18–20 | chat can add, change or remove a habit through the router |
+| 5. Chat tag (**requires item 4 built**) | 18–20 | chat can add, change or remove a habit through the router, routed only after the habit-vs-normal lab report |
+
+---
+
+# Task 0: bring the branch up to date (before Task 1)
+
+The controller first merges `feat/context-rules` into `feat/rules-step` (in the rules-step worktree, not here). Start this task only after it says so.
+
+- [ ] **Step 1: Confirm the base is ready**
+
+```bash
+cd /Users/hassan/Code/rapid_reports_ai/.claude/worktrees/triggered-rows
+git status --short   # must be clean
+git log --oneline -1 feat/rules-step
+git merge-base --is-ancestor f61451c9 feat/rules-step && echo "context-rules is in rules-step"
+```
+
+Expected: a clean tree and the line `context-rules is in rules-step`. If that line is missing, stop and tell the controller.
+
+- [ ] **Step 2: Merge** (a merge, not a rebase: the plan commit stays as it is)
+
+```bash
+git merge --no-edit feat/rules-step
+```
+
+Expected: a merge commit with no conflicts (this branch only adds the spec and this plan). If a conflict appears, stop and tell the controller.
+
+- [ ] **Step 3: Re-check the facts.** Rules-step has since changed `template_decisions.py`, `template_rules_cards.py`, `template_sheet_grammar.py`, `template_writer.py`, `RulesStep.svelte` and `cards.ts`. Confirm every name this plan edits still exists:
+
+```bash
+cd backend/src/rapid_reports_ai
+grep -n "^def condition_state\|^def jev_findings\|^def resolve_context_rules" template_context_rules.py
+grep -n "^def _mode_check\|^def _parse_unit\|^_EFFECTS\|^_PARAGRAPH_EFFECTS\|^def render_rule\|^def render_negative" template_sheet_grammar.py
+grep -n "^STRUCTURE_VERSION\|^Effect = \|^class Rule\b\|^class Rule(" template_sheet_structure.py
+grep -n "^KINDS\|^def validate\|^def match_key\|^def item_label\|^def state_label\|^def negative_key" template_decisions.py
+grep -n "^def apply_ledger\|^def observe\|^def reconcile_chat\|^def _wholesale\|^_OPS\|^def _normal\|^class LedgerResult" template_ledger_apply.py
+grep -n "^_RANK\|^def card_for_change\|^def build_cards\|^def uncovered_card\|^def unmatched_cards" template_rules_cards.py
+grep -n "^async def vet_sheet\|^def _with_ledger\|^class VetOutcome" template_sheet_save.py
+grep -n "^class HabitCandidate\|^def check_quotes\|^def evidence\|^SYSTEM = " template_decision_run.py
+grep -n "^class Item\|^class ItemsResult\|^def _split\|^def _dedupe\|^async def _check\|^def _limit\|^async def update\|^async def recheck" hybrid_stack/items.py
+grep -n "^async def stack_items\|^class ItemsRequest" hybrid_stack/routes.py
+grep -n "_vet_config\|unmatched_cards(cfg" main.py | head
+cd ../../../frontend/src/lib
+grep -n "export type LedgerKind\|export type CardKind\|export interface DecisionCard" template-rules/types.ts
+grep -n "c.wording?.text" template-rules/RulesStep.svelte
+grep -n "export function changeFor" template-rules/cards.ts
+grep -n "function gateReview\|function refreshItems\|function skipRow\|function refreshAssumed\|function answerRow\|function openItemsForVoice\|\$: viewItems\|\$: gateKey" components/DictationScratchpad.svelte
+```
+
+Expected: every grep finds its names; `condition_state` has the signature `(scan_type: str, history: str, findings: str)`. A missing or renamed name: find its replacement by reading the module, note it in the commit message of the task that edits it, and edit by the current text.
+
+- [ ] **Step 4: Record the new baselines**
+
+```bash
+cd backend && .venv/bin/python -m pytest -q --deselect tests/test_provider_key_routing.py 2>&1 | tail -1
+cd ../frontend && npx vitest run 2>&1 | tail -4 && npm run check 2>&1 | tail -2
+```
+
+Write the three numbers (backend passed, vitest passed/failed, svelte-check problems) at the top of the plan's "Where and how" section as "Baselines after Task 0: …", replacing the old ones for every later "must not fall / must not rise" check, and commit:
+
+```bash
+git add docs/superpowers/plans/2026-10-13-findings-triggered-rows.md
+git commit -m "docs(plan): triggered rows baselines after merging rules-step and context-rules
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
+```
 
 ---
 
@@ -111,8 +182,8 @@ Frontend (`frontend/src/lib/`):
 ### Task 1: The two habit forms parse, only inside a findings paragraph
 
 **Files:**
-- Modify: `backend/src/rapid_reports_ai/template_sheet_structure.py:97-113`
-- Modify: `backend/src/rapid_reports_ai/template_sheet_grammar.py:11-32, 191-203, 601-624, 737-774`
+- Modify: `backend/src/rapid_reports_ai/template_sheet_structure.py`
+- Modify: `backend/src/rapid_reports_ai/template_sheet_grammar.py`
 - Test: `backend/tests/test_template_sheet_grammar.py`
 
 - [ ] **Step 1: Write the failing tests** (append to `backend/tests/test_template_sheet_grammar.py`, after `test_v1_mode_keeps_the_full_grammar`)
@@ -302,9 +373,9 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ### Task 2: Renderer round trip, structure version, and the stack brief drops habit lines
 
 **Files:**
-- Modify: `backend/src/rapid_reports_ai/template_sheet_grammar.py:783-798`
-- Modify: `backend/src/rapid_reports_ai/template_sheet_structure.py:37`
-- Modify: `backend/src/rapid_reports_ai/template_stack.py:20-50`
+- Modify: `backend/src/rapid_reports_ai/template_sheet_grammar.py`
+- Modify: `backend/src/rapid_reports_ai/template_sheet_structure.py`
+- Modify: `backend/src/rapid_reports_ai/template_stack.py`
 - Test: `backend/tests/test_template_sheet_grammar.py`, `backend/tests/test_template_stack.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -387,6 +458,16 @@ with
             continue
 ```
 
+The bump is safe for generation: it re-parses on the fly. `hybrid_stack/template.template_structure` takes a stored structure only through `fresh()`, which requires `version == STRUCTURE_VERSION`, and otherwise parses the sheet; `template_pipeline.py` and `template_preview.py` call `parse_sheet` directly. A stored version-2 structure is therefore never used once the version is 3.
+
+- [ ] **Step 3b: Confirm no generation path reads a stored structure directly**
+
+```bash
+cd backend/src/rapid_reports_ai && grep -rn "_stored(\|fresh_any_source(\|\[\"structure\"\]\|get(\"structure\")" --include="*.py" . | grep -v "^./scripts/" | grep -v "template_sheet_structure.py"
+```
+
+Expected: no hit in a generation module (`template_pipeline.py`, `template_preview.py`, `template_stack.py`, `template_writer.py`, `hybrid_stack/`, the generate endpoints in `main.py`). A hit in a non-generation module (a lab, an admin view, a structuring queue) is fine; a hit in a generation module must go through `fresh()` instead, and is reported to the controller before going on.
+
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_template_sheet_grammar.py tests/test_template_stack.py tests/test_template_generate_endpoint.py -q`
@@ -405,7 +486,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ### Task 3: Ledger kind `habit`
 
 **Files:**
-- Modify: `backend/src/rapid_reports_ai/template_decisions.py:1-26, 38-44, 133-154, 168-213, 311-333`
+- Modify: `backend/src/rapid_reports_ai/template_decisions.py`
 - Test: `backend/tests/test_template_decisions.py`
 
 - [ ] **Step 1: Write the failing tests** (append to `backend/tests/test_template_decisions.py`; add `import pytest` at the top if it is missing)
@@ -467,7 +548,8 @@ In the module docstring table, after the `normal` row, add:
 A habit (spec 2026-10-13-findings-triggered-rows-design) is written in its paragraph as RULE WHEN [findings: condition]
 ASK "question" YES "yes" NO "no" (mode ask: the scratchpad asks it when the condition is met) or NEGATIVE "no" WHEN
 [findings: condition] (mode state: a required statement); mode removed writes nothing and keeps the wording. A habit
-line exists in a sheet only through its entry (template_ledger_apply strips the rest).
+is active only through its entry: a habit line with no entry stays inactive and is asked on a card at the next review
+(template_ledger_apply.pending_habits).
 ```
 
 Replace
@@ -564,11 +646,11 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ```
 
-### Task 4: Apply, observe and reconcile habits; strip habit lines the ledger does not hold
+### Task 4: Apply, observe and reconcile habits; habit lines the ledger does not hold are pending, never stripped
 
 **Files:**
 - Modify: `backend/src/rapid_reports_ai/template_ledger_apply.py`
-- Modify: `backend/src/rapid_reports_ai/template_rules_cards.py:26, 116-145`
+- Modify: `backend/src/rapid_reports_ai/template_rules_cards.py`
 - Modify: `backend/tests/template_sheet_fixtures.py` (append)
 - Test: `backend/tests/test_template_ledger_apply.py`, `backend/tests/test_template_rules_cards.py`
 
@@ -636,15 +718,24 @@ def test_a_habit_finds_its_paragraph_by_a_covered_structure_else_it_is_unmatched
         "Nowhere :: a focal liver abnormality is reported"]
 
 
-def test_habit_lines_the_ledger_does_not_hold_are_stripped():
+def test_a_habit_line_the_ledger_does_not_hold_stays_inactive_and_pending():
+    # Hassan H3: never stripped silently; inactive until a card at the next review confirms it
     stray = HABIT_SHEET.replace('NEGATIVE "No focal liver lesion."\n',
                                 'NEGATIVE "No focal liver lesion."\n' + STATE_LINE + "\n")
-    _clean(stray)
+    st = _clean(stray)
     res = tla.apply_ledger(stray, [])
-    assert STATE_LINE not in res.sheet and res.applied == [{"kind": "habit", "key": HK, "action": "removed"}]
-    assert tla.strip_habits(stray, []) == res.sheet
-    assert STATE_LINE in tla.apply_ledger(stray, _led(("habit", HK, {**HASK, "mode": "state"}))).sheet
-    assert tla.apply_ledger(stray, _led(("habit", HK, {**HASK, "mode": "removed"}))).sheet == res.sheet
+    assert res.sheet == stray and res.applied == []
+    assert res.pending == [{"kind": "habit", "key": HK, "choice": {
+        "mode": "state", "question": "", "yes": "", "no": "No extension into the gallbladder."}}]
+    assert tla.confirmed_habits(st, []) == set()
+    led = _led(("habit", HK, {**HASK, "mode": "state"}))
+    confirmed = tla.apply_ledger(stray, led)
+    assert confirmed.sheet == stray and confirmed.pending == []
+    liver = next(p.id for p in st.paragraphs if p.name == "Liver")
+    assert tla.confirmed_habits(st, led) == {(liver, "a focal liver abnormality is reported")}
+    gone = tla.apply_ledger(stray, _led(("habit", HK, {**HASK, "mode": "removed"})))   # "Not needed" on its card
+    assert STATE_LINE not in gone.sheet and gone.pending == []
+    assert tla.confirmed_habits(_clean(gone.sheet), _led(("habit", HK, {**HASK, "mode": "removed"}))) == set()
 
 
 def test_a_paragraph_negative_entry_never_reads_a_required_statement():
@@ -696,7 +787,7 @@ def test_card_for_change_makes_a_habit_card_never_preticked():
 - [ ] **Step 3: Run the tests to verify they fail**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_template_ledger_apply.py tests/test_template_rules_cards.py -q -k "habit or required_statement or drops_a_confirmed"`
-Expected: FAIL — `apply_ledger` leaves the sheet unchanged for a habit entry, `AttributeError: … has no attribute 'strip_habits'`, `card_for_change` raises for a habit.
+Expected: FAIL — `apply_ledger` leaves the sheet unchanged for a habit entry, `AttributeError: 'LedgerResult' object has no attribute 'pending'`, `card_for_change` raises for a habit.
 
 - [ ] **Step 4: The habit card** (`template_rules_cards.py`)
 
@@ -740,15 +831,17 @@ In `card_for_change`, before `return normal_card(key, proposed.get("text", ""), 
                           [], step="chat")
 ```
 
-- [ ] **Step 5: Apply, strip, observe, reconcile** (`template_ledger_apply.py`)
+- [ ] **Step 5: Apply, pending, observe, reconcile** (`template_ledger_apply.py`)
 
 In the module docstring, after the paragraph that starts "Where an entry's target cannot be found", add:
 
 ```python
 A habit entry (kind "habit", spec 2026-10-13-findings-triggered-rows-design) is placed in the paragraph its key names,
-or in the one paragraph whose COVERS lists that name; otherwise it is unmatched. A habit line exists only through
-its entry: after every entry is applied, habit units (RULE … ASK, NEGATIVE … WHEN [findings: …]) without an "ask" or
-"state" entry are removed (strip_habits), so a writer or a whole-sheet rewrite never activates one unasked.
+or in the one paragraph whose COVERS lists that name; otherwise it is unmatched. A habit is active only through its
+entry (confirmed_habits: the scratchpad triggers nothing else). A habit unit (RULE … ASK, NEGATIVE … WHEN [findings:
+…]) with no entry, written by the writer or a whole-sheet rewrite, is never removed silently (Hassan H3, 2026-10-13):
+it stays in the sheet, inactive, and is returned in `pending` (template_rules_cards.pending_habit_cards asks it at the
+next review).
 ```
 
 After `_normal` (before `_OPS`) add:
@@ -816,11 +909,10 @@ def _habit(lines, st, entry):
     return [x for x in out2 if x is not None], [{**row, "action": "removed" if new is None else "rewritten"}], [], []
 
 
-def _strays(lines, st, ledger):
-    """Remove habit units the ledger does not hold as "ask" or "state" (module doc)."""
-    kept = set()
+def _habit_ids(st: tss.SheetStructure, ledger: List[dict], modes: Tuple[str, ...]) -> Set[Tuple[str, str]]:
+    out: Set[Tuple[str, str]] = set()
     for e in ledger or []:
-        if e.get("kind") != "habit" or (e.get("choice") or {}).get("mode") not in ("ask", "state"):
+        if e.get("kind") != "habit" or (e.get("choice") or {}).get("mode") not in modes:
             continue
         try:
             para_name, cond = td.split_habit_key(e["key"])
@@ -828,32 +920,32 @@ def _strays(lines, st, ledger):
             continue
         p = _habit_paragraph(st, para_name)
         if p is not None:
-            kept.add((p.id, td._name(cond)))
+            out.add((p.id, td._name(cond)))
+    return out
+
+
+def confirmed_habits(st: tss.SheetStructure, ledger: List[dict]) -> Set[Tuple[str, str]]:
+    """(paragraph id, condition name) of every habit the ledger holds as "ask" or "state": the only active ones."""
+    return _habit_ids(st, ledger, ("ask", "state"))
+
+
+def pending_habits(st: tss.SheetStructure, ledger: List[dict]) -> List[dict]:
+    """Habit units with no ledger entry at all, as entries {kind, key, choice} read from the sheet (module doc)."""
+    decided = _habit_ids(st, ledger, td.HABIT_MODES)
     names = {p.id: p.name for p in st.paragraphs}
-    units = [(r.paragraph, r.condition, r.source_lines[0]) for r in st.rules if r.effect == "ask"]
-    units += [(n.paragraph, n.condition, n.source_lines[0]) for n in st.negatives
+    out: List[dict] = []
+    seen: Set[Tuple[str, str]] = set()
+    units = [(r.paragraph, r.condition) for r in st.rules if r.effect == "ask"]
+    units += [(n.paragraph, n.condition) for n in st.negatives
               if n.origin == "template" and n.condition and n.condition_source == "findings"]
-    drop: Set[int] = set()
-    rows: List[dict] = []
-    for pid, cond, raw in units:
-        if (pid, td._name(cond)) in kept:
+    for pid, cond in units:
+        k = (pid, td._name(cond))
+        if k in decided or k in seen or pid not in names:
             continue
-        i = _index(lines, raw, drop)
-        if i is None:
-            continue
-        drop.add(i)
-        rows.append({"kind": "habit", "key": td.habit_key(names.get(pid, ""), cond), "action": "removed"})
-    if drop:
-        logger.info("[ledger] %d habit line(s) without a confirmed entry removed", len(drop))
-    return [ln for i, ln in enumerate(lines) if i not in drop], rows, [], []
-
-
-def strip_habits(sheet: str, ledger: List[dict]) -> str:
-    """The sheet without habit lines the ledger does not hold (a non-grammar sheet is unchanged)."""
-    if not tsg.is_grammar_sheet(sheet or ""):
-        return sheet
-    lines, _, _, _ = _strays(sheet.split("\n"), _parse(sheet), ledger or [])
-    return "\n".join(lines)
+        seen.add(k)
+        key = td.habit_key(names[pid], cond)
+        out.append({"kind": "habit", "key": key, "choice": observe(st, "habit", key)})
+    return out
 ```
 
 Replace
@@ -866,6 +958,12 @@ with
 
 ```python
 _OPS: List[Tuple[str, Callable]] = [("concept", _concept), ("fixed", _fixed), ("normal", _normal), ("habit", _habit)]
+```
+
+In `class LedgerResult`, after the `stale_quotes` field add:
+
+```python
+    pending: List[dict] = field(default_factory=list)    # habit lines with no entry: inactive, asked on a card
 ```
 
 In `apply_ledger`, replace
@@ -885,11 +983,24 @@ with
     ledger = list(ledger or [])
 ```
 
-and after the `for kind, op in _OPS:` loop (before `stale: List[str] = []`) add:
+and at its end replace
 
 ```python
-    steps.append((_strays, ledger, []))   # last: habit lines exist only through their entries
+    res.stale_quotes = sorted({t for t in stale if t and any(f'"{t}"' in ln for ln in prose)})
+    return res
 ```
+
+with
+
+```python
+    res.stale_quotes = sorted({t for t in stale if t and any(f'"{t}"' in ln for ln in prose)})
+    res.pending = pending_habits(_parse(res.sheet), ledger)
+    if res.pending:
+        logger.info("[ledger] habits_pending=%d (inactive until a card confirms them)", len(res.pending))
+    return res
+```
+
+(With an empty ledger and no habit lines nothing is edited, so `test_empty_ledger_or_non_grammar_sheet_is_unchanged` still holds.)
 
 In the same function's `except Exception as e:` branch, replace
 
@@ -962,46 +1073,97 @@ with
 - [ ] **Step 6: Run the tests to verify they pass**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_template_ledger_apply.py tests/test_template_rules_cards.py tests/test_template_ledger_save.py tests/test_template_ledger_routes.py -q`
-Expected: PASS (`test_empty_ledger_or_non_grammar_sheet_is_unchanged` still passes: a sheet with no habit units is unchanged by `_strays`).
+Expected: PASS.
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add backend/src/rapid_reports_ai/template_ledger_apply.py backend/src/rapid_reports_ai/template_rules_cards.py backend/tests/template_sheet_fixtures.py backend/tests/test_template_ledger_apply.py backend/tests/test_template_rules_cards.py
-git commit -m "feat(ledger): apply, observe and reconcile habits; habit lines exist only through the ledger
+git commit -m "feat(ledger): apply, observe and reconcile habits; a habit line with no entry is pending, never stripped
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ```
 
-### Task 5: The save function strips unconfirmed habit lines when no ledger is passed; Phase 1 check
+### Task 5: Pending habits are reported on every save and asked at the next review; Phase 1 check
+
+Hassan H3 (2026-10-13): a habit line with no confirmed ledger entry (from the writer or a whole-sheet chat edit) is never stripped silently. It stays in the sheet, inactive (Task 14 triggers only confirmed habits), every save reports and logs it, and the next review (`/skill-sheet/decide`) shows it as a habit card.
 
 **Files:**
-- Modify: `backend/src/rapid_reports_ai/template_sheet_save.py:217-227`
-- Test: `backend/tests/test_template_ledger_save.py`
+- Modify: `backend/src/rapid_reports_ai/template_sheet_save.py` (`class VetOutcome`, `vet_sheet`, `_with_ledger`)
+- Modify: `backend/src/rapid_reports_ai/template_rules_cards.py` (after `unmatched_cards`)
+- Modify: `backend/src/rapid_reports_ai/main.py` (the `/api/templates/skill-sheet/decide` endpoint: the block that adds `trc.unmatched_cards(cfg.get("ledger_unmatched"))`, and the line `record = tdr.evidence(run, out)`)
+- Test: `backend/tests/test_template_ledger_save.py`, `backend/tests/test_template_rules_cards.py`, `backend/tests/test_template_ledger_routes.py`
 
-- [ ] **Step 1: Write the failing test** (append to `backend/tests/test_template_ledger_save.py`)
+- [ ] **Step 1: Write the failing tests**
+
+Append to `backend/tests/test_template_ledger_save.py`:
 
 ```python
-async def test_habit_lines_nobody_confirmed_are_never_saved():
+async def test_habit_lines_nobody_confirmed_are_kept_inactive_and_reported():
     from tests.template_sheet_fixtures import HABIT_SHEET
     line = 'NEGATIVE "No extension into the gallbladder." WHEN [findings: a focal liver abnormality is reported]'
     stray = HABIT_SHEET.replace('NEGATIVE "No focal liver lesion."\n', 'NEGATIVE "No focal liver lesion."\n' + line + "\n")
     for ledger in (None, []):
         out = await S.vet_sheet(stray, origin="analyser", ledger=ledger)
-        assert out.status == "saved" and line not in out.sheet, ledger
+        assert out.status == "saved" and line in out.sheet, ledger
+        assert [e["key"] for e in out.habits_pending] == ["Liver :: a focal liver abnormality is reported"], ledger
     plain = await S.vet_sheet(HABIT_SHEET, origin="analyser")
-    assert plain.sheet == HABIT_SHEET
+    assert plain.sheet == HABIT_SHEET and plain.habits_pending == []
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+Append to `backend/tests/test_template_rules_cards.py`:
 
-Run: `cd backend && .venv/bin/python -m pytest tests/test_template_ledger_save.py -q -k nobody_confirmed`
-Expected: FAIL on `ledger=None`: the line is still in `out.sheet`.
+```python
+def test_pending_habit_cards_ask_about_habit_lines_nobody_confirmed():
+    from rapid_reports_ai import template_decisions as td
+    from tests.template_sheet_fixtures import HABIT_SHEET
+    ask = ('RULE WHEN [findings: a focal liver abnormality is reported] ASK "Extension into the gallbladder?" '
+           'YES "The abnormality extends into the gallbladder." NO "No extension into the gallbladder."')
+    state = 'NEGATIVE "No delta extension." WHEN [findings: a focal delta abnormality is reported]'
+    sheet = (HABIT_SHEET.replace('NEGATIVE "No focal liver lesion."\n', 'NEGATIVE "No focal liver lesion."\n' + ask + "\n")
+             .replace('NORMAL [delta] "Delta is normal."\n', 'NORMAL [delta] "Delta is normal."\n' + state + "\n"))
+    cards = trc.pending_habit_cards(sheet, [])
+    assert [(c["kind"], c["key"], c["step"], c["note"], c["selected"]) for c in cards] == [
+        ("habit", "Liver :: a focal liver abnormality is reported", "review", trc.PENDING_HABIT_NOTE, None),
+        ("habit", "Lower :: a focal delta abnormality is reported", "review", trc.PENDING_HABIT_NOTE, None)]
+    assert [x["id"] for x in cards[0]["choices"]] == ["ask", "state", "removed"]
+    assert [x["id"] for x in cards[1]["choices"]] == ["state", "removed"]   # a required statement has no question
+    led, _ = td.set_decision([], "habit", cards[0]["key"], cards[0]["choices"][0]["choice"], source="first_use_review")
+    assert [c["key"] for c in trc.pending_habit_cards(sheet, led)] == [cards[1]["key"]]
+    assert trc.pending_habit_cards("# Not a grammar sheet", []) == []
+```
 
-- [ ] **Step 3: Strip strays on the no-ledger path** (`template_sheet_save.py`)
+Append to `backend/tests/test_template_ledger_routes.py` (add `from rapid_reports_ai import template_rules_cards as trc` to its imports):
 
-Replace
+```python
+def test_decide_asks_about_a_habit_line_nobody_confirmed(client, auth_headers):
+    t = _guided(client, auth_headers)["template"]
+    cfg = t["template_config"]
+    line = 'NEGATIVE "No meniscal extrusion." WHEN [findings: a meniscal tear is reported]'
+    r = _put(client, auth_headers, t, {**cfg, "skill_sheet": cfg["skill_sheet"].rstrip("\n") + "\n" + line + "\n"})
+    assert r["success"], r
+    assert line in _get(client, auth_headers, t["id"])["template_config"]["skill_sheet"]   # kept, not stripped
+    d = client.post("/api/templates/skill-sheet/decide", headers=auth_headers, json={"template_id": t["id"]}).json()
+    (c,) = [c for c in d["cards"] if c["kind"] == "habit"]
+    assert c["key"] == "Knee :: a meniscal tear is reported" and c["note"] == trc.PENDING_HABIT_NOTE
+    assert c["selected"] is None and [x["id"] for x in c["choices"]] == ["state", "removed"]
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `cd backend && .venv/bin/python -m pytest tests/test_template_ledger_save.py tests/test_template_rules_cards.py tests/test_template_ledger_routes.py -q -k "nobody_confirmed"`
+Expected: FAIL with `AttributeError: 'VetOutcome' object has no attribute 'habits_pending'` and `… has no attribute 'pending_habit_cards'`.
+
+- [ ] **Step 3: The save reports pending habits** (`template_sheet_save.py`)
+
+In `class VetOutcome`, after the `stale_quotes` field add:
+
+```python
+    habits_pending: List[dict] = field(default_factory=list)    # habit lines with no ledger entry: inactive, asked
+```
+
+In `vet_sheet`, replace
 
 ```python
     out = await _vet(sheet, origin, previous)
@@ -1015,33 +1177,97 @@ with
 ```python
     out = await _vet(sheet, origin, previous)
     if ledger is None:
-        return _without_stray_habits(out)
+        return _with_pending_habits(out)
     return _with_ledger(out, origin, previous, list(ledger))
 
 
-def _without_stray_habits(out: VetOutcome) -> VetOutcome:
-    """No ledger: the save is as before the Rules step, except that a habit line nobody confirmed is never stored
-    (spec 2026-10-13-findings-triggered-rows-design: nothing is active until it is confirmed)."""
+def _with_pending_habits(out: VetOutcome) -> VetOutcome:
+    """No ledger: the save is as before the Rules step; a habit line nobody confirmed is kept, inactive, and reported
+    (Hassan H3, 2026-10-13: never stripped silently; the next review asks it on a card)."""
     from . import template_ledger_apply as tla
-    if out.status == "refused":
+    if out.status == "refused" or not tsg.is_grammar_sheet(out.sheet or ""):
         return out
-    clean = tla.strip_habits(out.sheet, [])
-    if clean == out.sheet:
-        return out
-    logger.info("[sheet-save] habit lines without a confirmed entry removed")
-    return dataclasses.replace(out, status="saved", sheet=clean)
+    pending = tla.pending_habits(tsg.parse_sheet(out.sheet, mode="template").structure, [])
+    if pending:
+        logger.info("[sheet-save] habits_pending=%d (inactive until a card confirms them)", len(pending))
+    return dataclasses.replace(out, habits_pending=pending)
 ```
 
-- [ ] **Step 4: Run the Phase 1 suite**
+In `_with_ledger`, in its final `return dataclasses.replace(out, …)` call, replace `ledger_drift=drift, stale_quotes=res.stale_quotes)` with:
 
-Run: `cd backend && .venv/bin/python -m pytest tests/test_template_ledger_save.py -q && .venv/bin/python -m pytest -q --deselect tests/test_provider_key_routing.py`
-Expected: PASS; the full suite count is the baseline (about 4046) plus the new tests, with no failures.
+```python
+                               ledger_drift=drift, stale_quotes=res.stale_quotes, habits_pending=res.pending)
+```
 
-- [ ] **Step 5: Commit**
+(`apply_ledger` already logs `habits_pending=<n>` for the ledger path.)
+
+- [ ] **Step 4: The review card** (`template_rules_cards.py`, after `unmatched_cards`)
+
+```python
+PENDING_HABIT_NOTE = "Your template has this habit, but it is not active until you choose."
+
+
+def pending_habit_cards(sheet: str, ledger: List[dict]) -> List[dict]:
+    """A review card for each habit line the ledger does not hold (written by the writer or a whole-sheet chat edit;
+    Hassan H3): "When <condition>: Ask every time / Always state / Not needed", never pre-ticked. The habit stays
+    inactive until a choice is recorded; "Not needed" removes its line at the next save. A required statement read
+    from the sheet has no question, so it is offered "Always state" or "Not needed" only."""
+    from . import template_ledger_apply as tla
+    from . import template_sheet_grammar as tsg
+    if not tsg.is_grammar_sheet(sheet or ""):
+        return []
+    out = []
+    for e in tla.pending_habits(tsg.parse_sheet(sheet, mode="template").structure, ledger):
+        para, cond = td.split_habit_key(e["key"])
+        c = e["choice"]
+        card = habit_card(para, cond, c["question"], c["yes"], c["no"], [], step="review")
+        if not c["question"]:
+            card["choices"] = [x for x in card["choices"] if x["id"] != "ask"]
+        out.append({**card, "note": PENDING_HABIT_NOTE})
+    return out
+```
+
+- [ ] **Step 5: `/decide` shows them** (`main.py`, the skill-sheet decide endpoint)
+
+After the line
+
+```python
+            current += [c for c in trc.unmatched_cards(cfg.get("ledger_unmatched")) if c["id"] not in have_ids]
+```
+
+add
+
+```python
+            # habit lines nobody confirmed (the writer or a whole-sheet chat edit): inactive until a card answers them
+            have_ids = {c["id"] for c in current}
+            current += [c for c in trc.pending_habit_cards(cfg.get("skill_sheet") or "",
+                                                           td.clean_ledger(cfg.get("decisions")))
+                        if c["id"] not in have_ids]
+```
+
+and replace
+
+```python
+        record = tdr.evidence(run, out)
+```
+
+with
+
+```python
+        record = {**tdr.evidence(run, out),
+                  "habits_pending": sum(1 for c in current if c.get("note") == trc.PENDING_HABIT_NOTE)}
+```
+
+- [ ] **Step 6: Run the Phase 1 suite**
+
+Run: `cd backend && .venv/bin/python -m pytest tests/test_template_ledger_save.py tests/test_template_rules_cards.py tests/test_template_ledger_routes.py -q && .venv/bin/python -m pytest -q --deselect tests/test_provider_key_routing.py`
+Expected: PASS; the full suite count is the Task 0 baseline plus the new tests, with no failures.
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add backend/src/rapid_reports_ai/template_sheet_save.py backend/tests/test_template_ledger_save.py
-git commit -m "feat(sheet-save): an unconfirmed habit line is never stored, ledger or not
+git add backend/src/rapid_reports_ai/template_sheet_save.py backend/src/rapid_reports_ai/template_rules_cards.py backend/src/rapid_reports_ai/main.py backend/tests/test_template_ledger_save.py backend/tests/test_template_rules_cards.py backend/tests/test_template_ledger_routes.py
+git commit -m "feat(rules-step): a habit line nobody confirmed stays inactive and is asked at the next review
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
@@ -1053,11 +1279,11 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 
 The trigger code and the proposal code are written first (pure, tested, not yet called by the scratchpad or shown as cards), so the labs measure the code that ships. The labs run on Opus-generated synthetic data in the private folder, with real production dictations as a separate held-out set. Nothing here is a gate: the controller writes the report, and Hassan sets `TRIGGER_MIN` and `TRIGGER_WORDING`.
 
-### Task 6: `condition_state`, region names, and the trigger module
+### Task 6: `condition_state` without history, region names, and the trigger module
 
 **Files:**
-- Modify: `backend/src/rapid_reports_ai/template_context_rules.py:124-196`
-- Modify: `backend/src/rapid_reports_ai/hybrid_stack/template.py:33-45`
+- Modify: `backend/src/rapid_reports_ai/template_context_rules.py` (`condition_state`, from item 1)
+- Modify: `backend/src/rapid_reports_ai/hybrid_stack/template.py` (after `template_regions`)
 - Create: `backend/src/rapid_reports_ai/hybrid_stack/habits.py`
 - Test: `backend/tests/test_hybrid_stack_habits.py`
 
@@ -1072,6 +1298,7 @@ import httpx
 import pytest
 
 from rapid_reports_ai import template_context_rules as tcr
+from rapid_reports_ai import template_decisions as td
 from rapid_reports_ai import template_sheet_grammar as tsg
 from rapid_reports_ai.hybrid_stack import habits as H
 from rapid_reports_ai.hybrid_stack.template import paragraph_regions, template_regions
@@ -1097,7 +1324,7 @@ def test_paragraph_regions_name_paragraphs_as_template_regions_does():
 
 
 def test_template_habits_reads_both_forms_under_their_region_names():
-    hs = H.template_habits(_st())
+    hs = H.template_habits(_st())   # no ledger: every habit in the sheet (the labs' hand-written sheets)
     assert [(h.region, h.mode, h.condition) for h in hs] == [
         ("Liver", "ask", "a focal liver abnormality is reported"), ("Lower", "state", "a focal delta abnormality is reported")]
     assert (hs[0].question, hs[0].yes, hs[0].no) == (
@@ -1105,13 +1332,28 @@ def test_template_habits_reads_both_forms_under_their_region_names():
     assert hs[1].no == "No delta extension."
 
 
-def test_condition_state_with_and_without_history():
-    assert tcr.condition_state("Liver: x.", "Pain.") == "CLINICAL HISTORY:\nPain.\nDICTATED FINDINGS:\nLiver: x."
-    assert tcr.condition_state("Liver: x.", "") == "CLINICAL HISTORY:\n(not given)\nDICTATED FINDINGS:\nLiver: x."
-    assert tcr.condition_state("Liver: x.\nDO NOT ASSERT (removed by the radiologist): y.") == "DICTATED FINDINGS:\nLiver: x."
+def test_with_a_ledger_only_confirmed_habits_are_active():
+    st = _st()
+    assert H.template_habits(st, []) == []   # Hassan H3: a line nobody confirmed is inactive
+    led, _ = td.set_decision([], "habit", "Lower :: a focal delta abnormality is reported",
+                             {"mode": "state", "no": "No delta extension."}, source="creation", at="t")
+    assert [h.region for h in H.template_habits(st, led)] == ["Lower"]
+    led, _ = td.set_decision(led, "habit", "Lower :: a focal delta abnormality is reported", {"mode": "removed"},
+                             source="chat", at="t2")
+    assert H.template_habits(st, led) == []
 
 
-async def test_ask_triggers_asks_every_condition_in_one_call_on_the_findings_only():
+def test_condition_state_leaves_the_history_out_when_none():
+    # item 1's shared builder; Hassan H1: a trigger reads the dictation and the scan type only
+    assert tcr.condition_state("MR knee", None, "Liver: x.") == "SCAN TYPE:\nMR knee\nDICTATED FINDINGS:\nLiver: x."
+    assert tcr.condition_state("MR knee", "Pain.", "Liver: x.") == (
+        "SCAN TYPE:\nMR knee\nCLINICAL HISTORY:\nPain.\nDICTATED FINDINGS:\nLiver: x.")
+    assert tcr.condition_state("", "", "Liver: x.") == "CLINICAL HISTORY:\n(not given)\nDICTATED FINDINGS:\nLiver: x."
+    assert tcr.condition_state("MR knee", None, "Liver: x.\nDO NOT ASSERT (removed by the radiologist): y.") == (
+        "SCAN TYPE:\nMR knee\nDICTATED FINDINGS:\nLiver: x.")
+
+
+async def test_ask_triggers_asks_every_condition_in_one_call_on_the_scan_type_and_findings_only():
     seen = []
 
     def handler(request):
@@ -1119,35 +1361,43 @@ async def test_ask_triggers_asks_every_condition_in_one_call_on_the_findings_onl
         seen.append(body)
         return httpx.Response(200, json={"answers": {k: {"noul": 0.9 if k == "t0" else 0.1} for k in body["questions"]}})
     conds = ["a focal liver abnormality is reported", "a focal delta abnormality is reported"]
-    out = await H.ask_triggers("Liver: a focal abnormality.", conds, transport=httpx.MockTransport(handler))
+    out = await H.ask_triggers("MR knee", "Liver: a focal abnormality.", conds, transport=httpx.MockTransport(handler))
     assert out == [0.9, 0.1] and len(seen) == 1
-    assert seen[0]["state"] == "DICTATED FINDINGS:\nLiver: a focal abnormality."
+    assert seen[0]["state"] == "SCAN TYPE:\nMR knee\nDICTATED FINDINGS:\nLiver: a focal abnormality."
+    assert "CLINICAL HISTORY" not in seen[0]["state"]
     q = seen[0]["questions"]["t0"]
     assert q["type"] == "noul" and q["instructions"] == H.TRIGGER_WORDING.format(condition=conds[0])
     b = H.TRIGGER_WORDINGS["A"]
-    await H.ask_triggers("x", conds[:1], transport=httpx.MockTransport(handler), wording=b)
+    await H.ask_triggers("MR knee", "x", conds[:1], transport=httpx.MockTransport(handler), wording=b)
     assert seen[1]["questions"]["t0"]["instructions"] == b.format(condition=conds[0])
 
 
 async def test_ask_triggers_raises_on_incomplete_answers():
     t = httpx.MockTransport(lambda r: httpx.Response(200, json={"answers": {}}))
     with pytest.raises(ValueError):
-        await H.ask_triggers("x", ["a focal liver abnormality is reported"], transport=t)
+        await H.ask_triggers("MR knee", "x", ["a focal liver abnormality is reported"], transport=t)
 
 
 async def test_met_habits_uses_the_cut_off_and_fails_soft():
     hs = H.template_habits(_st())
 
-    async def ask(findings, conds):
-        return [H.TRIGGER_MIN, H.TRIGGER_MIN - 0.01]
-    met, err = await H.met_habits(hs, "x", ask=ask)
-    assert [h.mode for h in met] == ["ask"] and err is None
+    seen = []
 
-    async def boom(findings, conds):
+    async def ask(scan_type, findings, conds):
+        seen.append(scan_type)
+        return [H.TRIGGER_MIN, H.TRIGGER_MIN - 0.01]   # Hassan H2: just below the cut-off stays silent
+    met, err = await H.met_habits(hs, "MR knee", "x", ask=ask)
+    assert [h.mode for h in met] == ["ask"] and err is None and seen == ["MR knee"]
+
+    async def band(scan_type, findings, conds):
+        return [0.49, 0.36]
+    assert await H.met_habits(hs, "MR knee", "x", ask=band) == ([], None)
+
+    async def boom(scan_type, findings, conds):
         raise RuntimeError("jev down")
-    assert await H.met_habits(hs, "x", ask=boom) == ([], "RuntimeError: jev down")
-    assert await H.met_habits(hs, "   ", ask=ask) == ([], None)
-    assert await H.met_habits([], "x", ask=ask) == ([], None)
+    assert await H.met_habits(hs, "MR knee", "x", ask=boom) == ([], "RuntimeError: jev down")
+    assert await H.met_habits(hs, "MR knee", "   ", ask=ask) == ([], None)
+    assert await H.met_habits([], "MR knee", "x", ask=ask) == ([], None)
 
 
 def test_trigger_wordings_are_case_agnostic_and_the_cut_off_is_the_context_rules_one():
@@ -1163,30 +1413,22 @@ def test_trigger_wordings_are_case_agnostic_and_the_cut_off_is_the_context_rules
 Run: `cd backend && .venv/bin/python -m pytest tests/test_hybrid_stack_habits.py -q`
 Expected: FAIL with `ImportError: cannot import name 'paragraph_regions'`.
 
-- [ ] **Step 3: `condition_state`** (`template_context_rules.py`)
+- [ ] **Step 3: `history=None` in item 1's `condition_state`** (`template_context_rules.py`)
 
-After `jev_findings` add:
-
-```python
-def condition_state(findings: str, history: Optional[str] = None) -> str:
-    """The Jev state a condition question is asked on (the shared builder): the clinical history when given (None
-    leaves it out, so a findings trigger is never met by the history alone) and the dictated findings minus what the
-    radiologist did not dictate (jev_findings)."""
-    head = "" if history is None else f"CLINICAL HISTORY:\n{history or '(not given)'}\n"
-    return f"{head}DICTATED FINDINGS:\n{jev_findings(findings)}"
-```
-
-In `resolve_context_rules` replace
+Do not add a new function: item 1's shared builder is reused (Hassan H1: a trigger reads the dictation and the scan type only). Replace the whole of `condition_state` with:
 
 ```python
-            state = f"CLINICAL HISTORY:\n{history or '(not given)'}\nDICTATED FINDINGS:\n{jev_findings(findings)}"
+def condition_state(scan_type: str, history: Optional[str], findings: str) -> str:
+    """The one Jev state every condition is asked on (resolve_context_rules, the checklist's template suppressions and
+    the findings-triggered habits): the scan type when given, the clinical history, and the dictated findings without
+    what the radiologist did not dictate (jev_findings). history None leaves the history block out: a habit trigger
+    reads the dictation and the scan type only (Hassan H1, 2026-10-13)."""
+    head = f"SCAN TYPE:\n{scan_type}\n" if (scan_type or "").strip() else ""
+    hist = "" if history is None else f"CLINICAL HISTORY:\n{history or '(not given)'}\n"
+    return head + hist + f"DICTATED FINDINGS:\n{jev_findings(findings)}"
 ```
 
-with
-
-```python
-            state = condition_state(findings, history or "")
-```
+Its two existing callers must keep their state byte for byte even if they are ever handed `None`: in `resolve_context_rules` change the call to `condition_state(scan_type, history or "", findings)`, and in `hybrid_stack/normals.assumed` to `condition_state(scan_type, clinical_history or "", dictation)`. If `Optional` is not imported in the module, add it to the `typing` import.
 
 - [ ] **Step 4: `paragraph_regions`** (`hybrid_stack/template.py`, after `template_regions`)
 
@@ -1212,10 +1454,11 @@ def paragraph_regions(st: SheetStructure) -> dict[str, str]:
 """Findings-triggered habits in the scratchpad (spec 2026-10-13-findings-triggered-rows-design).
 
 A template's confirmed habits are read from its grammar structure: a habit question (RULE WHEN [findings: …] ASK) and a
-required statement (NEGATIVE … WHEN [findings: …]), each in a findings paragraph. At the end-of-dictation review one
-Jev call asks one noul question per distinct condition, on the dictated findings only (never the history). Jev
-decides; items.py turns the met questions into rows and the met statements into the assumed tray; code applies.
-Fail-soft: a failed call gives no template rows (the generic rows are as today), logged."""
+required statement (NEGATIVE … WHEN [findings: …]), each in a findings paragraph, active only with a confirmed ledger
+entry (Hassan H3). At the end-of-dictation review one Jev call asks one noul question per distinct condition, on the
+scan type and the dictated findings only, never the clinical history (Hassan H1); a score below TRIGGER_MIN is silent
+(Hassan H2). Jev decides; items.py turns the met questions into rows and the met statements into the assumed tray;
+code applies. Fail-soft: a failed call gives no template rows (the generic rows are as today), logged."""
 from __future__ import annotations
 
 import logging
@@ -1250,15 +1493,23 @@ class Habit(BaseModel):
     no: str = ""                      # ask: the sentence a No writes; state: the required statement
 
 
-def template_habits(st: SheetStructure) -> list[Habit]:
-    """The sheet's habits in sheet order, questions first, under their region names."""
+def template_habits(st: SheetStructure, ledger: Optional[list[dict]] = None) -> list[Habit]:
+    """The sheet's habits in sheet order, questions first, under their region names. With a ledger (every production
+    caller), only habits it holds as "ask" or "state" are returned: a line nobody confirmed is inactive (Hassan H3).
+    None (the labs' hand-written sheets): every habit in the sheet."""
+    from ..template_decisions import _name
+    from ..template_ledger_apply import confirmed_habits
     names = paragraph_regions(st)
+    ok = None if ledger is None else confirmed_habits(st, ledger)
+
+    def active(pid: str, cond: str) -> bool:
+        return pid in names and (ok is None or (pid, _name(cond)) in ok)
     out = [Habit(region=names[r.paragraph], condition=r.condition, mode="ask", question=r.question,
                  yes=r.then_text, no=r.else_text)
-           for r in st.rules if r.effect == "ask" and r.condition_source == "findings" and r.paragraph in names]
+           for r in st.rules if r.effect == "ask" and r.condition_source == "findings" and active(r.paragraph, r.condition)]
     out += [Habit(region=names[n.paragraph], condition=n.condition, mode="state", no=n.text)
             for n in st.negatives if n.origin == "template" and n.condition and n.condition_source == "findings"
-            and n.paragraph in names]
+            and active(n.paragraph, n.condition)]
     return out
 
 
@@ -1266,14 +1517,15 @@ def trigger_question(condition: str, wording: str = TRIGGER_WORDING) -> dict:
     return {"type": "noul", "instructions": wording.format(condition=" ".join(condition.split()).rstrip("."))}
 
 
-async def ask_triggers(findings: str, conditions: list[str], transport=None,
+async def ask_triggers(scan_type: str, findings: str, conditions: list[str], transport=None,
                        wording: str = TRIGGER_WORDING) -> list[float]:
-    """P(the dictation reports it) per condition, in order, in one Jev call. Raises on any failure."""
+    """P(the dictation reports it) per condition, in order, in one Jev call on the scan type and the dictated findings
+    (item 1's condition_state with no history). Raises on any failure."""
     from ..template_context_rules import condition_state
     if not conditions:
         return []
     qs = {f"t{i}": trigger_question(c, wording) for i, c in enumerate(conditions)}
-    r = await jev_post({"model": JEV_MODEL, "state": condition_state(findings), "questions": qs},
+    r = await jev_post({"model": JEV_MODEL, "state": condition_state(scan_type, None, findings), "questions": qs},
                        os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
     r.raise_for_status()
     ans = r.json().get("answers") or {}
@@ -1286,16 +1538,18 @@ async def ask_triggers(findings: str, conditions: list[str], transport=None,
     return out
 
 
-Ask = Callable[[str, list[str]], Awaitable[list[float]]]
+Ask = Callable[[str, str, list[str]], Awaitable[list[float]]]
 
 
-async def met_habits(habits: list[Habit], findings: str, ask: Optional[Ask] = None) -> tuple[list[Habit], Optional[str]]:
-    """(the habits whose condition the dictation meets, error). Never raises: a failed call meets nothing."""
+async def met_habits(habits: list[Habit], scan_type: str, findings: str,
+                     ask: Optional[Ask] = None) -> tuple[list[Habit], Optional[str]]:
+    """(the habits whose condition the dictation meets, error). A score below TRIGGER_MIN is not met, however close
+    (Hassan H2). Never raises: a failed call meets nothing."""
     if not habits or not (findings or "").strip():
         return [], None
     conds = list(dict.fromkeys(h.condition for h in habits))
     try:
-        scores = await (ask or ask_triggers)(findings, conds)
+        scores = await (ask or ask_triggers)(scan_type, findings, conds)
         if len(scores) != len(conds):
             raise ValueError("jev: answer count mismatch")
     except Exception as e:  # noqa: BLE001 -- fail-soft: no template rows, generic rows as today
@@ -1309,13 +1563,13 @@ async def met_habits(habits: list[Habit], findings: str, ask: Optional[Ask] = No
 
 - [ ] **Step 6: Run the tests to verify they pass**
 
-Run: `cd backend && .venv/bin/python -m pytest tests/test_hybrid_stack_habits.py tests/test_template_context_rules.py -q`
-Expected: PASS (the context-rule tests see the same state string as before).
+Run: `cd backend && .venv/bin/python -m pytest tests/test_hybrid_stack_habits.py tests/test_template_context_rules.py tests/test_hybrid_stack_normals.py -q`
+Expected: PASS (the context-rule and assumed-normal tests see the same state string as before).
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add backend/src/rapid_reports_ai/template_context_rules.py backend/src/rapid_reports_ai/hybrid_stack/template.py backend/src/rapid_reports_ai/hybrid_stack/habits.py backend/tests/test_hybrid_stack_habits.py
+git add backend/src/rapid_reports_ai/template_context_rules.py backend/src/rapid_reports_ai/hybrid_stack/template.py backend/src/rapid_reports_ai/hybrid_stack/normals.py backend/src/rapid_reports_ai/hybrid_stack/habits.py backend/tests/test_hybrid_stack_habits.py
 git commit -m "feat(stack): read a template's habits and trigger them with one Jev call (not wired yet)
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
@@ -1325,7 +1579,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ### Task 7: The decision run proposes habits with verified quotes (evidence only until Phase 3)
 
 **Files:**
-- Modify: `backend/src/rapid_reports_ai/template_decision_run.py:35-37, 100-103, 132, 217-254, 392-400`
+- Modify: `backend/src/rapid_reports_ai/template_decision_run.py`
 - Test: `backend/tests/test_template_decision_run.py`
 
 - [ ] **Step 1: Update the old habit tests and write the new ones** (`backend/tests/test_template_decision_run.py`)
@@ -1566,6 +1820,9 @@ def test_score_trigger_rows_and_tables():
     table = lab.trigger_table(rows, thresholds=(0.5, 0.7))
     assert table["negated"] == {"n": 1, 0.5: 0.0, 0.7: 1.0} and table["all"]["n"] == 3
     assert lab.answered_table(rows, 0.8) == {"n": 1, "correct": 1, "false_fold": 0, "missed": 0}
+    assert lab.band_table(rows, 0.35, 0.5) == {"n": 3, "in_band": 0, "in_band_met": 0, "rate": 0.0}
+    banded = [{**rows[0], "score": 0.4}, rows[1], rows[2]]
+    assert lab.band_table(banded, 0.35, 0.5) == {"n": 3, "in_band": 1, "in_band_met": 1, "rate": 0.333}
 
 
 def test_cap_pressure_ranks_template_rows_first_within_the_caps():
@@ -1609,7 +1866,7 @@ Proposal sets <dir>/propose/<slug>.json:
 Proposal labels (a Claude subagent; never the model under test) <dir>/labels/propose/run<k>/<slug>.json:
   {"<index into the run's habits>": "<truth id>" | null}
 Trigger sets <dir>/<sets>/<slug>.json (sets: synthetic; heldout: real dictations):
-  {"slug", "sheet", "dictations": [{"id", "category", "text", "met": [condition], "answered": {condition: "yes"|"no"},
+  {"slug", "scan_type", "sheet", "dictations": [{"id", "category", "text", "met": [condition], "answered": {condition: "yes"|"no"},
    "generic": [region]}]}
 Outputs <dir>/runs/<stage>/<sets>/run<k>[-<wording>]/<slug>.json and <dir>/REPORT_<stage>_<sets>.md. A runner skips any
 output file that already exists (eval economy)."""
@@ -1709,6 +1966,14 @@ def trigger_table(rows: List[dict], thresholds: Sequence[float] = THRESHOLDS) ->
     return out
 
 
+def band_table(rows: List[dict], lo: float = 0.35, hi: float = 0.5) -> dict:
+    """Hassan H2: a score in [lo, hi) stays silent. How often that band occurs, and how many of its rows were truly
+    met (rows the scratchpad does not ask although the finding was there)."""
+    band = [r for r in rows if lo <= r["score"] < hi]
+    return {"n": len(rows), "in_band": len(band), "in_band_met": sum(r["truth"] for r in band),
+            "rate": _ratio(len(band), len(rows))}
+
+
 def answered_table(rows: List[dict], stated_min: float) -> dict:
     """Already-answered folding on met ask habits: folded when either sentence is stated at stated_min."""
     sel = [r for r in rows if r["truth"] and r["stated"] is not None]
@@ -1758,7 +2023,7 @@ async def _trigger_one(s: dict, wording: str) -> dict:
     asks = [h for h in habits if h.mode == "ask"]
     out = {"slug": s["slug"], "wording": wording, "habits": [h.model_dump() for h in habits], "scores": {}, "stated": {}}
     for d in s["dictations"]:
-        sc = await H.ask_triggers(d["text"], conds, wording=H.TRIGGER_WORDINGS[wording])
+        sc = await H.ask_triggers(s.get("scan_type", ""), d["text"], conds, wording=H.TRIGGER_WORDINGS[wording])
         out["scores"][d["id"]] = dict(zip(conds, sc))
         checks = await J.ask_rows(d["text"], [x for h in asks for x in (h.yes, h.no)], [], contra=False)
         out["stated"][d["id"]] = {h.condition: [checks[2 * k].stated, checks[2 * k + 1].stated]
@@ -1805,6 +2070,8 @@ def report(root: Path, stage: str, sets: str, run_no: int, wording: str) -> str:
         parts.append(f"## Trigger accuracy by category (wording {wording})\n"
                      + md_table(["category", "n", *THRESHOLDS], [[c, v["n"], *(v[t] for t in THRESHOLDS)]
                                                                 for c, v in table.items()]))
+        parts.append(f"## Silent band [0.35, {TRIGGER_MIN}) (Hassan H2: never asked)\n"
+                     + md_table(["metric", "value"], [[k, v] for k, v in band_table(rows, 0.35, TRIGGER_MIN).items()]))
         parts.append(f"## Already answered (STATED_MIN {STATED_MIN})\n"
                      + md_table(["metric", "value"], [[k, v] for k, v in answered_table(rows, STATED_MIN).items()]))
         n = len(caps)
@@ -1902,7 +2169,8 @@ two_findings (both habits' findings present). In about a third of the met and tw
 radiologist already states the ask habit's YES or NO sentence in other words. For each dictation also list
 "generic": 0 to 4 region names (paragraph names of that sheet) where a generic decision-support check would be
 raised for the dictated findings. Write each sheet to
-~/Code/rr-template-conversion-private/synthetic/triggered_rows/sets/<slug>.json as {"slug", "sheet": "<the whole
+~/Code/rr-template-conversion-private/synthetic/triggered_rows/sets/<slug>.json as {"slug", "scan_type": "<the
+sheet's scan type>", "sheet": "<the whole
 sheet with the 2 habits>", "dictations": [{"id": "<slug>-<n>", "category", "text", "met": [the conditions met, copied
 exactly from the sheet], "answered": {"<condition>": "yes"|"no"} only where already stated, "generic": [...]}]}.
 Report back the slugs and the counts per category.
@@ -1965,7 +2233,7 @@ for w in A B; do .venv/bin/python -m rapid_reports_ai.scripts.triggered_rows_lab
 
 (Use `--wording A` in both lines if A did better in Step 3.)
 
-- [ ] **Step 5: Write `$R/REPORT.md`** (prose, in the private folder): proposal precision, recall, quotes verified, and singles proposed (both runs); trigger accuracy per category at each threshold for both wordings, the run-to-run spread for B, the held-out result separately; already-answered correct / false folds / missed; sessions with a template row and sessions that push out a generic row. End with recommendations (a threshold and a wording), and hand-read three false triggers and three misses verbatim. Tell Hassan the report path; he sets the values.
+- [ ] **Step 5: Write `$R/REPORT.md`** (prose, in the private folder): proposal precision, recall, quotes verified, and singles proposed (both runs); trigger accuracy per category at each threshold for both wordings, how often a score falls in the silent 0.35–0.5 band and how many of those were truly met (Hassan H2), the run-to-run spread for B, the held-out result separately; already-answered correct / false folds / missed; sessions with a template row and sessions that push out a generic row. End with recommendations (a threshold and a wording), and hand-read three false triggers and three misses verbatim. Tell Hassan the report path; he sets the values.
 
 - [ ] **Step 6: Apply Hassan's choice** (only if it differs from the defaults). In `backend/src/rapid_reports_ai/hybrid_stack/habits.py` change the line `TRIGGER_MIN = 0.5   # = jev_stack.CONDITION_MIN until the trigger lab reports (Hassan sets it)` to the chosen value with the comment `# trigger lab 2026-10-<dd> (REPORT.md): <one-line reason>`, and/or `TRIGGER_WORDING = TRIGGER_WORDINGS["B"]` to `["A"]`. Update the last assertion of `test_trigger_wordings_are_case_agnostic_and_the_cut_off_is_the_context_rules_one` to the chosen value, run `cd backend && .venv/bin/python -m pytest tests/test_hybrid_stack_habits.py -q` (PASS), and commit:
 
@@ -1984,7 +2252,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ### Task 11: Habit cards from the decision run
 
 **Files:**
-- Modify: `backend/src/rapid_reports_ai/template_rules_cards.py:5-12, 251-262`
+- Modify: `backend/src/rapid_reports_ai/template_rules_cards.py`
 - Test: `backend/tests/test_template_rules_cards.py`
 
 - [ ] **Step 1: Write the failing test** (append to `backend/tests/test_template_rules_cards.py`)
@@ -2058,7 +2326,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 
 **Files:**
 - Modify: `frontend/src/lib/template-rules/types.ts`
-- Modify: `frontend/src/lib/template-rules/RulesStep.svelte:135-144`
+- Modify: `frontend/src/lib/template-rules/RulesStep.svelte`
 - Test: `frontend/src/lib/template-rules/RulesStep.svelte.test.ts`
 
 - [ ] **Step 1: Write the failing test** (append inside the `describe('RulesStep', …)` block of `RulesStep.svelte.test.ts`; add the helper above the `describe`)
@@ -2201,7 +2469,8 @@ def test_template_rows_rank_after_referrals_before_findings_and_share_the_caps()
     assert [x.id for x in capped] == ["finding1", "finding2"]
 
 
-async def _met_all(habits, findings, ask=None):
+async def _met_all(habits, scan_type, findings, ask=None):
+    assert scan_type == "CT"   # the scan type reaches the trigger (Hassan H1: never the history)
     return list(habits), None
 
 
@@ -2235,7 +2504,7 @@ async def test_required_statements_come_back_and_a_failed_trigger_leaves_generic
     res = await I.update("CT", "", ["Pelvic organs"], "Adnexal mass.", ["Adnexal mass."], review=True, habits=[TSTATE])
     assert res.required == {"Pelvic organs": ["No free fluid."]} and res.trigger_error is None
 
-    async def failed(habits, findings, ask=None):
+    async def failed(habits, scan_type, findings, ask=None):
         return [], "RuntimeError: jev down"
     monkeypatch.setattr(I, "met_habits", failed)
     res = await I.update("CT", "", ["Pelvic organs"], "Adnexal mass.", ["Adnexal mass."], review=True, habits=[TASK])
@@ -2246,7 +2515,7 @@ async def test_required_statements_come_back_and_a_failed_trigger_leaves_generic
 async def test_no_trigger_without_dictation_or_habits(monkeypatch):
     calls = []
 
-    async def met(habits, findings, ask=None):
+    async def met(habits, scan_type, findings, ask=None):
         calls.append(findings)
         return [], None
     _setup(monkeypatch, _raw(CYST))
@@ -2404,10 +2673,11 @@ async def update(scan_type: str, history: str, regions: list[str], dictation: st
     """The open rows for this dictation. referrals: the session's fixed referral rows (None on the first call, whose
     referral_questions then become them). The writer's reply is cached per (scan, history, abnormal sentences,
     regions, referral questions); the splitter and the checks always run on the current dictation and removals.
-    habits: the template's habits; with a dictation, their trigger runs alongside the writer (never cached)."""
+    habits: the template's confirmed habits; with a dictation, their trigger runs alongside the writer (never cached),
+    on the scan type and the dictation only (never the clinical history)."""
     t0 = time.perf_counter()
     removed = [r for r in (removed or []) if r.strip()]
-    trig = asyncio.create_task(met_habits(habits, dictation)) if habits and dictation.strip() else None
+    trig = asyncio.create_task(met_habits(habits, scan_type, dictation)) if habits and dictation.strip() else None
     key = (*_key(scan_type, history, regions, abnormal, referrals), review)
     cached = key in _CACHE
     if cached:
@@ -2453,7 +2723,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ### Task 14: `/items` reads the template's habits
 
 **Files:**
-- Modify: `backend/src/rapid_reports_ai/hybrid_stack/routes.py:20-27, 67-77, 181-186`
+- Modify: `backend/src/rapid_reports_ai/hybrid_stack/routes.py`
 - Test: `backend/tests/test_hybrid_stack_routes.py`
 
 - [ ] **Step 1: Write the failing test** (append to `backend/tests/test_hybrid_stack_routes.py`)
@@ -2470,12 +2740,19 @@ RULE WHEN [findings: an alpha abnormality is reported] ASK "Extension beyond alp
 """
 
 
-def test_items_passes_the_templates_habits(authed, monkeypatch, db_session, user):
+def test_items_passes_the_templates_confirmed_habits_only(authed, monkeypatch, db_session, user):
+    from rapid_reports_ai import template_decisions as td
     from rapid_reports_ai.database.models import Template
     from rapid_reports_ai.hybrid_stack.items import ItemsResult
+    led, _ = td.set_decision([], "habit", "Upper :: an alpha abnormality is reported",
+                             {"mode": "ask", "question": "Extension beyond alpha?",
+                              "yes": "The abnormality extends beyond alpha.", "no": "No extension beyond alpha."},
+                             source="creation", at="t")
     t = Template(name="T", user_id=user.id, is_active=True, tags=[],
-                 template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": _HABIT_SHEET})
-    db_session.add(t)
+                 template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": _HABIT_SHEET, "decisions": led})
+    unconfirmed = Template(name="U", user_id=user.id, is_active=True, tags=[],
+                           template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": _HABIT_SHEET})
+    db_session.add_all([t, unconfirmed])
     db_session.commit()
     seen = {}
 
@@ -2490,16 +2767,19 @@ def test_items_passes_the_templates_habits(authed, monkeypatch, db_session, user
     assert "habits" not in seen
     authed.post("/api/canvas/stack/items", json={"regions": ["Upper"], "dictation": "x", "template_id": str(uuid.uuid4())})
     assert "habits" not in seen
+    # Hassan H3: the same line with no confirmed entry is inactive
+    authed.post("/api/canvas/stack/items", json={"regions": ["Upper"], "dictation": "x", "template_id": str(unconfirmed.id)})
+    assert "habits" not in seen
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `cd backend && .venv/bin/python -m pytest tests/test_hybrid_stack_routes.py -q -k templates_habits`
+Run: `cd backend && .venv/bin/python -m pytest tests/test_hybrid_stack_routes.py -q -k confirmed_habits_only`
 Expected: FAIL with `KeyError: 'habits'`.
 
 - [ ] **Step 3: Implement** (`hybrid_stack/routes.py`)
 
-Add `from .habits import template_habits` after `from .draft import DraftResult, draft_conclusion`.
+Add `from .habits import template_habits` after `from .draft import DraftResult, draft_conclusion`, and `from ..template_decisions import clean_ledger` after `from ..template_sheet_structure import generation_stamp`.
 
 In `class ItemsRequest`, after `review: bool = False …` add:
 
@@ -2517,7 +2797,8 @@ async def stack_items(req: ItemsRequest, user: User = Depends(get_current_user),
     if req.template_id:
         t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
         st = template_structure(t.template_config) if t is not None else None
-        habits = template_habits(st) if st is not None else []
+        # only habits the radiologist confirmed are asked (Hassan H3: a line with no entry is inactive)
+        habits = template_habits(st, clean_ledger((t.template_config or {}).get("decisions"))) if st is not None else []
         if habits:
             extra["habits"] = habits
     return await items_update(req.scan_type, req.clinical_history, req.regions[:40], req.dictation,
@@ -2543,7 +2824,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ### Task 15: Frontend types, API and the template-row helpers
 
 **Files:**
-- Modify: `frontend/src/lib/hybrid-stack/types.ts`, `frontend/src/lib/hybrid-stack/api.ts:30-34`, `frontend/src/lib/hybrid-stack/items.ts`
+- Modify: `frontend/src/lib/hybrid-stack/types.ts`, `frontend/src/lib/hybrid-stack/api.ts`, `frontend/src/lib/hybrid-stack/items.ts`
 - Create: `frontend/src/lib/hybrid-stack/templateRows.ts`
 - Test: `frontend/src/lib/hybrid-stack/templateRows.test.ts`, `frontend/src/lib/hybrid-stack/items.test.ts`
 
@@ -2735,8 +3016,8 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ### Task 16: Generate statement and the template row in the view
 
 **Files:**
-- Modify: `frontend/src/lib/hybrid-stack/regionState.ts:120-124`
-- Modify: `frontend/src/lib/hybrid-stack/HybridStackView.svelte:60-64, 132-140, 195-199, 585-600`
+- Modify: `frontend/src/lib/hybrid-stack/regionState.ts`
+- Modify: `frontend/src/lib/hybrid-stack/HybridStackView.svelte`
 - Test: `frontend/src/lib/hybrid-stack/regionState.test.ts`, `frontend/src/lib/hybrid-stack/HybridStackView.svelte.test.ts`
 
 - [ ] **Step 1: Write the failing tests**
@@ -3120,8 +3401,8 @@ def _ledger(mode="ask"):
     return led
 
 
-def test_habit_is_a_routed_kind_with_an_output_a_view_and_a_prompt():
-    assert "habit" in R.WORK_KINDS and "habit" in CH.OUTPUTS and "habit" in V.VIEWS and "habit" in C.SYSTEM
+def test_habit_has_an_output_a_view_and_a_prompt():
+    assert "habit" in CH.OUTPUTS and "habit" in V.VIEWS and "habit" in C.SYSTEM
     assert "habit" in L.LEDGER_KINDS
     assert "Ignore every other part of the INSTRUCTION" in C.SYSTEM["habit"]
 
@@ -3158,9 +3439,17 @@ def test_the_view_lists_findings_paragraphs_and_current_habits():
     assert '- Upper, when an alpha abnormality is reported: asks "Extension beyond alpha?"' in view
 
 
-def test_a_paragraph_rename_moves_its_habits():
-    led = L.rekey_paragraph(_ledger(), "Upper", "Top")
-    assert led[0]["key"] == "Top :: an alpha abnormality is reported"
+def test_a_paragraph_rename_keeps_its_habits():
+    led, _ = td.set_decision(_ledger(), "normal", L.normal_key("Upper", "alpha"), {"text": "Alpha is normal."},
+                             source="creation", at="t")
+    led, _ = td.set_decision(led, "habit", "Lower :: a gamma abnormality is reported",
+                             {"mode": "state", "no": "No gamma extension."}, source="creation", at="t")
+    assert [e["kind"] for e in L.paragraph_entries(led, "upper")] == ["habit", "normal"]
+    moved = L.rekey_paragraph(led, "Upper", "Top")
+    assert [e["key"] for e in moved] == ["Top :: an alpha abnormality is reported", L.normal_key("Top", "alpha"),
+                                         "Lower :: a gamma abnormality is reported"]
+    assert [e["choice"] for e in moved] == [e["choice"] for e in led]
+    assert td.clean_ledger(moved) == moved
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -3337,17 +3626,7 @@ VIEWS = {"value": _values, "concept": _concepts, "fixed": _fixed, "normal": _nor
         'leave the wording you keep empty.'),
 ```
 
-- [ ] **Step 7: Route the kind** (`chat_router.py`). Replace
-
-```python
-WORK_KINDS = ("value", "concept", "fixed", "normal", "layout", "style")
-```
-
-with
-
-```python
-WORK_KINDS = ("value", "concept", "fixed", "normal", "habit", "layout", "style")
-```
+- [ ] **Step 7: Not routed yet.** `chat_router.WORK_KINDS` is left unchanged here: Task 20 adds `"habit"` only after the tagging lab has reported the habit-vs-normal overlap and the habit cases (review fix, 2026-10-13).
 
 - [ ] **Step 8: Run the tests to verify they pass**
 
@@ -3364,13 +3643,16 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 ```
 
-### Task 20: The router lab learns the habit kind; final check
+### Task 20: The router lab learns the habit kind, reports the habit-vs-normal overlap, then routes it; final check
+
+A habit ("when <finding>, always state …") and a normal ("always state … is normal") are close in wording. The tag lab reports how often Jev confuses them, on habit cases added for that purpose, before the router acts on the habit tag.
 
 **Files:**
-- Modify: `backend/src/rapid_reports_ai/scripts/chat_router_lab.py` (its `KINDS` follows `chat_router_jev.KINDS`)
-- Modify: `backend/tests/test_chat_router_lab.py:7` (the local `KINDS`)
+- Modify: `backend/src/rapid_reports_ai/scripts/chat_router_lab.py` (its kinds; a `confusion` table)
+- Modify: `backend/src/rapid_reports_ai/chat_router.py` (`WORK_KINDS`, Step 6 only)
+- Modify: `backend/tests/test_chat_router_lab.py` (the local `KINDS`), `backend/tests/test_chat_router_habit.py`
 
-- [ ] **Step 1: Update the test constant.** In `backend/tests/test_chat_router_lab.py` replace
+- [ ] **Step 1: Write the failing tests.** In `backend/tests/test_chat_router_lab.py` replace
 
 ```python
 KINDS = ("value", "concept", "fixed", "normal", "layout", "style", "misfit")
@@ -3382,26 +3664,98 @@ with
 KINDS = ("value", "concept", "fixed", "normal", "habit", "layout", "style", "misfit")
 ```
 
-- [ ] **Step 2: Run the lab tests to see what fails**
+and append:
+
+```python
+def test_confusion_counts_habit_and_normal_cross_tags():
+    items = [_item(1, habit=1), _item(2, normal=1), _item(3, habit=1, normal=1), _item(4), _item(5, normal=1)]
+    scores = {"i1": {"habit": 0.9, "normal": 0.6}, "i2": {"habit": 0.2, "normal": 0.8},
+              "i3": {"habit": 0.9, "normal": 0.9}, "i4": {}, "i5": {"habit": 0.7, "normal": 0.3}}
+    assert lab.confusion(items, scores) == {"habit_as_habit": 1, "habit_as_normal": 1,
+                                            "normal_as_normal": 1, "normal_as_habit": 1, "n": 3}
+    md = lab.confusion_report(items, scores, 0.5)
+    assert md.startswith("## Habit vs normal (TAG_MIN 0.5)") and "habit" in md and "normal" in md
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `cd backend && .venv/bin/python -m pytest tests/test_chat_router_lab.py -q`
-Expected: PASS if the lab reads `J.KINDS` everywhere; otherwise FAIL where the lab has its own kinds tuple. For each such tuple in `scripts/chat_router_lab.py`, replace it with `J.KINDS` (importing `from rapid_reports_ai import chat_router_jev as J` if the script does not already), and rerun until PASS.
+Expected: FAIL with `AttributeError: module … has no attribute 'confusion'` (and, where the lab keeps its own kinds tuple, on the missing `habit` label).
 
-- [ ] **Step 3: Relabel the router lab data (controller).** The lab's loader refuses items without a label for every kind. Dispatch one Opus subagent: "In `~/Code/rr-template-conversion-private/synthetic/chat_router/`, add `"habit": 0 or 1` to the `labels` of every item (1 only when the instruction asks to add, change or stop a question or statement made only when a particular finding is reported), and write 20 new items in the same format whose instructions add, change or remove such a habit (6 add, 6 change, 6 remove, 2 mixed with another kind), on the existing sheets. Never edit the repo." Then run the tag stage once, as the router plan's Task 14 describes, and append the habit row to its report; Hassan reads it before the habit tag is relied on.
+- [ ] **Step 3: Implement** (`scripts/chat_router_lab.py`)
 
-- [ ] **Step 4: Final suites**
+Replace every kinds tuple the script defines itself with `J.KINDS` (importing `from rapid_reports_ai import chat_router_jev as J` if the script does not already). Then, after the script's `prf` function, add:
+
+```python
+def confusion(items: List[dict], scores: Dict[str, Dict[str, float]], a: str = "habit", b: str = "normal",
+              thr: float = 0.5) -> Dict[str, int]:
+    """Items labelled exactly one of a / b: how often Jev tags each as its own kind and as the other (the
+    habit-vs-normal overlap, findings-triggered rows plan Task 20). Items labelled both or neither are left out."""
+    out = {f"{a}_as_{a}": 0, f"{a}_as_{b}": 0, f"{b}_as_{b}": 0, f"{b}_as_{a}": 0, "n": 0}
+    for it in items:
+        lab_, sc = it.get("labels") or {}, scores.get(it["id"])
+        if sc is None or bool(lab_.get(a)) == bool(lab_.get(b)):
+            continue
+        gold = a if lab_.get(a) else b
+        other = b if gold == a else a
+        out["n"] += 1
+        out[f"{gold}_as_{gold}"] += sc.get(gold, 0.0) >= thr
+        out[f"{gold}_as_{other}"] += sc.get(other, 0.0) >= thr
+    return out
+
+
+def confusion_report(items: List[dict], scores: Dict[str, Dict[str, float]], thr: float) -> str:
+    c = confusion(items, scores, thr=thr)
+    return (f"## Habit vs normal (TAG_MIN {thr})\n"
+            + md_table(["labelled", "tagged as itself", "tagged as the other"],
+                       [["habit", c["habit_as_habit"], c["habit_as_normal"]],
+                        ["normal", c["normal_as_normal"], c["normal_as_habit"]]]))
+```
+
+In the tag-stage report function (find it by the line that builds `md_table(["kind", "labelled yes", "labelled no"], …)`), append `confusion_report(<that function's items>, <its per-item tag scores>, J.TAG_MIN)` to the parts it writes, using the same item list and score map that function already passes to its per-kind table. `md_table`, `List` and `Dict` already exist in the script (the router plan's Task 12); if `md_table` is named differently there, use that name.
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `cd backend && .venv/bin/python -m pytest tests/test_chat_router_lab.py -q`
+Expected: PASS.
+
+- [ ] **Step 5: Habit cases, relabel, run the tag lab (controller).** The lab's loader refuses items without a label for every kind. Dispatch one Opus subagent: "In `~/Code/rr-template-conversion-private/synthetic/chat_router/`, add `"habit": 0 or 1` to the `labels` of every existing item (1 only when the instruction asks to add, change or stop a question or statement made only when a particular finding is reported). Then write 30 new items in the same format on the existing sheets: 6 add a habit, 6 change one, 6 remove one, 2 mix a habit with another kind, and 10 near misses that are normals, not habits (an instruction to always state that a structure is normal, or to reword a normal line, with no triggering finding), labelled `normal: 1, habit: 0`. Never edit the repo." Run the tag stage once, as the router plan's Task 14 describes; its report now carries the habit row and the habit-vs-normal table. Tell Hassan the report path; he decides whether the habit tag is used.
+
+- [ ] **Step 6: Route the kind (after Hassan's go-ahead on Step 5).** In `chat_router.py` replace
+
+```python
+WORK_KINDS = ("value", "concept", "fixed", "normal", "layout", "style")
+```
+
+with
+
+```python
+WORK_KINDS = ("value", "concept", "fixed", "normal", "habit", "layout", "style")
+```
+
+and append to `backend/tests/test_chat_router_habit.py`:
+
+```python
+def test_habit_is_routed():
+    assert "habit" in R.WORK_KINDS
+```
+
+Run: `cd backend && .venv/bin/python -m pytest tests/test_chat_router_habit.py tests/test_chat_router.py -q`
+Expected: PASS.
+
+- [ ] **Step 7: Final suites**
 
 Run: `cd backend && .venv/bin/python -m pytest -q --deselect tests/test_provider_key_routing.py`
 Expected: PASS.
 
 Run: `cd frontend && npx vitest run && npm run check 2>&1 | tail -3`
-Expected: the vitest baseline plus the new tests; svelte-check no more than 1194 problems.
+Expected: the Task 0 vitest baseline plus the new tests; svelte-check no more problems than the Task 0 baseline.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add backend/src/rapid_reports_ai/scripts/chat_router_lab.py backend/tests/test_chat_router_lab.py
-git commit -m "feat(chat-router-lab): the habit kind in the tagging lab
+git add backend/src/rapid_reports_ai/scripts/chat_router_lab.py backend/src/rapid_reports_ai/chat_router.py backend/tests/test_chat_router_lab.py backend/tests/test_chat_router_habit.py
+git commit -m "feat(chat-router): habit kind in the tagging lab with the habit-vs-normal table; habit routed
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
@@ -3416,7 +3770,10 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit"
 | Template rows only; guideline cards untouched | whole plan (no copilot change) |
 | Two shapes: required statement (assumed tray), habit question (Yes / No / Not assessed) | 1, 2, 13, 16, 17 |
 | Proposed with evidence in ≥2 reports, with quotes; confirmed on a Rules-step card | 7, 11, 12 |
-| Chat add / remove through the router | 18–20 |
+| Chat add / remove through the router; a paragraph rename keeps habits | 18–20 |
+| Hassan H1: triggers read the dictation and scan type only | 6, 13 |
+| Hassan H2: below `TRIGGER_MIN` is silent; the band is reported | 6, 8, 10 |
+| Hassan H3: a habit line with no entry is inactive and asked on a card, never stripped | 4, 5, 6, 14 |
 | Template rows first within the caps (2 per region, 4 in all); "N more checks" | 13 |
 | Grammar forms; other findings forms still NOT_LEAN; STRUCTURE_VERSION bumped | 1, 2 |
 | Ledger kind `habit` (`paragraph :: condition`; ask / state / removed) | 3, 4 |
