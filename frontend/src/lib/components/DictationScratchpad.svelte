@@ -394,7 +394,10 @@
 	// edit on an "Elsewhere, …" line removes it in either form.
 	$: shownAssumed = shownNormals(confirmedAssumed, stackRegionNormals, stackLevelGroups, regionView.assumedNormal, placedGroups, removedSentences,
 		segmentsBlocked);
-	$: assumedBehind = assumedStale(Object.keys(stackRegionNormals).length > 0, assumedSnap, verbatimNow);
+	// What /assumed is asked about: the stale check reads the same set, so a sheet whose only normals are segments
+	// (never posted) never holds Confirm on "Updating…" (merge review 2026-10-14).
+	$: assumedBehind = assumedStale(Object.keys(withoutSegments(withRequired(stackRegionNormals, templateRequired), stackLevelGroups)).length > 0,
+		assumedSnap, verbatimNow);
 	// Regions are confirmed by name only when no sheet exists for this session (v2 behaviour); with a sheet, a region
 	// with no sentence left assumes nothing. An abnormal region's remainder is never named (review 2026-10-12).
 	$: namedNormals = Object.keys(stackRegionNormals).length === 0;
