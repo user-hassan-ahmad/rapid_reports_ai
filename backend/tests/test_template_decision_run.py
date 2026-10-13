@@ -329,3 +329,9 @@ async def test_the_fallback_uses_prompted_output_and_reads_the_bad_shapes(monkey
     assert isinstance(seen[1][1], PromptedOutput)                      # gpt-oss: JSON in text, no tool to misname
     assert [(q.report, q.text) for q in out.values[0].quotes] == [(1, "LVEF 55%"), (2, "LVEF 60%")]
     assert out.concepts[0].quotes[0].report == 3
+
+
+def test_a_dict_quote_with_no_report_is_dropped_not_a_failed_output():
+    v = R.ValueCandidate(name="X", quotes=[{"text": "LVEF 55%"}, {"report": None, "text": "x y"},
+                                           {"report": 2, "text": "LVEF 60%"}])
+    assert [(q.report, q.text) for q in v.quotes] == [(2, "LVEF 60%")]

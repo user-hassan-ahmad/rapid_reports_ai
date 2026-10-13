@@ -75,6 +75,8 @@ def _read_quotes(v):
             q = _parse_quote(q)
             if q is None:
                 continue
+        elif isinstance(q, dict) and q.get("report") in (None, ""):   # no report number: dropped, never guessed
+            continue
         out.append(q)
     return out
 
