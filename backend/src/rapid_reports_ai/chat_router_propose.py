@@ -230,12 +230,26 @@ _v1 = J.v1
 C1 = {"type": "noul", "instructions": "Does the INSTRUCTION ask for anything that is not covered by the CHANGES listed?"}
 
 
-async def verify(scan_type: str, instruction: str, claims: List[str],
+def chat_context(context: str = "", last_changes: Optional[List[dict]] = None) -> str:
+    """The chat context V1 and C1 read (as route_turn gives the tags): the last assistant reply and the claims of the
+    last turn's applied changes."""
+    parts = []
+    if (context or "").strip():
+        parts.append(f"PREVIOUS REPLY (context only):\n{context.strip()}")
+    claims = [r.get("claim") for r in (last_changes or []) if isinstance(r, dict) and r.get("claim")]
+    if claims:
+        parts.append("LAST APPLIED CHANGES (context only):\n" + "\n".join(f"- {c}" for c in claims))
+    return "\n\n".join(parts)
+
+
+async def verify(scan_type: str, instruction: str, claims: List[str], context: str = "",
                  transport=None) -> Tuple[List[float], float, float]:
     """(V1 score per claim, C1 coverage score, habit-guard score). Two Jev calls in parallel: the claims and the habit
     guard on the instruction's state, and C1 on the state with the CHANGES listed (each as the verify lab asked it).
     Raises on failure."""
     base = f"SCAN TYPE: {scan_type or 'not given'}\n\nINSTRUCTION:\n{(instruction or '').strip()}"
+    if context:
+        base += f"\n\n{context}"
     key = os.environ.get("OPENROUTER_API_KEY", "")
     qs = {f"c{i}": _v1(c) for i, c in enumerate(claims)}
     qs["habit"] = dict(J.QUESTIONS["habit"])
@@ -252,7 +266,7 @@ async def verify(scan_type: str, instruction: str, claims: List[str],
 
 
 async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, context: str = "",
-                       rejection: Optional[dict] = None) -> R.Turn:
+                       rejection: Optional[dict] = None, last_changes: Optional[List[dict]] = None) -> R.Turn:
     t0 = time.monotonic()
     scan = sh.scan_type(sheet)
     ledger = L.clean(ledger)
@@ -283,7 +297,7 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
     applicable = [(c, v) for c, v in pairs if v.action in ("ledger", "edit")]
     claims = [v.claim or c.claim for c, v in applicable] + [c.claim for c in style_blocks]
     try:
-        scores, cover, habit = await verify(scan, instruction, claims)
+        scores, cover, habit = await verify(scan, instruction, claims, context=chat_context(context, last_changes))
     except Exception as e:
         logger.warning("[chat-router.propose] verify failed: %s", type(e).__name__)
         raise R.Fallback(f"verify_{type(e).__name__}") from e

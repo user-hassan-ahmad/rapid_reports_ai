@@ -90,6 +90,7 @@ Claude-Session: https://claude.ai/code/session_01WLUGz5KjKhWJ7J2nGWrKit
 18. **2026-10-13 (Hassan): the habit guard covers the style path.** When it fires, a prose line flagged as requiring content is left out and is not re-routed, so it cannot become a normal or fixed card.
 19. **2026-10-13 (Hassan): no silent drops.** When the habit guard leaves out the value, normal or always-printed part of a mixed message, the reply names each part ("I didn't change the <kind> part; …"), in both arms.
 20. **2026-10-13 (Hassan): the hybrid is the router.** After the head-to-head, arm 2 (propose, verify, apply, plus cards) becomes the router and tag-then-route is retired. Today's whole-sheet refine stays only as the failure fallback.
+    - V1 and C1 read the chat context: the last assistant reply and the last turn's applied claims.
     - The proposal schema is flat, with one list per kind (style has its own list). Identifier fields are required, and a change whose identifier is empty is dropped, not asked about.
 16. **Prose the style call never sees:** `## Scan Context` and `## Report Structure` (the fit check reads the scan context, and the structure block is layout).
 

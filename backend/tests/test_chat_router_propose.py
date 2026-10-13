@@ -28,15 +28,16 @@ def no_unit_checks(monkeypatch):
 def stub(monkeypatch):
     """proposal: what the propose call returns; claim_scores: claim -> P(asked); cover / habit: scores."""
     state = {"proposal": P.Proposal(), "claim_scores": {}, "cover": 0.1, "habit": 0.1, "verify_calls": [],
-             "requires": {}, "edit_calls": [], "edit_scores": {}}
+             "requires": {}, "edit_calls": [], "edit_scores": {}, "contexts": []}
 
     async def propose(sheet, ledger, instruction, context="", rejection=None):
         if isinstance(state["proposal"], Exception):
             raise state["proposal"]
         return state["proposal"]
 
-    async def verify(scan, instruction, claims, transport=None):
+    async def verify(scan, instruction, claims, context="", transport=None):
         state["verify_calls"].append(list(claims))
+        state["contexts"].append(context)
         return [state["claim_scores"].get(c, 0.9) for c in claims], state["cover"], state["habit"]
 
     async def requires(lines, transport=None):
@@ -277,3 +278,32 @@ async def test_a_change_missing_its_identifier_is_dropped_not_asked(stub):
     t = await P.propose_turn(ROUTER_SHEET, [], "drop width")
     assert t.applied and t.reply == "Width is no longer required." and not t.cards
     assert t.evidence["unidentified"] == 3 and stub["verify_calls"] == [["Width is no longer required."]]
+
+
+
+# ── item 2: the chat context reaches V1 and C1 ─────────────────────────────────────────────────────────────────
+def test_chat_context_names_the_last_reply_and_the_last_applied_changes():
+    ctx = P.chat_context("Width is no longer required.", [{"type": "ledger", "claim": "Width is no longer required."},
+                                                           {"type": "ledger", "claim": ""}])
+    assert ctx == ("PREVIOUS REPLY (context only):\nWidth is no longer required.\n\n"
+                   "LAST APPLIED CHANGES (context only):\n- Width is no longer required.")
+    assert P.chat_context("", None) == ""
+
+
+async def test_propose_turn_passes_the_context_to_verify(stub):
+    stub["proposal"] = _proposal(_change("value", "Depth is no longer required.", name="Depth", to="not_needed"))
+    await P.propose_turn(ROUTER_SHEET, [], "and depth too", context="Width is no longer required.",
+                         last_changes=[{"type": "ledger", "claim": "Width is no longer required."}])
+    assert "LAST APPLIED CHANGES (context only):\n- Width is no longer required." in stub["contexts"][0]
+
+
+async def test_v1_and_c1_both_carry_the_context():
+    seen = []
+
+    def handler(request):
+        body = json.loads(request.content)
+        seen.append(body)
+        return httpx.Response(200, json={"answers": {k: {"noul": 0.8} for k in body["questions"]}})
+    await P.verify("CT", "and depth too", ["Depth is no longer required."], context="PREVIOUS REPLY (context only):\nX",
+                   transport=httpx.MockTransport(handler))
+    assert all("PREVIOUS REPLY (context only):\nX" in b["state"] for b in seen) and len(seen) == 2
