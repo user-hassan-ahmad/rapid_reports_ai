@@ -98,9 +98,9 @@ def test_comparison_reuses_the_writers_fixed_line_and_adds_the_standard_rule():
 def test_item_one_resolves_the_comparison_concept_both_ways():
     sheet = tla.apply_ledger(LEDGER_SHEET, _led(("concept", "comparison", COMPARISON))).sheet
     rules = tcr.rules_in_scope(sheet)
-    met, _, per = tcr.apply_rules(sheet, rules, {PRIOR: True})
+    met, _, _, per = tcr.apply_rules(sheet, rules, {PRIOR: True})
     assert 'FIXED "Compared with the previous {modality} of {date}."' in met and per[0]["outcome"] == "applied"
-    not_met, _, _ = tcr.apply_rules(sheet, rules, {PRIOR: False})
+    not_met, _, _, _ = tcr.apply_rules(sheet, rules, {PRIOR: False})
     assert 'FIXED "No previous imaging available."' in not_met and "RULE WHEN" not in not_met
 
 
@@ -111,9 +111,9 @@ def test_a_default_only_concept_gets_a_drop_rule_item_one_resolves():
     rule = next(r for r in _clean(sheet).rules if r.condition_source == "context")
     assert (rule.condition, rule.effect, rule.target) == (PRIOR, "suppress", "No previous imaging available.")
     rules = tcr.rules_in_scope(sheet)
-    met, _, _ = tcr.apply_rules(sheet, rules, {PRIOR: True})
+    met, _, _, _ = tcr.apply_rules(sheet, rules, {PRIOR: True})
     assert "No previous imaging available." not in met and "RULE WHEN" not in met
-    not_met, _, _ = tcr.apply_rules(sheet, rules, {PRIOR: False})
+    not_met, _, _, _ = tcr.apply_rules(sheet, rules, {PRIOR: False})
     assert 'FIXED "No previous imaging available."' in not_met
 
 
