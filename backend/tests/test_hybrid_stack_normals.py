@@ -228,3 +228,18 @@ async def test_each_refresh_logs_its_jev_calls_and_failure(monkeypatch, caplog):
     line = [r for r in caplog.records if "jev_calls" in r.getMessage()][-1]
     assert "jev_calls=1" in line.getMessage() and "failed=True" in line.getMessage()
     assert line.levelno == logging.WARNING
+
+
+async def test_an_empty_dictation_makes_no_jev_call_and_keeps_every_normal(monkeypatch):
+    async def never(*a, **k):
+        raise AssertionError("Jev must not be called for an empty dictation")
+
+    monkeypatch.setattr(N, "ask_rows", never)
+    monkeypatch.setattr(N, "ask_conditions", never)
+    for blank in ("", "  \n"):
+        out = await N.assumed(blank, NORMALS, [], [], ["The kidneys are normal."], owned=["The uterus is normal."],
+                              suppressions=[("no prior study", "The liver is normal.")])
+        assert out.assumed == {"Liver": ["The liver is normal."], "Kidneys": [],
+                               "Pelvic organs": ["The ovaries are normal.", "No adnexal mass."]}
+        assert out.dropped["Kidneys"] == [{"sentence": "The kidneys are normal.", "reason": "removed"}]
+        assert out.error is None

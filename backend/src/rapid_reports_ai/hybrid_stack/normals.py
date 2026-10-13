@@ -111,7 +111,17 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     dropped: dict[str, list[dict]] = {r: [] for r in region_normals}
     error = None
     conds = list(dict.fromkeys(c for c, _ in suppressions or []))
-    if asked:
+    if asked and not dictation.strip():
+        # Nothing dictated yet: Jev has no text to compare against and reads every sentence as hedged (live: an
+        # empty dictation dropped them all; any dictation kept them all). Make no Jev call. A removed or owned
+        # sentence is matched by its own words (no Jev same-meaning check); context rules need Jev, so they wait.
+        gone_keys = {norm_key(r) for r in gone}
+        for region, s in asked:
+            if norm_key(s) in gone_keys:
+                dropped[region].append({"sentence": s, "reason": "removed"})
+            else:
+                out[region].append(s)
+    elif asked:
         try:
             ctx = f"CLINICAL HISTORY:\n{clinical_history or '(not given)'}\nDICTATED FINDINGS:\n{dictation}"
             texts = [jev_text(s, labels[s]) if s in labels else s for _, s in asked]
