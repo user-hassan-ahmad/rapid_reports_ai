@@ -26,7 +26,8 @@ parts:
 
 **Constraints:** what reaches a report must be correct, and the flow must stay frictionless. Safety rule (2026-10-13,
 §7.10): **nothing reaches the report unseen**. Every value behind an applied result is shown to the radiologist, who can
-change it, and Apply writes only the result of a Calculate the radiologist tapped.
+change it, and Apply writes only the result of the Calculate it runs over the values the card shows, after the
+radiologist confirms any decisive assumption and any scope doubt (§7.7).
 
 **Evidence from the seed lab:**
 - About 26 of 30 rows fetched from real pages were correct.
@@ -187,7 +188,7 @@ cells), not markdown.
 
 ### 3.6 Input scope and eligibility
 
-Agreed with Hassan on 2026-10-12. Not built yet: it is part of the next slice (§12).
+Agreed with Hassan on 2026-10-12. Built on `feat/scratchpad-copilot` (dark), with the 2026-10-13 amendments below.
 
 **Two input attributes, both optional:**
 
@@ -219,7 +220,11 @@ Agreed with Hassan on 2026-10-12. Not built yet: it is part of the next slice (�
   eligibility questions.
   - The card stays `check_first`, as a warning.
   - A read, pre-filled, answered or preset value always overrides the assumption.
-  - A value that excludes still gives `does_not_apply`.
+  - Only a read or answered value excludes (`does_not_apply`, with `exclusion_reason` naming that one value when one
+    value is behind it). A pre-filled value of any role that would exclude is a **scope doubt** (`scope_doubt`): the
+    draft is computed without it, the card stays `check_first`, the value is shown pre-filled with "this pre-filled
+    value would make the guideline not apply: confirm it", and Apply lists it for confirmation (§7.7). Exam presets
+    may never exclude (a gate checks it).
   - Only an answerable value is assumed: a choice, yes/no, or a number's band when band steps alone read the number.
     A number that also feeds a formula, such as BTS age in Brock, stays asked.
   - Calculate evaluates only the values the client sends. An assumed value sent back counts as sent, and keeps the
@@ -236,7 +241,7 @@ Agreed with Hassan on 2026-10-12. Not built yet: it is part of the next slice (�
 
 | Layer | Question | Mechanism | Visible to the radiologist |
 |---|---|---|---|
-| Finding fit | Is this the right kind of finding? (a renal cyst, not a liver cyst) | Silent Jev applicability gate in the matcher (§5) | No: the card never appears |
+| Finding fit | Is this the right kind of finding? (a renal cyst, not a liver cyst) | On /match, the per-finding Jev topic choice; on /match/other and ask, the silent Jev pack gate (§5) | No: the card never appears |
 | Patient and context eligibility | Does this guideline apply to this patient? (not known cancer, not screening) | Eligibility inputs inside the pack | Yes: the eligibility strip (§7.4) |
 
 **Shared answers.** Patient-scoped answers (settled or tapped) are held per case and passed to every card's preview as
@@ -249,7 +254,8 @@ packs by a shared vocabulary of patient facts (for example `known_primary_cancer
 **Who does what:**
 - **The model** only proposes input values from the dictation. Every proposed value carries a verbatim quote. Code reads
   numbers from the quote and, with one batched Jev claim per scope, decides each value's state: read, pre-filled or
-  asked (§7.5). Nothing the model proposes reaches the report unless the radiologist sees it and taps Calculate (§7.10).
+  asked (§7.5). Nothing the model proposes reaches the report unless the radiologist sees it and applies the result
+  (§7.7, §7.10).
 - **Code** evaluates the logic and returns a **trace**. The trace records:
   - which steps ran;
   - which rules fired;
@@ -318,8 +324,9 @@ found 67/184 expected topics; one Jev choice per finding found 169/184). Hassan 
 - **Code**: maps the topic to its packs; drops a pack whose `applies_to.modality` excludes the resolved modality (an
   "other" or failed modality drops nothing), except a pack marked `off_modality: "redirect"` (the ultrasound-defined
   thyroid U grading and RCOG ovarian packs), which still gives a card marked `needs_modality` (e.g. "US"): read-only,
-  never settled, previewed or applied; merges an exam-bound pack with the same pack picked by a finding into one
-  card; keeps one TNM card per site per case (the first in rank order); applies the per-finding and per-case caps.
+  never settled, previewed or applied; merges a finding's pick into the exam card of the same `matcher_topic` (the
+  same pack, or a pack sharing its topic: a CAC-DRS pick on a CTCA folds into the CAD-RADS exam card, Hassan's
+  ruling); keeps one TNM card per site per case (the first in rank order); applies the per-finding and per-case caps.
 - **Exam-level cards** settle from the whole dictation (normal units included), not from one finding unit.
 - **Failure**: a failed Jev request yields no library card for that finding or case and caches nothing (fails open).
 - **No gpt-oss in library matching.** The gpt-oss matcher (registry systems from model knowledge, TNM) moves to an
@@ -376,7 +383,8 @@ A module `hybrid_stack/copilot/library/`:
 ### 7.4 The draft card
 
 Agreed with Hassan on 2026-10-13, after the settling root-cause review. This replaces the card states of 2026-10-12,
-which kept "asked, never wrong" (§7.10). Not built yet: see `docs/superpowers/plans/2026-10-13-guideline-draft-card.md`.
+which kept "asked, never wrong" (§7.10). Built on `feat/scratchpad-copilot` (dark) from
+`docs/superpowers/plans/2026-10-13-guideline-draft-card.md`, with the amendments recorded in this section.
 
 **What the card is.** A quick fact check against the source. It shows what the guideline needs to decide this
 finding. It drafts each value from the dictation, with the quote that value came from, and lets the radiologist
@@ -392,8 +400,8 @@ citations. Apply writes that result and nothing else.
 4. **Eligibility.** Unknown eligibility inputs are assumed in scope as visible `assumed` values (§3.6, amendment of
    2026-10-13). Only one with no answerable in-scope value is asked, as a "Does this apply?" row.
 5. **Edit.** The radiologist can change any value inline (§7.6).
-6. **Calculate.** The engine runs over the confirmed values (§7.7).
-7. **Apply.** Writes the last Calculate result (§7.7).
+6. **Apply.** Confirms any decisive assumption and any scope doubt, runs Calculate over the values shown, and writes
+   its result (§7.7). Calculate is not a separate button.
 
 **Order of `needed`:**
 - Eligibility inputs come first, then parent inputs, then the rest. Within each group the order is the pack's input
@@ -408,9 +416,9 @@ citations. Apply writes that result and nothing else.
 | State | When | What the card shows |
 |---|---|---|
 | **Which lesion** | The finding describes more than one lesion, and no span has been picked yet | The verbatim lesion spans to pick from. Patient inputs are drafted; lesion inputs wait for the pick. |
-| **Does not apply** | An eligibility input (read, pre-filled, answered or edited) excludes | The card dims and shows the reason with the scope clause's citation. Changing that value brings the card back. There is no Calculate and no Apply. |
+| **Does not apply** | A read, answered or edited value excludes (an eligibility input, or a clinical one such as a read diameter over 3 cm); a pre-filled one is a scope doubt instead (§3.6) | The card dims and shows the reason with the scope clause's citation. Changing that value brings the card back. There is no Apply. `exclusion_reason` names the one value behind it when one is. |
 | **Check first** | Some eligibility inputs are assumed or still unknown, and could change the outcome | The draft, with the assumed values marked and a warning (amendment of 2026-10-13). An eligibility input that cannot be assumed is asked as a "Does this apply?" row. |
-| **Applies** | Every eligibility input is known and eligible, or none can change the outcome | The draft values in `needed` order, the draft outcome, and Calculate |
+| **Applies** | Every eligibility input is known and eligible, or none can change the outcome | The draft values in `needed` order, the draft outcome (`most_likely`, or the deciding question), and Apply |
 
 **Unchanged from 2026-10-12:**
 - **Every ask is explained.** Each asked input carries its definition, the outcomes it decides between (with their
@@ -492,7 +500,12 @@ Each input on the card is in exactly one state:
   - the citations of the steps that fired and of the outcome;
   - each value used, with its state and quote;
   - the trace;
-  - `pack_id@version` and the bundle version.
+  - `pack_id@version` and the bundle version;
+  - `assumptions` (each `{input, label, value, decisive, kind}`), labelled from the card's own preview, so Calculate
+    sees exactly the assumptions the card showed;
+  - `scope_doubt`: pre-filled values sent back unchanged that would exclude. They are left out of the evaluation until
+    the radiologist confirms them (sends them as answered); they are never a silent exclusion;
+  - `exclusion_reason` for a does_not_apply result.
 - **No guessing.** If an input that could change the outcome is still unknown, Calculate returns no outcome. It
   returns the possible outcomes and what is still needed.
 - **Exclusions.** A `does_not_apply` result is shown as the exclusion and never applied.
@@ -539,7 +552,8 @@ Each input on the card is in exactly one state:
 **The rule: nothing reaches the report unseen.**
 - Every value behind an applied result is shown on the card, with its state and quote, and the radiologist can change
   it.
-- Apply writes only the result of a Calculate that the radiologist tapped over those values.
+- Apply writes only the result of the Calculate it runs over those values, after the radiologist confirms each
+  decisive assumption and each scope doubt (§7.7).
 - Code still reads every number and the engine still decides.
 - Every word of the result comes from the entry.
 - A value is shown as read only when code read it with certainty. No value is pre-filled from inference alone.
