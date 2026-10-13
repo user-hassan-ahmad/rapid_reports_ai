@@ -1,10 +1,11 @@
 """Chat-to-edit turns stored with the template (template pipeline spec, block 4): the instruction a radiologist gave,
-the reply, and whether it was applied. Evidence for the later learning loop, so recording never fails the request
+the reply, and whether it was applied, identifier-shaped spans scrubbed first. Evidence for the later learning loop, so recording never fails the request
 and never logs the text (only the exception type)."""
 import logging
 import uuid
 
 from .database.models import TemplateChatTurn
+from .template_examples import scrub
 from .template_sheet_structure import sheet_hash
 
 logger = logging.getLogger(__name__)
@@ -17,12 +18,17 @@ def _text(v) -> str:
     return v if isinstance(v, str) else ""
 
 
+def _clean(v) -> str:
+    """Stored text: identifier-shaped spans removed (names, NHS numbers, dates), then capped."""
+    return scrub(_text(v))[:MAX_FIELD]
+
+
 def record_turn(db, template_id, instruction: str, response: str, applied: bool,
                 sheet_before: str, sheet_after: str) -> None:
     try:
         db.add(TemplateChatTurn(
-            template_id=template_id, instruction=(instruction or "")[:MAX_FIELD],
-            response=(response or "")[:MAX_FIELD], applied=applied,
+            template_id=template_id, instruction=_clean(instruction),
+            response=_clean(response), applied=applied,
             sheet_hash_before=sheet_hash(sheet_before or ""), sheet_hash_after=sheet_hash(sheet_after or ""),
         ))
         db.commit()
@@ -44,8 +50,8 @@ def store_creator_turns(db, template_id, turns: list[dict]) -> int:
             instruction = _text(t.get("instruction")).strip()
             if not instruction:
                 continue
-            rows.append(TemplateChatTurn(template_id=template_id, instruction=instruction[:MAX_FIELD],
-                                         response=_text(t.get("response"))[:MAX_FIELD], applied=True))
+            rows.append(TemplateChatTurn(template_id=template_id, instruction=_clean(instruction),
+                                         response=_clean(t.get("response")), applied=True))
         if not rows:
             return 0
         db.add_all(rows)
