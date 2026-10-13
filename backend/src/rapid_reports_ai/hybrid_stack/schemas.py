@@ -16,6 +16,7 @@ GENERIC_FAMILY = "generic"
 class Region(BaseModel):
     name: str
     includes: str
+    quiet: bool = False   # protocol library: takes dictation, no assumed normal or pill until dictated
 
 
 @lru_cache(maxsize=1)
@@ -50,8 +51,8 @@ def groups_for(regions: list[Region]) -> list[str]:
 
 
 def pill_regions(regions: list[Region]) -> list[str]:
-    """The checklist pills: every region except the catch-all."""
-    return [r.name for r in regions if r.name != OTHER]
+    """The checklist pills: every region except the catch-all and quiet regions (they appear once dictated)."""
+    return [r.name for r in regions if r.name != OTHER and not r.quiet]
 
 
 def scan_key(scan_type: str) -> str:
