@@ -187,6 +187,20 @@ def fragment_wording(entry: dict) -> Optional[str]:
     return when_met if when_met and not is_sentence(when_met) else None
 
 
+def fragment_fallback(entry: dict) -> dict:
+    """What a stored fragment entry applies until its card is answered: with a valid default, the default-only shape
+    (FIXED default + the concept's standard SUPPRESS, D2), so the confirmed line still prints unless the dictation
+    contradicts it; without one, "whichever is dictated" (no line)."""
+    choice = entry.get("choice") or {}
+    try:
+        _, fallback = validate("concept", entry.get("key", ""), {**choice, "when_met": ""})
+        if fallback["use"]:
+            return fallback
+    except DecisionError:
+        pass
+    return {"use": False, "default": "", "when_met": "", "condition": "", "dictated": True}
+
+
 def _text(v, what: str, allow_slots: bool = True) -> str:
     if not isinstance(v, str):
         raise DecisionError(f"{what}: text expected")

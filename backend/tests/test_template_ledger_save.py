@@ -165,3 +165,24 @@ async def test_a_stored_fragment_wording_is_never_a_rule_and_comes_back_as_a_car
         assert [c["id"] for c in cards[0]["choices"]] == ["edit", "dictated"]
         assert cards[0]["choices"][1]["choice"] == {"use": False, "default": "", "when_met": "", "condition": "",
                                                     "dictated": True}
+
+
+async def test_a_stored_fragment_with_a_default_keeps_the_default_only_shape_until_answered():
+    from rapid_reports_ai import template_rules_cards as trc
+    cond = "the dictation states a technical limitation of the study"
+    led = [{**FRAGMENT[0], "choice": {**FRAGMENT[0]["choice"], "default": "Image quality is adequate."}}]
+    out = await S.vet_sheet(LEDGER_SHEET, origin="analyser", ledger=led)
+    assert out.status == "saved" and _FRAG not in out.sheet
+    assert 'FIXED "Image quality is adequate."' in out.sheet
+    assert f'RULE WHEN [context: {cond}] SUPPRESS "Image quality is adequate."' in out.sheet
+    assert [e["key"] for e in out.ledger_unmatched] == ["limitation"]
+    card = trc.unmatched_cards(out.ledger_unmatched)[0]
+    assert card["wording"] == {"default": "Image quality is adequate.", "when_met": _FRAG, "condition": cond}
+    assert [c["id"] for c in card["choices"]] == ["edit", "dictated"]
+    from rapid_reports_ai import template_sheet_lab_prompts as P
+    block = P.decided_block(led)
+    assert _FRAG not in block and f'SUPPRESS "Image quality is adequate."' in block
+    # no default: whichever is dictated, and the card still starts from the fragment
+    out = await S.vet_sheet(LEDGER_SHEET, origin="analyser", ledger=FRAGMENT)
+    assert cond not in out.sheet
+    assert trc.unmatched_cards(out.ledger_unmatched)[0]["wording"]["when_met"] == _FRAG
