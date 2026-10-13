@@ -25,6 +25,9 @@ ANALYSER_SETTINGS = {
     "max_tokens": 40960,
     "extra_body": {"disable_reasoning": False, "clear_thinking": False},
 }
+# The writer with the Rules step's decisions (writer lab 2026-10-13, arm C; Hassan): the same settings at a lower
+# temperature. Conversion and the undecided writer keep ANALYSER_SETTINGS.
+DECIDED_WRITER_SETTINGS = {**ANALYSER_SETTINGS, "temperature": 0.4}
 # Repair is a constrained edit of an existing sheet, not authorship: low temperature.
 REPAIR_SETTINGS = {
     "temperature": 0.3,
@@ -210,8 +213,8 @@ SUMMARY_SPEC = """{
 
 def analyser_user_prompt(examples: List[Dict[str, str]], scan_type: str, protocol_notes: str = "") -> str:
     """Production's user prompt (examples, protocol notes, summary/questions contract), with the sheet
-    returned between delimiters before the JSON. The live writer's prompt until the writer lab (Rules-step plan
-    Task 31 moves write_sheet to writer_user_prompt)."""
+    returned between delimiters before the JSON. Kept for scripts/template_sheet_lab.py; write_sheet uses
+    writer_user_prompt (Rules-step plan Task 31)."""
     return _user_prompt(examples, scan_type, protocol_notes, decisions=None, questions=True)
 
 
@@ -440,9 +443,8 @@ def split_conversion(raw: str) -> Dict[str, object]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# The writer's next prompts (Rules-step plan Task 28). Built here and run by the writer lab (rules_step_lab write);
-# write_sheet keeps ANALYSER_SYSTEM_PROMPT + analyser_user_prompt until Task 31 wires these in after the lab.
-# The live prompts above are left byte for byte as they are.
+# The writer's prompts (Rules-step plan Task 28; wired into write_sheet by Task 31 after the writer lab). The older
+# analyser prompts above stay byte for byte for scripts/template_sheet_lab.py; repair and conversion keep GRAMMAR.
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _swap(text: str, pairs) -> str:

@@ -42,7 +42,8 @@ async def test_write_returns_a_vetted_sheet_summary_and_questions(calls):
     assert out["dropped"] == [{"text": "VOICE x", "reason": "lint"}]
     assert out["notice"] == "Saved, with 1 statement reworded so the template stays consistent."
     assert out["analyser_version"] == W.ANALYSER_VERSION
-    assert calls["system"] == P.ANALYSER_SYSTEM_PROMPT and calls["settings"] == P.ANALYSER_SETTINGS
+    assert calls["system"] == P.WRITER_SYSTEM_PROMPT and calls["settings"] == P.ANALYSER_SETTINGS
+    assert '"questions"' not in calls["user"] and P.DECIDED_HEADING not in calls["user"]
     assert "MRI knee" in calls["user"] and "notes here" in calls["user"] and "r1" in calls["user"]
     assert calls["origin"] == "analyser" and calls["vetted"] == GOOD.strip()
 
@@ -123,3 +124,20 @@ async def test_write_passes_the_decisions_to_the_save_function(calls, monkeypatc
     assert seen["ledger"] == led and out["decisions"] == led and out["ledger_drift"] == 2
     out2 = await W.write_sheet([{"label": "", "content": "r1"}], "MRI knee")
     assert seen["ledger"] is None and out2["decisions"] == []
+
+
+async def test_write_with_decisions_uses_the_decided_prompts_at_the_lab_temperature(calls, monkeypatch):
+    async def vet(sheet, origin, previous="", ledger=None):
+        return VetOutcome("saved", sheet, ledger=list(ledger or []))
+    monkeypatch.setattr(W, "vet_sheet", vet)
+    led = [{"kind": "value", "key": "Value A", "choice": {"need": "every"}, "by": "radiologist", "at": "t",
+            "source": "creation"}]
+    await W.write_sheet([{"label": "", "content": "r1"}], "<scan>", decisions=led)
+    assert calls["system"] == P.analyser_system_prompt(True) and P.DECIDED_HEADING in calls["user"]
+    assert calls["settings"] == P.DECIDED_WRITER_SETTINGS and P.DECIDED_WRITER_SETTINGS["temperature"] == 0.4
+    assert {k: v for k, v in P.DECIDED_WRITER_SETTINGS.items() if k != "temperature"} == \
+        {k: v for k, v in P.ANALYSER_SETTINGS.items() if k != "temperature"}
+    assert P.ANALYSER_SETTINGS["temperature"] == 0.8      # conversion and the undecided writer keep theirs
+    await W.write_sheet([{"label": "", "content": "r1"}], "<scan>")
+    assert calls["system"] == P.WRITER_SYSTEM_PROMPT and P.DECIDED_HEADING not in calls["user"]
+    assert calls["settings"] == P.ANALYSER_SETTINGS

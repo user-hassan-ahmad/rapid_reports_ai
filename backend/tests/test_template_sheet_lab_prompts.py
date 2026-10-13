@@ -179,8 +179,8 @@ def test_the_labelled_opening_shape_in_the_prompt_parses_clean():
 
 # ── Task 28: the writer's next prompts (built here, wired into write_sheet only after the writer lab) ──────────
 
-def test_the_live_writer_prompts_are_unchanged_until_the_writer_lab():
-    # write_sheet still sends ANALYSER_SYSTEM_PROMPT + analyser_user_prompt (questions included) until Task 31
+def test_the_older_analyser_prompts_stay_for_the_sheet_lab_script():
+    # write_sheet sends WRITER_SYSTEM_PROMPT / writer_user_prompt; the older pair is kept for template_sheet_lab
     assert "so it can be raised as a question" in P.ANALYSER_SYSTEM_PROMPT
     assert "the measured part goes in a FIXED field line" not in P.ANALYSER_SYSTEM_PROMPT + P.GRAMMAR
     assert '"questions"' in P.analyser_user_prompt([{"content": "X"}], "<scan>")
