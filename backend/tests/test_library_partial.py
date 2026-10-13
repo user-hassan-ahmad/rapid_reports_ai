@@ -16,7 +16,7 @@ def test_numbers_are_enumerated_through_their_band_edges(toy_entry):
 
 def test_nothing_known(toy_entry):
     t = E.evaluate(toy_entry, {})
-    assert t.needed == ["kind", "size", "risk"]          # margin never changes the outcome: never asked
+    assert t.needed == ["kind", "size"] and t.waiting == ["risk"]   # margin never changes the outcome: never asked
     assert t.possible == ["ct12", "ct6", "none", "pet", "subsolid"]
 
 
@@ -197,3 +197,35 @@ def test_a_pinned_eligibility_number_is_not_enumerated_in_the_second_pass(monkey
     t = E.evaluate(e, g)
     assert not any("age" in x for x in seen)
     assert t.outcome is None and t.needed == ["age", "exclusion", "risk"]
+
+
+def _bts():
+    import json
+    from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+    return LB.Library(json.loads(LB.BUNDLE.read_text())).lookup("bts-pulmonary-nodule")
+
+
+def test_a_child_behind_an_unknown_parent_waits_and_the_parent_is_asked(toy_entry):
+    t = E.evaluate(toy_entry, {})
+    assert t.needed == ["kind", "size"] and t.waiting == ["risk"]      # kind is risk's parent: asked, first
+
+
+def test_a_known_parent_releases_its_child(toy_entry):
+    t = E.evaluate(toy_entry, {"kind": "solid"})
+    assert t.needed == ["size", "risk"] and t.waiting == []
+
+
+def test_bts_follow_up_inputs_wait_for_prior_study():
+    e = _bts()
+    t = E.evaluate(e, {})
+    follow_up = {"resolved", "growth", "prior_volume_mm3", "current_volume_mm3", "interval_days"}
+    assert not follow_up & set(t.needed) and follow_up <= set(t.waiting)
+    assert t.needed[:3] == ["age", "proven_malignant", "prior_study"]   # eligibility, then the parent
+    t = E.evaluate(e, {"age": 60, "proven_malignant": False, "prior_study": True})
+    assert "resolved" in t.needed and "resolved" not in t.waiting
+
+
+def test_parents_first_never_leaves_an_open_bounded_card_with_nothing_to_ask(toy_entry):
+    for given in ({}, {"size": 7}, {"kind": "solid"}):
+        t = E.evaluate(toy_entry, given)
+        assert t.outcome is not None or t.needed

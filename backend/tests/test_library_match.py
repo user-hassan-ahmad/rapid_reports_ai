@@ -533,4 +533,4 @@ def test_the_redirect_packs_are_exactly_the_ultrasound_defined_ones():
     lib = _live()
     assert sorted(e.id for e in lib.list() if e.off_modality == "redirect") == [
         "bta-thyroid-u-grading", "rcog-ovarian-mass-postmenopausal", "rcog-ovarian-mass-premenopausal"]
-    assert lib.lookup("bosniak-renal-cyst").applies_to.modality == ["CT", "MRI"]
+    assert lib.lookup("bosniak-renal-cyst").applies_to.modality == ["CT"]   # no MRI inputs yet

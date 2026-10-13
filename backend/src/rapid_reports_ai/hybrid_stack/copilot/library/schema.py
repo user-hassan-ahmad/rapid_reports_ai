@@ -272,6 +272,7 @@ class Outcome(_M):
     recommendation: str = ""
     caveats: list[str] = Field(default_factory=list)
     locator: Locator | None = None
+    normal: bool = False              # the framework's normal result (e.g. CAD-RADS 0): a quiet card (spec §5.3)
 
 
 class RefText(_M):

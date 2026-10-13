@@ -458,6 +458,7 @@
     },
     {
       "id": "no_aaa",
+      "normal": true,
       "classification": "No AAA found: aortic diameter less than 3.0 cm.",
       "recommendation": "No further AAA screening scans or invitations needed.",
       "locator": {

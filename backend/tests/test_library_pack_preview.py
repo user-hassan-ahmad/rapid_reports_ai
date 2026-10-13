@@ -58,6 +58,7 @@ async def test_settled_inputs_reach_a_proposal_copied_from_the_entry(toy_entry, 
     assert out.proposal.classification == "Toy 2020 · solid nodule 6-8 mm, high risk"
     assert out.proposal.line == "Toy 2020: solid nodule 6-8 mm, high risk."
     assert out.trace["outcome"] == "ct6" and jev["calls"] == 4     # one batch per scope, then one per enum quote
+    assert out.proposal.normal is False
 
 
 async def test_missing_input_shows_possible_outcomes(toy_entry, monkeypatch, jev):
@@ -1075,6 +1076,7 @@ def test_a_normal_aaa_screen_is_prefilled_by_the_exam_and_the_presets_say_so():
     for done in (stated, answered):
         assert done.trace["outcome"] == "no_aaa" and done.missing == []
         assert done.proposal.classification == "NHS AAA Screening 2025 · No AAA found: aortic diameter less than 3.0 cm."
+        assert done.proposal.normal is True          # the framework's normal result: a quiet card (spec §5.3)
 
 
 def test_a_dictated_value_or_an_answer_overrides_the_preset():

@@ -943,8 +943,7 @@
       "cystic renal mass"
      ],
      "modality": [
-      "CT",
-      "MRI"
+      "CT"
      ],
      "region": [
       "abdomen"
@@ -2693,6 +2692,7 @@
        "source": "S1",
        "table": "4"
       },
+      "normal": false,
       "recommendation": "No follow-up needed."
      },
      {
@@ -2708,6 +2708,7 @@
        "source": "S1",
        "table": "4"
       },
+      "normal": false,
       "recommendation": "No follow-up needed."
      },
      {
@@ -2722,6 +2723,7 @@
        "source": "S1",
        "table": "4"
       },
+      "normal": false,
       "recommendation": "Imaging follow-up at 6 and 12 months, then yearly to 5 years in total, looking for morphological change."
      },
      {
@@ -2737,6 +2739,7 @@
        "source": "S1",
        "table": "4"
       },
+      "normal": false,
       "recommendation": "Consider urology referral if not already arranged."
      },
      {
@@ -2751,6 +2754,7 @@
        "source": "S1",
        "table": "4"
       },
+      "normal": false,
       "recommendation": "Consider urology referral if not already arranged."
      },
      {
@@ -2765,6 +2769,7 @@
        "source": "S1",
        "table": "2"
       },
+      "normal": false,
       "recommendation": "Consider dedicated renal mass protocol CT or MRI (with subtraction) to look for enhancing elements before assigning a class."
      },
      {
@@ -2778,6 +2783,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Manage as a solid renal mass."
      },
      {
@@ -2789,6 +2795,7 @@
        "source": "S1",
        "table": "2"
       },
+      "normal": false,
       "recommendation": "Manage per the clinical context."
      }
     ],
@@ -3141,6 +3148,7 @@
        "source": "S1",
        "table": "Fig. 4.1 U1 Normal (p30); Fig. 4.2 benign appearance (U1-2): no follow-up required (p31)"
       },
+      "normal": false,
       "recommendation": "Reassuring; FNAC not required unless the patient is at statistically high clinical risk of malignancy. No routine ultrasound follow-up."
      },
      {
@@ -3156,6 +3164,7 @@
        "source": "S1",
        "table": "Fig. 4.1 U2 Benign (p30); Fig. 4.2 benign appearance (U1-2): no follow-up required (p31)"
       },
+      "normal": false,
       "recommendation": "Reassuring; FNAC not required unless the patient is at statistically high clinical risk of malignancy. No routine ultrasound follow-up."
      },
      {
@@ -3171,6 +3180,7 @@
        "source": "S1",
        "table": "Fig. 4.1 U3 Indeterminate/Equivocal (p30); Fig. 4.2 (p31)"
       },
+      "normal": false,
       "recommendation": "Ultrasound-guided FNAC."
      },
      {
@@ -3187,6 +3197,7 @@
        "source": "S1",
        "table": "Fig. 4.1 U4 Suspicious (p30); Fig. 4.2 (p31)"
       },
+      "normal": false,
       "recommendation": "Ultrasound-guided FNAC. Assess the rest of the neck for nodal metastases."
      },
      {
@@ -3203,6 +3214,7 @@
        "source": "S1",
        "table": "Fig. 4.1 U5 Malignant (p30); Fig. 4.2 (p31): Thy1 to repeat FNAC; Thy2 to review of clinical and US suspicion, then repeat US-guided FNAC or MDT discussion"
       },
+      "normal": false,
       "recommendation": "Ultrasound-guided FNAC. Assess the rest of the neck for nodal metastases."
      }
     ],
@@ -5753,6 +5765,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "No follow-up or further investigation needed."
      },
      {
@@ -5767,6 +5780,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Manage with the BTS sub-solid nodule algorithm, starting with repeat thin-section CT at 3 months."
      },
      {
@@ -5782,6 +5796,7 @@
        "source": "S1",
        "table": "Figure 1 Initial approach to solid pulmonary nodules"
       },
+      "normal": false,
       "recommendation": "No nodule follow-up needed."
      },
      {
@@ -5796,6 +5811,7 @@
        "source": "S1",
        "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
       },
+      "normal": false,
       "recommendation": "CT surveillance: repeat CT 1 year after baseline and assess growth by volume doubling time."
      },
      {
@@ -5810,6 +5826,7 @@
        "source": "S1",
        "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
       },
+      "normal": false,
       "recommendation": "CT surveillance: repeat CT at 3 months and 1 year after baseline, assessing growth by volume doubling time."
      },
      {
@@ -5825,6 +5842,7 @@
        "source": "S1",
        "table": "Figure 1 Initial approach to solid pulmonary nodules"
       },
+      "normal": false,
       "recommendation": "CT surveillance: repeat CT at 3 months and 1 year after baseline, assessing growth by volume doubling time."
      },
      {
@@ -5840,6 +5858,7 @@
        "source": "S1",
        "table": "Figure 1 Initial approach to solid pulmonary nodules"
       },
+      "normal": false,
       "recommendation": "PET-CT if the nodule is above the local PET-CT detection threshold, then reassess risk with the Herder model."
      },
      {
@@ -5854,6 +5873,7 @@
        "source": "S1",
        "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
       },
+      "normal": false,
       "recommendation": "Further investigation (biopsy, imaging or resection) and consideration of definitive management."
      },
      {
@@ -5868,6 +5888,7 @@
        "source": "S1",
        "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
       },
+      "normal": false,
       "recommendation": "Repeat CT 1 year after baseline and reassess volume doubling time."
      },
      {
@@ -5882,6 +5903,7 @@
        "source": "S1",
        "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
       },
+      "normal": false,
       "recommendation": "Repeat CT 1 year after baseline and reassess volume doubling time."
      },
      {
@@ -5896,6 +5918,7 @@
        "source": "S1",
        "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
       },
+      "normal": false,
       "recommendation": "Consider biopsy or ongoing yearly CT surveillance, guided by patient preference."
      },
      {
@@ -5911,6 +5934,7 @@
        "source": "S1",
        "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
       },
+      "normal": false,
       "recommendation": "Consider discharge or ongoing CT surveillance, taking account of patient preference, fitness and age."
      },
      {
@@ -5926,6 +5950,7 @@
        "source": "S1",
        "table": "Figure 2 Solid pulmonary nodule surveillance algorithm"
       },
+      "normal": false,
       "recommendation": "Discharge from nodule follow-up."
      },
      {
@@ -5942,6 +5967,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "No growth at 1 year: discharge as for a stable nodule."
      },
      {
@@ -5956,6 +5982,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "No further nodule follow-up."
      },
      {
@@ -5970,6 +5997,7 @@
        "source": "S1",
        "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: VDT 400 days or less or clear evidence of growth: further work up"
       },
+      "normal": false,
       "recommendation": "Further investigation (biopsy, imaging or resection) and consideration of definitive management."
      },
      {
@@ -5984,6 +6012,7 @@
        "source": "S1",
        "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: stable on basis of 2D non-automated diameter value: CT 2 years after baseline"
       },
+      "normal": false,
       "recommendation": "Repeat CT 2 years after baseline, then assess volume doubling time; discharge if stable."
      },
      {
@@ -5998,6 +6027,7 @@
        "source": "S1",
        "table": "Figure 2 Solid pulmonary nodule surveillance algorithm: CT 2 years after baseline: discharge if stable"
       },
+      "normal": false,
       "recommendation": "Discharge from nodule follow-up."
      },
      {
@@ -6012,6 +6042,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Assess growth by volumetry (volume doubling time) where available."
      },
      {
@@ -6024,6 +6055,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Manage per the clinical context."
      }
     ],
@@ -6544,6 +6576,7 @@
        "source": "S1",
        "table": "Table 1 a. Agatston Score; b. Visual Score"
       },
+      "normal": true,
       "recommendation": "Document the scoring system (A for Agatston, V for visual). CAC informs a clinician-patient discussion of preventive therapy."
      },
      {
@@ -6559,6 +6592,7 @@
        "source": "S1",
        "table": "Table 1 a. Agatston Score; b. Visual Score"
       },
+      "normal": false,
       "recommendation": "Document the scoring system (A for Agatston, V for visual) and the number of vessels with calcium (N). CAC informs a clinician-patient discussion of preventive therapy."
      },
      {
@@ -6574,6 +6608,7 @@
        "source": "S1",
        "table": "Table 1 a. Agatston Score; b. Visual Score"
       },
+      "normal": false,
       "recommendation": "Document the scoring system (A for Agatston, V for visual) and the number of vessels with calcium (N). CAC informs a clinician-patient discussion of preventive therapy."
      },
      {
@@ -6590,6 +6625,7 @@
        "source": "S1",
        "table": "Table 1 a. Agatston Score; b. Visual Score"
       },
+      "normal": false,
       "recommendation": "Document the scoring system (A for Agatston, V for visual) and the number of vessels with calcium (N). CAC informs a clinician-patient discussion of preventive therapy."
      }
     ],
@@ -8470,6 +8506,7 @@
        "source": "S1",
        "table": "Table 4 (stable)"
       },
+      "normal": true,
       "recommendation": "No further cardiac investigation. Reassurance; consider non-atherosclerotic causes of symptoms."
      },
      {
@@ -8481,6 +8518,7 @@
        "source": "S1",
        "table": "Table 5 (acute)"
       },
+      "normal": true,
       "recommendation": "No further evaluation of ACS is required; reassurance. If troponin is positive, consider other sources of raised troponin."
      },
      {
@@ -8494,6 +8532,7 @@
        "source": "S1",
        "table": "Table 4 (stable)"
       },
+      "normal": false,
       "recommendation": "Additional or alternative evaluation may be needed."
      },
      {
@@ -8507,6 +8546,7 @@
        "source": "S1",
        "table": "Table 5 (acute)"
       },
+      "normal": false,
       "recommendation": "Additional or alternative evaluation for ACS is needed."
      },
      {
@@ -8520,6 +8560,7 @@
        "source": "S1",
        "table": "Table 4 (stable)"
       },
+      "normal": false,
       "recommendation": "No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; consider risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8533,6 +8574,7 @@
        "source": "S1",
        "table": "Table 4 (stable)"
       },
+      "normal": false,
       "recommendation": "No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8546,6 +8588,7 @@
        "source": "S1",
        "table": "Table 4 (stable)"
       },
+      "normal": false,
       "recommendation": "No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; aggressive risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8559,6 +8602,7 @@
        "source": "S1",
        "table": "Table 4 (stable)"
       },
+      "normal": false,
       "recommendation": "No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8572,6 +8616,7 @@
        "source": "S1",
        "table": "Table 4 (stable)"
       },
+      "normal": false,
       "recommendation": "No further cardiac investigation. Consider non-atherosclerotic causes of symptoms; aggressive risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8587,6 +8632,7 @@
        "source": "S1",
        "table": "Table 5 (acute)"
       },
+      "normal": false,
       "recommendation": "No further evaluation of ACS is required. Outpatient follow-up for risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8602,6 +8648,7 @@
        "source": "S1",
        "table": "Table 5 (acute)"
       },
+      "normal": false,
       "recommendation": "No further evaluation of ACS is required. Outpatient follow-up for aggressive risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8618,6 +8665,7 @@
        "source": "S1",
        "table": "Table 5 (acute)"
       },
+      "normal": false,
       "recommendation": "No further evaluation of ACS is required; if suspicion is high, troponin positive or high-risk plaque, consider admission with cardiology consultation. Outpatient risk factor follow-up."
      },
      {
@@ -8634,6 +8682,7 @@
        "source": "S1",
        "table": "Table 5 (acute)"
       },
+      "normal": false,
       "recommendation": "No further evaluation of ACS is required; if suspicion is high, troponin positive or high-risk plaque, consider admission with cardiology consultation. Outpatient aggressive risk factor follow-up."
      },
      {
@@ -8649,6 +8698,7 @@
        "source": "S1",
        "table": "Table 4; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "No source management for an I result in CAD-RADS 2; the CAD-RADS 2 line applies: no further cardiac investigation; risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8664,6 +8714,7 @@
        "source": "S1",
        "table": "Table 4; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "No source management for an I result in CAD-RADS 2; the CAD-RADS 2 line applies: no further cardiac investigation; aggressive risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8682,6 +8733,7 @@
        "source": "S1",
        "table": "Table 5; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "No source management for an I result in CAD-RADS 2; the CAD-RADS 2 line applies: no further ACS evaluation unless suspicion is high, troponin positive or high-risk plaque (then consider admission); outpatient risk factor follow-up."
      },
      {
@@ -8700,6 +8752,7 @@
        "source": "S1",
        "table": "Table 5; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "No source management for an I result in CAD-RADS 2; the CAD-RADS 2 line applies: no further ACS evaluation unless suspicion is high, troponin positive or high-risk plaque (then consider admission); outpatient aggressive risk factor follow-up."
      },
      {
@@ -8717,6 +8770,7 @@
        "source": "S1",
        "table": "Table 4 (stable)"
       },
+      "normal": false,
       "recommendation": "Consider functional assessment. Aggressive risk factor modification and preventive pharmacotherapy; anti-anginal therapy should be considered per guideline-directed care."
      },
      {
@@ -8732,6 +8786,7 @@
        "source": "S1",
        "table": "Table 4; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "Consider ICA, especially if frequent symptoms persist after guideline-directed medical therapy. Aggressive risk factor modification and preventive pharmacotherapy; anti-anginal therapy should be considered per guideline-directed care."
      },
      {
@@ -8748,6 +8803,7 @@
        "source": "S1",
        "table": "Table 4; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "Deferral of ICA would be appropriate; optimise medical therapy. Aggressive risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8766,6 +8822,7 @@
        "source": "S1",
        "table": "Table 4; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "No source ICA deferral advice for I- from a fixed infarct; CAD-RADS 3 line applies: consider functional assessment; aggressive risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8781,6 +8838,7 @@
        "source": "S1",
        "table": "Table 4; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "Consider ICA according to symptoms, lesion location and trans-lesional CT-FFR gradient, if likely to benefit from revascularisation. Aggressive risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8798,6 +8856,7 @@
        "source": "S1",
        "table": "Table 4; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "No source management for a borderline CTP; CAD-RADS 3 line applies: consider functional assessment; aggressive risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8816,6 +8875,7 @@
        "source": "S1",
        "table": "Table 4 (stable)"
       },
+      "normal": false,
       "recommendation": "Consider ICA or functional assessment. Aggressive risk factor modification and preventive pharmacotherapy; anti-anginal therapy and revascularisation options should be considered per guideline-directed care."
      },
      {
@@ -8831,6 +8891,7 @@
        "source": "S1",
        "table": "Table 4; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "Consider ICA; ICA may be favoured with I+ in a candidate for revascularisation. Aggressive risk factor modification and preventive pharmacotherapy; anti-anginal therapy and revascularisation options should be considered per guideline-directed care."
      },
      {
@@ -8847,6 +8908,7 @@
        "source": "S1",
        "table": "Table 4; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "Deferral of ICA would be appropriate; optimise medical therapy. Aggressive risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8866,6 +8928,7 @@
        "source": "S1",
        "table": "Table 4; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "No source ICA deferral advice for I- from a fixed infarct; CAD-RADS 4A line applies: consider ICA or functional assessment; aggressive risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8881,6 +8944,7 @@
        "source": "S1",
        "table": "Table 4; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "Consider ICA according to symptoms, lesion location and trans-lesional CT-FFR gradient, if likely to benefit from revascularisation. Aggressive risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8899,6 +8963,7 @@
        "source": "S1",
        "table": "Table 4; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "No source management for a borderline CTP; CAD-RADS 4A line applies: consider ICA or functional assessment; aggressive risk factor modification and preventive pharmacotherapy."
      },
      {
@@ -8915,6 +8980,7 @@
        "source": "S1",
        "table": "Table 5 (acute)"
       },
+      "normal": false,
       "recommendation": "Consider hospital admission with cardiology consultation and functional assessment. Aggressive preventive pharmacotherapy; anti-anginal therapy should be considered per guideline-directed care."
      },
      {
@@ -8930,6 +8996,7 @@
        "source": "S1",
        "table": "Table 5; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "Consider hospital admission with cardiology consultation; consider ICA. Aggressive preventive pharmacotherapy; anti-anginal therapy should be considered per guideline-directed care."
      },
      {
@@ -8948,6 +9015,7 @@
        "source": "S1",
        "table": "Table 5; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "Consider hospital admission with cardiology consultation and functional assessment. Aggressive preventive pharmacotherapy; anti-anginal therapy should be considered per guideline-directed care."
      },
      {
@@ -8963,6 +9031,7 @@
        "source": "S1",
        "table": "Table 5; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "Consider hospital admission with cardiology consultation. Consider ICA according to symptoms, lesion location and trans-lesional CT-FFR gradient, if likely to benefit from revascularisation. Aggressive preventive pharmacotherapy."
      },
      {
@@ -8979,6 +9048,7 @@
        "source": "S1",
        "table": "Table 5; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "No source management for a borderline CTP; CAD-RADS 3 line applies: consider admission with cardiology consultation and functional assessment; aggressive preventive pharmacotherapy."
      },
      {
@@ -8996,6 +9066,7 @@
        "source": "S1",
        "table": "Table 5 (acute)"
       },
+      "normal": false,
       "recommendation": "Hospital admission with cardiology consultation; consider ICA or functional assessment. Aggressive preventive pharmacotherapy; anti-anginal therapy and revascularisation options should be considered per guideline-directed care."
      },
      {
@@ -9011,6 +9082,7 @@
        "source": "S1",
        "table": "Table 5; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "Hospital admission with cardiology consultation; consider ICA, which may be favoured with I+ in a candidate for revascularisation. Aggressive preventive pharmacotherapy; anti-anginal therapy and revascularisation options should be considered per guideline-directed care."
      },
      {
@@ -9030,6 +9102,7 @@
        "source": "S1",
        "table": "Table 5; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "Hospital admission with cardiology consultation; consider ICA or functional assessment. Aggressive preventive pharmacotherapy; anti-anginal therapy and revascularisation options should be considered per guideline-directed care."
      },
      {
@@ -9045,6 +9118,7 @@
        "source": "S1",
        "table": "Table 5; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "Hospital admission with cardiology consultation. Consider ICA according to symptoms, lesion location and trans-lesional CT-FFR gradient, if likely to benefit from revascularisation. Aggressive preventive pharmacotherapy."
      },
      {
@@ -9062,6 +9136,7 @@
        "source": "S1",
        "table": "Table 5; Tables 6-7"
       },
+      "normal": false,
       "recommendation": "No source management for a borderline CTP; CAD-RADS 4A line applies: admission with cardiology consultation; consider ICA or functional assessment; aggressive preventive pharmacotherapy."
      },
      {
@@ -9076,6 +9151,7 @@
        "source": "S1",
        "table": "Table 4 (stable)"
       },
+      "normal": false,
       "recommendation": "ICA is recommended. Aggressive risk factor modification and preventive pharmacotherapy; anti-anginal therapy and revascularisation options should be considered per guideline-directed care."
      },
      {
@@ -9091,6 +9167,7 @@
        "source": "S1",
        "table": "Table 4 (stable)"
       },
+      "normal": false,
       "recommendation": "Consider ICA, functional and/or viability assessment. Aggressive risk factor modification and preventive pharmacotherapy; anti-anginal therapy and revascularisation options should be considered per guideline-directed care."
      },
      {
@@ -9105,6 +9182,7 @@
        "source": "S1",
        "table": "Table 5 (acute)"
       },
+      "normal": false,
       "recommendation": "Hospital admission with cardiology consultation; ICA is recommended. Aggressive preventive pharmacotherapy; anti-anginal therapy and revascularisation options should be considered per guideline-directed care."
      },
      {
@@ -9121,6 +9199,7 @@
        "source": "S1",
        "table": "Table 5 (acute)"
       },
+      "normal": false,
       "recommendation": "Hospital admission with cardiology consultation; expedited ICA and revascularisation if acute occlusion is suspected. Aggressive preventive pharmacotherapy."
      },
      {
@@ -9136,6 +9215,7 @@
        "source": "S1",
        "table": "Table 3; Tables 4-5"
       },
+      "normal": false,
       "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality."
      },
      {
@@ -9151,6 +9231,7 @@
        "source": "S1",
        "table": "Table 3; Tables 4-5"
       },
+      "normal": false,
       "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality."
      },
      {
@@ -9166,6 +9247,7 @@
        "source": "S1",
        "table": "Table 3; Tables 4-5"
       },
+      "normal": false,
       "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality."
      },
      {
@@ -9181,6 +9263,7 @@
        "source": "S1",
        "table": "Table 3; Tables 4-5"
       },
+      "normal": false,
       "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality."
      },
      {
@@ -9196,6 +9279,7 @@
        "source": "S1",
        "table": "Table 3; Tables 4-5"
       },
+      "normal": false,
       "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality."
      },
      {
@@ -9211,6 +9295,7 @@
        "source": "S1",
        "table": "Table 3; Tables 4-5"
       },
+      "normal": false,
       "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality."
      },
      {
@@ -9226,6 +9311,7 @@
        "source": "S1",
        "table": "Table 3; Tables 4-5"
       },
+      "normal": false,
       "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality."
      },
      {
@@ -9241,6 +9327,7 @@
        "source": "S1",
        "table": "Table 3; Tables 4-5"
       },
+      "normal": false,
       "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality."
      },
      {
@@ -9256,6 +9343,7 @@
        "source": "S1",
        "table": "Table 3; Tables 4-5"
       },
+      "normal": false,
       "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality."
      },
      {
@@ -9271,6 +9359,7 @@
        "source": "S1",
        "table": "Table 3; Tables 4-5"
       },
+      "normal": false,
       "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality."
      },
      {
@@ -9286,6 +9375,7 @@
        "source": "S1",
        "table": "Table 3; Tables 4-5"
       },
+      "normal": false,
       "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality."
      },
      {
@@ -9301,6 +9391,7 @@
        "source": "S1",
        "table": "Table 3; Tables 4-5"
       },
+      "normal": false,
       "recommendation": "Non-atherosclerotic cause (modifier E): CAD-RADS, which relates strictly to atherosclerotic disease, may not fully capture this coronary abnormality."
      },
      {
@@ -9314,6 +9405,7 @@
        "source": "S1",
        "table": "Table 4; Table 5 (titles)"
       },
+      "normal": false,
       "recommendation": "No CAD-RADS 2.0 management suggestion for this indication; manage on clinical context."
      }
     ],
@@ -10156,6 +10248,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Further adrenal work-up is not routinely needed unless there are clinical signs or symptoms of adrenal hormone excess."
      },
      {
@@ -10174,6 +10267,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "No further imaging required."
      },
      {
@@ -10191,6 +10285,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "No further imaging during follow-up is recommended for a lesion with clear benign imaging features."
      },
      {
@@ -10208,6 +10303,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Unenhanced (noncontrast) CT is recommended to establish whether the mass is homogeneous and lipid-rich, and therefore benign."
      },
      {
@@ -10225,6 +10321,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Suggest immediate additional imaging (FDG-PET/CT, chemical-shift MRI or washout CT); alternatively, noncontrast CT or MRI in 12 months."
      },
      {
@@ -10243,6 +10340,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Suggest MDT discussion; immediate additional imaging is usually preferred (or immediate surgery). If still indeterminate and not operated, ESE recommends noncontrast CT or MRI in 6-12 months."
      },
      {
@@ -10261,6 +10359,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Suggest MDT discussion; usually surgery after complete staging (at least thoracic CT and/or FDG-PET/CT); additional imaging is an option in some patients."
      },
      {
@@ -10277,6 +10376,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Urgent assessment is recommended; ESE suggests surgical resection if the mass is indeterminate on imaging."
      },
      {
@@ -10294,6 +10394,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Manage per the clinical context (library addition)."
      }
     ],
@@ -11889,6 +11990,7 @@
        "source": "S1",
        "table": "A Solid Nodules: Single, Low risk, <6 mm"
       },
+      "normal": false,
       "recommendation": "No routine follow-up."
      },
      {
@@ -11903,6 +12005,7 @@
        "source": "S1",
        "table": "A Solid Nodules: Single, High risk, <6 mm"
       },
+      "normal": false,
       "recommendation": "Optional CT at 12 months."
      },
      {
@@ -11915,6 +12018,7 @@
        "source": "S1",
        "table": "A Solid Nodules: Single, Low risk, 6-8 mm"
       },
+      "normal": false,
       "recommendation": "CT at 6–12 months, then consider CT at 18–24 months."
      },
      {
@@ -11927,6 +12031,7 @@
        "source": "S1",
        "table": "A Solid Nodules: Single, High risk, 6-8 mm"
       },
+      "normal": false,
       "recommendation": "CT at 6–12 months, then CT at 18–24 months."
      },
      {
@@ -11939,6 +12044,7 @@
        "source": "S1",
        "table": "A Solid Nodules: Single, Low and High risk, >8 mm"
       },
+      "normal": false,
       "recommendation": "Consider CT at 3 months, PET-CT or tissue sampling."
      },
      {
@@ -11953,6 +12059,7 @@
        "source": "S1",
        "table": "A Solid Nodules: Multiple, Low risk, <6 mm"
       },
+      "normal": false,
       "recommendation": "No routine follow-up."
      },
      {
@@ -11967,6 +12074,7 @@
        "source": "S1",
        "table": "A Solid Nodules: Multiple, High risk, <6 mm"
       },
+      "normal": false,
       "recommendation": "Optional CT at 12 months."
      },
      {
@@ -11981,6 +12089,7 @@
        "source": "S1",
        "table": "A Solid Nodules: Multiple, Low risk, 6-8 mm and >8 mm"
       },
+      "normal": false,
       "recommendation": "CT at 3–6 months, then consider CT at 18–24 months."
      },
      {
@@ -11995,6 +12104,7 @@
        "source": "S1",
        "table": "A Solid Nodules: Multiple, High risk, 6-8 mm and >8 mm"
       },
+      "normal": false,
       "recommendation": "CT at 3–6 months, then CT at 18–24 months."
      },
      {
@@ -12010,6 +12120,7 @@
        "source": "S1",
        "table": "B Subsolid Nodules: Single, Ground glass, <6 mm"
       },
+      "normal": false,
       "recommendation": "No routine follow-up."
      },
      {
@@ -12024,6 +12135,7 @@
        "source": "S1",
        "table": "B Subsolid Nodules: Single, Ground glass, >=6 mm"
       },
+      "normal": false,
       "recommendation": "CT at 6–12 months to confirm persistence, then CT every 2 years until 5 years."
      },
      {
@@ -12038,6 +12150,7 @@
        "source": "S1",
        "table": "B Subsolid Nodules: Single, Part solid, <6 mm"
       },
+      "normal": false,
       "recommendation": "No routine follow-up."
      },
      {
@@ -12052,6 +12165,7 @@
        "source": "S1",
        "table": "B Subsolid Nodules: Single, Part solid, >=6 mm"
       },
+      "normal": false,
       "recommendation": "CT at 3–6 months to confirm persistence; if unchanged and the solid component stays <6 mm, annual CT for 5 years."
      },
      {
@@ -12066,6 +12180,7 @@
        "source": "S1",
        "table": "B Subsolid Nodules: Multiple, <6 mm"
       },
+      "normal": false,
       "recommendation": "CT at 3–6 months; if stable, consider CT at 2 and 4 years."
      },
      {
@@ -12078,6 +12193,7 @@
        "source": "S1",
        "table": "B Subsolid Nodules: Multiple, >=6 mm"
       },
+      "normal": false,
       "recommendation": "CT at 3–6 months; base further management on the most suspicious nodule(s)."
      },
      {
@@ -12093,6 +12209,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Manage per the clinical context (screening programme protocol, or the patient's oncology or immunosuppression care)."
      }
     ],
@@ -13818,6 +13935,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Manage per the clinical context."
      },
      {
@@ -13831,6 +13949,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "A further programme scan will be offered."
      },
      {
@@ -13842,6 +13961,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": true,
       "recommendation": "No further AAA screening scans or invitations needed."
      },
      {
@@ -13855,6 +13975,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Yearly AAA surveillance scans; the programme also offers a vascular nurse specialist appointment for health and lifestyle advice."
      },
      {
@@ -13868,6 +13989,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "AAA surveillance scans every 3 months; the programme also offers a vascular nurse specialist appointment for health and lifestyle advice."
      },
      {
@@ -13879,6 +14001,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Offer referral to vascular services within one working day; a vascular specialist appointment should follow within 2 weeks of the scan."
      },
      {
@@ -13892,6 +14015,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Offer referral to vascular services within one working day; a vascular specialist appointment should follow within 2 weeks of the scan."
      },
      {
@@ -13905,6 +14029,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Manage per the AAA screening standard operating procedure."
      }
     ],
@@ -14108,7 +14233,7 @@
       "unit": ""
      },
      {
-      "how_stated": "peripheral for a PZ lesion, transition for a TZ lesion; a central zone or anterior fibromuscular stroma lesion takes the zone it appears to arise from (eg 'scored with TZ criteria')",
+      "how_stated": "peripheral for a PZ lesion, transition for a TZ lesion; a central zone or anterior fibromuscular stroma lesion takes the zone it appears to arise from (eg 'scored with TZ criteria'); if several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
       "id": "zone",
       "label": "Zone the lesion is scored in",
       "locator": {
@@ -14131,7 +14256,7 @@
       "unit": ""
      },
      {
-      "how_stated": "the DWI (ADC and high b-value) score 1 to 5 as dictated, eg 'DWI 4', 'DWI 3/5'; not assessable when DWI is called X, technically inadequate, non-diagnostic or not performed",
+      "how_stated": "the DWI (ADC and high b-value) score 1 to 5 as dictated, eg 'DWI 4', 'DWI 3/5'; not assessable when DWI is called X, technically inadequate, non-diagnostic or not performed; if several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
       "id": "dwi",
       "label": "DWI score",
       "locator": {
@@ -14159,7 +14284,7 @@
       "unit": ""
      },
      {
-      "how_stated": "the T2-weighted score 1 to 5 as dictated, eg 'T2 4', 'T2W 2/5'; not assessable when T2W is called X, technically inadequate or not performed",
+      "how_stated": "the T2-weighted score 1 to 5 as dictated, eg 'T2 4', 'T2W 2/5'; not assessable when T2W is called X, technically inadequate or not performed; if several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
       "id": "t2w",
       "label": "T2W score",
       "locator": {
@@ -14200,7 +14325,7 @@
       "unit": ""
      },
      {
-      "how_stated": "positive for focal early (or contemporaneous) enhancement matching the T2W or DWI finding; negative for no early enhancement, diffuse enhancement, or enhancement of a BPH-type nodule; not assessable when DCE is X, inadequate or not given (biparametric MRI)",
+      "how_stated": "positive for focal early (or contemporaneous) enhancement matching the T2W or DWI finding; negative for no early enhancement, diffuse enhancement, or enhancement of a BPH-type nodule; not assessable when DCE is X, inadequate or not given (biparametric MRI); if several lesions are described, read the index lesion only (the highest PI-RADS category; among equals the one with extraprostatic extension, else the largest) and take every lesion value from that one lesion.",
       "id": "dce",
       "label": "DCE",
       "locator": {
@@ -15150,40 +15275,45 @@
       "id": "pirads_1_exam",
       "locator": {
        "page": 20,
-       "section": "Section III: Evaluation of the TZ (How to Score in the TZ: every MRI exam is assigned a category; with no finding above category 1 the exam is PI-RADS 1)",
+       "section": "Section III: Evaluation of the TZ (How to Score in the TZ: with no finding above category 1 the exam is PI-RADS 1); the MRI-findings-only caveat from p 17 (Assessment and Reporting); the inadequate-DWI caveat from p 22 (Caveats for Overall Assessment)",
        "source": "S1",
        "table": ""
       },
+      "normal": true,
       "recommendation": "PI-RADS states biopsy should not be considered for category 1; it gives no management, which rests on clinical factors and local practice."
      },
      {
       "caveats": [
        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
-       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation."
+       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation.",
+       "With several lesions this scores the index lesion only (highest category; among equals the one with EPE, else the largest; S1 p 19)."
       ],
       "classification": "PI-RADS 1: very low; clinically significant cancer is highly unlikely to be present.",
       "id": "pirads_1",
       "locator": {
        "page": 17,
-       "section": "Section III: Assessment and Reporting",
+       "section": "Section III: Assessment and Reporting; the index-lesion caveat from p 19 (Reporting: index lesion)",
        "source": "S1",
        "table": "PI-RADS v2.1 Assessment Categories"
       },
+      "normal": false,
       "recommendation": "PI-RADS states biopsy should not be considered for category 1; it gives no management, which rests on clinical factors and local practice."
      },
      {
       "caveats": [
        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
-       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation."
+       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation.",
+       "With several lesions this scores the index lesion only (highest category; among equals the one with EPE, else the largest; S1 p 19)."
       ],
       "classification": "PI-RADS 2: low; clinically significant cancer is unlikely to be present.",
       "id": "pirads_2",
       "locator": {
        "page": 17,
-       "section": "Section III: Assessment and Reporting",
+       "section": "Section III: Assessment and Reporting; the index-lesion caveat from p 19 (Reporting: index lesion)",
        "source": "S1",
        "table": "PI-RADS v2.1 Assessment Categories"
       },
+      "normal": false,
       "recommendation": "PI-RADS states biopsy should not be considered for category 2; it gives no management, which rests on clinical factors and local practice."
      },
      {
@@ -15191,48 +15321,54 @@
        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
        "In the PZ, a DWI 3 lesion without adequate DCE (eg biparametric MRI) stays category 3 and is not upgraded.",
        "In the PZ or CZ, an encapsulated, circumscribed, round nodule is likely an extruded BPH nodule and should be category 2, even if hypointense on ADC.",
-       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation."
+       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation.",
+       "With several lesions this scores the index lesion only (highest category; among equals the one with EPE, else the largest; S1 p 19)."
       ],
       "classification": "PI-RADS 3: intermediate; the presence of clinically significant cancer is equivocal.",
       "id": "pirads_3",
       "locator": {
        "page": 17,
-       "section": "Section III: Assessment and Reporting",
+       "section": "Section III: Assessment and Reporting; the index-lesion caveat from p 19 (Reporting: index lesion)",
        "source": "S1",
        "table": "PI-RADS v2.1 Assessment Categories"
       },
+      "normal": false,
       "recommendation": "Biopsy may or may not be appropriate, depending on factors other than the MRI; PI-RADS gives no management recommendation."
      },
      {
       "caveats": [
        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
        "In the PZ or CZ, an encapsulated, circumscribed, round nodule is likely an extruded BPH nodule and should be category 2, even if hypointense on ADC.",
-       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation."
+       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation.",
+       "With several lesions this scores the index lesion only (highest category; among equals the one with EPE, else the largest; S1 p 19)."
       ],
       "classification": "PI-RADS 4: high; clinically significant cancer is likely to be present.",
       "id": "pirads_4",
       "locator": {
        "page": 17,
-       "section": "Section III: Assessment and Reporting",
+       "section": "Section III: Assessment and Reporting; the index-lesion caveat from p 19 (Reporting: index lesion)",
        "source": "S1",
        "table": "PI-RADS v2.1 Assessment Categories"
       },
+      "normal": false,
       "recommendation": "PI-RADS states biopsy should be considered; it gives no further management, which rests on clinical factors and local practice."
      },
      {
       "caveats": [
        "The category rests on the MRI findings only, not PSA, rectal examination, history or planned treatment.",
        "In the PZ or CZ, an encapsulated, circumscribed, round nodule is likely an extruded BPH nodule and should be category 2, even if hypointense on ADC.",
-       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation."
+       "If DWI was inadequate or not performed, the report should clearly acknowledge this limitation.",
+       "With several lesions this scores the index lesion only (highest category; among equals the one with EPE, else the largest; S1 p 19)."
       ],
       "classification": "PI-RADS 5: very high; clinically significant cancer is highly likely to be present.",
       "id": "pirads_5",
       "locator": {
        "page": 17,
-       "section": "Section III: Assessment and Reporting",
+       "section": "Section III: Assessment and Reporting; the index-lesion caveat from p 19 (Reporting: index lesion)",
        "source": "S1",
        "table": "PI-RADS v2.1 Assessment Categories"
       },
+      "normal": false,
       "recommendation": "PI-RADS states biopsy should be considered; it gives no further management, which rests on clinical factors and local practice."
      },
      {
@@ -15247,6 +15383,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Limit the assessment to staging for extraprostatic extension; state the limitation in the report."
      },
      {
@@ -15261,6 +15398,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "No category from the PI-RADS tables; state the inadequate T2W sequence in the report."
      },
      {
@@ -15273,6 +15411,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "No PI-RADS category; v2.1 criteria do not apply to suspected recurrence after treatment."
      }
     ],
@@ -16719,6 +16858,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "No imaging follow-up required (RCOG GTG 34, Dec 2025). If symptomatic, clinical assessment is advised."
      },
      {
@@ -16736,6 +16876,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "CT abdomen and pelvis, and referral to the gynaecological oncology MDT."
      },
      {
@@ -16753,6 +16894,7 @@
        "source": "S1",
        "table": "Clinical algorithm: RMI I < 200, ANY box, consider surgery salpingo-oophorectomy (usually bilateral)"
       },
+      "normal": false,
       "recommendation": "Consider surgery: salpingo-oophorectomy, usually bilateral."
      },
      {
@@ -16769,6 +16911,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Consider conservative management: repeat CA125 and transvaginal ultrasound in 4-6 months."
      },
      {
@@ -16786,6 +16929,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Offer surgical treatment, with the setting and surgeon guided by the RMI."
      },
      {
@@ -16798,6 +16942,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Manage per the clinical context."
      }
     ],
@@ -18050,6 +18195,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Referral to a gynaecological oncology service."
      },
      {
@@ -18065,6 +18211,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Referral to a gynaecological oncology service (any M-feature); further assessment by a specialist in gynaecological ultrasound is also appropriate."
      },
      {
@@ -18080,6 +18227,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Further investigation by a specialist in gynaecological ultrasound is appropriate."
      },
      {
@@ -18097,6 +18245,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "If asymptomatic, generally no follow-up required (such cysts almost always resolve within 3 menstrual cycles); if symptomatic, clinical assessment is advised."
      },
      {
@@ -18113,6 +18262,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "If asymptomatic, yearly ultrasound follow-up; if symptomatic, clinical assessment is advised."
      },
      {
@@ -18129,6 +18279,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "If asymptomatic, consider further imaging (MRI) or surgical intervention; if symptomatic, clinical assessment is advised."
      },
      {
@@ -18147,6 +18298,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Gynaecological oncology referral is not indicated on ultrasound grounds; any management needed sits within benign gynaecological care."
      },
      {
@@ -18159,6 +18311,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Manage per the clinical context."
      }
     ],
@@ -18581,6 +18734,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Growth prognosis (1963): excellent, except where the epiphysis is entirely covered by cartilage (for example the upper femur), where the blood supply is frequently damaged."
      },
      {
@@ -18599,6 +18753,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Growth prognosis (1963): excellent if the circulation to the epiphysis is intact, as it nearly always is."
      },
      {
@@ -18617,6 +18772,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Growth prognosis (1963): good if the blood supply to the separated portion of the epiphysis is intact."
      },
      {
@@ -18635,6 +18791,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Growth prognosis (1963): bad unless the epiphyseal plate is completely realigned."
      },
      {
@@ -18654,6 +18811,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Growth prognosis (1963): decidedly poor, the worst of the types; premature cessation of growth is almost inevitable."
      }
     ],
@@ -19073,6 +19231,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": ""
      },
      {
@@ -19088,6 +19247,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Patients with SINS 7 to 18 warrant surgical consultation."
      },
      {
@@ -19104,6 +19264,7 @@
        "source": "S1",
        "table": ""
       },
+      "normal": false,
       "recommendation": "Patients with SINS 7 to 18 warrant surgical consultation."
      }
     ],
@@ -20387,5 +20548,5 @@
    ]
   }
  },
- "version": "73444169f25f"
+ "version": "506fea9fac16"
 }

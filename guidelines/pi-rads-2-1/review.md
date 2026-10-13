@@ -150,3 +150,21 @@ For Hassan:
   before the per-lesion inputs; lesion dictations should settle it true from the lesion itself.
 - A normal gland still needs `treated_cancer` (eligibility) from the history; a treatment-naive history settles it.
 - No independent clinical read was run for this revision (task constraint: no subagents).
+
+## Revision 3, fix round 1 (M4 review)
+
+- Multi-lesion (ruling: the source's index-lesion rule, S1 p 19: "The index lesion is the one with the highest PI-RADS
+  Assessment Category. If the highest PI-RADS Assessment Category is assigned to two or more lesions, the index lesion
+  should be the one that shows EPE ... If none of the lesions demonstrate EPE, the largest of the tumors with the
+  highest PI-RADS Assessment Category should be considered the index lesion."): `zone`, `t2w`, `dwi` and `dce`
+  how_stated now tell the settler to read the index lesion only and take every value from that one lesion; pirads_1 to
+  pirads_5 gain the caveat "With several lesions this scores the index lesion only (highest category; among equals the
+  one with EPE, else the largest; S1 p 19)." Golden case added: two lesions dictated, the index PZ DWI 4 lesion's
+  values → pirads_4. ✓ gates 1–4.
+- Gate 5 (Revision 3) resolution: on `pirads_1_exam` the recommendation and the MRI-findings-only caveat are S1 p 17
+  ("should be based on mpMRI findings only and should not incorporate ... PSA, digital rectal exam, or clinical history,
+  or planned treatments"; "biopsy should be considered for PI-RADS 4 or 5, but not for PI-RADS 1 or 2"); the
+  inadequate-DWI caveat is S1 p 22 ("it should be clearly acknowledged in the exam report"). Caveats carry no locator
+  field in the schema, so the outcome locator's section now names both pages (as the pirads_* outcomes already do);
+  their low gate 5 scores at p 20 are a locator artefact, the content is confirmed by reading. Gate 5 itself was not
+  re-run (no network in this task).

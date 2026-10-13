@@ -99,9 +99,7 @@ def check(lib: Library, cases: list[dict]) -> int:
             given[k] = x
         shared[c["name"]] = _facts(e, c["expect_settled"])
         t = engine.evaluate(e, given)
-        elig = [i.id for i in e.inputs if i.role == "eligibility"]
-        order = elig + [i.id for i in e.inputs if i.id not in elig]
-        missing = sorted(t.needed, key=order.index)
+        missing = list(t.needed)
         got = (t.outcome, missing, _state(e, t, missing))
         want = (c["expect_outcome"], c["expect_missing"], c["expect_state"])
         if got != want:

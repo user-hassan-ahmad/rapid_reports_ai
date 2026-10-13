@@ -321,8 +321,7 @@
    },
    "outcome": null,
    "needed": [
-    "prior_programme_scan",
-    "growth_12m_cm"
+    "prior_programme_scan"
    ]
   },
   {

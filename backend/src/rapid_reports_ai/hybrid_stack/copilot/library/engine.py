@@ -53,6 +53,7 @@ class Trace(BaseModel):
     bounded: bool = True              # False: an unknown number feeds a formula, so `possible` may be incomplete
     needed: list[str] = Field(default_factory=list)
     decides: dict[str, list[str]] = Field(default_factory=dict)   # needed input -> the outcomes its value decides between
+    waiting: list[str] = Field(default_factory=list)   # behind a prerequisite still unknown: not asked yet (§7.4)
     inputs: dict[str, InputValue] = Field(default_factory=dict)
     steps: list[StepTrace] = Field(default_factory=list)
 
@@ -311,6 +312,37 @@ def reaching(entry: Entry) -> set[str]:
     return {i.id for i in entry.inputs} & seen
 
 
+def parents(entry: Entry) -> set[str]:
+    """The inputs some other input's prerequisite tests (spec §7.4)."""
+    return {c.ref for i in entry.inputs for p in i.prerequisites for c in conds(p) if entry.input(c.ref) is not None}
+
+
+def parents_first(entry: Entry, needed: list[str], env: dict[str, V]) -> tuple[list[str], list[str]]:
+    """(needed, waiting), spec §7.4. An input behind a prerequisite that is still unknown is not asked yet: it waits,
+    and its unknown parents are asked in its place, transitively. Order: eligibility inputs, then parents, then the
+    rest, each in the pack's input order."""
+    order = [i.id for i in entry.inputs]
+    par = parents(entry)
+    ask: list[str] = []
+    waiting: list[str] = []
+    todo, seen = list(needed), set()
+    while todo:
+        k = todo.pop(0)
+        if k in seen:
+            continue
+        seen.add(k)
+        i = entry.input(k)
+        up = [c.ref for p in i.prerequisites for c in conds(p)
+              if entry.input(c.ref) is not None and env.get(c.ref, UNKNOWN).state == "unknown"]
+        if up:
+            waiting.append(k)
+            todo += [u for u in up if u not in seen]
+        else:
+            ask.append(k)
+    rank = {k: (entry.input(k).role != "eligibility", k not in par, order.index(k)) for k in ask}
+    return sorted(ask, key=rank.get), sorted((w for w in waiting if w not in ask), key=order.index)
+
+
 def reach_states(e: Entry, ref: str) -> set[str]:
     """The non-present states a value can take: an input's allowed states (plus not_applicable behind a
     prerequisite), or the union over a step's inputs."""
@@ -468,7 +500,10 @@ def evaluate(entry: Entry, given: dict[str, Any]) -> Trace:
     possible, bounded, needed, decides = _partial(entry, given, env)
     if bounded and len(possible) == 1:      # the unknown inputs cannot change the outcome: it is settled
         return Trace(outcome=possible[0], possible=possible, bounded=True, needed=[], inputs=inputs, steps=steps)
-    return Trace(possible=possible, bounded=bounded, needed=needed, decides=decides, inputs=inputs, steps=steps)
+    needed, waiting = parents_first(entry, needed, env)
+    decides = {k: decides.get(k) or possible for k in needed}
+    return Trace(possible=possible, bounded=bounded, needed=needed, waiting=waiting, decides=decides, inputs=inputs,
+                 steps=steps)
 
 
 def _fmt(x: Any) -> str:

@@ -224,3 +224,10 @@ outcome.does_not_apply 0.42 (`check`, was 0.47), confirmed by reading the Table 
   check_first until answered.
 
 Independent clinical read (skill step 8): PENDING, dispatched by the controller.
+
+## 2026-10-13 (M4): modality stays CT
+
+Bosniak v2019 covers CT and MRI (S1: "formally incorporates MRI into the classification"; table note: "Unless otherwise
+specified, features may be assessed at CT or MRI"), but this pack's inputs are CT-only (`technique` options are CT
+protocols, `hu` is attenuation; no T1/T2 signal or MRI enhancement criterion). `applies_to.modality` therefore stays
+["CT"]; an MRI branch is future authoring, after which MRI can be added.
