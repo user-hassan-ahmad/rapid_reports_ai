@@ -472,8 +472,7 @@ def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict
     """The card (spec §7.4): eligibility asks first; the state worked out in code; a does_not_apply outcome is shown as
     an exclusion, never as a proposal, so it can never be Applied."""
     elig = [i.id for i in e.inputs if i.role == "eligibility"]
-    order = elig + [i.id for i in e.inputs if i.role != "eligibility"]
-    needed = sorted(t.needed, key=order.index)
+    needed = list(t.needed)                       # engine order (spec §7.4): eligibility, parents, the rest
     settled = [Settled(input=k, value=_show(e, e.input(k), given[k]), quote=quotes.get(k, ""),
                        fact=e.input(k).fact or "", by="exam" if k in preset else "")
                for k in (i.id for i in e.inputs) if k in given]
@@ -488,6 +487,7 @@ def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict
         proposal, exclusion = text, None
     return Preview(settled=settled, missing=needed, proposal=proposal, exclusion=exclusion, state=state,
                    possible=possible, bounded=t.bounded, asks=_asks(e, t, sources, needed),
+                   waiting=list(t.waiting),
                    trace=t.model_dump(mode="json") if t.outcome is not None else None, degraded=degraded)
 
 

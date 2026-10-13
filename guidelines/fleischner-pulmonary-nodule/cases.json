@@ -413,8 +413,7 @@
       },
       "outcome": null,
       "needed": [
-        "nodule_type",
-        "risk"
+        "nodule_type"
       ]
     },
     {

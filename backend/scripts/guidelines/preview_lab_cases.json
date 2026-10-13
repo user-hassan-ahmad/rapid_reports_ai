@@ -849,18 +849,14 @@
     "proven_malignant"
    ],
    "expect_missing": [
+    "resolved",
     "diameter_mm",
     "sex",
     "family_history",
     "emphysema",
     "upper_lobe",
     "nodule_count",
-    "spiculation",
-    "resolved",
-    "growth",
-    "prior_volume_mm3",
-    "current_volume_mm3",
-    "interval_days"
+    "spiculation"
    ],
    "expect_outcome": null,
    "expect_state": "applies",
@@ -1089,8 +1085,7 @@
     "proven_malignant"
    ],
    "expect_missing": [
-    "prior_study",
-    "resolved"
+    "prior_study"
    ],
    "expect_outcome": null,
    "expect_state": "applies",
@@ -1135,8 +1130,7 @@
     "proven_malignant"
    ],
    "expect_missing": [
-    "prior_study",
-    "resolved"
+    "prior_study"
    ],
    "expect_outcome": null,
    "expect_state": "applies",
@@ -1675,19 +1669,14 @@
    },
    "expect_missing": [
     "proven_malignant",
+    "prior_study",
     "benign_features",
     "nodule_type",
     "diameter_mm",
     "emphysema",
     "upper_lobe",
     "nodule_count",
-    "spiculation",
-    "prior_study",
-    "resolved",
-    "growth",
-    "prior_volume_mm3",
-    "current_volume_mm3",
-    "interval_days"
+    "spiculation"
    ],
    "expect_outcome": null,
    "expect_state": "check_first",
@@ -1727,19 +1716,14 @@
    },
    "expect_missing": [
     "proven_malignant",
+    "prior_study",
     "benign_features",
     "nodule_type",
     "diameter_mm",
     "emphysema",
     "upper_lobe",
     "nodule_count",
-    "spiculation",
-    "prior_study",
-    "resolved",
-    "growth",
-    "prior_volume_mm3",
-    "current_volume_mm3",
-    "interval_days"
+    "spiculation"
    ],
    "expect_outcome": null,
    "expect_state": "check_first",
@@ -1779,19 +1763,14 @@
    },
    "expect_missing": [
     "proven_malignant",
+    "prior_study",
     "benign_features",
     "nodule_type",
     "diameter_mm",
     "emphysema",
     "upper_lobe",
     "nodule_count",
-    "spiculation",
-    "prior_study",
-    "resolved",
-    "growth",
-    "prior_volume_mm3",
-    "current_volume_mm3",
-    "interval_days"
+    "spiculation"
    ],
    "expect_outcome": null,
    "expect_state": "check_first",
@@ -1831,19 +1810,14 @@
    },
    "expect_missing": [
     "proven_malignant",
+    "prior_study",
     "benign_features",
     "nodule_type",
     "diameter_mm",
     "emphysema",
     "upper_lobe",
     "nodule_count",
-    "spiculation",
-    "prior_study",
-    "resolved",
-    "growth",
-    "prior_volume_mm3",
-    "current_volume_mm3",
-    "interval_days"
+    "spiculation"
    ],
    "expect_outcome": null,
    "expect_state": "check_first",
@@ -1875,15 +1849,7 @@
     "hu": "10 HU"
    },
    "expect_missing": [
-    "too_small",
-    "margin",
-    "wall",
-    "septa",
-    "protrusion",
-    "calcification",
-    "contents",
-    "contents_enhancement",
-    "hu"
+    "too_small"
    ],
    "expect_outcome": null,
    "expect_state": "applies",
@@ -1915,15 +1881,7 @@
     "hu": "10 HU"
    },
    "expect_missing": [
-    "too_small",
-    "margin",
-    "wall",
-    "septa",
-    "protrusion",
-    "calcification",
-    "contents",
-    "contents_enhancement",
-    "hu"
+    "too_small"
    ],
    "expect_outcome": null,
    "expect_state": "applies",
@@ -1955,15 +1913,7 @@
     "hu": "10 HU"
    },
    "expect_missing": [
-    "too_small",
-    "margin",
-    "wall",
-    "septa",
-    "protrusion",
-    "calcification",
-    "contents",
-    "contents_enhancement",
-    "hu"
+    "too_small"
    ],
    "expect_outcome": null,
    "expect_state": "applies",

@@ -130,6 +130,7 @@ class Proposal(BaseModel):
 class Preview(BaseModel):
     settled: list[Settled] = Field(default_factory=list)
     missing: list[str] = Field(default_factory=list)
+    waiting: list[str] = Field(default_factory=list)   # library packs: inputs behind a prerequisite still unknown
     proposal: Proposal | None = None
     state: CardState = "applies"  # library packs (spec §7.4): does_not_apply (an eligibility input excludes), check_first
                                   # (an unknown eligibility input could change the outcome), else applies

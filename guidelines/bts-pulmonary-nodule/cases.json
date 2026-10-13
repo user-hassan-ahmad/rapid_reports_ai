@@ -377,12 +377,7 @@
    },
    "outcome": null,
    "needed": [
-    "prior_study",
-    "resolved",
-    "growth",
-    "prior_volume_mm3",
-    "current_volume_mm3",
-    "interval_days"
+    "prior_study"
    ]
   },
   {
