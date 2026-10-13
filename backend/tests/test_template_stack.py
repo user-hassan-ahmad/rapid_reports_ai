@@ -189,3 +189,10 @@ def test_fixed_line_rule_names_the_decided_block_exception():
     from rapid_reports_ai.template_context_rules import DECIDED_HEADING
     from rapid_reports_ai.template_stack import stack_brief
     assert DECIDED_HEADING.lstrip("# ") in stack_brief("", "", ())
+
+
+def test_missing_values_rule_only_when_the_scratchpad_decided_the_values():
+    assert "Missing values" not in stack_brief(LEAN, "", ())
+    b = stack_brief(LEAN, "", (), values_decided=True)
+    assert "**Missing values:**" in b and "write no list of missing or unprovided values" in b
+    assert b.index("**Missing values:**") > b.index("## Scratchpad Session")

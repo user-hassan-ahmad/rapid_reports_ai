@@ -25,6 +25,12 @@ _INTERPRETIVE = re.compile(r"(?i)interpretive phrasing\s*:")
 _DROP_SECTION = re.compile(r"(?i)^(?:case deliberation|open questions)\b")
 _DROP_SUBSECTION = re.compile(r"(?i)^inclusion logic\b")
 _HEADING = re.compile(r"^(#{1,3})\s+(.*)$")
+# The value cluster settled the template's required values in the scratchpad: code removed LIST_MISSING from this
+# sheet and writes the "Values not provided" line itself (template_required_values), so the generator writes none.
+MISSING_VALUES_RULE = (
+    "\n- **Missing values:** the radiologist settled this template's required values in the scratchpad, and code "
+    "adds the \"Values not provided\" line itself: write no list of missing or unprovided values, and no "
+    "placeholder for one.")
 
 
 def _strip(sheet: str) -> List[str]:
@@ -50,7 +56,7 @@ def _strip(sheet: str) -> List[str]:
     return out
 
 
-def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = ()) -> str:
+def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = (), values_decided: bool = False) -> str:
     """The template's grammar sheet as structure and style, then the scratchpad's session rules, the removed
     sentences (DO NOT ASSERT) and the confirmed conclusion."""
     try:
@@ -59,7 +65,7 @@ def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = ()) -> st
         lines = []
     text = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
     parts = [text] if text else []
-    parts.append(
+    session = (
         "## Scratchpad Session\n"
         "These rules outrank every other rule in this sheet and in the Global Style Guide.\n"
         "- **Content and flow:** the FINDINGS input is the radiologist's confirmed statements, grouped by scratchpad "
@@ -91,6 +97,9 @@ def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = ()) -> st
         "measurement, value, image coordinate or recommendation applies only when the FINDINGS input or the "
         "confirmed conclusion supplies it, even where the sheet calls it mandatory or always stated; otherwise "
         "leave it out — never estimate, infer or fill one in.")
+    if values_decided:
+        session += MISSING_VALUES_RULE
+    parts.append(session)
     removed = [t.strip() for t in declined if t.strip()]
     if removed:
         parts.append("## Removed by the Radiologist\n" + "\n".join(f'- DO NOT ASSERT: "{t}"' for t in removed))

@@ -531,3 +531,117 @@ async def test_sections_and_number_check_read_the_stored_sheet_not_the_resolved_
     assert seen.get("sections") == RULED and seen.get("numbers") == RULED
     if out.get("options_job") is not None:
         await out["options_job"]
+
+
+VALUES = '''## Report Structure
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION CONCLUSION | header: "Conclusion:" | role: impression
+
+## Report-wide
+RULE WHEN [findings: any listed value is not stated] LIST_MISSING ["LVEF" | "RVEF"] AT TOP
+
+## Paragraph: Left ventricle (FINDINGS)
+COVERS ["left ventricle"]
+NORMAL [left ventricle] "Normal left ventricular size and function."
+'''
+
+
+def _values_gen(monkeypatch, calls, report):
+    async def gen(self, template_config, user_inputs, user_signature=None, model_override=None, brief_text=None,
+                  history_supplied=False, stack=None):
+        calls["gen"] = {"sheet": template_config["skill_sheet"], "stack": stack}
+        return {"report_content": report, "model_used": "q", "description": "d", "scan_type": "CMR"}
+    monkeypatch.setattr(tl.TemplateManager, "_generate_report_skill_sheet_guided", gen)
+
+
+async def test_a_stack_session_with_values_has_code_write_the_literal_na_line(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    _values_gen(monkeypatch, calls, "Findings:\nValues not provided: LVEF, RVEF.\nNormal LV.\n\nConclusion:\nNormal.")
+    out = await tl.generate_template_report_lean(sheet=VALUES, scan_type="CMR", findings="LVEF 45%.", history="",
+                                                 case=None, signature=None,
+                                                 stack={"conclusion": "", "declined": [], "values_na": ["RVEF"]})
+    assert "LIST_MISSING" not in calls["gen"]["sheet"]
+    assert calls["gen"]["stack"]["values_decided"] is True
+    assert "Findings:\nValues not provided: RVEF.\nNormal LV." in out["report_content"]
+    assert "LVEF, RVEF" not in out["report_content"]
+    assert out["required_values"]["stripped"] == 1 and out["required_values"]["lists"][0]["na"] == ["RVEF"]
+
+
+async def test_a_filled_value_the_report_lacks_is_listed_and_flagged(monkeypatch):
+    from rapid_reports_ai import template_required_values as trv
+    calls, seen = {}, {}
+    _gen_fakes(monkeypatch, calls)
+    _values_gen(monkeypatch, calls, "Findings:\nNormal LV.\n\nConclusion:\nNormal.")
+
+    async def ask(report, items):
+        seen.update(report=report, items=items)
+        return [0.1, 0.9]
+    monkeypatch.setattr(trv, "ask_report_values", ask)
+    out = await tl.generate_template_report_lean(sheet=VALUES, scan_type="CMR", findings="LVEF 45%. RVEF 50%.",
+                                                 history="", case=None, signature=None,
+                                                 stack={"conclusion": "", "declined": [], "values_na": [],
+                                                        "values_filled": ["LVEF", "RVEF"]})
+    assert seen["items"] == ["LVEF", "RVEF"] and seen["report"].startswith("Findings:\nNormal LV.")
+    assert "Findings:\nValues not provided: LVEF.\nNormal LV." in out["report_content"]
+    assert {"kind": "value_missing", "text": "LVEF", "message": "Required value LVEF not found in the report"} \
+        in out["quality_check"]["review"]
+    assert out["required_values"]["backstop"] == {"asked": 2, "missing": ["LVEF"], "error": None}
+
+
+async def test_a_backstop_failure_leaves_the_report_and_flags_nothing(monkeypatch):
+    from rapid_reports_ai import template_required_values as trv
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    _values_gen(monkeypatch, calls, "Findings:\nNormal LV.\n\nConclusion:\nNormal.")
+
+    async def boom(report, items):
+        raise RuntimeError("jev down")
+    monkeypatch.setattr(trv, "ask_report_values", boom)
+    out = await tl.generate_template_report_lean(sheet=VALUES, scan_type="CMR", findings="LVEF 45%.", history="",
+                                                 case=None, signature=None,
+                                                 stack={"conclusion": "", "declined": [], "values_na": [],
+                                                        "values_filled": ["LVEF"]})
+    assert "Values not provided" not in out["report_content"]
+    assert not any(f.get("kind") == "value_missing" for f in (out["quality_check"] or {}).get("review") or [])
+    assert out["required_values"]["backstop"]["error"].startswith("RuntimeError")
+
+
+async def test_nothing_na_gives_no_list_and_no_line(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    _values_gen(monkeypatch, calls, "Findings:\nNormal LV.\n\nConclusion:\nNormal.")
+    out = await tl.generate_template_report_lean(sheet=VALUES, scan_type="CMR", findings="LVEF 45%. RVEF 50%.",
+                                                 history="", case=None, signature=None,
+                                                 stack={"conclusion": "", "declined": [], "values_na": []})
+    assert "LIST_MISSING" not in calls["gen"]["sheet"] and calls["gen"]["stack"]["values_decided"] is True
+    assert "Values not provided" not in out["report_content"]
+
+
+async def test_values_not_applied_leave_the_sheet_and_the_generator_as_today(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    _values_gen(monkeypatch, calls, "Findings:\nNormal LV.")
+    legacy = "## FINDINGS\nLVEF: {value}\n"
+    out = await tl.generate_template_report_lean(sheet=legacy, scan_type="CMR", findings="LV normal.", history="",
+                                                 case=None, signature=None,
+                                                 stack={"conclusion": "", "declined": [], "values_na": ["RVEF"]})
+    assert calls["gen"]["sheet"] == legacy and calls["gen"]["stack"]["values_decided"] is False
+    assert out["required_values"]["skipped"] == "parse" and "Values not provided" not in out["report_content"]
+
+
+async def test_a_stack_session_without_values_leaves_the_list_as_today(monkeypatch):
+    for stack in ({"conclusion": "", "declined": []}, None):
+        calls = {}
+        _gen_fakes(monkeypatch, calls)
+        out = await tl.generate_template_report_lean(sheet=VALUES, scan_type="CMR", findings="LVEF 45%.", history="",
+                                                     case=CASE, signature=None, stack=stack)
+        assert 'LIST_MISSING ["LVEF" | "RVEF"] AT TOP' in calls["gen"]["sheet"]
+        assert "values_decided" not in (calls["gen"]["stack"] or {}) and "required_values" not in out
+        if out.get("options_job") is not None:
+            await out["options_job"]
+
+
+def test_candidate_record_carries_required_values():
+    rec = tp.candidate_record({"report_content": "x", "required_values": {"lists": []}}, 10)
+    assert rec["required_values"] == {"lists": []}
