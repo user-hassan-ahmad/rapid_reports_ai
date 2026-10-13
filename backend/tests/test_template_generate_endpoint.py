@@ -253,6 +253,9 @@ def stubs(monkeypatch, db_engine):
             return {"options": [dict(OPTION)], "gate_dropped": [{"id": "x", "outcome": "contradicted"}],
                     "options_raw": [], "case_decisions": {"capped": []}, "phase1_used": True,
                     "lat": {"options_s": 0.4, "options_ready_s": 3.0}}
+        if kw.get("stack") is not None:   # a scratchpad session: no options job (template_lean)
+            return {**MIRROR_OUT, "options_pending": False, "options_job": None,
+                    "options_job_record": {"skipped": "scratchpad"}}
         return {**MIRROR_OUT, "options_job": asyncio.ensure_future(job())}
 
     async def fake_heavy(**kw):
@@ -381,15 +384,43 @@ async def test_stack_session_reaches_the_lean_generator(aclient, auth_headers, m
     await _drain_options()
 
 
-async def test_stack_session_reaches_todays_generator(aclient, auth_headers, mirror_template, stubs, monkeypatch):
+async def test_stack_session_takes_the_lean_path_with_the_flag_off(aclient, auth_headers, mirror_template, stubs,
+                                                                   monkeypatch):
+    """The scratchpad is the only template path: no RR_TEMPLATE_MIRROR / allowlist gate, no Phase 1, no options."""
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "0")
+    monkeypatch.delenv("RR_PIPELINE_OVERRIDE_USERS", raising=False)
+    r = await _generate_stack(aclient, auth_headers, mirror_template)
+    assert r["success"] and r["pipeline"] == "mirror" and not stubs["current"]
+    assert stubs["mirror"][0]["stack"] == {"conclusion": "Normal cardiac MRI.", "declined": ["No LGE."]}
+    assert stubs["mirror"][0]["case"] is None and not stubs["resolve"]   # no case resolver is even handed over
+    assert r["options_pending"] is False
+    assert r["artifacts"] is not None   # the post-generation check's artifacts reach the review rail
+
+
+async def test_without_a_stack_the_flag_off_still_takes_todays_path(aclient, auth_headers, mirror_template, stubs,
+                                                                    monkeypatch):
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "0")
+    monkeypatch.delenv("RR_PIPELINE_OVERRIDE_USERS", raising=False)
+    r = await _generate(aclient, auth_headers, mirror_template)
+    assert r["pipeline"] == "current" and stubs["current"] and not stubs["mirror"]
+
+
+async def test_a_stack_lean_failure_falls_back_to_todays_generator_with_the_stack(aclient, auth_headers,
+                                                                                  mirror_template, stubs, monkeypatch):
     seen = []
+
+    async def broken(**kw):
+        raise RuntimeError("provider down")
 
     async def fake_current(self, template_config, user_inputs, user_signature=None, **kw):
         seen.append(kw)
-        return {"report_content": "R", "description": "d", "scan_type": "CMR", "model_used": "m"}
+        return {"report_content": "CURRENT REPORT: the left ventricle is normal in size and function.",
+                "description": "Normal CMR", "scan_type": "CMR", "model_used": "m"}
+    monkeypatch.setattr(tl, "generate_template_report_lean", broken)
     monkeypatch.setattr(TemplateManager, "generate_report_from_config", fake_current)
     monkeypatch.setenv("RR_TEMPLATE_MIRROR", "0")
-    await _generate_stack(aclient, auth_headers, mirror_template)
+    r = await _generate_stack(aclient, auth_headers, mirror_template)
+    assert r["success"] and r["pipeline"] == "current"
     assert seen[0]["stack"] == {"conclusion": "Normal cardiac MRI.", "declined": ["No LGE."]}
 
 

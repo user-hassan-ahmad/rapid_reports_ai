@@ -1908,7 +1908,6 @@ async def generate_report_from_template(
         # The lean templated path (RR_TEMPLATE_MIRROR / allowlist), else today's path: today's generator on the
         # stored sheet, the post-generation check; Phase 1 for options only, finished in the background (the
         # report never waits for options). The heavy mirror (tp.generate_template_report) is parked.
-        use_mirror = _mirror_ready(template, current_user.email, request.pipeline)
         _stack = ({"conclusion": request.stack_conclusion, "declined": request.stack_declined or []}
                   if request.stack else None)
         if _stack is not None:
@@ -1918,7 +1917,12 @@ async def generate_report_from_template(
                 # sheet's normals) would leave every undictated structure unstated. Today's template path instead.
                 logger.info("template %s: stack session without a usable structure; today's path", template_id)
                 _stack = None
-        mirror_candidate, options_job, _p1 = None, None, {"source": "pending"}
+        # A scratchpad session (usable structure = a guided grammar sheet) always takes the lean path: generation +
+        # the post-generation check, no flag gate. Its checklist already decided the case: no Phase 1, no options.
+        # Every other generation keeps the flag / allowlist routing.
+        use_mirror = _stack is not None or _mirror_ready(template, current_user.email, request.pipeline)
+        mirror_candidate, options_job = None, None
+        _p1 = {"source": "skipped" if _stack is not None else "pending"}   # a scratchpad session runs no Phase 1
         if use_mirror:
             try:
                 _cfg = template.template_config
@@ -1937,7 +1941,8 @@ async def generate_report_from_template(
                     finally:
                         _db.close()
                 mirror_result = await tl.generate_template_report_lean(
-                    sheet=_sheet, scan_type=_scan, findings=_findings, history=_history, case=_resolve_case,
+                    sheet=_sheet, scan_type=_scan, findings=_findings, history=_history,
+                    case=None if _stack is not None else _resolve_case,
                     signature=current_user.signature, declined=request.stack_declined or [], stack=_stack)
                 options_job = mirror_result.get("options_job")
                 mirror_candidate = tp.candidate_record(mirror_result, int((time.perf_counter() - _tpl_gen_t0) * 1000))

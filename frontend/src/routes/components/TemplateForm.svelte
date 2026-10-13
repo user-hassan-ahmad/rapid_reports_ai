@@ -303,7 +303,8 @@
 				// Start Phase 1 (case analysis on the clinical history) so Generate finds it ready.
 				// Fire and forget: no UI; the backend skips it unless the template mirror is on.
 				// "Regenerate workspace" runs this again, so a changed history gets its own Phase 1.
-				if (selectedTemplate?.id) {
+				// A scratchpad session never: its checklist decides the case, Generate runs no Phase 1 or options.
+				if (selectedTemplate?.id && !hybridStack) {
 					const prepHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
 					if ($token) prepHeaders['Authorization'] = `Bearer ${$token}`;
 					fetch(`${API_URL}/api/templates/${selectedTemplate.id}/prepare`, {

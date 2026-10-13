@@ -325,7 +325,7 @@ async def test_undictated_numbers_are_review_flags_and_never_edit_the_report(mon
     out = await tl.generate_template_report_lean(
         sheet=OLD_SHEET, scan_type="CT", findings="A 2 cm lesion.", history="?lesion", case=None,
         signature="Dr A", stack={"conclusion": "Lesion. Fazekas grade 2 change.", "declined": []})
-    out["options_job"].cancel()
+    assert out["options_job"] is None   # a scratchpad session runs no options job
     review = out["quality_check"]["review"]
     assert [r["text"] for r in review if r["kind"] == "undictated_number"] == ["4.5 hours"]
     assert out["report_content"] == report + "\nCHECKED\n\nDr A"   # flagged, never edited
@@ -358,3 +358,37 @@ async def test_with_the_check_off_the_flags_do_not_pretend_the_check_ran(monkeyp
 
 async def _none(report, options):
     return report, options, None
+
+
+async def test_stack_session_runs_no_options_job(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    routed = {"n": 0}
+
+    async def counting_case_options(*a, **k):
+        routed["n"] += 1
+        return [], {}
+    monkeypatch.setattr(tl, "case_options", counting_case_options)
+    out = await tl.generate_template_report_lean(sheet=OLD_SHEET, scan_type="CT", findings="A 2 cm lesion.",
+                                                 history="?lesion", case=CASE, signature="Dr A",
+                                                 stack={"conclusion": "C.", "declined": []})
+    await asyncio.sleep(0)
+    assert routed["n"] == 0
+    assert out["report_content"].startswith(REPORT)
+    assert out["options_job"] is None and out["options_pending"] is False
+    assert out["options_job_record"] == {"skipped": "scratchpad"}
+
+
+async def test_stack_session_never_resolves_the_case(monkeypatch):
+    calls = {}
+    _gen_fakes(monkeypatch, calls)
+    resolved = {"n": 0}
+
+    async def case():
+        resolved["n"] += 1
+        return CASE
+    out = await tl.generate_template_report_lean(sheet=OLD_SHEET, scan_type="CT", findings="A 2 cm lesion.",
+                                                 history="?lesion", case=case, signature="Dr A",
+                                                 stack={"conclusion": "C.", "declined": []})
+    await asyncio.sleep(0)
+    assert resolved["n"] == 0 and out["options_job"] is None

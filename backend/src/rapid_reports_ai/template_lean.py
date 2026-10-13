@@ -410,7 +410,9 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
     returned `options_job` (an asyncio task the caller finishes in the background; it resolves to
     {"options", "gate_dropped", "options_raw", "case_decisions", "phase1_used", "lat"} and may raise).
     `case` is the stored Phase 1 case_result (template_pipeline.phase1_record), None, or an async callable
-    returning it: then Phase 1 is resolved inside the options job (no prepare: Phase 1 runs on and is stored)."""
+    returning it: then Phase 1 is resolved inside the options job (no prepare: Phase 1 runs on and is stored).
+    With `stack` there is no options job at all (`options_job` None, `options_job_record` {"skipped": "scratchpad"})
+    and `case` is never touched: the scratchpad checklist already decided what Phase 1 would offer."""
     rec: dict = {"lat": {}}
     t_start = time.time()
     style = "\n".join(x for x in (_block(sheet, "Impression Construction Rules") or _block(sheet, "Impression Construction"),
@@ -441,11 +443,13 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         job["lat"]["route_s"], job["lat"]["options_s"] = round(t1 - t0, 1), round(time.time() - t1, 1)
         return written, raw, dec
 
-    opts_t = asyncio.ensure_future(opts())
+    # A scratchpad session: the confirmed checklist already decided the case. No Phase 1, no options job.
+    opts_t = asyncio.ensure_future(opts()) if stack is None else None
     try:
         out = await gen()
     except BaseException:
-        opts_t.cancel()
+        if opts_t is not None:
+            opts_t.cancel()
         raise
     report = out["report_content"]
     rec["report_generated"] = report
@@ -473,12 +477,13 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         return {"options": kept, "gate_dropped": dropped, "options_raw": raw, "case_decisions": dec,
                 "phase1_used": job["phase1_used"], "lat": dict(job["lat"])}
 
-    vet_t = asyncio.ensure_future(vetted())
+    vet_t = asyncio.ensure_future(vetted()) if opts_t is not None else None
     try:
         final, checked_opts, quality = await checked()
     except BaseException:
-        vet_t.cancel()
-        opts_t.cancel()
+        if vet_t is not None:
+            vet_t.cancel()
+            opts_t.cancel()
         raise
     # Numbers the writer added that no source supplies (a sheet's score/grade/time window): review flags only
     numbers = undictated_numbers(final, [findings, history, (stack or {}).get("conclusion")], sheet)
@@ -492,7 +497,8 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         "report_content": final, "model_used": out.get("model_used"), "description": out.get("description"),
         "scan_type": out.get("scan_type") or scan_type, "brief_used": False, "brief_text": None,
         "brief_decisions": None, "case_decisions": None, "options_raw": [], "options": [],
-        "gate_dropped": [], "options_pending": True, "options_job": vet_t, "quality_check": quality,
+        "gate_dropped": [], "options_pending": vet_t is not None, "options_job": vet_t,
+        "options_job_record": None if vet_t is not None else {"skipped": "scratchpad"}, "quality_check": quality,
         "sections": [s.name for s in sections], "phase1_used": False, "history_inserted": False,
         "signature": signature or "",
     })
