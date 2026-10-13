@@ -274,3 +274,39 @@ def test_cards_for_passes_known_systems_and_emits_a_sibling_once(monkeypatch):
     out = asyncio.run(RL._cards_for(case, asyncio.Semaphore(1)))
     assert Lib().known_text() in prompts[0]
     assert sorted(c["id"] for c in out) == ["c:F1:a", "c:F1:b"]   # b named by the model and as a's sibling: once; tier 2 dropped
+
+
+def test_append_stamps_source_and_prefixes_ids_and_checkpoints(tmp_path, monkeypatch):
+    import asyncio
+    import json
+    seen = []
+
+    async def fake(case, sem):
+        seen.append((case["id"], case["source"]))
+        return [{**_card(case["id"]), "source": case["source"]}]
+    monkeypatch.setattr(RL, "_cards_for", fake)
+    src, base = tmp_path / "c.json", tmp_path / "cards.json"
+    src.write_text(json.dumps([{"id": "1"}, {"id": "synthetic-2"}]))
+    base.write_text("[]")
+    out = asyncio.run(RL.hassan(src, base, tmp_path / "o1", source="synthetic"))
+    assert sorted(seen) == [("synthetic-1", "synthetic"), ("synthetic-2", "synthetic")]
+    assert {c["source"] for c in json.loads(out.read_text())} == {"synthetic"}
+    ck = next((tmp_path / "o1").glob("group_cases_*.jsonl"))
+    seen.clear()
+    asyncio.run(RL.hassan(src, base, tmp_path / "o2", source="synthetic", resume=ck))
+    assert seen == []                                                    # resumed: nothing rerun
+    assert [c["id"] for c in RL.tag_cases([{"id": "x"}], "hassan")] == ["h-x"]
+    assert [c["id"] for c in RL.tag_cases([{"id": "h-x"}], "hassan")] == ["h-x"]
+
+
+def test_metrics_split_by_source_and_synthetic_never_joins_the_combined_view():
+    def r(card, source, taps, verdict):
+        return {"card": card, "pack": "p", "source": source, "taps": taps, "verdicts": {"k": verdict},
+                "tiers": {"k": "read"}, "outcome": "o", "draft_outcome": "o"}
+    rows = [r("a", "prod", 1, "ok"), r("b", "hassan", 2, "wrong"), r("c", "synthetic", 9, "wrong")]
+    got = RL.by_source(rows)
+    assert set(got) == {"prod", "hassan", "synthetic", "prod+hassan"}
+    assert got["prod"]["cards"] == 1 and got["prod"]["wrong_read"] == []
+    assert got["synthetic"]["wrong_read"] == ["c:k"]
+    assert got["prod+hassan"]["cards"] == 2 and got["prod+hassan"]["wrong_read"] == ["b:k"]
+    assert set(RL.by_source([r("a", "prod", 1, "ok")])) == {"prod"}

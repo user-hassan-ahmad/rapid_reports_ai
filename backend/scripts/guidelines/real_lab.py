@@ -10,7 +10,9 @@ committed, and no clinical text is ever logged.
           [--cases selected.json]   only those export ids, in file order ({"selected": [{"id": ..}]}; --max-cases off)
           [--resume group_cases_<pid>.jsonl]   skip cases already done there, retry errored ones
                                       -> group_cases_<pid>.jsonl (checkpoint, a line per finished case) + cards_<pid>.json
-  hassan  <hassan_cases.json> <cards.json> <dir>   Hassan's own dictations, appended -> cards_<pid>.json
+  hassan  <cases.json> <cards.json> <dir> [--source hassan --concurrency 2] [--resume group_cases_<pid>.jsonl]
+          dictations appended under a source (default hassan, ids h-<id>; otherwise <source>-<id>, e.g. synthetic)
+                                      -> group_cases_<pid>.jsonl (checkpoint) + cards_<pid>.json
   brief   <cards.json> <dir>          the labelling brief for the subagent -> label_brief_<pid>.md
           (the controller dispatches the Opus 5.5 subagent; it writes labels_<pid>.json, once; reused)
   labels  <labels.json> <cards.json>  validate and load the subagent's labels
@@ -300,12 +302,22 @@ async def group(src: Path, out_dir: Path, per_pack: int = 30, total: int = 100, 
     return p
 
 
-async def hassan(src: Path, cards_path: Path, out_dir: Path, concurrency: int = 2) -> Path:
-    cases = [{**c, "source": "hassan", "id": f"h-{c['id']}"} for c in json.loads(src.read_text())]
-    cards = json.loads(cards_path.read_text()) + await _gather_cards(cases, concurrency=concurrency)
+def tag_cases(raw: list[dict], source: str) -> list[dict]:
+    """Cases stamped with their source; ids prefixed h- for hassan, else <source>-, unless already prefixed."""
+    pre = "h-" if source == "hassan" else f"{source}-"
+    return [{**c, "source": source, "id": c["id"] if str(c["id"]).startswith(pre) else f"{pre}{c['id']}"}
+            for c in raw]
+
+
+async def hassan(src: Path, cards_path: Path, out_dir: Path, concurrency: int = 2, source: str = "hassan",
+                 resume: Path | None = None) -> Path:
+    cases = tag_cases(json.loads(src.read_text()), source)
+    ckpt = _pid(out_dir, "group_cases", "jsonl")
+    cards = json.loads(cards_path.read_text()) + await _gather_cards(cases, ckpt, _read_checkpoint(resume),
+                                                                      concurrency)
     p = _pid(out_dir, "cards", "json")
     p.write_text(json.dumps(cards, indent=1))
-    print(f"{len(cards)} cards -> {p} ({dict(Counter((c['source'], c['pack']) for c in cards))})")
+    print(f"{len(cards)} cards -> {p} ({dict(Counter((c['source'], c['pack']) for c in cards))}); checkpoint {ckpt}")
     return p
 
 
@@ -465,6 +477,17 @@ def metrics(rows: list[dict]) -> dict:
             "degraded": [r["card"] for r in rows if r.get("degraded")]}
 
 
+def by_source(rows: list[dict]) -> dict:
+    """Metrics per source present in the rows, plus "prod+hassan" (the real-dictation view) when both exist.
+    Production stays the headline; synthetic is only ever reported on its own, never folded in."""
+    groups = {src: [r for r in rows if r.get("source", "prod") == src]
+              for src in sorted({r.get("source", "prod") for r in rows})}
+    if "prod" in groups and "hassan" in groups:
+        groups["prod+hassan"] = groups["prod"] + groups["hassan"]
+    return {src: {**metrics(g), "outcome_agreement": outcome_agreement(g), "wrong_prefill_total": wrong_prefill_total(g)}
+            for src, g in groups.items()}
+
+
 def outcome_agreement(rows: list[dict]) -> dict:
     """Per card: the outcome reached on truth-corrected values (outcome) against the settler's own draft outcome
     (draft_outcome). none: the settler reached no outcome (or neither did); disagreeing cards are named."""
@@ -587,7 +610,7 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
         e, s, lab = lib.lookup(c["pack"]), _settlement(st[c["id"]]), labels[c["id"]]
         n, outcome = taps(e, s, lab, {})
         d = drafts(s)
-        rows.append({"card": c["id"], "pack": c["pack"], "taps": n, "verdicts": verdicts(e, s, lab),
+        rows.append({"card": c["id"], "pack": c["pack"], "source": c.get("source", "prod"), "taps": n, "verdicts": verdicts(e, s, lab),
                      "tiers": {k: t for k, (_, _, t) in d.items()}, "degraded": st[c["id"]]["degraded"],
                      "outcome": outcome, "draft_outcome": st[c["id"]].get("draft_outcome_id")})
         ms.append(st[c["id"]]["ms"])
@@ -597,7 +620,8 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
     cats = Counter(c["pack"] for c in cards if (labels.get(c["id"]) or {}).get("category"))
     q = statistics.quantiles(ms, n=20) if len(ms) > 1 else ms * 2
     result = {**metrics(rows), "outcome_agreement": outcome_agreement(rows),
-              "wrong_prefill_total": wrong_prefill_total(rows), "category_dictated_by_pack": dict(cats),
+              "wrong_prefill_total": wrong_prefill_total(rows), "by_source": by_source(rows),
+              "category_dictated_by_pack": dict(cats),
               "hassan_overrides": overrides, "override_problems": op, "skipped_cards": skipped,
               "errored_cards": errored, "latency_ms": {"p50": statistics.median(ms) if ms else None,
                                                             "p95": q[-1] if q else None},
@@ -615,6 +639,11 @@ def score(cards_p: Path, labels_p: Path, settler_p: Path, out_dir: Path, verdict
     print(f"| degraded cards | {len(result['degraded'])} | |")
     print(f"| latency p50 / p95 ms | {result['latency_ms']['p50']} / {result['latency_ms']['p95']} | |")
     print("| time to first paint | not measured offline | |\n| checker, lesions | n/a | |")
+    for src, m in result["by_source"].items():
+        print(f"\n### source: {src}\n| metric | measured |\n|---|---|")
+        print(f"| cards scored | {m['cards']} |\n| wrong values shown as read | {len(m['wrong_read'])} |")
+        print(f"| median taps to Calculate | {m['median_taps']} |\n| taps distribution | {m['taps_distribution']} |")
+        print(f"| wrong pre-filled values | {m['wrong_prefill_total']} |\n| outcome agreement | {m['outcome_agreement']} |")
     return path
 
 
@@ -633,7 +662,9 @@ def main(argv: list[str]) -> None:
                           opt("--max-cases", 400), path_opt("--cases"), path_opt("--resume"),
                           opt("--concurrency", 2)))
     elif cmd == "hassan":
-        asyncio.run(hassan(Path(argv[2]), Path(argv[3]), Path(argv[4]), opt("--concurrency", 2)))
+        asyncio.run(hassan(Path(argv[2]), Path(argv[3]), Path(argv[4]), opt("--concurrency", 2),
+                           argv[argv.index("--source") + 1] if "--source" in argv else "hassan",
+                           Path(argv[argv.index("--resume") + 1]) if "--resume" in argv else None))
     elif cmd == "brief":
         cards_p, d = Path(argv[2]), Path(argv[3])
         p = _pid(d, "label_brief", "md")
