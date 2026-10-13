@@ -40,14 +40,16 @@ class Habit(BaseModel):
     no: str = ""                      # ask: the sentence a No writes; state: the required statement
 
 
-def template_habits(st: SheetStructure, ledger: Optional[list[dict]] = None) -> list[Habit]:
-    """The sheet's habits in sheet order, questions first, under their region names. With a ledger (every production
-    caller), only habits it holds as "ask" or "state" are returned: a line nobody confirmed is inactive (Hassan H3).
-    None (the labs' hand-written sheets): every habit in the sheet."""
+def template_habits(st: SheetStructure, ledger: Optional[list[dict]], *, all_habits: bool = False) -> list[Habit]:
+    """The sheet's habits in sheet order, questions first, under their region names: only those the ledger holds as
+    "ask" or "state" (a line nobody confirmed is inactive, Hassan H3). The ledger is required; only a lab reading
+    hand-written sheets passes all_habits=True (the ledger is then ignored). ValueError on a None ledger without it."""
     from ..template_decisions import _name
     from ..template_ledger_apply import confirmed_habits
+    if ledger is None and not all_habits:
+        raise ValueError("template_habits: pass the template's ledger (all_habits=True is for labs only)")
     names = paragraph_regions(st)
-    ok = None if ledger is None else confirmed_habits(st, ledger)
+    ok = None if all_habits else confirmed_habits(st, ledger)
 
     def active(pid: str, cond: str) -> bool:
         return pid in names and (ok is None or (pid, _name(cond)) in ok)

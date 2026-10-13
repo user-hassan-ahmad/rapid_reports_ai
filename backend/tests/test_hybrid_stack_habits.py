@@ -32,7 +32,7 @@ def test_paragraph_regions_name_paragraphs_as_template_regions_does():
 
 
 def test_template_habits_reads_both_forms_under_their_region_names():
-    hs = H.template_habits(_st())   # no ledger: every habit in the sheet (the labs' hand-written sheets)
+    hs = H.template_habits(_st(), None, all_habits=True)   # the labs' hand-written sheets: every habit
     assert [(h.region, h.mode, h.condition) for h in hs] == [
         ("Liver", "ask", "a focal liver abnormality is reported"), ("Lower", "state", "a focal delta abnormality is reported")]
     assert (hs[0].question, hs[0].yes, hs[0].no) == (
@@ -86,8 +86,16 @@ async def test_ask_triggers_raises_on_incomplete_answers():
         await H.ask_triggers("MR knee", "x", ["a focal liver abnormality is reported"], transport=t)
 
 
+def test_the_ledger_is_required_unless_a_lab_asks_for_every_habit():
+    with pytest.raises(TypeError):
+        H.template_habits(_st())
+    with pytest.raises(ValueError):
+        H.template_habits(_st(), None)
+    assert len(H.template_habits(_st(), [], all_habits=True)) == 2   # the flag ignores the ledger
+
+
 async def test_met_habits_uses_the_cut_off_and_fails_soft():
-    hs = H.template_habits(_st())
+    hs = H.template_habits(_st(), None, all_habits=True)
     seen = []
 
     async def ask(scan_type, findings, conds):
