@@ -185,3 +185,15 @@ def test_save_tolerates_null_chat_turn_fields(client, auth_headers, quiet_save, 
     db_session.expire_all()
     (t,) = db_session.query(TemplateChatTurn).all()
     assert t.instruction == "shorter" and t.response == ""
+
+
+def test_stored_texts_returns_the_templates_examples_newest_first(db_session, guided_template):
+    from datetime import datetime, timedelta
+    from rapid_reports_ai.database.models import TemplateExample
+    now = datetime.utcnow()
+    for i, text in enumerate(["old report", "new report"]):
+        db_session.add(TemplateExample(template_id=guided_template.id, text=text, sha256=str(i) * 64,
+                                       source="pasted", created_at=now + timedelta(minutes=i)))
+    db_session.commit()
+    assert E.stored_texts(db_session, guided_template.id) == ["new report", "old report"]
+    assert E.stored_texts(db_session, "not-a-uuid") == []
