@@ -788,3 +788,95 @@ This task runs outside the repository, in the private folder `~/Code/rr-template
   cases (both arms) and hand-read the comparison lines.
 - [ ] **Step 3:** Write `synthetic/context_rules/REPORT.md`. Say how the synthetic set may be cleaner than
   production. Report to Hassan.
+
+---
+
+## Amendments after the independent review (2026-10-13; apply with Tasks 2-6)
+
+The Opus review returned "ready with fixes". Task 1 is built as planned (70480016). The amendments below
+**override** the task text where they differ.
+
+### A. Scratchpad path: leave findings-side rules as today (Task 2)
+
+The problem:
+- On the stack path, `template_stack._strip` removes NORMAL/NEGATIVE units. A met REPLACE that rewrote one of
+  them would lose its WITH text. In production, 7 of the 29 REPLACE rules target such lines.
+- A USE rule in a findings-role section would become a FIXED clinical assertion, e.g. "The dural venous sinuses
+  are patent."
+
+The fix: `resolve_context_rules(sheet, history, findings, ask=None, stack=False)`.
+- When `stack` is True, a rule is **left as today** if:
+  - its section's role is `findings`, or
+  - its effect is replace/suppress and its target matches (by `norm_key`) a NORMAL or NEGATIVE text of the parsed
+    structure.
+- Left rules are not passed to `apply_rules`, and their rule lines stay in the sheet.
+- Their conditions are not asked unless another applied rule shares the condition.
+- Each left rule gets a record entry `{"line", "condition", "effect", "met": None, "score": None,
+  "outcome": "left_stack"}`.
+- Implementation:
+  - add a private `_clean(sheet)` that returns the parsed `SheetStructure` or None;
+  - `rules_in_scope` uses it;
+  - add `_left_on_stack(st, rules)`, which returns the set of rule ids.
+  - To fill `line` for left rules, find the rule's raw line index the same way `apply_rules` does: the first
+    `lines` index equal to `source_lines[0]`.
+- Tests:
+  - with `stack=True`, the fixture's Liver `SUPPRESS "The liver is normal."` rule stays in the sheet as written,
+    with outcome `left_stack`, and its condition is not in the asked list;
+  - a fixture variant where a REPLACE targets the NORMAL line: the rule line stays on stack, and is applied when
+    `stack=False`;
+  - a USE rule placed in the Liver paragraph stays on stack.
+
+### B. Jev state excludes what the radiologist did not dictate (Task 2)
+
+Before building the state, drop every line of `findings` that starts with:
+- `DO NOT ASSERT (removed by the radiologist):`
+- `Assumed normal (confirmed by the radiologist):`
+- `Confirmed normal (not dictated; confirmed by the radiologist):`
+
+These are the prefixes `frontend/src/lib/hybrid-stack/regionState.ts:108-138` writes. Leading spaces are allowed.
+
+Add `jev_findings(findings) -> str`. Test: a block containing these three lines plus "Compared with CT
+02/12/2025." gives a state that holds only the dictated line. A removed sentence that would meet a condition must
+not reach Jev.
+
+### C. Slot guard keeps declared headers only (Task 3)
+
+New signature: `strip_slot_sentences(report, headers=())`. `headers` holds the sheet's declared header strings.
+
+- New `_LEAD`:
+  `re.compile(r"^\s*(?:[-*•]\s+)?(?:[*_#]*\s*[^:{}.\n]{1,40}:[*_]*\s+)?")`.
+  This matches indent, bullet and an optionally bold or `#` "Header:".
+- When every sentence of a line is removed, keep the bare lead **only** if it is a declared header. Compare by
+  stripping `*_#`, spaces and a trailing `:`, case-insensitively. Otherwise drop the whole line.
+- Add `sheet_headers(sheet) -> set[str]`. For a clean grammar sheet it returns every section `header`,
+  `alt_headers` and paragraph `header`; otherwise it returns an empty set. Implement it with `_clean`.
+- Replace the plan's guard test with these cases:
+  - `"Medication given: {medication}.\nScan quality: {quality}\nAverage HR: {rate} bpm.\nFindings: Normal."`,
+    with headers {"Findings:"}, gives `"Findings: Normal."` and n == 3;
+  - `"**Comparison:** Comparison made with previous CT dated {date}. Stable."` gives
+    `"**Comparison:** Stable."`;
+  - `"Comparison: Comparison made with previous CT dated {date}."`, with headers {"Comparison:"}, gives
+    `"Comparison:"`;
+  - without headers it gives `""` (the line is dropped);
+  - `"- Note made of previous {study}."` is dropped;
+  - the plan's mixed "Findings: The liver is normal. A {size} cyst. No ascites." case still works.
+- Task 4 wiring: `strip_slot_sentences(out["report_content"], sheet_headers(sheet))`. Pass the stored sheet.
+
+### D. Task 4 wiring passes `stack`
+
+Call `resolve_context_rules(sheet, history, findings, stack=stack is not None)`.
+
+Add a direct test: run `stack_brief` on the resolved sheet of the Task 4 `RULED` fixture, with a met condition.
+It contains no `RULE WHEN [context: the dictation names` line, and it contains `## Decided for This Case`.
+
+### E. Task 5 count
+
+`--deselect tests/test_provider_key_routing.py` removes 2 tests. Expect about 3848 + new tests − 1 passing.
+
+### F. Task 6 lab
+
+- `--before` must also patch `template_lean.strip_slot_sentences` to `lambda r, h=(): (r, 0)`.
+- Cancel the plain arm's `options_job` instead of awaiting it.
+- The report must note that `e2e.py` calls `assumed(...)` without `suppressions` or `clinical_history`, unlike
+  production; this affects both arms equally.
+- Report p50/p95 of `lat.rules_s`.
