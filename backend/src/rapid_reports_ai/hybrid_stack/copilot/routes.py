@@ -35,13 +35,13 @@ from .fetch import OVERVIEW, resolve_guideline
 from .library import bundle as L
 from .library import describe as D
 from .library import preview_cache as PC
-from .library.pack_preview import (PACK_BRANCH, REFERENCE_BRANCH, Settlement, as_entry, exam_presets, failed, finish,
-                                   settle_pack)
+from .library.pack_preview import (PACK_BRANCH, REFERENCE_BRANCH, Settlement, as_entry, calculate, exam_presets,
+                                   failed, finish, settle_pack)
 from .library.schema import FACTS
 from .matcher import Finding, match, match_other
 from .preview import preview
 from .recs import RecsResult, suggest
-from .types import Card, Entry, GuidelineContent, Preview
+from .types import Calculation, Card, Entry, GuidelineContent, Preview
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/canvas/stack/guidelines", tags=["stack-copilot"])
@@ -208,6 +208,23 @@ class OpenRequest(BaseModel):
         return _check_patient(v)
 
 
+class CalculateRequest(OpenRequest):
+    values: dict[str, str] = Field(default_factory=dict)   # every value the card shows, in display form
+
+    @field_validator("values")
+    @classmethod
+    def _cap_values(cls, v: dict[str, str]) -> dict[str, str]:
+        if len(v) > 40 or any(len(k) > 60 or len(x) > 200 for k, x in v.items()):
+            raise ValueError("values: at most 40 inputs, ids up to 60 and values up to 200 characters")
+        return v
+
+
+class CalculateResult(BaseModel):
+    calculation: Calculation | None = None
+    ms: int = 0
+    error: str | None = None      # "not a pack"; "needs modality" (the card is read-only on this study)
+
+
 class OpenResult(BaseModel):
     entry: Entry | None = None
     preview: Preview | None = None
@@ -328,21 +345,37 @@ def _off_modality(card: Card):
     return (e, as_entry(e, lib.sources(e.key))) if e is not None else None
 
 
+async def _settlement(e, req: OpenRequest, opened: bool, start: bool = True) -> Settlement:
+    """The card's settlement: the cached task (started by /match) or, when `start`, a new one. Bounded; any error or a
+    timeout gives a failed settlement. Without `start` (Calculate) a cold cache gives an empty settlement: no model
+    or Jev call is ever made, and the sent values are only labelled answered."""
+    findings, history = req.findings[:M.DICTATION_MAX], req.clinical_history[:2000]
+    finding = req.finding or req.card.finding     # the unit sent with the request, else the one /match gave the card
+    k = PC.key(e.key, finding, findings, history)
+    try:
+        if start:
+            # an answer (/preview) never settles again, even after a failure; a fresh /open may retry a failed one once
+            task = PC.start(k, lambda: settle_pack(e, findings, history, finding=finding), retry=opened,
+                            fallback=lambda: Settlement(failed=True))
+        else:
+            task = PC.peek(k)
+            if task is None:
+                return Settlement()
+        return await asyncio.wait_for(asyncio.shield(task), PREVIEW_TIMEOUT_S)
+    except Exception as ex:   # TimeoutError included
+        logger.warning("[copilot.routes] pack settlement %s", type(ex).__name__)   # no message: it may hold dictation
+        return Settlement(failed=True)
+
+
 async def _pack_result(pack, req: OpenRequest, t0: float, opened: bool) -> OpenResult:
     """Offline and engine-decided: never a fetch. The settlement comes from the cache (started by /match) or starts
     now; the answers then re-run only the engine over it. Fail open, bounded, as _branch_and_preview."""
     e, view = pack
     sources = L.get().sources(e.key)
-    findings, history = req.findings[:M.DICTATION_MAX], req.clinical_history[:2000]
-    finding = req.finding or req.card.finding     # the unit sent with the request, else the one /match gave the card
-    k = PC.key(e.key, finding, findings, history)
+    settled = await _settlement(e, req, opened)
     try:
-        # an answer (/preview) never settles again, even after a failure; a fresh /open may retry a failed one once
-        task = PC.start(k, lambda: settle_pack(e, findings, history, finding=finding), retry=opened,
-                        fallback=lambda: Settlement(failed=True))
-        settled = await asyncio.wait_for(asyncio.shield(task), PREVIEW_TIMEOUT_S)
         prev = finish(e, settled, req.answered, req.patient, sources, presets=exam_presets(e, req.card.finding_id))
-    except Exception as ex:   # TimeoutError included
+    except Exception as ex:
         logger.warning("[copilot.routes] pack preview %s", type(ex).__name__)   # no message: it may hold dictation
         prev = failed(e)
     return OpenResult(entry=_public(view), preview=prev, branch=PACK_BRANCH, reference=D.reference_view(e, sources),
@@ -429,6 +462,27 @@ async def copilot_open(req: OpenRequest, user: User = Depends(get_current_user))
         return OpenResult(ms=_ms(t0), error="unavailable")
     branch, prev = await _branch_and_preview(card, entry, req)
     return OpenResult(entry=_public(entry), preview=prev, branch=branch, ms=_ms(t0))
+
+
+@router.post("/calculate", response_model=CalculateResult)
+async def copilot_calculate(req: CalculateRequest, user: User = Depends(get_current_user)):
+    """Spec §7.7, §7.10: Calculate over exactly the values the card shows, and nothing else. No model or Jev call: a
+    cached settlement (and the exam presets and shared answers) only labels each value's state; the engine never reads
+    them. A card that needs another modality is read-only: never calculated."""
+    _require()
+    t0 = time.perf_counter()
+    card = req.card.card()
+    if card.needs_modality:
+        return CalculateResult(ms=_ms(t0), error="needs modality")
+    pack = _pack(card.key)
+    if pack is None:
+        return CalculateResult(ms=_ms(t0), error="not a pack")
+    e, _ = pack
+    lib = L.get()
+    settled = await _settlement(e, req, opened=False, start=False)
+    return CalculateResult(calculation=calculate(e, settled, req.values, req.patient, lib.sources(e.key),
+                                                 lib.version(), presets=exam_presets(e, card.finding_id)),
+                           ms=_ms(t0))
 
 
 @router.post("/preview", response_model=OpenResult)

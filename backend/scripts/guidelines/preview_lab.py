@@ -3,9 +3,11 @@ Each case runs live (Qwen + Jev) through the preview cache and pack_preview.sett
 
 Ground truth: every case carries `truth`, a value for every input of its pack (as a radiologist would answer it).
 After the preview, every asked input is filled from `truth` (repeatedly, as answers open new inputs) and the card is
-evaluated by the engine alone. Every settled value is compared with `truth`: one that disagrees is a WRONG VALUE.
-The outcome the preview proposes before any answer, and the final outcome after the fill, are compared with
-`expect_final` (the engine on `truth` alone): a mismatch is a WRONG PROPOSAL.
+evaluated by the engine alone. Every drafted value is compared with `truth`: one that disagrees is a WRONG VALUE,
+counted by its tier (spec §7.5): a wrong READ value fails the gate; a wrong PRE-FILLED value is reported (it is shown
+highlighted, with its quote and why, for the radiologist to check). The draft outcome before any answer
+(`draft_outcome`, "on these values"), and the final outcome after the fill, are compared with `expect_final` (the
+engine on `truth` alone): a mismatch is a WRONG PROPOSAL.
 
 Latency scenarios, fixed before any run, each reported separately (milliseconds, over every row; degraded rows
 (a model or Jev failure or timeout) are also reported apart, and a degraded (b) open counts as over the bar):
@@ -13,7 +15,7 @@ Latency scenarios, fixed before any run, each reported separately (milliseconds,
   (b) open 2 s after /match, with the prewarm started by /match still running or done;
   (c) open after more dictation: prewarmed at /match, then the dictation grows before open (a new key: a MISS);
   (d) the answer path: each fill step (engine only; no model, no Jev).
-Gate: 0 wrong values, 0 wrong proposals, and (b) p95 under 2000 ms. If (b) passes and (a) does not, the gate
+Gate: 0 wrong read values, 0 wrong proposals, and (b) p95 under 2000 ms. If (b) passes and (a) does not, the gate
 passes with "cold open slow" flagged for Hassan.
 
 Friction: the asks per card before any answer (every input in `missing`, eligibility included). At most 2 runs;
@@ -62,8 +64,10 @@ def _facts(e, settled: dict[str, str]) -> dict[str, str]:
 
 
 def _state(e, t, missing) -> str:
+    """As the card works it out (pack_preview._build): an assumed or still-unknown eligibility input is check_first."""
     elig = {i.id for i in e.inputs if i.role == "eligibility"}
-    return "does_not_apply" if t.outcome == DOES_NOT_APPLY else "check_first" if elig & set(missing) else "applies"
+    return ("does_not_apply" if t.outcome == DOES_NOT_APPLY
+            else "check_first" if t.assumed or elig & set(missing) else "applies")
 
 
 def _same(e, k: str, a: str, b: str) -> bool:
@@ -98,7 +102,7 @@ def check(lib: Library, cases: list[dict]) -> int:
                 continue
             given[k] = x
         shared[c["name"]] = _facts(e, c["expect_settled"])
-        t = engine.evaluate(e, given)
+        t = engine.evaluate(e, given, assume_eligible=True)      # as the card drafts (Hassan 2026-10-13)
         missing = list(t.needed)
         got = (t.outcome, missing, _state(e, t, missing))
         want = (c["expect_outcome"], c["expect_missing"], c["expect_state"])
@@ -190,10 +194,12 @@ async def one(lib: Library, c: dict, shared: dict) -> dict:
     shared[c["name"]] = {x.fact: x.value for x in p.settled if x.fact and not x.by}   # an exam preset is not a patient fact
     truth = c["truth"]
     answered = c.get("answered", {})
+    tier = {d.input: d.state for d in p.draft}           # read or prefilled for a drafted value
     model_settled = {x.input: (x.value, x.quote) for x in p.settled if x.input not in answered and x.quote}
-    wrong_values = {k: (v, q, truth[k]) for k, (v, q) in model_settled.items() if not _same(e, k, v, truth[k])}
+    wrong_values = {k: (v, q, truth[k], tier.get(k, "")) for k, (v, q) in model_settled.items()
+                    if not _same(e, k, v, truth[k])}
     final, steps, filled = _fill(e, s, c, patient)
-    outcome = (p.trace or {}).get("outcome")
+    outcome = (p.trace or {}).get("outcome")             # the draft outcome's id (draft_outcome, or the exclusion)
     final_outcome = (final.trace or {}).get("outcome")
     want = c["expect_final"]
     want_settled, may = c["expect_settled"], set(c.get("accept_missing", []))
@@ -226,12 +232,14 @@ async def main(out_dir: Path) -> int:
     lat = {x: [r[f"ms_{x}"] for r in rows] for x in "abc"}
     lat["d"] = [m for r in rows for m in r["ms_d"]]
     gate_b = [max(r["ms_b"], GATE_B_MS) if r["degraded_b"] else r["ms_b"] for r in rows]
-    wrong_values = sum(len(r["wrong_values"]) for r in rows)
+    wrong = Counter(w[3] for r in rows for w in r["wrong_values"].values())
+    wrong_values, wrong_prefilled = wrong["read"], wrong["prefilled"]
     wrong_proposals = sum(r["wrong_proposal"] for r in rows)
     b95, a95 = _pct(gate_b, 0.95), _pct(lat["a"], 0.95)
     passed = wrong_values == 0 and wrong_proposals == 0 and b95 < GATE_B_MS
     print(f"{len(rows)} cases -> {out}")
-    print(f"GATE: {'PASS' if passed else 'FAIL'}  wrong values {wrong_values}  wrong proposals {wrong_proposals}  "
+    print(f"GATE: {'PASS' if passed else 'FAIL'}  wrong read values {wrong_values} (pre-filled, reported: "
+          f"{wrong_prefilled})  wrong proposals {wrong_proposals}  "
           f"(b) p95 {b95} ms, degraded (b) counted over the bar (gate < {GATE_B_MS})"
           + ("  [cold open slow: flagged for Hassan]" if passed and a95 >= GATE_B_MS else ""))
     for x, name in (("a", "cold open (MISS)"), ("b", "open 2 s after /match"), ("c", "open after more dictation"),

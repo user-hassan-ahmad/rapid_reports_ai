@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from rapid_reports_ai.hybrid_stack.copilot.library.pack_preview import Settlement
+from rapid_reports_ai.hybrid_stack.copilot.library.pack_preview import Drafted, Settlement
 from rapid_reports_ai.hybrid_stack.copilot.library.schema import InputValue
 
 spec = importlib.util.spec_from_file_location(
@@ -26,21 +26,21 @@ def test_sampling_caps_each_pack_and_the_total():
 
 
 def test_an_inferred_value_is_wrong_and_a_stated_one_is_ok(toy_entry):
-    s = Settlement(values={"kind": (InputValue(value="solid"), "solid"), "risk": (InputValue(value="high"), "x")})
+    s = Settlement(values={"kind": Drafted(InputValue(value="solid"), "solid", "read"), "risk": Drafted(InputValue(value="high"), "x", "read")})
     v = RL.verdicts(toy_entry, s, _label(kind=("solid", None), size=("7", None), risk=(None, "low"),
                                          margin=(None, None)))
     assert v == {"kind": "ok", "risk": "wrong", "size": "asked", "margin": "asked"}
 
 
 def test_taps_count_answers_and_corrections_never_the_calculate_tap(toy_entry):
-    s = Settlement(values={"kind": (InputValue(value="subsolid"), "subsolid")})       # wrong: truth is solid
+    s = Settlement(values={"kind": Drafted(InputValue(value="subsolid"), "subsolid", "read")})       # wrong: truth is solid
     n, outcome = RL.taps(toy_entry, s, _label(kind=("solid", None), size=("7", None), risk=(None, "high"),
                                               margin=(None, None)), patient={})
     assert (n, outcome) == (3, "ct6")          # correct kind, answer size, answer risk (assumed)
 
 
 def test_a_wrong_draft_is_cleared_before_the_engine_runs_and_the_original_is_untouched(toy_entry):
-    s = Settlement(values={"kind": (InputValue(value="subsolid"), "subsolid")})
+    s = Settlement(values={"kind": Drafted(InputValue(value="subsolid"), "subsolid", "read")})
     lab = _label(kind=(None, None), size=("7", None), risk=(None, "high"), margin=(None, None))  # kind inferred
     seen = []
     real = RL.finish
@@ -99,7 +99,7 @@ def test_a_label_value_the_pack_cannot_take_becomes_a_boundary_item(toy_entry):
 
 
 def test_spot_rows_list_flagged_and_disagreeing_items_only(toy_entry):
-    s = Settlement(values={"kind": (InputValue(value="solid"), "solid"), "size": (InputValue(value=8.0), "8 mm")})
+    s = Settlement(values={"kind": Drafted(InputValue(value="solid"), "solid", "read"), "size": Drafted(InputValue(value=8.0), "8 mm", "read")})
     lab = _label(kind=("solid", None), size=("7", None), risk=(None, "low"), margin=(None, None))
     lab["inputs"]["risk"]["boundary"] = True
     rows = RL.spot_rows(toy_entry, {"id": "c1", "pack": "toy-nodule"}, s, lab)
@@ -160,6 +160,25 @@ def test_run_records_a_failing_card_by_type_and_carries_on(toy_entry, tmp_path, 
     cp.write_text(json.dumps(CARDS))
     out = asyncio.run(RL.run(cp, tmp_path))
     assert json.loads(out.read_text()) == [{"card": "c1", "error": "RuntimeError"}]
+
+
+def test_run_records_the_draft_outcome_now_that_packs_never_propose(toy_entry, tmp_path, monkeypatch):
+    """Preflight row 11: proposal is None for every pack card; run records draft_outcome, so the lab keeps measuring."""
+    import asyncio
+    import json
+
+    async def settle(e, findings, history, finding=""):
+        return Settlement(values={"kind": Drafted(InputValue(value="solid"), "solid", "read"),
+                                  "size": Drafted(InputValue(value=7.0), "7 mm", "read"),
+                                  "risk": Drafted(InputValue(value="high"), "Smoker", "prefilled", ["why"])})
+    monkeypatch.setattr(RL, "_lib", lambda: _lib_with(toy_entry))
+    monkeypatch.setattr(RL, "settle_pack", settle)
+    cp = tmp_path / "cards.json"
+    cp.write_text(json.dumps(CARDS))
+    rec = json.loads(asyncio.run(RL.run(cp, tmp_path)).read_text())[0]
+    assert rec["draft_outcome"]["recommendation"] == "CT at 6 months" and rec["draft_outcome_id"] == "ct6"
+    assert rec["drafts"]["risk"]["tier"] == "prefilled" and rec["drafts"]["risk"]["why"] == ["why"]
+    assert RL._settlement(rec).values["risk"] == Drafted(InputValue(value="high"), "Smoker", "prefilled", ["why"])
 
 
 def _export(ids):
@@ -410,7 +429,7 @@ def _aaa_label(sex="male"):
 
 
 def test_an_exam_card_gets_live_presets_and_they_count_as_prefilled_not_asked():
-    e, s = _aaa(), Settlement(values={"diameter_cm": (InputValue(value=2.4), "aorta 2.4 cm")})
+    e, s = _aaa(), Settlement(values={"diameter_cm": Drafted(InputValue(value=2.4), "aorta 2.4 cm", "read")})
     exam, finding = {"id": "c:exam:aaa", "pack": e.key, "trigger": "exam"}, {"id": "c:u1:aaa", "trigger": "finding"}
     pre = RL.card_presets(e, exam)
     assert pre == dict(e.exam_presets) and RL.card_presets(e, finding) == {}
@@ -421,7 +440,9 @@ def test_an_exam_card_gets_live_presets_and_they_count_as_prefilled_not_asked():
     assert {k: v[k] for k in ("screening_programme", "sex", "previous_aaa_treatment")} == dict.fromkeys(
         ("screening_programme", "sex", "previous_aaa_treatment"), "ok")
     assert RL.taps(e, s, _aaa_label(), {}, presets=pre) == (1, "no_aaa")       # only prior_programme_scan answered
-    assert RL.taps(e, s, _aaa_label(), {}) == (4, "no_aaa")                    # no presets: the 3 asked as well
+    assert RL.taps(e, s, _aaa_label(), {}) == (1, "no_aaa")      # no presets: eligibility assumed in scope (Hassan
+    # 2026-10-13), and the truth agrees, so no tap; an assumption the truth contradicts is one correction tap:
+    assert RL.taps(e, s, _aaa_label(sex="female"), {}) == (2, "does_not_apply")   # prior scan asked, sex corrected
     assert RL.verdicts(e, s, _aaa_label(sex="female"), pre)["sex"] == "wrong"   # a preset the truth contradicts
     assert RL.taps(e, s, _aaa_label(sex="female"), {}, presets=pre) == (1, "does_not_apply")  # correct sex; excluded
 
@@ -432,7 +453,7 @@ def test_spot_rows_and_run_use_the_cards_presets(monkeypatch, tmp_path):
     e = _aaa()
 
     async def settle(e_, findings, history, finding=""):
-        return Settlement(values={"diameter_cm": (InputValue(value=2.4), "aorta 2.4 cm")})
+        return Settlement(values={"diameter_cm": Drafted(InputValue(value=2.4), "aorta 2.4 cm", "read")})
     monkeypatch.setattr(RL, "settle_pack", settle)
     monkeypatch.setattr(RL, "_lib", lambda: _lib_with(e))
     cards = [{"id": "c:exam:aaa", "pack": e.key, "trigger": "exam", "findings": "Aorta 2.4 cm.",

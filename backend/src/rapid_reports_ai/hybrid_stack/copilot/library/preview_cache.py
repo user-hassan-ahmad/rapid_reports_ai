@@ -93,6 +93,15 @@ def start(k: tuple, make: Callable[[], Coroutine[Any, Any, Any]], prewarm: bool 
     return t
 
 
+def peek(k: tuple) -> asyncio.Task | None:
+    """The cached task for this key while it is usable, never a new one: Calculate (spec §7.7) starts no settle."""
+    hit = _C.get(k)
+    if hit is None or not _usable(hit[0], asyncio.get_running_loop()):
+        return None
+    _C.move_to_end(k)
+    return hit[0]
+
+
 def clear() -> None:
     """Forget every entry and running task (tests; the tasks themselves are left to finish or be collected)."""
     _C.clear()

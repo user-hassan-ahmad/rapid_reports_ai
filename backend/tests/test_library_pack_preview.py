@@ -46,6 +46,15 @@ def _model(monkeypatch, *items, prompts=None):
     monkeypatch.setattr(PP, "_call", call)
 
 
+def _states(out) -> dict[str, str]:
+    """input -> its value state on the draft card (spec §7.5)."""
+    return {d.input: d.state for d in out.draft}
+
+
+def _why(out, k: str) -> list[str]:
+    return next(d.why for d in out.draft if d.input == k)
+
+
 KIND = {"input": "kind", "value": "solid", "quote": "solid"}
 SIZE = {"input": "size", "value": 7, "quote": "7 mm"}
 
@@ -54,17 +63,17 @@ async def test_settled_inputs_reach_a_proposal_copied_from_the_entry(toy_entry, 
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
     out = await PP.preview_pack(toy_entry, FINDINGS, "Smoker.", {}, finding=FINDINGS)
     assert [(s.input, s.value) for s in out.settled] == [("kind", "solid"), ("size", "7 mm"), ("risk", "high")]
-    assert out.missing == [] and out.proposal.recommendation == "CT at 6 months"
-    assert out.proposal.classification == "Toy 2020 · solid nodule 6-8 mm, high risk"
-    assert out.proposal.line == "Toy 2020: solid nodule 6-8 mm, high risk."
+    assert out.missing == [] and out.draft_outcome.recommendation == "CT at 6 months"
+    assert out.draft_outcome.classification == "Toy 2020 · solid nodule 6-8 mm, high risk"
+    assert out.draft_outcome.line == "Toy 2020: solid nodule 6-8 mm, high risk."
     assert out.trace["outcome"] == "ct6" and jev["calls"] == 4     # one batch per scope, then one per enum quote
-    assert out.proposal.normal is False
+    assert out.draft_outcome.normal is False
 
 
 async def test_missing_input_shows_possible_outcomes(toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND, SIZE)
     out = await PP.preview_pack(toy_entry, FINDINGS, "", {}, finding=FINDINGS)
-    assert out.proposal is None and out.missing == ["risk"]
+    assert out.draft_outcome is None and out.missing == ["risk"]
     assert out.possible == ["solid nodule 6-8 mm, … risk"] * 2      # ct12 and ct6 render alike while risk is unknown
 
 
@@ -80,21 +89,22 @@ async def test_the_radiologists_answer_wins(toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
     out = await PP.preview_pack(toy_entry, FINDINGS, "Smoker.", {"risk": "low"}, finding=FINDINGS)
     risk = next(s for s in out.settled if s.input == "risk")
-    assert (risk.value, risk.quote) == ("low", "") and out.proposal.recommendation == "CT at 12 months"
+    assert (risk.value, risk.quote) == ("low", "") and out.draft_outcome.recommendation == "CT at 12 months"
 
 
 async def test_band_label_answer(toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND)
     out = await PP.preview_pack(toy_entry, "solid nodule", "", {"size": "6-8 mm", "risk": "low"}, finding="solid nodule")
-    assert out.proposal.recommendation == "CT at 12 months"
+    assert out.draft_outcome.recommendation == "CT at 12 months"
 
 
-async def test_unconfirmed_values_are_asked(toy_entry, monkeypatch, jev):
+async def test_unconfirmed_values_are_prefilled_never_read(toy_entry, monkeypatch, jev):
     jev["fail"] = True
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "heavy smoker"})
     out = await PP.preview_pack(toy_entry, FINDINGS, "Heavy smoker.", {}, finding=FINDINGS)
-    assert "kind" in out.missing and out.proposal is None and out.degraded is True
-    assert out.settled == []                                   # a number is put to Jev too: a failed check asks it
+    assert out.degraded is True and out.proposal is None                # a failed check reads nothing (spec §7.5)
+    assert {k: _states(out)[k] for k in ("kind", "size", "risk")} == dict.fromkeys(("kind", "size", "risk"), "prefilled")
+    assert all(PP.WHY_NO_CHECK in _why(out, k) for k in ("kind", "size", "risk"))
 
 
 async def test_model_failure_uses_answers_only(toy_entry, monkeypatch, jev):
@@ -102,18 +112,18 @@ async def test_model_failure_uses_answers_only(toy_entry, monkeypatch, jev):
         raise TimeoutError("slow")
     monkeypatch.setattr(PP, "_call", boom)
     out = await PP.preview_pack(toy_entry, FINDINGS, "", {"kind": "subsolid"}, finding=FINDINGS)
-    assert out.proposal.recommendation == "CT in 12 months"
+    assert out.draft_outcome.recommendation == "CT in 12 months"
     assert out.degraded is True
 
 
 async def test_entry_defect_gives_no_proposal(toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND, SIZE)
 
-    def broken(entry, given):
+    def broken(entry, given, **kw):
         raise E.EvaluationError("two cases hold")
     monkeypatch.setattr(PP.engine, "evaluate", broken)
     out = await PP.preview_pack(toy_entry, FINDINGS, "", {}, finding=FINDINGS)
-    assert out.proposal is None
+    assert out.draft_outcome is None
 
 
 def test_as_entry_shows_inputs_as_choices(toy_entry):
@@ -137,7 +147,7 @@ async def test_a_settled_outcome_that_cites_an_unknown_input_is_not_proposed(toy
     e.outcome("subsolid").classification = "subsolid nodule, {risk} risk"     # risk is never asked for subsolid
     _model(monkeypatch)
     out = await PP.preview_pack(e, FINDINGS, "", {"kind": "subsolid"}, finding=FINDINGS)
-    assert out.proposal is None
+    assert out.draft_outcome is None
 
 
 def test_an_out_of_range_number_is_dropped_so_the_input_is_asked(toy):
@@ -184,7 +194,7 @@ async def test_an_unbounded_preview_says_so_and_asks_every_reaching_input(monkey
            {"input": "benign_features", "value": False, "quote": "no benign features"},
            {"input": "prior_study", "value": False, "quote": "no prior"})
     out = await PP.preview_pack(e, "10 mm solid nodule, no benign features, no prior imaging.", "", {}, finding="10 mm solid nodule, no benign features, no prior imaging.")
-    assert out.proposal is None and out.bounded is False and BTS_BROCK <= set(out.missing)
+    assert out.draft_outcome is None and out.bounded is False and BTS_BROCK <= set(out.missing)
 
 
 async def test_the_preview_carries_the_waiting_inputs(toy_entry, monkeypatch, jev):
@@ -238,8 +248,8 @@ async def test_the_proposal_carries_rendered_caveats_and_the_fired_citations(toy
     e = _with_caveat(toy, "Only for {risk} risk adults.")
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
     out = await PP.preview_pack(e, FINDINGS, "Smoker.", {}, TOY_SOURCES, finding=FINDINGS)
-    assert out.proposal.caveats == ["Only for high risk adults."]
-    cites = out.proposal.citations
+    assert out.draft_outcome.caveats == ["Only for high risk adults."]
+    cites = out.draft_outcome.citations
     assert {**P3, "step": "plan"} in cites and {**P2, "step": "size_band"} in cites
     assert {**P2, "step": "outcome"} in cites
     assert all(c["title"] == "Toy guideline" for c in cites)
@@ -249,7 +259,7 @@ async def test_a_caveat_with_an_unfilled_placeholder_blocks_the_proposal(toy, mo
     e = _with_caveat(toy, "Only for {margin} margins.")
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
     out = await PP.preview_pack(e, FINDINGS, "Smoker.", {}, TOY_SOURCES, finding=FINDINGS)
-    assert out.proposal is None
+    assert out.draft_outcome is None
 
 
 async def test_each_missing_input_is_asked_with_its_definition_outcomes_and_citations(toy_entry, monkeypatch, jev):
@@ -305,7 +315,7 @@ async def test_a_lesion_value_quoted_from_another_finding_is_asked(toy_entry, mo
 async def test_a_patient_value_may_quote_the_history(toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
     out = await PP.preview_pack(toy_entry, TWO, "Smoker.", {}, finding=FINDING)
-    assert out.proposal.recommendation == "CT at 6 months"
+    assert out.draft_outcome.recommendation == "CT at 6 months"
 
 
 async def test_without_a_finding_lesion_inputs_are_asked_never_read_from_the_dictation(toy_entry, monkeypatch, jev):
@@ -347,7 +357,7 @@ async def test_a_quote_claim_settles_at_point_eight(toy_entry, monkeypatch, jev,
     jev["scores"] = {"The QUOTE states Nodule type": verdict}
     _model(monkeypatch, KIND)
     out = await PP.preview_pack(toy_entry, FINDING, "", {}, finding=FINDING)
-    assert ("kind" in {x.input for x in out.settled}) is settles
+    assert (_states(out)["kind"] == "read") is settles and (PP.WHY_UNCONFIRMED in _why(out, "kind")) is not settles
 
 
 @pytest.mark.parametrize("key,finding,inp,value,quote,claim", [
@@ -364,23 +374,25 @@ async def test_lab_weak_quote_settles_are_asked_when_the_quote_does_not_state_th
     jev["scores"] = {claim: 0.6}
     _model(monkeypatch, {"input": inp, "value": value, "quote": quote})
     out = await PP.preview_pack(_pack(key), finding, "", {}, finding=finding)
-    assert inp not in {x.input for x in out.settled} and inp in out.missing
+    assert _states(out)[inp] == "prefilled" and PP.WHY_UNCONFIRMED in _why(out, inp)
     state = next(p["state"] for p in jev["payloads"] if claim in str(p["questions"]))
     assert state.split("\n")[1] == quote                       # the quote alone is the evidence, not the finding
 
 
-async def test_a_value_jev_does_not_find_stated_is_asked(toy_entry, monkeypatch, jev):
+async def test_a_value_jev_does_not_find_stated_is_prefilled(toy_entry, monkeypatch, jev):
     jev["score"] = P.SETTLED_MIN - 0.1
     _model(monkeypatch, KIND, SIZE)
     out = await PP.preview_pack(toy_entry, FINDING, "", {}, finding=FINDING)
-    assert out.settled == [] and "kind" in out.missing and out.degraded is False
+    assert _states(out)["kind"] == _states(out)["size"] == "prefilled" and out.degraded is False
+    assert PP.WHY_UNCONFIRMED in _why(out, "kind") and PP.WHY_UNCONFIRMED in _why(out, "size")
 
 
-async def test_a_jev_failure_on_one_scope_asks_only_that_scopes_values(toy_entry, monkeypatch, jev):
+async def test_a_jev_failure_on_one_scope_prefills_only_that_scopes_values(toy_entry, monkeypatch, jev):
     jev["fail_if"] = "DEFINITION of Patient risk"
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"})
     out = await PP.preview_pack(toy_entry, FINDING, "Smoker.", {}, finding=FINDING)
-    assert {s.input for s in out.settled} == {"kind", "size"} and out.missing == ["risk"] and out.degraded is True
+    assert _states(out)["kind"] == _states(out)["size"] == "read" and out.degraded is True
+    assert _states(out)["risk"] == "prefilled" and PP.WHY_NO_CHECK in _why(out, "risk")
 
 
 @pytest.mark.parametrize("model_value,quote,want", [
@@ -414,7 +426,7 @@ async def test_answers_override_settled_values_and_never_skip_the_one_read(toy_e
     _model(monkeypatch, KIND, SIZE, {"input": "risk", "value": "high", "quote": "smoker"}, prompts=prompts)
     out = await PP.preview_pack(toy_entry, FINDING, "Smoker.", {"kind": "solid", "size": "7", "risk": "low",
                                                                 "margin": "smooth"}, finding=FINDING)
-    assert out.proposal.recommendation == "CT at 12 months" and out.degraded is False and len(prompts) == 1
+    assert out.draft_outcome.recommendation == "CT at 12 months" and out.degraded is False and len(prompts) == 1
     assert {s.input: s.quote for s in out.settled}["risk"] == ""                # the answer, not the quote
 
 
@@ -430,24 +442,54 @@ def _elig(toy):
     return Entry.model_validate(_eligible_toy(toy))
 
 
-async def test_an_unknown_eligibility_input_puts_the_card_in_check_first(toy, monkeypatch, jev):
+async def test_an_unknown_eligibility_input_is_assumed_in_scope_and_the_draft_outcome_shown(toy, monkeypatch, jev):
+    """Hassan 2026-10-13: the card never leads with eligibility; it drafts for an eligible patient, visibly."""
     _model(monkeypatch, KIND, SIZE)
     out = await PP.preview_pack(_elig(toy), FINDING, "", {"risk": "high"}, finding=FINDING)
-    assert out.state == "check_first" and out.proposal is None and out.missing == ["known_cancer"]
-    assert out.asks[0]["role"] == "eligibility" and out.asks[0]["fact"] == "known_primary_cancer"
+    assert out.state == "check_first" and out.assumed_eligible is True and out.assumptions == ["known_cancer"]
+    assert out.draft_outcome.recommendation == "CT at 6 months" and out.missing == [] and out.proposal is None
+    d = next(x for x in out.draft if x.input == "known_cancer")
+    assert (d.state, d.value, d.why, d.quote) == ("assumed", "No", [PP.WHY_ASSUMED], "")
+    assert "known_cancer" not in {x.input for x in out.settled}                 # never stated, never settled
+    assert _states(out)["kind"] == _states(out)["size"] == "read"               # the read values stay on the card
 
 
-async def test_eligibility_asks_come_before_clinical_asks(toy, monkeypatch, jev):
+async def test_an_assumed_eligibility_input_is_not_asked_and_the_clinical_asks_remain(toy, monkeypatch, jev):
     _model(monkeypatch, KIND, SIZE)
     out = await PP.preview_pack(_elig(toy), FINDING, "", {}, finding=FINDING)
-    assert out.missing == ["known_cancer", "risk"] and [a["input"] for a in out.asks] == out.missing
+    assert out.missing == ["risk"] and [a["input"] for a in out.asks] == out.missing
+    assert out.assumptions == ["known_cancer"] and out.state == "check_first"
+
+
+async def test_a_read_eligibility_value_is_never_an_assumption(toy, monkeypatch, jev):
+    e = _elig(toy)
+    base = {"kind": PP.Drafted(PP.InputValue(value="solid"), "solid", "read"),
+            "size": PP.Drafted(PP.InputValue(value=7.0), "7 mm", "read")}
+    excluded = PP.finish(e, PP.Settlement(values={**base, "known_cancer": PP.Drafted(
+        PP.InputValue(value=True), "known lung cancer", "prefilled", [PP.WHY_KIND])}), {"risk": "high"})
+    assert excluded.state == "does_not_apply" and excluded.assumptions == [] and excluded.draft_outcome is None
+    assert excluded.exclusion is not None and _states(excluded)["kind"] == "read"     # the read values stay
+    eligible = PP.finish(e, PP.Settlement(values={**base, "known_cancer": PP.Drafted(
+        PP.InputValue(value=False), "no history of cancer", "prefilled", [PP.WHY_KIND])}), {"risk": "high"})
+    assert eligible.state == "applies" and eligible.assumptions == [] and eligible.assumed_eligible is False
+    assert _states(eligible)["known_cancer"] == "prefilled" and eligible.draft_outcome.recommendation == "CT at 6 months"
+
+
+def test_an_assumed_value_sent_back_counts_as_sent_and_stays_assumed(toy):
+    e = _elig(toy)
+    s = PP.Settlement(values={"kind": PP.Drafted(PP.InputValue(value="solid"), "solid", "read"),
+                              "size": PP.Drafted(PP.InputValue(value=7.0), "7 mm", "read")})
+    c = PP.calculate(e, s, {"kind": "solid", "size": "7 mm", "risk": "high", "known_cancer": "No"}, None, [], "b1")
+    assert c.result.recommendation == "CT at 6 months" and {v.input: v.state for v in c.values}["known_cancer"] == "assumed"
+    c = PP.calculate(e, s, {"kind": "solid", "size": "7 mm", "risk": "high"}, None, [], "b1")      # not sent: unknown
+    assert c.result is None and c.outcome is None and "known_cancer" in c.needed
 
 
 async def test_a_shared_patient_answer_excludes_with_a_reason_and_no_apply(toy, monkeypatch, jev):
     _model(monkeypatch, KIND, SIZE)
     out = await PP.preview_pack(_elig(toy), FINDING, "", {}, finding=FINDING,
                                 patient={"known_primary_cancer": "Yes"})
-    assert out.state == "does_not_apply" and out.proposal is None
+    assert out.state == "does_not_apply" and out.draft_outcome is None
     assert out.exclusion.classification == "Toy 2020 · the toy guideline does not apply"
     assert out.exclusion.citations and out.exclusion.recommendation == "Manage per the clinical context."
     assert any(c.get("step") == "outcome" and c.get("section") == "Scope" for c in out.exclusion.citations)
@@ -458,7 +500,7 @@ async def test_an_eligible_patient_gets_the_normal_card(toy, monkeypatch, jev):
     _model(monkeypatch, KIND, SIZE)
     out = await PP.preview_pack(_elig(toy), FINDING, "", {"risk": "high"}, finding=FINDING,
                                 patient={"known_primary_cancer": "No"})
-    assert out.state == "applies" and out.proposal.recommendation == "CT at 6 months" and out.exclusion is None
+    assert out.state == "applies" and out.draft_outcome.recommendation == "CT at 6 months" and out.exclusion is None
 
 
 async def test_the_cards_own_answer_beats_the_shared_one(toy, monkeypatch, jev):
@@ -472,7 +514,7 @@ async def test_a_patient_answer_the_pack_cannot_take_is_ignored(toy, monkeypatch
     _model(monkeypatch, KIND, SIZE)
     out = await PP.preview_pack(_elig(toy), FINDING, "", {"risk": "high"}, finding=FINDING,
                                 patient={"known_primary_cancer": "seventy", "age_years": "60"})
-    assert out.state == "check_first" and out.missing == ["known_cancer"]
+    assert out.state == "check_first" and out.assumptions == ["known_cancer"] and out.missing == []
 
 
 @pytest.mark.parametrize("finding,quote", [("Nodule measuring under 5 mm, solid.", "5 mm"),
@@ -490,7 +532,8 @@ async def test_jev_saying_no_to_a_number_asks_it(toy_entry, monkeypatch, jev):
     finding = "Solid nodule, was 5 mm, now 9 mm."
     _model(monkeypatch, KIND, {"input": "size", "value": 5, "quote": "5 mm"})
     out = await PP.preview_pack(toy_entry, finding, "", {}, finding=finding)
-    assert "size" not in {s.input for s in out.settled} and "kind" in {s.input for s in out.settled}
+    assert _states(out)["size"] == "prefilled" and PP.WHY_UNCONFIRMED in _why(out, "size")
+    assert PP.WHY_OTHER_NUMBER in _why(out, "size") and _states(out)["kind"] == "read"
 
 
 async def test_swapped_volumes_are_asked(monkeypatch, jev):
@@ -501,13 +544,14 @@ async def test_swapped_volumes_are_asked(monkeypatch, jev):
     _model(monkeypatch, {"input": "prior_volume_mm3", "value": 180, "quote": "180 mm3"},
            {"input": "current_volume_mm3", "value": 120, "quote": "120 mm3"})
     out = await PP.preview_pack(e, finding, "", {"prior_study": "Yes", "growth": "volumetry"}, finding=finding)
-    assert not {"prior_volume_mm3", "current_volume_mm3"} & {s.input for s in out.settled}
+    for k in ("prior_volume_mm3", "current_volume_mm3"):
+        assert _states(out)[k] == "prefilled" and PP.WHY_UNCONFIRMED in _why(out, k)
 
 
 async def test_an_errored_preview_is_check_first_when_the_pack_has_eligibility(toy, toy_entry, monkeypatch, jev):
     _model(monkeypatch, KIND, SIZE)
 
-    def broken(entry, given):
+    def broken(entry, given, **kw):
         raise E.EvaluationError("two cases hold")
     monkeypatch.setattr(PP.engine, "evaluate", broken)
     out = await PP.preview_pack(_elig(toy), FINDING, "", {}, finding=FINDING)
@@ -521,24 +565,27 @@ def test_failed_gives_the_state_of_a_preview_that_never_ran(toy, toy_entry):
     assert PP.failed(toy_entry).state == "applies"
 
 
-async def test_a_degraded_settle_leaves_eligibility_asked_first(toy, monkeypatch, jev):
+async def test_a_degraded_settle_still_assumes_eligibility_visibly(toy, monkeypatch, jev):
     async def boom(system, prompt):
         raise TimeoutError("slow")
     monkeypatch.setattr(PP, "_call", boom)
     out = await PP.preview_pack(_elig(toy), FINDING, "", {}, finding=FINDING)
-    assert out.degraded is True and out.state == "check_first" and out.missing[0] == "known_cancer"
+    assert out.degraded is True and out.state == "check_first" and out.assumptions == ["known_cancer"]
 
 
 @pytest.mark.parametrize("finding,quote,unit,dims", OTHER_NUMBER)
-def test_a_lesion_number_in_a_finding_with_another_number_is_asked(finding, quote, unit, dims):
-    """Asked, never wrong: apart from its own measurement (and image numbers, dates, anatomical labels, the same
-    reading again, "single"/"solitary"), any other number in the finding asks the size, even when the model agrees."""
+def test_a_lesion_number_in_a_finding_with_another_number_is_prefilled(finding, quote, unit, dims):
+    """Spec §7.5: apart from its own measurement (and image numbers, dates, anatomical labels, the same reading again,
+    "single"/"solitary"), any other number in the finding makes a read size pre-filled (WHY_OTHER_NUMBER), even when
+    the model agrees. A quote code cannot read as one value is still dropped (asked)."""
     from rapid_reports_ai.hybrid_stack.copilot.library.schema import InputDef
     if unit == "count":
         pytest.skip("a count keeps its own rule")
     i = InputDef(id="n", label="N", type="number", unit=unit, dims=dims)
     for model in (None, PP.Q.settle(quote, [finding], unit, dims)):
-        assert PP._value(i, PP.RawItem(input="n", value=model, quote=quote), [finding]) is None
+        v = PP._value(i, PP.RawItem(input="n", value=model, quote=quote), [finding])
+        if v is not None:
+            assert PP.WHY_OTHER_NUMBER in PP._read_reasons(None, i, v, quote, [finding])
 
 
 @pytest.mark.parametrize("finding,quote,unit,dims,want", ALONE)
@@ -567,13 +614,16 @@ async def test_only_a_failure_fails_the_settlement(toy_entry, monkeypatch, jev):
     assert s.failed is False and s.no_unit is False
 
 
-async def test_bts_with_eligibility_unknown_is_check_first_with_only_eligibility_asked(monkeypatch, jev):
+async def test_bts_with_eligibility_unknown_drafts_under_assumptions(monkeypatch, jev):
     from tests.test_library_partial import _bts
     _model(monkeypatch)
     out = await PP.preview_pack(_bts(), "7 mm solid nodule.", "", {"nodule_type": "solid", "diameter_mm": "7",
                                                                   "benign_features": "Yes", "prior_study": "No"},
                                 finding="7 mm solid nodule.")
-    assert out.state == "check_first" and out.proposal is None and out.missing == ["age", "proven_malignant"]
+    assert out.state == "check_first" and out.assumptions == ["age", "proven_malignant"] and out.missing == []
+    assert out.draft_outcome is not None and {_states(out)[k] for k in out.assumptions} == {"assumed"}
+    shown = {d.input: d.value for d in out.draft if d.input in out.assumptions}
+    assert shown == {"age": "18 years or over", "proven_malignant": "No"}   # a number: its in-scope band, labelled
 
 
 # fix round 5: a lesion number settles only for a finding that describes one lesion
@@ -617,7 +667,8 @@ async def test_jev_decides_one_lesion_when_no_backstop_word_is_there(monkeypatch
     finding = "4 mm solid nodule in the right upper lobe and a bigger nodular opacity at the left base."
     jev["scores"] = {ONE_CLAIM: verdict}
     out = await _fleischner(monkeypatch, finding, "4 mm", 4)
-    assert ("diameter_mm" in {x.input for x in out.settled}) is settles
+    assert (_states(out)["diameter_mm"] == "read") is settles
+    assert (PP.WHY_SEVERAL in _why(out, "diameter_mm")) is not settles      # never asked: pre-filled, with why
 
 
 @pytest.mark.parametrize("key,finding,inp,quote,value,want", [
@@ -665,7 +716,7 @@ LAB_36 = ("6 mm solid nodule with no calcification in the right lower lobe and a
           "in the left upper lobe.")
 
 
-async def test_lab_case_36_two_lesions_in_one_sentence_asks_upper_lobe_and_nodule_type(monkeypatch, jev):
+async def test_lab_case_36_two_lesions_in_one_sentence_prefills_never_reads(monkeypatch, jev):
     from tests.test_library_partial import _bts
     jev["scores"] = {ONE_CLAIM: 0.01}                                  # live Jev: 0.01 (see lab-fix-report.md)
     _model(monkeypatch, {"input": "upper_lobe", "value": True, "quote": "left upper lobe"},
@@ -673,22 +724,23 @@ async def test_lab_case_36_two_lesions_in_one_sentence_asks_upper_lobe_and_nodul
            {"input": "spiculation", "value": False, "quote": "no calcification"},
            {"input": "diameter_mm", "value": 6, "quote": "6 mm"})
     out = await PP.preview_pack(_bts(), LAB_36 + " No previous imaging.", "64-year-old woman.", {}, finding=LAB_36)
-    settled = {x.input for x in out.settled}
-    assert not {"upper_lobe", "nodule_type", "spiculation", "diameter_mm"} & settled
-    assert {"upper_lobe", "nodule_type"} <= set(out.missing)
+    for k in ("upper_lobe", "nodule_type", "spiculation", "diameter_mm"):   # the granuloma's lobe and type: shown
+        assert _states(out)[k] == "prefilled" and PP.WHY_SEVERAL in _why(out, k)   # highlighted, never read
+    assert PP.WHY_NOT_OPTION_WORD in _why(out, "nodule_type") and PP.WHY_KIND in _why(out, "upper_lobe")
 
 
 @pytest.mark.parametrize("item,inp", [({"input": "upper_lobe", "value": True, "quote": "right upper lobe"}, "upper_lobe"),
                                       ({"input": "nodule_type", "value": "solid", "quote": "solid"}, "nodule_type"),
                                       ({"input": "diameter_mm", "value": 6, "quote": "6 mm"}, "diameter_mm")])
 @pytest.mark.parametrize("verdict,settles", [(0.79, False), (0.8, True)])
-async def test_below_the_one_lesion_bar_every_lesion_input_is_asked(monkeypatch, jev, item, inp, verdict, settles):
+async def test_below_the_one_lesion_bar_every_lesion_value_is_prefilled(monkeypatch, jev, item, inp, verdict,
+                                                                        settles):
     from tests.test_library_partial import _bts
     finding = "6 mm solid nodule in the right upper lobe."
     jev["scores"] = {ONE_CLAIM: verdict}
     _model(monkeypatch, item)
     out = await PP.preview_pack(_bts(), finding, "", {}, finding=finding)
-    assert (inp in {x.input for x in out.settled}) is settles
+    assert inp in {x.input for x in out.settled} and (PP.WHY_SEVERAL in _why(out, inp)) is not settles
 
 
 @pytest.mark.parametrize("finding", ["Renal cysts, the largest -20 HU.", "Cystic renal masses, the dominant -20 HU."])
@@ -814,7 +866,8 @@ async def test_hu_meaning_probes(monkeypatch, jev, finding, quote, value, phase,
     jev["scores"] = {"unenhanced (non-contrast) series": phase}
     _model(monkeypatch, {"input": "hu", "value": value, "quote": quote})
     out = await PP.preview_pack(_pack("bosniak-renal-cyst"), finding, "", {}, finding=finding)
-    assert ("hu" in {x.input for x in out.settled}) is settles
+    assert (_states(out)["hu"] == "read") is settles         # never read unless stated unenhanced and alone
+    assert settles or _states(out)["hu"] == "asked" or {PP.WHY_PHASE, PP.WHY_OTHER_NUMBER} & set(_why(out, "hu"))
 
 
 async def test_a_size_in_another_family_no_longer_asks_the_attenuation(monkeypatch, jev):
@@ -905,12 +958,14 @@ async def test_the_answer_path_is_under_50_ms(monkeypatch, jev):
      {"input": "nodule_type", "value": "solid", "quote": "solid component"}, "nodule_type"),
     ("8 mm nodule, possibly spiculated.", {"input": "spiculation", "value": True, "quote": "spiculated"},
      "spiculation")])
-async def test_a_quote_stripped_of_its_modifier_is_asked_even_when_jev_agrees(monkeypatch, jev, finding, item, inp):
+async def test_a_quote_stripped_of_its_modifier_is_never_read_even_when_jev_agrees(monkeypatch, jev, finding, item,
+                                                                                   inp):
     from tests.test_library_partial import _bts
     jev["score"] = 0.95
     _model(monkeypatch, item)
     out = await PP.preview_pack(_bts(), finding, "", {}, finding=finding)
-    assert inp not in {x.input for x in out.settled} and inp in out.missing
+    assert _states(out)[inp] != "read"
+    assert _states(out)[inp] == "asked" or PP.WHY_MODIFIED in _why(out, inp)   # else pre-filled, with why
 
 
 async def test_a_context_stripped_quote_fails_the_finding_claim(monkeypatch, jev):
@@ -920,7 +975,7 @@ async def test_a_context_stripped_quote_fails_the_finding_claim(monkeypatch, jev
     jev["scores"] = {"The FINDING states Upper lobe location": 0.04, "The QUOTE states Upper lobe location": 0.95}
     _model(monkeypatch, {"input": "upper_lobe", "value": True, "quote": "upper lobe"})
     out = await PP.preview_pack(_bts(), finding, "", {}, finding=finding)
-    assert "upper_lobe" in out.missing
+    assert _states(out)["upper_lobe"] == "prefilled" and PP.WHY_UNCONFIRMED in _why(out, "upper_lobe")
 
 
 @pytest.mark.parametrize("finding_score,quote_score,settles", [(0.95, 0.95, True), (0.79, 0.95, False),
@@ -930,7 +985,7 @@ async def test_an_enum_settles_only_when_both_claims_reach_point_eight(toy_entry
     jev["scores"] = {"The FINDING states Nodule type": finding_score, "The QUOTE states Nodule type": quote_score}
     _model(monkeypatch, KIND)
     out = await PP.preview_pack(toy_entry, FINDING, "", {}, finding=FINDING)
-    assert ("kind" in {x.input for x in out.settled}) is settles
+    assert (_states(out)["kind"] == "read") is settles and (PP.WHY_UNCONFIRMED in _why(out, "kind")) is not settles
 
 
 @pytest.mark.parametrize("quote,text,modified", [
@@ -1059,7 +1114,7 @@ def _aaa():
 
 
 _PRESET_IDS = ("screening_programme", "sex", "previous_aaa_treatment")
-_DIAMETER = {"diameter_cm": (PP.InputValue(value=2.4), "aorta 2.4 cm")}
+_DIAMETER = {"diameter_cm": PP.Drafted(PP.InputValue(value=2.4), "aorta 2.4 cm", "read")}
 
 
 def _exam_finish(e, values, answered=None, patient=None):
@@ -1074,25 +1129,29 @@ def test_a_normal_aaa_screen_is_prefilled_by_the_exam_and_the_presets_say_so():
     assert {k: (by[k].value, by[k].quote, by[k].by) for k in _PRESET_IDS} == {
         "screening_programme": ("Yes", "", "exam"), "sex": ("male", "", "exam"),
         "previous_aaa_treatment": ("No", "", "exam")}
+    draft = {d.input: d for d in p.draft}                  # R1: pre-filled by the exam, the marker on the draft
+    assert {k: (draft[k].state, draft[k].by, draft[k].why) for k in _PRESET_IDS} == dict.fromkeys(
+        _PRESET_IDS, ("prefilled", "exam", [PP.WHY_EXAM]))
     assert (by["diameter_cm"].value, by["diameter_cm"].quote, by["diameter_cm"].by) == ("2.4 cm", "aorta 2.4 cm", "")
     # initial screen or surveillance is not implied by the exam: the one input left is asked, never preset
-    assert p.missing == ["prior_programme_scan"] and p.state == "applies" and p.proposal is None
-    stated = _exam_finish(e, {**_DIAMETER, "prior_programme_scan": (PP.InputValue(value=False), "initial screen")})
+    assert p.missing == ["prior_programme_scan"] and p.state == "applies" and p.draft_outcome is None
+    stated = _exam_finish(e, {**_DIAMETER, "prior_programme_scan": PP.Drafted(PP.InputValue(value=False), "initial screen",
+                                                                       "prefilled", [PP.WHY_KIND])})
     answered = _exam_finish(e, _DIAMETER, answered={"prior_programme_scan": "No"})
     for done in (stated, answered):
         assert done.trace["outcome"] == "no_aaa" and done.missing == []
-        assert done.proposal.classification == "NHS AAA Screening 2025 · No AAA found: aortic diameter less than 3.0 cm."
-        assert done.proposal.normal is True          # the framework's normal result: a quiet card (spec §5.3)
+        assert done.draft_outcome.classification == "NHS AAA Screening 2025 · No AAA found: aortic diameter less than 3.0 cm."
+        assert done.draft_outcome.normal is True          # the framework's normal result: a quiet card (spec §5.3)
 
 
 def test_a_dictated_value_or_an_answer_overrides_the_preset():
     e = _aaa()
-    female = _exam_finish(e, {**_DIAMETER, "sex": (PP.InputValue(value="female"), "female")})
+    female = _exam_finish(e, {**_DIAMETER, "sex": PP.Drafted(PP.InputValue(value="female"), "female", "read")})
     sex = next(x for x in female.settled if x.input == "sex")
     assert (sex.value, sex.quote, sex.by) == ("female", "female", "") and female.state == "does_not_apply"
     for p in (_exam_finish(e, _DIAMETER, patient={"sex": "female"}),
               _exam_finish(e, _DIAMETER, answered={"screening_programme": "No"})):
-        assert p.state == "does_not_apply" and p.proposal is None
+        assert p.state == "does_not_apply" and p.draft_outcome is None
 
 
 def _both_triggers():
@@ -1107,7 +1166,8 @@ def test_a_finding_card_gets_no_presets():
     assert PP.exam_presets(e, "u1") == {} and PP.exam_presets(e, PP.EXAM_CARD) == dict(e.exam_presets)
     p = PP.finish(e, PP.Settlement(values=_DIAMETER), {}, presets=PP.exam_presets(e, "u1"))
     assert [x.input for x in p.settled] == ["diameter_cm"] and all(x.by == "" for x in p.settled)
-    assert p.state == "check_first" and set(_PRESET_IDS) <= set(p.missing)
+    assert all(d.by == "" and d.state in ("read", "asked", "assumed") for d in p.draft)
+    assert p.state == "check_first" and set(_PRESET_IDS) <= set(p.assumptions) | set(p.missing)
 
 
 def test_presets_need_an_exam_level_entry(toy_entry):
