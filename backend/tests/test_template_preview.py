@@ -106,10 +106,10 @@ async def test_preview_report_wires_the_scratchpad_path(monkeypatch):
         seen["regions"] = [r.name for r in regions]
         return NS(units=[U("Gallstones.", regions[0].name, abnormal=True), U("Appendicitis.", "Conclusion")])
 
-    async def fake_assumed(dictation, region_normals, abnormal, dictated_normal, removed, owned=None, touched=None,
+    async def fake_assumed(dictation, region_normals, abnormal, removed, owned=None,
                            suppressions=None, clinical_history="", labels=None, region_text=None, rules=None,
                            confirm=False):
-        seen.update(normals=region_normals, abnormal=abnormal, dictated_normal=dictated_normal, removed=removed,
+        seen.update(normals=region_normals, abnormal=abnormal, removed=removed,
                     history=clinical_history, labels=labels, region_text=region_text, rules=rules, confirm=confirm)
         return NS(assumed={r: list(s) for r, s in region_normals.items()}, flagged={}, dropped={}, error=None)
 
@@ -126,7 +126,7 @@ async def test_preview_report_wires_the_scratchpad_path(monkeypatch):
     out = await template_preview.preview_report(SHEET, "CT", "Pain.", "Gallstones. Appendicitis.", declined=["x."])
     assert out["usable"] and out["report_content"] == "REPORT"
     liver = seen["regions"][0]
-    assert seen["abnormal"] == [liver] and seen["dictated_normal"] == [] and seen["history"] == "Pain."
+    assert seen["abnormal"] == [liver] and seen["history"] == "Pain."
     assert seen["removed"] == ["x."] and seen["region_text"] == {liver: "Gallstones."}
     assert seen["rules"] is None and seen["confirm"] is True   # one shot: decided now, as at Confirm (review R5)
     assert out["findings_block"].startswith(f"{liver}: Gallstones. {A} ")
@@ -183,7 +183,7 @@ async def test_preview_report_returns_undictated_number_flags(monkeypatch):
     async def fake_group(scan_type, text, regions, previous):
         return NS(units=[U("Gallstones 12 mm.", regions[0].name, abnormal=True), U("Cholelithiasis.", "Conclusion")])
 
-    async def fake_assumed(dictation, region_normals, abnormal, dictated_normal, removed, **kw):
+    async def fake_assumed(dictation, region_normals, abnormal, removed, **kw):
         return NS(assumed={}, flagged={}, dropped={}, error=None)
 
     class FakeTM:

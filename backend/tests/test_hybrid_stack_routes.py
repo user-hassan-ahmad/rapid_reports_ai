@@ -110,7 +110,7 @@ def test_items_assumed_and_draft_routes(authed, monkeypatch):
         return ItemsResult(items=[Item(id="a", kind="finding", region="Bowel", question="Abscess?",
                                        sentences=["No pericolic abscess."])])
 
-    async def assumed(dictation, normals, abnormal, dictated_normal, removed, owned, touched, **k):
+    async def assumed(dictation, normals, abnormal, removed, owned, **k):
         assert normals == {"Liver": ["The liver is normal."]}
         return AssumedResult(assumed=normals)
 
@@ -257,6 +257,21 @@ def test_assumed_checks_up_to_sixteen_normals_per_region(authed, monkeypatch):
     r = authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"A": sentences}})
     assert r.status_code == 200
     assert len(seen["A"]) == 16 == R.MAX_NORMALS_PER_REGION
+
+
+def test_assumed_ignores_the_retired_dictated_normal_and_touched_fields(authed, monkeypatch):
+    got = {}
+
+    async def fake_assumed(dictation, normals, abnormal, removed, owned, **k):
+        got.update(removed=removed, owned=owned, kw=set(k))
+        from rapid_reports_ai.hybrid_stack.normals import AssumedResult
+        return AssumedResult(assumed=normals)
+
+    monkeypatch.setattr(R, "assumed_normals", fake_assumed)
+    r = authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"A": ["Normal."]},
+                                                       "dictated_normal": ["A"], "touched": ["A"], "removed": ["B."]})
+    assert r.status_code == 200 and got["removed"] == ["B."] and got["owned"] == []
+    assert not got["kw"] & {"dictated_normal", "touched"}
 
 
 _RULED_SHEET = """## Report Structure

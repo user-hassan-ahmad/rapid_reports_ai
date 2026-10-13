@@ -102,10 +102,8 @@ class AssumedRequest(BaseModel):
     dictation: str = ""
     region_normals: dict[str, list[str]] = Field(default_factory=dict)
     abnormal: list[str] = Field(default_factory=list)
-    dictated_normal: list[str] = Field(default_factory=list)
     removed: list[str] = Field(default_factory=list)
     owned: list[str] = Field(default_factory=list)       # the rows' sentences: a row owns its check
-    touched: list[str] = Field(default_factory=list)     # regions those rows (and removals) concern
     template_id: str | None = None                       # its context rules and normal labels apply
     clinical_history: str = ""                           # a context rule's condition is judged on it too
     region_text: dict[str, str] | None = None   # region -> its grouped sentences (Task A3b); None: an older client
@@ -293,8 +291,8 @@ async def stack_assumed(req: AssumedRequest, user: User = Depends(get_current_us
         st = template_structure(t.template_config) if t is not None else None
         if st is not None:
             suppressions, labels = template_suppressions(st), template_normal_labels(st)
-    return await assumed_normals(req.dictation, normals, req.abnormal, req.dictated_normal, req.removed[:50],
-                                 owned, req.touched[:40], suppressions=suppressions,
+    return await assumed_normals(req.dictation, normals, req.abnormal, req.removed[:50], owned,
+                                 suppressions=suppressions,
                                  clinical_history=req.clinical_history[:2000], labels=labels,
                                  region_text=None if req.region_text is None else
                                  {r: t[:MAX_REGION_TEXT] for r, t in list(req.region_text.items())[:40]},
@@ -451,7 +449,9 @@ async def update_slim_sheet(sheet_id: str, upd: SlimUpdate, user: User = Depends
         row.status = upd.status
     if upd.region_normals is not None:
         cleaned = {k: kept for k, v in upd.region_normals.items() if (kept := clean_sentences(v))}
-        row.region_normals, _flagged = await screen_normals(cleaned)
+        row.region_normals, flagged = await screen_normals(cleaned)
+        if flagged:
+            logger.info("[stack.slim] %d sex-specific borderline sentence(s) kept for review: %r", len(flagged), flagged[:5])
     db.commit()
     return {"ok": True}
 

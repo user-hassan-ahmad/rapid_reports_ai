@@ -110,8 +110,8 @@ async def _no_rows():
 
 
 async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal: list[str],
-                  dictated_normal: list[str], removed: list[str], owned: list[str] | None = None,
-                  touched: list[str] | None = None, suppressions: list[tuple[str, str]] | None = None,
+                  removed: list[str], owned: list[str] | None = None,
+                  suppressions: list[tuple[str, str]] | None = None,
                   clinical_history: str = "", labels: dict[str, str] | None = None,
                   region_text: dict[str, str] | None = None, rules: dict[str, float] | None = None,
                   confirm: bool = False) -> AssumedResult:
@@ -135,7 +135,7 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     `rules` is that decision as an earlier reply returned it (None: decide now, one call), and the reply's `rules`
     is what the caller keeps. `confirm`: at Confirm, every condition is re-asked on the history and the dictation,
     for this reply only. On a Jev failure nothing is assumed and no rules are returned.
-    `dictated_normal` and `touched` are accepted for compatibility; every sentence is asked now."""
+    Every sentence is asked, a dictated-normal region's included."""
     t0 = time.perf_counter()
     gone = list(dict.fromkeys(r for r in [*removed, *(owned or [])] if r.strip()))
     labels = labels or {}

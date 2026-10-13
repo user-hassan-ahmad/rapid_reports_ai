@@ -158,7 +158,7 @@ async def preview_report(sheet: str, scan_type: str, history: str, dictation: st
     normals = {r: s[:MAX_NORMALS_PER_REGION] for r, s in template_region_normals(st).items()}
     g = await service.group_update(scan_type, dictation, regions, [])
     abnormal, dictated_normal, untouched = region_states(g.units, [r.name for r in regions if r.name != OTHER])
-    a = await normals_mod.assumed(dictation, normals, abnormal, dictated_normal, declined,
+    a = await normals_mod.assumed(dictation, normals, abnormal, declined,
                                   suppressions=template_suppressions(st), clinical_history=history,
                                   labels=template_normal_labels(st), region_text=region_text(g.units),
                                   confirm=True)   # one shot, as the report after Confirm: rules decided now (R5)

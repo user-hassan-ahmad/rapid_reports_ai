@@ -21,7 +21,7 @@ from .sex_screen import screen_normals
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "slim-7"   # slim-2: no sex-specific organs in region normals; slim-3: Report Flow (house prose flow); slim-4: condensed region normals; slim-5: never a clinical history section; slim-6: the standard report sections (Comparison, Technique, Limitations, Findings, Impression) in order; slim-7: the impression is headed Conclusion (consultant house style) and never restates the modality, region or technique
+PROMPT_VERSION = "slim-7"   # slim-2: no sex-specific organs in region normals; slim-3: Report Flow (house prose flow); slim-4: condensed region normals; slim-5: never a clinical history section; slim-6: the standard report sections (Comparison, Technique, Limitations, Findings, then the impression, headed Conclusion from slim-7) in order; slim-7: the impression is headed Conclusion (consultant house style) and never restates the modality, region or technique
 URL = "https://api.cerebras.ai/v1/chat/completions"
 TIMEOUT_S = 120.0   # cached per family: the first case of a new scan type waits, nobody after
 
