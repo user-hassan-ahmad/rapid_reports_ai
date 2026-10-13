@@ -4,10 +4,10 @@
 	"_card_states": ["applies", "check_first", "does_not_apply"],
 	"Card": ["key", "name", "version", "finding_id", "why", "branch", "skeleton", "publication", "known", "status", "siblings", "reference", "finding", "needs_modality", "sibling_names"],
 	"CardIn": ["key", "name", "version", "finding_id", "why", "branch", "skeleton", "publication", "known", "status", "finding", "needs_modality"],
-	"Preview": ["settled", "missing", "proposal", "state", "exclusion", "possible", "bounded", "asks", "trace", "degraded", "draft", "draft_outcome", "assumptions", "assumed_eligible", "waiting"],
-	"DraftValue": ["input", "label", "role", "state", "value", "quote", "why", "by", "needed", "waiting", "options"],
+	"Preview": ["settled", "missing", "proposal", "state", "exclusion", "possible", "bounded", "asks", "trace", "degraded", "draft", "draft_outcome", "assumptions", "assumed_eligible", "waiting", "exclusion_reason", "most_likely", "deciding_input", "deciding"],
+	"DraftValue": ["input", "label", "role", "state", "value", "quote", "why", "by", "needed", "waiting", "options", "decisive"],
 	"Settled": ["input", "value", "quote", "fact", "by"],
-	"Proposal": ["classification", "line", "recommendation", "caveats", "citations", "normal"],
+	"Proposal": ["classification", "line", "recommendation", "caveats", "citations", "normal", "headline", "action", "category"],
 	"OpenResult": ["entry", "preview", "branch", "ms", "error", "reference", "needs_modality"],
 	"MatchResult": ["cards", "ms"],
 	"MatchRequest": ["scan_type", "clinical_history", "findings", "dictation", "patient"],
@@ -15,5 +15,11 @@
 	"OpenRequest": ["card", "finding", "findings", "clinical_history", "answered", "patient"],
 	"CalculateRequest": ["card", "finding", "findings", "clinical_history", "answered", "patient", "values"],
 	"CalculateResult": ["calculation", "ms", "error"],
-	"Calculation": ["outcome", "result", "exclusion", "possible", "needed", "values", "assumptions", "pack", "bundle"]
+	"Calculation": ["outcome", "result", "exclusion", "possible", "needed", "values", "assumptions", "pack", "bundle", "exclusion_reason", "most_likely", "deciding_input", "deciding"],
+	"Assumption": ["input", "label", "value", "decisive", "kind"],
+	"OutcomeBrief": ["headline", "action", "category"],
+	"DecidingAnswer": ["answer", "headline", "category"],
+	"ExclusionReason": ["input", "label", "value"],
+	"DecidingInput": ["input", "label"],
+	"_assumption_kinds": ["eligibility", "sign"]
 }

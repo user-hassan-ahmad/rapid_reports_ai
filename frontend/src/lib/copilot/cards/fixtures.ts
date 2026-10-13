@@ -1,6 +1,6 @@
 // SYNTHETIC: fixture cards and /open results for the card tests and the /dev/copilot gallery. Built from pack names
 // and generic phrases only; no patient data.
-import type { Card, DraftValue, OpenResult, Preview, Proposal, ReferenceView } from '../types';
+import type { Assumption, Card, DraftValue, OpenResult, Preview, Proposal, ReferenceView } from '../types';
 
 export function card(over: Partial<Card> = {}): Card {
 	return {
@@ -52,6 +52,11 @@ export function preview(over: Partial<Preview> = {}): Preview {
 /** A Task 3 draft value (read by default). */
 export function draft(over: Partial<DraftValue> = {}): DraftValue {
 	return { input: 'x', label: 'X', role: 'clinical', scope: 'lesion', fact: '', state: 'read', value: '', quote: '', why: [], by: '', needed: false, waiting: false, options: [], ...over };
+}
+
+/** A backend Assumption (an eligibility input in scope by default). */
+export function assumption(input: string, label: string, value = 'No', over: Partial<Assumption> = {}): Assumption {
+	return { input, label, value, decisive: null, kind: 'eligibility', ...over };
 }
 
 export const reference: ReferenceView = {

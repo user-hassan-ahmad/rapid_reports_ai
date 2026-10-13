@@ -64,7 +64,7 @@
 		{/if}
 		{#if !editing && row.state === 'read' && !row.byExam}<span class="cp-chip cp-val-chip cp-chip-read">read</span>{/if}
 		{#if !editing && row.state === 'assumed'}
-			<span class="cp-chip cp-val-chip cp-chip-warn">assumed</span>
+			<span class="cp-chip cp-val-chip cp-chip-warn">{row.sign ? 'assumed absent' : 'assumed'}</span>
 			{#if row.decisive === true}<span class="cp-chip cp-val-chip cp-chip-decisive">decisive</span>{/if}
 			{#if row.decisive === false}<span class="cp-chip cp-val-chip">doesn't affect outcome</span>{/if}
 		{/if}

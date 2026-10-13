@@ -1,7 +1,7 @@
 // Card redesign helpers (B-design): verdict fallbacks, short sources, head chips. SYNTHETIC data.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { card, draft, outcome, preview, result } from './fixtures';
+import { assumption, card, draft, outcome, preview, result } from './fixtures';
 import { actionOf, allValueRows, citeShort, decidingQuestion, headlineOf, issuerShort, recommendationBeyond, sourcesOf, verdictOf } from './format';
 
 describe('verdictOf', () => {
@@ -75,6 +75,18 @@ describe('value list, recommendation and decidingQuestion', () => {
 		expect('decisive' in rows[1]).toBe(false); // absent unless the backend says
 	});
 
+	it('allValueRows takes decisive and the sign kind from the backend assumptions; "" display fields fall back', () => {
+		const r = result(card(), preview({
+			proposal: null,
+			draft: [draft({ input: 'cancer', label: 'Known cancer', state: 'assumed', value: 'No' }), draft({ input: 'calc', label: 'Calcification', state: 'assumed', value: 'Absent' })],
+			assumptions: [assumption('cancer', 'Known cancer', 'No', { decisive: false }), assumption('calc', 'Calcification', 'Absent', { kind: 'sign', decisive: null })]
+		}));
+		const rows = allValueRows(r);
+		expect(rows.map((x) => [x.input, x.decisive, x.sign ?? false])).toEqual([['cancer', false, false], ['calc', null, true]]);
+		const blank = preview({ proposal: null, draft_outcome: outcome({ classification: 'Cat A: x', recommendation: 'Do y. Then z.', headline: '', action: '', category: '' }) });
+		expect(verdictOf(blank)).toMatchObject({ category: 'neutral', headline: 'Cat A', action: 'Do y' });
+	});
+
 	it('recommendationBeyond: only what the action does not already say', () => {
 		expect(recommendationBeyond('No further imaging', 'No further imaging required.')).toBe('');
 		expect(recommendationBeyond('CT at 3 months', 'CT at 3 months, then 1 year and 2 years if stable.')).toBe('then 1 year and 2 years if stable.');
@@ -84,7 +96,7 @@ describe('value list, recommendation and decidingQuestion', () => {
 
 	it('decidingQuestion: the deciding input label, else the first needed open question; empty with no branches', () => {
 		const base = { proposal: null, draft: [draft({ input: 'brock', label: 'Brock risk', state: 'asked', needed: true }), draft({ input: 'x', label: 'Other', state: 'asked' })] };
-		expect(decidingQuestion(preview({ ...base, deciding: [{ answer: 'a', headline: 'h' }], deciding_input: 'x' }))).toBe('Other');
+		expect(decidingQuestion(preview({ ...base, deciding: [{ answer: 'a', headline: 'h' }], deciding_input: { input: 'x', label: 'Other' } }))).toBe('Other');
 		expect(decidingQuestion(preview({ ...base, deciding: [{ answer: 'a', headline: 'h' }] }))).toBe('Brock risk');
 		expect(decidingQuestion(preview({ ...base }))).toBe('');
 	});

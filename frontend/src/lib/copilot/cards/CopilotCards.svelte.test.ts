@@ -7,7 +7,7 @@ const api = vi.hoisted(() => ({ postMatch: vi.fn(), postMatchOther: vi.fn(), pos
 vi.mock('$lib/copilot/api', async (orig) => ({ ...(await orig<object>()), ...api }));
 
 const { default: CopilotCards } = await import('./CopilotCards.svelte');
-const { card, draft, outcome, preview, reference, result } = await import('./fixtures');
+const { assumption, card, draft, outcome, preview, reference, result } = await import('./fixtures');
 const { cardRef, groupCards } = await import('../state');
 type CardView = import('./view').CardView;
 type Card = import('../types').Card;
@@ -173,7 +173,7 @@ describe('CopilotCards', () => {
 				draft({ input: 'growth', label: 'Growth on prior imaging', state: 'asked', needed: true }),
 				draft({ input: 'rate', label: 'Growth rate', state: 'asked', waiting: true })
 			],
-			assumptions: ['cancer'],
+			assumptions: [assumption('cancer', 'Known cancer')],
 			assumed_eligible: true
 		});
 		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
@@ -204,7 +204,7 @@ describe('CopilotCards', () => {
 			proposal: null,
 			draft_outcome: outcome({ classification: 'CAD-RADS 0', normal: true }),
 			draft: [draft({ input: 'symptoms', label: 'Stable symptoms', role: 'eligibility', state: 'assumed', value: 'Yes' })],
-			assumptions: ['symptoms'],
+			assumptions: [assumption('symptoms', 'Stable symptoms', 'Yes')],
 			assumed_eligible: true
 		});
 		render(CopilotCards, single(exam, v(result(exam, pv)), null));
@@ -301,7 +301,7 @@ describe('CopilotCards', () => {
 		const pv = preview({
 			proposal: null,
 			most_likely: { headline: 'CT surveillance', category: 'surveillance' },
-			deciding_input: 'brock',
+			deciding_input: { input: 'brock', label: 'Brock risk' },
 			deciding: [
 				{ answer: '< 10%', headline: 'CT surveillance', category: 'surveillance' },
 				{ answer: '10–70%', headline: 'PET-CT', category: 'workup' },
@@ -454,6 +454,23 @@ describe('CopilotCards', () => {
 		const one = page.getByText('⚠ assumes: History of extra-adrenal malignancy No');
 		await expect.element(one).toBeInTheDocument();
 		expect(getComputedStyle(one.element()).textOverflow).toBe('ellipsis');
+	});
+
+	it('several outcomes remain (no most_likely): "Depends on <deciding_input.label>" still shows its branches', async () => {
+		const c = card({ finding: finding.text });
+		const pv = preview({
+			proposal: null,
+			most_likely: null,
+			deciding_input: { input: 'brock', label: 'Brock risk' },
+			deciding: [{ answer: 'Under 10%', headline: 'CT surveillance', category: 'surveillance' }, { answer: '10% or more', headline: 'PET-CT', category: 'workup' }],
+			possible: ['CT surveillance', 'PET-CT'],
+			draft: [draft({ input: 'brock', label: 'Brock risk', state: 'asked', needed: true })]
+		});
+		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
+		const region = page.getByRole('region', { name: 'What decides it' });
+		await expect.element(region).toHaveTextContent('Depends on Brock risk');
+		expect(region.element().querySelectorAll('.cp-branches li')).toHaveLength(2);
+		expect(region.element().textContent).not.toContain('Most likely');
 	});
 
 	it('PackCard takes an assumptions list directly (B1 feeds Task 3)', async () => {

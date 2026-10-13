@@ -151,21 +151,23 @@
 				<p class="cp-p cp-onvalues" aria-live="polite">{busy ? 'Updating on the new values…' : 'On these values'}</p>
 			</section>
 		{/if}
-		{#if !decided && likely}
-			<!-- no outcome yet: the backend's likeliest one, and what genuinely decides it (max three branches); the full
-			     list stays behind "show all" -->
-			<section class="cp-likely" aria-label="Most likely">
-				<p class="cp-p cp-likely-line" style:--cp-cat={categoryColor(likely.category ?? 'neutral')} style:--cp-cat-text={categoryText(likely.category ?? 'neutral')}>
-					<Icon name={icon[likely.category ?? 'neutral']} size={13} />
+		{#if !decided && (likely || (branches.length && decidingQ))}
+			<!-- no outcome yet: the likeliest one when there is one, and what genuinely decides it (max three branches);
+			     the full list stays behind "show all" -->
+			<section class="cp-likely" aria-label={likely ? 'Most likely' : 'What decides it'}>
+				{#if likely}
+				<p class="cp-p cp-likely-line" style:--cp-cat={categoryColor(likely.category || 'neutral')} style:--cp-cat-text={categoryText(likely.category || 'neutral')}>
+					<Icon name={icon[likely.category || 'neutral']} size={13} />
 					<span>Most likely: <b>{likely.headline}</b></span>
 					{#if underAssumptions}<span class="cp-chip cp-chip-warn">⚠ under assumptions</span>{/if}
 				</p>
+				{/if}
 				{#if branches.length && decidingQ}
 					<div class="cp-depends">
 						<p class="cp-p">Depends on {decidingQ}</p>
 						<ul class="cp-branches">
 							{#each branches as b, i (i)}
-								<li style:--cp-cat-text={categoryText(b.category ?? 'neutral')}>
+								<li style:--cp-cat-text={categoryText(b.category || 'neutral')}>
 									<span class="cp-branch-answer">{b.answer}</span><span class="cp-muted" aria-hidden="true">→</span><span class="cp-sr-only">:</span>
 									<b>{b.headline}</b>
 								</li>

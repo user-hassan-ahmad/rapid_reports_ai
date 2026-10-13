@@ -1,5 +1,5 @@
 // SYNTHETIC: the /dev/copilot gallery, one section per card state (Task A5). Pack names and generic phrases only.
-import { card, draft, outcome, preview, reference, result } from '$lib/copilot/cards/fixtures';
+import { assumption, card, draft, outcome, preview, reference, result } from '$lib/copilot/cards/fixtures';
 import type { CardView } from '$lib/copilot/cards/view';
 import { cardRef, type Finding, type Group } from '$lib/copilot/state';
 import type { Card, OpenResult } from '$lib/copilot/types';
@@ -65,7 +65,7 @@ const eseCheck = result(
 			draft({ input: 'prior_imaging', label: 'Growth on prior imaging', state: 'asked', needed: true }),
 			draft({ input: 'growth_rate', label: 'Growth rate', state: 'asked', waiting: true })
 		],
-		assumptions: ['known_cancer', 'hormone_excess', 'bilateral'],
+		assumptions: [assumption('known_cancer', 'Known extra-adrenal cancer'), assumption('hormone_excess', 'Clinical signs of hormone excess'), assumption('bilateral', 'Bilateral adrenal masses')],
 		assumed_eligible: true,
 		missing: ['prior_imaging'],
 		waiting: ['growth_rate'],
@@ -120,9 +120,10 @@ const eseBenign = result(
 			draft({ input: 'unenhanced_hu', label: 'Attenuation on unenhanced CT', state: 'read', value: '8 HU', quote: 'measuring 8 HU on the unenhanced images' }),
 			draft({ input: 'age', label: 'Age', scope: 'patient', fact: 'age', state: 'read', value: '65', quote: '65 year old' }),
 			draft({ input: 'known_primary_cancer', label: 'History of extra-adrenal malignancy', role: 'eligibility', state: 'assumed', value: 'No' }),
-			draft({ input: 'not_incidentaloma', label: 'Imaging for suspected adrenal disease', role: 'eligibility', state: 'assumed', value: 'No' })
+			draft({ input: 'not_incidentaloma', label: 'Imaging for suspected adrenal disease', role: 'eligibility', state: 'assumed', value: 'No' }),
+			draft({ input: 'calcification', label: 'Calcification', state: 'assumed', value: 'Absent' })
 		],
-		assumptions: ['known_primary_cancer', 'not_incidentaloma'],
+		assumptions: [assumption('known_primary_cancer', 'History of extra-adrenal malignancy', 'No', { decisive: true }), assumption('not_incidentaloma', 'Imaging for suspected adrenal disease', 'No', { decisive: false }), assumption('calcification', 'Calcification', 'Absent', { kind: 'sign' })],
 		assumed_eligible: true
 	})
 );
@@ -153,7 +154,7 @@ const btsLikely = result(
 		proposal: null,
 		draft_outcome: null,
 		most_likely: { headline: 'CT surveillance', category: 'surveillance' },
-		deciding_input: 'brock',
+		deciding_input: { input: 'brock', label: 'Brock risk' },
 		deciding: [
 			{ answer: 'Brock < 10%', headline: 'CT surveillance', category: 'surveillance' },
 			{ answer: '10–70%', headline: 'PET-CT', category: 'workup' },
@@ -166,7 +167,7 @@ const btsLikely = result(
 			draft({ input: 'age_ok', label: 'Age 18 or over', role: 'eligibility', state: 'assumed', value: 'Yes' }),
 			draft({ input: 'brock', label: 'Brock risk', state: 'asked', needed: true })
 		],
-		assumptions: ['age_ok'],
+		assumptions: [assumption('age_ok', 'Age 18 or over', 'Yes')],
 		assumed_eligible: true
 	})
 );

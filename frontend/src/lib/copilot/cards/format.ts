@@ -36,14 +36,17 @@ const isEligibility = (p: Preview, input: string) => p.asks.some((a) => a.input 
 
 const hasDraft = (p: Preview) => !!p.draft?.length;
 
-/** Eligibility checks the card assumed rather than asked (B0: never lead with them), as "Label: value". From the
- *  draft's assumed rows (Task 3); else `assumptions` ids with their ask labels; else (pre-Task 3) the missing
- *  eligibility inputs. */
+/** What a visible sign assumed absent reads as (Assumption.kind "sign"). */
+export const ASSUMED_ABSENT = 'assumed absent';
+
+/** The values the card assumes rather than asks (never the lead), as "Label: value" ("Label: assumed absent" for a
+ *  visible sign). From the backend's `assumptions` objects; else the draft's assumed rows; else (pre-Task 3) the
+ *  missing eligibility inputs. */
 export function assumptionsOf(p: Preview | null | undefined): string[] {
 	if (!p) return [];
+	if (p.assumptions?.length) return p.assumptions.map((a) => `${a.label}: ${a.kind === 'sign' ? ASSUMED_ABSENT : a.value}`);
 	if (hasDraft(p)) return rowsOf(p).assumed.map((v) => (v.value ? `${v.label}: ${v.value}` : v.label));
 	const labels = new Map(p.asks.map((a) => [a.input, a.label]));
-	if (p.assumptions?.length) return p.assumptions.map((id) => labels.get(id) || id);
 	return p.missing.filter((m) => isEligibility(p, m)).map((m) => labels.get(m) || m);
 }
 
@@ -51,9 +54,7 @@ export function assumptionsOf(p: Preview | null | undefined): string[] {
  *  change the outcome. Empty when nothing is said to decide it. */
 export function decidingQuestion(p: Preview): string {
 	if (!p.deciding?.length) return '';
-	const rows = p.draft ?? [];
-	const named = p.deciding_input ? rows.find((v) => v.input === p.deciding_input)?.label : '';
-	return named || rowsOf(p).asked.find((v) => v.needed)?.label || openQuestions(p)[0] || '';
+	return p.deciding_input?.label || rowsOf(p).asked.find((v) => v.needed)?.label || openQuestions(p)[0] || '';
 }
 
 /** The still-open questions shown last, quietly: the draft's asked rows (eligibility first in check_first, then
@@ -72,6 +73,7 @@ export function allValueRows(r: OpenResult): ValueRow[] {
 	const p = r.preview;
 	if (!p?.draft?.length) return valueRows(r);
 	const rank: Record<string, number> = { assumed: 0, prefilled: 1, read: 2, answered: 3, edited: 3, asked: 5, not_applicable: 6 };
+	const assumption = new Map((p.assumptions ?? []).map((a) => [a.input, a]));
 	return p.draft
 		.filter((v) => !v.waiting)
 		.map((v, i) => ({ v, i }))
@@ -85,7 +87,8 @@ export function allValueRows(r: OpenResult): ValueRow[] {
 			state: v.state,
 			why: v.why,
 			options: v.options,
-			...(v.decisive !== undefined ? { decisive: v.decisive } : {})
+			...(v.decisive !== undefined ? { decisive: v.decisive } : assumption.has(v.input) ? { decisive: assumption.get(v.input)!.decisive } : {}),
+			...(v.state === 'assumed' && assumption.get(v.input)?.kind === 'sign' ? { sign: true } : {})
 		}));
 }
 
@@ -104,7 +107,7 @@ export function recommendationBeyond(action: string, recommendation: string): st
 /** The backend's WHY_EXAM (library/pack_preview.py): an exam preset, shown as the "set by the exam" chip instead. */
 export const WHY_EXAM = 'set by the exam';
 const humanise = (id: string) => (id.charAt(0).toUpperCase() + id.slice(1)).replace(/_/g, ' ');
-export interface ValueRow { input: string; label: string; value: string; quote: string; byExam: boolean; state: ValueState; why: string[]; options?: string[]; decisive?: boolean }
+export interface ValueRow { input: string; label: string; value: string; quote: string; byExam: boolean; state: ValueState; why: string[]; options?: string[]; decisive?: boolean | null; /** assumed: a visible sign assumed absent */ sign?: boolean }
 /** The values the card shows first. From the draft (Task 3): read, pre-filled, answered, edited and N/A rows with
  *  their state and why[]; else (pre-Task 3) preview.settled as read values, labelled from the entry's inputs, else
  *  the ask, else the id. */
@@ -202,7 +205,7 @@ export function verdictOf(p: Preview | null | undefined, o: VerdictOverride = {}
 			pill: 'Does not apply',
 			excluded: true,
 			// the specific reason first ("Maximum diameter 38 mm"), never the generic list of exclusion criteria
-			headline: o.headline ?? (p.exclusion_reason ? `${p.exclusion_reason.label} ${p.exclusion_reason.value}` : null) ?? x?.headline ?? (x ? headlineOf(x.classification) : 'Does not apply'),
+			headline: o.headline || (p.exclusion_reason ? `${p.exclusion_reason.label} ${p.exclusion_reason.value}` : '') || x?.headline || (x ? headlineOf(x.classification) : 'Does not apply'),
 			action: '',
 			recommendation: x?.recommendation ?? '',
 			classification: x?.classification ?? '',
@@ -213,17 +216,18 @@ export function verdictOf(p: Preview | null | undefined, o: VerdictOverride = {}
 	const out = outcomeOf(p);
 	if (!out && p.most_likely?.headline) {
 		const m = p.most_likely;
-		return { category: m.category ?? 'neutral', pill: `Likely: ${m.headline}`, headline: m.headline, action: m.action ?? '', recommendation: '', classification: '', caveats: [], citations: [], tentative: true };
+		return { category: m.category || 'neutral', pill: `Likely: ${m.headline}`, headline: m.headline, action: m.action || '', recommendation: '', classification: '', caveats: [], citations: [], tentative: true };
 	}
 	if (!out) {
 		const n = openQuestions(p).length;
 		const pill = n ? `${n} ${n === 1 ? 'question' : 'questions'} open` : p.possible.length > 1 ? `${p.possible.length} outcomes possible` : 'No outcome yet';
 		return { category: 'open', pill, headline: '', action: '', recommendation: '', classification: '', caveats: [], citations: [] };
 	}
-	const headline = o.headline ?? out.headline ?? headlineOf(out.classification);
-	const action = o.action ?? out.action ?? actionOf(out.recommendation);
+	// "" from the backend (a pack without display fields) falls back like an absent field
+	const headline = o.headline || out.headline || headlineOf(out.classification);
+	const action = o.action || out.action || actionOf(out.recommendation);
 	return {
-		category: o.category ?? out.category ?? (out.normal ? 'none' : 'neutral'),
+		category: o.category || out.category || (out.normal ? 'none' : 'neutral'),
 		pill: action || headline,
 		headline,
 		action,

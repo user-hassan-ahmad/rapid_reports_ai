@@ -96,4 +96,10 @@ describe('ValueRow', () => {
 		await r.rerender({ row: row({ input: 'cancer', label: 'Known cancer', state: 'assumed', value: 'No', decisive: false }) });
 		await expect.element(page.getByText("doesn't affect outcome")).toBeInTheDocument();
 	});
+
+	it('a visible sign assumed absent reads "assumed absent"; decisive null shows no tag', async () => {
+		show(row({ input: 'calc', label: 'Calcification', state: 'assumed', value: 'Absent', sign: true, decisive: null }));
+		await expect.element(page.getByText('assumed absent')).toBeInTheDocument();
+		expect(document.body.textContent).not.toMatch(/decisive|doesn't affect/);
+	});
 });

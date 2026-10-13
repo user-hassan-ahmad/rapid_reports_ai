@@ -18,6 +18,11 @@ def _models() -> dict:
         "Preview": T.Preview,
         "DraftValue": T.DraftValue,
         "Calculation": T.Calculation,
+        "Assumption": T.Assumption,
+        "OutcomeBrief": T.OutcomeBrief,
+        "DecidingAnswer": T.DecidingAnswer,
+        "ExclusionReason": T.ExclusionReason,
+        "DecidingInput": T.DecidingInput,
         "CalculateRequest": R.CalculateRequest,
         "CalculateResult": R.CalculateResult,
         "Settled": T.Settled,
@@ -67,3 +72,5 @@ def test_value_and_card_states_match_what_the_ui_renders():
     contract = json.loads(CONTRACT.read_text())
     assert set(get_args(T.ValueState)) == set(contract["_value_states"])
     assert set(get_args(T.CardState)) <= set(contract["_card_states"])
+    kind = T.Assumption.model_fields["kind"].annotation
+    assert set(get_args(kind)) == set(contract["_assumption_kinds"])

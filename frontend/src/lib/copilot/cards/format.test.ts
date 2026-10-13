@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { card, outcome, preview, result } from './fixtures';
+import { assumption, card, outcome, preview, result } from './fixtures';
 import type { DraftValue } from '../types';
 
 const dv = (o: Partial<DraftValue>): DraftValue => ({
@@ -54,7 +54,8 @@ describe('card text helpers', () => {
 		const p = preview({ state: 'check_first', missing: ['e1', 'c1', 'x'], asks });
 		expect(assumptionsOf(p)).toEqual(['Known cancer']);
 		expect(openQuestions(p)).toEqual(['Growth on prior imaging', 'x']);
-		expect(assumptionsOf(preview({ ...p, assumptions: ['From the backend'] }))).toEqual(['From the backend']);
+		expect(assumptionsOf(preview({ ...p, assumptions: [assumption('x', 'From the backend')] }))).toEqual(['From the backend: No']);
+		expect(assumptionsOf(preview({ ...p, assumptions: [assumption('s', 'Calcification', 'Absent', { kind: 'sign' })] }))).toEqual(['Calcification: assumed absent']);
 		expect(assumptionsOf(null)).toEqual([]);
 	});
 
@@ -92,7 +93,7 @@ describe('card text helpers', () => {
 				dv({ input: 'side', label: 'Side', state: 'not_applicable' }),
 				dv({ input: 'future', label: 'Future', state: 'reviewed' as never, value: 'x' })
 			],
-			assumptions: ['cancer'],
+			assumptions: [assumption('cancer', 'Known cancer')],
 			assumed_eligible: true
 		});
 		// an unknown state shows as a value rather than vanishing

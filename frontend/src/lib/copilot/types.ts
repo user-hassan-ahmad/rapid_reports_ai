@@ -28,14 +28,20 @@ export interface Proposal {
 	caveats: string[];
 	citations: Citation[];
 	normal?: boolean; // R3: the outcome is the guideline's normal one (backend default false); quiet prefers it
-	// Planned backend fields (card redesign): until sent, the UI derives fallbacks (cards/format.ts verdictOf).
-	// Not in contract.json yet: the backend does not have them.
+	// Library packs' display fields ("" when a pack does not set them: the UI then derives fallbacks, verdictOf).
 	headline?: string; // a short verdict, <= ~8 words
-	action?: string; // a short imperative, e.g. "No further imaging"
-	category?: ActionCategory;
+	action?: string; // a short action, <= ~6 words, e.g. "No further imaging"
+	category?: ActionCategory | '';
 }
-export interface OutcomeBrief { headline: string; action?: string; category?: ActionCategory }
-export interface DecidingBranch { answer: string; headline: string; category?: ActionCategory }
+/** types.py OutcomeBrief: an outcome in short (most_likely). */
+export interface OutcomeBrief { headline: string; action?: string; category?: ActionCategory | '' }
+/** types.py DecidingAnswer: one answer to the deciding question and where it leads. */
+export interface DecidingBranch { answer: string; headline: string; category?: ActionCategory | '' }
+/** types.py Assumption: a value the draft assumes (never stated): an eligibility input in scope, or a visible sign
+ *  absent. `decisive`: flipping it alone changes the outcome (null: not weighed: no tag). */
+export interface Assumption { input: string; label: string; value: string; decisive: boolean | null; kind: 'eligibility' | 'sign' }
+export interface ExclusionReason { input: string; label: string; value: string }
+export interface DecidingInput { input: string; label: string }
 export type ActionCategory = 'none' | 'surveillance' | 'workup' | 'refer' | 'info' | 'not_applicable'; // info: no management stated
 export interface Settled { input: string; value: string; quote: string; fact: string; by: '' | 'exam' }
 /** pack_preview._asks: one per missing input (A5 reads input + label; the rest is for Slice B). */
@@ -56,7 +62,7 @@ export interface DraftValue {
 	waiting: boolean;
 	options: string[];
 	by?: '' | 'exam'; // contract request R1
-	decisive?: boolean; // planned: an assumed value that changes the outcome (absent: no tag is shown, never guessed)
+	decisive?: boolean | null; // assumed: flipping it alone changes the outcome; null when not weighed (no tag: never guessed)
 }
 export interface Checker {
 	// Task 7
@@ -79,14 +85,12 @@ export interface Preview {
 	trace: Record<string, unknown> | null;
 	degraded: boolean;
 	waiting?: string[]; // Task 1
-	assumptions?: string[]; // Task 3: eligibility input ids assumed in scope (pack order); labels come from draft
-	assumed_eligible?: boolean; // Task 3: the draft rests on assumptions (state stays check_first)
-	// Planned backend fields (no outcome yet): the likeliest outcome and, when one question genuinely decides it, its
-	// branches. Names per the controller (2026-10-13); not in contract.json until the backend has them.
-	most_likely?: OutcomeBrief | null;
-	exclusion_reason?: { input: string; label: string; value: string } | null; // planned: the value that excludes
-	deciding?: DecidingBranch[];
-	deciding_input?: string; // the input whose answer decides (its label is the "Depends on" question)
+	assumptions?: Assumption[]; // every assumed draft value, in pack order (eligibility in scope, visible signs absent)
+	assumed_eligible?: boolean; // the draft rests on assumptions (state stays check_first)
+	most_likely?: OutcomeBrief | null; // the draft's outcome under its assumptions, in short; null while several remain
+	exclusion_reason?: ExclusionReason | null; // does_not_apply: the one read or answered value behind it
+	deciding_input?: DecidingInput | null; // several outcomes remain: the input whose answer splits them most
+	deciding?: DecidingBranch[]; // its answers -> outcomes (at most 3)
 	draft?: DraftValue[]; // Task 3
 	draft_outcome?: Proposal | null; // Task 3
 	checker?: Checker | null; // Task 7
@@ -129,7 +133,11 @@ export interface Calculation {
 	possible: string[];
 	needed: string[];
 	values: DraftValue[];
-	assumptions: string[]; // inputs sent back at the draft's assumed value: still assumptions (confirmed at Apply)
+	assumptions: Assumption[]; // values sent back at the draft's assumption: still assumptions (confirmed at Apply)
+	exclusion_reason?: ExclusionReason | null;
+	most_likely?: OutcomeBrief | null;
+	deciding_input?: DecidingInput | null;
+	deciding?: DecidingBranch[];
 	trace: Record<string, unknown> | null;
 	pack: string;
 	bundle: string;

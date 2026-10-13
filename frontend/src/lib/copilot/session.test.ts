@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import type { StackUnit } from '$lib/hybrid-stack/types';
 import { CopilotError, CopilotOff } from './api';
-import { card, draft, outcome, preview, result } from './cards/fixtures';
+import { assumption, card, draft, outcome, preview, result } from './cards/fixtures';
 import { CONTEXT_DEBOUNCE_MS, createCopilotSession, EXAM_REOPEN_MS, MATCH_BACKOFF_MS, type CopilotApi } from './session';
 import { cardRef } from './state';
 import type { CalculateBody, CalculateResult, Card, Calculation, MatchBody, MatchResult, OpenBody, OpenResult } from './types';
@@ -486,7 +486,7 @@ describe('session: edits, shared patient answers and Calculate (Slice B2)', () =
 			})
 		);
 	const calc = (o: Partial<Calculation> = {}): Calculation => ({
-		outcome: 'benign', result: outcome({ classification: 'Benign' }), exclusion: null, possible: [], needed: [], values: [], assumptions: ['cancer'], trace: null, pack: 'p@1', bundle: 'b', ...o
+		outcome: 'benign', result: outcome({ classification: 'Benign' }), exclusion: null, possible: [], needed: [], values: [], assumptions: [assumption('cancer', 'Known cancer')], trace: null, pack: 'p@1', bundle: 'b', ...o
 	});
 
 	async function opened(cards: Card[] = [adrenal]) {
@@ -509,7 +509,7 @@ describe('session: edits, shared patient answers and Calculate (Slice B2)', () =
 		expect(state().views[cardRef(adrenal)].calc).toMatchObject({ loading: true });
 		api.calls.calculate[0].resolve({ calculation: calc(), ms: 4, error: null });
 		await flush();
-		expect(state().views[cardRef(adrenal)].calc).toMatchObject({ loading: false, error: null, result: { assumptions: ['cancer'] } });
+		expect(state().views[cardRef(adrenal)].calc).toMatchObject({ loading: false, error: null, result: { assumptions: [{ input: 'cancer' }] } });
 	});
 
 	it('an edit goes to `answered`, re-previews the card, and is included in the values; "Not stated" is sent as NOT_STATED', async () => {
