@@ -411,8 +411,8 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
     {"options", "gate_dropped", "options_raw", "case_decisions", "phase1_used", "lat"} and may raise).
     `case` is the stored Phase 1 case_result (template_pipeline.phase1_record), None, or an async callable
     returning it: then Phase 1 is resolved inside the options job (no prepare: Phase 1 runs on and is stored).
-    With `stack` there is no options job at all (`options_job` None, `options_job_record` {"skipped": "scratchpad"})
-    and `case` is never touched: the scratchpad checklist already decided what Phase 1 would offer."""
+    With `stack` there is no options job at all (`options_job` None, `options_pending` False) and `case` is
+    never touched: the scratchpad checklist already decided what Phase 1 would offer."""
     rec: dict = {"lat": {}}
     t_start = time.time()
     style = "\n".join(x for x in (_block(sheet, "Impression Construction Rules") or _block(sheet, "Impression Construction"),
@@ -497,8 +497,7 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         "report_content": final, "model_used": out.get("model_used"), "description": out.get("description"),
         "scan_type": out.get("scan_type") or scan_type, "brief_used": False, "brief_text": None,
         "brief_decisions": None, "case_decisions": None, "options_raw": [], "options": [],
-        "gate_dropped": [], "options_pending": vet_t is not None, "options_job": vet_t,
-        "options_job_record": None if vet_t is not None else {"skipped": "scratchpad"}, "quality_check": quality,
+        "gate_dropped": [], "options_pending": vet_t is not None, "options_job": vet_t, "quality_check": quality,
         "sections": [s.name for s in sections], "phase1_used": False, "history_inserted": False,
         "signature": signature or "",
     })

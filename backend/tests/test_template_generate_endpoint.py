@@ -254,8 +254,7 @@ def stubs(monkeypatch, db_engine):
                     "options_raw": [], "case_decisions": {"capped": []}, "phase1_used": True,
                     "lat": {"options_s": 0.4, "options_ready_s": 3.0}}
         if kw.get("stack") is not None:   # a scratchpad session: no options job (template_lean)
-            return {**MIRROR_OUT, "options_pending": False, "options_job": None,
-                    "options_job_record": {"skipped": "scratchpad"}}
+            return {**MIRROR_OUT, "options_pending": False, "options_job": None}
         return {**MIRROR_OUT, "options_job": asyncio.ensure_future(job())}
 
     async def fake_heavy(**kw):
@@ -395,6 +394,19 @@ async def test_stack_session_takes_the_lean_path_with_the_flag_off(aclient, auth
     assert stubs["mirror"][0]["case"] is None and not stubs["resolve"]   # no case resolver is even handed over
     assert r["options_pending"] is False
     assert r["artifacts"] is not None   # the post-generation check's artifacts reach the review rail
+
+
+async def test_a_saved_stack_report_records_its_skipped_phase1_and_options(aclient, auth_headers, mirror_template,
+                                                                           stubs, db_session, monkeypatch):
+    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "0")
+    r = await _generate_stack(aclient, auth_headers, mirror_template)
+    saved = db_session.get(Report, uuid.UUID(r["report_id"]))
+    db_session.refresh(saved)
+    cand = saved.candidate_reports[0]
+    assert cand["phase1_source"] == "skipped" and cand["options_status"] == "skipped"
+    assert cand["options_pending"] is False
+    got = (await aclient.get(f"/api/reports/{r['report_id']}/options", headers=auth_headers)).json()
+    assert got["status"] == "skipped" and got["options_pending"] is False
 
 
 async def test_without_a_stack_the_flag_off_still_takes_todays_path(aclient, auth_headers, mirror_template, stubs,

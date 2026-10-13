@@ -1905,9 +1905,10 @@ async def generate_report_from_template(
                 clinical_history=_clinical,
                 user_id=str(current_user.id),
             )
-        # The lean templated path (RR_TEMPLATE_MIRROR / allowlist), else today's path: today's generator on the
-        # stored sheet, the post-generation check; Phase 1 for options only, finished in the background (the
-        # report never waits for options). The heavy mirror (tp.generate_template_report) is parked.
+        # Routing: a scratchpad session (below) always takes the lean path; any other generation takes it when
+        # RR_TEMPLATE_MIRROR / allowlist chooses it, else today's path. Lean = today's generator on the stored sheet
+        # + the post-generation check; off the scratchpad, Phase 1 for options only, finished in the background
+        # (the report never waits for options). The heavy mirror (tp.generate_template_report) is parked.
         _stack = ({"conclusion": request.stack_conclusion, "declined": request.stack_declined or []}
                   if request.stack else None)
         if _stack is not None:
@@ -1949,7 +1950,8 @@ async def generate_report_from_template(
                 mirror_candidate["phase1_source"] = _p1["source"]   # "pending" until the options job resolves it
                 # Options, and why each was offered, dropped or capped, arrive from the background job
                 mirror_candidate["options_pending"] = options_job is not None
-                mirror_candidate["options_status"] = "pending" if options_job is not None else "none"
+                mirror_candidate["options_status"] = ("pending" if options_job is not None
+                                                      else "skipped" if _stack is not None else "none")
                 mirror_candidate["case_decisions"] = mirror_result.get("case_decisions")
                 mirror_candidate["gate_dropped"] = mirror_result.get("gate_dropped") or []
                 report_output_dict = {"report_content": mirror_result["report_content"],
@@ -1959,7 +1961,8 @@ async def generate_report_from_template(
                 logger.info("template mirror %s: report ready, options pending=%s lat=%s", template_id,
                             mirror_candidate["options_pending"], mirror_candidate["lat"])
             except Exception as e:  # fail-soft: a mirror failure falls back to today's path
-                logger.warning("template mirror failed for %s (%s: %s); today's path", template_id,
+                logger.warning("template mirror failed for %s stack=%s (%s: %s); today's path, the report goes out "
+                               "without the post-generation check", template_id, _stack is not None,
                                type(e).__name__, str(e)[:300])
                 if options_job is not None:
                     options_job.cancel()
@@ -3580,7 +3583,8 @@ async def get_report_options(
     db: Session = Depends(get_db)
 ):
     """A report's options and review items, once its background options job has finished (lean templated
-    path). status: "pending" (poll again), "ready", "failed" (no options; the report stands), or "none"."""
+    path). status: "pending" (poll again), "ready", "failed" (no options; the report stands), "skipped" (a
+    scratchpad session: no options job), or "none"."""
     try:
         report = get_report(db, report_id, user_id=str(current_user.id))
         if not report:

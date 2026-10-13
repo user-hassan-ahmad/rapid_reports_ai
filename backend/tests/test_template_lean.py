@@ -376,7 +376,6 @@ async def test_stack_session_runs_no_options_job(monkeypatch):
     assert routed["n"] == 0
     assert out["report_content"].startswith(REPORT)
     assert out["options_job"] is None and out["options_pending"] is False
-    assert out["options_job_record"] == {"skipped": "scratchpad"}
 
 
 async def test_stack_session_never_resolves_the_case(monkeypatch):
