@@ -2879,9 +2879,11 @@ async def skill_sheet_decide_endpoint(
         built = trc.build_cards(run, len(examples))
         have = {c["id"] for c in current}
         kept = [c for c in built["kept"] if c["id"] not in have]
-        # the template's current values first, then the run's ranked cards; one budget across both
-        open_ = [*current, *(c for c in [*built["cards"], *built["more"]] if c["id"] not in have)]
-        out = {"cards": open_[:trc.MAX_CARDS], "more": open_[trc.MAX_CARDS:], "kept": kept}
+        # the template's current values first, then the run's ranked cards; one budget across both. The run's
+        # "more" (overflow and values seen in one report) stays under "More" even when there is room.
+        open_ = [*current, *(c for c in built["cards"] if c["id"] not in have)]
+        out = {"cards": open_[:trc.MAX_CARDS],
+               "more": [*open_[trc.MAX_CARDS:], *(c for c in built["more"] if c["id"] not in have)], "kept": kept}
         record = tdr.evidence(run, out)
         if request.template_id:   # first-use review: stamped once the cards exist, so it never runs twice
             tdr.stamp_review(db, request.template_id, record)

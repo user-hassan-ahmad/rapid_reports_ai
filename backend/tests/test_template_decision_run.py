@@ -136,3 +136,73 @@ def test_concept_wording_must_match_its_quotes_else_the_first_quote_is_used():
                                 quotes=[R.Quote(report=1, text="No previous imaging.")])
     run = R.check_quotes(R.RunOutput(concepts=[good, invented]), EX)
     assert [c.text for c in run.concepts] == ["Compared with {study} of {date}.", "No previous imaging."]
+
+
+# ── after the decision-run lab (2026-10-13) ────────────────────────────────────────────────────────────────────
+
+def test_the_prompt_counts_one_sentence_for_one_concept_and_asks_for_the_shortest_span():
+    assert "one concept only" in R.SYSTEM and "shortest span" in R.SYSTEM
+
+
+def test_sequences_and_limitation_questions_ask_whether_the_report_mentions_the_concept_at_all():
+    for name in ("comparison", "contrast", "sequences", "limitation"):
+        assert "whether" in td.CONCEPTS[name].question.lower(), name
+    for word in CLINICAL:
+        if word == "contrast":
+            continue
+        for c in td.CONCEPTS.values():
+            assert word not in c.question.lower(), (c.name, word)
+
+
+def test_wording_made_of_slots_only_is_replaced_by_its_quote():
+    w = R.ConceptWording(concept="comparison", state="compared", text="{study} {date}",
+                         quotes=[R.Quote(report=2, text="Compared with CT of 01/01/2020.")])
+    assert [c.text for c in R.check_quotes(R.RunOutput(concepts=[w]), EX).concepts] == \
+        ["Compared with CT of 01/01/2020."]
+
+
+def test_a_quote_with_braces_is_never_used_as_wording():
+    ex = ["Findings: none. Compared with study {A} of today."]
+    w = R.ConceptWording(concept="comparison", state="compared", text="Invented wording.",
+                         quotes=[R.Quote(report=1, text="Compared with study {A} of today.")])
+    assert R.check_quotes(R.RunOutput(concepts=[w]), ex).concepts == []
+
+
+class _Result:
+    def __init__(self, output):
+        self.output = output
+
+
+async def test_a_failed_qwen_call_falls_back_to_gpt_oss_with_room_for_its_output(monkeypatch):
+    from rapid_reports_ai import enhancement_utils as eu
+    calls = []
+
+    async def fake(model_name, output_type, system_prompt, user_prompt, api_key, model_settings=None, **k):
+        calls.append((model_name, model_settings))
+        if model_name == eu.MODEL_CONFIG["SKILL_SHEET_ANALYZER"]:
+            raise RuntimeError("Exceeded maximum output retries (2)")
+        return _Result(R.RunOutput(values=[R.ValueCandidate(name="LVEF", quotes=[R.Quote(report=1, text="LVEF 55%")])]))
+    monkeypatch.setattr(eu, "_run_agent_with_model", fake)
+    out = await R._qwen(EX, "<scan>")
+    assert [m for m, _ in calls] == [eu.MODEL_CONFIG["SKILL_SHEET_ANALYZER"], eu.MODEL_CONFIG["STACK_REVIEW_FALLBACK"]]
+    assert calls[1][1]["max_tokens"] >= eu.TOKEN_CAP_FLOOR     # gpt-oss reasons into the same cap: 6000 truncated it
+    assert out.values[0].name == "LVEF"
+
+
+def test_timeouts_after_the_lab():
+    assert R.QWEN_TIMEOUT_S == 40.0 and R.RUN_TIMEOUT_S <= 60.0
+
+
+async def test_the_whole_run_is_bounded(monkeypatch):
+    import asyncio
+
+    async def slow(examples, scan_type):
+        await asyncio.sleep(5)
+
+    async def states(examples, transport=None):
+        return {n: [] for n in td.CONCEPTS}
+    monkeypatch.setattr(R, "_qwen", slow)
+    monkeypatch.setattr(R, "ask_states", states)
+    monkeypatch.setattr(R, "RUN_TIMEOUT_S", 0.05)
+    run = await R.run_decisions(EX, "<scan>")
+    assert run.ok is False and run.error == "TimeoutError" and run.ms < 2000

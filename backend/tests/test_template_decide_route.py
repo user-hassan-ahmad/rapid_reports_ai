@@ -177,7 +177,8 @@ def test_current_values_count_against_the_card_budget(client, auth_headers, db_s
                                                       monkeypatch):
     from rapid_reports_ai import template_rules_cards as trc
     set_run, _ = run_returns
-    vals = [R.ValueCandidate(name=f"Value {i}", quotes=[R.Quote(report=1, text="LVEF 55%")]) for i in range(8)]
+    vals = [R.ValueCandidate(name=f"Value {i}", quotes=[R.Quote(report=1, text="LVEF 55%"),
+                                                         R.Quote(report=3, text="LVEF 50%")]) for i in range(8)]
     run = R.check_quotes(R.RunOutput(values=vals), [e["content"] for e in EX])
     run.states = {n: [] for n in td.CONCEPTS}
     set_run(run)
@@ -190,3 +191,12 @@ def test_current_values_count_against_the_card_budget(client, auth_headers, db_s
     r = client.post(URL, headers=auth_headers, json={"template_id": str(t.id)}).json()
     assert len(r["cards"]) == trc.MAX_CARDS and r["cards"][0]["id"] == "value:lvef"
     assert len(r["more"]) == 1 and r["run"]["cards"] == trc.MAX_CARDS and r["run"]["more"] == 1
+
+
+def test_a_value_seen_in_one_report_stays_under_more_with_room_in_the_cards(client, auth_headers, run_returns):
+    set_run, _ = run_returns
+    run = _run()
+    run.values.append(R.ValueCandidate(name="Heart rate", quotes=[R.Quote(report=2, text="LVEF 60%")]))
+    set_run(run)
+    r = client.post(URL, headers=auth_headers, json={"scan_type": "<scan>", "examples": EX}).json()
+    assert [c["id"] for c in r["cards"]] == ["value:ecv"] and [c["id"] for c in r["more"]] == ["value:heart rate"]

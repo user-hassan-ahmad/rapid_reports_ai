@@ -113,7 +113,7 @@ def test_contrast_default_is_the_usual_wording_and_the_condition_is_its_opposite
 
 
 def test_the_budget_moves_the_rest_to_more():
-    vals = [R.ValueCandidate(name=f"Value {i}", quotes=[_q(1, "LVEF 55%")]) for i in range(11)]
+    vals = [R.ValueCandidate(name=f"Value {i}", quotes=[_q(1, "LVEF 55%"), _q(3, "LVEF 50%")]) for i in range(11)]
     out = C.build_cards(_run(vals, states=ALL), 3)
     assert len(out["cards"]) == C.MAX_CARDS and len(out["more"]) == 3
 
@@ -144,8 +144,8 @@ def test_card_for_change_is_prefilled_and_not_preselected():
     assert card["wording"] == {"text": "The liver is normal."} and card["kind"] == "normal"
 
 
-def test_a_contrast_tie_defaults_to_the_given_wording():
-    # pinned (decision pending): with each contrast state used equally often, the first state ("given") is the default
+def test_a_contrast_tie_is_asked_never_defaulted():
+    # Hassan, after the decision-run lab: the usual state needs a clear majority (2+ reports and more than the other)
     none = R.ConceptWording(concept="contrast", state="not_given", text="No contrast agent was given.",
                             quotes=[_q(1, "No contrast agent was given.")])
     given = R.ConceptWording(concept="contrast", state="given", text="Following a contrast agent.",
@@ -153,5 +153,31 @@ def test_a_contrast_tie_defaults_to_the_given_wording():
     run = R.check_quotes(R.RunOutput(concepts=[none, given]), EX_C)
     run.states = {n: [] for n in td.CONCEPTS}
     card = C.build_cards(run, 3)["cards"][0]
-    assert card["wording"]["default"] == "Following a contrast agent."
-    assert card["wording"]["condition"] == "the dictation states no contrast agent was given"
+    assert card["id"] == "concept:contrast" and card["title"] == "Is contrast usually given for this scan?"
+    assert card["selected"] is None and "wording" not in card
+    given_c = next(x for x in card["choices"] if x["id"] == "usual:given")["choice"]
+    none_c = next(x for x in card["choices"] if x["id"] == "usual:not_given")["choice"]
+    assert given_c["default"] == "Following a contrast agent." and given_c["when_met"] == "No contrast agent was given."
+    assert given_c["condition"] == "the dictation states no contrast agent was given"
+    assert none_c["default"] == "No contrast agent was given."
+    assert none_c["condition"] == "the dictation states a contrast agent was given"
+    for ch in (given_c, none_c):
+        assert td.validate("concept", "contrast", ch)[1] == ch
+
+
+def test_one_report_stating_contrast_is_not_a_majority():
+    none = R.ConceptWording(concept="contrast", state="not_given", text="No contrast agent was given.",
+                            quotes=[_q(1, "No contrast agent was given.")])
+    run = R.check_quotes(R.RunOutput(concepts=[none]), EX_C)
+    run.states = {n: [] for n in td.CONCEPTS}
+    card = C.build_cards(run, 3)["cards"][0]
+    assert card["title"] == "Is contrast usually given for this scan?"
+    given_c = next(x for x in card["choices"] if x["id"] == "usual:given")["choice"]
+    assert given_c["default"] == "" and given_c["when_met"] == "No contrast agent was given."
+    assert td.validate("concept", "contrast", given_c)[1] == given_c
+
+
+def test_values_seen_in_one_report_go_under_more():
+    one = R.ValueCandidate(name="Heart rate", quotes=[_q(2, "LVEF 60%")])
+    out = C.build_cards(_run([ECV, one], states=ALL), 3)
+    assert [c["id"] for c in out["cards"]] == ["value:ecv"] and [c["id"] for c in out["more"]] == ["value:heart rate"]

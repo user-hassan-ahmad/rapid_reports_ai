@@ -18,6 +18,10 @@ from . import template_decisions as td
 from .template_decision_run import DecisionRun
 
 MAX_CARDS = 8
+MAJORITY_MIN = 2   # a concept with no base state (contrast) takes the usual state from the examples only when at least
+                   # this many state it and more than state the other; otherwise the card asks (after the lab, 2026-10-13)
+_USUAL = {"contrast": ("Is contrast usually given for this scan?",
+                       {"given": "Usually given", "not_given": "Usually not given"})}
 _RANK = {"disagree": 0, "value": 1, "concept": 2, "fixed": 3, "normal": 4, "uncovered": 5}
 
 
@@ -74,6 +78,26 @@ def disagree_card(concept: str, options: List[dict], other: str, role: str, evid
     return {"id": f"disagree:{concept}", "kind": "disagree", "step": "rules",
             "title": f"Your examples word {td.CONCEPTS[concept].label.lower()} differently", "evidence": evidence,
             "ledger_kind": "concept", "key": concept, "choices": choices, "selected": None, "rank": _RANK["disagree"]}
+
+
+def usual_card(concept: str, wordings: Dict[str, str], evidence: List[dict]) -> dict:
+    """A concept with no base state whose examples show no clear majority: which state is usual? Each choice makes
+    that state's wording the default and the other state's wording the replacement under the other state's
+    condition. Never pre-ticked."""
+    c = td.CONCEPTS[concept]
+    title, labels = _USUAL.get(concept, (f"Which is usual: {c.label.lower()}?", {}))
+    choices = []
+    for state in c.states:
+        other = next(s for s in c.states if s != state)
+        choices.append(_choice(f"usual:{state}", labels.get(state, f"Usually {state.replace('_', ' ')}"),
+                               {"use": True, "default": wordings.get(state, ""), "when_met": wordings.get(other, ""),
+                                "condition": c.states[other], "dictated": False}))
+    choices += [_choice("edit", "Edit wording", None),
+                _choice("not_used", "Not used", {"use": False, "default": "", "when_met": "", "condition": "",
+                                                 "dictated": False})]
+    return {"id": f"concept:{concept}", "kind": "concept", "step": "rules", "title": title, "evidence": evidence,
+            "ledger_kind": "concept", "key": concept, "usual": dict(wordings), "choices": choices, "selected": None,
+            "rank": _RANK["concept"]}
 
 
 def fixed_card(text: str, step: str = "style", selected: Optional[str] = None) -> dict:
@@ -142,7 +166,9 @@ def _value_cards(run: DecisionRun, n: int) -> List[dict]:
 def _concept_cards(run: DecisionRun, n: int) -> List[dict]:
     """One card per concept the examples word (never folded into "kept"). The default is the base state's wording
     (no previous study, everything performed, no limitation); for contrast, whose two states both have a condition,
-    it is the state the examples use most (D1), and the condition stored is the opposite state's."""
+    it is the state the examples use most (D1) when that is a clear majority (MAJORITY_MIN reports and more than the
+    other state), and the condition stored is the opposite state's. Without a clear majority the card asks which
+    state is usual (usual_card)."""
     if run.states is None:
         return []
     out = []
@@ -163,12 +189,21 @@ def _concept_cards(run: DecisionRun, n: int) -> List[dict]:
         quoted = {r for ws in by_state.values() for w in ws for r in w["reports"]}
         stating = set(run.states.get(name) or []) | quoted     # a verified quote counts even when Jev missed it
         base = next((s for s, cond in c.states.items() if cond is None), None)
+        silent = [k for k in range(1, n + 1) if k not in stating]
         if base is None:
             counts = {s: len({r for w in ws for r in w["reports"]}) for s, ws in by_state.items()}
-            base = max(c.states, key=lambda s: counts[s])
+            top = max(c.states, key=lambda s: counts[s])
+            if counts[top] >= MAJORITY_MIN and all(counts[top] > v for s, v in counts.items() if s != top):
+                base = top
+            else:
+                ev = [{"reports": w["reports"], "quote": w["quote"]} for ws in by_state.values() for w in ws]
+                if silent:
+                    ev.append({"reports": silent, "quote": None})
+                wordings = {s: max(ws, key=lambda w: len(w["reports"]))["text"] for s, ws in by_state.items() if ws}
+                out.append(usual_card(name, wordings, ev))
+                continue
         other = next(s for s in c.states if s != base)
         condition = c.states[other]
-        silent = [k for k in range(1, n + 1) if k not in stating]
         ev = [{"reports": w["reports"], "quote": w["quote"]} for w in [*by_state[base], *by_state[other]]]
         if silent:
             ev.append({"reports": silent, "quote": None})
@@ -190,8 +225,16 @@ def build_cards(run: DecisionRun, n_examples: int) -> dict:
     every = [*_value_cards(run, n_examples), *_concept_cards(run, n_examples)]
     kept = [c for c in every if c["selected"] is not None]
     open_ = sorted((c for c in every if c["selected"] is None),
-                   key=lambda c: (c["rank"], -sum(len(e["reports"]) for e in c["evidence"] if e.get("quote"))))
-    return {"cards": open_[:MAX_CARDS], "more": open_[MAX_CARDS:], "kept": kept, "defaults": defaults_of(kept)}
+                   key=lambda c: (c["rank"], -_stated_in(c)))
+    # a value seen in only one report waits under "More" (after the lab, 2026-10-13), never in the main cards
+    single = [c for c in open_ if c["kind"] == "value" and _stated_in(c) <= 1 and n_examples > 1]
+    main = [c for c in open_ if c not in single]
+    return {"cards": main[:MAX_CARDS], "more": [*main[MAX_CARDS:], *single], "kept": kept,
+            "defaults": defaults_of(kept)}
+
+
+def _stated_in(card: dict) -> int:
+    return sum(len(e["reports"]) for e in card["evidence"] if e.get("quote"))
 
 
 def current_value_cards(sheet: str, ledger: List[dict]) -> List[dict]:

@@ -98,12 +98,14 @@ CONCEPTS: Dict[str, Concept] = {
     "sequences": Concept(
         "sequences", "Parts of the study not performed",
         {"complete": None, "not_performed": "the dictation states that part of the planned acquisition was not performed"},
-        "The REPORT says that part of the planned acquisition (a sequence, phase or view) was not performed.",
+        "The REPORT says whether all of the planned acquisition (every sequence, phase or view) was performed, or "
+        "that part of it was not.",
         ("technique",)),
     "limitation": Concept(
         "limitation", "Technical limitation",
         {"none": None, "limited": "the dictation states a technical limitation of the study"},
-        "The REPORT states a technical limitation of the study (for example artefact or incomplete coverage).",
+        "The REPORT says whether the image quality was adequate, or comments on a technical limitation of the study "
+        "(for example artefact or incomplete coverage).",
         ("technique",)),
 }
 STANDARD_CONDITIONS = {" ".join(c.lower().split()): name for name, k in CONCEPTS.items() for c in k.conditions}

@@ -26,13 +26,17 @@ from . import template_decisions as td
 logger = logging.getLogger(__name__)
 
 RUN_VERSION = "decision-run-2026-10-13"
-QWEN_TIMEOUT_S = 25.0
+QWEN_TIMEOUT_S = 40.0     # the lab (2026-10-13): 19/132 calls timed out at 25 s
 FALLBACK_TIMEOUT_S = 25.0
+RUN_TIMEOUT_S = 60.0      # the whole Qwen step, fallback included: the radiologist never waits longer
 JEV_TIMEOUT_S = 6.0
 MIN_QUOTE_WORDS = 2  # a verified quote has at least this many words, or MIN_QUOTE_CHARS characters, so a short
 MIN_QUOTE_CHARS = 6  # fragment ("55%") cannot verify by chance
 STATES_MIN = 0.5   # lab-set (scripts/rules_step_lab.py decide): one cut-off for every concept question
-SETTINGS = {"temperature": 0.2, "max_tokens": 6000, "reasoning_effort": "low"}
+# max_tokens: gpt-oss (the fallback) reasons into the same cap. At 6000 its tool-call JSON was cut off on the larger
+# sets, the ones Qwen timed out on, and each re-ask was cut off the same way ("Exceeded maximum output retries",
+# 16 of 19 fallbacks in the lab). Qwen on Cerebras is already raised to this floor by normalise_model_settings.
+SETTINGS = {"temperature": 0.2, "max_tokens": 16384, "reasoning_effort": "low"}
 
 ConceptName = Literal["comparison", "contrast", "sequences", "limitation"]
 
@@ -81,6 +85,8 @@ The state says what the wording states, never how often it is used: do not decid
 
 3. HABITS: a statement the radiologist adds only when a particular finding is present (the finding, and what they always add), seen in at least two reports. Give the report numbers.
 
+One sentence counts for one concept only: never give the same sentence as the quote or wording of two concepts. Quote the shortest span that states the concept or the value, never a whole paragraph.
+
 Copy quotes exactly; never paraphrase or invent one. If nothing fits a list, return it empty."""
 
 
@@ -110,8 +116,11 @@ _SLOT = re.compile(r"\{[^{}]*\}")
 
 
 def _wording_matches(text: str, quotes: List[Quote], examples: List[str]) -> bool:
-    """The wording, with each {slot} as a wildcard, appears in one of the examples its quotes cite."""
+    """The wording, with each {slot} as a wildcard, appears in one of the examples its quotes cite. Wording with no
+    literal words (slots only) never matches: as a pattern it would match anything."""
     parts = _SLOT.split(_norm(text))
+    if not any(re.search(r"\w", x) for x in parts):
+        return False
     pattern = re.compile(".+?".join(re.escape(x) for x in parts))
     return any(pattern.search(_norm(examples[q.report - 1])) for q in quotes)
 
@@ -160,6 +169,8 @@ def check_quotes(out: RunOutput, examples: List[str]) -> DecisionRun:
         text = " ".join(c.text.split())
         if not _wording_matches(text, ok, examples):
             text = " ".join(ok[0].text.split())
+            if "{" in text or "}" in text:     # a quote's braces would read as slots
+                continue
         if '"' not in text:
             concepts.append(ConceptWording(concept=c.concept, state=c.state, text=text, quotes=ok))
     habits = [h for h in out.habits if len({r for r in h.reports if 1 <= r <= len(examples)}) >= 2]
@@ -172,6 +183,8 @@ async def _qwen(examples: List[str], scan_type: str) -> RunOutput:
 
     prompt = user_prompt(examples, scan_type)
 
+    deadline = time.monotonic() + RUN_TIMEOUT_S
+
     async def call(model: str, timeout: float) -> RunOutput:
         r = await asyncio.wait_for(_run_agent_with_model(
             model_name=model, output_type=RunOutput, system_prompt=SYSTEM, user_prompt=prompt, api_key="",
@@ -183,7 +196,10 @@ async def _qwen(examples: List[str], scan_type: str) -> RunOutput:
     except Exception as e:
         logger.warning("[decision-run] qwen %s: %s; fallback %s", type(e).__name__, str(e)[:200],
                        MODEL_CONFIG["STACK_REVIEW_FALLBACK"])
-        return await call(MODEL_CONFIG["STACK_REVIEW_FALLBACK"], FALLBACK_TIMEOUT_S)
+        left = deadline - time.monotonic()
+        if left <= 1:
+            raise
+        return await call(MODEL_CONFIG["STACK_REVIEW_FALLBACK"], min(FALLBACK_TIMEOUT_S, left))
 
 
 async def ask_states(examples: List[str], transport=None) -> Dict[str, List[int]]:
@@ -214,7 +230,8 @@ async def ask_states(examples: List[str], transport=None) -> Dict[str, List[int]
 async def run_decisions(examples: List[str], scan_type: str) -> DecisionRun:
     """The decision run for these examples. Never raises."""
     t0 = time.monotonic()
-    qwen, jev = await asyncio.gather(_qwen(examples, scan_type), ask_states(examples), return_exceptions=True)
+    qwen, jev = await asyncio.gather(asyncio.wait_for(_qwen(examples, scan_type), RUN_TIMEOUT_S),
+                                     ask_states(examples), return_exceptions=True)
     ms = int((time.monotonic() - t0) * 1000)
     if isinstance(qwen, BaseException):
         logger.warning("[decision-run] failed: %s: %s", type(qwen).__name__, str(qwen)[:200])
