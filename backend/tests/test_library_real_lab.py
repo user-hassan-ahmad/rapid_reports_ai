@@ -231,3 +231,46 @@ def test_resume_survives_a_truncated_last_line_and_retries_that_case(tmp_path, m
     ck.write_text(json.dumps({"case": "a", "cards": [_card("a")]}) + "\n" + '{"case": "b", "car')
     assert RL._read_checkpoint(ck) == {"a": [_card("a")]}
     assert "1 unreadable checkpoint lines skipped" in capsys.readouterr().err
+
+
+def test_cards_for_passes_known_systems_and_emits_a_sibling_once(monkeypatch):
+    import asyncio
+    from types import SimpleNamespace as NS
+    a, b = NS(key="a", tier=1, display="A"), NS(key="b", tier=1, display="B")
+    ref = NS(key="r", tier=2, display="R")
+
+    class Lib:
+        def find(self, name, version=""):
+            return {"A": a, "B": b, "R": ref}.get(name)
+
+        def siblings(self, p):
+            return {"a": [b, ref], "b": [a]}.get(p.key, [])
+
+        def known_text(self):
+            return "- a: A [aliases: ]\n- b: B [aliases: ]"
+    prompts = []
+
+    async def call(prompt):
+        prompts.append(prompt)
+        sysm = lambda n: NS(name=n, version="")
+        return NS(findings=[NS(id="F1", systems=[sysm("A"), sysm("B")])])
+
+    async def pgate(text, pack, history):
+        return 1.0
+
+    async def schema(*a, **k):
+        return NS(regions=[])
+
+    async def group_update(*a, **k):
+        return NS(units=[])
+    import rapid_reports_ai.hybrid_stack.service as S
+    monkeypatch.setattr(S, "resolve_schema", schema)
+    monkeypatch.setattr(S, "group_update", group_update)
+    monkeypatch.setattr(RL, "_coverage_lab", lambda: NS(findings=lambda units: [{"id": "F1", "text": "nodule"}]))
+    monkeypatch.setattr(RL.LB, "get", lambda: Lib())
+    monkeypatch.setattr(RL.M, "_call", call)
+    monkeypatch.setattr(RL.M, "_pgate", pgate)
+    case = {"id": "c", "scan_type": "CT", "clinical_history": "h", "findings": "x"}
+    out = asyncio.run(RL._cards_for(case, asyncio.Semaphore(1)))
+    assert Lib().known_text() in prompts[0]
+    assert sorted(c["id"] for c in out) == ["c:F1:a", "c:F1:b"]   # b named by the model and as a's sibling: once; tier 2 dropped

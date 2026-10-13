@@ -154,20 +154,31 @@ async def _cards_for(case: dict, sem: asyncio.Semaphore) -> list[dict]:
         fs = _coverage_lab().findings([u.model_dump() for u in g.units])
         if not fs:
             return []
-        raw = await M._call(M._prompt(case["scan_type"], case["clinical_history"], [M.Finding(**f) for f in fs], ""))
-        lib, out = LB.get(), []
+        # Live path (matcher.match) with web fetch OFF: the library's known systems steer the model's names.
+        raw = await M._call(M._prompt(case["scan_type"], case["clinical_history"], [M.Finding(**f) for f in fs],
+                                      LB.get().known_text()))
+        lib, out, seen = LB.get(), [], set()
+
+        def emit(f: dict, pack) -> None:
+            cid = f"{case['id']}:{f['id']}:{pack.key}"
+            if cid not in seen:
+                seen.add(cid)
+                out.append({"id": cid, "case": case["id"], "pack": pack.key, "source": case.get("source", "prod"),
+                            "scan_type": case["scan_type"], "clinical_history": case["clinical_history"],
+                            "findings": case["findings"], "finding": f["text"]})
+
         for rf in raw.findings:
             f = next((x for x in fs if x["id"] == M._rid(rf.id)), None)
-            for s in rf.systems if f else []:
+            for s in (rf.systems if f else [])[:M.CANDIDATES_PER_FINDING]:
                 pack = lib.find(s.name, s.version) or lib.find(s.name)
                 if pack is None or pack.tier != 1:
                     continue
                 score = await M._pgate(f["text"], pack, case["clinical_history"])
                 if score is not None and score >= M.PACK_GATE_MIN:
-                    out.append({"id": f"{case['id']}:{f['id']}:{pack.key}", "case": case["id"], "pack": pack.key,
-                                "source": case.get("source", "prod"), "scan_type": case["scan_type"],
-                                "clinical_history": case["clinical_history"], "findings": case["findings"],
-                                "finding": f["text"]})
+                    emit(f, pack)
+                    for sib in lib.siblings(pack):      # live renders siblings on the same card, gated once on the hit
+                        if sib.tier == 1:
+                            emit(f, sib)
         return out
 
 
