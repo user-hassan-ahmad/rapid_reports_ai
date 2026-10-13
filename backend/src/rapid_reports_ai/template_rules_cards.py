@@ -5,15 +5,30 @@ ledger choice it records (None: the radiologist writes the wording). Answering a
 Card: {"id", "kind", "step", "title", "evidence": [{"reports": [..], "quote": str | None}], "ledger_kind", "key",
        "choices": [{"id", "label", "choice": dict | None}], "selected": choice id | None, "rank", "wording"?}
 
-Phase 1 holds the card shapes and card_for_change (template_ledger_apply.reconcile_chat returns them); the decision
-run's build_cards joins them in Phase 2."""
+build_cards(run, n_examples) -> {"cards", "more", "kept", "defaults"}: exceptions only, ranked (examples disagree,
+then uncertain values, then concept wording); at most MAX_CARDS open, the rest in "more"; items every example agrees
+on fold into "kept" (pre-ticked); nothing seen in fewer than every example is pre-ticked; "defaults" are the
+pre-ticked choices, recorded with source "default" when the step is skipped or the kept items are left alone.
+Only values every example states are kept; a study-level concept is always a card (D1)."""
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from . import template_decisions as td
+from .template_decision_run import DecisionRun
 
+MAX_CARDS = 8
 _RANK = {"disagree": 0, "value": 1, "concept": 2, "fixed": 3, "normal": 4, "uncovered": 5}
+
+
+def _reports(nums) -> str:
+    nums = sorted(set(nums))
+    return ("report " if len(nums) == 1 else "reports ") + ", ".join(str(n) for n in nums)
+
+
+def evidence_line(e: dict) -> str:
+    """"reports 1, 2, 4: 'ECV 28%'" or "report 3: not stated" (never percentages)."""
+    return f"{_reports(e['reports'])}: " + (f"'{e['quote']}'" if e.get("quote") else "not stated")
 
 
 def _choice(cid: str, label: str, choice: Optional[dict]) -> dict:
@@ -44,6 +59,23 @@ def concept_card(concept: str, default: str, when_met: str, evidence: List[dict]
             "selected": None, "rank": _RANK["concept"]}
 
 
+def disagree_card(concept: str, options: List[dict], other: str, role: str, evidence: List[dict],
+                  condition: str) -> dict:
+    """options: [{"text", "reports"}] for one side; `other` the single wording of the other side ("" if none).
+    "Use whichever is dictated" is its own choice ({"use": false, "dictated": true}), not "not used"."""
+    choices = []
+    for k, o in enumerate(options):
+        default, when_met = (o["text"], other) if role == "default" else (other, o["text"])
+        choices.append(_choice(f"w{k}", f"Use \u201c{o['text']}\u201d",
+                               {"use": True, "default": default, "when_met": when_met, "condition": condition,
+                                "dictated": False}))
+    choices.append(_choice("dictated", "Use whichever is dictated",
+                           {"use": False, "default": "", "when_met": "", "condition": "", "dictated": True}))
+    return {"id": f"disagree:{concept}", "kind": "disagree", "step": "rules",
+            "title": f"Your examples word {td.CONCEPTS[concept].label.lower()} differently", "evidence": evidence,
+            "ledger_kind": "concept", "key": concept, "choices": choices, "selected": None, "rank": _RANK["disagree"]}
+
+
 def fixed_card(text: str, step: str = "style", selected: Optional[str] = None) -> dict:
     return {"id": f"fixed:{td.match_key('fixed', text)}", "kind": "fixed", "step": step, "title": text,
             "evidence": [], "ledger_kind": "fixed", "key": text,
@@ -63,6 +95,14 @@ def normal_card(key: str, text: str, step: str = "style") -> dict:
             "selected": None, "rank": _RANK["normal"]}
 
 
+def uncovered_card(paragraph: str, structure: str) -> dict:
+    key = td.normal_key(paragraph, structure)
+    return {"id": f"uncovered:{td.match_key('normal', key)}", "kind": "uncovered", "step": "style",
+            "title": f"{paragraph}: {structure}", "evidence": [], "ledger_kind": "normal", "key": key,
+            "choices": [_choice("add", "Add wording", None), _choice("leave", "Leave unmentioned", {"text": ""})],
+            "selected": None, "rank": _RANK["uncovered"]}
+
+
 def card_for_change(kind: str, key: str, proposed: dict) -> dict:
     """The one-tap card for a change code could not apply as given (the chat-edit router's uncertain or rejected
     parts), prefilled with the proposed wording and not pre-selected. DecisionError on an invalid proposal."""
@@ -75,3 +115,80 @@ def card_for_change(kind: str, key: str, proposed: dict) -> dict:
     if kind == "fixed":
         return fixed_card(key, step="chat")
     return normal_card(key, proposed.get("text", ""), step="chat")
+
+
+def defaults_of(cards: List[dict]) -> List[dict]:
+    """The pre-ticked choice of each card, as a change [{kind, key, choice}]."""
+    out = []
+    for c in cards:
+        ch = next((x["choice"] for x in c["choices"] if x["id"] == c.get("selected")), None)
+        if ch is not None:
+            out.append({"kind": c["ledger_kind"], "key": c["key"], "choice": ch})
+    return out
+
+
+def _value_cards(run: DecisionRun, n: int) -> List[dict]:
+    out = []
+    for v in run.values:
+        reports = sorted({q.report for q in v.quotes})
+        ev = [{"reports": reports, "quote": v.quotes[0].text}]
+        missing = [k for k in range(1, n + 1) if k not in reports]
+        if missing:
+            ev.append({"reports": missing, "quote": None})
+        out.append(value_card(v.name, ev, selected=None if missing else "every"))
+    return out
+
+
+def _concept_cards(run: DecisionRun, n: int) -> List[dict]:
+    """One card per concept the examples word (never folded into "kept"). The default is the base state's wording
+    (no previous study, everything performed, no limitation); for contrast, whose two states both have a condition,
+    it is the state the examples use most (D1), and the condition stored is the opposite state's."""
+    if run.states is None:
+        return []
+    out = []
+    for name, c in td.CONCEPTS.items():
+        by_state: Dict[str, List[dict]] = {s: [] for s in c.states}
+        seen: Dict[str, dict] = {}
+        for w in run.concepts:
+            if w.concept != name:
+                continue
+            k = f"{w.state}:{td.match_key('fixed', w.text)}"
+            if k in seen:
+                seen[k]["reports"] = sorted(set(seen[k]["reports"]) | {q.report for q in w.quotes})
+                continue
+            seen[k] = {"text": w.text, "reports": sorted({q.report for q in w.quotes}), "quote": w.quotes[0].text}
+            by_state[w.state].append(seen[k])
+        if not any(by_state.values()):
+            continue
+        quoted = {r for ws in by_state.values() for w in ws for r in w["reports"]}
+        stating = set(run.states.get(name) or []) | quoted     # a verified quote counts even when Jev missed it
+        base = next((s for s, cond in c.states.items() if cond is None), None)
+        if base is None:
+            counts = {s: len({r for w in ws for r in w["reports"]}) for s, ws in by_state.items()}
+            base = max(c.states, key=lambda s: counts[s])
+        other = next(s for s in c.states if s != base)
+        condition = c.states[other]
+        silent = [k for k in range(1, n + 1) if k not in stating]
+        ev = [{"reports": w["reports"], "quote": w["quote"]} for w in [*by_state[base], *by_state[other]]]
+        if silent:
+            ev.append({"reports": silent, "quote": None})
+        split = next((s for s in (base, other) if len(by_state[s]) > 1), None)
+        if split:
+            rest = by_state[other if split == base else base]
+            out.append(disagree_card(name, by_state[split], rest[0]["text"] if len(rest) == 1 else "",
+                                     "default" if split == base else "when_met", ev, condition))
+            continue
+        default = by_state[base][0]["text"] if by_state[base] else ""
+        when_met = by_state[other][0]["text"] if by_state[other] else ""
+        out.append(concept_card(name, default, when_met, ev, condition))
+    return out
+
+
+def build_cards(run: DecisionRun, n_examples: int) -> dict:
+    if not run.ok:
+        return {"cards": [], "more": [], "kept": [], "defaults": []}
+    every = [*_value_cards(run, n_examples), *_concept_cards(run, n_examples)]
+    kept = [c for c in every if c["selected"] is not None]
+    open_ = sorted((c for c in every if c["selected"] is None),
+                   key=lambda c: (c["rank"], -sum(len(e["reports"]) for e in c["evidence"] if e.get("quote"))))
+    return {"cards": open_[:MAX_CARDS], "more": open_[MAX_CARDS:], "kept": kept, "defaults": defaults_of(kept)}
