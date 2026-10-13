@@ -31,7 +31,8 @@ from .. import jev as J
 from .. import preview as P
 from .. import registry as R
 from ..types import (Branch, Calculation, DecidingAnswer, DecidingInput, DraftValue, Entry as CardEntry,
-                     GuidelineContent, Input, OutcomeBrief, Preview, Proposal, Publication, Settled, Source)
+                     ExclusionReason, GuidelineContent, Input, OutcomeBrief, Preview, Proposal, Publication, Settled,
+                     Source)
 from . import engine
 from . import quantity as Q
 from .describe import citation
@@ -513,7 +514,8 @@ def _possible(e: Entry, t: engine.Trace) -> list[str]:
 def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict[str, str], sources: list[dict],
            degraded: bool, preset: frozenset[str] = frozenset(), draft: list[DraftValue] | None = None,
            doubt: list[str] | None = None, signs: dict[str, InputValue] | None = None,
-           possible: list[str] | None = None, likely: tuple | None = None) -> Preview:
+           possible: list[str] | None = None, likely: tuple | None = None,
+           reason: ExclusionReason | None = None) -> Preview:
     """The card (spec §7.4): eligibility asks first; the state worked out in code; the reached outcome is a draft
     "on these values" (never a proposal, so never Applied); a does_not_apply outcome is shown as an exclusion."""
     elig = [i.id for i in e.inputs if i.role == "eligibility"]
@@ -538,6 +540,7 @@ def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict
     return Preview(settled=settled, draft=draft or [], draft_outcome=draft_outcome, missing=needed, proposal=None,
                    assumptions=assumptions, assumed_eligible=bool(elig_assumed), scope_doubt=list(doubt or []),
                    most_likely=most_likely, deciding_input=deciding_input, deciding=deciding,
+                   exclusion_reason=reason if t.outcome == DOES_NOT_APPLY else None,
                    exclusion=exclusion, state=state, possible=possible, bounded=t.bounded,
                    asks=_asks(e, t, sources, needed), waiting=list(t.waiting),
                    trace=t.model_dump(mode="json") if t.outcome is not None else None, degraded=degraded)
@@ -625,6 +628,7 @@ def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str,
         possible = (_possible(e, engine.evaluate(e, _known(given), assume_eligible=True)) if signs
                     else _possible(e, t))
         likely = _likely(e, t, _known(drafted), sources or [], assume=True)
+        reason = _exclusion_reason(e, t, _known(drafted))
     except (engine.EvaluationError, ValueError) as ex:
         logger.error("[library.preview] %s cannot be evaluated: %s", e.key, ex)
         return failed(e)
@@ -654,7 +658,25 @@ def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str,
             dv.why.append(WHY_WOULD_EXCLUDE)
         draft.append(dv)
     return _build(e, t, given, quotes, sources or [], s.failed or s.no_unit, frozenset(preset), draft, doubt, signs,
-                  possible, likely)
+                  possible, likely, reason)
+
+
+def _exclusion_reason(e: Entry, t: engine.Trace, known: dict[str, InputValue]) -> ExclusionReason | None:
+    """does_not_apply: the one value whose removal alone lifts the exclusion (the engine's own result over the other
+    values no longer does_not_apply), shown so the card can say why instead of listing every criterion. None when no
+    single value is behind it (several exclude, or none alone)."""
+    if t.outcome != DOES_NOT_APPLY:
+        return None
+    lifts = []
+    for k, v in known.items():
+        if v.state == "unknown" or e.input(k) is None:
+            continue
+        if engine.evaluate(e, {x: y for x, y in known.items() if x != k}).outcome != DOES_NOT_APPLY:
+            lifts.append(k)
+    if len(lifts) != 1:
+        return None
+    i = e.input(lifts[0])
+    return ExclusionReason(input=i.id, label=i.label, value=_show(e, i, known[i.id]))
 
 
 def _brief(e: Entry, t: engine.Trace, oid: str) -> OutcomeBrief:
@@ -784,6 +806,7 @@ def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str
                        possible=_possible(e, t), needed=list(t.needed), values=used,
                        assumptions=[v.input for v in used if v.state == "assumed"],
                        most_likely=most_likely, deciding_input=deciding_input, deciding=deciding,
+                       exclusion_reason=_exclusion_reason(e, t, _known(given)),
                        trace=t.model_dump(mode="json") if t.outcome is not None else None,
                        pack=e.key, bundle=bundle)
 

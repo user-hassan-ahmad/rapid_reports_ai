@@ -163,6 +163,14 @@ class DecidingAnswer(BaseModel):
     category: str = ""
 
 
+class ExclusionReason(BaseModel):
+    """The one read or answered value that makes a guideline not apply (e.g. diameter_mm, "Maximum diameter",
+    "38 mm")."""
+    input: str
+    label: str
+    value: str
+
+
 class DecidingInput(BaseModel):
     input: str
     label: str
@@ -177,6 +185,7 @@ class Calculation(BaseModel):
     needed: list[str] = Field(default_factory=list)
     values: list[DraftValue] = Field(default_factory=list)
     assumptions: list[str] = Field(default_factory=list)   # inputs sent back at the draft's assumed in-scope value
+    exclusion_reason: ExclusionReason | None = None   # does_not_apply: the one value behind it; None if not one input
     most_likely: OutcomeBrief | None = None    # the outcome reached, in short; None while several remain
     deciding_input: DecidingInput | None = None   # several remain: the one unknown input whose answer splits them most
     deciding: list[DecidingAnswer] = Field(default_factory=list)   # its answers -> outcomes (at most 3)
@@ -192,6 +201,8 @@ class Preview(BaseModel):
     assumptions: list[str] = Field(default_factory=list)   # library packs: eligibility inputs assumed in scope (their
                                                            # draft values have state "assumed"), in pack order
     assumed_eligible: bool = False   # library packs: the draft rests on assumptions; the card shows a warning
+    exclusion_reason: ExclusionReason | None = None   # library packs, does_not_apply: the one read or answered value
+    # behind the exclusion; None when it is not attributable to one input
     most_likely: OutcomeBrief | None = None    # library packs: the draft's outcome under its assumptions, in short
     deciding_input: DecidingInput | None = None   # library packs: several outcomes remain: the input that splits most
     deciding: list[DecidingAnswer] = Field(default_factory=list)   # its answers -> outcomes (at most 3)

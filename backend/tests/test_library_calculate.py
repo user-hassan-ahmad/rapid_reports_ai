@@ -343,3 +343,32 @@ def test_a_visible_sign_is_a_yes_no_or_a_choice_naming_its_absent_option():
                 {"type": "boolean", "absent_option": "x"}):
         with pytest.raises(pydantic.ValidationError):
             InputDef(id="x", label="X", **bad)
+
+
+# live checkpoint 4: say which value excludes
+def test_a_bts_mass_says_its_diameter_is_the_reason():
+    e = next(x for x in _tier1() if x.id == "bts-pulmonary-nodule")
+    s = PP.Settlement(values={"diameter_mm": PP.Drafted(InputValue(value=38.0), "3.8 cm", "read")})
+    p = PP.finish(e, s, {}, None, [])
+    assert p.state == "does_not_apply" and p.exclusion_reason.model_dump() == {
+        "input": "diameter_mm", "label": e.input("diameter_mm").label, "value": "38 mm"}
+    c = PP.calculate(e, s, {"diameter_mm": "38 mm"}, None, [], "b1")
+    assert c.exclusion is not None and c.exclusion_reason.input == "diameter_mm"
+
+
+def test_fleischner_screening_and_age_exclusions_say_which():
+    e = next(x for x in _tier1() if x.id == "fleischner-pulmonary-nodule")
+    p = PP.finish(e, PP.Settlement(), {"exclusion": "Yes", "age": "60"}, None, [])
+    assert p.state == "does_not_apply" and (p.exclusion_reason.input, p.exclusion_reason.value) == ("exclusion", "Yes")
+    s = PP.Settlement(values={"age": PP.Drafted(InputValue(value=30.0), "30-year-old", "read")})
+    p = PP.finish(e, s, {}, None, [])
+    assert (p.exclusion_reason.input, p.exclusion_reason.value) == ("age", "30 years")
+    p = PP.finish(e, PP.Settlement(), {"exclusion": "Yes", "age": "30"}, None, [])   # two reasons: none attributable
+    assert p.state == "does_not_apply" and p.exclusion_reason is None
+
+
+def test_an_eligibility_exclusion_names_its_input_and_an_open_card_has_none():
+    e = next(x for x in _tier1() if x.id == "rcog-ovarian-mass-premenopausal")
+    p = PP.finish(e, PP.Settlement(), {"pregnant_or_acute": "Yes"}, None, [])
+    assert p.state == "does_not_apply" and p.exclusion_reason.input == "pregnant_or_acute"
+    assert PP.finish(e, PP.Settlement(), {}, None, []).exclusion_reason is None
