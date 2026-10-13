@@ -34,19 +34,23 @@ logger = logging.getLogger(__name__)
 TIMEOUT_S = 6.0
 FIXED_MIN = 0.5   # FIXED-question lab 2026-10-13 (fixed_lab/scored_wording.json): precision 0.93, recall 0.97 at 0.5
 # The criteria noul won the lab (AUC 0.96 with the pre-filters below, against 0.67 for the earlier plain question).
-FIXED_INSTRUCTIONS = "Can this sentence differ between patients having this same scan?"
+# The request is the lab's exact shape (fixed_lab/wording_round.py, arm B): the sentence follows "SENTENCE:" in the
+# instructions, and the state is FIXED_STATE.
+FIXED_STATE = "Statements from a radiology report template."
+FIXED_INSTRUCTIONS = ("Could this SENTENCE from a radiology report template differ between patients having this same "
+                      "scan?")
 FIXED_CRITERIA = {
-    "true": "the sentence reports something that can differ between patients having this same scan: a finding, a "
+    "true": "The sentence reports something that can differ between patients having this same scan: a finding, a "
             "measurement, whether something was given or achieved, the patient's condition or cooperation, a "
-            "limitation",
-    "false": "the sentence describes the standard protocol, equipment, technique, reporting workflow, sign-off or a "
-             "fill-in field that is the same for every patient"}
+            "limitation.",
+    "false": "The sentence describes the standard protocol, equipment, technique, reporting workflow, sign-off or a "
+             "fill-in field that is the same for every patient."}
 
 # Structural pre-filters, applied before Jev (never judgements of meaning): a line with a {slot} is filled per case,
 # and a sign-off line is the reporter's, so neither is an "Always printed" card. The grammar has no sign-off section
 # role, so sign-off is this tiny anchored backstop pattern; keep it small.
 _SLOT = re.compile(r"\{[^{}]+\}")
-_SIGN_OFF = re.compile(r"^\s*(?:reported\s+by|reporting\s+radiologist|dr\b|frcr\b|gmc\b|signed\b)", re.I)
+_SIGN_OFF = re.compile(r"^\s*(?:reported\s+by|reporting\s+radiologist|dr\b|frcr\b|gmc\b|signed\s+(?:by|off)\b|electronically\s+signed)", re.I)
 
 
 def q_fixed(text: str) -> dict:
@@ -97,7 +101,7 @@ def _targeted(st: tss.SheetStructure) -> Set[str]:
     return {norm_key(r.target) for r in st.rules if r.condition_source == "context" and r.target}
 
 
-JEV_BATCH = 20   # questions per Jev call; larger sets go as parallel calls
+JEV_BATCH = 10   # questions per Jev call (as the FIXED-question lab); larger sets go as parallel calls
 
 
 async def _noul_batched(instructions: List, state: str, transport=None, what: str = "jev") -> List[float]:
@@ -133,7 +137,7 @@ async def _noul_batched(instructions: List, state: str, transport=None, what: st
 
 async def _jev_scores(texts: List[str], transport=None) -> List[float]:
     return await _noul_batched([q_fixed(t) for t in texts],
-                               "Statements from a radiology report template.", transport, what="fixed")
+                               FIXED_STATE, transport, what="fixed")
 
 
 async def fixed_flags(st: tss.SheetStructure, ledger: List[dict], transport=None) -> List[str]:

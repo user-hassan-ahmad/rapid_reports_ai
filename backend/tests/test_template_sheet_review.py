@@ -210,8 +210,10 @@ async def test_the_duplicate_check_batches_its_questions_and_caps_them(monkeypat
 def test_the_fixed_question_is_a_criteria_noul_with_the_sentence():
     q = V.q_fixed("Axial images were acquired.")
     assert q["type"] == "noul" and set(q["criteria"]) == {"true", "false"}
-    assert q["instructions"].startswith("Can this sentence differ between patients having this same scan?")
-    assert q["instructions"].endswith("Axial images were acquired.")
+    assert q["instructions"] == ("Could this SENTENCE from a radiology report template differ between patients having "
+                                 "this same scan? SENTENCE: Axial images were acquired.")
+    assert q["criteria"]["false"].endswith("the same for every patient.")
+    assert V.FIXED_STATE == "Statements from a radiology report template."
     assert "cooperation" in q["criteria"]["true"] and "sign-off" in q["criteria"]["false"]
 
 
@@ -230,3 +232,21 @@ async def test_slot_and_sign_off_lines_are_never_asked_nor_flagged():
     flags = await V.fixed_flags(_st(sheet), [], transport=httpx.MockTransport(handler))
     assert not any(t in q for t in lines for q in asked) and not set(lines) & set(flags)
     assert BREATH in flags and any(BREATH in q for q in asked)   # the breath-hold default is still asked
+
+
+
+async def test_a_clinical_line_starting_with_signed_is_still_asked():
+    asked, states = [], []
+
+    def handler(request):
+        import json
+        body = json.loads(request.content)
+        states.append(body["state"])
+        asked.extend(q["instructions"] for q in body["questions"].values())
+        return httpx.Response(200, json={"answers": {k: {"noul": 0.9} for k in body["questions"]}})
+    line = "Signed consent was obtained for contrast."
+    sheet = LEDGER_SHEET.replace('FIXED "Axial images were acquired."\n',
+                                 f'FIXED "Axial images were acquired."\nFIXED "{line}"\nFIXED "Electronically signed."\n')
+    flags = await V.fixed_flags(_st(sheet), [], transport=httpx.MockTransport(handler))
+    assert line in flags and any(line in q for q in asked) and states == [V.FIXED_STATE]
+    assert not any("Electronically signed." in q for q in asked)
