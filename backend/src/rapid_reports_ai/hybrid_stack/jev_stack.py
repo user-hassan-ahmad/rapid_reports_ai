@@ -311,8 +311,10 @@ async def ask_conditions(state: str, conditions: list[str], transport=None) -> l
 # ── Required values: the value cluster (requirements spec 2026-10-12 part 1) ──────────
 # Per LIST_MISSING item, "stated?" (noul, value_<i>) and "which clause gives its value?" (choice over the dictation's
 # clauses that hold a number, where_<i>). Code reads the number (hybrid_stack.values); Jev never does.
-VALUE_STATED_MIN = STATED_MIN   # 0.8: a false "stated" silently drops a value from the cluster, so the strict
-                                # scratchpad bar first; the value cluster lab reports the alternatives, Hassan sets it
+VALUE_STATED_MIN = 0.3            # with a named clause (Hassan 2026-10-13, after the lab: the per-item stated question
+                                  # alone recalled 46% at 0.8; "clause named AND p >= 0.3" 81/111, false-stated
+                                  # unchanged; the post-generation backstop protects precision)
+VALUE_UNQUOTED_MIN = STATED_MIN   # 0.8: stated but no clause named -> the "stated?" chip, on the strict bar
 VALUE_BATCH = 4                 # items per Jev call; batches run in parallel (12 items -> 3 calls)
 
 
@@ -338,15 +340,17 @@ def value_where_question(item: str, clauses: list[str]) -> dict[str, Any]:
 
 
 async def ask_values(dictation: str, items: list[str], clauses: list[str], transport=None,
-                     stated: Callable[[str], dict[str, Any]] = value_stated_question) -> list[tuple[float, Optional[int]]]:
-    """(P stated, index into `clauses` of the clause that gives its value, or None) per item, in order. Items go in
-    parallel calls of VALUE_BATCH; keys keep the item's global index. The clause question is asked only when there
-    are clauses. `stated`: the wording (the lab passes its arms)."""
+                     stated: Callable[[str], dict[str, Any]] = value_stated_question
+                     ) -> list[tuple[float, Optional[int], Optional[list[float]]]]:
+    """(P stated, index into `clauses` of the clause that gives its value or None, the where-choice's probability per
+    clause or None when Jev sent none) per item, in order. Items go in parallel calls of VALUE_BATCH; keys keep the
+    item's global index. The clause question is asked only when there are clauses. `stated`: the wording (the lab
+    passes its arms)."""
     if not items:
         return []
     key = os.environ.get("OPENROUTER_API_KEY", "")
 
-    async def batch(start: int, chunk: list[str]) -> list[tuple[float, Optional[int]]]:
+    async def batch(start: int, chunk: list[str]) -> list[tuple[float, Optional[int], Optional[list[float]]]]:
         qs: dict[str, dict[str, Any]] = {}
         for j, item in enumerate(chunk):
             qs[value_key(start + j)] = stated(item)
@@ -356,12 +360,15 @@ async def ask_values(dictation: str, items: list[str], clauses: list[str], trans
                            key, TIMEOUT_S * 2, transport)
         r.raise_for_status()
         ans = r.json().get("answers") or {}
-        out: list[tuple[float, Optional[int]]] = []
+        out: list[tuple[float, Optional[int], Optional[list[float]]]] = []
         for j in range(len(chunk)):
             p = float((ans.get(value_key(start + j)) or {}).get("noul") or 0.0)
-            c = (ans.get(where_key(start + j)) or {}).get("choice")
+            w = ans.get(where_key(start + j)) or {}
+            c = w.get("choice")
             k = int(c[2:]) if isinstance(c, str) and c.startswith("s_") and c[2:].isdigit() else None
-            out.append((p, k if k is not None and k < len(clauses) else None))
+            probs = w.get("probabilities")
+            scores = [float(probs.get(f"s_{i}") or 0.0) for i in range(len(clauses))] if isinstance(probs, dict) else None
+            out.append((p, k if k is not None and k < len(clauses) else None, scores))
         return out
 
     parts = await asyncio.gather(*(batch(k, items[k:k + VALUE_BATCH]) for k in range(0, len(items), VALUE_BATCH)))

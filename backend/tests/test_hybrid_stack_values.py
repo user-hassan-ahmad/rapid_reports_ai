@@ -85,10 +85,14 @@ async def test_smart_fill_reads_the_number_from_the_clause_jev_names():
     d = "Normal LV size, LVEF 45%. RV normal. LVEDVi 98 and LVESVi 40 ml/m2."
     res = await V.smart_fill(d, ["LVEF", "LVEDVi", "RVEF"], ask=_ask([(0.95, 0), (0.9, 1), (0.1, None)], seen))
     assert seen["cands"] == ["LVEF 45%.", "LVEDVi 98 and LVESVi 40 ml/m2."]   # only clauses holding a number
+    picks = [{"clause": "LVEF 45%.", "value": "45%", "numbers": []},
+             {"clause": "LVEDVi 98 and LVESVi 40 ml/m2.", "value": None, "numbers": ["98 ml/m2", "40 ml/m2"]}]
     assert [v.model_dump() for v in res.values] == [
-        {"item": "LVEF", "state": "filled", "value": "45%", "quote": "LVEF 45%.", "score": 0.95},
-        {"item": "LVEDVi", "state": "filled", "value": None, "quote": "LVEDVi 98 and LVESVi 40 ml/m2.", "score": 0.9},
-        {"item": "RVEF", "state": "open", "value": None, "quote": None, "score": 0.1}]
+        {"item": "LVEF", "state": "filled", "value": "45%", "quote": "LVEF 45%.", "score": 0.95, "numbers": [],
+         "picks": []},
+        {"item": "LVEDVi", "state": "filled", "value": None, "quote": "LVEDVi 98 and LVESVi 40 ml/m2.", "score": 0.9,
+         "numbers": ["98 ml/m2", "40 ml/m2"], "picks": []},
+        {"item": "RVEF", "state": "open", "value": None, "quote": None, "score": 0.1, "numbers": [], "picks": picks}]
     assert res.error is None
 
 
@@ -101,6 +105,70 @@ async def test_stated_without_a_named_clause_is_filled_without_a_value_or_quote(
 async def test_below_the_cut_off_is_open():
     res = await V.smart_fill("EF 45.", ["LVEF"], ask=_ask([(V.VALUE_STATED_MIN - 0.01, 0)]))
     assert res.values[0].state == "open" and res.values[0].value is None
+
+
+async def test_a_named_clause_fills_from_the_low_bar():
+    """Hassan 2026-10-13, after the lab: a named clause and p >= 0.3 fills (the clause question carries the precision)."""
+    assert V.VALUE_STATED_MIN == 0.3 and V.VALUE_UNQUOTED_MIN == 0.8
+    res = await V.smart_fill("EF 45.", ["LVEF"], ask=_ask([(0.3, 0)]))
+    assert (res.values[0].state, res.values[0].value, res.values[0].quote) == ("filled", "45", "EF 45.")
+    res = await V.smart_fill("EF 45.", ["LVEF"], ask=_ask([(0.55, 0)]))
+    assert res.values[0].state == "filled"
+
+
+async def test_no_clause_named_keeps_the_strict_bar_for_a_stated_chip():
+    res = await V.smart_fill("Conus terminates at L1.", ["Conus level"], ask=_ask([(0.79, None)]))
+    assert res.values[0].state == "open"                      # p >= 0.3 but no clause and below 0.8: open
+    res = await V.smart_fill("Conus terminates at L1.", ["Conus level"], ask=_ask([(0.8, None)]))
+    assert (res.values[0].state, res.values[0].quote) == ("filled", None)   # the "stated?" chip
+    res = await V.smart_fill("EF 45.", ["LVEF"], ask=_ask([(0.29, None)]))
+    assert res.values[0].state == "open"
+
+
+@pytest.mark.parametrize("clause,value", [
+    ("LA 20 cm2", "20 cm²"),
+    ("LA area 20 cm^2", "20 cm²"),
+    ("LA area 20.5 cm²", "20.5 cm²"),
+    ("AVA 85 mm2", "85 mm²"),
+])
+def test_area_units_are_read_and_written_as_squared(clause, value):
+    assert V.read_value(clause) == value
+
+
+@pytest.mark.parametrize("clause,numbers", [
+    ("LVEDVi 98 and LVESVi 40 ml/m2", ["98 ml/m2", "40 ml/m2"]),   # a trailing unit is shared
+    ("EF 45-50%", ["45%", "50%"]),
+    ("LVEF 45% and LVEDVi 98", ["45%", "98"]),                      # a unit never reaches back to an earlier number
+    ("LVEF 45%", ["45%"]),
+    ("No late gadolinium enhancement", []),
+])
+def test_read_numbers_gives_every_number_with_its_unit(clause, numbers):
+    assert V.read_numbers(clause) == numbers
+
+
+async def test_a_named_clause_with_two_numbers_offers_them_to_pick():
+    d = "LVEDVi 98 and LVESVi 40 ml/m2."
+    res = await V.smart_fill(d, ["LVEDVi"], ask=_ask([(0.9, 0)]))
+    [v] = res.values
+    assert (v.state, v.value, v.numbers) == ("filled", None, ["98 ml/m2", "40 ml/m2"])
+
+
+async def test_an_open_chip_offers_the_number_clauses_ranked_by_the_where_scores():
+    d = "LVEF 45%. RVEF 50%. LV mass 60 g/m2. Normal valves."
+    res = await V.smart_fill(d, ["RVEF", "LV mass"], ask=_ask([(0.1, None, [0.1, 0.7, 0.2]), (0.2, 2)]))
+    rvef, mass = res.values
+    assert [p.clause for p in rvef.picks] == ["RVEF 50%.", "LV mass 60 g/m2.", "LVEF 45%."]
+    assert rvef.picks[0].value == "50%"
+    assert [p.clause for p in mass.picks] == ["LVEF 45%.", "RVEF 50%.", "LV mass 60 g/m2."]   # no scores: dictation order
+
+
+async def test_picks_are_capped_and_offered_when_jev_fails():
+    d = " ".join(f"Value {i} is {i}." for i in range(1, 20))
+
+    async def boom(*a):
+        raise RuntimeError("jev down")
+    res = await V.smart_fill(d, ["LVEF"], ask=boom)
+    assert V.MAX_PICKS == 8 and [p.clause for p in res.values[0].picks] == [f"Value {i} is {i}." for i in range(1, 9)]
 
 
 async def test_a_jev_failure_or_a_short_reply_leaves_every_chip_open():

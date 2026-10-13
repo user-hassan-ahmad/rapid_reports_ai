@@ -78,12 +78,13 @@ async def test_ask_values_asks_stated_and_where_per_item_in_one_call(monkeypatch
     def handler(req):
         seen.update(json.loads(req.content))
         return httpx.Response(200, json={"answers": {
-            "value_0": {"noul": 0.9}, "where_0": {"choice": "s_1"},
+            "value_0": {"noul": 0.9}, "where_0": {"choice": "s_1", "probabilities": {"s_0": 0.2, "s_1": 0.7, "none": 0.1}},
             "value_1": {"noul": 0.2}, "where_1": {"choice": "none"},
             "value_2": {"noul": 0.8}, "where_2": {"choice": "s_7"}}})
     out = await J.ask_values("LVEF 45%. RVEF 50%.", ["LVEF", "RVEF", "LV mass"], ["LVEF 45%.", "RVEF 50%."],
                              transport=httpx.MockTransport(handler))
-    assert out == [(0.9, 1), (0.2, None), (0.8, None)]   # an out-of-range choice names no clause
+    assert out == [(0.9, 1, [0.2, 0.7]), (0.2, None, None), (0.8, None, None)]   # out-of-range names no clause; scores
+    # are the where-choice's per-clause probabilities (None when Jev sent none)
     assert set(seen["questions"]) == {"value_0", "where_0", "value_1", "where_1", "value_2", "where_2"}
     assert seen["state"] == "DICTATION:\nLVEF 45%. RVEF 50%."
     assert seen["questions"]["value_0"]["type"] == "noul"
@@ -104,7 +105,7 @@ async def test_ask_values_splits_items_into_parallel_batches_keeping_global_keys
             k: ({"noul": 0.9} if k.startswith("value_") else {"choice": "s_0"}) for k in qs}})
     items = ["A", "B", "C", "D", "E", "F"]
     out = await J.ask_values("A 1.", items, ["A 1."], transport=httpx.MockTransport(handler))
-    assert out == [(0.9, 0)] * 6
+    assert out == [(0.9, 0, None)] * 6
     assert J.VALUE_BATCH == 4 and len(asked) == 2
     assert sorted(asked) == [sorted(f"{p}_{i}" for i in range(4) for p in ("value", "where")),
                              sorted(f"{p}_{i}" for i in (4, 5) for p in ("value", "where"))]
@@ -117,7 +118,7 @@ async def test_ask_values_without_clauses_asks_only_whether_stated(monkeypatch):
     def handler(req):
         seen.update(json.loads(req.content))
         return httpx.Response(200, json={"answers": {"value_0": {"noul": 0.7}}})
-    assert await J.ask_values("Conus at L1.", ["Conus level"], [], transport=httpx.MockTransport(handler)) == [(0.7, None)]
+    assert await J.ask_values("Conus at L1.", ["Conus level"], [], transport=httpx.MockTransport(handler)) == [(0.7, None, None)]
     assert list(seen["questions"]) == ["value_0"]
 
     def fail(req):
@@ -137,8 +138,9 @@ async def test_ask_values_takes_another_stated_wording(monkeypatch):
     assert seen["questions"]["value_0"]["instructions"] == "The DICTATION states the LVEF."
 
 
-def test_the_value_cut_off_starts_at_the_scratchpads_strict_stated_bar():
-    assert J.VALUE_STATED_MIN == J.STATED_MIN == 0.8
+def test_the_value_cut_offs_after_the_lab():
+    assert J.VALUE_STATED_MIN == 0.3                       # with a named clause (Hassan 2026-10-13)
+    assert J.VALUE_UNQUOTED_MIN == J.STATED_MIN == 0.8     # no clause named: the strict "stated?" bar
     assert J.BACKSTOP_MIN == 0.5   # the post-generation backstop is recall-oriented
 
 

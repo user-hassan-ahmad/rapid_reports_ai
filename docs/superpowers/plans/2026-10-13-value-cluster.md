@@ -163,6 +163,12 @@ Frontend:
    - A Jev failure leaves the report as it is, records the error, and adds no flags.
    - With no filled items, no call is made.
    - The backstop runs only when code took over the lists (`values_applied`).
+10. **After the lab and an independent design review (Hassan, 2026-10-13).** The lab on real dictations showed the per-item stated question recalls only 46% at p ≥ 0.8. With "clause named AND p ≥ 0.3", recall is 81/111 with false-stated unchanged (0/19 held-out false stated). The post-generation backstop (decision 9) protects precision. These five points supersede decision 2 where they differ.
+    1. **Fill rule.** A chip is `filled` when Jev names a clause (the where-choice is not `none`) AND p ≥ `VALUE_STATED_MIN = 0.3`. With no clause named, today's rule stands: p ≥ `VALUE_UNQUOTED_MIN = STATED_MIN` (0.8) gives the "stated?" chip, else open.
+    2. **Area units.** `_UNIT` reads `cm2`, `cm²`, `cm^2`, `mm2` (and `mm²`, `mm^2`), written as `cm²` / `mm²`: "LA 20 cm2" reads `20 cm²`.
+    3. **A named clause with two or more numbers.** `read_value` gives none, so the fill payload carries the clause's numbers (`numbers`, code-extracted by `read_numbers`; a number without its own unit takes the next unit written after it). The chip shows the clause with each number selectable; one tap enters that number with its unit (`entered`).
+    4. **Tap a dictation clause to fill an open chip.** An open chip's payload carries `picks`: the dictation's number-bearing clauses (the same `clauses` helper), capped at `MAX_PICKS = 8`, ranked by that item's where-choice probabilities when Jev sent them, else dictation order. A pick enters its one number, or shows its numbers to choose from as in point 3. The chip records `picked_clause` for a future alias store; there is no store now.
+    5. **One-step N/A on Confirm.** When Confirm starts the walkthrough with open chips, the walkthrough bar also offers "Mark N not provided": one action marking every remaining open chip `na`. It is an explicit acknowledgement. "stated?" chips are not included; they still need a look.
 
 ### Where the lab sits
 

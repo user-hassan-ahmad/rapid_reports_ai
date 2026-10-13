@@ -412,7 +412,8 @@ def test_values_route_fills_the_templates_items_read_on_the_server(authed, monke
     monkeypatch.setattr(R, "smart_fill", fake)
     d = authed.post("/api/canvas/stack/values", json={"dictation": "LVEF 45%.", "template_id": str(t.id)}).json()
     assert seen == {"dictation": "LVEF 45%.", "items": ["LVEF", "LV mass index", "RVEF"]}
-    assert d["values"][0] == {"item": "LVEF", "state": "filled", "value": "45%", "quote": "LVEF 45%.", "score": 0.9}
+    assert d["values"][0] == {"item": "LVEF", "state": "filled", "value": "45%", "quote": "LVEF 45%.", "score": 0.9,
+                              "numbers": [], "picks": []}
     assert [v["state"] for v in d["values"][1:]] == ["open", "open"] and d["error"] is None
 
 
