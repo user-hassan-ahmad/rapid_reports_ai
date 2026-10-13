@@ -160,3 +160,62 @@ def test_run_records_a_failing_card_by_type_and_carries_on(toy_entry, tmp_path, 
     cp.write_text(json.dumps(CARDS))
     out = asyncio.run(RL.run(cp, tmp_path))
     assert json.loads(out.read_text()) == [{"card": "c1", "error": "RuntimeError"}]
+
+
+def _export(ids):
+    return {"data": {"cols": [{"name": n} for n in ("id", "scan_type", "clinical_history", "findings")],
+                     "rows": [[i, "CT", "h", f"text {i}"] for i in ids]}}
+
+
+def _card(case):
+    return {"id": f"{case}:f1:p", "case": case, "pack": "p"}
+
+
+def test_cases_file_keeps_only_listed_ids_in_file_order(tmp_path, monkeypatch, capsys):
+    import asyncio
+    import json
+    seen = []
+
+    async def fake(case, sem):
+        seen.append(case["id"])
+        return [_card(case["id"])]
+    monkeypatch.setattr(RL, "_cards_for", fake)
+    src, sel = tmp_path / "e.json", tmp_path / "s.json"
+    src.write_text(json.dumps(_export(["a", "b", "c", "d"])))
+    sel.write_text(json.dumps({"selected": [{"id": "c"}, {"id": "a"}, {"id": "zz"}]}))
+    out = asyncio.run(RL.group(src, tmp_path / "o", max_cases=1, cases_file=sel))
+    assert sorted(seen) == ["a", "c"]
+    assert {c["case"] for c in json.loads(out.read_text())} == {"a", "c"}
+    assert "1 selected ids not in the export" in capsys.readouterr().err
+    assert [c["id"] for c in RL.select_cases(RL.cases_from_export(_export(["a", "b", "c"])), json.loads(sel.read_text()))] == ["c", "a"]
+
+
+def test_checkpoint_is_written_per_case_and_resume_skips_done_and_retries_errored(tmp_path, monkeypatch):
+    import asyncio
+    import json
+
+    async def first(case, sem):
+        if case["id"] == "b":
+            raise RuntimeError("clinical text must not leak")
+        return [_card(case["id"])]
+    monkeypatch.setattr(RL, "_cards_for", first)
+    src = tmp_path / "e.json"
+    src.write_text(json.dumps(_export(["a", "b"])))
+    sel = tmp_path / "s.json"
+    sel.write_text(json.dumps({"selected": [{"id": "a"}, {"id": "b"}]}))
+    asyncio.run(RL.group(src, tmp_path / "o1", cases_file=sel))
+    ck = next((tmp_path / "o1").glob("group_cases_*.jsonl"))
+    recs = [json.loads(line) for line in ck.read_text().splitlines()]
+    assert {"case": "a", "cards": [_card("a")]} in recs
+    assert {"case": "b", "error": "RuntimeError"} in recs
+    assert "leak" not in ck.read_text()
+
+    ran = []
+
+    async def second(case, sem):
+        ran.append(case["id"])
+        return [_card(case["id"])]
+    monkeypatch.setattr(RL, "_cards_for", second)
+    out = asyncio.run(RL.group(src, tmp_path / "o2", cases_file=sel, resume=ck))
+    assert ran == ["b"]
+    assert {c["case"] for c in json.loads(out.read_text())} == {"a", "b"}

@@ -6,7 +6,10 @@ Everything stays in the output directory given on the command line, pid in each 
 committed, and no clinical text is ever logged.
 
   export  <dir>                       read-only SQL via Metabase           -> export_<pid>.json
-  group   <export.json> <dir> [--per-pack 30 --total 100 --max-cases 400]  -> cards_<pid>.json
+  group   <export.json> <dir> [--per-pack 30 --total 100 --max-cases 400 --concurrency 2]
+          [--cases selected.json]   only those export ids, in file order ({"selected": [{"id": ..}]}; --max-cases off)
+          [--resume group_cases_<pid>.jsonl]   skip cases already done there, retry errored ones
+                                      -> group_cases_<pid>.jsonl (checkpoint, a line per finished case) + cards_<pid>.json
   hassan  <hassan_cases.json> <cards.json> <dir>   Hassan's own dictations, appended -> cards_<pid>.json
   brief   <cards.json> <dir>          the labelling brief for the subagent -> label_brief_<pid>.md
           (the controller dispatches the Opus 5.5 subagent; it writes labels_<pid>.json, once; reused)
@@ -198,10 +201,49 @@ def cases_from_export(body: dict, source: str = "prod") -> list[dict]:
     return out
 
 
-async def _gather_cards(cases: list[dict]) -> list[dict]:
-    """Cards for every case; a case that raises is skipped, logged by exception type only (never clinical text)."""
-    sem = asyncio.Semaphore(4)
-    results = await asyncio.gather(*(_cards_for(c, sem) for c in cases), return_exceptions=True)
+def _read_checkpoint(path: Path | None) -> dict:
+    """Cases already recorded WITHOUT error in a checkpoint file -> their cards. Errored cases are left out (retried)."""
+    done: dict = {}
+    if path is None:
+        return done
+    for line in path.read_text().splitlines():
+        if line.strip():
+            rec = json.loads(line)
+            if "error" not in rec:
+                done[rec["case"]] = rec["cards"]
+    return done
+
+
+async def _gather_cards(cases: list[dict], ckpt: Path | None = None, done: dict | None = None,
+                        concurrency: int = 2) -> list[dict]:
+    """Cards for every case. Each finished case is appended at once to the checkpoint (one JSON line: cards, or the
+    exception type only, never clinical text). Cases in `done` are reused, not rerun; a case that raises is skipped."""
+    sem = asyncio.Semaphore(concurrency)
+    done = done or {}
+    fh = ckpt.open("a") if ckpt else None
+
+    def record(rec: dict) -> None:
+        if fh:
+            fh.write(json.dumps(rec) + "\n")
+            fh.flush()
+
+    async def one(c: dict):
+        if c["id"] in done:
+            record({"case": c["id"], "cards": done[c["id"]]})
+            return done[c["id"]]
+        try:
+            r = await _cards_for(c, sem)
+        except Exception as e:
+            record({"case": c["id"], "error": type(e).__name__})
+            raise
+        record({"case": c["id"], "cards": r})
+        return r
+
+    try:
+        results = await asyncio.gather(*(one(c) for c in cases), return_exceptions=True)
+    finally:
+        if fh:
+            fh.close()
     out = []
     for c, r in zip(cases, results):
         if isinstance(r, BaseException):
@@ -211,20 +253,36 @@ async def _gather_cards(cases: list[dict]) -> list[dict]:
     return out
 
 
-async def group(src: Path, out_dir: Path, per_pack: int = 30, total: int = 100, max_cases: int = 400) -> Path:
+def select_cases(cases: list[dict], selected: dict) -> list[dict]:
+    """Only the cases whose id is in selected["selected"], in the selection's order; unknown ids counted on stderr."""
+    by = {c["id"]: c for c in cases}
+    ids = [x["id"] for x in selected["selected"]]
+    missing = sum(1 for i in ids if i not in by)
+    if missing:
+        print(f"{missing} selected ids not in the export", file=sys.stderr)
+    return [by[i] for i in ids if i in by]
+
+
+async def group(src: Path, out_dir: Path, per_pack: int = 30, total: int = 100, max_cases: int = 400,
+                cases_file: Path | None = None, resume: Path | None = None, concurrency: int = 2) -> Path:
     cases = cases_from_export(json.loads(src.read_text()))
-    random.Random(13).shuffle(cases)                     # fixed seed: the same cases every run
-    cases = cases[:max_cases]
-    cards = await _gather_cards(cases)
+    if cases_file is not None:
+        cases = select_cases(cases, json.loads(cases_file.read_text()))
+    else:
+        random.Random(13).shuffle(cases)                 # fixed seed: the same cases every run
+        cases = cases[:max_cases]
+    ckpt = _pid(out_dir, "group_cases", "jsonl")
+    cards = await _gather_cards(cases, ckpt, _read_checkpoint(resume), concurrency)
     p = _pid(out_dir, "cards", "json")
     p.write_text(json.dumps(sample_cards(cards, per_pack, total), indent=1))
-    print(f"{len(cases)} dictations, {len(cards)} pack cards -> {p} ({dict(Counter(c['pack'] for c in cards))})")
+    print(f"{len(cases)} dictations, {len(cards)} pack cards -> {p} ({dict(Counter(c['pack'] for c in cards))}); "
+          f"checkpoint {ckpt}")
     return p
 
 
-async def hassan(src: Path, cards_path: Path, out_dir: Path) -> Path:
+async def hassan(src: Path, cards_path: Path, out_dir: Path, concurrency: int = 2) -> Path:
     cases = [{**c, "source": "hassan", "id": f"h-{c['id']}"} for c in json.loads(src.read_text())]
-    cards = json.loads(cards_path.read_text()) + await _gather_cards(cases)
+    cards = json.loads(cards_path.read_text()) + await _gather_cards(cases, concurrency=concurrency)
     p = _pid(out_dir, "cards", "json")
     p.write_text(json.dumps(cards, indent=1))
     print(f"{len(cards)} cards -> {p} ({dict(Counter((c['source'], c['pack']) for c in cards))})")
@@ -548,10 +606,14 @@ def main(argv: list[str]) -> None:
     if cmd == "export":
         print(export(Path(argv[2])))
     elif cmd == "group":
+        def path_opt(name: str) -> Path | None:
+            return Path(argv[argv.index(name) + 1]) if name in argv else None
+
         asyncio.run(group(Path(argv[2]), Path(argv[3]), opt("--per-pack", 30), opt("--total", 100),
-                          opt("--max-cases", 400)))
+                          opt("--max-cases", 400), path_opt("--cases"), path_opt("--resume"),
+                          opt("--concurrency", 2)))
     elif cmd == "hassan":
-        asyncio.run(hassan(Path(argv[2]), Path(argv[3]), Path(argv[4])))
+        asyncio.run(hassan(Path(argv[2]), Path(argv[3]), Path(argv[4]), opt("--concurrency", 2)))
     elif cmd == "brief":
         cards_p, d = Path(argv[2]), Path(argv[3])
         p = _pid(d, "label_brief", "md")
