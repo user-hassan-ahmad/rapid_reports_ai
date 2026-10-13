@@ -426,7 +426,8 @@ def check_proposal(apply: dict, sheet: str) -> Verdict:
     known kind, a ledger choice code accepts, and slots from the allowed set; a dry run proves the edit applies.
     The wording check is skipped (the radiologist tapped Apply). Rejections carry no internal text."""
     kind = (apply or {}).get("kind") or ""
-    if kind not in KIND_LABEL or kind == "style":
+    op_name = (apply or {}).get("op", {}).get("op") if isinstance((apply or {}).get("op"), dict) else None
+    if kind not in KIND_LABEL or (kind == "style" and op_name != "style_block"):
         return Verdict(kind or "layout", "reject", reason=REJECT.format(label="the template"), detail="unknown kind")
     op, choice, key = apply.get("op"), apply.get("choice"), apply.get("key") or ""
     v = Verdict(kind, "edit" if op else "ledger", key=key, choice=choice, op=op, claim=apply.get("claim") or "")

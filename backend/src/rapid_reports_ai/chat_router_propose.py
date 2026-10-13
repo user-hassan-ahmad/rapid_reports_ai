@@ -341,6 +341,11 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
         if kind == "style":
             continue
         v = CH.validate(kind, to_change(kind, c), ctx)
+        if kind == "concept" and v.action == "reject":   # code cannot store it as given: a prefilled card instead
+            card = L.concept_card(c.concept, c.default or "", c.when_met or "", L.condition_for(c.concept, c.condition)
+                                  if c.concept in L.CONCEPTS and c.condition else "")
+            if card:
+                v = CH.Verdict("concept", "card", key=c.concept, card=card, claim=c.claim, detail=v.detail)
         if id(c) in group_of and v.action in ("ledger", "edit"):
             orig, f = group_of[id(c)]
             v.claim = CH.concept_field_claim(orig.concept, f, getattr(orig, f))
@@ -411,6 +416,11 @@ async def propose_turn(sheet: str, ledger: List[dict], instruction: str, *, cont
                              "verified": s >= VERIFY_MIN})
         if s >= VERIFY_MIN:
             verified_blocks.append(to_change("style", c))
+        elif c.block in blocks_by_id and R.specific_claim(c.claim, blocks_by_id[c.block], blocks_by_id.values()):
+            # a specific claim Jev did not confirm: a prefilled card that applies exactly this block on a tap
+            sv = CH.Verdict("style", "edit", claim=c.claim, op={"op": "style_block", "block": c.block, "text": c.text,
+                                                              "expect": blocks_by_id[c.block].text})
+            verdicts.append(CH.to_card(sv))
         else:
             asks.append(STYLE_UNVERIFIED.format(claim=c.claim))
     styled, style_rec, style_lines, style_ev = sheet, None, [], {}

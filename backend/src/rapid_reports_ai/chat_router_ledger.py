@@ -236,6 +236,14 @@ def note(change: Optional[dict]) -> str:
     return td.describe_change(change) if change else ""
 
 
+def concept_card(concept: str, default: str, when_met: str, condition: str = "") -> Optional[dict]:
+    """The Rules step's concept card prefilled with wording code could not store as given (the radiologist edits it
+    on the card); None for an unknown concept."""
+    if concept not in td.CONCEPTS:
+        return None
+    return trc.concept_card(concept, default or "", when_met or "", [], condition or "", step="chat")
+
+
 def card(kind: str, key: str, proposed: dict) -> Optional[dict]:
     """The Rules step's one-tap card for this proposal, or None when code cannot make one."""
     try:

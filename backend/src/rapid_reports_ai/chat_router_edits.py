@@ -24,7 +24,7 @@ STANDARD_SLOTS = frozenset({"{study}", "{date}"})
 # inverse-only: they undo an add or a removal and have no inverse of their own, so they never run forward.
 FORWARD_OPS = frozenset({"fixed_reword", "fixed_add", "normal_add", "negative_add", "rename_paragraph",
                          "move_paragraph", "remove_paragraph", "add_paragraph", "rename_section", "move_section",
-                         "remove_section", "add_section"})
+                         "remove_section", "add_section", "style_block"})
 
 
 def bad_slots(text: str, sheet: str) -> List[str]:
@@ -169,7 +169,19 @@ def covers_drop(sheet: str, paragraph: str, structure: str):
     return _replace(sheet, cov.i, _covers_line(items) if items else None), []
 
 
-UNIT_OPS = {"fixed_reword": fixed_reword, "fixed_add": fixed_add, "normal_add": normal_add,
+def style_block(sheet: str, block: str, text: str, expect: str):
+    """Replace one prose block (a tapped style card), only while it still reads `expect`; unit lines must not change
+    (apply_op's grammar guard runs too). Its inverse puts the old text back the same way."""
+    cur = {b.id: b for b in sh.prose_blocks(sheet)}.get(block)
+    if cur is None or cur.text.strip("\n") != (expect or "").strip("\n"):
+        raise EditError("that wording has changed since")
+    after = sh.splice(sheet, {block: text})
+    if not sh.units_unchanged(sheet, after):
+        raise EditError("a style change cannot touch the template's rules")
+    return after, [{"op": "style_block", "block": block, "text": expect, "expect": text}]
+
+
+UNIT_OPS = {"style_block": style_block, "fixed_reword": fixed_reword, "fixed_add": fixed_add, "normal_add": normal_add,
             "negative_add": negative_add, "unit_drop": unit_drop, "covers_drop": covers_drop}
 
 

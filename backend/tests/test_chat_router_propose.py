@@ -141,7 +141,7 @@ async def test_a_style_block_is_verified_and_the_prose_deletion_check_applies(st
     stub["claim_scores"] = {'In Impression Construction, the line "Keep it brief." is removed.': 0.1}
     t2 = await P.propose_turn(ROUTER_SHEET, [], "drop Width")
     assert "Keep it brief." in t2.sheet and 'LIST_MISSING ["Depth"]' in t2.sheet
-    assert R.STYLE_UNVERIFIED.format(claim='In Impression Construction, the line "Keep it brief." is removed.') in t2.reply
+    assert t2.cards[0]["title"].endswith('In Impression Construction, the line "Keep it brief." is removed.')
 
 
 async def test_an_unverified_style_block_is_not_applied(stub):
@@ -149,7 +149,7 @@ async def test_an_unverified_style_block_is_not_applied(stub):
                                                    text="Lead with the main finding in one sentence.")])
     stub["claim_scores"] = {"The Impression Construction guidance is shorter.": 0.1}
     t = await P.propose_turn(ROUTER_SHEET, [], "make the impression more concise")
-    assert not t.applied and t.sheet == ROUTER_SHEET and "I wasn't sure you asked for this" in t.reply
+    assert not t.applied and t.sheet == ROUTER_SHEET and t.cards[0]["apply"]["op"]["op"] == "style_block"
 
 
 async def test_arm_2_refuses_a_vague_style_claim_whatever_jev_says(stub):
@@ -421,3 +421,40 @@ async def test_with_the_habit_guard_a_rewording_still_applies(stub):
     t = await P.propose_turn(ROUTER_SHEET, [], "when there is a mass say Alpha is fine. and always give the width")
     assert t.applied and "Alpha is fine." in t.sheet and t.cards[0]["kind"] == "habit"
     assert t.evidence["habit_dropped"] == ["value"]
+
+
+# ── item 6: unverified or failed structured changes become prefilled cards ──────────────────────────────────────
+async def test_an_unverified_style_block_becomes_a_card_that_applies_and_undoes(stub):
+    new = "Lead with the main finding in one sentence."
+    claim = "The Impression Construction guidance is shorter."
+    stub["proposal"] = _proposal(_change("style", claim, id="b4", text=new))
+    stub["claim_scores"] = {claim: 0.1}
+    t = await P.propose_turn(ROUTER_SHEET, [], "make the impression more concise")
+    assert not t.applied and t.sheet == ROUTER_SHEET
+    (card,) = t.cards
+    assert card["kind"] == "proposal" and card["apply"]["op"]["op"] == "style_block" and card["title"].endswith(claim)
+    a = await R.answer_card(ROUTER_SHEET, [], {"proposal": card["apply"]})
+    assert a.applied and new in a.sheet and "Keep it brief." not in a.sheet
+    u = await R.undo_turn(a.sheet, a.ledger, a.records)
+    assert u.sheet == ROUTER_SHEET
+
+
+async def test_a_concept_change_code_cannot_store_becomes_a_prefilled_card(stub):
+    stub["proposal"] = _proposal(_change("concept", "Comparison wording set.", concept="comparison",
+                                         when_met="compared with the prior"))     # not a full sentence
+    t = await P.propose_turn(ROUTER_SHEET, [], "say compared with the prior when there is one")
+    (card,) = t.cards
+    assert card["ledger_kind"] == "concept" and card["wording"]["when_met"] == "compared with the prior"
+    assert CH.REJECT.format(label=CH.KIND_LABEL["concept"]) not in t.reply
+
+
+def test_style_block_op_checks_the_block_is_unchanged():
+    from rapid_reports_ai import chat_router_edits as E
+    op = {"op": "style_block", "block": "b4", "text": "Shorter.", "expect": "Lead with the most important finding.\nKeep it brief."}
+    out, inv = E.apply_op(ROUTER_SHEET, op)
+    assert "Shorter." in out and E.apply_op(out, inv[0])[0] == ROUTER_SHEET
+    with pytest.raises(E.EditError):
+        E.apply_op(ROUTER_SHEET, {**op, "expect": "Something else."})
+    with pytest.raises(E.EditError):
+        E.apply_op(ROUTER_SHEET, {**op, "text": 'NORMAL [alpha] "x"'})
+    assert "style_block" in E.FORWARD_OPS
