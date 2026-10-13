@@ -313,14 +313,18 @@ def _format_input_data(input_data) -> str:
 def _assemble_case(db, report) -> dict:
     """Pull the input / skill-sheet / output / final text for one report.
 
-    ``ai_output`` is always ``report.report_content`` (reliable, same-report).
     ``final`` is only used where it is trustworthy:
-      - quick:    ``report.final_report_content`` (stored on the row, same report);
-      - template: ``None`` — ``report_feedback.final_output`` is NOT used because the
-        global copy-capture can record text from a *different* report (verified:
-        a trauma report whose feedback final_output was an unrelated lumbar study).
-        Until template edit-capture is fixed, templates have no reliable final, so
-        edit_burden is null and the judge assesses ``report_content``.
+      - quick:    ``ai_output`` is ``report.report_content``; ``final`` is
+        ``report.final_report_content`` (stored on the row, same report);
+      - template: from the report's ``ReportVersion`` chain. Version 1 is the generated
+        draft ("Initial generation", ``crud.create_report``) and every saved edit adds a
+        version, so with more than one version ``ai_output`` is version 1 and ``final``
+        the latest. With one version (or none) the report was never edited in-app and
+        ``final`` is ``None``: ``report_feedback.final_output`` (copy-time capture) is NOT
+        used, because the page-wide copy listener could record text from a *different*
+        report (verified: a trauma report whose final_output was an unrelated lumbar
+        study; listener scoped to the report viewer 2026-10-13). ``final=None`` gives a
+        null edit_burden and the judge still assesses ``ai_output``.
     """
     ai_output = report.report_content or ""
     inputs = _format_input_data(report.input_data)  # dictation lives here for BOTH pipelines
@@ -336,7 +340,12 @@ def _assemble_case(db, report) -> dict:
         tmpl = report.template
         cfg = (tmpl.template_config or {}) if tmpl and isinstance(tmpl.template_config, dict) else {}
         skill_sheet = cfg.get("skill_sheet") or ""
-        final = None  # report_feedback.final_output is unreliable (cross-report copy capture)
+        versions = sorted(report.versions or [], key=lambda v: v.version_number)
+        if len(versions) > 1:
+            ai_output = versions[0].report_content or ai_output
+            final = versions[-1].report_content
+        else:
+            final = None  # copy-time capture is not trusted (cross-report copies, fixed in TemplateForm 2026-10-13)
     return {
         "pipeline": pipeline,
         "inputs": inputs or "",

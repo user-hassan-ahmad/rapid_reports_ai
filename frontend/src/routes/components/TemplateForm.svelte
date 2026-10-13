@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { createEventDispatcher, onDestroy, tick } from 'svelte';
+	import { createEventDispatcher, onDestroy, onMount, tick } from 'svelte';
 	import { fly, fade } from 'svelte/transition';
 	import { token } from '$lib/stores/auth';
 	import DictationScratchpad from '$lib/components/DictationScratchpad.svelte';
@@ -47,20 +47,26 @@
 		} catch { /* silent */ }
 	}
 
+	/** The report viewer's wrapper: only a copy made inside it is this report's copy. */
+	let reportBoxEl: HTMLDivElement | null = null;
+
 	function handleReportCopy() {
-		if (!feedbackAiOutput || !response) return;
-		const sel = typeof window !== 'undefined' ? window.getSelection()?.toString() : '';
-		const reportText = response || '';
-		if (sel && sel.length > reportText.length * 0.3) {
+		if (!feedbackAiOutput || !response || !reportBoxEl) return;
+		const s = typeof window !== 'undefined' ? window.getSelection() : null;
+		const sel = s?.toString() ?? '';
+		// Only a copy made inside this report's viewer is this report's copy-time text (a copy elsewhere on the page
+		// was recorded against this report before 2026-10-13).
+		if (!s || !s.anchorNode || !reportBoxEl.contains(s.anchorNode)) return;
+		if (sel && sel.length > (response || '').length * 0.3) {
 			feedbackCopyCount++;
 			feedbackCopied = true;
 			captureFeedback('copied', sel);
 		}
 	}
 
-	if (typeof document !== 'undefined') {
+	onMount(() => {
 		document.addEventListener('copy', handleReportCopy);
-	}
+	});
 
 	onDestroy(() => {
 		if (typeof document !== 'undefined') {
@@ -528,6 +534,12 @@
 		if (!text) return;
 		navigator.clipboard.writeText(text).then(() => {
 			if (toast) toast.show('Copied to clipboard!');
+			// The Copy button writes programmatically (no DOM copy event), so it is counted here: always this report.
+			if (feedbackAiOutput) {
+				feedbackCopyCount++;
+				feedbackCopied = true;
+				captureFeedback('copied', text);
+			}
 		});
 	}
 
@@ -897,6 +909,7 @@
 
 		<!-- Report Response Viewer (always mounted when we have template) -->
 		{#if selectedTemplate || response}
+			<div bind:this={reportBoxEl} style="display: contents">
 			<ReportResponseViewer
 				bind:this={reportViewerRef}
 				visible={responseVisible && !!selectedTemplate}
@@ -930,6 +943,7 @@
 			on:showHoverPopup={(e) => dispatch('showHoverPopup', e.detail)}
 			on:hideHoverPopup={() => dispatch('hideHoverPopup')}
 		/>
+			</div>
 		{/if}
 	</div>
 {/if}

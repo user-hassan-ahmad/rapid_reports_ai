@@ -41,6 +41,7 @@ from rapid_reports_ai.database.models import (  # noqa: E402
     TemplateChatTurn,
     DictationStackLog,
     StackSlimSheet,
+    ReportVersion,
 )
 from rapid_reports_ai.main import app  # noqa: E402
 
@@ -55,6 +56,7 @@ _TEST_TABLES = [
     TemplateVersion.__table__,
     EphemeralSkillSheet.__table__,
     Report.__table__,
+    ReportVersion.__table__,
     ReportQualityScore.__table__,
     TemplateCaseSheet.__table__,
     ReportReviewRun.__table__,

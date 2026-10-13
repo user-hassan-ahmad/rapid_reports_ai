@@ -121,3 +121,41 @@ def test_edit_burden_partial_between_0_and_1():
     v = compute_edit_burden("the quick brown fox", "the slow brown fox")
     assert v is not None
     assert 0.0 < v < 1.0
+
+
+# --- Template final from report versions (D6, 2026-10-13) ---
+
+def _mk_template_report(db, user, template, content="edited text", stamp=None):
+    from rapid_reports_ai.database.models import Report
+    rep = Report(user_id=user.id, report_type="templated", report_content=content, model_used="m",
+                 template_id=template.id, input_data={}, generation_stamp=stamp)
+    db.add(rep); db.flush()
+    return rep
+
+
+def test_template_final_is_the_latest_edited_version(db_session, test_user, guided_template):
+    from rapid_reports_ai.database.models import ReportVersion
+    rep = _mk_template_report(db_session, test_user, guided_template)
+    db_session.add_all([ReportVersion(report_id=rep.id, version_number=1, report_content="ai text", is_current=False),
+                        ReportVersion(report_id=rep.id, version_number=2, report_content="edited text", is_current=True)])
+    db_session.commit()
+    db_session.refresh(rep)
+    case = qs._assemble_case(db_session, rep)
+    assert case["ai_output"] == "ai text" and case["final_output"] == "edited text"
+
+
+def test_template_single_version_has_no_final(db_session, test_user, guided_template):
+    from rapid_reports_ai.database.models import ReportVersion
+    rep = _mk_template_report(db_session, test_user, guided_template, content="ai text")
+    db_session.add(ReportVersion(report_id=rep.id, version_number=1, report_content="ai text", is_current=True))
+    db_session.commit()
+    db_session.refresh(rep)
+    case = qs._assemble_case(db_session, rep)
+    assert case["ai_output"] == "ai text" and case["final_output"] is None
+
+
+def test_score_template_report_without_final_scores_with_null_edit_burden(db_session, test_user, guided_template):
+    rep = _mk_template_report(db_session, test_user, guided_template, content="ai text")
+    db_session.commit()
+    row = qs.score_report(db_session, rep, judge=lambda p, c: qs.JudgeScore(score=3, rationale="ok", issues=[]))
+    assert row.pipeline == "template" and row.edit_burden is None and row.output_adherence == 3
