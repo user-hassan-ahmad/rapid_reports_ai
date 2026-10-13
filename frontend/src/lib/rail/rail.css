@@ -27,6 +27,12 @@
 	--rv-red-line: #ff7a7a;
 	--rv-red-bg: rgba(239, 68, 68, 0.1);
 	--rv-blue-line: #7ea6f0;
+	/* text on a category wash (the Copilot's verdict pills and lines): >= 4.5:1 at 12 px; the -line tokens stay for
+	   strips, borders and icons */
+	--rv-green-text: #5cc285;
+	--rv-blue-text: #7ea6f0;
+	--rv-amber-text: #e3a94a;
+	--rv-red-text: #ff7a7a;
 	--rv-del: #ff8c80;
 	--rv-ins: #6fd394;
 }
@@ -50,6 +56,10 @@
 	--rv-red-line: #cf3b3b;
 	--rv-red-bg: #fde2e2;
 	--rv-blue-line: #3b6fcf;
+	--rv-green-text: #1b6e37;
+	--rv-blue-text: #2a5bb8;
+	--rv-amber-text: #87570c;
+	--rv-red-text: #b42318;
 	--rv-del: #b42318;
 	--rv-ins: #1f7a3f;
 }

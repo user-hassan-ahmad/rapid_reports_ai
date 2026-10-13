@@ -124,7 +124,7 @@
 	}
 	.cp-why {
 		display: block;
-		color: var(--rv-amber-line);
+		color: var(--rv-amber-text);
 	}
 	.cp-val:hover .cp-quote,
 	.cp-val:focus .cp-quote {

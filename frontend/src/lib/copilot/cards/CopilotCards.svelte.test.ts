@@ -57,7 +57,8 @@ describe('CopilotCards', () => {
 		render(CopilotCards, single(exam, v(result(exam, pv)), null));
 		await expect.element(page.getByText('set by the exam')).toBeInTheDocument();
 		// the verdict pill: the action (the recommendation's first sentence until the backend sends one)
-		await expect.element(page.getByTitle('Follow-up as per the guideline table')).toBeInTheDocument();
+		await expect.element(page.getByText('Follow-up as per the guideline table', { exact: true })).toBeInTheDocument();
+		expect(document.querySelector('.cp-pill')!.textContent).toContain('Follow-up as per the guideline table');
 	});
 
 	it('needs-modality: "<name> needs ultrasound to grade", no chevron, and onOpen is never called', async () => {
@@ -212,7 +213,7 @@ describe('CopilotCards', () => {
 		const r = render(CopilotCards, single(exam, v(result(exam, quietPv)), null));
 		await expect.element(page.getByRole('button', { name: /CAD-RADS 2\.0.*CAD-RADS 0/ })).toBeInTheDocument();
 		await r.rerender({ views: { [cardRef(exam)]: v(result(exam, preview({ proposal: null, draft_outcome: outcome({ classification: 'CAD-RADS 3', normal: false }) }))) } });
-		await expect.element(page.getByTitle('Follow-up as per the guideline table')).toBeInTheDocument(); // a full card's pill
+		await expect.element(page.getByText('Follow-up as per the guideline table', { exact: true })).toBeInTheDocument(); // a full card's pill
 		expect(document.querySelector('[data-testid="cp-quiet"]')).toBeNull();
 	});
 
@@ -260,11 +261,12 @@ describe('CopilotCards', () => {
 		});
 		render(CopilotCards, single(c, v(result(c, pv))));
 		const titleRow = document.querySelector('.gl-title-row')!;
-		await expect.element(page.getByTitle('No further imaging required')).toBeInTheDocument();
+		await expect.element(page.getByText('No further imaging required', { exact: true })).toBeInTheDocument();
 		expect(titleRow.textContent).toContain('ESE adrenal incidentaloma');
 		expect(titleRow.querySelector('.cp-pill')!.getAttribute('data-category')).toBe('none');
 		const second = document.querySelector('.cp-headchips')!;
-		expect([...second.querySelectorAll('.cp-vchip')].map((e) => e.textContent!.trim())).toEqual(['2.2 cm', '8 HU', 'Homogeneous']); // "Yes" as its label, "No" left out
+		// flagged values are never capped away: pre-filled 8 HU and the assumed "Known cancer: No" are kept first
+		expect([...second.querySelectorAll('.cp-vchip')].map((e) => e.textContent!.trim())).toEqual(['2.2 cm', '8 HU', 'Homogeneous', 'Known cancer: No']);
 		expect(second.querySelector('.cp-vchip--prefilled')!.textContent!.trim()).toBe('8 HU');
 		expect(second.textContent).toContain('⚠ 1 assumed');
 		// the card's left strip takes the category colour

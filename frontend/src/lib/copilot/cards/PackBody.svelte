@@ -14,7 +14,7 @@
 	 */
 	import type { OpenResult } from '../types';
 	import Icon, { type IconName } from './Icon.svelte';
-	import { assumptionsOf, categoryColor, decidingQuestion, openQuestions, sourcesOf, valueRows, verdictOf, type Verdict } from './format';
+	import { assumptionsOf, categoryColor, categoryText, decidingQuestion, openQuestions, sourcesOf, valueRows, verdictOf, type Verdict } from './format';
 	import Reference from './Reference.svelte';
 	import ValueRow from './ValueRow.svelte';
 
@@ -58,7 +58,7 @@
 		{#if result.entry?.content.summary}<p class="cp-p">{result.entry.content.summary}</p>{/if}
 	{:else}
 		{#if decided && v}
-			<section class="cp-verdict" style:--cp-cat={categoryColor(v.category)} data-cat={v.category} data-testid={v.category === 'not_applicable' ? 'cp-exclusion' : undefined} aria-label="Verdict">
+			<section class="cp-verdict" style:--cp-cat={categoryColor(v.category)} style:--cp-cat-text={categoryText(v.category)} data-cat={v.category} data-testid={v.category === 'not_applicable' ? 'cp-exclusion' : undefined} aria-label="Verdict">
 				<p class="cp-p cp-headline">{v.headline}</p>
 				{#if v.category === 'not_applicable'}
 					<p class="cp-p cp-action"><Icon name="slash" size={14} /> Does not apply</p>
@@ -117,7 +117,7 @@
 				<!-- the backend's likeliest outcome, and what genuinely decides it (max three branches); the full list stays
 				     behind "show all" -->
 				<section class="cp-likely" aria-label="Most likely">
-					<p class="cp-p cp-likely-line" style:--cp-cat={categoryColor(likely.category ?? 'neutral')}>
+					<p class="cp-p cp-likely-line" style:--cp-cat={categoryColor(likely.category ?? 'neutral')} style:--cp-cat-text={categoryText(likely.category ?? 'neutral')}>
 						<Icon name={icon[likely.category ?? 'neutral']} size={13} />
 						<span>Most likely: <b>{likely.headline}</b></span>
 						{#if underAssumptions}<span class="cp-chip cp-chip-warn">⚠ under assumptions</span>{/if}
@@ -127,7 +127,7 @@
 							<p class="cp-p">Depends on {decidingQ}</p>
 							<ul class="cp-branches">
 								{#each branches as b, i (i)}
-									<li style:--cp-cat={categoryColor(b.category ?? 'neutral')}>
+									<li style:--cp-cat-text={categoryText(b.category ?? 'neutral')}>
 										<span class="cp-branch-answer">{b.answer}</span><span class="cp-muted" aria-hidden="true">→</span><span class="cp-sr-only">:</span>
 										<b>{b.headline}</b>
 									</li>
@@ -246,6 +246,9 @@
 		gap: 6px;
 		font-size: 0.875rem;
 		font-weight: 650;
+		color: var(--cp-cat-text);
+	}
+	.cp-action :global(.cp-icon) {
 		color: var(--cp-cat);
 	}
 	.cp-classification {
@@ -378,6 +381,9 @@
 		align-items: center;
 		gap: 4px 6px;
 		font-size: 0.875rem;
+		color: var(--cp-cat-text);
+	}
+	.cp-likely-line :global(.cp-icon) {
 		color: var(--cp-cat);
 	}
 	.cp-likely-line b {
@@ -406,7 +412,7 @@
 	}
 	.cp-branches b {
 		font-weight: 600;
-		color: var(--cp-cat);
+		color: var(--cp-cat-text);
 	}
 	.cp-values:first-child {
 		padding-top: 0;
@@ -430,7 +436,7 @@
 		align-items: center;
 		gap: 5px;
 		font-size: 0.8125rem;
-		color: var(--rv-amber-line);
+		color: var(--rv-amber-text);
 		text-decoration: none;
 	}
 	.cp-assumed-list {

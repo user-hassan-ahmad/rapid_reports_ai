@@ -1,5 +1,6 @@
 // Card redesign helpers (B-design): verdict fallbacks, short sources, head chips. SYNTHETIC data.
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { card, draft, outcome, preview, result } from './fixtures';
 import { actionOf, citeShort, decidingQuestion, headChips, headlineOf, issuerShort, sourcesOf, verdictOf } from './format';
 
@@ -68,8 +69,11 @@ describe('headChips and decidingQuestion', () => {
 			]
 		}));
 		const h = headChips(r);
-		expect(h.chips.map((c) => [c.text, c.kind])).toEqual([['2.2 cm', 'read'], ['8 HU', 'prefilled'], ['Unenhanced', 'exam'], ['Homogeneous', 'read']]);
-		expect(h.more).toBe(1); // the assumed "Adult"
+		// flagged first (pre-filled 8 HU, assumed "Known cancer: No" and "Adult"), then read ones, in card order; +2 more
+		expect(h.chips.map((c) => [c.text, c.kind])).toEqual([['2.2 cm', 'read'], ['8 HU', 'prefilled'], ['Known cancer: No', 'assumed'], ['Adult', 'assumed']]);
+		expect(h.more).toBe(2);
+		const few = headChips(r, 8).chips.map((c) => c.text);
+		expect(few).toEqual(['2.2 cm', '8 HU', 'Unenhanced', 'Homogeneous', 'Known cancer: No', 'Adult']); // an unflagged No / N/A never
 	});
 	it('decidingQuestion: the deciding input label, else the first needed open question; empty with no branches', () => {
 		const base = { proposal: null, draft: [draft({ input: 'brock', label: 'Brock risk', state: 'asked', needed: true }), draft({ input: 'x', label: 'Other', state: 'asked' })] };
@@ -77,4 +81,29 @@ describe('headChips and decidingQuestion', () => {
 		expect(decidingQuestion(preview({ ...base, deciding: [{ answer: 'a', headline: 'h' }] }))).toBe('Brock risk');
 		expect(decidingQuestion(preview({ ...base }))).toBe('');
 	});
+});
+
+// WCAG contrast of the category text tokens on their pill wash (14% of the -line colour over the card surface)
+describe('category text contrast', () => {
+	const lum = (hex: string) => {
+		const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+		return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+	};
+	const ratio = (a: string, b: string) => {
+		const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m);
+		return (x + 0.05) / (y + 0.05);
+	};
+	const blend = (fg: string, bg: string, a: number) =>
+		'#' + [1, 3, 5].map((i) => Math.round(parseInt(fg.slice(i, i + 2), 16) * a + parseInt(bg.slice(i, i + 2), 16) * (1 - a)).toString(16).padStart(2, '0')).join('');
+	// read from disk: vitest stubs CSS imports (even ?raw) to an empty string
+	const railCss = readFileSync(new URL('../../rail/rail.css', import.meta.url), 'utf8');
+	const block = (sel: RegExp) => railCss.match(sel)![1];
+	const token = (css: string, name: string) => css.match(new RegExp(`--rv-${name}:\\s*(#[0-9a-fA-F]{6})`))![1];
+	const themes = { dark: { css: block(/\.rv-rail \{([^}]*)\}/), surface: '#141419' }, light: { css: block(/\.rv-rail\[data-theme='light'\] \{([^}]*)\}/), surface: '#ffffff' } };
+	for (const [theme, t] of Object.entries(themes))
+		for (const c of ['green', 'blue', 'amber', 'red'])
+			it(`${theme} ${c} text >= 4.5:1 on its pill`, () => {
+				const pill = blend(token(t.css, `${c}-line`), t.surface, 0.14);
+				expect(ratio(token(t.css, `${c}-text`), pill)).toBeGreaterThanOrEqual(4.5);
+			});
 });

@@ -2,11 +2,17 @@
 	/** The verdict pill (B-design): the outcome's action in a span coloured by its action category, with an icon.
 	 *  The category's colour comes from the rail tokens, so both themes follow. */
 	import Icon, { type IconName } from './Icon.svelte';
-	import { categoryColor, type Verdict } from './format';
+	import { categoryColor, categoryText, type Verdict } from './format';
 
 	/** `text` replaces the pill's words (the quiet exam line shows the grade, its headline). */
 	let { verdict, text = null }: { verdict: Verdict; text?: string | null } = $props();
 	const words = $derived(text || verdict.pill);
+	// a native title only when the text is cut off: otherwise it repeats what is on screen
+	let truncated = $state(false);
+	const measure = (e: Event) => {
+		const t = (e.currentTarget as HTMLElement).querySelector<HTMLElement>('.cp-pill-text');
+		truncated = !!t && t.scrollWidth > t.clientWidth + 1;
+	};
 	const icon: Record<Verdict['category'], IconName> = {
 		none: 'check',
 		surveillance: 'clock',
@@ -19,8 +25,18 @@
 	};
 </script>
 
-<span class="cp-pill cp-pill--{verdict.category}" class:cp-pill--tentative={verdict.tentative} style:--cp-cat={categoryColor(verdict.category)} title={words} data-category={verdict.category}>
-	<Icon name={icon[verdict.category]} size={12} />
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<span
+	class="cp-pill cp-pill--{verdict.category}"
+	class:cp-pill--tentative={verdict.tentative}
+	style:--cp-cat={categoryColor(verdict.category)}
+	style:--cp-cat-text={categoryText(verdict.category)}
+	title={truncated ? words : undefined}
+	data-category={verdict.category}
+	onpointerenter={measure}
+	onfocusin={measure}
+>
+	<span class="cp-pill-icon"><Icon name={icon[verdict.category]} size={12} /></span>
 	<span class="cp-pill-text">{words}</span>
 </span>
 
@@ -35,10 +51,14 @@
 		font-size: 12px;
 		font-weight: 600;
 		line-height: 1.3;
-		color: var(--cp-cat);
+		color: var(--cp-cat-text);
 		background: color-mix(in srgb, var(--cp-cat) 14%, transparent);
 		border: 1px solid color-mix(in srgb, var(--cp-cat) 38%, transparent);
 		white-space: nowrap;
+	}
+	.cp-pill-icon {
+		display: inline-flex;
+		color: var(--cp-cat);
 	}
 	.cp-pill-text {
 		overflow: hidden;
