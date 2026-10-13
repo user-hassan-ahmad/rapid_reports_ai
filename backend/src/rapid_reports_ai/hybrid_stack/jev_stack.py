@@ -161,7 +161,6 @@ def decide_command(parsed: dict) -> dict:
 
 # ── Checklist rows (checklist spec §5, wording lab §10.2) ─────────────────────
 REMOVED_MIN = 0.6  # lab 2026-10-11 (40 pairs): 17/20 rewordings caught, 0/20 false
-HEDGED_MIN = 0.3   # a region normal the dictation even half-covers or hedges is never assumed
 
 
 @dataclass(frozen=True)
@@ -219,10 +218,16 @@ def row_fate(c: RowCheck) -> str:
     return "keep"
 
 
-def normal_assumed(c: RowCheck) -> bool:
-    """A region normal of an abnormal region is assumed only when the dictation neither covers, hedges nor
-    contradicts it and the radiologist has not removed it."""
-    return c.stated < HEDGED_MIN and c.contra < HEDGED_MIN and c.removed < REMOVED_MIN
+def normal_fate(c: RowCheck) -> str:
+    """A region normal: 'removed', 'covered' (the dictation states it), 'contradicted', 'flagged' (the dictation
+    hedges, half-covers or may contradict it: kept, highlighted for the radiologist to confirm or remove) or
+    'assumed'. Only the bars drop a normal; Jev being unsure never does (review R1 2026-10-13: chip_state's bands)."""
+    if c.removed >= REMOVED_MIN:
+        return "removed"
+    state = chip_state(c.stated, c.contra)
+    if state == "gone":
+        return "covered" if c.stated >= STATED_MIN else "contradicted"
+    return "flagged" if state == "optional" else "assumed"
 
 
 # ── Review gates (labs 2026-10-12, scripts/scratchpad_v2_labs.py material | conclusion) ──────────────────────────

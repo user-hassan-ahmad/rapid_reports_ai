@@ -1,3 +1,5 @@
+import pytest
+
 from rapid_reports_ai.hybrid_stack import jev_stack as J
 from rapid_reports_ai.hybrid_stack import normals as N
 
@@ -18,7 +20,9 @@ async def test_every_region_is_checked_dictated_normal_regions_assume_nothing(mo
     monkeypatch.setattr(N, "ask_rows", _checks({"The ovaries are normal.": (0.0, 0.9, 0.0),
                                                  "No adnexal mass.": (0.4, 0.0, 0.0)}, seen))
     out = await N.assumed("A right ovarian cyst. Kidneys normal.", NORMALS, ["Pelvic organs"], ["Kidneys"], [])
-    assert out.assumed == {"Liver": ["The liver is normal."], "Kidneys": [], "Pelvic organs": ["The uterus is normal."]}
+    assert out.assumed == {"Liver": ["The liver is normal."], "Kidneys": [],
+                           "Pelvic organs": ["The uterus is normal.", "No adnexal mass."]}
+    assert out.flagged == {"Liver": [], "Kidneys": [], "Pelvic organs": ["No adnexal mass."]}
     assert sorted(sum(seen, [])) == sorted(["The liver is normal.", "The uterus is normal.", "The ovaries are normal.",
                                              "No adnexal mass."])
 
@@ -96,9 +100,50 @@ async def test_dropped_normals_carry_their_reason(monkeypatch):
     out = await N.assumed("x", NORMALS, [], [], ["Ovaries normal."])
     assert out.dropped == {"Liver": [{"sentence": "The liver is normal.", "reason": "covered"}],
                            "Kidneys": [{"sentence": "The kidneys are normal.", "reason": "contradicted"}],
-                           "Pelvic organs": [{"sentence": "The uterus is normal.", "reason": "hedged"},
-                                             {"sentence": "The ovaries are normal.", "reason": "removed"}]}
-    assert out.assumed["Pelvic organs"] == ["No adnexal mass."]
+                           "Pelvic organs": [{"sentence": "The ovaries are normal.", "reason": "removed"}]}
+    # hedged is no longer a drop reason (review R1): the uterus is kept, flagged
+    assert out.assumed["Pelvic organs"] == ["The uterus is normal.", "No adnexal mass."]
+    assert out.flagged["Pelvic organs"] == ["The uterus is normal."]
+
+
+# ── Three-state band (review R1 2026-10-13): only the bars drop; the 0.3–bar band is kept, flagged ───────────────
+@pytest.mark.parametrize("stated,contra,fate", [
+    (0.29, 0.0, "assumed"), (0.3, 0.0, "flagged"), (0.69, 0.0, "flagged"), (0.7, 0.0, "flagged"),
+    (0.79, 0.0, "flagged"), (0.8, 0.0, "covered"),
+    (0.0, 0.29, "assumed"), (0.0, 0.3, "flagged"), (0.0, 0.69, "flagged"), (0.0, 0.7, "contradicted"),
+    (0.0, 0.79, "contradicted"), (0.0, 0.8, "contradicted"),
+])
+async def test_band_boundaries(monkeypatch, stated, contra, fate):
+    s = "The liver is normal."
+    monkeypatch.setattr(N, "ask_rows", _checks({s: (stated, contra, 0.0)}))
+    out = await N.assumed("x", {"Liver": [s]}, ["Liver"], [], [])
+    assert out.error is None
+    assert J.normal_fate(J.RowCheck(stated, contra, 0.0)) == fate
+    if fate in ("covered", "contradicted"):
+        assert out.assumed == {"Liver": []} and out.flagged == {"Liver": []}
+        assert out.dropped == {"Liver": [{"sentence": s, "reason": fate}]}
+    else:
+        assert out.assumed == {"Liver": [s]} and out.dropped == {"Liver": []}
+        assert out.flagged == {"Liver": [s] if fate == "flagged" else []}
+
+
+async def test_a_flagged_sentence_the_radiologist_removed_is_dropped_as_removed(monkeypatch):
+    s = "The liver is normal."
+    monkeypatch.setattr(N, "ask_rows", _checks({s: (0.5, 0.0, 0.6)}))
+    out = await N.assumed("x", {"Liver": [s]}, ["Liver"], [], ["Liver normal."])
+    assert out.assumed == {"Liver": []} and out.flagged == {"Liver": []}
+    assert out.dropped == {"Liver": [{"sentence": s, "reason": "removed"}]}
+
+
+async def test_an_empty_dictation_or_a_failure_flags_nothing(monkeypatch):
+    out = await N.assumed("", NORMALS, [], [], [])
+    assert out.flagged == {r: [] for r in NORMALS}
+
+    async def boom(*a, **k):
+        raise RuntimeError("down")
+    monkeypatch.setattr(N, "ask_rows", boom)
+    out = await N.assumed("x", NORMALS, [], [], [])
+    assert out.flagged == {r: [] for r in NORMALS}
 
 
 async def test_a_labelled_normal_is_asked_with_its_label_and_returned_as_written(monkeypatch):

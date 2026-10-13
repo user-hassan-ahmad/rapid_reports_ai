@@ -41,7 +41,7 @@
 	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
 	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
-	import { abnormalAll, assumedFrom, assumedStale, moreLine, openCount, rowSentences, splitReply, type AssumedSnap } from '$lib/hybrid-stack/items';
+	import { abnormalAll, assumedFrom, assumedStale, flaggedFrom, moreLine, openCount, rowSentences, splitReply, type AssumedSnap } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
 	import { asTailUnits, assumedKey, blockedSegments, pickBody, pickKey, placedRegions, shownNormals, visiblePills, withoutSegments, type ProtocolPick } from '$lib/hybrid-stack/protocol';
@@ -336,6 +336,8 @@
 	// What Confirm takes ownership of: the region normals still shown (abnormal regions' checked sentences,
 	// untouched regions' sheet sentences), minus anything removed.
 	$: confirmedAssumed = assumedFrom(assumedSnap, regionView.abnormal, regionView.assumedNormal, removedSentences);
+	// Kept normals the dictation may conflict with (review R1): shown with an amber marker; still assumed.
+	$: flaggedNow = flaggedFrom(assumedSnap, regionView.abnormal, regionView.assumedNormal, removedSentences);
 	// Quiet regions show as pills once something is placed there; a segment's normal reads "Elsewhere, …" once one
 	// of its levels is dictated.
 	let stackLevelGroups: Record<string, string[]> = {};
@@ -1853,7 +1855,7 @@
 				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences, owned: ownedNow(),
 				touched: touchedRegions(), template_id: stackTemplateId, clinical_history: clinicalHistory,
 				region_text: regionText(stackUnits) }); // a normal is covered only by its own region's sentences
-			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed, dropped: res.dropped, check_failed: !!res.error };
+			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed, flagged: res.flagged, dropped: res.dropped, check_failed: !!res.error };
 		} catch {
 			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {}, check_failed: true }; // nothing assumed
 		}
@@ -2666,7 +2668,7 @@
 							</p>
 						{/if}
 						<HybridStackView units={stackUnits} groups={stackGroups} pillRegions={shownPills} pending={stripNow}
-							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView.show ? moreView.rows : []} moreWaiting={moreView.waiting} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={shownAssumed}
+							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView.show ? moreView.rows : []} moreWaiting={moreView.waiting} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={shownAssumed} flagged={flaggedNow}
 							checks={placedChecks} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}

@@ -9,7 +9,7 @@
 	import { buildView } from './stackState';
 	import { CONCLUSION, GENERAL, OTHER, TECHNIQUE, regionStates, showsGroup } from './regionState';
 	import { checkLabel, replaced, segments, withoutQuote, type CheckAnswer, type CheckFlag } from './checks';
-	import { anchorRegion, answerLabel, openCount, quietLine, rowSentences, unansweredChecks, waiting } from './items';
+	import { QUIET_MAX, anchorRegion, answerLabel, openCount, quietLine, rowSentences, unansweredChecks, waiting } from './items';
 	import type { StackItem, StackUnit, ViewRow } from './types';
 
 	export type ConclusionState =
@@ -36,6 +36,7 @@
 		tapped = [],
 		removed = [],
 		assumed = {},
+		flagged = [],
 		namedNormals = false,
 		skipped = [],
 		reviewing = false,
@@ -96,6 +97,8 @@
 		removed?: string[];
 		/** Region normals that will be reported unless removed (the slim sheet, checked against the dictation). */
 		assumed?: Record<string, string[]>;
+		/** Assumed normals the dictation may conflict with (review R1): kept, shown with an amber "check" marker. */
+		flagged?: string[];
 		/** No sheet this session: untouched regions are confirmed by name (v2). With a sheet, only sentences are. */
 		namedNormals?: boolean;
 		/** Rows skipped (finding checks) or marked not assessed (referral rows): folded, nothing stated. */
@@ -373,6 +376,9 @@
 		if (onConfirmGenerate) onConfirmGenerate();
 		else onConfirm();
 	}
+	const FLAG_TITLE = 'May conflict with your dictation: confirm or remove';
+	const flagKeys = $derived(new Set(flagged.map((s) => s.trim().toLowerCase().replace(/\.$/, ''))));
+	const isFlagged = (s: string) => flagKeys.has(s.trim().toLowerCase().replace(/\.$/, ''));
 	const keptAssumed = (region: string) => {
 		const gone = new Set(removed.map((r) => r.trim().toLowerCase().replace(/\.$/, '')));
 		return (assumed[region] ?? []).filter((s) => !gone.has(s.trim().toLowerCase().replace(/\.$/, '')));
@@ -733,7 +739,8 @@
 {/snippet}
 
 {#snippet sentences(list: string[], key: string)}
-	{@const q = expanded.includes(key) ? { shown: list, more: 0 } : quietLine(list)}
+	<!-- A flagged normal is never hidden behind "+N more": the radiologist must see it to confirm or remove it. -->
+	{@const q = expanded.includes(key) || list.slice(QUIET_MAX).some(isFlagged) ? { shown: list, more: 0 } : quietLine(list)}
 	{#each q.shown as s (s)}
 		{#if assumedEditing === s}
 			<textarea
@@ -761,6 +768,10 @@
 			{@render micControls('Enter save · Esc cancel')}
 		{:else}
 			<span class="inline-flex items-center gap-0.5">
+				{#if isFlagged(s)}
+					<span class="rounded bg-amber-500/15 px-1 text-[10px] uppercase tracking-wide text-amber-300" title={FLAG_TITLE}
+						data-flag="conflict">check</span>
+				{/if}
 				<!-- Click to edit (hand read 2026-10-12): an edited normal becomes the radiologist's own words. -->
 				<button type="button" class="cursor-text rounded text-left text-gray-300/80 underline decoration-emerald-500/40 decoration-dashed underline-offset-4 hover:bg-white/[0.04] hover:text-gray-200"
 					title="Click to edit" onclick={() => openAssumed(s)}>{s}</button>
@@ -1044,9 +1055,12 @@
 								type="button"
 								class="rounded-full px-2 py-0.5 text-xs {none ? 'border border-white/10 text-gray-600'
 									: 'border border-dashed border-white/20 text-gray-400 hover:border-emerald-400/40'} {openPill === r ? 'ring-1 ring-emerald-400/40' : ''}"
-								title={keptAssumed(r).length ? `Will be reported: ${keptAssumed(r).join(' ')}` : none ? 'Nothing assumed: only what you dictate is reported' : 'Assumed normal (not dictated)'}
+								title={keptAssumed(r).some(isFlagged) ? `${FLAG_TITLE}. Will be reported: ${keptAssumed(r).join(' ')}`
+									: keptAssumed(r).length ? `Will be reported: ${keptAssumed(r).join(' ')}` : none ? 'Nothing assumed: only what you dictate is reported' : 'Assumed normal (not dictated)'}
 								data-state={none ? 'none' : 'assumed'}
-								onclick={() => (openPill = openPill === r ? null : r)}>{r}</button>
+								data-flagged={keptAssumed(r).some(isFlagged) ? 'true' : undefined}
+								onclick={() => (openPill = openPill === r ? null : r)}>{r}{#if keptAssumed(r).some(isFlagged)}<span
+									class="ml-1 text-amber-300" aria-hidden="true">●</span>{/if}</button>
 						{/each}
 					</div>
 				</div>

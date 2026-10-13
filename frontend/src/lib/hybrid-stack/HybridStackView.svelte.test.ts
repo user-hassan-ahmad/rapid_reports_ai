@@ -65,6 +65,33 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByText('No ascites.')).toBeInTheDocument();
 	});
 
+	it('a flagged normal shows an amber check marker on the region card and in the tray, and stays removable (R1)', async () => {
+		const props = { ...base(), onRemoveSentence: vi.fn() };
+		const title = 'May conflict with your dictation: confirm or remove';
+		render(HybridStackView, {
+			...props,
+			units: [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true })],
+			assumed: { Liver: ['No biliary dilatation.', 'The portal vein is patent.', 'No other lesion.', 'No ascites.'],
+				Kidneys: ['The kidneys are normal.'], Spleen: ['The spleen is normal.'] },
+			flagged: ['No ascites.', 'The kidneys are normal.'], assumedReady: true
+		});
+		// on the card: a flagged sentence is never hidden behind "+N more"
+		const card = page.getByRole('region', { name: 'Liver' });
+		await expect.element(card.getByText('No ascites.')).toBeInTheDocument();
+		await expect.element(card.getByTitle(title, { exact: true })).toBeInTheDocument();
+		expect(card.getByTitle(title, { exact: true }).elements()).toHaveLength(1);
+		// in the tray: the pill carries the marker before it is opened; opened, the sentence does
+		const pill = page.getByRole('button', { name: /^Kidneys/ });
+		await expect.element(pill).toHaveAttribute('data-flagged', 'true');
+		await expect.element(page.getByRole('button', { name: /^Spleen/ })).not.toHaveAttribute('data-flagged');
+		await pill.click();
+		const tray = page.getByRole('region', { name: 'Normal regions' });
+		await expect.element(tray.getByText('The kidneys are normal.')).toBeInTheDocument();
+		await expect.element(tray.getByTitle(title, { exact: true })).toBeInTheDocument();
+		await page.getByLabelText('Remove The kidneys are normal.').click();
+		expect(props.onRemoveSentence).toHaveBeenCalledWith('The kidneys are normal.');
+	});
+
 	it('shows the live strip and lets a line be edited and committed with Enter', async () => {
 		const props = base();
 		render(HybridStackView, {

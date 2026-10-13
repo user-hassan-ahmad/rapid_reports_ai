@@ -63,7 +63,9 @@ export interface SlimSheet { id: string | null; region_normals: Record<string, s
 export type Dropped = Record<string, { sentence: string; reason: string }[]>;
 export interface AssumedResult {
 	assumed: Record<string, string[]>;
-	/** Region -> normals not assumed, with why: covered | hedged | contradicted | removed | rule. */
+	/** Region -> assumed normals the dictation may conflict with (also in `assumed`): shown highlighted (review R1). */
+	flagged?: Record<string, string[]>;
+	/** Region -> normals not assumed, with why: covered | contradicted | removed | rule. */
 	dropped?: Dropped;
 	ms: number;
 	error: string | null;

@@ -109,7 +109,7 @@ async def test_preview_report_wires_the_scratchpad_path(monkeypatch):
                            suppressions=None, clinical_history="", labels=None, region_text=None):
         seen.update(normals=region_normals, abnormal=abnormal, dictated_normal=dictated_normal, removed=removed,
                     history=clinical_history, labels=labels, region_text=region_text)
-        return NS(assumed={r: list(s) for r, s in region_normals.items()}, dropped={}, error=None)
+        return NS(assumed={r: list(s) for r, s in region_normals.items()}, flagged={}, dropped={}, error=None)
 
     class FakeTM:
         async def generate_report_from_config(self, cfg, inputs, sig, stack=None):
@@ -181,7 +181,7 @@ async def test_preview_report_returns_undictated_number_flags(monkeypatch):
         return NS(units=[U("Gallstones 12 mm.", regions[0].name, abnormal=True), U("Cholelithiasis.", "Conclusion")])
 
     async def fake_assumed(dictation, region_normals, abnormal, dictated_normal, removed, **kw):
-        return NS(assumed={}, dropped={}, error=None)
+        return NS(assumed={}, flagged={}, dropped={}, error=None)
 
     class FakeTM:
         async def generate_report_from_config(self, cfg, inputs, sig, stack=None):

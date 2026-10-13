@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { abnormalAll, anchorRegion, answerLabel, assumedFrom, assumedStale, moreLine, openCount, quietLine, rowSentences, splitReply, unansweredChecks } from './items';
+import { abnormalAll, anchorRegion, answerLabel, assumedFrom, assumedStale, flaggedFrom, moreLine, openCount, quietLine, rowSentences, splitReply, unansweredChecks } from './items';
 import type { StackItem, StackUnit } from './types';
 
 const item = (id: string, sentences: string[], extra: Partial<StackItem> = {}): StackItem => ({
@@ -49,6 +49,16 @@ describe('checklist rows', () => {
 		// Liver turned abnormal since the answer: its untouched normals are no longer assumed
 		expect(assumedFrom(snap, ['Spleen', 'Liver'], ['Bowel'], [])).toEqual({ Spleen: ['The spleen is normal.', 'No splenic lesion.'] });
 		expect(assumedFrom(null, ['Spleen'], [], [])).toEqual({});
+	});
+	it('keeps the flagged sentences in the snapshot: only those still assumed, in the state they were checked for (R1)', () => {
+		const snap = { offered: {}, dictation: 'x', abnormal: ['Spleen'], untouched: ['Liver'],
+			assumed: { Liver: ['The liver is normal.'], Spleen: ['The spleen is normal.', 'No splenic lesion.'] },
+			flagged: { Liver: ['The liver is normal.'], Spleen: ['No splenic lesion.'] } };
+		expect(flaggedFrom(snap, ['Spleen'], ['Liver'], [])).toEqual(['No splenic lesion.', 'The liver is normal.']);
+		expect(flaggedFrom(snap, ['Spleen'], ['Liver'], ['no splenic lesion'])).toEqual(['The liver is normal.']);   // removed with ×
+		expect(flaggedFrom(snap, ['Spleen', 'Liver'], [], [])).toEqual(['No splenic lesion.']);   // Liver changed state since
+		expect(flaggedFrom({ ...snap, flagged: undefined }, ['Spleen'], ['Liver'], [])).toEqual([]);
+		expect(flaggedFrom(null, ['Spleen'], [], [])).toEqual([]);
 	});
 	it('rows over the cap wait behind "N more checks": N counts the rows still asked; the line stays for a tapped one', () => {
 		const capped = [item('c1', ['No free fluid.']), item('c2', ['No collection.']), item('c3', ['No fistula.']), item('c4', ['No abscess.'])];

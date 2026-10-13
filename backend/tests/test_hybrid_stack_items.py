@@ -156,7 +156,8 @@ async def test_ask_rows_payload_and_fates(monkeypatch):
     assert [J.row_fate(c) for c in out] == ["answered", "removed"]
     assert J.row_fate(J.RowCheck(0.1, 0.75, 0.0)) == "contradicted"
     assert J.row_fate(J.RowCheck(0.5, 0.5, 0.5)) == "keep"
-    assert J.normal_assumed(J.RowCheck(0.29, 0.29, 0.59)) and not J.normal_assumed(J.RowCheck(0.3, 0.0, 0.0))
+    assert J.normal_fate(J.RowCheck(0.29, 0.29, 0.59)) == "assumed" and J.normal_fate(J.RowCheck(0.3, 0.0, 0.0)) == "flagged"
+    assert J.normal_fate(J.RowCheck(0.0, 0.0, 0.6)) == "removed"
 
 
 async def test_ask_rows_without_removed_asks_two_questions(monkeypatch):

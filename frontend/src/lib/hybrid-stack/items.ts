@@ -62,7 +62,7 @@ export function abnormalAll(units: StackUnit[]): string[] {
 	return effectiveItems(units).filter((i) => i.abnormal).map((i) => i.text);
 }
 
-export interface AssumedSnap { dictation: string; abnormal: string[]; untouched: string[]; assumed: Record<string, string[]>; offered: Record<string, string[]>; dropped?: Dropped; check_failed?: boolean }
+export interface AssumedSnap { dictation: string; abnormal: string[]; untouched: string[]; assumed: Record<string, string[]>; offered: Record<string, string[]>; flagged?: Record<string, string[]>; dropped?: Dropped; check_failed?: boolean }
 
 /** What the gate confirms as assumed: only the sentences /assumed answered for each region, in the state (abnormal
  *  or untouched) that region had when they were checked, minus removed ones. Never the raw sheet (review
@@ -85,6 +85,14 @@ export function assumedFrom(snap: AssumedSnap | null, abnormal: string[], untouc
 		if (kept.length) out[r] = kept;
 	}
 	return out;
+}
+
+/** The assumed sentences the dictation may conflict with (review R1): Jev half-read them as covered or contradicted,
+ *  so they are kept, highlighted, for the radiologist to confirm or remove. Only those `assumedFrom` still keeps. */
+export function flaggedFrom(snap: AssumedSnap | null, abnormal: string[], untouched: string[], removed: string[]): string[] {
+	if (!snap?.flagged) return [];
+	const kept = assumedFrom(snap, abnormal, untouched, removed);
+	return Object.entries(kept).flatMap(([r, xs]) => xs.filter((x) => (snap.flagged?.[r] ?? []).includes(x)));
 }
 
 /** Rows over the writer's caps (E1b): shown behind one quiet "N more checks" line instead of vanishing. `rows`: the
