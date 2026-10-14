@@ -37,13 +37,13 @@
 
 <style>
 	/* bounded: the rail never grows the page; its list scrolls inside (the body already has overflow-y: auto) */
-	:global(.rv-rail[data-testid='copilot-rail']) {
+	:global(aside.rv-rail[data-testid='copilot-rail']) {
 		max-height: calc(100vh - 4rem);
 		overflow-x: hidden;
 		overflow-y: auto;
 		overscroll-behavior: contain;
 	}
-	:global(.rv-rail[data-testid='copilot-rail'] .rv-body) {
+	:global(aside.rv-rail[data-testid='copilot-rail'] .rv-body) {
 		overscroll-behavior: contain;
 	}
 </style>

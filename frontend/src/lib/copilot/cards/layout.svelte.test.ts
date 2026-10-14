@@ -83,11 +83,13 @@ describe('value row at 280px', () => {
 			why: []
 		} as Row;
 		render(ValueRow, { target: h, props: { row, uid: 't', onEdit: vi.fn() } });
-		await expect.element(page.getByText('7 mm', { exact: true })).toBeInTheDocument();
+		await expect.element(page.getByText('7 mm')).toBeInTheDocument();
 		const li = h.querySelector('li.cp-val')!;
 		const tags = [...li.querySelectorAll('.cp-chip')];
 		expect(tags.length).toBeGreaterThanOrEqual(2);
 		for (const t of tags) expect(rect(t).right).toBeLessThanOrEqual(rect(li).right);
+		const val = li.querySelector('.cp-val-value b')!;
+		for (const t of tags) expect(rect(t).top).toBeGreaterThanOrEqual(rect(val).bottom - 1); // under the value
 		const label = li.querySelector('.cp-val-label')!;
 		for (const t of tags) expect(hit(rect(label), rect(t))).toBe(false);
 	});
@@ -114,9 +116,9 @@ describe('rail scrolls inside', () => {
 		await expect.element(page.getByText('Guideline number 0')).toBeInTheDocument();
 		const rail = document.querySelector('[data-testid="copilot-rail"]') as HTMLElement;
 		const cs = getComputedStyle(rail);
-		expect(cs.maxHeight).not.toBe('none');
+		expect(parseFloat(cs.maxHeight)).toBeCloseTo(window.innerHeight - 64, 0); // calc(100vh - 4rem)
 		expect(['auto', 'scroll']).toContain(cs.overflowY);
-		expect(rect(rail).height).toBeLessThanOrEqual(window.innerHeight);
+		expect(rect(rail).height).toBeLessThanOrEqual(window.innerHeight - 64 + 1);
 		const body = rail.querySelector('.rv-body') as HTMLElement;
 		expect(body.scrollHeight).toBeGreaterThan(body.clientHeight);
 		expect(document.documentElement.scrollHeight).toBeLessThanOrEqual(Math.max(before, window.innerHeight));
@@ -142,7 +144,7 @@ describe('long blocks scroll', () => {
 		const body = h.querySelector('.cp-ref-body') as HTMLElement;
 		expect(body).not.toBeNull();
 		const cs = getComputedStyle(body);
-		expect(cs.maxHeight).not.toBe('none');
+		expect(parseFloat(cs.maxHeight)).toBe(256); // 16rem
 		expect(cs.overflowY).toBe('auto');
 		expect(body.scrollHeight).toBeGreaterThan(body.clientHeight);
 	});

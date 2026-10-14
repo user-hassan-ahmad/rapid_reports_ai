@@ -82,10 +82,8 @@
 	}
 	.cp-pill-icon {
 		display: inline-flex;
-		color: var(--cp-cat);
-	}
-	.cp-pill-icon {
 		flex: none;
+		color: var(--cp-cat);
 	}
 	.cp-pill-text {
 		min-width: 0;

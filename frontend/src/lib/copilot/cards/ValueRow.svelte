@@ -133,6 +133,11 @@
 		gap: 3px 6px;
 		font-variant-numeric: tabular-nums;
 	}
+	/* the value takes the line; its tags wrap onto the line under it */
+	.cp-val-value > b,
+	.cp-val-value > .cp-muted {
+		flex: 0 0 100%;
+	}
 	.cp-val-value b {
 		font-weight: 600;
 	}
