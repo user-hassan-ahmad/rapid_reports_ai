@@ -181,12 +181,21 @@
 		gap: 6px 12px;
 		margin-top: 6px;
 	}
+	/* one guideline per line, wrapping inside the card: the verdict pill shrinks (ellipsis, full text on hover) and the
+	   marks wrap under it, never past the card edge (Chrome checkpoint 2026-10-14) */
 	.cp-sib-pill {
-		white-space: nowrap;
-		display: inline-flex;
+		display: flex;
+		flex: 1 1 100%;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 6px;
+		gap: 4px 6px;
+		min-width: 0;
+		max-width: 100%;
 		font-size: 12px;
+	}
+	.cp-sib-pill > :global(*) {
+		min-width: 0;
+		max-width: 100%;
 	}
 	.cp-col-marks {
 		display: inline-flex;
