@@ -15,7 +15,7 @@ import time
 
 from pydantic import BaseModel
 
-from .jev_stack import CONDITION_MIN, SIDE_MIN, RowCheck, ask_conditions, ask_rows, ask_sides, normal_fate
+from .jev_stack import CONDITION_MIN, OPTIONAL_MIN, RowCheck, ask_conditions, ask_rows, ask_sides, normal_fate
 from .sides import side_label, side_pairs
 from .template import jev_text, norm_key
 from ..template_context_rules import condition_state
@@ -34,9 +34,13 @@ class AssumedResult(BaseModel):
     rules: dict[str, float] | None = None
     confirm_recheck: bool = False   # the sheet has context rules: Confirm re-asks every one with the dictation
     # "Which side?" (side brief 2026-10-14): a right/left pair the dictation reports a finding for without giving its
-    # side. Both sides are dropped until a side is dictated: {region, sentences: [right, left], label, score}
+    # side. Both sides are dropped until a side is dictated: {region, sentences: [right, left], label, choice, score}
     side_asks: list[dict] = []
-    side_failed: bool = False   # the side question failed: the pair's normals stand as Jev read them, nothing asked
+    # Every asked pair Jev placed a finding for (choice right | left | both | no_side; none is left out), for the log
+    side_choices: list[dict] = []
+    # the side question failed: nothing asked; a pair with a contradicted side drops both (side_unchecked). The client
+    # keeps the previous answer's open asks (review F2)
+    side_failed: bool = False
     ms: int = 0
     error: str | None = None
 
@@ -98,8 +102,8 @@ def _side_candidates(asked: list[tuple[str, str]], touched: set[str]) -> list[tu
 
 
 async def _side_scores(dictation: str, asked: list[tuple[str, str]], cands: list[tuple[str, int, int]]):
-    """P(a finding for the pair with no side given) per candidate, asked alongside the rows (no added round trip);
-    None when the call failed (nothing is asked then)."""
+    """(choice, probabilities) per candidate, asked alongside the rows (no added round trip); None when the call
+    failed (nothing is asked or dropped then)."""
     if not cands:
         return []
     try:
@@ -167,10 +171,14 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     Every sentence is asked, a dictated-normal region's included.
 
     `sides` (quick sessions; templates are out of scope): each right/left pair in a region the dictation touches
-    (its text, or an abnormal region) is asked, in a call made alongside the rows, whether the dictation reports a
-    finding for it with no side given. Such a pair drops both sentences (ruling 1: a side-less finding is never
-    left beside either side's normal, whatever Jev read as contradicted) and is returned in `side_asks`. A failure of
-    that call changes nothing (side_failed)."""
+    (its text, or an abnormal region) is asked, in a call made alongside the rows, which side the dictation gives its
+    finding for it: none, right, left, both or no side. No side drops both sentences (ruling 1: a side-less finding
+    is never left beside either side's normal, whatever Jev read as contradicted) and is returned in `side_asks`.
+    Both drops both (reason "both", no ask) when the finding touches the pair, i.e. Jev reads either side as at least
+    weakly contradicted (OPTIONAL_MIN): contradiction alone kept one side beside "both kidneys contain cysts", and the
+    choice alone also says "both" for a bilateral finding's neighbouring checks. Right and left change nothing (the
+    contradiction fates stand). A failure of that call (side_failed) asks nothing and drops both sentences of a
+    pair either side of which Jev read as contradicted (reason side_unchecked)."""
     t0 = time.perf_counter()
     gone = list(dict.fromkeys(r for r in [*removed, *(owned or [])] if r.strip()))
     labels = labels or {}
@@ -182,6 +190,7 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     error = None
     asks: list[dict] = []
     side_failed = False
+    side_choices: list[dict] = []
     cands: list[tuple[str, int, int]] = []
     conds = list(dict.fromkeys(c for c, _ in suppressions or []))
     blank = not dictation.strip()
@@ -208,11 +217,25 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
             fates = [("removed" if norm_key(s) in gone_keys else "assumed") if checks is None else normal_fate(checks[i])
                      for i, (_, s) in enumerate(asked)]
             side_failed = side_p is None
-            for (region, i, j), p in zip(cands, side_p or []):
-                if p >= SIDE_MIN:
-                    asks.append({"region": region, "sentences": [asked[i][1], asked[j][1]],
-                                 "label": side_label(asked[i][1]), "score": round(p, 3)})
-                    fates[i], fates[j] = (("side" if fates[k] in ("assumed", "flagged") else fates[k]) for k in (i, j))
+            if side_failed:
+                # Review F2: the side is unknown, so a pair Jev read as contradicted on either side drops both (reason
+                # side_unchecked, no ask); the client carries the last answer's open asks forward.
+                for _, i, j in cands:
+                    if "contradicted" in (fates[i], fates[j]):
+                        fates[i], fates[j] = (("side_unchecked" if fates[k] in ("assumed", "flagged") else fates[k])
+                                              for k in (i, j))
+            for (region, i, j), (choice, probs) in zip(cands, side_p or []):
+                if choice == "none":
+                    continue
+                pair = {"region": region, "sentences": [asked[i][1], asked[j][1]], "label": side_label(asked[i][1]),
+                        "choice": choice, "score": probs.get(choice, 0.0)}
+                touched_pair = checks is not None and max(checks[i].contra, checks[j].contra) >= OPTIONAL_MIN
+                why = "side" if choice == "no_side" else "both" if choice == "both" and touched_pair else None
+                side_choices.append({**pair, "applied": why is not None})
+                if why == "side":
+                    asks.append(pair)
+                if why:
+                    fates[i], fates[j] = ((why if fates[k] in ("assumed", "flagged") else fates[k]) for k in (i, j))
             for i, (region, s) in enumerate(asked):
                 fate = fates[i]
                 if norm_key(s) in hidden:
@@ -227,7 +250,7 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
             logger.warning("[stack.normals] %s: %s", type(e).__name__, str(e)[:200])
             error = f"{type(e).__name__}: {e}"
             session = None
-            asks = []
+            asks, side_choices = [], []
             out = {r: [] for r in region_normals}
             flagged = {r: [] for r in region_normals}
             dropped = {r: [] for r in region_normals}
@@ -237,5 +260,6 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
                        "[stack.normals] jev_calls=%d failed=%s mode=%s side_asks=%d",
                        calls, error is not None, "whole" if region_text is None else "region", len(asks))
     return AssumedResult(assumed=out, flagged=flagged, dropped=dropped, rules=session,
-                         confirm_recheck=bool(conds), side_asks=asks, side_failed=side_failed,
+                         confirm_recheck=bool(conds), side_asks=asks, side_choices=side_choices,
+                         side_failed=side_failed,
                          ms=int((time.perf_counter() - t0) * 1000), error=error)
