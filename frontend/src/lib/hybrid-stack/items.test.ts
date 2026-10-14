@@ -128,6 +128,12 @@ describe('assumed normals before any dictation (E6)', () => {
 		const said = { ...failed, dictation: 'A liver cyst.' };
 		expect(assumedStale(true, said, 'A liver cyst.')).toBe(false);
 	});
+	it('a failed side check is asked again for the same dictation, up to three answers (re-review N4)', () => {
+		const said = { ...snap, dictation: 'A cyst in the kidney.', side_failed: true, side_failures: 1 };
+		expect(assumedStale(true, said, 'A cyst in the kidney.')).toBe(true);
+		expect(assumedStale(true, { ...said, side_failures: 3 }, 'A cyst in the kidney.')).toBe(false);
+		expect(assumedStale(true, { ...said, side_failed: false }, 'A cyst in the kidney.')).toBe(false);
+	});
 });
 
 describe('template context rules decided once per session (R5)', () => {

@@ -260,6 +260,9 @@ def normal_fate(c: RowCheck) -> str:
 # (8 cases) or neither (4: a side-less "Small pneumothorax." kept both sides' negatives). A choice (bilateral fix,
 # 2026-10-14): "both" lets code drop the side contradiction missed ("Both kidneys contain cysts" dropped one side).
 SIDE_CHOICES = ("none", "right", "left", "both", "no_side")
+# Re-review N7: P(no_side) must reach this to ask (the round-1 bar, restored); below it both normals are flagged amber.
+# Side lab runs 3-4: every no_side answer >= 0.66 except a neighbour over-ask (a10 ureter, 0.57), which this removes.
+SIDE_MIN = 0.6
 SIDE_QUESTION = {
     "instructions": ("Does the DICTATION report an abnormal finding for the paired check these two STATEMENTS make (one "
                      "statement for the right side, one for the left), and on which side? Only a finding for this check "

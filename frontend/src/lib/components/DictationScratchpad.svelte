@@ -48,7 +48,7 @@
 	import { enterValue, failFill, initialChips, isFilling, keepStated, markNa, markRestNa, mergeFill, pickValue, startFill, valuesKey } from '$lib/hybrid-stack/values';
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
 	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
-	import { SIDE_KIND, answerPairs, carrySides, notReported, pairKey, sideChoices, sideFlags, sideRecord, type SideAsk } from '$lib/hybrid-stack/sides';
+	import { SIDE_KIND, answerPairs, carrySides, holdFlags, notReported, pairKey, sideChoices, sideFlags, sideRecord, type SideAsk } from '$lib/hybrid-stack/sides';
 	import { abnormalAll, addedAtConfirm, assumedFrom, assumedStale, confirmReady, confirmRecheckFailed, flaggedFrom, gateKeyOf, keepRules, moreLine, openCount, rowSentences, splitReply, rulesToSend, type AssumedSnap, type SessionRules } from '$lib/hybrid-stack/items';
 	import { CONCLUSION, OTHER, conclusionText, findingsHash, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { backstopRun, checkKey, toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
@@ -392,7 +392,8 @@
 	$: flaggedNow = flaggedFrom(assumedSnap, regionView.abnormal, regionView.assumedNormal, removedSentences, dictatedNormalRegions);
 	// A finding dictated without its side (quick sessions): a blocking "Which side?" check in its region's card, from the
 	// last /assumed answer; it clears when an answer no longer asks. The normals it and contradiction left out are listed.
-	$: sideNow = sideFlags(assumedSnap?.side_asks ?? [], checkAnswers);
+	// A failed side check (after retries) holds each region it could not clear, until a retry answers or it is kept.
+	$: sideNow = [...sideFlags(assumedSnap?.side_asks ?? [], checkAnswers), ...holdFlags(assumedSnap?.side_hold ?? [])];
 	$: struckNow = notReported(assumedSnap, removedSentences);
 	// Quiet regions show as pills once something is placed there; a segment's normal reads "Elsewhere, …" once one
 	// of its levels is dictated.
@@ -1983,27 +1984,32 @@
 		const sheet = slimSeq;
 		const history = clinicalHistory;
 		const snap = { offered, dictation: verbatimNow, abnormal: [...regionView.abnormal], untouched: [...regionView.assumedNormal],
-			dictatedNormal: regionView.dictatedNormal.map((d) => d.region) };
+			dictatedNormal: regionView.dictatedNormal.map((d) => d.region), region_text: regionText(stackUnits) };
 		try {
 			const res = await postAssumed($token, { dictation: snap.dictation, region_normals: offered, abnormal: snap.abnormal,
 				removed: removedSentences, owned: ownedNow(), template_id: stackTemplateId, clinical_history: history,
-				region_text: regionText(stackUnits), // a normal is covered only by its own region's sentences
+				region_text: snap.region_text, // a normal is covered only by its own region's sentences
 				rules: rulesToSend(sessionRules, history), confirm });
 			if (sheet === slimSeq) sessionRules = keepRules(sessionRules, history, res);
 			if (seq === assumedSeq) {
-				// A failed side call (or a failed check) keeps the last answer's open asks and their sentences out (F2)
-				const sideFailed = !!res.side_failed || !!res.error;
-				const sides = carrySides(assumedSnap, res, sideFailed);
-				assumedSnap = { ...snap, assumed: sides.assumed, flagged: res.flagged, dropped: sides.dropped, side_asks: sides.side_asks, side_choices: res.side_choices ?? [],
-					side_failed: !!res.side_failed || (!!res.error && sides.side_asks.length > 0), check_failed: !!res.error,
+				// A failed side call keeps the last answer's open asks (unchanged regions) and their sentences out (F2, N4).
+				// A failed check assumes nothing, so no question is carried or held over it (N4).
+				const sideFailed = !!res.side_failed && !res.error;
+				const sides = carrySides(assumedSnap, res, sideFailed, snap.region_text);
+				assumedSnap = { ...snap, assumed: sides.assumed, flagged: res.flagged, dropped: sides.dropped, side_asks: res.error ? [] : sides.side_asks,
+					side_choices: res.side_choices ?? [], side_failed: sideFailed, side_hold: res.error ? [] : (res.side_hold ?? []),
+					side_failures: sideFailed ? sideFailuresFor(snap.dictation) : 0, check_failed: !!res.error,
 					confirm_recheck: !!res.confirm_recheck, confirmed: confirm, failures: res.error ? failuresFor(snap.dictation) : 0 };
 				seenSides = { ...seenSides, ...Object.fromEntries((res.side_asks ?? []).map((a) => [pairKey(a.region, a.label), a])) };
 			}
 		} catch {
-			// nothing assumed; the last open "Which side?" asks stay (F2)
-			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {}, check_failed: true, confirmed: confirm, failures: failuresFor(snap.dictation),
-				side_asks: assumedSnap?.side_asks ?? [], side_failed: !!assumedSnap?.side_asks?.length };
+			// nothing assumed, so no "Which side?" question is carried or held over it (re-review N4)
+			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {}, check_failed: true, confirmed: confirm, failures: failuresFor(snap.dictation) };
 		}
+	}
+	/** Failed side checks in a row for this dictation (assumedStale re-asks them, re-review N4). */
+	function sideFailuresFor(dictation: string): number {
+		return (assumedSnap?.side_failed && assumedSnap.dictation === dictation ? (assumedSnap.side_failures ?? 1) : 0) + 1;
 	}
 	/** Failed answers in a row for this dictation (assumedStale re-asks the empty dictation's a few times, round 1). */
 	function failuresFor(dictation: string): number {
@@ -2201,6 +2207,7 @@
 			...offeredAndDropped(assumedSnap?.offered ?? stackRegionNormals, assumedSnap?.dropped, assumedSnap?.check_failed),
 			side_asks: sideRecord(seenSides, assumedSnap, checkAnswers), // beside jev_dropped: its "side" drops are these asks'
 			side_failed: !!assumedSnap?.side_failed,
+			side_hold: assumedSnap?.side_hold ?? [], // held regions Confirm passed: each was kept as dictated
 			side_choices: sideChoices(assumedSnap) // its "both" drops: the pairs whose choice applied
 		};
 		stackGate = gate;
@@ -2881,7 +2888,7 @@
 						{/if}
 						<HybridStackView units={stackUnits} groups={stackGroups} pillRegions={shownPills} pending={stripNow}
 							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView.show ? moreView.rows : []} moreWaiting={moreView.waiting} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={shownAssumed} structures={stackStructures} flagged={flaggedNow}
-							checks={[...placedChecks, ...sideNow]} notReported={struckNow} sideFailed={!!assumedSnap?.side_failed} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {guidelinesUnresolved} onOpenGuideline={openGuideline} {deleteRegion}
+							checks={[...placedChecks, ...sideNow]} notReported={struckNow} sideFailed={assumedSnap?.side_failed ? (assumedSnap.side_asks?.length ? 'kept' : 'plain') : null} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {guidelinesUnresolved} onOpenGuideline={openGuideline} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} assumedFailed={assumedState === 'failed'} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
 							onAnswer={answerRow} onAnswerTemplate={answerTemplateRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}

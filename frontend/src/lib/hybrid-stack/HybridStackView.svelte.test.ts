@@ -643,7 +643,7 @@ describe('HybridStackView v2', () => {
 		const units = [u(0, 'A 12 mm cyst in the left kidney.', 'Kidneys', { abnormal: true })];
 		render(HybridStackView, { ...base(), units, assumed: { Kidneys: ['The right kidney is normal.'] },
 			notReported: { Kidneys: [{ why: 'conflicts with dictation', sentences: ['The left kidney is normal.'] }, { why: 'side not stated', sentences: ['No right hydronephrosis.'] }],
-				Liver: [{ why: 'conflicts with dictation', sentences: ['The liver is normal.'] }] }, sideFailed: true });
+				Liver: [{ why: 'conflicts with dictation', sentences: ['The liver is normal.'] }] }, sideFailed: 'kept' });
 		const line = page.getByRole('region', { name: 'Kidneys' }).getByText('Not reported (conflicts with dictation)');
 		await expect.element(line).toBeInTheDocument();
 		const struck = page.getByText('The left kidney is normal.');

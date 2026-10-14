@@ -88,6 +88,7 @@ export function checkLabel(kind: string): string {
 		case 'dangling_measurement': return 'A dimension missing?';
 		case 'laterality_conflict': return 'Sides as intended?';
 		case 'side_missing': return 'Which side?';
+		case 'side_unchecked': return 'Side check unavailable';
 		case 'measurement_mismatch': return 'Measurement as intended?';
 		case 'internal_contradiction': return 'Statements conflict';
 		case 'unit_anomaly': return 'Unit as intended?';

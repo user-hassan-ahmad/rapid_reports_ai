@@ -43,7 +43,7 @@
 		structures = {},
 		flagged = {},
 		notReported = {},
-		sideFailed = false,
+		sideFailed = null,
 		confirmNote = null,
 		namedNormals = false,
 		skipped = [],
@@ -124,8 +124,9 @@
 		/** Region -> normals left out, grouped by why (conflict, side not stated, side not checked): listed struck
 		 *  through in that region's card (side brief 2026-10-14, review F7). */
 		notReported?: NotReported;
-		/** The side check failed on the last answer: its open asks were kept (review F2); the Confirm bar says so. */
-		sideFailed?: boolean;
+		/** The side check failed on the last answer (review F2): 'kept' when its open asks were carried, 'plain' when
+		 *  there were none (re-review N5); the Confirm bar says so. */
+		sideFailed?: 'kept' | 'plain' | null;
 		/** Why the last Confirm press did not gate (a re-checked rule added a normal; the dictation moved on). */
 		confirmNote?: string | null;
 		/** No sheet this session: untouched regions are confirmed by name (v2). With a sheet, only sentences are. */
@@ -1308,7 +1309,7 @@
 			{#if !hasConclusion}<span class="rounded bg-white/5 px-1.5 py-0.5 text-gray-400">no conclusion yet</span>{/if}
 			{#if guidelinesUnresolved.length}<button type="button" class="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-200 hover:bg-amber-500/25" data-gate="guidelines"
 					onclick={() => onOpenGuideline(guidelinesUnresolved[0].key)}>{guidelinesUnresolved.length} guideline{guidelinesUnresolved.length === 1 ? '' : 's'} unresolved</button>{/if}
-			{#if sideFailed}<span class="rounded bg-rose-500/15 px-1.5 py-0.5 text-rose-200" data-gate="sides">side check unavailable: open “Which side?” questions kept</span>{/if}
+			{#if sideFailed}<span class="rounded bg-rose-500/15 px-1.5 py-0.5 text-rose-200" data-gate="sides">{sideFailed === 'kept' ? 'side check unavailable: open “Which side?” questions kept' : 'side check unavailable'}</span>{/if}
 			{#if confirmNote}<span class="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-200" role="status" data-gate="note">{confirmNote}</span>{/if}
 		</p>
 		<button

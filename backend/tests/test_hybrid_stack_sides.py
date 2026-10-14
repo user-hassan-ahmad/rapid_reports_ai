@@ -62,10 +62,10 @@ def _rows(table):
     return fake
 
 
-def _sides(choices, calls):
+def _sides(choices, calls, score=0.9):
     async def fake(dictation, pairs):
         calls.append(list(pairs))
-        return [(choices.get(p[0], "none"), {choices.get(p[0], "none"): 0.9}) for p in pairs]
+        return [(choices.get(p[0], "none"), {choices.get(p[0], "none"): score}) for p in pairs]
     return fake
 
 
@@ -78,7 +78,7 @@ async def test_a_sideless_finding_drops_both_sides_and_asks_which_side(monkeypat
     assert calls == [[(R_K, L_K), (R_H, L_H)]]   # every pair of a touched region, in one call
     assert out.side_asks == [{"region": "Kidneys", "sentences": [R_K, L_K], "label": "The right/left kidney is normal.",
                               "choice": "no_side", "score": 0.9}]
-    assert out.side_choices == [{**out.side_asks[0], "applied": True}]
+    assert out.side_choices == [{**out.side_asks[0], "action": "ask"}]
     assert out.assumed["Kidneys"] == [R_H, L_H, "The bladder is normal."]
     assert [d["reason"] for d in out.dropped["Kidneys"]] == ["contradicted", "contradicted"]
 
@@ -100,7 +100,7 @@ async def test_a_sided_finding_asks_nothing_and_keeps_the_other_side(monkeypatch
     out = await N.assumed("Simple cyst in the left kidney.", KIDNEYS, ["Kidneys"], [], sides=True)
     assert out.side_asks == [] and out.side_failed is False
     assert out.assumed["Kidneys"] == [R_K, R_H, L_H, "The bladder is normal."]
-    assert [(c["choice"], c["applied"]) for c in out.side_choices] == [("left", False)]
+    assert [(c["choice"], c["action"]) for c in out.side_choices] == [("left", "none")]
 
 
 async def test_a_bilateral_finding_drops_the_side_contradiction_kept_and_asks_nothing(monkeypatch):
@@ -110,17 +110,39 @@ async def test_a_bilateral_finding_drops_the_side_contradiction_kept_and_asks_no
     out = await N.assumed("Both kidneys contain cysts.", KIDNEYS, ["Kidneys"], [], sides=True)
     assert out.side_asks == []
     assert out.dropped["Kidneys"] == [{"sentence": R_K, "reason": "both"}, {"sentence": L_K, "reason": "contradicted"}]
-    assert [(c["choice"], c["applied"]) for c in out.side_choices] == [("both", True)]
+    assert [(c["choice"], c["action"]) for c in out.side_choices] == [("both", "drop")]
 
 
-async def test_both_on_a_neighbouring_check_the_finding_does_not_touch_changes_nothing(monkeypatch):
-    # the choice also says "both" for a bilateral finding's neighbours (side lab run 2, bilateral renal calculi)
+async def test_both_on_a_check_the_finding_does_not_touch_flags_both_and_drops_nothing(monkeypatch):
+    # the choice also says "both" for a bilateral finding's neighbours (side lab run 2, bilateral renal calculi); and a
+    # bilateral finding Jev reads as contradicting neither side must not be kept silently (re-review N2)
     monkeypatch.setattr(N, "ask_rows", _rows({R_K: (0.0, 0.9, 0.0), L_K: (0.0, 0.9, 0.0), R_H: (0.0, 0.2, 0.0)}))
     monkeypatch.setattr(N, "ask_sides", _sides({R_K: "both", R_H: "both"}, []))
     out = await N.assumed("Bilateral renal calculi.", KIDNEYS, ["Kidneys"], [], sides=True)
     assert out.assumed["Kidneys"] == [R_H, L_H, "The bladder is normal."]
-    assert [(c["label"], c["applied"]) for c in out.side_choices] == [("The right/left kidney is normal.", True),
-                                                                      ("No right/left hydronephrosis.", False)]
+    assert out.flagged["Kidneys"] == [R_H, L_H]
+    assert [(c["label"], c["action"]) for c in out.side_choices] == [("The right/left kidney is normal.", "drop"),
+                                                                     ("No right/left hydronephrosis.", "flag")]
+
+
+async def test_both_drops_from_the_weak_contradiction_bar(monkeypatch):
+    # OPTIONAL_MIN (0.3) is the bar for "the finding touches the pair": at it, both drop; just under it, both flag
+    monkeypatch.setattr(N, "ask_sides", _sides({R_K: "both"}, []))
+    monkeypatch.setattr(N, "ask_rows", _rows({L_K: (0.0, J.OPTIONAL_MIN, 0.0)}))
+    out = await N.assumed("Both kidneys contain cysts.", KIDNEYS, ["Kidneys"], [], sides=True)
+    assert [d["reason"] for d in out.dropped["Kidneys"]] == ["both", "both"]
+    monkeypatch.setattr(N, "ask_rows", _rows({L_K: (0.0, J.OPTIONAL_MIN - 0.01, 0.0)}))
+    out = await N.assumed("Both kidneys contain cysts.", KIDNEYS, ["Kidneys"], [], sides=True)
+    assert out.dropped["Kidneys"] == [] and out.flagged["Kidneys"] == [R_K, L_K]
+
+
+async def test_no_side_below_the_bar_flags_both_and_asks_nothing(monkeypatch):
+    # re-review N7: the round-1 bar on asking, restored for the choice
+    monkeypatch.setattr(N, "ask_rows", _rows({}))
+    monkeypatch.setattr(N, "ask_sides", _sides({R_K: "no_side"}, [], score=J.SIDE_MIN - 0.05))
+    out = await N.assumed("A cyst in the kidney.", KIDNEYS, ["Kidneys"], [], sides=True)
+    assert out.side_asks == [] and out.flagged["Kidneys"] == [R_K, L_K]
+    assert [c["action"] for c in out.side_choices] == ["flag"]
 
 
 async def test_only_pairs_in_a_region_the_dictation_touches_are_asked(monkeypatch):
@@ -143,6 +165,48 @@ async def test_templates_never_ask_which_side(monkeypatch):
     assert calls == [] and out.side_asks == []
 
 
+async def test_a_failed_side_question_is_retried_once(monkeypatch):
+    tries = []
+
+    async def flaky(dictation, pairs):
+        tries.append(1)
+        if len(tries) == 1:
+            raise TimeoutError("jev")
+        return [("no_side", {"no_side": 0.9})] + [("none", {})] * (len(pairs) - 1)
+    monkeypatch.setattr(N, "ask_rows", _rows({}))
+    monkeypatch.setattr(N, "ask_sides", flaky)
+    out = await N.assumed("Simple cyst in the kidney.", KIDNEYS, ["Kidneys"], [], sides=True)
+    assert len(tries) == 2 and not out.side_failed and len(out.side_asks) == 1
+
+
+async def test_a_failed_side_question_drops_a_touched_pair_and_holds_the_rest(monkeypatch):
+    calls = []
+
+    async def boom(dictation, pairs):
+        calls.append(1)
+        raise TimeoutError("jev")
+    # the kidney pair is touched in the flagged band (0.5, under CONTRA_MIN): its kept side drops too (re-review N1)
+    monkeypatch.setattr(N, "ask_rows", _rows({R_K: (0.0, 0.5, 0.0), L_K: (0.0, 0.1, 0.0)}))
+    monkeypatch.setattr(N, "ask_sides", boom)
+    out = await N.assumed("Renal cyst.", KIDNEYS, ["Kidneys"], [], sides=True)
+    assert len(calls) == 2 and out.error is None and out.side_asks == [] and out.side_failed
+    assert out.dropped["Kidneys"] == [{"sentence": R_K, "reason": "side_unchecked"}, {"sentence": L_K, "reason": "side_unchecked"}]
+    # the hydronephrosis pair is not contradicted on either side: its region is held for Confirm, never kept silently
+    assert out.side_hold == ["Kidneys"]
+
+
+async def test_a_failed_side_question_with_no_side_contradicted_holds_the_region(monkeypatch):
+    # re-review N1 failure 1: "Small pneumothorax." contradicted neither "No right/left pneumothorax."
+    async def boom(dictation, pairs):
+        raise TimeoutError("jev")
+    monkeypatch.setattr(N, "ask_rows", _rows({}))
+    monkeypatch.setattr(N, "ask_sides", boom)
+    out = await N.assumed("Small hydronephrosis.", KIDNEYS, ["Kidneys"], [], sides=True)
+    assert out.side_failed and out.side_hold == ["Kidneys"] and out.dropped["Kidneys"] == []
+    good = await N.assumed("", KIDNEYS, ["Kidneys"], [], sides=True)
+    assert good.side_hold == []
+
+
 async def test_a_failed_side_question_drops_both_sides_of_a_contradicted_pair_and_asks_nothing(monkeypatch):
     async def boom(dictation, pairs):
         raise TimeoutError("jev")
@@ -153,6 +217,7 @@ async def test_a_failed_side_question_drops_both_sides_of_a_contradicted_pair_an
     # review F2: the side is unknown, so the side Jev kept never stays beside the finding; untouched pairs stand
     assert out.assumed["Kidneys"] == [R_H, L_H, "The bladder is normal."]
     assert out.dropped["Kidneys"] == [{"sentence": R_K, "reason": "side_unchecked"}, {"sentence": L_K, "reason": "contradicted"}]
+    assert out.side_hold == ["Kidneys"]   # the hydronephrosis pair is not touched: held, never kept silently
 
 
 async def test_ask_sides_batches_pairs_in_parallel_calls(monkeypatch):
@@ -165,3 +230,16 @@ async def test_ask_sides_batches_pairs_in_parallel_calls(monkeypatch):
         return httpx.Response(200, json={"answers": {k: {"choice": "none"} for k in qs}})
     out = await J.ask_sides("x", [(R_K, L_K)] * 20, transport=httpx.MockTransport(handler))
     assert sorted(sizes) == [5, 15] and len(out) == 20
+
+
+async def test_one_failed_batch_fails_the_whole_side_answer(monkeypatch):
+    import pytest
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+
+    def handler(req):
+        qs = json.loads(req.content)["questions"]
+        if len(qs) == 5:
+            return httpx.Response(500)
+        return httpx.Response(200, json={"answers": {k: {"choice": "none"} for k in qs}})
+    with pytest.raises(httpx.HTTPStatusError):
+        await J.ask_sides("x", [(R_K, L_K)] * 20, transport=httpx.MockTransport(handler))

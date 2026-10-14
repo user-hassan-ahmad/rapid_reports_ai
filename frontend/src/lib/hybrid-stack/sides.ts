@@ -29,19 +29,34 @@ export function sideFlags(asks: SideAsk[], answers: Record<string, CheckAnswer> 
 	}));
 }
 
+export const HOLD_KIND = 'side_unchecked';
+const HOLD_MESSAGE = 'The side check could not run for this region after a retry. Confirm waits while it tries again; or keep as dictated.';
+
+/** The side call failed twice (re-review N1): each region the server holds blocks Confirm until a retry answers it, or
+ *  the radiologist keeps the dictation as it is. */
+export function holdFlags(regions: string[]): CheckFlag[] {
+	return regions.map((region) => ({ key: `${HOLD_KIND}|${region}`, kind: HOLD_KIND, blocking: true, tier: 2 as const,
+		message: HOLD_MESSAGE, quote: region, other: null, suggestion: '', unitId: null, region }));
+}
+
 /** The answer to a region flag, recorded on each pair it lists. */
 export function answerPairs(flag: CheckFlag, how: CheckAnswer): Record<string, CheckAnswer> {
 	return Object.fromEntries(flag.quote.split(SEP).map((l) => [pairKey(flag.region ?? '', l), how]));
 }
 
 /** A failed side call (review F2): the last answer's open asks stay, and their sentences stay out of the report, so an
- *  open ask never vanishes and lets Confirm through. A good answer is taken as it is. */
-export function carrySides(prev: AssumedSnap | null, res: { assumed: Record<string, string[]>; dropped?: Dropped; side_asks?: SideAsk[] }, failed: boolean) {
+ *  open ask never vanishes and lets Confirm through. Only an ask whose region's text is unchanged is carried: a region
+ *  the radiologist has since dictated into (the side, say) is the server's to hold (side_hold), never a stale question
+ *  (re-review N4). A good answer is taken as it is. */
+export function carrySides(prev: AssumedSnap | null, res: { assumed: Record<string, string[]>; dropped?: Dropped; side_asks?: SideAsk[] }, failed: boolean,
+	text: Record<string, string> = {}) {
 	const asks = res.side_asks ?? [];
-	if (!failed || !prev?.side_asks?.length) return { assumed: res.assumed, dropped: res.dropped, side_asks: asks };
+	const same = (r: string) => (prev?.region_text?.[r] ?? '') === (text[r] ?? '');
+	const old = (prev?.side_asks ?? []).filter((p) => same(p.region) && !asks.some((a) => a.region === p.region && norm(a.label) === norm(p.label)));
+	if (!failed || !old.length) return { assumed: res.assumed, dropped: res.dropped, side_asks: asks };
 	const assumed = { ...res.assumed };
 	const dropped: Dropped = { ...(res.dropped ?? {}) };
-	const carried = [...asks, ...prev.side_asks.filter((p) => !asks.some((a) => a.region === p.region && norm(a.label) === norm(p.label)))];
+	const carried = [...asks, ...old];
 	for (const a of carried) {
 		const out = new Set(a.sentences.map(norm));
 		if (assumed[a.region]) assumed[a.region] = assumed[a.region].filter((s) => !out.has(norm(s)));
@@ -51,12 +66,14 @@ export function carrySides(prev: AssumedSnap | null, res: { assumed: Record<stri
 	return { assumed, dropped, side_asks: carried };
 }
 
-/** How a "Which side?" ask ended, for the gate (review F5):
- *  - kept_without_side: "Keep without side" was pressed;
+/** How a "Which side?" ask ended, for the gate (review F5, re-review N4/N6):
+ *  - kept_without_side: "Keep without side" was pressed on a checked answer;
+ *  - kept_unchecked: it was pressed while the side check had failed (the ask was carried forward);
  *  - open: the last answer still asks it (Confirm walks to it, so a gate seldom has one);
  *  - sided: the last answer places the pair's finding on the right, the left or both (the side was dictated);
- *  - gone: the last answer places no finding for the pair (the finding was removed or reworded away). */
-export type SideEnding = 'kept_without_side' | 'open' | 'sided' | 'gone';
+ *  - gone: the last answer places no finding for the pair (the finding was removed or reworded away);
+ *  - unchecked: the last answer's side check failed, so how it ended is unknown. */
+export type SideEnding = 'kept_without_side' | 'kept_unchecked' | 'open' | 'sided' | 'gone' | 'unchecked';
 
 /** Every pair asked this session, with its last score and how it ended. */
 export function sideRecord(seen: Record<string, SideAsk>, snap: AssumedSnap | null, answers: Record<string, CheckAnswer>) {
@@ -65,20 +82,22 @@ export function sideRecord(seen: Record<string, SideAsk>, snap: AssumedSnap | nu
 	const sided = new Set((snap?.side_choices ?? []).filter((c) => c.choice && c.choice !== 'no_side').map(key));
 	return Object.values(seen).map((a) => {
 		const k = key(a);
-		const ended: SideEnding = answers[k] === 'as_dictated' ? 'kept_without_side' : open.has(k) ? 'open' : sided.has(k) ? 'sided' : 'gone';
+		const failed = !!snap?.side_failed;
+		const ended: SideEnding = answers[k] === 'as_dictated' ? (failed && open.has(k) ? 'kept_unchecked' : 'kept_without_side')
+			: open.has(k) ? 'open' : failed ? 'unchecked' : sided.has(k) ? 'sided' : 'gone';
 		return { region: a.region, pair: a.label, score: a.score, answered_by: ended };
 	});
 }
 
 /** The gate's side per pair Jev placed a finding for, as the Confirm answer read it (bilateral fix). */
 export function sideChoices(snap: AssumedSnap | null) {
-	return (snap?.side_choices ?? []).filter((c) => !!c.choice).map((c) => ({ region: c.region, pair: c.label, choice: c.choice!, applied: c.applied }));
+	return (snap?.side_choices ?? []).filter((c) => !!c.choice).map((c) => ({ region: c.region, pair: c.label, choice: c.choice!, action: c.action }));
 }
 
-/** Why a normal is left out, as the struck line says it (review F7): a conflict (contradicted, or a bilateral
- *  finding), a side not stated, or a side that could not be checked. */
+/** Why a normal is left out, as the struck line says it (review F7, re-review N5): a conflict, a bilateral finding, a
+ *  side not stated, or a side that could not be checked. */
 const WHY: Record<string, string> = {
-	contradicted: 'conflicts with dictation', both: 'conflicts with dictation', side: 'side not stated', side_unchecked: 'side not checked'
+	contradicted: 'conflicts with dictation', both: 'bilateral finding', side: 'side not stated', side_unchecked: 'side not checked'
 };
 export type NotReported = Record<string, { why: string; sentences: string[] }[]>;
 

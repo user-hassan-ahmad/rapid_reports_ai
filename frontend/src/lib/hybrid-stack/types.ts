@@ -103,10 +103,11 @@ export interface ValuesResult { values: ValueFill[]; ms: number; error: string |
 export type Dropped = Record<string, { sentence: string; reason: string }[]>;
 /** A right/left pair of normals the dictation reports a finding for without giving its side. */
 export interface SideAsk { region: string; sentences: string[]; label: string; choice?: SideChoice; score: number }
-/** Jev's side for a pair's finding (bilateral fix 2026-10-14): both drops both sides (applied: the finding touches the
- *  pair); no_side asks; right / left leave the contradiction fates. */
+/** Jev's side for a pair's finding (bilateral fix 2026-10-14). What code did (action): no_side at the bar asks (both
+ *  drop), below it flags both; both drops both when the finding touches the pair, else flags both; right / left: none
+ *  (the contradiction fates stand). */
 export type SideChoice = 'right' | 'left' | 'both' | 'no_side';
-export interface SidePick extends SideAsk { applied: boolean }
+export interface SidePick extends SideAsk { action: 'ask' | 'drop' | 'flag' | 'none' }
 export interface AssumedResult {
 	assumed: Record<string, string[]>;
 	/** Region -> assumed normals the dictation may conflict with (also in `assumed`): shown highlighted (review R1). */
@@ -119,6 +120,8 @@ export interface AssumedResult {
 	/** Every pair Jev placed a finding for, with its side (none left out). */
 	side_choices?: SidePick[];
 	side_failed?: boolean;
+	/** The side call failed twice: regions held for Confirm ("side check unavailable"), re-review N1. */
+	side_hold?: string[];
 	/** The session's template context-rule decision (condition -> P(met)); kept and sent back (review R5). */
 	rules?: Record<string, number> | null;
 	/** The sheet has context rules: Confirm re-asks every one with the dictation. */
@@ -151,10 +154,11 @@ export interface GateRecord {
 	// "Which side?" asks seen this session and how each ended (side brief 2026-10-14; quick sessions only)
 	// every pair asked this session, its last score and how it ended (sides.ts SideEnding: kept_without_side | open |
 	// sided | gone)
-	side_asks?: { region: string; pair: string; score: number; answered_by: 'kept_without_side' | 'open' | 'sided' | 'gone' }[];
+	side_asks?: { region: string; pair: string; score: number; answered_by: 'kept_without_side' | 'kept_unchecked' | 'open' | 'sided' | 'gone' | 'unchecked' }[];
 	side_failed?: boolean; // the Confirm answer's side call failed: the last open asks were carried forward (review F2)
 	// The Confirm answer's side per pair Jev placed a finding for (bilateral fix): its choice and whether it dropped both
-	side_choices?: { region: string; pair: string; choice: SideChoice; applied: boolean }[];
+	side_choices?: { region: string; pair: string; choice: SideChoice; action: SidePick['action'] }[];
+	side_hold?: string[]; // regions the failed side check held, kept as dictated at Confirm
 	// Dictation checks seen this session and how each ended: answered, skipped, edited away, or still open (advisory).
 	checks?: { kind: string; quote: string; other: string | null; answered_by: 'as_dictated' | 'skip' | 'replaced' | 'edited' | 'open' }[];
 	values?: ValueChip[]; // the value cluster at Confirm (absent: the template has no required values)
