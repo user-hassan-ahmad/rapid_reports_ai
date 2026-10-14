@@ -254,6 +254,48 @@ def normal_fate(c: RowCheck) -> str:
     return "flagged" if c.hedge >= HEDGE_MIN or c.contra >= OPTIONAL_MIN else "assumed"
 
 
+# ── Paired normals: a finding dictated without its side (side brief 2026-10-14, hybrid_stack.sides) ──────────────
+# Asked for every pair in a region the dictation touches, NOT gated on contradiction: side lab run 1 (34 cases) showed
+# Jev, rightly, does not read a side-less finding as contradicting a sided negative for certain: it dropped one side
+# (8 cases) or neither (4: a side-less "Small pneumothorax." kept both sides' negatives).
+# Lab run 2 (this wording, 34 cases, 3 library sheets): planted asks 0.67-0.94; no-ask pairs <= 0.42 apart from a
+# location on one side only ("middle lobe", 0.50) and neighbouring checks of a side-less finding (0.50-0.88).
+SIDE_MIN = 0.6   # provisional, n small: 28/34 cases asked as planted (27 at 0.5)
+SIDE_QUESTION = {
+    "instructions": ("The DICTATION reports an abnormal finding for the paired check these two STATEMENTS make (one "
+                     "statement for the right side, one for the left) without giving its side. STATEMENTS: {right} / {left}"),
+    "criteria": {
+        "true": ("An abnormal finding for this check is reported and no side is given for it anywhere: not in its own "
+                 "sentence, not in an earlier sentence about the same finding, not as bilateral, both or contralateral, "
+                 "and not by naming a location that exists on one side only."),
+        "false": ("No abnormal finding for this check is reported (it is not mentioned, or only said to be normal or "
+                  "absent), or every such finding has its side given: right, left, both or bilateral, in its own sentence "
+                  "or elsewhere in the dictation."),
+    },
+}
+
+
+async def ask_sides(dictation: str, pairs: list[tuple[str, str]], transport=None) -> list[float]:
+    """P(the dictation reports a finding for this pair's check with no side given) per (right, left) pair, in one Jev
+    call."""
+    if not pairs:
+        return []
+    qs = {f"side_{i}": {"type": "noul", "instructions": SIDE_QUESTION["instructions"].format(right=r, left=l),
+                        "criteria": SIDE_QUESTION["criteria"]} for i, (r, l) in enumerate(pairs)}
+    r = await jev_post({"model": JEV_MODEL, "state": f"DICTATION:\n{dictation}", "questions": qs},
+                       os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
+    r.raise_for_status()
+    ans = r.json().get("answers") or {}
+    out: list[float] = []
+    for i in range(len(pairs)):
+        # a missing answer fails the question (nothing is asked), never read as an answer either way
+        p = (ans.get(f"side_{i}") or {}).get("noul")
+        if isinstance(p, bool) or not isinstance(p, (int, float)):
+            raise ValueError("jev: incomplete answers")
+        out.append(float(p))
+    return out
+
+
 # ── Review gates (labs 2026-10-12, scripts/scratchpad_v2_labs.py material | conclusion) ──────────────────────────
 MATERIAL_MIN = 0.6  # 40 pairs: material 21/21 at >= 0.95 (5 size/unit corrections included), rewordings all <= 0.57
 STALE_MIN = 0.7     # 24 pairs: out of date 13/13 (lowest 0.74), still current 0/11 (highest 0.66)

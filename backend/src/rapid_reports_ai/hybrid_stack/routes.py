@@ -333,7 +333,8 @@ async def stack_assumed(req: AssumedRequest, user: User = Depends(get_current_us
                                  clinical_history=req.clinical_history[:2000], labels=labels,
                                  region_text={r: t[:MAX_REGION_TEXT] for r, t in list(req.region_text.items())[:40]},
                                  rules=None if req.rules is None else dict(list(req.rules.items())[:100]),
-                                 confirm=req.confirm, scan_type=scan_type)
+                                 confirm=req.confirm, scan_type=scan_type,
+                                 sides=not req.template_id)   # "Which side?": quick only (side brief 2026-10-14)
 
 
 

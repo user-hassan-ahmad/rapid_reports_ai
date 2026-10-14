@@ -15,7 +15,8 @@ import time
 
 from pydantic import BaseModel
 
-from .jev_stack import CONDITION_MIN, RowCheck, ask_conditions, ask_rows, normal_fate
+from .jev_stack import CONDITION_MIN, SIDE_MIN, RowCheck, ask_conditions, ask_rows, ask_sides, normal_fate
+from .sides import side_label, side_pairs
 from .template import jev_text, norm_key
 from ..template_context_rules import condition_state
 
@@ -32,6 +33,10 @@ class AssumedResult(BaseModel):
     # client keeps the first one and sends it back as `rules`. None: not decided (a failure, or nothing to ask).
     rules: dict[str, float] | None = None
     confirm_recheck: bool = False   # the sheet has context rules: Confirm re-asks every one with the dictation
+    # "Which side?" (side brief 2026-10-14): a right/left pair the dictation reports a finding for without giving its
+    # side. Both sides are dropped until a side is dictated: {region, sentences: [right, left], label, score}
+    side_asks: list[dict] = []
+    side_failed: bool = False   # the side question failed: the pair's normals stand as Jev read them, nothing asked
     ms: int = 0
     error: str | None = None
 
@@ -82,6 +87,28 @@ async def _ask_by_region(dictation: str, asked: list[tuple[str, str]], texts: li
     return [RowCheck(s, c.contra, c.removed, h) for s, h, c in zip(stated, hedge, whole)]
 
 
+def _side_candidates(asked: list[tuple[str, str]], touched: set[str]) -> list[tuple[str, int, int]]:
+    """(region, right index, left index) of each pair (hybrid_stack.sides, within one region) in a region the
+    dictation touches: its grouped text or an abnormal region. An untouched region's pairs are never asked."""
+    by_region: dict[str, list[int]] = {}
+    for i, (r, _) in enumerate(asked):
+        by_region.setdefault(r, []).append(i)
+    return [(r, idx[a], idx[b]) for r, idx in by_region.items() if r in touched
+            for a, b in side_pairs([asked[i][1] for i in idx])]
+
+
+async def _side_scores(dictation: str, asked: list[tuple[str, str]], cands: list[tuple[str, int, int]]):
+    """P(a finding for the pair with no side given) per candidate, asked alongside the rows (no added round trip);
+    None when the call failed (nothing is asked then)."""
+    if not cands:
+        return []
+    try:
+        return await ask_sides(dictation, [(asked[i][1], asked[j][1]) for _, i, j in cands])
+    except Exception as e:  # noqa: BLE001 -- the side question never fails the normals
+        logger.warning("[stack.normals] side question %s: %s", type(e).__name__, str(e)[:200])
+        return None
+
+
 async def _session_rules(conds: list[str], scan_type: str, history: str,
                          rules: dict[str, float] | None) -> dict[str, float]:
     """The session's decision, condition -> P(met): condition_state on the scan type and the clinical history, with
@@ -115,7 +142,7 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
                   suppressions: list[tuple[str, str]] | None = None,
                   clinical_history: str = "", labels: dict[str, str] | None = None,
                   region_text: dict[str, str] | None = None, rules: dict[str, float] | None = None,
-                  confirm: bool = False, scan_type: str = "") -> AssumedResult:
+                  confirm: bool = False, scan_type: str = "", sides: bool = False) -> AssumedResult:
     """Every region of the sheet is answered (an empty list: nothing assumed), so the caller never falls back to
     the raw sheet. Every sentence is checked for contradiction against the whole dictation, untouched regions
     included: a finding the grouper filed under another region leaves its own region looking untouched (side review
@@ -137,7 +164,13 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     decide now, one call) and the reply's `rules` is what the caller keeps; `confirm`: at Confirm, every condition
     is re-decided on the history and the dictation, for this reply only. On a Jev failure nothing is assumed and no
     rules are returned.
-    Every sentence is asked, a dictated-normal region's included."""
+    Every sentence is asked, a dictated-normal region's included.
+
+    `sides` (quick sessions; templates are out of scope): each right/left pair in a region the dictation touches
+    (its text, or an abnormal region) is asked, in a call made alongside the rows, whether the dictation reports a
+    finding for it with no side given. Such a pair drops both sentences (ruling 1: a side-less finding is never
+    left beside either side's normal, whatever Jev read as contradicted) and is returned in `side_asks`. A failure of
+    that call changes nothing (side_failed)."""
     t0 = time.perf_counter()
     gone = list(dict.fromkeys(r for r in [*removed, *(owned or [])] if r.strip()))
     labels = labels or {}
@@ -147,6 +180,9 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     flagged: dict[str, list[str]] = {r: [] for r in region_normals}
     dropped: dict[str, list[dict]] = {r: [] for r in region_normals}
     error = None
+    asks: list[dict] = []
+    side_failed = False
+    cands: list[tuple[str, int, int]] = []
     conds = list(dict.fromkeys(c for c, _ in suppressions or []))
     blank = not dictation.strip()
     session = rules
@@ -160,14 +196,25 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
             # its own words (no Jev same-meaning check).
             rows = _no_rows() if blank else (_ask(dictation, texts, gone) if region_text is None
                                              else _ask_by_region(dictation, asked, texts, gone, region_text))
-            session, late, checks = await asyncio.gather(
+            touched = set(abnormal) | {r for r, t in (region_text or {}).items() if t.strip()}
+            cands = _side_candidates(asked, touched) if sides and not blank else []
+            session, late, checks, side_p = await asyncio.gather(
                 _session_rules(conds, scan_type, clinical_history, rules),
-                _confirm_rules(conds, scan_type, clinical_history, dictation) if confirm else _nothing(), rows)
+                _confirm_rules(conds, scan_type, clinical_history, dictation) if confirm else _nothing(), rows,
+                _side_scores(dictation, asked, cands))
             met = {**session, **late}
             hidden = {norm_key(s) for c, s in suppressions or [] if met.get(c, 0.0) >= CONDITION_MIN}
             gone_keys = {norm_key(r) for r in gone}
+            fates = [("removed" if norm_key(s) in gone_keys else "assumed") if checks is None else normal_fate(checks[i])
+                     for i, (_, s) in enumerate(asked)]
+            side_failed = side_p is None
+            for (region, i, j), p in zip(cands, side_p or []):
+                if p >= SIDE_MIN:
+                    asks.append({"region": region, "sentences": [asked[i][1], asked[j][1]],
+                                 "label": side_label(asked[i][1]), "score": round(p, 3)})
+                    fates[i], fates[j] = (("side" if fates[k] in ("assumed", "flagged") else fates[k]) for k in (i, j))
             for i, (region, s) in enumerate(asked):
-                fate = ("removed" if norm_key(s) in gone_keys else "assumed") if checks is None else normal_fate(checks[i])
+                fate = fates[i]
                 if norm_key(s) in hidden:
                     dropped[region].append({"sentence": s, "reason": "rule"})
                 elif fate in ("assumed", "flagged"):
@@ -180,13 +227,15 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
             logger.warning("[stack.normals] %s: %s", type(e).__name__, str(e)[:200])
             error = f"{type(e).__name__}: {e}"
             session = None
+            asks = []
             out = {r: [] for r in region_normals}
             flagged = {r: [] for r in region_normals}
             dropped = {r: [] for r in region_normals}
-        calls = rule_calls if blank else _jev_calls(asked, region_text, rule_calls)
+        calls = rule_calls if blank else _jev_calls(asked, region_text, rule_calls) + (1 if cands else 0)
         if calls:
-            logger.log(logging.WARNING if error else logging.INFO, "[stack.normals] jev_calls=%d failed=%s mode=%s",
-                       calls, error is not None, "whole" if region_text is None else "region")
+            logger.log(logging.WARNING if error else logging.INFO,
+                       "[stack.normals] jev_calls=%d failed=%s mode=%s side_asks=%d",
+                       calls, error is not None, "whole" if region_text is None else "region", len(asks))
     return AssumedResult(assumed=out, flagged=flagged, dropped=dropped, rules=session,
-                         confirm_recheck=bool(conds),
+                         confirm_recheck=bool(conds), side_asks=asks, side_failed=side_failed,
                          ms=int((time.perf_counter() - t0) * 1000), error=error)
