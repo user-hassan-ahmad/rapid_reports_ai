@@ -151,3 +151,63 @@ async def test_run_review_carries_gap_flags_and_their_log(monkeypatch):
     assert gaps[0].status == "open" and res.run["template_gaps"]["fixed_text_missing"] == 1
     quick = await engine.run_review(_inp(template=False), RUN)
     assert quick.run["template_gaps"] is None and not [i for i in quick.items if i.kind in tg.KINDS]
+
+
+# ── review fixes (probes from the independent review of c3985057) ──────────
+
+def _raw(report, st=None, texts=(), assumed=()):
+    from rapid_reports_ai.generation_artifacts import GenerationArtifacts
+    from rapid_reports_ai.review_engine.items import ReviewInput
+    base = {"sections": [{"name": "findings", "role": "findings", "order": 0}], "paragraphs": [], "rules": [],
+            "fixed_blocks": [], "normals": [], "negatives": []}
+    base.update(st or {})
+    i = ReviewInput(report_id="r", pathway="templated", artifacts=GenerationArtifacts.from_candidate({"content": report}, ""),
+                    template_text=list(texts), template_structure=base, assumed_normals=list(assumed))
+    return [(k, t) for k, t, _ in tg.gaps(i)]
+
+
+def _fixed(text, *rules):
+    return {"fixed_blocks": [{"id": "f", "section": "findings", "text": text}],
+            "rules": [{"id": f"r{k}", "section": "findings", "condition": "c", "source_lines": [], "target": "",
+                       "then_text": "", **r} for k, r in enumerate(rules)]}
+
+
+@pytest.mark.parametrize("report,text", [
+    ("Scan quality:\nGood diagnostic quality.\n", "Scan quality: {quality}"),
+    ("Medication given:\nMetoprolol 5 mg IV.\n", "Medication given: {medication}."),
+])
+def test_a_trailing_slot_value_on_the_next_line_is_not_empty(report, text):
+    assert _raw(report, texts=[text]) == []
+
+
+def test_a_trailing_slot_followed_by_a_heading_or_the_end_is_still_empty():
+    assert _raw("Scan quality:\nCoronary Findings:\nLAD normal.\n", texts=["Scan quality: {quality}"]) == [
+        ("template_slot_empty", "Scan quality")]
+    assert _raw("Scan quality:\n\n", texts=["Scan quality: {quality}"]) == [("template_slot_empty", "Scan quality")]
+
+
+FIX = "Axial images were acquired. A separate workstation was used for 3D reformation."
+SECOND = "A separate workstation was used for 3D reformation."
+
+
+def test_a_rule_on_one_sentence_of_a_fixed_block_settles_that_sentence():
+    rep = {"effect": "replace", "target": SECOND, "then_text": "Reformats were not performed."}
+    assert _raw("Axial images were acquired. Reformats were not performed.", _fixed(FIX, rep)) == []
+    assert _raw("Axial images were acquired.", _fixed(FIX, {"effect": "suppress", "target": SECOND})) == []
+    assert _raw("Axial images were acquired.", _fixed(FIX, rep)) == [("fixed_text_missing", SECOND)]
+
+
+@pytest.mark.parametrize("report,fixed,then", [
+    ("Contrast given: 80 ml Omnipaque.", "No contrast was administered.", "{contrast details}."),
+    ("Calcium scoring was not performed due to patient refusal. See note. The scan was repeated.",
+     "Calcium scoring was performed on the Flash scanner.",
+     "Calcium scoring was not performed due to {reason}. The scan was repeated."),
+])
+def test_a_replacement_that_cannot_be_matched_is_unknowable(report, fixed, then):
+    assert _raw(report, _fixed(fixed, {"effect": "replace", "target": fixed, "then_text": then})) == []
+
+
+def test_a_merged_normal_is_not_missing_but_a_dropped_one_is():
+    assert _raw("No pleural or pericardial effusion.", assumed=["No pleural effusion.", "No pericardial effusion."]) == []
+    assert _raw("No pleural effusion.", assumed=["No pleural effusion.", "No pericardial effusion."]) == [
+        ("assumed_normal_missing", "No pericardial effusion.")]

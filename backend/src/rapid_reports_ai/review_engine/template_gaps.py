@@ -23,6 +23,7 @@ import re
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
+from .claims import content_words
 from .items import ReviewInput, ReviewItem, Span, item_key, text_hash
 from .template_text import _SENTENCE, _SLOT, _WORD, MIN_WORDS, _find, _literal, _pattern
 
@@ -65,7 +66,31 @@ def _empty_slots(report: str, text: str) -> List[Tuple[int, int, str]]:
     field = re.sub(r"[\s:;,.(=-]+$", "", lits[0]).strip() or (names[0] if names else "")
     field = " ".join(field.split()[-4:]) or "field"
     pat = re.compile(pre + body + post, re.I | re.M)
-    return [(m.start(), m.end(), field) for m in pat.finditer(report) if m.end() > m.start()]
+    return [(m.start(), m.end(), field) for m in pat.finditer(report)
+            if m.end() > m.start() and not (trail and _value_follows(report, m.end()))]
+
+
+_LABELLED = re.compile(r"[^.:\n]{1,60}:")       # a heading or another "Field: value" line, never a field's value
+
+
+def _value_follows(report: str, end: int) -> bool:
+    """A field printed with its value on the next line ("Scan quality:\nGood diagnostic quality."): the next
+    non-empty line is content, not a heading or another labelled field ("Coronary Findings:", "Average HR: 58 bpm.",
+    an all-caps line)."""
+    nxt = next((ln.strip() for ln in report[end:].split("\n")[1:] if ln.strip()), "")
+    return bool(nxt) and not _LABELLED.match(nxt) and not (nxt.isupper() and len(nxt.split()) <= 6)
+
+
+def _settled(report: str, with_text: str) -> bool:
+    """A REPLACE wording is in the report, or whether it is cannot be told (no matchable wording, or a slot value
+    longer than a matched slot allows: its literal parts in order, up to 400 characters apart)."""
+    if _pattern(with_text) is None or _found(report, with_text):
+        return True
+    lits = [p.strip() for p in _SLOT.split(with_text.strip()) if p.strip(" .;:!?")]
+    if len(lits) < 2 and not _SLOT.search(with_text):
+        return False
+    pat = r"[\s\S]{0,400}?".join(_literal(p.rstrip(" .;:!?")) for p in lits)
+    return bool(pat) and re.search(pat, report, re.I) is not None
 
 
 def _rule_texts(st: dict, effect: str) -> List[dict]:
@@ -112,10 +137,11 @@ def gaps(inp: ReviewInput) -> List[Tuple[str, str, Optional[Tuple[int, int]]]]:
             continue
         if _found(report, text):
             continue
-        if any(_found(report, w) for w in replaces.get(_key(text), [])):
+        if any(_settled(report, w) for w in replaces.get(_key(text), [])):
             continue
         sents = [p for p in _SENTENCE.split(text) if p.strip() and _pattern(p) is not None]
-        missing = [p for p in sents if not _found(report, p) and _key(p) not in removed]
+        missing = [p for p in sents if not _found(report, p) and _key(p) not in removed and _key(p) not in suppress
+                   and not any(_settled(report, w) for w in replaces.get(_key(p), []))]   # a rule on one sentence
         if _key(text) in removed or not missing:
             continue
         if len(missing) == len(sents):
@@ -149,8 +175,11 @@ def gaps(inp: ReviewInput) -> List[Tuple[str, str, Optional[Tuple[int, int]]]]:
                 out.append(("heading_missing", p["header"], hits[0]))
 
     # assumed_normal_missing
+    words = content_words(report)
     for n in inp.assumed_normals or []:
-        if isinstance(n, str) and _pattern(n) is not None and _key(n) not in removed and not _found(report, n):
+        # a normal merged with another ("No pleural or pericardial effusion.") keeps every content word: not missing
+        if (isinstance(n, str) and _pattern(n) is not None and _key(n) not in removed and not _found(report, n)
+                and not content_words(n) <= words):
             out.append(("assumed_normal_missing", n, None))
     return out
 
