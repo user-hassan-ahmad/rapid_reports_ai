@@ -86,6 +86,9 @@ def structures(inp: ReviewInput) -> List[str]:
             units.setdefault(r["paragraph"], []).extend([r.get("target") or "", r.get("then_text") or ""])
     stated = {u.get("paragraph") for kind in ("normals", "negatives") for u in st.get(kind) or [] if isinstance(u, dict)}
     stated |= {f.get("paragraph") for f in st.get("fixed_blocks") or [] if isinstance(f, dict) and f.get("paragraph")}
+    fixed = {" ".join((f.get("text") or "").lower().split()) for f in st.get("fixed_blocks") or [] if isinstance(f, dict)}
+    stated |= {r.get("paragraph") for r in rules       # structures stored before FIXED carried a paragraph
+               if r.get("target") and " ".join(r["target"].lower().split()) in fixed}
     out: List[str] = []
     for p in st.get("paragraphs") or []:
         if not isinstance(p, dict) or roles.get(p.get("section")) != "findings":

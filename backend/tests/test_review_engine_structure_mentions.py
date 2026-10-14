@@ -208,3 +208,18 @@ async def test_a_paragraph_with_an_untargeted_fixed_line_and_only_use_rules_is_a
     ask, seen = _ask({})
     await sm.mention_items(i, RUN, ask=ask)
     assert seen["names"] == ["contrast", "lungs"]
+
+
+@pytest.mark.asyncio
+async def test_an_old_stored_structure_places_a_fixed_line_through_a_rule_that_targets_it():
+    from rapid_reports_ai.review_engine.template_text import template_inputs
+    texts, st = template_inputs({"generation_mode": "skill_sheet_guided", "skill_sheet": FIXED_USE_SHEET})
+    for f in st["fixed_blocks"]:
+        f.pop("paragraph", None)                      # stored before FIXED units carried their paragraph
+    for r in st["rules"]:
+        if r["effect"] == "use":
+            r["target"] = st["fixed_blocks"][0]["text"]
+    i = _inp().model_copy(update={"template_text": texts, "template_structure": st})
+    ask, seen = _ask({})
+    await sm.mention_items(i, RUN, ask=ask)
+    assert seen["names"] == ["contrast", "lungs"]
