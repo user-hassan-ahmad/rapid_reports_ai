@@ -132,6 +132,18 @@ describe('session: matching', () => {
 		expect(api.calls.match[2].body.findings).toEqual([{ id: 'u1', text: 'a 9 mm solid nodule' }]);
 	});
 
+	it('reopening an open, loading or loaded card does not republish (final review C-1)', async () => {
+		await matchA();
+		s.open(cardRef(nodule));
+		let n = 0;
+		const stop = s.state.subscribe(() => n++);
+		n = 0;                                   // subscribe calls back once at once
+		s.open(cardRef(nodule));
+		s.open(cardRef(nodule));
+		expect(n).toBe(0);
+		stop();
+	});
+
 	it('a context change resets the cards, views and sent cache, and matches again', async () => {
 		await matchA();
 		s.open(cardRef(nodule));
