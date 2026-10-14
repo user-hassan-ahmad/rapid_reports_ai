@@ -2,7 +2,9 @@
 
 Dry run by default (prints and returns what would change, writes nothing; it still vets every sheet through
 vet_sheet, which makes paid LLM calls); --apply writes, after a backup JSON of every template it will change (and the
-examples and chat turns a delete removes) is saved next to the manifest.
+examples and chat turns a delete removes) is saved next to the manifest. The backup also holds the hash of each sheet
+it writes ("written_sheet_hash") and, as each template is done, what happened to it ("done"); the restore script
+(template_upgrade_restore) reads both.
 
     .venv/bin/python -m rapid_reports_ai.scripts.template_upgrade_apply <manifest.json> [--apply]
 
@@ -187,6 +189,13 @@ def _rows(db, model, template_id) -> list:
             for r in db.query(model).filter(model.template_id == template_id).all()]
 
 
+def _save_backup(path: Path, backup: dict) -> None:
+    """Write the backup whole or not at all (temp file, then rename)."""
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(backup, indent=1, default=str))
+    tmp.replace(path)
+
+
 def _read_manifest(path: Path) -> tuple:
     data = json.loads(path.read_text())
     if isinstance(data, list):
@@ -207,17 +216,19 @@ async def _run(manifest_path: Path, apply: bool, db) -> dict:
 
     backup_path = None
     if apply:
-        backup = {"taken_at": time.strftime("%Y-%m-%dT%H:%M:%S"), "converted": {}, "legacy": {}}
+        backup = {"taken_at": time.strftime("%Y-%m-%dT%H:%M:%S"), "converted": {}, "legacy": {},
+                  "written_sheet_hash": {}, "done": {}}
         for r in rows:
             if r["action"] == "written":
                 backup["converted"][r["template_id"]] = r["old_config"]
+                backup["written_sheet_hash"][r["template_id"]] = tss.sheet_hash(r["config"]["skill_sheet"])
             elif r["action"] == "soft-deleted":
                 t = _find(db, r["template_id"])
                 backup["legacy"][r["template_id"]] = {
                     "name": t.name, "user_id": str(t.user_id), "template_config": t.template_config,
                     "examples": _rows(db, TemplateExample, t.id), "chat_turns": _rows(db, TemplateChatTurn, t.id)}
         backup_path = manifest_path.with_name(f"template_upgrade_backup_{int(time.time())}.json")
-        backup_path.write_text(json.dumps(backup, indent=1, default=str))
+        _save_backup(backup_path, backup)
         for r in rows:
             if r["action"] not in ("written", "soft-deleted", "already-written"):
                 continue
@@ -227,6 +238,8 @@ async def _run(manifest_path: Path, apply: bool, db) -> dict:
                 db.rollback()
                 r["action"], r["reason"] = "error", type(e).__name__
                 r.pop("structure_stored", None)
+            backup["done"][r["template_id"]] = r["action"]   # what happened, for the restore script
+            _save_backup(backup_path, backup)
 
     out = [{k: v for k, v in r.items() if k in ("template_id", "action", "reason", "dropped_units",
                                                    "notice", "structure_stored", "ledger_drift")} for r in rows]
