@@ -533,7 +533,7 @@ class StackGenerateRequest(BaseModel):
     variables: dict[str, str] = Field(default_factory=dict)   # template inputs other than FINDINGS
     scan_type: str = ""
     history: str = ""
-    stack_sheet_id: str | None = None   # quick: the slim sheet (the signed structure_key replaces it in P2b)
+    structure_key: str   # /schema's signed session resolution (D26): the template, library entry or slim sheet
     units: list[StackUnit]
     groups: list[str]
     gate: GateRecord

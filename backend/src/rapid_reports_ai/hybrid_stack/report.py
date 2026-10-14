@@ -21,6 +21,7 @@ from ..template_number_check import undictated_numbers
 from .findings import findings_block
 from .gate_model import findings_hash
 from .removed_guard import guard, reconcile
+from .resolution import TokenError, verify as verify_token
 from .template import template_structure
 
 logger = logging.getLogger(__name__)
@@ -36,14 +37,30 @@ def _now() -> str:
 
 async def run(req, user, db: Session) -> AsyncIterator[dict]:
     t0 = time.time()
-    # 0 verify: ownership, a usable template, and a gate that still matches the units
+    # 0 verify: the session resolution (D26: read from the signed token, never re-resolved), ownership, the template
+    # unchanged since setup and usable, the library unchanged, and a gate that still matches the units
+    try:
+        tok = verify_token(req.structure_key)
+    except TokenError:
+        raise StackError("Set up the workspace again.") from None
+    if (req.kind == "template") != (tok["src"] == "template"):
+        raise StackError("Set up the workspace again.")
     template = None
     if req.kind == "template":
+        if tok["tid"] != (req.template_id or ""):
+            raise StackError("Set up the workspace again.")
         template = get_template(db, req.template_id or "", user_id=str(user.id))
         if template is None:
             raise StackError("Template not found.")
+        if tss.sheet_hash((template.template_config or {}).get("skill_sheet", "") or "") != tok["sh"]:
+            raise StackError("The template changed. Set up the workspace again.")
         if is_retired_template(template) or template_structure(template.template_config or {}) is None:
             raise StackError("This template can't be used with the scratchpad. Create a fresh one.")
+    if tok["src"] == "library":
+        from .protocol_library.bundle import get_bundle
+        b = get_bundle()
+        if b is None or b.version != tok.get("bv"):
+            raise StackError("The protocol library was updated. Set up the workspace again.")
     if req.gate.findings_hash is not None and req.gate.findings_hash != findings_hash(req.units):
         raise StackError("The scratchpad changed after Confirm. Confirm again.")
     # 1 removals the dictation has since stated go first (dictation wins), then the statements on the reconciled list
@@ -56,7 +73,7 @@ async def run(req, user, db: Session) -> AsyncIterator[dict]:
         out = await generate_quick_report(
             skill_sheet="", scan_type=req.scan_type, findings=st.block, clinical_history=req.history,
             user_signature=None, stack=True, declined=removed, conclusion=st.conclusion,
-            stack_sheet=_slim_markdown(db, req.stack_sheet_id), check_findings=plain)
+            stack_sheet=_slim_markdown(db, tok.get("sid")), check_findings=plain)
     else:
         cfg = template.template_config or {}
         stack = {"conclusion": st.conclusion, "declined": removed}
@@ -91,8 +108,9 @@ async def run(req, user, db: Session) -> AsyncIterator[dict]:
                  "quality_check": quality, "signature": signature, "options": [], "options_status": "skipped",
                  "removed": removed, "kept_by_dictation": kept_by_dictation, "fixed_lines": [], "stack": True}
     # 7 save, always (D19), before anything is shown: a report on screen always has its row
-    stamp = (tss.generation_stamp(str(template.id), template.template_config, "stack") if template
-             else {"path": "stack", "stack_sheet_id": req.stack_sheet_id})
+    stamp = ({**(tss.generation_stamp(str(template.id), template.template_config, "stack") or {}),
+              "structure_key": req.structure_key} if template
+             else {"path": "stack", "structure_key": req.structure_key})
     variables = {**{k: v for k, v in req.variables.items() if k != "FINDINGS"},
                  "FINDINGS": plain, "CLINICAL_HISTORY": req.history, "SCAN_TYPE": req.scan_type}
     description = description or ""
