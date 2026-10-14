@@ -113,3 +113,28 @@ async def test_a_sheet_with_no_multi_structure_paragraph_asks_nothing():
     st = parse_sheet(sheet, mode="template").structure
     seen: list = []
     assert await structure_normals(st, transport=_jev({}, seen)) == {} and seen == []
+
+
+async def test_a_partial_reply_binds_what_it_has_and_is_not_cached():
+    seen: list = []
+
+    def handler(req):
+        seen.append(1)
+        return httpx.Response(200, json={"answers": {"q_0": {"choice": "s_1", "confidence": 0.9}}})
+    out = await structure_normals(_st(), transport=httpx.MockTransport(handler))
+    assert out["Other Findings"]["Lungs"] == ["No suspicious parenchymal nodules."]
+    await structure_normals(_st(), transport=httpx.MockTransport(handler))
+    assert len(seen) == 2   # not cached
+
+
+async def test_a_slow_jev_is_cut_off_whole_and_not_cached(monkeypatch):
+    import asyncio
+    monkeypatch.setattr(structures, "BIND_BUDGET_S", 0.05)
+
+    async def slow(*a, **k):
+        await asyncio.sleep(1)
+    monkeypatch.setattr(structures, "_bind", slow)
+    out = await structure_normals(_st())
+    assert out["Other Findings"] == {"Cardiac chambers": ["Normal appearance of the cardiac chambers."],
+                                     "Great vessels": ["Normal calibre aortic root and pulmonary trunk."]}
+    assert not structures._CACHE

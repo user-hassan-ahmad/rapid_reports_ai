@@ -94,15 +94,20 @@ def jev_text(sentence: str, label: str) -> str:
     return f"{label_case(label)}: {sentence}"
 
 
+def _mixed(w: str) -> bool:
+    """A token written with an internal capital ("LCx"): kept as written."""
+    return any(c.isupper() for c in w[1:]) and any(c.islower() for c in w)
+
+
 def label_case(label: str) -> str:
     """A structure label as shown: quotes stripped, sentence-cased unless a word is an acronym (all caps, up to 4
-    letters)."""
+    letters) or has an internal capital ("LCx")."""
     label = " ".join(label.strip().strip("\"'`\u201c\u201d\u2018\u2019").split())
     words = label.split()
     if label.isupper() and any(len(w) > 4 for w in words):
         words = [w.lower() for w in words]            # a shouted label ("LEFT VENTRICLE"), not acronyms
     else:
-        words = [w if (w.isalpha() and w.isupper() and len(w) <= 4) else w.lower() for w in words]
+        words = [w if (w.isalpha() and w.isupper() and len(w) <= 4) or _mixed(w) else w.lower() for w in words]
     label = " ".join(words)
     return label[:1].upper() + label[1:]
 
