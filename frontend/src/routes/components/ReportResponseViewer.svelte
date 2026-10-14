@@ -21,6 +21,9 @@
 	import RailGuidelines from '$lib/review/rail/RailGuidelines.svelte';
 	import Legend from '$lib/review/rail/Legend.svelte';
 	import { loadEnhancement } from '$lib/guidelines/enhance';
+	// The latched stack mode (spec §10, D4/D13): no /enhance, /api/audit, /validation-status or guideline pane after
+	// generation in stack mode; the rail shows the review items.
+	import { stackMode } from '$lib/hybrid-stack/mode';
 	import { createReviewStore, type ReviewStore } from '$lib/review/store';
 	import { runCommand, type CommandName, type ItemEvent } from '$lib/review/commands';
 	import { AI_MODE_KEYS, openPopover, readAiMode, reviewExtensions, setEmphasis, type Density } from '$lib/review/editor';
@@ -285,7 +288,8 @@
 		$auditStore.status === 'idle' &&
 		!activeCandidateModel &&
 		!railOn &&
-		!railSlotPending
+		!railSlotPending &&
+		!$stackMode
 	) {
 		triggerAudit(response);
 	}
@@ -310,7 +314,7 @@
 	}
 
 	async function triggerAudit(content: string) {
-		if (!content.trim()) return;
+		if (!content.trim() || get(stackMode)) return;
 		lastAuditedContent = content;
 		auditActions.setLoading();
 		dispatch('auditComplete', { guidelineReferences: [], auditCriteria: [] });
@@ -426,7 +430,7 @@
 
 	async function _tryPatchCriterion(criterion: string, resolutionMethod: string) {
 		const auditId = $auditStore.auditId;
-		if (!auditId) return;
+		if (!auditId || get(stackMode)) return;
 		try {
 			const headers: Record<string, string> = { 'Content-Type': 'application/json' };
 			if ($token) headers['Authorization'] = `Bearer ${$token}`;
@@ -883,8 +887,8 @@
 		// claim the rail before recording the outcome, so the page never sees "settled, no rail" in between
 		setReviewRailActive(railOwner, visible);
 		recordRailOutcome(id, 'rail');
-		// the Guidelines tab's data (POST /enhance, cached and shared with the Copilot sidebar)
-		loadEnhancement(id).catch(() => undefined);
+		// the Guidelines tab's data (POST /enhance, cached and shared with the Copilot sidebar); never in stack mode
+		if (!get(stackMode)) loadEnhancement(id).catch(() => undefined);
 	}
 
 	function activateRail(id: string, store: ReviewStore, thread: ChatThreadMessage[] = []): void {
@@ -1170,7 +1174,7 @@
 	function startPolling() {
 		stopPolling(); // Clear any existing polling
 		
-		if (!reportId) return;
+		if (!reportId || get(stackMode)) return;
 		
 		// Initial check
 		checkValidationStatus();
@@ -1561,7 +1565,7 @@
 										store={reviewStore}
 										onCommand={handleReviewCommand}
 										updating={updatingIds}
-										guidelines={railGuidelines}
+										guidelines={$stackMode ? undefined : railGuidelines}
 										chat={railChat}
 										{chatPrefill}
 										reveal={railReveal}

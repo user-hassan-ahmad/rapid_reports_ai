@@ -8,6 +8,7 @@ import TemplatedReportTab from './components/TemplatedReportTab.svelte';
 import HistoryTab from './components/HistoryTab.svelte';
 import SettingsTab from './components/SettingsTab.svelte';
 import ReportEnhancementSidebar from './components/ReportEnhancementSidebar.svelte';
+import { stackMode } from '$lib/hybrid-stack/mode';
 import { reviewRailHoldsAside } from '$lib/review/railActive';
 import IntervalAnalysisDrawer from './components/IntervalAnalysisDrawer.svelte';
 import TemplateRefinePanel from './components/TemplateRefinePanel.svelte';
@@ -1210,7 +1211,8 @@ $: if (
 	<!-- Mount when a report is being viewed so /enhance + prefetch can run before Copilot is
 	     opened. Uses viewingReport (not just currentReportId) so the panel unmounts on the
 	     templates list view, where the report id is preserved for fast re-entry. -->
-	{#if viewingReport && (!railActive || sidebarVisible)}
+	<!-- Stack mode (D13): no Copilot sidebar after generation (its mount runs /enhance). -->
+	{#if viewingReport && (!railActive || sidebarVisible) && !$stackMode}
 		<aside
 			class="fixed inset-0 z-[10000] flex min-h-0 w-full flex-col border-l border-white/10 bg-black/70 backdrop-blur-2xl overflow-hidden shadow-2xl shadow-purple-500/10 transition-[width] duration-300 ease-in-out md:inset-y-0 md:left-auto md:right-0 md:z-[35] {!sidebarVisible ? 'hidden' : ''}"
 			style={browser && viewportWidth >= 768

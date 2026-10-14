@@ -31,6 +31,7 @@ vi.mock('$lib/review/workspace', () => ({
 
 const { default: ReportResponseViewer } = await import('./ReportResponseViewer.svelte');
 const { reviewRailActive } = await import('$lib/review/railActive');
+const { stackMode } = await import('$lib/hybrid-stack/mode');
 
 const REPORT = `FINDINGS:
 The spleen measures 9 cm. No ascites.
@@ -218,5 +219,58 @@ describe('report viewer with the review rail on', () => {
 		expect(viewOf(container).state.doc.toString()).toBe(next);
 		expect(container.querySelector('.rv-mark[data-rv-id="a1"]')?.textContent).toBe('9 cm');
 		expect(getReview.mock.calls.length).toBeGreaterThan(calls);
+	});
+});
+
+describe('after generation in stack mode (P2c, D4/D13): no /enhance, no /api/audit, no guideline pane', () => {
+	const urls = () => (vi.mocked(fetch).mock.calls as unknown as [RequestInfo | URL][]).map(([u]) => String(u));
+	afterEach(() => stackMode.set(false));
+
+	it('stack off: the rail loads /enhance for its Guidelines tab (today)', async () => {
+		stackMode.set(false);
+		getReview.mockResolvedValue(review('live', true, [action()]));
+		render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep-off-1' });
+		await pause(400);
+		expect(urls().some((u) => u.includes('/api/reports/rep-off-1/enhance'))).toBe(true);
+		await expect.element(page.getByRole('tab', { name: 'Guidelines' })).toBeInTheDocument();
+	});
+
+	it('stack on: the rail never calls /enhance and shows no Guidelines tab', async () => {
+		stackMode.set(true);
+		getReview.mockResolvedValue(review('live', true, [action()]));
+		render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep-on-1' });
+		await pause(400);
+		await expect.element(page.getByTestId('review-rail')).toBeInTheDocument();
+		expect(urls().filter((u) => u.includes('/enhance'))).toEqual([]);
+		expect(page.getByRole('tab', { name: 'Guidelines' }).elements()).toHaveLength(0);
+	});
+
+	it('stack off without a rail: /api/audit auto-fires (today); stack on: never', async () => {
+		stackMode.set(false);
+		getReview.mockResolvedValue(review('shadow', false, []));
+		const a = render(ReportResponseViewer, { visible: true, response: REPORT, reportId: 'rep-off-2' });
+		await pause(400);
+		expect(urls().some((u) => u.endsWith('/api/audit'))).toBe(true);
+		a.unmount();
+		vi.mocked(fetch).mockClear();
+		stackMode.set(true);
+		render(ReportResponseViewer, { visible: true, response: REPORT + ' ', reportId: 'rep-on-2' });
+		await pause(400);
+		expect(urls().filter((u) => u.includes('/api/audit') || u.includes('/validation-status'))).toEqual([]);
+	});
+});
+
+describe('stack check flags reach the rail as open items (P2a → P2c)', () => {
+	it.each(['removed_asserted', 'removed_unverified', 'undictated_number', 'value_missing'])('%s renders with its label', async (kind) => {
+		stackMode.set(true);
+		const flag: ReviewItem = { ...action(), id: `f-${kind}`, key: `f-${kind}`, kind, cls: 'action', edit: null,
+			label: `Check flag ${kind}`, reason: `Check flag ${kind}` } as unknown as ReviewItem;
+		getReview.mockResolvedValue(review('live', true, [flag]));
+		const r = render(ReportResponseViewer, { visible: true, response: REPORT, reportId: `rep-flag-${kind}` });
+		await pause(400);
+		await expect.element(page.getByTestId('review-rail')).toBeInTheDocument();
+		await expect.element(page.getByTestId('review-rail').getByText(`Check flag ${kind}`).first()).toBeInTheDocument();
+		r.unmount();
+		stackMode.set(false);
 	});
 });
