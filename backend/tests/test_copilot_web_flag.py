@@ -162,7 +162,7 @@ async def test_resolve_guideline_refuses_library_keys_and_is_off_by_default(db_s
 @pytest.fixture
 def authed(client, db_session, db_engine, monkeypatch):
     monkeypatch.setenv("RR_DICTATION_V2", "1")
-    monkeypatch.delenv("RR_HYBRID_STACK", raising=False)
+    monkeypatch.delenv("RR_STACK", raising=False)
     monkeypatch.delenv("RR_STACK_COPILOT", raising=False)
     monkeypatch.setattr(CR, "SessionLocal", sessionmaker(bind=db_engine, autoflush=False, autocommit=False))
     u = User(id=uuid.uuid4(), email="rad@nhs.net", password_hash="x", full_name="T", is_active=True,

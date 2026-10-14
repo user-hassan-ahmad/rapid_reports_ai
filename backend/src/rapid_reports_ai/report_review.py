@@ -290,10 +290,8 @@ def header_names(report: str) -> List[str]:
     return [m.group(1) for m in _HEADER.finditer(report)]
 
 
-# RECOMMENDATIONS: a scratchpad session's ticked items (copilot spec §6), a section of its own after the impression;
-# never checked (its role is skipped by the review and alignment checks).
 QUICK_TOP_LEVEL = ("CLINICAL HISTORY", "COMPARISON", "TECHNIQUE", "FINDINGS", "IMPRESSION", "LIMITATIONS",
-                   "CONCLUSION", "RECOMMENDATIONS")
+                   "CONCLUSION")
 
 
 def quick_section_names(report: str) -> List[str]:

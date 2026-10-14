@@ -47,6 +47,8 @@ def lab(monkeypatch):
 
 def test_404_without_the_lab_flag(authed_client, monkeypatch):
     monkeypatch.delenv("RR_TRIAGE_DEBUG", raising=False)
+    monkeypatch.delenv("RR_DICTATION_V2", raising=False)
+    monkeypatch.setenv("RR_STACK", "0")   # the stack brings the package (spec §9.1); off, the old flags decide
     assert authed_client.post("/api/canvas/polish-span", json=BODY).status_code == 404
 
 

@@ -1,11 +1,10 @@
-"""Hybrid stack endpoints (spec §3, §5). On when the dictation package is allowed and the kill
-switch RR_HYBRID_STACK is not "0" (default on). Reviewers (RR_STACK_REVIEWERS, comma-separated
+"""Hybrid stack endpoints (spec §3, §5). On unless the one switch RR_STACK is "0" (integration spec §9.1). Reviewers (RR_STACK_REVIEWERS, comma-separated
 emails) approve, edit or reject reconciled families."""
 from __future__ import annotations
 
 import json
 import os
-from typing import Literal, Mapping
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -15,9 +14,9 @@ from ..auth import get_current_user
 from ..database import get_db
 from ..database.crud import get_template
 from ..database.models import DictationStackLog, StackSchemaFamily, StackSlimSheet, User
-from ..dictation_v2 import v2_allowed
+from ..stack_switch import stack_allowed  # noqa: F401 (re-exported)
 from ..template_decisions import clean_ledger
-from ..template_sheet_structure import generation_stamp
+from ..template_sheet_structure import generation_stamp, sheet_hash
 from .schemas import Region, groups_for, pill_regions
 from .items import Item, ItemsResult, Referral, recheck as items_recheck, update as items_update
 from .jev_stack import MATERIAL_MIN, STALE_MIN, UNFINISHED_MIN, ask_material, ask_stale, ask_unfinished
@@ -31,7 +30,9 @@ from .draft import DraftResult, draft_conclusion
 from .habits import template_habits
 from .service import GroupResult, SchemaResult, close_update, group_update, resolve_schema
 from .units import StackUnit, sentences as split_sentences
+from .resolution import TokenError, mint, verify as verify_token
 from .gate_model import GateRecord
+from .findings import FromUnits
 
 import logging
 logger = logging.getLogger(__name__)
@@ -39,18 +40,6 @@ router = APIRouter(prefix="/api/canvas/stack", tags=["hybrid-stack"])
 
 MAX_REGION_TEXT = 4000        # characters of one region's grouped sentences sent to Jev
 MAX_NORMALS_PER_REGION = 16   # conversion lab 2026-10-12: 8 silently cut mandatory negatives in long paragraphs
-
-
-def stack_allowed(env: Mapping[str, str] = os.environ) -> bool:
-    return env.get("RR_HYBRID_STACK", "1") != "0" and v2_allowed(env)
-
-
-def shadow_rate(env: Mapping[str, str] = os.environ) -> float:
-    """Share of sessions that also build the old Structured text once, at session end (shadow)."""
-    try:
-        return min(1.0, max(0.0, float(env.get("RR_STACK_SHADOW_RATE", "0.25"))))
-    except ValueError:
-        return 0.25
 
 
 def _require() -> None:
@@ -113,16 +102,16 @@ class AssumedRequest(BaseModel):
     owned: list[str] = Field(default_factory=list)       # the rows' sentences: a row owns its check
     template_id: str | None = None                       # its context rules and normal labels apply
     clinical_history: str = ""                           # a context rule's condition is judged on it too
-    region_text: dict[str, str] | None = None   # region -> its grouped sentences (Task A3b); None: an older client
+    region_text: dict[str, str] = Field(default_factory=dict)   # region -> its grouped sentences; missing: nothing
     # The session's context-rule decision, as the first reply returned it (review R5); None: decide it now.
     rules: dict[str, float] | None = None
     confirm: bool = False   # at Confirm: every condition is re-asked with the dictation
 
 
-class DraftRequest(BaseModel):
+class DraftRequest(FromUnits):
     scan_type: str = ""
     clinical_history: str = ""
-    findings: str
+    findings: str = ""   # built from units + groups when they are sent (FromUnits)
 
 
 class CloseRequest(BaseModel):
@@ -161,6 +150,7 @@ class SlimRequest(BaseModel):
     laterality: str | None = None
     # The family and regions are resolved on the server (review 2026-10-12): a shared sheet is never keyed or
     # shaped by what a client sends.
+    structure_key: str | None = None   # /schema's signed resolution (D26): when given, the fields above are ignored
 
 
 class SlimResult(BaseModel):
@@ -171,6 +161,7 @@ class SlimResult(BaseModel):
     ready: bool = False
     level_groups: dict[str, list[str]] = Field(default_factory=dict)
     required_values: list[str] = Field(default_factory=list)   # template sessions: the LIST_MISSING items (value cluster)
+    structure_key: str | None = None   # free text: the session token re-minted with this sheet's id (D26)
 
 
 class SlimUpdate(BaseModel):
@@ -200,19 +191,31 @@ def _library_pick(protocol_id, phases, laterality):
 async def stack_schema(req: SchemaRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _require()
     # Resolution order (integration contract §8.1): template structure, else the library pick, else free text.
+    # The resolution is minted into structure_key (D26): /slim-sheet and Generate read it, never re-resolve.
     if req.template_id:
         t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
-        structure = template_structure(t.template_config) if t is not None else None
-        if structure is not None:
-            return await resolve_schema(req.scan_type, req.clinical_history, structure, db)
+        if t is None:
+            raise HTTPException(status_code=404, detail="Template not found.")
+        structure = template_structure(t.template_config)
+        if structure is None:   # D15: refused, never a free-text session that Generate would then refuse
+            raise HTTPException(status_code=422,
+                                detail="This template can't be used with the scratchpad. Create a fresh one.")
+        res = await resolve_schema(req.scan_type, req.clinical_history, structure, db)
+        res.structure_key = mint({"src": "template", "tid": str(t.id),
+                                  "sh": sheet_hash((t.template_config or {}).get("skill_sheet", "") or "")})
+        return res
     b, pick = _library_pick(req.protocol_id, req.phases, req.laterality)
     if pick is not None:
         return SchemaResult(regions=pick.regions, groups=groups_for(pick.regions), pills=pill_regions(pick.regions),
                             source="library", key=pick.schema_key, quiet=pick.quiet,
                             protocol={"id": pick.entry_id, "display_name": pick.display_name,
                                       "scan_type_line": pick.scan_type_line, "phases": pick.phases,
-                                      "laterality": pick.laterality})
-    return await resolve_schema(req.scan_type, req.clinical_history, None, db)
+                                      "laterality": pick.laterality},
+                            structure_key=mint({"src": "library", "eid": pick.entry_id, "ph": pick.phases,
+                                                "lat": pick.laterality, "bv": b.version, "sid": pick.sheet_id}))
+    res = await resolve_schema(req.scan_type, req.clinical_history, None, db)
+    res.structure_key = mint({"src": "free", "scan": req.scan_type[:300], "sk": res.key, "sid": None})
+    return res
 
 
 @router.post("/group", response_model=GroupResult)
@@ -324,8 +327,7 @@ async def stack_assumed(req: AssumedRequest, user: User = Depends(get_current_us
     return await assumed_normals(req.dictation, normals, req.abnormal, req.removed[:50], owned,
                                  suppressions=suppressions,
                                  clinical_history=req.clinical_history[:2000], labels=labels,
-                                 region_text=None if req.region_text is None else
-                                 {r: t[:MAX_REGION_TEXT] for r, t in list(req.region_text.items())[:40]},
+                                 region_text={r: t[:MAX_REGION_TEXT] for r, t in list(req.region_text.items())[:40]},
                                  rules=None if req.rules is None else dict(list(req.rules.items())[:100]),
                                  confirm=req.confirm, scan_type=scan_type)
 
@@ -427,6 +429,19 @@ async def stack_slim_sheet(req: SlimRequest, user: User = Depends(get_current_us
     read their own structure; quick sessions get the shared slim sheet (made on first use). Never errors: not
     ready means no quiet lines yet."""
     _require()
+    tok = None
+    if req.structure_key:   # the session resolution (D26): the request's scan type, template and pick are ignored
+        try:
+            tok = verify_token(req.structure_key)
+        except TokenError:
+            raise HTTPException(status_code=400, detail="Set up the workspace again.")
+        if tok["src"] == "template":
+            req = req.model_copy(update={"template_id": tok["tid"], "protocol_id": None})
+        elif tok["src"] == "library":
+            req = req.model_copy(update={"template_id": None, "protocol_id": tok["eid"], "phases": tok["ph"],
+                                         "laterality": tok["lat"]})
+        else:
+            req = req.model_copy(update={"template_id": None, "protocol_id": None, "scan_type": tok["scan"]})
     # The same order as /schema (contract §8.1): template structure, else the library pick, else free text.
     if req.template_id:
         t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
@@ -450,7 +465,8 @@ async def stack_slim_sheet(req: SlimRequest, user: User = Depends(get_current_us
     if row is None:
         return SlimResult()
     return SlimResult(id=str(row.id), region_normals=row.region_normals or {}, not_assessable=row.not_assessable or "",
-                      status=row.status, ready=True)
+                      status=row.status, ready=True,
+                      structure_key=mint({**tok, "sid": str(row.id)}) if tok is not None else None)
 
 
 def _removal_rates(db: Session, family: str, normals: dict[str, list[str]]) -> dict[str, dict]:
@@ -521,7 +537,7 @@ class StackGenerateRequest(BaseModel):
     variables: dict[str, str] = Field(default_factory=dict)   # template inputs other than FINDINGS
     scan_type: str = ""
     history: str = ""
-    stack_sheet_id: str | None = None   # quick: the slim sheet (the signed structure_key replaces it in P2b)
+    structure_key: str   # /schema's signed session resolution (D26): the template, library entry or slim sheet
     units: list[StackUnit]
     groups: list[str]
     gate: GateRecord

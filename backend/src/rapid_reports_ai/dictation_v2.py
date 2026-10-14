@@ -25,7 +25,10 @@ PACKAGE = {
 
 
 def v2_allowed(env: Mapping[str, str] = os.environ) -> bool:
-    return env.get("RR_DICTATION_V2") == "1" or env.get("RR_TRIAGE_DEBUG") == "1"
+    """The dictation package: on with the stack (every route it gates works in stack mode, spec §9.1), or by its own
+    flags when the stack is off (the old flow, D5)."""
+    from .stack_switch import stack_allowed
+    return stack_allowed(env) or env.get("RR_DICTATION_V2") == "1" or env.get("RR_TRIAGE_DEBUG") == "1"
 
 
 @dataclass(frozen=True)

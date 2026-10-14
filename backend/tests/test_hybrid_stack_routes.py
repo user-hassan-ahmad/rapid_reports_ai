@@ -22,21 +22,19 @@ def user(db_session):
 @pytest.fixture
 def authed(client, user, monkeypatch):
     monkeypatch.setenv("RR_DICTATION_V2", "1")
-    monkeypatch.delenv("RR_HYBRID_STACK", raising=False)
+    monkeypatch.delenv("RR_STACK", raising=False)
     app.dependency_overrides[get_current_user] = lambda: user
     yield client
     app.dependency_overrides.pop(get_current_user, None)
 
 
 def test_kill_switch_404(authed, monkeypatch):
-    monkeypatch.setenv("RR_HYBRID_STACK", "0")
+    monkeypatch.setenv("RR_STACK", "0")
     assert authed.post("/api/canvas/stack/group", json={"scan_type": "", "text": "", "regions": []}).status_code == 404
 
 
-def test_off_without_dictation_package(authed, monkeypatch):
-    monkeypatch.delenv("RR_DICTATION_V2", raising=False)
-    monkeypatch.delenv("RR_TRIAGE_DEBUG", raising=False)
-    assert R.stack_allowed() is False
+def test_off_by_the_one_switch():
+    assert R.stack_allowed({"RR_STACK": "0"}) is False
 
 
 def test_group_route(authed, monkeypatch):
@@ -85,9 +83,9 @@ def test_reviewer_endpoints(authed, db_session, monkeypatch):
 
 
 def test_settings_status_carries_the_flags(authed, monkeypatch):
-    monkeypatch.setenv("RR_STACK_SHADOW_RATE", "0.5")
+    monkeypatch.setenv("RR_STACK_SHADOW_RATE", "0.5")          # retired: the shadow is always 0 now (§9.4)
     d = authed.get("/api/settings/status").json()
-    assert d["hybrid_stack"] is True and d["hybrid_stack_shadow_rate"] == 0.5
+    assert d["stack"] is True and d["hybrid_stack"] is True and d["hybrid_stack_shadow_rate"] == 0.0
 
 
 def test_log_keeps_gate_and_report_id(authed, db_session):
@@ -336,7 +334,7 @@ def test_assumed_passes_the_region_text_capped(authed, monkeypatch):
     assert r.status_code == 200
     assert len(seen["region_text"]) == 40 and all(len(t) <= R.MAX_REGION_TEXT for t in seen["region_text"].values())
     authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"R0": ["Normal."]}})
-    assert seen["region_text"] is None   # an older client: the whole dictation answers coverage
+    assert seen["region_text"] == {}     # no region text: nothing grouped covers anything (compat removed, §9.4)
     authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"R0": ["Normal."]},
                                                    "region_text": {}})
     assert seen["region_text"] == {}     # sent but empty: nothing grouped in a region covers anything

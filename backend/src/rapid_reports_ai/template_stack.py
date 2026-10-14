@@ -16,6 +16,7 @@ import re
 from typing import List, Sequence
 
 from .template_sheet_grammar import _BULLET
+from .hybrid_stack.session_rules import RECOMMENDATIONS_RULE
 
 # Units that state or decide content (the grammar's keywords; optional indentation and "- " bullet, as it parses)
 _CONTENT_UNITS = ("NORMAL", "NEGATIVE", "IF_PRESENT", "RECOMMEND", "DIFFERENTIAL", "QUESTION")
@@ -100,7 +101,8 @@ def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = (), value
         "- **Scores, grades and values:** a sheet instruction to state a score, grade, classification, time window, "
         "measurement, value, image coordinate or recommendation applies only when the FINDINGS input or the "
         "confirmed conclusion supplies it, even where the sheet calls it mandatory or always stated; otherwise "
-        "leave it out — never estimate, infer or fill one in.")
+        "leave it out — never estimate, infer or fill one in.\n"
+        + RECOMMENDATIONS_RULE)   # the one rule both stack briefs share (D22)
     if values_decided:
         session += MISSING_VALUES_RULE
     parts.append(session)
@@ -112,5 +114,5 @@ def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = (), value
             "## Confirmed Conclusion\n"
             "- The radiologist's own conclusion; write the impression from it in report style and in this sheet's "
             "impression format, keeping every finding it names and adding nothing it does not contain — no diagnosis, "
-            f'grade, negative or recommendation: "{conclusion.strip()}"')
+            f'grade or negative; a recommendation only as the session rules allow: "{conclusion.strip()}"')
     return "\n\n".join(parts)

@@ -87,8 +87,8 @@ class Alignment(BaseModel):
 _ROLE_WORDS = (("impression", "impression"), ("conclusion", "impression"), ("summary", "impression"),
                ("comment", "impression"), ("opinion", "impression"), ("history", "history"),
                ("indication", "history"), ("technique", "technique"), ("protocol", "technique"),
-               ("comparison", "comparison"), ("recommendation", "recommendations"))
-_SKIP_ROLES = {"history", "technique", "comparison", "recommendations"}   # recommendations: the radiologist's ticked items
+               ("comparison", "comparison"))
+_SKIP_ROLES = {"history", "technique", "comparison"}
 
 
 def section_models(sections: List[str]) -> List[ReportSection]:

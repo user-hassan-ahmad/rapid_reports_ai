@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session, defer
 from ...auth import get_current_user
 from ...database import SessionLocal, get_db
 from ...database.models import GuidelineRegistry, User
+from ..findings import FromUnits
 from ..routes import _reviewer, stack_allowed
 from . import ask as A
 from . import matcher as M
@@ -168,7 +169,8 @@ def _check_patient(v: dict[str, str]) -> dict[str, str]:
     return v
 
 
-class MatchRequest(BaseModel):
+class MatchRequest(FromUnits):
+    units_text_field = "dictation"   # the server builds `dictation` from units + groups; `findings` stays
     scan_type: str = ""
     clinical_history: str = ""
     findings: list[FindingIn] = Field(default_factory=list, max_length=20)
@@ -186,7 +188,7 @@ class MatchResult(BaseModel):
     ms: int = 0
 
 
-class OpenRequest(BaseModel):
+class OpenRequest(FromUnits):
     card: CardIn
     finding: _s(M.DICTATION_MAX) = ""   # the card's own finding unit (exam cards: the dictation); lesion-scoped
                                         # inputs are settled only from it
@@ -235,7 +237,7 @@ class OpenResult(BaseModel):
     needs_modality: str = ""      # the card's pack needs another modality ("US"): read-only, no preview, no Apply
 
 
-class AskRequest(BaseModel):
+class AskRequest(FromUnits):
     question: _s(1000)
     key: _s(KEY_MAX) | None = None
     card: CardIn | None = None    # the listed card asked on (its key == key): resolved first when the registry lacks it
@@ -246,7 +248,7 @@ class AskRequest(BaseModel):
     history: list[QAIn] = Field(default_factory=list, max_length=6)
 
 
-class RecsRequest(BaseModel):
+class RecsRequest(FromUnits):
     scan_type: str = ""
     clinical_history: str = ""
     findings: str = ""

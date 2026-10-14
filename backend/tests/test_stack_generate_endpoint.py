@@ -6,9 +6,11 @@ import pytest
 from rapid_reports_ai.auth import get_current_user
 from rapid_reports_ai.database.models import Report, Template, User
 from rapid_reports_ai.hybrid_stack import report as SR
+from rapid_reports_ai.hybrid_stack import resolution as RS
 from rapid_reports_ai.hybrid_stack.gate_model import findings_hash
 from rapid_reports_ai.hybrid_stack.units import StackUnit
 from rapid_reports_ai.main import app
+from rapid_reports_ai.template_sheet_structure import sheet_hash
 
 UNITS = [{"id": 1, "text": "Liver normal.", "group": "Liver", "structure": None, "attach_to": None, "parts": None,
           "covers": [], "abnormal": False, "pinned": False, "heading": False}]   # SYNTHETIC
@@ -26,7 +28,7 @@ def user(db_session):
 @pytest.fixture
 def authed(client, user, monkeypatch):
     monkeypatch.setenv("RR_DICTATION_V2", "1")
-    monkeypatch.delenv("RR_HYBRID_STACK", raising=False)
+    monkeypatch.delenv("RR_STACK", raising=False)
     app.dependency_overrides[get_current_user] = lambda: user
     yield client
     app.dependency_overrides.pop(get_current_user, None)
@@ -68,7 +70,12 @@ def _body(**over):
     gate = {"conclusion_text": "Normal study.", "removed": ["No ascites."], "units_hash": "k",
             "findings_hash": findings_hash([StackUnit.model_validate(u) for u in UNITS])}
     return {"kind": "quick", "scan_type": "CT abdomen", "history": "pain", "units": UNITS, "groups": ["Liver"],
-            "gate": gate, **over}
+            "gate": gate, "structure_key": RS.mint({"src": "free", "scan": "CT abdomen", "sk": "k", "sid": None}),
+            **over}
+
+
+def _template_key(t) -> str:
+    return RS.mint({"src": "template", "tid": str(t.id), "sh": sheet_hash(t.template_config["skill_sheet"])})
 
 
 def test_quick_stack_generate_saves_plain_findings_and_records_edits(authed, db_session, fakes):
@@ -104,12 +111,12 @@ def test_template_generate_refuses_another_users_template(authed, db_session, fa
                  user_id=other.id, tags=[], is_active=True)
     db_session.add(t)
     db_session.commit()
-    events = _events(authed.post("/api/canvas/stack/generate", json=_body(kind="template", template_id=str(t.id))))
+    events = _events(authed.post("/api/canvas/stack/generate", json=_body(kind="template", template_id=str(t.id), structure_key=_template_key(t))))
     assert events == [("error", {"message": "Template not found."})]
 
 
 def test_stack_off_is_404(authed, monkeypatch):
-    monkeypatch.setenv("RR_HYBRID_STACK", "0")
+    monkeypatch.setenv("RR_STACK", "0")
     assert authed.post("/api/canvas/stack/generate", json=_body()).status_code == 404
 
 
@@ -164,7 +171,7 @@ def test_template_description_reads_plain_statements(authed, db_session, user, m
                  user_id=user.id, tags=[], is_active=True)
     db_session.add(t)
     db_session.commit()
-    events = _events(authed.post("/api/canvas/stack/generate", json=_body(kind="template", template_id=str(t.id))))
+    events = _events(authed.post("/api/canvas/stack/generate", json=_body(kind="template", template_id=str(t.id), structure_key=_template_key(t))))
     assert events[0][1]["description"] == "from plain" and seen["describe"] == "Liver normal.\nNormal study."
     assert "DO NOT ASSERT" not in seen["describe"]
 

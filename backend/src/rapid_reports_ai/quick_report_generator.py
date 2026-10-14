@@ -37,7 +37,6 @@ from .quick_report_prompts import (
     QR_SHEET_HEADER_BRIEF,
     QR_SHEET_HEADER_STACK,
     QR_STYLE_GUIDE,
-    QR_STACK_RECOMMENDATIONS,
     QR_STYLE_GUIDE_BRIEF,
     QR_STYLE_GUIDE_STACK,
     QR_SYSTEM_PREAMBLE,
@@ -79,11 +78,9 @@ def build_prompts(skill_sheet: str, scan_type: str, findings: str, clinical_hist
                   provider: str, brief: bool = False, stack: bool = False) -> tuple[str, str]:
     """System and user prompt for one quick report. `skill_sheet` is the analyser's sheet, the
     compiled brief when `brief` is set, or a scratchpad session's stack brief when `stack` is set;
-    the hardening preamble is prepended here. With `stack`, ticked Copilot recommendations get their own section
-    (the one exception; P2 replaces it with the shared recommendations rule)."""
+    the hardening preamble is prepended here. With `stack`, recommendations follow the stack brief's one session
+    rule (hybrid_stack.session_rules, D22)."""
     preamble, style, header, hardening, pre, ver = _STACKS["stack" if stack else "brief" if brief else "raw"]
-    if stack:
-        style = f"{style}\n\n{QR_STACK_RECOMMENDATIONS}"
     system_prompt = f"{preamble}\n\n{style}\n\n{header}\n\n{hardening}{skill_sheet}"
     inputs = f"## INPUTS\n\nScan Type: {scan_type}\nClinical History: {clinical_history}\nFindings: {findings}"
     if provider == "anthropic":
