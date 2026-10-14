@@ -195,3 +195,77 @@ def test_a_slot_value_never_crosses_a_sentence_end_but_holds_a_decimal():
     assert report.index("The spleen") == m.spans[0][0]
     m2 = tt.match("The mass measures 3.5 cm in length.", ["The mass measures {size} in length."])
     assert len(m2.spans) == 2 and m2.unmatched == []
+
+
+# ── template_parts (the review run's and the rail's loading) ───────────────
+
+class _Row:
+    def __init__(self, report_type="templated", template_id="t1", id="r1"):
+        self.report_type, self.template_id, self.id = report_type, template_id, id
+
+
+class _Q:
+    def __init__(self, log):
+        self.log = log
+
+    def filter(self, *a):
+        return self
+
+    def order_by(self, *a):
+        return self
+
+    def first(self):
+        return self.log
+
+
+class _Db:
+    def __init__(self, tpl=None, log=None, query_raises=False):
+        self.tpl, self.log, self.query_raises = tpl, log, query_raises
+
+    def get(self, cls, _id):
+        return self.tpl
+
+    def query(self, cls):
+        if self.query_raises:
+            raise RuntimeError("no table")
+        return _Q(self.log)
+
+
+class _Obj:
+    def __init__(self, **k):
+        self.__dict__.update(k)
+
+
+CFG = {"generation_mode": "skill_sheet_guided", "skill_sheet": SHEET}
+
+
+def test_template_parts_fail_open_on_a_deleted_template_or_a_bad_config():
+    assert engine.template_parts(_Db(tpl=None), _Row()) == {"template_config": None, "assumed_normals": []}
+    bad = engine.template_parts(_Db(tpl=_Obj(template_config="not a dict")), _Row())
+    assert bad["template_config"] is None
+    i = engine.input_from_parts("00000000-0000-0000-0000-000000000001", "templated", {}, {"content": REPORT}, None,
+                                bad["template_config"])
+    assert i.template_text == [] and i.template_structure is None
+    assert engine.template_parts(_Db(tpl=_Obj(template_config=CFG)), _Row(report_type="auto"))["template_config"] is None
+
+
+def test_template_parts_reads_the_stack_gate_assumed_minus_removed_and_fails_open():
+    gate = {"assumed": {"LMS": ["LMS: Normal."], "LAD": ["LAD: Normal proximal, mid and distal LAD."]},
+            "removed": ["LMS: Normal."]}
+    db = _Db(tpl=_Obj(template_config=CFG), log=_Obj(gate=gate))
+    assert engine.template_parts(db, _Row(), {"stack": True})["assumed_normals"] == [
+        "LAD: Normal proximal, mid and distal LAD."]
+    assert engine.template_parts(db, _Row(), {})["assumed_normals"] == []          # not a stack report
+    assert engine.template_parts(_Db(tpl=_Obj(template_config=CFG), query_raises=True), _Row(),
+                                 {"stack": True})["assumed_normals"] == []
+    assert engine.template_parts(_Db(tpl=_Obj(template_config=CFG), log=_Obj(gate={"assumed": "x"})), _Row(),
+                                 {"stack": True})["assumed_normals"] == []
+
+
+def test_the_rails_input_matches_the_review_runs():
+    from rapid_reports_ai.review_engine import api
+    rep = _Obj(id="00000000-0000-0000-0000-000000000001", report_type="templated", template_id="t1",
+               input_data={"variables": {"FINDINGS": DICT}}, enhancement_json=None,
+               candidate_reports=[{"content": REPORT, "sections": []}])
+    i = api._input(rep, REPORT, _Db(tpl=_Obj(template_config=CFG)))
+    assert CAC in i.template_text and i.template_structure is not None

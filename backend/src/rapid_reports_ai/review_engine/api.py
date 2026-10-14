@@ -75,10 +75,12 @@ def _owned(db: Session, report_id: str, user: User):
     return get_report(db, report_id, user_id=str(user.id))
 
 
-def _input(report, text: str):
+def _input(report, text: str, db: Optional[Session] = None):
+    """The same input the review run builds (`engine.template_parts`: template text, structure, assumed normals)."""
     cand = (report.candidate_reports or [None])[0] or {}
+    tp = engine.template_parts(db, report, cand) if db is not None else {}
     return engine.input_from_parts(str(report.id), report.report_type, report.input_data, {**cand, "content": text},
-                                   report.enhancement_json)
+                                   report.enhancement_json, tp.get("template_config"), tp.get("assumed_normals"))
 
 
 def _negative(it: ReviewItem) -> bool:
@@ -181,7 +183,7 @@ async def post_probe(report_id: str, body: ProbeBody, current_user: User = Depen
     report = _owned(db, report_id, current_user)
     if not report:
         return NOT_FOUND
-    inp = _input(report, body.text)
+    inp = _input(report, body.text, db)
     if inp is None:
         return {"success": False, "error": "no candidate"}
     all_items = store.list_items(db, report_id)
@@ -229,7 +231,7 @@ async def post_reprepare(report_id: str, body: ReprepareBody, current_user: User
     report = _owned(db, report_id, current_user)
     if not report:
         return NOT_FOUND
-    inp = _input(report, body.text)
+    inp = _input(report, body.text, db)
     if inp is None:
         return {"success": False, "error": "no candidate"}
     items = [i for i in (store.get_item(db, report_id, x) for x in body.item_ids) if i is not None]

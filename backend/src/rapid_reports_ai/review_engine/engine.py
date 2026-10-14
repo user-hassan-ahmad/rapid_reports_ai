@@ -824,11 +824,13 @@ async def gate_d_log(inp: ReviewInput) -> Optional[dict]:
 # ── loading and scheduling ──────────────────────────────────────────────────
 
 def input_from_parts(report_id: str, report_type: str, input_data: Optional[dict], cand: Optional[dict],
-                     enhancement_json: Optional[dict], template_config: Optional[dict] = None) -> Optional[ReviewInput]:
+                     enhancement_json: Optional[dict], template_config: Optional[dict] = None,
+                     assumed_normals: Optional[List[str]] = None) -> Optional[ReviewInput]:
     """`template_config`: the report's template (templated reports): its grammar sheet's quoted texts are the
-    template's own words, never marked AI text (`template_text`)."""
+    template's own words, never marked AI text (`template_text`), and its structure drives the gap flags.
+    `assumed_normals`: the stack session's confirmed normals (`template_parts`)."""
     from ..generation_artifacts import GenerationArtifacts
-    from .template_text import template_texts
+    from .template_text import template_inputs
     cand = cand or {}
     if cand.get("error") or not cand.get("content"):
         return None
@@ -836,6 +838,7 @@ def input_from_parts(report_id: str, report_type: str, input_data: Optional[dict
     v = data.get("variables") or {}
     findings = v.get("FINDINGS") or ""
     guidelines = (enhancement_json or {}).get("guidelines")
+    texts, structure = template_inputs(template_config) if report_type == "templated" else ([], None)
     return ReviewInput(report_id=report_id, pathway="templated" if report_type == "templated" else "quick",
                        artifacts=GenerationArtifacts.from_candidate(cand, findings),
                        clinical_history=v.get("CLINICAL_HISTORY") or "",
@@ -844,7 +847,8 @@ def input_from_parts(report_id: str, report_type: str, input_data: Optional[dict
                        synthesis={"guidelines": guidelines} if guidelines else None,
                        pre_edit_report=(cand.get("quality_check") or {}).get("pre_edit_report"),
                        removed=list(cand.get("removed") or []), stack=cand.get("stack") is True,
-                       template_text=template_texts(template_config) if report_type == "templated" else [])
+                       template_text=texts, template_structure=structure,
+                       assumed_normals=list(assumed_normals or []) if structure is not None else [])
 
 
 def _session():
@@ -868,9 +872,46 @@ def _load_row(db, report_id: str):
     if row is None:
         return None
     cand = (row.candidate_reports or [None])[0] or {}
-    tpl = db.get(Template, row.template_id) if row.report_type == "templated" and row.template_id else None
     return {"report_type": row.report_type, "input_data": row.input_data, "cand": dict(cand),
-            "enhancement_json": row.enhancement_json, "template_config": tpl.template_config if tpl else None}
+            "enhancement_json": row.enhancement_json, **template_parts(db, row, cand)}
+
+
+def _stack_assumed(db, report_id: str) -> List[str]:
+    """The normals the radiologist confirmed at the stack gate for this report (`dictation_stack_logs.gate`:
+    `assumed` per region, minus `removed`); [] when there is no log or it is not in that shape."""
+    from ..database.models import DictationStackLog
+    log = (db.query(DictationStackLog).filter(DictationStackLog.report_id == str(report_id))
+           .order_by(DictationStackLog.updated_at.desc()).first())
+    gate = getattr(log, "gate", None)
+    if not isinstance(gate, dict) or not isinstance(gate.get("assumed"), dict):
+        return []
+    removed = {" ".join(x.split()).lower() for x in gate.get("removed") or [] if isinstance(x, str)}
+    out = [x for v in gate["assumed"].values() if isinstance(v, list) for x in v
+           if isinstance(x, str) and x.strip() and " ".join(x.split()).lower() not in removed]
+    return list(dict.fromkeys(out))
+
+
+def template_parts(db, row, cand: Optional[dict] = None) -> dict:
+    """{"template_config", "assumed_normals"} of a report row (the review run and the rail's probe / reprepare use
+    the same): the template's config for a templated report, the stack gate's confirmed normals for a stack one.
+    Fails open: a deleted template, a bad config or a missing log gives None / []."""
+    from ..database.models import Template
+    out: dict = {"template_config": None, "assumed_normals": []}
+    tid = getattr(row, "template_id", None)
+    if getattr(row, "report_type", None) != "templated" or not tid:
+        return out
+    try:
+        tpl = db.get(Template, tid)
+        cfg = tpl.template_config if tpl is not None else None
+        out["template_config"] = cfg if isinstance(cfg, dict) else None
+    except Exception as e:  # noqa: BLE001
+        logger.info("review engine: template config not loaded (%s)", type(e).__name__)
+    if (cand or {}).get("stack") is True and out["template_config"] is not None:
+        try:
+            out["assumed_normals"] = _stack_assumed(db, str(getattr(row, "id", "")))
+        except Exception as e:  # noqa: BLE001
+            logger.info("review engine: stack log not loaded (%s)", type(e).__name__)
+    return out
 
 
 async def load_input(report_id: str, text: Optional[str] = None) -> Optional[ReviewInput]:
@@ -886,7 +927,7 @@ async def load_input(report_id: str, text: Optional[str] = None) -> Optional[Rev
     if text is not None:
         cand = {**cand, "content": text}
     return input_from_parts(report_id, row["report_type"], row["input_data"], cand, row["enhancement_json"],
-                            row.get("template_config"))
+                            row.get("template_config"), row.get("assumed_normals"))
 
 
 _SEM: Optional[Tuple[asyncio.AbstractEventLoop, asyncio.Semaphore]] = None
@@ -1006,5 +1047,5 @@ def schedule_review(report_id: Optional[str], text: Optional[str] = None) -> Opt
 
 __all__ = ["ENGINE_VERSION", "LANES", "mode", "concurrency", "sample_rate", "lanes_enabled", "rail_enabled",
            "ReviewResult", "build_item", "shadow_items",
-           "plan_preapply", "preapply_failures", "finalise", "run_review", "gate_d_log", "input_from_parts",
+           "plan_preapply", "preapply_failures", "finalise", "run_review", "gate_d_log", "input_from_parts", "template_parts",
            "load_input", "run_and_store", "schedule_review"]

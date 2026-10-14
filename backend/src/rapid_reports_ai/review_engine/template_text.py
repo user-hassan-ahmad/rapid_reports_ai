@@ -52,15 +52,19 @@ def unit_texts(st) -> List[str]:
     return texts
 
 
-def template_texts(config: Optional[dict]) -> List[str]:
-    """`unit_texts` of a template config's grammar structure; [] when it has none (not a guided grammar sheet, or
-    the sheet does not parse clean)."""
+def template_inputs(config) -> Tuple[List[str], Optional[dict]]:
+    """(`unit_texts`, the structure dumped) of a template config's grammar structure; ([], None) when it has none
+    (not a guided grammar sheet, the sheet does not parse clean, or no usable config)."""
     from ..hybrid_stack.template import template_structure
     try:
-        st = template_structure(config or {})
+        st = template_structure(config if isinstance(config, dict) else {})
+        return (unit_texts(st), st.model_dump(mode="json")) if st is not None else ([], None)
     except Exception:  # noqa: BLE001 - no structure: the review runs as for a quick report
-        return []
-    return unit_texts(st) if st is not None else []
+        return [], None
+
+
+def template_texts(config) -> List[str]:
+    return template_inputs(config)[0]
 
 
 def _literal(piece: str) -> str:
@@ -156,4 +160,4 @@ def cut(s: int, e: int, spans: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
     return out
 
 
-__all__ = ["TemplateMatch", "unit_texts", "template_texts", "match", "cut", "MIN_WORDS"]
+__all__ = ["TemplateMatch", "unit_texts", "template_inputs", "template_texts", "match", "cut", "MIN_WORDS"]
