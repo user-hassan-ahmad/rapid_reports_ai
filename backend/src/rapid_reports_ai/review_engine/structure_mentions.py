@@ -7,7 +7,8 @@ no edit. Lab (Hassan accepted): ~2% false alarms per structure, about 1 report i
 and capped (MAX_NOTES, separate from the gap flags' cap). A structure whose paragraph a SUPPRESS rule may have left
 out, and that is absent from the report, is not asked; nor is one of a paragraph optional by design (no NORMAL,
 NEGATIVE or FIXED unit, only conditional RULE ... USE fill-ins). A structure stored before FIXED units carried their
-paragraph places none (re-parsed when the sheet or grammar version changes). Fails open: a Jev error, timeout or partial answer gives no
+paragraph places a FIXED line only through a rule that targets it (re-parsed when the sheet or grammar version
+changes). Fails open: a Jev error, timeout or partial answer gives no
 note and counts `structure_check_unavailable` in the log (no rail item)."""
 from __future__ import annotations
 
