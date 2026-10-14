@@ -3310,6 +3310,7 @@ async def quick_report_proto_generate_endpoint(
     Uses the quick-report generator (quick_report_generator.py), the same one as
     /api/quick-report/generate.
     """
+    legacy_mark("quick.proto_generate", getattr(current_user, "id", None), None)  # the tripwire (spec §9.5)
     from .quick_report_analyser import (
         log_generator_run,
         new_run_id,

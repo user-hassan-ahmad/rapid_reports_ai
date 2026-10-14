@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import ClassVar
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from .gate_model import GateRecord
 from .schemas import CONCLUSION, GENERAL, TECHNIQUE
@@ -149,7 +149,7 @@ class FromUnits(BaseModel):
     """A request whose findings text the server builds from units + groups with the gate-less builder (spec §5
     Builder: /stack/draft and the Copilot routes). The string field stays accepted until P2c switches the browser;
     when units are sent they win."""
-    units: list[StackUnit] | None = None
+    units: list[StackUnit] | None = Field(default=None, max_length=400)
     groups: list[str] | None = None
     units_text_field: ClassVar[str] = "findings"
 

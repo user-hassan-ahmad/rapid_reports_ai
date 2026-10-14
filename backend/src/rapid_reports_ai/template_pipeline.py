@@ -452,7 +452,7 @@ async def finish_options(report_id: Optional[str], job: "asyncio.Future", extra=
 
 def schedule_options(report_id: Optional[str], job: "asyncio.Future", extra=None) -> "asyncio.Task":
     """Fire-and-forget finish_options; the task is held in _OPTION_TASKS until done."""
-    legacy_mark("options.schedule", report_id, None)  # the tripwire (spec §9.5)
+    legacy_mark("options.schedule", route=f"report:{report_id}")  # the tripwire (spec §9.5)
     task = asyncio.create_task(finish_options(report_id, job, extra))
     _OPTION_TASKS.add(task)
     task.add_done_callback(_OPTION_TASKS.discard)

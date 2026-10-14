@@ -194,12 +194,16 @@ async def stack_schema(req: SchemaRequest, user: User = Depends(get_current_user
     # The resolution is minted into structure_key (D26): /slim-sheet and Generate read it, never re-resolve.
     if req.template_id:
         t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
-        structure = template_structure(t.template_config) if t is not None else None
-        if structure is not None:
-            res = await resolve_schema(req.scan_type, req.clinical_history, structure, db)
-            res.structure_key = mint({"src": "template", "tid": str(t.id),
-                                      "sh": sheet_hash((t.template_config or {}).get("skill_sheet", "") or "")})
-            return res
+        if t is None:
+            raise HTTPException(status_code=404, detail="Template not found.")
+        structure = template_structure(t.template_config)
+        if structure is None:   # D15: refused, never a free-text session that Generate would then refuse
+            raise HTTPException(status_code=422,
+                                detail="This template can't be used with the scratchpad. Create a fresh one.")
+        res = await resolve_schema(req.scan_type, req.clinical_history, structure, db)
+        res.structure_key = mint({"src": "template", "tid": str(t.id),
+                                  "sh": sheet_hash((t.template_config or {}).get("skill_sheet", "") or "")})
+        return res
     b, pick = _library_pick(req.protocol_id, req.phases, req.laterality)
     if pick is not None:
         return SchemaResult(regions=pick.regions, groups=groups_for(pick.regions), pills=pill_regions(pick.regions),
