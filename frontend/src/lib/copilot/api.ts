@@ -3,7 +3,7 @@
 import { get } from 'svelte/store';
 import { API_URL } from '$lib/config.js';
 import { token } from '$lib/stores/auth.js';
-import type { CalculateBody, CalculateResult, MatchBody, MatchResult, OpenBody, OpenResult } from './types';
+import type { CalculateBody, CalculateResult, ConclusionCheckBody, ConclusionCheckResult, MatchBody, MatchResult, OpenBody, OpenResult } from './types';
 
 /** The server's _require() answered 404 with detail OFF_DETAIL: the Copilot is off; send nothing more this page.
  *  Any other 404 (unknown route, proxy, mid-deploy) is a card-local CopilotError; /settings/status stays the
@@ -36,13 +36,16 @@ async function isOff(res: Response): Promise<boolean> {
 }
 
 // Longer than the server's own budgets: OPEN_TIMEOUT_S 60 (its comment asks for >= 90), PREVIEW_TIMEOUT_S 25.
-export const TIMEOUT_MS = { match: 45_000, other: 60_000, open: 90_000, preview: 35_000, calculate: 35_000 } as const;
+export const TIMEOUT_MS = { match: 45_000, other: 60_000, open: 90_000, preview: 35_000, calculate: 35_000, conclusion: 20_000 } as const;
 
 // Mirror the server's caps (MatchRequest.findings, FindingIn.text, OpenRequest.answered) so a long case never 422s.
 export const MAX_FINDINGS = 20;
 export const MAX_FINDING_TEXT = 1000;
 export const MAX_ANSWERED = 20;
 export const MAX_DICTATION = 6000; // OpenRequest.finding (DICTATION_MAX): an exam card sends the whole findings text
+// ConclusionCheckRequest caps (spec §7.12 item 5); a card's finding is capped at MAX_DICTATION
+export const MAX_CONCLUSION = 4000;
+export const MAX_CONCLUSION_CARDS = 10;
 
 async function post<T>(path: string, body: unknown, timeoutMs: number, signal?: AbortSignal): Promise<T> {
 	const ac = new AbortController();
@@ -115,3 +118,14 @@ export const preview = (b: OpenBody, signal?: AbortSignal) => post<OpenResult>('
 /** Task 3. Until that route lands a call 404s as a card-local CopilotError (not CopilotOff). */
 export const calculate = (b: CalculateBody, signal?: AbortSignal) =>
 	post<CalculateResult>('calculate', { ...openBody(b), values: b.values }, TIMEOUT_MS.calculate, signal);
+/** Spec §7.12 item 5: what the conclusion recommends for each card's finding (the confirm gate). */
+export const conclusionCheck = (b: ConclusionCheckBody, signal?: AbortSignal) =>
+	post<ConclusionCheckResult>(
+		'conclusion_check',
+		{
+			conclusion: b.conclusion.slice(0, MAX_CONCLUSION),
+			cards: b.cards.slice(0, MAX_CONCLUSION_CARDS).map((c) => ({ key: c.key, finding: c.finding.slice(0, MAX_DICTATION) }))
+		},
+		TIMEOUT_MS.conclusion,
+		signal
+	);

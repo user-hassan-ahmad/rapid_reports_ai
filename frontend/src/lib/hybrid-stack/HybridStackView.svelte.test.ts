@@ -292,4 +292,19 @@ describe('HybridStackView v2', () => {
 		await page.getByRole('button', { name: 'Skip' }).click();
 		expect(onCheckAnswer).toHaveBeenCalledWith('laterality_conflict|p', 'skip');
 	});
+
+	it('guidelines unresolved (§7.12): Confirm disabled, "1 guideline unresolved" opens the first card; none: as before', async () => {
+		const onOpenGuideline = vi.fn();
+		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true }), u(1, 'Simple cyst.', 'Conclusion')];
+		const props = { ...base(), units, conclusion: { kind: 'dictated' } as const, onOpenGuideline };
+		const r = render(HybridStackView, { ...props, guidelinesUnresolved: [{ key: 'k', name: 'BTS 2015' }] });
+		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeDisabled();
+		await page.getByRole('button', { name: '1 guideline unresolved' }).click();
+		expect(onOpenGuideline).toHaveBeenCalledWith('k');
+		r.rerender({ ...props, guidelinesUnresolved: [{ key: 'a', name: 'A' }, { key: 'b', name: 'B' }] });
+		await expect.element(page.getByRole('button', { name: '2 guidelines unresolved' })).toBeInTheDocument();
+		r.rerender({ ...props, guidelinesUnresolved: [] });
+		await expect.element(page.getByText(/guidelines? unresolved/)).not.toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeEnabled();
+	});
 });

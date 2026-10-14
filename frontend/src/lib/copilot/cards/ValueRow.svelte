@@ -69,6 +69,8 @@
 		{:else}
 			<span class="cp-muted">{row.state.replace(/_/g, ' ')}</span>
 		{/if}
+		<!-- where a derived value came from (e.g. "from the CT of 12 Mar 2025"), so a wrong source can be corrected -->
+		{#if row.basis && !editing}<span class="cp-val-basis">{row.basis}</span>{/if}
 		{#if !editing && row.state === 'read' && !row.byExam}<span class="cp-chip cp-val-chip cp-chip-read">read</span>{/if}
 		{#if !editing && row.state === 'assumed'}
 			<span class="cp-chip cp-val-chip cp-chip-warn">{row.sign ? 'assumed absent' : 'assumed'}</span>
@@ -137,6 +139,11 @@
 	.cp-val-value > b,
 	.cp-val-value > .cp-muted {
 		flex: 0 0 100%;
+	}
+	.cp-val-basis {
+		flex: 0 0 100%;
+		font-size: 0.75rem;
+		color: var(--rv-muted);
 	}
 	.cp-val-value b {
 		font-weight: 600;

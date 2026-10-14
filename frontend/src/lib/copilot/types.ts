@@ -40,7 +40,8 @@ export interface DecidingBranch { answer: string; headline: string; category?: A
 /** types.py Assumption: a value the draft assumes (never stated): an eligibility input in scope, or a visible sign
  *  absent. `decisive`: flipping it alone changes the outcome (null: not weighed: no tag). */
 export interface Assumption { input: string; label: string; value: string; decisive: boolean | null; kind: 'eligibility' | 'sign' }
-export interface ExclusionReason { input: string; label: string; value: string }
+/** `outcome`: the input's exclusion_outcome (spec §7.12): the exclusion then carries that outcome's own wording. */
+export interface ExclusionReason { input: string; label: string; value: string; outcome?: string | null }
 export interface DecidingInput { input: string; label: string }
 export type ActionCategory = 'none' | 'surveillance' | 'workup' | 'refer' | 'info' | 'not_applicable'; // info: no management stated
 export interface Settled { input: string; value: string; quote: string; fact: string; by: '' | 'exam' }
@@ -63,6 +64,7 @@ export interface DraftValue {
 	options: string[];
 	by?: '' | 'exam'; // contract request R1
 	decisive?: boolean | null; // assumed: flipping it alone changes the outcome; null when not weighed (no tag: never guessed)
+	basis?: string; // where a derived value came from, e.g. "from the CT of 12 Mar 2025" (spec §7.12 item 4)
 }
 export interface Checker {
 	// Task 7
@@ -167,3 +169,9 @@ export interface OpenBody {
 	lesion?: string; // Task 8
 }
 export interface CalculateBody extends OpenBody { values: Record<string, string> } // Task 3
+
+/** POST conclusion_check (spec §7.12 item 5): what the conclusion recommends for each card's finding. `key` is an
+ *  opaque id the response echoes. */
+export type ConclusionCategory = 'none' | 'surveillance' | 'workup' | 'refer';
+export interface ConclusionCheckBody { conclusion: string; cards: { key: string; finding: string }[] }
+export interface ConclusionCheckResult { results: Record<string, ConclusionCategory | null> }

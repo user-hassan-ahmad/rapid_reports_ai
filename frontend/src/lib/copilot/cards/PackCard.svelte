@@ -15,6 +15,8 @@
 	import AssumedChip from './AssumedChip.svelte';
 	import { assumptionsOf, categoryColor, scopeDoubts, verdictOf } from './format';
 	import PackBody from './PackBody.svelte';
+	import UnresolvedNote from './UnresolvedNote.svelte';
+	import type { Unresolved } from '../gate';
 	import VerdictPill from './VerdictPill.svelte';
 	import { errorOf, type CardView } from './view';
 
@@ -27,6 +29,8 @@
 		action = null,
 		category = null,
 		onEdit = null,
+		unresolved = null,
+		onSeen = null,
 		onOpen,
 		onClose,
 		onRetry
@@ -42,6 +46,9 @@
 		category?: ActionCategory | null;
 		/** Slice B2: answer or change a value; absent keeps the card read-only. */
 		onEdit?: ((ref: string, input: string, value: string) => void) | null;
+		/** The card blocks Confirm (§7.12 item 5): its reason and "Seen, leave as is" lead the body. */
+		unresolved?: Unresolved | null;
+		onSeen?: ((key: string) => void) | null;
 		onOpen: (ref: string) => void;
 		onClose: (ref: string) => void;
 		onRetry: (ref: string) => void;
@@ -70,6 +77,7 @@
 
 {#snippet body()}
 	<!-- a re-open (exam card, debounced) keeps the last preview on screen instead of flickering to a skeleton -->
+	{#if unresolved}<UnresolvedNote item={unresolved} {onSeen} />{/if}
 	<CardStatus loading={view.loading && !view.result} error={err} onRetry={() => onRetry(ref)} />
 	{#if !err && view.result}
 		<PackBody

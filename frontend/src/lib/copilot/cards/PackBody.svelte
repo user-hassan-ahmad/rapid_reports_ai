@@ -20,6 +20,7 @@
 		categoryColor,
 		categoryText,
 		decidingQuestion,
+		notNeededRows,
 		openQuestions,
 		recommendationBeyond,
 		scopeDoubts,
@@ -66,8 +67,13 @@
 	const src = $derived(sourcesOf(v?.citations ?? []));
 	const decided = $derived(!!v && v.category !== 'open' && !v.tentative);
 	const longText = $derived(!!v && v.classification.length > 110);
-	const recText = $derived(v && !v.excluded ? recommendationBeyond(v.action, v.recommendation) : '');
-	const shownRows = $derived(rows.filter((r) => r.state !== 'not_applicable'));
+	// an exclusion worded by its outcome (§7.12 item 1) says what to do instead; a generic one has no action
+	const recText = $derived(v ? (v.excluded ? v.action : recommendationBeyond(v.action, v.recommendation)) : '');
+	// asked inputs that cannot change the outcome wait behind "N not needed on this branch" (§7.12 item 3)
+	const notNeededIds = $derived(new Set(notNeededRows(p).map((r) => r.input)));
+	const notNeededList = $derived(rows.filter((r) => notNeededIds.has(r.input)));
+	let showNotNeeded = $state(false);
+	const shownRows = $derived(rows.filter((r) => r.state !== 'not_applicable' && !notNeededIds.has(r.input)));
 	const naRows = $derived(rows.filter((r) => r.state === 'not_applicable'));
 	let showNa = $state(false);
 	let showValues = $state(false);
@@ -148,6 +154,16 @@
 				</ul>
 			</section>
 		{/if}
+		{#if notNeededList.length && !v?.excluded}
+			<section class="cp-not-needed" aria-label="Not needed on this branch">
+				<button type="button" class="cp-link cp-aux-toggle" aria-expanded={showNotNeeded} aria-controls="{uid}-not-needed" onclick={() => (showNotNeeded = !showNotNeeded)}
+					>{notNeededList.length} not needed on this branch <span class="cp-caret"><Icon name="chev" size={11} /></span></button
+				>
+				<ul class="cp-val-list" id="{uid}-not-needed" hidden={!showNotNeeded}>
+					{#each notNeededList as r (r.input)}<ValueRow row={r} {uid} {onEdit} />{/each}
+				</ul>
+			</section>
+		{/if}
 		{#if questions.length && p.state !== 'does_not_apply'}
 			<section class="cp-open-q" aria-label="Still open">
 				<div class="cp-label">Still open</div>
@@ -188,7 +204,11 @@
 				<p class="cp-p cp-onvalues" aria-live="polite">{busy ? 'Updating on the new values…' : 'On these values'}</p>
 			</section>
 		{/if}
-		{#if !decided && (likely || (branches.length && decidingQ))}
+		{#if v?.ifApplies}
+			<!-- a scope doubt leads the card; the drafted outcome stays, secondary (controller ruling 2026-10-14) -->
+			<p class="cp-p cp-if-applies" data-testid="cp-if-applies">{v.ifApplies}</p>
+		{/if}
+		{#if !decided && !v?.ifApplies && (likely || (branches.length && decidingQ))}
 			<!-- no outcome yet: the likeliest one when there is one, and what genuinely decides it (max three branches);
 			     the full list stays behind "show all" -->
 			<section class="cp-likely" aria-label={likely ? 'Most likely' : 'What decides it'}>
@@ -305,6 +325,21 @@
 		line-height: 1.3;
 		letter-spacing: -0.01em;
 		color: var(--rv-text);
+	}
+	/* a collapsed list stays collapsed wherever the body renders (cards.css covers it only inside the rail list) */
+	.cp-val-list[hidden] {
+		display: none;
+	}
+	.cp-not-needed {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		font-size: 0.75rem;
+	}
+	.cp-if-applies {
+		font-size: 0.8125rem;
+		line-height: 1.45;
+		color: var(--rv-muted);
 	}
 	.cp-na-toggle {
 		list-style: none;

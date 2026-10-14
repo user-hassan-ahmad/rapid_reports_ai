@@ -102,4 +102,12 @@ describe('ValueRow', () => {
 		await expect.element(page.getByText('assumed absent')).toBeInTheDocument();
 		expect(document.body.textContent).not.toMatch(/decisive|doesn't affect/);
 	});
+
+	it('a row with a basis shows it under the value (§7.12 item 4)', async () => {
+		show(row({ input: 'interval', label: 'Interval', value: '216', basis: 'from the CT of 12 Mar 2025' }));
+		await expect.element(page.getByText('from the CT of 12 Mar 2025')).toBeVisible();
+		const value = page.getByText('216', { exact: true }).element().getBoundingClientRect();
+		const basis = page.getByText('from the CT of 12 Mar 2025').element().getBoundingClientRect();
+		expect(basis.top).toBeGreaterThanOrEqual(value.bottom - 1); // under it, not beside it
+	});
 });

@@ -1,7 +1,7 @@
 <script lang="ts">
 	/** The scratchpad Copilot rail: the shared RailFrame with one "Guidelines" tab over CopilotCards. Below 1100 px
 	 *  it is the strip "<n> guidelines" that opens the same panel as an overlay. Presentational, like the cards. */
-	import type { ComponentProps } from 'svelte';
+	import { tick, type ComponentProps } from 'svelte';
 	import RailFrame from '$lib/rail/RailFrame.svelte';
 	import RailTabs from '$lib/rail/RailTabs.svelte';
 	import CopilotCards from './CopilotCards.svelte';
@@ -19,6 +19,18 @@
 	const tabs = [{ id: 'guidelines' as const, label: 'Guidelines' }];
 	let tab = $state<'guidelines'>('guidelines');
 	const count = $derived(cards.groups.reduce((n, g) => n + g.cards.length, 0));
+	let narrow = $state(false);
+	let overlayOpen = $state(false);
+
+	/** Open a card by its ref (the confirm bar's "N guidelines unresolved", §7.12 item 5) and scroll it into view;
+	 *  narrow, the overlay opens first. */
+	export async function reveal(ref: string): Promise<void> {
+		cards.onOpen(ref);
+		if (narrow) overlayOpen = true;
+		await tick();
+		const el = [...document.querySelectorAll<HTMLElement>('[data-testid="copilot-cards"] .cp-card[data-ref]')].find((e) => e.dataset.ref === ref);
+		el?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+	}
 </script>
 
 {#snippet head()}
@@ -33,7 +45,7 @@
 	</div>
 {/snippet}
 
-<RailFrame {theme} {layout} width={COPILOT_RAIL_W} ariaLabel="Copilot" testid="copilot-rail" stripLabel={count === 1 ? 'guideline' : 'guidelines'} stripCount={count} {head} {body} />
+<RailFrame {theme} {layout} width={COPILOT_RAIL_W} ariaLabel="Copilot" testid="copilot-rail" stripLabel={count === 1 ? 'guideline' : 'guidelines'} stripCount={count} bind:narrow bind:overlayOpen {head} {body} />
 
 <style>
 	/* bounded: the rail never grows the page; its list scrolls inside (the body already has overflow-y: auto) */
