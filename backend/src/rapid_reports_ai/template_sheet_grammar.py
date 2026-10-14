@@ -746,7 +746,7 @@ def _parse_unit(i, raw, body, keyword, ctx: _Ctx, by_name, default_section, err,
                             "condition_source": cond[0] if cond else "findings", "source_lines": [raw],
                             "origin": origin, "targets": targets}
     if keyword == "FIXED":
-        return "fixed", {"section": section, "text": m.group(1), "source_line": raw}
+        return "fixed", {**where, "text": m.group(1), "source_line": raw}
     if keyword == "TERM":
         return "term", {"kind": m.group(1), "text": m.group(2)}
     if keyword == "IF_PRESENT":

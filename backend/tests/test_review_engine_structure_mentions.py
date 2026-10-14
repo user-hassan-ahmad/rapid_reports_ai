@@ -174,3 +174,37 @@ async def test_structures_of_a_paragraph_of_only_conditional_fill_ins_are_not_as
     for n in ("medication", "scan quality", "heart rate", "radiation dose"):
         assert n not in seen["names"]
     assert _notes(items) == [(sm.KIND, "LMS")]
+
+
+FIXED_USE_SHEET = """## Report Structure
+SECTION FINDINGS | header: "Findings:" | role: findings
+SECTION IMPRESSION | header: "Impression:" | role: impression
+
+## Paragraph: Technique (FINDINGS)
+COVERS ["contrast"]
+FIXED "Images were acquired after intravenous contrast."
+RULE WHEN [context: the contrast dose is stated] USE "Contrast dose: {dose} ml."
+
+## Paragraph: Lungs (FINDINGS)
+COVERS ["lungs"]
+NORMAL [lungs] "The lungs are clear."
+"""
+
+
+def test_fixed_units_carry_their_paragraph_and_old_stored_ones_still_load():
+    from rapid_reports_ai.template_sheet_grammar import parse_sheet
+    from rapid_reports_ai.template_sheet_structure import FixedBlock
+    st = parse_sheet(FIXED_USE_SHEET).structure
+    assert st.usable and [f.paragraph for f in st.fixed_blocks] == ["p0"]
+    assert FixedBlock.model_validate({"id": "f0", "section": "FINDINGS", "text": "x"}).paragraph == ""
+    assert "paragraph" not in FixedBlock.model_json_schema()["properties"]
+
+
+@pytest.mark.asyncio
+async def test_a_paragraph_with_an_untargeted_fixed_line_and_only_use_rules_is_asked():
+    from rapid_reports_ai.review_engine.template_text import template_inputs
+    texts, st = template_inputs({"generation_mode": "skill_sheet_guided", "skill_sheet": FIXED_USE_SHEET})
+    i = _inp().model_copy(update={"template_text": texts, "template_structure": st})
+    ask, seen = _ask({})
+    await sm.mention_items(i, RUN, ask=ask)
+    assert seen["names"] == ["contrast", "lungs"]
