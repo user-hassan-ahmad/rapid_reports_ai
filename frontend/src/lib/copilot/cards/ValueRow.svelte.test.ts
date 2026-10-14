@@ -28,6 +28,12 @@ describe('ValueRow', () => {
 		await expect.element(page.getByText('“7 mm solid nodule”')).toBeVisible();
 	});
 
+	it('an option id is shown as words, never raw', async () => {
+		show(row({ input: 'growth', label: 'Growth', value: 'diameter_clear_growth', options: ['diameter_stable', 'diameter_clear_growth'] }));
+		await expect.element(page.getByText('Diameter clear growth', { exact: true })).toBeInTheDocument();
+		expect(li().textContent).not.toContain('diameter_clear_growth');
+	});
+
 	it('read with no quote is not a tab stop', async () => {
 		show(row({}));
 		await expect.element(page.getByText('7 mm', { exact: true })).toBeInTheDocument();

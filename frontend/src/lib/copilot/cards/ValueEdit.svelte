@@ -6,6 +6,7 @@
 	 * re-previews and Calculate re-runs on the values shown.
 	 */
 	import { onMount } from 'svelte';
+	import { shownValue } from './format';
 
 	let {
 		label,
@@ -36,8 +37,8 @@
 <span class="cp-edit" onkeydown={key} onclick={(e) => e.stopPropagation()}>
 	{#if options.length}
 		<select bind:this={el} class="cp-edit-field" aria-label={`Answer for ${label}`} value={value} onchange={(e) => onSave(e.currentTarget.value)}>
-			{#if !options.includes(value)}<option value={value} disabled>{value || 'Choose…'}</option>{/if}
-			{#each options as o (o)}<option value={o}>{o}</option>{/each}
+			{#if !options.includes(value)}<option value={value} disabled>{shownValue(value) || 'Choose…'}</option>{/if}
+			{#each options as o (o)}<option value={o}>{shownValue(o)}</option>{/each}
 		</select>
 	{:else}
 		<input bind:this={el} class="cp-edit-field" type="text" aria-label={`Answer for ${label}`} bind:value={draft} size="10" />

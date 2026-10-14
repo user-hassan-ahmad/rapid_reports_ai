@@ -122,6 +122,8 @@ export function scopeDoubts(p: Preview | null | undefined): { input: string; lab
 /** The backend's WHY_EXAM (library/pack_preview.py): an exam preset, shown as the "set by the exam" chip instead. */
 export const WHY_EXAM = 'set by the exam';
 const humanise = (id: string) => (id.charAt(0).toUpperCase() + id.slice(1)).replace(/_/g, ' ');
+/** A value as the card shows it: a stored option id ("diameter_clear_growth") as words, anything else as it is. */
+export const shownValue = (v: string) => (/^[a-z0-9]+(?:_[a-z0-9]+)+$/.test(v) ? humanise(v) : v);
 export interface ValueRow { input: string; label: string; value: string; quote: string; byExam: boolean; state: ValueState; why: string[]; options?: string[]; decisive?: boolean | null; /** assumed: a visible sign assumed absent */ sign?: boolean; /** where a derived value came from (§7.12 item 4) */ basis?: string }
 /** The values the card shows first. From the draft (Task 3): read, pre-filled, answered, edited and N/A rows with
  *  their state and why[]; else (pre-Task 3) preview.settled as read values, labelled from the entry's inputs, else
@@ -232,7 +234,7 @@ export function verdictOf(p: Preview | null | undefined, o: VerdictOverride = {}
 			category: 'not_applicable',
 			pill: 'May not apply',
 			tentative: true,
-			headline: `Check: ${[doubt.label, doubt.value].filter(Boolean).join(' — ')}`,
+			headline: `Check: ${[doubt.label, shownValue(doubt.value)].filter(Boolean).join(' — ')}`,
 			action: '',
 			recommendation: '',
 			classification: '',

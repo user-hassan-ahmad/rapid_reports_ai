@@ -172,3 +172,20 @@ describe('assumed but still needed', () => {
 		expect(notNeeded(p)).toEqual([]);
 	});
 });
+
+import { shownValue } from './format';
+describe('shownValue: a stored option id shown as words', () => {
+	it('humanises a snake_case option id and leaves ordinary values alone', () => {
+		expect(shownValue('diameter_clear_growth')).toBe('Diameter clear growth');
+		expect(shownValue('7 mm')).toBe('7 mm');
+		expect(shownValue('Yes')).toBe('Yes');
+		expect(shownValue('solid')).toBe('solid');
+		expect(shownValue('18 years or over')).toBe('18 years or over');
+		expect(shownValue('')).toBe('');
+	});
+	it('a scope-doubt headline shows the value as words', () => {
+		const rows = [{ input: 'growth', label: 'Growth', role: 'eligibility', state: 'prefilled', value: 'diameter_clear_growth' } as unknown as DraftValue];
+		const p = preview({ proposal: null, draft_outcome: outcome({ headline: 'X', action: 'Y', category: 'workup' }), draft: rows, scope_doubt: ['growth'] });
+		expect(verdictOf(p)?.headline).toBe('Check: Growth — Diameter clear growth');
+	});
+});
