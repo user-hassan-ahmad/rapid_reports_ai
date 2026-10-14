@@ -36,13 +36,13 @@ import time
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
 from .auth import get_current_user
-from .legacy_guard import mark as legacy_mark
+from .legacy_guard import is_stale_stack_request, mark as legacy_mark
 from .database import (
     create_ephemeral_skill_sheet,
     create_quick_report_with_candidates,
@@ -146,9 +146,8 @@ class GenerateRequest(BaseModel):
     sheet_id: Optional[str] = None
     scan_type: Optional[str] = None
     clinical_history: Optional[str] = None
-    # Scratchpad (checklist spec §7): `findings` is the confirmed findings block (answers only). The brief is the
-    # slim sheet's structure and style with the confirmed conclusion; it has no negatives stage, and never asserts
-    # what the radiologist removed.
+    # Stack fields: only so a stale tab is recognised and refused with 409 "reload" (spec §5 Old endpoints); stack
+    # sessions generate at /api/canvas/stack/generate.
     stack: bool = False
     stack_removed: List[str] = []
     stack_declined: List[str] = []   # the v2 name of stack_removed, still accepted
@@ -341,10 +340,6 @@ async def _run_one_generator(
     scan_type: str,
     clinical_history: str,
     user_signature: str | None = None,
-    stack: bool = False,
-    declined: List[str] | None = None,
-    conclusion: str = "",
-    stack_sheet: str = "",
 ) -> dict:
     """Run a single generator and return a candidate-record dict.
 
@@ -361,10 +356,6 @@ async def _run_one_generator(
             clinical_history=clinical_history,
             user_signature=user_signature,
             model_override=model_name,
-            stack=stack,
-            declined=declined or [],
-            conclusion=conclusion,
-            stack_sheet=stack_sheet,
         )
         latency_ms = int((time.time() - t0) * 1000)
         result["latency_ms"] = latency_ms
@@ -440,6 +431,8 @@ async def generate(
 
       event: error      data: {error}           (on upstream failure before the generator fires)
     """
+    if is_stale_stack_request(request):   # a stack session generates at /api/canvas/stack/generate (spec §5)
+        raise HTTPException(status_code=409, detail="reload")
     legacy_mark("quick.generate", getattr(current_user, "id", None), "/api/quick-report/generate")  # the tripwire (spec §9.5)
     # Resolve user_id now — SSE generator body closes over Session which is
     # scoped to the request; current_user.id stays valid within the generator.
@@ -519,10 +512,6 @@ async def generate(
                 scan_type=scan_type,
                 clinical_history=clinical_history,
                 user_signature=user_signature,
-                stack=request.stack,
-                declined=[*request.stack_removed, *request.stack_declined],
-                conclusion=request.stack_conclusion,
-                stack_sheet=_slim_markdown(db, request.stack_sheet_id) if request.stack else "",
             )
 
             logger.info(

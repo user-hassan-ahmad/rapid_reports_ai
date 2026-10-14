@@ -369,80 +369,12 @@ async def test_flag_on_with_an_old_sheet_runs_the_lean_path(aclient, auth_header
     assert r["pipeline"] == "mirror" and not stubs["current"] and stubs["mirror"][0]["sheet"].startswith("## FINDINGS")
 
 
-async def _generate_stack(aclient, headers, template):
-    body = {"user_inputs": {"FINDINGS": "LV normal.", "CLINICAL_HISTORY": "?HCM"}, "stack": True,
-            "stack_conclusion": "Normal cardiac MRI.", "stack_declined": ["No LGE."]}
-    return (await aclient.post(f"/api/templates/{template.id}/generate", headers=headers, json=body)).json()
-
-
-async def test_stack_session_reaches_the_lean_generator(aclient, auth_headers, mirror_template, stubs, monkeypatch):
-    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
-    r = await _generate_stack(aclient, auth_headers, mirror_template)
-    assert r["success"] and stubs["mirror"][0]["stack"] == {"conclusion": "Normal cardiac MRI.", "declined": ["No LGE."]}
-    assert stubs["mirror"][0]["declined"] == ["No LGE."]
-    await _drain_options()
-
-
-async def test_stack_session_takes_the_lean_path_with_the_flag_off(aclient, auth_headers, mirror_template, stubs,
-                                                                   monkeypatch):
-    """The scratchpad is the only template path: no RR_TEMPLATE_MIRROR / allowlist gate, no Phase 1, no options."""
-    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "0")
-    monkeypatch.delenv("RR_PIPELINE_OVERRIDE_USERS", raising=False)
-    r = await _generate_stack(aclient, auth_headers, mirror_template)
-    assert r["success"] and r["pipeline"] == "mirror" and not stubs["current"]
-    assert stubs["mirror"][0]["stack"] == {"conclusion": "Normal cardiac MRI.", "declined": ["No LGE."]}
-    assert stubs["mirror"][0]["case"] is None and not stubs["resolve"]   # no case resolver is even handed over
-    assert r["options_pending"] is False
-    assert r["artifacts"] is not None   # the post-generation check's artifacts reach the review rail
-
-
-async def test_a_saved_stack_report_records_its_skipped_phase1_and_options(aclient, auth_headers, mirror_template,
-                                                                           stubs, db_session, monkeypatch):
-    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "0")
-    r = await _generate_stack(aclient, auth_headers, mirror_template)
-    saved = db_session.get(Report, uuid.UUID(r["report_id"]))
-    db_session.refresh(saved)
-    cand = saved.candidate_reports[0]
-    assert cand["phase1_source"] == "skipped" and cand["options_status"] == "skipped"
-    assert cand["options_pending"] is False
-    got = (await aclient.get(f"/api/reports/{r['report_id']}/options", headers=auth_headers)).json()
-    assert got["status"] == "skipped" and got["options_pending"] is False
-
-
 async def test_without_a_stack_the_flag_off_still_takes_todays_path(aclient, auth_headers, mirror_template, stubs,
                                                                     monkeypatch):
     monkeypatch.setenv("RR_TEMPLATE_MIRROR", "0")
     monkeypatch.delenv("RR_PIPELINE_OVERRIDE_USERS", raising=False)
     r = await _generate(aclient, auth_headers, mirror_template)
     assert r["pipeline"] == "current" and stubs["current"] and not stubs["mirror"]
-
-
-async def test_a_stack_lean_failure_falls_back_to_todays_generator_with_the_stack(aclient, auth_headers,
-                                                                                  mirror_template, stubs, monkeypatch):
-    seen = []
-
-    async def broken(**kw):
-        raise RuntimeError("provider down")
-
-    async def fake_current(self, template_config, user_inputs, user_signature=None, **kw):
-        seen.append(kw)
-        return {"report_content": "CURRENT REPORT: the left ventricle is normal in size and function.",
-                "description": "Normal CMR", "scan_type": "CMR", "model_used": "m"}
-    monkeypatch.setattr(tl, "generate_template_report_lean", broken)
-    monkeypatch.setattr(TemplateManager, "generate_report_from_config", fake_current)
-    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "0")
-    r = await _generate_stack(aclient, auth_headers, mirror_template)
-    assert r["success"] and r["pipeline"] == "current"
-    assert seen[0]["stack"] == {"conclusion": "Normal cardiac MRI.", "declined": ["No LGE."]}
-
-
-async def test_stack_session_on_a_template_without_a_usable_structure_takes_todays_path(
-        aclient, auth_headers, guided_template, stubs, monkeypatch):
-    """No usable structure: no assumed normals were offered, so the stack brief would leave structures unstated."""
-    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
-    await _generate_stack(aclient, auth_headers, guided_template)
-    assert stubs["mirror"][0]["stack"] is None and stubs["mirror"][0]["declined"] == ["No LGE."]
-    await _drain_options()
 
 
 async def test_no_stack_flag_passes_no_stack(aclient, auth_headers, mirror_template, stubs, monkeypatch):
@@ -494,23 +426,11 @@ async def test_prepare_runs_phase1_on_the_templates_scan_type(aclient, auth_head
     assert seen == ["CMR"]  # generate reads the template's scan type, so Phase 1 must too
 
 
-async def test_a_scratchpad_report_carries_its_generation_stamp(aclient, auth_headers, mirror_template, stubs,
-                                                               db_session, monkeypatch):
-    from rapid_reports_ai.template_sheet_structure import STRUCTURE_VERSION, sheet_hash
-    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
-    r = await _generate_stack(aclient, auth_headers, mirror_template)
-    await _drain_options()
-    stamp = db_session.get(Report, uuid.UUID(r["report_id"])).generation_stamp
-    assert stamp["path"] == "scratchpad" and stamp["template_id"] == str(mirror_template.id)
-    assert stamp["sheet_hash"] == sheet_hash(mirror_template.template_config["skill_sheet"])
-    assert stamp["grammar_version"] == STRUCTURE_VERSION
-
-
 async def test_a_fallback_report_is_stamped_fallback(aclient, auth_headers, guided_template, stubs, db_session,
                                                      monkeypatch):
     from rapid_reports_ai.template_sheet_structure import sheet_hash
     monkeypatch.setenv("RR_TEMPLATE_MIRROR", "0")
-    r = await _generate_stack(aclient, auth_headers, guided_template)   # no usable structure: today's path
+    r = await _generate(aclient, auth_headers, guided_template)   # flag off: today's path
     assert r["pipeline"] == "current"
     await _drain_options()
     stamp = db_session.get(Report, uuid.UUID(r["report_id"])).generation_stamp
@@ -525,16 +445,6 @@ async def test_a_flag_routed_lean_report_is_stamped_lean(aclient, auth_headers, 
     await _drain_options()
     assert r["pipeline"] == "mirror"
     assert db_session.get(Report, uuid.UUID(r["report_id"])).generation_stamp["path"] == "lean"
-
-
-async def test_a_stack_whose_lean_call_failed_is_stamped_scratchpad_fallback(aclient, auth_headers, mirror_template,
-                                                                              stubs, db_session, monkeypatch):
-    async def broken(**kw):
-        raise RuntimeError("provider down")
-    monkeypatch.setattr(tl, "generate_template_report_lean", broken)
-    r = await _generate_stack(aclient, auth_headers, mirror_template)
-    assert r["pipeline"] == "current"
-    assert db_session.get(Report, uuid.UUID(r["report_id"])).generation_stamp["path"] == "scratchpad_fallback"
 
 
 async def test_todays_path_without_a_stack_is_stamped_fallback(aclient, auth_headers, mirror_template, stubs,
@@ -556,7 +466,7 @@ async def test_a_failing_stamp_never_stops_the_report_saving(aclient, auth_heade
     real = tss.generation_stamp
     monkeypatch.setattr(tss, "generation_stamp", lambda tid, cfg, path: real(tid, Exploding(cfg), path))
     monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
-    r = await _generate_stack(aclient, auth_headers, mirror_template)
+    r = await _generate(aclient, auth_headers, mirror_template)
     await _drain_options()
     saved = db_session.get(Report, uuid.UUID(r["report_id"]))
     assert r["success"] and saved is not None and saved.generation_stamp is None
@@ -573,17 +483,3 @@ def test_generation_stamp_is_total():
     assert generation_stamp("t", {"skill_sheet": "x", "analyser_version": "v" * 99}, "scratchpad") == {
         "template_id": "t", "sheet_hash": sheet_hash("x"), "grammar_version": STRUCTURE_VERSION,
         "analyser_version": "v" * 64, "path": "scratchpad"}
-
-
-async def test_stack_session_passes_the_values_marked_na(aclient, auth_headers, mirror_template, stubs, monkeypatch):
-    monkeypatch.setenv("RR_TEMPLATE_MIRROR", "1")
-    body = {"user_inputs": {"FINDINGS": "LV normal.", "CLINICAL_HISTORY": "?HCM"}, "stack": True,
-            "stack_conclusion": "Normal cardiac MRI.", "stack_declined": [], "stack_values_na": ["RVEF", " ", 3]}
-    r = (await aclient.post(f"/api/templates/{mirror_template.id}/generate", headers=auth_headers, json=body))
-    assert r.status_code == 422   # a non-string item is rejected by the request model
-    body["stack_values_na"] = ["RVEF", " "]
-    body["stack_values_filled"] = ["LVEF"]
-    r = (await aclient.post(f"/api/templates/{mirror_template.id}/generate", headers=auth_headers, json=body)).json()
-    assert r["success"] and stubs["mirror"][0]["stack"]["values_na"] == ["RVEF"]
-    assert stubs["mirror"][0]["stack"]["values_filled"] == ["LVEF"]
-    await _drain_options()

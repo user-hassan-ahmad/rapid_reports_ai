@@ -22,7 +22,7 @@ import uuid
 from dotenv import load_dotenv
 from sqlalchemy.exc import IntegrityError
 from .prompt_manager import get_prompt_manager
-from .legacy_guard import mark as legacy_mark
+from .legacy_guard import is_stale_stack_request, mark as legacy_mark
 from .database import (
     get_db,
     SessionLocal,
@@ -680,8 +680,10 @@ class TemplateGenerateRequest(BaseModel):
     variables: Optional[Dict[str, str]] = None
     model: str = MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
     pipeline: Optional[str] = None  # "mirror" / "current": honoured for allowlisted users only
-    stack_declined: Optional[List[str]] = None  # scratchpad v2: chips the radiologist removed (never offered back)
-    stack: bool = False  # a scratchpad session: FINDINGS is the confirmed findings block (template_stack)
+    # Stack fields: only so a stale tab is recognised and refused with 409 "reload" (spec §5 Old endpoints); stack
+    # sessions generate at /api/canvas/stack/generate.
+    stack_declined: Optional[List[str]] = None
+    stack: bool = False
     stack_conclusion: str = ""  # the conclusion the radiologist confirmed (the impression phrases it)
     stack_values_na: Optional[List[str]] = None  # value cluster: required values marked N/A (None: no cluster this session)
     stack_values_filled: Optional[List[str]] = None  # value cluster: values filled from the dictation (post-gen backstop)
@@ -1954,6 +1956,8 @@ async def generate_report_from_template(
     db: Session = Depends(get_db)
 ):
     """Generate a report from a template using new structured config system"""
+    if is_stale_stack_request(request):   # a stack session generates at /api/canvas/stack/generate (spec §5)
+        raise HTTPException(status_code=409, detail="reload")
     legacy_mark("template.generate", getattr(current_user, "id", None), "/api/templates/{id}/generate")  # the tripwire (spec §9.5)
     try:
         # Get the template
@@ -2001,29 +2005,13 @@ async def generate_report_from_template(
                 clinical_history=_clinical,
                 user_id=str(current_user.id),
             )
-        # Routing: a scratchpad session (below) always takes the lean path; any other generation takes it when
+        # Routing (the old flow only; stack sessions generate at /api/canvas/stack/generate): the lean path when
         # RR_TEMPLATE_MIRROR / allowlist chooses it, else today's path. Lean = today's generator on the stored sheet
-        # + the post-generation check; off the scratchpad, Phase 1 for options only, finished in the background
-        # (the report never waits for options). The heavy mirror (tp.generate_template_report) is parked.
-        _stack = ({"conclusion": request.stack_conclusion, "declined": request.stack_declined or []}
-                  if request.stack else None)
-        if _stack is not None and request.stack_values_na is not None:
-            # The value cluster settled the template's required values: these were marked N/A (template_required_values)
-            _stack["values_na"] = [x.strip()[:200] for x in request.stack_values_na if x.strip()][:40]
-            _stack["values_filled"] = [x.strip()[:200] for x in (request.stack_values_filled or []) if x.strip()][:40]
-        if _stack is not None:
-            from .hybrid_stack.template import template_structure
-            if template_structure(template.template_config) is None:
-                # No usable structure: the scratchpad offered no assumed normals, so the stack brief (which strips the
-                # sheet's normals) would leave every undictated structure unstated. Today's template path instead.
-                logger.info("template %s: stack session without a usable structure; today's path", template_id)
-                _stack = None
-        # A scratchpad session (usable structure = a guided grammar sheet) always takes the lean path: generation +
-        # the post-generation check, no flag gate. Its checklist already decided the case: no Phase 1, no options.
-        # Every other generation keeps the flag / allowlist routing.
-        use_mirror = _stack is not None or _mirror_ready(template, current_user.email, request.pipeline)
+        # + the post-generation check, Phase 1 for options only, finished in the background (the report never waits
+        # for options). The heavy mirror (tp.generate_template_report) is parked.
+        use_mirror = _mirror_ready(template, current_user.email, request.pipeline)
         mirror_candidate, options_job = None, None
-        _p1 = {"source": "skipped" if _stack is not None else "pending"}   # a scratchpad session runs no Phase 1
+        _p1 = {"source": "pending"}
         if use_mirror:
             try:
                 _cfg = template.template_config
@@ -2043,15 +2031,13 @@ async def generate_report_from_template(
                         _db.close()
                 mirror_result = await tl.generate_template_report_lean(
                     sheet=_sheet, scan_type=_scan, findings=_findings, history=_history,
-                    case=None if _stack is not None else _resolve_case,
-                    signature=current_user.signature, declined=request.stack_declined or [], stack=_stack)
+                    case=_resolve_case, signature=current_user.signature, declined=[], stack=None)
                 options_job = mirror_result.get("options_job")
                 mirror_candidate = tp.candidate_record(mirror_result, int((time.perf_counter() - _tpl_gen_t0) * 1000))
                 mirror_candidate["phase1_source"] = _p1["source"]   # "pending" until the options job resolves it
                 # Options, and why each was offered, dropped or capped, arrive from the background job
                 mirror_candidate["options_pending"] = options_job is not None
-                mirror_candidate["options_status"] = ("pending" if options_job is not None
-                                                      else "skipped" if _stack is not None else "none")
+                mirror_candidate["options_status"] = "pending" if options_job is not None else "none"
                 mirror_candidate["case_decisions"] = mirror_result.get("case_decisions")
                 mirror_candidate["gate_dropped"] = mirror_result.get("gate_dropped") or []
                 report_output_dict = {"report_content": mirror_result["report_content"],
@@ -2061,22 +2047,19 @@ async def generate_report_from_template(
                 logger.info("template mirror %s: report ready, options pending=%s lat=%s", template_id,
                             mirror_candidate["options_pending"], mirror_candidate["lat"])
             except Exception as e:  # fail-soft: a mirror failure falls back to today's path
-                logger.warning("template mirror failed for %s stack=%s (%s: %s); today's path, the report goes out "
-                               "without the post-generation check", template_id, _stack is not None,
-                               type(e).__name__, str(e)[:300])
+                logger.warning("template mirror failed for %s (%s: %s); today's path, the report goes out "
+                               "without the post-generation check", template_id, type(e).__name__, str(e)[:300])
                 if options_job is not None:
                     options_job.cancel()
                 use_mirror, mirror_candidate, options_job = False, None, None
-        # The route actually taken, for the generation stamp: "scratchpad" (stack, lean ran), "lean" (flag /
-        # allowlist, no stack), "scratchpad_fallback" (stack, lean failed -> today's path), "fallback" (today's path)
-        _stamp_path = (("scratchpad" if use_mirror else "scratchpad_fallback") if _stack is not None
-                       else ("lean" if use_mirror else "fallback"))
+        # The route actually taken, for the generation stamp: "lean" (flag / allowlist), "fallback" (today's path)
+        _stamp_path = "lean" if use_mirror else "fallback"
         if not use_mirror:
             report_output_dict = await tm.generate_report_from_config(
                 template_config=template.template_config,
                 user_inputs=user_inputs,
                 user_signature=current_user.signature,
-                stack=_stack,
+                stack=None,
             )
         print(
             f"[FLOW_TIMING] template_generate: llm_done "
