@@ -78,7 +78,7 @@ from pydantic import BaseModel
 from ..report_reconcile import strip_p_values
 from ..report_review import is_negative
 from ..report_review import report_body as report_review_body
-from . import adjudicator, brief_normals, claims, conflict_pointer, dictated_gate, jev_pass, live, negatives, provenance, store, verifier
+from . import adjudicator, brief_normals, claims, conflict_pointer, dictated_gate, jev_pass, live, negatives, provenance, store, template_gaps, verifier
 from .alignment import Alignment, align
 from .checks import run_checks
 from .items import Candidate, Edit, ReviewInput, ReviewItem, Span, item_key, merge, report_body, text_hash
@@ -760,6 +760,14 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         items += flags
     except Exception as e:  # noqa: BLE001 - never fails the run
         errors["post_check_flags"] = f"{type(e).__name__}: {str(e)[:200]}"
+    gap_log: Optional[dict] = None
+    try:                                 # template gaps (templated reports with a grammar sheet): pure code flags
+        gaps, gap_log = template_gaps.gap_items(inp, run_id)
+        for it in gaps:
+            it.engine_version = ENGINE_VERSION
+        items += gaps
+    except Exception as e:  # noqa: BLE001 - never fails the run
+        errors["template_gaps"] = f"{type(e).__name__}: {str(e)[:200]}"
     timings["total"] = int((time.monotonic() - t0) * 1000)
     errors.update({f"adjudicator_{k}": o.error for k, o in enumerate(outcomes) if o.error})
     run = {"lanes": lanes, "timings_ms": timings, "errors": errors,
@@ -767,7 +775,7 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
                     "candidates": len(cands), "prefiltered": len(held),
                     "negatives_calls": 1 if neg_log and neg_log.get("candidates") else 0},
            "pre_apply": pre_log, "negatives": _neg_summary(neg_log), "deduped": deduped, "post_check": bridge_log, "provenance": prov_log,
-           "dictated_gate": gate_log, "conflict_pointer": pointer_log,
+           "dictated_gate": gate_log, "conflict_pointer": pointer_log, "template_gaps": gap_log,
            "negatives_report": (neg_log or {}).get("report"),
            "negatives_post_removal_anchors": (neg_log or {}).get("post_removal_anchors") or {}}
     return ReviewResult(run=run, items=items, report=report)
