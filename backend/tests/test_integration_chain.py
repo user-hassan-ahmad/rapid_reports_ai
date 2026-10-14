@@ -68,3 +68,9 @@ def test_stack_log_keeps_template_stamp_and_copilot(authed, db_session, user):
     row = db_session.query(DictationStackLog).filter_by(session_id="s1").one()
     assert row.template_id == str(t.id) and row.stamp["sheet_hash"]
     assert row.copilot == {"applied": ["k@1"]}
+
+
+def test_stack_log_report_id_is_indexed():
+    """The review engine looks the stack log up by report_id once per review (template text checks)."""
+    assert DictationStackLog.__table__.c.report_id.index is True
+    assert _scripts().get_heads() == ["20261014120000"]

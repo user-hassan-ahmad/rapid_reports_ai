@@ -942,7 +942,7 @@ class DictationStackLog(Base):
     manual_moves = Column(Integer, nullable=False, default=0)
     latency_ms = Column(JSONBType(), nullable=True)
     gate = Column(JSONBType(), nullable=True)            # v2: what the radiologist confirmed before Generate
-    report_id = Column(String(64), nullable=True)        # v2: the report generated from this session
+    report_id = Column(String(64), nullable=True, index=True)  # v2: the report generated from this session
     template_id = Column(String(64), nullable=True)      # template-evidence: template used, if any
     stamp = Column(JSONBType(), nullable=True)           # template-evidence: generation stamp
     copilot = Column(JSONBType(), nullable=True)         # Copilot: cards matched/opened/applied, threads, recommendations
