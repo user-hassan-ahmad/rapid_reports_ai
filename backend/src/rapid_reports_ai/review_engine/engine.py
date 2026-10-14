@@ -78,7 +78,7 @@ from pydantic import BaseModel
 from ..report_reconcile import strip_p_values
 from ..report_review import is_negative
 from ..report_review import report_body as report_review_body
-from . import adjudicator, brief_normals, claims, conflict_pointer, dictated_gate, jev_pass, live, negatives, provenance, store, template_gaps, verifier
+from . import adjudicator, brief_normals, claims, conflict_pointer, dictated_gate, jev_pass, live, negatives, provenance, store, structure_mentions, template_gaps, verifier
 from .alignment import Alignment, align
 from .checks import run_checks
 from .items import Candidate, Edit, ReviewInput, ReviewItem, Span, item_key, merge, report_body, text_hash
@@ -578,6 +578,8 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
     neg_task = None
     types: Dict[str, str] = {}
     brief_items: List[ReviewItem] = []
+    # quiet "area never mentioned" notes: one Jev request, independent of the rest, so it runs beside the whole run
+    mention_task = asyncio.create_task(structure_mentions.mention_items(inp, run_id))
     try:
         body = report_body(inp)          # the report without its signature block: a prefix, positions unchanged
         al = align(body, a.dictated_findings, inp.clinical_history, a.sections)
@@ -640,6 +642,7 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
     except BaseException:
         if neg_task is not None:
             neg_task.cancel()
+        mention_task.cancel()
         raise
     neg_items: List[ReviewItem] = []
     neg_log = None
@@ -768,6 +771,16 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         items += gaps
     except Exception as e:  # noqa: BLE001 - never fails the run
         errors["template_gaps"] = f"{type(e).__name__}: {str(e)[:200]}"
+    try:                                 # the quiet notes (started with the run; mention_items never raises)
+        notes, note_log = await mention_task
+        for it in notes:
+            it.engine_version = ENGINE_VERSION
+        items += notes
+        if note_log is not None:
+            gap_log = {**(gap_log or {}), **{f"mention_{k}" if k in ("capped", "error") else k: v
+                                             for k, v in note_log.items()}}
+    except Exception as e:  # noqa: BLE001 - never fails the run
+        errors["structure_mentions"] = f"{type(e).__name__}: {str(e)[:200]}"
     timings["total"] = int((time.monotonic() - t0) * 1000)
     errors.update({f"adjudicator_{k}": o.error for k, o in enumerate(outcomes) if o.error})
     run = {"lanes": lanes, "timings_ms": timings, "errors": errors,
