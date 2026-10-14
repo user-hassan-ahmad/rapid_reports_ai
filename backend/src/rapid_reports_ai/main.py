@@ -22,6 +22,7 @@ import uuid
 from dotenv import load_dotenv
 from sqlalchemy.exc import IntegrityError
 from .prompt_manager import get_prompt_manager
+from .legacy_guard import mark as legacy_mark
 from .database import (
     get_db,
     SessionLocal,
@@ -210,6 +211,7 @@ def _schedule_prefetch_task(
     user_id: str,
 ) -> None:
     """Fire-and-forget prefetch; registers PREFETCH_TASKS for enhance to optionally await."""
+    legacy_mark("prefetch.schedule", user_id, None)  # the tripwire (spec §9.5)
     task = asyncio.create_task(
         _run_prefetch_and_store(
             prefetch_id=prefetch_id,
@@ -263,6 +265,7 @@ async def _run_tavily_search_chat(queries: List[str]) -> tuple:
     Replaces the previous Perplexity-based run_perplexity_search_chat.
     Returns (evidence_text, sources_list) — same shape as the old function.
     """
+    legacy_mark("chat.tavily", None, None)  # the tripwire (spec §9.5)
     import logging
     _log = logging.getLogger(__name__)
     tavily_key = os.getenv("TAVILY_API_KEY", "")
@@ -1910,7 +1913,10 @@ def _mirror_ready(template, email: Optional[str], requested: Optional[str] = Non
     allowlist) and skill_sheet_guided. No grammar structure is needed: the stored sheet is used as it is, and
     Phase 1 serves options only. Every other template keeps today's path."""
     cfg = template.template_config if isinstance(template.template_config, dict) else {}
-    return tp.choose_mirror(requested, email) and cfg.get("generation_mode") == "skill_sheet_guided"
+    ready = tp.choose_mirror(requested, email) and cfg.get("generation_mode") == "skill_sheet_guided"
+    if ready:
+        legacy_mark("template.mirror", None, None)
+    return ready
 
 
 @app.post("/api/templates/{template_id}/prepare")
@@ -1922,6 +1928,7 @@ async def prepare_template_case(
 ):
     """"Set up workspace": start Phase 1 (the case analyser on the clinical history) in the background so
     Generate finds the master sheet ready. Returns at once: skipped / running / ready."""
+    legacy_mark("template.prepare", getattr(current_user, "id", None), "/api/templates/{id}/prepare")  # the tripwire (spec §9.5)
     try:
         template = get_template(db, template_id, user_id=str(current_user.id))
         if not template:
@@ -1947,6 +1954,7 @@ async def generate_report_from_template(
     db: Session = Depends(get_db)
 ):
     """Generate a report from a template using new structured config system"""
+    legacy_mark("template.generate", getattr(current_user, "id", None), "/api/templates/{id}/generate")  # the tripwire (spec §9.5)
     try:
         # Get the template
         template = get_template(db, template_id, user_id=str(current_user.id))
@@ -2089,6 +2097,7 @@ async def generate_report_from_template(
         ENABLE_TEMPLATE_STRUCTURE_VALIDATION = os.getenv("ENABLE_TEMPLATE_STRUCTURE_VALIDATION", "false").lower() == "true"
         
         if ENABLE_TEMPLATE_STRUCTURE_VALIDATION and not use_mirror:
+            legacy_mark("template.structure_validation", getattr(current_user, "id", None), "/api/templates/{id}/generate")
             from .enhancement_utils import validate_report_structure
             
             user_inputs = request.user_inputs or request.variables or {}
@@ -3240,6 +3249,7 @@ async def quick_report_proto_analyse_endpoint(
     `ephemeral_skill_sheets` table. `sheet_id` is returned so the subsequent
     generate call can reference the persisted sheet.
     """
+    legacy_mark("quick.analyse.proto", getattr(current_user, "id", None), "/api/quick-report-proto/analyse")  # the tripwire (spec §9.5)
     from .quick_report_analyser import (
         generate_ephemeral_skill_sheet,
         log_analyser_run,
@@ -3979,6 +3989,7 @@ async def get_validation_status(
     db: Session = Depends(get_db)
 ):
     """Get validation status for a report"""
+    legacy_mark("report.validation_status", getattr(current_user, "id", None), "/api/reports/{id}/validation-status")  # the tripwire (spec §9.5)
     try:
         from .database.crud import get_validation_status
         
@@ -4103,6 +4114,7 @@ async def enhance_report(
     db: Session = Depends(get_db),
 ):
     """Enhancement pipeline: Prefetch S1-S3 → S4 Synthesis → Phase 2 Audit."""
+    legacy_mark("report.enhance", getattr(current_user, "id", None), "/api/reports/{id}/enhance")  # the tripwire (spec §9.5)
     try:
         report = get_report(db, report_id, user_id=str(current_user.id))
         if not report:
@@ -6100,6 +6112,7 @@ async def run_audit(
 
     Phase 2 (3 guideline-compliance criteria) runs inside /enhance after S4 synthesis.
     """
+    legacy_mark("audit", getattr(current_user, "id", None), "/api/audit")  # the tripwire (spec §9.5)
     try:
         _audit_t0 = time.perf_counter()
         if not request.report_content or not request.report_content.strip():
@@ -6226,6 +6239,7 @@ async def run_audit_phase2_endpoint(
     Uses stored synthesis cards from ENHANCEMENT_RESULTS or DB — does NOT re-run S4.
     Called by the frontend on re-audit to refresh stale Phase 2 criteria.
     """
+    legacy_mark("audit.phase2", getattr(current_user, "id", None), "/api/audit/phase2")  # the tripwire (spec §9.5)
     try:
         _p2_t0 = time.perf_counter()
         if not request.report_content or not request.report_content.strip():
@@ -6364,6 +6378,7 @@ async def acknowledge_audit_criterion(
     Acknowledge a specific criterion on an audit.
     Marks it as reviewed with the specified resolution method.
     """
+    legacy_mark("audit.criteria", getattr(current_user, "id", None), "/api/audit/{id}/criteria/{c}")  # the tripwire (spec §9.5)
     try:
         valid_criteria = [
             "anatomical_accuracy", "clinical_relevance", "recommendations",

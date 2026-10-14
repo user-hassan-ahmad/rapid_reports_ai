@@ -42,6 +42,7 @@ from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
 from .auth import get_current_user
+from .legacy_guard import mark as legacy_mark
 from .database import (
     create_ephemeral_skill_sheet,
     create_quick_report_with_candidates,
@@ -198,6 +199,7 @@ async def analyse(
 
       event: error           data: {error}   (on upstream failure)
     """
+    legacy_mark("quick.analyse", getattr(current_user, "id", None), "/api/quick-report/analyse")  # the tripwire (spec §9.5)
     user_id_str = str(current_user.id)
 
     async def event_stream():
@@ -438,6 +440,7 @@ async def generate(
 
       event: error      data: {error}           (on upstream failure before the generator fires)
     """
+    legacy_mark("quick.generate", getattr(current_user, "id", None), "/api/quick-report/generate")  # the tripwire (spec §9.5)
     # Resolve user_id now — SSE generator body closes over Session which is
     # scoped to the request; current_user.id stays valid within the generator.
     user_id_str = str(current_user.id)
