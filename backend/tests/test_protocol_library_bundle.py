@@ -64,7 +64,7 @@ def test_library_allowed_needs_flag_stack_and_bundle(monkeypatch):
     assert PB.library_allowed(env) is True
     PB.reset_cache()
     assert PB.library_allowed({**env, "RR_PROTOCOL_LIBRARY": "0"}) is False
-    assert PB.library_allowed({**env, "RR_HYBRID_STACK": "0"}) is False
+    assert PB.library_allowed({**env, "RR_STACK": "0"}) is False
 
 
 def test_broken_bundle_turns_library_off(monkeypatch, tmp_path, caplog):

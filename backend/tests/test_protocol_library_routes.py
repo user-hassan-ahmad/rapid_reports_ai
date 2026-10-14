@@ -11,7 +11,7 @@ FIX = Path(__file__).parent / "fixtures" / "protocol_bundle_fixture.json"
 @pytest.fixture
 def lib_env(monkeypatch):
     monkeypatch.setenv("RR_DICTATION_V2", "1")
-    monkeypatch.delenv("RR_HYBRID_STACK", raising=False)
+    monkeypatch.delenv("RR_STACK", raising=False)
     monkeypatch.setenv("RR_PROTOCOL_LIBRARY", "1")
     monkeypatch.setenv("RR_PROTOCOL_LIBRARY_PATH", str(FIX))
     PB.reset_cache()

@@ -28,7 +28,7 @@ def user(db_session):
 @pytest.fixture
 def authed(client, user, monkeypatch):
     monkeypatch.setenv("RR_DICTATION_V2", "1")
-    monkeypatch.delenv("RR_HYBRID_STACK", raising=False)
+    monkeypatch.delenv("RR_STACK", raising=False)
     app.dependency_overrides[get_current_user] = lambda: user
     yield client
     app.dependency_overrides.pop(get_current_user, None)
@@ -47,7 +47,7 @@ def test_chain_reaches_prod_revision():
 
 
 def test_flag_defaults(monkeypatch):
-    for k in ("RR_HYBRID_STACK", "RR_STACK_COPILOT", "RR_CHAT_ROUTER"):
+    for k in ("RR_STACK", "RR_STACK_COPILOT", "RR_CHAT_ROUTER"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("RR_DICTATION_V2", "1")
     assert R.stack_allowed() is True

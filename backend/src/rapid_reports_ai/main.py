@@ -3817,7 +3817,7 @@ async def get_api_key_status(
     """Get API key configuration status - all keys from system env (DEEPGRAM_API_KEY central)"""
     db.refresh(current_user)
     from rapid_reports_ai.dictation_v2 import v2_allowed
-    from rapid_reports_ai.hybrid_stack.routes import shadow_rate, stack_allowed
+    from rapid_reports_ai.stack_switch import stack_allowed
     from rapid_reports_ai.hybrid_stack.protocol_library.bundle import library_allowed
     from rapid_reports_ai.hybrid_stack.copilot.routes import copilot_allowed
     
@@ -3836,11 +3836,13 @@ async def get_api_key_status(
         "has_at_least_one_model": has_anthropic or has_groq or has_cerebras,
         # the dictation package (rr_dictation_v2): the browser runs it only when allowed here
         "dictation_v2": v2_allowed(),
-        # the hybrid dictation stack: default on with the dictation package; RR_HYBRID_STACK=0 turns it off
+        # the scratchpad stack: the one switch, on unless RR_STACK=0 (integration spec §9.1)
+        "stack": stack_allowed(),
+        # P2c reads "stack", then these two go: today's browser reads hybrid_stack and defaults a missing shadow
+        # rate to 0.25, so the shadow is sent as 0 (the shadow is removed, §9.4)
         "hybrid_stack": stack_allowed(),
+        "hybrid_stack_shadow_rate": 0.0,
         "protocol_library": library_allowed(),
-        # share of sessions that also build the old Structured text once, at session end (shadow)
-        "hybrid_stack_shadow_rate": shadow_rate(),
         # the scratchpad Copilot (guideline cards): on with the stack; RR_STACK_COPILOT=0 turns it off
         "stack_copilot": copilot_allowed(),
         "using_user_keys": {

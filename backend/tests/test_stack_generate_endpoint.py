@@ -26,7 +26,7 @@ def user(db_session):
 @pytest.fixture
 def authed(client, user, monkeypatch):
     monkeypatch.setenv("RR_DICTATION_V2", "1")
-    monkeypatch.delenv("RR_HYBRID_STACK", raising=False)
+    monkeypatch.delenv("RR_STACK", raising=False)
     app.dependency_overrides[get_current_user] = lambda: user
     yield client
     app.dependency_overrides.pop(get_current_user, None)
@@ -109,7 +109,7 @@ def test_template_generate_refuses_another_users_template(authed, db_session, fa
 
 
 def test_stack_off_is_404(authed, monkeypatch):
-    monkeypatch.setenv("RR_HYBRID_STACK", "0")
+    monkeypatch.setenv("RR_STACK", "0")
     assert authed.post("/api/canvas/stack/generate", json=_body()).status_code == 404
 
 

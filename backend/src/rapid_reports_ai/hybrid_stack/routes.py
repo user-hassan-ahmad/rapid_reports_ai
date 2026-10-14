@@ -1,11 +1,10 @@
-"""Hybrid stack endpoints (spec §3, §5). On when the dictation package is allowed and the kill
-switch RR_HYBRID_STACK is not "0" (default on). Reviewers (RR_STACK_REVIEWERS, comma-separated
+"""Hybrid stack endpoints (spec §3, §5). On unless the one switch RR_STACK is "0" (integration spec §9.1). Reviewers (RR_STACK_REVIEWERS, comma-separated
 emails) approve, edit or reject reconciled families."""
 from __future__ import annotations
 
 import json
 import os
-from typing import Literal, Mapping
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -15,7 +14,7 @@ from ..auth import get_current_user
 from ..database import get_db
 from ..database.crud import get_template
 from ..database.models import DictationStackLog, StackSchemaFamily, StackSlimSheet, User
-from ..dictation_v2 import v2_allowed
+from ..stack_switch import stack_allowed  # noqa: F401 (re-exported)
 from ..template_decisions import clean_ledger
 from ..template_sheet_structure import generation_stamp
 from .schemas import Region, groups_for, pill_regions
@@ -39,18 +38,6 @@ router = APIRouter(prefix="/api/canvas/stack", tags=["hybrid-stack"])
 
 MAX_REGION_TEXT = 4000        # characters of one region's grouped sentences sent to Jev
 MAX_NORMALS_PER_REGION = 16   # conversion lab 2026-10-12: 8 silently cut mandatory negatives in long paragraphs
-
-
-def stack_allowed(env: Mapping[str, str] = os.environ) -> bool:
-    return env.get("RR_HYBRID_STACK", "1") != "0" and v2_allowed(env)
-
-
-def shadow_rate(env: Mapping[str, str] = os.environ) -> float:
-    """Share of sessions that also build the old Structured text once, at session end (shadow)."""
-    try:
-        return min(1.0, max(0.0, float(env.get("RR_STACK_SHADOW_RATE", "0.25"))))
-    except ValueError:
-        return 0.25
 
 
 def _require() -> None:
