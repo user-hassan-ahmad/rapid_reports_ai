@@ -73,14 +73,17 @@ export interface AssumedSnap { dictation: string; abnormal: string[]; untouched:
 export function assumedStale(hasSheet: boolean, snap: AssumedSnap | null, dictation: string): boolean {
 	if (!hasSheet) return false;
 	if (snap === null || snap.dictation !== dictation) return true;
-	// A failed side check is asked again for the same dictation, up to three answers (re-review N4): its held or
+	// A failed side check is asked again for the same dictation, up to two answers (re-review N4, L2): its held or
 	// carried questions must not stay held once a retry can answer them.
-	if (snap.side_failed && (snap.side_failures ?? 1) < ASSUMED_RETRIES) return true;
+	if (snap.side_failed && (snap.side_failures ?? 1) < SIDE_ANSWERS) return true;
 	// A failed answer for the empty dictation (the sheet load's rule call, round 1) is asked again, up to three tries,
 	// so the tray recovers; once something is dictated a failure fails open, as before.
 	return !!snap.check_failed && !dictation.trim() && (snap.failures ?? 1) < ASSUMED_RETRIES;
 }
 export const ASSUMED_RETRIES = 3;
+/** Answers a failed side check gets for one dictation: the first and one retry. The server does not retry, so an
+ *  outage costs about 1.2 s + 3 s twice of "Updating…" per change (re-review 2 L2). */
+export const SIDE_ANSWERS = 2;
 
 /** A dictated-normal region (review R2) keeps the sentences the check left: the stated check removed what was said,
  *  so "ACL intact" keeps the PCL sentence. Like the others, only when it was checked in that same state. */

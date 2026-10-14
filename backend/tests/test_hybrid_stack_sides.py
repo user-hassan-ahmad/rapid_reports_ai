@@ -165,18 +165,17 @@ async def test_templates_never_ask_which_side(monkeypatch):
     assert calls == [] and out.side_asks == []
 
 
-async def test_a_failed_side_question_is_retried_once(monkeypatch):
+async def test_a_failed_side_question_is_not_retried_on_the_server(monkeypatch):
+    # re-review 2 L2: the client re-asks a failed side check; a server retry too stacked the outage wait
     tries = []
 
-    async def flaky(dictation, pairs):
+    async def boom(dictation, pairs):
         tries.append(1)
-        if len(tries) == 1:
-            raise TimeoutError("jev")
-        return [("no_side", {"no_side": 0.9})] + [("none", {})] * (len(pairs) - 1)
+        raise TimeoutError("jev")
     monkeypatch.setattr(N, "ask_rows", _rows({}))
-    monkeypatch.setattr(N, "ask_sides", flaky)
+    monkeypatch.setattr(N, "ask_sides", boom)
     out = await N.assumed("Simple cyst in the kidney.", KIDNEYS, ["Kidneys"], [], sides=True)
-    assert len(tries) == 2 and not out.side_failed and len(out.side_asks) == 1
+    assert len(tries) == 1 and out.side_failed
 
 
 async def test_a_failed_side_question_drops_a_touched_pair_and_holds_the_rest(monkeypatch):
@@ -189,7 +188,7 @@ async def test_a_failed_side_question_drops_a_touched_pair_and_holds_the_rest(mo
     monkeypatch.setattr(N, "ask_rows", _rows({R_K: (0.0, 0.5, 0.0), L_K: (0.0, 0.1, 0.0)}))
     monkeypatch.setattr(N, "ask_sides", boom)
     out = await N.assumed("Renal cyst.", KIDNEYS, ["Kidneys"], [], sides=True)
-    assert len(calls) == 2 and out.error is None and out.side_asks == [] and out.side_failed
+    assert len(calls) == 1 and out.error is None and out.side_asks == [] and out.side_failed
     assert out.dropped["Kidneys"] == [{"sentence": R_K, "reason": "side_unchecked"}, {"sentence": L_K, "reason": "side_unchecked"}]
     # the hydronephrosis pair is not contradicted on either side: its region is held for Confirm, never kept silently
     assert out.side_hold == ["Kidneys"]

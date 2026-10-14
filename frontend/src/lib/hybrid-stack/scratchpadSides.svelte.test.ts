@@ -16,7 +16,8 @@ const SIDED = 'A simple cyst in the left kidney.';
 const calls: { name: string; body?: any }[] = [];
 // ok: Jev answers; side_fail: the side call failed twice, as the server returns it (the touched pair dropped,
 // side_unchecked; `hold` regions held); error: the whole check failed; throw: the request failed
-const state: { mode: 'ok' | 'side_fail' | 'error' | 'throw'; hold: string[] } = { mode: 'ok', hold: [] };
+// failsLeft: side_fail answers left before the stub answers ok again (null: fail every time)
+const state: { mode: 'ok' | 'side_fail' | 'error' | 'throw'; hold: string[]; failsLeft: number | null } = { mode: 'ok', hold: [], failsLeft: null };
 vi.mock('$lib/hybrid-stack/api', async (orig) => {
 	const real: any = await orig();
 	const stub = (name: string, reply: (body: any) => any) => vi.fn(async (_t: unknown, body?: any) => {
@@ -34,7 +35,8 @@ vi.mock('$lib/hybrid-stack/api', async (orig) => {
 			const sided = b.dictation.includes(SIDED);
 			if (state.mode === 'throw') throw new Error('stack assumed 500');
 			if (state.mode === 'error') return { assumed: {}, flagged: {}, dropped: {}, ms: 1, error: 'TimeoutError: jev' };
-			if (state.mode === 'side_fail') return { assumed: { Kidneys: [], Liver: ['The liver is normal.'] }, flagged: {},
+			const failing = state.mode === 'side_fail' && (state.failsLeft === null || state.failsLeft-- > 0);
+			if (failing) return { assumed: { Kidneys: [], Liver: ['The liver is normal.'] }, flagged: {},
 				dropped: { Kidneys: [{ sentence: R, reason: 'side_unchecked' }, { sentence: L, reason: 'contradicted' }] },
 				side_asks: [], side_choices: [], side_failed: true, side_hold: state.hold, ms: 1, error: null };
 			return {
@@ -72,6 +74,7 @@ async function mountAsked(onStackGate = vi.fn()) {
 	calls.length = 0;
 	state.mode = 'ok';
 	state.hold = [];
+	state.failsLeft = null;
 	const props: any = { hybridStack: true, polishMode: 'clean', scanType: 'CT abdomen', clinicalHistory: 'Pain.', onStackGate };
 	const r = render(DictationScratchpad, props);
 	await r.rerender({ ...props, stackRegions: ['Kidneys', 'Liver'].map((name) => ({ name, includes: '' })),
@@ -114,8 +117,8 @@ describe('scratchpad: "Which side?" on a quick session', () => {
 		(r.component as any).reset(`${SIDELESS} The liver is normal. Renal cyst.`);   // the Kidneys text is unchanged
 		await expect.element(page.getByText(/side check unavailable: open/), { timeout: 8000 }).toBeInTheDocument();
 		await expect.element(card().getByText('Which side?')).toBeInTheDocument();
-		// the side check is asked again for the same dictation (up to three answers), then Confirm walks to the ask
-		await expect.poll(() => assumedCalls().length - before, { timeout: 10000 }).toBe(3);
+		// the side check is asked again for the same dictation (two answers in all), then Confirm walks to the ask
+		await expect.poll(() => assumedCalls().length - before, { timeout: 10000 }).toBe(2);
 		await expect.element(page.getByRole('button', { name: 'Confirm · 1 to resolve' }), { timeout: 8000 }).toBeEnabled();
 		await card().getByRole('button', { name: 'Keep without side' }).click();
 		await expect.element(confirmBtn(), { timeout: 8000 }).toBeEnabled();
@@ -132,11 +135,10 @@ describe('scratchpad: "Which side?" on a quick session', () => {
 		const r = await mountAsked(onStackGate);
 		state.mode = 'side_fail';
 		state.hold = ['Kidneys'];
+		state.failsLeft = 1;   // the client's retry answers
 		(r.component as any).reset(`${SIDED} Renal cyst.`);
 		await expect.element(card().getByText('Side check unavailable'), { timeout: 8000 }).toBeInTheDocument();
 		await expect.element(card().getByText('Which side?')).not.toBeInTheDocument();   // the Kidneys text changed: not carried
-		await expect.element(page.getByText('side check unavailable', { exact: true })).toBeInTheDocument();
-		state.mode = 'ok';   // the next retry answers
 		await expect.element(card().getByText('Side check unavailable'), { timeout: 10000 }).not.toBeInTheDocument();
 		await expect.element(confirmBtn(), { timeout: 8000 }).toBeEnabled();
 		await confirmBtn().click();
@@ -145,6 +147,57 @@ describe('scratchpad: "Which side?" on a quick session', () => {
 		expect(gate.side_failed).toBe(false);
 		expect(gate.side_hold).toEqual([]);
 		expect(gate.assumed.Kidneys).toEqual([R]);
+	});
+
+	it('"As dictated" on a hold lets Confirm through; an edit to that region in the same outage holds it again (M1)', async () => {
+		const onStackGate = vi.fn();
+		const r = await mountAsked(onStackGate);
+		state.mode = 'side_fail';
+		state.hold = ['Kidneys'];
+		(r.component as any).reset(`${SIDED} Renal cyst.`);
+		const hold = card().getByText('Side check unavailable');
+		await expect.element(hold, { timeout: 8000 }).toBeInTheDocument();
+		await expect.element(page.getByText('side check unavailable', { exact: true })).toBeInTheDocument();   // nothing carried (N5)
+		await card().getByRole('button', { name: '✓ As dictated' }).click();
+		await expect.element(hold).not.toBeInTheDocument();
+		await expect.element(confirmBtn(), { timeout: 10000 }).toBeEnabled();
+		// still down: the region's text changes, so its hold returns and Confirm waits for it again
+		(r.component as any).reset(`A simple cyst in the left kidney with hydronephrosis. Renal cyst.`);
+		await expect.element(card().getByText('Side check unavailable'), { timeout: 8000 }).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Confirm · 1 to resolve' }), { timeout: 10000 }).toBeEnabled();
+		state.mode = 'ok';
+	});
+
+	it('a carried "Which side?" and a hold in one region are one question: keeping it releases both (L1)', async () => {
+		const onStackGate = vi.fn();
+		const r = await mountAsked(onStackGate);
+		state.mode = 'side_fail';
+		state.hold = ['Kidneys'];
+		(r.component as any).reset(`${SIDELESS} The liver is normal. Renal cyst.`);   // the Kidneys text is unchanged: carried
+		await expect.element(page.getByText(/side check unavailable: open/), { timeout: 8000 }).toBeInTheDocument();
+		await expect.element(card().getByText('Which side?')).toBeInTheDocument();
+		await expect.element(card().getByText('Side check unavailable')).not.toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Confirm · 1 to resolve' }), { timeout: 10000 }).toBeEnabled();
+		await card().getByRole('button', { name: 'Keep without side' }).click();
+		await expect.element(confirmBtn(), { timeout: 8000 }).toBeEnabled();
+		await confirmBtn().click();
+		await expect.poll(() => onStackGate.mock.calls.some(([g]) => g !== null), { timeout: 3000 }).toBe(true);
+		expect(gateOf(onStackGate).side_hold).toEqual(['Kidneys']);
+		state.mode = 'ok';
+	});
+
+	it('a template session never shows the "Not reported" line (F6)', async () => {
+		calls.length = 0;
+		state.mode = 'ok';
+		const props: any = { hybridStack: true, polishMode: 'clean', scanType: 'CT abdomen', clinicalHistory: 'Pain.', onStackGate: vi.fn() };
+		const r = render(DictationScratchpad, props);
+		await r.rerender({ ...props, stackRegions: ['Kidneys', 'Liver'].map((name) => ({ name, includes: '' })),
+			stackGroups: ['Kidneys', 'Liver', 'Other findings', 'General', 'Conclusion'], stackTemplateId: 't1',
+			stackSchemaMeta: { key: 'k', source: 'template', provisional: false } });
+		await expect.poll(() => assumedCalls().length, { timeout: 3000 }).toBe(1);
+		(r.component as any).reset(`${SIDED} Renal cyst.`);
+		await expect.element(card().getByText('Will also be reported'), { timeout: 8000 }).toBeInTheDocument();
+		await expect.element(page.getByText(/Not reported/)).not.toBeInTheDocument();
 	});
 
 	for (const mode of ['error', 'throw'] as const) {

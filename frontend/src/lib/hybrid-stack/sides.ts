@@ -30,18 +30,26 @@ export function sideFlags(asks: SideAsk[], answers: Record<string, CheckAnswer> 
 }
 
 export const HOLD_KIND = 'side_unchecked';
-const HOLD_MESSAGE = 'The side check could not run for this region after a retry. Confirm waits while it tries again; or keep as dictated.';
+const HOLD_MESSAGE = 'The side check could not run for this region. Confirm waits while it tries again. \u201cAs dictated\u201d reports both sides\u2019 normals for this region as they stand.';
 
-/** The side call failed twice (re-review N1): each region the server holds blocks Confirm until a retry answers it, or
- *  the radiologist keeps the dictation as it is. */
-export function holdFlags(regions: string[]): CheckFlag[] {
-	return regions.map((region) => ({ key: `${HOLD_KIND}|${region}`, kind: HOLD_KIND, blocking: true, tier: 2 as const,
+/** A hold's answer key: its region and that region's text, so any edit there holds it again (re-review 2 M1). */
+export const holdKey = (region: string, text: Record<string, string> = {}) => `${HOLD_KIND}|${region}|${norm(text[region] ?? '')}`;
+
+/** The side call failed (re-review N1): each region the server holds blocks Confirm until a retry answers it, or the
+ *  radiologist keeps the dictation as it is. A region already showing a "Which side?" question shows only that one:
+ *  one press per question (re-review 2 L1; answering it answers the hold too, see answerPairs). */
+export function holdFlags(regions: string[], text: Record<string, string> = {}, asked: CheckFlag[] = []): CheckFlag[] {
+	const open = new Set(asked.filter((f) => f.kind === SIDE_KIND).map((f) => f.region));
+	return regions.filter((r) => !open.has(r)).map((region) => ({ key: holdKey(region, text), kind: HOLD_KIND, blocking: true, tier: 2 as const,
 		message: HOLD_MESSAGE, quote: region, other: null, suggestion: '', unitId: null, region }));
 }
 
-/** The answer to a region flag, recorded on each pair it lists. */
-export function answerPairs(flag: CheckFlag, how: CheckAnswer): Record<string, CheckAnswer> {
-	return Object.fromEntries(flag.quote.split(SEP).map((l) => [pairKey(flag.region ?? '', l), how]));
+/** The answer to a region flag, recorded on each pair it lists; and on the region's hold, when the side check failed
+ *  (`held`: the held regions and the text they were held for), since the hold was not shown beside it (L1). */
+export function answerPairs(flag: CheckFlag, how: CheckAnswer, held?: { regions: string[]; text: Record<string, string> }): Record<string, CheckAnswer> {
+	const out: Record<string, CheckAnswer> = Object.fromEntries(flag.quote.split(SEP).map((l) => [pairKey(flag.region ?? '', l), how]));
+	if (held && flag.region && held.regions.includes(flag.region)) out[holdKey(flag.region, held.text)] = how;
+	return out;
 }
 
 /** A failed side call (review F2): the last answer's open asks stay, and their sentences stay out of the report, so an

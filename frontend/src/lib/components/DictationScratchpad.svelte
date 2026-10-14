@@ -393,8 +393,9 @@
 	// A finding dictated without its side (quick sessions): a blocking "Which side?" check in its region's card, from the
 	// last /assumed answer; it clears when an answer no longer asks. The normals it and contradiction left out are listed.
 	// A failed side check (after retries) holds each region it could not clear, until a retry answers or it is kept.
-	$: sideNow = [...sideFlags(assumedSnap?.side_asks ?? [], checkAnswers), ...holdFlags(assumedSnap?.side_hold ?? [])];
-	$: struckNow = notReported(assumedSnap, removedSentences);
+	$: sideAsked = sideFlags(assumedSnap?.side_asks ?? [], checkAnswers);
+	$: sideNow = [...sideAsked, ...holdFlags(assumedSnap?.side_hold ?? [], assumedSnap?.region_text ?? {}, sideAsked)];
+	$: struckNow = notReported(assumedSnap, removedSentences); // quick only: hidden on template sessions (F6, Hassan 2026-10-14)
 	// Quiet regions show as pills once something is placed there; a segment's normal reads "Elsewhere, …" once one
 	// of its levels is dictated.
 	let stackLevelGroups: Record<string, string[]> = {};
@@ -1753,8 +1754,9 @@
 	/** Keep as dictated, Skip, or Replace (the line edit itself goes through stackEditLine) on a check. */
 	function answerCheck(key: string, how: CheckAnswer): void {
 		// a "Which side?" flag is answered pair by pair (review F4)
-		const side = key.startsWith(`${SIDE_KIND}|`) ? sideNow.find((f) => f.key === key) : undefined;
-		checkAnswers = { ...checkAnswers, ...(side ? answerPairs(side, how) : { [key]: how }) };
+		const side = key.startsWith(`${SIDE_KIND}|`) ? sideAsked.find((f) => f.key === key) : undefined;
+		const held = assumedSnap?.side_failed ? { regions: assumedSnap.side_hold ?? [], text: assumedSnap.region_text ?? {} } : undefined;
+		checkAnswers = { ...checkAnswers, ...(side ? answerPairs(side, how, held) : { [key]: how }) };
 	}
 	/** The quiet re-check: the rows on screen against the current dictation; no writer call, no skeleton. */
 	async function recheckRows(text: string): Promise<void> {
@@ -2207,7 +2209,7 @@
 			...offeredAndDropped(assumedSnap?.offered ?? stackRegionNormals, assumedSnap?.dropped, assumedSnap?.check_failed),
 			side_asks: sideRecord(seenSides, assumedSnap, checkAnswers), // beside jev_dropped: its "side" drops are these asks'
 			side_failed: !!assumedSnap?.side_failed,
-			side_hold: assumedSnap?.side_hold ?? [], // held regions Confirm passed: each was kept as dictated
+			side_hold: assumedSnap?.side_hold ?? [], // held regions Confirm passed: each was kept as dictated (its text's key)
 			side_choices: sideChoices(assumedSnap) // its "both" drops: the pairs whose choice applied
 		};
 		stackGate = gate;
@@ -2888,7 +2890,7 @@
 						{/if}
 						<HybridStackView units={stackUnits} groups={stackGroups} pillRegions={shownPills} pending={stripNow}
 							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView.show ? moreView.rows : []} moreWaiting={moreView.waiting} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={shownAssumed} structures={stackStructures} flagged={flaggedNow}
-							checks={[...placedChecks, ...sideNow]} notReported={struckNow} sideFailed={assumedSnap?.side_failed ? (assumedSnap.side_asks?.length ? 'kept' : 'plain') : null} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {guidelinesUnresolved} onOpenGuideline={openGuideline} {deleteRegion}
+							checks={[...placedChecks, ...sideNow]} notReported={stackTemplateId ? {} : struckNow} sideFailed={assumedSnap?.side_failed ? (assumedSnap.side_asks?.length ? 'kept' : 'plain') : null} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {guidelinesUnresolved} onOpenGuideline={openGuideline} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} assumedFailed={assumedState === 'failed'} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
 							onAnswer={answerRow} onAnswerTemplate={answerTemplateRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}

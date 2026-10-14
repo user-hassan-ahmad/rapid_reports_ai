@@ -39,7 +39,7 @@ class AssumedResult(BaseModel):
     # Every asked pair Jev placed a finding for (choice right | left | both | no_side; none is left out), with what
     # code did: action ask | drop (both) | flag (amber) | none (the contradiction fates stand), for the log
     side_choices: list[dict] = []
-    # The side call failed twice: touched regions with a pair the finding may concern, neither side contradicted.
+    # The side call failed: touched regions with a pair the finding may concern, neither side contradicted.
     # The client holds Confirm on them ("side check unavailable") until a retry answers (re-review N1).
     side_hold: list[str] = []
     # the side question failed: nothing asked; a pair with a contradicted side drops both (side_unchecked). The client
@@ -106,17 +106,16 @@ def _side_candidates(asked: list[tuple[str, str]], touched: set[str]) -> list[tu
 
 
 async def _side_scores(dictation: str, asked: list[tuple[str, str]], cands: list[tuple[str, int, int]]):
-    """(choice, probabilities) per candidate, asked alongside the rows (no added round trip); a failed call is tried
-    once more (re-review N1); None when both failed."""
+    """(choice, probabilities) per candidate, asked alongside the rows (no added round trip); None when the call
+    failed. Never retried here: the client re-asks a failed side check (re-review N4), and a retry in both places
+    stacked to ~22 s of "Updating…" per change in an outage (re-review 2 L2)."""
     if not cands:
         return []
-    pairs = [(asked[i][1], asked[j][1]) for _, i, j in cands]
-    for attempt in (1, 2):
-        try:
-            return await ask_sides(dictation, pairs)
-        except Exception as e:  # noqa: BLE001 -- the side question never fails the normals
-            logger.warning("[stack.normals] side question (try %d) %s: %s", attempt, type(e).__name__, str(e)[:200])
-    return None
+    try:
+        return await ask_sides(dictation, [(asked[i][1], asked[j][1]) for _, i, j in cands])
+    except Exception as e:  # noqa: BLE001 -- the side question never fails the normals
+        logger.warning("[stack.normals] side question %s: %s", type(e).__name__, str(e)[:200])
+        return None
 
 
 async def _session_rules(conds: list[str], scan_type: str, history: str,
@@ -185,7 +184,8 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
     beside "both kidneys contain cysts", and the choice alone also says "both" for a bilateral finding's neighbouring
     checks; an untouched "both" flags both. Right and left change nothing (the contradiction fates stand). A call
     that fails twice (side_failed) asks nothing, drops both sentences of a pair the finding touches (reason
-    side_unchecked) and lists in `side_hold` each touched region with a pair it may still concern."""
+    side_unchecked) and lists in `side_hold` each touched region with a pair it may still concern; the client
+    re-asks it."""
     t0 = time.perf_counter()
     gone = list(dict.fromkeys(r for r in [*removed, *(owned or [])] if r.strip()))
     labels = labels or {}
@@ -235,7 +235,7 @@ async def assumed(dictation: str, region_normals: dict[str, list[str]], abnormal
                         fates[k] = why
 
             if side_failed:
-                # Review F2 / N1 (after one retry): the side is unknown. A pair the finding touches drops both (reason
+                # Review F2 / N1: the side is unknown. A pair the finding touches drops both (reason
                 # side_unchecked, no ask); a touched region with a pair the finding may still concern (neither side
                 # contradicted) is held: the client blocks Confirm on it ("side check unavailable"). The client also
                 # carries the last answer's open asks forward.

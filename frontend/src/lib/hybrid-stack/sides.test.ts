@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { answerPairs, carrySides, holdFlags, notReported, pairKey, sideChoices, sideFlags, sideRecord, type SideAsk } from './sides';
+import { answerPairs, carrySides, holdFlags, holdKey, notReported, pairKey, sideChoices, sideFlags, sideRecord, type SideAsk } from './sides';
 import type { AssumedSnap } from './items';
 
 const ask = (region: string, label: string, score = 0.9): SideAsk => ({
@@ -103,6 +103,18 @@ describe('sideChoices', () => {
 
 describe('holdFlags (re-review N1)', () => {
 	it('is one blocking "Side check unavailable" check per held region', () => {
-		expect(holdFlags(['Kidneys']).map((f) => [f.key, f.kind, f.blocking, f.region])).toEqual([['side_unchecked|Kidneys', 'side_unchecked', true, 'Kidneys']]);
+		const text = { Kidneys: 'Renal cyst.' };
+		expect(holdFlags(['Kidneys'], text).map((f) => [f.key, f.kind, f.blocking, f.region])).toEqual([[holdKey('Kidneys', text), 'side_unchecked', true, 'Kidneys']]);
+		expect(holdFlags(['Kidneys'], text)[0].message).toMatch(/reports both sides\u2019 normals/);
+	});
+	it('keys a hold on its region text, so any edit there holds it again (re-review 2 M1)', () => {
+		expect(holdKey('Kidneys', { Kidneys: 'Renal cyst.' })).not.toEqual(holdKey('Kidneys', { Kidneys: 'Renal cyst. Moderate hydronephrosis.' }));
+	});
+	it('shows one question per region: a region with an open "Which side?" shows no hold, and keeping it keeps the hold (L1)', () => {
+		const text = { Kidneys: 'A cyst in the kidney.' };
+		const [ask1] = sideFlags([ask('Kidneys', K)]);
+		expect(holdFlags(['Kidneys', 'Pleura'], text, [ask1]).map((f) => f.region)).toEqual(['Pleura']);
+		expect(answerPairs(ask1, 'as_dictated', { regions: ['Kidneys'], text })).toEqual({
+			[pairKey('Kidneys', K)]: 'as_dictated', [holdKey('Kidneys', text)]: 'as_dictated' });
 	});
 });
