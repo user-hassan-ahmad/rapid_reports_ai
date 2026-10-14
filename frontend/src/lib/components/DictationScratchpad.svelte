@@ -388,6 +388,7 @@
 	// Quiet regions show as pills once something is placed there; a segment's normal reads "Elsewhere, …" once one
 	// of its levels is dictated.
 	let stackLevelGroups: Record<string, string[]> = {};
+	let stackStructures: Record<string, Record<string, string[]>> = {}; // template sub-pills: region -> structure -> sentences
 	$: placedGroups = placedRegions(stackUnits); // every split part counts, as in regionStates
 	// A segment line is withheld when an abnormal sentence filed elsewhere, or one the grouper has not received yet (the
 	// live tail), names its levels, its vertebrae or the segment (backstop).
@@ -1905,6 +1906,7 @@
 		stackNotAssessable = '';
 		stackTemplateUnusable = false;
 		stackLevelGroups = {};
+		stackStructures = {};
 		valuesSeq++; // a fill still running belongs to the old sheet
 		valueChips = [];
 		onStackSheet(null);
@@ -1918,6 +1920,7 @@
 			if (!res.ready) return;
 			stackRegionNormals = res.region_normals;
 			stackLevelGroups = res.level_groups ?? {};
+			stackStructures = res.region_structures ?? {};
 			stackNotAssessable = res.not_assessable;
 			valueChips = initialChips(res.required_values ?? []);
 			if (verbatimNow.trim()) void refreshValues(verbatimNow); // dictation already there: fill now, not at the next review
@@ -2842,7 +2845,7 @@
 							</p>
 						{/if}
 						<HybridStackView units={stackUnits} groups={stackGroups} pillRegions={shownPills} pending={stripNow}
-							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView.show ? moreView.rows : []} moreWaiting={moreView.waiting} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={shownAssumed} flagged={flaggedNow}
+							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView.show ? moreView.rows : []} moreWaiting={moreView.waiting} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={shownAssumed} structures={stackStructures} flagged={flaggedNow}
 							checks={placedChecks} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} assumedFailed={assumedState === 'failed'} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}

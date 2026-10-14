@@ -175,6 +175,41 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByText('The spleen is normal in size.')).toBeInTheDocument();
 	});
 
+	it('a template paragraph covering several structures shows one assumed chip per structure (sub-pills)', async () => {
+		const props = { ...base(), onRemoveSentence: vi.fn() };
+		render(HybridStackView, {
+			...props, units: [],
+			assumed: { Spleen: ['Normal cardiac chambers.', 'No lung nodule.', 'No osseous lesion.', 'No incidental finding.'] },
+			structures: { Spleen: { 'Cardiac chambers': ['Normal cardiac chambers.'], Lungs: ['No lung nodule.'], Bones: ['No osseous lesion.'] } },
+			assumedReady: true
+		});
+		const tray = page.getByRole('region', { name: 'Normal regions' });
+		for (const name of ['Cardiac chambers', 'Lungs', 'Bones', 'Spleen']) {
+			await expect.element(tray.getByRole('button', { name, exact: true })).toHaveAttribute('data-state', 'assumed');
+		}
+		await tray.getByRole('button', { name: 'Lungs', exact: true }).click();
+		await expect.element(tray.getByText('Lungs · will be reported')).toBeInTheDocument();
+		await expect.element(tray.getByText('No osseous lesion.')).not.toBeInTheDocument();
+		await page.getByLabelText('Remove No lung nodule.').click();
+		expect(props.onRemoveSentence).toHaveBeenCalledWith('No lung nodule.');
+		await expect.element(page.getByText('4 assumed normal')).toBeInTheDocument();   // the count is unchanged
+	});
+
+	it('a dictated-normal split paragraph: answered structures go green, the rest stay assumed chips', async () => {
+		render(HybridStackView, {
+			...base(),
+			units: [u(0, 'No lung nodules.', 'Spleen', { covers: ['Spleen'] })],
+			assumed: { Spleen: ['Normal cardiac chambers.', 'No osseous lesion.'] },
+			structures: { Spleen: { 'Cardiac chambers': ['Normal cardiac chambers.'], Lungs: ['No lung nodule.'], Bones: ['No osseous lesion.'] } },
+			assumedReady: true
+		});
+		const tray = page.getByRole('region', { name: 'Normal regions' });
+		await expect.element(tray.getByText('Lungs', { exact: true })).toHaveAttribute('data-state', 'dictated');
+		await expect.element(tray.getByRole('button', { name: 'Bones', exact: true })).toHaveAttribute('data-state', 'assumed');
+		await expect.element(tray.getByRole('button', { name: 'Cardiac chambers', exact: true })).toBeInTheDocument();
+		await expect.element(tray.getByText('Spleen · will be reported')).not.toBeInTheDocument();
+	});
+
 	it('a typed finding is appended on Enter', async () => {
 		const onAppend = vi.fn();
 		render(HybridStackView, { ...base(), onAppend, units: [] });

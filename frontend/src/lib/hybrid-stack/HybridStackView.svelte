@@ -8,6 +8,7 @@
 	import { flip } from 'svelte/animate';
 	import { buildView } from './stackState';
 	import { CONCLUSION, GENERAL, OTHER, TECHNIQUE, regionStates, showsGroup } from './regionState';
+	import { coveredStructures, regionChips } from './subPills';
 	import { checkLabel, replaced, segments, withoutQuote, type CheckAnswer, type CheckFlag } from './checks';
 	import { QUIET_MAX, anchorRegion, answerLabel, isFlagged as flaggedIn, openCount, quietLine, rowSentences, unansweredChecks, waiting } from './items';
 	import type { StackItem, StackUnit, ValueChip, ViewRow } from './types';
@@ -38,6 +39,7 @@
 		tapped = [],
 		removed = [],
 		assumed = {},
+		structures = {},
 		flagged = {},
 		confirmNote = null,
 		namedNormals = false,
@@ -109,6 +111,9 @@
 		removed?: string[];
 		/** Region normals that will be reported unless removed (the slim sheet, checked against the dictation). */
 		assumed?: Record<string, string[]>;
+		/** Template sessions: region -> {structure -> its sentences} for a paragraph covering several structures; its
+		 *  assumed chip splits into one per structure (sub-pills). Absent: one chip per region, as before. */
+		structures?: Record<string, Record<string, string[]>>;
 		/** Assumed normals the dictation may conflict with (review R1): kept, shown with an amber "check" marker. */
 		flagged?: Record<string, string[]>;
 		/** Why the last Confirm press did not gate (a re-checked rule added a normal; the dictation moved on). */
@@ -420,6 +425,13 @@
 		const gone = new Set(removed.map((r) => r.trim().toLowerCase().replace(/\.$/, '')));
 		return (assumed[region] ?? []).filter((s) => !gone.has(s.trim().toLowerCase().replace(/\.$/, '')));
 	};
+	// Dictated-normal regions split by structure (sub-pills): the structures the dictation answered go green, those
+	// still assumed join the assumed chips.
+	const saidChipNames = (r: string) => {
+		const done = assumedReady ? coveredStructures(assumed[r] ?? [], removed, structures[r]) : [];
+		return done.length ? done : [r];
+	};
+	const isSplit = (r: string) => Object.keys(structures[r] ?? {}).length > 0;
 	// Every statement that will be reported without being dictated: region normals, and regions confirmed by
 	// name where no sentences exist yet.
 	const assumedCount = $derived(
@@ -1057,6 +1069,12 @@
 		<!-- A region the dictation touches with nothing left to assume is not normal: it leaves the section (hand read
 		     2026-10-12), once the assumed check has answered (until then nothing is hidden, so the tray never flickers). -->
 		{@const rest = trayRegions.filter((r) => !dictatedNormalWords.has(r) && (namedNormals || !assumedReady || keptAssumed(r).length > 0))}
+		<!-- One chip per region, or per structure for a split template paragraph (sub-pills); a dictated-normal split
+		     paragraph's structures still assumed join them. -->
+		{@const chips = [...trayRegions.filter((r) => rest.includes(r) || (said.includes(r) && isSplit(r) && keptAssumed(r).length > 0))
+			.flatMap((r) => (namedNormals ? [{ key: r, region: r, label: r, sentences: keptAssumed(r) }]
+				: regionChips(r, keptAssumed(r), structures[r]).filter((c) => rest.includes(r) || c.sentences.length)))]}
+		{@const openChip = chips.find((c) => c.key === openPill)}
 		<section aria-label="Normal regions" class="space-y-2 border-t border-white/5 pt-2">
 			{#if said.length}
 				<div class="space-y-1">
@@ -1064,7 +1082,7 @@
 					<!-- Regions that share the same dictated words share one line. -->
 					{#each [...new Set(said.map((r) => dictatedNormalWords.get(r)?.join(' ') ?? ''))] as words (words)}
 						<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
-							{#each said.filter((r) => (dictatedNormalWords.get(r)?.join(' ') ?? '') === words) as r (r)}
+							{#each said.filter((r) => (dictatedNormalWords.get(r)?.join(' ') ?? '') === words).flatMap(saidChipNames) as r (r)}
 								<span class="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-200" data-state="dictated">{r}</span>
 							{/each}
 							{#each (said.find((r) => (dictatedNormalWords.get(r)?.join(' ') ?? '') === words) ? dictatedNormalWords.get(said.find((r) => (dictatedNormalWords.get(r)?.join(' ') ?? '') === words) ?? '') ?? [] : []) as w (w)}
@@ -1104,7 +1122,7 @@
 					{/each}
 					<!-- The sheet sentences a dictated-normal region still reports (review R2): the radiologist's words cover
 					     only what they said ("ACL intact" leaves the PCL sentence). -->
-					{#each said.filter((r) => keptAssumed(r).length) as r (r)}
+					{#each said.filter((r) => keptAssumed(r).length && !isSplit(r)) as r (r)}
 						<p class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs" data-quiet={r}>
 							<span class="text-[10px] uppercase tracking-wide text-emerald-400/70">{r} · will be reported</span>
 							{@render sentences(keptAssumed(r), `said:${r}`, [r])}
@@ -1112,31 +1130,33 @@
 					{/each}
 				</div>
 			{/if}
-			{#if rest.length}
+			{#if chips.length}
 				<div class="space-y-1.5">
 					<p class="text-[10px] uppercase tracking-wide text-gray-500">{namedNormals ? 'Assumed normal (no sheet yet)' : 'Assumed normal: tap to see what will be reported'}</p>
 					<div class="flex flex-wrap gap-1.5">
-						{#each rest as r (r)}
-							{@const none = !namedNormals && keptAssumed(r).length === 0}
+						{#each chips as c (c.key)}
+							{@const none = !namedNormals && c.sentences.length === 0}
+							{@const hot = c.sentences.some((s) => isFlagged([c.region], s))}
 							<!-- No transition on pills: a fade-out with flip left removed pills in the DOM (hand read 2026-10-11). -->
 							<button
 								type="button"
 								class="rounded-full px-2 py-0.5 text-xs {none ? 'border border-white/10 text-gray-600'
-									: 'border border-dashed border-white/20 text-gray-400 hover:border-emerald-400/40'} {openPill === r ? 'ring-1 ring-emerald-400/40' : ''}"
-								title={keptAssumed(r).some((s) => isFlagged([r], s)) ? `${FLAG_TITLE}. Will be reported: ${keptAssumed(r).join(' ')}`
-									: keptAssumed(r).length ? `Will be reported: ${keptAssumed(r).join(' ')}` : none ? 'Nothing assumed: only what you dictate is reported' : 'Assumed normal (not dictated)'}
+									: 'border border-dashed border-white/20 text-gray-400 hover:border-emerald-400/40'} {openPill === c.key ? 'ring-1 ring-emerald-400/40' : ''}"
+								title={hot ? `${FLAG_TITLE}. Will be reported: ${c.sentences.join(' ')}`
+									: c.sentences.length ? `Will be reported: ${c.sentences.join(' ')}` : none ? 'Nothing assumed: only what you dictate is reported' : 'Assumed normal (not dictated)'}
 								data-state={none ? 'none' : 'assumed'}
-								data-flagged={keptAssumed(r).some((s) => isFlagged([r], s)) ? 'true' : undefined}
-								onclick={() => (openPill = openPill === r ? null : r)}>{r}{#if keptAssumed(r).some((s) => isFlagged([r], s))}<span
+								data-region={c.region}
+								data-flagged={hot ? 'true' : undefined}
+								onclick={() => (openPill = openPill === c.key ? null : c.key)}>{c.label}{#if hot}<span
 									class="ml-1 text-amber-300" aria-hidden="true">●</span>{/if}</button>
 						{/each}
 					</div>
 				</div>
 			{/if}
-			{#if openPill && keptAssumed(openPill).length}
-				<p class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs" data-quiet={openPill}>
-					<span class="text-[10px] uppercase tracking-wide text-emerald-400/70">{openPill} · will be reported</span>
-					{@render sentences(keptAssumed(openPill), `tray:${openPill}`, [openPill])}
+			{#if openChip && openChip.sentences.length}
+				<p class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs" data-quiet={openChip.key === openChip.region ? openChip.region : openChip.label}>
+					<span class="text-[10px] uppercase tracking-wide text-emerald-400/70">{openChip.label} · will be reported</span>
+					{@render sentences(openChip.sentences, `tray:${openChip.key}`, [openChip.region])}
 				</p>
 			{/if}
 		</section>

@@ -74,7 +74,7 @@ export interface ItemsResult {
 	/** the template trigger call failed: no template rows this review (what is on screen stays) */
 	trigger_error?: string | null;
 }
-export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean; level_groups?: Record<string, string[]>; required_values?: string[];
+export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean; level_groups?: Record<string, string[]>; required_values?: string[]; region_structures?: Record<string, Record<string, string[]>>;
 	/** Free text: the session token re-minted with the slim sheet's id (Generate reads the sheet from it, D26). */
 	structure_key?: string | null }
 /** The value cluster (requirements spec 2026-10-12 part 1): a template's required value and how it was resolved.
