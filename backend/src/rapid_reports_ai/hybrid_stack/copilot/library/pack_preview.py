@@ -239,8 +239,9 @@ def _prompt(e: Entry, ids: list[str], finding: str, findings: str, history: str)
 
 def _in_scope(i: InputDef, quote: str, finding: str, findings: str, history: str) -> bool:
     """A lesion input's quote lies verbatim in the card's own finding; a patient input's in the history or dictation;
-    a since-study input's in any of them (the earlier study's date is often dictated apart from the finding)."""
-    if i.since_study:
+    a since-study input's date in any of them (the earlier study's date is often dictated apart from the finding); its
+    duration keeps the finding (review M-2)."""
+    if i.since_study and DT.parse(quote) is not None:
         return P._verbatim(quote, finding, "") or P._verbatim(quote, findings, history)
     return P._verbatim(quote, finding, "") if i.scope == "lesion" else P._verbatim(quote, findings, history)
 
@@ -386,7 +387,8 @@ def _since(i: InputDef, quote: str, finding: str, findings: str, history: str) -
     p = DT.parse(quote)
     if p is None:
         return None
-    if len(DT.distinct_dates(f"{findings}\n{history}\n{finding}")) != 1:
+    texts = f"{findings}\n{history}\n{finding}"
+    if DT.several_dates(texts) or DT.distinct_dates(texts) != [p.day]:
         logger.info("[library.preview] %s: several dates in the dictation; interval asked", i.id)
         return None
     days = DT.days_since(p.day)
