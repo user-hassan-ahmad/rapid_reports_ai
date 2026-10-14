@@ -21,6 +21,7 @@ from .schemas import Region, groups_for, pill_regions
 from .items import Item, ItemsResult, Referral, recheck as items_recheck, update as items_update
 from .jev_stack import MATERIAL_MIN, STALE_MIN, UNFINISHED_MIN, ask_material, ask_stale, ask_unfinished
 from .normals import AssumedResult, assumed as assumed_normals
+from .structures import structure_normals
 from .sex_screen import screen_normals
 from .slim_sheet import clean_sentences, get_or_make as slim_get_or_make
 from .template import (template_normal_labels, template_region_normals, template_required_values, template_structure,
@@ -161,6 +162,9 @@ class SlimResult(BaseModel):
     ready: bool = False
     level_groups: dict[str, list[str]] = Field(default_factory=dict)
     required_values: list[str] = Field(default_factory=list)   # template sessions: the LIST_MISSING items (value cluster)
+    # template sessions: region -> {structure -> its sentences} for multi-structure paragraphs (the sub-pills); a
+    # sentence in no structure stays with its paragraph's own pill
+    region_structures: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
     structure_key: str | None = None   # free text: the session token re-minted with this sheet's id (D26)
 
 
@@ -449,7 +453,7 @@ async def stack_slim_sheet(req: SlimRequest, user: User = Depends(get_current_us
         if st is None:   # Generate takes today's template path; the scratchpad says so
             return SlimResult(status="template_unusable")
         return SlimResult(region_normals=template_region_normals(st), required_values=template_required_values(st),
-                          status="template", ready=True)
+                          region_structures=await structure_normals(st), status="template", ready=True)
     b, pick = _library_pick(req.protocol_id, req.phases, req.laterality)
     if pick is not None:
         from .protocol_library.compose import compose_sheet

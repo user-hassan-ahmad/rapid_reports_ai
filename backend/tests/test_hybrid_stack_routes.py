@@ -519,3 +519,18 @@ def test_values_route_without_a_usable_template_has_no_items(authed, monkeypatch
     assert seen["items"] == []
     other = authed.post("/api/canvas/stack/values", json={"dictation": "x", "template_id": str(uuid.uuid4())})
     assert other.status_code == 200 and seen["items"] == []   # unknown / another user's template: nothing asked
+
+
+def test_slim_sheet_carries_the_templates_structure_split(authed, monkeypatch, db_session, user):
+    from rapid_reports_ai.hybrid_stack import routes as stack_routes
+    seen = []
+
+    async def fake(st, transport=None):
+        seen.append(st.sheet_hash)
+        return {"Left ventricle": {"Wall": ["Normal wall."]}}
+    monkeypatch.setattr(stack_routes, "structure_normals", fake)
+    t = _values_template(db_session, user)
+    d = authed.post("/api/canvas/stack/slim-sheet", json={"scan_type": "CMR", "template_id": str(t.id)}).json()
+    assert d["region_structures"] == {"Left ventricle": {"Wall": ["Normal wall."]}} and len(seen) == 1
+    # quick sessions never carry it
+    assert authed.post("/api/canvas/stack/slim-sheet", json={"scan_type": ""}).json()["region_structures"] == {}
