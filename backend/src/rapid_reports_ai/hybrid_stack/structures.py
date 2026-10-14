@@ -105,7 +105,10 @@ def _finish(key: str, st: SheetStructure, split: dict, task: "asyncio.Task") -> 
     """A binding ended (in time or after its caller stopped waiting): cache it when every question was answered."""
     if _INFLIGHT.get(key) is task:
         del _INFLIGHT[key]
-    if task.cancelled() or task.exception() is not None:
+    if task.cancelled():
+        return
+    if task.exception() is not None:
+        logger.warning("[stack.structures] binding failed: %s", str(task.exception())[:200])
         return
     bound, failed = task.result()
     if failed:
@@ -136,7 +139,10 @@ async def structure_normals(st: SheetStructure, transport=None) -> dict[str, dic
         task = loop.create_task(_bind_all(asks, transport))
         _INFLIGHT[key] = task
         task.add_done_callback(lambda t: _finish(key, st, split, t))
-    budget = 0.0 if _SLOW.get(key, 0.0) > time.monotonic() else BIND_BUDGET_S
+    now = time.monotonic()
+    for k in [k for k, until in _SLOW.items() if until <= now]:
+        del _SLOW[k]
+    budget = 0.0 if key in _SLOW else BIND_BUDGET_S
     try:
         bound, _ = await asyncio.wait_for(asyncio.shield(task), budget)
     except asyncio.TimeoutError:

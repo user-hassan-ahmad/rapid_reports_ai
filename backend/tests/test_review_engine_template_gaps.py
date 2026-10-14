@@ -277,3 +277,30 @@ def test_an_empty_slot_stays_flagged_when_the_missing_value_is_another_one():
     assert ("template_slot_empty", "Average HR") in flags
     i = _with_value_missing(_inp(report), "Average HR").model_copy(update={"stack": False})
     assert ("template_slot_empty", "Average HR") in _flags(i)[0]     # not a stack report: no backstop flag on the rail
+
+
+def test_only_the_slot_s_own_wording_counts_not_its_paragraph():
+    # every unit on one line: an item named in a neighbouring sentence must not hide this slot
+    report = REPORT.replace("Average HR: 58 bpm.", "Average HR:  bpm.")
+    one_para = report.replace("Scan quality: Good\nAverage HR:  bpm.\n", "Scan quality: Good. Coronary note. Average HR:  bpm.\n")
+    assert ("template_slot_empty", "Average HR") in _flags(_inp(one_para))[0]
+    for other in ("coronary", "quality", "Scan quality"):
+        flags, _, _ = _flags(_with_value_missing(_inp(one_para), other))
+        assert ("template_slot_empty", "Average HR") in flags, other
+
+
+def test_one_value_flag_hides_one_slot_and_carries_its_anchor():
+    report = REPORT.replace("Average HR: 58 bpm.", "Average HR:  bpm.")
+    i = _with_value_missing(_inp(report), "rate")     # the slot's name: {rate}
+    items, log = tg.gap_items(i, RUN)
+    s, e = log["value_slots"]["rate"]
+    assert report[s:e].startswith("Average HR:")
+    from rapid_reports_ai.review_engine import live
+    flags = live.check_flag_items(i, RUN)
+    assert flags[0].anchor.text == "rate" and not flags[0].anchor.start == s   # the substring found "sepa*rate*"
+    assert tg.anchor_value_flags(flags, log, report) == 1
+    assert flags[0].anchor is not None and flags[0].anchor.text.startswith("Average HR:")
+    # two empty slots, one flag: the second slot is still its own gap
+    two = report + "\n{rate}\n"
+    flags, _, _ = _flags(_with_value_missing(_inp(two), "rate"))
+    assert len([f for f in flags if f[0] == "template_slot_empty"]) == 1

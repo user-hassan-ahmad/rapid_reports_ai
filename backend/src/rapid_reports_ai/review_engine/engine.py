@@ -769,6 +769,9 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         for it in gaps:
             it.engine_version = ENGINE_VERSION
         items += gaps
+        # an empty slot the backstop already flags is shown once: the value_missing flag, pointing at the slot
+        template_gaps.anchor_value_flags([it for it in items if "post_check_flag" in (it.detectors or [])],
+                                         gap_log, inp.artifacts.report or "")
     except Exception as e:  # noqa: BLE001 - never fails the run
         errors["template_gaps"] = f"{type(e).__name__}: {str(e)[:200]}"
     try:                                 # the quiet notes (started with the run; mention_items never raises)

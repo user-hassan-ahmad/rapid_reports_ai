@@ -6,8 +6,9 @@ flag shaped like the post-gen check's `value_missing` (`live.check_flag_items`: 
 radiologist decides). Kinds:
 - `template_slot_empty`: a fill-in wording printed with an empty slot ("Average HR:  bpm."), or a literal `{word}`
   placeholder left in the report. Not flagged when the post-gen backstop already flags that value (`value_missing`,
-  stack reports): every content word of its item is in the slot's line or its template wording (slot names
-  included), so the rail shows the gap once.
+  stack reports): every content word of its item is in the slot's own wording (the matched text and its template
+  unit, slot names included; for a `{word}` placeholder, its sentence), one item per slot. The rail shows the gap
+  once, as the `value_missing` flag anchored on the slot (`anchor_value_flags`).
 - `fixed_text_missing`: a FIXED unit (sentence by sentence) not in the report. Never flagged when a context rule may
   have settled it and which way is not knowable here: a SUPPRESS on it, a SUPPRESS_SECTION on its section, an
   optional section, or a REPLACE whose WITH wording is in the report (a REPLACE whose wording is absent too: both the
@@ -103,26 +104,34 @@ def _found(report: str, text: str) -> List[Tuple[int, int]]:
     return _find(report, text) if text else []
 
 
-def _line(report: str, start: int, end: int) -> str:
-    k = report.find("\n", end)
-    return report[report.rfind("\n", 0, start) + 1:k if k >= 0 else len(report)]
+def _sentence(report: str, start: int, end: int) -> str:
+    """The report sentence (or line) holding [start, end)."""
+    a = max(report.rfind(c, 0, start) for c in ".!?\n") + 1
+    ends = [k for k in (report.find(c, end) for c in ".!?\n") if k >= 0]
+    return report[a:min(ends) if ends else len(report)]
 
 
-def _value_flagged(inp: ReviewInput, *texts: str) -> bool:
-    """The post-gen backstop already flags a value whose item's content words are all in `texts`."""
+def _value_flagged(inp: ReviewInput, used: set, *texts: str) -> Optional[str]:
+    """The item of a post-gen backstop `value_missing` flag (stack reports) whose content words are all in `texts`
+    (one empty slot's own wording), not already matched to another slot; None if there is none."""
     if not inp.stack:
-        return False
+        return None
     words = set().union(*(content_words(t) for t in texts))
     for e in (inp.artifacts.quality_check or {}).get("review") or []:
         if isinstance(e, dict) and e.get("kind") == "value_missing":
-            item = content_words(str(e.get("text") or e.get("item") or ""))
-            if item and item <= words:
-                return True
-    return False
+            name = str(e.get("text") or e.get("item") or "")
+            item = content_words(name)
+            if name not in used and item and item <= words:
+                used.add(name)
+                return name
+    return None
 
 
-def gaps(inp: ReviewInput) -> List[Tuple[str, str, Optional[Tuple[int, int]]]]:
-    """(kind, text, anchor span or None) of every gap, in KINDS order."""
+def gaps(inp: ReviewInput, value_slots: Optional[Dict[str, Tuple[int, int]]] = None
+         ) -> List[Tuple[str, str, Optional[Tuple[int, int]]]]:
+    """(kind, text, anchor span or None) of every gap, in KINDS order. An empty slot the post-gen backstop already
+    flags (`value_missing`) is not a gap: its span goes in `value_slots` under the flag's item instead, so the one
+    flag the rail shows can point at it."""
     st = inp.template_structure
     if not isinstance(st, dict):
         return []
@@ -132,16 +141,24 @@ def gaps(inp: ReviewInput) -> List[Tuple[str, str, Optional[Tuple[int, int]]]]:
 
     # template_slot_empty
     seen = set()
+    used: set = set()
+    slots = value_slots if value_slots is not None else {}
     for m in _PLACEHOLDER.finditer(report):
         seen.add(m.start())
-        if not _value_flagged(inp, _line(report, m.start(), m.end())):
+        name = _value_flagged(inp, used, _sentence(report, m.start(), m.end()))
+        if name is None:
             out.append(("template_slot_empty", m.group(), (m.start(), m.end())))
+        else:
+            slots[name] = (m.start(), m.end())
     for t in inp.template_text or []:
         for s, e, field in _empty_slots(report, t):
             if s not in seen:
                 seen.add(s)
-                if not _value_flagged(inp, _line(report, s, e), t):
+                name = _value_flagged(inp, used, report[s:e], t)
+                if name is None:
                     out.append(("template_slot_empty", field, (s, e)))
+                else:
+                    slots[name] = (s, e)
 
     # fixed_text_missing
     sections = {s.get("name"): s for s in st.get("sections") or [] if isinstance(s, dict)}
@@ -214,8 +231,9 @@ def gap_items(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], Optional
         return [], {"sheet_changed": True}
     log: dict = {k: 0 for k in KINDS}
     log.update(capped=0, error=None)
+    slots: Dict[str, Tuple[int, int]] = {}
     try:
-        found = gaps(inp)
+        found = gaps(inp, slots)
     except Exception as e:  # noqa: BLE001 - fail open: no flag
         log["error"] = f"{type(e).__name__}: {str(e)[:200]}"
         logger.warning("review engine: template gaps failed (%s)", log["error"])
@@ -240,7 +258,23 @@ def gap_items(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], Optional
             cls="info", anchor=anchor, label=label[:80], reason=label, edit=None,
             evidence={"source": DETECTOR, "kind": kind, "text": text}, status="open",
             history=[{"at": _now(), "event": "created", "actor": "engine", "text_hash": h, "detail": {"kind": kind}}]))
+    if slots:
+        log["value_slots"] = {k: list(v) for k, v in slots.items()}
     return out, log
 
 
-__all__ = ["DETECTOR", "MAX_GAPS", "KINDS", "gaps", "gap_items"]
+def anchor_value_flags(flags: List[ReviewItem], log: Optional[dict], report: str) -> int:
+    """Anchor each `value_missing` flag on the empty slot `gap_items` left to it (log "value_slots"), in place of
+    the flag's own first-substring anchor (`live.check_flag_items`), which can land inside another word; the number
+    anchored."""
+    slots = (log or {}).get("value_slots") or {}
+    h, n = text_hash(report), 0
+    for it in flags:
+        span = slots.get(str((it.evidence or {}).get("text") or (it.evidence or {}).get("item") or ""))
+        if it.kind == "value_missing" and span:
+            it.anchor = Span(start=span[0], end=span[1], text=report[span[0]:span[1]], text_hash=h)
+            n += 1
+    return n
+
+
+__all__ = ["DETECTOR", "MAX_GAPS", "KINDS", "gaps", "gap_items", "anchor_value_flags"]
