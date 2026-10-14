@@ -48,6 +48,10 @@ class ReviewInput(BaseModel):
     pre_edit_report: Optional[str] = None  # the report before today's automatic edits (Gate D shadow log)
     removed: List[str] = []              # stack reports: sentences the radiologist removed (never inserted)
     stack: bool = False                  # a stack report (generation_mode "stack"): its check flags reach the rail
+    template_text: List[str] = []        # templated reports: the grammar sheet's quoted unit texts (never AI text)
+    template_structure: Optional[dict] = None  # templated reports: the grammar structure (SheetStructure dump), gaps
+    assumed_normals: List[str] = []      # stack template reports: the normals confirmed at the gate, minus removed
+    template_sheet_changed: bool = False  # the template's sheet was edited after generation: no gap flags / notes
 
 
 class Candidate(BaseModel):

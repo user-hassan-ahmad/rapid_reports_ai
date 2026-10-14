@@ -78,7 +78,7 @@ from pydantic import BaseModel
 from ..report_reconcile import strip_p_values
 from ..report_review import is_negative
 from ..report_review import report_body as report_review_body
-from . import adjudicator, brief_normals, claims, conflict_pointer, dictated_gate, jev_pass, live, negatives, provenance, store, verifier
+from . import adjudicator, brief_normals, claims, conflict_pointer, dictated_gate, jev_pass, live, negatives, provenance, store, structure_mentions, template_gaps, verifier
 from .alignment import Alignment, align
 from .checks import run_checks
 from .items import Candidate, Edit, ReviewInput, ReviewItem, Span, item_key, merge, report_body, text_hash
@@ -578,6 +578,8 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
     neg_task = None
     types: Dict[str, str] = {}
     brief_items: List[ReviewItem] = []
+    # quiet "area never mentioned" notes: one Jev request, independent of the rest, so it runs beside the whole run
+    mention_task = asyncio.create_task(structure_mentions.mention_items(inp, run_id))
     try:
         body = report_body(inp)          # the report without its signature block: a prefix, positions unchanged
         al = align(body, a.dictated_findings, inp.clinical_history, a.sections)
@@ -640,6 +642,7 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
     except BaseException:
         if neg_task is not None:
             neg_task.cancel()
+        mention_task.cancel()
         raise
     neg_items: List[ReviewItem] = []
     neg_log = None
@@ -760,6 +763,31 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         items += flags
     except Exception as e:  # noqa: BLE001 - never fails the run
         errors["post_check_flags"] = f"{type(e).__name__}: {str(e)[:200]}"
+    gap_log: Optional[dict] = None
+    try:                                 # template gaps (templated reports with a grammar sheet): pure code flags
+        gaps, gap_log = template_gaps.gap_items(inp, run_id)
+        for it in gaps:
+            it.engine_version = ENGINE_VERSION
+        items += gaps
+    except Exception as e:  # noqa: BLE001 - never fails the run
+        errors["template_gaps"] = f"{type(e).__name__}: {str(e)[:200]}"
+    try:                                 # the quiet notes (started with the run; mention_items never raises)
+        notes, note_log = await mention_task
+        # a structure whose confirmed normal is already flagged missing gets no second, quieter note
+        flagged = structure_mentions.structures_of(
+            inp, [it.evidence.get("text") for it in items if it.kind == "assumed_normal_missing" and it.evidence])
+        kept = structure_mentions.drop_flagged(notes, flagged)
+        if note_log is not None and len(kept) != len(notes):
+            note_log = {**note_log, "mention_dropped_for_gap": len(notes) - len(kept)}
+        notes = kept
+        for it in notes:
+            it.engine_version = ENGINE_VERSION
+        items += notes
+        if note_log is not None:
+            gap_log = {**(gap_log or {}), **{f"mention_{k}" if k in ("capped", "error") else k: v
+                                             for k, v in note_log.items()}}
+    except Exception as e:  # noqa: BLE001 - never fails the run
+        errors["structure_mentions"] = f"{type(e).__name__}: {str(e)[:200]}"
     timings["total"] = int((time.monotonic() - t0) * 1000)
     errors.update({f"adjudicator_{k}": o.error for k, o in enumerate(outcomes) if o.error})
     run = {"lanes": lanes, "timings_ms": timings, "errors": errors,
@@ -767,7 +795,7 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
                     "candidates": len(cands), "prefiltered": len(held),
                     "negatives_calls": 1 if neg_log and neg_log.get("candidates") else 0},
            "pre_apply": pre_log, "negatives": _neg_summary(neg_log), "deduped": deduped, "post_check": bridge_log, "provenance": prov_log,
-           "dictated_gate": gate_log, "conflict_pointer": pointer_log,
+           "dictated_gate": gate_log, "conflict_pointer": pointer_log, "template_gaps": gap_log,
            "negatives_report": (neg_log or {}).get("report"),
            "negatives_post_removal_anchors": (neg_log or {}).get("post_removal_anchors") or {}}
     return ReviewResult(run=run, items=items, report=report)
@@ -824,8 +852,15 @@ async def gate_d_log(inp: ReviewInput) -> Optional[dict]:
 # ── loading and scheduling ──────────────────────────────────────────────────
 
 def input_from_parts(report_id: str, report_type: str, input_data: Optional[dict], cand: Optional[dict],
-                     enhancement_json: Optional[dict]) -> Optional[ReviewInput]:
+                     enhancement_json: Optional[dict], template_config: Optional[dict] = None,
+                     assumed_normals: Optional[List[str]] = None,
+                     generation_sheet_hash: Optional[str] = None) -> Optional[ReviewInput]:
+    """`template_config`: the report's template (templated reports): its grammar sheet's quoted texts are the
+    template's own words, never marked AI text (`template_text`), and its structure drives the gap flags.
+    `assumed_normals`: the stack session's confirmed normals (`template_parts`). `generation_sheet_hash`: the hash of
+    the sheet the report was written from; a different current sheet marks `template_sheet_changed`."""
     from ..generation_artifacts import GenerationArtifacts
+    from .template_text import template_inputs
     cand = cand or {}
     if cand.get("error") or not cand.get("content"):
         return None
@@ -833,6 +868,12 @@ def input_from_parts(report_id: str, report_type: str, input_data: Optional[dict
     v = data.get("variables") or {}
     findings = v.get("FINDINGS") or ""
     guidelines = (enhancement_json or {}).get("guidelines")
+    texts, structure = template_inputs(template_config) if report_type == "templated" else ([], None)
+    changed = False
+    if structure is not None and generation_sheet_hash:
+        from ..template_sheet_structure import sheet_hash
+        sheet = (template_config or {}).get("skill_sheet")
+        changed = isinstance(sheet, str) and sheet_hash(sheet) != generation_sheet_hash
     return ReviewInput(report_id=report_id, pathway="templated" if report_type == "templated" else "quick",
                        artifacts=GenerationArtifacts.from_candidate(cand, findings),
                        clinical_history=v.get("CLINICAL_HISTORY") or "",
@@ -840,7 +881,10 @@ def input_from_parts(report_id: str, report_type: str, input_data: Optional[dict
                        study_title=v.get("SCAN_TYPE") or data.get("extracted_scan_type"),
                        synthesis={"guidelines": guidelines} if guidelines else None,
                        pre_edit_report=(cand.get("quality_check") or {}).get("pre_edit_report"),
-                       removed=list(cand.get("removed") or []), stack=cand.get("stack") is True)
+                       removed=list(cand.get("removed") or []), stack=cand.get("stack") is True,
+                       template_text=texts, template_structure=structure,
+                       assumed_normals=list(assumed_normals or []) if structure is not None else [],
+                       template_sheet_changed=changed)
 
 
 def _session():
@@ -859,13 +903,69 @@ def _with_session(fn, *a, **k):
 def _load_row(db, report_id: str):
     import uuid as _uuid
 
-    from ..database.models import Report
+    from ..database.models import Report, Template
     row = db.get(Report, _uuid.UUID(str(report_id)))
     if row is None:
         return None
     cand = (row.candidate_reports or [None])[0] or {}
     return {"report_type": row.report_type, "input_data": row.input_data, "cand": dict(cand),
-            "enhancement_json": row.enhancement_json}
+            "enhancement_json": row.enhancement_json, **template_parts(db, row, cand)}
+
+
+def _stack_log(db, report_id: str) -> Tuple[List[str], Optional[str]]:
+    """(the normals the radiologist confirmed at the stack gate for this report: `dictation_stack_logs.gate`
+    `assumed` per region minus `removed`, the session stamp's sheet hash); ([], None) when there is no log or it
+    is not in that shape. (No index on report_id yet: one row per session, filtered once per review run.)"""
+    from ..database.models import DictationStackLog
+    log = (db.query(DictationStackLog).filter(DictationStackLog.report_id == str(report_id))
+           .order_by(DictationStackLog.updated_at.desc()).first())
+    stamp = getattr(log, "stamp", None)
+    h = stamp.get("sheet_hash") if isinstance(stamp, dict) and isinstance(stamp.get("sheet_hash"), str) else None
+    gate = getattr(log, "gate", None)
+    if not isinstance(gate, dict) or not isinstance(gate.get("assumed"), dict):
+        return [], h
+    removed = {" ".join(x.split()).lower() for x in gate.get("removed") or [] if isinstance(x, str)}
+    out = [x for v in gate["assumed"].values() if isinstance(v, list) for x in v
+           if isinstance(x, str) and x.strip() and " ".join(x.split()).lower() not in removed]
+    return list(dict.fromkeys(out)), h
+
+
+def _savepoint(db):
+    """A SAVEPOINT around a read that may fail, so a failure never leaves the session's transaction aborted (the
+    rail's probe goes on to read items in the same session)."""
+    import contextlib
+    nested = getattr(db, "begin_nested", None)
+    return nested() if callable(nested) else contextlib.nullcontext()
+
+
+def template_parts(db, row, cand: Optional[dict] = None, stack_log: bool = True) -> dict:
+    """{"template_config", "assumed_normals", "generation_sheet_hash"} of a report row (the review run and the rail's
+    probe / reprepare use the same): the template's config for a templated report; for a stack one, the gate's
+    confirmed normals (only with `stack_log`: probe / reprepare do not use them). The generation sheet hash is the
+    report's own generation stamp, else the stack session's. Each read runs in a savepoint and fails open: a deleted
+    template, a bad config or a missing log gives None / []."""
+    from ..database.models import Template
+    stamp = getattr(row, "generation_stamp", None)
+    out: dict = {"template_config": None, "assumed_normals": [], "generation_sheet_hash": (
+        stamp.get("sheet_hash") if isinstance(stamp, dict) and isinstance(stamp.get("sheet_hash"), str) else None)}
+    tid = getattr(row, "template_id", None)
+    if getattr(row, "report_type", None) != "templated" or not tid:
+        return out
+    try:
+        with _savepoint(db):
+            tpl = db.get(Template, tid)
+        cfg = tpl.template_config if tpl is not None else None
+        out["template_config"] = cfg if isinstance(cfg, dict) else None
+    except Exception as e:  # noqa: BLE001
+        logger.info("review engine: template config not loaded (%s)", type(e).__name__)
+    if stack_log and (cand or {}).get("stack") is True and out["template_config"] is not None:
+        try:
+            with _savepoint(db):
+                out["assumed_normals"], h = _stack_log(db, str(getattr(row, "id", "")))
+            out["generation_sheet_hash"] = out["generation_sheet_hash"] or h
+        except Exception as e:  # noqa: BLE001
+            logger.info("review engine: stack log not loaded (%s)", type(e).__name__)
+    return out
 
 
 async def load_input(report_id: str, text: Optional[str] = None) -> Optional[ReviewInput]:
@@ -880,7 +980,8 @@ async def load_input(report_id: str, text: Optional[str] = None) -> Optional[Rev
     cand = row["cand"]
     if text is not None:
         cand = {**cand, "content": text}
-    return input_from_parts(report_id, row["report_type"], row["input_data"], cand, row["enhancement_json"])
+    return input_from_parts(report_id, row["report_type"], row["input_data"], cand, row["enhancement_json"],
+                            row.get("template_config"), row.get("assumed_normals"), row.get("generation_sheet_hash"))
 
 
 _SEM: Optional[Tuple[asyncio.AbstractEventLoop, asyncio.Semaphore]] = None
@@ -1000,5 +1101,5 @@ def schedule_review(report_id: Optional[str], text: Optional[str] = None) -> Opt
 
 __all__ = ["ENGINE_VERSION", "LANES", "mode", "concurrency", "sample_rate", "lanes_enabled", "rail_enabled",
            "ReviewResult", "build_item", "shadow_items",
-           "plan_preapply", "preapply_failures", "finalise", "run_review", "gate_d_log", "input_from_parts",
+           "plan_preapply", "preapply_failures", "finalise", "run_review", "gate_d_log", "input_from_parts", "template_parts",
            "load_input", "run_and_store", "schedule_review"]
