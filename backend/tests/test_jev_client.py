@@ -134,6 +134,7 @@ def test_warmup_not_wanted_without_key(monkeypatch):
 async def test_schedule_warm_up(built, monkeypatch):
     for k in ("RR_TRIAGE_DEBUG", "RR_COVERAGE_CANDIDATE", "RR_DICTATION_V2"):
         monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("RR_STACK", "0")   # the old flow: no package flag, no warm-up (the stack brings the package)
     assert jev_client.schedule_warm_up() is None
     monkeypatch.setenv("RR_DICTATION_V2", "1")
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
