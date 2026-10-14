@@ -16,7 +16,7 @@ from ..database.crud import get_template
 from ..database.models import DictationStackLog, StackSchemaFamily, StackSlimSheet, User
 from ..stack_switch import stack_allowed  # noqa: F401 (re-exported)
 from ..template_decisions import clean_ledger
-from ..template_sheet_structure import generation_stamp
+from ..template_sheet_structure import generation_stamp, sheet_hash
 from .schemas import Region, groups_for, pill_regions
 from .items import Item, ItemsResult, Referral, recheck as items_recheck, update as items_update
 from .jev_stack import MATERIAL_MIN, STALE_MIN, UNFINISHED_MIN, ask_material, ask_stale, ask_unfinished
@@ -30,6 +30,7 @@ from .draft import DraftResult, draft_conclusion
 from .habits import template_habits
 from .service import GroupResult, SchemaResult, close_update, group_update, resolve_schema
 from .units import StackUnit, sentences as split_sentences
+from .resolution import TokenError, mint, verify as verify_token
 from .gate_model import GateRecord
 
 import logging
@@ -148,6 +149,7 @@ class SlimRequest(BaseModel):
     laterality: str | None = None
     # The family and regions are resolved on the server (review 2026-10-12): a shared sheet is never keyed or
     # shaped by what a client sends.
+    structure_key: str | None = None   # /schema's signed resolution (D26): when given, the fields above are ignored
 
 
 class SlimResult(BaseModel):
@@ -158,6 +160,7 @@ class SlimResult(BaseModel):
     ready: bool = False
     level_groups: dict[str, list[str]] = Field(default_factory=dict)
     required_values: list[str] = Field(default_factory=list)   # template sessions: the LIST_MISSING items (value cluster)
+    structure_key: str | None = None   # free text: the session token re-minted with this sheet's id (D26)
 
 
 class SlimUpdate(BaseModel):
@@ -187,19 +190,27 @@ def _library_pick(protocol_id, phases, laterality):
 async def stack_schema(req: SchemaRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _require()
     # Resolution order (integration contract §8.1): template structure, else the library pick, else free text.
+    # The resolution is minted into structure_key (D26): /slim-sheet and Generate read it, never re-resolve.
     if req.template_id:
         t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
         structure = template_structure(t.template_config) if t is not None else None
         if structure is not None:
-            return await resolve_schema(req.scan_type, req.clinical_history, structure, db)
+            res = await resolve_schema(req.scan_type, req.clinical_history, structure, db)
+            res.structure_key = mint({"src": "template", "tid": str(t.id),
+                                      "sh": sheet_hash((t.template_config or {}).get("skill_sheet", "") or "")})
+            return res
     b, pick = _library_pick(req.protocol_id, req.phases, req.laterality)
     if pick is not None:
         return SchemaResult(regions=pick.regions, groups=groups_for(pick.regions), pills=pill_regions(pick.regions),
                             source="library", key=pick.schema_key, quiet=pick.quiet,
                             protocol={"id": pick.entry_id, "display_name": pick.display_name,
                                       "scan_type_line": pick.scan_type_line, "phases": pick.phases,
-                                      "laterality": pick.laterality})
-    return await resolve_schema(req.scan_type, req.clinical_history, None, db)
+                                      "laterality": pick.laterality},
+                            structure_key=mint({"src": "library", "eid": pick.entry_id, "ph": pick.phases,
+                                                "lat": pick.laterality, "bv": b.version, "sid": pick.sheet_id}))
+    res = await resolve_schema(req.scan_type, req.clinical_history, None, db)
+    res.structure_key = mint({"src": "free", "scan": req.scan_type[:300], "sk": res.key, "sid": None})
+    return res
 
 
 @router.post("/group", response_model=GroupResult)
@@ -414,6 +425,19 @@ async def stack_slim_sheet(req: SlimRequest, user: User = Depends(get_current_us
     read their own structure; quick sessions get the shared slim sheet (made on first use). Never errors: not
     ready means no quiet lines yet."""
     _require()
+    tok = None
+    if req.structure_key:   # the session resolution (D26): the request's scan type, template and pick are ignored
+        try:
+            tok = verify_token(req.structure_key)
+        except TokenError:
+            raise HTTPException(status_code=400, detail="Set up the workspace again.")
+        if tok["src"] == "template":
+            req = req.model_copy(update={"template_id": tok["tid"], "protocol_id": None})
+        elif tok["src"] == "library":
+            req = req.model_copy(update={"template_id": None, "protocol_id": tok["eid"], "phases": tok["ph"],
+                                         "laterality": tok["lat"]})
+        else:
+            req = req.model_copy(update={"template_id": None, "protocol_id": None, "scan_type": tok["scan"]})
     # The same order as /schema (contract §8.1): template structure, else the library pick, else free text.
     if req.template_id:
         t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
@@ -437,7 +461,8 @@ async def stack_slim_sheet(req: SlimRequest, user: User = Depends(get_current_us
     if row is None:
         return SlimResult()
     return SlimResult(id=str(row.id), region_normals=row.region_normals or {}, not_assessable=row.not_assessable or "",
-                      status=row.status, ready=True)
+                      status=row.status, ready=True,
+                      structure_key=mint({**tok, "sid": str(row.id)}) if tok is not None else None)
 
 
 def _removal_rates(db: Session, family: str, normals: dict[str, list[str]]) -> dict[str, dict]:

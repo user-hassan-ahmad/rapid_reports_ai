@@ -32,6 +32,7 @@ class SchemaResult(BaseModel):
     provisional: bool = False
     quiet: list[str] = Field(default_factory=list)
     protocol: dict | None = None
+    structure_key: str | None = None   # the signed session resolution (D26); /slim-sheet and Generate read it
 
 
 class GroupResult(BaseModel):
