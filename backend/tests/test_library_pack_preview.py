@@ -619,10 +619,10 @@ async def test_bts_with_eligibility_unknown_drafts_under_assumptions(monkeypatch
     out = await PP.preview_pack(_bts(), "7 mm solid nodule.", "", {"nodule_type": "solid", "diameter_mm": "7",
                                                                   "benign_features": "Yes", "prior_study": "No"},
                                 finding="7 mm solid nodule.")
-    assert out.state == "check_first" and out.missing == ["age"]
-    assert _ids(out.assumptions) == ["proven_malignant", "spiculation"]     # eligibility, then the visible sign
-    assert _states(out)["proven_malignant"] == "assumed" and _states(out)["age"] == "asked"
-    # review I1: age also feeds Brock, so no band of it can be answered back: it is asked, never assumed
+    assert out.state == "check_first" and out.missing == []
+    assert _ids(out.assumptions) == ["age", "proven_malignant", "spiculation"]     # eligibility, then the sign
+    assert _states(out)["proven_malignant"] == "assumed" and _states(out)["age"] == "assumed"
+    # spec §7.12 item 2: age is assumed at its band ("18 years or over"); a stated age replaces the assumption
     out = await PP.preview_pack(_bts(), "7 mm solid nodule.", "", {"nodule_type": "solid", "diameter_mm": "7",
                                                                   "benign_features": "Yes", "prior_study": "No",
                                                                   "age": "60"}, finding="7 mm solid nodule.")

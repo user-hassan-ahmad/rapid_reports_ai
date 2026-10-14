@@ -556,6 +556,34 @@ def _pinned(entry: Entry, input_id: str, fixed: dict[str, V] | None) -> bool:
             and not any(c.ref == input_id for i in entry.inputs for p in i.prerequisites for c in conds(p)))
 
 
+def _band_fixed(entry: Entry, input_id: str, fixed: dict[str, V] | None) -> bool:
+    """Every band step that reads this number is overridden in `fixed`: its eligibility band is assumed (or answered as
+    a band) even when the number also feeds a formula (spec §7.12 item 2), so it is never held out as an unknown
+    eligibility input; the formula still asks for the number itself when it can change the outcome."""
+    bands = [s for s in entry.logic if isinstance(s, BandStep) and s.ref == input_id]
+    return bool(fixed) and bool(bands) and all(s.id in fixed for s in bands)
+
+
+def _feeds_formula(entry: Entry, input_id: str) -> bool:
+    return any(not isinstance(s, BandStep) for s in entry.logic if input_id in s.refs())
+
+
+def _band_answers(entry: Entry, given: dict[str, InputValue]) -> tuple[dict[str, InputValue], dict[str, V]]:
+    """A number given only as a band that also feeds a formula (an assumed band sent back, BTS age "18 years or
+    over"): the band pins its band steps and the number itself stays unknown, so a formula that can still change the
+    outcome asks for it instead of dead-ending (spec §7.12 item 2). Returns (given without them, band overrides)."""
+    over: dict[str, V] = {}
+    rest = dict(given)
+    for k, v in given.items():
+        if v.state != "present" or v.band is None or not _feeds_formula(entry, k):
+            continue
+        steps = [s for s in entry.logic if isinstance(s, BandStep) and s.ref == k]
+        if steps and all(any(b.id == v.band for b in s.bands) for s in steps):
+            over.update({s.id: V(value=v.band) for s in steps})
+            del rest[k]
+    return rest, over
+
+
 def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V], fixed: dict[str, V] | None = None,
              hold_out: bool = True) -> tuple[list[str], bool, list[str], dict[str, list[str]]]:
     """(possible outcomes, bounded, needed inputs). An unknown input is needed when changing it alone can change the
@@ -567,7 +595,8 @@ def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V], fixe
     held = {k for k, v in given.items() if v.state != "unknown"}
     unknown = [i for i in entry.inputs if env[i.id].state == "unknown" and i.id not in held]
     # an eligibility number assumed through its band (pinned in `fixed`) is not held out again: it is assumed
-    elig = [i for i in unknown if i.role == "eligibility" and not _pinned(entry, i.id, fixed)]
+    elig = [i for i in unknown if i.role == "eligibility" and not _pinned(entry, i.id, fixed)
+            and not _band_fixed(entry, i.id, fixed)]
     if hold_out and elig and _excluded_whatever(entry, given, elig):
         return [DOES_NOT_APPLY], True, [], {}
     if hold_out and elig:
@@ -629,17 +658,14 @@ def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V], fixe
 def _assume(entry: Entry, given: dict[str, InputValue]) -> tuple[dict[str, InputValue], dict[str, V],
                                                                   dict[str, InputValue]]:
     """(input values, band-step overrides, input -> the value assumed) for every unknown eligibility input that has
-    one in-scope value (_non_excluding) the radiologist could answer back: a choice, yes/no, or a number's band when
-    band steps alone read it. A number that also feeds a formula (BTS age, in Brock) has no answerable band, so it is
-    never assumed: it stays unknown and is asked like any other input (review I1)."""
+    one in-scope value (_non_excluding): a choice, yes/no, or a number's in-scope band as a range value. Spec §7.12
+    item 2 (amends review I1): a number that also feeds a formula (BTS age, in Brock) is assumed at its band too; only
+    the band steps are overridden, never the number, so the formula stays unknown and the number is asked only when
+    that formula can still change the outcome."""
     elig = [i for i in entry.inputs if i.role == "eligibility" and i.id not in given]
     if not elig:
         return {}, {}, {}
     fill, over = _non_excluding(entry, given, elig)
-
-    def answerable(input_id: str) -> bool:
-        return all(isinstance(s, BandStep) for s in entry.logic if input_id in s.refs())
-    over = {k: v for k, v in over.items() if answerable(entry.step(k).ref)}
     assumed = dict(fill)
     for s in entry.logic:
         if isinstance(s, BandStep) and s.id in over:
@@ -664,6 +690,9 @@ def evaluate(entry: Entry, given: dict[str, Any], assume_eligible: bool = False)
     if assume_eligible:
         fill, over, assumed = _assume(entry, {k: v for k, v in given.items() if v.state != "unknown"})
         given, fixed = {**given, **fill}, (over or None)
+    given, pinned = _band_answers(entry, given)
+    if pinned:
+        fixed = {**(fixed or {}), **pinned}
     env, steps = _once(entry, given, fixed)
     out = env[entry.result]
     inputs = {i.id: _iv(env[i.id]) for i in entry.inputs}

@@ -3,6 +3,7 @@ import json
 import pytest
 
 from rapid_reports_ai.hybrid_stack.copilot.library import bundle as LB
+from rapid_reports_ai.hybrid_stack.copilot.library import engine as E
 from rapid_reports_ai.hybrid_stack.copilot.library import pack_preview as PP
 from rapid_reports_ai.hybrid_stack.copilot.library.schema import InputValue
 from tests.test_library_pack_preview import FINDINGS, _model, jev  # noqa: F401  (fixture)
@@ -127,13 +128,15 @@ def _tier1():
 
 def test_every_assumed_value_round_trips_through_calculate_on_every_pack():
     """Review I1: a value the draft shows as assumed is one Calculate accepts back, as assumed; sending every shown
-    value reaches the draft's own outcome; no input is both assumed and still needed."""
+    value reaches the draft's own outcome; no input is both assumed and still needed, except an eligibility number
+    assumed at its band whose formula still needs the exact number (spec §7.12 item 2: BTS age in Brock)."""
     seen = 0
     for e in _tier1():
         for presets in ({}, PP.exam_presets(e, PP.EXAM_CARD)):
             p = PP.finish(e, PP.Settlement(), {}, None, [], presets=presets)
             assumed = {d.input for d in p.draft if d.state == "assumed"}
-            assert assumed == set(_ids(p.assumptions)) and not assumed & set(p.missing), e.key
+            banded = {d.input for d in p.draft if d.state == "assumed" and E._feeds_formula(e, d.input)}
+            assert assumed == set(_ids(p.assumptions)) and not (assumed - banded) & set(p.missing), e.key
             assert all(d.value for d in p.draft if d.state == "assumed"), e.key
             shown = {d.input: d.value for d in p.draft if d.value}
             c = PP.calculate(e, PP.Settlement(), shown, None, [], "b1", presets=presets)
@@ -144,11 +147,14 @@ def test_every_assumed_value_round_trips_through_calculate_on_every_pack():
     assert seen                                                       # some pack assumes something
 
 
-def test_bts_age_feeds_brock_so_it_is_asked_never_assumed():
+def test_bts_age_is_assumed_at_its_band_and_still_asked_while_brock_can_change_the_outcome():
+    """Spec §7.12 item 2 (supersedes review I1's "asked, never assumed"): BTS age is assumed "18 years or over"; with
+    nothing dictated, Brock can still change the outcome, so the exact age is also still needed."""
     e = next(x for x in _tier1() if x.id == "bts-pulmonary-nodule")
     p = PP.finish(e, PP.Settlement(), {}, None, [])
     by = {d.input: d for d in p.draft}
-    assert by["age"].state == "asked" and "age" in p.missing and "age" not in _ids(p.assumptions)
+    assert by["age"].state == "assumed" and by["age"].value == "18 years or over" and "age" in _ids(p.assumptions)
+    assert "age" in p.missing and by["age"].needed
     assert by["proven_malignant"].state == "assumed"
 
 
@@ -161,7 +167,8 @@ def test_the_reviewers_bts_repro_reaches_the_same_answer_in_the_draft_and_in_cal
     p = PP.finish(e, s, {"benign_features": "No"}, None, [])
     shown = {d.input: d.value for d in p.draft if d.value}
     c = PP.calculate(e, s, shown, None, [], "b1")
-    assert c.outcome == (p.trace or {}).get("outcome") and c.needed == p.missing and "age" in p.missing
+    assert c.outcome == (p.trace or {}).get("outcome") and c.needed == p.missing
+    assert "age" in _ids(p.assumptions) and "age" in _ids(c.assumptions)     # spec §7.12 item 2: assumed at its band
 
 
 # Hassan 2026-10-13: only a read, answered or stated eligibility value may exclude; a pre-filled one is a scope doubt

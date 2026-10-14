@@ -134,6 +134,12 @@ def _bands_for(e: Entry, i: InputDef) -> list:
     return next((s.bands for s in users if isinstance(s, BandStep) and s.ref == i.id), [])
 
 
+def _all_bands(e: Entry, i: InputDef) -> list:
+    """Every band of the band steps that read this number, formula or not: the labels an assumed band value shows
+    with and is sent back as (spec §7.12 item 2: BTS age assumed "18 years or over")."""
+    return [b for s in e.logic if isinstance(s, BandStep) and s.ref == i.id for b in s.bands]
+
+
 def display_options(e: Entry, i: InputDef) -> list[str]:
     base = i.options if i.type == "enum" else ["Yes", "No"] if i.type == "boolean" else [b.label for b in _bands_for(e, i)]
     return [*base, *(_STATE_LABEL[s] for s in i.states)]
@@ -146,7 +152,7 @@ def _show(e: Entry, i: InputDef, v: InputValue) -> str:
         return "Yes" if v.value else "No"
     if i.type == "number":
         if v.band is not None:
-            return next((b.label for b in _bands_for(e, i) if b.id == v.band), v.band)
+            return next((b.label for b in _all_bands(e, i) if b.id == v.band), v.band)
         unit = "" if i.unit == "count" else i.unit
         return f"{float(v.value):g} {unit}".strip()
     return str(v.value)
@@ -164,7 +170,9 @@ def _answer(e: Entry, i: InputDef, s: str) -> InputValue | None:
         return InputValue(value=s) if s in i.options else None
     if i.type == "boolean":
         return {"Yes": InputValue(value=True), "No": InputValue(value=False)}.get(s)
-    band = next((b for b in _bands_for(e, i) if b.label == s), None)
+    # a band label, offered (band steps alone read the number) or an eligibility band sent back as assumed (the number
+    # also feeds a formula: the engine pins the band and still asks the number where the formula matters)
+    band = next((b for b in (_all_bands(e, i) if i.role == "eligibility" else _bands_for(e, i)) if b.label == s), None)
     if band is not None:
         return InputValue(band=band.id)
     try:
@@ -718,8 +726,10 @@ def _decisive(e: Entry, t: engine.Trace, base: dict[str, InputValue], k: str, cu
     if not t.bounded:
         return None
     i = e.input(k)
-    for label in display_options(e, i):
-        v = _answer(e, i, label)
+    # an assumed band (a number that may also feed a formula) is weighed over its own bands
+    cands = ([InputValue(band=b.id) for b in _all_bands(e, i)] if cur.band is not None
+             else [_answer(e, i, label) for label in display_options(e, i)])
+    for v in cands:
         if v is None or _same_shown(e, i, v, cur):
             continue
         r = ev({**base, k: v}, assume)
