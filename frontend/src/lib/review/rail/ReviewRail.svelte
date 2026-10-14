@@ -116,6 +116,13 @@
 			.map((g) => ({ section: g.section, items: urgentFirst(g.items.filter(isFlagged)) }))
 			.filter((g) => g.items.length > 0)
 	);
+	/** Quiet notes ("area never mentioned"): a muted line each, after the flagged items; never counted as open. */
+	const NOTE_KINDS = new Set(['structure_not_mentioned']);
+	const notes = $derived(
+		$groupsStore
+			.flatMap((g) => g.items)
+			.filter((i) => NOTE_KINDS.has(i.kind) && i.cls !== 'suppress' && (i.status === 'open' || i.status === 'stale'))
+	);
 	/** What still needs the radiologist, among what the rail shows. */
 	const openCount = $derived(
 		sections.reduce((n, g) => n + g.items.filter((i) => i.status === 'open' || i.status === 'stale').length, 0)
@@ -164,7 +171,7 @@
 		setTimeout(() => card.classList.remove('rv-revealed'), 1600);
 	}
 
-	const nothingYet = $derived(!sections.length);
+	const nothingYet = $derived(!sections.length && !notes.length);
 	const skeleton = $derived(firstLoad || (reviewing && nothingYet));
 
 	// RailFrame owns the viewport check (a strip below 1100 px); showItem reads it back to open the overlay.
@@ -273,6 +280,17 @@
 							<h3 class="rv-group-title" data-rv-section={g.section}>{g.section}</h3>
 							{#each g.items as it (it.id)}{@render itemView(it)}{/each}
 						</section>
+					{/each}
+					{#each notes as it (it.id)}
+						<div class="rv-muted rv-note-line" data-rv-item={it.id} data-rv-variant="note">
+							<span>{it.label}</span>
+							<button
+								type="button"
+								class="rv-btn"
+								aria-label={`Dismiss: ${it.label}`}
+								onclick={() => onCommand('dismiss', it.id)}>Dismiss</button
+							>
+						</div>
 					{/each}
 
 				</div>
@@ -441,6 +459,14 @@
 	}
 	.rv-muted {
 		color: var(--rv-muted);
+	}
+	.rv-note-line {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		font-size: 0.8125rem;
+		padding: 4px 0;
 	}
 	.rv-empty {
 		font-size: 0.8125rem;
