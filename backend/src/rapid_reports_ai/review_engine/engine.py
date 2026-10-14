@@ -776,6 +776,7 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         # a structure whose confirmed normal is already flagged missing gets no second, quieter note
         flagged = structure_mentions.structures_of(
             inp, [it.evidence.get("text") for it in items if it.kind == "assumed_normal_missing" and it.evidence])
+        flagged |= structure_mentions.structures_of(inp, list(inp.removed))   # removed on purpose: never a note
         kept = structure_mentions.drop_flagged(notes, flagged)
         if note_log is not None and len(kept) != len(notes):
             note_log = {**note_log, "mention_dropped_for_gap": len(notes) - len(kept)}
@@ -915,7 +916,7 @@ def _load_row(db, report_id: str):
 def _stack_log(db, report_id: str) -> Tuple[List[str], Optional[str]]:
     """(the normals the radiologist confirmed at the stack gate for this report: `dictation_stack_logs.gate`
     `assumed` per region minus `removed`, the session stamp's sheet hash); ([], None) when there is no log or it
-    is not in that shape. (No index on report_id yet: one row per session, filtered once per review run.)"""
+    is not in that shape. (A fallback for reports saved before candidates carried `assumed_confirmed`.)"""
     from ..database.models import DictationStackLog
     log = (db.query(DictationStackLog).filter(DictationStackLog.report_id == str(report_id))
            .order_by(DictationStackLog.updated_at.desc()).first())
@@ -958,6 +959,10 @@ def template_parts(db, row, cand: Optional[dict] = None, stack_log: bool = True)
         out["template_config"] = cfg if isinstance(cfg, dict) else None
     except Exception as e:  # noqa: BLE001
         logger.info("review engine: template config not loaded (%s)", type(e).__name__)
+    confirmed = (cand or {}).get("assumed_confirmed")
+    if stack_log and isinstance(confirmed, list) and out["template_config"] is not None:
+        out["assumed_normals"] = [x for x in confirmed if isinstance(x, str) and x.strip()]
+        return out   # the candidate is what Generate wrote; the session log is only a fallback for older reports
     if stack_log and (cand or {}).get("stack") is True and out["template_config"] is not None:
         try:
             with _savepoint(db):

@@ -275,3 +275,27 @@ def test_the_note_drop_compares_structure_names_case_and_space_insensitively():
              for n in ("liver", "  Left  atrial appendage", "BONES")]
     kept = sm.drop_flagged(notes, {"Liver", "LEFT ATRIAL APPENDAGE"})
     assert [it.evidence["structure"] for it in kept] == ["BONES"]
+
+
+async def test_a_structure_the_radiologist_removed_gets_no_note(monkeypatch):
+    from rapid_reports_ai import report_reconcile as rc
+    from rapid_reports_ai.review_engine import adjudicator as adj
+    from rapid_reports_ai.review_engine import engine, negatives
+    from tests.review_engine_fakes import jev
+    from tests.test_review_engine_template_gaps import NORMALS
+
+    async def no_neg(inp_, run_id, types=None, owned=None):
+        return [], {"candidates": []}
+
+    async def judge(inp_, groups):
+        return [adj.Outcome(group=g) for g in groups]
+
+    async def ask(report, names):
+        return [0.05 if n == "LMS" else 0.9 for n in names]
+    monkeypatch.setattr(rc, "_jev", jev())
+    monkeypatch.setattr(negatives, "classify_negatives", no_neg)
+    monkeypatch.setattr(adj, "adjudicate", judge)
+    monkeypatch.setattr(sm, "ask_mentioned", ask)
+    i = _inp(REPORT.replace(NORMALS[0] + "\n", ""), assumed=NORMALS[1:], removed=[NORMALS[0]])
+    res = await engine.run_review(i, RUN)
+    assert (sm.KIND, "LMS") not in [(x.kind, x.evidence.get("structure")) for x in res.items]

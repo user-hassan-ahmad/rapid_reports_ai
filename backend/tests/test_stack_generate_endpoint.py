@@ -206,3 +206,10 @@ def test_reconcile_reads_only_dictation_and_taps(authed, db_session, monkeypatch
     body["gate"]["assumed"] = {"Kidneys": ["The ureters are not dilated."]}
     _events(authed.post("/api/canvas/stack/generate", json=body))
     assert seen["said"] == "Liver normal."
+
+
+def test_candidate_carries_the_confirmed_normals_minus_removed(authed, db_session, fakes):
+    body = _body()
+    body["gate"]["assumed"] = {"Liver": ["Normal size.", "No ascites."], "Spleen": ["Spleen normal."]}
+    events = _events(authed.post("/api/canvas/stack/generate", json=body))
+    assert events[0][1]["assumed_confirmed"] == ["Normal size.", "Spleen normal."]

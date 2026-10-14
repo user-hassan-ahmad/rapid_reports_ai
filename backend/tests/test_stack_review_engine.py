@@ -41,3 +41,16 @@ def test_check_flags_only_for_stack_reports_and_known_kinds():
     assert live.check_flag_items(plain_inp, "run") == []
     stack_inp = E.input_from_parts("r1", "auto", {"variables": {"FINDINGS": "x"}}, {**cand, "stack": True}, None)
     assert [i.kind for i in live.check_flag_items(stack_inp, "run")] == ["undictated_number"]
+
+
+def test_template_parts_reads_confirmed_normals_from_the_candidate(db_session, test_user):
+    from types import SimpleNamespace
+    from rapid_reports_ai.database.models import Template
+    t = Template(name="T", template_config={"generation_mode": "skill_sheet_guided", "skill_sheet": "## FINDINGS\nx"},
+                 user_id=test_user.id, tags=[], is_active=True)
+    db_session.add(t)
+    db_session.commit()
+    row = SimpleNamespace(id="r-no-log", report_type="templated", template_id=t.id, generation_stamp={"sheet_hash": "h"})
+    cand = {"stack": True, "assumed_confirmed": ["LMS: Normal.", "RCA: Normal."]}
+    parts = E.template_parts(db_session, row, cand)
+    assert parts["assumed_normals"] == ["LMS: Normal.", "RCA: Normal."] and parts["generation_sheet_hash"] == "h"

@@ -106,7 +106,12 @@ async def run(req, user, db: Session) -> AsyncIterator[dict]:
                  "sections": out.get("sections") or [], "latency_ms": int((time.time() - t0) * 1000),
                  "run_id": str(uuid.uuid4()), "generated_at": _now(), "description": description,
                  "quality_check": quality, "signature": signature, "options": [], "options_status": "skipped",
-                 "removed": removed, "kept_by_dictation": kept_by_dictation, "fixed_lines": [], "stack": True}
+                 "removed": removed, "kept_by_dictation": kept_by_dictation, "fixed_lines": [], "stack": True,
+                 # the region normals the radiologist confirmed, minus what was removed: the review reads these at
+                 # once (the browser links the session log to the report only after `done`)
+                 "assumed_confirmed": list(dict.fromkeys(
+                     x for v in req.gate.assumed.values() for x in v
+                     if x.strip() and " ".join(x.split()).lower() not in {" ".join(r.split()).lower() for r in removed}))}
     # 7 save, always (D19), before anything is shown: a report on screen always has its row
     stamp = ({**(tss.generation_stamp(str(template.id), template.template_config, "stack") or {}),
               "structure_key": req.structure_key} if template
