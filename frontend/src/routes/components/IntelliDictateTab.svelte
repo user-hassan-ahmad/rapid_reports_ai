@@ -180,6 +180,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	let stackSchema: StackSchema | null = null;
 	// The session's signed resolution (D26): minted by /schema (re-minted by a free-text /slim-sheet); Generate sends it.
 	let structureKey: string | null = null;
+	let slimKey: string | null = null; // the token a free-text /slim-sheet re-minted with its sheet id (Generate prefers it)
 	// Scratchpad v2 gate (spec 2026-10-11 §5-6): Generate waits for the Confirm, then sends the units and groups.
 	let stackGate: GateRecord | null = null;
 	let stackUnits: StackUnit[] = [];
@@ -585,7 +586,8 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	async function handleStackGenerate() {
 		if (!scratchpadRef) return;
 		const gate = stackGate;
-		if (!gate || !structureKey) {
+		const key = slimKey ?? structureKey;
+		if (!gate || !key) {
 			error = 'Set up the workspace again.';
 			return;
 		}
@@ -600,7 +602,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		reviewSections = null;
 		applicableGuidelines = [];
 		let got = false;
-		const body = stackGenerateBody({ kind: 'quick', scanType: scanType.trim(), history: clinicalHistory.trim(), structureKey,
+		const body = stackGenerateBody({ kind: 'quick', scanType: scanType.trim(), history: clinicalHistory.trim(), structureKey: key,
 			units: stackUnits, groups: stackGroups, gate });
 		try {
 			await streamStackGenerate($token, body, {
@@ -1254,7 +1256,8 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			stackProtocol={stackSchemaPick}
 			stackQuiet={stackSchema?.quiet ?? []}
 			onStackPills={(p) => { stackPills = p; }}
-			stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
+			{structureKey}
+			onStructureKey={(k) => { slimKey = k; }}
 			onStackGate={(g, u, gr) => { stackGate = g; stackUnits = u; stackGroups = gr; }}
 			onStackGenerate={async () => { await tick(); if (!generateBlocked) void handleGenerateReport(); }}
 			onStackSession={(id) => { stackSessionId = id; }}

@@ -52,6 +52,7 @@
 		reviewWaiting = false,
 		reviewFailed = false,
 		assumedReady = false,
+		assumedFailed = false,
 		actionsReady = true,
 		recording = false,
 		onToggleMic = () => {},
@@ -132,6 +133,8 @@
 		reviewFailed?: boolean;
 		/** The assumed check has answered: a region with nothing left to assume leaves the normal section. */
 		assumedReady?: boolean;
+		/** The assumed check failed (P2c): say so in the tray — nothing is assumed, never "nothing to assume". */
+		assumedFailed?: boolean;
 		/** The review of the current dictation has run: rows offer their answers. Before that a referral row is only
 		 *  a reminder (hand read 2026-10-12: buttons at setup invited fiddling instead of dictating). */
 		actionsReady?: boolean;
@@ -1044,6 +1047,11 @@
 
 	<!-- Normal regions (hand read 2026-10-12): what the radiologist said is normal, with their words beside it (a bare
 	     pill read as missed); then the assumed regions together, tap one to see what will be reported. -->
+	{#if assumedFailed}
+		<p role="status" data-assumed-failed class="rounded-md border border-amber-400/30 bg-amber-500/[0.06] px-2.5 py-1.5 text-xs text-amber-200">
+			Couldn't check normals — they won't be assumed. Dictate the normals you want reported.
+		</p>
+	{/if}
 	{#if trayRegions.length}
 		{@const said = trayRegions.filter((r) => dictatedNormalWords.has(r))}
 		<!-- A region the dictation touches with nothing left to assume is not normal: it leaves the section (hand read

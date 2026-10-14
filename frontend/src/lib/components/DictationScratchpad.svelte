@@ -48,7 +48,7 @@
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
 	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
 	import { abnormalAll, addedAtConfirm, assumedFrom, assumedStale, confirmReady, confirmRecheckFailed, flaggedFrom, gateKeyOf, keepRules, moreLine, openCount, rowSentences, splitReply, rulesToSend, type AssumedSnap, type SessionRules } from '$lib/hybrid-stack/items';
-	import { CONCLUSION, OTHER, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
+	import { CONCLUSION, OTHER, conclusionText, findingsHash, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { backstopRun, checkKey, toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
 	import { asTailUnits, assumedKey, blockedSegments, pickBody, pickKey, placedRegions, shownNormals, visiblePills, withoutSegments, type ProtocolPick } from '$lib/hybrid-stack/protocol';
 	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit, ValueChip } from '$lib/hybrid-stack/types';
@@ -99,11 +99,14 @@
 	export let stackProtocol: ProtocolPick | null = null;
 	export let stackQuiet: string[] = [];
 	export let onStackPills: (pills: string[]) => void = () => {};
-	export let stackShadowRate = 0.25; // share of sessions that build the old Structured text once, at session end
 	/** Template sessions: the template whose structure gives the region normals (checklist spec §8.3). */
 	export let stackTemplateId: string | null = null;
 	/** The slim sheet the session uses (null: none yet), so Generate builds from it. */
 	export let onStackSheet: (sheetId: string | null) => void = () => {};
+	/** The session's signed resolution from /stack/schema (D26): /slim-sheet reads it instead of the request fields. */
+	export let structureKey: string | null = null;
+	/** A free-text /slim-sheet re-mints the token with its sheet id: Generate must send that one (null: use the schema's). */
+	export let onStructureKey: (key: string | null) => void = () => {};
 	/** Scratchpad v2 gate (spec 2026-10-11 §5; integration §5): the confirmed record with the units (incl. the live
 	 *  tail) and groups Generate sends — the server builds the findings text — or (null, [], []) whenever it re-arms. */
 	export let onStackGate: (gate: GateRecord | null, units: StackUnit[], groups: string[]) => void = () => {};
@@ -355,7 +358,7 @@
 	$: copilot?.setContext({ scanType, history: clinicalHistory });
 	/** `units`: what the new session starts from; resetStack passes none (a clear must not re-match the old text). */
 	function startCopilot(units: StackUnit[] = stackUnits): void {
-		copilot = mountCopilot({ scanType, history: clinicalHistory }, units, isRecording, findingsText(units, stackGroups));
+		copilot = mountCopilot({ scanType, history: clinicalHistory }, units, isRecording, stackGroups);
 		copilotState = copilot.state;
 	}
 	function stopCopilot(): void {
@@ -404,7 +407,9 @@
 	$: dictatedConclusion = conclusionText(stackUnits);
 	// The conclusion follows the findings: greyed until the first findings land, then the AI draft (or, without one,
 	// a field to type or dictate with a button to draft it).
-	$: findingsLanded = findingsText(stackUnits, stackGroups).trim().length > 0;
+	// A failed /assumed (an error or res.error) is its own state: the tray says so; nothing is assumed (spec §10).
+	$: assumedState = (assumedSnap?.check_failed ? 'failed' : 'ok') as 'ok' | 'failed';
+	$: findingsLanded = stackUnits.some((u) => !u.heading && u.group !== null && u.group !== CONCLUSION && u.text.trim() !== '');
 	$: conclusionView = dictatedConclusion
 		? ({ kind: 'dictated' } as const)
 		: draft
@@ -459,7 +464,8 @@
 	let lastJevCovered: string[] = []; // shadow: today's coverage pills, for the log
 	// Shadow Structured build: once per sampled session, after recording stops — never per settle, so it
 	// never queues the live polish behind it on the shared Cerebras limits.
-	let stackShadowSampled = Math.random() < stackShadowRate;
+	// P2c (spec §9.4): the shadow Structured build is gone with the stack; never sampled.
+	let stackShadowSampled = false;
 	let lastRegionsKey = '';
 	$: {
 		const k = stackRegions.map((r) => r.name).join('|');
@@ -474,7 +480,7 @@
 	// The slim sheet follows the regions and the pick: a different protocol, phase set or side has different normals.
 	let lastSheetKey = '\u0002'; // no regions, no pick: nothing to load (as the regions block above)
 	$: {
-		const k = `${stackRegions.map((r) => r.name).join('|')}\u0002${pickKey(stackProtocol)}`;
+		const k = `${stackRegions.map((r) => r.name).join('|')}\u0002${pickKey(stackProtocol)}\u0002${structureKey ?? ''}`;
 		if (k !== lastSheetKey) {
 			lastSheetKey = k;
 			void loadSlimSheet();
@@ -1040,7 +1046,8 @@
 					// Deepgram's full stops and every polish reset, leaving it empty in practice).
 					open_line: openStatement(solid),
 					latest_utterance: chunk,
-					checklist: checklistSections,
+					// Stack mode: no checklist (the legacy coverage half, spec §9.5); the stack's regions and rows instead.
+					...(hybridStack ? {} : { checklist: checklistSections }),
 					...(hybridStack && stackRegions.length
 						? { stack_regions: stackRegions.map((r) => r.name), stack_items: openItemsForVoice() }
 						: {}),
@@ -1610,7 +1617,7 @@
 			const res = await postGroup($token, { scan_type: scanType, text, regions: stackRegions, previous: stackUnits });
 			if (groupable(verbatimNow) === text) {
 				stackUnits = res.units;
-				copilot?.round(stackUnits, isRecording, findingsText(stackUnits, stackGroups));
+				copilot?.round(stackUnits, isRecording, stackGroups);
 				onStackPills(res.pills);
 				void refreshAssumed(); // the checks wait for the end of dictation; the assumed normals follow the text
 				// The grouper failed or left sentences unplaced (they are kept, as said): retry a few times.
@@ -1901,9 +1908,11 @@
 		valuesSeq++; // a fill still running belongs to the old sheet
 		valueChips = [];
 		onStackSheet(null);
+		onStructureKey(null);
 		if (!hybridStack || !stackRegions.length) return;
 		try {
-			const res = await postSlimSheet($token, { scan_type: scanType, clinical_history: clinicalHistory, template_id: stackTemplateId, ...pickBody(stackProtocol) });
+			const res = await postSlimSheet($token, { scan_type: scanType, clinical_history: clinicalHistory, template_id: stackTemplateId,
+				structure_key: structureKey, ...pickBody(stackProtocol) });
 			if (seq !== slimSeq) return;
 			stackTemplateUnusable = res.status === 'template_unusable';
 			if (!res.ready) return;
@@ -1913,6 +1922,7 @@
 			valueChips = initialChips(res.required_values ?? []);
 			if (verbatimNow.trim()) void refreshValues(verbatimNow); // dictation already there: fill now, not at the next review
 			onStackSheet(res.id);
+			if (res.structure_key) onStructureKey(res.structure_key);
 			// E6: the normals are checked as soon as the sheet is in, with no dictation yet, so the tray shows every
 			// region's normal straight after Set up workspace. One call per sheet load; the empty-dictation answer is
 			// current (assumedStale) until something is dictated.
@@ -2215,7 +2225,7 @@
 		stackSessionId = crypto.randomUUID();
 		stackManualMoves = 0;
 		stackLatency = {};
-		stackShadowSampled = Math.random() < stackShadowRate;
+		stackShadowSampled = false;
 		stackItems = [];
 		stackCapped = [];
 		moreOpen = false;
@@ -2300,6 +2310,7 @@
 
 	async function _runReview(): Promise<void> {
 		if (!editor) return;
+		if (hybridStack) return; // stack mode: no /canvas/review (the coverage half is legacy, spec §9.5; rows replace prompts)
 		const scratchpad_content = editor.state.doc.toString();
 		const hashInput = scratchpad_content + checklistSections.join();
 		const currentHash = simpleHash(hashInput);
@@ -2475,7 +2486,7 @@
 		onRecordingChange(false);
 		lastWordsAt = 0;
 		groupFailures = 0; // retries resume once dictation stops, so nothing is left stuck in the live strip
-		copilot?.round(stackUnits, false, findingsText(stackUnits, stackGroups)); // stopped: the last finding is stable
+		copilot?.round(stackUnits, false, stackGroups); // stopped: the last finding is stable
 		scheduleGroup(0); // the held-back last sentence now joins its region
 		scheduleClose();
 		isConnecting = false;
@@ -2834,7 +2845,7 @@
 							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView.show ? moreView.rows : []} moreWaiting={moreView.waiting} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={shownAssumed} flagged={flaggedNow}
 							checks={placedChecks} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
-							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
+							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} assumedFailed={assumedState === 'failed'} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
 							onAnswer={answerRow} onAnswerTemplate={answerTemplateRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
 							onConfirm={stackConfirm} {confirmNote} onConfirmGenerate={onStackGenerate ? async () => { if (await stackConfirm()) onStackGenerate?.(); } : null} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
 							values={valueChips} onEnterValue={(i, t) => (valueChips = enterValue(valueChips, i, t))} onValueNa={(i) => (valueChips = markNa(valueChips, i))}

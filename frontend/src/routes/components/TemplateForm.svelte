@@ -221,6 +221,7 @@
 	}
 	// The session's signed resolution (D26), minted by /schema with template_id; Generate sends it.
 	let structureKey: string | null = null;
+	let slimKey: string | null = null; // the token a free-text /slim-sheet re-minted with its sheet id (Generate prefers it)
 	let schemaSeq = 0;
 	let stackSchemaError = ''; // stack mode: the server's refusal (D15) or a failed /schema; Generate stays blocked
 	// The guideline Copilot (rr_stack_copilot): opt-in per browser, and only on top of the stack.
@@ -511,7 +512,8 @@
 	async function handleStackGenerate() {
 		if (!scratchpadRef || !selectedTemplate) return;
 		const gate = stackGate;
-		if (!gate || !structureKey) {
+		const key = slimKey ?? structureKey;
+		if (!gate || !key) {
 			error = 'Set up the workspace again.';
 			return;
 		}
@@ -525,7 +527,7 @@
 		reviewSections = null;
 		let got = false;
 		const body = stackGenerateBody({ kind: 'template', templateId: String(selectedTemplate.id), variables: templateVariables(variableValues),
-			scanType, history: variableValues['CLINICAL_HISTORY'] ?? '', structureKey, units: stackUnits, groups: stackGroups, gate });
+			scanType, history: variableValues['CLINICAL_HISTORY'] ?? '', structureKey: key, units: stackUnits, groups: stackGroups, gate });
 		try {
 			await streamStackGenerate($token, body, {
 				candidate: (c) => {
@@ -1035,7 +1037,8 @@
 					stackGroups={stackSchema?.groups ?? []}
 					stackSchemaMeta={stackSchema ? { key: stackSchema.key, source: stackSchema.source, provisional: stackSchema.provisional } : null}
 					onStackPills={(p) => { stackPills = p; }}
-					stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
+					{structureKey}
+					onStructureKey={(k) => { slimKey = k; }}
 					onStackGate={(g, u, gr) => { stackGate = g; stackUnits = u; stackGroups = gr; }}
 					onStackGenerate={async () => { await tick(); if (!generateBlocked) void handleGenerateReport(); }}
 					onStackSession={(id) => { stackSessionId = id; }}

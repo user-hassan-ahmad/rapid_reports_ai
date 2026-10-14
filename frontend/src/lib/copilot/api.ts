@@ -89,7 +89,8 @@ function matchBody(b: MatchBody): MatchBody {
 		scan_type: b.scan_type,
 		clinical_history: b.clinical_history,
 		findings: b.findings.slice(0, MAX_FINDINGS).map((f) => ({ id: f.id, text: f.text.slice(0, MAX_FINDING_TEXT) })),
-		dictation: b.dictation,
+		units: b.units,
+		groups: b.groups,
 		patient: b.patient
 	};
 }
@@ -98,7 +99,8 @@ function openBody(b: OpenBody): OpenBody {
 	const out: OpenBody = {
 		card: { ...b.card, finding: b.card.finding.slice(0, MAX_DICTATION) },
 		finding: b.finding.slice(0, MAX_DICTATION),
-		findings: b.findings,
+		units: b.units,
+		groups: b.groups,
 		clinical_history: b.clinical_history,
 		answered: Object.fromEntries(Object.entries(b.answered).slice(0, MAX_ANSWERED)),
 		patient: b.patient

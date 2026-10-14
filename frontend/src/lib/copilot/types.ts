@@ -1,5 +1,6 @@
 // Wire types for /api/canvas/stack/guidelines/* (backend hybrid_stack/copilot/types.py, routes.py).
 // The ONLY place the UI names backend fields; contract.json lists them for the backend's contract test.
+import type { StackUnit } from '$lib/hybrid-stack/types';
 export type CardState = 'applies' | 'check_first' | 'does_not_apply' | 'which_lesion'; // which_lesion: Task 8
 export interface Publication { title: string; body: string; year: string }
 export interface Card {
@@ -150,17 +151,21 @@ export interface Calculation {
 }
 export interface CalculateResult { calculation: Calculation | null; ms: number; error: string | null }
 
+// P2c: the round's units and groups replace the dictation/findings text; the server builds that text with the one
+// builder (findings_text, P2b). An exam card's `finding` still carries the findings text (its own field).
 export interface MatchBody {
 	scan_type: string;
 	clinical_history: string;
 	findings: { id: string; text: string }[];
-	dictation: string;
+	units: StackUnit[];
+	groups: string[];
 	patient: Record<string, string>;
 }
 export interface OpenBody {
 	card: Card;
 	finding: string;
-	findings: string;
+	units: StackUnit[];
+	groups: string[];
 	clinical_history: string;
 	answered: Record<string, string>;
 	patient: Record<string, string>;
