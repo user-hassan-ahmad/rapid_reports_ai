@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount, onDestroy, tick } from 'svelte';
 	import { computeDelta } from '$lib/dictation-lab/delta';
 	import type { CoverageTrace, LabConfig } from '$lib/dictation-lab/types';
 	import {
@@ -14,7 +14,7 @@
 		isUnfinishedCorrection,
 		jevContext,
 		openStatement,
-		splitSpan,
+		polishSpan,
 		hash8,
 		isRedictation,
 		keytermQuery,
@@ -43,12 +43,16 @@
 	import { mountCopilot } from '$lib/copilot/mount';
 	import { unresolved, type Unresolved } from '$lib/copilot/gate';
 	import { readable, type Readable } from 'svelte/store';
-	import { postAssumed, postChanged, postDictationCheck, postClose, postConclusionCheck, postDebug, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet } from '$lib/hybrid-stack/api';
-	import { appendSentence, heldBack, lineChange, liveTail, moveUnit, similar } from '$lib/hybrid-stack/stackState';
-	import { abnormalAll, assumedFrom, openCount, rowSentences, type AssumedSnap } from '$lib/hybrid-stack/items';
-	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates } from '$lib/hybrid-stack/regionState';
-	import { toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
-	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit } from '$lib/hybrid-stack/types';
+	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet, postValues } from '$lib/hybrid-stack/api';
+	import { chooseTemplate, reviewTemplate, templateKey, withChosen, withRequired } from '$lib/hybrid-stack/templateRows';
+	import { enterValue, failFill, initialChips, isFilling, keepStated, markNa, markRestNa, mergeFill, pickValue, startFill, valuesKey } from '$lib/hybrid-stack/values';
+	import { appendSentence, heldBack, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
+	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
+	import { abnormalAll, addedAtConfirm, assumedFrom, assumedStale, confirmReady, confirmRecheckFailed, flaggedFrom, gateKeyOf, keepRules, moreLine, openCount, rowSentences, splitReply, rulesToSend, type AssumedSnap, type SessionRules } from '$lib/hybrid-stack/items';
+	import { CONCLUSION, OTHER, conclusionText, findingsHash, regionStates, regionText } from '$lib/hybrid-stack/regionState';
+	import { backstopRun, checkKey, toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
+	import { asTailUnits, assumedKey, blockedSegments, pickBody, pickKey, placedRegions, shownNormals, visiblePills, withoutSegments, type ProtocolPick } from '$lib/hybrid-stack/protocol';
+	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit, ValueChip } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
 	import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
@@ -92,15 +96,23 @@
 	export let stackRegions: Region[] = [];
 	export let stackGroups: string[] = [];
 	export let stackSchemaMeta: { key: string; source: string; provisional: boolean } | null = null;
+	/** Protocol library: the picked protocol (null: free text) and the schema's quiet regions (spec 2026-10-13 §3-4). */
+	export let stackProtocol: ProtocolPick | null = null;
+	export let stackQuiet: string[] = [];
 	export let onStackPills: (pills: string[]) => void = () => {};
-	export let stackShadowRate = 0.25; // share of sessions that build the old Structured text once, at session end
 	/** Template sessions: the template whose structure gives the region normals (checklist spec §8.3). */
 	export let stackTemplateId: string | null = null;
 	/** The slim sheet the session uses (null: none yet), so Generate builds from it. */
 	export let onStackSheet: (sheetId: string | null) => void = () => {};
-	/** Scratchpad v2 gate (spec 2026-10-11 §5): the confirmed record and the findings block Generate sends,
-	 *  or (null, '') whenever it re-arms. */
-	export let onStackGate: (gate: GateRecord | null, findings: string) => void = () => {};
+	/** The session's signed resolution from /stack/schema (D26): /slim-sheet reads it instead of the request fields. */
+	export let structureKey: string | null = null;
+	/** A free-text /slim-sheet re-mints the token with its sheet id: Generate must send that one (null: use the schema's). */
+	export let onStructureKey: (key: string | null) => void = () => {};
+	/** Scratchpad v2 gate (spec 2026-10-11 §5; integration §5): the confirmed record with the units (incl. the live
+	 *  tail) and groups Generate sends — the server builds the findings text — or (null, [], []) whenever it re-arms. */
+	export let onStackGate: (gate: GateRecord | null, units: StackUnit[], groups: string[]) => void = () => {};
+	/** The walkthrough's last step: Confirm, then Generate (the parent's Generate, once the gate has reached it). */
+	export let onStackGenerate: (() => void) | null = null;
 	/** The stack session id, so the parent can link the generated report to it. */
 	export let onStackSession: (sessionId: string) => void = () => {};
 
@@ -256,8 +268,12 @@
 	// assumed unless removed; conclusion draft, gate, inline edits, voice commands (v2).
 	const ITEMS_DEBOUNCE_MS = 500;
 	const FOLD_MS = 1200;
+	const MAX_RECHECK_CAPPED = 6; // capped rows sent with a quiet re-check
 	let stackItems: StackItem[] = []; // the open and folding rows from /items
-	let stackCapped: StackItem[] = [];
+	let stackCapped: StackItem[] = []; // rows over the writer's caps: behind "N more checks" (E1b), never lost
+	let moreOpen = false; // the "N more checks" line is open
+	let moreOpened = false; // it was opened this session (gate log)
+	let cappedTapped: string[] = []; // ids of rows answered with a tap from behind "more checks" (gate log)
 	let tappedRows: Record<string, StackItem> = {}; // answered with a tap: the sentences listed at the tap
 	let dictatedRows: Record<string, StackItem> = {}; // answered by the dictation (for the gate record)
 	let foldedRows: string[] = []; // answered rows already folded away: never shown again
@@ -288,6 +304,11 @@
 	let seenChecks: Record<string, CheckFlag> = {};
 	let checkedFor = '';
 	let checkSeq = 0;
+	// The model check in flight (round 1): its text while it runs, so Confirm shows "Checking…" and the walk waits for
+	// its flags (bounded by the check's own timeout; it fails open). The scan type it last ran with: a new pick re-runs it.
+	let semanticFor: string | null = null;
+	let semanticScan: string | null = null;
+	let semanticRun = 0;
 	let conclusionNote: { for: string; added: string[]; suggestion: string | null; loading: boolean } | null = null;
 	// The last /assumed answer and the state it was computed for (review 2026-10-12): a region assumes only what was
 	// checked for its current state, and Confirm waits while the answer is behind the dictation.
@@ -296,10 +317,24 @@
 	// Each region's normal sentences (the slim sheet, or the template's structure) and what this scan cannot show.
 	let stackRegionNormals: Record<string, string[]> = {};
 	let stackNotAssessable = '';
+	/** A template whose sheet has no usable structure: no assumed normals, and Generate takes today's template path. */
+	let stackTemplateUnusable = false;
 	let slimSeq = 0;
+	// The value cluster (requirements spec 2026-10-12 part 1): the template's required values (from the slim-sheet call),
+	// filled when the sheet loads and at each end-of-dictation review; the radiologist's own answers stand.
+	let valueChips: ValueChip[] = [];
+	let valuesSeq = 0;
 	let shownSentences: string[] = []; // every row sentence shown this session (a row owns its check)
 	// The session's referral rows: the first /items reply's, fixed so they never drift (null until it answers).
 	let fixedReferrals: { question: string; region: string; sentences: string[] }[] | null = null;
+	// The template's context rules, decided once for the session from the clinical history (review R5): the first good
+	// /assumed reply's (the sheet load), sent back on every refresh; every rule is re-asked with the dictation at Confirm.
+	let sessionRules: SessionRules | null = null;
+	let confirming = false;
+	// Why the last Confirm press did not gate (round 1): shown at the Confirm bar; cleared by any change.
+	let confirmNote: string | null = null;
+	let confirmNoteKey: string | null = null;
+	let templateRequired: Record<string, string[]> = {}; // the template's required statements met at the last review
 	let itemsSeq = 0;
 	let assumedSeq = 0;
 	let draft: { text: string; hash: string; edited: boolean; typed: boolean } | null = null;
@@ -313,7 +348,6 @@
 	$: pillRegions = stackRegions.map((r) => r.name).filter((n) => n !== OTHER);
 	// The v2 view takes over only once a schema exists: a failed schema fetch leaves today's editor in place.
 	$: stackView = hybridStack && stackRegions.length > 0;
-
 	// Guideline Copilot (plan Task A7): one session while the rail can show; off means no session and no request.
 	// It reads grouping rounds only and never writes the editor, the findings block, the gate or Generate.
 	const noCopilot: Readable<CopilotState | null> = readable(null);
@@ -325,7 +359,7 @@
 	$: copilot?.setContext({ scanType, history: clinicalHistory });
 	/** `units`: what the new session starts from; resetStack passes none (a clear must not re-match the old text). */
 	function startCopilot(units: StackUnit[] = stackUnits): void {
-		copilot = mountCopilot({ scanType, history: clinicalHistory }, units, isRecording, findingsText(units, stackGroups));
+		copilot = mountCopilot({ scanType, history: clinicalHistory }, units, isRecording, stackGroups);
 		copilotState = copilot.state;
 	}
 	function stopCopilot(): void {
@@ -333,33 +367,42 @@
 		copilot = null;
 		copilotState = noCopilot;
 	}
-	$: regionView = regionStates(stackUnits, pillRegions);
+	// From the shown pills, not every schema region: an undictated quiet region is never named as normal (review
+	// 2026-10-13: quiet regions reached assumed_normal and the findings block with no sheet sentence behind them).
+	$: regionView = regionStates(stackUnits, shownPills);
 	// Tapped rows stay on screen as the radiologist's answers even after the writer stops returning them.
-	$: viewItems = [...stackItems, ...Object.values(tappedRows).filter((t) => !stackItems.some((i) => i.id === t.id))];
-	// Debug trace (local only): a sentence already placed this session showing in the live strip again.
-	let placedTexts = new Set<string>();
-	let lastDebugKey = '';
+	// Rows over the caps wait behind one quiet line at the end (E1b); a tapped one stays there, green.
+	$: moreView = moreLine(stackCapped, stackItems, Object.keys(tappedRows), removedSentences, Object.keys(skippedRows));
+	$: if (!moreView.show && moreOpen) moreOpen = false; // nothing left behind the line: it closes
+	$: viewItems = withChosen([...stackItems, ...Object.values(tappedRows).filter((t) => !stackItems.some((i) => i.id === t.id) && !moreView.rows.some((c) => c.id === t.id))], tappedRows);
 	$: stripNow = stackView ? liveTail(verbatimNow, stackUnits) : [];
-	$: {
-		for (const u of stackUnits) if (u.group !== null && !u.heading) placedTexts.add(u.text);
-		const back = stripNow.filter((t) => [...placedTexts].some((p) => p === t || similar(p, t)));
-		const key = back.join('|');
-		if (back.length && key !== lastDebugKey) {
-			lastDebugKey = key;
-			void postDebug($token, { kind: 'strip_returned', at: new Date().toISOString(), returned: back, strip: stripNow,
-				verbatim: verbatimNow, units: stackUnits.map((u) => ({ id: u.id, group: u.group, text: u.text })),
-				recording: isRecording, busy: stackBusy, timer: stackTimer !== null, pendingPolish: structureBusy(),
-				groupFailures, placed: [...placedTexts].slice(-40) });
-		}
-	}
 	$: rowsOpen = openCount(viewItems, Object.keys(tappedRows), removedSentences, Object.keys(skippedRows));
 	// Confirm waits for the review of what is on screen; a failed review counts as done (nothing new is asked).
 	$: reviewBehind = stackView && !!verbatimNow.trim() && reviewedFor !== verbatimNow;
 	$: if (stackView && !isRecording && reviewBehind) scheduleReview(verbatimNow);
-	// What Confirm takes ownership of: the region normals still shown (abnormal regions' checked sentences,
-	// untouched regions' sheet sentences), minus anything removed.
-	$: confirmedAssumed = assumedFrom(assumedSnap, regionView.abnormal, regionView.assumedNormal, removedSentences);
-	$: assumedBehind = Object.keys(stackRegionNormals).length > 0 && (assumedSnap === null || assumedSnap.dictation !== verbatimNow);
+	// What Confirm takes ownership of: the region normals still shown (abnormal and dictated-normal regions' checked
+	// sentences, untouched regions' sheet sentences), minus anything removed.
+	$: dictatedNormalRegions = regionView.dictatedNormal.map((d) => d.region);
+	$: confirmedAssumed = assumedFrom(assumedSnap, regionView.abnormal, regionView.assumedNormal, removedSentences, dictatedNormalRegions);
+	// Kept normals the dictation may conflict with (review R1): shown with an amber marker; still assumed.
+	$: flaggedNow = flaggedFrom(assumedSnap, regionView.abnormal, regionView.assumedNormal, removedSentences, dictatedNormalRegions);
+	// Quiet regions show as pills once something is placed there; a segment's normal reads "Elsewhere, …" once one
+	// of its levels is dictated.
+	let stackLevelGroups: Record<string, string[]> = {};
+	let stackStructures: Record<string, Record<string, string[]>> = {}; // template sub-pills: region -> structure -> sentences
+	$: placedGroups = placedRegions(stackUnits); // every split part counts, as in regionStates
+	// A segment line is withheld when an abnormal sentence filed elsewhere, or one the grouper has not received yet (the
+	// live tail), names its levels, its vertebrae or the segment (backstop).
+	$: segmentsBlocked = blockedSegments(stackLevelGroups, [...stackUnits, ...asTailUnits(stripNow)]);
+	$: shownPills = visiblePills(stackGroups, pillRegions, stackQuiet, placedGroups);
+	// A segment's normal comes from the sheet while its own region is untouched, never from /assumed (E1); × or an
+	// edit on an "Elsewhere, …" line removes it in either form.
+	$: shownAssumed = shownNormals(confirmedAssumed, stackRegionNormals, stackLevelGroups, regionView.assumedNormal, placedGroups, removedSentences,
+		segmentsBlocked);
+	// What /assumed is asked about: the stale check reads the same set, so a sheet whose only normals are segments
+	// (never posted) never holds Confirm on "Updating…" (merge review 2026-10-14).
+	$: assumedBehind = assumedStale(Object.keys(withoutSegments(withRequired(stackRegionNormals, templateRequired), stackLevelGroups)).length > 0,
+		assumedSnap, verbatimNow);
 	// Regions are confirmed by name only when no sheet exists for this session (v2 behaviour); with a sheet, a region
 	// with no sentence left assumes nothing. An abnormal region's remainder is never named (review 2026-10-12).
 	$: namedNormals = Object.keys(stackRegionNormals).length === 0;
@@ -377,7 +420,9 @@
 	}
 	// The conclusion follows the findings: greyed until the first findings land, then the AI draft (or, without one,
 	// a field to type or dictate with a button to draft it).
-	$: findingsLanded = findingsText(stackUnits, stackGroups).trim().length > 0;
+	// A failed /assumed (an error or res.error) is its own state: the tray says so; nothing is assumed (spec §10).
+	$: assumedState = (assumedSnap?.check_failed ? 'failed' : 'ok') as 'ok' | 'failed';
+	$: findingsLanded = stackUnits.some((u) => !u.heading && u.group !== null && u.group !== CONCLUSION && u.text.trim() !== '');
 	$: conclusionView = dictatedConclusion
 		? ({ kind: 'dictated' } as const)
 		: draft
@@ -390,7 +435,7 @@
 	// The gate re-arms on any change to what it confirms (spec §5).
 	// A check sits on the sentence that now holds its words (units move as the grouping settles).
 	$: placedChecks = checks.map((c) => ({ ...c, unitId: unitFor(c.quote, stackUnits) }));
-	$: checksBehind = stackView && !isRecording && !!verbatimNow.trim() && checkedFor !== verbatimNow;
+	$: checksBehind = stackView && !isRecording && !!verbatimNow.trim() && checkedFor !== checkKey(scanType, verbatimNow);
 	// Backstop: the review path runs the check; if the text settled without one (nothing for the review to do), run
 	// tier 1 so Confirm never waits on a check nobody started.
 	let checksTimer: ReturnType<typeof setTimeout> | null = null;
@@ -399,15 +444,24 @@
 		if (checksTimer) clearTimeout(checksTimer);
 		checksTimer = setTimeout(() => {
 			checksTimer = null;
-			if (checksBehind && !reviewBehind && !isRecording) void runChecks(verbatimNow, false);
+			const run = backstopRun({ text: verbatimNow, scan: scanType, semanticFor, semanticScan });
+			if (checksBehind && !reviewBehind && !isRecording && run !== 'none') void runChecks(verbatimNow, run === 'semantic');
 		}, 1500);
 	}
-	$: gateKey = [verbatimNow, JSON.stringify(checks.map((c) => c.key)), JSON.stringify(checkAnswers), findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
+	$: gateKey = gateKeyOf(scanType, [verbatimNow, JSON.stringify(checks.map((c) => c.key)), JSON.stringify(checkAnswers), findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
 		regionView.remainder.join('|'), String(rowsOpen), Object.keys(tappedRows).join('|'), Object.keys(skippedRows).join('|'), removedSentences.join('|'),
-		JSON.stringify(confirmedAssumed)].join('\u0003');
+		JSON.stringify(shownAssumed), templateKey(tappedRows, templateRequired), valuesKey(valueChips)]);
+	$: if (confirmNote && !confirming) {
+		void gateKey;
+		if (confirmNoteKey === null) confirmNoteKey = gateKey;
+		else if (confirmNoteKey !== gateKey) {
+			confirmNote = null;
+			confirmNoteKey = null;
+		}
+	}
 	$: if (stackGate && stackGate.units_hash !== gateKey) {
 		stackGate = null;
-		onStackGate(null, '');
+		onStackGate(null, [], []);
 	}
 	$: onStackSession(stackSessionId);
 	let ghostNow = '';
@@ -423,7 +477,8 @@
 	let lastJevCovered: string[] = []; // shadow: today's coverage pills, for the log
 	// Shadow Structured build: once per sampled session, after recording stops — never per settle, so it
 	// never queues the live polish behind it on the shared Cerebras limits.
-	let stackShadowSampled = Math.random() < stackShadowRate;
+	// P2c (spec §9.4): the shadow Structured build is gone with the stack; never sampled.
+	let stackShadowSampled = false;
 	let lastRegionsKey = '';
 	$: {
 		const k = stackRegions.map((r) => r.name).join('|');
@@ -433,6 +488,14 @@
 			fixedReferrals = null; // a new case asks its own questions
 			scheduleGroup(0);
 			scheduleItems(0); // the referral row appears before anything is dictated
+		}
+	}
+	// The slim sheet follows the regions and the pick: a different protocol, phase set or side has different normals.
+	let lastSheetKey = '\u0002'; // no regions, no pick: nothing to load (as the regions block above)
+	$: {
+		const k = `${stackRegions.map((r) => r.name).join('|')}\u0002${pickKey(stackProtocol)}\u0002${structureKey ?? ''}`;
+		if (k !== lastSheetKey) {
+			lastSheetKey = k;
 			void loadSlimSheet();
 		}
 	}
@@ -996,7 +1059,8 @@
 					// Deepgram's full stops and every polish reset, leaving it empty in practice).
 					open_line: openStatement(solid),
 					latest_utterance: chunk,
-					checklist: checklistSections,
+					// Stack mode: no checklist (the legacy coverage half, spec §9.5); the stack's regions and rows instead.
+					...(hybridStack ? {} : { checklist: checklistSections }),
 					...(hybridStack && stackRegions.length
 						? { stack_regions: stackRegions.map((r) => r.name), stack_items: openItemsForVoice() }
 						: {}),
@@ -1081,7 +1145,7 @@
 	 *  Returns why it could not, so the caller falls back to the full polish. */
 	function applyLean(
 		lean: LeanResult,
-		split: { span: string; spanFrom: number },
+		split: { span: string; spanFrom: number; paragraph?: boolean },
 		solid0: string,
 		utterance: string,
 		to: number,
@@ -1100,7 +1164,7 @@
 		const pend = { to };
 		// Word-sense fixes apply to the polish's output too, where the heard words survived it.
 		const out = applyAsrFixes(lean.data.active_scratchpad, asr.fixes ?? []);
-		const insert = (split.span ? '' : separatorFor(solid0, out, false)) + out;
+		const insert = (split.span ? '' : separatorFor(solid0, out, !!split.paragraph)) + out;
 		const edits = committedEditChanges(doc, split.spanFrom, lean.data.committed_edits ?? []);
 		isQwenWriting = true;
 		editor.dispatch(replaceAndClear({ from: split.spanFrom, to: pend.to, insert }, edits));
@@ -1144,7 +1208,7 @@
 		const solid0 = doc0.slice(0, pend0 ? pend0.from : doc0.length);
 		const t0 = performance.now();
 		// Racing: the lean polish starts now, alongside the bundle; Jev's route decides whether it is used.
-		const split = racing() ? splitSpan(solid0) : null;
+		const split = racing() ? polishSpan(solid0, utterance) : null;
 		const leanP = split ? askLean(split, utterance) : null;
 		// Jev sees everything before this final, including earlier faded finals still waiting
 		// for a polish; the racing span and fast-append placement keep using the solid text.
@@ -1566,7 +1630,7 @@
 			const res = await postGroup($token, { scan_type: scanType, text, regions: stackRegions, previous: stackUnits });
 			if (groupable(verbatimNow) === text) {
 				stackUnits = res.units;
-				copilot?.round(stackUnits, isRecording, findingsText(stackUnits, stackGroups));
+				copilot?.round(stackUnits, isRecording, stackGroups);
 				onStackPills(res.pills);
 				void refreshAssumed(); // the checks wait for the end of dictation; the assumed normals follow the text
 				// The grouper failed or left sentences unplaced (they are kept, as said): retry a few times.
@@ -1618,6 +1682,7 @@
 	/** The first review always runs; after it, a material change runs the full review (and the conclusion reacts),
 	 *  anything else the quiet re-check. */
 	async function gateReview(text: string): Promise<void> {
+		void refreshValues(text);
 		const before = reviewedAbnormal;
 		const after = abnormalAll(stackUnits);
 		if (before === null) {
@@ -1642,24 +1707,41 @@
 	/** The integrity check for this text. A failure shows nothing new and lets Confirm through (never a blocker it
 	 *  cannot clear); tier 2 flags already shown stay while their words do. */
 	async function runChecks(text: string, semantic: boolean): Promise<void> {
+		if (!semantic && semanticFor === text) return; // the model check on this text is running: it brings tier 1 too
 		const seq = ++checkSeq;
+		const scan = scanType;
+		if (semantic) {
+			semanticFor = text;
+			semanticScan = scan;
+			semanticRun = seq;
+		}
 		const keepSemantic = () => semanticChecks.filter((c) => text.includes(c.quote));
 		try {
-			const res = await postDictationCheck($token, { findings: text, include_semantic: semantic, scan_type: scanType, clinical_history: clinicalHistory });
+			// Unfinished sentences are Jev's (every variant, not a regex); the model tier runs with it, never gated on it.
+			const [unfinished, res] = await Promise.all([
+				postUnfinished($token, { text }).catch(() => ({ flags: [] })),
+				semantic
+					? postDictationCheck($token, { findings: text, include_semantic: true, skip_tier1: true, scan_type: scan, clinical_history: clinicalHistory })
+					: Promise.resolve(null)
+			]);
 			if (seq !== checkSeq) return;
-			const all = toChecks(text, res.flags ?? [], stackUnits);
-			const tier1 = all.filter((c) => c.blocking);
-			semanticChecks = semantic && !tier1.length ? all.filter((c) => !c.blocking) : keepSemantic();
+			const tier1 = toChecks(text, unfinished.flags ?? [], stackUnits);
+			const within = (a: string, b: string) => a.includes(b) || b.includes(a);
+			// A run-on the model also reads as a garble is one underline: the unfinished sentence.
+			semanticChecks = (res ? toChecks(text, res.flags ?? [], stackUnits) : keepSemantic())
+				.filter((c) => c.tier === 2 && !tier1.some((t) => within(t.quote, c.quote)));
 			checks = [...tier1, ...semanticChecks];
 		} catch {
 			if (seq !== checkSeq) return;
 			semanticChecks = keepSemantic();
 			checks = semanticChecks;
+		} finally {
+			if (semantic && semanticRun === seq) semanticFor = null; // done, failed or superseded: Confirm stops waiting on it
 		}
 		seenChecks = { ...seenChecks, ...Object.fromEntries(checks.map((c) => [c.key, c])) };
-		checkedFor = text;
+		checkedFor = checkKey(scan, text);
 	}
-	/** "✓ As dictated" or Skip on a check. */
+	/** Keep as dictated, Skip, or Replace (the line edit itself goes through stackEditLine) on a check. */
 	function answerCheck(key: string, how: CheckAnswer): void {
 		checkAnswers = { ...checkAnswers, [key]: how };
 	}
@@ -1667,13 +1749,17 @@
 	async function recheckRows(text: string): Promise<void> {
 		const seq = ++itemsSeq;
 		const tapped = Object.values(tappedRows).flatMap((r) => r.sentences);
-		const open = stackItems.filter((i) => !i.answered);
-		if (!open.length && !tapped.length) {
+		// Skipped rows (open or capped) are not re-checked; they stay as they are. At most 6 capped rows per re-check.
+		const open = stackItems.filter((i) => !i.answered && !skippedRows[i.id]);
+		const capped = stackCapped.filter((c) => !c.answered && !skippedRows[c.id] && !tappedRows[c.id]).slice(0, MAX_RECHECK_CAPPED);
+		if (!open.length && !tapped.length && !capped.length) {
 			reviewedFor = text;
 			return;
 		}
 		try {
-			const res = await postRecheck($token, { dictation: text, rows: open, removed: removedSentences, tapped });
+			// The capped rows are checked too, so one the dictation answers folds behind the line (applyRows splits the
+			// reply by origin: a re-check never moves a capped row onto the checklist).
+			const res = await postRecheck($token, { dictation: text, rows: [...open, ...capped], removed: removedSentences, tapped });
 			if (seq !== itemsSeq) return;
 			reviewedFor = text;
 			applyRows(res, true);
@@ -1706,7 +1792,7 @@
 		const note = conclusionNote;
 		conclusionNote = { ...note, loading: true };
 		try {
-			const res = await postDraft($token, { scan_type: scanType, clinical_history: clinicalHistory, findings: findingsText(stackUnits, stackGroups) });
+			const res = await postDraft($token, { units: stackUnits, groups: stackGroups, scan_type: scanType, clinical_history: clinicalHistory });
 			if (conclusionNote?.for === note.for) conclusionNote = { ...note, suggestion: res.text || null, loading: false };
 		} catch {
 			if (conclusionNote?.for === note.for) conclusionNote = { ...note, loading: false };
@@ -1733,9 +1819,9 @@
 		const abnormal = abnormalAll(stackUnits);
 		if (review) reviewing = true;
 		try {
-			const res = await postItems($token, { scan_type: scanType, clinical_history: clinicalHistory, regions: pillRegions,
+			const res = await postItems($token, { scan_type: scanType, clinical_history: clinicalHistory, regions: shownPills,
 				dictation: text, abnormal, not_assessable: stackNotAssessable, removed: removedSentences,
-				tapped: Object.values(tappedRows).flatMap((r) => r.sentences), referrals: fixedReferrals, review });
+				tapped: Object.values(tappedRows).flatMap((r) => r.sentences), referrals: fixedReferrals, review, template_id: stackTemplateId });
 			if (seq !== itemsSeq) return; // superseded while in flight
 			if (review) {
 				reviewedFor = text;
@@ -1743,6 +1829,14 @@
 			}
 			if (res.error) return; // the writer failed: what is on screen stays
 			if (review) reviewedAbnormal = abnormal;
+			// The template's habits for this dictation: its met required statements, and answers to rows whose condition
+			// is no longer met dropped (a failed trigger changes nothing on screen).
+			const tpl = review ? reviewTemplate(res, tappedRows, skippedRows) : null;
+			if (tpl) {
+				templateRequired = tpl.required;
+				if (Object.keys(tpl.tapped).length !== Object.keys(tappedRows).length) tappedRows = tpl.tapped;
+				if (Object.keys(tpl.skipped).length !== Object.keys(skippedRows).length) skippedRows = tpl.skipped;
+			}
 			if (fixedReferrals === null)
 				fixedReferrals = res.items.filter((i) => i.kind === 'referral').map((i) => ({ question: i.question, region: i.region, sentences: i.sentences }));
 			applyRows(res, false);
@@ -1756,7 +1850,9 @@
 		}
 	}
 	/** A reply applied: contradicted taps dropped, answered rows shown green then folded, the set replaced. A quiet
-	 *  re-check saw only the open rows, so rows already answered and the capped list stay. */
+	 *  re-check saw only the open and (some) capped rows, not the skipped ones: rows it did not see stay as they are,
+	 *  and it never moves a row between the checklist and the line. A capped row the dictation answers folds behind
+	 *  the line, quietly (splitReply). */
 	function applyRows(res: ItemsResult, recheck: boolean): void {
 		// Tapped answers the dictation now contradicts are dropped; a row left with none is asked again.
 		if (res.contradicted.length) {
@@ -1765,19 +1861,24 @@
 				.map(([k, r]) => [k, { ...r, sentences: r.sentences.filter((x) => !bad.has(normS(x))) }] as const)
 				.filter(([, r]) => r.sentences.length > 0));
 		}
-		for (const it of res.items) {
+		const split = splitReply(res, stackCapped.map((x) => x.id), stackItems.map((x) => x.id), recheck);
+		for (const it of [...split.items, ...split.capped]) {
 			if (!it.answered || dictatedRows[it.id] || tappedRows[it.id]) continue;
-			const was = stackItems.find((x) => x.id === it.id);
+			const was = findRow(it.id);
 			dictatedRows = { ...dictatedRows, [it.id]: { ...it, sentences: was?.sentences ?? it.sentences } };
 			setTimeout(() => {
 				foldedRows = [...foldedRows, it.id];
 				stackItems = stackItems.filter((x) => x.id !== it.id);
+				stackCapped = stackCapped.filter((x) => x.id !== it.id);
 			}, FOLD_MS);
 		}
-		// Each reply replaces the set on screen (tapped answers are kept separately): nothing accumulates.
-		const kept = recheck ? stackItems.filter((x) => x.answered && !res.items.some((r) => r.id === x.id)) : [];
-		stackItems = [...kept, ...res.items].filter((it) => !foldedRows.includes(it.id));
-		if (!recheck) stackCapped = res.capped;
+		// Each reply replaces the set on screen (tapped answers are kept separately): nothing accumulates. A re-check
+		// keeps what it did not see (answered and skipped rows; capped rows not sent) in place.
+		const seen = new Set([...res.items, ...res.capped].map((r) => r.id));
+		const kept = recheck ? stackItems.filter((x) => (x.answered || skippedRows[x.id]) && !seen.has(x.id)) : [];
+		stackItems = [...kept, ...split.items].filter((it) => !foldedRows.includes(it.id));
+		const back = new Map(split.capped.map((r) => [r.id, r]));
+		stackCapped = (recheck ? stackCapped.map((x) => back.get(x.id) ?? x) : split.capped).filter((it) => !foldedRows.includes(it.id));
 		shownSentences = [...new Set([...shownSentences, ...stackItems.flatMap((i) => i.sentences), ...res.capped.flatMap((i) => i.sentences)])];
 		stackLatency.items = Math.max(stackLatency.items ?? 0, res.ms);
 		void refreshAssumed(); // a row owns its check: the normals saying the same step aside
@@ -1785,7 +1886,7 @@
 	/** "Abnormal…" in a row: the finding is added to the dictation as said (the grouper places it, the review re-runs)
 	 *  and the row folds as answered by the radiologist's own words. */
 	function abnormalRow(id: string, text: string): void {
-		const it = stackItems.find((x) => x.id === id);
+		const it = findRow(id);
 		if (!it) return;
 		skippedRows = { ...skippedRows, [id]: { item: it, how: 'abnormal' } };
 		stackAppend(text);
@@ -1798,9 +1899,9 @@
 	}
 	/** Skip a finding check, or mark a referral question not assessed: folded, nothing stated, logged. */
 	function skipRow(id: string): void {
-		const it = stackItems.find((x) => x.id === id);
+		const it = findRow(id);
 		if (!it || tappedRows[id]) return;
-		skippedRows = { ...skippedRows, [id]: { item: it, how: it.kind === 'referral' ? 'not_assessed' : 'skip' } };
+		skippedRows = { ...skippedRows, [id]: { item: it, how: it.kind === 'finding' ? 'skip' : 'not_assessed' } };
 	}
 	/** Every row sentence ever shown, capped ones included: a region normal saying the same is never assumed. The
 	 *  current rows and the tapped answers go first (the server keeps the first 100). */
@@ -1812,50 +1913,90 @@
 	 *  a new family may wait for it, and the scratchpad works without it meanwhile. */
 	async function loadSlimSheet(): Promise<void> {
 		const seq = ++slimSeq;
+		sessionRules = null; // a new sheet decides its own rules
 		stackRegionNormals = {};
 		stackNotAssessable = '';
+		stackTemplateUnusable = false;
+		stackLevelGroups = {};
+		stackStructures = {};
+		valuesSeq++; // a fill still running belongs to the old sheet
+		valueChips = [];
 		onStackSheet(null);
+		onStructureKey(null);
 		if (!hybridStack || !stackRegions.length) return;
 		try {
-			const res = await postSlimSheet($token, { scan_type: scanType, clinical_history: clinicalHistory, template_id: stackTemplateId });
-			if (seq !== slimSeq || !res.ready) return;
+			const res = await postSlimSheet($token, { scan_type: scanType, clinical_history: clinicalHistory, template_id: stackTemplateId,
+				structure_key: structureKey, ...pickBody(stackProtocol) });
+			if (seq !== slimSeq) return;
+			stackTemplateUnusable = res.status === 'template_unusable';
+			if (!res.ready) return;
 			stackRegionNormals = res.region_normals;
+			stackLevelGroups = res.level_groups ?? {};
+			stackStructures = res.region_structures ?? {};
 			stackNotAssessable = res.not_assessable;
+			valueChips = initialChips(res.required_values ?? []);
+			if (verbatimNow.trim()) void refreshValues(verbatimNow); // dictation already there: fill now, not at the next review
 			onStackSheet(res.id);
+			if (res.structure_key) onStructureKey(res.structure_key);
+			// E6: the normals are checked as soon as the sheet is in, with no dictation yet, so the tray shows every
+			// region's normal straight after Set up workspace. One call per sheet load; the empty-dictation answer is
+			// current (assumedStale) until something is dictated.
+			void refreshAssumed();
 		} catch {
 			/* fail open: no quiet lines */
 		}
 	}
-	/** Which region normals stay assumed, given the dictation (spec §5). The answer is kept with the dictation and
-	 *  region states it was computed for; a failure assumes nothing (and lets Confirm through). */
-	async function refreshAssumed(): Promise<void> {
-		if (!Object.keys(stackRegionNormals).length) return;
-		const seq = ++assumedSeq;
-		const snap = { dictation: verbatimNow, abnormal: [...regionView.abnormal], untouched: [...regionView.assumedNormal] };
+	/** The value cluster's smart fill: Jev says which required values the dictation states, code reads each number.
+	 *  The chips show "filling" (Confirm waits) until it answers; a failure leaves them open (never blocks for long). */
+	async function refreshValues(text: string): Promise<void> {
+		if (!stackTemplateId || !valueChips.length) return;
+		const seq = ++valuesSeq;
+		valueChips = startFill(valueChips);
 		try {
-			const res = await postAssumed($token, { dictation: snap.dictation, region_normals: stackRegionNormals, abnormal: snap.abnormal,
-				dictated_normal: regionView.dictatedNormal.map((d) => d.region), removed: removedSentences, owned: ownedNow(),
-				touched: touchedRegions() });
-			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed };
+			const res = await postValues($token, { dictation: text, template_id: stackTemplateId });
+			if (seq !== valuesSeq) return;
+			// the dictation changed while the fill ran: its answer is stale (the next review fills again)
+			valueChips = res.error || verbatimNow !== text ? failFill(valueChips) : mergeFill(valueChips, res.values);
 		} catch {
-			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {} }; // nothing assumed
+			if (seq === valuesSeq) valueChips = failFill(valueChips);
 		}
 	}
-	/** Regions a row or a removal concerns: every one of their sentences is checked, not only word matches. */
-	function touchedRegions(): string[] {
-		const rows = [...stackItems, ...stackCapped, ...Object.values(tappedRows)].map((r) => r.region);
-		const gone = new Set(removedSentences.map(normS));
-		const fromSheet = Object.entries(stackRegionNormals).filter(([, xs]) => xs.some((x) => gone.has(normS(x)))).map(([r]) => r);
-		return [...new Set([...rows, ...fromSheet])].filter(Boolean);
+	/** Which region normals stay assumed, given the dictation (spec §5). The answer is kept with the dictation and
+	 *  region states it was computed for; a failure assumes nothing (and lets Confirm through). */
+	async function refreshAssumed(confirm = false): Promise<void> {
+		// The template's met required statements first; segments are never checked (E1): the check reads a segment
+		// line against the whole dictation and dropped every segment once any level was dictated. `shownNormals`
+		// offers them from the sheet.
+		const offered = withoutSegments(withRequired(stackRegionNormals, templateRequired), stackLevelGroups);
+		if (!Object.keys(offered).length) return;
+		const seq = ++assumedSeq;
+		const sheet = slimSeq;
+		const history = clinicalHistory;
+		const snap = { offered, dictation: verbatimNow, abnormal: [...regionView.abnormal], untouched: [...regionView.assumedNormal],
+			dictatedNormal: regionView.dictatedNormal.map((d) => d.region) };
+		try {
+			const res = await postAssumed($token, { dictation: snap.dictation, region_normals: offered, abnormal: snap.abnormal,
+				removed: removedSentences, owned: ownedNow(), template_id: stackTemplateId, clinical_history: history,
+				region_text: regionText(stackUnits), // a normal is covered only by its own region's sentences
+				rules: rulesToSend(sessionRules, history), confirm });
+			if (sheet === slimSeq) sessionRules = keepRules(sessionRules, history, res);
+			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: res.assumed, flagged: res.flagged, dropped: res.dropped, check_failed: !!res.error,
+				confirm_recheck: !!res.confirm_recheck, confirmed: confirm, failures: res.error ? failuresFor(snap.dictation) : 0 };
+		} catch {
+			if (seq === assumedSeq) assumedSnap = { ...snap, assumed: {}, check_failed: true, confirmed: confirm, failures: failuresFor(snap.dictation) }; // nothing assumed
+		}
 	}
-	$: if (Object.keys(stackRegionNormals).length) void refreshAssumed();
+	/** Failed answers in a row for this dictation (assumedStale re-asks the empty dictation's a few times, round 1). */
+	function failuresFor(dictation: string): number {
+		return (assumedSnap?.check_failed && assumedSnap.dictation === dictation ? (assumedSnap.failures ?? 1) : 0) + 1;
+	}
 	// Confirm waits while the answer is behind the dictation; this keeps it from waiting on a grouping that failed.
 	let assumedTimer: ReturnType<typeof setTimeout> | null = null;
 	function armAssumed(): void {
 		if (assumedTimer) clearTimeout(assumedTimer);
 		assumedTimer = setTimeout(() => {
 			assumedTimer = null;
-			if (assumedBehind) void refreshAssumed();
+			if (assumedBehind && !confirming) void refreshAssumed(); // never under a Confirm re-ask (round 1)
 		}, 1200);
 	}
 	// Re-armed on every text change and every answer while behind (review 2026-10-12: a boolean that stays true
@@ -1863,17 +2004,30 @@
 	$: if (hybridStack && assumedBehind) {
 		void verbatimNow;
 		void assumedSnap;
+		void confirming;
 		armAssumed();
 	}
+	/** A row on the checklist, or one behind "more checks". */
+	function findRow(id: string): StackItem | undefined {
+		return stackItems.find((x) => x.id === id) ?? stackCapped.find((x) => x.id === id);
+	}
 	function isOpenRow(id: string): boolean {
-		const it = stackItems.find((x) => x.id === id);
+		const it = findRow(id);
 		return !!it && !it.answered && !tappedRows[id] && !skippedRows[id] && rowSentences(it, removedSentences).length > 0;
 	}
 	/** A tap (or voice "answer …"): the row's listed sentences become the radiologist's answer. */
 	function answerRow(id: string): void {
-		const it = stackItems.find((x) => x.id === id);
-		if (!it || !isOpenRow(id)) return;
+		const it = findRow(id);
+		if (!it || it.kind === 'template' || !isOpenRow(id)) return; // a template row needs Yes or No
 		tappedRows = { ...tappedRows, [id]: { ...it, sentences: rowSentences(it, removedSentences) } };
+		if (moreView.rows.some((c) => c.id === id) && !cappedTapped.includes(id)) cappedTapped = [...cappedTapped, id];
+	}
+	/** Yes or No on a template row: the template's own sentence for that answer becomes the radiologist's answer. */
+	function answerTemplateRow(id: string, which: 'yes' | 'no'): void {
+		const it = findRow(id);
+		if (!it || it.kind !== 'template' || !isOpenRow(id)) return;
+		tappedRows = { ...tappedRows, [id]: chooseTemplate(it, which) };
+		if (moreView.rows.some((c) => c.id === id) && !cappedTapped.includes(id)) cappedTapped = [...cappedTapped, id];
 	}
 	/** × on a row sentence or an assumed normal: never stated, never offered again. */
 	function removeSentence(sentence: string): void {
@@ -1884,7 +2038,7 @@
 	}
 	/** The open rows as the voice command sees them: the question and the sentences "accept" would add. */
 	function openItemsForVoice(): { id: string; text: string }[] {
-		return stackItems.filter((i) => isOpenRow(i.id))
+		return [...stackItems, ...(moreOpen ? moreView.rows : [])].filter((i) => isOpenRow(i.id) && i.kind !== 'template')
 			.map((i) => ({ id: i.id, text: `${i.question} ${rowSentences(i, removedSentences).join(' ')}` }));
 	}
 	/** A line edited in the view: exactly that sentence (or part) changes in the verbatim text. */
@@ -1933,12 +2087,11 @@
 		}
 	}
 	async function requestDraft(): Promise<void> {
-		const findings = findingsText(stackUnits, stackGroups);
-		if (!findings.trim() || draftLoading) return;
+		if (!findingsLanded || draftLoading) return;
 		draftLoading = true;
 		draftFailed = false;
 		try {
-			const res = await postDraft($token, { scan_type: scanType, clinical_history: clinicalHistory, findings });
+			const res = await postDraft($token, { units: stackUnits, groups: stackGroups, scan_type: scanType, clinical_history: clinicalHistory });
 			if (res.text) draft = { text: res.text, hash: findingsHash(stackUnits), edited: false, typed: false };
 			else draftFailed = true;
 			stackLatency.draft = Math.max(stackLatency.draft ?? 0, res.ms);
@@ -1956,7 +2109,48 @@
 		draft = null; // offered only when the field is empty (the ✨ button): nothing of the radiologist's is replaced
 		void requestDraft();
 	}
-	function stackConfirm(): void {
+	/** Confirm (spec §5). Every template context rule is re-asked with the dictation first (review R5): the gate is
+	 *  recorded only on that Confirm answer for the dictation on screen (round 1), never on a live one; live
+	 *  refreshes wait while it runs. */
+	async function stackConfirm(): Promise<boolean> {
+		if (assumedSnap?.confirm_recheck && !confirmReady(assumedSnap, verbatimNow)) {
+			if (confirming) return false;
+			confirming = true;
+			confirmNote = confirmNoteKey = null;
+			const before = { assumed: shownAssumed, flagged: flaggedNow };
+			const live = assumedSnap;
+			try {
+				await refreshAssumed(true);
+				await tick(); // the tray, counts and gate key follow the Confirm answer before the gate is recorded
+			} finally {
+				confirming = false;
+			}
+			if (!confirmReady(assumedSnap, verbatimNow)) {
+				confirmNote = 'The dictation changed while the rules were checked: confirm again.';
+				confirmNoteKey = null; // pinned to the state it is shown for, below
+				return false;
+			}
+			if (confirmRecheckFailed(live, assumedSnap)) {
+				assumedSnap = live; // the tray the radiologist saw, not the failure's empty one; the next press re-asks
+				confirmNote = 'Rules could not be re-checked: confirm again.';
+				confirmNoteKey = null;
+				return false;
+			}
+			// Never gate a sentence the radiologist has not seen (round 1): anything the Confirm answer adds is shown
+			// first; the next press gates on this same answer. Removals alone go through.
+			const added = addedAtConfirm(before, { assumed: shownAssumed, flagged: flaggedNow });
+			if (added.length) {
+				confirmNote = `Checked against your dictation, ${added.length === 1 ? 'a normal was' : `${added.length} normals were`} added: review, then confirm again.`;
+				confirmNoteKey = null;
+				return false;
+			}
+		}
+		confirmNote = confirmNoteKey = null;
+		// Sentences the grouping never received (after failed retries) still reach the report, as said; the segment
+		// backstop reads them before the assumed record is written.
+		const tail = asTailUnits(liveTail(verbatimNow, stackUnits));
+		const assumed = shownNormals(confirmedAssumed, stackRegionNormals, stackLevelGroups, regionView.assumedNormal, placedGroups,
+			removedSentences, blockedSegments(stackLevelGroups, [...stackUnits, ...tail]));
 		const gate: GateRecord = {
 			confirmed_at: new Date().toISOString(),
 			conclusion_text: dictatedConclusion || draft?.text || '',
@@ -1973,21 +2167,24 @@
 					.map(({ item, how }): GateItem => ({ id: item.id, kind: item.kind, region: item.region, question: item.question, sentences: [],
 						answered_by: how === 'abnormal' ? 'dictation' : how }))
 			],
-			assumed: confirmedAssumed,
+			assumed,
 			removed: removedSentences,
 			capped: stackCapped.map((c) => ({ region: c.region, question: c.question })),
+			capped_opened: moreOpened,
+			capped_tapped: cappedTapped.filter((id) => tappedRows[id]).map((id) => ({ region: tappedRows[id].region, question: tappedRows[id].question })),
 			review_failed: reviewFailed,
 			checks: Object.values(seenChecks).map((c) => ({ kind: c.kind, quote: c.quote, other: c.other,
 				answered_by: checkAnswers[c.key] ?? (checks.some((x) => x.key === c.key) ? 'open' : 'edited') })),
-			units_hash: gateKey
+			units_hash: gateKey,
+			findings_hash: findingsHash([...stackUnits, ...tail]), // the server refuses a gate the units no longer match
+			flagged: flaggedNow, // kept normals the dictation may conflict with, confirmed as shown (R1 evidence)
+			...(valueChips.length ? { values: valueChips } : {}),
+			...offeredAndDropped(assumedSnap?.offered ?? stackRegionNormals, assumedSnap?.dropped, assumedSnap?.check_failed)
 		};
 		stackGate = gate;
-		// Sentences the grouping never received (after failed retries) still reach the report, as said.
-		const tail = liveTail(verbatimNow, stackUnits).map((text, k): StackUnit => ({
-			id: 100000 + k, text, group: null, structure: null, attach_to: null, parts: null, covers: [], pinned: false, heading: false
-		}));
-		onStackGate(gate, buildFindingsBlock([...stackUnits, ...tail], stackGroups, gate));
+		onStackGate(gate, [...stackUnits, ...tail], stackGroups);
 		void sendStackLog();
+		return true;
 	}
 	function scheduleClose(): void {
 		if (!hybridStack) return;
@@ -2024,6 +2221,7 @@
 				units: stackUnits, pills_derived: [...new Set(stackUnits.flatMap((u) => u.covers))],
 				pills_jev: lastJevCovered, sections: checklistSections, structured_text: structured.text ?? '',
 				manual_moves: stackManualMoves, latency_ms: stackLatency, gate: stackGate,
+				template_id: stackTemplateId,
 				...(copilot ? { copilot: copilot.log() } : {})
 			});
 		} catch {
@@ -2042,14 +2240,18 @@
 		stackSessionId = crypto.randomUUID();
 		stackManualMoves = 0;
 		stackLatency = {};
-		stackShadowSampled = Math.random() < stackShadowRate;
+		stackShadowSampled = false;
 		stackItems = [];
 		stackCapped = [];
+		moreOpen = false;
+		moreOpened = false;
+		cappedTapped = [];
 		tappedRows = {};
 		dictatedRows = {};
 		foldedRows = [];
 		shownSentences = [];
 		fixedReferrals = null;
+		sessionRules = null;
 		skippedRows = {};
 		reviewedFor = '';
 		reviewedAbnormal = null;
@@ -2059,16 +2261,19 @@
 		checkAnswers = {};
 		seenChecks = {};
 		checkedFor = '';
+		semanticFor = semanticScan = null;
 		reviewFailed = false;
 		removedSentences = [];
 		assumedSnap = null;
+		valuesSeq++; // a fill still running belongs to the old case
+		valueChips = initialChips(valueChips.map((c) => c.item));
 		scheduleItems(0);
 		draft = null;
 		draftFailed = false;
 		deleteRegion = null;
 		if (stackGate) {
 			stackGate = null;
-			onStackGate(null, '');
+			onStackGate(null, [], []);
 		}
 	}
 	/** Derive the structured text from the verbatim text: /process in structured mode, the
@@ -2120,6 +2325,7 @@
 
 	async function _runReview(): Promise<void> {
 		if (!editor) return;
+		if (hybridStack) return; // stack mode: no /canvas/review (the coverage half is legacy, spec §9.5; rows replace prompts)
 		const scratchpad_content = editor.state.doc.toString();
 		const hashInput = scratchpad_content + checklistSections.join();
 		const currentHash = simpleHash(hashInput);
@@ -2295,7 +2501,7 @@
 		onRecordingChange(false);
 		lastWordsAt = 0;
 		groupFailures = 0; // retries resume once dictation stops, so nothing is left stuck in the live strip
-		copilot?.round(stackUnits, false, findingsText(stackUnits, stackGroups)); // stopped: the last finding is stable
+		copilot?.round(stackUnits, false, stackGroups); // stopped: the last finding is stable
 		scheduleGroup(0); // the held-back last sentence now joins its region
 		scheduleClose();
 		isConnecting = false;
@@ -2645,14 +2851,21 @@
 					<div bind:this={editorContainer} class="min-h-full" class:hidden={stackView || polishMode === 'structured'}></div>
 					<div bind:this={structuredContainer} class="min-h-full" class:hidden={stackView || polishMode !== 'structured'}></div>
 					{#if stackView}
-						<HybridStackView units={stackUnits} groups={stackGroups} {pillRegions} pending={stripNow}
-							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={confirmedAssumed}
+						{#if stackTemplateUnusable}
+							<p role="status" class="mb-2 rounded-md border border-amber-400/30 bg-amber-500/[0.06] px-2.5 py-1.5 text-xs text-amber-200">
+								This template's sheet could not be read for assumed normals, so Generate writes the report the usual way (the template fills in its normals). Re-saving the template usually fixes this.
+							</p>
+						{/if}
+						<HybridStackView units={stackUnits} groups={stackGroups} pillRegions={shownPills} pending={stripNow}
+							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView.show ? moreView.rows : []} moreWaiting={moreView.waiting} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={shownAssumed} structures={stackStructures} flagged={flaggedNow}
 							checks={placedChecks} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {guidelinesUnresolved} onOpenGuideline={openGuideline} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
-							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
-							onAnswer={answerRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
-							onConfirm={stackConfirm} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
-							syncing={assumedBehind || checksBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
+							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} assumedFailed={assumedState === 'failed'} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
+							onAnswer={answerRow} onAnswerTemplate={answerTemplateRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
+							onConfirm={stackConfirm} {confirmNote} onConfirmGenerate={onStackGenerate ? async () => { if (await stackConfirm()) onStackGenerate?.(); } : null} onDeleteRegion={stackDeleteRegion} onAppend={stackAppend}
+							values={valueChips} onEnterValue={(i, t) => (valueChips = enterValue(valueChips, i, t))} onValueNa={(i) => (valueChips = markNa(valueChips, i))}
+							onValuesRestNa={() => (valueChips = markRestNa(valueChips))} onKeepValue={(i) => (valueChips = keepStated(valueChips, i))} onPickValue={(i, v, c) => (valueChips = pickValue(valueChips, i, v, c))}
+							checking={semanticFor !== null && semanticFor === verbatimNow} syncing={confirming || isFilling(valueChips) || assumedBehind || checksBehind || (reviewBehind && !isRecording) || reviewing || (groupFailures < GROUP_RETRIES && (stackBusy || stackTimer !== null || liveTail(verbatimNow, stackUnits).length > 0))} />
 					{/if}
 				</div>
 

@@ -11,9 +11,12 @@ path until converted; the LLM extractor is lab-only (RR_SHEET_EXTRACTOR) and nev
 Modes. parse_sheet(sheet, mode=...):
 - "template" (default; the save path): a stored template sheet in the LEAN grammar (spec
   2026-10-01-template-two-phase "Lean template sheet"). Findings- or history-conditioned RULEs (except
-  LIST_MISSING, whose WHEN is the fixed findings statement), NEGATIVE … WHEN [findings|history: …],
-  IF_PRESENT, context RULEs with an effect other than REPLACE/SUPPRESS/USE/SUPPRESS_SECTION/
-  SUPPRESS_HEADERS, and every case unit are lint errors. Every findings-role paragraph needs one COVERS.
+  LIST_MISSING, whose WHEN is the fixed findings statement, and the habit question ASK), NEGATIVE … WHEN
+  [history|context: …], IF_PRESENT, context RULEs with an effect other than REPLACE/SUPPRESS/USE/SUPPRESS_SECTION/
+  SUPPRESS_HEADERS, and every case unit are lint errors. Two findings-conditioned forms are allowed, only inside a
+  findings-role paragraph (spec 2026-10-13-findings-triggered-rows-design): the required statement
+  NEGATIVE "<s>" WHEN [findings: …] and the habit question RULE WHEN [findings: …] ASK "<q>" YES "<s>" NO "<s>".
+  Every findings-role paragraph needs one COVERS.
 - "master": a template sheet plus the Phase-1 case units (the master sheet). Lean rules as "template";
   case units allowed; exactly one QUESTION.
 - "v1": grammar v1 as first specified (findings rules, IF_PRESENT; no case units; COVERS optional).
@@ -29,6 +32,7 @@ Unit lines (optional indentation and an optional "- " bullet before the keyword)
     TERM PREFER "<term>" | TERM AVOID "<term>"
     IF_PRESENT [<finding>] "<negative>" (core|contextual)
     RULE WHEN [<source>: <statement>] <EFFECT>
+    RULE WHEN [findings: <statement>] ASK "<question>?" YES "<sentence>" NO "<sentence>"   (a paragraph only)
     COVERS ["<structure>" | "<structure>" …]                  (one per paragraph)
 
 Case units (master mode only):
@@ -62,6 +66,11 @@ Fail-closed sweep. Every line that is not a unit line is checked:
   prose (it should be a NEGATIVE unit — the brief can only reconcile units), an error; and a conditional
   phrase outside quotes, a WARNING only (stored on the structure, never blocking: voice guidance
   legitimately says "when present, give the maximal diameter").
+
+Labelled opening variants. A paragraph that opens differently by case state carries one prose line per state,
+'Opening (<state>): "<opening words>"' (the state a short free-text label, no colon or quote). The label is never
+linted; the rest of the line is checked like any "Opening:" line. Like all prose they are not stored on the
+structure: the sheet keeps them as written and the report writer reads them there.
 """
 from __future__ import annotations
 
@@ -127,6 +136,17 @@ class LintError:
     text: str  # the sheet line as written
     reason: str  # one of the reason constants above
     detail: str = ""
+    paragraph: str = ""  # the paragraph id of a voice (prose) line error under a paragraph; "" otherwise
+
+
+# Errors on a voice line: a prose line under a paragraph (Opening:, Order:, Abnormal pattern: …) that states an
+# absence or a conditional absence. Wording, not content: template_sheet_save may drop such a line on an automatic
+# write rather than refuse the sheet.
+VOICE_REASONS = (CONDITIONAL_NEGATIVE, PROSE_NEGATIVE)
+
+
+def is_voice_error(e: "LintError") -> bool:
+    return e.reason in VOICE_REASONS and bool(e.paragraph)
 
 
 @dataclass
@@ -183,8 +203,9 @@ _EFFECTS: List[Tuple[str, re.Pattern]] = [
     ("suppress_section", re.compile(rf"SUPPRESS_SECTION\s+({_NAME})")),
     ("suppress_headers", re.compile(r"SUPPRESS_HEADERS")),
     ("order", re.compile(r"ORDER\s+(FIRST|LAST)")),
+    ("ask", re.compile(rf"ASK\s*{_Q}\s*YES\s*{_Q}\s*NO\s*{_Q}")),
 ]
-_PARAGRAPH_EFFECTS = {"suppress_paragraph_negatives", "order"}  # meaningless outside a paragraph
+_PARAGRAPH_EFFECTS = {"suppress_paragraph_negatives", "order", "ask"}  # meaningless outside a paragraph
 
 # Subject rule: a statement names what it is about — at least two content words once function words
 # and report verbs ("is reported", "stated", "present") are set aside. "abnormal" fails;
@@ -211,6 +232,9 @@ _PROSE_COND = re.compile(
     r"\b(?:if|when|unless|whenever|wherever|where|provided|in\s+case|in\s+the\s+presence\s+of"
     r"|should\s+\w+\s+be|otherwise|depending\s+on|once|for\s+patients\s+with)\b", re.I)
 _PROSE_COND_EXEMPT = re.compile(r"\bif\s+any\b(?=\s*(?:[,.)]|$))", re.I)
+# A labelled opening variant, 'Opening (<state>): "…"': one per case state of a paragraph that opens differently
+# by case. The label is a free-text state (no colon or quote) and is never linted; the rest is an Opening line.
+_LABELLED_OPENING = re.compile(r"^Opening\s*\([^():\"“”]*\)\s*:", re.I)
 
 # Decoration a model may put before a unit keyword or a paragraph heading.
 _INVISIBLE = re.compile(r"[\u200b\u200c\u200d\u2060\ufeff]")
@@ -251,6 +275,13 @@ def _outside_quotes(text: str) -> str:
 # A statement of absence. In prose it should be a NEGATIVE unit. Normal-state voice ("the ducts are not
 # dilated") is not an absence statement and stays prose.
 _ABSENCE_START = re.compile(r"^(?:No|There\s+is\s+no|There\s+are\s+no|Without|Absent|Nil|Negative\s+for)\b", re.I)
+
+
+def absence_worded(text: str) -> bool:
+    """The sentence opens as a statement of absence ("No …", "There is no …", "Without …")."""
+    return bool(_ABSENCE_START.match(text or ""))
+
+
 _ABSENCE_ANY = re.compile(
     r"\b(?:is|are)\s+absent\b"
     r"|^Free\s+of\b"  # "Free of X."
@@ -311,14 +342,16 @@ def _sweep(i: int, body: str, ctx: "_Ctx", err, warn) -> None:
         return
     if ctx.kind == "free":
         return
+    plain = _LABELLED_OPENING.sub("Opening:", plain)
+    voice = ctx.paragraph if ctx.kind == "paragraph" else ""
     cm = _PROSE_COND.search(_PROSE_COND_EXEMPT.sub(" ", _outside_quotes(plain)))
     if cm:
         if _negative_cue(_PROSE_COND_EXEMPT.sub(" ", plain)):
-            err(i, CONDITIONAL_NEGATIVE, cm.group(0).lower())
+            err(i, CONDITIONAL_NEGATIVE, cm.group(0).lower(), paragraph=voice)
             return
         warn(i, PROSE_CONDITIONAL, cm.group(0).lower())
     if _states_absence(plain):
-        err(i, PROSE_NEGATIVE)
+        err(i, PROSE_NEGATIVE, paragraph=voice)
 
 
 @dataclass
@@ -346,8 +379,9 @@ def parse_sheet(sheet: str, mode: Mode = "template") -> GrammarResult:
     errors: List[LintError] = []
     warnings: List[LintError] = []
 
-    def err(i: int, reason: str, detail: str = "") -> None:
-        errors.append(LintError(line=i, text=lines[i - 1] if i else "", reason=reason, detail=detail))
+    def err(i: int, reason: str, detail: str = "", paragraph: str = "") -> None:
+        errors.append(LintError(line=i, text=lines[i - 1] if i else "", reason=reason, detail=detail,
+                                paragraph=paragraph))
 
     def warn(i: int, reason: str, detail: str = "") -> None:
         warnings.append(LintError(line=i, text=lines[i - 1], reason=reason, detail=detail))
@@ -578,7 +612,8 @@ def parse_sheet(sheet: str, mode: Mode = "template") -> GrammarResult:
 
 def _mode_check(i, unit, mode: str, role_of, err) -> None:
     """Template and master sheets carry the lean template grammar: study/context rules only, unconditional
-    negatives only, no template IF_PRESENT (spec 2026-10-01-template-two-phase). A case IF_PRESENT
+    negatives only, no template IF_PRESENT (spec 2026-10-01-template-two-phase), except the two findings-triggered
+    habit forms inside a findings-role paragraph (spec 2026-10-13-findings-triggered-rows-design). A case IF_PRESENT
     belongs to a findings-role paragraph."""
     kind, data = unit
     if kind == "if_present" and data["origin"] == "case" and role_of.get(data["section"]) != "findings":
@@ -591,13 +626,18 @@ def _mode_check(i, unit, mode: str, role_of, err) -> None:
         if effect == "list_missing":
             if src != "findings":
                 err(i, NOT_LEAN, f"LIST_MISSING conditioned on {src}")
+        elif effect == "ask":
+            if role_of.get(data["section"]) != "findings":
+                err(i, NOT_LEAN, "a habit question belongs in a findings paragraph")
         elif src != "context":
             err(i, NOT_LEAN, f"{src}-conditioned RULE (case-dependent: Phase 1 or voice prose)")
         elif effect not in CONTEXT_EFFECTS:
             err(i, NOT_LEAN, f"context RULE with {effect} (context rules: {', '.join(CONTEXT_EFFECTS)})")
     elif kind == "negative" and data["origin"] == "template" and data["condition"]:
-        err(i, NOT_LEAN, f"NEGATIVE … WHEN [{data['condition_source']}: …] (template negatives are unconditional; "
-                         "case-dependent negatives come from Phase 1)")
+        if not (data["condition_source"] == "findings" and data["paragraph"]
+                and role_of.get(data["section"]) == "findings"):
+            err(i, NOT_LEAN, f"NEGATIVE … WHEN [{data['condition_source']}: …] (a template negative is unconditional, "
+                             "or a required statement WHEN [findings: …] inside a findings paragraph)")
     elif kind == "if_present" and data["origin"] == "template":
         err(i, NOT_LEAN, "IF_PRESENT without | origin: case (case-dependent: Phase 1)")
 
@@ -706,7 +746,7 @@ def _parse_unit(i, raw, body, keyword, ctx: _Ctx, by_name, default_section, err,
                             "condition_source": cond[0] if cond else "findings", "source_lines": [raw],
                             "origin": origin, "targets": targets}
     if keyword == "FIXED":
-        return "fixed", {"section": section, "text": m.group(1)}
+        return "fixed", {**where, "text": m.group(1), "source_line": raw}
     if keyword == "TERM":
         return "term", {"kind": m.group(1), "text": m.group(2)}
     if keyword == "IF_PRESENT":
@@ -727,6 +767,13 @@ def _parse_unit(i, raw, body, keyword, ctx: _Ctx, by_name, default_section, err,
     if effect in _PARAGRAPH_EFFECTS and ctx.kind != "paragraph":
         err(i, MALFORMED_UNIT, f"{effect} outside a paragraph")
         return None
+    if effect == "ask":
+        if cond[0] != "findings":
+            err(i, MALFORMED_UNIT, "ASK is conditioned on findings")
+            return None
+        if not e.group(1).rstrip().endswith("?"):
+            err(i, MALFORMED_UNIT, 'ASK "<question>?": the question ends with "?"')
+            return None
     rule = {**where, "condition": cond[1], "condition_source": cond[0], "effect": effect, "source_lines": [raw]}
     if effect == "replace":
         rule.update(target=e.group(1), then_text=e.group(2))
@@ -749,6 +796,8 @@ def _parse_unit(i, raw, body, keyword, ctx: _Ctx, by_name, default_section, err,
         rule.update(target=name)
     elif effect == "order":
         rule.update(position=e.group(1).lower())
+    elif effect == "ask":
+        rule.update(question=e.group(1), then_text=e.group(2), else_text=e.group(3))
     return "rule", rule
 
 
@@ -772,6 +821,7 @@ def render_rule(rule: tss.Rule) -> str:
         "suppress_section": lambda: f"SUPPRESS_SECTION {rule.target}",
         "suppress_headers": lambda: "SUPPRESS_HEADERS",
         "order": lambda: f"ORDER {(rule.position or 'first').upper()}",
+        "ask": lambda: f'ASK "{rule.question}" YES "{rule.then_text}" NO "{rule.else_text}"',
     }[e]()
     return f"RULE {render_condition(rule.condition_source, rule.condition)} {effect}"
 

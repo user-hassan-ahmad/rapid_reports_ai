@@ -3,7 +3,10 @@
 The chain on every update (spec §4.2): Qwen writes the rows (arm D of the checklist lab); the production splitter
 splits multi-claim sentences; one Jev call drops what the dictation already says or contradicts and what the
 radiologist removed; code applies the limits. Finding rows are asked, never assumed: nothing here reaches the
-report until the radiologist answers it."""
+report until the radiologist answers it. A template's confirmed findings-triggered habits (spec
+2026-10-13-findings-triggered-rows-design) are triggered by one Jev call in the review, in parallel with the writer:
+met habit questions are rows of kind "template", ranked after referral rows and before finding rows within the same
+caps; met required statements are returned for the assumed tray."""
 from __future__ import annotations
 
 import asyncio
@@ -16,6 +19,7 @@ from pydantic import BaseModel
 
 from ..enhancement_utils import MODEL_CONFIG, _run_agent_with_model
 from ..report_reconcile import QWEN, _MEASUREMENT, _split_bundled
+from .habits import Habit, met_habits
 from .jev_stack import CONTRA_MIN, ask_rows, row_fate
 from .schemas import scan_key
 
@@ -88,19 +92,23 @@ class Referral(BaseModel):
 
 class Item(BaseModel):
     id: str
-    kind: str              # finding | referral
+    kind: str              # finding | referral | template
     source_text: str = ""  # the dictated phrase that set a finding check off: the row sits under that sentence's region
     region: str
     question: str
     why: str = ""
     sentences: list[str]   # still to be answered (at most MAX_SENTENCES)
     answered: bool = False # the dictation answered every sentence: the UI folds the row
+    yes: str = ""          # template rows: the template's sentence for Yes
+    no: str = ""           # template rows: the template's sentence for No
 
 
 class ItemsResult(BaseModel):
     items: list[Item]
     capped: list[Item] = []
     contradicted: list[str] = []   # tapped sentences the dictation now contradicts: the radiologist re-answers
+    required: dict[str, list[str]] = {}   # met template required statements, region -> sentences (the assumed tray)
+    trigger_error: str | None = None      # the template trigger call failed: no template rows this review
     cached: bool = False
     ms: int = 0
     error: str | None = None
@@ -152,11 +160,10 @@ async def _write(scan_type, history, regions, dictation, not_assessable, removed
     try:
         return await _call(QWEN, prompt, review, REVIEW_TIMEOUT_S if review else WRITER_TIMEOUT_S)
     except Exception as e:
-        if not review:
-            raise
-        logger.warning("[stack.items.review] %s: %s; fallback %s", type(e).__name__, str(e)[:200],
-                       MODEL_CONFIG["STACK_REVIEW_FALLBACK"])
-        return await _call(MODEL_CONFIG["STACK_REVIEW_FALLBACK"], prompt, True, FALLBACK_TIMEOUT_S)
+        # The setup call falls back too (live 2026-10-12: a Cerebras 429 left the session with no referral rows).
+        logger.warning("[stack.items.%s] %s: %s; fallback %s", "review" if review else "setup", type(e).__name__,
+                       str(e)[:200], MODEL_CONFIG["STACK_REVIEW_FALLBACK"])
+        return await _call(MODEL_CONFIG["STACK_REVIEW_FALLBACK"], prompt, review, FALLBACK_TIMEOUT_S)
 
 
 def _key(scan_type, history, regions, abnormal, referrals) -> tuple:
@@ -189,15 +196,45 @@ def _rows(raw: RawOutput, referrals: list[Referral] | None = None) -> list[Item]
     return out
 
 
+_ORDER = {"referral": 0, "template": 1, "finding": 2}
+
+
+def _rank(rows: list[Item]) -> list[Item]:
+    """Referral rows, then template rows, then finding rows; stable within each kind."""
+    return sorted(rows, key=lambda r: _ORDER.get(r.kind, 2))
+
+
+def template_rows(met: list[Habit]) -> list[Item]:
+    """A row per met habit question: the template's own question and sentences, in its paragraph-region."""
+    return [Item(id=_id("template", h.region, h.question), kind="template", region=h.region, question=h.question,
+                 why=f"Your template asks this when {h.condition}.", sentences=[_sentence(h.yes), _sentence(h.no)],
+                 yes=_sentence(h.yes), no=_sentence(h.no))
+            for h in met if h.mode == "ask"]
+
+
+def template_required(met: list[Habit]) -> dict[str, list[str]]:
+    out: dict[str, list[str]] = {}
+    for h in met:
+        if h.mode == "state" and h.no.strip():
+            out.setdefault(h.region, []).append(_sentence(h.no))
+    return out
+
+
 async def _split(rows: list[Item]) -> None:
-    flat = [s for r in rows for s in r.sentences]
+    flat = [s for r in rows if r.kind != "template" for s in r.sentences]
     try:
-        parts = await _split_bundled(flat)
+        try:
+            parts = await _split_bundled(flat)
+        except Exception as e:  # a Cerebras 429 (live 2026-10-12): the same model on Groq
+            logger.warning("[stack.items.split] %s: %s; Groq", type(e).__name__, str(e)[:200])
+            parts = await _split_bundled(flat, MODEL_CONFIG["QUICK_REPORT_GENERATOR_FALLBACK"])
     except Exception as e:  # keep the sentences as written
         logger.warning("[stack.items.split] %s: %s", type(e).__name__, str(e)[:200])
         return
     k = 0
     for r in rows:
+        if r.kind == "template":   # the template's own sentences are its buttons: never split
+            continue
         n = len(r.sentences)
         r.sentences = [_sentence(p) for ps in parts[k:k + n] for p in ps]
         k += n
@@ -207,6 +244,10 @@ def _dedupe(rows: list[Item]) -> list[Item]:
     seen: set = set()
     out = []
     for r in rows:
+        if r.kind == "template":   # a template row wins: its sentences are seen first, it is never dropped
+            seen.update(_norm(s) for s in r.sentences)
+            out.append(r)
+            continue
         keep = []
         for s in r.sentences:
             if _norm(s) not in seen:
@@ -236,6 +277,9 @@ async def _check(rows: list[Item], dictation: str, removed: list[str], tapped: l
         n = len(r.sentences)
         mine = fates[k:k + n]
         k += n
+        if r.kind == "template":   # folds when the dictation states either sentence; never edited (its buttons)
+            r.answered = "answered" in mine
+            continue
         r.sentences = [s for s, f in zip(r.sentences, mine) if f == "keep"]
         # The dictation answered the row, either way: stated, or reported the opposite (a dictated finding answers
         # "no X?"). The row folds; it never silently vanishes (hand read 2026-10-12).
@@ -245,19 +289,24 @@ async def _check(rows: list[Item], dictation: str, removed: list[str], tapped: l
 
 
 def _limit(rows: list[Item]) -> tuple[list[Item], list[Item]]:
+    # Referral rows are never capped: _rank puts them first and there are at most MAX_REFERRALS (< MAX_ROWS) of them,
+    # so the case cap is always reached on template or finding rows. The scratchpad relies on this: a capped row (shown
+    # behind "N more checks") never blocks Confirm, which an unanswered referral row must. Template rows come before
+    # finding rows and count against the same caps (spec 2026-10-13-findings-triggered-rows-design).
     out, capped, per_region, total = [], [], {}, 0
-    for r in rows:
+    for r in _rank(rows):
         if r.answered:
             out.append(r)
             continue
         if not r.sentences:
             continue
         r.sentences = r.sentences[:MAX_SENTENCES]
-        over_region = r.kind == "finding" and per_region.get(r.region, 0) >= MAX_ROWS_PER_REGION
+        regional = r.kind in ("finding", "template")
+        over_region = regional and per_region.get(r.region, 0) >= MAX_ROWS_PER_REGION
         if over_region or total >= MAX_ROWS:
             capped.append(r)
             continue
-        if r.kind == "finding":
+        if regional:
             per_region[r.region] = per_region.get(r.region, 0) + 1
         total += 1
         out.append(r)
@@ -267,12 +316,15 @@ def _limit(rows: list[Item]) -> tuple[list[Item], list[Item]]:
 async def update(scan_type: str, history: str, regions: list[str], dictation: str, abnormal: list[str],
                  not_assessable: str = "", removed: list[str] | None = None,
                  tapped: list[str] | None = None, referrals: list[Referral] | None = None,
-                 review: bool = False) -> ItemsResult:
+                 review: bool = False, habits: list[Habit] | None = None) -> ItemsResult:
     """The open rows for this dictation. referrals: the session's fixed referral rows (None on the first call, whose
     referral_questions then become them). The writer's reply is cached per (scan, history, abnormal sentences,
-    regions, referral questions); the splitter and the checks always run on the current dictation and removals."""
+    regions, referral questions); the splitter and the checks always run on the current dictation and removals.
+    habits: the template's confirmed habits; with a dictation, their trigger runs alongside the writer (never cached),
+    on the scan type and the dictation only (never the clinical history)."""
     t0 = time.perf_counter()
     removed = [r for r in (removed or []) if r.strip()]
+    trig = asyncio.create_task(met_habits(habits, scan_type, dictation)) if habits and dictation.strip() else None
     key = (*_key(scan_type, history, regions, abnormal, referrals), review)
     cached = key in _CACHE
     if cached:
@@ -283,17 +335,21 @@ async def update(scan_type: str, history: str, regions: list[str], dictation: st
             raw = await _write(scan_type, history, regions, dictation, not_assessable, removed, referrals, review)
         except Exception as e:  # fail open: no rows
             logger.warning("[stack.items] %s: %s", type(e).__name__, str(e)[:200])
+            if trig is not None:
+                trig.cancel()
             return ItemsResult(items=[], ms=int((time.perf_counter() - t0) * 1000), error=f"{type(e).__name__}: {e}")
         _CACHE[key] = raw
         while len(_CACHE) > _CACHE_MAX:
             _CACHE.popitem(last=False)
-    rows = _rows(raw, referrals)
+    met, trigger_error = (await trig) if trig is not None else ([], None)
+    rows = _rank([*template_rows(met), *_rows(raw, referrals)])
     await _split(rows)
     rows = _dedupe(rows)
     contradicted = await _check(rows, dictation, removed, [t for t in (tapped or []) if t.strip()])
     items, capped = _limit(rows)
     return ItemsResult(items=items, capped=capped, contradicted=contradicted, cached=cached,
-                       ms=int((time.perf_counter() - t0) * 1000))
+                       ms=int((time.perf_counter() - t0) * 1000), required=template_required(met),
+                       trigger_error=trigger_error)
 
 
 async def recheck(dictation: str, rows: list[Item], removed: list[str] | None = None,

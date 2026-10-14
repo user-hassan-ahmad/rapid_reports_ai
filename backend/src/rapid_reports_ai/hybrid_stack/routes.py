@@ -1,11 +1,10 @@
-"""Hybrid stack endpoints (spec §3, §5). On when the dictation package is allowed and the kill
-switch RR_HYBRID_STACK is not "0" (default on). Reviewers (RR_STACK_REVIEWERS, comma-separated
+"""Hybrid stack endpoints (spec §3, §5). On unless the one switch RR_STACK is "0" (integration spec §9.1). Reviewers (RR_STACK_REVIEWERS, comma-separated
 emails) approve, edit or reject reconciled families."""
 from __future__ import annotations
 
 import json
 import os
-from typing import Literal, Mapping
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -13,34 +12,35 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..database import get_db
-from ..database.models import DictationStackLog, StackSchemaFamily, StackSlimSheet, Template, User
-from ..dictation_v2 import v2_allowed
-from ..template_sheet_structure import fresh
-from .schemas import Region
+from ..database.crud import get_template
+from ..database.models import DictationStackLog, StackSchemaFamily, StackSlimSheet, User
+from ..stack_switch import stack_allowed  # noqa: F401 (re-exported)
+from ..template_decisions import clean_ledger
+from ..template_sheet_structure import generation_stamp, sheet_hash
+from .schemas import Region, groups_for, pill_regions
 from .items import Item, ItemsResult, Referral, recheck as items_recheck, update as items_update
-from .jev_stack import MATERIAL_MIN, STALE_MIN, ask_material, ask_stale
+from .jev_stack import MATERIAL_MIN, STALE_MIN, UNFINISHED_MIN, ask_material, ask_stale, ask_unfinished
 from .normals import AssumedResult, assumed as assumed_normals
+from .structures import structure_normals
+from .sex_screen import screen_normals
 from .slim_sheet import clean_sentences, get_or_make as slim_get_or_make
-from .template import template_region_normals
+from .template import (template_normal_labels, template_region_normals, template_required_values, template_structure,
+                       template_suppressions)
+from .values import ValuesResult, smart_fill
 from .draft import DraftResult, draft_conclusion
+from .habits import template_habits
 from .service import GroupResult, SchemaResult, close_update, group_update, resolve_schema
-from .units import StackUnit
+from .units import StackUnit, sentences as split_sentences
+from .resolution import TokenError, mint, verify as verify_token
+from .gate_model import GateRecord
+from .findings import FromUnits
 
 import logging
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/canvas/stack", tags=["hybrid-stack"])
 
-
-def stack_allowed(env: Mapping[str, str] = os.environ) -> bool:
-    return env.get("RR_HYBRID_STACK", "1") != "0" and v2_allowed(env)
-
-
-def shadow_rate(env: Mapping[str, str] = os.environ) -> float:
-    """Share of sessions that also build the old Structured text once, at session end (shadow)."""
-    try:
-        return min(1.0, max(0.0, float(env.get("RR_STACK_SHADOW_RATE", "0.25"))))
-    except ValueError:
-        return 0.25
+MAX_REGION_TEXT = 4000        # characters of one region's grouped sentences sent to Jev
+MAX_NORMALS_PER_REGION = 16   # conversion lab 2026-10-12: 8 silently cut mandatory negatives in long paragraphs
 
 
 def _require() -> None:
@@ -52,6 +52,9 @@ class SchemaRequest(BaseModel):
     scan_type: str = ""
     clinical_history: str = ""
     template_id: str | None = None
+    protocol_id: str | None = None          # protocol library pick (spec §3); phases/laterality complete it
+    phases: list[str] | None = None
+    laterality: str | None = None
 
 
 class GroupRequest(BaseModel):
@@ -72,6 +75,7 @@ class ItemsRequest(BaseModel):
     tapped: list[str] = Field(default_factory=list)     # sentences answered with a tap: re-checked for contradiction
     referrals: list[Referral] | None = None              # the session's fixed referral rows (None: first call)
     review: bool = False                                 # the end-of-dictation review (reasoning low)
+    template_id: str | None = None                       # its confirmed findings-triggered habits are asked
 
 
 class RecheckRequest(BaseModel):
@@ -95,16 +99,20 @@ class AssumedRequest(BaseModel):
     dictation: str = ""
     region_normals: dict[str, list[str]] = Field(default_factory=dict)
     abnormal: list[str] = Field(default_factory=list)
-    dictated_normal: list[str] = Field(default_factory=list)
     removed: list[str] = Field(default_factory=list)
     owned: list[str] = Field(default_factory=list)       # the rows' sentences: a row owns its check
-    touched: list[str] = Field(default_factory=list)     # regions those rows (and removals) concern
+    template_id: str | None = None                       # its context rules and normal labels apply
+    clinical_history: str = ""                           # a context rule's condition is judged on it too
+    region_text: dict[str, str] = Field(default_factory=dict)   # region -> its grouped sentences; missing: nothing
+    # The session's context-rule decision, as the first reply returned it (review R5); None: decide it now.
+    rules: dict[str, float] | None = None
+    confirm: bool = False   # at Confirm: every condition is re-asked with the dictation
 
 
-class DraftRequest(BaseModel):
+class DraftRequest(FromUnits):
     scan_type: str = ""
     clinical_history: str = ""
-    findings: str
+    findings: str = ""   # built from units + groups when they are sent (FromUnits)
 
 
 class CloseRequest(BaseModel):
@@ -130,6 +138,7 @@ class LogRequest(BaseModel):
     latency_ms: dict = Field(default_factory=dict)
     gate: dict | None = None      # v2 §5: the confirmed record (None: not confirmed)
     report_id: str | None = None  # v2: set once Generate returns
+    template_id: str | None = None  # template sessions: stamped with the sheet that drove them (None: quick)
     copilot: dict | None = None   # Copilot session record (scratchpad copilot spec §5.7)
 
 
@@ -137,16 +146,26 @@ class SlimRequest(BaseModel):
     scan_type: str = ""
     clinical_history: str = ""
     template_id: str | None = None
+    protocol_id: str | None = None
+    phases: list[str] | None = None
+    laterality: str | None = None
     # The family and regions are resolved on the server (review 2026-10-12): a shared sheet is never keyed or
     # shaped by what a client sends.
+    structure_key: str | None = None   # /schema's signed resolution (D26): when given, the fields above are ignored
 
 
 class SlimResult(BaseModel):
     id: str | None = None
     region_normals: dict[str, list[str]] = Field(default_factory=dict)
     not_assessable: str = ""
-    status: str = ""              # provisional | approved | template | "" (not ready)
+    status: str = ""              # provisional | approved | template | template_unusable | "" (not ready)
     ready: bool = False
+    level_groups: dict[str, list[str]] = Field(default_factory=dict)
+    required_values: list[str] = Field(default_factory=list)   # template sessions: the LIST_MISSING items (value cluster)
+    # template sessions: region -> {structure -> its sentences} for multi-structure paragraphs (the sub-pills); a
+    # sentence in no structure stays with its paragraph's own pill
+    region_structures: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
+    structure_key: str | None = None   # free text: the session token re-minted with this sheet's id (D26)
 
 
 class SlimUpdate(BaseModel):
@@ -159,14 +178,48 @@ class FamilyUpdate(BaseModel):
     regions: list[Region] | None = None
 
 
+def _library_pick(protocol_id, phases, laterality):
+    """The resolved pick, or None when the request is free text or the library is off. A bad pick is a 422."""
+    from .protocol_library.bundle import get_bundle, library_allowed
+    from .protocol_library.compose import PickError, resolve
+    if not protocol_id or not library_allowed():
+        return None, None
+    b = get_bundle()
+    try:
+        return b, resolve(b, protocol_id, phases, laterality)
+    except PickError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
 @router.post("/schema", response_model=SchemaResult)
 async def stack_schema(req: SchemaRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _require()
-    structure = None
+    # Resolution order (integration contract §8.1): template structure, else the library pick, else free text.
+    # The resolution is minted into structure_key (D26): /slim-sheet and Generate read it, never re-resolve.
     if req.template_id:
-        t = db.query(Template).filter(Template.id == req.template_id, Template.user_id == user.id).first()
-        structure = fresh(t.template_config or {}) if t is not None else None
-    return await resolve_schema(req.scan_type, req.clinical_history, structure, db)
+        t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
+        if t is None:
+            raise HTTPException(status_code=404, detail="Template not found.")
+        structure = template_structure(t.template_config)
+        if structure is None:   # D15: refused, never a free-text session that Generate would then refuse
+            raise HTTPException(status_code=422,
+                                detail="This template can't be used with the scratchpad. Create a fresh one.")
+        res = await resolve_schema(req.scan_type, req.clinical_history, structure, db)
+        res.structure_key = mint({"src": "template", "tid": str(t.id),
+                                  "sh": sheet_hash((t.template_config or {}).get("skill_sheet", "") or "")})
+        return res
+    b, pick = _library_pick(req.protocol_id, req.phases, req.laterality)
+    if pick is not None:
+        return SchemaResult(regions=pick.regions, groups=groups_for(pick.regions), pills=pill_regions(pick.regions),
+                            source="library", key=pick.schema_key, quiet=pick.quiet,
+                            protocol={"id": pick.entry_id, "display_name": pick.display_name,
+                                      "scan_type_line": pick.scan_type_line, "phases": pick.phases,
+                                      "laterality": pick.laterality},
+                            structure_key=mint({"src": "library", "eid": pick.entry_id, "ph": pick.phases,
+                                                "lat": pick.laterality, "bv": b.version, "sid": pick.sheet_id}))
+    res = await resolve_schema(req.scan_type, req.clinical_history, None, db)
+    res.structure_key = mint({"src": "free", "scan": req.scan_type[:300], "sk": res.key, "sid": None})
+    return res
 
 
 @router.post("/group", response_model=GroupResult)
@@ -176,11 +229,24 @@ async def stack_group(req: GroupRequest, user: User = Depends(get_current_user))
 
 
 @router.post("/items", response_model=ItemsResult)
-async def stack_items(req: ItemsRequest, user: User = Depends(get_current_user)):
+async def stack_items(req: ItemsRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _require()
+    extra = {}
+    if req.template_id:
+        try:
+            t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
+            st = template_structure(t.template_config) if t is not None else None
+            # only habits the radiologist confirmed are asked (Hassan H3: a line with no entry is inactive)
+            habits = template_habits(st, clean_ledger((t.template_config or {}).get("decisions"))) if st is not None else []
+        except Exception as e:  # noqa: BLE001 -- fail-soft: no template rows, generic rows as usual
+            logger.warning("[stack.items] template %s habits not read: %s: %s", req.template_id, type(e).__name__,
+                           str(e)[:200])
+            habits = []
+        if habits:
+            extra["habits"] = habits
     return await items_update(req.scan_type, req.clinical_history, req.regions[:40], req.dictation,
                               req.abnormal[:40], req.not_assessable[:2000], req.removed[:50], req.tapped[:20],
-                              req.referrals[:2] if req.referrals is not None else None, req.review)
+                              req.referrals[:2] if req.referrals is not None else None, req.review, **extra)
 
 
 @router.post("/recheck", response_model=ItemsResult)
@@ -218,13 +284,77 @@ async def stack_conclusion_check(req: StaleRequest, user: User = Depends(get_cur
     return {"stale": score >= STALE_MIN, "score": round(score, 3)}
 
 
-@router.post("/assumed", response_model=AssumedResult)
-async def stack_assumed(req: AssumedRequest, user: User = Depends(get_current_user)):
+class UnfinishedRequest(BaseModel):
+    text: str = ""
+
+
+@router.post("/unfinished")
+async def stack_unfinished(req: UnfinishedRequest, user: User = Depends(get_current_user)):
+    """Unfinished sentences, judged by Jev (the scratchpad's only check for them): flags in the shape of
+    /api/dictation/check (kind truncation, severity high, offsets into `text`). Fails open: no flags."""
     _require()
-    normals = {r: s[:8] for r, s in list(req.region_normals.items())[:40]}
+    text = req.text[:20000]
+    found, at = [], 0
+    for s in split_sentences(text)[:80]:
+        k = text.find(s, at)
+        if k < 0:
+            continue
+        found.append((s, k))
+        at = k + len(s)
+    try:
+        scores = await ask_unfinished([s for s, _ in found])
+    except Exception as e:
+        logger.warning("[stack.unfinished] %s: %s", type(e).__name__, str(e)[:200])
+        return {"flags": []}
+    return {"flags": [{"kind": "truncation", "severity": "high", "excerpt": s, "message": "The sentence stops before it is finished.",
+                       "start": k, "end": k + len(s), "blocking": True, "score": round(p, 3)}
+                      for (s, k), p in zip(found, scores) if p >= UNFINISHED_MIN]}
+
+
+@router.post("/assumed", response_model=AssumedResult)
+async def stack_assumed(req: AssumedRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    _require()
+    normals = {r: s[:MAX_NORMALS_PER_REGION] for r, s in list(req.region_normals.items())[:40]}
     owned = list(dict.fromkeys(o for o in req.owned if o.strip()))[:100]   # the client sends current rows first
-    return await assumed_normals(req.dictation, normals, req.abnormal, req.dictated_normal, req.removed[:50],
-                                 owned, req.touched[:40])
+    suppressions: list[tuple[str, str]] = []
+    labels: dict[str, str] = {}
+    scan_type = ""
+    if req.template_id:
+        t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
+        st = template_structure(t.template_config) if t is not None else None
+        if st is not None:
+            suppressions, labels = template_suppressions(st), template_normal_labels(st)
+        if t is not None and isinstance(t.template_config, dict):
+            scan_type = str(t.template_config.get("scan_type") or "")[:300]
+    # Seam 21: every context-rule decision is condition_state's, on the template's scan type; `rules` is the
+    # session's cached answer on the history and `confirm` re-decides every condition with the dictation.
+    return await assumed_normals(req.dictation, normals, req.abnormal, req.removed[:50], owned,
+                                 suppressions=suppressions,
+                                 clinical_history=req.clinical_history[:2000], labels=labels,
+                                 region_text={r: t[:MAX_REGION_TEXT] for r, t in list(req.region_text.items())[:40]},
+                                 rules=None if req.rules is None else dict(list(req.rules.items())[:100]),
+                                 confirm=req.confirm, scan_type=scan_type)
+
+
+
+class ValuesRequest(BaseModel):
+    dictation: str = ""
+    template_id: str | None = None   # the items are read from the template on the server, never sent by the client
+
+
+@router.post("/values", response_model=ValuesResult)
+async def stack_values(req: ValuesRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """The value cluster's smart fill (requirements spec 2026-10-12 part 1): the template's required values, each
+    filled from the dictation (Jev says stated and where; code reads the number) or open. Never errors: a Jev
+    failure leaves every value open."""
+    _require()
+    items: list[str] = []
+    if req.template_id:
+        t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
+        st = template_structure(t.template_config) if t is not None else None
+        if st is not None:
+            items = template_required_values(st)
+    return await smart_fill(req.dictation[:20000], items)
 
 
 @router.post("/draft", response_model=DraftResult)
@@ -239,17 +369,6 @@ async def stack_close(req: CloseRequest, user: User = Depends(get_current_user))
     return await close_update(req.units, req.regions)
 
 
-@router.post("/debug")
-async def stack_debug(payload: dict, user: User = Depends(get_current_user)):
-    """Local debugging only (RR_STACK_DEBUG=1): a frontend snapshot written to the server log, never stored."""
-    _require()
-    if os.environ.get("RR_STACK_DEBUG") != "1":
-        raise HTTPException(status_code=404, detail="Not Found")
-    import json
-    logger.warning("[stack.debug] %s", json.dumps(payload, ensure_ascii=False)[:12000])
-    return {"ok": True}
-
-
 @router.post("/log")
 async def stack_log(req: LogRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     _require()
@@ -260,9 +379,17 @@ async def stack_log(req: LogRequest, user: User = Depends(get_current_user), db:
         row = DictationStackLog(user_id=user.id, session_id=req.session_id)
         db.add(row)
     for k, v in req.model_dump(exclude_unset=True).items():
-        if k == "session_id" or (k in ("gate", "report_id", "copilot") and v is None):
+        if k in ("session_id", "template_id") or (k in ("gate", "report_id", "copilot") and v is None):
             continue  # a partial log (the report id alone) changes only what it sends; a gate is never erased
         setattr(row, k, v)
+    if req.template_id and row.stamp is None:   # pinned to the sheet the session started with
+        try:
+            t = get_template(db, req.template_id, str(user.id))   # owner only; an unknown template stamps nothing
+            stamp = generation_stamp(str(t.id), t.template_config, "scratchpad") if t is not None else None
+            if stamp is not None:
+                row.template_id, row.stamp = str(t.id), stamp
+        except Exception as e:  # noqa: BLE001 -- the stamp is evidence; the log row always lands
+            logger.warning("stack log %s: stamp failed: %s", req.session_id, e)
     db.commit()
     return {"ok": True}
 
@@ -306,12 +433,33 @@ async def stack_slim_sheet(req: SlimRequest, user: User = Depends(get_current_us
     read their own structure; quick sessions get the shared slim sheet (made on first use). Never errors: not
     ready means no quiet lines yet."""
     _require()
+    tok = None
+    if req.structure_key:   # the session resolution (D26): the request's scan type, template and pick are ignored
+        try:
+            tok = verify_token(req.structure_key)
+        except TokenError:
+            raise HTTPException(status_code=400, detail="Set up the workspace again.")
+        if tok["src"] == "template":
+            req = req.model_copy(update={"template_id": tok["tid"], "protocol_id": None})
+        elif tok["src"] == "library":
+            req = req.model_copy(update={"template_id": None, "protocol_id": tok["eid"], "phases": tok["ph"],
+                                         "laterality": tok["lat"]})
+        else:
+            req = req.model_copy(update={"template_id": None, "protocol_id": None, "scan_type": tok["scan"]})
+    # The same order as /schema (contract §8.1): template structure, else the library pick, else free text.
     if req.template_id:
-        t = db.query(Template).filter(Template.id == req.template_id, Template.user_id == user.id).first()
-        st = fresh(t.template_config or {}) if t is not None else None
-        if st is None:
-            return SlimResult()
-        return SlimResult(region_normals=template_region_normals(st), status="template", ready=True)
+        t = get_template(db, req.template_id, str(user.id))   # the string id as a UUID, owner only
+        st = template_structure(t.template_config) if t is not None else None
+        if st is None:   # Generate takes today's template path; the scratchpad says so
+            return SlimResult(status="template_unusable")
+        return SlimResult(region_normals=template_region_normals(st), required_values=template_required_values(st),
+                          region_structures=await structure_normals(st), status="template", ready=True)
+    b, pick = _library_pick(req.protocol_id, req.phases, req.laterality)
+    if pick is not None:
+        from .protocol_library.compose import compose_sheet
+        s = compose_sheet(b, pick)
+        return SlimResult(id=s.id, region_normals=s.region_normals, not_assessable=s.not_assessable,
+                          status="library", ready=True, level_groups=s.level_groups)
     if not req.scan_type.strip():
         return SlimResult()
     schema = await resolve_schema(req.scan_type[:300], req.clinical_history[:2000], None, db)
@@ -321,7 +469,8 @@ async def stack_slim_sheet(req: SlimRequest, user: User = Depends(get_current_us
     if row is None:
         return SlimResult()
     return SlimResult(id=str(row.id), region_normals=row.region_normals or {}, not_assessable=row.not_assessable or "",
-                      status=row.status, ready=True)
+                      status=row.status, ready=True,
+                      structure_key=mint({**tok, "sid": str(row.id)}) if tok is not None else None)
 
 
 def _removal_rates(db: Session, family: str, normals: dict[str, list[str]]) -> dict[str, dict]:
@@ -373,6 +522,46 @@ async def update_slim_sheet(sheet_id: str, upd: SlimUpdate, user: User = Depends
     if upd.status:
         row.status = upd.status
     if upd.region_normals is not None:
-        row.region_normals = {k: kept for k, v in upd.region_normals.items() if (kept := clean_sentences(v))}
+        cleaned = {k: kept for k, v in upd.region_normals.items() if (kept := clean_sentences(v))}
+        row.region_normals, flagged = await screen_normals(cleaned)
+        if flagged:
+            logger.info("[stack.slim] %d sex-specific borderline sentence(s) kept for review: %r", len(flagged), flagged[:5])
     db.commit()
     return {"ok": True}
+
+
+from .protocol_library.routes import router as _protocols_router  # noqa: E402
+router.include_router(_protocols_router)
+
+
+class StackGenerateRequest(BaseModel):
+    """One Generate for quick and template stack sessions (integration spec §5)."""
+    kind: Literal["quick", "template"]
+    template_id: str | None = None
+    variables: dict[str, str] = Field(default_factory=dict)   # template inputs other than FINDINGS
+    scan_type: str = ""
+    history: str = ""
+    structure_key: str   # /schema's signed session resolution (D26): the template, library entry or slim sheet
+    units: list[StackUnit]
+    groups: list[str]
+    gate: GateRecord
+
+
+@router.post("/generate")
+async def stack_generate(req: StackGenerateRequest, current_user: User = Depends(get_current_user),
+                         db: Session = Depends(get_db)):
+    _require()
+    from sse_starlette.sse import EventSourceResponse
+    from . import report as SR
+
+    async def stream():
+        try:
+            async for ev in SR.run(req, current_user, db):
+                yield {"event": ev["event"], "data": json.dumps(ev["payload"])}
+        except SR.StackError as e:
+            yield {"event": "error", "data": json.dumps({"message": str(e)})}
+        except Exception:  # noqa: BLE001 -- never a silent fallback to the old flow
+            logger.exception("[stack.generate] failed")
+            yield {"event": "error", "data": json.dumps({"message": "Report generation failed. Please try again."})}
+
+    return EventSourceResponse(stream())

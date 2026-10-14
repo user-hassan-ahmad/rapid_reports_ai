@@ -1,7 +1,7 @@
 """guideline_registry table and dictation_stack_logs.copilot (scratchpad copilot §5.1, §5.7)
 
 Revision ID: 20261012150000
-Revises: 20261012090000
+Revises: 20261013090000
 Create Date: 2026-10-12
 """
 from typing import Sequence, Union
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision: str = "20261012150000"
-down_revision: Union[str, Sequence[str], None] = "20261012090000"
+down_revision: Union[str, Sequence[str], None] = "20261013090000"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

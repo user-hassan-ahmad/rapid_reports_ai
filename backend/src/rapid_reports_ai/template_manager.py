@@ -25,6 +25,17 @@ logger = logging.getLogger(__name__)
 GROQ_GENERATOR_MAX_TOKENS = 16384
 
 
+# Appended to the refine prompt after the sheet grammar (template pipeline Task C5): chat edits keep the sheet a valid
+# grammar sheet, and the reply speaks of report behaviour because the radiologist never sees the sheet.
+REFINE_GRAMMAR_RULE = """
+
+The skill sheet is written in the strict line grammar above. Your edited skill_sheet keeps every unit line valid:
+a new constraint becomes a unit (NORMAL, NEGATIVE, FIXED, TERM, RULE, LIST_MISSING) in the right paragraph, never a
+prose instruction; keep everything you were not asked to change exactly as it is, line for line. Your response
+describes the change as report behaviour ("Reports will now ..."), never as sheet syntax: the radiologist never sees
+the sheet."""
+
+
 class TemplateManager:
     """Manages custom user-created templates"""
     
@@ -2522,6 +2533,7 @@ No user input provided. Omit this section entirely from output.
         model_override: str = None,
         brief_text: str | None = None,
         history_supplied: bool = False,
+        stack: dict | None = None,
     ) -> dict:
         """
         Generate a report using the skill sheet + global style guide prompt
@@ -2541,6 +2553,8 @@ No user input provided. Omit this section entirely from output.
         replaces the raw skill sheet and switches to the _BRIEF prompt package.
         history_supplied: True when code writes the CLINICAL HISTORY section (spec §4); adds a
         note after the inputs telling the model not to write it.
+        stack: a scratchpad session ({"conclusion", "declined"}): FINDINGS is the confirmed findings block, so the
+        sheet is reduced to structure and style (template_stack.stack_brief) and read with the _STACK prompts.
         """
         from pydantic import BaseModel
         from .enhancement_utils import (
@@ -2553,15 +2567,26 @@ No user input provided. Omit this section entirely from output.
         from .global_style_guide import (
             SYSTEM_PREAMBLE, GLOBAL_STYLE_GUIDE, PRE_WRITING_ANALYSIS, VERIFICATION_CHECKLIST,
             GLOBAL_STYLE_GUIDE_BRIEF, PRE_WRITING_ANALYSIS_BRIEF, VERIFICATION_CHECKLIST_BRIEF,
-            TEMPLATE_SHEET_HEADER_BRIEF,
+            TEMPLATE_SHEET_HEADER_BRIEF, GLOBAL_STYLE_GUIDE_STACK, PRE_WRITING_ANALYSIS_STACK,
+            VERIFICATION_CHECKLIST_STACK, TEMPLATE_SHEET_HEADER_STACK,
         )
+        from .template_stack import stack_brief
 
         skill_sheet = template_config.get("skill_sheet", "")
         scan_type = template_config.get("scan_type", "")
         findings_input = user_inputs.get("FINDINGS", "")
         clinical_history = user_inputs.get("CLINICAL_HISTORY", "")
 
-        if brief_text and brief_text.strip():
+        if stack is not None:
+            # Scratchpad session: the radiologist confirmed the content; the sheet keeps structure and style only
+            pre_writing, checklist = PRE_WRITING_ANALYSIS_STACK, VERIFICATION_CHECKLIST_STACK
+            brief = stack_brief(skill_sheet, stack.get("conclusion") or "", stack.get("declined") or (),
+                                values_decided=stack.get("values_decided") is True)
+            system_prompt = (
+                f"{SYSTEM_PREAMBLE}\n\n{GLOBAL_STYLE_GUIDE_STACK}\n\n"
+                f"{TEMPLATE_SHEET_HEADER_STACK}\n\n{brief}"
+            )
+        elif brief_text and brief_text.strip():
             # Mirror path (spec template-pipeline-mirror §5): the sheet reconciled with this
             # dictation. skill_sheet is unused here; the brief replaces it. A blank brief is a
             # failed brief and takes the raw path below.
@@ -2708,6 +2733,7 @@ Findings: {findings_input}{history_note}
         user_inputs: dict,
         user_signature: str = None,
         model_override: str = None,
+        stack: dict | None = None,
     ) -> dict:
         """
         Generate report using structured config with section-aware prompt construction.
@@ -2717,6 +2743,7 @@ Findings: {findings_input}{history_note}
             template_config: Structured configuration dict containing scan info and sections
             user_inputs: User-provided values for input fields (e.g., FINDINGS, CLINICAL_HISTORY)
             user_signature: Optional user signature to append
+            stack: a scratchpad session ({"conclusion", "declined"}); skill_sheet_guided templates only.
             model_override: Optional model name to override the default TEMPLATE_REPORT_GENERATOR.
                 Only wired through the skill_sheet_guided path; production templated path
                 still uses MODEL_CONFIG. Used by the quick-report proto for A/B model comparison.
@@ -2737,9 +2764,13 @@ Findings: {findings_input}{history_note}
 
         # ── Skill-sheet-guided early exit ──────────────────────────────────
         if template_config.get("generation_mode") == "skill_sheet_guided":
+            # today's (fallback) path reads the stored sheet: habit lines are resolved only in the scratchpad, so the
+            # generator never sees one here either (findings-triggered rows plan, Task 5b)
+            from .template_context_rules import without_habits
+            sheet, _ = without_habits(template_config.get("skill_sheet") or "")
             return await self._generate_report_skill_sheet_guided(
-                template_config, user_inputs, user_signature,
-                model_override=model_override,
+                {**template_config, "skill_sheet": sheet}, user_inputs, user_signature,
+                model_override=model_override, stack=stack,
             )
 
         # Extract metadata
@@ -3219,81 +3250,39 @@ Generate the report now as valid JSON.
                 raise
 
     @staticmethod
-    @staticmethod
-    async def extract_coverage_sections(skill_sheet: str, api_key: str) -> List[str]:
-        """Extract anatomical coverage section names from a skill sheet using an LLM."""
-        from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model
-        from pydantic import BaseModel
-
-        class CoverageSections(BaseModel):
-            sections: List[str]
-
-        system_prompt = (
-            "You are a radiology report structure assistant. Extract the anatomical "
-            "coverage sections a radiologist must address when dictating findings for "
-            "this scan type. Return ONLY the organ-system or anatomical-region level "
-            "sections in dictation order as an uppercase JSON array. Do not include "
-            "IMPRESSION, CLINICAL HISTORY, TECHNIQUE, or organisational labels like "
-            "'Primary Pathology Paragraph'."
-        )
-        user_prompt = f"""Extract the coverage sections from this skill sheet.
-
-Look at:
-- Per-Section Construction Rules → Field ordering bullets
-- Mandatory fields and mandatory negatives (which organs they reference)
-- Normal/abnormal patterns (which structures are described)
-
-Skill sheet:
----
-{skill_sheet}
----
-
-Return a JSON object: {{"sections": ["LIVER", "BILIARY SYSTEM", ...]}}"""
-
-        model_name = MODEL_CONFIG["CANVAS_SECTIONS_FROM_TEMPLATE"]
-
-        result = await _run_agent_with_model(
-            model_name=model_name,
-            output_type=CoverageSections,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            api_key=api_key,
-            # Interactive list extraction: reasoning off (Cerebras defaults to high).
-            model_settings={
-                "temperature": 0.3,
-                "max_tokens": 1024,
-                "reasoning_effort": "none",
-            },
-        )
-        return result.output.sections
-
-    @staticmethod
     def _parse_skill_sheet_json(raw: str, keys: List[str]) -> Dict:
         """
-        Extract a JSON object from a GLM string response.
-        Handles markdown code fences and stray leading/trailing text.
+        Extract the JSON object carrying `keys` from a model's string response.
+
+        Decodes in place from each '{' rather than regex-slicing: the skill
+        sheet itself contains ``` fences and {placeholder} slots, which a
+        fence/brace regex mistakes for the envelope. Stray objects before the
+        envelope (prose, leaked reasoning) are skipped until one has all keys.
         """
-        import json, re
+        import json
 
-        # Strip markdown code fences (```json ... ``` or ``` ... ```)
-        fence_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', raw)
-        candidate = fence_match.group(1).strip() if fence_match else raw.strip()
+        decoder = json.JSONDecoder()
+        first_dict = None
+        start = raw.find("{")
+        while start != -1:
+            try:
+                obj, _ = decoder.raw_decode(raw, start)
+            except json.JSONDecodeError:
+                obj = None
+            if isinstance(obj, dict):
+                if all(k in obj for k in keys):
+                    return obj
+                if first_dict is None:
+                    first_dict = obj
+            start = raw.find("{", start + 1)
 
-        # Try direct parse first
-        try:
-            parsed = json.loads(candidate)
-        except json.JSONDecodeError:
-            # Find the outermost { ... } block
-            brace_match = re.search(r'\{[\s\S]*\}', candidate)
-            if not brace_match:
-                raise ValueError(f"No JSON object found in model response. Raw: {raw[:300]}")
-            parsed = json.loads(brace_match.group())
-
-        # Validate expected keys are present
-        missing = [k for k in keys if k not in parsed]
-        if missing:
-            raise ValueError(f"Model response missing keys {missing}. Got: {list(parsed.keys())}")
-        return parsed
+        if first_dict is None:
+            raise ValueError(f"No JSON object found in model response. Raw: {raw[:300]}")
+        missing = [k for k in keys if k not in first_dict]
+        raise ValueError(
+            f"Model response missing keys {missing} (output may be truncated). "
+            f"Got: {list(first_dict.keys())}"
+        )
 
     async def analyze_reports_and_generate_config(
         self,
@@ -3686,23 +3675,26 @@ Generate a JSON object with exactly two keys:
             role_label = "Radiologist" if turn["role"] == "user" else "Assistant"
             history_text += f"\n\n**{role_label}:** {turn['content']}"
 
-        system_prompt = """You are an expert radiology reporting analyst helping a radiologist refine their report template.
+        from . import template_sheet_lab_prompts as P
+
+        base_prompt = """You are an expert radiology reporting analyst helping a radiologist refine their report template.
 
 Your job has three phases:
 
 1. INTERPRET the behavioural outcome — what should future reports do differently?
+   First check fit: if the instruction names anatomy, a structure or a finding that this examination does not clearly cover (judge from the scan context and what the report's paragraphs describe), do not edit. Return the skill sheet unchanged, leave behavioral_claim empty, and in "response" ask, in report terms, whether it applies to this scan (for example: "These reports don't currently describe <the named item>. Should they include it?"). This is asking when unclear, not refusing: an instruction about something the examination does cover goes ahead.
 
 2. SCAN the entire skill sheet for every rule affecting this outcome:
    - Rules that already produce the desired behaviour (keep as-is)
    - Rules that conditionally prevent or qualify the desired behaviour (must be removed or modified)
    - Rules that could counteract the change elsewhere in the document (must be reconciled)
 
-   This scan covers Fixed Blocks, Conditional Suppression rules, IF-THEN clauses, optional framing, ordering rules, Mandatory Negatives, Terminology Rules, and Per-Section Construction Rules.
+   This scan covers every unit line (FIXED, NORMAL, NEGATIVE, TERM, RULE, LIST_MISSING), context RULE conditions, elements marked "(optional)" in an Order line, Order lines themselves, Opening lines, and the prose sections (Voice, Impression Construction, Measurement and Grading).
 
 3. MUTATE the document — additions, modifications, AND removals — so the desired behaviour is unconditionally produced across the entire document.
 
 Critical rules:
-- A user asking for something to be "always", "mandatory", "consistent", "on every report", or "each time" REQUIRES checking for and removing any Conditional Suppression rule, optional framing, or IF-THEN clause that would prevent that field from appearing. Don't just add a positive rule — remove the contradiction.
+- A user asking for something to be "always", "mandatory", "consistent", "on every report", or "each time" REQUIRES checking for and removing any context RULE, "(optional)" marking or conditional wording that would prevent that item from appearing. Don't just add a positive rule — remove the contradiction.
 - A user asking to remove or stop something REQUIRES removing any rule that currently enforces it, not just adding a negative rule elsewhere.
 - A user asking for specific placement ("after X", "at the start of Y") REQUIRES updating ordering rules and any existing formatting rules that place the item elsewhere.
 - Only touch rules unrelated to the requested behaviour if they directly contradict it.
@@ -3714,7 +3706,7 @@ Output fields — you must return all three:
 1. "skill_sheet" — the complete updated skill sheet markdown with all necessary mutations including removals.
 
 2. "response" — a brief plain-English confirmation (1-2 sentences) framing what future reports will now do differently. Write as if confirming an instruction to a colleague.
-   - NEVER reference internal document structure, section names, or technical terms like "Skill Sheet", "Fixed Blocks", "Conditional Suppression", "Per-Section Construction Rules", "Terminology Rules", "Impression Construction Rules", "Mandatory Negatives", or any markdown heading.
+   - NEVER reference internal document structure, section names, or technical terms like "Skill Sheet", "unit", "NORMAL", "NEGATIVE", "FIXED", "TERM", "RULE", "LIST_MISSING", "COVERS", "Order line", "Opening line", "paragraph block", or any markdown heading. The radiologist never sees the sheet.
    - NEVER say "I've updated the [section]" or "The [section] now includes...". Frame in clinical/behavioural language only.
    - Example: "Got it — your reports will now always include the radiation dose on its own line directly after the heart rate."
 
@@ -3727,6 +3719,8 @@ Output fields — you must return all three:
      - "Your template has been updated" (not observable)
      - "The conditional suppression rule has been removed" (references internals)
      - "Reports will be better" (not falsifiable)"""
+
+        system_prompt = base_prompt + "\n\n" + P.GRAMMAR + "\n\n" + P.SHEET_LAYOUT + REFINE_GRAMMAR_RULE
 
         history_section = f"\n\n=== CONVERSATION HISTORY ==={history_text}" if history_text.strip() else ""
 

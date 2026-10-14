@@ -29,3 +29,11 @@ async def test_draft_fails_open():
         return httpx.Response(500)
     out = await D.draft_conclusion("CT", "", "x", transport=httpx.MockTransport(handler))
     assert out.text == "" and out.error
+
+
+def test_the_draft_never_writes_the_clinical_history_into_the_conclusion():
+    """L-36: the history is never in the report; the conclusion may say only generically whether it explains it."""
+    rule = next(l for l in D.DRAFT_SYSTEM.split("\n") if "Never write the clinical history" in l)
+    for words in ("no wording from it", "symptom", "demographic", "referral question", "only generically",
+                  "does not account for the presenting symptoms"):
+        assert words in rule, words

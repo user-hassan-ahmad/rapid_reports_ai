@@ -297,15 +297,6 @@ def _between(text: str, start: str, end: str) -> str:
 # reports, no Reference Values table, no header:none paragraphs, no impression-format field and no
 # conditional rules, so the instructions about them are removed; rules stated in several blocks
 # are kept once, where the model acts on them.
-# Scratchpad sessions only (copilot spec §6): appended to the style guide when the brief is a stack_fallback brief, which
-# always carries the Scratchpad Recommendations rule. Every other prompt is unchanged.
-QR_STACK_RECOMMENDATIONS = """### Scratchpad Recommendations
-
-One exception to the rules that a recommendation renders within the impression and that no section is added
-beyond the skill sheet's Structural Pattern: when the FINDINGS input has a line starting "Recommendations
-(selected by the radiologist):", follow the skill sheet's Scratchpad Recommendations rule and write those items
-under a `RECOMMENDATIONS:` heading on its own line after the impression. With no such line, add no such section."""
-
 QR_SYSTEM_PREAMBLE_BRIEF = _swaps(
     QR_SYSTEM_PREAMBLE,
     ("Use British English spelling throughout. The report", "The report"),
@@ -409,4 +400,82 @@ QR_VERIFICATION_CHECKLIST_BRIEF = _swaps(
      "that was not in the dictation — not inferred from an adjacent pattern"),
     ("- No skill sheet internal labels (paragraph names marked header: none) appear as text in the output",
      "- No skill sheet internal labels appear as text in the output"),
+)
+
+
+# ── Scratchpad (stack) variants ─────────────────────────────────────────────
+# Used when the generator reads a stack brief (quick_report_brief.stack_fallback): every clinical statement, the
+# conclusion and the removed sentences were confirmed in the scratchpad, so the brief variants' instructions about
+# reconciliation labels, filling the sweep and writing the impression's own synthesis or recommendations are taken
+# out (2026-10-12 audit: dead in a stack brief, or contradicting its "places, never adds" rule). Built from the
+# _BRIEF texts so production quick reports are unchanged. Template reports never read these.
+QR_SYSTEM_PREAMBLE_STACK = QR_SYSTEM_PREAMBLE_BRIEF
+
+QR_SHEET_HEADER_STACK = """## SKILL SHEET
+
+The following skill sheet defines the structure and style for this scan. The radiologist confirmed every statement
+in the FINDINGS input in the scratchpad before generation. Where a skill sheet rule conflicts with a global rule,
+the skill sheet takes precedence."""
+
+QR_STYLE_GUIDE_STACK = _swaps(
+    QR_STYLE_GUIDE_BRIEF,
+    (_between(QR_STYLE_GUIDE_BRIEF, "### Impression as Synthesis", "### Incidental Findings"),
+     """### Impression
+
+The impression phrases the radiologist's confirmed conclusion (the skill sheet's Impression Plan) in report style:
+its findings, negatives and any recommendation, in its order. It adds no finding, diagnosis, negative, synthesis or
+recommendation of its own, and uses the same terminology as FINDINGS.
+
+"""),
+    ("""Before including an incidental in the impression: does it require clinical action,
+have malignant potential, or exceed reporting thresholds? If none — document in
+findings only.
+""", ""),
+    (_between(QR_STYLE_GUIDE_BRIEF, "### Consolidation", "### Missing Data Handling"),
+     """### Consolidation
+
+Paragraphs, order and joining follow the skill sheet's Report Flow. Nothing is consolidated across a REGIONS
+heading. Statements about the same structure, or normal structures the Report Flow names together, may share one
+sentence, naming only the structures the findings name; every statement keeps its meaning.
+
+When bilateral findings of the same type and severity are present, combine into
+a single sentence with directional comparison if asymmetric.
+
+"""),
+    ("""Management inference, differential synthesis, and symptom attribution belong in
+IMPRESSION only.""", """Symptom attribution belongs in IMPRESSION only, and only where the confirmed conclusion
+states it."""),
+    ("""Recommendations must be specific""", """A recommendation appears only as the session rules allow; when it does, recommendations must be specific"""),
+    ("""When a named guideline specifies the management pathway, state it and
+commit. Reserve hedging for genuine clinical ambiguity.""", ""),
+)
+
+QR_PRE_WRITING_ANALYSIS_STACK = _swaps(
+    QR_PRE_WRITING_ANALYSIS_BRIEF,
+    (_between(QR_PRE_WRITING_ANALYSIS_BRIEF, "1. **Companion inventory**", "   **Clinical history as focus**"),
+     """1. **Placement**: For each statement in FINDINGS, decide its paragraph under the
+   Report Flow: an abnormal finding leads, with its related statements. Every
+   statement is placed once; no statement is added or dropped.
+
+"""),
+    (_between(QR_PRE_WRITING_ANALYSIS_BRIEF, "2. **Impression plan**", "3. **Clinical context check**"),
+     """2. **Impression**: Phrase the confirmed conclusion in report style, keeping every
+   finding it names and adding nothing it does not contain.
+
+"""),
+    ("""If yes, let them change the
+   interpretation, confidence or urgency of the affected statement.""",
+     """If yes, let them decide emphasis
+   and order; a confirmed statement keeps its meaning and confidence."""),
+)
+
+QR_VERIFICATION_CHECKLIST_STACK = _swaps(
+    QR_VERIFICATION_CHECKLIST_BRIEF,
+    (_between(QR_VERIFICATION_CHECKLIST_BRIEF, "- Every KEEP negative", "- No suppressed terms"),
+     """- Every statement in FINDINGS appears with its meaning unchanged; no normal or negative statement appears that FINDINGS does not contain, for any region
+- No DO NOT ASSERT statement appears anywhere, in any wording, impression included
+- The impression phrases the confirmed conclusion: every finding it names, nothing it does not contain
+"""),
+    ("- Recommendations are specific (specialty, urgency, pathway)",
+     "- A recommendation appears only as the session rules allow; one that does is specific (specialty, urgency, pathway)"),
 )

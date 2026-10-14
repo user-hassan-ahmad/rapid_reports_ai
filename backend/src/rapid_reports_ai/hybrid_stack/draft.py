@@ -8,7 +8,7 @@ import time
 
 from pydantic import BaseModel
 
-from .http import post_json
+from .http import post_chat
 
 URL = "https://api.cerebras.ai/v1/chat/completions"
 MODEL = "qwen-3.8-27b"
@@ -17,7 +17,8 @@ TIMEOUT_S = 15.0
 DRAFT_SYSTEM = """You draft the conclusion of a radiology report from the radiologist's dictated findings. The radiologist will edit and confirm it.
 
 - Brief and synthesised: the diagnosis or overall answer first, then only findings that change management. Usually one to three sentences, never more than four.
-- Answer the clinical question when the history asks one.
+- Answer the clinical question when the history asks one, in the findings' own terms.
+- Never write the clinical history into the conclusion: no wording from it, no symptom, sign, demographic, timeline or prior event it gives, and not the referral question itself. Whether the findings explain the presentation may be said only generically ("does not account for the presenting symptoms").
 - Use only what the findings state. Never add a finding, measurement, grade or certainty the findings do not give; keep their hedges.
 - Never add a classification, stage, score or category the findings do not name (resectability, a TNM or other stage, a grade, a named scoring system): the radiologist assigns it.
 - Do not list absent findings or normal structures. At most one negative, only when it answers the clinical question.
@@ -56,7 +57,7 @@ async def draft_conclusion(scan_type: str, history: str, findings: str, transpor
                                                                        history=history or "(none given)",
                                                                        findings=findings)}]}
     try:
-        r = await post_json(URL, os.environ.get("CEREBRAS_API_KEY", ""), body, TIMEOUT_S, transport)
+        r = await post_chat(body, TIMEOUT_S, transport, "stack.draft")
         r.raise_for_status()
         text = clean(r.json()["choices"][0]["message"]["content"])
     except Exception as e:  # fail open: no draft; the radiologist dictates or types one

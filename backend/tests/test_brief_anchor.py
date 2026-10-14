@@ -105,6 +105,14 @@ def test_units_are_normal_sentences_and_negative_tails_never_positive_heads():
         assert REPORT[u.start:u.end] == u.text
 
 
+def test_units_read_a_conclusion_like_an_impression():
+    r = "FINDINGS:\nThe liver is normal.\n\nCONCLUSION:\nAcute appendicitis. No perforation."
+    texts = [u.text for u in ba.units(r)]
+    assert "No perforation." in texts
+    for u in ba.units(r):
+        assert r[u.start:u.end] == u.text
+
+
 def test_a_tail_unit_keeps_its_negator():
     r = "FINDINGS:\nSuperior mesenteric vein abutment without SMA involvement. The mass abuts the vein; no SMA involvement."
     texts = [u.text for u in ba.units(r)]

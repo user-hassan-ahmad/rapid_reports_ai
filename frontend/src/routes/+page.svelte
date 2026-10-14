@@ -7,7 +7,10 @@ import IntelliDictateTab from './components/IntelliDictateTab.svelte';
 import TemplatedReportTab from './components/TemplatedReportTab.svelte';
 import HistoryTab from './components/HistoryTab.svelte';
 import SettingsTab from './components/SettingsTab.svelte';
+import UpgradeBanner from '$lib/components/UpgradeBanner.svelte';
 import ReportEnhancementSidebar from './components/ReportEnhancementSidebar.svelte';
+import { get } from 'svelte/store';
+import { stackMode, primeStackMode, showLegacyCopilot } from '$lib/hybrid-stack/mode';
 import { reviewRailHoldsAside } from '$lib/review/railActive';
 import IntervalAnalysisDrawer from './components/IntervalAnalysisDrawer.svelte';
 import TemplateRefinePanel from './components/TemplateRefinePanel.svelte';
@@ -45,7 +48,9 @@ import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 		using_user_keys?: { deepgram: boolean };  // backward compat, same as deepgram_configured
 		dictation_v2?: boolean; // the dictation package is allowed on this server (RR_DICTATION_V2)
 		hybrid_stack?: boolean; // the hybrid dictation stack is on (RR_HYBRID_STACK, with the dictation package)
+		stack?: boolean; // the scratchpad stack (RR_STACK, spec §9.1); absent on an old server = off
 		hybrid_stack_shadow_rate?: number; // share of sessions that build the old Structured text in shadow
+		protocol_library?: boolean; // quick reports pick a curated protocol (RR_PROTOCOL_LIBRARY, with the hybrid stack)
 		stack_copilot?: boolean; // the server allows the guideline Copilot (RR_STACK_COPILOT, with the stack)
 	};
 	type HistoryModalInput = {
@@ -241,6 +246,7 @@ function openCopilot(options: {
 		intervalDrawerOpen = true;
 		return;
 	}
+	if (!showLegacyCopilot(get(stackMode))) return; // stack mode (D13): no legacy Copilot to open (it runs /enhance, /api/audit)
 	navStateBeforeCopilot = !sidebarCollapsed;
 	sidebarCollapsed = true;
 	if (options.tab !== undefined) sidebarTabToOpen = options.tab ?? null;
@@ -359,9 +365,12 @@ let templatedModel = 'claude'; // Track model for template editor
 						using_user_keys: data.using_user_keys || { deepgram: data.deepgram_configured || false },
 						dictation_v2: data.dictation_v2 === true,
 						hybrid_stack: data.hybrid_stack === true,
+						stack: data.stack === true, // the one switch (RR_STACK); the tabs latch it at Set up workspace
+						protocol_library: data.protocol_library === true,
 						hybrid_stack_shadow_rate: typeof data.hybrid_stack_shadow_rate === 'number' ? data.hybrid_stack_shadow_rate : 0.25,
 						stack_copilot: data.stack_copilot === true
 					};
+					primeStackMode(data); // post-generation skips legacy calls even before any Set up (D4/D13)
 				}
 			} else {
 				apiKeyStatusError = 'Unable to verify service status. You can still try. If you have issues, try refreshing or logging in again.';
@@ -918,6 +927,7 @@ $: if (
 		style:padding-right={copilotMainPaddingRightPx > 0 ? `${copilotMainPaddingRightPx}px` : undefined}
 	>
 	<main class="flex-1 min-w-0 relative min-h-screen">
+		{#if $isAuthenticated}<UpgradeBanner />{/if}<!-- inside the content column: the fixed sidebar never covers it -->
 		{#if $token && !$isAuthenticated}
 			<!-- Still checking auth status - show loading -->
 			<div class="min-h-screen flex items-center justify-center">
@@ -1206,7 +1216,8 @@ $: if (
 	<!-- Mount when a report is being viewed so /enhance + prefetch can run before Copilot is
 	     opened. Uses viewingReport (not just currentReportId) so the panel unmounts on the
 	     templates list view, where the report id is preserved for fast re-entry. -->
-	{#if viewingReport && (!railActive || sidebarVisible)}
+	<!-- Stack mode (D13): no Copilot sidebar after generation (its mount runs /enhance). -->
+	{#if viewingReport && (!railActive || sidebarVisible) && showLegacyCopilot($stackMode)}
 		<aside
 			class="fixed inset-0 z-[10000] flex min-h-0 w-full flex-col border-l border-white/10 bg-black/70 backdrop-blur-2xl overflow-hidden shadow-2xl shadow-purple-500/10 transition-[width] duration-300 ease-in-out md:inset-y-0 md:left-auto md:right-0 md:z-[35] {!sidebarVisible ? 'hidden' : ''}"
 			style={browser && viewportWidth >= 768
@@ -1325,7 +1336,7 @@ $: if (
 	{/if}
 
 	<!-- Viewport-locked rail: sticky fails when ancestors use overflow-hidden (page root). -->
-	{#if viewingReport && !sidebarVisible && !railActive}
+	{#if viewingReport && !sidebarVisible && !railActive && showLegacyCopilot($stackMode)}
 		{@const _railLoading = enhancementLoading || auditState?.status === 'loading'}
 		{@const _railLoaded = !enhancementLoading && (enhancementGuidelinesCount > 0 || auditState?.status === 'complete' || auditState?.status === 'stale')}
 		{@const _qaFlagCount = Array.isArray((auditState?.result as any)?.criteria)

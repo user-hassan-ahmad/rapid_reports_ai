@@ -185,6 +185,19 @@ export function flagRanges(text: string, flags: { word: string }[]): { from: num
 /** Racing: the part of the scratchpad the lean polish may rewrite. The last `n` sentences
  *  of the current line (never across a line break), plus up to `maxContext` characters of
  *  frozen text before it. Chosen by code because the polish is fired before Jev answers. */
+/** A final that opens with a spoken section heading ("Conclusion. Acute appendicitis…"). The backend's heading list
+ *  (spoken_format.HEADINGS), at the start only. */
+const SECTION_CUE = /^\s*(?:clinical history|clinical details|conclusion|impression|findings|comparison|technique|indication|history|opinion|summary|recommendation)\b/i;
+export const opensSection = (utterance: string) => SECTION_CUE.test(utterance);
+
+/** The span a raced polish may rewrite. A final that opens a section never joins the open line: its span is empty,
+ *  so the polish writes only the new words, as a new paragraph (live 2026-10-12: "The terminal ileum is" was still
+ *  open, and "Conclusion. Acute appendicitis…" was polished into it as one sentence). */
+export function polishSpan(solid: string, utterance: string): { context: string; span: string; spanFrom: number; paragraph: boolean } {
+	if (opensSection(utterance) && solid.trim()) return { context: solid.slice(-600).trim(), span: '', spanFrom: solid.length, paragraph: true };
+	return { ...splitSpan(solid), paragraph: false };
+}
+
 export function splitSpan(
 	solid: string,
 	n = 2,

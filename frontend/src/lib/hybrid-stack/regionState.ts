@@ -1,6 +1,7 @@
 // Scratchpad v2 region state and the confirmed findings block (spec 2026-10-11 §2.1, §6). Pure functions
 // of the units: the verbatim text stays the only text; this decides where each region shows.
 import type { GateRecord, RegionStates, StackUnit } from './types';
+import { valueStatements } from './values';
 
 export const TECHNIQUE = 'Technique';
 export const GENERAL = 'General';
@@ -21,6 +22,21 @@ export function effectiveItems(units: StackUnit[]): Item[] {
 		} else out.push({ unitId: u.id, part: null, text: u.text, group: u.group, abnormal: !!u.abnormal });
 	}
 	return out;
+}
+
+/** Each findings region's own grouped sentences (or split parts), joined, then every non-heading, non-abnormal
+ *  sentence that names the region in its covers (a collective normal, review round 1: "Solid organs unremarkable."
+ *  covers the spleen's sheet sentence), once each: what may cover that region's assumed normals (Task A3b).
+ *  Technique, General, Conclusion and unplaced units give nothing of their own, so a conclusion or a bare "normal"
+ *  leaves the template's normals offered. */
+export function regionText(units: StackUnit[]): Record<string, string> {
+	const out: Record<string, string[]> = {};
+	for (const i of effectiveItems(units)) if (!FIXED.has(i.group)) (out[i.group] ??= []).push(i.text);
+	for (const u of units) {
+		if (u.heading || u.abnormal) continue;
+		for (const g of u.covers ?? []) if (!FIXED.has(g) && !(out[g] ?? []).includes(u.text)) (out[g] ??= []).push(u.text);
+	}
+	return Object.fromEntries(Object.entries(out).map(([g, ts]) => [g, ts.join(' ')]));
 }
 
 /** pillRegions: the schema's regions except the catch-all (the tray). */
@@ -110,7 +126,7 @@ export function buildFindingsBlock(units: StackUnit[], groups: string[], gate: G
 	const standalone: string[] = [];
 	for (const it of gate.items) {
 		if (it.answered_by !== 'tap' || !it.sentences.length) continue;
-		if (groups.includes(it.region) && (dictatedRegion(it.region) || it.kind === 'finding')) add(it.region, `${ANSWERED} ${it.sentences.join(' ')}`);
+		if (groups.includes(it.region) && (dictatedRegion(it.region) || it.kind !== 'referral')) add(it.region, `${ANSWERED} ${it.sentences.join(' ')}`);
 		else standalone.push(`${it.region || 'Referral question'} (answered by the radiologist): ${it.sentences.join(' ')}`);
 	}
 	const tray: string[] = [];
@@ -120,6 +136,9 @@ export function buildFindingsBlock(units: StackUnit[], groups: string[], gate: G
 		else tray.push(`${r}: ${sentences.join(' ')}`);
 	}
 	const parts = [findingsText(units, groups, extra), standalone.join('\n')];
+	// The value cluster: required values the radiologist typed, stated as answers (filled ones are in the dictation)
+	const values = valueStatements(gate.values ?? []);
+	if (values.length) parts.push(`${ANSWERED} ${values.map((v) => `${v}.`).join(' ')}`);
 	if (tray.length) parts.push(`${ASSUMED} ${tray.join(' ')}`);
 	// Regions with no sentences to confirm (no slim sheet yet): confirmed by name, as v2 did.
 	const named = [...gate.assumed_normal.filter((r) => !gate.assumed[r]?.length),

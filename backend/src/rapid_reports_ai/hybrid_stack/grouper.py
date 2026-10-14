@@ -123,7 +123,7 @@ For each NEW sentence return:
 - covers: the regions (names from GROUPS, never Technique, General or Conclusion) about which the sentence makes a definitive claim — a finding, a measurement, a qualifier or an explicit normality statement. Count a region when the claim is direct (its structure is the subject, the location, or the modifier of the claim) or collective (a definitive claim over a recognisable anatomical group, such as several named organs or a named organ system, that the region's structures genuinely belong to). Do not count: a bare mention with nothing asserted; a structure only touched or affected by a finding about another structure; a vague statement with no anatomical scope ("no other abnormality", "otherwise normal"); a group the region does not clearly belong to. Usually the sentence's own region; several for a collective; empty when nothing qualifies. Fill covers for every sentence, including Conclusion sentences.
 - abnormal: true when the sentence reports something that departs from normal: any finding, lesion, variant worth reporting, post-procedural change, a measurement given as abnormal, or a hedged or possible finding ("possible", "cannot exclude", "query"). A statement that something is unchanged or stable is abnormal when what is stable is a finding, and a sentence that only adds an attribute of an abnormal finding is abnormal too. False for normality statements, absent findings (negatives), technique, comparison wording with no finding, headings and sweeping statements ("no other abnormality"). Give it for every sentence; for parts, give it for each part.
 
-GROUPS are broad regions of a fixed schema; each lists what it includes. Match the structure to the region whose list covers it, or the anatomically closest region; use the "Other findings" region only when no region is close.
+GROUPS are broad regions of a fixed schema; each lists what it includes. Match the structure to the region whose list covers it, or the anatomically closest region; use the "Other findings" region only when no region is close. When two regions both list the structure, use the more specific one (the region whose list names it most narrowly).
 - parts: only when one sentence joins independent clauses about structures that belong to different groups, each clause with its own subject and its own predicate (two statements run together in one breath). Give each part as an exact, unaltered, contiguous piece of the sentence, in order, each with its own group. The parts together must cover the whole sentence: keep joining words and punctuation on the neighbouring part. Every part must read as a complete statement on its own. Two statements run together because a full stop is missing count as two clauses. Never split structures that share one predicate (a list of structures followed by a single "are normal" / "are intact" / "are clear"): that sentence stays whole, in General when its structures span two or more regions (list each of them in covers), otherwise in their region. A single observation that involves several structures (a finding extending into, invading or compressing a neighbour) is one claim: never split it. Leave parts empty otherwise.
 
 Placement rules:
@@ -149,11 +149,15 @@ PLACED (fixed, context only):
 NEW:
 {new}"""
 
+# Settings are per endpoint. The fallback is Groq gpt-oss-120b, not Groq Qwen: with reasoning off Groq Qwen filed
+# "a horizontal tear of the posterior horn of the medial meniscus" as abnormal=false 3/3 (live 2026-10-13).
+# gpt-oss rejects reasoning_effort "none" (low/medium/high only) and its reasoning counts toward max_tokens.
+_QWEN_SETTINGS = {"temperature": 0.0, "max_tokens": 4000, "reasoning_effort": "none"}
+_OSS_SETTINGS = {"temperature": 0.0, "max_tokens": 8000, "reasoning_effort": "low"}
 ENDPOINTS = (
-    ("https://api.cerebras.ai/v1/chat/completions", "CEREBRAS_API_KEY", "qwen-3.8-27b"),
-    ("https://api.groq.com/openai/v1/chat/completions", "GROQ_API_KEY", "qwen/qwen3.8-27b"),
+    ("https://api.cerebras.ai/v1/chat/completions", "CEREBRAS_API_KEY", "qwen-3.8-27b", _QWEN_SETTINGS),
+    ("https://api.groq.com/openai/v1/chat/completions", "GROQ_API_KEY", "openai/gpt-oss-120b", _OSS_SETTINGS),
 )
-SETTINGS = {"temperature": 0.0, "max_tokens": 4000, "reasoning_effort": "none"}
 TIMEOUT_S = 15.0
 
 
@@ -172,13 +176,13 @@ async def place(scan_type: str, regions: list[Region], units: list[StackUnit], n
     pydantic-ai tool output failed on this nested schema with Qwen (lab 2026-10-10)."""
     user = grouper_user(scan_type, regions, units, new_ids)
     err = None
-    for url, key_env, model in ENDPOINTS:
+    for url, key_env, model, settings in ENDPOINTS:
         key = os.environ.get(key_env)
         if not key:
             continue
         try:
             r = await post_json(url, key, {
-                "model": model, **SETTINGS,
+                "model": model, **settings,
                 "messages": [{"role": "system", "content": GROUPER_SYSTEM}, {"role": "user", "content": user}],
                 "response_format": {"type": "json_schema", "json_schema": {
                     "name": "placements", "schema": GrouperOut.model_json_schema()}}}, TIMEOUT_S, transport)

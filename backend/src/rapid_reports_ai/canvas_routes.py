@@ -22,7 +22,9 @@ from .case_keyterms import KEYTERM_SYSTEM_PROMPT, KEYTERM_USER_TEMPLATE, filter_
 from .fast_append import clean_verbatim, code_route, route_bundle
 from .spoken_format import format_heading_lines, opens_with_heading, resolve_colon
 from .dictation_v2 import v2_allowed
-from .lean_fidelity import fidelity_violation, verbatim_append
+from .legacy_guard import mark as legacy_mark
+from .lean_fidelity import fidelity_violation, has_cue, moved_into_earlier, verbatim_append
+from .polish_attachment import MOVED_MIN, moved_score
 from .lean_polish import LEAN_SYSTEM_PROMPT, LEAN_USER_TEMPLATE
 from .jev_questions import FAST_APPEND_BANDS, QSET_VERSION
 from .utterance_bundle import BundleDecision, BundleState, get_jev_bundle
@@ -554,6 +556,7 @@ async def generate_sections(
     current_user: User = Depends(get_current_user),
 ):
     """Generate ordered anatomical section names for a radiology report based on scan type and clinical history."""
+    legacy_mark("canvas.sections", getattr(current_user, "id", None), "/api/canvas/sections")  # the tripwire (spec §9.5)
     primary_model = MODEL_CONFIG["CANVAS_SECTIONS"]
     fallback_model = MODEL_CONFIG["CANVAS_SECTIONS_FALLBACK"]
     user_prompt = SECTIONS_USER_PROMPT_TEMPLATE.format(
@@ -601,6 +604,7 @@ async def sections_from_template(
     current_user: User = Depends(get_current_user),
 ):
     """Extract ordered anatomical section headers from a FINDINGS template body."""
+    legacy_mark("canvas.sections_from_template", getattr(current_user, "id", None), "/api/canvas/sections-from-template")  # the tripwire (spec §9.5)
     import time as _time
 
     t0 = _time.perf_counter()
@@ -824,6 +828,8 @@ async def process_transcript(
 ):
     """Process the session transcript and return the updated scratchpad. The lab (and the
     dictation package's lab panel) also gets the polish token usage."""
+    if request.mode == "structured":   # the stack's own full-polish fallback is mode "clean": never marked (§9.5)
+        legacy_mark("canvas.process.structured", getattr(current_user, "id", None), "/api/canvas/process")
     incremental = request.committed_context is not None
     usage: dict = {}  # polish token usage; returned to the lab only
     output = await _run_live_or_fallback(request, incremental, usage)
@@ -905,6 +911,7 @@ async def qwen_coverage(scratchpad: str, sections: list[str], scan_type: str) ->
 
 
 async def _coverage_safe(name: str, request: CanvasReviewRequest) -> CoverageDecision | BaseException:
+    legacy_mark("canvas.review.coverage", None, "/api/canvas/review")  # the tripwire (spec §9.5)
     try:
         if name == "jev":
             return await get_jev_coverage().classify(
@@ -1137,6 +1144,8 @@ async def route_utterance_bundle(request: BundleRequest, current_user: User = De
     routes to polish; the response never errors because of Jev."""
     if not v2_allowed():  # the dictation package (rr_dictation_v2) or the lab
         raise HTTPException(status_code=404, detail="Not Found")
+    if request.checklist:   # the old flow's section checklist (the stack sends none)
+        legacy_mark("canvas.bundle.checklist", getattr(current_user, "id", None), "/api/canvas/bundle")
     decision_id = uuid.uuid4().hex[:12]
     d: BundleDecision | BaseException | None = None
     t0 = _time.perf_counter()
@@ -1344,13 +1353,21 @@ async def polish_span(request: PolishSpanRequest, current_user: User = Depends(g
     # violation keep the span and append the new words as said (lean_fidelity).
     fidelity = fidelity_violation(request.span, request.new, out.active_scratchpad,
                                   out.committed_edits or []) if out is not None else None
+    # New words placed before text already dictated: Jev decides whether the move changed which
+    # finding a side, location, size or descriptor belongs to (polish_attachment). Only on a move.
+    attach = None
+    if (out is not None and not fidelity and not has_cue(request.span, request.new)
+            and moved_into_earlier(request.span, request.new, out.active_scratchpad)):
+        attach = await moved_score(f"{request.span} {new_for_model}".strip(), out.active_scratchpad)
+        if attach is None or attach >= MOVED_MIN:
+            fidelity = "moved_attachment"
     logger.info("[canvas.polish_span] %s", json.dumps({
         "event": "canvas.polish_span", "latency_ms": latency_ms, "error": err,
         "context_len": len(request.context), "span_len": len(request.span), "new_len": len(request.new),
         "out_len": len(out.active_scratchpad) if out else None,
         "committed_edits": len(out.committed_edits) if out else None,
         "model": usage.get("model"), "input_tokens": usage.get("input_tokens"), "output_tokens": usage.get("output_tokens"),
-        "fidelity": fidelity,
+        "fidelity": fidelity, "attach_score": attach,
     }))
     if out is None:
         return PolishSpanResponse(error=err, latency_ms=latency_ms, usage=usage or None)

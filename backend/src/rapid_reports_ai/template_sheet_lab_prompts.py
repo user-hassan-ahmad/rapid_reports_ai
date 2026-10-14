@@ -25,6 +25,9 @@ ANALYSER_SETTINGS = {
     "max_tokens": 40960,
     "extra_body": {"disable_reasoning": False, "clear_thinking": False},
 }
+# The writer with the Rules step's decisions (writer lab 2026-10-13, arm C; Hassan): the same settings at a lower
+# temperature. Conversion and the undecided writer keep ANALYSER_SETTINGS.
+DECIDED_WRITER_SETTINGS = {**ANALYSER_SETTINGS, "temperature": 0.4}
 # Repair is a constrained edit of an existing sheet, not authorship: low temperature.
 REPAIR_SETTINGS = {
     "temperature": 0.3,
@@ -44,7 +47,8 @@ The sheet mixes two kinds of line.
 - Free-prose blocks are exactly these "## " titles: Scan Context, Voice, Impression Construction, Measurement and Grading, Reference Values, Incidental Findings, Domain Rules, Open Questions. Use these titles word for word.
 - Outside the free-prose blocks (Report Structure, Report-wide, every Paragraph block), prose states no absence in any form: no "No ...", "There is no ...", "Without ...", "Absent ...", "Nil ...", "Negative for ...", "<x> is absent", not even in brackets or as a bare quoted line; that breaks the sheet. Every absence the radiologist writes is a NEGATIVE unit. A quoted exemplar quotes the abnormal, interpretive or recommendation wording only: cut the quote before any negative sentence that follows it in the example.
 - Prose may describe how wording varies with what is found ("when present, the maximal diameter is given first"): that is voice guidance. A prose line with such a conditional never also mentions an absence.
-- Every prose line under a paragraph starts with its label ("Opening:", "Order:", "Abnormal pattern:", "Interpretive phrasing:", "Recommendation phrasing:", "Measurement:"); no bare quoted lines. No prose line starts with a word that is also a keyword (Normal, Negative, Fixed, Term, Rule, Section, Covers), in any letter case.
+- LABELLED OPENINGS: when a paragraph opens differently depending on the case (for example a normal and an abnormal study), write one labelled opening line per case state, each quoting that state's opening words: Opening (normal): "<opening words>" and Opening (abnormal): "<opening words>". The label in brackets is a short case state in lowercase, without a colon or quote. Never write the variation as a "When ..." or "If ..." prose sentence. A variation caused by what was performed (protocol, sequences or phases acquired or not, prior imaging available or not) is not a case state: it is a context RULE.
+- Every prose line under a paragraph starts with its label ("Opening:" or "Opening (<state>):", "Order:", "Abnormal pattern:", "Interpretive phrasing:", "Recommendation phrasing:", "Measurement:"); no bare quoted lines. No prose line starts with a word that is also a keyword (Normal, Negative, Fixed, Term, Rule, Section, Covers), in any letter case.
 
 Quoting: unit text and exemplars go in straight double quotes ("..."). Quoted text is never empty and never contains a double quote; use single quotes inside it if needed. No curly quotes. Quoted text is copied from the example reports word for word; where a value varies between studies, put a named slot in curly braces in its place ({value}, {measurement}, {laterality}, {date} ...). Never paraphrase quoted text.
 
@@ -76,7 +80,7 @@ SECTION <NAME> | header: "<heading exactly as written in the reports>" | role: <
 COVERS ["<structure>" | "<structure>" | ...]
   Exactly one in every paragraph of a findings-role section, as the first unit line under its heading; never in a paragraph of any other section (impression, history, technique, comparison, other). Items are separated by " | " (a straight bar with a space each side), each in its own double quotes; never commas between items. Every anatomical structure, organ, compartment or measured element this paragraph reports, in plain words, in the order the paragraph covers them, including structures the examples mention only when abnormal. Anatomical structures only: never a finding, disease, pathology, abnormality or appearance name; name the place a finding would be reported in, not the finding. Another analyser places case-specific sentences into paragraphs by this list, so it must be complete for the paragraph's territory and must not list structures another paragraph reports.
 NORMAL [<structure>] "<text>"
-  The sentence the radiologist writes to state that one named structure (or group) is normal. One per structure. Always with the bracketed [<structure>]. Exactly ONE sentence per NORMAL line (one full stop, at the end): where the example follows a normal statement with a negative sentence ("<structure> is normal. No <thing>."), the normal sentence is the NORMAL and the negative sentence is its own NEGATIVE line; never join them in one quote.
+  The sentence the radiologist writes to state that one named structure is normal; the sentence names its structure in its own words ("The <structure> is unremarkable.", never just "Unremarkable."). One structure per NORMAL, never several. A NORMAL or NEGATIVE never contains a {slot}: measurements go in Measurement prose or a FIXED line. Always with the bracketed [<structure>]. Exactly ONE sentence per NORMAL line (one full stop, at the end): where the example follows a normal statement with a negative sentence ("<structure> is normal. No <thing>."), the normal sentence is the NORMAL and the negative sentence is its own NEGATIVE line; never join them in one quote.
 NEGATIVE "<text>"
   A routine negative the radiologist writes in every normal study of this type (the standard sweep), one per sentence as written. No [label] and never a WHEN: a negative that depends on what was performed is an unconditional NEGATIVE plus a context RULE that SUPPRESSes or REPLACEs it.
 FIXED "<text>"
@@ -117,7 +121,7 @@ TERM lines; LIST_MISSING; section-level context rules.
 ## Paragraph: <name> (<SECTION NAME>)
 One block per paragraph, in report order, covering every section. Each block holds, in this order:
 COVERS ["..." | ...]   (findings-role sections only)
-Opening: how the paragraph opens (quote the opening words of a normal and of an abnormal example).
+Opening: how the paragraph opens (quote its opening words). Where the opening differs by case state, one labelled line per state instead: Opening (normal): "..." then Opening (abnormal): "...".
 Order: the sequence of structures and elements; an element that appears only sometimes is marked "(optional)".
 Abnormal pattern: "<quoted sentence>" — one line per distinct way pathology is described in this paragraph across the examples; give several (every distinct one the examples show, up to five), each quoted word for word with {slots} for values. Quote the abnormal wording only, never a negative sentence.
 Interpretive phrasing: "<quoted clause>" — how the radiologist attributes cause, significance or likelihood here (every example of it, quoted).
@@ -163,7 +167,7 @@ Compare the examples with each other, paragraph by paragraph.
 - COVERS: for each paragraph, every structure it reports in any example, normal or abnormal.
 - NORMAL and NEGATIVE: what the radiologist writes about each structure when it is normal, and what they routinely state as absent. A sentence that recurs across examples (allowing for varying values, which become {{slots}}) is a unit. Quote one representative wording per unit. A negative written only beside a particular finding is not routine and is left out of the sheet: the per-case analyser supplies such negatives.
 - FIXED: text that recurs word for word and never depends on the patient's state.
-- Voice exemplars: every distinct abnormal description, interpretive clause and recommendation in a paragraph, quoted with {{slots}} for values. An exemplar quotes positive, interpretive or recommendation wording only: never a negative sentence, and the quote stops before any negative sentence that follows it. Where examples differ in how a paragraph is built, describe the variation in the Opening/Order prose.
+- Voice exemplars: every distinct abnormal description, interpretive clause and recommendation in a paragraph, quoted with {{slots}} for every value: never a specific value, code, grade or time window. In an interpretive clause, keep the radiologist's interpretive wording (the hedging and the phrasing), but the diagnosis itself goes in a {{diagnosis}} slot, e.g. "... which most likely represents {{diagnosis}}": a specific diagnosis never stays in a quote. An exemplar quotes positive, interpretive or recommendation wording only: never a negative sentence, and the quote stops before any negative sentence that follows it. Where examples differ in how a paragraph is built, describe the variation in the Opening/Order prose.
 - LIST_MISSING: the values the radiologist expects in every report of this type, unconditionally.
 - TERM: only distinctive terms seen at least twice; at most six.
 - SUPPRESS_SECTION: only where an example omits the section and the reason is visible in that example.
@@ -209,7 +213,13 @@ SUMMARY_SPEC = """{
 
 def analyser_user_prompt(examples: List[Dict[str, str]], scan_type: str, protocol_notes: str = "") -> str:
     """Production's user prompt (examples, protocol notes, summary/questions contract), with the sheet
-    returned between delimiters before the JSON."""
+    returned between delimiters before the JSON. Kept for scripts/template_sheet_lab.py; write_sheet uses
+    writer_user_prompt (Rules-step plan Task 31)."""
+    return _user_prompt(examples, scan_type, protocol_notes, decisions=None, questions=True)
+
+
+def _user_prompt(examples: List[Dict[str, str]], scan_type: str, protocol_notes: str,
+                 decisions: Optional[List[dict]], questions: bool) -> str:
     examples_text = ""
     for i, ex in enumerate(examples, 1):
         label = ex.get("label") or f"Example {i}"
@@ -223,8 +233,12 @@ def analyser_user_prompt(examples: List[Dict[str, str]], scan_type: str, protoco
             "variations the examples cannot reveal (use them to decide which text is FIXED and which needs {slots}). "
             f"Apply each piece of context wherever it is relevant.\n\nNotes:\n{protocol_notes.strip()}\n"
         )
+    decided = decided_block(decisions) if decisions else ""
+    keys = 'exactly two keys, "summary" and "questions"' if questions else 'exactly one key, "summary"'
+    spec = SUMMARY_SPEC if questions else WRITER_SUMMARY_SPEC
+    ask = f"\n{_QUESTIONS_RULE}" if questions else ""
     return f"""Analyse these example radiology reports for scan type: **{scan_type}**
-{notes}{examples_text}
+{notes}{decided}{examples_text}
 
 Answer in exactly two parts.
 
@@ -234,9 +248,9 @@ PART 1: the complete Skill Sheet as plain markdown, following the sheet layout a
 ...
 {SHEET_CLOSE}
 
-PART 2: after the closing delimiter, one JSON object with exactly two keys, "summary" and "questions":
+PART 2: after the closing delimiter, one JSON object with {keys}:
 
-{SUMMARY_SPEC}
+{spec}
 
 Rules for the summary (rendered as visual hierarchy in the UI; terse and scannable):
 - structure.sections: every top-level section in report order, matching the SECTION lines. Paragraphs is the list of internal paragraph descriptions within each section (empty list if none). Each is a short noun phrase (under 10 words).
@@ -244,8 +258,12 @@ Rules for the summary (rendered as visual hierarchy in the UI; terse and scannab
 - voice.phrases: 3-5 verbatim quoted phrases from the example reports that capture the signature voice.
 - conventions.rules: 4-6 of the most distinctive scan-specific rules. Title is a short label, detail is one sentence.
 - impression.flow: 2-4 nouns describing the construction sequence.
-- impression.detail: one short sentence about sentence count, grouping, recommendation integration.
-- questions: exactly 3 objects, each with "question" and "suggestions" (2-3 short clickable answer options). Target the most impactful Open Questions or where examples were ambiguous. Suggestions are concrete, specific answers. Do not ask about things clearly evidenced in the reports."""
+- impression.detail: one short sentence about sentence count, grouping, recommendation integration.{ask}"""
+
+
+_QUESTIONS_RULE = ('- questions: exactly 3 objects, each with "question" and "suggestions" (2-3 short clickable answer '
+                   'options). Target the most impactful Open Questions or where examples were ambiguous. Suggestions '
+                   'are concrete, specific answers. Do not ask about things clearly evidenced in the reports.')
 
 
 def split_answer(raw: str) -> Dict[str, Optional[object]]:
@@ -349,7 +367,7 @@ TEMPLATE_SHEET_CONVERT_PROMPT = f"""You convert a radiology report Skill Sheet f
 - Terminology: at most six TERM lines, chosen from the old sheet's preferred and suppressed terms (the most distinctive single terms first). Every other preferred phrase or substitution goes into the Voice prose, quoted, so nothing is lost. A suppressed term with a stated replacement keeps that replacement in the prose ("<avoided>" is written "<preferred>").
 - Values the old sheet itself says must appear in every report, or must be listed or flagged when not provided, become the one LIST_MISSING line. Never infer a LIST_MISSING from {{slots}} alone, and never list a value the old sheet says to leave out when it is not given.
 - Conditional wording keyed on what is found (conditional fields, IF ... THEN appends, interpretive-clause rules, finding-specific phrasing, multi-clause fields) becomes quoted exemplars in the paragraph's prose: "Abnormal pattern:", "Interpretive phrasing:", "Recommendation phrasing:" or "Measurement:", word for word with {{slots}}. Keep the old sheet's description of how wording varies as an "Order:" or "Opening:" note when it is voice guidance ("when present, ... is given first").
-- Exemplars: every exemplar the old sheet gives is kept, word for word. Add exemplars from the reports only for a way of wording that the old sheet's exemplars do not already show, up to five lines per prose label per paragraph in total (the old sheet's first).
+- Exemplars: every exemplar the old sheet gives is kept in its wording, except that every specific value, code, grade or time window becomes a {{slot}} and the diagnosis itself becomes a {{diagnosis}} slot while the interpretive wording around it stays, e.g. "... which most likely represents {{diagnosis}}": a specific diagnosis never stays in a quote. Add exemplars from the reports only for a way of wording that the old sheet's exemplars do not already show, up to five lines per prose label per paragraph in total (the old sheet's first).
 - A negative or suppression the old sheet ties to a particular finding is not carried as a unit: the per-case analyser now supplies case-dependent negatives. Its positive wording, if any, becomes an exemplar; its negative wording is dropped and the drop is listed in your accounting (PART 2).
 - Impression construction (quoted examples, numbering, sentence pattern, inclusion logic, recommendation integration, normal-study impression, restatement rules) goes into the "## Impression Construction" block with every quoted example kept verbatim and laid out line by line as written. The impression section's paragraph block holds only its Opening and Order lines and any FIXED or context RULE units; the quoted impressions live in "## Impression Construction", never in the paragraph block.
 - Measurement and grading, reference values, incidental findings, domain rules: the same-named prose blocks, keeping every value, threshold and quoted phrase. A rule that tells the writer to always state something (a sentence that must appear in every report) stays a unit (NEGATIVE, NORMAL or FIXED) as well as a Domain Rules line.
@@ -358,7 +376,7 @@ TEMPLATE_SHEET_CONVERT_PROMPT = f"""You convert a radiology report Skill Sheet f
 
 ## NEVER
 
-- Never invent: every quoted text in the new sheet (unit or exemplar) is copied from the old sheet or from a report, word for word, with {{slots}} only where a value varies. Never write a new negative, normal sentence, fixed text, exemplar, threshold or rule. Never merge two old sentences into a new one, or reword one, to fit the grammar: a NORMAL, NEGATIVE or FIXED quote is a sentence the old sheet contains, letter for letter.
+- Never invent: every quoted text in the new sheet (unit or exemplar) is copied from the old sheet or from a report, word for word, with {{slots}} where a value varies (in an exemplar, for every specific value, code, grade or time window). Never write a new negative, normal sentence, fixed text, exemplar, threshold or rule. Never merge two old sentences into a new one, or reword one, to fit the grammar: a NORMAL, NEGATIVE or FIXED quote is a sentence the old sheet contains, letter for letter.
 - Never drop a section, paragraph, routine negative, fixed text, threshold, reference value or quoted impression example of the old sheet. What cannot be a unit becomes prose; only finding-specific negatives and suppressions are dropped, and each drop is listed.
 - Never change the order of sections or paragraphs, or the order of units within a paragraph, from the old sheet (or, where the old sheet is silent, the reports).
 
@@ -422,3 +440,116 @@ def split_conversion(raw: str) -> Dict[str, object]:
     except ValueError as e:
         out["json_error"] = f"{type(e).__name__}: {e}"[:300]
     return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# The writer's prompts (Rules-step plan Task 28; wired into write_sheet by Task 31 after the writer lab). The older
+# analyser prompts above stay byte for byte for scripts/template_sheet_lab.py; repair and conversion keep GRAMMAR.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _swap(text: str, pairs) -> str:
+    for old, new in pairs:
+        assert text.count(old) == 1, old[:60]
+        text = text.replace(old, new)
+    return text
+
+
+# The slot conflict (template rules roadmap §5): a normal sentence's measured part has a place of its own; and no
+# clarifying questions (the Rules step asks instead).
+WRITER_SYSTEM_PROMPT = _swap(ANALYSER_SYSTEM_PROMPT, (
+    ("put a named slot in curly braces in its place ({value}, {measurement}, {laterality}, {date} ...). Never "
+     "paraphrase quoted text.",
+     "put a named slot in curly braces in its place ({value}, {measurement}, {laterality}, {date} ...). Never "
+     "paraphrase quoted text. A NORMAL or NEGATIVE line is the exception: it never holds a slot. Where a normal "
+     "sentence carries a measured value, the NORMAL quotes the sentence without the measured part, and the measured "
+     "part goes in a FIXED field line (\"<Label>: {value} <unit>\") or in the paragraph's Measurement prose."),
+    ("flag it under Open Questions as [NEEDS CLARIFICATION] so it can be raised as a question.",
+     "flag it under Open Questions as [NEEDS CLARIFICATION]."),
+))
+
+WRITER_SUMMARY_SPEC = _swap(SUMMARY_SPEC, ((
+    '''  },
+  "questions": [
+    { "question": "<clarifying question>", "suggestions": ["<answer option>", "<answer option>"] }
+  ]
+}''', '''  }
+}'''),))
+
+
+# ── The Rules step's decisions as ground truth (spec 2026-10-13-template-rules-step-design, step 4) ─────────────
+# With decisions, the writer no longer guesses LIST_MISSING or the standard study-level context rules: it copies the
+# decided lines. The save function applies the same decisions by code afterwards (drift is logged), so this prompt
+# change lowers drift; it is not what makes the decisions hold.
+
+DECIDED_HEADING = "DECIDED BY THE RADIOLOGIST"
+
+_GUESS_LIST_MISSING = "- LIST_MISSING: the values the radiologist expects in every report of this type, unconditionally."
+_DECIDED_LIST_MISSING = (f"- LIST_MISSING: when {DECIDED_HEADING} gives a LIST_MISSING line, write exactly that line and no "
+                         "other value; when it says no value is required, write no LIST_MISSING line; when it says "
+                         "nothing about values, the values the radiologist expects in every report of this type, "
+                         "unconditionally.")
+_GUESS_CONTEXT = ("- Context rules: where examples differ because of what was performed, the protocol, a technical "
+                  "limitation or prior imaging, write the context RULE that produces the variant wording, quoting it.")
+_DECIDED_CONTEXT = (f"- Context rules: for each study-level circumstance listed under {DECIDED_HEADING}, write exactly the "
+                    "lines given there, word for word, and no other line or rule about that circumstance; a "
+                    "circumstance marked not used or whichever is dictated gets no line at all. Opening, Order and "
+                    "Measurement prose never quotes one of those lines: the line prints itself, so a quote would "
+                    "state it twice. For any other "
+                    "circumstance where the examples differ because of what was performed or the protocol, write the "
+                    "context RULE that produces the variant wording, quoting it.")
+_GUESS_GRAMMAR = ("Use it when an example shows a list of values not provided (under any label), or contains unfilled "
+                  "placeholders (curly-brace slots or blank values), or when every example states the same set of "
+                  "measured values.")
+_DECIDED_GRAMMAR = f"When {DECIDED_HEADING} decides the values, use exactly its line."
+
+
+def analyser_system_prompt(decided: bool = False) -> str:
+    """The writer's next system prompt; `decided`: the Rules step's decisions are in the user prompt, so the
+    guessing instructions for those items are replaced by "copy the decided lines"."""
+    if not decided:
+        return WRITER_SYSTEM_PROMPT
+    return _swap(WRITER_SYSTEM_PROMPT, ((_GUESS_LIST_MISSING, _DECIDED_LIST_MISSING), (_GUESS_CONTEXT, _DECIDED_CONTEXT),
+                                        (_GUESS_GRAMMAR, _DECIDED_GRAMMAR)))
+
+
+def writer_user_prompt(examples: List[Dict[str, str]], scan_type: str, protocol_notes: str = "",
+                       decisions: Optional[List[dict]] = None) -> str:
+    """The writer's next user prompt: the summary only (no questions), with the decided lines after the
+    radiologist's notes when there are decisions."""
+    return _user_prompt(examples, scan_type, protocol_notes, decisions=decisions, questions=False)
+
+
+def decided_block(decisions: List[dict]) -> str:
+    """The decisions as lines the writer copies: the LIST_MISSING line and each concept's lines, rendered by the same
+    code that applies them at save (template_ledger_apply). Fixed-line and normal entries (Style-step cards, after the
+    build) are left to the save function."""
+    from . import template_decisions as td
+    from . import template_ledger_apply as tla
+    ledger = td.clean_ledger(decisions)
+    values = [e for e in ledger if e["kind"] == "value"]
+    concepts = [e for e in ledger if e["kind"] == "concept"]
+    if not values and not concepts:
+        return ""
+    out = [f"\n\n**{DECIDED_HEADING}**: ground truth from the radiologist's own answers. Copy these lines word for "
+           "word; they take precedence over anything the examples suggest.\n"]
+    if values:
+        every = [e["key"] for e in values if e["choice"]["need"] == "every"]
+        other = [e["key"] for e in values if e["choice"]["need"] != "every"]
+        if every:
+            out.append("Required values: write this line under ## Report-wide, followed by \"| section: <NAME of the "
+                       "first findings section>\":\n" + tla.render_list_missing(every))
+        else:
+            out.append("Required values: none. Write no LIST_MISSING line.")
+        if other:
+            out.append("Not required in every report (never list them): " + ", ".join(other) + ".")
+    for e in concepts:
+        c = td.CONCEPTS[e["key"]]
+        lines = tla.render_concept(e["key"], e["choice"])
+        if lines:
+            out.append(f"{c.label}: write these lines at the end of the paragraph of the section that says how the "
+                       "study was done (else the first findings paragraph):\n" + "\n".join(lines))
+        elif e["choice"].get("dictated") or td.fragment_wording(e):   # a fragment with no valid default
+            out.append(f"{c.label}: whichever is dictated. Write no line and no rule about it.")
+        else:
+            out.append(f"{c.label}: not used. Write no line and no rule about it.")
+    return "\n".join(out) + "\n"

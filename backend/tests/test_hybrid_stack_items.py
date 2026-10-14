@@ -156,7 +156,9 @@ async def test_ask_rows_payload_and_fates(monkeypatch):
     assert [J.row_fate(c) for c in out] == ["answered", "removed"]
     assert J.row_fate(J.RowCheck(0.1, 0.75, 0.0)) == "contradicted"
     assert J.row_fate(J.RowCheck(0.5, 0.5, 0.5)) == "keep"
-    assert J.normal_assumed(J.RowCheck(0.29, 0.29, 0.59)) and not J.normal_assumed(J.RowCheck(0.3, 0.0, 0.0))
+    assert J.normal_fate(J.RowCheck(0.29, 0.29, 0.59)) == "assumed" and J.normal_fate(J.RowCheck(0.3, 0.0, 0.0)) == "assumed" \
+        and J.normal_fate(J.RowCheck(0.0, 0.3, 0.0)) == "flagged" and J.normal_fate(J.RowCheck(0.3, 0.0, 0.0, 0.5)) == "flagged"
+    assert J.normal_fate(J.RowCheck(0.0, 0.0, 0.6)) == "removed"
 
 
 async def test_ask_rows_without_removed_asks_two_questions(monkeypatch):
@@ -169,6 +171,20 @@ async def test_ask_rows_without_removed_asks_two_questions(monkeypatch):
     out = await J.ask_rows("x", ["No ascites."], [], transport=httpx.MockTransport(handler))
     assert out == [J.RowCheck(0.0, 0.0, 0.0)]
     assert await J.ask_rows("x", [], ["y"]) == []
+
+
+async def test_ask_rows_can_ask_the_stated_or_the_contra_part_only(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    asked = []
+
+    def handler(req):
+        asked.append(set(json.loads(req.content)["questions"]))
+        return httpx.Response(200, json={"answers": {"stated_0": {"noul": 0.9}, "contra_0": {"noul": 0.8},
+                                                     "removed_0": {"noul": 0.7}}})
+    t = httpx.MockTransport(handler)
+    assert await J.ask_rows("x", ["No ascites."], [], transport=t, contra=False) == [J.RowCheck(0.9, 0.0, 0.0)]
+    assert await J.ask_rows("x", ["No ascites."], ["y"], transport=t, stated=False) == [J.RowCheck(0.0, 0.8, 0.7)]
+    assert asked == [{"stated_0"}, {"contra_0", "removed_0"}]
 
 
 async def test_a_sentence_with_a_measurement_is_never_offered(monkeypatch):
@@ -244,7 +260,7 @@ async def test_review_mode_reaches_the_writer(monkeypatch):
     assert seen["review"] is True
 
 
-async def test_a_failed_review_falls_back_to_gpt_oss_and_setup_does_not(monkeypatch):
+async def test_a_failed_review_or_setup_falls_back_to_gpt_oss_on_groq(monkeypatch):
     calls = []
 
     async def call(model, prompt, review, timeout):
@@ -261,8 +277,8 @@ async def test_a_failed_review_falls_back_to_gpt_oss_and_setup_does_not(monkeypa
     assert calls == [(I.QWEN, True), (I.MODEL_CONFIG["STACK_REVIEW_FALLBACK"], True)]
     assert out.items[0].question == "Ovarian torsion?" and out.error is None
     calls.clear()
-    out = await I.update("CT AP", "", ["Pelvic organs"], "", [])          # setup: no fallback, fails open
-    assert calls == [(I.QWEN, False)] and out.items == [] and out.error
+    out = await I.update("CT AP", "", ["Pelvic organs"], "", [])          # setup falls back too (Cerebras 429s)
+    assert calls == [(I.QWEN, False), (I.MODEL_CONFIG["STACK_REVIEW_FALLBACK"], False)]
 
 
 
@@ -274,3 +290,106 @@ async def test_recheck_uses_no_writer_and_folds_answered_rows(monkeypatch):
             I.Item(id="b", kind="finding", region="Peritoneum", question="Free gas?", sentences=["No free gas."])]
     out = await I.recheck("A cyst. No features of torsion.", rows)
     assert [(i.id, i.answered) for i in out.items] == [("a", True), ("b", False)]
+
+
+def test_referral_rows_are_never_capped():
+    """Rows over the caps wait behind "N more checks" and never block Confirm, so a referral row must never be capped:
+    referrals come first and there are at most MAX_REFERRALS < MAX_ROWS of them."""
+    assert I.MAX_REFERRALS < I.MAX_ROWS
+    raw = I.RawOutput(
+        referral_questions=[I.RawReferral(question="Appendicitis?", region="Appendix", answers=["The appendix is normal."]),
+                            I.RawReferral(question="Collection?", region="Peritoneum", answers=["No collection."])],
+        finding_checks=[I.RawFinding(region="Liver", question=f"Q{k}?", answers=[f"No finding {k}."]) for k in range(6)])
+    items, capped = I._limit(I._rows(raw))
+    assert [r.kind for r in items].count("referral") == 2
+    assert capped and all(r.kind == "finding" for r in capped)
+
+
+# ── template rows (spec 2026-10-13-findings-triggered-rows-design) ──
+from rapid_reports_ai.hybrid_stack.habits import Habit
+
+TASK = Habit(region="Pelvic organs", condition="an adnexal mass is reported", mode="ask", question="Mass vascularity?",
+             yes="The mass is vascular.", no="No internal vascularity.")
+TSTATE = Habit(region="Pelvic organs", condition="an adnexal mass is reported", mode="state", no="No free fluid")
+
+
+def test_template_rows_and_required_statements_from_met_habits():
+    (row,) = I.template_rows([TASK, TSTATE])
+    assert (row.kind, row.region, row.question, row.sentences, row.yes, row.no) == (
+        "template", "Pelvic organs", "Mass vascularity?", ["The mass is vascular.", "No internal vascularity."],
+        "The mass is vascular.", "No internal vascularity.")
+    assert row.id == I._id("template", "Pelvic organs", "Mass vascularity?")
+    assert row.why == "Your template asks this when an adnexal mass is reported."
+    assert I.template_required([TASK, TSTATE]) == {"Pelvic organs": ["No free fluid."]}
+
+
+def test_template_rows_rank_after_referrals_before_findings_and_share_the_caps():
+    def r(kind, i, region):
+        return I.Item(id=f"{kind}{i}", kind=kind, region=region, question="q?", sentences=["s."])
+    rows = [r("finding", 0, "A"), r("finding", 1, "A"), r("finding", 2, "B"), r("referral", 0, ""), r("template", 0, "A"),
+            r("template", 1, "C")]
+    shown, capped = I._limit(rows)
+    assert [x.id for x in shown] == ["referral0", "template0", "template1", "finding0"]
+    assert [x.id for x in capped] == ["finding1", "finding2"]
+
+
+async def _met_all(habits, scan_type, findings, ask=None):
+    assert scan_type == "CT"   # the scan type reaches the trigger (Hassan H1: never the history)
+    return list(habits), None
+
+
+async def test_a_template_row_folds_when_either_sentence_is_stated_and_is_never_split(monkeypatch):
+    splits = []
+
+    async def split(negs):
+        splits.append(list(negs))
+        return [[n] for n in negs]
+    _setup(monkeypatch, _raw(CYST), _checks({"No internal vascularity.": (0.9, 0.0, 0.0)}), split=split)
+    monkeypatch.setattr(I, "met_habits", _met_all)
+    res = await I.update("CT", "", ["Pelvic organs"], "Adnexal mass, no internal vascularity.", ["Adnexal mass."],
+                         review=True, habits=[TASK])
+    (t,) = [x for x in res.items if x.kind == "template"]
+    assert t.answered and t.sentences == ["The mass is vascular.", "No internal vascularity."]
+    assert all("The mass is vascular." not in part for part in splits)
+
+
+async def test_an_open_template_row_keeps_both_sentences_and_wins_over_a_generic_duplicate(monkeypatch):
+    _setup(monkeypatch, _raw({**CYST, "negatives": ["No internal vascularity."]}),
+           _checks({"The mass is vascular.": (0.0, 0.9, 0.0)}))   # a contradiction never edits a template row
+    monkeypatch.setattr(I, "met_habits", _met_all)
+    res = await I.update("CT", "", ["Pelvic organs"], "Adnexal mass.", ["Adnexal mass."], review=True, habits=[TASK])
+    assert [x.kind for x in res.items] == ["template"]
+    assert res.items[0].sentences == ["The mass is vascular.", "No internal vascularity."] and not res.items[0].answered
+
+
+async def test_required_statements_come_back_and_a_failed_trigger_leaves_generic_rows(monkeypatch):
+    _setup(monkeypatch, _raw(CYST))
+    monkeypatch.setattr(I, "met_habits", _met_all)
+    res = await I.update("CT", "", ["Pelvic organs"], "Adnexal mass.", ["Adnexal mass."], review=True, habits=[TSTATE])
+    assert res.required == {"Pelvic organs": ["No free fluid."]} and res.trigger_error is None
+
+    async def failed(habits, scan_type, findings, ask=None):
+        return [], "RuntimeError: jev down"
+    monkeypatch.setattr(I, "met_habits", failed)
+    res = await I.update("CT", "", ["Pelvic organs"], "Adnexal mass.", ["Adnexal mass."], review=True, habits=[TASK])
+    assert [x.kind for x in res.items] == ["finding"] and res.required == {}
+    assert res.trigger_error == "RuntimeError: jev down"
+
+
+async def test_no_trigger_without_dictation_or_habits(monkeypatch):
+    calls = []
+
+    async def met(habits, scan_type, findings, ask=None):
+        calls.append(findings)
+        return [], None
+    _setup(monkeypatch, _raw(CYST))
+    monkeypatch.setattr(I, "met_habits", met)
+    await I.update("CT", "", ["Pelvic organs"], "", [], habits=[TASK])
+    await I.update("CT", "", ["Pelvic organs"], "Adnexal mass.", ["Adnexal mass."], review=True)
+    assert calls == []
+
+
+async def test_recheck_folds_a_template_row_the_dictation_now_answers(monkeypatch):
+    _setup(monkeypatch, _raw(), _checks({"The mass is vascular.": (0.9, 0.0, 0.0)}))
+    res = await I.recheck("Vascular adnexal mass.", I.template_rows([TASK]))
+    assert res.items[0].answered and res.items[0].kind == "template"

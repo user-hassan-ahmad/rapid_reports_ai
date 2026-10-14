@@ -37,6 +37,7 @@ load_dotenv(os.environ.get("LAB_ENV_FILE") or Path(__file__).resolve().parents[3
 os.environ.setdefault("DATABASE_URL", "sqlite://")  # the lab never touches an app database (imports build an engine)
 
 from rapid_reports_ai import template_sheet_lab_prompts as P  # noqa: E402
+from rapid_reports_ai.template_sheet_model import model_call  # noqa: E402,F401  (re-exported for the lab)
 
 MAX_EVIDENCE, HELD_OUT, MIN_FINDINGS_CHARS = 5, 2, 100
 
@@ -145,15 +146,7 @@ def parse(sheet: str) -> Tuple[Dict, List[Dict], List[Dict]]:
 
 # ------------------------------------------------------------------------------------------- calls
 
-async def model_call(system: str, user: str, settings: Dict) -> str:
-    """The lean analyser's model (SKILL_SHEET_ANALYZER) with the given settings."""
-    from rapid_reports_ai.enhancement_utils import MODEL_CONFIG, _run_agent_with_model
-
-    result = await _run_agent_with_model(
-        model_name=MODEL_CONFIG["SKILL_SHEET_ANALYZER"], output_type=str, system_prompt=system,
-        user_prompt=user, api_key="", use_thinking=True, model_settings=settings)
-    return result.output if hasattr(result, "output") else str(result)
-
+# model_call lives in rapid_reports_ai.template_sheet_model (imported above).
 
 def evidence_docs(reports: List[Dict]) -> List[Dict[str, str]]:
     return [{"label": f"Report {i}", "content": r.get("final_content") or r.get("report_content") or ""}

@@ -30,14 +30,18 @@ from rapid_reports_ai.database.models import (  # noqa: E402
     Report,
     EphemeralSkillSheet,
     Template,
+    TemplateVersion,
     ReportQualityScore,
     TemplateCaseSheet,
     ReportReviewRun,
     ReportReviewItem,
     ReportChatMessage,
     StackSchemaFamily,
+    TemplateExample,
+    TemplateChatTurn,
     DictationStackLog,
     StackSlimSheet,
+    ReportVersion,
     GuidelineRegistry,
 )
 from rapid_reports_ai.main import app  # noqa: E402
@@ -50,8 +54,10 @@ _TEST_TABLES = [
     User.__table__,
     PasswordResetToken.__table__,
     Template.__table__,
+    TemplateVersion.__table__,
     EphemeralSkillSheet.__table__,
     Report.__table__,
+    ReportVersion.__table__,
     ReportQualityScore.__table__,
     TemplateCaseSheet.__table__,
     ReportReviewRun.__table__,
@@ -60,6 +66,8 @@ _TEST_TABLES = [
     StackSchemaFamily.__table__,
     DictationStackLog.__table__,
     StackSlimSheet.__table__,
+    TemplateExample.__table__,
+    TemplateChatTurn.__table__,
     GuidelineRegistry.__table__,
 ]
 
@@ -302,3 +310,10 @@ def _empty_guideline_library(monkeypatch):
 def web_fetch_on(monkeypatch):
     """The runtime web path (registry cards, targeted fetch, gap search) on: it is off by default (RR_COPILOT_WEB_FETCH)."""
     monkeypatch.setenv("RR_COPILOT_WEB_FETCH", "1")
+
+
+@pytest.fixture(autouse=True)
+def _chat_router_off(monkeypatch):
+    """The chat-edit router calls Jev and Qwen. It is off by default (D-R3), and pinned off here in case a developer's
+    environment switches it on: a test that wants it sets RR_CHAT_ROUTER=1 itself."""
+    monkeypatch.setenv("RR_CHAT_ROUTER", "0")

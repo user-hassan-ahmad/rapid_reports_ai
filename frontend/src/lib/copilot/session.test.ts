@@ -7,6 +7,7 @@ import { assumption, card, draft, outcome, preview, result } from './cards/fixtu
 import { CONCLUSION_DEBOUNCE_MS, CONTEXT_DEBOUNCE_MS, createCopilotSession, EXAM_REOPEN_MS, MATCH_BACKOFF_MS, type CopilotApi } from './session';
 import { cardRef } from './state';
 import { unresolved } from './gate';
+import { findingsText } from '$lib/hybrid-stack/regionState';
 import type { CalculateBody, CalculateResult, Card, Calculation, ConclusionCheckBody, ConclusionCheckResult, MatchBody, MatchResult, OpenBody, OpenResult } from './types';
 
 const unit = (id: number, text: string, o: Partial<StackUnit> = {}): StackUnit => ({
@@ -22,7 +23,9 @@ const unit = (id: number, text: string, o: Partial<StackUnit> = {}): StackUnit =
 	heading: false,
 	...o
 });
-const dictation = (us: StackUnit[]) => us.map((u) => u.text).join(' ');
+const G = ['Lungs']; // the schema groups the scratchpad hands each round (P2c: units + groups, no findings text)
+/** Units whose text changes the findings text without changing the abnormal findings (exam re-open cases). */
+const words = (...ws: string[]) => [unit(1, A), ...ws.map((w, i) => unit(10 + i, w, { abnormal: false }))];
 
 type Call<B, R> = { body: B; resolve: (r: R) => void; reject: (e: unknown) => void };
 function fakeApi() {
@@ -73,38 +76,38 @@ const state = () => get(s.state);
  *  round 2 repeats it, so it is stable and matched. Resolves both with `cards`. */
 async function matchA(cards: Card[] = [nodule]) {
 	const us = [unit(1, A)];
-	s.round(us, true, dictation(us));
+	s.round(us, true, G);
 	api.calls.match[0].resolve(matched([]));
 	await flush();
-	s.round(us, true, dictation(us));
+	s.round(us, true, G);
 	api.calls.match[1].resolve(matched(cards));
 	await flush();
 }
 
 describe('session: matching', () => {
 	it('a growing last unit makes no call for it until it is stable', async () => {
-		s.round([unit(1, 'a 6 mm')], true, 'a 6 mm');
+		s.round([unit(1, 'a 6 mm')], true, G);
 		expect(api.calls.match).toHaveLength(1);
 		expect(api.calls.match[0].body.findings).toEqual([]); // exam-only first call
 		api.calls.match[0].resolve(matched([]));
 		await flush();
-		s.round([unit(1, 'a 6 mm solid')], true, 'a 6 mm solid');
-		s.round([unit(1, A)], true, A);
+		s.round([unit(1, 'a 6 mm solid')], true, G);
+		s.round([unit(1, A)], true, G);
 		expect(api.calls.match).toHaveLength(1);
-		s.round([unit(1, A)], true, A);
+		s.round([unit(1, A)], true, G);
 		expect(api.calls.match).toHaveLength(2);
 		expect(api.calls.match[1].body.findings).toEqual([{ id: 'u1', text: A }]);
 	});
 
 	it('a stopped recording makes the last finding stable at once (Q4)', () => {
-		s.round([unit(1, A)], false, A);
+		s.round([unit(1, A)], false, G);
 		expect(api.calls.match[0].body.findings).toEqual([{ id: 'u1', text: A }]);
 	});
 
 	it('a second identical round makes no call', async () => {
 		await matchA();
-		s.round([unit(1, A)], true, A);
-		s.round([unit(1, A)], false, A);
+		s.round([unit(1, A)], true, G);
+		s.round([unit(1, A)], false, G);
 		await flush();
 		expect(api.calls.match).toHaveLength(2);
 		expect(state().groups[0].cards).toEqual([nodule]);
@@ -113,9 +116,9 @@ describe('session: matching', () => {
 	it('a new finding calls once, carrying all stable findings', async () => {
 		await matchA();
 		const us = [unit(1, A), unit(2, B, { group: 'Kidneys' })];
-		s.round(us, true, dictation(us)); // u2 still growing, u1 already sent
+		s.round(us, true, G); // u2 still growing, u1 already sent
 		expect(api.calls.match).toHaveLength(2);
-		s.round(us, true, dictation(us));
+		s.round(us, true, G);
 		expect(api.calls.match).toHaveLength(3);
 		expect(api.calls.match[2].body.findings.map((f) => f.text)).toEqual([A, B]);
 	});
@@ -123,7 +126,7 @@ describe('session: matching', () => {
 	it('an edit to a finding drops its cards and later matches the new text', async () => {
 		await matchA();
 		expect(state().groups).toHaveLength(1);
-		s.round([unit(1, 'a 9 mm solid nodule')], false, 'a 9 mm solid nodule');
+		s.round([unit(1, 'a 9 mm solid nodule')], false, G);
 		expect(state().groups).toEqual([]);
 		expect(api.calls.match).toHaveLength(3);
 		expect(api.calls.match[2].body.findings).toEqual([{ id: 'u1', text: 'a 9 mm solid nodule' }]);
@@ -148,7 +151,7 @@ describe('session: matching', () => {
 	});
 
 	it('a stale response is dropped', async () => {
-		s.round([unit(1, A)], false, A);
+		s.round([unit(1, A)], false, G);
 		s.setContext({ scanType: 'CT abdomen', history: '' });
 		await vi.advanceTimersByTimeAsync(CONTEXT_DEBOUNCE_MS);
 		expect(api.calls.match).toHaveLength(2);
@@ -161,26 +164,28 @@ describe('session: matching', () => {
 	});
 
 	it('one /match in flight at a time; plans made during it queue one follow-up', async () => {
-		s.round([unit(1, A)], false, A);
+		s.round([unit(1, A)], false, G);
 		const us2 = [unit(1, A), unit(2, B)];
-		s.round(us2, false, dictation(us2));
+		s.round(us2, false, G);
 		const us3 = [...us2, unit(3, 'a 1 cm lymph node')];
-		s.round(us3, false, dictation(us3));
+		s.round(us3, false, G);
 		expect(api.calls.match).toHaveLength(1);
 		expect(state().matching).toBe(true);
 		api.calls.match[0].resolve(matched([nodule]));
 		await flush();
 		expect(api.calls.match).toHaveLength(2);
 		expect(api.calls.match[1].body.findings.map((f) => f.id)).toEqual(['u1', 'u2', 'u3']);
-		expect(api.calls.match[1].body.dictation).toBe(dictation(us3));
+		expect(api.calls.match[1].body.units).toEqual(us3); // the server builds the findings text (one builder)
+		expect(api.calls.match[1].body.groups).toEqual(G);
+		expect(api.calls.match[1].body).not.toHaveProperty('dictation');
 	});
 
 	it('a /match failure leaves no cards, sets matchFailed and caches nothing; retryMatch calls again', async () => {
-		s.round([unit(1, A)], false, A);
+		s.round([unit(1, A)], false, G);
 		api.calls.match[0].reject(new CopilotError('timeout'));
 		await flush();
 		expect(state()).toMatchObject({ matchFailed: true, matching: false, groups: [] });
-		s.round([unit(1, A), unit(2, B)], false, `${A} ${B}`); // backing off: no call per round
+		s.round([unit(1, A), unit(2, B)], false, G); // backing off: no call per round
 		expect(api.calls.match).toHaveLength(1);
 		s.retryMatch(); // Retry bypasses the backoff
 		expect(api.calls.match).toHaveLength(2);
@@ -192,19 +197,19 @@ describe('session: matching', () => {
 	});
 
 	it('after a failed /match, rounds resume calling once the backoff has passed', async () => {
-		s.round([unit(1, A)], false, A);
+		s.round([unit(1, A)], false, G);
 		api.calls.match[0].reject(new CopilotError('network'));
 		await flush();
-		s.round([unit(1, A)], false, A);
+		s.round([unit(1, A)], false, G);
 		expect(api.calls.match).toHaveLength(1);
 		await vi.advanceTimersByTimeAsync(MATCH_BACKOFF_MS);
-		s.round([unit(1, A)], false, A);
+		s.round([unit(1, A)], false, G);
 		expect(api.calls.match).toHaveLength(2);
 	});
 
 	it('a context change bypasses the failed-match backoff', async () => {
 		await matchA();
-		s.round([unit(1, A), unit(2, B)], false, `${A} ${B}`);
+		s.round([unit(1, A), unit(2, B)], false, G);
 		api.calls.match[2].reject(new CopilotError('network'));
 		await flush();
 		s.setContext({ scanType: 'CT chest', history: 'new history' });
@@ -223,11 +228,11 @@ describe('session: matching', () => {
 	});
 
 	it('a CopilotOff (404) turns the session off and later calls are never made', async () => {
-		s.round([unit(1, A)], false, A);
+		s.round([unit(1, A)], false, G);
 		api.calls.match[0].reject(new CopilotOff());
 		await flush();
 		expect(state().on).toBe(false);
-		s.round([unit(1, A), unit(2, B)], false, `${A} ${B}`);
+		s.round([unit(1, A), unit(2, B)], false, G);
 		s.setContext({ scanType: 'MRI', history: '' });
 		s.open(cardRef(nodule));
 		s.other();
@@ -249,8 +254,8 @@ describe('session: matching', () => {
 describe('session: opening cards', () => {
 	const exam = card({ key: 'cad-rads-2', name: 'CAD-RADS 2.0', finding_id: 'exam', finding: 'whole dictation' });
 
-	it('exam cards auto-open with finding = findingsText, and /match dictation equals /open findings', async () => {
-		s.round([unit(1, A)], false, 'LUNGS: a 6 mm solid nodule.');
+	it('exam cards auto-open with finding = findingsText, and /match and /open carry the same units and groups', async () => {
+		s.round([unit(1, A)], false, G);
 		api.calls.match[0].resolve(matched([exam, nodule]));
 		await flush();
 		// both previewed in the background (checkpoint 4: the verdict upfront); neither is opened
@@ -258,8 +263,10 @@ describe('session: opening cards', () => {
 		expect(state().views[cardRef(nodule)]).toMatchObject({ open: false, loading: true });
 		const body = api.calls.open[0].body;
 		expect(body.card).toEqual(exam);
-		expect(body.finding).toBe('LUNGS: a 6 mm solid nodule.');
-		expect(body.findings).toBe(api.calls.match[0].body.dictation);
+		expect(body.finding).toBe(findingsText([unit(1, A)], G));
+		expect(body.units).toEqual(api.calls.match[0].body.units);
+		expect(body.groups).toEqual(G);
+		expect(body).not.toHaveProperty('findings');
 		expect(state().views[cardRef(exam)]).toMatchObject({ open: false, loading: true });
 		api.calls.open[0].resolve(result(exam, preview()));
 		await flush();
@@ -268,23 +275,23 @@ describe('session: opening cards', () => {
 	});
 
 	it('exam cards re-open, debounced, when recording stops and the findings text changed', async () => {
-		s.round([unit(1, A)], false, 'one');
+		s.round(words('one'), false, G);
 		api.calls.match[0].resolve(matched([exam]));
 		await flush();
 		api.calls.open[0].resolve(result(exam, preview()));
 		await flush();
-		s.round([unit(1, A)], true, 'one two'); // recording: no re-open
+		s.round(words('one', 'two'), true, G); // recording: no re-open
 		await vi.advanceTimersByTimeAsync(EXAM_REOPEN_MS * 2);
 		expect(api.calls.open).toHaveLength(1);
-		s.round([unit(1, A)], false, 'one two three');
+		s.round(words('one', 'two', 'three'), false, G);
 		await vi.advanceTimersByTimeAsync(EXAM_REOPEN_MS - 10);
 		expect(api.calls.open).toHaveLength(1);
 		await vi.advanceTimersByTimeAsync(20);
 		expect(api.calls.open).toHaveLength(2);
-		expect(api.calls.open[1].body.finding).toBe('one two three');
+		expect(api.calls.open[1].body.finding).toBe(findingsText(words('one', 'two', 'three'), G));
 		api.calls.open[1].resolve(result(exam, preview()));
 		await flush();
-		s.round([unit(1, A)], false, 'one two three'); // unchanged text: no re-open
+		s.round(words('one', 'two', 'three'), false, G); // unchanged text: no re-open
 		await vi.advanceTimersByTimeAsync(EXAM_REOPEN_MS * 2);
 		expect(api.calls.open).toHaveLength(2);
 	});
@@ -293,7 +300,7 @@ describe('session: opening cards', () => {
 		await matchA();
 		const ref = cardRef(nodule);
 		s.open(ref);
-		expect(api.calls.open[0].body).toEqual({ card: nodule, finding: A, findings: A, clinical_history: 'cough', answered: {}, patient: {} });
+		expect(api.calls.open[0].body).toEqual({ card: nodule, finding: A, units: [unit(1, A)], groups: G, clinical_history: 'cough', answered: {}, patient: {} });
 		api.calls.open[0].resolve(result(nodule, preview()));
 		await flush();
 		s.close(ref);
@@ -334,7 +341,7 @@ describe('session: opening cards', () => {
 	it('a column retry splits its ref on the LAST "#" and re-opens that column only', async () => {
 		const hashText = 'nodule #2 in the right lung';
 		const sib = card({ finding_id: 'u1', finding: hashText, siblings: ['bts-pulmonary-nodule'] });
-		s.round([unit(1, hashText)], false, hashText);
+		s.round([unit(1, hashText)], false, G);
 		api.calls.match[0].resolve(matched([sib]));
 		await flush();
 		s.open(cardRef(sib));
@@ -370,7 +377,7 @@ describe('session: opening cards', () => {
 		expect(state().views[cardRef(extra)].fromOther).toBe(true);
 		expect(state().views[cardRef(nodule)]?.fromOther).toBeUndefined();
 		// a later /match keeps the other card
-		s.round([unit(1, A), unit(2, B)], false, `${A} ${B}`);
+		s.round([unit(1, A), unit(2, B)], false, G);
 		api.calls.match[2].resolve(matched([nodule]));
 		await flush();
 		expect(state().groups[0].cards.map((c) => c.key)).toEqual([nodule.key, 'web-guide']);
@@ -392,7 +399,7 @@ describe('session: opening cards', () => {
 
 	it('an exam card with siblings: open reuses the auto-opened primary and fetches only the sibling', async () => {
 		const examSib = card({ key: 'cad-rads-2', finding_id: 'exam', finding: 'x', siblings: ['other-cta-pack'] });
-		s.round([unit(1, A)], false, A);
+		s.round([unit(1, A)], false, G);
 		api.calls.match[0].resolve(matched([examSib]));
 		await flush();
 		// the primary auto-opens and the sibling column is previewed in the background
@@ -437,19 +444,19 @@ describe('session: opening cards', () => {
 		api.calls.other[0].resolve(matched([extra]));
 		await flush();
 		expect(state().views[cardRef(extra)].fromOther).toBe(true);
-		s.round([unit(1, A), unit(2, B)], false, `${A} ${B}`);
+		s.round([unit(1, A), unit(2, B)], false, G);
 		api.calls.match[2].resolve(matched([nodule, extra]));
 		await flush();
 		expect(state().views[cardRef(extra)].fromOther).toBe(false);
 	});
 
 	it('an exam re-open keeps the last result while it loads', async () => {
-		s.round([unit(1, A)], false, 'one');
+		s.round(words('one'), false, G);
 		api.calls.match[0].resolve(matched([exam]));
 		await flush();
 		api.calls.open[0].resolve(result(exam, preview()));
 		await flush();
-		s.round([unit(1, A)], false, 'one two');
+		s.round(words('one', 'two'), false, G);
 		await vi.advanceTimersByTimeAsync(EXAM_REOPEN_MS);
 		expect(state().views[cardRef(exam)].loading).toBe(true);
 		expect(state().views[cardRef(exam)].result).not.toBeNull();
@@ -508,7 +515,8 @@ describe('session: edits, shared patient answers and Calculate (Slice B2)', () =
 		const body = api.calls.calculate[0].body;
 		expect(body.values).toEqual({ size: '2.2 cm', hu: '8 HU', cancer: 'No' });
 		expect(body.card).toEqual(adrenal);
-		expect(body.findings).toBe(A);
+		expect(body.units).toEqual([unit(1, A)]);
+		expect(body.groups).toEqual(G);
 		expect(state().views[cardRef(adrenal)].calc).toMatchObject({ loading: true });
 		api.calls.calculate[0].resolve({ calculation: calc(), ms: 4, error: null });
 		await flush();
@@ -733,7 +741,7 @@ describe('session: background previews (checkpoint 4)', () => {
 		const packs = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'].map((k) => pack(k));
 		await matchA(packs);
 		expect(api.calls.open).toHaveLength(4); // p5, p6 queued
-		s.round([unit(1, A), unit(2, B)], false, `${A} ${B}`);
+		s.round([unit(1, A), unit(2, B)], false, G);
 		api.calls.match[2].resolve(matched(packs.slice(0, 4))); // p5, p6 gone
 		await flush();
 		for (const c of api.calls.open) c.resolve(result(packs[0], preview()));
@@ -746,12 +754,12 @@ describe('session: background previews (checkpoint 4)', () => {
 		await matchA([a]);
 		api.calls.open[0].reject(new CopilotError('timeout'));
 		await flush();
-		s.round([unit(1, A), unit(2, B)], false, `${A} ${B}`);
+		s.round([unit(1, A), unit(2, B)], false, G);
 		api.calls.match[2].resolve(matched([a]));
 		await flush();
 		expect(api.calls.open).toHaveLength(1); // not retried by the next /match
 		await vi.advanceTimersByTimeAsync(MATCH_BACKOFF_MS);
-		s.round([unit(1, A), unit(2, B), unit(3, 'a 1 cm lymph node')], false, `${A} ${B} x`);
+		s.round([unit(1, A), unit(2, B), unit(3, 'a 1 cm lymph node')], false, G);
 		api.calls.match[3].resolve(matched([a]));
 		await flush();
 		expect(api.calls.open).toHaveLength(2); // after the backoff it is
@@ -776,10 +784,10 @@ describe('session: confirm gate', () => {
 	/** Two findings matched (nodule on A, cyst on B); their background previews land: the nodule needs work-up. */
 	async function twoCards() {
 		const us = [unit(1, A), unit(2, B)];
-		s.round(us, true, dictation(us));
+		s.round(us, true, G);
 		api.calls.match[0].resolve(matched([]));
 		await flush();
-		s.round(us, true, dictation(us));
+		s.round(us, true, G);
 		api.calls.match[1].resolve(matched([nodule, cyst]));
 		await flush();
 		for (const c of api.calls.open) c.resolve(result(c.body.card, c.body.card.key === nodule.key ? workup : fine));
@@ -826,10 +834,10 @@ describe('session: confirm gate', () => {
 
 	it('a card that turns significant after the check is checked under the same conclusion', async () => {
 		const us = [unit(1, A)];
-		s.round(us, true, dictation(us));
+		s.round(us, true, G);
 		api.calls.match[0].resolve(matched([]));
 		await flush();
-		s.round(us, true, dictation(us));
+		s.round(us, true, G);
 		api.calls.match[1].resolve(matched([nodule]));
 		await flush();
 		s.checkConclusion('Recommend PET-CT.');
@@ -883,22 +891,23 @@ describe('session: confirm gate', () => {
 	it('an exam card is checked again when the findings text changes under the same conclusion', async () => {
 		const exam = card({ key: 'exam-pack', name: 'Exam pack', finding_id: 'exam', finding: 'one' });
 		const us = [unit(1, 'one', { abnormal: false })];
-		s.round(us, false, 'one');
+		s.round(us, false, G);
 		api.calls.match[0].resolve(matched([exam]));
 		await flush();
 		api.calls.open[0].resolve(result(exam, preview({ proposal: outcome({ headline: 'Consider PET-CT', category: 'workup', normal: false }) })));
 		await flush();
 		s.checkConclusion('Recommend PET-CT.');
 		await vi.advanceTimersByTimeAsync(CONCLUSION_DEBOUNCE_MS);
-		expect(api.calls.conclusion[0].body.cards).toEqual([{ key: 'f0', finding: 'one' }]);
+		expect(api.calls.conclusion[0].body.cards).toEqual([{ key: 'f0', finding: findingsText(us, G) }]);
 		api.calls.conclusion[0].resolve({ results: { f0: 'workup' } });
 		await flush();
 		expect(state().concl).toEqual({ [cardRef(exam)]: 'workup' });
-		s.round([unit(1, 'one two', { abnormal: false })], false, 'one two');
+		const us2 = [unit(1, 'one two', { abnormal: false })];
+		s.round(us2, false, G);
 		expect(state().concl).toEqual({}); // the answer was for the old findings text
 		await vi.advanceTimersByTimeAsync(CONCLUSION_DEBOUNCE_MS);
 		const last = api.calls.conclusion.at(-1)!;
-		expect(last.body.cards).toEqual([{ key: 'f0', finding: 'one two' }]);
+		expect(last.body.cards).toEqual([{ key: 'f0', finding: findingsText(us2, G) }]);
 	});
 
 	// review M-5: at most ten findings go to the check; a card past the cap is answered null (its note says so)
@@ -906,7 +915,7 @@ describe('session: confirm gate', () => {
 		const texts = Array.from({ length: 11 }, (_, i) => `finding number ${i}`);
 		const us = texts.map((t, i) => unit(i + 1, t));
 		const cards = texts.map((t, i) => card({ key: `pack-${i}`, name: `Pack ${i}`, finding_id: `u${i + 1}`, finding: t }));
-		s.round(us, false, dictation(us));
+		s.round(us, false, G);
 		api.calls.match[0].resolve(matched(cards));
 		await flush();
 		while (api.calls.open.some((c) => !(c as { done?: boolean }).done)) {

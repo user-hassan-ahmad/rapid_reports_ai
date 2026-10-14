@@ -267,13 +267,14 @@ def _words(s: str) -> set:
     return set(re.findall(r"[\w*'-]+", s.lower()))
 
 
-async def _split_bundled(negs: List[str]) -> List[List[str]]:
-    """Split bundled negatives into single claims; keep the original where the split adds words."""
+async def _split_bundled(negs: List[str], model: str = QWEN) -> List[List[str]]:
+    """Split bundled negatives into single claims; keep the original where the split adds words. `model`: the
+    scratchpad retries on Groq when Cerebras is rate-limited."""
     bundled = [i for i, n in enumerate(negs) if _is_bundled(n)]
     if not bundled:
         return [[n] for n in negs]
     r = await asyncio.wait_for(_run_agent_with_model(
-        model_name=QWEN, output_type=Split,
+        model_name=model, output_type=Split,
         system_prompt=("Rewrite each radiology negative statement as a list of single-claim sentences, one claim each, "
                        "keeping the wording and any shared qualifier attached to every claim it applies to. Return one "
                        "list per input statement, in order."),

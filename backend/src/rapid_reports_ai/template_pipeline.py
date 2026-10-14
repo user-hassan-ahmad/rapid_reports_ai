@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 from . import case_analyser as ca
+from .legacy_guard import mark as legacy_mark
 from . import report_reconcile as rc
 from . import template_sheet_grammar as g
 from .enhancement_utils import MODEL_CONFIG, _run_agent_with_model
@@ -379,6 +380,8 @@ def candidate_record(result: dict, latency_ms: int) -> dict:
             "brief": ({"text": result.get("brief_text"), "decisions": result.get("brief_decisions")}
                       if result.get("brief_used") else None),
             "sections": result.get("sections") or [], "lat": result.get("lat") or {},
+            "context_rules": result.get("context_rules"),
+            "required_values": result.get("required_values"),
             "signature": result.get("signature")}
 
 
@@ -449,6 +452,7 @@ async def finish_options(report_id: Optional[str], job: "asyncio.Future", extra=
 
 def schedule_options(report_id: Optional[str], job: "asyncio.Future", extra=None) -> "asyncio.Task":
     """Fire-and-forget finish_options; the task is held in _OPTION_TASKS until done."""
+    legacy_mark("options.schedule", route=f"report:{report_id}")  # the tripwire (spec §9.5)
     task = asyncio.create_task(finish_options(report_id, job, extra))
     _OPTION_TASKS.add(task)
     task.add_done_callback(_OPTION_TASKS.discard)

@@ -34,7 +34,7 @@ from .report_review import is_negative
 
 logger = logging.getLogger(__name__)
 
-STRUCTURE_VERSION = 2  # 2: lean template grammar + case units (spec 2026-10-01-template-two-phase)
+STRUCTURE_VERSION = 3  # 2: lean template grammar + case units; 3: findings-triggered habits (ASK, NEGATIVE … WHEN)
 RETRY_AFTER_S = 3600  # a failed structuring attempt for the same sheet is retried after this long
 Role = Literal["history", "technique", "comparison", "findings", "impression", "other"]
 LineRef = Union[int, str]  # the model cites a sheet line by its number; build_structure stores the line itself
@@ -95,7 +95,7 @@ Origin = Literal["template", "case"]  # case: written by the Phase-1 case analys
 LegacyEffect = Literal["suppress", "replace", "append", "use"]
 # Grammar v1 (spec 2026-10-01-template-sheet-grammar): effects only a grammar sheet expresses.
 Effect = Literal["suppress", "replace", "append", "use", "insert_before", "suppress_paragraph_negatives",
-                 "list_missing", "suppress_section", "suppress_headers", "order"]
+                 "list_missing", "suppress_section", "suppress_headers", "order", "ask"]
 
 
 class Rule(_Model):
@@ -111,6 +111,8 @@ class Rule(_Model):
     items: List[str] = []  # list_missing
     anchor: str = ""  # insert_before
     position: Optional[Literal["top", "end", "first", "last"]] = None  # list_missing: top/end; order: first/last
+    question: SkipJsonSchema[str] = ""   # ask (a habit question): the question; then_text is its YES sentence
+    else_text: SkipJsonSchema[str] = ""  # ask: the NO sentence
 
 
 # A rule as the LLM extractor drafts it: the four legacy effects only, and the grammar-only fields kept
@@ -155,6 +157,8 @@ class FixedBlock(_Model):
     id: str
     section: str = ""  # a missing section drops the block in verification, not the whole draft
     text: str
+    source_line: SkipJsonSchema[str] = ""  # grammar: the sheet line itself (the decision ledger edits it)
+    paragraph: SkipJsonSchema[str] = ""    # grammar: the paragraph id it sits in ("" in structures stored before)
 
     @field_validator("section", mode="before")
     @classmethod
@@ -259,6 +263,23 @@ class SheetStructure(StructureDraft):
 
 def sheet_hash(sheet: str) -> str:
     return hashlib.sha256(sheet.encode()).hexdigest()
+
+
+def generation_stamp(template_id: str, config: dict | None, path: str) -> dict | None:
+    """Which sheet produced a report or a session (template pipeline spec, block 4). Total: a malformed config
+    gives empty fields, any surprise gives None (logged) -- a stamp never breaks the save it rides on. An empty
+    sheet has no hash, so a sheet-less version never matches every other sheet-less one."""
+    try:
+        config = config if isinstance(config, dict) else {}
+        sheet = config.get("skill_sheet")
+        sheet = sheet if isinstance(sheet, str) else ""
+        version = config.get("analyser_version")
+        return {"template_id": str(template_id), "sheet_hash": sheet_hash(sheet) if sheet.strip() else None,
+                "grammar_version": STRUCTURE_VERSION,
+                "analyser_version": version[:64] if isinstance(version, str) else "", "path": str(path)}
+    except Exception as e:  # noqa: BLE001 -- evidence only
+        logger.warning("generation stamp failed for template %s: %s", template_id, e)
+        return None
 
 
 def numbered(sheet: str) -> str:

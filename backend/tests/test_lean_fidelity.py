@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from rapid_reports_ai.lean_fidelity import fidelity_violation, verbatim_append
+from rapid_reports_ai.lean_fidelity import fidelity_violation, moved_into_earlier, verbatim_append
 
 
 def test_tonights_deletion_is_caught():
@@ -92,3 +92,36 @@ def test_a_negative_replaced_by_its_positive_is_caught():
 def test_negations_that_survive_rewording_pass():
     assert fidelity_violation("There is no pleural effusion.", "No pneumothorax.",
                               "No pleural effusion. No pneumothorax.", []) is None
+
+
+
+def test_moved_into_earlier_detects_new_words_placed_before_dictated_text():
+    span = "Extensive perinephric stranding. A tiny non-obstructing 2 mm calculus is also noted in the lower pole."
+    new = "of the right kidney with no associated"
+    moved = ("Extensive perinephric stranding of the right kidney with no associated. "
+             "A tiny non-obstructing 2 mm calculus is also noted in the lower pole.")
+    assert fidelity_violation(span, new, moved, []) is None           # every count survives: the old check passed it
+    assert moved_into_earlier(span, new, moved)
+    kept = span[:-1] + " of the right kidney with no associated"
+    assert not moved_into_earlier(span, new, kept)                      # continuing the last sentence
+    assert moved_into_earlier("The liver is normal. The spleen is normal.", "The pancreas is normal.",
+                              "The liver, spleen and pancreas are normal.")   # a merged sentence asks Jev (which clears joins)
+    assert not moved_into_earlier(span, new, span + " Of the right kidney with no associated.")
+
+
+def test_the_detector_sees_reorders_swaps_and_merged_sentences_but_not_continuations():
+    # (B) a new sentence's tail moved back onto the previous sentence
+    assert moved_into_earlier("Small left pleural effusion.", "Consolidation in the right lower lobe with air bronchograms.",
+                              "Small left pleural effusion with air bronchograms. Consolidation in the right lower lobe.")
+    # (C) sides swapped between sentences already dictated, no new words involved
+    assert moved_into_earlier("Small left pleural effusion. Right lower lobe consolidation.", "No pneumothorax.",
+                              "Small right pleural effusion. Left lower lobe consolidation. No pneumothorax.")
+    # (D) a new sentence merged into the finished one before it
+    assert moved_into_earlier("A 3 cm mass in the pancreatic head. The liver is normal.", "The mass encases the superior mesenteric artery.",
+                              "A 3 cm mass in the pancreatic head. The liver is normal and encases the superior mesenteric artery.")
+    # continuations and repeated words are not moves
+    assert not moved_into_earlier("Dilated small bowel loops up to 4 cm with a transition point in the right",
+                                  "lower quadrant, likely due to an adhesion.",
+                                  "Dilated small bowel loops up to 4 cm with a transition point in the right lower quadrant, likely due to an adhesion.")
+    assert not moved_into_earlier("A 3 cm mass with dilatation of the pancreatic", "duct to 6 mm and the common bile duct to 14 mm.",
+                                  "A 3 cm mass with dilatation of the pancreatic duct to 6 mm and the common bile duct to 14 mm.")

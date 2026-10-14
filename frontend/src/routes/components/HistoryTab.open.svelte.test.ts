@@ -299,7 +299,9 @@ function stubFetch(
 		'fetch',
 		vi.fn(
 			async (u: RequestInfo | URL, init?: RequestInit) =>
-				(await route(String(u), init)) ?? notFound()
+				(await route(String(u), init)) ??
+				// P2c: the tab latches the stack mode at setup/restore; these cases run with the stack off (today's flow)
+				(String(u).includes('/api/settings/status') ? new Response(JSON.stringify({ success: true, stack: false })) : notFound())
 		)
 	);
 }

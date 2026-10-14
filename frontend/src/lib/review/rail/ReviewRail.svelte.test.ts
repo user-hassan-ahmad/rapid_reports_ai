@@ -481,4 +481,93 @@ describe('ReviewRail', () => {
 		await mount(response(), { urgency: 'Cord compression: contact the referrer today.' });
 		await expect.element(page.getByRole('alert')).toHaveTextContent('Cord compression');
 	});
+
+	it('a structure_not_mentioned note is a muted one-line note after the flagged items, with only Dismiss', async () => {
+		const note = item({
+			id: 's1',
+			kind: 'structure_not_mentioned',
+			cls: 'info',
+			lane: 'accuracy',
+			section: null,
+			anchor: null,
+			label: 'Not mentioned: Bones \u2014 worth a look'
+		});
+		const { onCommand } = await mount(response({ items: [...ITEMS, note] }));
+		await expect.element(page.getByText('Not mentioned: Bones')).toBeInTheDocument();
+		const el = rail()!.querySelector<HTMLElement>('[data-rv-item="s1"]')!;
+		expect(el.getAttribute('data-rv-variant')).toBe('note');
+		expect(el.classList.contains('rv-muted')).toBe(true);
+		expect(el.closest('[data-rv-section]')).toBeNull();
+		expect(el.querySelector('.rv-icon')).toBeNull();
+		const ids = [...rail()!.querySelectorAll('[data-rv-item]')].map((e) => e.getAttribute('data-rv-item'));
+		expect(ids[ids.length - 1]).toBe('s1');
+		const buttons = [...el.querySelectorAll('button')].map((b) => b.textContent?.trim());
+		expect(buttons).toEqual(['Dismiss']);
+		await page.getByRole('button', { name: /Dismiss: Not mentioned: Bones/ }).click();
+		expect(onCommand).toHaveBeenCalledWith('dismiss', 's1');
+	});
+
+	it('a dismissed structure_not_mentioned note is not shown', async () => {
+		const note = item({ id: 's2', kind: 'structure_not_mentioned', cls: 'info', status: 'dismissed', label: 'Not mentioned: LMS' });
+		await mount(response({ items: [...ITEMS, note] }));
+		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
+		expect(rail()!.querySelector('[data-rv-item="s2"]')).toBeNull();
+	});
+
+	const CHECK_KINDS = [
+		'value_missing',
+		'template_slot_empty',
+		'fixed_text_missing',
+		'heading_missing',
+		'assumed_normal_missing'
+	];
+
+	it('open unanchored template checks are compact rows in a Template checks group above the quiet notes', async () => {
+		const checks = CHECK_KINDS.map((kind, k) =>
+			item({ id: `t${k}`, kind, cls: 'info', lane: 'accuracy', section: null, anchor: null, label: `Check ${kind}` })
+		);
+		const note = item({ id: 's1', kind: 'structure_not_mentioned', cls: 'info', anchor: null, label: 'Not mentioned: Bones' });
+		const { onCommand } = await mount(response({ items: [...ITEMS, ...checks, note] }));
+		await expect.element(page.getByRole('heading', { name: 'Template checks' })).toBeInTheDocument();
+		const group = rail()!.querySelector<HTMLElement>('[data-rv-template-checks]')!;
+		const ids = [...group.querySelectorAll('[data-rv-item]')].map((e) => e.getAttribute('data-rv-item'));
+		expect(ids).toEqual(['t0', 't1', 't2', 't3', 't4']);
+		for (const el of group.querySelectorAll<HTMLElement>('[data-rv-item]')) {
+			expect(el.getAttribute('data-rv-variant')).toBe('template-check');
+			expect(el.classList.contains('rv-muted')).toBe(false);
+			expect([...el.querySelectorAll('button')].map((b) => b.textContent?.trim())).toEqual(['Dismiss']);
+		}
+		const all = [...rail()!.querySelectorAll('[data-rv-item]')].map((e) => e.getAttribute('data-rv-item'));
+		expect(all.indexOf('t4')).toBeLessThan(all.indexOf('s1'));
+		await page.getByRole('button', { name: 'Dismiss: Check fixed_text_missing' }).click();
+		expect(onCommand).toHaveBeenCalledWith('dismiss', 't2');
+		expect(rail()!.textContent).toContain('2 to review'); // counts unchanged
+	});
+
+	it('anchored info template checks show in the group (info anchors draw no underline); dismissed ones do not', async () => {
+		const anchored = item({ id: 'ta', kind: 'value_missing', cls: 'info', anchor: at(5, 'LVEF'), label: 'Required value LVEF not found' });
+		const gone = item({ id: 'tg', kind: 'heading_missing', cls: 'info', status: 'dismissed', anchor: null, label: 'gone' });
+		await mount(response({ items: [...ITEMS, anchored, gone] }));
+		await expect.element(page.getByText('Required value LVEF not found')).toBeInTheDocument();
+		const group = rail()!.querySelector<HTMLElement>('[data-rv-template-checks]')!;
+		expect([...group.querySelectorAll('[data-rv-item]')].map((e) => e.getAttribute('data-rv-item'))).toEqual(['ta']);
+		expect(rail()!.querySelectorAll('[data-rv-item="ta"]').length).toBe(1);
+		expect(rail()!.querySelector('[data-rv-item="tg"]')).toBeNull();
+	});
+
+	it('a template check row carries its full reason as a title', async () => {
+		const long = item({ id: 'tl', kind: 'fixed_text_missing', cls: 'info', anchor: null, label: 'Template text not in the r', reason: 'Template text not in the report: the whole sentence' });
+		await mount(response({ items: [...ITEMS, long] }));
+		await expect.element(page.getByText('Template text not in the r')).toBeInTheDocument();
+		expect(rail()!.querySelector('[data-rv-item="tl"]')!.getAttribute('title')).toBe('Template text not in the report: the whole sentence');
+	});
+
+	it('an action-class value_missing keeps its card and is not repeated in Template checks', async () => {
+		const high = item({ id: 'vh', kind: 'value_missing', cls: 'action', lane: 'accuracy', anchor: null, section: null, label: 'Required value LVEF not found' });
+		await mount(response({ items: [...ITEMS, high] }));
+		await expect.element(page.getByText('Required value LVEF not found')).toBeInTheDocument();
+		expect(rail()!.querySelectorAll('[data-rv-item="vh"]').length).toBe(1);
+		expect(rail()!.querySelector('[data-rv-item="vh"]')!.getAttribute('data-rv-variant')).toBe('card');
+		expect(rail()!.querySelector('[data-rv-template-checks]')).toBeNull();
+	});
 });

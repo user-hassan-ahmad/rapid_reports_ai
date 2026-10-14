@@ -49,3 +49,26 @@ async def test_stack_generation_never_falls_back_to_the_raw_sheet(monkeypatch):
     except Exception:
         pass
     assert seen["brief"] is True and "No x" not in seen["sheet"] and '"C."' in seen["sheet"]
+
+
+def test_stack_prompts_replace_the_fill_and_synthesis_rules_and_production_keeps_them():
+    from rapid_reports_ai.quick_report_generator import build_prompts
+    st_sys, st_user = build_prompts("SHEET", "CT", "F", "H", "cerebras", brief=True, stack=True)
+    br_sys, br_user = build_prompts("SHEET", "CT", "F", "H", "cerebras", brief=True)
+    for dead in ("Coverage is obligatory", "Normal-study path", "Carry forward", "KEEP negative", "Clinical Lane",
+                 "Four synthesis moves", "state it and\ncommit", "render the canonical default-normal line"):
+        assert dead not in st_sys + st_user, dead
+    for kept in ("Coverage is obligatory", "Carry forward", "Four synthesis moves"):
+        assert kept in br_sys + br_user, kept     # production quick reports are unchanged
+    assert "DO NOT ASSERT**: the radiologist removed this statement" in st_sys
+    assert "phrases the confirmed conclusion" in st_user and st_sys.endswith("SHEET")
+
+
+def test_stack_brief_drops_the_history_section_and_descriptor_propagation():
+    from rapid_reports_ai.quick_report_brief import stack_fallback
+    slim = ("## Structural Pattern\n- **Sections:** Clinical History, Technique, Findings, Impression\n\n"
+            "## Impression Conventions\n- **Opening convention:** The diagnosis first.\n"
+            "- **Descriptor propagation:** Size and grade carry into the impression.\n")
+    text = stack_fallback(slim, "C.").text
+    assert "- **Sections:** Technique, Findings, Impression" in text
+    assert "Opening convention" in text and "Descriptor propagation" not in text

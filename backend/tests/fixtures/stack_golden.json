@@ -1,0 +1,392 @@
+{
+  "_note": "SYNTHETIC golden cases; expected written by frontend/scripts/stack_golden.ts",
+  "cases": [
+    {
+      "name": "single",
+      "groups": [
+        "Liver",
+        "Spleen",
+        "Pancreas",
+        "Kidneys",
+        "Other findings"
+      ],
+      "units": [
+        {
+          "id": 1,
+          "text": "Liver normal.",
+          "group": "Liver",
+          "structure": null,
+          "attach_to": null,
+          "parts": null,
+          "covers": [],
+          "abnormal": false,
+          "pinned": false,
+          "heading": false
+        }
+      ],
+      "gate": null,
+      "expected": {
+        "hash": "22:337a51a0",
+        "text": "Liver: Liver normal.",
+        "block": null
+      }
+    },
+    {
+      "name": "mixed_groups",
+      "groups": [
+        "Liver",
+        "Spleen",
+        "Pancreas",
+        "Kidneys",
+        "Other findings"
+      ],
+      "units": [
+        {
+          "id": 1,
+          "text": "Portal venous phase.",
+          "group": "Technique",
+          "structure": null,
+          "attach_to": null,
+          "parts": null,
+          "covers": [],
+          "abnormal": false,
+          "pinned": false,
+          "heading": false
+        },
+        {
+          "id": 2,
+          "text": "Liver normal.",
+          "group": "Liver",
+          "structure": null,
+          "attach_to": null,
+          "parts": null,
+          "covers": [],
+          "abnormal": false,
+          "pinned": false,
+          "heading": false
+        },
+        {
+          "id": 3,
+          "text": "Spleen 14 cm.",
+          "group": "Spleen",
+          "structure": null,
+          "attach_to": null,
+          "parts": null,
+          "covers": [],
+          "abnormal": true,
+          "pinned": false,
+          "heading": false
+        },
+        {
+          "id": 4,
+          "text": "Small hiatus hernia.",
+          "group": "General",
+          "structure": null,
+          "attach_to": null,
+          "parts": null,
+          "covers": [],
+          "abnormal": true,
+          "pinned": false,
+          "heading": false
+        },
+        {
+          "id": 5,
+          "text": "Bowel",
+          "group": "Other findings",
+          "structure": null,
+          "attach_to": null,
+          "parts": null,
+          "covers": [],
+          "abnormal": false,
+          "pinned": false,
+          "heading": true
+        },
+        {
+          "id": 6,
+          "text": "Unplaced remark.",
+          "group": null,
+          "structure": null,
+          "attach_to": null,
+          "parts": null,
+          "covers": [],
+          "abnormal": false,
+          "pinned": false,
+          "heading": false
+        },
+        {
+          "id": 7,
+          "text": "Adrenals normal.",
+          "group": "Adrenals",
+          "structure": null,
+          "attach_to": null,
+          "parts": null,
+          "covers": [],
+          "abnormal": false,
+          "pinned": false,
+          "heading": false
+        }
+      ],
+      "gate": null,
+      "expected": {
+        "hash": "162:95798caa",
+        "text": "Portal venous phase.\n\nLiver: Liver normal.\nSpleen: Spleen 14 cm.\nAdrenals: Adrenals normal.\nSmall hiatus hernia.\nUnplaced remark.",
+        "block": null
+      }
+    },
+    {
+      "name": "spanning",
+      "groups": [
+        "Liver",
+        "Spleen",
+        "Pancreas",
+        "Kidneys",
+        "Other findings"
+      ],
+      "units": [
+        {
+          "id": 1,
+          "text": "Liver and spleen are normal.",
+          "group": "Liver",
+          "structure": null,
+          "attach_to": null,
+          "parts": [
+            {
+              "text": "Liver normal.",
+              "group": "Liver",
+              "abnormal": false
+            },
+            {
+              "text": "Spleen normal.",
+              "group": "Spleen",
+              "abnormal": false
+            }
+          ],
+          "covers": [],
+          "abnormal": false,
+          "pinned": false,
+          "heading": false
+        },
+        {
+          "id": 2,
+          "text": "Pancreas atrophic.",
+          "group": "Pancreas",
+          "structure": null,
+          "attach_to": null,
+          "parts": null,
+          "covers": [],
+          "abnormal": true,
+          "pinned": false,
+          "heading": false
+        }
+      ],
+      "gate": null,
+      "expected": {
+        "hash": "84:b9814049",
+        "text": "Pancreas: Pancreas atrophic.\nLiver · Spleen: Liver and spleen are normal.",
+        "block": null
+      }
+    },
+    {
+      "name": "rows_assumed_conclusion_removed",
+      "groups": [
+        "Liver",
+        "Spleen",
+        "Pancreas",
+        "Kidneys",
+        "Other findings"
+      ],
+      "units": [
+        {
+          "id": 1,
+          "text": "Liver 18 cm.",
+          "group": "Liver",
+          "structure": null,
+          "attach_to": null,
+          "parts": null,
+          "covers": [],
+          "abnormal": true,
+          "pinned": false,
+          "heading": false
+        },
+        {
+          "id": 2,
+          "text": "Normal study apart from hepatomegaly.",
+          "group": "Conclusion",
+          "structure": null,
+          "attach_to": null,
+          "parts": null,
+          "covers": [],
+          "abnormal": false,
+          "pinned": false,
+          "heading": false
+        }
+      ],
+      "gate": {
+        "confirmed_at": "2026-10-14T00:00:00Z",
+        "conclusion_text": "Hepatomegaly. ",
+        "conclusion_source": "dictated",
+        "assumed_normal": [
+          "Pancreas"
+        ],
+        "remainder_normal": [
+          "Kidneys"
+        ],
+        "dictated_normal": [],
+        "items": [
+          {
+            "id": "r1",
+            "kind": "finding",
+            "region": "Liver",
+            "question": "Focal lesion?",
+            "sentences": [
+              "No focal lesion."
+            ],
+            "answered_by": "tap"
+          },
+          {
+            "id": "r2",
+            "kind": "referral",
+            "region": "",
+            "question": "Appendicitis?",
+            "sentences": [
+              "No appendicitis."
+            ],
+            "answered_by": "tap"
+          },
+          {
+            "id": "r3",
+            "kind": "finding",
+            "region": "Spleen",
+            "question": "Splenomegaly?",
+            "sentences": [
+              "Not enlarged."
+            ],
+            "answered_by": "skip"
+          }
+        ],
+        "assumed": {
+          "Liver": [
+            "Portal vein patent."
+          ],
+          "Spleen": [
+            "Spleen normal."
+          ]
+        },
+        "removed": [
+          "No ascites."
+        ],
+        "capped": [],
+        "units_hash": "k"
+      },
+      "expected": {
+        "hash": "21:d3965ba7",
+        "text": "Liver: Liver 18 cm.",
+        "block": "Liver: Liver 18 cm. Answered by the radiologist: No focal lesion. Assumed normal (confirmed by the radiologist): Portal vein patent.\n\nReferral question (answered by the radiologist): No appendicitis.\n\nAssumed normal (confirmed by the radiologist): Spleen: Spleen normal.\n\nConfirmed normal (not dictated; confirmed by the radiologist): Pancreas; remainder of Kidneys.\n\nConclusion (confirmed by the radiologist): Hepatomegaly.\n\nDO NOT ASSERT (removed by the radiologist): No ascites."
+      }
+    },
+    {
+      "name": "values",
+      "groups": [
+        "Liver",
+        "Spleen",
+        "Pancreas",
+        "Kidneys",
+        "Other findings"
+      ],
+      "units": [
+        {
+          "id": 1,
+          "text": "Liver normal.",
+          "group": "Liver",
+          "structure": null,
+          "attach_to": null,
+          "parts": null,
+          "covers": [],
+          "abnormal": false,
+          "pinned": false,
+          "heading": false
+        }
+      ],
+      "gate": {
+        "confirmed_at": "2026-10-14T00:00:00Z",
+        "conclusion_text": "",
+        "conclusion_source": "dictated",
+        "assumed_normal": [],
+        "remainder_normal": [],
+        "dictated_normal": [],
+        "items": [],
+        "assumed": {},
+        "removed": [],
+        "capped": [],
+        "units_hash": "k",
+        "values": [
+          {
+            "item": "LVEF",
+            "state": "entered",
+            "value": "55%",
+            "quote": null
+          },
+          {
+            "item": "Spleen length",
+            "state": "filled",
+            "value": "11 cm",
+            "quote": "11 cm"
+          },
+          {
+            "item": "Agatston",
+            "state": "na",
+            "value": null,
+            "quote": null
+          }
+        ]
+      },
+      "expected": {
+        "hash": "22:337a51a0",
+        "text": "Liver: Liver normal.",
+        "block": "Liver: Liver normal.\n\nAnswered by the radiologist: LVEF 55%."
+      }
+    },
+    {
+      "name": "non_ascii",
+      "groups": [
+        "Liver",
+        "Spleen",
+        "Pancreas",
+        "Kidneys",
+        "Other findings"
+      ],
+      "units": [
+        {
+          "id": 1,
+          "text": "Lesion 12 µm, angle ≥ 30°, 🙂.",
+          "group": "Liver",
+          "structure": null,
+          "attach_to": null,
+          "parts": null,
+          "covers": [],
+          "abnormal": true,
+          "pinned": false,
+          "heading": false
+        }
+      ],
+      "gate": {
+        "confirmed_at": "2026-10-14T00:00:00Z",
+        "conclusion_text": "Lesion ≥ 30° 🙂.",
+        "conclusion_source": "dictated",
+        "assumed_normal": [],
+        "remainder_normal": [],
+        "dictated_normal": [],
+        "items": [],
+        "assumed": {},
+        "removed": [],
+        "capped": [],
+        "units_hash": "k"
+      },
+      "expected": {
+        "hash": "39:7f43cd69",
+        "text": "Liver: Lesion 12 µm, angle ≥ 30°, 🙂.",
+        "block": "Liver: Lesion 12 µm, angle ≥ 30°, 🙂.\n\nConclusion (confirmed by the radiologist): Lesion ≥ 30° 🙂."
+      }
+    }
+  ]
+}

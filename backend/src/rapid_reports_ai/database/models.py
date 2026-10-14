@@ -1,6 +1,6 @@
 """SQLAlchemy models for Rapid Reports AI"""
 
-from sqlalchemy import Column, String, Text, Boolean, DateTime, JSON, ForeignKey, Integer, Float, UniqueConstraint, Index, ARRAY
+from sqlalchemy import func, true, Column, String, Text, Boolean, DateTime, JSON, ForeignKey, Integer, Float, UniqueConstraint, Index, ARRAY
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, deferred
 from sqlalchemy.dialects.postgresql import UUID, JSONB, TSVECTOR
@@ -412,6 +412,7 @@ class Report(Base):
     # migration 20261003120000, which production has applied (L-58); left unmapped until then (0f1a8a3) because
     # even a deferred() column is INSERTed. Deferred so ordinary report queries never select it.
     workspace_state = deferred(Column(JSONBType(), nullable=True))
+    generation_stamp = Column(JSONBType(), nullable=True)  # which sheet/prompt wrote this report (migration 20261013090000)
 
     # Foreign keys
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -841,7 +842,7 @@ class ReportQualityScore(Base):
     dictation_fidelity = Column(Integer, nullable=True)  # 1–5 (v2: dictated content preserved exactly)
     normal_fill_appropriateness = Column(Integer, nullable=True)  # 1–5 (v2: added normals sanctioned + in-scope)
     edit_burden = Column(Float, nullable=True)           # 0–1 objective; null if no final
-    dimensions_json = Column(JSONBType(), nullable=True)  # {dim:{score,rationale,issues:[...]}}
+    dimensions_json = Column(JSONBType(), nullable=True)  # {dim:{score,rationale,issues:[...]}, "_meta":{path}}
     judge_model = Column(String(100), nullable=False)
     rubric_version = Column(String(32), nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
@@ -941,7 +942,34 @@ class DictationStackLog(Base):
     manual_moves = Column(Integer, nullable=False, default=0)
     latency_ms = Column(JSONBType(), nullable=True)
     gate = Column(JSONBType(), nullable=True)            # v2: what the radiologist confirmed before Generate
-    report_id = Column(String(64), nullable=True)        # v2: the report generated from this session
+    report_id = Column(String(64), nullable=True, index=True)  # v2: the report generated from this session
+    template_id = Column(String(64), nullable=True)      # template-evidence: template used, if any
+    stamp = Column(JSONBType(), nullable=True)           # template-evidence: generation stamp
     copilot = Column(JSONBType(), nullable=True)         # Copilot: cards matched/opened/applied, threads, recommendations
     created_at = Column(DateTime, default=_now, nullable=False)
     updated_at = Column(DateTime, default=_now, onupdate=_now, nullable=False)
+
+
+class TemplateExample(Base):
+    """An example report stored with a template (evidence for the learning loop)."""
+    __tablename__ = "template_examples"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    text = Column(Text, nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    source = Column(String(16), nullable=False, default="pasted", server_default="pasted")
+    created_at = Column(DateTime, default=_now, server_default=func.now(), nullable=False)
+
+
+class TemplateChatTurn(Base):
+    """One chat-to-edit turn on a template."""
+    __tablename__ = "template_chat_turns"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    template_id = Column(UUID(as_uuid=True), ForeignKey("templates.id", ondelete="CASCADE"), nullable=False, index=True)
+    instruction = Column(Text, nullable=False)
+    response = Column(Text, nullable=True)
+    applied = Column(Boolean, nullable=False, default=True, server_default=true())
+    sheet_hash_before = Column(String(64), nullable=True)
+    sheet_hash_after = Column(String(64), nullable=True)
+    routing = Column(JSONBType(), nullable=True)   # chat-edit router evidence (migration 20261014090000)
+    created_at = Column(DateTime, default=_now, server_default=func.now(), nullable=False)

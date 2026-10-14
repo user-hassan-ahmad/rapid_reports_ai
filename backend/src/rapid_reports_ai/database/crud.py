@@ -13,6 +13,8 @@ from .models import (
     PasswordResetToken,
     Report,
     TemplateVersion,
+    TemplateExample,
+    TemplateChatTurn,
     ReportVersion,
     ReportAudit,
     ReportAuditCriterion,
@@ -431,6 +433,10 @@ def delete_template(db: Session, template_id: str, user_id: Optional[str] = None
         return False
     
     template.is_active = False
+    # A soft delete never fires the FK cascade: the creator promises the user's words (examples, chat turns) go with
+    # the template, so they are removed here.
+    db.query(TemplateExample).filter(TemplateExample.template_id == template.id).delete(synchronize_session=False)
+    db.query(TemplateChatTurn).filter(TemplateChatTurn.template_id == template.id).delete(synchronize_session=False)
     db.commit()
     return True
 
@@ -739,6 +745,8 @@ def create_report(
     template_id: Optional[str] = None,
     description: Optional[str] = None,
     candidate_reports: Optional[list] = None,
+    generation_stamp: Optional[dict] = None,
+    generation_mode: Optional[str] = None,
 ) -> Report:
     """Create a new report. ``candidate_reports``: the generation record(s) (quick's candidate shape), as
     the templated mirror persists its options, brief and check."""
@@ -752,6 +760,8 @@ def create_report(
         template_id=uuid.UUID(template_id) if template_id and isinstance(template_id, str) else template_id,
         description=description,
         candidate_reports=candidate_reports,
+        generation_stamp=generation_stamp,
+        generation_mode=generation_mode,
     )
     db.add(report)
     db.commit()

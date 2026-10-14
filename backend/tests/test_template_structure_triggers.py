@@ -10,6 +10,10 @@ from rapid_reports_ai import main
 from rapid_reports_ai.database import crud
 from rapid_reports_ai import template_sheet_grammar as tsg
 from rapid_reports_ai import template_sheet_structure as tss
+from rapid_reports_ai import template_sheet_save as tsave
+from tests.template_sheet_fixtures import GOOD
+
+GOOD2 = GOOD + 'NORMAL [ligaments] "The cruciate ligaments are intact."\n'
 
 
 def test_carry_structure_keeps_a_fresh_structure_the_client_dropped():
@@ -189,6 +193,10 @@ class _Tpl(SimpleNamespace):
 
 @pytest.fixture
 def queued(monkeypatch):
+    async def no_failures(st, sheet=""):
+        return []
+
+    monkeypatch.setattr(tsave, "check_units", no_failures)
     calls = []
     monkeypatch.setattr(main, "_queue_structure", lambda tid, cfg: calls.append((tid, cfg)))
     return calls
@@ -202,7 +210,7 @@ async def test_create_endpoint_strips_client_structure_and_queues(monkeypatch, q
         return _Tpl(id="new1", template_config=kw["template_config"])
 
     monkeypatch.setattr(main, "create_template", fake_create)
-    cfg = {"generation_mode": "skill_sheet_guided", "skill_sheet": "S", "sheet_structure": _FORGED}
+    cfg = {"generation_mode": "skill_sheet_guided", "skill_sheet": GOOD, "sheet_structure": _FORGED}
     r = await main.create_template_endpoint(main.TemplateCreate(name="n", template_config=cfg), _USER, None)
     assert r["success"]
     assert "sheet_structure" not in written["template_config"]
@@ -210,7 +218,7 @@ async def test_create_endpoint_strips_client_structure_and_queues(monkeypatch, q
 
 
 async def test_update_endpoint_drops_client_structure_carries_stored_and_queues(monkeypatch, queued):
-    stored = {"skill_sheet": "S", "generation_mode": "skill_sheet_guided", "sheet_structure": {"sheet_hash": "stored"}}
+    stored = {"skill_sheet": GOOD, "generation_mode": "skill_sheet_guided", "sheet_structure": {"sheet_hash": "stored"}}
     written = {}
     monkeypatch.setattr(main, "get_template", lambda db, tid, user_id=None: _Tpl(id=tid, template_config=stored))
 
@@ -219,13 +227,13 @@ async def test_update_endpoint_drops_client_structure_carries_stored_and_queues(
         return _Tpl(id=kw["template_id"], template_config=kw["template_config"])
 
     monkeypatch.setattr(main, "update_template", fake_update)
-    same = {"generation_mode": "skill_sheet_guided", "skill_sheet": "S", "sheet_structure": _FORGED}
+    same = {"generation_mode": "skill_sheet_guided", "skill_sheet": GOOD, "sheet_structure": _FORGED}
     await main.update_template_endpoint("t9", main.TemplateUpdate(template_config=same), _USER, None)
     assert written["template_config"]["sheet_structure"] == {"sheet_hash": "stored"}
     assert queued == [("t9", written["template_config"])]
 
     queued.clear()
-    changed = {"generation_mode": "skill_sheet_guided", "skill_sheet": "S2", "sheet_structure": _FORGED}
+    changed = {"generation_mode": "skill_sheet_guided", "skill_sheet": GOOD2, "sheet_structure": _FORGED}
     await main.update_template_endpoint("t9", main.TemplateUpdate(template_config=changed), _USER, None)
     assert "sheet_structure" not in written["template_config"]
     assert queued == [("t9", written["template_config"])]
@@ -234,8 +242,9 @@ async def test_update_endpoint_drops_client_structure_carries_stored_and_queues(
 def _restore(monkeypatch, current: dict, snapshot: dict):
     tpl = _Tpl(id="t5", name="n", description=None, tags=[], template_config=current)
     ver = SimpleNamespace(template_id="t5", name="n", description=None, tags=[], template_config=snapshot)
-    monkeypatch.setattr(crud, "get_template", lambda db, tid, user_id=None: tpl)
-    monkeypatch.setattr(crud, "get_template_version", lambda db, vid, user_id=None: ver)
+    for mod in (crud, main):
+        monkeypatch.setattr(mod, "get_template", lambda db, tid, user_id=None: tpl)
+        monkeypatch.setattr(mod, "get_template_version", lambda db, vid, user_id=None: ver)
     monkeypatch.setattr(crud, "create_template_version", lambda db, t, skip_if_unchanged=False: None)
     db = SimpleNamespace(commit=lambda: None, refresh=lambda t: None)
     monkeypatch.setattr(main, "restore_template_version", lambda **kw: crud.restore_template_version(db, **{
@@ -244,8 +253,8 @@ def _restore(monkeypatch, current: dict, snapshot: dict):
 
 
 async def test_restore_endpoint_carries_current_structure_for_same_sheet(monkeypatch, queued):
-    current = {"generation_mode": "skill_sheet_guided", "skill_sheet": "S", "sheet_structure": {"sheet_hash": "cur"}}
-    snapshot = {"generation_mode": "skill_sheet_guided", "skill_sheet": "S", "sheet_structure": {"sheet_hash": "old"}}
+    current = {"generation_mode": "skill_sheet_guided", "skill_sheet": GOOD, "sheet_structure": {"sheet_hash": "cur"}}
+    snapshot = {"generation_mode": "skill_sheet_guided", "skill_sheet": GOOD, "sheet_structure": {"sheet_hash": "old"}}
     tpl = _restore(monkeypatch, current, snapshot)
     r = await main.restore_template_version_endpoint("t5", "v1", _USER, None)
     assert r["success"]
@@ -254,30 +263,24 @@ async def test_restore_endpoint_carries_current_structure_for_same_sheet(monkeyp
 
 
 async def test_restore_endpoint_strips_snapshot_structure_for_other_sheet(monkeypatch, queued):
-    current = {"generation_mode": "skill_sheet_guided", "skill_sheet": "S", "sheet_structure": {"sheet_hash": "cur"}}
-    snapshot = {"generation_mode": "skill_sheet_guided", "skill_sheet": "OLD", "sheet_structure": _FORGED}
+    current = {"generation_mode": "skill_sheet_guided", "skill_sheet": GOOD, "sheet_structure": {"sheet_hash": "cur"}}
+    snapshot = {"generation_mode": "skill_sheet_guided", "skill_sheet": GOOD2, "sheet_structure": _FORGED}
     tpl = _restore(monkeypatch, current, snapshot)
     await main.restore_template_version_endpoint("t5", "v1", _USER, None)
     assert "sheet_structure" not in tpl.template_config
-    assert tpl.template_config["skill_sheet"] == "OLD"
+    assert tpl.template_config["skill_sheet"] == GOOD2
     assert queued == [("t5", tpl.template_config)]
 
 
 async def test_skill_sheet_save_endpoint_queues_new_template(monkeypatch, queued):
     written = {}
 
-    async def fake_cov(self, sheet, key):
-        return ["A"]
-
-    monkeypatch.setattr(main.TemplateManager, "extract_coverage_sections", fake_cov)
-    monkeypatch.setattr(main, "get_system_api_key", lambda *a: "k")
-
     def fake_create(db, **kw):
         written.update(kw)
         return _Tpl(id="s1", template_config=kw["template_config"])
 
     monkeypatch.setattr(main, "create_template", fake_create)
-    req = main.SkillSheetSaveRequest(skill_sheet="S", scan_type="CT", template_name="T")
+    req = main.SkillSheetSaveRequest(skill_sheet=GOOD, scan_type="CT", template_name="T")
     r = await main.skill_sheet_save_endpoint(req, _USER, None)
     assert r == {"success": True, "template_id": "s1"}
     assert "sheet_structure" not in written["template_config"]

@@ -44,6 +44,7 @@ from .report_reconcile import (  # noqa: F401 — re-exported; tests patch these
     q_finding, q_present, route_finding, split_findings,
 )
 from . import linked_normals as _ln
+from .hybrid_stack.session_rules import RECOMMENDATIONS_RULE
 from . import normal_groups as _ng
 from . import report_reconcile as _rc
 
@@ -262,9 +263,21 @@ STACK_FALLBACK_DROP = {"Companion Matrix", "Clinical Lane", "Impression Exemplar
                        "Conditional Suppression Rules", "Interpretive Clause Rules", "Region Normals",
                        "Recommendation Scope"}
 
-# The findings block's last line when the radiologist ticked recommendations (scratchpad copilot spec §6). The
-# frontend writes the same label (regionState.RECS_LINE).
-RECS_LINE = "Recommendations (selected by the radiologist):"
+# Bullets a stack brief drops from the sections it keeps: the impression phrases the confirmed conclusion, so the
+# sheet's rule to carry findings descriptors into it would add what the conclusion does not contain (probe 2026-10-12).
+STACK_DROP_BULLETS = {"Descriptor propagation"}
+# The history is never written into the report (L-36); a sheet that lists it as a section would get it written,
+# because the hardening makes every declared section mandatory (pancreas slim sheet, 2026-10-12).
+_HISTORY_SECTION = re.compile(r"(?i)^(?:clinical\s+)?(?:history|indication|details|information)$|^clinical\s+(?:details|information)$")
+
+
+def _without_history_section(b: Bullet) -> Bullet:
+    m = re.match(r"^(\s*-\s+\*\*Sections:\*\*\s*)(.*)$", b.lines[0]) if b.label == "Sections" and b.lines else None
+    if not m:
+        return b
+    sep = "; " if ";" in m.group(2) else ", "
+    kept = [x.strip() for x in re.split(r"[;,]", m.group(2)) if x.strip() and not _HISTORY_SECTION.match(x.strip().rstrip("."))]
+    return Bullet(b.label, [m.group(1) + sep.join(kept)] + b.lines[1:])
 
 
 def stack_fallback(sheet: str, conclusion: str, declined: Sequence[str] = ()) -> Brief:
@@ -276,7 +289,8 @@ def stack_fallback(sheet: str, conclusion: str, declined: Sequence[str] = ()) ->
     try:
         secs = [s for s in parse_sheet(_ln.strip_links(sheet)) if s.heading not in STACK_FALLBACK_DROP]
         for s in secs:
-            s.bullets = [b for b in s.bullets if b.label not in DROP_TOP_BULLETS and not b.label.startswith("Normal-study path")]
+            s.bullets = [_without_history_section(b) for b in s.bullets if b.label not in DROP_TOP_BULLETS
+                         and b.label not in STACK_DROP_BULLETS and not b.label.startswith("Normal-study path")]
     except Exception:  # the sheet itself may be what failed: structure from the findings block alone
         secs = []
     # Always (review 2026-10-12): the sweep order and style rules must never fill a step with normals of their own.
@@ -294,17 +308,13 @@ def stack_fallback(sheet: str, conclusion: str, declined: Sequence[str] = ()) ->
         "go: a region or structure it lists that the input does not mention is left out entirely, never filled with a "
         "normal statement (no 'not dilated', 'normal' or 'no lymphadenopathy' the input does not contain). Every "
         "statement in the input appears, with its meaning unchanged; statements about the same structure may be joined "
-        "into one sentence, naming only the structures the input names; nothing is added."])]))
-    secs.append(Section("Scratchpad Recommendations", bullets=[Bullet("Recommendations", [
-        f"- **Recommendations:** when the FINDINGS input has a line starting '{RECS_LINE}', write a section headed "
-        "`RECOMMENDATIONS:` on its own line after the impression (the one exception to the rules that recommendations "
-        "sit in the impression and that no section is added) containing exactly those items, each in report style, "
-        "adding none and dropping none; never put them in the impression or the findings. With no such line, write no "
-        "recommendations section."])]))
+        "into one sentence, naming only the structures the input names; nothing is added."]),
+        Bullet("Recommendations", [RECOMMENDATIONS_RULE])]))   # the one rule both stack briefs share (D22)
     if conclusion.strip():
         secs.append(Section("Impression Plan", bullets=[Bullet("Impression plan", [
             "- **Confirmed conclusion (the radiologist's own; write the impression from it in report style, keeping "
-            "every finding it names and adding nothing it does not contain — no grade, negative or recommendation):** "
+            "every finding it names and adding nothing it does not contain — no diagnosis, grade or negative; a "
+            "recommendation only as the session rules allow):** "
             f'"{conclusion.strip()}"'])]))
     return Brief(text=render(secs), decisions={"stack_fallback": True, "options": []}, reconcile_ms=0)
 

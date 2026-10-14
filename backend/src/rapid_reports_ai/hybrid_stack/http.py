@@ -25,3 +25,42 @@ async def post_json(url: str, api_key: str, body: dict[str, Any], timeout_s: flo
         async with httpx.AsyncClient(transport=transport) as c:
             return await c.post(url, json=body, headers=headers, timeout=timeout_s)
     return await _shared().post(url, json=body, headers=headers, timeout=timeout_s)
+
+
+CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
+GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
+# The same model on Groq: the prompts were validated on these models (Groq Qwen: reasoning is on or off, 16,384 cap).
+_ON_GROQ = {"qwen-3.8-27b": "qwen/qwen3.8-27b", "gpt-oss-120b": "openai/gpt-oss-120b"}
+_GROQ_QWEN_MAX = 16384
+
+
+def groq_body(body: dict[str, Any]) -> dict[str, Any] | None:
+    model = _ON_GROQ.get(body.get("model", ""))
+    if model is None:
+        return None
+    out = {**body, "model": model}
+    if model.startswith("qwen/"):
+        if "reasoning_effort" in out:
+            out["reasoning_effort"] = "none" if out["reasoning_effort"] == "none" else "default"
+        if "max_tokens" in out:
+            out["max_tokens"] = min(int(out["max_tokens"]), _GROQ_QWEN_MAX)
+    return out
+
+
+async def post_chat(body: dict[str, Any], timeout_s: float, transport: httpx.AsyncBaseTransport | None = None,
+                    label: str = "stack") -> httpx.Response:
+    """A chat call on Cerebras; on a rate limit, a server error or no response, the same request on Groq (live
+    2026-10-12: Cerebras 'high traffic' 429s blanked the steps that had no fallback). The caller handles the reply."""
+    import logging, os
+    try:
+        r = await post_json(CEREBRAS_URL, os.environ.get("CEREBRAS_API_KEY", ""), body, timeout_s, transport)
+        if r.status_code != 429 and r.status_code < 500:
+            return r
+        reason = f"HTTP {r.status_code}"
+    except httpx.HTTPError as e:
+        reason = type(e).__name__
+    alt = groq_body(body)
+    if alt is None or not os.environ.get("GROQ_API_KEY"):
+        raise httpx.HTTPError(f"Cerebras {reason}; no Groq fallback")
+    logging.getLogger(__name__).warning("[%s] Cerebras %s; Groq %s", label, reason, alt["model"])
+    return await post_json(GROQ_URL, os.environ["GROQ_API_KEY"], alt, timeout_s, transport)

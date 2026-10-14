@@ -139,3 +139,85 @@ def test_other_quote_is_optional():
     issue = SemanticIssue(kind="unit_anomaly", quote="joint effusion", message="x")
     [f] = _locate_flags(FINDINGS, SemanticFindings(issues=[issue]))
     assert f.related_start is None
+
+
+# --- scratchpad fields: suggestion and blocking (severity stays medium for the banner) ---
+
+
+def test_conflicts_block_in_the_scratchpad_but_stay_medium():
+    issue = SemanticIssue(kind="laterality_conflict", quote="left ankle mortise", message="m")
+    f = _locate_flags(FINDINGS, SemanticFindings(issues=[issue]))[0]
+    assert f.blocking and f.severity == "medium" and f.suggestion == ""
+
+
+def test_certain_garble_is_advisory_with_its_suggestion():
+    text = "Upstream dilatation of the pancreatic duck."
+    issue = SemanticIssue(kind="garbled_phrase", quote="duck", message="m", suggestion="duct", changes_meaning=False)
+    f = _locate_flags(text, SemanticFindings(issues=[issue]))[0]
+    assert not f.blocking and f.suggestion == "duct"
+
+
+def test_ambiguous_garble_blocks_and_drops_any_suggestion():
+    text = "The duct is dilated with a distal storm."
+    issue = SemanticIssue(kind="garbled_phrase", quote="storm", message="m", suggestion="stricture", changes_meaning=True)
+    f = _locate_flags(text, SemanticFindings(issues=[issue]))[0]
+    assert f.blocking and f.suggestion == ""
+
+
+def test_garble_with_no_suggestion_blocks():
+    text = "A tiny non-2 mm calculus."
+    issue = SemanticIssue(kind="garbled_phrase", quote="calculus", message="m", changes_meaning=False)
+    assert _locate_flags(text, SemanticFindings(issues=[issue]))[0].blocking
+
+
+def test_garble_on_a_number_or_side_always_blocks():
+    text = "A tiny non-2 mm calculus in the left kidny."
+    for quote in ("non-2 mm", "left kidny"):
+        issue = SemanticIssue(kind="garbled_phrase", quote=quote, message="m", suggestion="x", changes_meaning=False)
+        assert _locate_flags(text, SemanticFindings(issues=[issue]))[0].blocking
+
+
+def test_type_alias_and_missing_message_are_accepted():
+    issue = SemanticIssue.model_validate({"type": "garbled_phrase", "quote": "duck", "suggestion": "duct"})
+    assert issue.kind == "garbled_phrase" and issue.message == ""
+
+
+def test_a_garble_on_a_number_never_carries_a_suggestion():
+    text = "Non 4 mm calculus in the right kidney."
+    issue = SemanticIssue(kind="garbled_phrase", quote="Non 4 mm calculus", message="m", suggestion="No 4 mm calculus",
+                          changes_meaning=False)
+    f = _locate_flags(text, SemanticFindings(issues=[issue]))[0]
+    assert f.blocking and f.suggestion == ""
+
+
+def test_message_is_required_in_the_schema_but_tolerated_when_missing():
+    assert "message" in SemanticIssue.model_json_schema()["required"]
+    assert SemanticIssue.model_validate({"kind": "garbled_phrase", "quote": "x"}).message == ""
+
+
+def test_a_suggestion_that_brings_in_a_side_number_or_negation_blocks_and_is_withheld():
+    """Review 2026-10-12: the backstop read only the garbled words, so a sound-alike could add one in a click."""
+    text = "The write kidney has a stone measuring for mm. Know free fluid."
+    for quote, suggestion in (("write kidney", "right kidney"), ("for mm", "4 mm"), ("Know free", "No free")):
+        issue = SemanticIssue(kind="garbled_phrase", quote=quote, message="m", suggestion=suggestion,
+                              changes_meaning=False)
+        f = _locate_flags(text, SemanticFindings(issues=[issue]))[0]
+        assert f.blocking and f.suggestion == "", quote
+
+
+def test_a_plain_garble_keeps_its_suggestion():
+    text = "The common bile duck is dilated."
+    issue = SemanticIssue(kind="garbled_phrase", quote="duck", message="m", suggestion="duct", changes_meaning=False)
+    f = _locate_flags(text, SemanticFindings(issues=[issue]))[0]
+    assert not f.blocking and f.suggestion == "duct"
+
+
+def test_side_conflicts_cover_compartments_and_the_picked_side_and_are_asked():
+    """A side within one structure counts, the scan type's side is compared, and a true but unexpected side is asked."""
+    from rapid_reports_ai.dictation_semantic import SEMANTIC_SYSTEM_PROMPT as P
+    line = next(l for l in P.split("\n") if l.startswith("- laterality_conflict:"))
+    for words in ("medial or lateral", "anterior or posterior", "superior or inferior", "quadrant", "scan type may carry the side",
+                  "unexpected side", "as a question", "bilateral findings", "part of a structure's name"):
+        assert words in line, words
+    # case-agnostic: no single worked example in the definition
+    assert "knee" not in line.lower() and "meniscus" not in line.lower()

@@ -137,3 +137,40 @@ def test_semantic_flags_do_not_gate(authed_client, monkeypatch):
     body = r.json()
     assert body["flags"][0]["kind"] == "laterality_conflict"
     assert body["should_gate"] is False
+
+
+def test_scratchpad_skips_the_regex_tier_and_always_runs_the_model(authed_client, monkeypatch):
+    """Unfinished sentences are Jev's in the scratchpad: no regex truncation flag, and tier 2 still runs."""
+    called = []
+    import rapid_reports_ai.dictation_semantic as ds
+    async def _fake_check(*a, **k):
+        called.append(1)
+        return []
+
+    monkeypatch.setattr(ds, "check_semantic", _fake_check)
+    r = authed_client.post("/api/dictation/check",
+                           json={"findings": "- There is a lesion in the", "include_semantic": True, "skip_tier1": True})
+    assert r.status_code == 200
+    assert r.json()["flags"] == [] and called == [1]
+
+
+def test_a_library_pick_side_reaches_the_check_and_a_side_conflict_blocks(authed_client, monkeypatch):
+    """Library sessions send the picked side in the scan type line; the check gets it, and a side flag holds Confirm."""
+    import rapid_reports_ai.dictation_semantic as ds
+    from rapid_reports_ai.dictation_semantic import SemanticFindings, SemanticIssue
+    seen = {}
+    findings = "Right knee. Horizontal tear of the medial meniscus."
+
+    async def _fake_analyse(scan_type, clinical_history, text):
+        seen.update(scan_type=scan_type, history=clinical_history)
+        return SemanticFindings(issues=[SemanticIssue(kind="laterality_conflict", quote="Right knee.",
+                                                      message="Left knee picked, right knee dictated: which is it?")])
+
+    monkeypatch.setattr(ds, "_default_analyse", _fake_analyse)
+    r = authed_client.post("/api/dictation/check", json={
+        "findings": findings, "include_semantic": True, "skip_tier1": True,
+        "scan_type": "MRI Knee (left)", "clinical_history": "Medial joint line pain."})
+    [flag] = r.json()["flags"]
+    assert seen == {"scan_type": "MRI Knee (left)", "history": "Medial joint line pain."}
+    assert flag["kind"] == "laterality_conflict" and flag["blocking"] is True
+    assert findings[flag["start"]:flag["end"]] == "Right knee."

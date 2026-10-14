@@ -63,6 +63,10 @@ class IntegrityFlag:
     # The other statement of a conflict (tier 2), so the editor can mark both halves.
     related_start: int | None = None
     related_end: int | None = None
+    # Scratchpad only (the banner gates on severity and ignores these): the words most likely meant, and whether the
+    # issue could change what the report says (side, number, presence, the finding named), which holds Confirm.
+    suggestion: str = ""
+    blocking: bool = False
 
 
 def _last_content_line(text: str) -> tuple[str, int]:

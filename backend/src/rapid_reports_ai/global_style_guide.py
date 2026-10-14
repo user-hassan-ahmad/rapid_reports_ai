@@ -421,3 +421,108 @@ VERIFICATION_CHECKLIST_BRIEF = _swaps(
     ("- The report contains ONLY the sections defined in the skill sheet's Structural Pattern — no additional sections, headers, or preambles",
      "- The report contains ONLY the sections defined in the skill sheet's Structural Pattern — no additional sections, headers, or preambles; a CLINICAL HISTORY section the skill sheet defines is supplied separately and not written by you"),
 )
+
+# ── Scratchpad (stack) variants ─────────────────────────────────────────────
+# Used when the generator reads a template stack brief (template_stack.stack_brief): every clinical statement, the
+# conclusion and the removed sentences were confirmed in the scratchpad, so the instructions about mandatory
+# negatives, conditional suppression, interpretive clauses and the impression's own synthesis or recommendations are
+# taken out (mirrors quick_report_prompts' _STACK set, 2026-10-12). Built from the raw texts, not the _BRIEF ones: the
+# raw path writes a sheet-defined CLINICAL HISTORY section itself, and a stack session keeps that. Production
+# template reports are unchanged.
+TEMPLATE_SHEET_HEADER_STACK = """## TEMPLATE SKILL SHEET
+
+The following skill sheet defines this radiologist's structure and style for this template. Its negatives, normal
+statements, interpretive clauses and case deliberation were taken out: the radiologist confirmed every statement in
+the FINDINGS input, and the conclusion, in the scratchpad before generation. Its context rules and fixed lines stay.
+The skill sheet inherits the Global Style Guide; where they conflict, the skill sheet takes precedence, except over
+its Scratchpad Session rules, which outrank both."""
+
+GLOBAL_STYLE_GUIDE_STACK = _swaps(
+    GLOBAL_STYLE_GUIDE,
+    (_between(GLOBAL_STYLE_GUIDE, "### Impression as Synthesis", "### Incidental Findings"),
+     """### Impression
+
+The impression phrases the radiologist's confirmed conclusion (the skill sheet's Confirmed Conclusion) in report
+style and in the skill sheet's impression format: its findings, negatives and any recommendation, in its order. It
+adds no finding, diagnosis, negative, synthesis or recommendation of its own, and uses the same terminology as
+FINDINGS. Without a confirmed conclusion, the impression names only the principal findings of FINDINGS.
+
+"""),
+    ("""Before including an incidental in the impression: does it require clinical action,
+have malignant potential, or exceed reporting thresholds? If none — document in
+findings only.
+""", ""),
+    (_between(GLOBAL_STYLE_GUIDE, "### Consolidation", "### Missing Data Handling"),
+     """### Consolidation
+
+Paragraphs, order and joining follow the skill sheet's structure and paragraph rules. Statements about the same
+structure, or normal structures a paragraph names together, may share one sentence, naming only the structures the
+findings name; every statement keeps its meaning.
+
+When bilateral findings of the same type and severity are present, combine into
+a single sentence with directional comparison if asymmetric.
+
+"""),
+    ("""But the skill sheet's
+mandatory negatives and systems review statements exist independently of the
+dictation. A radiologist does not dictate "no pleural effusion" — the reporting
+convention requires it to be stated. The absence of a structure from the
+dictation does not mean it was not assessed; it means it was normal and the
+convention expects an explicit normal statement.""",
+     """The FINDINGS input already
+carries every normal and negative statement the radiologist confirmed. A
+structure it does not mention is left out, never given a normal or negative
+statement of its own."""),
+    ("The principle: generate everything the skill sheet says must always be present.",
+     "The principle: write every statement in the FINDINGS input, and nothing it does not contain."),
+    ("Management inference, differential synthesis, and symptom attribution belong in\nIMPRESSION only.",
+     "Symptom attribution belongs in IMPRESSION only, and only where the confirmed conclusion\nstates it."),
+    ("""Recommendations must be specific""", """A recommendation appears only as the session rules allow; when it does, recommendations must be specific"""),
+    ("""When a named guideline specifies the management pathway, state it and
+commit. Reserve hedging for genuine clinical ambiguity.""", ""),
+    ("Apply preferred/suppressed term pairs from the skill sheet across ALL sections\nincluding the impression. "
+     "If a term is suppressed, it must never appear anywhere.",
+     "Apply preferred/suppressed term pairs from the skill sheet to the wording the report adds (the skill sheet's "
+     "wording, joining words, the impression's phrasing); a term in the FINDINGS input or the confirmed conclusion "
+     "is kept as the radiologist said it."),
+)
+
+PRE_WRITING_ANALYSIS_STACK = _swaps(
+    PRE_WRITING_ANALYSIS,
+    (_between(PRE_WRITING_ANALYSIS, "1. **Companion inventory**", "2. **Impression plan**"),
+     """1. **Placement**: For each statement in FINDINGS, decide its section and paragraph
+   under the skill sheet's structure: an abnormal finding leads, with its related
+   statements. Every statement is placed once; no statement is added or dropped.
+
+   **Clinical history as focus**: Use prior events, diagnoses and procedures in the
+   history to decide which statements the report must emphasise. The history never
+   creates a field to fill: a structure, measurement or negative FINDINGS does not
+   contain is not added because the history makes it relevant.
+
+"""),
+    (_between(PRE_WRITING_ANALYSIS, "2. **Impression plan**", "3. **Clinical context check**"),
+     """2. **Impression**: Phrase the confirmed conclusion in report style and in the skill
+   sheet's impression format, keeping every finding it names and adding nothing it
+   does not contain.
+
+"""),
+    ("""If yes, let them change the
+   interpretation, confidence or urgency of the affected statement.""",
+     """If yes, let them decide emphasis
+   and order; a confirmed statement keeps its meaning and confidence."""),
+    ("""Scan the skill sheet for conditional fields
+   triggered by these findings. Verify all IF/THEN interpretive clauses that
+   apply.""", "Apply each rule the skill sheet keeps whose condition this case meets."),
+)
+
+VERIFICATION_CHECKLIST_STACK = _swaps(
+    VERIFICATION_CHECKLIST,
+    (_between(VERIFICATION_CHECKLIST, "- Every mandatory negative", "- No suppressed terms"),
+     """- Every statement in FINDINGS appears with its meaning unchanged; no normal or negative statement appears that FINDINGS does not contain, for any structure
+- No DO NOT ASSERT statement appears anywhere, in any wording, impression included
+- The impression phrases the confirmed conclusion: every finding it names, nothing it does not contain
+"""),
+    ("- All triggered interpretive clauses are appended\n", ""),
+    ("- Recommendations are specific (specialty, urgency, pathway)",
+     "- A recommendation appears only as the session rules allow; one that does is specific (specialty, urgency, pathway)"),
+)

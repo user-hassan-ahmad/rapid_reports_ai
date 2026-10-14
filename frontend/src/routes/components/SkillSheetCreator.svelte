@@ -1,5 +1,5 @@
 <script>
-	import { createEventDispatcher, onMount, tick } from 'svelte';
+	import { createEventDispatcher, onDestroy, onMount, tick } from 'svelte';
 	import { API_URL } from '$lib/config';
 	import { token } from '$lib/stores/auth';
 	import { tagsStore } from '$lib/stores/tags';
@@ -11,6 +11,12 @@
 	import VoicePhrases from './skill-sheet-summary/VoicePhrases.svelte';
 	import ConventionRules from './skill-sheet-summary/ConventionRules.svelte';
 	import ImpressionFlow from './skill-sheet-summary/ImpressionFlow.svelte';
+	import ChatCards from '$lib/chat-router/ChatCards.svelte';
+	import { postRouterCard, postRouterUndo } from '$lib/chat-router/api';
+	import RulesStep from '$lib/template-rules/RulesStep.svelte';
+	import StyleChecks from '$lib/template-rules/StyleChecks.svelte';
+	import { postApplyDecisions, postDecide, postSheetChecks } from '$lib/template-rules/api';
+	import { createChecksLoader } from '$lib/template-rules/checksLoader';
 
 	marked.setOptions({ breaks: true, gfm: true });
 
@@ -53,6 +59,8 @@
 
 	// Phase 2 — workbench
 	let skillSheet = '';
+	// The writer that produced the base sheet (stored on save as evidence), not any later refine of it.
+	let analyserVersion = '';
 	/** @type {{
 	 *   structure?: { sections: { name: string, paragraphs: string[] }[] },
 	 *   voice?: { description: string, phrases: string[] },
@@ -60,16 +68,24 @@
 	 *   impression?: { flow: string[], detail: string }
 	 * } | null} */
 	let summary = null;
+	/** The save function's report of a statement it reworded while vetting the sheet ('' when none). */
+	let sheetNotice = '';
 	/**
-	 * Chat state shared between the questions stage (Q&A) and the refine stage.
-	 * Refine-stage turns carry verification-loop metadata on both the user and
-	 * assistant halves; questions-stage turns only carry {role, content}.
+	 * Chat state of the refine stage. Refine-stage turns carry verification-loop
+	 * metadata on both the user and assistant halves.
 	 * @typedef {{
 	 *   role: 'user'|'assistant',
 	 *   content: string,
+	 *   wireContent?: string,
 	 *   isRefineTurn?: boolean,
 	 *   behavioralClaim?: string,
 	 *   preMutationSkillSheet?: string | null,
+	 *   preMutationDecisions?: any[] | null,
+	 *   route?: string,
+	 *   changes?: any[],
+	 *   changesSig?: string | null,
+	 *   resultHash?: string | null,
+	 *   cards?: any[],
 	 *   originalInstruction?: string,
 	 *   status?: 'pending' | 'rejected' | 'confirmed' | null,
 	 * }} ChatMessage
@@ -80,10 +96,27 @@
 	/** @type {HTMLInputElement | null} */
 	let chatInputEl = null;
 
-	// Questions — unified model: each Q has question, suggestions, and a status
-	/** @type {{ question: string, suggestions: string[], status: 'pending'|'answered'|'skipped', answer: string }[]} */
-	let questions = [];
-	let activeQuestionIdx = -1; // which Q has the custom input open
+	// Rules step (spec 2026-10-13-template-rules-step-design): the decision run's cards, answered before the writer
+	// runs; the answers become the decision ledger, applied by code on every save. Nothing here blocks creation: a
+	// failed run shows the notice and the writer infers the rules as before.
+	/** @type {import('$lib/template-rules/types').DecideResponse | null} */
+	let rules = null;
+	let rulesLoading = false;
+	let rulesNotice = '';
+	/** @type {Record<string, unknown>} */
+	let rulesRecord = {};
+	/** @type {import('$lib/template-rules/types').LedgerEntry[]} */
+	let decisions = [];
+	/** @type {import('$lib/template-rules/types').DecisionChange[]} */
+	let lastChanges = [];
+	/** cards a refine turn returned (a confirmed item the edit would have removed: kept, and asked about here) */
+	/** @type {import('$lib/template-rules/types').DecisionCard[]} */
+	let chatCards = [];
+	let chatCardsBusy = false;   // a card answer (refine-stage card or Style check) is being applied
+	/** the Style step's checks for the sheet in hand (null: none, or they failed; the summary shows alone) */
+	/** @type {import('$lib/template-rules/types').SheetChecksResponse | null} */
+	let checks = null;
+	const NO_PRECHECK = "We couldn't pre-check your rules; review them on the Style step.";
 
 	let sampleFindings = '';
 	let sampleClinicalHistory = '';
@@ -106,14 +139,15 @@
 	// without changing anything, and to flag stale state when they have.
 	let lastAnalyzedSnapshot = '';
 
-	let phase = /** @type {1|2} */ (1);
-	/** @type {'summary'|'questions'|'test'|'refine'} */
+	let phase = /** @type {1|'rules'|2} */ (1);
+	/** @type {'summary'|'test'|'refine'} */
 	let stage = 'summary';
 	let loading = false;
 	let loadingTest = false;
 	let loadingNewTestCase = false;
 	let error = '';
 	let hasGenerated = false;
+	let previewStale = false; // the sheet changed since the shown preview was generated
 
 	let showSaveDialog = false;
 	let templateName = '';
@@ -167,11 +201,10 @@
 	}
 
 	// Stage navigation
-	const stageOrder = /** @type {const} */ (['summary', 'questions', 'test', 'refine']);
-	const stageLabels = { summary: 'Style', questions: 'Questions', test: 'Test', refine: 'Refine' };
+	const stageOrder = /** @type {const} */ (['summary', 'test', 'refine']);
+	const stageLabels = { summary: 'Style', test: 'Test', refine: 'Refine' };
 	const stageDescriptions = {
 		summary: "Here's what we learned from your reports",
-		questions: 'We have a few questions to fine-tune your template',
 		test: 'Review the pre-filled test case, edit if needed, then generate',
 		refine: 'Add corrections or rules — regenerate to see the effect'
 	};
@@ -191,8 +224,6 @@
 	}
 
 	$: canNavigate = stageOrder.map((_, i) => i <= maxStageReached);
-	$: pendingCount = questions.filter(q => q.status === 'pending').length;
-	$: allQuestionsResolved = questions.length > 0 && pendingCount === 0;
 
 	// Copy button state
 	let copyConfirm = false;
@@ -249,6 +280,19 @@
 			.map(({ role, content }) => ({ role, content }));
 	}
 
+	/** Each real instruction paired with the reply that followed it (the evidence stored with the new template). */
+	function toChatTurns(/** @type {any[]} */ history) {
+		/** @type {{instruction: string, response: string}[]} */
+		const turns = [];
+		for (let i = 0; i < history.length - 1; i++) {
+			const m = history[i], next = history[i + 1];
+			if (m?.role === 'user' && m.content?.trim() && next?.role === 'assistant') {
+				turns.push({ instruction: m.wireContent || m.content, response: next.content || '' });
+			}
+		}
+		return turns;
+	}
+
 	/** @param {string} path @param {Record<string, unknown>} body */
 	async function postJson(path, body) {
 		/** @type {Record<string, string>} */
@@ -272,7 +316,7 @@
 	function removeExample(i) { if (examples.length > 3) examples = examples.filter((_, idx) => idx !== i); }
 
 	$: filledCount = examples.filter((e) => e.content.trim()).length;
-	$: canAnalyse = filledCount >= 3 && scanType.trim() && !loading;
+	$: canAnalyse = filledCount >= 3 && scanType.trim() && !loading && !rulesLoading;
 
 	// ── Diversity check ───────────────────────────────────────────────
 	/** @type {{ score: number, summary: string, gaps: string[], suggestion: string } | null} */
@@ -327,27 +371,56 @@
 		error = '';
 		const filled = examples.filter((e) => e.content.trim());
 		if (filled.length < 3) { error = 'Please provide at least 3 example reports.'; return; }
+		rules = null; rulesNotice = ''; rulesRecord = {};
+		phase = 'rules';
+		rulesLoading = true;
+		let notice = '';
+		try {
+			// the study setup (scan type, protocol notes, the name if one is given yet) is the run's first evidence
+			const r = await postDecide($token, {
+				scan_type: scanType,
+				examples: filled,
+				template_name: templateName.trim(),
+				protocol_notes: protocolNotes.trim()
+			});
+			rules = r.success ? r : null;
+			notice = r.success ? r.notice || '' : NO_PRECHECK;
+		} catch (e) {
+			rules = null;
+			notice = NO_PRECHECK;
+		} finally { rulesLoading = false; }
+		rulesRecord = rules?.run ?? {};
+		// nothing to ask (or the run failed): straight on to the writer, which infers rules as before
+		if (!rules || (!rules.cards.length && !rules.more.length && !rules.kept.length)) {
+			rulesNotice = notice;
+			await buildTemplate(rules?.defaults ?? []);
+		}
+	}
+
+	/** The writer, with the Rules-step answers as decisions. @param {import('$lib/template-rules/types').DecisionChange[]} changes */
+	async function buildTemplate(changes) {
+		error = '';
+		lastChanges = changes;
+		const filled = examples.filter((e) => e.content.trim());
 		loading = true;
 		try {
 			const data = await postJson('/api/templates/skill-sheet/analyze', {
 				scan_type: scanType,
 				protocol_notes: protocolNotes.trim(),
-				examples: filled
+				examples: filled,
+				changes
 			});
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
+			decisions = Array.isArray(data.decisions) ? data.decisions : [];
+			chatCards = [];
+			analyserVersion = data.analyser_version || '';
+			sheetNotice = [rulesNotice, typeof data.notice === 'string' ? data.notice : ''].filter(Boolean).join(' ');
 			summary = (typeof data.summary === 'object' && data.summary !== null) ? data.summary : null;
 			sampleFindings = coerceToText(data.sample_findings);
 			sampleClinicalHistory = coerceToText(data.sample_clinical_history);
 			testFindings = sampleFindings;
 			testClinicalHistory = sampleClinicalHistory;
-			questions = (data.questions || []).slice(0, 3).map(q => ({
-				question: q.question,
-				suggestions: q.suggestions || [],
-				status: /** @type {'pending'} */ ('pending'),
-				answer: ''
-			}));
-			activeQuestionIdx = -1;
 			chatHistory = [];
 			hasGenerated = false;
 			testReport = '';
@@ -356,17 +429,38 @@
 			stage = 'summary';
 			lastAnalyzedSnapshot = currentExamplesSnapshot;
 			phase = 2;
+			checks = null;
+			checksLoader.reset();
+			loadChecks(true);
 		} catch (e) { error = e instanceof Error ? e.message : String(e); }
 		finally { loading = false; }
 	}
 
-	function rejectTurn(/** @type {number} */ assistantIndex) {
+	async function rejectTurn(/** @type {number} */ assistantIndex) {
 		const target = chatHistory[assistantIndex];
 		if (!target || target.role !== 'assistant') return;
 
-		if (typeof target.preMutationSkillSheet === 'string') {
-			skillSheet = target.preMutationSkillSheet;
+		if (target.route === 'router' && Array.isArray(target.changes) && target.changes.length) {
+			// a router turn reverses its own changes on the backend, so a later turn is never clobbered
+			try {
+				const r = await postRouterUndo($token, { skill_sheet: skillSheet, decisions, changes: target.changes,
+					changes_sig: target.changesSig, result_hash: target.resultHash });
+				if (!r.success) throw new Error(r.error);
+				skillSheet = r.skill_sheet;
+				if (Array.isArray(r.decisions)) decisions = r.decisions;
+				if (testReport) previewStale = true;
+			} catch (e) {
+				error = e instanceof Error ? e.message : String(e);
+				return;
+			}
+		} else {
+			if (typeof target.preMutationSkillSheet === 'string') {
+				skillSheet = target.preMutationSkillSheet;
+			}
+			if (Array.isArray(target.preMutationDecisions)) decisions = target.preMutationDecisions;
 		}
+		chatCards = [];   // they asked about the rejected edit
+		loadChecks();
 
 		// Mark this turn as rejected; also mark the triggering user turn if present.
 		// Index-0 case (no preceding user message) shouldn't happen in the refine
@@ -397,24 +491,34 @@
 		chatHistory = updated;
 	}
 
+	/** A router card tapped in the chat: applied by code on the backend (source "chat"), the reply appended. */
+	async function answerCard(/** @type {import('$lib/chat-router/types').CardAnswer} */ answer) {
+		if (loading || chatCardsBusy) return;
+		chatCardsBusy = true; error = '';
+		try {
+			const r = await postRouterCard($token, { skill_sheet: skillSheet, decisions, answer });
+			if (!r.success) throw new Error(r.error);
+			if (testReport && r.skill_sheet !== skillSheet) previewStale = true;
+			skillSheet = r.skill_sheet;
+			if (Array.isArray(r.decisions)) decisions = r.decisions;
+			/** @type {ChatMessage} */
+			const reply = { role: 'assistant', content: r.response, route: 'router', cards: r.cards || [] };
+			chatHistory = [...chatHistory, reply];
+			if (r.applied) loadChecks();
+		} catch (e) { error = e instanceof Error ? e.message : String(e); }
+		finally { chatCardsBusy = false; }
+	}
+
 	async function sendAnswer(/** @type {string} */ msg) {
-		if (!msg.trim() || !skillSheet) return;
+		if (!msg.trim() || !skillSheet || chatCardsBusy) return;
 		chatInput = '';
-		let fullMsg = msg;
+		const fullMsg = msg;
 
-		// If answering a specific question, mark it
-		if (activeQuestionIdx >= 0 && questions[activeQuestionIdx]) {
-			const q = questions[activeQuestionIdx];
-			fullMsg = `Q: ${q.question}\nA: ${msg}`;
-			questions[activeQuestionIdx] = { ...q, status: 'answered', answer: msg };
-			questions = questions; // trigger reactivity
-			activeQuestionIdx = -1;
-		}
-
-		// Verification-loop metadata only applies in the refine stage.
-		// Questions-stage messages stay unadorned so no banner renders for them.
+		// Verification-loop metadata only applies in the refine stage; a message sent from any other stage stays
+		// unadorned so no banner renders for it.
 		const isRefineTurn = stage === 'refine';
 		const preMutationSkillSheet = isRefineTurn ? skillSheet : null;
+		const preMutationDecisions = isRefineTurn ? decisions : null;
 
 		const lastAssistant = isRefineTurn
 			? [...chatHistory].reverse().find((m) => m.role === 'assistant')
@@ -429,8 +533,8 @@
 
 		/** @type {ChatMessage} */
 		const userMsg = isRefineTurn
-			? { role: 'user', content: msg, status: null, isRefineTurn: true }
-			: { role: 'user', content: msg };
+			? { role: 'user', content: msg, wireContent: fullMsg, status: null, isRefineTurn: true }
+			: { role: 'user', content: msg, wireContent: fullMsg };
 		chatHistory = [...chatHistory, userMsg];
 		loading = true; error = '';
 		try {
@@ -438,33 +542,49 @@
 				skill_sheet: skillSheet,
 				message: fullMsg,
 				chat_history: toWireChatHistory(chatHistory.slice(0, -1)),
-				rejection_context: rejectionContext
+				rejection_context: rejectionContext,
+				decisions,
+				// the last router turn's records unless rejected: "undo that" reverses them; the checks read their claims
+				last_changes: lastAssistant?.route === 'router' && lastAssistant.status !== 'rejected'
+					? lastAssistant.changes || [] : []
 			});
 			if (!data.success) throw new Error(data.error);
 			skillSheet = data.skill_sheet;
+			if (Array.isArray(data.decisions)) decisions = data.decisions;
+			// a router turn's cards sit on its own message (answered through /refine/card); the whole-sheet refine's kept
+			// cards (D3) stay in the Rules-step review above the chat
+			if (Array.isArray(data.cards)) chatCards = data.route === 'router' ? [] : data.cards;
+			if (data.applied !== false) loadChecks();
 			/** @type {ChatMessage} */
-			const assistantMsg = isRefineTurn
+			// a refused edit (applied === false) keeps the sheet and explains why: no change to verify
+			const assistantMsg = isRefineTurn && data.applied !== false
 				? {
 						role: 'assistant',
 						content: data.response,
 						behavioralClaim: data.behavioral_claim || '',
 						preMutationSkillSheet,
+						preMutationDecisions,
 						originalInstruction: msg,
 						status: 'pending',
-						isRefineTurn: true
+						isRefineTurn: true,
+						route: data.route,
+						changes: data.changes || [],
+						changesSig: data.changes_sig || null,
+						resultHash: data.result_hash || null,
+						cards: data.route === 'router' ? data.cards || [] : []
 				  }
-				: { role: 'assistant', content: data.response };
+				: { role: 'assistant', content: data.response, route: data.route,
+					cards: data.route === 'router' ? data.cards || [] : [] };
 			chatHistory = [...chatHistory, assistantMsg];
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 			chatHistory = chatHistory.slice(0, -1);
 		} finally { loading = false; }
 
-		// Auto-regenerate the preview so the user can verify the behavioral_claim
-		// against a fresh report without clicking Regenerate. No-op if testFindings
-		// isn't populated yet (e.g., still in questions stage).
-		if (isRefineTurn && stage === 'refine' && testFindings.trim()) {
-			runTestGenerate();
+		// The preview re-runs on demand (Update preview), not after every refine turn: it runs the full scratchpad
+		// path (grouping, assumed normals, generation). Flag it stale when the sheet changed under a shown report.
+		if (isRefineTurn && testReport && preMutationSkillSheet !== null && skillSheet !== preMutationSkillSheet) {
+			previewStale = true;
 		}
 	}
 
@@ -472,21 +592,49 @@
 		if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAnswer(chatInput); }
 	}
 
-	function clickSuggestion(/** @type {number} */ qIdx, /** @type {string} */ suggestion) {
-		activeQuestionIdx = qIdx; sendAnswer(suggestion);
+	/** A card a refine turn returned, answered: recorded on the ledger and applied to the sheet by code. */
+	async function applyChatCards(/** @type {import('$lib/template-rules/types').DecisionChange[]} */ changes) {
+		if (loading) return;
+		if (!changes.length) { chatCards = []; return; }
+		chatCardsBusy = true; error = '';
+		try {
+			const r = await postApplyDecisions($token, {
+				skill_sheet: skillSheet, decisions,
+				changes: changes.map((c) => ({ ...c, source: 'creation' })), source: 'creation'
+			});
+			if (!r.success) throw new Error(r.error || 'Could not apply that choice');
+			if (testReport && r.skill_sheet !== skillSheet) previewStale = true;
+			skillSheet = r.skill_sheet;
+			decisions = r.decisions;
+			chatCards = [];
+			loadChecks();
+		} catch (e) { error = e instanceof Error ? e.message : String(e); }
+		finally { chatCardsBusy = false; }
 	}
-	function openCustomAnswer(/** @type {number} */ qIdx) { activeQuestionIdx = qIdx; chatInput = ''; }
-	function skipQuestion(/** @type {number} */ qIdx) {
-		questions[qIdx] = { ...questions[qIdx], status: 'skipped', answer: '' };
-		questions = questions;
+
+	/** The Style-step checks for the sheet in hand: re-runs debounced, skipped when nothing changed, only the newest
+	 * answer shown (checksLoader). Fail-soft: none shown. `now` runs at once (a sheet just opened or built). */
+	const checksLoader = createChecksLoader((body) => postSheetChecks($token, body), (r) => { checks = r; });
+	onDestroy(() => checksLoader.reset());   // no debounced run after the component is gone
+	function loadChecks(now = false) {
+		checksLoader.request(skillSheet, decisions, { now });
 	}
-	function unskipQuestion(/** @type {number} */ qIdx) {
-		questions[qIdx] = { ...questions[qIdx], status: 'pending', answer: '' };
-		questions = questions;
-	}
-	function skipAllQuestions() {
-		questions = questions.map(q => q.status === 'pending' ? { ...q, status: 'skipped' } : q);
-		goToStage('test');
+
+	/** One Style-check tap: recorded on the ledger and applied by code at once; then the checks re-run. */
+	/** @returns {Promise<boolean>} false when the change was not applied (the open editor keeps its draft) */
+	async function applyStyle(/** @type {import('$lib/template-rules/types').DecisionChange[]} */ changes) {
+		if (loading || chatCardsBusy || !changes.length) return false;
+		chatCardsBusy = true; error = '';
+		try {
+			const r = await postApplyDecisions($token, { skill_sheet: skillSheet, decisions, changes, source: 'creation' });
+			if (!r.success) throw new Error(r.error || 'Could not apply that choice');
+			if (testReport && r.skill_sheet !== skillSheet) previewStale = true;
+			skillSheet = r.skill_sheet;
+			decisions = r.decisions;
+			loadChecks();
+			return true;
+		} catch (e) { error = e instanceof Error ? e.message : String(e); return false; }
+		finally { chatCardsBusy = false; }
 	}
 
 	async function regenerateTestCase() {
@@ -517,6 +665,7 @@
 	async function runTestGenerate() {
 		if (!skillSheet || !testFindings.trim()) return;
 		loadingTest = true;
+		previewStale = false;
 		error = '';
 		prevReport = testReport;
 		testReport = '';
@@ -552,7 +701,7 @@
 	}
 
 	async function saveAsTemplate() {
-		if (!templateName.trim() || !skillSheet) return;
+		if (!templateName.trim() || !skillSheet || chatCardsBusy) return;
 		// Saving is itself a confirmation of every still-pending refine turn.
 		chatHistory = chatHistory.map((m) =>
 			m.status === 'pending' ? { ...m, status: 'confirmed' } : m
@@ -563,7 +712,12 @@
 				skill_sheet: skillSheet,
 				scan_type: scanType,
 				template_name: templateName.trim(),
-				tags
+				tags,
+				analyser_version: analyserVersion,
+				decisions,
+				rules_step: rulesRecord,
+				examples: examples.filter((e) => e.content.trim()),
+				chat_turns: toChatTurns(chatHistory)
 			});
 			if (!data.success) throw new Error(data.error || 'Save failed');
 			showSaveDialog = false; saved = true;
@@ -641,6 +795,7 @@
 			{#if filledCount < 3}
 				<p class="px-5 pt-3 pb-0 text-[11px] text-gray-600">For best results, include a mix — a straightforward case, one with findings, and a complex one.</p>
 			{/if}
+			<p class="px-5 pt-1 pb-0 text-[11px] text-gray-600">Your example reports are kept with this template (with names, dates and ID numbers removed) so it can be improved later. They're deleted if you delete the template.</p>
 			<div class="p-5 pt-2 space-y-3">
 				<div class="flex items-center justify-between">
 					<label class="text-xs font-medium text-gray-400 uppercase tracking-wider">
@@ -715,6 +870,27 @@
 		</div>
 	</div>
 
+<!-- ── Rules step: decisions before the sheet ────────────────────────── -->
+{:else if phase === 'rules'}
+	<div class="max-w-2xl mx-auto py-6 space-y-4">
+		<div class="flex items-center justify-between">
+			<button class="text-xs text-gray-500 hover:text-gray-300 transition-colors" on:click={() => { phase = 1; }} disabled={loading || rulesLoading}>&larr; Reports</button>
+			<span class="text-xs font-medium text-gray-400 uppercase tracking-wider truncate ml-2">{scanType}</span>
+		</div>
+		<h3 class="text-lg text-white">Check your rules</h3>
+		{#if rulesLoading}
+			<p class="text-sm text-gray-400 flex items-center gap-2" role="status"><span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>Checking your examples…</p>
+		{:else if loading}
+			<p class="text-sm text-gray-400 flex items-center gap-2" role="status"><span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>Building your template…</p>
+		{:else if error}
+			<p class="text-sm text-red-400">{error}</p>
+			<button class="btn-primary text-sm" on:click={() => buildTemplate(lastChanges)}>Try again</button>
+		{:else if rules}
+			<RulesStep cards={rules.cards} more={rules.more} kept={rules.kept} defaults={rules.defaults}
+				notice={rules.notice} busy={loading} onContinue={buildTemplate} onSkip={buildTemplate} />
+		{/if}
+	</div>
+
 <!-- ── Phase 2: Workbench ──────────────────────────────────────────────── -->
 {:else if phase === 2}
 	<div class="flex gap-0 -mx-4 md:-mx-6 -mb-4 md:-mb-6" style="height: calc(100vh - 80px);">
@@ -759,6 +935,7 @@
 				{#if stage === 'summary'}
 					<div class="flex-1 flex flex-col min-h-0" in:fly={{ x: -20, duration: 200 }}>
 						<p class="text-sm text-gray-400 px-5 pt-4 pb-3 shrink-0">{stageDescriptions.summary}</p>
+						{#if sheetNotice}<p class="text-xs text-gray-400 px-5 pb-3 shrink-0" role="status">{sheetNotice}</p>{/if}
 						<div class="flex-1 overflow-y-auto overflow-x-hidden min-w-0 px-5 pb-4">
 							{#if summary}
 								<div class="space-y-7 pt-1">
@@ -809,97 +986,15 @@
 							{:else}
 								<p class="text-sm text-gray-600">No summary available.</p>
 							{/if}
+							<div class="pt-4">
+								<StyleChecks {checks} source="creation" busy={chatCardsBusy || loading} {error} onChange={applyStyle} />
+							</div>
 						</div>
 						<div class="flex justify-end px-5 py-3 border-t border-white/[0.06] shrink-0">
 							<button class="btn-primary flex items-center gap-2" on:click={nextStage}>
 								Continue
 								<span class="text-white/60">&rarr;</span>
 							</button>
-						</div>
-					</div>
-
-				<!-- STAGE: Questions -->
-				{:else if stage === 'questions'}
-					<div class="flex-1 flex flex-col min-h-0" in:fly={{ x: 20, duration: 200 }}>
-						<p class="text-sm text-gray-400 px-5 pt-4 pb-2 shrink-0">{stageDescriptions.questions}</p>
-						<div class="flex-1 overflow-y-auto px-5 pb-4 space-y-3">
-
-							{#each questions as q, qIdx}
-								{#if q.status === 'answered'}
-									<!-- Answered: collapsed -->
-									<div class="flex items-start gap-2 text-xs py-1.5 px-3 rounded-lg bg-emerald-500/5 border border-emerald-500/10">
-										<svg class="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg>
-										<span class="text-gray-500 flex-1">{q.question}</span>
-										<span class="text-emerald-400 shrink-0 font-medium">{q.answer}</span>
-									</div>
-								{:else if q.status === 'skipped'}
-									<!-- Skipped: collapsed, click to re-engage -->
-									<button
-										type="button"
-										class="w-full flex items-center gap-2 text-xs py-1.5 px-3 rounded-lg bg-white/[0.02] hover:bg-amber-500/[0.06] border border-transparent hover:border-amber-500/20 transition-colors duration-150 group"
-										on:click={() => unskipQuestion(qIdx)}
-										title="Click to answer this question"
-									>
-										<span class="text-amber-600/50 group-hover:text-amber-400">—</span>
-										<span class="text-amber-600/50 group-hover:text-amber-300 flex-1 truncate text-left">{q.question}</span>
-										<span class="text-amber-600/50 group-hover:text-amber-400 shrink-0">skipped · answer</span>
-									</button>
-								{:else}
-									<!-- Pending: full card -->
-									<div class="card-dark space-y-3">
-										<p class="text-sm text-gray-200 leading-relaxed">{q.question}</p>
-										<div class="flex flex-wrap gap-1.5">
-											{#each q.suggestions as suggestion}
-												<button
-													class="text-xs bg-purple-500/10 hover:bg-purple-500/20 text-purple-300 hover:text-purple-200 border border-purple-500/15 hover:border-purple-500/30 rounded-full px-3 py-1.5 transition-all duration-200"
-													on:click={() => clickSuggestion(qIdx, suggestion)}
-												>{suggestion}</button>
-											{/each}
-											<button
-												class="text-xs text-gray-500 hover:text-gray-300 border border-white/10 border-dashed rounded-full px-3 py-1.5 transition-colors duration-200"
-												on:click={() => openCustomAnswer(qIdx)}
-											>Other...</button>
-											<button
-												class="text-xs text-gray-600 hover:text-gray-400 ml-1 transition-colors duration-200"
-												on:click={() => skipQuestion(qIdx)}
-											>Skip</button>
-										</div>
-									</div>
-								{/if}
-							{/each}
-
-							{#if loading}
-								<div class="text-sm text-gray-500 flex items-center gap-2">
-									<span class="inline-block w-3 h-3 border-2 border-gray-600 border-t-gray-400 rounded-full animate-spin"></span>
-									Updating...
-								</div>
-							{/if}
-						</div>
-
-						<!-- Custom answer input (when active) -->
-						{#if activeQuestionIdx >= 0 && questions[activeQuestionIdx]}
-							<div class="px-5 py-3 border-t border-white/[0.06] shrink-0">
-								<p class="text-xs text-gray-500 mb-2 truncate">Re: {questions[activeQuestionIdx].question}</p>
-								<div class="flex gap-2">
-									<input class="input-dark !py-2 !text-sm" bind:value={chatInput} on:keydown={handleChatKey} placeholder="Your answer..." disabled={loading} />
-									<button class="btn-accent !px-3.5 !py-2" on:click={() => sendAnswer(chatInput)} disabled={loading || !chatInput.trim()}>&uarr;</button>
-								</div>
-								<button class="text-xs text-gray-600 hover:text-gray-400 mt-1 transition-colors" on:click={() => { activeQuestionIdx = -1; }}>Cancel</button>
-							</div>
-						{/if}
-
-						<!-- Bottom: skip all or continue -->
-						<div class="px-5 py-3 border-t border-white/[0.06] shrink-0 flex items-center justify-between">
-							{#if pendingCount > 0}
-								<button class="text-sm text-gray-500 hover:text-gray-300 transition-colors" on:click={skipAllQuestions}>Skip remaining</button>
-							{:else}
-								<span class="text-xs text-gray-600">All questions resolved</span>
-							{/if}
-							{#if allQuestionsResolved}
-								<button class="btn-primary flex items-center gap-2" on:click={() => goToStage('test')}>
-									Test your template <span class="text-white/60">&rarr;</span>
-								</button>
-							{/if}
 						</div>
 					</div>
 
@@ -967,16 +1062,11 @@
 						<p class="text-sm text-gray-400 px-5 pt-4 pb-2 shrink-0">{stageDescriptions.refine}</p>
 						<div class="flex-1 overflow-y-auto px-5 pb-4 space-y-3">
 
-							<!-- Answered questions (compact) -->
-							{#if questions.some(q => q.status === 'answered')}
-								<div class="space-y-1.5 pb-3 mb-3 border-b border-white/[0.06]">
-									{#each questions.filter(q => q.status === 'answered') as aq}
-										<div class="flex items-start gap-2 text-xs">
-											<svg class="w-3 h-3 text-emerald-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7" /></svg>
-											<span class="text-gray-500 truncate flex-1">{aq.question}</span>
-											<span class="text-gray-300 shrink-0">{aq.answer}</span>
-										</div>
-									{/each}
+							{#if chatCards.length}
+								<div class="pb-3 mb-3 border-b border-white/[0.06]">
+									{#key chatCards}
+										<RulesStep cards={chatCards} mode="review" busy={chatCardsBusy || loading} onContinue={applyChatCards} />
+									{/key}
 								</div>
 							{/if}
 
@@ -1025,6 +1115,12 @@
 												</div>
 											{:else}
 												<p class="text-gray-200 leading-relaxed" style="white-space: pre-wrap;">{assistantMsg.behavioralClaim}</p>
+												{#if assistantMsg.route === 'router' && assistantMsg.content !== assistantMsg.behavioralClaim}
+													<p class="text-xs text-gray-400 leading-relaxed" style="white-space: pre-wrap;">{assistantMsg.content}</p>
+												{/if}
+												{#if assistantMsg.cards?.length}
+													<ChatCards cards={assistantMsg.cards} busy={loading || chatCardsBusy} onAnswer={answerCard} />
+												{/if}
 												<div class="flex items-center justify-between gap-3 pt-2 border-t border-purple-500/15">
 													{#if awaitingPreview}
 														<span class="text-xs text-purple-200/70 flex items-center gap-1.5">
@@ -1059,7 +1155,12 @@
 										<div class="max-w-[90%] bg-purple-600/20 border border-purple-500/15 rounded-2xl rounded-br-sm px-4 py-2.5 text-sm text-gray-200" style="white-space: pre-wrap;">{msg.content}</div>
 									</div>
 								{:else}
-									<div class="max-w-[90%] bg-white/[0.03] border border-white/10 rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm text-gray-300 leading-relaxed" style="white-space: pre-wrap;">{msg.content}</div>
+									<div class="max-w-[90%] bg-white/[0.03] border border-white/10 rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm text-gray-300 leading-relaxed space-y-2" style="white-space: pre-wrap;">
+										<div>{msg.content}</div>
+										{#if msg.cards?.length}
+											<ChatCards cards={msg.cards} busy={loading || chatCardsBusy} onAnswer={answerCard} />
+										{/if}
+									</div>
 								{/if}
 							{/each}
 
@@ -1076,7 +1177,7 @@
 						<div class="px-5 py-3 border-t border-white/[0.06] shrink-0 space-y-2">
 							<div class="flex gap-2">
 								<input bind:this={chatInputEl} class="input-dark !py-2 !text-sm" bind:value={chatInput} on:keydown={handleChatKey} placeholder="Add a rule or correction..." disabled={loading} />
-								<button class="btn-accent !px-3.5 !py-2" on:click={() => sendAnswer(chatInput)} disabled={loading || !chatInput.trim()}>&uarr;</button>
+								<button class="btn-accent !px-3.5 !py-2" on:click={() => sendAnswer(chatInput)} disabled={loading || chatCardsBusy || !chatInput.trim()}>&uarr;</button>
 							</div>
 							{#if hasGenerated}
 								<button
@@ -1086,10 +1187,10 @@
 								>
 									{#if loadingTest}
 										<span class="inline-block w-3 h-3 border-2 border-purple-400/30 border-t-purple-400 rounded-full animate-spin"></span>
-										Regenerating...
+										Updating preview...
 									{:else}
 										<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-										Regenerate
+										Update preview{#if previewStale}&nbsp;<span class="text-purple-400/70">(template changed)</span>{/if}
 									{/if}
 								</button>
 							{/if}
@@ -1194,7 +1295,7 @@
 							<div class="mt-6 pt-4 border-t border-white/[0.06] flex items-start gap-3 max-w-2xl mx-auto">
 								<svg class="w-4 h-4 text-purple-400/60 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
 								<p class="text-xs text-gray-600 leading-relaxed">
-									Not quite right? Use the <button class="text-purple-400 hover:text-purple-300" on:click={() => goToStage('refine')}>Refine</button> tab to add corrections — describe what should change and your style guide updates automatically. Then regenerate to see the effect.
+									Not quite right? Use the <button class="text-purple-400 hover:text-purple-300" on:click={() => goToStage('refine')}>Refine</button> tab to add corrections — describe what should change and your style guide updates automatically. Then update the preview to see the effect.
 								</p>
 							</div>
 						</div>
@@ -1239,7 +1340,7 @@
 				{:else if !showSaveDialog}
 					<div class="flex items-center justify-between">
 						<p class="text-xs text-gray-500">Refine on the left, regenerate to check.</p>
-						<button class="btn-primary" on:click={openSaveDialog}>Save as template</button>
+						<button class="btn-primary" on:click={openSaveDialog} disabled={chatCardsBusy}>Save as template</button>
 					</div>
 				{:else}
 					<div class="space-y-2.5">
@@ -1291,7 +1392,7 @@
 						</div>
 						<div class="flex items-center justify-end gap-2 pt-0.5">
 							<button class="btn-ghost text-xs" on:click={() => (showSaveDialog = false)}>Cancel</button>
-							<button class="btn-primary !px-5 flex items-center gap-2" on:click={saveAsTemplate} disabled={saving || !templateName.trim()}>
+							<button class="btn-primary !px-5 flex items-center gap-2" on:click={saveAsTemplate} disabled={saving || chatCardsBusy || !templateName.trim()}>
 								{#if saving}<span class="inline-block w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>{/if}
 								Save
 							</button>

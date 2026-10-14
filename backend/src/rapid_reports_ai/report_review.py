@@ -142,16 +142,24 @@ REPAIR_MODEL = rc.QWEN
 # ── units ────────────────────────────────────────────────────────────────────
 
 _HEADER = re.compile(r"^([A-Z][A-Z /&()-]{2,}):\s*$", re.M)
+# The impression's heading: IMPRESSION, or CONCLUSION (library and slim sheets, consultant house style). IMPRESSION
+# wins when a report has both, so an IMPRESSION report reads exactly as before.
+IMPRESSION_HEADINGS = ("IMPRESSION", "CONCLUSION")
+
+
+def _impression_heading(names) -> str:
+    """The heading holding the impression among `names` (IMPRESSION first); IMPRESSION when neither is there."""
+    return next((h for h in IMPRESSION_HEADINGS if h in names), IMPRESSION_HEADINGS[0])
 
 
 def report_sections(report: str) -> Tuple[str, str]:
-    """FINDINGS and IMPRESSION text, the impression whole (a numbered impression may have blank lines between its
-    items). The post-generation check reads the report before the signature is appended; a reader of the FINAL
-    report passes `report_body(report, signature)` so the signature block is not read as impression."""
+    """FINDINGS and IMPRESSION (or CONCLUSION) text, the impression whole (a numbered impression may have blank lines
+    between its items). The post-generation check reads the report before the signature is appended; a reader of the
+    FINAL report passes `report_body(report, signature)` so the signature block is not read as impression."""
     parts, marks = {}, list(_HEADER.finditer(report))
     for m, nxt in zip(marks, marks[1:] + [None]):
         parts[m.group(1)] = report[m.end():nxt.start() if nxt else len(report)].strip()
-    return parts.get("FINDINGS", ""), parts.get("IMPRESSION", "").strip()
+    return parts.get("FINDINGS", ""), parts.get(_impression_heading(parts), "").strip()
 
 
 _PARA_BREAK = re.compile(r"\n[ \t]*\r?\n")
@@ -282,10 +290,8 @@ def header_names(report: str) -> List[str]:
     return [m.group(1) for m in _HEADER.finditer(report)]
 
 
-# RECOMMENDATIONS: a scratchpad session's ticked items (copilot spec §6), a section of its own after the impression;
-# never checked (its role is skipped by the review and alignment checks).
 QUICK_TOP_LEVEL = ("CLINICAL HISTORY", "COMPARISON", "TECHNIQUE", "FINDINGS", "IMPRESSION", "LIMITATIONS",
-                   "CONCLUSION", "RECOMMENDATIONS")
+                   "CONCLUSION")
 
 
 def quick_section_names(report: str) -> List[str]:
@@ -809,7 +815,7 @@ def _regions(report: str, sections: Optional[List[ReportSection]]) -> List[Tuple
         return _checked_spans(report, sections)
     marks = {m.group(1): m.end() for m in _HEADER.finditer(report)}
     out: List[Tuple[int, int]] = []
-    for name, t in zip(("FINDINGS", "IMPRESSION"), report_sections(report)):
+    for name, t in zip(("FINDINGS", _impression_heading(marks)), report_sections(report)):
         if t and name in marks and (i := report.find(t, marks[name])) >= 0:
             out.append((i, i + len(t)))
     return out
@@ -958,7 +964,7 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
                             suppressed: Optional[List[str]] = None,
                             extra_report_qs: Optional[dict] = None,
                             history: Optional[str] = None,
-                            brief_decisions: Optional[dict] = None) -> Tuple[str, List[dict], dict]:
+                            brief_decisions: Optional[dict] = None, record_edits: bool = False) -> Tuple[str, List[dict], dict]:
     """Check, then edit only for a flagged negative (removed) or an absent line (inserted). Returns the report, the
     options with flagged ones dropped, and telemetry. Never raises. `sections` makes the check
     section-generic (templates); `protected` text is never checked for omission or edited; an insertion
@@ -1099,10 +1105,17 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
     # Gate D shadow log (review engine spec §9): the report before today's automatic edits, kept only while the
     # review engine runs (shadow or live) and only when an edit was applied. `applied_edits` (removals in order, then
     # insertions) lets the engine show each edit as a pre-applied item on the final text (spec §10.4).
-    if os.environ.get("RR_REVIEW_ENGINE", "off").strip().lower() in ("shadow", "live") and report != original:
-        tel["pre_edit_report"] = original
-        tel["applied_edits"] = removals + insertions
+    _record_edits(tel, original, report, removals + insertions, force=record_edits)
     return report, options, tel
+
+
+def _record_edits(tel: dict, original: str, report: str, edits: list, force: bool = False) -> dict:
+    """Edits go to the candidate when the review engine runs (shadow/live), and always for a stack session
+    (`force`): the rail reads pre-applied edits from there (integration spec §7.4)."""
+    if report != original and (force or os.environ.get("RR_REVIEW_ENGINE", "off").strip().lower() in ("shadow", "live")):
+        tel["pre_edit_report"] = original
+        tel["applied_edits"] = edits
+    return tel
 
 
 def _only_protected(report: str, clause: str, protected: Optional[List[str]]) -> bool:

@@ -15,12 +15,13 @@ from sqlalchemy.orm import Session
 from ..database.models import StackSlimSheet
 from ..jev_client import JEV_MODEL, jev_post
 from ..report_reconcile import _MEASUREMENT
-from .http import post_json
+from .http import post_chat
 from .schemas import OTHER, Region
+from .sex_screen import screen_normals
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "slim-4"   # slim-2: no sex-specific organs in region normals; slim-3: Report Flow (house prose flow); slim-4: condensed region normals
+PROMPT_VERSION = "slim-7"   # slim-2: no sex-specific organs in region normals; slim-3: Report Flow (house prose flow); slim-4: condensed region normals; slim-5: never a clinical history section; slim-6: the standard report sections (Comparison, Technique, Limitations, Findings, then the impression, headed Conclusion from slim-7) in order; slim-7: the impression is headed Conclusion (consultant house style) and never restates the modality, region or technique
 URL = "https://api.cerebras.ai/v1/chat/completions"
 TIMEOUT_S = 120.0   # cached per family: the first case of a new scan type waits, nobody after
 
@@ -44,7 +45,8 @@ Write Markdown with exactly these sections, in this order:
 - **Not assessable on this scan:** the features this protocol cannot show (for example enhancement on an unenhanced study, or a phase that is not acquired), separated by semicolons
 
 ## Structural Pattern
-- **Sections:** the report sections in order
+- **Sections:** Comparison; Technique; Limitations (only when applicable); Findings; Conclusion
+- **Section rules:** COMPARISON comes first: carry a prior study if one is dictated; acknowledge comparison generically when the findings use comparison language (new, stable, unchanged, increased, resolved and the like); otherwise state that no prior imaging is available for comparison. TECHNIQUE is the protocol description only: modality, region, contrast and phases or sequences, written from the Modality line in Scan Context, with no assessment or limitation wording. LIMITATIONS appears only when the radiologist dictates a limitation or a genuine study-specific degradation is stated; it is never the not-assessable list. CONCLUSION never restates the modality, region or technique; it opens with the finding. Never a clinical history or indication section (the history is never written into the report).
 - **Sweep order:** the order regions are reported in
 - **Macro-structure:** FLAT or HEADED
 
@@ -82,9 +84,6 @@ REGIONS:
 {regions}"""
 
 _LOCKS: dict[tuple, asyncio.Lock] = {}
-# Backstop for the prompt rule above: a shared sentence about a sex-specific organ would be assumed for every
-# patient (hand read 2026-10-12: "The prostate is normal" offered beside an ovarian cyst).
-_SEX_SPECIFIC = re.compile(r"(?i)\b(?:prostat\w*|seminal|uter\w*|endometri\w*|ovar\w*|adnex\w*|cervi\w*|testi\w*|testes|scrot\w*|vagin\w*|fallopian|myometri\w*)\b")
 _REGION_LINE = re.compile(r"^\s*-\s+\*\*(.+?):\*\*\s*(.*)$")
 
 
@@ -94,12 +93,12 @@ def _section(md: str, title: str) -> str:
 
 
 def clean_sentences(sentences: list[str]) -> list[str]:
-    """The rules every shared normal obeys, written by the model or edited by a reviewer: no measurement, no
-    sex-specific organ, one sentence each."""
+    """The rules every shared normal obeys, written by the model or edited by a reviewer: no measurement, one
+    sentence each; sex-specific screening is `sex_screen` (async)."""
     out = []
     for s in sentences:
         s = " ".join(str(s).split()).strip()
-        if s and not _MEASUREMENT.search(s) and not _SEX_SPECIFIC.search(s):
+        if s and not _MEASUREMENT.search(s):
             out.append(s if s.endswith(".") else s + ".")
     return out
 
@@ -152,7 +151,7 @@ async def generate(scan_type: str, family: str, contrast: str, regions: list[Reg
             "messages": [{"role": "system", "content": SLIM_SYS},
                          {"role": "user", "content": SLIM_USER.format(family=family, contrast=CONTRAST[contrast],
                                                                      regions=listed)}]}
-    r = await post_json(URL, os.environ.get("CEREBRAS_API_KEY", ""), body, TIMEOUT_S, transport)
+    r = await post_chat(body, TIMEOUT_S, transport, "stack.slim")
     r.raise_for_status()
     text = r.json()["choices"][0]["message"]["content"] or ""
     return re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip()
@@ -185,6 +184,9 @@ async def get_or_make(db: Session, scan_type: str, family: str, regions: list[Re
             logger.warning("[stack.slim] %s: %s", type(e).__name__, str(e)[:200])
             return None
         normals, na = parse_slim(md, [r.name for r in regions])
+        normals, flagged = await screen_normals(normals)
+        if flagged:
+            logger.info("[stack.slim] %d sex-specific borderline sentence(s) kept for review: %r", len(flagged), flagged[:5])
         if not normals:
             logger.warning("[stack.slim] no region normals parsed for %r/%s", family, contrast)
             return None

@@ -32,7 +32,7 @@ def user(db_session):
 def fresh_sessions(db_engine, monkeypatch):
     """The routes' own sessions (resolve and ask run in them) open on the test engine; the Copilot is on."""
     monkeypatch.setenv("RR_DICTATION_V2", "1")
-    monkeypatch.delenv("RR_HYBRID_STACK", raising=False)
+    monkeypatch.delenv("RR_STACK", raising=False)
     monkeypatch.delenv("RR_STACK_COPILOT", raising=False)
     monkeypatch.setattr(CR, "SessionLocal", sessionmaker(bind=db_engine, autoflush=False, autocommit=False))
 
@@ -66,7 +66,7 @@ def test_kill_switch(authed, monkeypatch):
 
 def test_off_with_the_stack(monkeypatch):
     assert CR.copilot_allowed({"RR_DICTATION_V2": "1"}) is True
-    assert CR.copilot_allowed({"RR_DICTATION_V2": "1", "RR_HYBRID_STACK": "0"}) is False
+    assert CR.copilot_allowed({"RR_DICTATION_V2": "1", "RR_STACK": "0"}) is False
 
 
 def test_status_flag(authed, monkeypatch):

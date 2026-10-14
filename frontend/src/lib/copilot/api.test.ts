@@ -20,8 +20,10 @@ const card: Card = {
 	finding: 'a 6 mm solid nodule',
 	needs_modality: ''
 };
-const matchBody: MatchBody = { scan_type: 'CT chest', clinical_history: '', findings: [{ id: 'u1', text: 'a 6 mm solid nodule' }], dictation: 'a 6 mm solid nodule', patient: {} };
-const openBody: OpenBody = { card, finding: card.finding, findings: card.finding, clinical_history: '', answered: {}, patient: {} };
+const units = [{ id: 1, text: 'a 6 mm solid nodule', group: 'Lungs', structure: null, attach_to: null, parts: null, covers: [], abnormal: true, pinned: false, heading: false }];
+// P2c: units + groups (the server builds the findings text with the one builder), never a dictation/findings string
+const matchBody: MatchBody = { scan_type: 'CT chest', clinical_history: '', findings: [{ id: 'u1', text: 'a 6 mm solid nodule' }], units, groups: ['Lungs'], patient: {} };
+const openBody: OpenBody = { card, finding: card.finding, units, groups: ['Lungs'], clinical_history: '', answered: {}, patient: {} };
 
 function ok(body: unknown = { cards: [], ms: 1 }) {
 	return vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify(body)));
@@ -61,14 +63,14 @@ describe('bodies', () => {
 		const f = ok();
 		vi.stubGlobal('fetch', f);
 		await match({ ...matchBody, extra: 1 } as MatchBody);
-		expect(Object.keys(call(f).body).sort()).toEqual(['clinical_history', 'dictation', 'findings', 'patient', 'scan_type']);
+		expect(Object.keys(call(f).body).sort()).toEqual(['clinical_history', 'findings', 'groups', 'patient', 'scan_type', 'units']);
 	});
 	it('an open body holds exactly the OpenBody keys (lesion only when given)', async () => {
 		const f = ok({});
 		vi.stubGlobal('fetch', f);
 		await open({ ...openBody, extra: 1 } as OpenBody);
 		await open({ ...openBody, lesion: 'L1' });
-		const keys = ['answered', 'card', 'clinical_history', 'finding', 'findings', 'patient'];
+		const keys = ['answered', 'card', 'clinical_history', 'finding', 'groups', 'patient', 'units'];
 		expect(Object.keys(call(f, 0).body).sort()).toEqual(keys);
 		expect(Object.keys(call(f, 1).body).sort()).toEqual([...keys, 'lesion'].sort());
 	});

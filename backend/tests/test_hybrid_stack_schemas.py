@@ -33,3 +33,11 @@ def test_no_family_region_collides_with_fixed_groups():
     fixed = {n.lower() for n in s.FIXED}
     for fam in s.library()["families"]:
         assert not fixed & {r.name.lower() for r in s.family_regions(fam)}, fam
+
+
+def test_quiet_regions_are_not_pills_but_are_groups():
+    from rapid_reports_ai.hybrid_stack.schemas import Region, groups_for, pill_regions
+    rs = [Region(name="Right breast", includes="x"), Region(name="Implants", includes="y", quiet=True),
+          Region(name="Other findings", includes="z")]
+    assert pill_regions(rs) == ["Right breast"]
+    assert "Implants" in groups_for(rs)

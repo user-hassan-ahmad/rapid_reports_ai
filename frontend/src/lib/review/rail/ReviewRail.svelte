@@ -116,6 +116,34 @@
 			.map((g) => ({ section: g.section, items: urgentFirst(g.items.filter(isFlagged)) }))
 			.filter((g) => g.items.length > 0)
 	);
+	/** Quiet notes ("area never mentioned"): a muted line each, after the flagged items; never counted as open. */
+	const NOTE_KINDS = new Set(['structure_not_mentioned']);
+	const notes = $derived(
+		$groupsStore
+			.flatMap((g) => g.items)
+			.filter((i) => NOTE_KINDS.has(i.kind) && i.cls !== 'suppress' && (i.status === 'open' || i.status === 'stale'))
+	);
+	/** Template checks (the post-gen value check and the template gap flags): every open info-class one is a compact
+	 * row here, anchored or not (an info anchor draws no editor underline, only a gutter mark, so nothing is shown
+	 * twice); an action-class one stays its card. Never counted as open (the header counts are unchanged). */
+	const CHECK_KINDS = new Set([
+		'value_missing',
+		'template_slot_empty',
+		'fixed_text_missing',
+		'heading_missing',
+		'assumed_normal_missing'
+	]);
+	const templateChecks = $derived(
+		$groupsStore
+			.flatMap((g) => g.items)
+			.filter(
+				(i) =>
+					CHECK_KINDS.has(i.kind) &&
+					i.cls === 'info' &&
+					!isFlagged(i) &&
+					(i.status === 'open' || i.status === 'stale')
+			)
+	);
 	/** What still needs the radiologist, among what the rail shows. */
 	const openCount = $derived(
 		sections.reduce((n, g) => n + g.items.filter((i) => i.status === 'open' || i.status === 'stale').length, 0)
@@ -164,7 +192,7 @@
 		setTimeout(() => card.classList.remove('rv-revealed'), 1600);
 	}
 
-	const nothingYet = $derived(!sections.length);
+	const nothingYet = $derived(!sections.length && !notes.length && !templateChecks.length);
 	const skeleton = $derived(firstLoad || (reviewing && nothingYet));
 
 	// RailFrame owns the viewport check (a strip below 1100 px); showItem reads it back to open the overlay.
@@ -273,6 +301,38 @@
 							<h3 class="rv-group-title" data-rv-section={g.section}>{g.section}</h3>
 							{#each g.items as it (it.id)}{@render itemView(it)}{/each}
 						</section>
+					{/each}
+					{#if templateChecks.length}
+						<section class="rv-group" data-rv-template-checks>
+							<h3 class="rv-group-title">Template checks</h3>
+							{#each templateChecks as it (it.id)}
+								<div
+									class="rv-note-line rv-check-line"
+									data-rv-item={it.id}
+									data-rv-variant="template-check"
+									title={it.reason}
+								>
+									<span>{it.label}</span>
+									<button
+										type="button"
+										class="rv-btn"
+										aria-label={`Dismiss: ${it.label}`}
+										onclick={() => onCommand('dismiss', it.id)}>Dismiss</button
+									>
+								</div>
+							{/each}
+						</section>
+					{/if}
+					{#each notes as it (it.id)}
+						<div class="rv-muted rv-note-line" data-rv-item={it.id} data-rv-variant="note">
+							<span>{it.label}</span>
+							<button
+								type="button"
+								class="rv-btn"
+								aria-label={`Dismiss: ${it.label}`}
+								onclick={() => onCommand('dismiss', it.id)}>Dismiss</button
+							>
+						</div>
 					{/each}
 
 				</div>
@@ -441,6 +501,18 @@
 	}
 	.rv-muted {
 		color: var(--rv-muted);
+	}
+	.rv-note-line {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 8px;
+		font-size: 0.8125rem;
+		padding: 4px 0;
+	}
+	.rv-check-line {
+		border-left: 2px solid var(--rv-amber-line);
+		padding-left: 8px;
 	}
 	.rv-empty {
 		font-size: 0.8125rem;

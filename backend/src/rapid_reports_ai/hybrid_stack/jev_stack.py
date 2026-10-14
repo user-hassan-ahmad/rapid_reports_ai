@@ -3,9 +3,10 @@ target region or chip), and whether the dictation already states a chip. Thresho
 (scripts/hybrid_stack_eval/labs; spec §10)."""
 from __future__ import annotations
 
+import asyncio
 import os
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable, Optional
 
 from ..jev_client import JEV_MODEL, jev_post
 
@@ -160,7 +161,6 @@ def decide_command(parsed: dict) -> dict:
 
 # ── Checklist rows (checklist spec §5, wording lab §10.2) ─────────────────────
 REMOVED_MIN = 0.6  # lab 2026-10-11 (40 pairs): 17/20 rewordings caught, 0/20 false
-HEDGED_MIN = 0.3   # a region normal the dictation even half-covers or hedges is never assumed
 
 
 @dataclass(frozen=True)
@@ -168,10 +168,23 @@ class RowCheck:
     stated: float
     contra: float
     removed: float
+    hedge: float = 0.0   # P(the region's own dictation hedges or limits its assessment); 0 when not asked
 
 
 def removed_key(i: int) -> str:
     return f"removed_{i}"
+
+
+HEDGE_KEY = "hedge"
+
+
+def hedge_question(region: str) -> dict[str, Any]:
+    return {"type": "noul", "instructions": (
+        "The DICTATION expresses doubt, uncertainty or a limitation of assessment about this structure or region, or "
+        "a structure within it: a qualified or tentative statement (a qualifier such as probably, likely, possibly, "
+        "grossly, appears or no obvious), a finding that may not be real, or a structure "
+        "not seen, partly seen or not fully assessed. A plain or collective statement that it is normal, or a "
+        f"definite finding, is not doubt. REGION: {region}")}
 
 
 def removed_question(sentence: str) -> dict[str, Any]:
@@ -180,15 +193,23 @@ def removed_question(sentence: str) -> dict[str, Any]:
         f"in any wording. STATEMENT: {sentence}")}
 
 
-async def ask_rows(dictation: str, sentences: list[str], removed: list[str], transport=None) -> list[RowCheck]:
+async def ask_rows(dictation: str, sentences: list[str], removed: list[str], transport=None, *,
+                   stated: bool = True, contra: bool = True, hedge: str | None = None) -> list[RowCheck]:
     """Stated, contradicted and (when the radiologist removed anything) the same as a removed sentence, per
-    sentence, in one Jev call."""
+    sentence, in one Jev call. `stated=False` / `contra=False` leave that question out (its score is 0): the
+    assumed normals ask coverage on a region's own text and contradiction on the whole dictation (Task A3b).
+    `hedge` (a region name): the same call also asks, once, whether the dictation hedges that region; every
+    returned check carries the answer (0 when not asked)."""
     if not sentences:
         return []
     qs: dict[str, dict[str, Any]] = {}
+    if hedge is not None:
+        qs[HEDGE_KEY] = hedge_question(hedge)
     for i, s in enumerate(sentences):
-        qs[f"stated_{i}"] = stated_question(s)
-        qs[contra_key(i)] = contra_question(s)
+        if stated:
+            qs[f"stated_{i}"] = stated_question(s)
+        if contra:
+            qs[contra_key(i)] = contra_question(s)
         if removed:
             qs[removed_key(i)] = removed_question(s)
     state = f"DICTATION:\n{dictation}"
@@ -198,8 +219,9 @@ async def ask_rows(dictation: str, sentences: list[str], removed: list[str], tra
                        os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
     r.raise_for_status()
     ans = r.json().get("answers") or {}
-    score = lambda k: float((ans.get(k) or {}).get("noul") or 0.0)
-    return [RowCheck(score(f"stated_{i}"), score(contra_key(i)), score(removed_key(i))) for i in range(len(sentences))]
+    score = lambda k: float((ans.get(k) or {}).get("noul") or 0.0) if k in qs else 0.0   # an unasked part: 0
+    h = score(HEDGE_KEY)
+    return [RowCheck(score(f"stated_{i}"), score(contra_key(i)), score(removed_key(i)), h) for i in range(len(sentences))]
 
 
 def row_fate(c: RowCheck) -> str:
@@ -214,10 +236,22 @@ def row_fate(c: RowCheck) -> str:
     return "keep"
 
 
-def normal_assumed(c: RowCheck) -> bool:
-    """A region normal of an abnormal region is assumed only when the dictation neither covers, hedges nor
-    contradicts it and the radiologist has not removed it."""
-    return c.stated < HEDGED_MIN and c.contra < HEDGED_MIN and c.removed < REMOVED_MIN
+HEDGE_MIN = 0.5  # lab 2026-10-13 (30 region texts, 2 runs): hedges 11/12 >= 0.82, plain normals <= 0.06, findings <= 0.22
+
+
+def normal_fate(c: RowCheck) -> str:
+    """A region normal: 'removed', 'covered' (the dictation states it), 'contradicted', 'flagged' (its region's
+    dictation hedges or limits the assessment, or the dictation may contradict it: kept, highlighted for the
+    radiologist to confirm or remove) or 'assumed'. Only the bars drop a normal; Jev being unsure never does
+    (review R1). A half-band stated score no longer flags on its own: it cannot tell a paraphrase of a dictated
+    normal from a hedge (live 2026-10-13: "Liver normal." stated 0.52), so the region's hedge question does."""
+    if c.removed >= REMOVED_MIN:
+        return "removed"
+    if c.stated >= STATED_MIN:
+        return "covered"
+    if c.contra >= CONTRA_MIN:
+        return "contradicted"
+    return "flagged" if c.hedge >= HEDGE_MIN or c.contra >= OPTIONAL_MIN else "assumed"
 
 
 # ── Review gates (labs 2026-10-12, scripts/scratchpad_v2_labs.py material | conclusion) ──────────────────────────
@@ -251,3 +285,194 @@ async def ask_stale(conclusion: str, findings: list[str], transport=None) -> flo
     """P(the conclusion no longer reflects something important in the findings)."""
     state = "FINDINGS:\n" + "\n".join(f"- {f}" for f in findings) + f"\n\nCONCLUSION:\n{conclusion}"
     return await _noul(state, STALE_QUESTION, transport)
+
+
+# ── Unfinished sentences (lab 2026-10-12, scripts/unfinished_lab.py, 18 unfinished / 22 finished, 2 runs) ─────────
+# The scratchpad's only unfinished-sentence check (replaces the regex tier there): wording A, unfinished all >= 0.84,
+# finished all <= 0.55 (a lone heading 0.51, "hydronephrosis to a … calculus" 0.55). Asked inside the dictation, so a
+# sentence that runs into the next statement or heading is seen as such.
+UNFINISHED_MIN = 0.7
+UNFINISHED_BATCH = 10   # sentences per Jev call; batches run in parallel
+UNFINISHED_QUESTION = (
+    "SENTENCE stops before its statement is complete: it ends on a word that needs more after it (a verb, preposition, "
+    "conjunction or article), a measurement or comparison is left without its value, or it runs straight into another "
+    "statement or heading with the first left unfinished. A short deliberate fragment that states a complete finding, "
+    "a sweeping remark or a heading on its own is not unfinished. SENTENCE: {s}")
+
+
+async def ask_unfinished(sentences: list[str], transport=None) -> list[float]:
+    """P(unfinished) per sentence, each asked with the whole dictation as its context."""
+    if not sentences:
+        return []
+    state = "DICTATION:\n" + "\n".join(sentences)
+
+    async def batch(start: int, chunk: list[str]) -> list[float]:
+        qs = {f"u{start + i}": {"type": "noul", "instructions": UNFINISHED_QUESTION.format(s=s)} for i, s in enumerate(chunk)}
+        r = await jev_post({"model": JEV_MODEL, "state": state, "questions": qs},
+                           os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S * 2, transport)
+        r.raise_for_status()
+        a = r.json().get("answers") or {}
+        return [float((a.get(f"u{start + i}") or {}).get("noul") or 0.0) for i in range(len(chunk))]
+
+    parts = await asyncio.gather(*(batch(k, sentences[k:k + UNFINISHED_BATCH])
+                                   for k in range(0, len(sentences), UNFINISHED_BATCH)))
+    return [x for p in parts for x in p]
+
+
+# ── Assumed normals: context rules (conversion lab 2026-10-12) ─────────────────────────
+CONDITION_MIN = 0.5   # = template_brief.MET: one cut-off for every rule condition; silence is not met
+
+
+async def ask_conditions(state: str, conditions: list[str], transport=None) -> list[float]:
+    """Is each context condition stated for this case (history or dictation)? One Jev call; the question is
+    template_brief.q_condition (Jev wording suite 2026-10-01), so a rule fires here exactly as it does at Generate."""
+    if not conditions:
+        return []
+    from ..template_brief import q_condition
+    qs = {f"cond_{i}": q_condition(c) for i, c in enumerate(conditions)}
+    r = await jev_post({"model": JEV_MODEL, "state": state, "questions": qs},
+                       os.environ.get("OPENROUTER_API_KEY", ""), TIMEOUT_S, transport)
+    r.raise_for_status()
+    ans = r.json().get("answers") or {}
+    return [float((ans.get(f"cond_{i}") or {}).get("noul") or 0.0) for i in range(len(conditions))]
+
+
+# ── Required values: the value cluster (requirements spec 2026-10-12 part 1) ──────────
+# Per LIST_MISSING item, "stated?" (noul, value_<i>) and "which clause gives its value?" (choice over the dictation's
+# clauses that hold a number, where_<i>). Code reads the number (hybrid_stack.values); Jev never does.
+VALUE_UNQUOTED_MIN = STATED_MIN   # 0.8: an item no number maps to, stated -> the "stated?" chip, on the strict bar
+NUMBER_BATCH = 10                 # numbers per number -> item call; batches run in parallel
+VALUE_BATCH = 4                 # items per Jev call; batches run in parallel (12 items -> 3 calls)
+
+
+def value_key(i: int) -> str:
+    return f"value_{i}"
+
+
+def where_key(i: int) -> str:
+    return f"where_{i}"
+
+
+def value_stated_question(item: str) -> dict[str, Any]:
+    """Does the dictation state this required value? The brief's LIST_MISSING question (template_brief.q_stated)."""
+    from ..template_brief import q_stated
+    return q_stated(item)
+
+
+def value_where_question(item: str, clauses: list[str]) -> dict[str, Any]:
+    crit: dict[str, str] = {f"s_{k}": c for k, c in enumerate(clauses)}
+    crit[NONE] = "No SENTENCE gives this item's value."
+    return {"type": "choice", "instructions": f"Which SENTENCE of the DICTATION gives the value of this item: {item}",
+            "criteria": crit}
+
+
+async def ask_values(dictation: str, items: list[str], clauses: list[str], transport=None,
+                     stated: Callable[[str], dict[str, Any]] = value_stated_question
+                     ) -> list[tuple[float, Optional[int], Optional[list[float]]]]:
+    """(P stated, index into `clauses` of the clause that gives its value or None, the where-choice's probability per
+    clause or None when Jev sent none) per item, in order. Items go in parallel calls of VALUE_BATCH (one call when
+    there are no clauses); keys keep the item's global index. The clause question is asked only when there are clauses. `stated`: the wording (the lab
+    passes its arms)."""
+    if not items:
+        return []
+    key = os.environ.get("OPENROUTER_API_KEY", "")
+
+    async def batch(start: int, chunk: list[str]) -> list[tuple[float, Optional[int], Optional[list[float]]]]:
+        qs: dict[str, dict[str, Any]] = {}
+        for j, item in enumerate(chunk):
+            qs[value_key(start + j)] = stated(item)
+            if clauses:
+                qs[where_key(start + j)] = value_where_question(item, clauses)
+        r = await jev_post({"model": JEV_MODEL, "state": f"DICTATION:\n{dictation}", "questions": qs},
+                           key, TIMEOUT_S * 2, transport)
+        r.raise_for_status()
+        ans = r.json().get("answers") or {}
+        out: list[tuple[float, Optional[int], Optional[list[float]]]] = []
+        for j in range(len(chunk)):
+            p = float((ans.get(value_key(start + j)) or {}).get("noul") or 0.0)
+            w = ans.get(where_key(start + j)) or {}
+            c = w.get("choice")
+            k = int(c[2:]) if isinstance(c, str) and c.startswith("s_") and c[2:].isdigit() else None
+            probs = w.get("probabilities")
+            scores = [float(probs.get(f"s_{i}") or 0.0) for i in range(len(clauses))] if isinstance(probs, dict) else None
+            out.append((p, k if k is not None and k < len(clauses) else None, scores))
+        return out
+
+    # Without clauses the questions are small: one call (no parallel batches whose slowest would set the fill's time)
+    size = VALUE_BATCH if clauses else max(len(items), 1)
+    parts = await asyncio.gather(*(batch(k, items[k:k + size]) for k in range(0, len(items), size)))
+    return [x for p in parts for x in p]
+
+
+def number_item_question(number: str, marked: str, items: list[str]) -> dict[str, Any]:
+    """Number -> item (Decision 11, the second lab's arm N1, wording verbatim): which required value does this number
+    give? `marked` is its sentence with the number marked [[ ]]."""
+    crit: dict[str, str] = {f"item_{i}": it for i, it in enumerate(items)}
+    crit[NONE] = "None of these required values: the number gives something else."
+    return {"type": "choice",
+            "instructions": (f"Which required value does the number {number} in this sentence give? The number is "
+                             f"marked [[ ]] in the SENTENCE. SENTENCE: {marked}"),
+            "criteria": crit}
+
+
+async def ask_number_items(dictation: str, mentions: list[tuple[str, str]], items: list[str],
+                           transport=None) -> list[tuple[Optional[int], float, Optional[list[float]]]]:
+    """(index into `items` the number gives, or None; Jev's confidence; P(each item) or None when Jev sent no
+    probabilities) per (number, marked sentence), in order. One choice per number, NUMBER_BATCH per call, calls in
+    parallel."""
+    if not mentions:
+        return []
+    if not items:
+        return [(None, 0.0, None)] * len(mentions)
+    key = os.environ.get("OPENROUTER_API_KEY", "")
+
+    async def batch(start: int, chunk: list[tuple[str, str]]) -> list[tuple[Optional[int], float, Optional[list[float]]]]:
+        qs = {f"n_{start + j}": number_item_question(n, m, items) for j, (n, m) in enumerate(chunk)}
+        r = await jev_post({"model": JEV_MODEL, "state": f"DICTATION:\n{dictation}", "questions": qs},
+                           key, TIMEOUT_S * 2, transport)
+        r.raise_for_status()
+        ans = r.json().get("answers") or {}
+        out: list[tuple[Optional[int], float, Optional[list[float]]]] = []
+        for j in range(len(chunk)):
+            a = ans.get(f"n_{start + j}") or {}
+            c = a.get("choice")
+            i = int(c[5:]) if isinstance(c, str) and c.startswith("item_") and c[5:].isdigit() else None
+            probs = a.get("probabilities")
+            p_items = [float(probs.get(f"item_{x}") or 0.0) for x in range(len(items))] if isinstance(probs, dict) else None
+            out.append((i if i is not None and i < len(items) else None, float(a.get("confidence") or 0.0), p_items))
+        return out
+
+    parts = await asyncio.gather(*(batch(k, mentions[k:k + NUMBER_BATCH])
+                                   for k in range(0, len(mentions), NUMBER_BATCH)))
+    return [x for p in parts for x in p]
+
+
+# Post-generation backstop (value cluster): does the generated REPORT state each value whose chip was filled? A "no"
+# is listed as not provided and flagged by code (template_required_values.backstop). Recall-oriented.
+BACKSTOP_MIN = 0.5   # provisional; the value cluster lab reports backstop recall on planted missing values
+
+
+async def ask_report_values(report: str, items: list[str], transport=None,
+                            stated: Callable[[str], dict[str, Any]] = value_stated_question) -> list[float]:
+    """P(the report states the item) per item, in order; parallel calls of VALUE_BATCH."""
+    if not items:
+        return []
+    key = os.environ.get("OPENROUTER_API_KEY", "")
+
+    async def batch(start: int, chunk: list[str]) -> list[float]:
+        qs = {value_key(start + j): stated(item) for j, item in enumerate(chunk)}
+        r = await jev_post({"model": JEV_MODEL, "state": f"REPORT:\n{report}", "questions": qs},
+                           key, TIMEOUT_S * 2, transport)
+        r.raise_for_status()
+        ans = r.json().get("answers") or {}
+        out: list[float] = []
+        for j in range(len(chunk)):
+            # a missing or malformed answer is never "not stated": that would list a value the report gives
+            p = (ans.get(value_key(start + j)) or {}).get("noul")
+            if isinstance(p, bool) or not isinstance(p, (int, float)):
+                raise ValueError("jev: incomplete answers")
+            out.append(float(p))
+        return out
+
+    parts = await asyncio.gather(*(batch(k, items[k:k + VALUE_BATCH]) for k in range(0, len(items), VALUE_BATCH)))
+    return [x for p in parts for x in p]

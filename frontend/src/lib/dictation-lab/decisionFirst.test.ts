@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	applyAsrFixes,
+	polishSpan,
 	asrFields,
 	flagRanges,
 	commandInsert,
@@ -366,5 +367,15 @@ describe('deletePrevious ("scratch that")', () => {
 		expect(deletePrevious({ ...last, route: 'command' }, pend, false).reason).toBe('delete_after_command');
 		expect(deletePrevious(last, pend, true).reason).toBe('delete_polish_in_flight');
 		expect(deletePrevious({ ...last, to: 60 }, pend, false).reason).toBe('delete_nothing_intact');
+	});
+});
+
+describe('polishSpan', () => {
+	it('a final that opens a section never joins the open line', () => {
+		const solid = 'Non 4 mm calculus in the right kidney. The terminal ileum is';
+		expect(polishSpan(solid, 'Conclusion. Acute appendicitis.')).toEqual({ context: solid, span: '', spanFrom: solid.length, paragraph: true });
+		expect(polishSpan(solid, 'normal.').span).toBe('Non 4 mm calculus in the right kidney. The terminal ileum is');
+		expect(polishSpan(solid, 'normal.').paragraph).toBe(false);
+		expect(polishSpan('', 'Conclusion. x').paragraph).toBe(false);   // nothing to join
 	});
 });
