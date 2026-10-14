@@ -48,6 +48,7 @@ class ReviewInput(BaseModel):
     pre_edit_report: Optional[str] = None  # the report before today's automatic edits (Gate D shadow log)
     removed: List[str] = []              # stack reports: sentences the radiologist removed (never inserted)
     stack: bool = False                  # a stack report (generation_mode "stack"): its check flags reach the rail
+    template_text: List[str] = []        # templated reports: the grammar sheet's quoted unit texts (never AI text)
 
 
 class Candidate(BaseModel):

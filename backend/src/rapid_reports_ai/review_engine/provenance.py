@@ -24,7 +24,9 @@
 Never marked: technique / comparison / history sections and signature lines (the alignment's clause splitter skips
 them); Jev `not_a_finding` statements; normal / negative statements (the negatives classifier's and the brief's: their
 `assumed_normal` / `check` items stay the record, and a mixed clause is judged on its split finding head); any clause
-an owned (negatives / brief normals) item already anchors on.
+an owned (negatives / brief normals) item already anchors on; the template's own words in a templated report
+(`template_text`: FIXED / NORMAL / NEGATIVE / rule wordings matched verbatim). A slot value inside template words
+("58" in "Average HR: 58 bpm.") is still judged: only the template's literal words are exempt.
 
 `build_items` is pure code over the alignment and the existing Jev answers: no model call. These kinds are never adjudicated, probed or
 reprepared (`PROVENANCE_KINDS`); the frontend decides how to show them."""
@@ -42,6 +44,7 @@ from .items import Edit, ReviewInput, ReviewItem, Span, item_key, text_hash
 from .jev_pass import JevPass, noul, recommendation, recommendation_parts, split_tails
 from .lanes import confident
 from .negatives import is_normal_or_negative
+from .template_text import cut, match
 from .verifier import apply_edit
 
 KIND_AI = "ai_generated"
@@ -120,6 +123,24 @@ def _overlaps(a: Tuple[int, int], spans: List[Tuple[int, int]]) -> bool:
     return any(a[0] < e and s < a[1] for s, e in spans)
 
 
+def template_spans(inp: ReviewInput) -> List[Tuple[int, int]]:
+    """Report spans of the template's literal words (`template_text`); [] for a quick report or no grammar sheet."""
+    return match(inp.artifacts.report or "", inp.template_text).spans if inp.template_text else []
+
+
+def untemplated(report: str, s: int, e: int, tspans: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+    """[s, e) minus the template's words: the pieces left that hold a content word or a number, trimmed to their
+    words. [(s, e)] when no template span touches it."""
+    if not _overlaps((s, e), tspans):
+        return [(s, e)]
+    out = []
+    for a, b in cut(s, e, tspans):
+        toks = [m for m in _TOKEN.finditer(report, a, b) if content_words(m.group()) or m.group()[0].isdigit()]
+        if toks:
+            out.append((toks[0].start(), toks[-1].end()))
+    return out
+
+
 def _head_span(report: str, c: ReportClause) -> Optional[Tuple[int, int, str]]:
     """(start, end, head) of a mixed clause's finding head, located in the clause; None when it is not one."""
     sp = split_tails(c.text)
@@ -182,10 +203,19 @@ def build_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPa
     report = inp.artifacts.report or ""
     names = list(inp.artifacts.sections or [])
     owned_spans = [(it.anchor.start, it.anchor.end) for it in owned if it.anchor is not None]
+    tspans = template_spans(inp)
     marked: List[Tuple[ReportClause, int, int, dict]] = []      # (clause, start, end, evidence)
     recs: List[Tuple[ReportClause, str]] = []
     rec_seen = set()
     skipped = {"paired": 0, "supported": 0, "normal": 0, "not_a_finding": 0, "owned": 0, "rec_dictated": 0}
+    template_owned = 0
+
+    def mark(c: ReportClause, s: int, e: int, ev: dict) -> None:
+        """Mark [s, e) minus the template's words (each piece left is marked; none left → template-owned)."""
+        nonlocal template_owned
+        pieces = untemplated(report, s, e, tspans)
+        template_owned += pieces != [(s, e)]
+        marked.extend((c, a, b, ev) for a, b in pieces)
     for c in sorted(al.clauses, key=lambda x: x.start):
         i = _jev_index(jp, c.text)
         t = _jev_type(jp, i)
@@ -220,7 +250,7 @@ def build_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPa
                 if _overlaps((a, b), owned_spans):
                     skipped["owned"] += 1
                     continue
-                marked.append((c, a, b, {"clauses": [c.id], "jev_type": pt, "supported": sup, "form": "synthesis"}))
+                mark(c, a, b, {"clauses": [c.id], "jev_type": pt, "supported": sup, "form": "synthesis"})
             continue
         if t == "not_a_finding":
             skipped["not_a_finding"] += 1
@@ -245,11 +275,12 @@ def build_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPa
         if _overlaps((start, end), owned_spans):
             skipped["owned"] += 1
             continue
-        marked.append((c, start, end, {"clauses": [c.id], "jev_type": t, "supported": sup, "form": "synthesis"}))
+        mark(c, start, end, {"clauses": [c.id], "jev_type": t, "supported": sup, "form": "synthesis"})
 
     merged: List[Tuple[ReportClause, int, int, dict]] = []      # adjacent marked clauses of one sentence → one span
-    for c, s, e, ev in marked:
-        if merged and merged[-1][0].sentence_start == c.sentence_start:
+    for c, s, e, ev in marked:                                  # (never bridging the template's words)
+        if (merged and merged[-1][0].sentence_start == c.sentence_start
+                and not _overlaps((min(merged[-1][2], e), max(merged[-1][1], s)), tspans)):
             pc, ps, pe, pev = merged[-1]
             merged[-1] = (pc, min(ps, s), max(pe, e), {**pev, "clauses": pev["clauses"] + ev["clauses"]})
         else:
@@ -275,7 +306,7 @@ def build_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[JevPa
                           {"code": ok, "failed": [] if ok else ["not_placeable"], "addressed": None, "contra": None,
                            "unconfirmed": True}))
     log = {"ai_generated": len(merged), "recommendation": len(recs), "capped": capped, "unplaced": unplaced,
-           "skipped": skipped}
+           "skipped": skipped, "template_owned": template_owned}
     return items, log
 
 
@@ -357,11 +388,12 @@ async def confirm(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[Jev
       The suppressed item stays as it is."""
     report = inp.artifacts.report or ""
     taken = [(it.anchor.start, it.anchor.end) for it in list(prov) + list(owned) if it.anchor is not None]
+    tspans = template_spans(inp)
     dictated = set().union(*(content_words(l.text) for l in al.lines)) if al.lines else set()
     props: List[Tuple[int, int, str, str, str]] = []           # (start, end, clause text, section, item key)
     recs = [it for it in prov if it.kind == KIND_REC and it.anchor is not None]
     log = {"suppressed_unsupported": 0, "proposed": 0, "synthesis": 0, "rec_asked": len(recs), "rec_dictated_jev": 0,
-           "error": None}
+           "synthesis_template_owned": 0, "error": None}
     for it in lane_items:
         if (it.kind != "unsupported" or it.cls != "suppress" or "jev.supported" not in (it.detectors or [])
                 or it.anchor is None):
@@ -378,11 +410,14 @@ async def confirm(inp: ReviewInput, run_id: str, al: Alignment, jp: Optional[Jev
                 continue
             if any(_jev_type(jp, _jev_index(jp, c.text)) in ("normal", "not_a_finding") for c in clauses):
                 continue
-            for a, b in _proposed_runs(report, s, e, dictated):
-                if _overlaps((a, b), taken):
-                    continue
-                taken.append((a, b))
-                props.append((a, b, text, clauses[0].section, it.key))
+            for ra, rb in _proposed_runs(report, s, e, dictated):
+                pieces = untemplated(report, ra, rb, tspans)
+                log["synthesis_template_owned"] += pieces != [(ra, rb)]
+                for a, b in pieces:
+                    if _overlaps((a, b), taken):
+                        continue
+                    taken.append((a, b))
+                    props.append((a, b, text, clauses[0].section, it.key))
     log["proposed"] = len(props)
     if not props and not recs:
         return list(prov), log
@@ -420,4 +455,4 @@ async def synthesis_items(inp: ReviewInput, run_id: str, al: Alignment, jp: Opti
 
 
 __all__ = ["KIND_AI", "KIND_REC", "PROVENANCE_KINDS", "DETECTOR_AI", "DETECTOR_REC", "is_recommendation",
-           "build_items", "confirm", "synthesis_items"]
+           "template_spans", "untemplated", "build_items", "confirm", "synthesis_items"]

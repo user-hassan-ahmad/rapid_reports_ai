@@ -824,8 +824,11 @@ async def gate_d_log(inp: ReviewInput) -> Optional[dict]:
 # ── loading and scheduling ──────────────────────────────────────────────────
 
 def input_from_parts(report_id: str, report_type: str, input_data: Optional[dict], cand: Optional[dict],
-                     enhancement_json: Optional[dict]) -> Optional[ReviewInput]:
+                     enhancement_json: Optional[dict], template_config: Optional[dict] = None) -> Optional[ReviewInput]:
+    """`template_config`: the report's template (templated reports): its grammar sheet's quoted texts are the
+    template's own words, never marked AI text (`template_text`)."""
     from ..generation_artifacts import GenerationArtifacts
+    from .template_text import template_texts
     cand = cand or {}
     if cand.get("error") or not cand.get("content"):
         return None
@@ -840,7 +843,8 @@ def input_from_parts(report_id: str, report_type: str, input_data: Optional[dict
                        study_title=v.get("SCAN_TYPE") or data.get("extracted_scan_type"),
                        synthesis={"guidelines": guidelines} if guidelines else None,
                        pre_edit_report=(cand.get("quality_check") or {}).get("pre_edit_report"),
-                       removed=list(cand.get("removed") or []), stack=cand.get("stack") is True)
+                       removed=list(cand.get("removed") or []), stack=cand.get("stack") is True,
+                       template_text=template_texts(template_config) if report_type == "templated" else [])
 
 
 def _session():
@@ -859,13 +863,14 @@ def _with_session(fn, *a, **k):
 def _load_row(db, report_id: str):
     import uuid as _uuid
 
-    from ..database.models import Report
+    from ..database.models import Report, Template
     row = db.get(Report, _uuid.UUID(str(report_id)))
     if row is None:
         return None
     cand = (row.candidate_reports or [None])[0] or {}
+    tpl = db.get(Template, row.template_id) if row.report_type == "templated" and row.template_id else None
     return {"report_type": row.report_type, "input_data": row.input_data, "cand": dict(cand),
-            "enhancement_json": row.enhancement_json}
+            "enhancement_json": row.enhancement_json, "template_config": tpl.template_config if tpl else None}
 
 
 async def load_input(report_id: str, text: Optional[str] = None) -> Optional[ReviewInput]:
@@ -880,7 +885,8 @@ async def load_input(report_id: str, text: Optional[str] = None) -> Optional[Rev
     cand = row["cand"]
     if text is not None:
         cand = {**cand, "content": text}
-    return input_from_parts(report_id, row["report_type"], row["input_data"], cand, row["enhancement_json"])
+    return input_from_parts(report_id, row["report_type"], row["input_data"], cand, row["enhancement_json"],
+                            row.get("template_config"))
 
 
 _SEM: Optional[Tuple[asyncio.AbstractEventLoop, asyncio.Semaphore]] = None
