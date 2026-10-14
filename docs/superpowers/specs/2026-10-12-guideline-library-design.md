@@ -686,14 +686,20 @@ Confirm until it clears.
     (debounced) when the conclusion changes. A failed call clears nothing.
   - **The radiologist taps "Seen, leave as is"** on the card. The tap is held for the case and is reset when the card's
     verdict changes.
-- **In the confirm bar:** "N guidelines unresolved" sits beside the other counts, and Confirm stays disabled. The chip
-  opens the first unresolved card.
+- **In the confirm bar:** "N guidelines unresolved" sits beside the other counts. Both Confirm buttons stay disabled:
+  the walk's "Confirm" / "Confirm & Generate" and the main Confirm. The chip opens the first unresolved card. The
+  unresolved cards are also stops in the walk ("go through what blocks Confirm").
+- **Failures never block (integration D24).** A card whose preview failed, timed out or is still loading has no verdict,
+  so it is not unresolved. A card with a significant verdict whose conclusion check fails stays unresolved, but "Seen,
+  leave as is" always clears it, so Confirm is never more than one tap away.
 - **Apply is off in the prototype,** so "applied" cannot mean pressing Apply; the conclusion check stands in for it.
 - **Once Confirm is reached,** every significant card has been dealt with, so the review rail's "Nothing to review" is
   true. A review-rail item for guideline cards is out of scope here.
-- **Flag off** (`RR_STACK_COPILOT` or `rr_stack_copilot` off): the gate is unchanged.
-- **Coordination:** the confirm bar lives in `HybridStackView.svelte`, which the stack integration owns. The change is
-  agreed with that session before it is made.
+- **Flag off:** the gate is unchanged. After the stack integration's P2 (D24), the Copilot is on whenever the server
+  allows it and the stack is on, with no per-browser opt-in, so at ship this gate applies to every stack user.
+- **Coordination (agreed with the stack integration, 2026-10-14):** one optional prop on `HybridStackView.svelte`,
+  `guidelinesUnresolved: {key, name}[]` (default empty, today's behaviour), plus an `onOpenGuideline(key)` callback.
+  P2 does not change the confirm bar.
 
 **6. Suspected cancer raises a doubt (interim).** Today a hedged cancer statement ("likely primary lung carcinoma",
 "?primary", "suspicious for RCC") is dropped as a known cancer and then assumed No, which hides it.
