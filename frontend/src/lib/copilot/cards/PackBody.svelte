@@ -376,6 +376,9 @@
 	}
 	.cp-note-list,
 	.cp-src-list {
+		max-height: 16rem;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 		margin: 4px 0 2px;
 		padding-left: 14px;
 		display: flex;

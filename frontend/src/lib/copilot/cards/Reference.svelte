@@ -69,6 +69,9 @@
 		gap: 4px;
 		margin-top: 6px;
 		font-size: 0.75rem;
+		max-height: 16rem;
+		overflow-y: auto;
+		overscroll-behavior: contain;
 	}
 	.cp-ref-cite {
 		font-size: 0.6875rem;

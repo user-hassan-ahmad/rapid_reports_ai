@@ -127,6 +127,10 @@
 	.cp-val-value {
 		flex: 1;
 		min-width: 0;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 3px 6px;
 		font-variant-numeric: tabular-nums;
 	}
 	.cp-val-value b {
@@ -138,9 +142,11 @@
 		border-radius: 3px;
 		background: var(--rv-amber-bg);
 	}
+	/* tags wrap onto their own line under the value instead of squeezing beside a long label */
 	.cp-val-chip {
 		display: inline-block;
-		margin-left: 6px;
+		max-width: 100%;
+		margin-left: 0;
 		vertical-align: 1px;
 	}
 	.cp-chip-why {
@@ -169,7 +175,7 @@
 		box-shadow: inset 3px 0 0 var(--rv-amber-line);
 	}
 	.cp-val-change {
-		margin-left: 8px;
+		margin-left: 2px;
 		font-size: 0.75rem;
 		color: var(--rv-muted);
 		opacity: 0;

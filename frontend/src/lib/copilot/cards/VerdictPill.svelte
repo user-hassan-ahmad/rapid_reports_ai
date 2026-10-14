@@ -49,7 +49,9 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 5px;
-		max-width: 15rem;
+		max-width: 100%;
+		min-width: 0;
+		overflow: hidden;
 		padding: 3px 9px 3px 7px;
 		border-radius: 999px;
 		font-size: 12px;
@@ -82,9 +84,14 @@
 		display: inline-flex;
 		color: var(--cp-cat);
 	}
+	.cp-pill-icon {
+		flex: none;
+	}
 	.cp-pill-text {
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	/* neutral verdicts (info: no management stated; not_applicable as an outcome's own category; not categorised):
 	   an outline, no wash, but full-strength text, never faded or reassuring */

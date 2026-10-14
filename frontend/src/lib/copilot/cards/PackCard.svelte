@@ -100,12 +100,20 @@
 
 <style>
 	.cp-head-marks {
-		display: inline-flex;
+		display: flex;
 		flex-wrap: wrap;
-		justify-content: flex-end;
+		justify-content: flex-start;
 		align-items: center;
 		gap: 4px 6px;
-		max-width: 65%;
+		max-width: 100%;
 		min-width: 0;
+	}
+	/* a long chip shrinks and ends in an ellipsis rather than running past the card's edge */
+	.cp-head-marks > :global(.cp-chip) {
+		flex-shrink: 1;
+		min-width: 0;
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 </style>
