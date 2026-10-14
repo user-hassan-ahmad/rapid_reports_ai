@@ -196,7 +196,7 @@ def test_a_pinned_eligibility_number_is_not_enumerated_in_the_second_pass(monkey
     monkeypatch.setattr(E, "_once", spy)
     t = E.evaluate(e, g)
     assert not any("age" in x for x in seen)
-    assert t.outcome is None and t.needed == ["age", "exclusion", "risk"]
+    assert t.outcome is None and t.needed == ["age", "exclusion", "prior_growth", "risk"]
 
 
 def _bts():
@@ -271,8 +271,8 @@ def test_a_gate_that_can_settle_the_exam_is_asked_straight_after_eligibility():
 def test_assume_eligible_drafts_for_an_eligible_patient_and_a_stated_value_wins():
     fl = next(e for e in _packs() if e.id == "fleischner-pulmonary-nodule")
     t = E.evaluate(fl, {}, assume_eligible=True)
-    assert set(t.assumed) == {"age", "exclusion"} and t.assumed["age"].band == "ge35"      # a number: by its band
-    assert not {"age", "exclusion"} & set(t.needed) and "diameter_mm" in t.needed
+    assert set(t.assumed) == {"age", "exclusion", "prior_growth"} and t.assumed["age"].band == "ge35"   # by its band
+    assert not {"age", "exclusion", "prior_growth"} & set(t.needed) and "diameter_mm" in t.needed
     assert "does_not_apply" in t.possible                  # only through the size: an opacity over 3 cm is a mass
     t = E.evaluate(fl, {"age": 30}, assume_eligible=True)                                 # stated: excludes
     assert t.outcome == "does_not_apply" and "age" not in t.assumed

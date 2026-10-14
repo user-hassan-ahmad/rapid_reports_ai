@@ -617,6 +617,121 @@ The rest of the reference stays available, collapsed.
 **Links on the existing packs** are added as a follow-up, most dictated first: CAD-RADS, CAC-DRS (Agatston),
 Fleischner, BTS, Bosniak, PI-RADS.
 
+### 7.12 Trust fixes before the prototype ships
+
+Agreed with Hassan on 2026-10-14, from a real case: "Compared with the CT thorax of 12 March 2025. The solid nodule in
+the right lower lobe now measures 9 mm, previously 6 mm." Replayed locally:
+- **BTS** read growth (clear growth on diameter) and the prior study, so its outcome "Clear growth on diameter
+  measurement" was one input away. Age was asked, not assumed, because BTS age also feeds Brock. The head said
+  "6 questions open", but it was counting unstated values; the engine had one outcome-changing question.
+- **Fleischner** has no input about earlier imaging, so it answered as if this were a new 9 mm nodule ("consider CT at
+  3 months, PET-CT or tissue sampling").
+- **The report confirmed** ("Confirmed ✓", then "Nothing to review") while both cards were unresolved.
+
+Principle (Hassan): never generate guidance the source does not contain. A guideline that does not cover the case
+says so and points to one that does; it never improvises management.
+
+**1. Fleischner scope: interval growth.** The 2017 table is titled "Guidelines for Management of Incidentally Detected
+Pulmonary Nodules" (S1 p. 3). The text says prior imaging should always be reviewed to determine growth or stability
+(1A, S1 p. 5), but the solid-nodule table gives no route for a nodule that has grown.
+- A third eligibility input `prior_growth`, yes/no, lesion scope:
+  - **Label:** "Earlier imaging shows this nodule has grown".
+  - **True** when the dictation says this nodule is larger than on an earlier study ("now 9 mm, previously 6 mm",
+    "interval growth", "enlarging").
+  - **False** when it is new, stable or smaller, or there is no earlier imaging.
+  - **Unstated:** assumed No (in scope), like every eligibility input (§3.6).
+- A read or answered Yes reaches a new outcome `outside_table_growth`:
+  - **Category:** `not_applicable`; never applied.
+  - **Headline:** "Outside the Fleischner table: interval growth".
+  - **Action:** "The Fleischner table covers newly detected nodules. Prior imaging shows growth: see the BTS card."
+  - **Classification:** "Fleischner 2017 does not apply: the table covers newly detected incidental nodules, and this
+    nodule has grown on prior imaging."
+  - **Locators:** S1 p. 3 (the table title) and S1 p. 5 (the prior-imaging recommendation).
+- A pre-filled Yes is a scope doubt, as for any excluding value.
+- The verify gate accepts a scope outcome other than `does_not_apply` only when its category is `not_applicable`.
+
+**2. Number thresholds can be assumed.** This amends §3.6, where a number that feeds a formula stays asked. An
+eligibility number is now assumed at its in-scope band as a range value, for example BTS age "18 or over". It is
+shown as `assumed` and is decisive when it is. A formula that needs the exact number (Brock) still asks for it, but
+only when that formula sits on a branch that can still change the outcome.
+
+**3. The count tells the truth.**
+- **The head counts** only open questions that can change the outcome (the engine's asks).
+- **Collapsed beneath:** "N not needed on this branch", listing the unstated inputs that cannot change it, so the
+  radiologist can see why they are not asked.
+
+**4. Interval from a dated comparison.** A number input with unit `days` that measures time since an earlier study
+may be settled from that study's date:
+- The model returns the quoted date; the usual quote checks apply.
+- Code parses it (UK day-month order) and subtracts it from today's date in Europe/London. Requests carry no study
+  date yet.
+- **Exact date** ("12 March 2025"): the value is read and labelled "from the CT of 12 Mar 2025".
+- **Month or year only** ("March 2025", "CT 2023"): the value is pre-filled and marked approximate, so it never decides
+  or excludes alone.
+- **The date must belong to** the study the earlier measurement refers to: one dated comparison and a finding that
+  refers back ("previously 6 mm"). Several dated comparisons with no stated link: asked.
+- **Dropped:** a future date, or a zero or negative interval.
+- **Caveat on the card:** BTS measures from the baseline CT; the label names the study used, so the radiologist can
+  correct it when the baseline was earlier.
+
+**5. The confirm gate sees the guideline panel.** When the Copilot is on, an unresolved significant card blocks
+Confirm until it clears.
+- **Unresolved:** a tier 1 card that is not off-modality and has any of:
+  - a current verdict of category `workup`, `refer` or `surveillance`;
+  - an outcome-changing open question;
+  - a scope doubt (including a suspected cancer, item 6).
+- **Clears when either:**
+  - **The conclusion recommends at least as much as the card (category match, Hassan 2026-10-14).** One Jev choice
+    per unresolved card: what the CONCLUSION recommends for the FINDING — none, follow-up imaging, further tests, or
+    referral. Code ranks them none < follow-up imaging (`surveillance`) < further tests (`workup`) < referral
+    (`refer`). The card clears when the conclusion's rank is at least the card's category rank (more caution is fine).
+    A card unresolved without a verdict category (an open question or a scope doubt) clears on any recommendation
+    other than none. A lower rank keeps the card blocking with the reason, e.g. "Conclusion gives follow-up imaging;
+    BTS 2015 says further tests". It re-runs (debounced) when the conclusion changes. A failed call or a choice below
+    the confidence floor clears nothing. Exact agreement (intervals, specific tests) stays with checker mode (§7.8).
+  - **The radiologist taps "Seen, leave as is"** on the card. The tap is held for the case and is reset when the card's
+    verdict changes.
+- **In the confirm bar:** "N guidelines unresolved" sits beside the other counts. Both Confirm buttons stay disabled:
+  the walk's "Confirm" / "Confirm & Generate" and the main Confirm. The chip opens the first unresolved card. The
+  unresolved cards are also stops in the walk ("go through what blocks Confirm").
+- **Failures never block (integration D24).** A card whose preview failed, timed out or is still loading has no verdict,
+  so it is not unresolved. A card with a significant verdict whose conclusion check fails stays unresolved, but "Seen,
+  leave as is" always clears it, so Confirm is never more than one tap away.
+- **Apply is off in the prototype,** so "applied" cannot mean pressing Apply; the conclusion check stands in for it.
+- **Once Confirm is reached,** every significant card has been dealt with, so the review rail's "Nothing to review" is
+  true. A review-rail item for guideline cards is out of scope here.
+- **Flag off:** the gate is unchanged. After the stack integration's P2 (D24), the Copilot is on whenever the server
+  allows it and the stack is on, with no per-browser opt-in, so at ship this gate applies to every stack user.
+- **Coordination (agreed with the stack integration, 2026-10-14):** one optional prop on `HybridStackView.svelte`,
+  `guidelinesUnresolved: {key, name}[]` (default empty, today's behaviour), plus an `onOpenGuideline(key)` callback.
+  P2 does not change the confirm bar.
+
+**6. Suspected cancer raises a doubt (interim).** Today a hedged cancer statement ("likely primary lung carcinoma",
+"?primary", "suspicious for RCC") is dropped as a known cancer and then assumed No, which hides it.
+- It now makes each cancer-related eligibility input a scope doubt: "Suspected cancer stated ('…'): check
+  applicability".
+- It never excludes and never counts as known cancer.
+- It comes from the clinical history and the whole dictation (patient scope).
+- It counts as unresolved for the gate (item 5).
+
+**7. Layout.**
+- **Card head:** a grid, not one overflowing line. The name sits on top and the pills wrap beneath it; pills never
+  overlap, never cross the card edge, and never hide text that cannot be reached. A shortened verdict keeps its full
+  text as a tooltip and in the open card.
+- **Value rows:** provenance and decisive tags wrap under the value instead of spilling beside it.
+- **Panel:** the guideline rail is pinned to the viewport height and scrolls inside itself. Long blocks in an open card
+  (reference, notes, citations) get a maximum height with their own scroll.
+- **Checked** at narrow and wide rail widths, in component tests and at a Chrome checkpoint.
+
+**Next slice: shared case facts (option B; its own spec).**
+- **Study facts:** study date, comparison studies and their dates.
+- **Lesion facts, read once per finding and shared by every card:** size now, size before, which earlier study, the
+  interval, the growth judgement, the count.
+- **Patient cancer status:** none, suspected or known. Each pack's eligibility input says what "suspected" means per
+  its own source; where the source is silent it raises a doubt only.
+- **Reuse:** AAA growth, Bosniak progression, adrenal follow-up, thyroid follow-up.
+- **Rejected:** mapping every pack input to shared facts (option C). Most inputs belong to one pack.
+
 ## 8. Quality gates
 
 Every entry passes these before it merges. All except gate 6 run as pytest tests (`backend/tests/test_library_*.py`),

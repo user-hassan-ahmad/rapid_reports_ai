@@ -33,6 +33,7 @@ from .. import registry as R
 from ..types import (Assumption, Branch, Calculation, DecidingAnswer, DecidingInput, DraftValue, Entry as CardEntry,
                      ExclusionReason, GuidelineContent, Input, OutcomeBrief, Preview, Proposal, Publication, Settled,
                      Source)
+from . import dates as DT
 from . import engine
 from . import quantity as Q
 from .describe import citation
@@ -90,17 +91,20 @@ class _Evals:
         self.memo[key] = engine.evaluate(self.e, given, assume_eligible=assume)
         return self.memo[key]
 WHY_WOULD_EXCLUDE = "this pre-filled value would make the guideline not apply: confirm it"   # a scope doubt, any role
+WHY_SUSPECTED = "suspected, not established"   # a hedged cancer Yes (spec §7.12 item 6): a scope doubt, never assumed No
+WHY_APPROX_DATE = "approximate date: only the month or year of the earlier study is stated"   # spec §7.12 item 4
 SETTLE_SYS = """You settle the inputs of one published radiology classification system for ONE finding. INPUTS lists each open input's id, scope, type and allowed values: use nothing else.
 An input's scope decides where it may be settled from:
 - [lesion]: the FINDING only, never another lesion in the dictation, even one of the same kind;
-- [patient]: the CLINICAL HISTORY or the DICTATION (the patient, the examination or the study as a whole).
+- [patient]: the CLINICAL HISTORY or the DICTATION (the patient, the examination or the study as a whole);
+- [since study]: the FINDING, or the date of the earlier study the finding is compared with, from the CLINICAL HISTORY or the DICTATION.
 For each input its scope states, return one item:
 - input: the input's id;
 - state: "present" when the value is given; "absent" when the feature is said not to be there and the input lists absent; "not_assessable" when it is said that it cannot be assessed and the input lists not_assessable;
-- value: when present, for an enum exactly one of its options, for a boolean true or false, for a number the number as dictated; otherwise null;
-- quote: the shortest span, copied verbatim from the FINDING ([lesion]) or from the CLINICAL HISTORY or DICTATION ([patient]), that settles it; a number's quote is the whole measurement as dictated, with its unit.
+- value: when present, for an enum exactly one of its options, for a boolean true or false, for a number the number as dictated (a [since study] input settled by a date: the date as written); otherwise null;
+- quote: the shortest span, copied verbatim from the FINDING ([lesion]) or from the CLINICAL HISTORY or DICTATION ([patient], or a [since study] date), that settles it; a number's quote is the whole measurement as dictated, with its unit; a date's quote is the date as written.
 Leave out every input that is not stated: never settle a value from what is usual or likely, and never invent an input, option or state.
-A patient fact (a known cancer, a condition, a treatment) is present only when it is stated as established. A suspected, possible or differential diagnosis, about this lesion or any other, never settles it as present: leave it out."""
+A patient fact (a known cancer, a condition, a treatment) is established only when it is stated as established. A suspected, possible or differential diagnosis, about this lesion or any other, is never established: when it is what a [patient] input asks about, return it as present and quote the hedge with it ("?", "suspected", "likely", "suspicious for"), so it is checked, never taken as established."""
 
 
 class RawItem(BaseModel):
@@ -134,6 +138,12 @@ def _bands_for(e: Entry, i: InputDef) -> list:
     return next((s.bands for s in users if isinstance(s, BandStep) and s.ref == i.id), [])
 
 
+def _all_bands(e: Entry, i: InputDef) -> list:
+    """Every band of the band steps that read this number, formula or not: the labels an assumed band value shows
+    with and is sent back as (spec §7.12 item 2: BTS age assumed "18 years or over")."""
+    return [b for s in e.logic if isinstance(s, BandStep) and s.ref == i.id for b in s.bands]
+
+
 def display_options(e: Entry, i: InputDef) -> list[str]:
     base = i.options if i.type == "enum" else ["Yes", "No"] if i.type == "boolean" else [b.label for b in _bands_for(e, i)]
     return [*base, *(_STATE_LABEL[s] for s in i.states)]
@@ -146,7 +156,7 @@ def _show(e: Entry, i: InputDef, v: InputValue) -> str:
         return "Yes" if v.value else "No"
     if i.type == "number":
         if v.band is not None:
-            return next((b.label for b in _bands_for(e, i) if b.id == v.band), v.band)
+            return next((b.label for b in _all_bands(e, i) if b.id == v.band), v.band)
         unit = "" if i.unit == "count" else i.unit
         return f"{float(v.value):g} {unit}".strip()
     return str(v.value)
@@ -164,7 +174,9 @@ def _answer(e: Entry, i: InputDef, s: str) -> InputValue | None:
         return InputValue(value=s) if s in i.options else None
     if i.type == "boolean":
         return {"Yes": InputValue(value=True), "No": InputValue(value=False)}.get(s)
-    band = next((b for b in _bands_for(e, i) if b.label == s), None)
+    # a band label, offered (band steps alone read the number) or an eligibility band sent back as assumed (the number
+    # also feeds a formula: the engine pins the band and still asks the number where the formula matters)
+    band = next((b for b in (_all_bands(e, i) if i.role == "eligibility" else _bands_for(e, i)) if b.label == s), None)
     if band is not None:
         return InputValue(band=band.id)
     try:
@@ -213,20 +225,23 @@ def _inputs_text(e: Entry, ids: list[str]) -> str:
                    else f"number in {i.unit or 'the unit dictated'}")
         states = f"; states allowed: {', '.join(i.states)}" if i.states else ""
         hint = f" (dictated as: {i.how_stated})" if i.how_stated else ""
-        lines.append(f"- {i.id} [{i.scope}]: {i.label}{hint} [{allowed}{states}]")
+        lines.append(f"- {i.id} [{'since study' if i.since_study else i.scope}]: {i.label}{hint} [{allowed}{states}]")
     return "\n".join(lines)
 
 
 def _prompt(e: Entry, ids: list[str], finding: str, findings: str, history: str) -> str:
     """Only the open inputs; the history and the whole dictation only when a patient input is open."""
     s = f"SYSTEM: {e.display}\nINPUTS:\n{_inputs_text(e, ids)}"
-    if any(e.input(k).scope == "patient" for k in ids):
+    if any(e.input(k).scope == "patient" or e.input(k).since_study for k in ids):
         s += f"\n\nCLINICAL HISTORY: {history or 'none given'}\n\nDICTATION:\n{findings}"
     return s + f"\n\nFINDING:\n{finding}" if finding else s
 
 
 def _in_scope(i: InputDef, quote: str, finding: str, findings: str, history: str) -> bool:
-    """A lesion input's quote lies verbatim in the card's own finding; a patient input's in the history or dictation."""
+    """A lesion input's quote lies verbatim in the card's own finding; a patient input's in the history or dictation;
+    a since-study input's in any of them (the earlier study's date is often dictated apart from the finding)."""
+    if i.since_study:
+        return P._verbatim(quote, finding, "") or P._verbatim(quote, findings, history)
     return P._verbatim(quote, finding, "") if i.scope == "lesion" else P._verbatim(quote, findings, history)
 
 
@@ -257,10 +272,12 @@ _SENTENCE_END = re.compile(r"(?<!\d)\.(?!\d)|[;\n]")      # never inside a decim
 
 
 def _hedged_cancer(i: InputDef, v: InputValue, quote: str, texts: list[str] | None = None) -> bool:
-    """A "known primary cancer: yes" hedged by its quote or by the words before the quote in its sentence ("suspicious
-    for RCC" quoted as "RCC", "?primary"): dropped, so the input is asked. A hedge after the quote is about something
-    else ("Breast ca ?liver mets": the cancer is stated, the metastases are not), so it is not read (review I-d)."""
-    if i.fact != "known_primary_cancer" or v.value is not True:
+    """A "known primary cancer: yes" (the shared fact, or an input marked suspected_doubt) hedged by its quote or by
+    the words before the quote in its sentence ("suspicious for RCC" quoted as "RCC", "?primary"): kept pre-filled,
+    WHY_SUSPECTED, so it is a scope doubt, never an exclusion and never assumed away (spec §7.12 item 6). A hedge after
+    the quote is about something else ("Breast ca ?liver mets": the cancer is stated, the metastases are not), so it
+    does not count (review I-d)."""
+    if not (i.fact == "known_primary_cancer" or i.suspected_doubt) or v.value is not True:
         return False
     if _HEDGE.search(quote):
         return True
@@ -354,34 +371,66 @@ def _given(e: Entry, answered: dict[str, str], patient: dict[str, str] | None = 
     return out
 
 
+@dataclass
+class Dated:
+    """A since-study value computed from the earlier study's date (spec §7.12 item 4): never put to Jev or the
+    number checks; exact is read, approximate is pre-filled."""
+    exact: bool
+    basis: str
+
+
+def _since(i: InputDef, quote: str, finding: str, findings: str, history: str) -> tuple[InputValue, Dated] | None:
+    """The days since the dated study, or None (asked): no date in the quote (a duration keeps the quantity path), more
+    than one distinct date across the dictation and the history (which study is meant is not stated), a future date or
+    an interval of zero or less, or a value outside the input's range."""
+    p = DT.parse(quote)
+    if p is None:
+        return None
+    if len(DT.distinct_dates(f"{findings}\n{history}\n{finding}")) != 1:
+        logger.info("[library.preview] %s: several dates in the dictation; interval asked", i.id)
+        return None
+    days = DT.days_since(p.day)
+    if days <= 0 or not i.in_range(float(days)):
+        return None
+    return InputValue(value=float(days)), Dated(p.exact, DT.basis(quote, p, [finding, findings, history]))
+
+
 async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings: str,
-                  history: str) -> tuple[dict[str, tuple[InputValue, Settled]], bool]:
-    """(the model's real values for the open inputs whose quotes lie in their scope, whether the call failed). With
-    no finding unit, lesion inputs are not offered: they are asked."""
+                  history: str) -> tuple[dict[str, tuple[InputValue, Settled]], bool, dict[str, Dated]]:
+    """(the model's real values for the open inputs whose quotes lie in their scope, whether the call failed, the
+    since-study values computed from a date). With no finding unit, lesion inputs are not offered: they are asked."""
     ids = [i.id for i in e.inputs if i.id not in given and (finding or i.scope != "lesion")]
     if not ids:
-        return {}, False
+        return {}, False, {}
     try:
         raw = await _call(SETTLE_SYS, _prompt(e, ids, finding, findings, history))
     except Exception as ex:
         logger.warning("[library.preview] settle %s: %s", type(ex).__name__, str(ex)[:200])
-        return {}, True
+        return {}, True, {}
     out: dict[str, tuple[InputValue, Settled]] = {}
+    dated: dict[str, Dated] = {}
     for item in raw.settled:
         i = e.input(item.input)
         q = item.quote.strip()
         if i is None or i.id not in ids or not q or not _in_scope(i, q, finding, findings, history):
             continue
+        if i.since_study and DT.parse(q) is not None:      # a date: code converts it, or it is asked
+            got = _since(i, q, finding, findings, history)
+            if got is not None:
+                out[i.id] = (got[0], Settled(input=i.id, value=_show(e, i, got[0]), quote=q))
+                dated[i.id] = got[1]
+            continue
         v = _value(i, item, _texts(i, finding, findings, history))
-        if v is not None and _hedged_cancer(i, v, q, _texts(i, finding, findings, history)):
-            continue                 # a suspicion, about this lesion or another, is never a known cancer: asked
-        if v is not None:
+        if v is not None:            # a suspected cancer is kept: _read_reasons marks it, so it is a scope doubt
             out[i.id] = (v, Settled(input=i.id, value=_show(e, i, v), quote=q))
-    return out, False
+    return out, False, dated
 
 
 def _texts(i: InputDef, finding: str, findings: str, history: str) -> list[str]:
-    """The texts an input's quote may come from: its finding (lesion), else the dictation and the history."""
+    """The texts an input's quote may come from: its finding (lesion), else the dictation and the history; a
+    since-study input all three, its finding first (the lesion checks read texts[0])."""
+    if i.since_study:
+        return [finding, findings, history]
     return [finding] if i.scope == "lesion" else [findings, history]
 
 
@@ -403,7 +452,8 @@ def _nouns(e: Entry) -> list[str]:
 def _read_reasons(e: Entry, i: InputDef, v: InputValue, quote: str, texts: list[str]) -> list[str]:
     """Why code cannot read this value with certainty (spec §7.5); empty when it can, before the Jev checks."""
     present = v.state == "present"
-    out = [] if present and i.type != "boolean" else [WHY_KIND]
+    out = [WHY_SUSPECTED] if _hedged_cancer(i, v, quote, texts) else []
+    out += [] if present and i.type != "boolean" else [WHY_KIND]
     if present and i.type == "enum" and not _has_option_words(str(v.value), quote):
         out.append(WHY_NOT_OPTION_WORD)
     if i.type != "number" and _modified(quote, texts):
@@ -490,16 +540,24 @@ async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding
     return why, any(fails)
 
 
-def _outcome_text(e: Entry, t: engine.Trace, sources: list[dict]) -> Proposal | None:
-    """The reached outcome as the entry words it, or None when its text still cites an unknown input."""
-    o = e.outcome(t.outcome)
+def _outcome_text(e: Entry, t: engine.Trace, sources: list[dict], outcome_id: str | None = None) -> Proposal | None:
+    """The reached outcome as the entry words it, or None when its text still cites an unknown input. `outcome_id`:
+    an input's exclusion_outcome worded in place of does_not_apply (spec §7.12 item 1), cited by its own locator and
+    the input's (the guideline text behind that exclusion), not by the generic scope clause."""
+    o = e.outcome(outcome_id or t.outcome)
     cls, rec = engine.render(e, t, o.classification), engine.render(e, t, o.recommendation)
     caveats = [engine.render(e, t, c) for c in o.caveats]
     if any(engine.PH.search(x) for x in (cls, rec, *caveats)):
         logger.info("[library.preview] %s: outcome %s cites an input still unknown; no proposal", e.key, o.id)
         return None
+    if outcome_id:
+        i = next((x for x in e.inputs if x.exclusion_outcome == outcome_id), None)
+        cites = _cites([{**c, "step": "outcome"} if (c := citation(o.locator, sources)) else {},
+                        {**c, "step": i.id} if i is not None and (c := citation(i.locator, sources)) else {}])
+    else:
+        cites = _fired(e, t, sources)
     return Proposal(classification=f"{e.display} · {cls}", line=f"{e.display}: {cls}.", recommendation=rec,
-                    caveats=caveats, citations=_fired(e, t, sources), normal=o.normal, headline=o.headline or "",
+                    caveats=caveats, citations=cites, normal=o.normal, headline=o.headline or "",
                     action=o.action or "", category=o.category or "")
 
 
@@ -511,6 +569,7 @@ class Drafted:
     quote: str
     tier: Literal["read", "prefilled"]
     why: list[str] = field(default_factory=list)
+    basis: str = ""          # a value computed from a dated study: "from the CT of 12 Mar 2025" (spec §7.12 item 4)
 
 
 def _draft_value(e: Entry, i: InputDef, t: engine.Trace, state: str, g: InputValue | None,
@@ -523,7 +582,8 @@ def _draft_value(e: Entry, i: InputDef, t: engine.Trace, state: str, g: InputVal
                       value=_show(e, i, g) if shown else "", quote=d.quote if drafted and d is not None else "",
                       why=([WHY_ASSUMED] if state == "assumed" else
                            (list(d.why) if d is not None else [WHY_EXAM] if by else []) if state == "prefilled" else []),
-                      by=by if drafted else "", needed=i.id in t.needed, waiting=i.id in t.waiting,
+                      by=by if drafted else "", basis=d.basis if drafted and d is not None else "",
+                      needed=i.id in t.needed, waiting=i.id in t.waiting,
                       options=[*display_options(e, i), NOT_STATED])
 
 
@@ -550,7 +610,7 @@ def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict
                for k in (i.id for i in e.inputs) if k in given and given[k].state != "unknown"]
     text = _outcome_text(e, t, sources) if t.outcome is not None else None
     if t.outcome == DOES_NOT_APPLY:
-        state, draft_outcome, exclusion = "does_not_apply", None, text
+        state, draft_outcome, exclusion = "does_not_apply", None, _exclusion_text(e, t, sources, reason, text)
         logger.info("[library.preview] %s does not apply (eligibility given: %s)", e.key,
                     ", ".join(k for k in elig if k in given) or "none")
     else:          # check_first stays honest: an assumed or still-unknown eligibility input (the UI's warning)
@@ -594,10 +654,11 @@ async def settle_pack(e: Entry, findings: str, history: str, finding: str = "") 
     no_unit = not finding and any(i.scope == "lesion" for i in e.inputs)
     if no_unit:
         logger.info("[library.preview] %s: no finding unit; lesion inputs asked", e.key)
-    model, degraded = await _settle(e, {}, finding, findings, history)
+    model, degraded, dated = await _settle(e, {}, finding, findings, history)
     # every number (read by code from the quote) is put to Jev as stated for its scope: this catches a number of the
-    # wrong time point or role ("was 5 mm, now 9 mm"; swapped volumes); every enum or boolean, as stated by its quote
-    pending = {k: (v, st.quote) for k, (v, st) in model.items()}
+    # wrong time point or role ("was 5 mm, now 9 mm"; swapped volumes); every enum or boolean, as stated by its quote.
+    # A value computed from a dated study is code's own arithmetic on a verbatim date: no Jev claim fits it
+    pending = {k: (v, st.quote) for k, (v, st) in model.items() if k not in dated}
     reasons, jev_failed = await _confirm(e, pending, finding, findings, history) if pending else ({}, False)
     values: dict[str, Drafted] = {}
     for k, (v, q) in pending.items():
@@ -605,6 +666,10 @@ async def settle_pack(e: Entry, findings: str, history: str, finding: str = "") 
         why = _read_reasons(e, i, v, q, _texts(i, finding, findings, history))
         why += [r for r in reasons.get(k, []) if r not in why]
         values[k] = Drafted(v, q, "prefilled" if why else "read", why)
+    for k, d in dated.items():          # exact: read; month or year only: pre-filled, so it never decides alone
+        v, st = model[k]
+        values[k] = Drafted(v, st.quote, "read" if d.exact else "prefilled", [] if d.exact else [WHY_APPROX_DATE],
+                            basis=d.basis)
     return Settlement(values=values, failed=degraded or jev_failed, no_unit=no_unit)
 
 
@@ -710,8 +775,10 @@ def _decisive(e: Entry, t: engine.Trace, base: dict[str, InputValue], k: str, cu
     if not t.bounded:
         return None
     i = e.input(k)
-    for label in display_options(e, i):
-        v = _answer(e, i, label)
+    # an assumed band (a number that may also feed a formula) is weighed over its own bands
+    cands = ([InputValue(band=b.id) for b in _all_bands(e, i)] if cur.band is not None
+             else [_answer(e, i, label) for label in display_options(e, i)])
+    for v in cands:
         if v is None or _same_shown(e, i, v, cur):
             continue
         r = ev({**base, k: v}, assume)
@@ -742,7 +809,16 @@ def _exclusion_reason(e: Entry, t: engine.Trace, known: dict[str, InputValue],
     if len(lifts) != 1:
         return None
     i = e.input(lifts[0])
-    return ExclusionReason(input=i.id, label=i.label, value=_show(e, i, known[i.id]))
+    return ExclusionReason(input=i.id, label=i.label, value=_show(e, i, known[i.id]), outcome=i.exclusion_outcome)
+
+
+def _exclusion_text(e: Entry, t: engine.Trace, sources: list[dict], reason: ExclusionReason | None,
+                    generic: Proposal | None) -> Proposal | None:
+    """does_not_apply as the card words it: the exclusion reason's own outcome when its input names one (spec §7.12
+    item 1: "Outside the Fleischner table: interval growth"), else the generic does_not_apply text."""
+    if reason is None or reason.outcome is None:
+        return generic
+    return _outcome_text(e, t, sources, reason.outcome) or generic
 
 
 def _brief(e: Entry, t: engine.Trace, oid: str) -> OutcomeBrief:
@@ -896,6 +972,13 @@ def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str
         used.append(dv)
     text = _outcome_text(e, t, sources) if t.outcome is not None else None
     excluded = t.outcome == DOES_NOT_APPLY
+    reason = None
+    if excluded:              # the exclusion's own wording needs its one value (spec §7.12 item 1); else generic
+        try:
+            reason = _exclusion_reason(e, t, known, _Evals(e))
+        except (engine.EvaluationError, ValueError) as ex:
+            logger.error("[library.calculate] %s exclusion reason failed: %s", e.key, ex)
+        text = _exclusion_text(e, t, sources, reason, text)
     out = Calculation(outcome=t.outcome, result=None if excluded else text, exclusion=text if excluded else None,
                       possible=_possible(e, t), needed=list(t.needed), values=used, scope_doubt=doubt,
                       trace=t.model_dump(mode="json") if t.outcome is not None else None, pack=e.key, bundle=bundle)
@@ -903,7 +986,7 @@ def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str
         ev = _Evals(e)
         out.most_likely, out.deciding_input, out.deciding = _likely(e, t, known, sources, assume=False, ev=ev)
         out.assumptions = _calc_assumed(e, t, known, given, used, ev)
-        out.exclusion_reason = _exclusion_reason(e, t, known, ev)
+        out.exclusion_reason = reason
     except (engine.EvaluationError, ValueError) as ex:
         logger.error("[library.calculate] %s extras failed: %s", e.key, ex)
     return out

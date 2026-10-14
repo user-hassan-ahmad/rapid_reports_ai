@@ -19,10 +19,36 @@ def check(entry: Entry, manifest: Manifest, cases: Cases | None) -> list[str]:
     p = _refs(entry)
     if p:
         return p                      # the later gates assume every reference resolves
-    p += _bands(entry) + _locators(entry, manifest) + _eligibility(entry)
+    p += _bands(entry) + _locators(entry, manifest) + _eligibility(entry) + _exclusion_outcomes(entry)
     if entry.tier == 1:
         p += _display(entry) + _presets(entry) + _formulas(entry) + _enumerate(entry) + _golden(entry, cases)
     return p
+
+
+def _exclusion_outcomes(e: Entry) -> list[str]:
+    """Spec §7.12 item 1: an input's exclusion_outcome words its exclusion apart. The input is an eligibility input,
+    the outcome exists and is not_applicable (never a management outcome), and it is not does_not_apply itself (the
+    rules reach that one). Such an outcome is exempt from needing a golden case (_golden): no rule reaches it."""
+    p = []
+    for i in e.inputs:
+        if i.exclusion_outcome is None:
+            continue
+        o = e.outcome(i.exclusion_outcome)
+        if i.role != "eligibility":
+            p.append(f"input {i.id}: exclusion_outcome belongs to an eligibility input")
+        if o is None:
+            p.append(f"input {i.id}: exclusion_outcome {i.exclusion_outcome} is not an outcome")
+        elif o.id == DOES_NOT_APPLY or o.category != "not_applicable":
+            p.append(f"input {i.id}: exclusion_outcome {o.id} must be a not_applicable outcome other than "
+                     f"{DOES_NOT_APPLY}")
+        elif any(PH.search(x) for x in (o.classification, o.recommendation, *o.caveats)):
+            p.append(f"input {i.id}: exclusion_outcome {o.id} text has a placeholder: an exclusion always reads in full")
+    return p
+
+
+def _wording_only(e: Entry) -> set[str]:
+    """The outcomes named by an exclusion_outcome: wording for does_not_apply, never a rules result."""
+    return {i.exclusion_outcome for i in e.inputs if i.exclusion_outcome is not None}
 
 
 def _presets(e: Entry) -> list[str]:
@@ -360,7 +386,7 @@ def _golden(e: Entry, cases: Cases | None) -> list[str]:
         for s in t.steps:
             if s.state == "present":
                 hit.setdefault(s.id, set()).add(s.value)
-    p += [f"outcome {o.id} has no golden case" for o in e.outcomes if o.id not in reached]
+    p += [f"outcome {o.id} has no golden case" for o in e.outcomes if o.id not in reached | _wording_only(e)]
     for s in e.logic:
         if isinstance(s, BandStep) and isinstance(e.step(s.ref), (ScoreStep, DeriveStep)):
             p += [f"{s.id}: no golden case reaches band {b.id}" for b in s.bands if b.id not in hit.get(s.id, set())]
