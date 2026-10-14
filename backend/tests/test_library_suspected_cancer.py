@@ -42,10 +42,11 @@ async def test_a_likely_primary_in_the_dictation_is_a_scope_doubt(monkeypatch, j
     assert "exclusion" in p.scope_doubt and p.state == "check_first"
 
 
-async def test_a_stated_cancer_is_unchanged(monkeypatch, jev):
+async def test_a_stated_cancer_is_not_suspected_and_is_a_scope_doubt_until_confirmed(monkeypatch, jev):
     e, s, p = await _fleischner(monkeypatch, "Known breast cancer.", "Known breast cancer")
     d = s.values["exclusion"]
     assert PP.WHY_SUSPECTED not in d.why and d.tier == "prefilled"        # a yes/no is never read: as before
+    assert "exclusion" in p.scope_doubt and p.state == "check_first"      # the settle path: pre-filled, a doubt
     read = PP.Settlement(values={**s.values, "exclusion": PP.Drafted(InputValue(value=True), "Known breast cancer",
                                                                       "read")})
     assert PP.finish(e, read, {}, {}, []).state == DOES_NOT_APPLY          # read (or answered), it excludes
@@ -64,3 +65,24 @@ def test_only_cancer_inputs_carry_the_suspicion_backstop():
     ese = _pack("ese-adrenal-incidentaloma")
     assert not PP._hedged_cancer(ese.input("not_incidentaloma"), InputValue(value=True), "suspected phaeochromocytoma")
     assert "quote the hedge" in PP.SETTLE_SYS
+
+
+# fix round 1 (task-4-review findings 1 and 2)
+def test_the_ese_hint_returns_a_suspected_cancer_with_its_hedge():
+    """Finding 1: the pack's own hint no longer tells the model to leave a suspected cancer out."""
+    hint = _pack("ese-adrenal-incidentaloma").input("known_primary_cancer").how_stated
+    assert "return it as true with the hedge in the quote" in hint
+
+
+def test_only_cancer_inputs_are_marked_suspected_counts_in_the_prompt():
+    """Finding 2: a suspicion is returned only for a cancer input; every other patient input leaves it out, as
+    before, so a hedged non-cancer Yes ("?pregnant") never comes back as a plain pre-filled Yes."""
+    f = _pack("fleischner-pulmonary-nodule")
+    lines = PP._inputs_text(f, ["exclusion", "count", "risk"]).splitlines()
+    assert PP.SUSPECTED_COUNTS in lines[0] and not any(PP.SUSPECTED_COUNTS in x for x in lines[1:])
+    r = _pack("rcog-ovarian-mass-premenopausal")
+    assert PP.SUSPECTED_COUNTS not in PP._inputs_text(r, ["pregnant_or_acute", "premenopausal"])
+    ese = _pack("ese-adrenal-incidentaloma")
+    assert PP.SUSPECTED_COUNTS in PP._inputs_text(ese, ["known_primary_cancer"])
+    assert PP.SUSPECTED_COUNTS not in PP._inputs_text(ese, ["not_incidentaloma"])
+    assert 'leave it out, unless the input is marked "suspected counts"' in PP.SETTLE_SYS

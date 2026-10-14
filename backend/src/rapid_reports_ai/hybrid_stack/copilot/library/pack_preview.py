@@ -104,7 +104,7 @@ For each input its scope states, return one item:
 - value: when present, for an enum exactly one of its options, for a boolean true or false, for a number the number as dictated (a [since study] input settled by a date: the date as written); otherwise null;
 - quote: the shortest span, copied verbatim from the FINDING ([lesion]) or from the CLINICAL HISTORY or DICTATION ([patient], or a [since study] date), that settles it; a number's quote is the whole measurement as dictated, with its unit; a date's quote is the date as written.
 Leave out every input that is not stated: never settle a value from what is usual or likely, and never invent an input, option or state.
-A patient fact (a known cancer, a condition, a treatment) is established only when it is stated as established. A suspected, possible or differential diagnosis, about this lesion or any other, is never established: when it is what a [patient] input asks about, return it as present and quote the hedge with it ("?", "suspected", "likely", "suspicious for"), so it is checked, never taken as established."""
+A patient fact (a known cancer, a condition, a treatment) is present only when it is stated as established. A suspected, possible or differential diagnosis, about this lesion or any other, never settles it as present: leave it out, unless the input is marked "suspected counts": then return it as present and quote the hedge with it ("?", "suspected", "likely", "suspicious for"), so it is checked as suspected, never taken as established."""
 
 
 class RawItem(BaseModel):
@@ -225,6 +225,8 @@ def _inputs_text(e: Entry, ids: list[str]) -> str:
                    else f"number in {i.unit or 'the unit dictated'}")
         states = f"; states allowed: {', '.join(i.states)}" if i.states else ""
         hint = f" (dictated as: {i.how_stated})" if i.how_stated else ""
+        if _suspicion_counts(i):        # spec §7.12 item 6: only a cancer input takes a suspicion, marked suspected
+            hint += f" ({SUSPECTED_COUNTS})"
         lines.append(f"- {i.id} [{'since study' if i.since_study else i.scope}]: {i.label}{hint} [{allowed}{states}]")
     return "\n".join(lines)
 
@@ -272,13 +274,22 @@ _HEDGE = re.compile(r"\b(?:suspicious|suspected|suspect|suspicion|possible|possi
 _SENTENCE_END = re.compile(r"(?<!\d)\.(?!\d)|[;\n]")      # never inside a decimal ("3.5 cm")
 
 
+SUSPECTED_COUNTS = "suspected counts"
+
+
+def _suspicion_counts(i: InputDef) -> bool:
+    """A cancer input (the shared fact known_primary_cancer, or one marked suspected_doubt): a hedged Yes is returned
+    and kept pre-filled as suspected (spec §7.12 item 6). Every other input leaves a suspicion out, as before."""
+    return i.fact == "known_primary_cancer" or i.suspected_doubt
+
+
 def _hedged_cancer(i: InputDef, v: InputValue, quote: str, texts: list[str] | None = None) -> bool:
     """A "known primary cancer: yes" (the shared fact, or an input marked suspected_doubt) hedged by its quote or by
     the words before the quote in its sentence ("suspicious for RCC" quoted as "RCC", "?primary"): kept pre-filled,
     WHY_SUSPECTED, so it is a scope doubt, never an exclusion and never assumed away (spec §7.12 item 6). A hedge after
     the quote is about something else ("Breast ca ?liver mets": the cancer is stated, the metastases are not), so it
     does not count (review I-d)."""
-    if not (i.fact == "known_primary_cancer" or i.suspected_doubt) or v.value is not True:
+    if not _suspicion_counts(i) or v.value is not True:
         return False
     if _HEDGE.search(quote):
         return True
