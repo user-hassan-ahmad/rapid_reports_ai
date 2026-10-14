@@ -65,6 +65,8 @@
 		onCheckAnswer = () => {},
 		onConfirmGenerate = null,
 		gateConfirmed = false,
+		guidelinesUnresolved = [],
+		onOpenGuideline = () => {},
 		deleteRegion = null,
 		incoming = null,
 		onMove,
@@ -153,6 +155,10 @@
 		checkAnswers?: Record<string, CheckAnswer>;
 		onCheckAnswer?: (key: string, how: CheckAnswer) => void;
 		gateConfirmed?: boolean;
+		/** Guideline cards still unresolved (Copilot on, spec §7.12 item 5): they block Confirm; [] changes nothing. */
+		guidelinesUnresolved?: { key: string; name: string }[];
+		/** The "N guidelines unresolved" chip: open the first such card in the rail. */
+		onOpenGuideline?: (key: string) => void;
 		/** A voice "delete the X line": the region whose lines wait for a Delete click (null: none). */
 		deleteRegion?: string | null;
 		/** Dictation for the field open for editing: inserted at its caret / over its selection. */
@@ -333,12 +339,18 @@
 		};
 		const blocking = liveChecks.filter((c) => c.blocking).sort((a, b) => pos(a) - pos(b)).map((c) => `check:${c.key}`);
 		const valueStops = values.filter((v) => v.state === 'open' || v.state === 'check').map((v) => `value:${v.item}`);
-		const all = [...rows, ...valueStops, ...blocking];
+		// unresolved guideline cards (Copilot spec §7.12 item 5): last, each opened in the rail when it is the current stop
+		const guides = guidelinesUnresolved.map((g) => `guideline:${g.key}`);
+		const all = [...rows, ...valueStops, ...blocking, ...guides];
 		return [...all.filter((x) => !walkSkipped.includes(x)), ...all.filter((x) => walkSkipped.includes(x))];
 	});
 	const current = $derived(walking ? (stops[0] ?? null) : null);
 	const currentCheck = $derived(current?.startsWith('check:') ? (liveChecks.find((c) => `check:${c.key}` === current) ?? null) : null);
 	const currentValue = $derived(current?.startsWith('value:') ? (values.find((v) => `value:${v.item}` === current) ?? null) : null);
+	const currentGuide = $derived(current?.startsWith('guideline:') ? (guidelinesUnresolved.find((g) => `guideline:${g.key}` === current) ?? null) : null);
+	$effect(() => {
+		if (currentGuide) onOpenGuideline(currentGuide.key);
+	});
 	const cardOpen = (c: CheckFlag) => (walking ? currentCheck?.key === c.key : pinnedKey === c.key || hoverKey === c.key);
 	$effect(() => {
 		walkTotal = Math.max(walkTotal, stops.length);
@@ -1236,7 +1248,7 @@
 		<section aria-label="Walkthrough" data-testid="walkthrough" tabindex="-1" class="outline-none flex flex-wrap items-center justify-between gap-2 rounded-lg border border-orange-400/40 bg-orange-400/[0.07] px-2.5 py-2">
 			<p class="flex flex-col text-xs">
 				{#if stops.length}
-					<span class="font-medium text-orange-100">Checking {walkTotal - stops.length + 1} of {walkTotal} · {current?.startsWith('row:') ? 'Referral question' : currentValue ? (currentValue.state === 'check' ? 'Required value · needs a look' : 'Required value') : currentCheck ? checkLabel(currentCheck.kind) : ''}</span>
+					<span class="font-medium text-orange-100">Checking {walkTotal - stops.length + 1} of {walkTotal} · {current?.startsWith('row:') ? 'Referral question' : currentGuide ? `Guideline unresolved · ${currentGuide.name}` : currentValue ? (currentValue.state === 'check' ? 'Required value · needs a look' : 'Required value') : currentCheck ? checkLabel(currentCheck.kind) : ''}</span>
 					<span class="text-gray-400">Each answer moves to the next item that blocks Confirm. Advisory underlines stay in the text.</span>
 				{:else}
 					<span class="font-medium text-emerald-200">All checked</span>
@@ -1269,6 +1281,8 @@
 			<span class="rounded bg-emerald-500/10 px-1.5 py-0.5 text-emerald-300/90"
 				>{gateConfirmed ? 'assumptions confirmed' : namedNormals ? `${assumedCount} regions assumed normal (no sheet yet)` : `${assumedCount} assumed normal`}</span>
 			{#if !hasConclusion}<span class="rounded bg-white/5 px-1.5 py-0.5 text-gray-400">no conclusion yet</span>{/if}
+			{#if guidelinesUnresolved.length}<button type="button" class="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-200 hover:bg-amber-500/25" data-gate="guidelines"
+					onclick={() => onOpenGuideline(guidelinesUnresolved[0].key)}>{guidelinesUnresolved.length} guideline{guidelinesUnresolved.length === 1 ? '' : 's'} unresolved</button>{/if}
 			{#if confirmNote}<span class="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-200" role="status" data-gate="note">{confirmNote}</span>{/if}
 		</p>
 		<button

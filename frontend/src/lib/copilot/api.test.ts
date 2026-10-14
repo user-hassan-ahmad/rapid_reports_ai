@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { token } from '$lib/stores/auth.js';
-import { calculate, CopilotError, CopilotOff, match, matchOther, OFF_DETAIL, open, preview, TIMEOUT_MS } from './api';
+import { calculate, conclusionCheck, CopilotError, CopilotOff, match, matchOther, OFF_DETAIL, open, preview, TIMEOUT_MS } from './api';
 import type { Card, MatchBody, OpenBody } from './types';
 
 // SYNTHETIC: pack names and generic phrases only.
@@ -45,7 +45,8 @@ describe('routes', () => {
 		['match/other', () => matchOther(matchBody)],
 		['open', () => open(openBody)],
 		['preview', () => preview(openBody)],
-		['calculate', () => calculate({ ...openBody, values: {} })]
+		['calculate', () => calculate({ ...openBody, values: {} })],
+		['conclusion_check', () => conclusionCheck({ conclusion: 'c', cards: [] })]
 	])('%s posts to its route with the bearer token', async (route, fn) => {
 		const f = ok();
 		vi.stubGlobal('fetch', f);
@@ -160,5 +161,20 @@ describe('errors', () => {
 		const e = await p;
 		expect(e).not.toBeInstanceOf(CopilotError);
 		expect((e as DOMException).name).toBe('AbortError');
+	});
+});
+
+describe('conclusion check (§7.12)', () => {
+	it('sends exactly {conclusion, cards[{key, finding}]} within the server caps', async () => {
+		const f = ok({ results: {} });
+		vi.stubGlobal('fetch', f);
+		const cards = Array.from({ length: 12 }, (_, i) => ({ key: `f${i}`, finding: 'x'.repeat(7000), extra: 1 }));
+		await conclusionCheck({ conclusion: 'y'.repeat(5000), cards, extra: 1 } as never);
+		const b = call(f).body;
+		expect(Object.keys(b).sort()).toEqual(['cards', 'conclusion']);
+		expect(b.conclusion).toHaveLength(4000);
+		expect(b.cards).toHaveLength(10);
+		expect(Object.keys(b.cards[0]).sort()).toEqual(['finding', 'key']);
+		expect(b.cards[0].finding).toHaveLength(6000);
 	});
 });

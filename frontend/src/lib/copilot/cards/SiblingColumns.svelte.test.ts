@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page } from '@vitest/browser/context';
 import SiblingColumns from './SiblingColumns.svelte';
-import { card, preview, result } from './fixtures';
+import { card, outcome, preview, result } from './fixtures';
 import { columnRef } from './format';
 import type { CardView } from './view';
 
@@ -88,5 +88,41 @@ describe('SiblingColumns', () => {
 		await page.getByRole('textbox', { name: 'Answer for Size' }).fill('8 mm');
 		await page.getByRole('button', { name: 'Save' }).click();
 		expect(onEdit).toHaveBeenCalledWith(columnRef(c, c.key), 'size', '8 mm');
+	});
+	it('closed at 280px: each guideline line and its long verdict pill stay inside the card', async () => {
+		const long = outcome({ headline: 'Significant solid nodule growth', action: 'Investigate further; consider definitive management', category: 'workup', normal: false });
+		const v = view({ open: false, columns: {
+			[c.key]: { loading: false, error: null, result: result(c, preview({ proposal: long, scope_doubt: ['exclusion'] })) },
+			[bts.key]: { loading: false, error: null, result: result(bts, preview({ proposal: long })) }
+		} });
+		const host = document.createElement('div');
+		host.style.width = '280px';
+		document.body.appendChild(host);
+		render(SiblingColumns, { target: host, props: base({ view: v }) });
+		await expect.poll(() => host.querySelectorAll('.cp-sib-pill .cp-pill').length).toBe(2);
+		const cardRight = host.querySelector('.cp-card')!.getBoundingClientRect().right;
+		const pills = [...host.querySelectorAll('.cp-sib-pill, .cp-sib-pill .cp-pill, .cp-sib-pill .cp-chip')];
+		expect(pills.length).toBeGreaterThan(2);
+		for (const el of pills) expect(el.getBoundingClientRect().right).toBeLessThanOrEqual(cardRight + 0.5);
+	});
+
+	it('open at 280px: each column line keeps its pill and marks inside the card', async () => {
+		const long = outcome({ headline: 'Significant solid nodule growth', action: 'Investigate further; consider definitive management', category: 'workup', normal: false });
+		const many = preview({ proposal: long, scope_doubt: ['exclusion'], assumptions: [
+			{ input: 'age', label: 'Age', value: '18 years or over', decisive: true, kind: 'eligibility' },
+			{ input: 'p', label: 'Proven malignant', value: 'No', decisive: true, kind: 'eligibility' },
+			{ input: 's', label: 'Spiculation', value: 'No', decisive: false, kind: 'sign' }] } as never);
+		const v = view({ open: true, columns: {
+			[c.key]: { loading: false, error: null, result: result(c, many) },
+			[bts.key]: { loading: false, error: null, result: result(bts, many) }
+		} });
+		const host = document.createElement('div');
+		host.style.width = '280px';
+		document.body.appendChild(host);
+		render(SiblingColumns, { target: host, props: base({ view: v }) });
+		await expect.poll(() => host.querySelectorAll('.cp-col-line .cp-pill').length).toBe(2);
+		const cardRight = host.querySelector('.cp-card')!.getBoundingClientRect().right;
+		for (const el of host.querySelectorAll('.cp-col-line .cp-pill, .cp-col-line .cp-chip'))
+			expect(el.getBoundingClientRect().right).toBeLessThanOrEqual(cardRight + 0.5);
 	});
 });

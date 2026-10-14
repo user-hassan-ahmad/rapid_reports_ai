@@ -296,7 +296,8 @@
    "label": "Interval from baseline CT",
    "type": "number",
    "unit": "days",
-   "how_stated": "days between the baseline CT and this CT, above 0, e.g. 3 months is about 91 days, 1 year is 365 days",
+   "how_stated": "days between the baseline CT and this CT, above 0, e.g. 3 months is about 91 days, 1 year is 365 days; or the date of the earlier study as dictated, e.g. 'CT of 12 March 2025'",
+   "since_study": true,
    "prerequisites": [
     {
      "ref": "prior_study",

@@ -26,10 +26,12 @@
 <style>
 	.cp-assumed-chip {
 		display: inline-flex;
+		flex-shrink: 1;
 		max-width: 100%;
 		min-width: 0;
 	}
 	.cp-assumed-one {
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

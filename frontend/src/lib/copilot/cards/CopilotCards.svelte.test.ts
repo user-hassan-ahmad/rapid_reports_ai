@@ -241,7 +241,7 @@ describe('CopilotCards', () => {
 			]
 		});
 		render(CopilotCards, single(c, v(result(c, pv))));
-		const titleRow = document.querySelector('.gl-title-row')!;
+		const titleRow = document.querySelector('.gl-meta')!; // the pills sit on their own row under the name (Task 6)
 		await expect.element(page.getByText('No further imaging', { exact: true })).toBeInTheDocument();
 		expect(titleRow.textContent).toContain('ESE adrenal incidentaloma');
 		expect(titleRow.querySelector('.cp-pill')!.getAttribute('data-category')).toBe('none');

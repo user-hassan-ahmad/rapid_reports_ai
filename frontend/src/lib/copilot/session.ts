@@ -5,8 +5,9 @@ import { writable, type Readable } from 'svelte/store';
 import type { StackUnit } from '$lib/hybrid-stack/types';
 import { findingsText } from '$lib/hybrid-stack/regionState';
 import * as defaultApi from './api';
-import { CopilotError, CopilotOff, MAX_FINDINGS } from './api';
+import { CopilotError, CopilotOff, MAX_CONCLUSION_CARDS, MAX_FINDINGS } from './api';
 import { closedView, type CardView, type ColumnView } from './cards/view';
+import { significant, targets, verdictKey } from './gate';
 import {
 	abnormalFindings,
 	cardRef,
@@ -22,7 +23,18 @@ import {
 	type Finding,
 	type Group
 } from './state';
-import type { CalculateBody, CalculateResult, Card, MatchBody, MatchResult, OpenBody, OpenResult } from './types';
+import type {
+	CalculateBody,
+	CalculateResult,
+	Card,
+	ConclusionCategory,
+	ConclusionCheckBody,
+	ConclusionCheckResult,
+	MatchBody,
+	MatchResult,
+	OpenBody,
+	OpenResult
+} from './types';
 
 export interface CopilotContext { scanType: string; history: string }
 export type OtherState = 'idle' | 'loading' | 'done' | 'failed';
@@ -33,6 +45,10 @@ export interface CopilotState {
 	matching: boolean;
 	matchFailed: boolean;
 	otherState: OtherState;
+	/** "Seen, leave as is" (§7.12 item 5): gate key → the verdictKey it was tapped on (a changed verdict re-opens). */
+	seen: Record<string, string>;
+	/** The conclusion check per gate key: what the conclusion recommends for that card's finding; null: not checked. */
+	concl: Record<string, ConclusionCategory | null>;
 }
 /** The stack log's `copilot` record: pack keys, card kinds, counts and ms; never finding or dictation text. */
 export type CopilotLog = {
@@ -63,6 +79,11 @@ export interface CopilotSession {
 	calculate(ref: string): void;
 	retryMatch(): void;
 	other(): void;
+	/** "Seen, leave as is" on a card or sibling column (gate key): held until its verdict changes. */
+	seen(ref: string): void;
+	/** The conclusion as the confirm bar reads it: checked against the significant cards after
+	 *  CONCLUSION_DEBOUNCE_MS of no change (and again when a card turns significant). A failure stores null. */
+	checkConclusion(conclusion: string): void;
 	/** Keys, counts and ms only (no text): for the stack log. */
 	log(): CopilotLog;
 	destroy(): void;
@@ -73,6 +94,7 @@ export interface CopilotApi {
 	open(b: OpenBody, signal?: AbortSignal): Promise<OpenResult>;
 	preview(b: OpenBody, signal?: AbortSignal): Promise<OpenResult>;
 	calculate(b: CalculateBody, signal?: AbortSignal): Promise<CalculateResult>;
+	conclusionCheck(b: ConclusionCheckBody, signal?: AbortSignal): Promise<ConclusionCheckResult>;
 }
 
 /** Exam cards re-open this long after recording stops with changed findings text. */
@@ -86,6 +108,8 @@ export const MATCH_BACKOFF_MS = 15_000;
  *  prewarmed every card's settlement, so each is cheap; a click still opens at once (it jumps the queue). */
 export const MAX_PREFETCH = 4;
 const MAX_COLUMNS = 3;
+/** The conclusion check waits this long after the last change to the conclusion. */
+export const CONCLUSION_DEBOUNCE_MS = 800;
 
 const isAbort = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
 const reason = (e: unknown) => (e instanceof CopilotError ? e.reason : 'failed');
@@ -131,6 +155,17 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	const examText = new Map<string, string>(); // exam ref → the findings text its last /open carried
 	let examTimer: ReturnType<typeof setTimeout> | null = null;
 
+	// confirm gate (§7.12 item 5)
+	let seen: Record<string, string> = {};
+	let concl: Record<string, ConclusionCategory | null> = {};
+	let conclusion = ''; // the latest conclusion text
+	let conclFor: string | null = null; // the conclusion `concl` answers
+	let conclFinding: Record<string, string> = {}; // gate key → the finding text its answer was computed for
+	let conclTimer: ReturnType<typeof setTimeout> | null = null;
+	let conclAc: AbortController | null = null;
+	let conclSeq = 0;
+	let conclAsked = false; // checkConclusion was called: the host reads a conclusion
+
 	const log: CopilotLog = { matched: [], kinds: {}, opened: [], quiet: [], failed: {}, ms: {} };
 	const fail = (k: string) => (log.failed[k] = (log.failed[k] ?? 0) + 1);
 
@@ -140,9 +175,20 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		return [...cards, ...others.filter((c) => !refs.has(cardRef(c)))];
 	}
 	function snapshot(): CopilotState {
-		return { on, groups: on ? groupCards(all(), findings) : [], views: { ...views }, matching, matchFailed, otherState };
+		const base: CopilotState = { on, groups: on ? groupCards(all(), findings) : [], views: { ...views }, matching, matchFailed, otherState, seen: { ...seen }, concl: {} };
+		// only answers for the CURRENT conclusion and the card's current finding text ever clear a card (review I-1, M-1)
+		if (conclFor === conclusion)
+			for (const t of targets(base)) if (t.key in concl && conclFinding[t.key] === findingOf(t.card)) base.concl[t.key] = concl[t.key];
+		return base;
 	}
-	const publish = () => !dead && store.set(snapshot());
+	const publish = () => {
+		if (dead) return;
+		const snap = snapshot();
+		store.set(snap);
+		// a card that turned significant under an already checked conclusion is checked too (never a retry of a null),
+		// and after a new case context the current conclusion is checked again
+		if (conclAsked && !conclTimer && !conclAc && (conclFor !== conclusion ? significantNow(snap) : pendingChecks(snap)).length) scheduleCheck();
+	};
 	const live = () => on && !dead;
 	const patch = (ref: string, p: Partial<CardView>) => (views[ref] = { ...(views[ref] ?? closedView), ...p });
 	const patchCol = (ref: string, key: string, p: Partial<ColumnView>) => {
@@ -155,6 +201,11 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 
 	function abortAll() {
 		matchAc?.abort();
+		conclAc?.abort();
+		conclAc = null;
+		conclSeq++;
+		if (conclTimer) clearTimeout(conclTimer);
+		conclTimer = null;
 		otherAc?.abort();
 		for (const ac of openAc.values()) ac.abort();
 		matchAc = otherAc = null;
@@ -582,8 +633,69 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		matching = false;
 		matchFailed = false;
 		otherState = 'idle';
+		seen = {};
+		concl = {};
+		conclFinding = {};
+		conclFor = null;
 		publish();
 		plan();
+	}
+
+	// ── confirm gate: the conclusion check (§7.12 item 5) ──
+	const significantNow = (snap: CopilotState) => targets(snap).filter((t) => significant(t.preview, t.card));
+	/** Significant cards with no answer yet under the current conclusion. */
+	const pendingChecks = (snap: CopilotState) =>
+		significantNow(snap).filter((t) => !(t.key in concl) || conclFinding[t.key] !== findingOf(t.card));
+	/** What the check reads as the card's finding: as /open sends it (an exam card: the current findings text). */
+	function findingOf(card: Card): string {
+		return card.finding_id === 'exam' ? text : card.finding;
+	}
+	function scheduleCheck() {
+		if (conclTimer) clearTimeout(conclTimer);
+		conclTimer = setTimeout(() => {
+			conclTimer = null;
+			void runCheck();
+		}, CONCLUSION_DEBOUNCE_MS);
+	}
+	async function runCheck() {
+		if (!live()) return;
+		const text = conclusion;
+		const fresh = conclFor !== text; // a new conclusion re-checks every significant card
+		const due = fresh ? significantNow(snapshot()) : pendingChecks(snapshot());
+		const sentFinding = Object.fromEntries(due.map((t) => [t.key, findingOf(t.card)]));
+		const answer = (got: Record<string, ConclusionCategory | null>) => {
+			concl = fresh ? got : { ...concl, ...got };
+			conclFinding = fresh ? sentFinding : { ...conclFinding, ...sentFinding };
+			conclFor = text;
+			publish();
+		};
+		if (!due.length) {
+			if (fresh) answer({});
+			return;
+		}
+		const nulls = () => Object.fromEntries(due.map((t) => [t.key, null]));
+		if (!text.trim()) return answer(nulls()); // nothing to check: nothing clears
+		// one entry per distinct finding (siblings on one finding share it): the key is an opaque id the reply echoes
+		// (at most MAX_CONCLUSION_CARDS: a card past the cap is answered null, so its note says the check did not run)
+		const ids = new Map<string, string>();
+		for (const t of due) if (!ids.has(sentFinding[t.key]) && ids.size < MAX_CONCLUSION_CARDS) ids.set(sentFinding[t.key], `f${ids.size}`);
+		const seq = ++conclSeq;
+		conclAc?.abort();
+		const ac = new AbortController();
+		conclAc = ac;
+		try {
+			const res = await api.conclusionCheck({ conclusion: text, cards: [...ids].map(([finding, key]) => ({ key, finding })) }, ac.signal);
+			if (seq !== conclSeq || !live()) return;
+			conclAc = null;
+			answer(Object.fromEntries(due.map((t) => { const id = ids.get(sentFinding[t.key]); return [t.key, id ? (res.results?.[id] ?? null) : null]; })));
+		} catch (e) {
+			if (seq !== conclSeq) return;
+			conclAc = null;
+			if (failed(e)) {
+				fail('conclusion');
+				answer(nulls());
+			}
+		}
 	}
 
 	// ── public ──
@@ -670,6 +782,20 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 				if (otherAc === ac) otherAc = null;
 				publish();
 			}
+		},
+		seen(ref) {
+			if (!live()) return;
+			const t = targets(snapshot()).find((x) => x.key === ref);
+			if (!t) return;
+			seen = { ...seen, [ref]: verdictKey(t.preview) };
+			publish();
+		},
+		checkConclusion(text) {
+			if (!live() || (text === conclusion && (conclTimer || conclAc || conclFor === text))) return;
+			conclusion = text;
+			conclAsked = true;
+			scheduleCheck();
+			publish(); // the old text's answers stop clearing cards at once (review I-1)
 		},
 		log: () => structuredClone(log),
 		destroy() {

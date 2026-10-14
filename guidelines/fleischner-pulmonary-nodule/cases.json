@@ -8,7 +8,8 @@
         "count": "multiple",
         "diameter_mm": 10,
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "subsolid_multiple_ge6",
       "steps": {
@@ -24,7 +25,8 @@
         "diameter_mm": 4,
         "risk": "low",
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "solid_single_lt6_low",
       "steps": {
@@ -40,7 +42,8 @@
         "diameter_mm": 5.4,
         "risk": "high",
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "solid_single_lt6_high",
       "steps": {
@@ -56,7 +59,8 @@
         "diameter_mm": 5.5,
         "risk": "low",
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "solid_single_6to8_low",
       "steps": {
@@ -72,7 +76,8 @@
         "diameter_mm": 8.4,
         "risk": "high",
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "solid_single_6to8_high",
       "steps": {
@@ -88,7 +93,8 @@
         "diameter_mm": 8.5,
         "risk": "low",
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "solid_single_gt8",
       "steps": {
@@ -104,7 +110,8 @@
         "diameter_mm": 12,
         "risk": "high",
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "solid_single_gt8",
       "steps": {
@@ -119,7 +126,8 @@
         "count": "single",
         "diameter_mm": 12,
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "solid_single_gt8",
       "steps": {
@@ -135,7 +143,8 @@
         "diameter_mm": 3,
         "risk": "low",
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "solid_multiple_lt6_low",
       "steps": {
@@ -151,7 +160,8 @@
         "diameter_mm": 5,
         "risk": "high",
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "solid_multiple_lt6_high",
       "steps": {
@@ -167,7 +177,8 @@
         "diameter_mm": 7,
         "risk": "low",
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "solid_multiple_ge6_low",
       "steps": {
@@ -183,7 +194,8 @@
         "diameter_mm": 15,
         "risk": "low",
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "solid_multiple_ge6_low",
       "steps": {
@@ -199,7 +211,8 @@
         "diameter_mm": 6,
         "risk": "high",
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "solid_multiple_ge6_high",
       "steps": {
@@ -215,7 +228,8 @@
         "diameter_mm": 8.5,
         "risk": "high",
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "solid_multiple_ge6_high",
       "steps": {
@@ -230,7 +244,8 @@
         "count": "single",
         "diameter_mm": 5.4,
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "ggn_single_lt6",
       "steps": {
@@ -245,7 +260,8 @@
         "count": "single",
         "diameter_mm": 5.5,
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "ggn_single_ge6",
       "steps": {
@@ -261,7 +277,8 @@
         "diameter_mm": 8.5,
         "risk": "high",
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "ggn_single_ge6",
       "steps": {
@@ -276,7 +293,8 @@
         "count": "single",
         "diameter_mm": 4,
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "psn_single_lt6",
       "steps": {
@@ -291,7 +309,8 @@
         "count": "single",
         "diameter_mm": 9,
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "psn_single_ge6",
       "steps": {
@@ -306,7 +325,8 @@
         "count": "single",
         "diameter_mm": 8.4,
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "psn_single_ge6",
       "steps": {
@@ -321,7 +341,8 @@
         "count": "multiple",
         "diameter_mm": 5.4,
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "subsolid_multiple_lt6",
       "steps": {
@@ -336,7 +357,8 @@
         "count": "multiple",
         "diameter_mm": 2,
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "subsolid_multiple_lt6",
       "steps": {
@@ -351,7 +373,8 @@
         "count": "multiple",
         "diameter_mm": 6,
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": "subsolid_multiple_ge6",
       "steps": {
@@ -366,7 +389,8 @@
         "count": "single",
         "diameter_mm": 7,
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": null,
       "needed": [
@@ -380,7 +404,8 @@
         "nodule_type": "ground-glass",
         "count": "single",
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": null,
       "needed": [
@@ -395,7 +420,8 @@
         "diameter_mm": 4,
         "risk": "low",
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": null,
       "needed": [
@@ -409,7 +435,8 @@
         "count": "single",
         "diameter_mm": 7,
         "exclusion": false,
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": null,
       "needed": [
@@ -452,7 +479,8 @@
         "count": "single",
         "diameter_mm": 4,
         "risk": "low",
-        "age": 60
+        "age": 60,
+        "prior_growth": false
       },
       "outcome": null,
       "needed": [
@@ -468,7 +496,8 @@
         "count": "single",
         "diameter_mm": 7,
         "risk": "low",
-        "age": 34
+        "age": 34,
+        "prior_growth": false
       },
       "outcome": "does_not_apply"
     },
@@ -481,7 +510,8 @@
         "count": "single",
         "diameter_mm": 7,
         "risk": "low",
-        "age": 35
+        "age": 35,
+        "prior_growth": false
       },
       "outcome": "solid_single_6to8_low"
     },
@@ -493,7 +523,8 @@
         "nodule_type": "solid",
         "count": "single",
         "diameter_mm": 7,
-        "risk": "low"
+        "risk": "low",
+        "prior_growth": false
       },
       "outcome": null,
       "needed": [
@@ -529,7 +560,8 @@
         "risk": "low",
         "exclusion": false,
         "age": 60,
-        "diameter_mm": 30
+        "diameter_mm": 30,
+        "prior_growth": false
       },
       "outcome": "solid_single_gt8",
       "steps": {
@@ -545,7 +577,8 @@
         "risk": "low",
         "exclusion": false,
         "age": 60,
-        "diameter_mm": 30.5
+        "diameter_mm": 30.5,
+        "prior_growth": false
       },
       "outcome": "does_not_apply",
       "steps": {
@@ -561,7 +594,8 @@
         "risk": "low",
         "exclusion": false,
         "age": 60,
-        "diameter_mm": 38
+        "diameter_mm": 38,
+        "prior_growth": false
       },
       "outcome": "does_not_apply"
     },
@@ -573,7 +607,8 @@
         "count": "single",
         "exclusion": false,
         "age": 60,
-        "diameter_mm": 38
+        "diameter_mm": 38,
+        "prior_growth": false
       },
       "outcome": "does_not_apply"
     },
@@ -588,7 +623,8 @@
         "age": 60,
         "diameter_mm": {
           "band": "gt30"
-        }
+        },
+        "prior_growth": false
       },
       "outcome": "does_not_apply"
     },
@@ -602,6 +638,33 @@
       },
       "outcome": "does_not_apply",
       "needed": []
+    },
+    {
+      "name": "interval growth on prior imaging: outside the table (S1 p. 3 title, p. 5 prior imaging)",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 9,
+        "exclusion": false,
+        "prior_growth": true,
+        "age": 60
+      },
+      "outcome": "does_not_apply"
+    },
+    {
+      "name": "solid single 9 mm, no interval growth: the table applies",
+      "origin": "ours",
+      "inputs": {
+        "nodule_type": "solid",
+        "count": "single",
+        "diameter_mm": 9,
+        "risk": "low",
+        "exclusion": false,
+        "prior_growth": false,
+        "age": 60
+      },
+      "outcome": "solid_single_gt8"
     }
   ]
 }

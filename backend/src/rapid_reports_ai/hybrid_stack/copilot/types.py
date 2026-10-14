@@ -144,6 +144,7 @@ class DraftValue(BaseModel):
     quote: str = ""                    # read or pre-filled from the dictation: the verbatim span behind it
     why: list[str] = Field(default_factory=list)      # pre-filled: why it is not read (spec §7.5)
     by: str = ""                       # "exam" when the exam binding preset it (pre-filled, no quote); else ""
+    basis: str = ""                    # computed from a dated study: "from the CT of 12 Mar 2025" (spec §7.12 item 4)
     needed: bool = False               # in `needed`: can still change the outcome
     waiting: bool = False              # behind a prerequisite still unknown: not asked yet
     decisive: bool | None = None       # assumed: flipping it alone changes the outcome (confirm at Apply); None when
@@ -171,6 +172,7 @@ class ExclusionReason(BaseModel):
     input: str
     label: str
     value: str
+    outcome: str | None = None         # the input's exclusion_outcome, whose wording the exclusion shows (spec §7.12)
 
 
 class Assumption(BaseModel):

@@ -134,6 +134,17 @@ class InputDef(_M):
     # unenhanced scan, Doppler flow)
     visible_sign: bool = False
     absent_option: str | None = None
+    # spec §7.12 item 1: an eligibility input whose exclusion the source words apart (Fleischner: interval growth is
+    # outside the table, see BTS). The rules still reach does_not_apply; when this input alone is behind it, the card
+    # shows this outcome's wording and locator instead (a not_applicable outcome, never reached by the rules itself)
+    exclusion_outcome: str | None = None
+    # spec §7.12 item 4: a number of days since an earlier study. It may also be settled from that study's date, quoted
+    # from anywhere in the dictation or history; code converts it (library/dates.py)
+    since_study: bool = False
+    # spec §7.12 item 6: a patient yes/no whose Yes includes a known cancer (Fleischner's combined exclusion). A hedged
+    # Yes ("?primary", "likely carcinoma") is kept pre-filled as suspected, never established: a scope doubt. The shared
+    # fact known_primary_cancer always behaves so
+    suspected_doubt: bool = False
 
     @model_validator(mode="after")
     def _options(self):
@@ -152,6 +163,10 @@ class InputDef(_M):
             raise ValueError(f"input {self.id!r}: a visible sign is a yes/no, or a choice naming its absent option")
         if self.absent_option is not None and not self.visible_sign:
             raise ValueError(f"input {self.id!r}: absent_option belongs to a visible sign")
+        if self.since_study and not (self.type == "number" and self.unit == "days"):
+            raise ValueError(f"input {self.id!r}: since_study belongs to a number in days")
+        if self.suspected_doubt and not (self.type == "boolean" and self.scope == "patient"):
+            raise ValueError(f"input {self.id!r}: suspected_doubt belongs to a patient-scoped yes/no")
         if self.fact is not None:
             t, unit, opts = FACTS[self.fact]
             if self.scope != "patient" or self.type != t or self.unit != unit or tuple(self.options) != opts:

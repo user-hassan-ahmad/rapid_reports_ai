@@ -4,10 +4,11 @@ import { get } from 'svelte/store';
 import type { StackUnit } from '$lib/hybrid-stack/types';
 import { CopilotError, CopilotOff } from './api';
 import { assumption, card, draft, outcome, preview, result } from './cards/fixtures';
-import { CONTEXT_DEBOUNCE_MS, createCopilotSession, EXAM_REOPEN_MS, MATCH_BACKOFF_MS, type CopilotApi } from './session';
+import { CONCLUSION_DEBOUNCE_MS, CONTEXT_DEBOUNCE_MS, createCopilotSession, EXAM_REOPEN_MS, MATCH_BACKOFF_MS, type CopilotApi } from './session';
 import { cardRef } from './state';
+import { unresolved } from './gate';
 import { findingsText } from '$lib/hybrid-stack/regionState';
-import type { CalculateBody, CalculateResult, Card, Calculation, MatchBody, MatchResult, OpenBody, OpenResult } from './types';
+import type { CalculateBody, CalculateResult, Card, Calculation, ConclusionCheckBody, ConclusionCheckResult, MatchBody, MatchResult, OpenBody, OpenResult } from './types';
 
 const unit = (id: number, text: string, o: Partial<StackUnit> = {}): StackUnit => ({
 	id,
@@ -33,7 +34,8 @@ function fakeApi() {
 		other: [] as Call<MatchBody, MatchResult>[],
 		open: [] as Call<OpenBody, OpenResult>[],
 		preview: [] as Call<OpenBody, OpenResult>[],
-		calculate: [] as Call<CalculateBody, CalculateResult>[]
+		calculate: [] as Call<CalculateBody, CalculateResult>[],
+		conclusion: [] as Call<ConclusionCheckBody, ConclusionCheckResult>[]
 	};
 	const pending =
 		<B, R>(list: Call<B, R>[]) =>
@@ -44,7 +46,8 @@ function fakeApi() {
 		matchOther: pending(calls.other),
 		open: pending(calls.open),
 		preview: pending(calls.preview),
-		calculate: pending(calls.calculate)
+		calculate: pending(calls.calculate),
+		conclusionCheck: pending(calls.conclusion)
 	};
 	return { api, calls };
 }
@@ -770,5 +773,162 @@ describe('session: background previews (checkpoint 4)', () => {
 		s.other();
 		expect(api.calls.other).toHaveLength(0);
 		expect(state().otherState).toBe('idle');
+	});
+});
+
+// Spec §7.12 item 5: the conclusion check behind the confirm gate, and "Seen, leave as is". SYNTHETIC.
+describe('session: confirm gate', () => {
+	const cyst = card({ key: 'cyst-pack', name: 'Cyst pack', finding_id: 'u2', finding: B });
+	const workup = preview({ proposal: outcome({ headline: 'Consider PET-CT', action: 'PET-CT', category: 'workup' }) });
+	const fine = preview({ proposal: outcome({ headline: 'Benign', action: 'No further imaging', category: 'none' }) });
+	/** Two findings matched (nodule on A, cyst on B); their background previews land: the nodule needs work-up. */
+	async function twoCards() {
+		const us = [unit(1, A), unit(2, B)];
+		s.round(us, true, G);
+		api.calls.match[0].resolve(matched([]));
+		await flush();
+		s.round(us, true, G);
+		api.calls.match[1].resolve(matched([nodule, cyst]));
+		await flush();
+		for (const c of api.calls.open) c.resolve(result(c.body.card, c.body.card.key === nodule.key ? workup : fine));
+		await flush();
+	}
+
+	it('checkConclusion debounces, sends only significant cards, stores the categories', async () => {
+		await twoCards();
+		s.checkConclusion('Recommend');
+		await vi.advanceTimersByTimeAsync(CONCLUSION_DEBOUNCE_MS / 2);
+		s.checkConclusion('Recommend PET-CT.');
+		await vi.advanceTimersByTimeAsync(CONCLUSION_DEBOUNCE_MS - 1);
+		expect(api.calls.conclusion).toHaveLength(0);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(api.calls.conclusion).toHaveLength(1);
+		const body = api.calls.conclusion[0].body;
+		expect(body.conclusion).toBe('Recommend PET-CT.');
+		expect(body.cards).toEqual([{ key: 'f0', finding: A }]); // the cyst card's verdict is not significant
+		api.calls.conclusion[0].resolve({ results: { f0: 'workup' } });
+		await flush();
+		expect(state().concl).toEqual({ [cardRef(nodule)]: 'workup' });
+		s.checkConclusion('Recommend PET-CT.'); // unchanged: no new call
+		await vi.advanceTimersByTimeAsync(CONCLUSION_DEBOUNCE_MS);
+		expect(api.calls.conclusion).toHaveLength(1);
+	});
+
+	it('a rejected check stores null for those cards and does not throw', async () => {
+		await twoCards();
+		s.checkConclusion('Recommend PET-CT.');
+		await vi.advanceTimersByTimeAsync(CONCLUSION_DEBOUNCE_MS);
+		api.calls.conclusion[0].reject(new CopilotError('timeout'));
+		await flush();
+		expect(state().concl).toEqual({ [cardRef(nodule)]: null });
+		expect(state().on).toBe(true);
+	});
+
+	it('an empty conclusion makes no call and clears nothing', async () => {
+		await twoCards();
+		s.checkConclusion('   ');
+		await vi.advanceTimersByTimeAsync(CONCLUSION_DEBOUNCE_MS);
+		expect(api.calls.conclusion).toHaveLength(0);
+		expect(state().concl).toEqual({ [cardRef(nodule)]: null });
+	});
+
+	it('a card that turns significant after the check is checked under the same conclusion', async () => {
+		const us = [unit(1, A)];
+		s.round(us, true, G);
+		api.calls.match[0].resolve(matched([]));
+		await flush();
+		s.round(us, true, G);
+		api.calls.match[1].resolve(matched([nodule]));
+		await flush();
+		s.checkConclusion('Recommend PET-CT.');
+		await vi.advanceTimersByTimeAsync(CONCLUSION_DEBOUNCE_MS);
+		expect(api.calls.conclusion).toHaveLength(0); // nothing significant yet: no call
+		api.calls.open[0].resolve(result(nodule, workup));
+		await flush();
+		await vi.advanceTimersByTimeAsync(CONCLUSION_DEBOUNCE_MS);
+		expect(api.calls.conclusion).toHaveLength(1);
+		expect(api.calls.conclusion[0].body.cards).toEqual([{ key: 'f0', finding: A }]);
+	});
+
+	it('seen(ref) holds the verdict it was tapped on; a new case context resets seen and the checks', async () => {
+		await twoCards();
+		s.seen(cardRef(nodule));
+		expect(state().seen).toEqual({ [cardRef(nodule)]: 'workup|Consider PET-CT' });
+		s.setContext({ scanType: 'CT chest', history: 'weight loss' });
+		await vi.advanceTimersByTimeAsync(CONTEXT_DEBOUNCE_MS);
+		expect(state().seen).toEqual({});
+		expect(state().concl).toEqual({});
+	});
+
+	// review I-1: an answer computed for another conclusion text never clears a card
+	it('a text change empties concl at once; a late answer for the old text keeps it empty; the current one fills it', async () => {
+		await twoCards();
+		s.checkConclusion('Recommend PET-CT.');
+		await vi.advanceTimersByTimeAsync(CONCLUSION_DEBOUNCE_MS);
+		api.calls.conclusion[0].resolve({ results: { f0: 'workup' } });
+		await flush();
+		expect(state().concl).toEqual({ [cardRef(nodule)]: 'workup' });
+		expect(unresolved(state(), state().seen, state().concl)).toEqual([]);
+		// edit with a check for the old text still in flight
+		s.checkConclusion('Recommend PET-CT and biopsy.');
+		await vi.advanceTimersByTimeAsync(CONCLUSION_DEBOUNCE_MS);
+		expect(api.calls.conclusion).toHaveLength(2);
+		s.checkConclusion('Benign.');
+		expect(state().concl).toEqual({}); // straight after the change, before the timer fires
+		expect(unresolved(state(), state().seen, state().concl).map((u) => u.key)).toEqual([cardRef(nodule)]);
+		api.calls.conclusion[1].resolve({ results: { f0: 'workup' } }); // late: for the old text
+		await flush();
+		expect(state().concl).toEqual({});
+		await vi.advanceTimersByTimeAsync(CONCLUSION_DEBOUNCE_MS);
+		expect(api.calls.conclusion).toHaveLength(3);
+		expect(api.calls.conclusion[2].body.conclusion).toBe('Benign.');
+		api.calls.conclusion[2].resolve({ results: { f0: 'none' } });
+		await flush();
+		expect(state().concl).toEqual({ [cardRef(nodule)]: 'none' });
+	});
+
+	// review M-1: an exam card's answer is for the findings text it was sent with
+	it('an exam card is checked again when the findings text changes under the same conclusion', async () => {
+		const exam = card({ key: 'exam-pack', name: 'Exam pack', finding_id: 'exam', finding: 'one' });
+		const us = [unit(1, 'one', { abnormal: false })];
+		s.round(us, false, G);
+		api.calls.match[0].resolve(matched([exam]));
+		await flush();
+		api.calls.open[0].resolve(result(exam, preview({ proposal: outcome({ headline: 'Consider PET-CT', category: 'workup', normal: false }) })));
+		await flush();
+		s.checkConclusion('Recommend PET-CT.');
+		await vi.advanceTimersByTimeAsync(CONCLUSION_DEBOUNCE_MS);
+		expect(api.calls.conclusion[0].body.cards).toEqual([{ key: 'f0', finding: findingsText(us, G) }]);
+		api.calls.conclusion[0].resolve({ results: { f0: 'workup' } });
+		await flush();
+		expect(state().concl).toEqual({ [cardRef(exam)]: 'workup' });
+		const us2 = [unit(1, 'one two', { abnormal: false })];
+		s.round(us2, false, G);
+		expect(state().concl).toEqual({}); // the answer was for the old findings text
+		await vi.advanceTimersByTimeAsync(CONCLUSION_DEBOUNCE_MS);
+		const last = api.calls.conclusion.at(-1)!;
+		expect(last.body.cards).toEqual([{ key: 'f0', finding: findingsText(us2, G) }]);
+	});
+
+	// review M-5: at most ten findings go to the check; a card past the cap is answered null (its note says so)
+	it('caps the findings sent at ten; cards past the cap get null', async () => {
+		const texts = Array.from({ length: 11 }, (_, i) => `finding number ${i}`);
+		const us = texts.map((t, i) => unit(i + 1, t));
+		const cards = texts.map((t, i) => card({ key: `pack-${i}`, name: `Pack ${i}`, finding_id: `u${i + 1}`, finding: t }));
+		s.round(us, false, G);
+		api.calls.match[0].resolve(matched(cards));
+		await flush();
+		while (api.calls.open.some((c) => !(c as { done?: boolean }).done)) {
+			for (const c of api.calls.open) if (!(c as { done?: boolean }).done) ((c as { done?: boolean }).done = true), c.resolve(result(c.body.card, workup));
+			await flush();
+		}
+		s.checkConclusion('Recommend PET-CT.');
+		await vi.advanceTimersByTimeAsync(CONCLUSION_DEBOUNCE_MS);
+		const sent = api.calls.conclusion[0].body.cards;
+		expect(sent).toHaveLength(10);
+		api.calls.conclusion[0].resolve({ results: Object.fromEntries(sent.map((c) => [c.key, 'workup' as const])) });
+		await flush();
+		expect(Object.values(state().concl).filter((c) => c === 'workup')).toHaveLength(10);
+		expect(state().concl[cardRef(cards[10])]).toBeNull();
 	});
 });

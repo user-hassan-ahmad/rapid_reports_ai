@@ -41,6 +41,7 @@
 	import CopilotRail from '$lib/copilot/cards/CopilotRail.svelte';
 	import type { CopilotSession, CopilotState } from '$lib/copilot/session';
 	import { mountCopilot } from '$lib/copilot/mount';
+	import { unresolved, type Unresolved } from '$lib/copilot/gate';
 	import { readable, type Readable } from 'svelte/store';
 	import { postAssumed, postChanged, postDictationCheck, postUnfinished, postClose, postConclusionCheck, postDraft, postGroup, postItems, postLog, postRecheck, postSlimSheet, postValues } from '$lib/hybrid-stack/api';
 	import { chooseTemplate, reviewTemplate, templateKey, withChosen, withRequired } from '$lib/hybrid-stack/templateRows';
@@ -406,6 +407,17 @@
 	// with no sentence left assumes nothing. An abnormal region's remainder is never named (review 2026-10-12).
 	$: namedNormals = Object.keys(stackRegionNormals).length === 0;
 	$: dictatedConclusion = conclusionText(stackUnits);
+	// The confirm gate sees the guideline panel (spec §7.12 item 5): the conclusion the confirm bar's hasConclusion
+	// reads (dictated, else the draft) is checked against the significant cards; unresolved ones block Confirm.
+	$: gateConclusion = dictatedConclusion || draft?.text || '';
+	$: if (copilotActive) copilot?.checkConclusion(gateConclusion);
+	let guidelinesUnresolved: Unresolved[] = [];
+	$: guidelinesUnresolved = copilotActive && $copilotState?.on ? unresolved($copilotState, $copilotState.seen, $copilotState.concl) : [];
+	let copilotRail: { reveal(ref: string): Promise<void> } | null = null;
+	function openGuideline(key: string): void {
+		const ref = guidelinesUnresolved.find((u) => u.key === key)?.card ?? key;
+		void copilotRail?.reveal(ref);
+	}
 	// The conclusion follows the findings: greyed until the first findings land, then the AI draft (or, without one,
 	// a field to type or dictate with a button to draft it).
 	// A failed /assumed (an error or res.error) is its own state: the tray says so; nothing is assumed (spec §10).
@@ -2846,7 +2858,7 @@
 						{/if}
 						<HybridStackView units={stackUnits} groups={stackGroups} pillRegions={shownPills} pending={stripNow}
 							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView.show ? moreView.rows : []} moreWaiting={moreView.waiting} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={shownAssumed} structures={stackStructures} flagged={flaggedNow}
-							checks={placedChecks} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {deleteRegion}
+							checks={placedChecks} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {guidelinesUnresolved} onOpenGuideline={openGuideline} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} assumedFailed={assumedState === 'failed'} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
 							onAnswer={answerRow} onAnswerTemplate={answerTemplateRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
@@ -2897,6 +2909,9 @@
 		onRetryMatch={copilot.retryMatch}
 		onOther={copilot.other}
 		onEdit={copilot.edit}
+		unresolved={guidelinesUnresolved}
+		onSeen={copilot.seen}
+		bind:this={copilotRail}
 	/>
 {/if}
 </div>

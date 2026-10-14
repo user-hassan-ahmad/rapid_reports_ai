@@ -11,6 +11,7 @@
 	import RailSkeleton from '$lib/rail/RailSkeleton.svelte';
 	import { cardRef, kindOf, quiet, type Group } from '../state';
 	import type { Card } from '../types';
+	import type { Unresolved } from '../gate';
 	import './cards.css';
 	import PackCard from './PackCard.svelte';
 	import QuietLine from './QuietLine.svelte';
@@ -30,7 +31,9 @@
 		onRetry,
 		onRetryMatch,
 		onOther,
-		onEdit = undefined
+		onEdit = undefined,
+		unresolved = [],
+		onSeen = undefined
 	}: {
 		groups: Group[];
 		views: Record<string, CardView>;
@@ -47,11 +50,16 @@
 		onOther(): void;
 		/** Slice B2: inline edit on pack cards (session.edit). Absent: read-only. */
 		onEdit?: (ref: string, input: string, value: string) => void;
+		/** The cards blocking Confirm (gate.unresolved, §7.12 item 5), keyed by card ref or column ref. */
+		unresolved?: Unresolved[];
+		/** "Seen, leave as is" (session.seen). */
+		onSeen?: (key: string) => void;
 	} = $props();
 
 	const shown = $derived(groups.filter((g) => g.cards.length));
 	const viewOf = (c: Card) => views[cardRef(c)] ?? closedView;
 	const handlers = $derived({ onOpen, onClose, onRetry });
+	const blocking = $derived(Object.fromEntries(unresolved.map((u) => [u.key, u])));
 </script>
 
 {#snippet one(c: Card)}
@@ -62,9 +70,9 @@
 		<QuietLine card={c} result={v.result} busy={v.loading} />
 	{:else if kind === 'exam' || kind === 'finding'}
 		{#if c.siblings.length}
-			<SiblingColumns card={c} view={v} {other} layout={siblingLayout} {onEdit} {...handlers} />
+			<SiblingColumns card={c} view={v} {other} layout={siblingLayout} {onEdit} unresolved={blocking} onSeen={onSeen ?? null} {...handlers} />
 		{:else}
-			<PackCard card={c} view={v} {other} {onEdit} {...handlers} />
+			<PackCard card={c} view={v} {other} {onEdit} unresolved={blocking[cardRef(c)] ?? null} onSeen={onSeen ?? null} {...handlers} />
 		{/if}
 	{:else}
 		<ReadOnlyCard card={c} {kind} view={v} {other} {...handlers} />

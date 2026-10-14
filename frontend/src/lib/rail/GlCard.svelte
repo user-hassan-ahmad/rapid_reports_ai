@@ -86,12 +86,12 @@
 		<div class="gl-meta">
 			<div class="gl-title-row">
 				<span class="gl-title">{title}</span>
-				{#if aside}
-					{@render aside()}
-				{:else if badge}
+				{#if !aside && badge}
 					<span class="gl-grade-badge ch-{badge.variant}">{badge.text}</span>
 				{/if}
 			</div>
+			<!-- the aside (the Copilot's pills) sits on its own row under the title, so a long name or pill never overlaps -->
+			{#if aside}<div class="gl-aside">{@render aside()}</div>{/if}
 			{#if subtitle}
 				<div class="gl-subtitle">{subtitle}</div>
 			{/if}
@@ -172,6 +172,7 @@
 	.gl-title {
 		flex: 1;
 		min-width: 0;
+		overflow-wrap: anywhere;
 		font-size: 13px;
 		font-weight: 600;
 		color: #e8e8ec;
@@ -193,6 +194,11 @@
 	.ch-c { background: rgba(6,182,212,0.1);   color: #67e8f9; border: 1px solid rgba(6,182,212,0.22); }
 	.ch-a { background: rgba(245,158,11,0.1);  color: #fcd34d; border: 1px solid rgba(245,158,11,0.22); }
 	.ch-r { background: rgba(244,63,94,0.1);   color: #fda4af; border: 1px solid rgba(244,63,94,0.22); }
+
+	.gl-aside {
+		margin-top: 6px;
+		min-width: 0;
+	}
 
 	.gl-subtitle {
 		margin-top: 2px;

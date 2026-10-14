@@ -14,6 +14,8 @@
 	import { assumptionsOf, columnRef, columnTitles, scopeDoubts, verdictOf } from './format';
 	import VerdictPill from './VerdictPill.svelte';
 	import PackBody from './PackBody.svelte';
+	import UnresolvedNote from './UnresolvedNote.svelte';
+	import type { Unresolved } from '../gate';
 	import { closedView, errorOf, type CardView, type ColumnView } from './view';
 
 	let {
@@ -22,6 +24,8 @@
 		other = false,
 		layout = 'auto',
 		onEdit = undefined,
+		unresolved = {},
+		onSeen = null,
 		onOpen,
 		onClose,
 		onRetry
@@ -37,6 +41,9 @@
 		onRetry: (ref: string) => void;
 		/** B2: each column answers on its own (ref = columnRef(card, key)); its result re-previews live. */
 		onEdit?: (ref: string, input: string, value: string) => void;
+		/** Columns that block Confirm (§7.12 item 5), by columnRef: each carries its reason and "Seen, leave as is". */
+		unresolved?: Record<string, Unresolved>;
+		onSeen?: ((key: string) => void) | null;
 	} = $props();
 
 	const ref = $derived(cardRef(card));
@@ -80,6 +87,7 @@
 				onclick={() => (chosen = chosen === c.key ? null : c.key)}>{c.title}</button
 			>
 		{/if}
+		{#if unresolved[columnRef(card, c.key)]}<UnresolvedNote item={unresolved[columnRef(card, c.key)]} {onSeen} />{/if}
 		<CardStatus loading={cv.loading && !cv.result} error={err} onRetry={() => onRetry(columnRef(card, c.key))} />
 		{#if !err && cv.result}
 			<PackBody
@@ -162,9 +170,10 @@
 	}
 	.cp-col-line {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: baseline;
 		justify-content: space-between;
-		gap: 8px;
+		gap: 4px 8px;
 		margin-bottom: 2px;
 	}
 	.cp-sib-pills {
@@ -173,18 +182,33 @@
 		gap: 6px 12px;
 		margin-top: 6px;
 	}
+	/* one guideline per line, wrapping inside the card: the verdict pill shrinks (ellipsis, full text on hover) and the
+	   marks wrap under it, never past the card edge (Chrome checkpoint 2026-10-14) */
 	.cp-sib-pill {
-		white-space: nowrap;
-		display: inline-flex;
+		display: flex;
+		flex: 1 1 100%;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 6px;
+		gap: 4px 6px;
+		min-width: 0;
+		max-width: 100%;
 		font-size: 12px;
+	}
+	.cp-sib-pill > :global(*) {
+		min-width: 0;
+		max-width: 100%;
 	}
 	.cp-col-marks {
 		display: inline-flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 6px;
-		flex-shrink: 0;
+		gap: 4px 6px;
+		min-width: 0;
+		max-width: 100%;
+	}
+	.cp-col-marks > :global(*) {
+		min-width: 0;
+		max-width: 100%;
 	}
 	.cp-col-name {
 		font-weight: 600;

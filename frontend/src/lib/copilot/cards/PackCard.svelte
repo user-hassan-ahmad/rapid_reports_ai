@@ -15,6 +15,8 @@
 	import AssumedChip from './AssumedChip.svelte';
 	import { assumptionsOf, categoryColor, scopeDoubts, verdictOf } from './format';
 	import PackBody from './PackBody.svelte';
+	import UnresolvedNote from './UnresolvedNote.svelte';
+	import type { Unresolved } from '../gate';
 	import VerdictPill from './VerdictPill.svelte';
 	import { errorOf, type CardView } from './view';
 
@@ -27,6 +29,8 @@
 		action = null,
 		category = null,
 		onEdit = null,
+		unresolved = null,
+		onSeen = null,
 		onOpen,
 		onClose,
 		onRetry
@@ -42,6 +46,9 @@
 		category?: ActionCategory | null;
 		/** Slice B2: answer or change a value; absent keeps the card read-only. */
 		onEdit?: ((ref: string, input: string, value: string) => void) | null;
+		/** The card blocks Confirm (§7.12 item 5): its reason and "Seen, leave as is" lead the body. */
+		unresolved?: Unresolved | null;
+		onSeen?: ((key: string) => void) | null;
 		onOpen: (ref: string) => void;
 		onClose: (ref: string) => void;
 		onRetry: (ref: string) => void;
@@ -70,6 +77,7 @@
 
 {#snippet body()}
 	<!-- a re-open (exam card, debounced) keeps the last preview on screen instead of flickering to a skeleton -->
+	{#if unresolved}<UnresolvedNote item={unresolved} {onSeen} />{/if}
 	<CardStatus loading={view.loading && !view.result} error={err} onRetry={() => onRetry(ref)} />
 	{#if !err && view.result}
 		<PackBody
@@ -100,12 +108,20 @@
 
 <style>
 	.cp-head-marks {
-		display: inline-flex;
+		display: flex;
 		flex-wrap: wrap;
-		justify-content: flex-end;
+		justify-content: flex-start;
 		align-items: center;
 		gap: 4px 6px;
-		max-width: 65%;
+		max-width: 100%;
 		min-width: 0;
+	}
+	/* a long chip shrinks and ends in an ellipsis rather than running past the card's edge */
+	.cp-head-marks > :global(.cp-chip) {
+		flex-shrink: 1;
+		min-width: 0;
+		max-width: 100%;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 </style>

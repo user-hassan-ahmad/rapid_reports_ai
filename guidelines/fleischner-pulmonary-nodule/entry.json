@@ -58,7 +58,22 @@
         "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system"
       },
       "scope": "patient",
-      "role": "eligibility"
+      "role": "eligibility",
+      "suspected_doubt": true
+    },
+    {
+      "id": "prior_growth",
+      "label": "Earlier imaging shows this nodule has grown",
+      "type": "boolean",
+      "role": "eligibility",
+      "scope": "lesion",
+      "exclusion_outcome": "outside_table_growth",
+      "how_stated": "true when the dictation says this nodule is larger than on an earlier study, e.g. 'now 9 mm, previously 6 mm', 'interval growth', 'enlarging'; false when it is new, stable or smaller, or there is no earlier imaging",
+      "locator": {
+        "source": "S1",
+        "page": 5,
+        "section": "Prior imaging studies should always be reviewed whenever they are available to determine possible growth or stability (grade 1A)"
+      }
     },
     {
       "id": "nodule_type",
@@ -512,6 +527,10 @@
               {
                 "ref": "age_band",
                 "eq": "lt35"
+              },
+              {
+                "ref": "prior_growth",
+                "eq": true
               }
             ]
           },
@@ -533,6 +552,10 @@
                 "all": [
                   {
                     "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "prior_growth",
                     "eq": false
                   },
                   {
@@ -564,6 +587,10 @@
                     "eq": false
                   },
                   {
+                    "ref": "prior_growth",
+                    "eq": false
+                  },
+                  {
                     "ref": "management",
                     "eq": "solid_single_lt6_low"
                   }
@@ -589,6 +616,10 @@
                 "all": [
                   {
                     "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "prior_growth",
                     "eq": false
                   },
                   {
@@ -620,6 +651,10 @@
                     "eq": false
                   },
                   {
+                    "ref": "prior_growth",
+                    "eq": false
+                  },
+                  {
                     "ref": "management",
                     "eq": "solid_single_6to8_low"
                   }
@@ -645,6 +680,10 @@
                 "all": [
                   {
                     "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "prior_growth",
                     "eq": false
                   },
                   {
@@ -676,6 +715,10 @@
                     "eq": false
                   },
                   {
+                    "ref": "prior_growth",
+                    "eq": false
+                  },
+                  {
                     "ref": "management",
                     "eq": "solid_single_gt8"
                   }
@@ -701,6 +744,10 @@
                 "all": [
                   {
                     "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "prior_growth",
                     "eq": false
                   },
                   {
@@ -732,6 +779,10 @@
                     "eq": false
                   },
                   {
+                    "ref": "prior_growth",
+                    "eq": false
+                  },
+                  {
                     "ref": "management",
                     "eq": "solid_multiple_lt6_high"
                   }
@@ -757,6 +808,10 @@
                 "all": [
                   {
                     "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "prior_growth",
                     "eq": false
                   },
                   {
@@ -788,6 +843,10 @@
                     "eq": false
                   },
                   {
+                    "ref": "prior_growth",
+                    "eq": false
+                  },
+                  {
                     "ref": "management",
                     "eq": "solid_multiple_ge6_high"
                   }
@@ -813,6 +872,10 @@
                 "all": [
                   {
                     "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "prior_growth",
                     "eq": false
                   },
                   {
@@ -844,6 +907,10 @@
                     "eq": false
                   },
                   {
+                    "ref": "prior_growth",
+                    "eq": false
+                  },
+                  {
                     "ref": "management",
                     "eq": "ggn_single_ge6"
                   }
@@ -869,6 +936,10 @@
                 "all": [
                   {
                     "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "prior_growth",
                     "eq": false
                   },
                   {
@@ -900,6 +971,10 @@
                     "eq": false
                   },
                   {
+                    "ref": "prior_growth",
+                    "eq": false
+                  },
+                  {
                     "ref": "management",
                     "eq": "subsolid_multiple_ge6"
                   }
@@ -928,6 +1003,10 @@
                     "eq": false
                   },
                   {
+                    "ref": "prior_growth",
+                    "eq": false
+                  },
+                  {
                     "ref": "management",
                     "eq": "psn_single_lt6"
                   }
@@ -953,6 +1032,10 @@
                 "all": [
                   {
                     "ref": "exclusion",
+                    "eq": false
+                  },
+                  {
+                    "ref": "prior_growth",
                     "eq": false
                   },
                   {
@@ -1223,6 +1306,20 @@
         "source": "S1",
         "page": 2,
         "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system"
+      }
+    },
+    {
+      "id": "outside_table_growth",
+      "headline": "Outside the Fleischner table: interval growth",
+      "action": "See the BTS card",
+      "category": "not_applicable",
+      "classification": "Fleischner 2017 does not apply: the table covers newly detected incidental nodules, and this nodule has grown on prior imaging.",
+      "recommendation": "The Fleischner table covers newly detected nodules. Prior imaging shows growth: see the BTS card.",
+      "caveats": [],
+      "locator": {
+        "source": "S1",
+        "page": 3,
+        "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
       }
     }
   ],

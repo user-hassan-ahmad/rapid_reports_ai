@@ -579,4 +579,24 @@ describe('HybridStackView v2', () => {
 		await userEvent.keyboard('{Escape}');
 		await expect.element(confirm).toBeEnabled();
 	});
+
+	it('guidelines unresolved (§7.12): each is a walk stop that blocks Confirm and opens its card; the chip opens the first; none: as before', async () => {
+		const onOpenGuideline = vi.fn();
+		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true }), u(1, 'Simple cyst.', 'Conclusion')];
+		const props = { ...base(), units, conclusion: { kind: 'dictated' } as const, onOpenGuideline };
+		const r = render(HybridStackView, { ...props, guidelinesUnresolved: [{ key: 'k', name: 'BTS 2015' }] });
+		await page.getByRole('button', { name: '1 guideline unresolved' }).click();
+		expect(onOpenGuideline).toHaveBeenCalledWith('k');
+		onOpenGuideline.mockClear();
+		await page.getByRole('button', { name: 'Confirm · 1 to resolve' }).click();     // Confirm starts the walk instead
+		await expect.element(page.getByText('Guideline unresolved · BTS 2015')).toBeInTheDocument();
+		expect(onOpenGuideline).toHaveBeenCalledWith('k');
+		await expect.element(page.getByRole('button', { name: /^Confirm( & Generate)?$/ })).not.toBeInTheDocument();
+		await page.getByRole('button', { name: 'Exit' }).click();
+		r.rerender({ ...props, guidelinesUnresolved: [{ key: 'a', name: 'A' }, { key: 'b', name: 'B' }] });
+		await expect.element(page.getByRole('button', { name: '2 guidelines unresolved' })).toBeInTheDocument();
+		r.rerender({ ...props, guidelinesUnresolved: [] });
+		await expect.element(page.getByText(/guidelines? unresolved/)).not.toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeEnabled();
+	});
 });

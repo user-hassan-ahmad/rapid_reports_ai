@@ -69,6 +69,8 @@
 		{:else}
 			<span class="cp-muted">{row.state.replace(/_/g, ' ')}</span>
 		{/if}
+		<!-- where a derived value came from (e.g. "from the CT of 12 Mar 2025"), so a wrong source can be corrected -->
+		{#if row.basis && !editing}<span class="cp-val-basis">{row.basis}</span>{/if}
 		{#if !editing && row.state === 'read' && !row.byExam}<span class="cp-chip cp-val-chip cp-chip-read">read</span>{/if}
 		{#if !editing && row.state === 'assumed'}
 			<span class="cp-chip cp-val-chip cp-chip-warn">{row.sign ? 'assumed absent' : 'assumed'}</span>
@@ -127,7 +129,21 @@
 	.cp-val-value {
 		flex: 1;
 		min-width: 0;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 3px 6px;
 		font-variant-numeric: tabular-nums;
+	}
+	/* the value takes the line; its tags wrap onto the line under it */
+	.cp-val-value > b,
+	.cp-val-value > .cp-muted {
+		flex: 0 0 100%;
+	}
+	.cp-val-basis {
+		flex: 0 0 100%;
+		font-size: 0.75rem;
+		color: var(--rv-muted);
 	}
 	.cp-val-value b {
 		font-weight: 600;
@@ -138,9 +154,11 @@
 		border-radius: 3px;
 		background: var(--rv-amber-bg);
 	}
+	/* tags wrap onto their own line under the value instead of squeezing beside a long label */
 	.cp-val-chip {
 		display: inline-block;
-		margin-left: 6px;
+		max-width: 100%;
+		margin-left: 0;
 		vertical-align: 1px;
 	}
 	.cp-chip-why {
@@ -169,7 +187,7 @@
 		box-shadow: inset 3px 0 0 var(--rv-amber-line);
 	}
 	.cp-val-change {
-		margin-left: 8px;
+		margin-left: 2px;
 		font-size: 0.75rem;
 		color: var(--rv-muted);
 		opacity: 0;

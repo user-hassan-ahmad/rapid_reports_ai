@@ -51,13 +51,25 @@ export function decidingQuestion(p: Preview): string {
 	return p.deciding_input?.label || rowsOf(p).asked.find((v) => v.needed)?.label || openQuestions(p)[0] || '';
 }
 
-/** The still-open questions shown last, quietly: the draft's asked rows (eligibility first in check_first, then
- *  needed), else (pre-Task 3) the missing inputs that are not eligibility checks. */
+/** Marks an assumed band whose exact number an open formula branch still needs (e.g. an age assumed "18 or over"). */
+export const EXACT_NEEDED = '(exact value needed)';
+/** The still-open questions that can change the outcome (spec §7.12 item 3: the head counts only these): the
+ *  draft's asked rows with `needed` (eligibility first in check_first), then its assumed rows with `needed` (a band
+ *  assumed, the exact number still needed: "{label} (exact value needed)"; the row stays the editable assumed row),
+ *  else (pre-Task 3) the missing inputs that are not eligibility checks. */
 export function openQuestions(p: Preview): string[] {
-	if (hasDraft(p)) return rowsOf(p).asked.map((v) => v.label);
+	if (hasDraft(p)) {
+		const r = rowsOf(p);
+		return [...r.asked.filter((v) => v.needed).map((v) => v.label), ...r.assumed.filter((v) => v.needed).map((v) => `${v.label} ${EXACT_NEEDED}`)];
+	}
 	const labels = new Map(p.asks.map((a) => [a.input, a.label]));
 	return p.missing.filter((m) => !isEligibility(p, m)).map((m) => labels.get(m) || m);
 }
+
+/** The draft's asked rows that cannot change the outcome on this branch (not needed, not waiting). */
+export const notNeededRows = (p: Preview | null | undefined) => rowsOf(p ?? null).asked.filter((v) => !v.needed);
+/** Their labels: "N not needed on this branch", so the radiologist sees why they are not asked (§7.12 item 3). */
+export const notNeeded = (p: Preview | null | undefined): string[] => notNeededRows(p).map((v) => v.label);
 
 /** The card's one value list (simplified card, Hassan 2026-10-13): every input the draft shows, each editable with
  *  its provenance; assumed first, then pre-filled (exam presets included), then read, then answered or changed,
@@ -81,6 +93,7 @@ export function allValueRows(r: OpenResult): ValueRow[] {
 			state: v.state,
 			why: v.why,
 			options: v.options,
+			...(v.basis ? { basis: v.basis } : {}),
 			...(v.decisive !== undefined ? { decisive: v.decisive } : assumption.has(v.input) ? { decisive: assumption.get(v.input)!.decisive } : {}),
 			...(v.state === 'assumed' && assumption.get(v.input)?.kind === 'sign' ? { sign: true } : {})
 		}));
@@ -109,7 +122,7 @@ export function scopeDoubts(p: Preview | null | undefined): { input: string; lab
 /** The backend's WHY_EXAM (library/pack_preview.py): an exam preset, shown as the "set by the exam" chip instead. */
 export const WHY_EXAM = 'set by the exam';
 const humanise = (id: string) => (id.charAt(0).toUpperCase() + id.slice(1)).replace(/_/g, ' ');
-export interface ValueRow { input: string; label: string; value: string; quote: string; byExam: boolean; state: ValueState; why: string[]; options?: string[]; decisive?: boolean | null; /** assumed: a visible sign assumed absent */ sign?: boolean }
+export interface ValueRow { input: string; label: string; value: string; quote: string; byExam: boolean; state: ValueState; why: string[]; options?: string[]; decisive?: boolean | null; /** assumed: a visible sign assumed absent */ sign?: boolean; /** where a derived value came from (§7.12 item 4) */ basis?: string }
 /** The values the card shows first. From the draft (Task 3): read, pre-filled, answered, edited and N/A rows with
  *  their state and why[]; else (pre-Task 3) preview.settled as read values, labelled from the entry's inputs, else
  *  the ask, else the id. */
@@ -125,7 +138,8 @@ export function valueRows(r: OpenResult): ValueRow[] {
 			byExam: v.by === 'exam',
 			state: v.state,
 			why: v.why,
-			options: v.options
+			options: v.options,
+			...(v.basis ? { basis: v.basis } : {})
 		}));
 	const labels = new Map<string, string>();
 	for (const b of r.entry?.content.branches ?? []) for (const i of b.inputs ?? []) if (i.question) labels.set(i.id, i.question);
@@ -165,6 +179,8 @@ export interface Verdict {
 	classification: string;
 	caveats: string[];
 	citations: Citation[];
+	/** A scope doubt leads the card (controller ruling 2026-10-14): the drafted outcome, kept as a secondary line. */
+	ifApplies?: string;
 }
 export interface VerdictOverride { headline?: string | null; action?: string | null; category?: ActionCategory | null }
 
@@ -186,13 +202,20 @@ export function verdictOf(p: Preview | null | undefined, o: VerdictOverride = {}
 	if (!p) return null;
 	if (p.state === 'does_not_apply') {
 		const x = p.exclusion;
+		// an exclusion worded by its own outcome (§7.12 item 1, e.g. "Outside the table: interval growth") says so
+		const worded = !!p.exclusion_reason?.outcome && !!x;
 		return {
 			category: 'not_applicable',
 			pill: 'Does not apply',
 			excluded: true,
 			// the specific reason first ("Maximum diameter 38 mm"), never the generic list of exclusion criteria
-			headline: o.headline || (p.exclusion_reason ? `${p.exclusion_reason.label} ${p.exclusion_reason.value}` : '') || x?.headline || (x ? headlineOf(x.classification) : 'Does not apply'),
-			action: '',
+			headline:
+				o.headline ||
+				(worded ? x!.headline || headlineOf(x!.classification) : '') ||
+				(p.exclusion_reason ? `${p.exclusion_reason.label} ${p.exclusion_reason.value}` : '') ||
+				x?.headline ||
+				(x ? headlineOf(x.classification) : 'Does not apply'),
+			action: worded ? x!.recommendation : '',
 			recommendation: x?.recommendation ?? '',
 			classification: x?.classification ?? '',
 			caveats: x?.caveats ?? [],
@@ -200,6 +223,24 @@ export function verdictOf(p: Preview | null | undefined, o: VerdictOverride = {}
 		};
 	}
 	const out = outcomeOf(p);
+	const doubt = scopeDoubts(p)[0];
+	if (doubt) {
+		// a pre-filled value that would exclude: the card leads with the doubt, never the drafted outcome (ruling)
+		const d = out ? { headline: o.headline || out.headline || headlineOf(out.classification), action: o.action || out.action || actionOf(out.recommendation) } : p.most_likely;
+		const then = d?.headline ? `If it applies: ${[d.headline, d.action].filter(Boolean).join(' — ')}` : '';
+		return {
+			category: 'not_applicable',
+			pill: 'May not apply',
+			tentative: true,
+			headline: `Check: ${[doubt.label, doubt.value].filter(Boolean).join(' — ')}`,
+			action: '',
+			recommendation: '',
+			classification: '',
+			caveats: [],
+			citations: out?.citations ?? [],
+			...(then ? { ifApplies: then } : {})
+		};
+	}
 	if (!out && p.most_likely?.headline) {
 		const m = p.most_likely;
 		return { category: m.category || 'neutral', pill: `Likely: ${m.headline}`, headline: m.headline, action: m.action || '', recommendation: '', classification: '', caveats: [], citations: [], tentative: true };
