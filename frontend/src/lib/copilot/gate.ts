@@ -10,8 +10,9 @@ import type { Card, ConclusionCategory, Preview } from './types';
 export type { ConclusionCategory } from './types';
 
 /** `key`: the card ref, or `<cardRef>#<pack key>` for one sibling column (the ref "Seen" and the check use);
- *  `card`: the card ref the rail opens; `reason`: why the conclusion did not clear it. */
-export type Unresolved = { key: string; name: string; card?: string; reason?: string };
+ *  `card`: the card ref the rail opens; `reason`: why the conclusion did not clear it; `checked`: the conclusion
+ *  check has not answered yet ('pending') or could not answer ('failed': only "Seen" clears it). */
+export type Unresolved = { key: string; name: string; card?: string; reason?: string; checked?: 'pending' | 'failed' };
 
 /** none 0 < follow-up imaging 1 < further tests 2 < referral 3 (Hassan 2026-10-14). */
 const RANK: Record<string, number> = { none: 0, surveillance: 1, workup: 2, refer: 3 };
@@ -85,6 +86,8 @@ export function unresolved(state: CopilotState, seen: Record<string, string>, co
 		if (c != null && (cat ? RANK[c] >= RANK[cat] : c !== 'none')) continue;
 		const u: Unresolved = { key: t.key, card: cardRef(t.card), name: t.name };
 		if (c != null && cat) u.reason = `Conclusion gives ${PHRASE[c]}; ${t.name} says ${PHRASE[cat]}`;
+		if (c === undefined) u.checked = 'pending';
+		if (c === null) u.checked = 'failed';
 		out.push(u);
 	}
 	return out;

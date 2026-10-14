@@ -51,11 +51,17 @@ export function decidingQuestion(p: Preview): string {
 	return p.deciding_input?.label || rowsOf(p).asked.find((v) => v.needed)?.label || openQuestions(p)[0] || '';
 }
 
+/** Marks an assumed band whose exact number an open formula branch still needs (e.g. an age assumed "18 or over"). */
+export const EXACT_NEEDED = '(exact value needed)';
 /** The still-open questions that can change the outcome (spec §7.12 item 3: the head counts only these): the
- *  draft's asked rows with `needed` (eligibility first in check_first), else (pre-Task 3) the missing inputs that
- *  are not eligibility checks. */
+ *  draft's asked rows with `needed` (eligibility first in check_first), then its assumed rows with `needed` (a band
+ *  assumed, the exact number still needed: "{label} (exact value needed)"; the row stays the editable assumed row),
+ *  else (pre-Task 3) the missing inputs that are not eligibility checks. */
 export function openQuestions(p: Preview): string[] {
-	if (hasDraft(p)) return rowsOf(p).asked.filter((v) => v.needed).map((v) => v.label);
+	if (hasDraft(p)) {
+		const r = rowsOf(p);
+		return [...r.asked.filter((v) => v.needed).map((v) => v.label), ...r.assumed.filter((v) => v.needed).map((v) => `${v.label} ${EXACT_NEEDED}`)];
+	}
 	const labels = new Map(p.asks.map((a) => [a.input, a.label]));
 	return p.missing.filter((m) => !isEligibility(p, m)).map((m) => labels.get(m) || m);
 }

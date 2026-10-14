@@ -156,3 +156,19 @@ describe('scope doubt leads the card', () => {
 		expect(verdictOf(p)?.ifApplies).toBeUndefined();
 	});
 });
+
+// Task 2 review: a number assumed as a band whose exact value an open formula branch still needs (e.g. Brock).
+describe('assumed but still needed', () => {
+	it('an assumed row with needed counts as one question open and is listed; needed false does not count; never "not needed"', () => {
+		const p = preview({
+			proposal: null,
+			draft: [
+				dv({ input: 'age', label: 'Age', role: 'eligibility', state: 'assumed', value: '18 or over', needed: true }),
+				dv({ input: 'cancer', label: 'Known cancer', role: 'eligibility', state: 'assumed', value: 'No', needed: false })
+			]
+		});
+		expect(openQuestions(p)).toEqual(['Age (exact value needed)']);
+		expect(verdictOf(p)?.pill).toBe('1 question open');
+		expect(notNeeded(p)).toEqual([]);
+	});
+});

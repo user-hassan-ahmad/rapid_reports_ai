@@ -46,7 +46,7 @@ describe('significant', () => {
 
 describe('unresolved', () => {
 	it('a significant card with no conclusion check is unresolved, named, keyed by its card ref', () => {
-		expect(unresolved(one(workup()), {}, {})).toEqual([{ key: KEY, card: KEY, name: 'BTS 2015' }]);
+		expect(unresolved(one(workup()), {}, {})).toEqual([{ key: KEY, card: KEY, name: 'BTS 2015', checked: 'pending' }]);
 	});
 
 	it('clears when the conclusion recommends at least as much (none 0 < surveillance 1 < workup 2 < refer 3)', () => {
@@ -56,7 +56,7 @@ describe('unresolved', () => {
 		expect(at('refer')).toEqual([]); // more caution is fine
 		expect(at('surveillance')).toEqual([{ key: KEY, card: KEY, name: 'BTS 2015', reason: 'Conclusion gives follow-up imaging; BTS 2015 says further tests' }]);
 		expect(at('none')[0].reason).toBe('Conclusion gives no recommendation; BTS 2015 says further tests');
-		expect(at(null)).toEqual([{ key: KEY, card: KEY, name: 'BTS 2015' }]); // the check failed: nothing cleared, no reason
+		expect(at(null)).toEqual([{ key: KEY, card: KEY, name: 'BTS 2015', checked: 'failed' }]); // the check failed: nothing cleared, no reason; only Seen clears
 		const refer = one(preview({ proposal: outcome({ category: 'refer' }) }));
 		expect(unresolved(refer, {}, { [KEY]: 'workup' })[0].reason).toBe('Conclusion gives further tests; BTS 2015 says referral');
 		const surv = one(preview({ proposal: outcome({ category: 'surveillance' }) }));
@@ -95,7 +95,7 @@ describe('unresolved', () => {
 			'bts-pulmonary-nodule': { loading: false, error: null, result: result(bts, workup()) }
 		};
 		const s = st([fl], { [ref]: { ...closedView, columns: cols } });
-		expect(unresolved(s, {}, {})).toEqual([{ key: `${ref}#bts-pulmonary-nodule`, card: ref, name: 'BTS 2015' }]);
+		expect(unresolved(s, {}, {})).toEqual([{ key: `${ref}#bts-pulmonary-nodule`, card: ref, name: 'BTS 2015', checked: 'pending' }]);
 	});
 
 	it('only cards that carry "Seen" can block: never a quiet exam line, a TNM, reference or off-modality card', () => {

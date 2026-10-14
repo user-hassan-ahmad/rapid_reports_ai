@@ -70,7 +70,8 @@
 	// an exclusion worded by its outcome (§7.12 item 1) says what to do instead; a generic one has no action
 	const recText = $derived(v ? (v.excluded ? v.action : recommendationBeyond(v.action, v.recommendation)) : '');
 	// asked inputs that cannot change the outcome wait behind "N not needed on this branch" (§7.12 item 3)
-	const notNeededIds = $derived(new Set(notNeededRows(p).map((r) => r.input)));
+	// (a card that does not apply keeps them in its values list: nothing there can change the outcome)
+	const notNeededIds = $derived(new Set(v?.excluded ? [] : notNeededRows(p).map((r) => r.input)));
 	const notNeededList = $derived(rows.filter((r) => notNeededIds.has(r.input)));
 	let showNotNeeded = $state(false);
 	const shownRows = $derived(rows.filter((r) => r.state !== 'not_applicable' && !notNeededIds.has(r.input)));

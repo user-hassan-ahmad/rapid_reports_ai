@@ -4,7 +4,7 @@
 import { writable, type Readable } from 'svelte/store';
 import type { StackUnit } from '$lib/hybrid-stack/types';
 import * as defaultApi from './api';
-import { CopilotError, CopilotOff, MAX_FINDINGS } from './api';
+import { CopilotError, CopilotOff, MAX_CONCLUSION_CARDS, MAX_FINDINGS } from './api';
 import { closedView, type CardView, type ColumnView } from './cards/view';
 import { significant, targets, verdictKey } from './gate';
 import {
@@ -156,6 +156,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	let concl: Record<string, ConclusionCategory | null> = {};
 	let conclusion = ''; // the latest conclusion text
 	let conclFor: string | null = null; // the conclusion `concl` answers
+	let conclFinding: Record<string, string> = {}; // gate key → the finding text its answer was computed for
 	let conclTimer: ReturnType<typeof setTimeout> | null = null;
 	let conclAc: AbortController | null = null;
 	let conclSeq = 0;
@@ -170,7 +171,11 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		return [...cards, ...others.filter((c) => !refs.has(cardRef(c)))];
 	}
 	function snapshot(): CopilotState {
-		return { on, groups: on ? groupCards(all(), findings) : [], views: { ...views }, matching, matchFailed, otherState, seen: { ...seen }, concl: { ...concl } };
+		const base: CopilotState = { on, groups: on ? groupCards(all(), findings) : [], views: { ...views }, matching, matchFailed, otherState, seen: { ...seen }, concl: {} };
+		// only answers for the CURRENT conclusion and the card's current finding text ever clear a card (review I-1, M-1)
+		if (conclFor === conclusion)
+			for (const t of targets(base)) if (t.key in concl && conclFinding[t.key] === findingOf(t.card)) base.concl[t.key] = concl[t.key];
+		return base;
 	}
 	const publish = () => {
 		if (dead) return;
@@ -624,6 +629,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		otherState = 'idle';
 		seen = {};
 		concl = {};
+		conclFinding = {};
 		conclFor = null;
 		publish();
 		plan();
@@ -632,7 +638,12 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	// ── confirm gate: the conclusion check (§7.12 item 5) ──
 	const significantNow = (snap: CopilotState) => targets(snap).filter((t) => significant(t.preview, t.card));
 	/** Significant cards with no answer yet under the current conclusion. */
-	const pendingChecks = (snap: CopilotState) => significantNow(snap).filter((t) => !(t.key in concl));
+	const pendingChecks = (snap: CopilotState) =>
+		significantNow(snap).filter((t) => !(t.key in concl) || conclFinding[t.key] !== findingOf(t.card));
+	/** What the check reads as the card's finding: as /open sends it (an exam card: the current findings text). */
+	function findingOf(card: Card): string {
+		return card.finding_id === 'exam' ? text : card.finding;
+	}
 	function scheduleCheck() {
 		if (conclTimer) clearTimeout(conclTimer);
 		conclTimer = setTimeout(() => {
@@ -645,8 +656,10 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		const text = conclusion;
 		const fresh = conclFor !== text; // a new conclusion re-checks every significant card
 		const due = fresh ? significantNow(snapshot()) : pendingChecks(snapshot());
+		const sentFinding = Object.fromEntries(due.map((t) => [t.key, findingOf(t.card)]));
 		const answer = (got: Record<string, ConclusionCategory | null>) => {
 			concl = fresh ? got : { ...concl, ...got };
+			conclFinding = fresh ? sentFinding : { ...conclFinding, ...sentFinding };
 			conclFor = text;
 			publish();
 		};
@@ -657,8 +670,9 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		const nulls = () => Object.fromEntries(due.map((t) => [t.key, null]));
 		if (!text.trim()) return answer(nulls()); // nothing to check: nothing clears
 		// one entry per distinct finding (siblings on one finding share it): the key is an opaque id the reply echoes
+		// (at most MAX_CONCLUSION_CARDS: a card past the cap is answered null, so its note says the check did not run)
 		const ids = new Map<string, string>();
-		for (const t of due) if (!ids.has(t.card.finding)) ids.set(t.card.finding, `f${ids.size}`);
+		for (const t of due) if (!ids.has(sentFinding[t.key]) && ids.size < MAX_CONCLUSION_CARDS) ids.set(sentFinding[t.key], `f${ids.size}`);
 		const seq = ++conclSeq;
 		conclAc?.abort();
 		const ac = new AbortController();
@@ -667,7 +681,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 			const res = await api.conclusionCheck({ conclusion: text, cards: [...ids].map(([finding, key]) => ({ key, finding })) }, ac.signal);
 			if (seq !== conclSeq || !live()) return;
 			conclAc = null;
-			answer(Object.fromEntries(due.map((t) => [t.key, res.results?.[ids.get(t.card.finding)!] ?? null])));
+			answer(Object.fromEntries(due.map((t) => { const id = ids.get(sentFinding[t.key]); return [t.key, id ? (res.results?.[id] ?? null) : null]; })));
 		} catch (e) {
 			if (seq !== conclSeq) return;
 			conclAc = null;
@@ -773,6 +787,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 			conclusion = text;
 			conclAsked = true;
 			scheduleCheck();
+			publish(); // the old text's answers stop clearing cards at once (review I-1)
 		},
 		log: () => structuredClone(log),
 		destroy() {

@@ -7,7 +7,9 @@
 </script>
 
 <div class="cp-unresolved" role="note" data-testid="cp-unresolved">
-	<p class="cp-unresolved-text">{item.reason ?? 'Blocks Confirm until the conclusion covers it'}</p>
+	<p class="cp-unresolved-text">
+		{item.reason ?? (item.checked === 'failed' ? "Couldn't check the conclusion against this: tap Seen to continue" : 'Blocks Confirm until the conclusion covers it')}
+	</p>
 	{#if onSeen}
 		<button type="button" class="rv-btn" onclick={(e) => (e.stopPropagation(), onSeen?.(item.key))}>Seen, leave as is</button>
 	{/if}
