@@ -703,6 +703,15 @@ Confirm until it clears.
 - It comes from the clinical history and the whole dictation (patient scope).
 - It counts as unresolved for the gate (item 5).
 
+**7. Layout.**
+- **Card head:** a grid, not one overflowing line. The name sits on top and the pills wrap beneath it; pills never
+  overlap, never cross the card edge, and never hide text that cannot be reached. A shortened verdict keeps its full
+  text as a tooltip and in the open card.
+- **Value rows:** provenance and decisive tags wrap under the value instead of spilling beside it.
+- **Panel:** the guideline rail is pinned to the viewport height and scrolls inside itself. Long blocks in an open card
+  (reference, notes, citations) get a maximum height with their own scroll.
+- **Checked** at narrow and wide rail widths, in component tests and at a Chrome checkpoint.
+
 **Next slice: shared case facts (option B; its own spec).**
 - **Study facts:** study date, comparison studies and their dates.
 - **Lesion facts, read once per finding and shared by every card:** size now, size before, which earlier study, the
