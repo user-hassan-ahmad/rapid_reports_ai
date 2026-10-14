@@ -224,8 +224,8 @@
 	let slimKey: string | null = null; // the token a free-text /slim-sheet re-minted with its sheet id (Generate prefers it)
 	let schemaSeq = 0;
 	let stackSchemaError = ''; // stack mode: the server's refusal (D15) or a failed /schema; Generate stays blocked
-	// The guideline Copilot (rr_stack_copilot): opt-in per browser, and only on top of the stack.
-	$: stackCopilot = copilotOn(undefined, stackStatus?.stack_copilot === true, hybridStack);
+	// The guideline Copilot (D24): on whenever the server allows it (stack_copilot) and the stack is latched.
+	$: stackCopilot = copilotOn(stackStatus?.stack_copilot === true, hybridStack);
 	let stackSchema: StackSchema | null = null;
 	let stackPills: string[] = [];
 	let stackSchemaFor = ''; // the template + history the schema was requested for

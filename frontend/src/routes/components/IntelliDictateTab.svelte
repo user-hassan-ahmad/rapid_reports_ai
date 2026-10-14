@@ -175,8 +175,8 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	// The pick the current schema was resolved for: the scratchpad's slim sheet follows it, so the schema and the
 	// sheet always come from the same protocol (never a library schema with a free-text sheet).
 	let stackSchemaPick: ProtocolPick | null = null;
-	// The guideline Copilot (rr_stack_copilot): opt-in per browser, and only on top of the stack.
-	$: stackCopilot = copilotOn(undefined, stackStatus?.stack_copilot === true, hybridStack);
+	// The guideline Copilot (D24): on whenever the server allows it (stack_copilot) and the stack is latched.
+	$: stackCopilot = copilotOn(stackStatus?.stack_copilot === true, hybridStack);
 	let stackSchema: StackSchema | null = null;
 	// The session's signed resolution (D26): minted by /schema (re-minted by a free-text /slim-sheet); Generate sends it.
 	let structureKey: string | null = null;
