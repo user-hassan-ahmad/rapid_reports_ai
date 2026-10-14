@@ -231,12 +231,18 @@ as a **pre-filled** Yes with why `"suspected, not established"`. The existing sc
 **Interfaces:**
 - Produces: `POST /api/hybrid-stack/copilot/conclusion_check` (same prefix/auth/`_require` as `/match`) with body
   `{"conclusion": str ≤ 4000, "cards": [{"key": str ≤ 120, "finding": str ≤ 6000}] (≤ 10)}` → `{"results":
-  {key: true | false | null}}`. null = not checked (empty conclusion, Jev failure or timeout).
+  {key: "none" | "surveillance" | "workup" | "refer" | null}}` — the type of recommendation the conclusion gives for
+  that card's finding (category match, Hassan 2026-10-14). null = not checked (empty conclusion, Jev failure or
+  timeout, or confidence below the floor).
 
-- [ ] **Step 1: Failing tests** (mock `jev_post`): one Jev call carrying one `noul` per card with instructions
-  "The CONCLUSION gives a follow-up or management recommendation for the FINDING." — state text per card is built as
-  `CONCLUSION:\n{conclusion}\n\nFINDING:\n{finding}` (if the Jev API takes one state per call, make one call per card
-  concurrently, bounded by an `asyncio.Semaphore(4)`); score ≥ 0.7 → true, else false; Jev error/timeout → all null;
+- [ ] **Step 1: Failing tests** (mock `jev_post`): per card one Jev `choice` question "What does the CONCLUSION
+  recommend for the FINDING?" with neutral ids and these options (case-agnostic, verbatim): c0 "No follow-up or
+  management is recommended for the FINDING." → none; c1 "Follow-up imaging of the FINDING." → surveillance; c2
+  "Further tests or investigation of the FINDING, such as another imaging test or tissue sampling." → workup; c3
+  "Referral to a specialist team or multidisciplinary meeting for the FINDING." → refer. State text per card is
+  `CONCLUSION:\n{conclusion}\n\nFINDING:\n{finding}` (one call per card concurrently, bounded by
+  `asyncio.Semaphore(4)`, unless the Jev API takes several states per call); confidence ≥ 0.6 (CHOICE floor) → the
+  mapped category, else null; Jev error/timeout → null for that card;
   empty conclusion → all null, no call; results cached by (norm conclusion, key, norm finding) for successes only;
   >10 cards → 422; auth required.
 - [ ] **Step 2: Run, fail. Step 3: Implement using `jev_client.jev_post`, `JEV_MODEL`, `jev.scores` exactly as
@@ -297,12 +303,13 @@ Precondition: merge `feat/scratchpad-copilot` (with Tasks 1–5) into `feat/copi
   (draft outcome or `most_likely`) has category `workup` | `refer` | `surveillance`, or `openQuestions(p).length > 0`,
   or `p.scope_doubt.length > 0`; false for null/degraded/failed previews, `does_not_apply`, reference (tier 2) and
   off-modality cards.
-  `export function unresolved(state: CopilotState, seen: Record<string, string>, cleared: Record<string, boolean | null>): Unresolved[]`
-  — a card is unresolved when `significant` and not `cleared[key] === true` and not `seen[key] === verdictKey(p)`
+  `export function unresolved(state: CopilotState, seen: Record<string, string>, concl: Record<string, ConclusionCategory | null>): Unresolved[]`
+  (`ConclusionCategory = 'none' | 'surveillance' | 'workup' | 'refer'`; `Unresolved` gains `reason?: string`)
+  — a card is unresolved when `significant`, not cleared by the category rule below, and not `seen[key] === verdictKey(p)`
   (`verdictKey` = category + headline, so a changed verdict re-opens it).
 - `CopilotSession` gains `seen(ref: string): void` and `checkConclusion(conclusion: string): void` (debounced 800 ms;
-  calls `/conclusion_check` with the significant cards; stores `cleared` in state; a failure stores null);
-  `CopilotState` gains `seen: Record<string,string>`, `cleared: Record<string, boolean | null>`.
+  calls `/conclusion_check` with the significant cards; stores the categories in state; a failure stores null);
+  `CopilotState` gains `seen: Record<string,string>`, `concl: Record<string, ConclusionCategory | null>`.
 - `HybridStackView` props: `guidelinesUnresolved: { key: string; name: string }[] = []`,
   `onOpenGuideline: (key: string) => void = () => {}`. Confirm `disabled` adds `|| guidelinesUnresolved.length > 0`.
   Chip text: `${n} guideline${n === 1 ? '' : 's'} unresolved`, a button calling `onOpenGuideline(first.key)`.
@@ -314,9 +321,12 @@ Precondition: merge `feat/scratchpad-copilot` (with Tasks 1–5) into `feat/copi
     headline/action; a generic exclusion keeps today's reason-first headline.
   - ValueRow: a row with `basis` shows it under the value.
   - gate: `significant` true for a workup verdict; false for degraded/failed/loading/does_not_apply/tier 2/
-    off-modality; `unresolved` drops a cleared card; `seen` clears until the verdict changes ("gate: seen clears");
+    off-modality; `unresolved` drops a card whose conclusion category rank ≥ its verdict category rank
+    (none 0 < surveillance 1 < workup 2 < refer 3), and for a card with no verdict category any category other than
+    none clears; a lower rank keeps it with `reason` "Conclusion gives {follow-up imaging|further tests|referral|no
+    recommendation}; {name} says {follow-up imaging|further tests|referral}" shown on the card; `seen` clears until the verdict changes ("gate: seen clears");
     "gate: failed card never blocks".
-  - session: `checkConclusion` debounces, sends only significant cards, stores true/false; a rejected request stores
+  - session: `checkConclusion` debounces, sends only significant cards, stores the categories; a rejected request stores
     null for those keys and does not throw.
   - HybridStackView: with `guidelinesUnresolved=[{key:'k',name:'BTS 2015'}]` Confirm is disabled and the chip reads
     "1 guideline unresolved"; clicking it calls `onOpenGuideline('k')`; with `[]` behaviour is identical to today
@@ -324,7 +334,7 @@ Precondition: merge `feat/scratchpad-copilot` (with Tasks 1–5) into `feat/copi
   - PackCard: an unresolved card shows "Seen, leave as is"; clicking calls `seen(key)`.
 - [ ] **Step 2: Run, fail.**
 - [ ] **Step 3: Implement.** In DictationScratchpad: `$: guidelinesUnresolved = copilotActive && $copilotState?.on ?
-  unresolved($copilotState, $copilotState.seen, $copilotState.cleared) : []`; call `copilot?.checkConclusion(text)`
+  unresolved($copilotState, $copilotState.seen, $copilotState.concl) : []`; call `copilot?.checkConclusion(text)`
   reactively on the current conclusion text (use the same conclusion source the confirm bar's `hasConclusion` uses);
   `onOpenGuideline` opens the card in the rail and scrolls it into view.
 - [ ] **Step 4: All frontend tests + svelte-check; backend contract test.**

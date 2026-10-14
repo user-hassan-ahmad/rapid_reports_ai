@@ -681,9 +681,14 @@ Confirm until it clears.
   - an outcome-changing open question;
   - a scope doubt (including a suspected cancer, item 6).
 - **Clears when either:**
-  - **The conclusion states a management or follow-up step for the card's finding.** One Jev yes/no question per
-    unresolved card: "The CONCLUSION gives a follow-up or management recommendation for the FINDING." It re-runs
-    (debounced) when the conclusion changes. A failed call clears nothing.
+  - **The conclusion recommends at least as much as the card (category match, Hassan 2026-10-14).** One Jev choice
+    per unresolved card: what the CONCLUSION recommends for the FINDING — none, follow-up imaging, further tests, or
+    referral. Code ranks them none < follow-up imaging (`surveillance`) < further tests (`workup`) < referral
+    (`refer`). The card clears when the conclusion's rank is at least the card's category rank (more caution is fine).
+    A card unresolved without a verdict category (an open question or a scope doubt) clears on any recommendation
+    other than none. A lower rank keeps the card blocking with the reason, e.g. "Conclusion gives follow-up imaging;
+    BTS 2015 says further tests". It re-runs (debounced) when the conclusion changes. A failed call or a choice below
+    the confidence floor clears nothing. Exact agreement (intervals, specific tests) stays with checker mode (§7.8).
   - **The radiologist taps "Seen, leave as is"** on the card. The tap is held for the case and is reset when the card's
     verdict changes.
 - **In the confirm bar:** "N guidelines unresolved" sits beside the other counts. Both Confirm buttons stay disabled:
