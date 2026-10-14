@@ -42,10 +42,11 @@ vi.mock('$lib/hybrid-stack/api', async (orig) => {
 	};
 });
 import DictationScratchpad from '$lib/components/DictationScratchpad.svelte';
+import { findingsHash } from '$lib/hybrid-stack/regionState';
 
 const assumedCalls = () => calls.filter((c) => c.name === 'assumed');
 
-async function mount(onStackGate: (gate: any, findings: string) => void) {
+async function mount(onStackGate: (gate: any, units: any[], groups: string[]) => void) {
 	const props: any = { hybridStack: true, polishMode: 'clean', scanType: 'CT abdomen', clinicalHistory: 'Pain.', onStackGate };
 	const r = render(DictationScratchpad, props);
 	await r.rerender({ ...props, stackRegions: ['Liver', 'Peritoneum'].map((name) => ({ name, includes: '' })),
@@ -98,5 +99,22 @@ describe('scratchpad: session rules and the Confirm re-ask (round 1)', () => {
 		const gate = onStackGate.mock.calls.find(([g]) => g !== null)![0];
 		expect(gate.assumed.Liver).not.toContain(PORTAL);
 		expect(gate.flagged).toEqual({ Liver: ['No biliary dilatation.'] }); // R1 evidence on the gate record
+	});
+
+	it('P2c: Confirm hands the host the gate, the units and the groups (no findings text); the gate records findings_hash', async () => {
+		calls.length = 0;
+		state.confirmAdds = false;
+		const onStackGate = vi.fn();
+		const r = await mount(onStackGate);
+		(r.component as any).reset('A 2 cm liver cyst. Simple liver cyst.');
+		const confirm = page.getByRole('button', { name: 'Confirm', exact: true });
+		await expect.element(confirm, { timeout: 8000 }).toBeEnabled();
+		await confirm.click();
+		await expect.poll(() => onStackGate.mock.calls.some(([g]) => g !== null), { timeout: 3000 }).toBe(true);
+		const [gate, units, groups] = onStackGate.mock.calls.find(([g]) => g !== null)!;
+		expect(Array.isArray(units)).toBe(true);
+		expect(units.map((u: any) => u.text)).toContain('A 2 cm liver cyst.');
+		expect(groups).toEqual(['Liver', 'Peritoneum', 'Other findings', 'General', 'Conclusion']);
+		expect(gate.findings_hash).toBe(findingsHash(units));
 	});
 });

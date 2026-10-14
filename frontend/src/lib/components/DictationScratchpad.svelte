@@ -48,7 +48,7 @@
 	import { appendSentence, heldBack, lineChange, liveTail, moveUnit } from '$lib/hybrid-stack/stackState';
 	import { offeredAndDropped } from '$lib/hybrid-stack/gate';
 	import { abnormalAll, addedAtConfirm, assumedFrom, assumedStale, confirmReady, confirmRecheckFailed, flaggedFrom, gateKeyOf, keepRules, moreLine, openCount, rowSentences, splitReply, rulesToSend, type AssumedSnap, type SessionRules } from '$lib/hybrid-stack/items';
-	import { CONCLUSION, OTHER, buildFindingsBlock, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
+	import { CONCLUSION, OTHER, conclusionText, findingsHash, findingsText, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { backstopRun, checkKey, toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
 	import { asTailUnits, assumedKey, blockedSegments, pickBody, pickKey, placedRegions, shownNormals, visiblePills, withoutSegments, type ProtocolPick } from '$lib/hybrid-stack/protocol';
 	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit, ValueChip } from '$lib/hybrid-stack/types';
@@ -104,9 +104,9 @@
 	export let stackTemplateId: string | null = null;
 	/** The slim sheet the session uses (null: none yet), so Generate builds from it. */
 	export let onStackSheet: (sheetId: string | null) => void = () => {};
-	/** Scratchpad v2 gate (spec 2026-10-11 §5): the confirmed record and the findings block Generate sends,
-	 *  or (null, '') whenever it re-arms. */
-	export let onStackGate: (gate: GateRecord | null, findings: string) => void = () => {};
+	/** Scratchpad v2 gate (spec 2026-10-11 §5; integration §5): the confirmed record with the units (incl. the live
+	 *  tail) and groups Generate sends — the server builds the findings text — or (null, [], []) whenever it re-arms. */
+	export let onStackGate: (gate: GateRecord | null, units: StackUnit[], groups: string[]) => void = () => {};
 	/** The walkthrough's last step: Confirm, then Generate (the parent's Generate, once the gate has reached it). */
 	export let onStackGenerate: (() => void) | null = null;
 	/** The stack session id, so the parent can link the generated report to it. */
@@ -443,7 +443,7 @@
 	}
 	$: if (stackGate && stackGate.units_hash !== gateKey) {
 		stackGate = null;
-		onStackGate(null, '');
+		onStackGate(null, [], []);
 	}
 	$: onStackSession(stackSessionId);
 	let ghostNow = '';
@@ -2151,12 +2151,13 @@
 			checks: Object.values(seenChecks).map((c) => ({ kind: c.kind, quote: c.quote, other: c.other,
 				answered_by: checkAnswers[c.key] ?? (checks.some((x) => x.key === c.key) ? 'open' : 'edited') })),
 			units_hash: gateKey,
+			findings_hash: findingsHash([...stackUnits, ...tail]), // the server refuses a gate the units no longer match
 			flagged: flaggedNow, // kept normals the dictation may conflict with, confirmed as shown (R1 evidence)
 			...(valueChips.length ? { values: valueChips } : {}),
 			...offeredAndDropped(assumedSnap?.offered ?? stackRegionNormals, assumedSnap?.dropped, assumedSnap?.check_failed)
 		};
 		stackGate = gate;
-		onStackGate(gate, buildFindingsBlock([...stackUnits, ...tail], stackGroups, gate));
+		onStackGate(gate, [...stackUnits, ...tail], stackGroups);
 		void sendStackLog();
 		return true;
 	}
@@ -2247,7 +2248,7 @@
 		deleteRegion = null;
 		if (stackGate) {
 			stackGate = null;
-			onStackGate(null, '');
+			onStackGate(null, [], []);
 		}
 	}
 	/** Derive the structured text from the verbatim text: /process in structured mode, the

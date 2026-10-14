@@ -13,6 +13,7 @@
 	import { hybridStackOn } from '$lib/hybrid-stack/flag';
 	import { copilotOn } from '$lib/copilot/flag';
 	import { valuesBody } from '$lib/hybrid-stack/values';
+	import { buildFindingsBlock } from '$lib/hybrid-stack/regionState';
 	import type { GateRecord, StackSchema } from '$lib/hybrid-stack/types';
 
 	// ── Feedback capture ──────────────────────────────────────────────
@@ -897,7 +898,7 @@
 					stackSchemaMeta={stackSchema ? { key: stackSchema.key, source: stackSchema.source, provisional: stackSchema.provisional } : null}
 					onStackPills={(p) => { stackPills = p; }}
 					stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
-					onStackGate={(g, f) => { stackGate = g; stackFindings = f; }}
+					onStackGate={(g, u, gr) => { stackGate = g; stackFindings = g ? buildFindingsBlock(u, gr, g) : ''; }}
 					onStackGenerate={async () => { await tick(); if (!generateBlocked) void handleGenerateReport(); }}
 					onStackSession={(id) => { stackSessionId = id; }}
 					stackTemplateId={selectedTemplate?.id ?? null}
