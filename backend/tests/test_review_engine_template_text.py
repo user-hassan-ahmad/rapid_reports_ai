@@ -240,7 +240,8 @@ CFG = {"generation_mode": "skill_sheet_guided", "skill_sheet": SHEET}
 
 
 def test_template_parts_fail_open_on_a_deleted_template_or_a_bad_config():
-    assert engine.template_parts(_Db(tpl=None), _Row()) == {"template_config": None, "assumed_normals": []}
+    assert engine.template_parts(_Db(tpl=None), _Row()) == {"template_config": None, "assumed_normals": [],
+                                                         "generation_sheet_hash": None}
     bad = engine.template_parts(_Db(tpl=_Obj(template_config="not a dict")), _Row())
     assert bad["template_config"] is None
     i = engine.input_from_parts("00000000-0000-0000-0000-000000000001", "templated", {}, {"content": REPORT}, None,
@@ -269,3 +270,65 @@ def test_the_rails_input_matches_the_review_runs():
                candidate_reports=[{"content": REPORT, "sections": []}])
     i = api._input(rep, REPORT, _Db(tpl=_Obj(template_config=CFG)))
     assert CAC in i.template_text and i.template_structure is not None
+
+
+class _Nested:
+    def __init__(self, db):
+        self.db = db
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, et, e, tb):
+        self.db.savepoints.append("rolled_back" if et else "released")
+        return False
+
+
+class _TxDb(_Db):
+    """A session that records savepoints; the stack-log query raising must roll its savepoint back."""
+    def __init__(self, **k):
+        super().__init__(**k)
+        self.savepoints, self.queried = [], 0
+
+    def begin_nested(self):
+        return _Nested(self)
+
+    def query(self, cls):
+        self.queried += 1
+        return super().query(cls)
+
+
+def test_a_failed_stack_log_query_rolls_its_savepoint_back():
+    db = _TxDb(tpl=_Obj(template_config=CFG), query_raises=True)
+    out = engine.template_parts(db, _Row(), {"stack": True})
+    assert out["assumed_normals"] == [] and out["template_config"] == CFG
+    assert "rolled_back" in db.savepoints
+
+
+def test_probe_and_reprepare_never_query_the_stack_log():
+    from rapid_reports_ai.review_engine import api
+    db = _TxDb(tpl=_Obj(template_config=CFG), log=_Obj(gate={"assumed": {"x": ["LMS: Normal."]}}))
+    rep = _Obj(id="00000000-0000-0000-0000-000000000001", report_type="templated", template_id="t1",
+               input_data={}, enhancement_json=None, generation_stamp=None,
+               candidate_reports=[{"content": REPORT, "stack": True}])
+    i = api._input(rep, REPORT, db)
+    assert db.queried == 0 and i.assumed_normals == [] and i.template_text
+
+
+def test_a_sheet_edited_since_generation_is_marked_changed():
+    from rapid_reports_ai.template_sheet_structure import sheet_hash
+    row = _Row()
+    row.generation_stamp = {"sheet_hash": sheet_hash(SHEET)}
+    same = engine.template_parts(_Db(tpl=_Obj(template_config=CFG)), row)
+    assert same["generation_sheet_hash"] == sheet_hash(SHEET)
+    mk = lambda h: engine.input_from_parts("00000000-0000-0000-0000-000000000001", "templated", {},
+                                           {"content": REPORT}, None, CFG, None, h)
+    assert mk(sheet_hash(SHEET)).template_sheet_changed is False
+    assert mk(None).template_sheet_changed is False
+    changed = mk("0" * 64)
+    assert changed.template_sheet_changed is True and CAC in changed.template_text   # the exemption stays
+
+
+def test_the_stack_log_stamp_is_the_fallback_generation_hash():
+    db = _Db(tpl=_Obj(template_config=CFG), log=_Obj(gate={"assumed": {}}, stamp={"sheet_hash": "abc"}))
+    assert engine.template_parts(db, _Row(), {"stack": True})["generation_sheet_hash"] == "abc"

@@ -211,3 +211,14 @@ def test_a_merged_normal_is_not_missing_but_a_dropped_one_is():
     assert _raw("No pleural or pericardial effusion.", assumed=["No pleural effusion.", "No pericardial effusion."]) == []
     assert _raw("No pleural effusion.", assumed=["No pleural effusion.", "No pericardial effusion."]) == [
         ("assumed_normal_missing", "No pericardial effusion.")]
+
+
+@pytest.mark.asyncio
+async def test_a_changed_sheet_gives_no_gap_flag_and_no_note():
+    from rapid_reports_ai.review_engine import structure_mentions as sm
+    i = _inp(REPORT.replace(AXIAL + " ", "")).model_copy(update={"template_sheet_changed": True})
+    assert tg.gap_items(i, RUN) == ([], {"sheet_changed": True})
+
+    async def ask(report, names):
+        raise AssertionError("never asked")
+    assert await sm.mention_items(i, RUN, ask=ask) == ([], {"sheet_changed": True})

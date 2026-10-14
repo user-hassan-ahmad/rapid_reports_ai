@@ -188,6 +188,8 @@ def gap_items(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], Optional
     """(open rail flags, log); ([], None) for a report with no grammar structure (quick reports)."""
     if not isinstance(inp.template_structure, dict):
         return [], None
+    if inp.template_sheet_changed:       # written from another sheet: its gaps cannot be told from this one
+        return [], {"sheet_changed": True}
     log: dict = {k: 0 for k in KINDS}
     log.update(capped=0, error=None)
     try:

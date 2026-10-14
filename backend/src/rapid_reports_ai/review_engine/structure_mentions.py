@@ -105,6 +105,8 @@ async def mention_items(inp: ReviewInput, run_id: str, ask: Optional[Ask] = None
     """(quiet notes, log); ([], None) for a report with no grammar structure. Never raises."""
     if not isinstance(inp.template_structure, dict):
         return [], None
+    if inp.template_sheet_changed:
+        return [], {"sheet_changed": True}
     log: dict = {"structure_asked": 0, KIND: 0, "capped": 0, "structure_check_unavailable": 0, "error": None}
     try:
         names = structures(inp)

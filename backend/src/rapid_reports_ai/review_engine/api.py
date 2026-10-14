@@ -78,9 +78,10 @@ def _owned(db: Session, report_id: str, user: User):
 def _input(report, text: str, db: Optional[Session] = None):
     """The same input the review run builds (`engine.template_parts`: template text, structure, assumed normals)."""
     cand = (report.candidate_reports or [None])[0] or {}
-    tp = engine.template_parts(db, report, cand) if db is not None else {}
+    tp = engine.template_parts(db, report, cand, stack_log=False) if db is not None else {}
     return engine.input_from_parts(str(report.id), report.report_type, report.input_data, {**cand, "content": text},
-                                   report.enhancement_json, tp.get("template_config"), tp.get("assumed_normals"))
+                                   report.enhancement_json, tp.get("template_config"), tp.get("assumed_normals"),
+                                   tp.get("generation_sheet_hash"))
 
 
 def _negative(it: ReviewItem) -> bool:

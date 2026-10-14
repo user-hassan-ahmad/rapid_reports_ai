@@ -846,10 +846,12 @@ async def gate_d_log(inp: ReviewInput) -> Optional[dict]:
 
 def input_from_parts(report_id: str, report_type: str, input_data: Optional[dict], cand: Optional[dict],
                      enhancement_json: Optional[dict], template_config: Optional[dict] = None,
-                     assumed_normals: Optional[List[str]] = None) -> Optional[ReviewInput]:
+                     assumed_normals: Optional[List[str]] = None,
+                     generation_sheet_hash: Optional[str] = None) -> Optional[ReviewInput]:
     """`template_config`: the report's template (templated reports): its grammar sheet's quoted texts are the
     template's own words, never marked AI text (`template_text`), and its structure drives the gap flags.
-    `assumed_normals`: the stack session's confirmed normals (`template_parts`)."""
+    `assumed_normals`: the stack session's confirmed normals (`template_parts`). `generation_sheet_hash`: the hash of
+    the sheet the report was written from; a different current sheet marks `template_sheet_changed`."""
     from ..generation_artifacts import GenerationArtifacts
     from .template_text import template_inputs
     cand = cand or {}
@@ -860,6 +862,11 @@ def input_from_parts(report_id: str, report_type: str, input_data: Optional[dict
     findings = v.get("FINDINGS") or ""
     guidelines = (enhancement_json or {}).get("guidelines")
     texts, structure = template_inputs(template_config) if report_type == "templated" else ([], None)
+    changed = False
+    if structure is not None and generation_sheet_hash:
+        from ..template_sheet_structure import sheet_hash
+        sheet = (template_config or {}).get("skill_sheet")
+        changed = isinstance(sheet, str) and sheet_hash(sheet) != generation_sheet_hash
     return ReviewInput(report_id=report_id, pathway="templated" if report_type == "templated" else "quick",
                        artifacts=GenerationArtifacts.from_candidate(cand, findings),
                        clinical_history=v.get("CLINICAL_HISTORY") or "",
@@ -869,7 +876,8 @@ def input_from_parts(report_id: str, report_type: str, input_data: Optional[dict
                        pre_edit_report=(cand.get("quality_check") or {}).get("pre_edit_report"),
                        removed=list(cand.get("removed") or []), stack=cand.get("stack") is True,
                        template_text=texts, template_structure=structure,
-                       assumed_normals=list(assumed_normals or []) if structure is not None else [])
+                       assumed_normals=list(assumed_normals or []) if structure is not None else [],
+                       template_sheet_changed=changed)
 
 
 def _session():
@@ -897,39 +905,57 @@ def _load_row(db, report_id: str):
             "enhancement_json": row.enhancement_json, **template_parts(db, row, cand)}
 
 
-def _stack_assumed(db, report_id: str) -> List[str]:
-    """The normals the radiologist confirmed at the stack gate for this report (`dictation_stack_logs.gate`:
-    `assumed` per region, minus `removed`); [] when there is no log or it is not in that shape."""
+def _stack_log(db, report_id: str) -> Tuple[List[str], Optional[str]]:
+    """(the normals the radiologist confirmed at the stack gate for this report: `dictation_stack_logs.gate`
+    `assumed` per region minus `removed`, the session stamp's sheet hash); ([], None) when there is no log or it
+    is not in that shape. (No index on report_id yet: one row per session, filtered once per review run.)"""
     from ..database.models import DictationStackLog
     log = (db.query(DictationStackLog).filter(DictationStackLog.report_id == str(report_id))
            .order_by(DictationStackLog.updated_at.desc()).first())
+    stamp = getattr(log, "stamp", None)
+    h = stamp.get("sheet_hash") if isinstance(stamp, dict) and isinstance(stamp.get("sheet_hash"), str) else None
     gate = getattr(log, "gate", None)
     if not isinstance(gate, dict) or not isinstance(gate.get("assumed"), dict):
-        return []
+        return [], h
     removed = {" ".join(x.split()).lower() for x in gate.get("removed") or [] if isinstance(x, str)}
     out = [x for v in gate["assumed"].values() if isinstance(v, list) for x in v
            if isinstance(x, str) and x.strip() and " ".join(x.split()).lower() not in removed]
-    return list(dict.fromkeys(out))
+    return list(dict.fromkeys(out)), h
 
 
-def template_parts(db, row, cand: Optional[dict] = None) -> dict:
-    """{"template_config", "assumed_normals"} of a report row (the review run and the rail's probe / reprepare use
-    the same): the template's config for a templated report, the stack gate's confirmed normals for a stack one.
-    Fails open: a deleted template, a bad config or a missing log gives None / []."""
+def _savepoint(db):
+    """A SAVEPOINT around a read that may fail, so a failure never leaves the session's transaction aborted (the
+    rail's probe goes on to read items in the same session)."""
+    import contextlib
+    nested = getattr(db, "begin_nested", None)
+    return nested() if callable(nested) else contextlib.nullcontext()
+
+
+def template_parts(db, row, cand: Optional[dict] = None, stack_log: bool = True) -> dict:
+    """{"template_config", "assumed_normals", "generation_sheet_hash"} of a report row (the review run and the rail's
+    probe / reprepare use the same): the template's config for a templated report; for a stack one, the gate's
+    confirmed normals (only with `stack_log`: probe / reprepare do not use them). The generation sheet hash is the
+    report's own generation stamp, else the stack session's. Each read runs in a savepoint and fails open: a deleted
+    template, a bad config or a missing log gives None / []."""
     from ..database.models import Template
-    out: dict = {"template_config": None, "assumed_normals": []}
+    stamp = getattr(row, "generation_stamp", None)
+    out: dict = {"template_config": None, "assumed_normals": [], "generation_sheet_hash": (
+        stamp.get("sheet_hash") if isinstance(stamp, dict) and isinstance(stamp.get("sheet_hash"), str) else None)}
     tid = getattr(row, "template_id", None)
     if getattr(row, "report_type", None) != "templated" or not tid:
         return out
     try:
-        tpl = db.get(Template, tid)
+        with _savepoint(db):
+            tpl = db.get(Template, tid)
         cfg = tpl.template_config if tpl is not None else None
         out["template_config"] = cfg if isinstance(cfg, dict) else None
     except Exception as e:  # noqa: BLE001
         logger.info("review engine: template config not loaded (%s)", type(e).__name__)
-    if (cand or {}).get("stack") is True and out["template_config"] is not None:
+    if stack_log and (cand or {}).get("stack") is True and out["template_config"] is not None:
         try:
-            out["assumed_normals"] = _stack_assumed(db, str(getattr(row, "id", "")))
+            with _savepoint(db):
+                out["assumed_normals"], h = _stack_log(db, str(getattr(row, "id", "")))
+            out["generation_sheet_hash"] = out["generation_sheet_hash"] or h
         except Exception as e:  # noqa: BLE001
             logger.info("review engine: stack log not loaded (%s)", type(e).__name__)
     return out
@@ -948,7 +974,7 @@ async def load_input(report_id: str, text: Optional[str] = None) -> Optional[Rev
     if text is not None:
         cand = {**cand, "content": text}
     return input_from_parts(report_id, row["report_type"], row["input_data"], cand, row["enhancement_json"],
-                            row.get("template_config"), row.get("assumed_normals"))
+                            row.get("template_config"), row.get("assumed_normals"), row.get("generation_sheet_hash"))
 
 
 _SEM: Optional[Tuple[asyncio.AbstractEventLoop, asyncio.Semaphore]] = None
