@@ -27,6 +27,7 @@ from ...database import SessionLocal, get_db
 from ...database.models import GuidelineRegistry, User
 from ..routes import _reviewer, stack_allowed
 from . import ask as A
+from . import conclusion_check as CC
 from . import matcher as M
 from . import registry as Reg
 from . import tnm
@@ -413,6 +414,26 @@ def _prewarm(req: MatchRequest, cards: list[Card]) -> int:
         except Exception as ex:
             logger.warning("[copilot.routes] prewarm %s", type(ex).__name__)
     return n
+
+
+class ConclusionCardIn(BaseModel):
+    key: str = Field(max_length=120)
+    finding: str = Field(max_length=6000)
+
+
+class ConclusionCheckRequest(BaseModel):
+    conclusion: str = Field(max_length=4000)
+    cards: list[ConclusionCardIn] = Field(default_factory=list, max_length=10)
+
+
+class ConclusionCheckResult(BaseModel):
+    results: dict[str, Literal["none", "surveillance", "workup", "refer"] | None] = Field(default_factory=dict)
+
+
+@router.post("/conclusion_check", response_model=ConclusionCheckResult)
+async def copilot_conclusion_check(req: ConclusionCheckRequest, user: User = Depends(get_current_user)):
+    _require()
+    return ConclusionCheckResult(results=await CC.check(req.conclusion, [(c.key, c.finding) for c in req.cards]))
 
 
 @router.post("/match", response_model=MatchResult)
