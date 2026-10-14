@@ -222,3 +222,35 @@ async def test_a_changed_sheet_gives_no_gap_flag_and_no_note():
     async def ask(report, names):
         raise AssertionError("never asked")
     assert await sm.mention_items(i, RUN, ask=ask) == ([], {"sheet_changed": True})
+
+
+@pytest.mark.asyncio
+async def test_a_stack_value_missing_reaches_the_rail_once(monkeypatch):
+    from rapid_reports_ai import report_reconcile as rc
+    from rapid_reports_ai.review_engine import adjudicator as adj
+    from rapid_reports_ai.review_engine import engine, negatives
+    from rapid_reports_ai.review_engine import structure_mentions as sm
+    from tests.review_engine_fakes import jev
+
+    async def no_neg(inp_, run_id, types=None, owned=None):
+        return [], {"candidates": []}
+
+    async def judge(inp_, groups):
+        return [adj.Outcome(group=g) for g in groups]
+
+    async def ask(report, names):
+        return [0.9 for _ in names]
+    monkeypatch.setattr(rc, "_jev", jev())
+    monkeypatch.setattr(negatives, "classify_negatives", no_neg)
+    monkeypatch.setattr(adj, "adjudicate", judge)
+    monkeypatch.setattr(sm, "ask_mentioned", ask)
+    i = _inp()
+    qc = {"review": [{"kind": "value_missing", "text": "LVEF",
+                      "message": "Required value LVEF not found in the report"},
+                     {"kind": "value_missing", "text": "LVEF",
+                      "message": "Required value LVEF not found in the report"}]}
+    i = i.model_copy(update={"stack": True, "artifacts": i.artifacts.model_copy(update={"quality_check": qc})})
+    res = await engine.run_review(i, RUN)
+    vm = [it for it in res.items if it.kind == "value_missing"]
+    assert len(vm) == 1 and vm[0].detectors == ["post_check_flag"] and vm[0].cls == "info" and vm[0].anchor is None
+    assert not [it for it in res.items if it.kind in tg.KINDS]       # no second source for the same value
