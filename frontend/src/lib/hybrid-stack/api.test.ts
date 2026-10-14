@@ -128,5 +128,8 @@ describe('P2c: the stack Generate client, the token and units-based draft', () =
 		expect(err).toBeInstanceOf(StackHttpError);
 		expect(err.status).toBe(422);
 		expect(err.detail).toBe('This template has no usable structure.');
+		vi.stubGlobal('fetch', vi.fn(async () => new Response('{"detail":"Template not found."}', { status: 404 })));
+		const nf = await fetchSchema('tok', { scan_type: 'CT', clinical_history: '', template_id: 'x' }).catch((e) => e);
+		expect([nf.status, nf.detail]).toEqual([404, 'Template not found.']);
 	});
 });

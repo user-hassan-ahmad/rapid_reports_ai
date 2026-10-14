@@ -253,7 +253,9 @@
 			if (mine !== schemaSeq) return undefined;
 			stackSchema = null;
 			structureKey = null;
+			// D15: an unusable (422) or unknown (404) template shows the server's own words; Generate stays blocked
 			stackSchemaError = e instanceof StackHttpError && e.detail ? e.detail : "Couldn't set up the workspace. Please try again.";
+			sectionsError = stackSchemaError; // also on a restore, where no Set up click shows it
 			return stackSchemaError;
 		}
 	}

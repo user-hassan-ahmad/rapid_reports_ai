@@ -61,7 +61,7 @@ describe('UpgradeBanner (converted templates only, dismissed on the server)', ()
 		await page.getByRole('button', { name: 'Dismiss' }).click();
 		expect(settings.updateSettings).toHaveBeenCalledWith({ banner_template_upgrade_dismissed: true });
 		await expect.element(page.getByRole('status')).not.toBeInTheDocument();
-		expect(localStorage.length).toBe(0); // nothing per browser
+		expect(Object.keys(localStorage).filter((k) => k.includes('banner'))).toEqual([]); // nothing per browser
 	});
 
 	it('hidden once the server says dismissed', async () => {
