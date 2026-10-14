@@ -7,6 +7,7 @@ import IntelliDictateTab from './components/IntelliDictateTab.svelte';
 import TemplatedReportTab from './components/TemplatedReportTab.svelte';
 import HistoryTab from './components/HistoryTab.svelte';
 import SettingsTab from './components/SettingsTab.svelte';
+import UpgradeBanner from '$lib/components/UpgradeBanner.svelte';
 import ReportEnhancementSidebar from './components/ReportEnhancementSidebar.svelte';
 import { get } from 'svelte/store';
 import { stackMode, primeStackMode, showLegacyCopilot } from '$lib/hybrid-stack/mode';
@@ -926,6 +927,7 @@ $: if (
 		style:padding-right={copilotMainPaddingRightPx > 0 ? `${copilotMainPaddingRightPx}px` : undefined}
 	>
 	<main class="flex-1 min-w-0 relative min-h-screen">
+		{#if $isAuthenticated}<UpgradeBanner />{/if}<!-- inside the content column: the fixed sidebar never covers it -->
 		{#if $token && !$isAuthenticated}
 			<!-- Still checking auth status - show loading -->
 			<div class="min-h-screen flex items-center justify-center">
