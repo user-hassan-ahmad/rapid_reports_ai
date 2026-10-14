@@ -1,36 +1,37 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { templatesStore } from '$lib/stores/templates';
+	import { settingsStore } from '$lib/stores/settings';
 
-	const KEY = 'rr_banner_template_upgrade_2026_10';
-	// Starts hidden so SSR and dismissed users never flash it; storage is read on mount.
-	let visible = $state(false);
-	// Only template owners see it, from the app-wide templates store (no fetch of its own): hidden until the
-	// templates have loaded, on a load error, and on pages that never load them.
-	const ownsTemplate = $derived(($templatesStore?.templates?.length ?? 0) > 0);
+	// Integration spec §10: shown only to users who own at least one converted template (the conversion script stamps
+	// template_config.converted_at), naming those templates; dismissal is remembered on the server (User.settings), so it
+	// never returns on another browser. Hidden until the templates and the settings have loaded.
+	type Tpl = { id: string; name?: string; template_config?: { converted_at?: string } | null };
+	const converted = $derived((($templatesStore?.templates ?? []) as Tpl[]).filter((t) => !!t?.template_config?.converted_at));
+	const settings = $derived(($settingsStore as { settings: Record<string, unknown> | null; loading: boolean }) ?? null);
+	let dismissedHere = $state(false);
+	const visible = $derived(converted.length > 0 && !!settings?.settings && settings.settings.banner_template_upgrade_dismissed !== true && !dismissedHere);
 
-	onMount(() => {
-		try {
-			visible = localStorage.getItem(KEY) !== '1';
-		} catch {
-			visible = true;
+	// The settings store is loaded by the pages that need it; the banner asks for it only when it has something to say.
+	let requested = false;   // asked once: a failing load is never retried in a loop
+	$effect(() => {
+		if (converted.length > 0 && !settings?.settings && !settings?.loading && !requested) {
+			requested = true;
+			void settingsStore.loadSettings();
 		}
 	});
 
 	function dismiss() {
-		visible = false;
-		try {
-			localStorage.setItem(KEY, '1');
-		} catch {
-			/* storage blocked */
-		}
+		dismissedHere = true;
+		void settingsStore.updateSettings({ banner_template_upgrade_dismissed: true });
 	}
 </script>
 
-{#if visible && ownsTemplate}
+{#if visible}
 	<div role="status" class="flex items-start gap-3 bg-sky-950/60 border-b border-sky-800 px-4 py-2 text-sm text-sky-100">
 		<p class="flex-1">
-			Your templates have been upgraded to the new workflow. If a template doesn't feel right, you can create a
+			{converted.length === 1 ? 'Your template' : 'Your templates'}
+			{converted.map((t) => t.name || 'Untitled').join(', ')}
+			{converted.length === 1 ? 'has' : 'have'} been upgraded to the new workflow. If one doesn't feel right, create a
 			fresh one from a few example reports.
 		</p>
 		<button class="text-sky-300 hover:text-sky-100" onclick={dismiss} aria-label="Dismiss">Dismiss</button>

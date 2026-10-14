@@ -404,7 +404,7 @@ def without_declined(options: List[dict], declined: Sequence[str]) -> List[dict]
 async def generate_template_report_lean(*, sheet: str, scan_type: str, findings: str, history: str,
                                         case: "Optional[dict] | Callable[[], Awaitable[Optional[dict]]]",
                                         signature: Optional[str], declined: Sequence[str] = (),
-                                        stack: Optional[dict] = None) -> dict:
+                                        stack: Optional[dict] = None, check_findings: Optional[str] = None) -> dict:
     """`declined`: scratchpad v2 chips the radiologist removed (spec 2026-10-11 §6), never offered back.
     `stack`: a scratchpad session ({"conclusion", "declined"}), passed to the generator (template_stack).
     Today's single-pass generator on the stored sheet, then the post-generation check (sections from the
@@ -420,6 +420,9 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
     is removed."""
     rec: dict = {"lat": {}}
     t_start = time.time()
+    # `check_findings`: a stack session's plain statements (no labels, no removed sentence) for the rules, the check
+    # and the number sources; the writer still reads `findings` (the labelled block)
+    check_text = check_findings if check_findings is not None else findings
     style = "\n".join(x for x in (_block(sheet, "Impression Construction Rules") or _block(sheet, "Impression Construction"),
                                   _block(sheet, "Terminology Rules")) if x)
 
@@ -441,7 +444,7 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
         t0 = time.time()
         # Context rules settled by Jev and applied by code (spec 2026-10-13-context-rules-resolved-design): the
         # generator reads one decided line where the sheet had a default plus a rule. Fail-soft: stored sheet.
-        resolved = await resolve_context_rules(sheet, history, findings, stack=stack is not None,
+        resolved = await resolve_context_rules(sheet, history, check_text, stack=stack is not None,
                                                 scan_type=scan_type)
         rec["context_rules"] = resolved.record
         # habits are resolved only in the scratchpad; on the straight path nothing is asked, so nothing is written
@@ -517,8 +520,9 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
 
     async def checked():
         t0 = time.time()
-        res = await run_quality_check(report, findings, scan_type, [], sections=sections, protected=[],
-                                      suppressed=[], history=None)
+        res = await run_quality_check(report, check_text, scan_type, [], sections=sections, protected=[],
+                                      suppressed=[], history=None,
+                                      **({"record_edits": True} if stack is not None else {}))
         rec["lat"]["check_s"] = round(time.time() - t0, 1)
         return res
 
@@ -556,7 +560,7 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
             quality["review"] = [*(quality.get("review") or []), *flags]
         final, vrec["stripped"] = write_missing(final, sheet, lists, rec=vrec)
     # Numbers the writer added that no source supplies (a sheet's score/grade/time window): review flags only
-    numbers = undictated_numbers(final, [findings, history, (stack or {}).get("conclusion")], sheet)
+    numbers = undictated_numbers(final, [check_text, history, (stack or {}).get("conclusion")], sheet)
     if numbers:
         quality = {**(quality or {"enabled": False})}   # check off: the flags alone, still marked not run
         quality["review"] = [*(quality.get("review") or []), *numbers]

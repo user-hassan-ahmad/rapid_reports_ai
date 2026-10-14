@@ -342,3 +342,14 @@ def test_the_upgrade_stores_unmatched_entries_and_reports_drift(db_session, test
     assert row["action"] == "written" and row["ledger_drift"] == 1
     db_session.refresh(t)
     assert [e["key"] for e in t.template_config["ledger_unmatched"]] == ["A line the sheet lacks."]
+
+
+def test_a_written_template_carries_converted_at(db_session, templates, tmp_path, no_jev):
+    """P2c banner: the conversion marks every template it writes, so the UI can name its owner's converted templates."""
+    from datetime import datetime
+    guided, legacy = templates
+    U.main(_manifest(tmp_path, guided.id, GOOD), apply=True, db=db_session)
+    db_session.expire_all()
+    cfg = db_session.get(Template, guided.id).template_config
+    assert datetime.fromisoformat(cfg["converted_at"])
+    assert "converted_at" not in (db_session.get(Template, legacy.id).template_config or {})

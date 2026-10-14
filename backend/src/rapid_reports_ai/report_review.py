@@ -290,10 +290,8 @@ def header_names(report: str) -> List[str]:
     return [m.group(1) for m in _HEADER.finditer(report)]
 
 
-# RECOMMENDATIONS: a scratchpad session's ticked items (copilot spec §6), a section of its own after the impression;
-# never checked (its role is skipped by the review and alignment checks).
 QUICK_TOP_LEVEL = ("CLINICAL HISTORY", "COMPARISON", "TECHNIQUE", "FINDINGS", "IMPRESSION", "LIMITATIONS",
-                   "CONCLUSION", "RECOMMENDATIONS")
+                   "CONCLUSION")
 
 
 def quick_section_names(report: str) -> List[str]:
@@ -966,7 +964,7 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
                             suppressed: Optional[List[str]] = None,
                             extra_report_qs: Optional[dict] = None,
                             history: Optional[str] = None,
-                            brief_decisions: Optional[dict] = None) -> Tuple[str, List[dict], dict]:
+                            brief_decisions: Optional[dict] = None, record_edits: bool = False) -> Tuple[str, List[dict], dict]:
     """Check, then edit only for a flagged negative (removed) or an absent line (inserted). Returns the report, the
     options with flagged ones dropped, and telemetry. Never raises. `sections` makes the check
     section-generic (templates); `protected` text is never checked for omission or edited; an insertion
@@ -1107,10 +1105,17 @@ async def run_quality_check(report: str, findings: str, scan_type: str, options:
     # Gate D shadow log (review engine spec §9): the report before today's automatic edits, kept only while the
     # review engine runs (shadow or live) and only when an edit was applied. `applied_edits` (removals in order, then
     # insertions) lets the engine show each edit as a pre-applied item on the final text (spec §10.4).
-    if os.environ.get("RR_REVIEW_ENGINE", "off").strip().lower() in ("shadow", "live") and report != original:
-        tel["pre_edit_report"] = original
-        tel["applied_edits"] = removals + insertions
+    _record_edits(tel, original, report, removals + insertions, force=record_edits)
     return report, options, tel
+
+
+def _record_edits(tel: dict, original: str, report: str, edits: list, force: bool = False) -> dict:
+    """Edits go to the candidate when the review engine runs (shadow/live), and always for a stack session
+    (`force`): the rail reads pre-applied edits from there (integration spec §7.4)."""
+    if report != original and (force or os.environ.get("RR_REVIEW_ENGINE", "off").strip().lower() in ("shadow", "live")):
+        tel["pre_edit_report"] = original
+        tel["applied_edits"] = edits
+    return tel
 
 
 def _only_protected(report: str, clause: str, protected: Optional[List[str]]) -> bool:

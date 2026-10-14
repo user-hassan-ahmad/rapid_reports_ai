@@ -110,10 +110,19 @@ async def test_warm_up_reports_ms_and_never_raises(built):
 def test_warmup_wanted(monkeypatch, env, expected):
     for k in ("RR_TRIAGE_DEBUG", "RR_TRIAGE_SHADOW", "RR_COVERAGE_CANDIDATE", "RR_DICTATION_V2"):
         monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("RR_STACK", "0")   # the old flow: each flag on its own
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     assert jev_client.warmup_wanted() is expected
+
+
+def test_warmup_wanted_with_the_stack(monkeypatch):
+    """The stack brings the dictation package (spec §9.1), which calls Jev per utterance."""
+    for k in ("RR_TRIAGE_DEBUG", "RR_COVERAGE_CANDIDATE", "RR_DICTATION_V2", "RR_STACK"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k")
+    assert jev_client.warmup_wanted() is True
 
 
 def test_warmup_not_wanted_without_key(monkeypatch):
@@ -125,6 +134,7 @@ def test_warmup_not_wanted_without_key(monkeypatch):
 async def test_schedule_warm_up(built, monkeypatch):
     for k in ("RR_TRIAGE_DEBUG", "RR_COVERAGE_CANDIDATE", "RR_DICTATION_V2"):
         monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("RR_STACK", "0")   # the old flow: no package flag, no warm-up (the stack brings the package)
     assert jev_client.schedule_warm_up() is None
     monkeypatch.setenv("RR_DICTATION_V2", "1")
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")

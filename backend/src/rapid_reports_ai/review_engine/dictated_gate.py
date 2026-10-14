@@ -256,13 +256,16 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
       cards (check, removed, ...) stay;
     - quiet clause with no AI-layer item on it: a quiet `assumed_normal` item (form normal);
     - synth clause: one `ai_generated` item on the added-word runs (first run the anchor, the rest `also_anchors`;
-      no run → the whole clause);
+      no run → the whole clause), minus the template's own words (`provenance.untemplated`; none left → no item);
     - rec clause: one `recommendation` item per sentence, placed and given its removal by provenance's code."""
     from .items import text_hash
-    from .provenance import (DETECTOR_REC, KIND_REC, MAX_AI_ITEMS, _ai_item, _new_item, _rec_target)
+    from .provenance import (DETECTOR_REC, KIND_REC, MAX_AI_ITEMS, _ai_item, _new_item, _rec_target, template_spans,
+                             untemplated)
     report = inp.artifacts.report or ""
     names = list(inp.artifacts.sections or [])
     h = text_hash(report)
+    tspans = template_spans(inp)
+    template_owned = 0
     placed = [g for g in gate if g.start is not None]
     added = [(g.start, g.end) for g in placed if g.tier in ("quiet", "rec", "synth")]
     dictated = [(g.start, g.end) for g in placed if g.tier == "dictated"]
@@ -290,7 +293,12 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
             if synth >= MAX_AI_ITEMS:
                 capped += 1
                 continue
-            runs = g.runs or [(g.start, g.end)]
+            raw = g.runs or [(g.start, g.end)]
+            runs = [p for a, b in raw for p in untemplated(report, a, b, tspans)]
+            if runs != raw:
+                template_owned += 1
+            if not runs:
+                continue
             also = [{"start": a, "end": b, "text": report[a:b], "text_hash": h} for a, b in runs[1:]]
             prov.append(_ai_item(inp, run_id, g.section or "", runs[0][0], runs[0][1],
                                  {"form": "synthesis", "source": DETECTOR, "p": g.p, "q_type": g.q_type,
@@ -312,7 +320,8 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
                                    "contra": None, "unconfirmed": True}))
     log = {"mode": "live", "clauses": [_clause_log(g) for g in gate], "dropped": dropped,
            "quiet": sum(1 for it in prov if it.kind == "assumed_normal"), "synthesis": synth,
-           "recommendation": len(rec_seen), "capped": capped, "unplaced": unplaced}
+           "recommendation": len(rec_seen), "capped": capped, "unplaced": unplaced,
+           "template_owned": template_owned}
     return prov, neg, brief, log
 
 

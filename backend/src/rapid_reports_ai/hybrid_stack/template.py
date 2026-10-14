@@ -91,15 +91,25 @@ def _normalise(t: str) -> str:
 def jev_text(sentence: str, label: str) -> str:
     """The sentence as put to the Jev check: "<Label>: <sentence>". Quotes stripped from the label, sentence-cased
     unless a word is an acronym (all caps, up to 4 letters). The sentence itself is kept as written."""
+    return f"{label_case(label)}: {sentence}"
+
+
+def _mixed(w: str) -> bool:
+    """A token written with an internal capital ("LCx"): kept as written."""
+    return any(c.isupper() for c in w[1:]) and any(c.islower() for c in w)
+
+
+def label_case(label: str) -> str:
+    """A structure label as shown: quotes stripped, sentence-cased unless a word is an acronym (all caps, up to 4
+    letters) or has an internal capital ("LCx")."""
     label = " ".join(label.strip().strip("\"'`\u201c\u201d\u2018\u2019").split())
     words = label.split()
     if label.isupper() and any(len(w) > 4 for w in words):
         words = [w.lower() for w in words]            # a shouted label ("LEFT VENTRICLE"), not acronyms
     else:
-        words = [w if (w.isalpha() and w.isupper() and len(w) <= 4) else w.lower() for w in words]
+        words = [w if (w.isalpha() and w.isupper() and len(w) <= 4) or _mixed(w) else w.lower() for w in words]
     label = " ".join(words)
-    label = label[:1].upper() + label[1:]
-    return f"{label}: {sentence}"
+    return label[:1].upper() + label[1:]
 
 
 _SLOT = re.compile(r"\{[^{}]*\}")   # a fill-in placeholder ("LVEDVi {value} ml/m2"): never assumed
@@ -132,6 +142,25 @@ def template_region_normals(st: SheetStructure) -> dict[str, list[str]]:
     out: dict[str, list[str]] = {}
     for name, t, _ in _offered(st):
         out.setdefault(name, []).append(t)
+    return out
+
+
+def template_structure_split(st: SheetStructure) -> dict[str, tuple[list[str], dict[str, str], list[str]]]:
+    """Findings paragraph-regions whose COVERS name two or more structures (the sub-pill layer only; regions, Generate
+    and the assumed check stay per paragraph): region -> (its COVERS structures, offered sentence -> the structure its
+    NORMAL tag names when that tag is one of them, the offered sentences left to bind). Sentences as offered."""
+    covers = {name: next(p.covers for p in st.paragraphs if p.id == pid) for pid, name in paragraph_regions(st).items()}
+    out: dict[str, tuple[list[str], dict[str, str], list[str]]] = {}
+    for name, t, label in _offered(st):
+        structs = list(dict.fromkeys(c for c in covers.get(name, []) if c.strip()))
+        if len(structs) < 2:
+            continue
+        _, fixed, ask = out.setdefault(name, (structs, {}, []))
+        hit = next((c for c in structs if label and norm_key(c) == norm_key(label)), None)
+        if hit is not None:
+            fixed[t] = hit
+        else:
+            ask.append(t)
     return out
 
 

@@ -22,6 +22,7 @@ import uuid
 from dotenv import load_dotenv
 from sqlalchemy.exc import IntegrityError
 from .prompt_manager import get_prompt_manager
+from .legacy_guard import is_stale_stack_request, mark as legacy_mark
 from .database import (
     get_db,
     SessionLocal,
@@ -210,6 +211,7 @@ def _schedule_prefetch_task(
     user_id: str,
 ) -> None:
     """Fire-and-forget prefetch; registers PREFETCH_TASKS for enhance to optionally await."""
+    legacy_mark("prefetch.schedule", user_id, None)  # the tripwire (spec §9.5)
     task = asyncio.create_task(
         _run_prefetch_and_store(
             prefetch_id=prefetch_id,
@@ -263,6 +265,7 @@ async def _run_tavily_search_chat(queries: List[str]) -> tuple:
     Replaces the previous Perplexity-based run_perplexity_search_chat.
     Returns (evidence_text, sources_list) — same shape as the old function.
     """
+    legacy_mark("chat.tavily", None, None)  # the tripwire (spec §9.5)
     import logging
     _log = logging.getLogger(__name__)
     tavily_key = os.getenv("TAVILY_API_KEY", "")
@@ -677,8 +680,10 @@ class TemplateGenerateRequest(BaseModel):
     variables: Optional[Dict[str, str]] = None
     model: str = MODEL_CONFIG["PRIMARY_REPORT_GENERATOR"]
     pipeline: Optional[str] = None  # "mirror" / "current": honoured for allowlisted users only
-    stack_declined: Optional[List[str]] = None  # scratchpad v2: chips the radiologist removed (never offered back)
-    stack: bool = False  # a scratchpad session: FINDINGS is the confirmed findings block (template_stack)
+    # Stack fields: only so a stale tab is recognised and refused with 409 "reload" (spec §5 Old endpoints); stack
+    # sessions generate at /api/canvas/stack/generate.
+    stack_declined: Optional[List[str]] = None
+    stack: bool = False
     stack_conclusion: str = ""  # the conclusion the radiologist confirmed (the impression phrases it)
     stack_values_na: Optional[List[str]] = None  # value cluster: required values marked N/A (None: no cluster this session)
     stack_values_filled: Optional[List[str]] = None  # value cluster: values filled from the dictation (post-gen backstop)
@@ -1910,7 +1915,10 @@ def _mirror_ready(template, email: Optional[str], requested: Optional[str] = Non
     allowlist) and skill_sheet_guided. No grammar structure is needed: the stored sheet is used as it is, and
     Phase 1 serves options only. Every other template keeps today's path."""
     cfg = template.template_config if isinstance(template.template_config, dict) else {}
-    return tp.choose_mirror(requested, email) and cfg.get("generation_mode") == "skill_sheet_guided"
+    ready = tp.choose_mirror(requested, email) and cfg.get("generation_mode") == "skill_sheet_guided"
+    if ready:
+        legacy_mark("template.mirror", None, None)
+    return ready
 
 
 @app.post("/api/templates/{template_id}/prepare")
@@ -1922,6 +1930,7 @@ async def prepare_template_case(
 ):
     """"Set up workspace": start Phase 1 (the case analyser on the clinical history) in the background so
     Generate finds the master sheet ready. Returns at once: skipped / running / ready."""
+    legacy_mark("template.prepare", getattr(current_user, "id", None), "/api/templates/{id}/prepare")  # the tripwire (spec §9.5)
     try:
         template = get_template(db, template_id, user_id=str(current_user.id))
         if not template:
@@ -1947,6 +1956,9 @@ async def generate_report_from_template(
     db: Session = Depends(get_db)
 ):
     """Generate a report from a template using new structured config system"""
+    if is_stale_stack_request(request):   # a stack session generates at /api/canvas/stack/generate (spec §5)
+        raise HTTPException(status_code=409, detail="reload")
+    legacy_mark("template.generate", getattr(current_user, "id", None), "/api/templates/{id}/generate")  # the tripwire (spec §9.5)
     try:
         # Get the template
         template = get_template(db, template_id, user_id=str(current_user.id))
@@ -1993,29 +2005,13 @@ async def generate_report_from_template(
                 clinical_history=_clinical,
                 user_id=str(current_user.id),
             )
-        # Routing: a scratchpad session (below) always takes the lean path; any other generation takes it when
+        # Routing (the old flow only; stack sessions generate at /api/canvas/stack/generate): the lean path when
         # RR_TEMPLATE_MIRROR / allowlist chooses it, else today's path. Lean = today's generator on the stored sheet
-        # + the post-generation check; off the scratchpad, Phase 1 for options only, finished in the background
-        # (the report never waits for options). The heavy mirror (tp.generate_template_report) is parked.
-        _stack = ({"conclusion": request.stack_conclusion, "declined": request.stack_declined or []}
-                  if request.stack else None)
-        if _stack is not None and request.stack_values_na is not None:
-            # The value cluster settled the template's required values: these were marked N/A (template_required_values)
-            _stack["values_na"] = [x.strip()[:200] for x in request.stack_values_na if x.strip()][:40]
-            _stack["values_filled"] = [x.strip()[:200] for x in (request.stack_values_filled or []) if x.strip()][:40]
-        if _stack is not None:
-            from .hybrid_stack.template import template_structure
-            if template_structure(template.template_config) is None:
-                # No usable structure: the scratchpad offered no assumed normals, so the stack brief (which strips the
-                # sheet's normals) would leave every undictated structure unstated. Today's template path instead.
-                logger.info("template %s: stack session without a usable structure; today's path", template_id)
-                _stack = None
-        # A scratchpad session (usable structure = a guided grammar sheet) always takes the lean path: generation +
-        # the post-generation check, no flag gate. Its checklist already decided the case: no Phase 1, no options.
-        # Every other generation keeps the flag / allowlist routing.
-        use_mirror = _stack is not None or _mirror_ready(template, current_user.email, request.pipeline)
+        # + the post-generation check, Phase 1 for options only, finished in the background (the report never waits
+        # for options). The heavy mirror (tp.generate_template_report) is parked.
+        use_mirror = _mirror_ready(template, current_user.email, request.pipeline)
         mirror_candidate, options_job = None, None
-        _p1 = {"source": "skipped" if _stack is not None else "pending"}   # a scratchpad session runs no Phase 1
+        _p1 = {"source": "pending"}
         if use_mirror:
             try:
                 _cfg = template.template_config
@@ -2035,15 +2031,13 @@ async def generate_report_from_template(
                         _db.close()
                 mirror_result = await tl.generate_template_report_lean(
                     sheet=_sheet, scan_type=_scan, findings=_findings, history=_history,
-                    case=None if _stack is not None else _resolve_case,
-                    signature=current_user.signature, declined=request.stack_declined or [], stack=_stack)
+                    case=_resolve_case, signature=current_user.signature, declined=[], stack=None)
                 options_job = mirror_result.get("options_job")
                 mirror_candidate = tp.candidate_record(mirror_result, int((time.perf_counter() - _tpl_gen_t0) * 1000))
                 mirror_candidate["phase1_source"] = _p1["source"]   # "pending" until the options job resolves it
                 # Options, and why each was offered, dropped or capped, arrive from the background job
                 mirror_candidate["options_pending"] = options_job is not None
-                mirror_candidate["options_status"] = ("pending" if options_job is not None
-                                                      else "skipped" if _stack is not None else "none")
+                mirror_candidate["options_status"] = "pending" if options_job is not None else "none"
                 mirror_candidate["case_decisions"] = mirror_result.get("case_decisions")
                 mirror_candidate["gate_dropped"] = mirror_result.get("gate_dropped") or []
                 report_output_dict = {"report_content": mirror_result["report_content"],
@@ -2053,22 +2047,19 @@ async def generate_report_from_template(
                 logger.info("template mirror %s: report ready, options pending=%s lat=%s", template_id,
                             mirror_candidate["options_pending"], mirror_candidate["lat"])
             except Exception as e:  # fail-soft: a mirror failure falls back to today's path
-                logger.warning("template mirror failed for %s stack=%s (%s: %s); today's path, the report goes out "
-                               "without the post-generation check", template_id, _stack is not None,
-                               type(e).__name__, str(e)[:300])
+                logger.warning("template mirror failed for %s (%s: %s); today's path, the report goes out "
+                               "without the post-generation check", template_id, type(e).__name__, str(e)[:300])
                 if options_job is not None:
                     options_job.cancel()
                 use_mirror, mirror_candidate, options_job = False, None, None
-        # The route actually taken, for the generation stamp: "scratchpad" (stack, lean ran), "lean" (flag /
-        # allowlist, no stack), "scratchpad_fallback" (stack, lean failed -> today's path), "fallback" (today's path)
-        _stamp_path = (("scratchpad" if use_mirror else "scratchpad_fallback") if _stack is not None
-                       else ("lean" if use_mirror else "fallback"))
+        # The route actually taken, for the generation stamp: "lean" (flag / allowlist), "fallback" (today's path)
+        _stamp_path = "lean" if use_mirror else "fallback"
         if not use_mirror:
             report_output_dict = await tm.generate_report_from_config(
                 template_config=template.template_config,
                 user_inputs=user_inputs,
                 user_signature=current_user.signature,
-                stack=_stack,
+                stack=None,
             )
         print(
             f"[FLOW_TIMING] template_generate: llm_done "
@@ -2089,6 +2080,7 @@ async def generate_report_from_template(
         ENABLE_TEMPLATE_STRUCTURE_VALIDATION = os.getenv("ENABLE_TEMPLATE_STRUCTURE_VALIDATION", "false").lower() == "true"
         
         if ENABLE_TEMPLATE_STRUCTURE_VALIDATION and not use_mirror:
+            legacy_mark("template.structure_validation", getattr(current_user, "id", None), "/api/templates/{id}/generate")
             from .enhancement_utils import validate_report_structure
             
             user_inputs = request.user_inputs or request.variables or {}
@@ -3240,6 +3232,7 @@ async def quick_report_proto_analyse_endpoint(
     `ephemeral_skill_sheets` table. `sheet_id` is returned so the subsequent
     generate call can reference the persisted sheet.
     """
+    legacy_mark("quick.analyse.proto", getattr(current_user, "id", None), "/api/quick-report-proto/analyse")  # the tripwire (spec §9.5)
     from .quick_report_analyser import (
         generate_ephemeral_skill_sheet,
         log_analyser_run,
@@ -3317,6 +3310,7 @@ async def quick_report_proto_generate_endpoint(
     Uses the quick-report generator (quick_report_generator.py), the same one as
     /api/quick-report/generate.
     """
+    legacy_mark("quick.proto_generate", getattr(current_user, "id", None), None)  # the tripwire (spec §9.5)
     from .quick_report_analyser import (
         log_generator_run,
         new_run_id,
@@ -3714,6 +3708,7 @@ async def get_settings(
         "signature": current_user.signature,
         "auto_save": settings.get('auto_save', True),
         "tag_colors": tag_colors,
+        "banner_template_upgrade_dismissed": settings.get('banner_template_upgrade_dismissed', False) is True,
         "deepgram_configured": bool(os.getenv("DEEPGRAM_API_KEY"))
     }
 
@@ -3723,6 +3718,7 @@ class UpdateSettingsRequest(BaseModel):
     signature: Optional[str] = None
     auto_save: Optional[bool] = None
     tag_colors: Optional[Dict[str, str]] = None
+    banner_template_upgrade_dismissed: Optional[bool] = None   # the converted-template banner (P2c), per user
 
 
 @app.post("/api/settings")
@@ -3744,6 +3740,8 @@ async def update_settings(
         settings.pop('default_model', None)
         if request.auto_save is not None:
             settings['auto_save'] = request.auto_save
+        if request.banner_template_upgrade_dismissed is not None:
+            settings['banner_template_upgrade_dismissed'] = request.banner_template_upgrade_dismissed
         if request.tag_colors is not None:
             # Merge tag_colors with existing ones (don't overwrite entire object)
             existing_tag_colors = settings.get('tag_colors', {})
@@ -3817,7 +3815,7 @@ async def get_api_key_status(
     """Get API key configuration status - all keys from system env (DEEPGRAM_API_KEY central)"""
     db.refresh(current_user)
     from rapid_reports_ai.dictation_v2 import v2_allowed
-    from rapid_reports_ai.hybrid_stack.routes import shadow_rate, stack_allowed
+    from rapid_reports_ai.stack_switch import stack_allowed
     from rapid_reports_ai.hybrid_stack.protocol_library.bundle import library_allowed
     from rapid_reports_ai.hybrid_stack.copilot.routes import copilot_allowed
     
@@ -3836,11 +3834,13 @@ async def get_api_key_status(
         "has_at_least_one_model": has_anthropic or has_groq or has_cerebras,
         # the dictation package (rr_dictation_v2): the browser runs it only when allowed here
         "dictation_v2": v2_allowed(),
-        # the hybrid dictation stack: default on with the dictation package; RR_HYBRID_STACK=0 turns it off
+        # the scratchpad stack: the one switch, on unless RR_STACK=0 (integration spec §9.1)
+        "stack": stack_allowed(),
+        # P2c reads "stack", then these two go: today's browser reads hybrid_stack and defaults a missing shadow
+        # rate to 0.25, so the shadow is sent as 0 (the shadow is removed, §9.4)
         "hybrid_stack": stack_allowed(),
+        "hybrid_stack_shadow_rate": 0.0,
         "protocol_library": library_allowed(),
-        # share of sessions that also build the old Structured text once, at session end (shadow)
-        "hybrid_stack_shadow_rate": shadow_rate(),
         # the scratchpad Copilot (guideline cards): on with the stack; RR_STACK_COPILOT=0 turns it off
         "stack_copilot": copilot_allowed(),
         "using_user_keys": {
@@ -3977,6 +3977,7 @@ async def get_validation_status(
     db: Session = Depends(get_db)
 ):
     """Get validation status for a report"""
+    legacy_mark("report.validation_status", getattr(current_user, "id", None), "/api/reports/{id}/validation-status")  # the tripwire (spec §9.5)
     try:
         from .database.crud import get_validation_status
         
@@ -4101,6 +4102,7 @@ async def enhance_report(
     db: Session = Depends(get_db),
 ):
     """Enhancement pipeline: Prefetch S1-S3 → S4 Synthesis → Phase 2 Audit."""
+    legacy_mark("report.enhance", getattr(current_user, "id", None), "/api/reports/{id}/enhance")  # the tripwire (spec §9.5)
     try:
         report = get_report(db, report_id, user_id=str(current_user.id))
         if not report:
@@ -6098,6 +6100,7 @@ async def run_audit(
 
     Phase 2 (3 guideline-compliance criteria) runs inside /enhance after S4 synthesis.
     """
+    legacy_mark("audit", getattr(current_user, "id", None), "/api/audit")  # the tripwire (spec §9.5)
     try:
         _audit_t0 = time.perf_counter()
         if not request.report_content or not request.report_content.strip():
@@ -6224,6 +6227,7 @@ async def run_audit_phase2_endpoint(
     Uses stored synthesis cards from ENHANCEMENT_RESULTS or DB — does NOT re-run S4.
     Called by the frontend on re-audit to refresh stale Phase 2 criteria.
     """
+    legacy_mark("audit.phase2", getattr(current_user, "id", None), "/api/audit/phase2")  # the tripwire (spec §9.5)
     try:
         _p2_t0 = time.perf_counter()
         if not request.report_content or not request.report_content.strip():
@@ -6362,6 +6366,7 @@ async def acknowledge_audit_criterion(
     Acknowledge a specific criterion on an audit.
     Marks it as reviewed with the specified resolution method.
     """
+    legacy_mark("audit.criteria", getattr(current_user, "id", None), "/api/audit/{id}/criteria/{c}")  # the tripwire (spec §9.5)
     try:
         valid_criteria = [
             "anatomical_accuracy", "clinical_relevance", "recommendations",

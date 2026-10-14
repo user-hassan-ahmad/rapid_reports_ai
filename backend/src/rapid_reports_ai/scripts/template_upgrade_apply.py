@@ -30,7 +30,7 @@ import asyncio
 import json
 import time
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -160,7 +160,9 @@ def _write(db, row: dict) -> None:
         if row["action"] == "already-written":
             _try_structure(db, row)
         return
-    t.template_config = row["config"]  # as crud.update_template: assign, commit (updated_at), snapshot the new state
+    # converted_at: the banner names its owner's converted templates (integration spec §10, P2c)
+    t.template_config = {**row["config"], "converted_at": datetime.now(timezone.utc).isoformat()}
+    # (as crud.update_template: assign, commit (updated_at), snapshot the new state)
     db.commit()
     crud.create_template_version(db, t)
     _try_structure(db, row)

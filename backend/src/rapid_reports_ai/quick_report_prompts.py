@@ -297,15 +297,6 @@ def _between(text: str, start: str, end: str) -> str:
 # reports, no Reference Values table, no header:none paragraphs, no impression-format field and no
 # conditional rules, so the instructions about them are removed; rules stated in several blocks
 # are kept once, where the model acts on them.
-# Scratchpad sessions only (copilot spec §6): appended to the style guide when the brief is a stack_fallback brief, which
-# always carries the Scratchpad Recommendations rule. Every other prompt is unchanged.
-QR_STACK_RECOMMENDATIONS = """### Scratchpad Recommendations
-
-One exception to the rules that a recommendation renders within the impression and that no section is added
-beyond the skill sheet's Structural Pattern: when the FINDINGS input has a line starting "Recommendations
-(selected by the radiologist):", follow the skill sheet's Scratchpad Recommendations rule and write those items
-under a `RECOMMENDATIONS:` heading on its own line after the impression. With no such line, add no such section."""
-
 QR_SYSTEM_PREAMBLE_BRIEF = _swaps(
     QR_SYSTEM_PREAMBLE,
     ("Use British English spelling throughout. The report", "The report"),
@@ -454,8 +445,7 @@ a single sentence with directional comparison if asymmetric.
     ("""Management inference, differential synthesis, and symptom attribution belong in
 IMPRESSION only.""", """Symptom attribution belongs in IMPRESSION only, and only where the confirmed conclusion
 states it."""),
-    ("""Recommendations must be specific""", """A recommendation appears only where the confirmed conclusion contains one; when it does:
-recommendations must be specific"""),
+    ("""Recommendations must be specific""", """A recommendation appears only as the session rules allow; when it does, recommendations must be specific"""),
     ("""When a named guideline specifies the management pathway, state it and
 commit. Reserve hedging for genuine clinical ambiguity.""", ""),
 )
@@ -487,5 +477,5 @@ QR_VERIFICATION_CHECKLIST_STACK = _swaps(
 - The impression phrases the confirmed conclusion: every finding it names, nothing it does not contain
 """),
     ("- Recommendations are specific (specialty, urgency, pathway)",
-     "- No recommendation appears unless the confirmed conclusion contains it; one that does is specific (specialty, urgency, pathway)"),
+     "- A recommendation appears only as the session rules allow; one that does is specific (specialty, urgency, pathway)"),
 )

@@ -28,7 +28,7 @@ def user(db_session):
 @pytest.fixture
 def authed(client, user, monkeypatch):
     monkeypatch.setenv("RR_DICTATION_V2", "1")
-    monkeypatch.delenv("RR_HYBRID_STACK", raising=False)
+    monkeypatch.delenv("RR_STACK", raising=False)
     app.dependency_overrides[get_current_user] = lambda: user
     yield client
     app.dependency_overrides.pop(get_current_user, None)
@@ -47,7 +47,7 @@ def test_chain_reaches_prod_revision():
 
 
 def test_flag_defaults(monkeypatch):
-    for k in ("RR_HYBRID_STACK", "RR_STACK_COPILOT", "RR_CHAT_ROUTER"):
+    for k in ("RR_STACK", "RR_STACK_COPILOT", "RR_CHAT_ROUTER"):
         monkeypatch.delenv(k, raising=False)
     monkeypatch.setenv("RR_DICTATION_V2", "1")
     assert R.stack_allowed() is True
@@ -68,3 +68,9 @@ def test_stack_log_keeps_template_stamp_and_copilot(authed, db_session, user):
     row = db_session.query(DictationStackLog).filter_by(session_id="s1").one()
     assert row.template_id == str(t.id) and row.stamp["sheet_hash"]
     assert row.copilot == {"applied": ["k@1"]}
+
+
+def test_stack_log_report_id_is_indexed():
+    """The review engine looks the stack log up by report_id once per review (template text checks)."""
+    assert DictationStackLog.__table__.c.report_id.index is True
+    assert _scripts().get_heads() == ["20261014120000"]

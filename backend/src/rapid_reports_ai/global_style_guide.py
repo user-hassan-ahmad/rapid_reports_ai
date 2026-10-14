@@ -477,8 +477,7 @@ statement of its own."""),
      "The principle: write every statement in the FINDINGS input, and nothing it does not contain."),
     ("Management inference, differential synthesis, and symptom attribution belong in\nIMPRESSION only.",
      "Symptom attribution belongs in IMPRESSION only, and only where the confirmed conclusion\nstates it."),
-    ("""Recommendations must be specific""", """A recommendation appears only where the confirmed conclusion contains one; when it does,
-recommendations must be specific"""),
+    ("""Recommendations must be specific""", """A recommendation appears only as the session rules allow; when it does, recommendations must be specific"""),
     ("""When a named guideline specifies the management pathway, state it and
 commit. Reserve hedging for genuine clinical ambiguity.""", ""),
     ("Apply preferred/suppressed term pairs from the skill sheet across ALL sections\nincluding the impression. "
@@ -525,5 +524,5 @@ VERIFICATION_CHECKLIST_STACK = _swaps(
 """),
     ("- All triggered interpretive clauses are appended\n", ""),
     ("- Recommendations are specific (specialty, urgency, pathway)",
-     "- No recommendation appears unless the confirmed conclusion contains it; one that does is specific (specialty, urgency, pathway)"),
+     "- A recommendation appears only as the session rules allow; one that does is specific (specialty, urgency, pathway)"),
 )

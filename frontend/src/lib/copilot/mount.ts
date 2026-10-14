@@ -7,11 +7,11 @@ export function mountCopilot(
 	ctx: CopilotContext,
 	units: StackUnit[],
 	recording: boolean,
-	findingsText: string,
+	groups: string[],
 	api?: CopilotApi
 ): CopilotSession {
 	const s = createCopilotSession(api);
 	s.setContext(ctx);
-	if (units.length) s.round(units, recording, findingsText);
+	if (units.length) s.round(units, recording, groups);
 	return s;
 }

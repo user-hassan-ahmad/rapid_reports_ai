@@ -105,9 +105,9 @@ def warmup_wanted() -> bool:
     """Only when a Jev path is switched on; with every flag off, nothing is sent."""
     if not os.environ.get("OPENROUTER_API_KEY"):
         return False
+    from .dictation_v2 import v2_allowed
     return (
-        os.environ.get("RR_TRIAGE_DEBUG") == "1"
-        or os.environ.get("RR_DICTATION_V2") == "1"  # the dictation package calls Jev per utterance
+        v2_allowed()  # the dictation package (the stack, RR_DICTATION_V2 or the lab) calls Jev per utterance
         or os.environ.get("RR_COVERAGE_CANDIDATE", "").strip().lower() == "jev"
     )
 

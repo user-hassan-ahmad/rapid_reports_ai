@@ -37,7 +37,6 @@ from .quick_report_prompts import (
     QR_SHEET_HEADER_BRIEF,
     QR_SHEET_HEADER_STACK,
     QR_STYLE_GUIDE,
-    QR_STACK_RECOMMENDATIONS,
     QR_STYLE_GUIDE_BRIEF,
     QR_STYLE_GUIDE_STACK,
     QR_SYSTEM_PREAMBLE,
@@ -79,11 +78,9 @@ def build_prompts(skill_sheet: str, scan_type: str, findings: str, clinical_hist
                   provider: str, brief: bool = False, stack: bool = False) -> tuple[str, str]:
     """System and user prompt for one quick report. `skill_sheet` is the analyser's sheet, the
     compiled brief when `brief` is set, or a scratchpad session's stack brief when `stack` is set;
-    the hardening preamble is prepended here. With `stack`, ticked Copilot recommendations get their own section
-    (the one exception; P2 replaces it with the shared recommendations rule)."""
+    the hardening preamble is prepended here. With `stack`, recommendations follow the stack brief's one session
+    rule (hybrid_stack.session_rules, D22)."""
     preamble, style, header, hardening, pre, ver = _STACKS["stack" if stack else "brief" if brief else "raw"]
-    if stack:
-        style = f"{style}\n\n{QR_STACK_RECOMMENDATIONS}"
     system_prompt = f"{preamble}\n\n{style}\n\n{header}\n\n{hardening}{skill_sheet}"
     inputs = f"## INPUTS\n\nScan Type: {scan_type}\nClinical History: {clinical_history}\nFindings: {findings}"
     if provider == "anthropic":
@@ -133,11 +130,13 @@ async def generate_quick_report(
     declined: Sequence[str] = (),
     conclusion: str = "",
     stack_sheet: str = "",
+    check_findings: str | None = None,
 ) -> dict:
     """Write one quick report from a compiled brief (the sheet reconciled with this dictation),
     or from the raw sheet with the full prompts if the brief cannot be compiled. Falls back
     once to QUICK_REPORT_GENERATOR_FALLBACK when the configured primary raises; an override
     naming a different model is an explicit comparison and does not fall back."""
+    check_text = check_findings if check_findings is not None else findings
     brief = None
     if stack:
         # A scratchpad session (checklist spec §7): the findings are the radiologist's answers, so the brief carries
@@ -179,13 +178,15 @@ async def generate_quick_report(
             return await _write(model_name)
 
     result, description, options = await asyncio.gather(
-        _write_with_fallback(), _describe(findings, clinical_history, scan_type),
+        _write_with_fallback(), _describe(check_text, clinical_history, scan_type),
         _write_options(brief.decisions.get("options", []) if brief else [], findings, scan_type))
     report = result.output if hasattr(result, "output") else str(result)
     # Jev checks every clause and option against the dictation; one focal Qwen call repairs what
     # it flags before the report ships (spec 2026-09-30-post-generation-check-design).
-    report, options, quality = await run_quality_check(report, findings, scan_type, options,
-                                                       brief_decisions=brief.decisions if brief else None)
+    # A stack session's check reads the plain statements (no labels, no removed sentence) and always records edits
+    report, options, quality = await run_quality_check(report, check_text, scan_type, options,
+                                                       brief_decisions=None if stack else (brief.decisions if brief else None),
+                                                       **({"record_edits": True} if stack else {}))
     if user_signature:
         report = report.rstrip() + "\n\n" + user_signature
     return {"report_content": report, "description": description, "scan_type": scan_type,

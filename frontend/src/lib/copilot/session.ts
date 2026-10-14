@@ -3,6 +3,7 @@
 // report, the editor or Generate.
 import { writable, type Readable } from 'svelte/store';
 import type { StackUnit } from '$lib/hybrid-stack/types';
+import { findingsText } from '$lib/hybrid-stack/regionState';
 import * as defaultApi from './api';
 import { CopilotError, CopilotOff, MAX_FINDINGS } from './api';
 import { closedView, type CardView, type ColumnView } from './cards/view';
@@ -44,9 +45,10 @@ export type CopilotLog = {
 };
 export interface CopilotSession {
 	state: Readable<CopilotState>;
-	/** After each successful /group: units as placed, whether dictation runs, and the findings text Generate would
-	 *  send (findingsText(units, groups)), sent as /match `dictation` AND /open `findings` (contract R4). */
-	round(units: StackUnit[], recording: boolean, findingsText: string): void;
+	/** After each successful /group: units as placed, whether dictation runs, and the schema groups. /match and /open
+	 *  send the units and groups (the server builds the findings text Generate uses, P2c); the session keeps the text
+	 *  only for an exam card's `finding` and to notice a changed text (exam re-open). */
+	round(units: StackUnit[], recording: boolean, groups: string[]): void;
 	/** A change resets the sent cache and the cards: at once while nothing was sent, else after CONTEXT_DEBOUNCE_MS
 	 *  of no further change (history keystrokes must not abort and reset on every key). */
 	setContext(ctx: CopilotContext): void;
@@ -99,7 +101,9 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	let findings: Finding[] = []; // current abnormal findings (groups follow these: a deleted or edited finding drops its cards)
 	let stable: Finding[] = [];
 	let hasText = false;
-	let text = ''; // findingsText of the latest round
+	let text = ''; // findingsText of the latest round (exam `finding`, change detection; never sent as dictation)
+	let roundUnits: StackUnit[] = []; // the latest round's units and groups: what /match and /open send
+	let roundGroups: string[] = [];
 	let sent = new Set<string>();
 	let sentCtx: string | null = null;
 	let matchSeq = 0;
@@ -183,13 +187,15 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		scan_type: ctx.scanType,
 		clinical_history: ctx.history,
 		findings: fs.map((f) => ({ id: f.id, text: f.text })),
-		dictation: text,
+		units: roundUnits,
+		groups: roundGroups,
 		patient: { ...patient }
 	});
 	const openBody = (card: Card, edits: Record<string, string> = views[cardRef(card)]?.edits ?? {}): OpenBody => ({
 		card, // echoed as received: the server trusts needs_modality (CardIn has no siblings or reference: dropped)
 		finding: card.finding_id === 'exam' ? text : card.finding,
-		findings: text,
+		units: roundUnits,
+		groups: roundGroups,
 		clinical_history: ctx.history,
 		answered: { ...edits },
 		patient: { ...patient }
@@ -583,7 +589,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 	// ── public ──
 	return {
 		state: { subscribe: store.subscribe },
-		round(units, recording, findingsText) {
+		round(units, recording, groups) {
 			if (!live()) return;
 			const now = abnormalFindings(units);
 			const placed = units.filter((u) => !u.heading && u.group !== null).map((u) => u.id);
@@ -591,8 +597,10 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 			stable = stableFindings(prev, now, lastUnitId, recording);
 			prev = new Map(now.map((f) => [f.id, f.text]));
 			findings = now;
-			text = findingsText;
-			hasText = findingsText.trim() !== '';
+			roundUnits = units;
+			roundGroups = [...groups];
+			text = findingsText(units, groups);
+			hasText = text.trim() !== '';
 			if (examTimer) clearTimeout(examTimer);
 			examTimer = null;
 			if (!recording) {

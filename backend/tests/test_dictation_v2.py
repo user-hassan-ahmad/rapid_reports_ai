@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from rapid_reports_ai.dictation_v2 import PACKAGE, socket_settings, v2_allowed
 
-PROD = {}  # production today: no lab or package env
+PROD = {"RR_STACK": "0"}  # production with the stack off: no lab or package env (the stack brings the package)
 LAB = {"RR_TRIAGE_DEBUG": "1", "DEEPGRAM_DICTATION": "0", "DEEPGRAM_UK_SPELLING": "1",
        "DEEPGRAM_SPOKEN_FORMAT": "1", "DEEPGRAM_CASE_KEYTERMS": "1", "DEEPGRAM_FINALIZE_GAP_S": "0.9", "RR_TWO_PASS": "1"}
 
@@ -73,6 +73,7 @@ CALLS = [  # requests each answered by code, no model: they only prove the endpo
 
 @pytest.mark.parametrize("path,body", CALLS)
 def test_package_endpoints_are_closed_in_production_without_the_switch(authed_client, monkeypatch, path, body):
+    monkeypatch.setenv("RR_STACK", "0")
     monkeypatch.delenv("RR_TRIAGE_DEBUG", raising=False)
     monkeypatch.delenv("RR_DICTATION_V2", raising=False)
     assert authed_client.post(path, json=body).status_code == 404
@@ -108,6 +109,7 @@ def test_a_package_client_gets_jev_pills_only_where_allowed(authed_client, monke
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
     monkeypatch.delenv("RR_COVERAGE_CANDIDATE", raising=False)
     monkeypatch.delenv("RR_TRIAGE_DEBUG", raising=False)
+    monkeypatch.setenv("RR_STACK", "0")
     body = {"scratchpad_content": "Lungs clear.", "checklist_sections": ["LUNGS"], "scan_type": "CT",
             "parts": "coverage", "coverage_candidate": "jev"}
     monkeypatch.delenv("RR_DICTATION_V2", raising=False)
@@ -121,6 +123,7 @@ def test_the_package_switch_warms_the_jev_connection(monkeypatch):
     from rapid_reports_ai.jev_client import warmup_wanted
     for k in ("RR_TRIAGE_DEBUG", "RR_TRIAGE_SHADOW", "RR_COVERAGE_CANDIDATE"):
         monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("RR_STACK", "0")
     monkeypatch.setenv("OPENROUTER_API_KEY", "k")
     monkeypatch.delenv("RR_DICTATION_V2", raising=False)
     assert warmup_wanted() is False
@@ -133,6 +136,7 @@ def test_the_status_endpoint_tells_the_browser_whether_the_package_is_allowed(au
     # kill switch: unset, every browser is back on today's dictation (not a package failing open)
     monkeypatch.delenv("RR_TRIAGE_DEBUG", raising=False)
     monkeypatch.delenv("RR_DICTATION_V2", raising=False)
+    monkeypatch.setenv("RR_STACK", "0")   # with the stack on the package is always allowed (spec §9.1)
     assert authed_client.get("/api/settings/status").json()["dictation_v2"] is False
     monkeypatch.setenv("RR_DICTATION_V2", "1")
     assert authed_client.get("/api/settings/status").json()["dictation_v2"] is True

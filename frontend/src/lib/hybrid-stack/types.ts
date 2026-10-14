@@ -23,6 +23,8 @@ export interface StackSchema {
 	provisional: boolean;
 	quiet?: string[];
 	protocol?: { id: string; display_name: string; scan_type_line: string; phases: string[]; laterality: string | null } | null;
+	/** The session's signed resolution (D26): /slim-sheet and Generate read it, never re-resolve. */
+	structure_key?: string | null;
 }
 export interface GroupResult {
 	units: StackUnit[];
@@ -72,7 +74,9 @@ export interface ItemsResult {
 	/** the template trigger call failed: no template rows this review (what is on screen stays) */
 	trigger_error?: string | null;
 }
-export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean; level_groups?: Record<string, string[]>; required_values?: string[] }
+export interface SlimSheet { id: string | null; region_normals: Record<string, string[]>; not_assessable: string; status: string; ready: boolean; level_groups?: Record<string, string[]>; required_values?: string[]; region_structures?: Record<string, Record<string, string[]>>;
+	/** Free text: the session token re-minted with the slim sheet's id (Generate reads the sheet from it, D26). */
+	structure_key?: string | null }
 /** The value cluster (requirements spec 2026-10-12 part 1): a template's required value and how it was resolved.
  *  check: needs a look (stated with no number, or two or more numbers); filling: a fill is running.
  *  picked: a number the radiologist tapped from the dictation (resolved, backstop-checked, never stated as an answer);
@@ -136,5 +140,7 @@ export interface GateRecord {
 	checks?: { kind: string; quote: string; other: string | null; answered_by: 'as_dictated' | 'skip' | 'replaced' | 'edited' | 'open' }[];
 	values?: ValueChip[]; // the value cluster at Confirm (absent: the template has no required values)
 	units_hash: string;
+	/** findingsHash of the units sent at Confirm (incl. the live tail): the server refuses a stale gate. */
+	findings_hash?: string;
 }
 export interface StackCommand { action: 'dictate' | 'delete' | 'answer'; region: string | null; item: string | null; command: string | null; confidence: number | null }

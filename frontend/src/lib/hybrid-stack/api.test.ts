@@ -57,3 +57,79 @@ describe('postValues', () => {
 		expect(JSON.parse(init.body as string)).toEqual({ dictation: 'LVEF 45%.', template_id: 't1' });
 	});
 });
+
+describe('P2c: the stack Generate client, the token and units-based draft', () => {
+	const unit = { id: 1, text: 'Liver normal.', group: 'Liver', structure: null, attach_to: null, parts: null, covers: [], pinned: false, heading: false }; // SYNTHETIC
+	const gate = { units_hash: 'h' } as unknown as import('./types').GateRecord;
+	const sse = (text: string) => new Response(new ReadableStream({
+		start(c) { c.enqueue(new TextEncoder().encode(text)); c.close(); }
+	}), { headers: { 'Content-Type': 'text/event-stream' } });
+
+	it('test_generate_body_off_is_todays', async () => {
+		const { stackGenerateBody, postDraft, postSlimSheet } = await import('./api');
+		const quick = stackGenerateBody({ kind: 'quick', scanType: 'CT', history: 'h', structureKey: 'k', units: [unit], groups: ['Liver'], gate, variables: { FINDINGS: 'x', A: '1' } });
+		expect(quick).not.toHaveProperty('variables');
+		expect(quick).not.toHaveProperty('template_id');
+		expect(quick).toMatchObject({ kind: 'quick', scan_type: 'CT', history: 'h', structure_key: 'k', groups: ['Liver'] });
+		const tmpl = stackGenerateBody({ kind: 'template', templateId: 't1', scanType: 'CT', history: 'h', structureKey: 'k', units: [unit], groups: [], gate, variables: { FINDINGS: 'x', A: '1' } });
+		expect(tmpl.variables).toEqual({ A: '1' });
+		expect(tmpl.template_id).toBe('t1');
+
+		const fetchMock = vi.fn(async () => new Response(JSON.stringify({ text: 'Normal.', ms: 1, error: null })));
+		vi.stubGlobal('fetch', fetchMock);
+		await postDraft('tok', { units: [unit], groups: ['Liver'], scan_type: 'CT', clinical_history: 'h' });
+		const draftBody = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+		expect(draftBody.units).toHaveLength(1);
+		expect(draftBody.groups).toEqual(['Liver']);
+		expect(draftBody).not.toHaveProperty('findings');
+
+		await postSlimSheet('tok', { structure_key: 'k', scan_type: 'CT', clinical_history: 'h', template_id: 't1' });
+		const [slimUrl, slimInit] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+		expect(slimUrl.endsWith('/api/canvas/stack/slim-sheet')).toBe(true);
+		expect(JSON.parse(slimInit.body as string)).toEqual({ structure_key: 'k' });
+		await postSlimSheet('tok', { structure_key: null, scan_type: 'CT', clinical_history: 'h' });
+		expect(JSON.parse((fetchMock.mock.calls[2] as unknown as [string, RequestInit])[1].body as string)).toEqual({ scan_type: 'CT', clinical_history: 'h' });
+	});
+
+	it('test_stack_generate_surfaces_server_error', async () => {
+		const { streamStackGenerate, stackGenerateBody } = await import('./api');
+		const body = stackGenerateBody({ kind: 'quick', scanType: 'CT', history: '', structureKey: 'k', units: [unit], groups: [], gate });
+		const fetchMock = vi.fn(async () => sse('event: error\ndata: {"message":"The scratchpad changed after Confirm. Confirm again."}\n\n'));
+		vi.stubGlobal('fetch', fetchMock);
+		const on = { candidate: vi.fn(), done: vi.fn(), error: vi.fn() };
+		await streamStackGenerate('tok', body, on);
+		const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+		expect(url.endsWith('/api/canvas/stack/generate')).toBe(true);
+		expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
+		expect(on.error).toHaveBeenCalledWith('The scratchpad changed after Confirm. Confirm again.');
+		expect(on.candidate).not.toHaveBeenCalled();
+
+		vi.stubGlobal('fetch', vi.fn(async () => new Response('{"detail":"Not Found"}', { status: 404 })));
+		const on404 = { candidate: vi.fn(), done: vi.fn(), error: vi.fn() };
+		await streamStackGenerate('tok', body, on404);
+		expect(on404.error.mock.calls[0][0]).toMatch(/switched off; your dictation is kept/);
+	});
+
+	it('streams candidate then done', async () => {
+		const { streamStackGenerate, stackGenerateBody } = await import('./api');
+		const body = stackGenerateBody({ kind: 'quick', scanType: 'CT', history: '', structureKey: 'k', units: [unit], groups: [], gate });
+		vi.stubGlobal('fetch', vi.fn(async () => sse('event: candidate\ndata: {"content":"R","model":"m","sections":["A"]}\n\nevent: done\ndata: {"report_id":"r1","description":"d"}\n\n')));
+		const on = { candidate: vi.fn(), done: vi.fn(), error: vi.fn() };
+		await streamStackGenerate('tok', body, on);
+		expect(on.candidate).toHaveBeenCalledWith(expect.objectContaining({ content: 'R', model: 'm' }));
+		expect(on.done).toHaveBeenCalledWith(expect.objectContaining({ report_id: 'r1' }));
+		expect(on.error).not.toHaveBeenCalled();
+	});
+
+	it('a refused /schema carries the server detail', async () => {
+		const { fetchSchema, StackHttpError } = await import('./api');
+		vi.stubGlobal('fetch', vi.fn(async () => new Response('{"detail":"This template has no usable structure."}', { status: 422 })));
+		const err = await fetchSchema('tok', { scan_type: 'CT', clinical_history: '', template_id: 't1' }).catch((e) => e);
+		expect(err).toBeInstanceOf(StackHttpError);
+		expect(err.status).toBe(422);
+		expect(err.detail).toBe('This template has no usable structure.');
+		vi.stubGlobal('fetch', vi.fn(async () => new Response('{"detail":"Template not found."}', { status: 404 })));
+		const nf = await fetchSchema('tok', { scan_type: 'CT', clinical_history: '', template_id: 'x' }).catch((e) => e);
+		expect([nf.status, nf.detail]).toEqual([404, 'Template not found.']);
+	});
+});

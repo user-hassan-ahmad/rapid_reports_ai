@@ -234,3 +234,12 @@ def test_a_generated_sheet_with_the_standard_sections_still_parses():
     md = SHEET.replace("TECHNIQUE, FINDINGS, IMPRESSION",
                        "Comparison; Technique; Limitations (only when applicable); Findings; Conclusion")
     assert SL.parse_slim(md, [r.name for r in REGIONS]) == SL.parse_slim(SHEET, [r.name for r in REGIONS])
+
+
+def test_label_case_keeps_mixed_case_and_acronym_tokens():
+    from rapid_reports_ai.hybrid_stack.template import label_case
+    assert label_case("LCx") == "LCx"
+    assert label_case("proximal LAD and LCx") == "Proximal LAD and LCx"
+    assert label_case("RCA") == "RCA" and label_case("CT findings") == "CT findings"
+    assert label_case("LEFT VENTRICLE") == "Left ventricle" and label_case("Cardiac Chambers") == "Cardiac chambers"
+    assert jev_text("Patent.", "LCx") == "LCx: Patent."

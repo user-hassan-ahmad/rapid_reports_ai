@@ -203,6 +203,44 @@ def bridge_items(inp: ReviewInput, run_id: str) -> Tuple[List[ReviewItem], List[
     return items, log
 
 
+_FLAG_KINDS = {"removed_asserted", "removed_unverified", "undictated_number", "value_missing"}
+_FLAG_LABEL = {
+    "undictated_number": "Number not in the dictation: {text}",
+    "value_missing": "Required value not in the report: {text}",
+}
+
+
+def check_flag_items(inp: ReviewInput, run_id: str) -> List[ReviewItem]:
+    """The post-gen check's review flags (`quality_check.review`: removed sentences, undictated numbers, missing
+    values) as open rail items (integration spec §7.6). No edit: the radiologist decides."""
+    if not inp.stack:
+        return []
+    report = inp.artifacts.report
+    h = text_hash(report)
+    out: List[ReviewItem] = []
+    seen: set = set()
+    for e in (inp.artifacts.quality_check or {}).get("review") or []:
+        if not isinstance(e, dict) or e.get("kind") not in _FLAG_KINDS:
+            continue
+        kind = str(e["kind"])
+        text = str(e.get("sentence") or e.get("text") or e.get("item") or "")
+        label = e.get("message") or _FLAG_LABEL.get(kind, "{text}").format(text=e.get("text") or e.get("item") or text)
+        key = item_key("accuracy", kind, text or str(label))
+        if key in seen:
+            continue
+        seen.add(key)
+        k = report.find(text) if text else -1
+        anchor = Span(start=k, end=k + len(text), text=text, text_hash=h) if k >= 0 else None
+        out.append(ReviewItem(
+            key=key, report_id=inp.report_id, run_id=run_id, lane="accuracy",
+            detectors=["post_check_flag"], kind=kind, cls="action" if e.get("severity") == "high" else "info",
+            anchor=anchor, label=str(label)[:80], reason=str(label), edit=None,
+            evidence={"source": "post_check", **e}, status="open",
+            history=[{"at": _now(), "event": "created", "actor": "post_check", "text_hash": h,
+                      "detail": {"kind": kind}}]))
+    return out
+
+
 def is_bridge(it: ReviewItem) -> bool:
     return bool(it.detectors) and all(d in (REMOVAL, INSERT) for d in it.detectors)
 

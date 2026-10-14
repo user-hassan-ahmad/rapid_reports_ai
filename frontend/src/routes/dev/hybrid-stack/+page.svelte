@@ -7,7 +7,6 @@
 	import { abnormalAll } from '$lib/hybrid-stack/items';
 	import { moveUnit } from '$lib/hybrid-stack/stackState';
 	import type { StackItem, StackSchema, StackUnit } from '$lib/hybrid-stack/types';
-	import { findingsText } from '$lib/hybrid-stack/regionState';
 	import CopilotRail from '$lib/copilot/cards/CopilotRail.svelte';
 	import { createCopilotSession, type CopilotSession, type CopilotState } from '$lib/copilot/session';
 
@@ -44,7 +43,7 @@
 	$effect(() => {
 		copilot?.setContext({ scanType, history });
 	});
-	const copilotRound = (rec: boolean) => schema && copilot?.round(units, rec, findingsText(units, schema.groups));
+	const copilotRound = (rec: boolean) => schema && copilot?.round(units, rec, schema.groups);
 	function setRecording(v: boolean) {
 		recording = v;
 		if (!v) copilotRound(false); // the stop: the last finding is stable now

@@ -13,13 +13,14 @@ import { appliedOptionIds, panelOptions, type ReportOption } from '$lib/utils/im
 import type { CoverageTrace, LabConfig, PillThresholds } from '$lib/dictation-lab/types';
 import type { DecisionRecord, OutcomeEvent } from '$lib/dictation-lab/decisionFirst';
 import { pillState } from '$lib/dictation-lab/coverage';
-import { effectiveConfig } from '$lib/dictation-lab/package';
-import { fetchSchema, postReportId } from '$lib/hybrid-stack/api';
+import { PACKAGE_CONFIG, effectiveConfig } from '$lib/dictation-lab/package';
+import { StackHttpError, fetchSchema, postReportId, stackGenerateBody, streamStackGenerate } from '$lib/hybrid-stack/api';
+import { latchStackMode, stackOn, statusFetcher } from '$lib/hybrid-stack/mode';
+import { stackGenerateBlocked } from '$lib/hybrid-stack/quickFlow';
 import ProtocolPicker from '$lib/hybrid-stack/ProtocolPicker.svelte';
 import { backToLibrary, caseDirty, needsFreeText, pickBody, pickKey, type ProtocolPick } from '$lib/hybrid-stack/protocol';
-import { hybridStackOn } from '$lib/hybrid-stack/flag';
 import { copilotOn } from '$lib/copilot/flag';
-import type { GateRecord, StackSchema } from '$lib/hybrid-stack/types';
+import type { GateRecord, StackSchema, StackUnit } from '$lib/hybrid-stack/types';
 import { hasUnsavedWork as unsavedWork } from '$lib/utils/confirmGate';
 import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedReport';
 
@@ -138,13 +139,31 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	export let labConfig: LabConfig | null = null;
 	// The dictation package: the lab page's config, or the package where the server allows it
 	// (apiKeyStatus.dictation_v2) unless this browser opted out, or null (today's dictation).
-	$: dictationConfig = effectiveConfig(labConfig, undefined, (apiKeyStatus as { dictation_v2?: boolean })?.dictation_v2 === true);
-	// The hybrid dictation stack (rr_hybrid_stack): the grouped view and pills from its grouping, where the
-	// server allows it and the dictation package is on. /sections and the Jev pills keep running in shadow.
-	$: stackStatus = apiKeyStatus as { hybrid_stack?: boolean; hybrid_stack_shadow_rate?: number; protocol_library?: boolean; stack_copilot?: boolean };
-	$: hybridStack = hybridStackOn(undefined, stackStatus?.hybrid_stack === true && dictationConfig !== null);
-	// Protocol library (spec 2026-10-13 §3): pick a curated protocol instead of typing the scan type.
-	$: protocolLibrary = hybridStack && stackStatus?.protocol_library === true;
+	// Stack mode always takes the package (spec §9.4: the rr_dictation_v2 opt-out is gone with the stack).
+	$: dictationConfig = stackMode === true ? (labConfig ?? PACKAGE_CONFIG)
+		: effectiveConfig(labConfig, undefined, (apiKeyStatus as { dictation_v2?: boolean })?.dictation_v2 === true);
+	$: stackStatus = apiKeyStatus as { stack?: boolean; hybrid_stack_shadow_rate?: number; protocol_library?: boolean; stack_copilot?: boolean };
+	// The scratchpad stack (spec §9.2, §10): latched from a fresh /api/settings/status at "Set up workspace" (and at a
+	// draft restore), never swapped mid-session; null = not latched yet. Off: today's flow, unchanged (D5).
+	let stackMode: boolean | null = null;
+	let hybridStack = false; // the scratchpad's stack view: the latched mode, set with it (never read from localStorage)
+	function latchMode(on: boolean) {
+		stackMode = on;
+		hybridStack = on;
+	}
+	/** Latch the mode from a fresh status; a failure is shown and never read as the old flow. */
+	async function latch(): Promise<boolean> {
+		try {
+			latchMode(await latchStackMode(statusFetcher($token)));
+			return true;
+		} catch {
+			sectionsError = "Couldn't reach the server — try again";
+			return false;
+		}
+	}
+	// Protocol library (spec 2026-10-13 §3): pick a curated protocol instead of typing the scan type. Before the latch
+	// the page's status decides whether the picker shows; the latch at Set up confirms it.
+	$: protocolLibrary = (stackMode ?? stackOn(stackStatus)) === true && stackStatus?.protocol_library === true;
 	let stackProtocol: ProtocolPick | null = null;
 	let freeText = false;   // "Not listed": today's textarea and reconciler path
 	let pickerKey = 0;      // bumped by a reset so the picker starts empty
@@ -156,17 +175,24 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 	// The pick the current schema was resolved for: the scratchpad's slim sheet follows it, so the schema and the
 	// sheet always come from the same protocol (never a library schema with a free-text sheet).
 	let stackSchemaPick: ProtocolPick | null = null;
-	// The guideline Copilot (rr_stack_copilot): opt-in per browser, and only on top of the stack.
-	$: stackCopilot = copilotOn(undefined, stackStatus?.stack_copilot === true, hybridStack);
+	// The guideline Copilot (D24): on whenever the server allows it (stack_copilot) and the stack is latched.
+	$: stackCopilot = copilotOn(stackStatus?.stack_copilot === true, hybridStack);
 	let stackSchema: StackSchema | null = null;
-	// Scratchpad v2 gate (spec 2026-10-11 §5-6): Generate waits for the Confirm, then sends the findings block.
+	// The session's signed resolution (D26): minted by /schema (re-minted by a free-text /slim-sheet); Generate sends it.
+	let structureKey: string | null = null;
+	let slimKey: string | null = null; // the token a free-text /slim-sheet re-minted with its sheet id (Generate prefers it)
+	// Scratchpad v2 gate (spec 2026-10-11 §5-6): Generate waits for the Confirm, then sends the units and groups.
 	let stackGate: GateRecord | null = null;
-	let stackFindings = '';
-	// The Generate button's locks, also honoured by the walkthrough's Confirm & Generate (review 2026-10-12)
-	$: generateBlocked = isRecording || loading || (analyseLoading && !analyserReady) || !scratchpadContent.trim() ||
-		sectionsDirty || (integrityGate && !integrityAcknowledged) || (stackGated && !stackGate);
+	let stackUnits: StackUnit[] = [];
+	let stackGroups: string[] = [];
+	// The Generate button's locks, also honoured by the walkthrough's Confirm & Generate (review 2026-10-12).
+	// Stack mode: recording, loading, empty findings and the gate only (§10). Not latched (a restore whose status
+	// call failed): blocked until the workspace is set up again.
+	$: generateBlocked = stackMode === null && workspaceOpen ? true
+		: stackMode === true ? stackGenerateBlocked({ isRecording, loading, scratchpad: scratchpadContent, gate: stackGate })
+		: isRecording || loading || (analyseLoading && !analyserReady) || !scratchpadContent.trim() ||
+			sectionsDirty || (integrityGate && !integrityAcknowledged) || (stackGated && !stackGate);
 	let stackSessionId = '';
-	let stackSheetId: string | null = null;
 	$: stackGated = hybridStack && !!stackSchema;
 	let stackPills: string[] = [];
 	let stackSchemaFor = ''; // the scan type + history + pick the schema was requested for
@@ -176,7 +202,8 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		&& stackSchemaFor !== `${sectionsGeneratedFromScanType}|${sectionsGeneratedFromHistory}|${pickKey(sectionsGeneratedFromPick)}`) {
 		void loadStackSchema(sectionsGeneratedFromScanType, sectionsGeneratedFromHistory, sectionsGeneratedFromPick);
 	}
-	async function loadStackSchema(scan: string, history: string, pick: ProtocolPick | null) {
+	/** Resolves to null (schema loaded), an error message, or undefined (superseded by a newer call). */
+	async function loadStackSchema(scan: string, history: string, pick: ProtocolPick | null): Promise<string | null | undefined> {
 		const mine = ++schemaSeq;
 		const reqScan = scan.trim();
 		const reqPick = pickKey(pick);
@@ -185,13 +212,15 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		if (!hybridStack || !reqScan) {
 			stackSchema = null;
 			stackSchemaPick = null;
-			return;
+			structureKey = null;
+			return 'Please enter a scan type';
 		}
 		try {
 			const schema = await fetchSchema($token, { scan_type: reqScan, clinical_history: history.trim(), ...pickBody(pick) });
-			if (mine !== schemaSeq) return;
+			if (mine !== schemaSeq) return undefined;
 			stackSchema = schema;
 			stackSchemaPick = pick;
+			structureKey = schema.structure_key ?? null;
 			// The server's line (side and phase variant) is the scan type of the workspace built from this pick. The
 			// box takes it only while it still shows that pick: a reply for a superseded pick never resets it.
 			if (stackSchema?.protocol) {
@@ -200,9 +229,42 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 				stackSchemaFor = `${line}|${history.trim()}|${reqPick}`;
 				if (pickKey(stackProtocol) === reqPick && scanType.trim() === reqScan) scanType = line;
 			}
-		} catch {
-			if (mine === schemaSeq) { stackSchema = null; stackSchemaPick = null; } // fail open: today's pills show
+			return null;
+		} catch (e) {
+			if (mine !== schemaSeq) return undefined;
+			stackSchema = null; stackSchemaPick = null; structureKey = null; // stack mode: Generate stays blocked
+			return e instanceof StackHttpError && e.detail ? e.detail : "Couldn't set up the workspace. Please try again.";
 		}
+	}
+
+	/** Stack mode setup (spec §10): /stack/schema only — no analyser, no /sections. The workspace opens on the schema. */
+	async function setUpStackWorkspace(regenerate: boolean): Promise<void> {
+		const prev = [sectionsGeneratedFromScanType, sectionsGeneratedFromHistory, sectionsGeneratedFromPick] as const;
+		sectionsGeneratedFromScanType = scanType.trim();
+		sectionsGeneratedFromHistory = clinicalHistory.trim();
+		sectionsGeneratedFromPick = stackProtocol;
+		const err = await loadStackSchema(sectionsGeneratedFromScanType, sectionsGeneratedFromHistory, stackProtocol);
+		if (err === undefined) return; // a newer setup took over
+		if (err !== null || !stackSchema) {
+			[sectionsGeneratedFromScanType, sectionsGeneratedFromHistory, sectionsGeneratedFromPick] = prev;
+			sectionsError = err ?? "Couldn't set up the workspace. Please try again.";
+			return;
+		}
+		if (regenerate) {
+			scratchpadRef?.reset('');
+			response = null;
+			responseModel = null;
+			reportId = null;
+			applicableGuidelines = [];
+			hasResponseEver = false;
+			activePrompts = [];
+			findingsAtReportGeneration = '';
+			dispatch('clearResponse');
+		}
+		const schema: StackSchema = stackSchema;
+		prePoppedSections = schema.pills.length ? [...schema.pills] : [...schema.groups];
+		coveredSections = new Set();
+		caseDetailsManuallyExpanded = false;
 	}
 	/** Dictation Lab only: three-state pills from coverage scores. null = binary pills as in production. */
 	export let pillThresholds: PillThresholds | null = null;
@@ -289,6 +351,18 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		}
 		sectionsLoading = true;
 		sectionsError = '';
+		if (!(await latch())) {
+			sectionsLoading = false;
+			return;
+		}
+		if (stackMode) {
+			try {
+				await setUpStackWorkspace(false);
+			} finally {
+				sectionsLoading = false;
+			}
+			return;
+		}
 
 		// Fire the ephemeral skill sheet analyser in parallel — don't await
 		// here because sections is the gating UX; the sheet is ready-when-ready.
@@ -325,6 +399,19 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		if (!clinicalHistory.trim() || !scanType.trim() || regenerating) return;
 		regenerating = true;
 		sectionsError = '';
+		// Mid-session the latched mode holds; a session that never latched (restore failure) latches now.
+		if (stackMode === null && !(await latch())) {
+			regenerating = false;
+			return;
+		}
+		if (stackMode) {
+			try {
+				await setUpStackWorkspace(true);
+			} finally {
+				regenerating = false;
+			}
+			return;
+		}
 
 		// Re-fire the ephemeral skill sheet analyser — scan context may have
 		// changed, so the old sheet_id is no longer valid for this case.
@@ -445,7 +532,7 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		if (semanticTimer) clearTimeout(semanticTimer);
 		integrityAcknowledged = false;
 		// The scratchpad view runs the same check with its review and shows the flags on their sentences.
-		if (!content?.trim() || stackGated) {
+		if (!content?.trim() || stackGated || stackMode) {
 			integrityFlags = [];
 			integrityGate = false;
 			scratchpadRef?.setIntegrityRanges([]);
@@ -494,14 +581,70 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 		}
 	}
 
+	/** Stack mode Generate (spec §5, §10): one call to /api/canvas/stack/generate with the units, groups, gate and
+	 *  token; the server builds the statements, saves, then streams the candidate and the report id. */
+	async function handleStackGenerate() {
+		if (!scratchpadRef) return;
+		const gate = stackGate;
+		const key = slimKey ?? structureKey;
+		if (!gate || !key) {
+			error = 'Set up the workspace again.';
+			return;
+		}
+		const dictated = scratchpadToFindings(scratchpadRef.getContent());
+		const session = stackSessionId;
+		const gen = ++generationToken;
+		loading = true;
+		error = null;
+		response = null;
+		responseModel = null;
+		reportOptions = [];
+		reviewSections = null;
+		applicableGuidelines = [];
+		let got = false;
+		const body = stackGenerateBody({ kind: 'quick', scanType: scanType.trim(), history: clinicalHistory.trim(), structureKey: key,
+			units: stackUnits, groups: stackGroups, gate });
+		try {
+			await streamStackGenerate($token, body, {
+				candidate: (c) => {
+					if (gen !== generationToken) return; // a stale stream never touches the open report
+					response = String(c.content ?? '');
+					responseModel = (c.model as string | null) ?? null;
+					reviewSections = sectionList(c.sections);
+					hasResponseEver = true;
+					findingsAtReportGeneration = dictated;
+					got = !!response;
+					loading = false;
+				},
+				done: (d) => {
+					if (gen !== generationToken) return;
+					reportId = d?.report_id ?? null;
+					if (reportId && session) void postReportId($token, session, reportId).catch(() => {});
+					if (!got) error = 'Generator completed without content. Please try again.';
+					loading = false;
+					draftStore.clearIntelliTab();
+					dispatch('historyUpdate', { count: 1 });
+				},
+				error: (m) => {
+					if (gen !== generationToken) return;
+					error = m;
+					loading = false;
+				}
+			});
+		} catch {
+			if (gen !== generationToken) return;
+			error = 'Failed to connect. Please try again.';
+		}
+		if (gen === generationToken) loading = false;
+	}
+
 	async function handleGenerateReport() {
 		if (!scratchpadRef) return;
+		if (stackMode) return handleStackGenerate();
+		if (stackMode === null) return; // not latched: set the workspace up again
 
 		const dictated = scratchpadToFindings(scratchpadRef.getContent());
-		const useStack = stackGated && stackGate !== null;
-		const content = useStack ? stackFindings : dictated;
-		const declined = useStack && stackGate ? stackGate.removed : [];
-		const session = stackSessionId;
+		const content = dictated;
 		const gen = ++generationToken;
 		loading = true;
 		error = null;
@@ -521,12 +664,6 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			// analyser inline from scan_type + clinical_history.
 			const bestAvailable = bestSheetId || fastSheetId;
 			const body: Record<string, unknown> = { findings: content };
-			if (useStack) {
-				body.stack = true;
-				body.stack_removed = declined;
-				if (stackSheetId) body.stack_sheet_id = stackSheetId;
-				body.stack_conclusion = stackGate?.conclusion_text ?? '';
-			}
 			if (bestAvailable) {
 				body.sheet_id = bestAvailable;
 			} else {
@@ -570,7 +707,6 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 					loading = false;
 				} else if (eventName === 'done') {
 					reportId = data?.report_id ?? null;
-					if (useStack && reportId && session) void postReportId($token, session, reportId).catch(() => {});
 					// If /generate ran the analyser inline (no sheet_id sent),
 					// capture the sheet_id it created so subsequent regenerate
 					// flows see a warm fast sheet.
@@ -699,6 +835,9 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 
 	async function restoreIntelliDraft() {
 		const draft = $draftStore;
+		// A restored workspace is a new session: latch the mode first. On failure the draft still restores (the
+		// dictation is never dropped) but Generate stays blocked until the workspace is set up again.
+		await latch();
 		clinicalHistory = draft.intelliTab.clinicalHistory;
 		scanType = draft.intelliTab.scanType;
 		stackProtocol = null; // no pick is stored: the restored scan type shows as free text
@@ -1117,11 +1256,11 @@ import { fetchSavedReport, savedSections, sectionList } from '$lib/review/savedR
 			stackProtocol={stackSchemaPick}
 			stackQuiet={stackSchema?.quiet ?? []}
 			onStackPills={(p) => { stackPills = p; }}
-			stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
-			onStackGate={(g, f) => { stackGate = g; stackFindings = f; }}
+			{structureKey}
+			onStructureKey={(k) => { slimKey = k; }}
+			onStackGate={(g, u, gr) => { stackGate = g; stackUnits = u; stackGroups = gr; }}
 			onStackGenerate={async () => { await tick(); if (!generateBlocked) void handleGenerateReport(); }}
 			onStackSession={(id) => { stackSessionId = id; }}
-			onStackSheet={(id) => { stackSheetId = id; }}
 		/>
 	</div>
 

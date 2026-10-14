@@ -9,11 +9,13 @@
 	import { API_URL } from '$lib/config';
 	import { hasUnsavedWork as unsavedWork } from '$lib/utils/confirmGate';
 	import { sectionList } from '$lib/review/savedReport';
-	import { fetchSchema, postReportId } from '$lib/hybrid-stack/api';
-	import { hybridStackOn } from '$lib/hybrid-stack/flag';
+	import { StackHttpError, fetchSchema, postReportId, stackGenerateBody, streamStackGenerate } from '$lib/hybrid-stack/api';
 	import { copilotOn } from '$lib/copilot/flag';
-	import { valuesBody } from '$lib/hybrid-stack/values';
-	import type { GateRecord, StackSchema } from '$lib/hybrid-stack/types';
+	import { latchStackMode, statusFetcher } from '$lib/hybrid-stack/mode';
+	import { stackGenerateBlocked } from '$lib/hybrid-stack/quickFlow';
+	import { templateVariables } from '$lib/hybrid-stack/templateFlow';
+	import { PACKAGE_CONFIG } from '$lib/dictation-lab/package';
+	import type { GateRecord, StackSchema, StackUnit } from '$lib/hybrid-stack/types';
 
 	// ── Feedback capture ──────────────────────────────────────────────
 	let feedbackId: string | null = null;
@@ -198,13 +200,32 @@
 	let findingsAtReportGeneration = '';
 	$: findingsStale = hasResponseEver && !!response && scratchpadToFindings(scratchpadContent) !== findingsAtReportGeneration;
 
-	// The hybrid dictation stack (rr_hybrid_stack) on the template path: regions are the template's own
-	// paragraphs when its grammar structure is fresh (else the scan type's schema). sections-from-template
-	// and the Jev pills keep running in shadow.
-	$: stackStatus = apiKeyStatus as { hybrid_stack?: boolean; hybrid_stack_shadow_rate?: number; stack_copilot?: boolean };
-	$: hybridStack = hybridStackOn(undefined, stackStatus?.hybrid_stack === true);
-	// The guideline Copilot (rr_stack_copilot): opt-in per browser, and only on top of the stack.
-	$: stackCopilot = copilotOn(undefined, stackStatus?.stack_copilot === true, hybridStack);
+	// The scratchpad stack on the template path (spec §10): latched from a fresh status at "Set up workspace" (and at a
+	// workspace restore), never swapped mid-session; null = not latched. Regions are the template's own paragraphs.
+	// Off: today's flow, unchanged (D5).
+	$: stackStatus = apiKeyStatus as { hybrid_stack_shadow_rate?: number; stack_copilot?: boolean };
+	let stackMode: boolean | null = null;
+	let hybridStack = false; // the scratchpad's stack view: the latched mode, set with it
+	function latchMode(on: boolean) {
+		stackMode = on;
+		hybridStack = on;
+	}
+	async function latch(): Promise<boolean> {
+		try {
+			latchMode(await latchStackMode(statusFetcher($token)));
+			return true;
+		} catch {
+			sectionsError = "Couldn't reach the server — try again";
+			return false;
+		}
+	}
+	// The session's signed resolution (D26), minted by /schema with template_id; Generate sends it.
+	let structureKey: string | null = null;
+	let slimKey: string | null = null; // the token a free-text /slim-sheet re-minted with its sheet id (Generate prefers it)
+	let schemaSeq = 0;
+	let stackSchemaError = ''; // stack mode: the server's refusal (D15) or a failed /schema; Generate stays blocked
+	// The guideline Copilot (D24): on whenever the server allows it (stack_copilot) and the stack is latched.
+	$: stackCopilot = copilotOn(stackStatus?.stack_copilot === true, hybridStack);
 	let stackSchema: StackSchema | null = null;
 	let stackPills: string[] = [];
 	let stackSchemaFor = ''; // the template + history the schema was requested for
@@ -212,17 +233,30 @@
 	$: if (hybridStack && selectedTemplate?.id && prePoppedSections.length > 0 && stackSchemaFor !== stackKey) {
 		void loadStackSchema(stackKey);
 	}
-	async function loadStackSchema(key: string) {
+	/** Resolves to null (loaded), an error message (refused or failed), or undefined (superseded). */
+	async function loadStackSchema(key: string): Promise<string | null | undefined> {
+		const mine = ++schemaSeq;
 		stackSchemaFor = key;
 		stackPills = [];
 		try {
-			stackSchema = await fetchSchema($token, {
+			const schema = await fetchSchema($token, {
 				scan_type: scanType,
 				clinical_history: variableValues['CLINICAL_HISTORY'] ?? '',
 				template_id: selectedTemplate?.id ?? null
 			});
-		} catch {
-			stackSchema = null; // fail open: today's pills show
+			if (mine !== schemaSeq) return undefined;
+			stackSchema = schema;
+			structureKey = schema.structure_key ?? null;
+			stackSchemaError = '';
+			return null;
+		} catch (e) {
+			if (mine !== schemaSeq) return undefined;
+			stackSchema = null;
+			structureKey = null;
+			// D15: an unusable (422) or unknown (404) template shows the server's own words; Generate stays blocked
+			stackSchemaError = e instanceof StackHttpError && e.detail ? e.detail : "Couldn't set up the workspace. Please try again.";
+			sectionsError = stackSchemaError; // also on a restore, where no Set up click shows it
+			return stackSchemaError;
 		}
 	}
 	$: allChecklistSections = hybridStack && stackSchema ? stackSchema.pills : prePoppedSections;
@@ -273,6 +307,18 @@
 
 		sectionsLoading = true;
 		sectionsError = '';
+		if (!(await latch())) {
+			sectionsLoading = false;
+			return;
+		}
+		if (stackMode) {
+			try {
+				await setUpStackWorkspace();
+			} finally {
+				sectionsLoading = false;
+			}
+			return;
+		}
 
 		try {
 			const templateId = selectedTemplate?.id ?? 'unknown';
@@ -378,6 +424,35 @@
 		}
 	}
 
+	/** Stack mode setup (spec §10): /stack/schema with template_id only — no /prepare, no sections-from-template. A
+	 *  refusal (no usable structure, D15) shows the server's message and leaves Generate blocked. */
+	async function setUpStackWorkspace(): Promise<void> {
+		if (!selectedTemplate?.id) return;
+		const history = variableValues['CLINICAL_HISTORY'] || '';
+		const err = await loadStackSchema(`${selectedTemplate.id}|${history}`);
+		if (err === undefined) return;
+		if (err !== null || !stackSchema) {
+			sectionsError = err ?? "Couldn't set up the workspace. Please try again.";
+			return;
+		}
+		variableValuesGeneratedFrom = {};
+		for (const v of nonFindingsVariables) variableValuesGeneratedFrom[v] = variableValues[v] || '';
+		if (workspaceOpen && prePoppedSections.length > 0) {
+			scratchpadRef?.reset('');
+			response = null;
+			responseModel = null;
+			reportId = null;
+			hasResponseEver = false;
+			activePrompts = [];
+			findingsAtReportGeneration = '';
+			dispatch('clearResponse');
+		}
+		const schema: StackSchema = stackSchema;
+		prePoppedSections = schema.pills.length ? [...schema.pills] : [...schema.groups];
+		coveredSections = new Set();
+		caseDetailsManuallyExpanded = false;
+	}
+
 	function handleResetClick() {
 		const content = scratchpadRef?.getContent()?.trim() ?? '';
 		if (content.length > 0) {
@@ -424,21 +499,89 @@
 
 	// Scratchpad v2 gate (spec 2026-10-11 §5-6): Generate waits for the Confirm, then sends the findings block.
 	let stackGate: GateRecord | null = null;
-	let stackFindings = '';
+	let stackUnits: StackUnit[] = [];
+	let stackGroups: string[] = [];
 	let stackSessionId = '';
 	$: stackGated = hybridStack && !!stackSchema;
-	// The Generate button's locks, also honoured by the walkthrough's Confirm & Generate (review 2026-10-12)
-	$: generateBlocked = isRecording || loading || !scratchpadContent.trim() || sectionsDirty || (stackGated && !stackGate);
+	// The Generate button's locks, also honoured by the walkthrough's Confirm & Generate (review 2026-10-12).
+	// Stack mode: recording, loading, empty findings and the gate only (§10); not latched with a workspace open: blocked.
+	$: generateBlocked = stackMode === null && workspaceOpen ? true
+		: stackMode === true ? stackGenerateBlocked({ isRecording, loading, scratchpad: scratchpadContent, gate: stackGate })
+		: isRecording || loading || !scratchpadContent.trim() || sectionsDirty || (stackGated && !stackGate);
+
+	/** Stack mode Generate (spec §5, §10): the stack endpoint with kind "template" and the template's other inputs; a
+	 *  new SSE handler keeps the old JSON handler's duties (reportGenerated, historyUpdate, feedback, /stack/log). */
+	async function handleStackGenerate() {
+		if (!scratchpadRef || !selectedTemplate) return;
+		const gate = stackGate;
+		const key = slimKey ?? structureKey;
+		if (!gate || !key) {
+			error = 'Set up the workspace again.';
+			return;
+		}
+		const findingsContent = scratchpadToFindings(scratchpadRef.getContent());
+		const session = stackSessionId;
+		const gen = ++generationToken;
+		loading = true;
+		error = null;
+		response = null;
+		responseModel = null;
+		reviewSections = null;
+		let got = false;
+		const body = stackGenerateBody({ kind: 'template', templateId: String(selectedTemplate.id), variables: templateVariables(variableValues),
+			scanType, history: variableValues['CLINICAL_HISTORY'] ?? '', structureKey: key, units: stackUnits, groups: stackGroups, gate });
+		try {
+			await streamStackGenerate($token, body, {
+				candidate: (c) => {
+					if (gen !== generationToken) return; // History "Open" (or a newer generation) took over
+					response = String(c.content ?? '');
+					responseModel = (c.model as string | null) ?? null;
+					reviewSections = sectionList(c.sections);
+					hasResponseEver = true;
+					findingsAtReportGeneration = findingsContent;
+					got = !!response;
+					loading = false;
+				},
+				done: (d) => {
+					if (gen !== generationToken) return;
+					reportId = d?.report_id ?? null;
+					loading = false;
+					if (!got) {
+						error = 'Failed to generate report. Please try again.';
+						return;
+					}
+					if (reportId && session) void postReportId($token, session, reportId).catch(() => {});
+					dispatch('reportGenerated', { reportId });
+					dispatch('historyUpdate', { count: 1 });
+					// Feedback capture — record the AI output (every stack session)
+					feedbackAiOutput = response || '';
+					feedbackGeneratedAt = typeof performance !== 'undefined' ? performance.now() : 0;
+					feedbackCopyCount = 0;
+					feedbackCopied = false;
+					feedbackId = null;
+					captureFeedback('generated');
+				},
+				error: (m) => {
+					if (gen !== generationToken) return;
+					error = m;
+					loading = false;
+				}
+			});
+		} catch {
+			if (gen === generationToken) error = 'Failed to connect. Please try again.';
+		} finally {
+			if (gen === generationToken) loading = false;
+		}
+	}
 
 	async function handleGenerateReport() {
 		if (!scratchpadRef || !selectedTemplate) return;
+		if (stackMode) return handleStackGenerate();
+		if (stackMode === null && workspaceOpen) return; // not latched: set the workspace up again
 
 		const findingsContent = scratchpadToFindings(scratchpadRef.getContent());
-		const useStack = stackGated && stackGate !== null;
-		const declined = useStack && stackGate ? stackGate.removed : [];
-		const session = stackSessionId;
-		// Merge FINDINGS from scratchpad into variableValues for the API call (v2: the confirmed findings block)
-		variableValues = { ...variableValues, FINDINGS: useStack ? stackFindings : findingsContent };
+		// Merge FINDINGS from scratchpad into variableValues for the API call
+		variableValues = { ...variableValues, FINDINGS: findingsContent };
 
 		// Validate FINDINGS
 		if (!findingsContent.trim()) {
@@ -462,10 +605,7 @@
 				headers,
 				body: JSON.stringify({
 					user_inputs: variableValues,
-					model: selectedModel,
-					...(useStack
-						? { stack: true, stack_declined: declined, stack_conclusion: stackGate?.conclusion_text ?? '', ...valuesBody(stackGate?.values) }
-						: {})
+					model: selectedModel
 				})
 			});
 			const data = await res.json();
@@ -483,7 +623,6 @@
 				responseModel = data.model;
 				reviewSections = sectionList(data.artifacts?.sections);
 				reportId = data.report_id ?? null;
-				if (useStack && reportId && session) void postReportId($token, session, reportId).catch(() => {});
 			hasResponseEver = true;
 			findingsAtReportGeneration = findingsContent;
 				dispatch('reportGenerated', { reportId: data.report_id });
@@ -534,6 +673,9 @@
 	}
 
 	export async function restoreWorkspace(sections: string[], content: string) {
+		// A restored workspace is a new session: latch first. On failure the dictation still restores; Generate stays
+		// blocked until the workspace is set up again.
+		await latch();
 		prePoppedSections = [...sections];
 		if (content && sections.length > 0) {
 			await tick();
@@ -890,14 +1032,16 @@
 					onCoveredSectionsChange={handleCoveredSectionsChange}
 					onPromptsChange={handlePromptsChange}
 					onScratchpadClear={handleScratchpadClear}
+					labConfig={stackMode ? PACKAGE_CONFIG : null}
 					{hybridStack}
 					{stackCopilot}
 					stackRegions={stackSchema?.regions ?? []}
 					stackGroups={stackSchema?.groups ?? []}
 					stackSchemaMeta={stackSchema ? { key: stackSchema.key, source: stackSchema.source, provisional: stackSchema.provisional } : null}
 					onStackPills={(p) => { stackPills = p; }}
-					stackShadowRate={stackStatus?.hybrid_stack_shadow_rate ?? 0.25}
-					onStackGate={(g, f) => { stackGate = g; stackFindings = f; }}
+					{structureKey}
+					onStructureKey={(k) => { slimKey = k; }}
+					onStackGate={(g, u, gr) => { stackGate = g; stackUnits = u; stackGroups = gr; }}
 					onStackGenerate={async () => { await tick(); if (!generateBlocked) void handleGenerateReport(); }}
 					onStackSession={(id) => { stackSessionId = id; }}
 					stackTemplateId={selectedTemplate?.id ?? null}

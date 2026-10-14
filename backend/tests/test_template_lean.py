@@ -156,7 +156,8 @@ def _gen_fakes(monkeypatch, calls, options_delay=0.0):
                 {"id": "opt0", "kind": "recommendation", "section": "CONCLUSION", "sentence": "Urgent referral."}]
 
     async def fake_check(report, findings, scan, options, sections=None, protected=None, suppressed=None,
-                         extra_report_qs=None, history=None):
+                         extra_report_qs=None, history=None, record_edits=False):
+        calls["record_edits"] = record_edits
         calls["check"] = {"sections": [(s.name, s.role) for s in sections], "options": options, "extra": extra_report_qs}
         return report + "\nCHECKED", options, {"enabled": True}
 
