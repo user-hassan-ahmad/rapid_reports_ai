@@ -1772,7 +1772,7 @@
 		const note = conclusionNote;
 		conclusionNote = { ...note, loading: true };
 		try {
-			const res = await postDraft($token, { scan_type: scanType, clinical_history: clinicalHistory, findings: findingsText(stackUnits, stackGroups) });
+			const res = await postDraft($token, { units: stackUnits, groups: stackGroups, scan_type: scanType, clinical_history: clinicalHistory });
 			if (conclusionNote?.for === note.for) conclusionNote = { ...note, suggestion: res.text || null, loading: false };
 		} catch {
 			if (conclusionNote?.for === note.for) conclusionNote = { ...note, loading: false };
@@ -2062,12 +2062,11 @@
 		}
 	}
 	async function requestDraft(): Promise<void> {
-		const findings = findingsText(stackUnits, stackGroups);
-		if (!findings.trim() || draftLoading) return;
+		if (!findingsLanded || draftLoading) return;
 		draftLoading = true;
 		draftFailed = false;
 		try {
-			const res = await postDraft($token, { scan_type: scanType, clinical_history: clinicalHistory, findings });
+			const res = await postDraft($token, { units: stackUnits, groups: stackGroups, scan_type: scanType, clinical_history: clinicalHistory });
 			if (res.text) draft = { text: res.text, hash: findingsHash(stackUnits), edited: false, typed: false };
 			else draftFailed = true;
 			stackLatency.draft = Math.max(stackLatency.draft ?? 0, res.ms);
