@@ -3714,6 +3714,7 @@ async def get_settings(
         "signature": current_user.signature,
         "auto_save": settings.get('auto_save', True),
         "tag_colors": tag_colors,
+        "banner_template_upgrade_dismissed": settings.get('banner_template_upgrade_dismissed', False) is True,
         "deepgram_configured": bool(os.getenv("DEEPGRAM_API_KEY"))
     }
 
@@ -3723,6 +3724,7 @@ class UpdateSettingsRequest(BaseModel):
     signature: Optional[str] = None
     auto_save: Optional[bool] = None
     tag_colors: Optional[Dict[str, str]] = None
+    banner_template_upgrade_dismissed: Optional[bool] = None   # the converted-template banner (P2c), per user
 
 
 @app.post("/api/settings")
@@ -3744,6 +3746,8 @@ async def update_settings(
         settings.pop('default_model', None)
         if request.auto_save is not None:
             settings['auto_save'] = request.auto_save
+        if request.banner_template_upgrade_dismissed is not None:
+            settings['banner_template_upgrade_dismissed'] = request.banner_template_upgrade_dismissed
         if request.tag_colors is not None:
             # Merge tag_colors with existing ones (don't overwrite entire object)
             existing_tag_colors = settings.get('tag_colors', {})
