@@ -123,9 +123,9 @@
 			.flatMap((g) => g.items)
 			.filter((i) => NOTE_KINDS.has(i.kind) && i.cls !== 'suppress' && (i.status === 'open' || i.status === 'stale'))
 	);
-	/** Template checks (the post-gen value check and the template gap flags): an open item with no anchor has no
-	 * editor underline, so it is a compact row here; an anchored one keeps its underline and is not repeated. Never
-	 * counted as open (the header counts are unchanged). */
+	/** Template checks (the post-gen value check and the template gap flags): every open info-class one is a compact
+	 * row here, anchored or not (an info anchor draws no editor underline, only a gutter mark, so nothing is shown
+	 * twice); an action-class one stays its card. Never counted as open (the header counts are unchanged). */
 	const CHECK_KINDS = new Set([
 		'value_missing',
 		'template_slot_empty',
@@ -139,9 +139,8 @@
 			.filter(
 				(i) =>
 					CHECK_KINDS.has(i.kind) &&
-					!i.anchor &&
+					i.cls === 'info' &&
 					!isFlagged(i) &&
-					i.cls !== 'suppress' &&
 					(i.status === 'open' || i.status === 'stale')
 			)
 	);

@@ -267,3 +267,11 @@ async def test_run_review_drops_the_note_of_a_structure_whose_confirmed_normal_i
     assert ("assumed_normal_missing", "LMS: Normal.") in kinds
     assert (sm.KIND, "BONES") in kinds and (sm.KIND, "LMS") not in kinds
     assert res.run["template_gaps"]["mention_dropped_for_gap"] == 1
+
+
+def test_the_note_drop_compares_structure_names_case_and_space_insensitively():
+    notes = [sm.ReviewItem(key=f"k{n}", report_id="r", run_id=RUN, lane="accuracy", detectors=[], kind=sm.KIND,
+                           cls="info", label="", reason="", evidence={"structure": n}, status="open", history=[])
+             for n in ("liver", "  Left  atrial appendage", "BONES")]
+    kept = sm.drop_flagged(notes, {"Liver", "LEFT ATRIAL APPENDAGE"})
+    assert [it.evidence["structure"] for it in kept] == ["BONES"]

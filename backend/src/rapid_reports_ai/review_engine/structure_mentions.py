@@ -125,6 +125,17 @@ def structures_of(inp: ReviewInput, sentences: List[str]) -> set:
     return out
 
 
+def _name_key(t) -> str:
+    return " ".join(str(t or "").casefold().split())
+
+
+def drop_flagged(notes: List[ReviewItem], flagged: set) -> List[ReviewItem]:
+    """The notes whose structure is not in `flagged` (names compared case- and space-insensitively: a NORMAL's
+    [Liver] tag and a COVERS "liver" are one structure)."""
+    keys = {_name_key(f) for f in flagged}
+    return [it for it in notes if _name_key((it.evidence or {}).get("structure")) not in keys]
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -169,5 +180,5 @@ async def mention_items(inp: ReviewInput, run_id: str, ask: Optional[Ask] = None
     return out, log
 
 
-__all__ = ["KIND", "NOT_MENTIONED", "MAX_NOTES", "question", "state", "title", "structures", "structures_of", "ask_mentioned",
+__all__ = ["KIND", "NOT_MENTIONED", "MAX_NOTES", "question", "state", "title", "structures", "structures_of", "drop_flagged", "ask_mentioned",
            "mention_items"]

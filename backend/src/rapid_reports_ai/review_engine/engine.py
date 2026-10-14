@@ -776,7 +776,7 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         # a structure whose confirmed normal is already flagged missing gets no second, quieter note
         flagged = structure_mentions.structures_of(
             inp, [it.evidence.get("text") for it in items if it.kind == "assumed_normal_missing" and it.evidence])
-        kept = [it for it in notes if (it.evidence or {}).get("structure") not in flagged]
+        kept = structure_mentions.drop_flagged(notes, flagged)
         if note_log is not None and len(kept) != len(notes):
             note_log = {**note_log, "mention_dropped_for_gap": len(notes) - len(kept)}
         notes = kept

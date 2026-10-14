@@ -544,13 +544,15 @@ describe('ReviewRail', () => {
 		expect(rail()!.textContent).toContain('2 to review'); // counts unchanged
 	});
 
-	it('anchored or dismissed template checks are not on the rail', async () => {
-		const anchored = item({ id: 'ta', kind: 'fixed_text_missing', cls: 'info', anchor: at(5), label: 'anchored check' });
+	it('anchored info template checks show in the group (info anchors draw no underline); dismissed ones do not', async () => {
+		const anchored = item({ id: 'ta', kind: 'value_missing', cls: 'info', anchor: at(5, 'LVEF'), label: 'Required value LVEF not found' });
 		const gone = item({ id: 'tg', kind: 'heading_missing', cls: 'info', status: 'dismissed', anchor: null, label: 'gone' });
 		await mount(response({ items: [...ITEMS, anchored, gone] }));
-		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
-		expect(rail()!.querySelector('[data-rv-template-checks]')).toBeNull();
-		expect(rail()!.querySelector('[data-rv-item="ta"]')).toBeNull();
+		await expect.element(page.getByText('Required value LVEF not found')).toBeInTheDocument();
+		const group = rail()!.querySelector<HTMLElement>('[data-rv-template-checks]')!;
+		expect([...group.querySelectorAll('[data-rv-item]')].map((e) => e.getAttribute('data-rv-item'))).toEqual(['ta']);
+		expect(rail()!.querySelectorAll('[data-rv-item="ta"]').length).toBe(1);
+		expect(rail()!.querySelector('[data-rv-item="tg"]')).toBeNull();
 	});
 
 	it('a template check row carries its full reason as a title', async () => {
