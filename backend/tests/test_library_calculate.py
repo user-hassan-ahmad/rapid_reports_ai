@@ -201,13 +201,17 @@ def test_a_prefilled_known_cancer_never_excludes_and_a_suspicion_is_never_drafte
     assert "suspected, possible or differential diagnosis" in PP.SETTLE_SYS
 
 
-async def test_the_settler_never_drafts_known_cancer_from_a_suspicion_about_another_lesion(monkeypatch, jev):
+async def test_a_suspicion_about_another_lesion_is_a_scope_doubt_never_a_known_cancer(monkeypatch, jev):
     e = next(x for x in _tier1() if x.id == "ese-adrenal-incidentaloma")
     finding = "1.4 cm left adrenal nodule."
     dictation = f"{finding} Separate 3 cm right renal mass, suspicious for RCC."
     _model(monkeypatch, {"input": "known_primary_cancer", "value": True, "quote": "suspicious for RCC"})
     s = await PP.settle_pack(e, dictation, "", finding=finding)
-    assert "known_primary_cancer" not in s.values                       # asked, never pre-filled yes
+    # spec §7.12 item 6: kept as a pre-filled yes, suspected: a scope doubt, never an exclusion and never hidden
+    d = s.values["known_primary_cancer"]
+    assert d.tier == "prefilled" and PP.WHY_SUSPECTED in d.why
+    p = PP.finish(e, s, {}, None, [])
+    assert p.scope_doubt == ["known_primary_cancer"] and p.state == "check_first" and p.exclusion is None
 
 
 def test_a_read_excluding_eligibility_value_still_excludes():

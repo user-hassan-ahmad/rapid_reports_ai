@@ -91,6 +91,7 @@ class _Evals:
         self.memo[key] = engine.evaluate(self.e, given, assume_eligible=assume)
         return self.memo[key]
 WHY_WOULD_EXCLUDE = "this pre-filled value would make the guideline not apply: confirm it"   # a scope doubt, any role
+WHY_SUSPECTED = "suspected, not established"   # a hedged cancer Yes (spec §7.12 item 6): a scope doubt, never assumed No
 WHY_APPROX_DATE = "approximate date: only the month or year of the earlier study is stated"   # spec §7.12 item 4
 SETTLE_SYS = """You settle the inputs of one published radiology classification system for ONE finding. INPUTS lists each open input's id, scope, type and allowed values: use nothing else.
 An input's scope decides where it may be settled from:
@@ -103,7 +104,7 @@ For each input its scope states, return one item:
 - value: when present, for an enum exactly one of its options, for a boolean true or false, for a number the number as dictated (a [since study] input settled by a date: the date as written); otherwise null;
 - quote: the shortest span, copied verbatim from the FINDING ([lesion]) or from the CLINICAL HISTORY or DICTATION ([patient], or a [since study] date), that settles it; a number's quote is the whole measurement as dictated, with its unit; a date's quote is the date as written.
 Leave out every input that is not stated: never settle a value from what is usual or likely, and never invent an input, option or state.
-A patient fact (a known cancer, a condition, a treatment) is present only when it is stated as established. A suspected, possible or differential diagnosis, about this lesion or any other, never settles it as present: leave it out."""
+A patient fact (a known cancer, a condition, a treatment) is established only when it is stated as established. A suspected, possible or differential diagnosis, about this lesion or any other, is never established: when it is what a [patient] input asks about, return it as present and quote the hedge with it ("?", "suspected", "likely", "suspicious for"), so it is checked, never taken as established."""
 
 
 class RawItem(BaseModel):
@@ -271,10 +272,12 @@ _SENTENCE_END = re.compile(r"(?<!\d)\.(?!\d)|[;\n]")      # never inside a decim
 
 
 def _hedged_cancer(i: InputDef, v: InputValue, quote: str, texts: list[str] | None = None) -> bool:
-    """A "known primary cancer: yes" hedged by its quote or by the words before the quote in its sentence ("suspicious
-    for RCC" quoted as "RCC", "?primary"): dropped, so the input is asked. A hedge after the quote is about something
-    else ("Breast ca ?liver mets": the cancer is stated, the metastases are not), so it is not read (review I-d)."""
-    if i.fact != "known_primary_cancer" or v.value is not True:
+    """A "known primary cancer: yes" (the shared fact, or an input marked suspected_doubt) hedged by its quote or by
+    the words before the quote in its sentence ("suspicious for RCC" quoted as "RCC", "?primary"): kept pre-filled,
+    WHY_SUSPECTED, so it is a scope doubt, never an exclusion and never assumed away (spec §7.12 item 6). A hedge after
+    the quote is about something else ("Breast ca ?liver mets": the cancer is stated, the metastases are not), so it
+    does not count (review I-d)."""
+    if not (i.fact == "known_primary_cancer" or i.suspected_doubt) or v.value is not True:
         return False
     if _HEDGE.search(quote):
         return True
@@ -418,9 +421,7 @@ async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings
                 dated[i.id] = got[1]
             continue
         v = _value(i, item, _texts(i, finding, findings, history))
-        if v is not None and _hedged_cancer(i, v, q, _texts(i, finding, findings, history)):
-            continue                 # a suspicion, about this lesion or another, is never a known cancer: asked
-        if v is not None:
+        if v is not None:            # a suspected cancer is kept: _read_reasons marks it, so it is a scope doubt
             out[i.id] = (v, Settled(input=i.id, value=_show(e, i, v), quote=q))
     return out, False, dated
 
@@ -451,7 +452,8 @@ def _nouns(e: Entry) -> list[str]:
 def _read_reasons(e: Entry, i: InputDef, v: InputValue, quote: str, texts: list[str]) -> list[str]:
     """Why code cannot read this value with certainty (spec §7.5); empty when it can, before the Jev checks."""
     present = v.state == "present"
-    out = [] if present and i.type != "boolean" else [WHY_KIND]
+    out = [WHY_SUSPECTED] if _hedged_cancer(i, v, quote, texts) else []
+    out += [] if present and i.type != "boolean" else [WHY_KIND]
     if present and i.type == "enum" and not _has_option_words(str(v.value), quote):
         out.append(WHY_NOT_OPTION_WORD)
     if i.type != "number" and _modified(quote, texts):

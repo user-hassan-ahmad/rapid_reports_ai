@@ -972,6 +972,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -997,6 +998,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -1028,6 +1030,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -1057,6 +1060,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -1089,6 +1093,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -1124,6 +1129,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -1155,6 +1161,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -1185,6 +1192,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": true
@@ -1214,6 +1222,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -1247,6 +1256,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -1273,6 +1283,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "HU",
       "visible_sign": false
@@ -3128,6 +3139,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -3680,6 +3692,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": true
@@ -3705,6 +3718,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -3729,6 +3743,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "mm",
       "visible_sign": false
@@ -3754,6 +3769,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "years",
       "visible_sign": false
@@ -3776,6 +3792,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -3801,6 +3818,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -3822,6 +3840,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -3843,6 +3862,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -3864,6 +3884,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -3886,6 +3907,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "count",
       "visible_sign": false
@@ -3907,6 +3929,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": true
@@ -3929,6 +3952,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -3956,6 +3980,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -3996,6 +4021,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -4028,6 +4054,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "mm3",
       "visible_sign": false
@@ -4060,6 +4087,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "mm3",
       "visible_sign": false
@@ -4096,6 +4124,7 @@
       "scope": "lesion",
       "since_study": true,
       "states": [],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "days",
       "visible_sign": false
@@ -6714,6 +6743,7 @@
       "states": [
        "not_assessable"
       ],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "score",
       "visible_sign": false
@@ -6741,6 +6771,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -7356,6 +7387,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -7381,6 +7413,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -7421,6 +7454,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -7466,6 +7500,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -7514,6 +7549,7 @@
        "absent",
        "not_assessable"
       ],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -7553,6 +7589,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -7594,6 +7631,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -10199,6 +10237,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -10221,6 +10260,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -10245,6 +10285,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "cm",
       "visible_sign": false
@@ -10271,6 +10312,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -10295,6 +10337,7 @@
       "states": [
        "not_assessable"
       ],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "HU",
       "visible_sign": false
@@ -10320,6 +10363,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "years",
       "visible_sign": false
@@ -11702,6 +11746,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "years",
       "visible_sign": false
@@ -11724,6 +11769,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": true,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -11747,6 +11793,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -11773,6 +11820,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -11798,6 +11846,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -11821,6 +11870,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "mm",
       "visible_sign": false
@@ -11851,6 +11901,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -14382,6 +14433,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -14407,6 +14459,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -14428,6 +14481,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -14454,6 +14508,7 @@
       "states": [
        "not_assessable"
       ],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "cm",
       "visible_sign": false
@@ -14475,6 +14530,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -14503,6 +14559,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "cm",
       "visible_sign": false
@@ -15147,6 +15204,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -15169,6 +15227,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -15194,6 +15253,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -15224,6 +15284,7 @@
       "states": [
        "not_assessable"
       ],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -15267,6 +15328,7 @@
       "states": [
        "not_assessable"
       ],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -15315,6 +15377,7 @@
       "states": [
        "not_assessable"
       ],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -17036,6 +17099,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -17058,6 +17122,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -17086,6 +17151,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -17108,6 +17174,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -17130,6 +17197,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": true
@@ -17152,6 +17220,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -17176,6 +17245,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "cm",
       "visible_sign": false
@@ -17198,6 +17268,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -17221,6 +17292,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "iu/ml",
       "visible_sign": false
@@ -18270,6 +18342,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -18292,6 +18365,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -18314,6 +18388,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -18336,6 +18411,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -18358,6 +18434,7 @@
       "scope": "patient",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": true
@@ -18380,6 +18457,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -18402,6 +18480,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -18423,6 +18502,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -18445,6 +18525,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -18467,6 +18548,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -18489,6 +18571,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": true
@@ -18511,6 +18594,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -18532,6 +18616,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -18559,6 +18644,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "boolean",
       "unit": "",
       "visible_sign": false
@@ -18583,6 +18669,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "mm",
       "visible_sign": false
@@ -19729,6 +19816,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "enum",
       "unit": "",
       "visible_sign": false
@@ -20223,6 +20311,7 @@
       "scope": "lesion",
       "since_study": false,
       "states": [],
+      "suspected_doubt": false,
       "type": "number",
       "unit": "points",
       "visible_sign": false
@@ -21642,5 +21731,5 @@
    ]
   }
  },
- "version": "3bc90fb9cd9d"
+ "version": "4a3a55a03111"
 }

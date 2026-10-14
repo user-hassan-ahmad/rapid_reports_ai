@@ -58,7 +58,8 @@
         "section": "Implications for Patient Care: these guidelines do not apply to patients younger than 35 years, immunocompromised patients, or patients with cancer; lung cancer screening follows the ACR Lung-RADS system"
       },
       "scope": "patient",
-      "role": "eligibility"
+      "role": "eligibility",
+      "suspected_doubt": true
     },
     {
       "id": "prior_growth",
