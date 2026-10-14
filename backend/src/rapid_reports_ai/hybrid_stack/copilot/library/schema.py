@@ -138,6 +138,9 @@ class InputDef(_M):
     # outside the table, see BTS). The rules still reach does_not_apply; when this input alone is behind it, the card
     # shows this outcome's wording and locator instead (a not_applicable outcome, never reached by the rules itself)
     exclusion_outcome: str | None = None
+    # spec §7.12 item 4: a number of days since an earlier study. It may also be settled from that study's date, quoted
+    # from anywhere in the dictation or history; code converts it (library/dates.py)
+    since_study: bool = False
 
     @model_validator(mode="after")
     def _options(self):
@@ -156,6 +159,8 @@ class InputDef(_M):
             raise ValueError(f"input {self.id!r}: a visible sign is a yes/no, or a choice naming its absent option")
         if self.absent_option is not None and not self.visible_sign:
             raise ValueError(f"input {self.id!r}: absent_option belongs to a visible sign")
+        if self.since_study and not (self.type == "number" and self.unit == "days"):
+            raise ValueError(f"input {self.id!r}: since_study belongs to a number in days")
         if self.fact is not None:
             t, unit, opts = FACTS[self.fact]
             if self.scope != "patient" or self.type != t or self.unit != unit or tuple(self.options) != opts:

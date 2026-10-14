@@ -33,6 +33,7 @@ from .. import registry as R
 from ..types import (Assumption, Branch, Calculation, DecidingAnswer, DecidingInput, DraftValue, Entry as CardEntry,
                      ExclusionReason, GuidelineContent, Input, OutcomeBrief, Preview, Proposal, Publication, Settled,
                      Source)
+from . import dates as DT
 from . import engine
 from . import quantity as Q
 from .describe import citation
@@ -90,15 +91,17 @@ class _Evals:
         self.memo[key] = engine.evaluate(self.e, given, assume_eligible=assume)
         return self.memo[key]
 WHY_WOULD_EXCLUDE = "this pre-filled value would make the guideline not apply: confirm it"   # a scope doubt, any role
+WHY_APPROX_DATE = "approximate date: only the month or year of the earlier study is stated"   # spec §7.12 item 4
 SETTLE_SYS = """You settle the inputs of one published radiology classification system for ONE finding. INPUTS lists each open input's id, scope, type and allowed values: use nothing else.
 An input's scope decides where it may be settled from:
 - [lesion]: the FINDING only, never another lesion in the dictation, even one of the same kind;
-- [patient]: the CLINICAL HISTORY or the DICTATION (the patient, the examination or the study as a whole).
+- [patient]: the CLINICAL HISTORY or the DICTATION (the patient, the examination or the study as a whole);
+- [since study]: the FINDING, or the date of the earlier study the finding is compared with, from the CLINICAL HISTORY or the DICTATION.
 For each input its scope states, return one item:
 - input: the input's id;
 - state: "present" when the value is given; "absent" when the feature is said not to be there and the input lists absent; "not_assessable" when it is said that it cannot be assessed and the input lists not_assessable;
-- value: when present, for an enum exactly one of its options, for a boolean true or false, for a number the number as dictated; otherwise null;
-- quote: the shortest span, copied verbatim from the FINDING ([lesion]) or from the CLINICAL HISTORY or DICTATION ([patient]), that settles it; a number's quote is the whole measurement as dictated, with its unit.
+- value: when present, for an enum exactly one of its options, for a boolean true or false, for a number the number as dictated (a [since study] input settled by a date: the date as written); otherwise null;
+- quote: the shortest span, copied verbatim from the FINDING ([lesion]) or from the CLINICAL HISTORY or DICTATION ([patient], or a [since study] date), that settles it; a number's quote is the whole measurement as dictated, with its unit; a date's quote is the date as written.
 Leave out every input that is not stated: never settle a value from what is usual or likely, and never invent an input, option or state.
 A patient fact (a known cancer, a condition, a treatment) is present only when it is stated as established. A suspected, possible or differential diagnosis, about this lesion or any other, never settles it as present: leave it out."""
 
@@ -221,20 +224,23 @@ def _inputs_text(e: Entry, ids: list[str]) -> str:
                    else f"number in {i.unit or 'the unit dictated'}")
         states = f"; states allowed: {', '.join(i.states)}" if i.states else ""
         hint = f" (dictated as: {i.how_stated})" if i.how_stated else ""
-        lines.append(f"- {i.id} [{i.scope}]: {i.label}{hint} [{allowed}{states}]")
+        lines.append(f"- {i.id} [{'since study' if i.since_study else i.scope}]: {i.label}{hint} [{allowed}{states}]")
     return "\n".join(lines)
 
 
 def _prompt(e: Entry, ids: list[str], finding: str, findings: str, history: str) -> str:
     """Only the open inputs; the history and the whole dictation only when a patient input is open."""
     s = f"SYSTEM: {e.display}\nINPUTS:\n{_inputs_text(e, ids)}"
-    if any(e.input(k).scope == "patient" for k in ids):
+    if any(e.input(k).scope == "patient" or e.input(k).since_study for k in ids):
         s += f"\n\nCLINICAL HISTORY: {history or 'none given'}\n\nDICTATION:\n{findings}"
     return s + f"\n\nFINDING:\n{finding}" if finding else s
 
 
 def _in_scope(i: InputDef, quote: str, finding: str, findings: str, history: str) -> bool:
-    """A lesion input's quote lies verbatim in the card's own finding; a patient input's in the history or dictation."""
+    """A lesion input's quote lies verbatim in the card's own finding; a patient input's in the history or dictation;
+    a since-study input's in any of them (the earlier study's date is often dictated apart from the finding)."""
+    if i.since_study:
+        return P._verbatim(quote, finding, "") or P._verbatim(quote, findings, history)
     return P._verbatim(quote, finding, "") if i.scope == "lesion" else P._verbatim(quote, findings, history)
 
 
@@ -362,34 +368,68 @@ def _given(e: Entry, answered: dict[str, str], patient: dict[str, str] | None = 
     return out
 
 
+@dataclass
+class Dated:
+    """A since-study value computed from the earlier study's date (spec §7.12 item 4): never put to Jev or the
+    number checks; exact is read, approximate is pre-filled."""
+    exact: bool
+    basis: str
+
+
+def _since(i: InputDef, quote: str, finding: str, findings: str, history: str) -> tuple[InputValue, Dated] | None:
+    """The days since the dated study, or None (asked): no date in the quote (a duration keeps the quantity path), more
+    than one distinct date across the dictation and the history (which study is meant is not stated), a future date or
+    an interval of zero or less, or a value outside the input's range."""
+    p = DT.parse(quote)
+    if p is None:
+        return None
+    if len(DT.distinct_dates(f"{findings}\n{history}\n{finding}")) != 1:
+        logger.info("[library.preview] %s: several dates in the dictation; interval asked", i.id)
+        return None
+    days = DT.days_since(p.day)
+    if days <= 0 or not i.in_range(float(days)):
+        return None
+    return InputValue(value=float(days)), Dated(p.exact, DT.basis(quote, p, [finding, findings, history]))
+
+
 async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings: str,
-                  history: str) -> tuple[dict[str, tuple[InputValue, Settled]], bool]:
-    """(the model's real values for the open inputs whose quotes lie in their scope, whether the call failed). With
-    no finding unit, lesion inputs are not offered: they are asked."""
+                  history: str) -> tuple[dict[str, tuple[InputValue, Settled]], bool, dict[str, Dated]]:
+    """(the model's real values for the open inputs whose quotes lie in their scope, whether the call failed, the
+    since-study values computed from a date). With no finding unit, lesion inputs are not offered: they are asked."""
     ids = [i.id for i in e.inputs if i.id not in given and (finding or i.scope != "lesion")]
     if not ids:
-        return {}, False
+        return {}, False, {}
     try:
         raw = await _call(SETTLE_SYS, _prompt(e, ids, finding, findings, history))
     except Exception as ex:
         logger.warning("[library.preview] settle %s: %s", type(ex).__name__, str(ex)[:200])
-        return {}, True
+        return {}, True, {}
     out: dict[str, tuple[InputValue, Settled]] = {}
+    dated: dict[str, Dated] = {}
     for item in raw.settled:
         i = e.input(item.input)
         q = item.quote.strip()
         if i is None or i.id not in ids or not q or not _in_scope(i, q, finding, findings, history):
+            continue
+        if i.since_study and DT.parse(q) is not None:      # a date: code converts it, or it is asked
+            got = _since(i, q, finding, findings, history)
+            if got is not None:
+                out[i.id] = (got[0], Settled(input=i.id, value=_show(e, i, got[0]), quote=q))
+                dated[i.id] = got[1]
             continue
         v = _value(i, item, _texts(i, finding, findings, history))
         if v is not None and _hedged_cancer(i, v, q, _texts(i, finding, findings, history)):
             continue                 # a suspicion, about this lesion or another, is never a known cancer: asked
         if v is not None:
             out[i.id] = (v, Settled(input=i.id, value=_show(e, i, v), quote=q))
-    return out, False
+    return out, False, dated
 
 
 def _texts(i: InputDef, finding: str, findings: str, history: str) -> list[str]:
-    """The texts an input's quote may come from: its finding (lesion), else the dictation and the history."""
+    """The texts an input's quote may come from: its finding (lesion), else the dictation and the history; a
+    since-study input all three, its finding first (the lesion checks read texts[0])."""
+    if i.since_study:
+        return [finding, findings, history]
     return [finding] if i.scope == "lesion" else [findings, history]
 
 
@@ -527,6 +567,7 @@ class Drafted:
     quote: str
     tier: Literal["read", "prefilled"]
     why: list[str] = field(default_factory=list)
+    basis: str = ""          # a value computed from a dated study: "from the CT of 12 Mar 2025" (spec §7.12 item 4)
 
 
 def _draft_value(e: Entry, i: InputDef, t: engine.Trace, state: str, g: InputValue | None,
@@ -539,7 +580,8 @@ def _draft_value(e: Entry, i: InputDef, t: engine.Trace, state: str, g: InputVal
                       value=_show(e, i, g) if shown else "", quote=d.quote if drafted and d is not None else "",
                       why=([WHY_ASSUMED] if state == "assumed" else
                            (list(d.why) if d is not None else [WHY_EXAM] if by else []) if state == "prefilled" else []),
-                      by=by if drafted else "", needed=i.id in t.needed, waiting=i.id in t.waiting,
+                      by=by if drafted else "", basis=d.basis if drafted and d is not None else "",
+                      needed=i.id in t.needed, waiting=i.id in t.waiting,
                       options=[*display_options(e, i), NOT_STATED])
 
 
@@ -610,10 +652,11 @@ async def settle_pack(e: Entry, findings: str, history: str, finding: str = "") 
     no_unit = not finding and any(i.scope == "lesion" for i in e.inputs)
     if no_unit:
         logger.info("[library.preview] %s: no finding unit; lesion inputs asked", e.key)
-    model, degraded = await _settle(e, {}, finding, findings, history)
+    model, degraded, dated = await _settle(e, {}, finding, findings, history)
     # every number (read by code from the quote) is put to Jev as stated for its scope: this catches a number of the
-    # wrong time point or role ("was 5 mm, now 9 mm"; swapped volumes); every enum or boolean, as stated by its quote
-    pending = {k: (v, st.quote) for k, (v, st) in model.items()}
+    # wrong time point or role ("was 5 mm, now 9 mm"; swapped volumes); every enum or boolean, as stated by its quote.
+    # A value computed from a dated study is code's own arithmetic on a verbatim date: no Jev claim fits it
+    pending = {k: (v, st.quote) for k, (v, st) in model.items() if k not in dated}
     reasons, jev_failed = await _confirm(e, pending, finding, findings, history) if pending else ({}, False)
     values: dict[str, Drafted] = {}
     for k, (v, q) in pending.items():
@@ -621,6 +664,10 @@ async def settle_pack(e: Entry, findings: str, history: str, finding: str = "") 
         why = _read_reasons(e, i, v, q, _texts(i, finding, findings, history))
         why += [r for r in reasons.get(k, []) if r not in why]
         values[k] = Drafted(v, q, "prefilled" if why else "read", why)
+    for k, d in dated.items():          # exact: read; month or year only: pre-filled, so it never decides alone
+        v, st = model[k]
+        values[k] = Drafted(v, st.quote, "read" if d.exact else "prefilled", [] if d.exact else [WHY_APPROX_DATE],
+                            basis=d.basis)
     return Settlement(values=values, failed=degraded or jev_failed, no_unit=no_unit)
 
 
