@@ -5,7 +5,9 @@ for stack template reports, the gate's confirmed normals (`assumed_normals`). No
 flag shaped like the post-gen check's `value_missing` (`live.check_flag_items`: lane accuracy, cls info, no edit; the
 radiologist decides). Kinds:
 - `template_slot_empty`: a fill-in wording printed with an empty slot ("Average HR:  bpm."), or a literal `{word}`
-  placeholder left in the report.
+  placeholder left in the report. Not flagged when the post-gen backstop already flags that value (`value_missing`,
+  stack reports): every content word of its item is in the slot's line or its template wording (slot names
+  included), so the rail shows the gap once.
 - `fixed_text_missing`: a FIXED unit (sentence by sentence) not in the report. Never flagged when a context rule may
   have settled it and which way is not knowable here: a SUPPRESS on it, a SUPPRESS_SECTION on its section, an
   optional section, or a REPLACE whose WITH wording is in the report (a REPLACE whose wording is absent too: both the
@@ -101,6 +103,24 @@ def _found(report: str, text: str) -> List[Tuple[int, int]]:
     return _find(report, text) if text else []
 
 
+def _line(report: str, start: int, end: int) -> str:
+    k = report.find("\n", end)
+    return report[report.rfind("\n", 0, start) + 1:k if k >= 0 else len(report)]
+
+
+def _value_flagged(inp: ReviewInput, *texts: str) -> bool:
+    """The post-gen backstop already flags a value whose item's content words are all in `texts`."""
+    if not inp.stack:
+        return False
+    words = set().union(*(content_words(t) for t in texts))
+    for e in (inp.artifacts.quality_check or {}).get("review") or []:
+        if isinstance(e, dict) and e.get("kind") == "value_missing":
+            item = content_words(str(e.get("text") or e.get("item") or ""))
+            if item and item <= words:
+                return True
+    return False
+
+
 def gaps(inp: ReviewInput) -> List[Tuple[str, str, Optional[Tuple[int, int]]]]:
     """(kind, text, anchor span or None) of every gap, in KINDS order."""
     st = inp.template_structure
@@ -113,13 +133,15 @@ def gaps(inp: ReviewInput) -> List[Tuple[str, str, Optional[Tuple[int, int]]]]:
     # template_slot_empty
     seen = set()
     for m in _PLACEHOLDER.finditer(report):
-        out.append(("template_slot_empty", m.group(), (m.start(), m.end())))
         seen.add(m.start())
+        if not _value_flagged(inp, _line(report, m.start(), m.end())):
+            out.append(("template_slot_empty", m.group(), (m.start(), m.end())))
     for t in inp.template_text or []:
         for s, e, field in _empty_slots(report, t):
             if s not in seen:
                 seen.add(s)
-                out.append(("template_slot_empty", field, (s, e)))
+                if not _value_flagged(inp, _line(report, s, e), t):
+                    out.append(("template_slot_empty", field, (s, e)))
 
     # fixed_text_missing
     sections = {s.get("name"): s for s in st.get("sections") or [] if isinstance(s, dict)}

@@ -254,3 +254,26 @@ async def test_a_stack_value_missing_reaches_the_rail_once(monkeypatch):
     vm = [it for it in res.items if it.kind == "value_missing"]
     assert len(vm) == 1 and vm[0].detectors == ["post_check_flag"] and vm[0].cls == "info" and vm[0].anchor is None
     assert not [it for it in res.items if it.kind in tg.KINDS]       # no second source for the same value
+
+
+def _with_value_missing(i, *names):
+    qc = {"review": [{"kind": "value_missing", "text": n, "message": f"Required value {n} not found in the report"}
+                     for n in names]}
+    return i.model_copy(update={"stack": True, "artifacts": i.artifacts.model_copy(update={"quality_check": qc})})
+
+
+def test_an_empty_slot_whose_value_the_backstop_flags_is_shown_once():
+    report = REPORT.replace("Average HR: 58 bpm.", "Average HR:  bpm.")
+    assert ("template_slot_empty", "Average HR") in _flags(_inp(report))[0]
+    flags, _, _ = _flags(_with_value_missing(_inp(report), "Average HR"))
+    assert not [f for f in flags if f[0] == "template_slot_empty"]
+    # a slot name counts too ("Average HR: {rate} bpm." holds "rate")
+    assert not [f for f in _flags(_with_value_missing(_inp(report), "rate"))[0] if f[0] == "template_slot_empty"]
+
+
+def test_an_empty_slot_stays_flagged_when_the_missing_value_is_another_one():
+    report = REPORT.replace("Average HR: 58 bpm.", "Average HR:  bpm.")
+    flags, _, _ = _flags(_with_value_missing(_inp(report), "LVEF"))
+    assert ("template_slot_empty", "Average HR") in flags
+    i = _with_value_missing(_inp(report), "Average HR").model_copy(update={"stack": False})
+    assert ("template_slot_empty", "Average HR") in _flags(i)[0]     # not a stack report: no backstop flag on the rail
