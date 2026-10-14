@@ -13,7 +13,7 @@
 	import { QUIET_MAX, anchorRegion, answerLabel, isFlagged as flaggedIn, openCount, quietLine, rowSentences, unansweredChecks, waiting } from './items';
 	import type { StackItem, StackUnit, ValueChip, ViewRow } from './types';
 	import ValueChips from './ValueChips.svelte';
-	import { SIDE_KIND } from './sides';
+	import { SIDE_KIND, type NotReported } from './sides';
 	import { openCount as openValueChips } from './values';
 
 	export type ConclusionState =
@@ -43,6 +43,7 @@
 		structures = {},
 		flagged = {},
 		notReported = {},
+		sideFailed = false,
 		confirmNote = null,
 		namedNormals = false,
 		skipped = [],
@@ -120,9 +121,11 @@
 		structures?: Record<string, Record<string, string[]>>;
 		/** Assumed normals the dictation may conflict with (review R1): kept, shown with an amber "check" marker. */
 		flagged?: Record<string, string[]>;
-		/** Region -> normals left out because they conflict with the dictation (contradicted, or no side dictated):
-		 *  listed struck through in that region's card (side brief 2026-10-14). */
-		notReported?: Record<string, string[]>;
+		/** Region -> normals left out, grouped by why (conflict, side not stated, side not checked): listed struck
+		 *  through in that region's card (side brief 2026-10-14, review F7). */
+		notReported?: NotReported;
+		/** The side check failed on the last answer: its open asks were kept (review F2); the Confirm bar says so. */
+		sideFailed?: boolean;
 		/** Why the last Confirm press did not gate (a re-checked rule added a normal; the dictation moved on). */
 		confirmNote?: string | null;
 		/** No sheet this session: untouched regions are confirmed by name (v2). With a sheet, only sentences are. */
@@ -1022,6 +1025,7 @@
 		{@const flagged = [...checksIn(g.rows), ...regionChecks(ownMembers(g))]}
 		{@const normals = ownMembers(g).flatMap((m) => keptAssumed(m))}
 		{@const struck = ownMembers(g).flatMap((m) => notReported[m] ?? [])}
+		{@const struckWhy = [...new Set(struck.map((x) => x.why))].map((why) => ({ why, sentences: struck.filter((x) => x.why === why).flatMap((x) => x.sentences) }))}
 		<section
 			animate:flip={{ duration: ms }}
 			in:fade={{ duration: ms }}
@@ -1054,13 +1058,13 @@
 					{@render sentences(normals, g.name, ownMembers(g))}
 				</p>
 			{/if}
-			{#if struck.length}
-				<!-- Normals left out because they conflict with the dictation (side brief 2026-10-14): quiet, struck through -->
+			{#each struckWhy as grp (grp.why)}
+				<!-- Normals left out, one quiet struck line per reason (side brief 2026-10-14, review F7) -->
 				<p class="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-1 text-xs text-gray-500" data-not-reported={g.name}>
-					<span class="text-[10px] uppercase tracking-wide text-gray-500/80">Not reported (conflicts with dictation)</span>
-					{#each struck as x (x)}<s class="decoration-gray-500/70">{x}</s>{/each}
+					<span class="text-[10px] uppercase tracking-wide text-gray-500/80">Not reported ({grp.why})</span>
+					{#each grp.sentences as x (x)}<s class="decoration-gray-500/70">{x}</s>{/each}
 				</p>
-			{/if}
+			{/each}
 		</section>
 	{/each}
 
@@ -1304,6 +1308,7 @@
 			{#if !hasConclusion}<span class="rounded bg-white/5 px-1.5 py-0.5 text-gray-400">no conclusion yet</span>{/if}
 			{#if guidelinesUnresolved.length}<button type="button" class="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-200 hover:bg-amber-500/25" data-gate="guidelines"
 					onclick={() => onOpenGuideline(guidelinesUnresolved[0].key)}>{guidelinesUnresolved.length} guideline{guidelinesUnresolved.length === 1 ? '' : 's'} unresolved</button>{/if}
+			{#if sideFailed}<span class="rounded bg-rose-500/15 px-1.5 py-0.5 text-rose-200" data-gate="sides">side check unavailable: open “Which side?” questions kept</span>{/if}
 			{#if confirmNote}<span class="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-200" role="status" data-gate="note">{confirmNote}</span>{/if}
 		</p>
 		<button

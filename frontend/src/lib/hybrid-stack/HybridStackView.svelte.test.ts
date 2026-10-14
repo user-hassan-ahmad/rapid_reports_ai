@@ -642,12 +642,16 @@ describe('HybridStackView v2', () => {
 	it('a region with findings lists the normals left out for conflicting with the dictation, struck through', async () => {
 		const units = [u(0, 'A 12 mm cyst in the left kidney.', 'Kidneys', { abnormal: true })];
 		render(HybridStackView, { ...base(), units, assumed: { Kidneys: ['The right kidney is normal.'] },
-			notReported: { Kidneys: ['The left kidney is normal.'], Liver: ['The liver is normal.'] } });
+			notReported: { Kidneys: [{ why: 'conflicts with dictation', sentences: ['The left kidney is normal.'] }, { why: 'side not stated', sentences: ['No right hydronephrosis.'] }],
+				Liver: [{ why: 'conflicts with dictation', sentences: ['The liver is normal.'] }] }, sideFailed: true });
 		const line = page.getByRole('region', { name: 'Kidneys' }).getByText('Not reported (conflicts with dictation)');
 		await expect.element(line).toBeInTheDocument();
 		const struck = page.getByText('The left kidney is normal.');
 		await expect.element(struck).toBeInTheDocument();
 		expect(struck.element().closest('s')).not.toBeNull();
 		await expect.element(page.getByText('The liver is normal.')).not.toBeInTheDocument();   // no card: nothing shown
+		// a side drop is not a conflict (review F7); a failed side check says so at the Confirm bar (review F2)
+		await expect.element(page.getByRole('region', { name: 'Kidneys' }).getByText('Not reported (side not stated)')).toBeInTheDocument();
+		await expect.element(page.getByText(/side check unavailable/)).toBeInTheDocument();
 	});
 });

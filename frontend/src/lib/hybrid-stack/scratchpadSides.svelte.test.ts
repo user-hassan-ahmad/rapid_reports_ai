@@ -12,6 +12,7 @@ const NORMALS = { Kidneys: [R, L], Liver: ['The liver is normal.'] };
 const SIDELESS = 'A simple cyst in the kidney.';
 const SIDED = 'A simple cyst in the left kidney.';
 const calls: { name: string; body?: any }[] = [];
+const state = { sidesFail: false };
 vi.mock('$lib/hybrid-stack/api', async (orig) => {
 	const real: any = await orig();
 	const stub = (name: string, reply: (body: any) => any) => vi.fn(async (_t: unknown, body?: any) => {
@@ -27,11 +28,16 @@ vi.mock('$lib/hybrid-stack/api', async (orig) => {
 		postAssumed: stub('assumed', (b) => {
 			const sideless = b.dictation.includes(SIDELESS);
 			const sided = b.dictation.includes(SIDED);
+			// the side call failed: Jev's contradiction kept the right side and nothing was asked
+			if (state.sidesFail) return { assumed: { Kidneys: [R], Liver: ['The liver is normal.'] }, flagged: {},
+				dropped: { Kidneys: [{ sentence: L, reason: 'contradicted' }] }, side_asks: [], side_choices: [], side_failed: true, ms: 1, error: null };
 			return {
 				assumed: { Kidneys: sideless ? [] : sided ? [R] : [R, L], Liver: ['The liver is normal.'] }, flagged: {},
 				dropped: { Kidneys: sideless ? [{ sentence: R, reason: 'side' }, { sentence: L, reason: 'contradicted' }]
 					: sided ? [{ sentence: L, reason: 'contradicted' }] : [] },
-				side_asks: sideless ? [{ region: 'Kidneys', sentences: [R, L], label: 'The right/left kidney is normal.', score: 0.9 }] : [],
+				side_asks: sideless ? [{ region: 'Kidneys', sentences: [R, L], label: 'The right/left kidney is normal.', choice: 'no_side', score: 0.9 }] : [],
+				side_choices: [{ region: 'Kidneys', sentences: [R, L], label: 'The right/left kidney is normal.', choice: sideless ? 'no_side' : 'left',
+					score: 0.9, applied: sideless }],
 				ms: 1, error: null
 			};
 		}),
@@ -77,8 +83,44 @@ describe('scratchpad: "Which side?" on a quick session', () => {
 		await confirm.click();
 		await expect.poll(() => onStackGate.mock.calls.some(([g]) => g !== null), { timeout: 3000 }).toBe(true);
 		const gate = onStackGate.mock.calls.find(([g]) => g !== null)![0];
-		expect(gate.side_asks).toEqual([{ region: 'Kidneys', pairs: ['The right/left kidney is normal.'], answered_by: 'dictated' }]);
+		expect(gate.side_asks).toEqual([{ region: 'Kidneys', pair: 'The right/left kidney is normal.', score: 0.9, answered_by: 'sided' }]);
+		expect(gate.side_failed).toBe(false);
 		expect(gate.jev_dropped.Kidneys).toEqual([{ sentence: L, reason: 'contradicted' }]);
+		expect(gate.side_choices).toEqual([{ region: 'Kidneys', pair: 'The right/left kidney is normal.', choice: 'left', applied: false }]);
 		expect(gate.assumed.Kidneys).toEqual([R]);
+	});
+
+	it('a failed side call keeps the open ask, its sentences out, and Confirm held; the gate says it failed (review F2)', async () => {
+		calls.length = 0;
+		state.sidesFail = false;
+		const onStackGate = vi.fn();
+		const props: any = { hybridStack: true, polishMode: 'clean', scanType: 'CT abdomen', clinicalHistory: 'Pain.', onStackGate };
+		const r = render(DictationScratchpad, props);
+		await r.rerender({ ...props, stackRegions: ['Kidneys', 'Liver'].map((name) => ({ name, includes: '' })),
+			stackGroups: ['Kidneys', 'Liver', 'Other findings', 'General', 'Conclusion'],
+			stackSchemaMeta: { key: 'k', source: 'library', provisional: false } });
+		await expect.poll(() => assumedCalls().length, { timeout: 3000 }).toBe(1);
+		(r.component as any).reset(`${SIDELESS} Renal cyst.`);
+		const card = page.getByRole('region', { name: 'Kidneys' });
+		await expect.element(card.getByText('Which side?'), { timeout: 8000 }).toBeInTheDocument();
+		state.sidesFail = true;
+		const before = assumedCalls().length;
+		(r.component as any).reset(`${SIDELESS} The liver is normal. Renal cyst.`);
+		await expect.poll(() => assumedCalls().length, { timeout: 8000 }).toBeGreaterThan(before);
+		await expect.element(page.getByText(/side check unavailable/), { timeout: 8000 }).toBeInTheDocument();
+		await expect.element(card.getByText('Which side?')).toBeInTheDocument();
+		await expect.element(card.getByText('Not reported (side not stated)')).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Confirm · 1 to resolve' }), { timeout: 8000 }).toBeEnabled();
+		// kept without a side: Confirm gates and records the failure
+		await card.getByRole('button', { name: 'Keep without side' }).click();
+		const confirm = page.getByRole('button', { name: 'Confirm', exact: true });
+		await expect.element(confirm, { timeout: 8000 }).toBeEnabled();
+		await confirm.click();
+		await expect.poll(() => onStackGate.mock.calls.some(([g]) => g !== null), { timeout: 3000 }).toBe(true);
+		const gate = onStackGate.mock.calls.find(([g]) => g !== null)![0];
+		expect(gate.side_failed).toBe(true);
+		expect(gate.assumed.Kidneys ?? []).not.toContain(R);
+		expect(gate.side_asks).toEqual([{ region: 'Kidneys', pair: 'The right/left kidney is normal.', score: 0.9, answered_by: 'kept_without_side' }]);
+		state.sidesFail = false;
 	});
 });
