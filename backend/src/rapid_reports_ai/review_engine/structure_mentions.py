@@ -107,6 +107,24 @@ def structures(inp: ReviewInput) -> List[str]:
     return list(dict.fromkeys(out))
 
 
+def structures_of(inp: ReviewInput, sentences: List[str]) -> set:
+    """The structures the given template sentences are about: a NORMAL's own [structure]; an untagged NEGATIVE's
+    paragraph's COVERS only when it names exactly one structure (else none: never guessed)."""
+    st = inp.template_structure
+    if not isinstance(st, dict) or not sentences:
+        return set()
+    key = lambda t: " ".join((t or "").lower().split())
+    want = {key(s) for s in sentences}
+    covers = {p.get("id"): [c for c in p.get("covers") or [] if isinstance(c, str)]
+              for p in st.get("paragraphs") or [] if isinstance(p, dict)}
+    out = {n.get("structure") for n in st.get("normals") or []
+           if isinstance(n, dict) and n.get("structure") and key(n.get("text")) in want}
+    for n in st.get("negatives") or []:
+        if isinstance(n, dict) and key(n.get("text")) in want and len(covers.get(n.get("paragraph"), [])) == 1:
+            out.add(covers[n["paragraph"]][0])
+    return out
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -151,5 +169,5 @@ async def mention_items(inp: ReviewInput, run_id: str, ask: Optional[Ask] = None
     return out, log
 
 
-__all__ = ["KIND", "NOT_MENTIONED", "MAX_NOTES", "question", "state", "title", "structures", "ask_mentioned",
+__all__ = ["KIND", "NOT_MENTIONED", "MAX_NOTES", "question", "state", "title", "structures", "structures_of", "ask_mentioned",
            "mention_items"]

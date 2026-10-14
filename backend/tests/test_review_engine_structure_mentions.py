@@ -223,3 +223,47 @@ async def test_an_old_stored_structure_places_a_fixed_line_through_a_rule_that_t
     ask, seen = _ask({})
     await sm.mention_items(i, RUN, ask=ask)
     assert seen["names"] == ["contrast", "lungs"]
+
+
+def test_structures_of_missing_normals_map_normals_and_unambiguous_negatives_only():
+    i = _inp()
+    assert sm.structures_of(i, ["LMS: Normal."]) == {"LMS"}
+    # "Other Findings" covers eight structures: an untagged negative there is ambiguous
+    assert sm.structures_of(i, ["No pleural or pericardial effusion."]) == set()
+    assert sm.structures_of(i, ["Not a template sentence."]) == set()
+
+
+def test_structures_of_an_untagged_negative_in_a_one_structure_paragraph():
+    from rapid_reports_ai.review_engine.template_text import template_inputs
+    sheet = FIXED_USE_SHEET + 'NEGATIVE "No pleural effusion."\n'
+    texts, st = template_inputs({"generation_mode": "skill_sheet_guided", "skill_sheet": sheet})
+    i = _inp().model_copy(update={"template_text": texts, "template_structure": st})
+    assert sm.structures_of(i, ["No pleural effusion."]) == {"lungs"}
+
+
+@pytest.mark.asyncio
+async def test_run_review_drops_the_note_of_a_structure_whose_confirmed_normal_is_flagged(monkeypatch):
+    from rapid_reports_ai import report_reconcile as rc
+    from rapid_reports_ai.review_engine import adjudicator as adj
+    from rapid_reports_ai.review_engine import engine, negatives
+    from tests.review_engine_fakes import jev
+    from tests.test_review_engine_template_gaps import NORMALS
+
+    async def no_neg(inp_, run_id, types=None, owned=None):
+        return [], {"candidates": []}
+
+    async def judge(inp_, groups):
+        return [adj.Outcome(group=g) for g in groups]
+
+    async def ask(report, names):
+        return [0.05 if n in ("LMS", "BONES") else 0.9 for n in names]
+    monkeypatch.setattr(rc, "_jev", jev())
+    monkeypatch.setattr(negatives, "classify_negatives", no_neg)
+    monkeypatch.setattr(adj, "adjudicate", judge)
+    monkeypatch.setattr(sm, "ask_mentioned", ask)
+    res = await engine.run_review(_inp(REPORT.replace(NORMALS[0] + "\n", "")), RUN)
+    kinds = [(i.kind, i.evidence.get("structure") or i.evidence.get("text")) for i in res.items
+             if i.kind in (sm.KIND, "assumed_normal_missing")]
+    assert ("assumed_normal_missing", "LMS: Normal.") in kinds
+    assert (sm.KIND, "BONES") in kinds and (sm.KIND, "LMS") not in kinds
+    assert res.run["template_gaps"]["mention_dropped_for_gap"] == 1

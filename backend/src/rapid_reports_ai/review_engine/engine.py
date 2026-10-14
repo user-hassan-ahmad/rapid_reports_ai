@@ -773,6 +773,13 @@ async def run_review(inp: ReviewInput, run_id: str) -> ReviewResult:
         errors["template_gaps"] = f"{type(e).__name__}: {str(e)[:200]}"
     try:                                 # the quiet notes (started with the run; mention_items never raises)
         notes, note_log = await mention_task
+        # a structure whose confirmed normal is already flagged missing gets no second, quieter note
+        flagged = structure_mentions.structures_of(
+            inp, [it.evidence.get("text") for it in items if it.kind == "assumed_normal_missing" and it.evidence])
+        kept = [it for it in notes if (it.evidence or {}).get("structure") not in flagged]
+        if note_log is not None and len(kept) != len(notes):
+            note_log = {**note_log, "mention_dropped_for_gap": len(notes) - len(kept)}
+        notes = kept
         for it in notes:
             it.engine_version = ENGINE_VERSION
         items += notes
