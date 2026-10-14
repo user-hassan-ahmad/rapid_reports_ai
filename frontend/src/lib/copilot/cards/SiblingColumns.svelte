@@ -170,9 +170,10 @@
 	}
 	.cp-col-line {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: baseline;
 		justify-content: space-between;
-		gap: 8px;
+		gap: 4px 8px;
 		margin-bottom: 2px;
 	}
 	.cp-sib-pills {
@@ -199,9 +200,15 @@
 	}
 	.cp-col-marks {
 		display: inline-flex;
+		flex-wrap: wrap;
 		align-items: center;
-		gap: 6px;
-		flex-shrink: 0;
+		gap: 4px 6px;
+		min-width: 0;
+		max-width: 100%;
+	}
+	.cp-col-marks > :global(*) {
+		min-width: 0;
+		max-width: 100%;
 	}
 	.cp-col-name {
 		font-weight: 600;

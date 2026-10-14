@@ -104,6 +104,25 @@ describe('SiblingColumns', () => {
 		const pills = [...host.querySelectorAll('.cp-sib-pill, .cp-sib-pill .cp-pill, .cp-sib-pill .cp-chip')];
 		expect(pills.length).toBeGreaterThan(2);
 		for (const el of pills) expect(el.getBoundingClientRect().right).toBeLessThanOrEqual(cardRight + 0.5);
-		host.remove();
+	});
+
+	it('open at 280px: each column line keeps its pill and marks inside the card', async () => {
+		const long = outcome({ headline: 'Significant solid nodule growth', action: 'Investigate further; consider definitive management', category: 'workup', normal: false });
+		const many = preview({ proposal: long, scope_doubt: ['exclusion'], assumptions: [
+			{ input: 'age', label: 'Age', value: '18 years or over', decisive: true, kind: 'eligibility' },
+			{ input: 'p', label: 'Proven malignant', value: 'No', decisive: true, kind: 'eligibility' },
+			{ input: 's', label: 'Spiculation', value: 'No', decisive: false, kind: 'sign' }] } as never);
+		const v = view({ open: true, columns: {
+			[c.key]: { loading: false, error: null, result: result(c, many) },
+			[bts.key]: { loading: false, error: null, result: result(bts, many) }
+		} });
+		const host = document.createElement('div');
+		host.style.width = '280px';
+		document.body.appendChild(host);
+		render(SiblingColumns, { target: host, props: base({ view: v }) });
+		await expect.poll(() => host.querySelectorAll('.cp-col-line .cp-pill').length).toBe(2);
+		const cardRight = host.querySelector('.cp-card')!.getBoundingClientRect().right;
+		for (const el of host.querySelectorAll('.cp-col-line .cp-pill, .cp-col-line .cp-chip'))
+			expect(el.getBoundingClientRect().right).toBeLessThanOrEqual(cardRight + 0.5);
 	});
 });
