@@ -656,11 +656,8 @@ def test_stack_brief_keeps_the_report_flow_and_says_labels_are_for_tracing():
 
 
 def test_stack_fallback_recommendations_rule():
-    from rapid_reports_ai.quick_report_brief import RECS_LINE
-    assert RECS_LINE == "Recommendations (selected by the radiologist):"
+    from rapid_reports_ai.hybrid_stack.session_rules import RECOMMENDATIONS_RULE, SELECTED_RECS
+    assert SELECTED_RECS == "Recommendations (selected by the radiologist):"
     for conclusion in ("Complex cyst.", ""):   # the rule stands with or without a confirmed conclusion
         b = qb.stack_fallback("", conclusion)
-        assert "Scratchpad Recommendations" in b.text and RECS_LINE in b.text
-        assert "adding none and dropping none" in b.text and "write no recommendations section" in b.text
-        assert "headed `RECOMMENDATIONS:` on its own line after the impression" in b.text
-        assert "the one exception to the rules that recommendations sit in the impression" in b.text
+        assert RECOMMENDATIONS_RULE in b.text and "Scratchpad Recommendations" not in b.text
