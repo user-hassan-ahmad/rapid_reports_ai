@@ -1082,8 +1082,8 @@
 					<!-- Regions that share the same dictated words share one line. -->
 					{#each [...new Set(said.map((r) => dictatedNormalWords.get(r)?.join(' ') ?? ''))] as words (words)}
 						<div class="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
-							{#each said.filter((r) => (dictatedNormalWords.get(r)?.join(' ') ?? '') === words).flatMap(saidChipNames) as r (r)}
-								<span class="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-200" data-state="dictated">{r}</span>
+							{#each said.filter((r) => (dictatedNormalWords.get(r)?.join(' ') ?? '') === words).flatMap((r) => saidChipNames(r).map((name) => ({ region: r, name }))) as c (`${c.region}\u0001${c.name}`)}
+								<span class="shrink-0 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-emerald-200" data-state="dictated">{c.name}</span>
 							{/each}
 							{#each (said.find((r) => (dictatedNormalWords.get(r)?.join(' ') ?? '') === words) ? dictatedNormalWords.get(said.find((r) => (dictatedNormalWords.get(r)?.join(' ') ?? '') === words) ?? '') ?? [] : []) as w (w)}
 								{@const src = sourceOf(w)}

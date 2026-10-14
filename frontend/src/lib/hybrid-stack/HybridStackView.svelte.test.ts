@@ -210,6 +210,34 @@ describe('HybridStackView v2', () => {
 		await expect.element(tray.getByText('Spleen · will be reported')).not.toBeInTheDocument();
 	});
 
+	it('× inside an expanded structure chip removes exactly that sentence', async () => {
+		const onRemoveSentence = vi.fn();
+		render(HybridStackView, {
+			...base(), onRemoveSentence, units: [],
+			assumed: { Spleen: ['Normal cardiac chambers.', 'No lung nodule.', 'No osseous lesion.'] },
+			structures: { Spleen: { 'Cardiac chambers': ['Normal cardiac chambers.'], Lungs: ['No lung nodule.'], Bones: ['No osseous lesion.'] } },
+			assumedReady: true
+		});
+		const tray = page.getByRole('region', { name: 'Normal regions' });
+		await tray.getByRole('button', { name: 'Bones', exact: true }).click();
+		await page.getByLabelText('Remove No osseous lesion.').click();
+		expect(onRemoveSentence).toHaveBeenCalledTimes(1);
+		expect(onRemoveSentence).toHaveBeenCalledWith('No osseous lesion.');
+	});
+
+	it('a structure named like another dictated region does not clash with it', async () => {
+		render(HybridStackView, {
+			...base(),
+			units: [u(0, 'Normal.', 'Spleen', { covers: ['Spleen', 'Kidneys'] })],
+			assumed: { Spleen: ['No bone lesion.'] },
+			structures: { Spleen: { Kidneys: ['No renal stone.'], Bones: ['No bone lesion.'] } },
+			assumedReady: true
+		});
+		const tray = page.getByRole('region', { name: 'Normal regions' });
+		await expect.element(tray.getByText('Kidneys', { exact: true }).nth(1)).toHaveAttribute('data-state', 'dictated');
+		await expect.element(tray.getByRole('button', { name: 'Bones', exact: true })).toBeInTheDocument();
+	});
+
 	it('a typed finding is appended on Enter', async () => {
 		const onAppend = vi.fn();
 		render(HybridStackView, { ...base(), onAppend, units: [] });
