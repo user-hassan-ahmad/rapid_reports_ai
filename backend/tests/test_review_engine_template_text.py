@@ -186,3 +186,12 @@ def test_input_from_parts_carries_template_text_for_templated_reports_only():
     assert q.template_text == []
     assert engine.input_from_parts("00000000-0000-0000-0000-000000000001", "templated", data, cand, None
                                    ).template_text == []
+
+
+def test_a_slot_value_never_crosses_a_sentence_end_but_holds_a_decimal():
+    report = "The liver shows a new 3 cm mass. The spleen is normal."
+    m = tt.match(report, ["The {organ} is normal."])
+    assert [report[s:e] for s, e in m.spans] == ["The ", " is normal"]
+    assert report.index("The spleen") == m.spans[0][0]
+    m2 = tt.match("The mass measures 3.5 cm in length.", ["The mass measures {size} in length."])
+    assert len(m2.spans) == 2 and m2.unmatched == []

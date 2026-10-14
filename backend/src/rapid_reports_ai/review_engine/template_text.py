@@ -17,7 +17,9 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 _SLOT = re.compile(r"\{[^{}\n]*\}")
-_SLOT_VALUE = r"([^\n]{1,60}?)"          # a slot inside a unit: a short value on one line, non-greedy
+# a slot inside a unit: a short value on one line, non-greedy, never across a sentence end ("." then a space or the
+# end; a decimal point such as "3.5" is inside the value)
+_SLOT_VALUE = r"((?:[^\n.]|\.(?=\S)){1,60}?)"
 _WORD = re.compile(r"[A-Za-z0-9]+")
 _SENTENCE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9{])")
 MIN_WORDS = 2                            # a unit with fewer literal words owns nothing (too generic to be the template's)
