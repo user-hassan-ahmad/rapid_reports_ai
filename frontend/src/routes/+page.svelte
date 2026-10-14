@@ -45,6 +45,7 @@ import TemplateWizard from './components/wizard/TemplateWizard.svelte';
 		using_user_keys?: { deepgram: boolean };  // backward compat, same as deepgram_configured
 		dictation_v2?: boolean; // the dictation package is allowed on this server (RR_DICTATION_V2)
 		hybrid_stack?: boolean; // the hybrid dictation stack is on (RR_HYBRID_STACK, with the dictation package)
+		stack?: boolean; // the scratchpad stack (RR_STACK, spec §9.1); absent on an old server = off
 		hybrid_stack_shadow_rate?: number; // share of sessions that build the old Structured text in shadow
 		protocol_library?: boolean; // quick reports pick a curated protocol (RR_PROTOCOL_LIBRARY, with the hybrid stack)
 		stack_copilot?: boolean; // the server allows the guideline Copilot (RR_STACK_COPILOT, with the stack)
@@ -360,6 +361,7 @@ let templatedModel = 'claude'; // Track model for template editor
 						using_user_keys: data.using_user_keys || { deepgram: data.deepgram_configured || false },
 						dictation_v2: data.dictation_v2 === true,
 						hybrid_stack: data.hybrid_stack === true,
+						stack: data.stack === true, // the one switch (RR_STACK); the tabs latch it at Set up workspace
 						protocol_library: data.protocol_library === true,
 						hybrid_stack_shadow_rate: typeof data.hybrid_stack_shadow_rate === 'number' ? data.hybrid_stack_shadow_rate : 0.25,
 						stack_copilot: data.stack_copilot === true
