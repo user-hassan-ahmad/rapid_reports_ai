@@ -51,3 +51,9 @@ export function statusFetcher(token: string | null): () => Promise<Response> {
 export function primeStackMode(status: { stack?: unknown } | null | undefined): void {
 	if (stackOn(status)) stackMode.set(true);
 }
+
+/** The legacy Copilot (ReportEnhancementSidebar and its quick-actions strip: Guidelines, QA Audit, Ask AI, Compare)
+ *  runs /enhance and /api/audit; in stack mode neither shows (D13). */
+export function showLegacyCopilot(stack: boolean): boolean {
+	return !stack;
+}

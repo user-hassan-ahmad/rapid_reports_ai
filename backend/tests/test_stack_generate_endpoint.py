@@ -182,3 +182,27 @@ def test_a_save_failure_streams_no_candidate(authed, fakes, monkeypatch):
     monkeypatch.setattr(SR, "create_report", broken)
     events = _events(authed.post("/api/canvas/stack/generate", json=_body()))
     assert events == [("error", {"message": "The report couldn't be saved. Please try again."})]
+
+
+def test_reconcile_reads_only_dictation_and_taps(authed, db_session, monkeypatch):
+    seen = {}
+
+    async def reconcile(removed, said):
+        seen["said"] = said
+        return list(removed), []
+
+    async def quick(**kw):
+        return {"report_content": "FINDINGS\nLiver normal.", "description": "d", "model_used": "m",
+                "quality_check": {"enabled": True, "review": []}}
+
+    async def guard(report, removed, plain):
+        return report, [], []
+
+    monkeypatch.setattr(SR, "reconcile", reconcile)
+    monkeypatch.setattr(SR, "generate_quick_report", quick)
+    monkeypatch.setattr(SR, "guard", guard)
+    monkeypatch.setattr(SR, "schedule_review", lambda rid: None)
+    body = _body()
+    body["gate"]["assumed"] = {"Kidneys": ["The ureters are not dilated."]}
+    _events(authed.post("/api/canvas/stack/generate", json=body))
+    assert seen["said"] == "Liver normal."

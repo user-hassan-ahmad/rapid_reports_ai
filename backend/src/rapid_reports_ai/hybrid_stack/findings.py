@@ -76,6 +76,12 @@ class Statements:
     block: str
     parts: list[str] = field(default_factory=list)   # plain statements, no labels, no removed sentence
     conclusion: str = ""
+    said_parts: list[str] = field(default_factory=list)   # the radiologist's own units and tapped rows only
+
+    def said(self) -> str:
+        """What may override an earlier removal (D12, spec §7 step 0): dictated units and tapped rows, never an
+        assumed normal, a value or the conclusion."""
+        return "\n".join(p for p in self.said_parts if p.strip())
 
     def plain(self) -> str:
         return "\n".join(p for p in self.parts if p.strip())
@@ -104,10 +110,12 @@ def findings_block(units: list[StackUnit], groups: list[str], gate: GateRecord,
     standalone: list[str] = []
     plain: list[str] = [i.text for i in items if i.group != CONCLUSION]
     plain += [u.text for u in units if u.group is None and not u.heading]
+    said = list(plain)
     for it in gate.items:
         if it.answered_by != "tap" or not it.sentences:
             continue
         plain += it.sentences
+        said += it.sentences
         if it.region in groups and (dictated(it.region) or it.kind != "referral"):
             extra.setdefault(it.region, []).append(f"{ANSWERED} {' '.join(it.sentences)}")
         else:
@@ -142,7 +150,7 @@ def findings_block(units: list[StackUnit], groups: list[str], gate: GateRecord,
         parts.append(f"DO NOT ASSERT (removed by the radiologist): {' '.join(removed_list)}")
     gone = set(removed_list)
     return Statements(block="\n\n".join(p for p in parts if p),
-                      parts=[p for p in plain if p not in gone], conclusion=conclusion)
+                      parts=[p for p in plain if p not in gone], conclusion=conclusion, said_parts=said)
 
 
 class FromUnits(BaseModel):

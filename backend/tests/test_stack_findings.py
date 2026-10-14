@@ -45,3 +45,12 @@ def test_block_and_plain_use_the_reconciled_removed_list():
     gate = GateRecord.model_validate({"removed": ["No ascites."]})
     st = findings_block(units, ["Peritoneum"], gate, removed=[])
     assert "DO NOT ASSERT" not in st.block and st.plain() == "No ascites."
+
+
+def test_said_is_only_the_radiologists_units_and_taps():
+    c = next(c for c in GOLDEN if c["name"] == "rows_assumed_conclusion_removed")
+    st = findings_block(_units(c), c["groups"], GateRecord.model_validate(c["gate"]), removed=[])
+    said = st.said()
+    assert "Liver 18 cm." in said and "No focal lesion." in said and "No appendicitis." in said
+    assert "Portal vein patent." not in said and "Spleen normal." not in said   # assumed normals never override
+    assert "Hepatomegaly." not in said                                         # nor does the conclusion

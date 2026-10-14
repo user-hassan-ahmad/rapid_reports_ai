@@ -64,7 +64,7 @@ async def run(req, user, db: Session) -> AsyncIterator[dict]:
     if req.gate.findings_hash is not None and req.gate.findings_hash != findings_hash(req.units):
         raise StackError("The scratchpad changed after Confirm. Confirm again.")
     # 1 removals the dictation has since stated go first (dictation wins), then the statements on the reconciled list
-    said = findings_block(req.units, req.groups, req.gate, removed=[]).plain()
+    said = findings_block(req.units, req.groups, req.gate, removed=[]).said()   # units and taps only
     removed, kept_by_dictation = await reconcile(list(req.gate.removed), said)
     st = findings_block(req.units, req.groups, req.gate, removed=removed)
     plain = st.plain()

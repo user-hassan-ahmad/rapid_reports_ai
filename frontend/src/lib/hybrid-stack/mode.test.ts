@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { latchStackMode, primeStackMode, stackMode, stackOn, statusFetcher } from './mode';
+import { latchStackMode, primeStackMode, showLegacyCopilot, stackMode, stackOn, statusFetcher } from './mode';
 
 describe('latched stack mode', () => {
 	it('test_latch_retries_and_never_falls_back', async () => {
@@ -46,5 +46,9 @@ describe('latched stack mode', () => {
 		const init = f.mock.calls[0][1] ?? {};
 		expect(init.signal).toBeInstanceOf(AbortSignal);
 		vi.unstubAllGlobals();
+	});
+	it('the legacy Copilot sidebar and its quick-actions strip never show in stack mode (D13)', () => {
+		expect(showLegacyCopilot(true)).toBe(false);
+		expect(showLegacyCopilot(false)).toBe(true);
 	});
 });
