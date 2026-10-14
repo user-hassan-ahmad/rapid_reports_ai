@@ -589,13 +589,22 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		if (!live()) return;
 		const card = find(ref);
 		if (!card || card.needs_modality) return;
+		const already = views[ref]?.open === true;
 		patch(ref, { open: true });
 		wanted.add(ref);
 		for (const key of columnKeys(card)) wanted.add(`${ref}#${key}`);
 		const v = views[ref];
-		if (card.siblings.length) for (const key of columnsToFetch(card, v, false)) void fetchColumn(card, key);
-		else if (!v.loading && !v.result && !v.error) void fetchCard(card);
-		publish();
+		let fetching = false;
+		if (card.siblings.length)
+			for (const key of columnsToFetch(card, v, false)) {
+				void fetchColumn(card, key);
+				fetching = true;
+			}
+		else if (!v.loading && !v.result && !v.error) {
+			void fetchCard(card);
+			fetching = true;
+		}
+		if (!already || fetching) publish(); // reopening an open, loaded card changes nothing: no republish (final review C-1)
 	}
 
 	function retry(ref: string) {

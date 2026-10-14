@@ -580,6 +580,18 @@ describe('HybridStackView v2', () => {
 		await expect.element(confirm).toBeEnabled();
 	});
 
+	it('a guideline walk stop opens its card once, even when the parent rebuilds the list on every open (final review C-1)', async () => {
+		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true }), u(1, 'Simple cyst.', 'Conclusion')];
+		let r: ReturnType<typeof render>;
+		const onOpenGuideline = vi.fn(() => r.rerender({ ...props, guidelinesUnresolved: [{ key: 'k', name: 'BTS 2015' }] }));   // a new array each time, as the session's publish does
+		const props = { ...base(), units, conclusion: { kind: 'dictated' } as const, onOpenGuideline };
+		r = render(HybridStackView, { ...props, guidelinesUnresolved: [{ key: 'k', name: 'BTS 2015' }] });
+		await page.getByRole('button', { name: 'Confirm · 1 to resolve' }).click();
+		await expect.element(page.getByText('Guideline unresolved · BTS 2015')).toBeInTheDocument();
+		await new Promise((res) => setTimeout(res, 200));
+		expect(onOpenGuideline).toHaveBeenCalledTimes(1);
+	});
+
 	it('guidelines unresolved (§7.12): each is a walk stop that blocks Confirm and opens its card; the chip opens the first; none: as before', async () => {
 		const onOpenGuideline = vi.fn();
 		const units = [u(0, 'An 8 mm liver cyst.', 'Liver', { abnormal: true }), u(1, 'Simple cyst.', 'Conclusion')];

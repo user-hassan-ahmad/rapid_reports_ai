@@ -3,7 +3,7 @@
 	// regions with their amber rows and the normals that will be reported, the tray, the conclusion and the gate
 	// bar. Every line is the radiologist's own sentence from the verbatim text; a click opens it for editing.
 	// Rows are asked, never assumed: a tap adds only the sentences listed above its button.
-	import { tick } from 'svelte';
+	import { tick, untrack } from 'svelte';
 	import { fade } from 'svelte/transition';
 	import { flip } from 'svelte/animate';
 	import { buildView } from './stackState';
@@ -348,8 +348,12 @@
 	const currentCheck = $derived(current?.startsWith('check:') ? (liveChecks.find((c) => `check:${c.key}` === current) ?? null) : null);
 	const currentValue = $derived(current?.startsWith('value:') ? (values.find((v) => `value:${v.item}` === current) ?? null) : null);
 	const currentGuide = $derived(current?.startsWith('guideline:') ? (guidelinesUnresolved.find((g) => `guideline:${g.key}` === current) ?? null) : null);
+	// keyed on the stop's key (a string), and the callback untracked: opening the card republishes the Copilot state, which
+	// rebuilds guidelinesUnresolved as a new array; tracking it would reopen the card in a loop (final review C-1)
+	const currentGuideKey = $derived(current?.startsWith('guideline:') ? current.slice('guideline:'.length) : null);
 	$effect(() => {
-		if (currentGuide) onOpenGuideline(currentGuide.key);
+		const k = currentGuideKey;
+		if (k) untrack(() => onOpenGuideline(k));
 	});
 	const cardOpen = (c: CheckFlag) => (walking ? currentCheck?.key === c.key : pinnedKey === c.key || hoverKey === c.key);
 	$effect(() => {
