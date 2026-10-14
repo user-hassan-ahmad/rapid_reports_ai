@@ -1,7 +1,7 @@
 // Client mirror of the server tripwire (spec §9.5): while the stack is latched, any legacy URL is warned and counted
 // (P3 reads the count from window.__legacyHits in dev). It never blocks: the request still goes out.
 const LEGACY = [/\/api\/quick-report\/(analyse|generate)\b/, /\/api\/canvas\/sections(-from-template)?\b/,
-	/\/api\/canvas\/review\b/, /\/api\/templates\/[^/]+\/(prepare|generate)\b/, /\/api\/reports\/[^/]+\/enhance\b/,
+	/\/api\/canvas\/review\b/, /\/api\/templates\/[^/]+\/(prepare|generate)(?=$|[/?])/, /\/api\/reports\/[^/]+\/enhance\b/,
 	/\/api\/audit\b/, /\/validation-status\b/];
 
 export const legacyHits: string[] = [];

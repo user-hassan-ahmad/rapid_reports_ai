@@ -8,7 +8,7 @@ import TemplatedReportTab from './components/TemplatedReportTab.svelte';
 import HistoryTab from './components/HistoryTab.svelte';
 import SettingsTab from './components/SettingsTab.svelte';
 import ReportEnhancementSidebar from './components/ReportEnhancementSidebar.svelte';
-import { stackMode } from '$lib/hybrid-stack/mode';
+import { stackMode, primeStackMode } from '$lib/hybrid-stack/mode';
 import { reviewRailHoldsAside } from '$lib/review/railActive';
 import IntervalAnalysisDrawer from './components/IntervalAnalysisDrawer.svelte';
 import TemplateRefinePanel from './components/TemplateRefinePanel.svelte';
@@ -367,6 +367,7 @@ let templatedModel = 'claude'; // Track model for template editor
 						hybrid_stack_shadow_rate: typeof data.hybrid_stack_shadow_rate === 'number' ? data.hybrid_stack_shadow_rate : 0.25,
 						stack_copilot: data.stack_copilot === true
 					};
+					primeStackMode(data); // post-generation skips legacy calls even before any Set up (D4/D13)
 				}
 			} else {
 				apiKeyStatusError = 'Unable to verify service status. You can still try. If you have issues, try refreshing or logging in again.';

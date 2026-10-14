@@ -70,4 +70,15 @@ describe('UpgradeBanner (converted templates only, dismissed on the server)', ()
 		render(UpgradeBanner);
 		await expect.element(page.getByRole('status')).not.toBeInTheDocument();
 	});
+
+	it('a failing settings load is asked once, not in a loop', async () => {
+		const load = (settingsStore as unknown as { loadSettings: ReturnType<typeof vi.fn> }).loadSettings;
+		load.mockClear();
+		load.mockImplementation(async () => settings.set({ settings: null, loading: false, error: null }));
+		settings.set({ settings: null, loading: false, error: null });
+		own(tpl('t1', 'Knee MRI', true));
+		render(UpgradeBanner);
+		await new Promise((r) => setTimeout(r, 50));
+		expect(load).toHaveBeenCalledTimes(1);
+	});
 });

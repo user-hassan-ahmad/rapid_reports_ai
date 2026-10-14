@@ -12,8 +12,12 @@
 	const visible = $derived(converted.length > 0 && !!settings?.settings && settings.settings.banner_template_upgrade_dismissed !== true && !dismissedHere);
 
 	// The settings store is loaded by the pages that need it; the banner asks for it only when it has something to say.
+	let requested = false;   // asked once: a failing load is never retried in a loop
 	$effect(() => {
-		if (converted.length > 0 && !settings?.settings && !settings?.loading) void settingsStore.loadSettings();
+		if (converted.length > 0 && !settings?.settings && !settings?.loading && !requested) {
+			requested = true;
+			void settingsStore.loadSettings();
+		}
 	});
 
 	function dismiss() {

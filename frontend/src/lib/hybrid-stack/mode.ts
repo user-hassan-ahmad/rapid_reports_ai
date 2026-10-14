@@ -39,5 +39,15 @@ export async function latchStackMode(fetchStatus: () => Promise<Response>, tries
 
 /** The status fetch the hosts latch with. */
 export function statusFetcher(token: string | null): () => Promise<Response> {
-	return () => fetch(`${API_URL}/api/settings/status`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+	// A stalled request is a failure to retry, never a spinner that never ends
+	return () => fetch(`${API_URL}/api/settings/status`, {
+		headers: token ? { Authorization: `Bearer ${token}` } : {},
+		signal: AbortSignal.timeout(5000)
+	});
+}
+
+/** The page-load status primes the mode (D4/D13): a report opened from History before any Set up still skips the
+ *  legacy post-generation calls. Only ever turns it on; the tabs latch their own sessions at Set up. */
+export function primeStackMode(status: { stack?: unknown } | null | undefined): void {
+	if (stackOn(status)) stackMode.set(true);
 }

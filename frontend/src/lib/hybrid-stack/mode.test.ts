@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
-import { latchStackMode, stackMode, stackOn } from './mode';
+import { latchStackMode, primeStackMode, stackMode, stackOn, statusFetcher } from './mode';
 
 describe('latched stack mode', () => {
 	it('test_latch_retries_and_never_falls_back', async () => {
@@ -28,5 +28,23 @@ describe('latched stack mode', () => {
 		expect(stackOn({})).toBe(false);
 		expect(stackOn(null)).toBe(false);
 		expect(stackOn({ stack: true })).toBe(true);
+	});
+
+	it('the page-load status primes the mode, so post-generation knows before any Set up', () => {
+		stackMode.set(false);
+		primeStackMode({ stack: true });
+		expect(get(stackMode)).toBe(true);
+		stackMode.set(false);
+		primeStackMode({ stack: false });
+		primeStackMode({});
+		expect(get(stackMode)).toBe(false);
+	});
+	it('the status fetch gives up on a stalled request', () => {
+		const f = vi.fn(async (_url: string, _init?: RequestInit) => new Response('{}'));
+		vi.stubGlobal('fetch', f);
+		void statusFetcher('t')();
+		const init = f.mock.calls[0][1] ?? {};
+		expect(init.signal).toBeInstanceOf(AbortSignal);
+		vi.unstubAllGlobals();
 	});
 });

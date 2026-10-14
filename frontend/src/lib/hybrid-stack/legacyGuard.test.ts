@@ -47,4 +47,10 @@ describe('client tripwire (spec §9.5)', () => {
 		expect(isLegacy(`${API}/api/canvas/stack/schema`)).toBe(false);
 		expect(isLegacy(`${API}/api/canvas/bundle`)).toBe(false);
 	});
+
+	it('template authoring is not a legacy call', () => {
+		const API = 'http://x';
+		expect(isLegacy(`${API}/api/templates/skill-sheet/generate-test-case`)).toBe(false);
+		expect(isLegacy(`${API}/api/templates/t1/prepare?x=1`)).toBe(true);
+	});
 });
