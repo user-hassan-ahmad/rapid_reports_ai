@@ -38,3 +38,10 @@ def test_plain_has_no_labels_or_removed():
     assert "Normal study apart from" not in plain          # the units' draft conclusion: the gate's wins
     assert not any(line.split(":")[0] in c["groups"] for line in plain.splitlines() if ":" in line)
     assert "Not enlarged." not in plain                     # a skipped row states nothing
+
+
+def test_block_and_plain_use_the_reconciled_removed_list():
+    units = [StackUnit.model_validate({"id": 1, "text": "No ascites.", "group": "Peritoneum"})]
+    gate = GateRecord.model_validate({"removed": ["No ascites."]})
+    st = findings_block(units, ["Peritoneum"], gate, removed=[])
+    assert "DO NOT ASSERT" not in st.block and st.plain() == "No ascites."

@@ -47,6 +47,7 @@ class ReviewInput(BaseModel):
     synthesis: Optional[dict] = None     # {"guidelines": [S4 cards]} when stored
     pre_edit_report: Optional[str] = None  # the report before today's automatic edits (Gate D shadow log)
     removed: List[str] = []              # stack reports: sentences the radiologist removed (never inserted)
+    stack: bool = False                  # a stack report (generation_mode "stack"): its check flags reach the rail
 
 
 class Candidate(BaseModel):

@@ -86,9 +86,12 @@ def _value_statements(gate: GateRecord) -> list[str]:
     return [f"{c.item} {c.value}" for c in (gate.values or []) if c.state == "entered" and c.value]
 
 
-def findings_block(units: list[StackUnit], groups: list[str], gate: GateRecord) -> Statements:
+def findings_block(units: list[StackUnit], groups: list[str], gate: GateRecord,
+                   removed: list[str] | None = None) -> Statements:
     """What Generate receives (checklist spec §7): the radiologist's sentences, tapped rows, confirmed region normals,
-    typed values, the confirmed conclusion, and what they removed (never to be asserted)."""
+    typed values, the confirmed conclusion, and what they removed (never to be asserted). `removed`: the reconciled
+    list (dictation wins), else the gate's."""
+    removed_list = list(gate.removed if removed is None else removed)
     items = _items(units)
 
     def dictated(r: str) -> bool:
@@ -132,8 +135,8 @@ def findings_block(units: list[StackUnit], groups: list[str], gate: GateRecord) 
     if conclusion:
         parts.append(f"Conclusion (confirmed by the radiologist): {conclusion}")
         plain.append(conclusion)
-    if gate.removed:
-        parts.append(f"DO NOT ASSERT (removed by the radiologist): {' '.join(gate.removed)}")
-    removed = set(gate.removed)
+    if removed_list:
+        parts.append(f"DO NOT ASSERT (removed by the radiologist): {' '.join(removed_list)}")
+    gone = set(removed_list)
     return Statements(block="\n\n".join(p for p in parts if p),
-                      parts=[p for p in plain if p not in removed], conclusion=conclusion)
+                      parts=[p for p in plain if p not in gone], conclusion=conclusion)

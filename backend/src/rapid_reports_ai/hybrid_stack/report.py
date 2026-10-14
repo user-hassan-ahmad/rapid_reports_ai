@@ -2,6 +2,7 @@
 template writer, guard removed sentences, save, schedule the review. Never falls back to the old flow."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import uuid
@@ -13,7 +14,7 @@ from sqlalchemy.orm import Session
 from .. import template_sheet_structure as tss
 from ..database.crud import create_report, get_template, increment_template_usage, is_retired_template
 from ..quick_report_api import _slim_markdown
-from ..quick_report_generator import generate_quick_report
+from ..quick_report_generator import _describe, generate_quick_report
 from ..review_engine.engine import schedule_review
 from ..template_lean import generate_template_report_lean
 from ..template_number_check import undictated_numbers
@@ -45,10 +46,11 @@ async def run(req, user, db: Session) -> AsyncIterator[dict]:
             raise StackError("This template can't be used with the scratchpad. Create a fresh one.")
     if req.gate.findings_hash is not None and req.gate.findings_hash != findings_hash(req.units):
         raise StackError("The scratchpad changed after Confirm. Confirm again.")
-    # 1 statements, and removals the dictation has since stated (dictation wins)
-    st = findings_block(req.units, req.groups, req.gate)
+    # 1 removals the dictation has since stated go first (dictation wins), then the statements on the reconciled list
+    said = findings_block(req.units, req.groups, req.gate, removed=[]).plain()
+    removed, kept_by_dictation = await reconcile(list(req.gate.removed), said)
+    st = findings_block(req.units, req.groups, req.gate, removed=removed)
     plain = st.plain()
-    removed, kept_by_dictation = await reconcile(list(req.gate.removed), plain)
     # 2–4 write: today's writers (slots, check, values backstop and template numbers run inside the template writer)
     if req.kind == "quick":
         out = await generate_quick_report(
@@ -68,7 +70,11 @@ async def run(req, user, db: Session) -> AsyncIterator[dict]:
     quality = dict(out.get("quality_check") or {"enabled": False})
     review = list(quality.get("review") or [])
     # 5 the removed guard (its own Jev call, whatever RR_QUALITY_CHECK says), quick numbers, recording
-    report, removals, guard_items = await guard(generated, removed, plain)
+    if req.kind == "template":   # the template writer describes the labelled block; the description reads plain
+        (report, removals, guard_items), description = await asyncio.gather(
+            guard(generated, removed, plain), _describe(plain, req.history, req.scan_type))
+    else:
+        (report, removals, guard_items), description = await guard(generated, removed, plain), out.get("description")
     review += guard_items
     if req.kind == "quick":
         review += undictated_numbers(report, [*st.all_texts(), req.history, st.conclusion], "")
@@ -81,26 +87,29 @@ async def run(req, user, db: Session) -> AsyncIterator[dict]:
     content = report.rstrip() + ("\n\n" + signature if signature else "")
     candidate = {"model": out.get("model_used"), "content": content, "error": None,
                  "sections": out.get("sections") or [], "latency_ms": int((time.time() - t0) * 1000),
-                 "run_id": str(uuid.uuid4()), "generated_at": _now(), "description": out.get("description"),
+                 "run_id": str(uuid.uuid4()), "generated_at": _now(), "description": description,
                  "quality_check": quality, "signature": signature, "options": [], "options_status": "skipped",
-                 "removed": removed, "kept_by_dictation": kept_by_dictation, "fixed_lines": []}
-    yield {"event": "candidate", "payload": candidate}
-    # 7 save, always (D19)
+                 "removed": removed, "kept_by_dictation": kept_by_dictation, "fixed_lines": [], "stack": True}
+    # 7 save, always (D19), before anything is shown: a report on screen always has its row
     stamp = (tss.generation_stamp(str(template.id), template.template_config, "stack") if template
              else {"path": "stack", "stack_sheet_id": req.stack_sheet_id})
     variables = {**{k: v for k, v in req.variables.items() if k != "FINDINGS"},
                  "FINDINGS": plain, "CLINICAL_HISTORY": req.history, "SCAN_TYPE": req.scan_type}
-    description = candidate["description"] or ""
-    row = create_report(
-        db, str(user.id), "templated" if template else "auto", content, candidate["model"] or "",
-        input_data={"variables": variables, "extracted_scan_type": req.scan_type},
-        template_id=str(template.id) if template else None,
-        description=f"{template.name} - {description}" if template else description,
-        candidate_reports=[candidate], generation_stamp=stamp)
-    row.generation_mode = "stack"
-    db.commit()
-    if template:
-        increment_template_usage(db, str(template.id))
+    description = description or ""
+    try:
+        row = create_report(
+            db, str(user.id), "templated" if template else "auto", content, candidate["model"] or "",
+            input_data={"variables": variables, "extracted_scan_type": req.scan_type},
+            template_id=str(template.id) if template else None,
+            description=f"{template.name} - {description}" if template else description,
+            candidate_reports=[candidate], generation_stamp=stamp, generation_mode="stack")
+        if template:
+            increment_template_usage(db, str(template.id))
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        logger.exception("[stack.generate] save failed")
+        raise StackError("The report couldn't be saved. Please try again.") from e
+    yield {"event": "candidate", "payload": candidate}
     try:
         schedule_review(str(row.id))
     except Exception as e:  # noqa: BLE001 -- the review never blocks the report

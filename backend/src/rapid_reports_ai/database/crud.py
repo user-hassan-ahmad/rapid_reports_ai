@@ -746,6 +746,7 @@ def create_report(
     description: Optional[str] = None,
     candidate_reports: Optional[list] = None,
     generation_stamp: Optional[dict] = None,
+    generation_mode: Optional[str] = None,
 ) -> Report:
     """Create a new report. ``candidate_reports``: the generation record(s) (quick's candidate shape), as
     the templated mirror persists its options, brief and check."""
@@ -760,6 +761,7 @@ def create_report(
         description=description,
         candidate_reports=candidate_reports,
         generation_stamp=generation_stamp,
+        generation_mode=generation_mode,
     )
     db.add(report)
     db.commit()

@@ -840,7 +840,7 @@ def input_from_parts(report_id: str, report_type: str, input_data: Optional[dict
                        study_title=v.get("SCAN_TYPE") or data.get("extracted_scan_type"),
                        synthesis={"guidelines": guidelines} if guidelines else None,
                        pre_edit_report=(cand.get("quality_check") or {}).get("pre_edit_report"),
-                       removed=list(cand.get("removed") or []))
+                       removed=list(cand.get("removed") or []), stack=cand.get("stack") is True)
 
 
 def _session():

@@ -57,3 +57,36 @@ async def test_guard_jev_failure_flags_and_keeps_report(monkeypatch):
     assert report == "Liver normal. No ascites." and edits == []
     assert items == [{"kind": "removed_unverified", "severity": "medium",
                       "message": "Couldn't verify removed sentences"}]
+
+
+@pytest.mark.asyncio
+async def test_reconcile_exact_redictation_wins_without_jev(monkeypatch):
+    async def boom(*a, **k):
+        raise RuntimeError("jev down")
+    monkeypatch.setattr(RG, "ask_rows", boom)
+    still, dropped = await RG.reconcile(["No ascites."], "Liver normal. No ascites.")
+    assert still == [] and dropped == ["No ascites."]
+
+
+@pytest.mark.asyncio
+async def test_guard_cuts_a_list_item_and_its_line(monkeypatch):
+    monkeypatch.setattr(RG, "ask_rows", _rows({"- No ascites.": (0.0, 0.0, 0.9)}))
+    report, edits, items = await RG.guard("FINDINGS\n- Liver normal.\n- No ascites.\nIMPRESSION\nNormal.",
+                                          ["No ascites."], "Liver normal.")
+    assert report == "FINDINGS\n- Liver normal.\nIMPRESSION\nNormal." and items == []
+
+
+@pytest.mark.asyncio
+async def test_guard_cut_at_line_start_leaves_no_leading_space(monkeypatch):
+    monkeypatch.setattr(RG, "ask_rows", _rows({"No ascites.": (0.0, 0.0, 0.9)}))
+    report, _, _ = await RG.guard("No ascites. Liver normal.", ["No ascites."], "Liver normal.")
+    assert report == "Liver normal."
+
+
+@pytest.mark.asyncio
+async def test_guard_short_jev_reply_is_a_failure(monkeypatch):
+    async def short(dictation, sentences, removed, transport=None, *, stated=True, contra=True):
+        return [RowCheck(0.0, 0.0, 0.9)]
+    monkeypatch.setattr(RG, "ask_rows", short)
+    report, edits, items = await RG.guard("Liver normal. No ascites.", ["No ascites."], "Liver normal.")
+    assert edits == [] and items[0]["kind"] == "removed_unverified"
