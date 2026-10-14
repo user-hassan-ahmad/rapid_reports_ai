@@ -134,6 +134,10 @@ class InputDef(_M):
     # unenhanced scan, Doppler flow)
     visible_sign: bool = False
     absent_option: str | None = None
+    # spec §7.12 item 1: an eligibility input whose exclusion the source words apart (Fleischner: interval growth is
+    # outside the table, see BTS). The rules still reach does_not_apply; when this input alone is behind it, the card
+    # shows this outcome's wording and locator instead (a not_applicable outcome, never reached by the rules itself)
+    exclusion_outcome: str | None = None
 
     @model_validator(mode="after")
     def _options(self):

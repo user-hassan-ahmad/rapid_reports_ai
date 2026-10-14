@@ -399,7 +399,7 @@ def test_a_bts_mass_says_its_diameter_is_the_reason():
     s = PP.Settlement(values={"diameter_mm": PP.Drafted(InputValue(value=38.0), "3.8 cm", "read")})
     p = PP.finish(e, s, {}, None, [])
     assert p.state == "does_not_apply" and p.exclusion_reason.model_dump() == {
-        "input": "diameter_mm", "label": e.input("diameter_mm").label, "value": "38 mm"}
+        "input": "diameter_mm", "label": e.input("diameter_mm").label, "value": "38 mm", "outcome": None}
     c = PP.calculate(e, s, {"diameter_mm": "38 mm"}, None, [], "b1")
     assert c.exclusion is not None and c.exclusion_reason.input == "diameter_mm"
 

@@ -171,6 +171,7 @@ class ExclusionReason(BaseModel):
     input: str
     label: str
     value: str
+    outcome: str | None = None         # the input's exclusion_outcome, whose wording the exclusion shows (spec §7.12)
 
 
 class Assumption(BaseModel):

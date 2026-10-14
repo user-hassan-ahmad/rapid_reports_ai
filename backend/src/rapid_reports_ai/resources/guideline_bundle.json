@@ -11683,6 +11683,28 @@
       "visible_sign": false
      },
      {
+      "exclusion_outcome": "outside_table_growth",
+      "how_stated": "true when the dictation says this nodule is larger than on an earlier study, e.g. 'now 9 mm, previously 6 mm', 'interval growth', 'enlarging'; false when it is new, stable or smaller, or there is no earlier imaging",
+      "id": "prior_growth",
+      "label": "Earlier imaging shows this nodule has grown",
+      "locator": {
+       "page": 5,
+       "section": "Prior imaging studies should always be reviewed whenever they are available to determine possible growth or stability (grade 1A)",
+       "source": "S1",
+       "table": ""
+      },
+      "max_inclusive": true,
+      "min_inclusive": true,
+      "options": [],
+      "prerequisites": [],
+      "role": "eligibility",
+      "scope": "lesion",
+      "states": [],
+      "type": "boolean",
+      "unit": "",
+      "visible_sign": false
+     },
+     {
       "how_stated": "solid; ground-glass (pure ground-glass, non-solid); or part-solid (subsolid with a solid component). For multiple nodules, the type of the most suspicious one.",
       "id": "nodule_type",
       "label": "Nodule type",
@@ -12180,6 +12202,10 @@
           {
            "eq": "lt35",
            "ref": "age_band"
+          },
+          {
+           "eq": true,
+           "ref": "prior_growth"
           }
          ]
         }
@@ -12203,6 +12229,10 @@
             {
              "eq": false,
              "ref": "exclusion"
+            },
+            {
+             "eq": false,
+             "ref": "prior_growth"
             },
             {
              "eq": "mass",
@@ -12234,6 +12264,10 @@
              "ref": "exclusion"
             },
             {
+             "eq": false,
+             "ref": "prior_growth"
+            },
+            {
              "eq": "solid_single_lt6_low",
              "ref": "management"
             }
@@ -12261,6 +12295,10 @@
             {
              "eq": false,
              "ref": "exclusion"
+            },
+            {
+             "eq": false,
+             "ref": "prior_growth"
             },
             {
              "eq": "solid_single_lt6_high",
@@ -12292,6 +12330,10 @@
              "ref": "exclusion"
             },
             {
+             "eq": false,
+             "ref": "prior_growth"
+            },
+            {
              "eq": "solid_single_6to8_low",
              "ref": "management"
             }
@@ -12319,6 +12361,10 @@
             {
              "eq": false,
              "ref": "exclusion"
+            },
+            {
+             "eq": false,
+             "ref": "prior_growth"
             },
             {
              "eq": "solid_single_6to8_high",
@@ -12350,6 +12396,10 @@
              "ref": "exclusion"
             },
             {
+             "eq": false,
+             "ref": "prior_growth"
+            },
+            {
              "eq": "solid_single_gt8",
              "ref": "management"
             }
@@ -12377,6 +12427,10 @@
             {
              "eq": false,
              "ref": "exclusion"
+            },
+            {
+             "eq": false,
+             "ref": "prior_growth"
             },
             {
              "eq": "solid_multiple_lt6_low",
@@ -12408,6 +12462,10 @@
              "ref": "exclusion"
             },
             {
+             "eq": false,
+             "ref": "prior_growth"
+            },
+            {
              "eq": "solid_multiple_lt6_high",
              "ref": "management"
             }
@@ -12435,6 +12493,10 @@
             {
              "eq": false,
              "ref": "exclusion"
+            },
+            {
+             "eq": false,
+             "ref": "prior_growth"
             },
             {
              "eq": "solid_multiple_ge6_low",
@@ -12466,6 +12528,10 @@
              "ref": "exclusion"
             },
             {
+             "eq": false,
+             "ref": "prior_growth"
+            },
+            {
              "eq": "solid_multiple_ge6_high",
              "ref": "management"
             }
@@ -12493,6 +12559,10 @@
             {
              "eq": false,
              "ref": "exclusion"
+            },
+            {
+             "eq": false,
+             "ref": "prior_growth"
             },
             {
              "eq": "ggn_single_lt6",
@@ -12524,6 +12594,10 @@
              "ref": "exclusion"
             },
             {
+             "eq": false,
+             "ref": "prior_growth"
+            },
+            {
              "eq": "ggn_single_ge6",
              "ref": "management"
             }
@@ -12551,6 +12625,10 @@
             {
              "eq": false,
              "ref": "exclusion"
+            },
+            {
+             "eq": false,
+             "ref": "prior_growth"
             },
             {
              "eq": "subsolid_multiple_lt6",
@@ -12582,6 +12660,10 @@
              "ref": "exclusion"
             },
             {
+             "eq": false,
+             "ref": "prior_growth"
+            },
+            {
              "eq": "subsolid_multiple_ge6",
              "ref": "management"
             }
@@ -12611,6 +12693,10 @@
              "ref": "exclusion"
             },
             {
+             "eq": false,
+             "ref": "prior_growth"
+            },
+            {
              "eq": "psn_single_lt6",
              "ref": "management"
             }
@@ -12638,6 +12724,10 @@
             {
              "eq": false,
              "ref": "exclusion"
+            },
+            {
+             "eq": false,
+             "ref": "prior_growth"
             },
             {
              "eq": "psn_single_ge6",
@@ -12937,6 +13027,22 @@
       },
       "normal": false,
       "recommendation": "Manage per the clinical context (screening programme protocol, or the patient's oncology or immunosuppression care)."
+     },
+     {
+      "action": "See the BTS card",
+      "category": "not_applicable",
+      "caveats": [],
+      "classification": "Fleischner 2017 does not apply: the table covers newly detected incidental nodules, and this nodule has grown on prior imaging.",
+      "headline": "Outside the Fleischner table: interval growth",
+      "id": "outside_table_growth",
+      "locator": {
+       "page": 3,
+       "section": "",
+       "source": "S1",
+       "table": "Fleischner Society 2017 Guidelines for Management of Incidentally Detected Pulmonary Nodules in Adults"
+      },
+      "normal": false,
+      "recommendation": "The Fleischner table covers newly detected nodules. Prior imaging shows growth: see the BTS card."
      }
     ],
     "purpose": "Gives follow-up recommendations for solid and subsolid pulmonary nodules found incidentally on CT in adults.",
@@ -21447,5 +21553,5 @@
    ]
   }
  },
- "version": "29afa9084e62"
+ "version": "254283964e4f"
 }

@@ -386,7 +386,7 @@ def _over(entry: Entry, given: dict[str, InputValue], env: dict[str, V], names: 
     bdoms = [[V(value=b.id) for b in s.bands] + [V(state=x) for x in sorted(reach_states(entry, s.ref))]
              for s in bands]           # band ids and the states the band can take, as gate 2 enumerates them
     if math.prod(len(doms[n]) for n in names) * math.prod(len(d) for d in bdoms) > OVER_MAX:
-        return sorted(o.id for o in entry.outcomes)
+        return _all_results(entry)
     out = set(possible)
     for combo in product(*(doms[n] for n in names)):
         for bc in product(*bdoms):
@@ -399,6 +399,13 @@ def _over(entry: Entry, given: dict[str, InputValue], env: dict[str, V], names: 
             if r.state == "present":
                 out.add(r.value)
     return sorted(out)
+
+
+def _all_results(entry: Entry) -> list[str]:
+    """Every outcome the rules can reach: an outcome named by an input's exclusion_outcome is wording for
+    does_not_apply (spec §7.12 item 1), never a result."""
+    wording = {i.exclusion_outcome for i in entry.inputs if i.exclusion_outcome is not None}
+    return sorted(o.id for o in entry.outcomes if o.id not in wording)
 
 
 def _deps(entry: Entry) -> dict[str, set[str]]:
@@ -586,7 +593,7 @@ def _partial(entry: Entry, given: dict[str, InputValue], env: dict[str, V], fixe
     reach = reaching(entry)
     every = [i.id for i in unknown if i.id in reach]
     if math.prod(len(doms[n]) for n in names) > MAX_COMBOS:
-        allo = sorted(o.id for o in entry.outcomes)
+        allo = _all_results(entry)
         return allo, False, every, {k: allo for k in every}
     results = []
     for combo in product(*(doms[n] for n in names)):

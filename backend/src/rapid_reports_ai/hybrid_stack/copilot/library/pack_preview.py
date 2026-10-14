@@ -490,16 +490,24 @@ async def _confirm(e: Entry, pending: dict[str, tuple[InputValue, str]], finding
     return why, any(fails)
 
 
-def _outcome_text(e: Entry, t: engine.Trace, sources: list[dict]) -> Proposal | None:
-    """The reached outcome as the entry words it, or None when its text still cites an unknown input."""
-    o = e.outcome(t.outcome)
+def _outcome_text(e: Entry, t: engine.Trace, sources: list[dict], outcome_id: str | None = None) -> Proposal | None:
+    """The reached outcome as the entry words it, or None when its text still cites an unknown input. `outcome_id`:
+    an input's exclusion_outcome worded in place of does_not_apply (spec §7.12 item 1), cited by its own locator and
+    the input's (the guideline text behind that exclusion), not by the generic scope clause."""
+    o = e.outcome(outcome_id or t.outcome)
     cls, rec = engine.render(e, t, o.classification), engine.render(e, t, o.recommendation)
     caveats = [engine.render(e, t, c) for c in o.caveats]
     if any(engine.PH.search(x) for x in (cls, rec, *caveats)):
         logger.info("[library.preview] %s: outcome %s cites an input still unknown; no proposal", e.key, o.id)
         return None
+    if outcome_id:
+        i = next((x for x in e.inputs if x.exclusion_outcome == outcome_id), None)
+        cites = _cites([{**c, "step": "outcome"} if (c := citation(o.locator, sources)) else {},
+                        {**c, "step": i.id} if i is not None and (c := citation(i.locator, sources)) else {}])
+    else:
+        cites = _fired(e, t, sources)
     return Proposal(classification=f"{e.display} · {cls}", line=f"{e.display}: {cls}.", recommendation=rec,
-                    caveats=caveats, citations=_fired(e, t, sources), normal=o.normal, headline=o.headline or "",
+                    caveats=caveats, citations=cites, normal=o.normal, headline=o.headline or "",
                     action=o.action or "", category=o.category or "")
 
 
@@ -550,7 +558,7 @@ def _build(e: Entry, t: engine.Trace, given: dict[str, InputValue], quotes: dict
                for k in (i.id for i in e.inputs) if k in given and given[k].state != "unknown"]
     text = _outcome_text(e, t, sources) if t.outcome is not None else None
     if t.outcome == DOES_NOT_APPLY:
-        state, draft_outcome, exclusion = "does_not_apply", None, text
+        state, draft_outcome, exclusion = "does_not_apply", None, _exclusion_text(e, t, sources, reason, text)
         logger.info("[library.preview] %s does not apply (eligibility given: %s)", e.key,
                     ", ".join(k for k in elig if k in given) or "none")
     else:          # check_first stays honest: an assumed or still-unknown eligibility input (the UI's warning)
@@ -742,7 +750,16 @@ def _exclusion_reason(e: Entry, t: engine.Trace, known: dict[str, InputValue],
     if len(lifts) != 1:
         return None
     i = e.input(lifts[0])
-    return ExclusionReason(input=i.id, label=i.label, value=_show(e, i, known[i.id]))
+    return ExclusionReason(input=i.id, label=i.label, value=_show(e, i, known[i.id]), outcome=i.exclusion_outcome)
+
+
+def _exclusion_text(e: Entry, t: engine.Trace, sources: list[dict], reason: ExclusionReason | None,
+                    generic: Proposal | None) -> Proposal | None:
+    """does_not_apply as the card words it: the exclusion reason's own outcome when its input names one (spec §7.12
+    item 1: "Outside the Fleischner table: interval growth"), else the generic does_not_apply text."""
+    if reason is None or reason.outcome is None:
+        return generic
+    return _outcome_text(e, t, sources, reason.outcome) or generic
 
 
 def _brief(e: Entry, t: engine.Trace, oid: str) -> OutcomeBrief:
@@ -896,6 +913,13 @@ def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str
         used.append(dv)
     text = _outcome_text(e, t, sources) if t.outcome is not None else None
     excluded = t.outcome == DOES_NOT_APPLY
+    reason = None
+    if excluded:              # the exclusion's own wording needs its one value (spec §7.12 item 1); else generic
+        try:
+            reason = _exclusion_reason(e, t, known, _Evals(e))
+        except (engine.EvaluationError, ValueError) as ex:
+            logger.error("[library.calculate] %s exclusion reason failed: %s", e.key, ex)
+        text = _exclusion_text(e, t, sources, reason, text)
     out = Calculation(outcome=t.outcome, result=None if excluded else text, exclusion=text if excluded else None,
                       possible=_possible(e, t), needed=list(t.needed), values=used, scope_doubt=doubt,
                       trace=t.model_dump(mode="json") if t.outcome is not None else None, pack=e.key, bundle=bundle)
@@ -903,7 +927,7 @@ def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str
         ev = _Evals(e)
         out.most_likely, out.deciding_input, out.deciding = _likely(e, t, known, sources, assume=False, ev=ev)
         out.assumptions = _calc_assumed(e, t, known, given, used, ev)
-        out.exclusion_reason = _exclusion_reason(e, t, known, ev)
+        out.exclusion_reason = reason
     except (engine.EvaluationError, ValueError) as ex:
         logger.error("[library.calculate] %s extras failed: %s", e.key, ex)
     return out
