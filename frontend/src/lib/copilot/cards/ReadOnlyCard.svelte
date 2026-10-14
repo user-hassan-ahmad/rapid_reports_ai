@@ -13,6 +13,7 @@
 	import CardStatus from './CardStatus.svelte';
 	import Reference from './Reference.svelte';
 	import { errorOf, type CardView } from './view';
+	import { shownValue } from './format';
 
 	let {
 		card,
@@ -54,7 +55,7 @@
 					<div class="cp-label">{b.name}</div>
 					<ul class="cp-list cp-criteria">
 						{#each b.inputs as i (i.id)}
-							<li>{i.question}{#if i.options.length}: <span class="cp-muted">{i.options.join(', ')}</span>{/if}</li>
+							<li>{i.question}{#if i.options.length}: <span class="cp-muted">{i.options.map(shownValue).join(', ')}</span>{/if}</li>
 						{/each}
 					</ul>
 				{/each}

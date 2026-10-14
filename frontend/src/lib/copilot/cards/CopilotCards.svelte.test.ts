@@ -503,6 +503,24 @@ describe('CopilotCards', () => {
 		expect(p.onEdit).toHaveBeenCalledWith(cardRef(c), 'diameter_mm', '55 mm');
 	});
 
+	it('scope_doubt on an option id: the warning shows words, Confirm sends the stored id', async () => {
+		const c = card({ key: 'bts-pulmonary-nodule', name: 'BTS 2015', finding: finding.text });
+		const pv = preview({
+			state: 'check_first',
+			proposal: null,
+			draft_outcome: outcome({ headline: 'X', action: 'Y', category: 'workup' }),
+			scope_doubt: ['growth'],
+			draft: [draft({ input: 'growth', label: 'Growth', state: 'prefilled', value: 'diameter_clear_growth', why: ['x'], options: ['diameter_stable', 'diameter_clear_growth'] })]
+		});
+		const p = { ...single(c, v(result(c, pv), { open: true })), onEdit: vi.fn() };
+		render(CopilotCards, p);
+		const note = page.getByTestId('cp-scope-doubt');
+		await expect.element(note).toHaveTextContent('Growth: Diameter clear growth (pre-filled)');
+		expect(note.element().textContent).not.toContain('diameter_clear_growth');
+		await page.getByRole('button', { name: 'Confirm Growth Diameter clear growth' }).click();
+		expect(p.onEdit).toHaveBeenCalledWith(cardRef(c), 'growth', 'diameter_clear_growth');
+	});
+
 	it('a COLLAPSED sibling card shows each column\'s "⚠ check applicability" and assumption chips', async () => {
 		const c = card({ finding: finding.text, siblings: ['bts-pulmonary-nodule'], sibling_names: ['BTS 2015'] });
 		const bts = card({ key: 'bts-pulmonary-nodule', name: 'BTS 2015' });

@@ -24,6 +24,7 @@
 		openQuestions,
 		recommendationBeyond,
 		scopeDoubts,
+		shownValue,
 		sourcesOf,
 		verdictOf,
 		type Verdict
@@ -103,7 +104,7 @@
 			<div class="cp-doubt" role="note" data-testid="cp-scope-doubt">
 				<p class="cp-p">
 					<Icon name="warn" size={13} />
-					<span><b>{d.label}: {d.value}</b> (pre-filled) would make {guideline || 'this guideline'} not apply — confirm or change it</span>
+					<span><b>{d.label}: {shownValue(d.value)}</b> (pre-filled) would make {guideline || 'this guideline'} not apply — confirm or change it</span>
 				</p>
 				{#if onEdit}
 					<div class="cp-doubt-actions">
@@ -120,7 +121,7 @@
 							/>
 						{:else}
 							<!-- confirming sends the value back as the radiologist's answer: only then can it exclude -->
-							{#if d.value}<button type="button" class="rv-btn" aria-label={`Confirm ${d.label} ${d.value}`} onclick={() => onEdit?.(d.input, d.value)}>Confirm</button>{/if}
+							{#if d.value}<button type="button" class="rv-btn" aria-label={`Confirm ${d.label} ${shownValue(d.value)}`} onclick={() => onEdit?.(d.input, d.value)}>Confirm</button>{/if}
 							<button type="button" class="rv-btn" aria-label={`Change ${d.label}`} onclick={() => (doubtEditing = d.input)}>Change</button>
 						{/if}
 					</div>
