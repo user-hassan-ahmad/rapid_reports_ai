@@ -32,6 +32,7 @@ from .service import GroupResult, SchemaResult, close_update, group_update, reso
 from .units import StackUnit, sentences as split_sentences
 from .resolution import TokenError, mint, verify as verify_token
 from .gate_model import GateRecord
+from .findings import FromUnits
 
 import logging
 logger = logging.getLogger(__name__)
@@ -107,10 +108,10 @@ class AssumedRequest(BaseModel):
     confirm: bool = False   # at Confirm: every condition is re-asked with the dictation
 
 
-class DraftRequest(BaseModel):
+class DraftRequest(FromUnits):
     scan_type: str = ""
     clinical_history: str = ""
-    findings: str
+    findings: str = ""   # built from units + groups when they are sent (FromUnits)
 
 
 class CloseRequest(BaseModel):
