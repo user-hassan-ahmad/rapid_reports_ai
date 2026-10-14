@@ -513,4 +513,43 @@ describe('ReviewRail', () => {
 		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
 		expect(rail()!.querySelector('[data-rv-item="s2"]')).toBeNull();
 	});
+
+	const CHECK_KINDS = [
+		'value_missing',
+		'template_slot_empty',
+		'fixed_text_missing',
+		'heading_missing',
+		'assumed_normal_missing'
+	];
+
+	it('open unanchored template checks are compact rows in a Template checks group above the quiet notes', async () => {
+		const checks = CHECK_KINDS.map((kind, k) =>
+			item({ id: `t${k}`, kind, cls: 'info', lane: 'accuracy', section: null, anchor: null, label: `Check ${kind}` })
+		);
+		const note = item({ id: 's1', kind: 'structure_not_mentioned', cls: 'info', anchor: null, label: 'Not mentioned: Bones' });
+		const { onCommand } = await mount(response({ items: [...ITEMS, ...checks, note] }));
+		await expect.element(page.getByRole('heading', { name: 'Template checks' })).toBeInTheDocument();
+		const group = rail()!.querySelector<HTMLElement>('[data-rv-template-checks]')!;
+		const ids = [...group.querySelectorAll('[data-rv-item]')].map((e) => e.getAttribute('data-rv-item'));
+		expect(ids).toEqual(['t0', 't1', 't2', 't3', 't4']);
+		for (const el of group.querySelectorAll<HTMLElement>('[data-rv-item]')) {
+			expect(el.getAttribute('data-rv-variant')).toBe('template-check');
+			expect(el.classList.contains('rv-muted')).toBe(false);
+			expect([...el.querySelectorAll('button')].map((b) => b.textContent?.trim())).toEqual(['Dismiss']);
+		}
+		const all = [...rail()!.querySelectorAll('[data-rv-item]')].map((e) => e.getAttribute('data-rv-item'));
+		expect(all.indexOf('t4')).toBeLessThan(all.indexOf('s1'));
+		await page.getByRole('button', { name: 'Dismiss: Check fixed_text_missing' }).click();
+		expect(onCommand).toHaveBeenCalledWith('dismiss', 't2');
+		expect(rail()!.textContent).toContain('2 to review'); // counts unchanged
+	});
+
+	it('anchored or dismissed template checks are not on the rail', async () => {
+		const anchored = item({ id: 'ta', kind: 'fixed_text_missing', cls: 'info', anchor: at(5), label: 'anchored check' });
+		const gone = item({ id: 'tg', kind: 'heading_missing', cls: 'info', status: 'dismissed', anchor: null, label: 'gone' });
+		await mount(response({ items: [...ITEMS, anchored, gone] }));
+		await expect.element(page.getByText('Measurement differs')).toBeInTheDocument();
+		expect(rail()!.querySelector('[data-rv-template-checks]')).toBeNull();
+		expect(rail()!.querySelector('[data-rv-item="ta"]')).toBeNull();
+	});
 });
