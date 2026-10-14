@@ -144,6 +144,25 @@ describe('session: matching', () => {
 		stop();
 	});
 
+	it('reopening a card whose result has landed neither republishes nor fetches again (final review C-1)', async () => {
+		await matchA();
+		s.open(cardRef(nodule));
+		for (const c of [...api.calls.open, ...api.calls.preview]) c.resolve(result(nodule, preview()));
+		await flush();
+		const view = state().views[cardRef(nodule)];
+		expect(view.loading).toBe(false);
+		expect(view.result).not.toBeNull();
+		const fetched = api.calls.open.length + api.calls.preview.length;
+		let n = 0;
+		const stop = s.state.subscribe(() => n++);
+		n = 0;
+		s.open(cardRef(nodule));
+		s.open(cardRef(nodule));
+		expect(n).toBe(0);
+		expect(api.calls.open.length + api.calls.preview.length).toBe(fetched);
+		stop();
+	});
+
 	it('a context change resets the cards, views and sent cache, and matches again', async () => {
 		await matchA();
 		s.open(cardRef(nodule));
@@ -865,7 +884,7 @@ describe('session: confirm gate', () => {
 	it('seen(ref) holds the verdict it was tapped on; a new case context resets seen and the checks', async () => {
 		await twoCards();
 		s.seen(cardRef(nodule));
-		expect(state().seen).toEqual({ [cardRef(nodule)]: 'workup|Consider PET-CT' });
+		expect(state().seen).toEqual({ [cardRef(nodule)]: 'workup|Consider PET-CT|' });
 		s.setContext({ scanType: 'CT chest', history: 'weight loss' });
 		await vi.advanceTimersByTimeAsync(CONTEXT_DEBOUNCE_MS);
 		expect(state().seen).toEqual({});

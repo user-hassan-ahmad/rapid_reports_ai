@@ -37,10 +37,11 @@ export function significant(p: Preview | null | undefined, card?: Card): boolean
 	return !!rankedCategory(p) || openQuestions(p).length > 0 || (p.scope_doubt?.length ?? 0) > 0;
 }
 
-/** What "Seen" holds: the verdict's category and headline, so a changed verdict re-opens the card. */
+/** What "Seen" holds: the verdict's category, headline and "If it applies" line, so a changed verdict (or a changed
+ *  outcome under a scope doubt) re-opens the card. */
 export function verdictKey(p: Preview | null | undefined): string {
 	const v = verdictOf(p);
-	return v ? `${v.category}|${v.headline}` : '';
+	return v ? `${v.category}|${v.headline}|${v.ifApplies ?? ''}` : '';
 }
 
 export interface GateTarget { key: string; card: Card; name: string; preview: Preview }
