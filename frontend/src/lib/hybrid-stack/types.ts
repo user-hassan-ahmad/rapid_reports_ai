@@ -101,12 +101,17 @@ export interface ValueFill { item: string; state: 'filled' | 'check' | 'open'; v
 export interface ValuesResult { values: ValueFill[]; ms: number; error: string | null }
 /** Region -> normals the assumed-normal check dropped, with why. */
 export type Dropped = Record<string, { sentence: string; reason: string }[]>;
+/** A right/left pair of normals the dictation reports a finding for without giving its side. */
+export interface SideAsk { region: string; sentences: string[]; label: string; score: number }
 export interface AssumedResult {
 	assumed: Record<string, string[]>;
 	/** Region -> assumed normals the dictation may conflict with (also in `assumed`): shown highlighted (review R1). */
 	flagged?: Record<string, string[]>;
-	/** Region -> normals not assumed, with why: covered | contradicted | removed | rule. */
+	/** Region -> normals not assumed, with why: covered | contradicted | removed | rule | side (no side dictated). */
 	dropped?: Dropped;
+	/** Quick sessions: pairs dictated without a side (both sides dropped); each asks "Which side?" (side brief). */
+	side_asks?: SideAsk[];
+	side_failed?: boolean;
 	/** The session's template context-rule decision (condition -> P(met)); kept and sent back (review R5). */
 	rules?: Record<string, number> | null;
 	/** The sheet has context rules: Confirm re-asks every one with the dictation. */
@@ -136,6 +141,8 @@ export interface GateRecord {
 	jev_dropped?: Dropped | null; // what the check dropped, with why (null: the check failed)
 	flagged?: Record<string, string[]>; // assumed normals confirmed with the "may conflict" marker (R1)
 	assumed_check_failed?: boolean; // the assumed-normal check failed: nothing was dropped by it
+	// "Which side?" asks seen this session and how each ended (side brief 2026-10-14; quick sessions only)
+	side_asks?: { region: string; pairs: string[]; answered_by: 'as_dictated' | 'dictated' | 'open' }[];
 	// Dictation checks seen this session and how each ended: answered, skipped, edited away, or still open (advisory).
 	checks?: { kind: string; quote: string; other: string | null; answered_by: 'as_dictated' | 'skip' | 'replaced' | 'edited' | 'open' }[];
 	values?: ValueChip[]; // the value cluster at Confirm (absent: the template has no required values)

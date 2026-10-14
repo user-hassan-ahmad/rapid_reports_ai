@@ -13,6 +13,7 @@
 	import { QUIET_MAX, anchorRegion, answerLabel, isFlagged as flaggedIn, openCount, quietLine, rowSentences, unansweredChecks, waiting } from './items';
 	import type { StackItem, StackUnit, ValueChip, ViewRow } from './types';
 	import ValueChips from './ValueChips.svelte';
+	import { SIDE_KIND } from './sides';
 	import { openCount as openValueChips } from './values';
 
 	export type ConclusionState =
@@ -41,6 +42,7 @@
 		assumed = {},
 		structures = {},
 		flagged = {},
+		notReported = {},
 		confirmNote = null,
 		namedNormals = false,
 		skipped = [],
@@ -118,6 +120,9 @@
 		structures?: Record<string, Record<string, string[]>>;
 		/** Assumed normals the dictation may conflict with (review R1): kept, shown with an amber "check" marker. */
 		flagged?: Record<string, string[]>;
+		/** Region -> normals left out because they conflict with the dictation (contradicted, or no side dictated):
+		 *  listed struck through in that region's card (side brief 2026-10-14). */
+		notReported?: Record<string, string[]>;
 		/** Why the last Confirm press did not gate (a re-checked rule added a normal; the dictation moved on). */
 		confirmNote?: string | null;
 		/** No sheet this session: untouched regions are confirmed by name (v2). With a sheet, only sentences are. */
@@ -270,7 +275,9 @@
 		return rowChecks.filter((c) => c.unitId !== null && ids.has(c.unitId));
 	};
 	const shownUnitIds = $derived(new Set(shown.flatMap((g) => unitIds(g.rows))));
-	const looseChecks = $derived(rowChecks.filter((c) => c.unitId === null || !shownUnitIds.has(c.unitId)));
+	// A region check ("Which side?") sits in its region's card; with no card, up top.
+	const regionChecks = (members: string[]) => rowChecks.filter((c) => !!c.region && members.includes(c.region));
+	const looseChecks = $derived(rowChecks.filter((c) => (c.region ? !covered.has(c.region) : c.unitId === null || !shownUnitIds.has(c.unitId))));
 	/** "Dictate correction": the sentence opens for editing and the mic starts. */
 	function correct(c: CheckFlag) {
 		const find = (rows: ViewRow[]): ViewRow | null => {
@@ -792,15 +799,17 @@
 		<span class="min-w-0 text-xs text-gray-300">{`“${c.quote}”${c.other ? ` · “${c.other}”` : ''}`}</span>
 		<span class="cursor-help text-xs text-gray-500" title={c.message} aria-label="Why: {c.message}">ⓘ</span>
 		<span class="ml-auto flex gap-1">
-			{#if c.unitId !== null}
-				<button type="button" class="inline-flex items-center gap-1 rounded-md border border-white/10 px-2 py-0.5 text-xs text-gray-300 hover:bg-white/[0.06]" onclick={() => correct(c)}>
+			{#if c.unitId !== null || c.kind === SIDE_KIND}
+				<!-- "Which side?": the side is dictated (the mic starts); the ask clears when the next check reads it -->
+				<button type="button" class="inline-flex items-center gap-1 rounded-md border border-white/10 px-2 py-0.5 text-xs text-gray-300 hover:bg-white/[0.06]"
+					onclick={() => (c.kind === SIDE_KIND ? !recording && onToggleMic() : correct(c))}>
 					<svg viewBox="0 0 24 24" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
-					Dictate correction
+					{c.kind === SIDE_KIND ? 'Dictate side' : 'Dictate correction'}
 				</button>
 			{/if}
 			{#if c.suggestion && target(c)}<button type="button" class="rounded-md bg-orange-400/90 px-2 py-0.5 text-xs font-semibold text-gray-950 hover:bg-orange-300" onclick={() => replaceCheck(c)}>Replace with “{c.suggestion}”</button>{/if}
 			{#if !c.blocking}<button type="button" class="rounded-md px-2 py-0.5 text-xs text-gray-500 hover:text-gray-300" onclick={() => onCheckAnswer(c.key, 'skip')}>Skip</button>{/if}
-			<button type="button" class="rounded-md bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-200 hover:bg-emerald-500/25" onclick={() => onCheckAnswer(c.key, 'as_dictated')}>✓ As dictated</button>
+			<button type="button" class="rounded-md bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-200 hover:bg-emerald-500/25" onclick={() => onCheckAnswer(c.key, 'as_dictated')}>{c.kind === SIDE_KIND ? 'Keep without side' : '✓ As dictated'}</button>
 		</span>
 	</div>
 {/snippet}
@@ -1010,8 +1019,9 @@
 	<!-- Scratchpad: abnormal regions only -->
 	{#each shown as g (g.name)}
 		{@const mine = ownMembers(g).flatMap((m) => rowsFor(m))}
-		{@const flagged = checksIn(g.rows)}
+		{@const flagged = [...checksIn(g.rows), ...regionChecks(ownMembers(g))]}
 		{@const normals = ownMembers(g).flatMap((m) => keptAssumed(m))}
+		{@const struck = ownMembers(g).flatMap((m) => notReported[m] ?? [])}
 		<section
 			animate:flip={{ duration: ms }}
 			in:fade={{ duration: ms }}
@@ -1042,6 +1052,13 @@
 				<p class="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-1 text-xs" data-quiet={g.name}>
 					<span class="text-[10px] uppercase tracking-wide text-emerald-400/70">Will also be reported</span>
 					{@render sentences(normals, g.name, ownMembers(g))}
+				</p>
+			{/if}
+			{#if struck.length}
+				<!-- Normals left out because they conflict with the dictation (side brief 2026-10-14): quiet, struck through -->
+				<p class="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 px-1 text-xs text-gray-500" data-not-reported={g.name}>
+					<span class="text-[10px] uppercase tracking-wide text-gray-500/80">Not reported (conflicts with dictation)</span>
+					{#each struck as x (x)}<s class="decoration-gray-500/70">{x}</s>{/each}
 				</p>
 			{/if}
 		</section>
