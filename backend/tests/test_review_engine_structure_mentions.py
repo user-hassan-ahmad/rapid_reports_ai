@@ -165,3 +165,12 @@ async def test_run_review_carries_the_quiet_notes_beside_the_gap_flags(monkeypat
     monkeypatch.setattr(sm, "ask_mentioned", down)
     res = await engine.run_review(_inp(), RUN)
     assert not [i for i in res.items if i.kind == sm.KIND] and res.run["template_gaps"]["structure_check_unavailable"] == 1
+
+
+@pytest.mark.asyncio
+async def test_structures_of_a_paragraph_of_only_conditional_fill_ins_are_not_asked():
+    ask, seen = _ask({"LMS": 0.0})
+    items, _ = await sm.mention_items(_inp(), RUN, ask=ask)
+    for n in ("medication", "scan quality", "heart rate", "radiation dose"):
+        assert n not in seen["names"]
+    assert _notes(items) == [(sm.KIND, "LMS")]

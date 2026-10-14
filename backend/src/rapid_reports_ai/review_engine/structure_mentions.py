@@ -5,7 +5,9 @@ wording (`question`), state `REPORT:\\n<report>`. A structure with P(yes) < NOT_
 `structure_not_mentioned`, cls info (the quietest class the rail shows, as the post-gen check's `value_missing`),
 no edit. Lab (Hassan accepted): ~2% false alarms per structure, about 1 report in 6 with one false note, hence quiet
 and capped (MAX_NOTES, separate from the gap flags' cap). A structure whose paragraph a SUPPRESS rule may have left
-out, and that is absent from the report, is not asked. Fails open: a Jev error, timeout or partial answer gives no
+out, and that is absent from the report, is not asked; nor is one of a paragraph optional by design (no NORMAL,
+NEGATIVE or FIXED unit, only conditional RULE ... USE fill-ins). (A FIXED line is placed in a paragraph only through
+a rule that targets it: FIXED units carry no paragraph.) Fails open: a Jev error, timeout or partial answer gives no
 note and counts `structure_check_unavailable` in the log (no rail item)."""
 from __future__ import annotations
 
@@ -82,10 +84,16 @@ def structures(inp: ReviewInput) -> List[str]:
     for r in rules:
         if r.get("paragraph"):
             units.setdefault(r["paragraph"], []).extend([r.get("target") or "", r.get("then_text") or ""])
+    stated = {u.get("paragraph") for kind in ("normals", "negatives") for u in st.get(kind) or [] if isinstance(u, dict)}
+    fixed = {_key(f.get("text") or "") for f in st.get("fixed_blocks") or [] if isinstance(f, dict)}
+    stated |= {r.get("paragraph") for r in rules if _key(r.get("target") or "") in fixed}
     out: List[str] = []
     for p in st.get("paragraphs") or []:
         if not isinstance(p, dict) or roles.get(p.get("section")) != "findings":
             continue
+        own = [r for r in rules if r.get("paragraph") == p.get("id")]
+        if p.get("id") not in stated and own and all(r.get("effect") == "use" for r in own):
+            continue                     # optional by design: only conditional fill-ins ("RULE WHEN ... USE")
         suppressible = any(r.get("effect") in _SUPPRESS and (r.get("paragraph") == p.get("id") or (
             r.get("effect") == "suppress_section" and r.get("target") == p.get("section"))) for r in rules)
         if suppressible:
@@ -94,6 +102,10 @@ def structures(inp: ReviewInput) -> List[str]:
                 continue
         out += [c for c in p.get("covers") or [] if isinstance(c, str) and c.strip()]
     return list(dict.fromkeys(out))
+
+
+def _key(t: str) -> str:
+    return " ".join(t.lower().split())
 
 
 def _now() -> str:

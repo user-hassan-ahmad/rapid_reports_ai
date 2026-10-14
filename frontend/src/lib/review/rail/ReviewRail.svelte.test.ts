@@ -552,4 +552,20 @@ describe('ReviewRail', () => {
 		expect(rail()!.querySelector('[data-rv-template-checks]')).toBeNull();
 		expect(rail()!.querySelector('[data-rv-item="ta"]')).toBeNull();
 	});
+
+	it('a template check row carries its full reason as a title', async () => {
+		const long = item({ id: 'tl', kind: 'fixed_text_missing', cls: 'info', anchor: null, label: 'Template text not in the r', reason: 'Template text not in the report: the whole sentence' });
+		await mount(response({ items: [...ITEMS, long] }));
+		await expect.element(page.getByText('Template text not in the r')).toBeInTheDocument();
+		expect(rail()!.querySelector('[data-rv-item="tl"]')!.getAttribute('title')).toBe('Template text not in the report: the whole sentence');
+	});
+
+	it('an action-class value_missing keeps its card and is not repeated in Template checks', async () => {
+		const high = item({ id: 'vh', kind: 'value_missing', cls: 'action', lane: 'accuracy', anchor: null, section: null, label: 'Required value LVEF not found' });
+		await mount(response({ items: [...ITEMS, high] }));
+		await expect.element(page.getByText('Required value LVEF not found')).toBeInTheDocument();
+		expect(rail()!.querySelectorAll('[data-rv-item="vh"]').length).toBe(1);
+		expect(rail()!.querySelector('[data-rv-item="vh"]')!.getAttribute('data-rv-variant')).toBe('card');
+		expect(rail()!.querySelector('[data-rv-template-checks]')).toBeNull();
+	});
 });

@@ -307,7 +307,12 @@
 						<section class="rv-group" data-rv-template-checks>
 							<h3 class="rv-group-title">Template checks</h3>
 							{#each templateChecks as it (it.id)}
-								<div class="rv-note-line rv-check-line" data-rv-item={it.id} data-rv-variant="template-check">
+								<div
+									class="rv-note-line rv-check-line"
+									data-rv-item={it.id}
+									data-rv-variant="template-check"
+									title={it.reason}
+								>
 									<span>{it.label}</span>
 									<button
 										type="button"
