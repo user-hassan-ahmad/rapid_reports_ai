@@ -226,7 +226,9 @@ def check_flag_items(inp: ReviewInput, run_id: str) -> List[ReviewItem]:
         kind = str(e["kind"])
         text = str(e.get("sentence") or e.get("text") or e.get("item") or "")
         label = e.get("message") or _FLAG_LABEL.get(kind, "{text}").format(text=e.get("text") or e.get("item") or text)
-        key = item_key("accuracy", kind, text or str(label))
+        # a value note names its value: two values read from one sentence are two notes
+        ident = f"{e.get('text') or ''}|{text}" if kind == "value_said_elsewhere" else (text or str(label))
+        key = item_key("accuracy", kind, ident)
         if key in seen:
             continue
         seen.add(key)

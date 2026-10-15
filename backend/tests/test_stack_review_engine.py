@@ -65,3 +65,13 @@ def test_a_value_said_in_other_words_is_a_quiet_info_item():
     items = live.check_flag_items(inp, "run1")
     assert [i.kind for i in items] == ["value_said_elsewhere"]
     assert items[0].cls == "info" and items[0].edit is None and items[0].status == "open"
+
+
+def test_two_values_said_elsewhere_from_one_sentence_are_two_notes():
+    sent = "The LV is normal, LVEF 55%, LVEDV 150 ml."
+    inp = _inp(review=[{"kind": "value_said_elsewhere", "severity": "low", "text": v, "sentence": sent,
+                        "message": f"{v} judged already in the report in other words; not added: {sent}"}
+                       for v in ("LVEF", "LVEDV")])
+    items = live.check_flag_items(inp, "run1")
+    assert [i.evidence["text"] for i in items] == ["LVEF", "LVEDV"]
+    assert len({i.key for i in items}) == 2
