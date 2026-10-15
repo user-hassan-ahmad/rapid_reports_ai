@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { NOT_STATED } from '../state';
 import type { Ask, Candidate } from '../types';
 import { draft, outcome, preview } from './fixtures';
-import { answeredChips, basedOn, checkItems, nextAsk, readiness, remaining, sentenceOf, statusLine } from './questionnaire';
+import { answeredChips, checkItems, nextAsk, readiness, remaining, sentenceOf, statusLine } from './questionnaire';
 
 const ask = (input: string, label = input): Ask => ({ input, label, options: ['a', 'b'] });
 const reached = (over = {}) =>
@@ -46,10 +46,6 @@ describe('the next question and the answers so far', () => {
 	});
 	it('chips list every answer with the row options, "Not known" included', () => {
 		expect(answeredChips(open, { growth: NOT_STATED, gone: 'x' })).toEqual([{ input: 'growth', label: 'Growth', value: NOT_STATED, options: ['Yes', 'No', NOT_STATED], basis: '' }]);
-	});
-	it('"Based on" holds the shown values that are not in Check', () => {
-		const p = reached();
-		expect(basedOn(p, checkItems(p)).map((d) => d.input)).toEqual(['size', 'spic']);
 	});
 });
 

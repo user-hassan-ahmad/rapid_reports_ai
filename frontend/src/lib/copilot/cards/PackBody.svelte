@@ -36,7 +36,6 @@
 		openQuestions,
 		scopeDoubts,
 		restates,
-		displayValue,
 		shownValue,
 		sourcesOf,
 		verdictOf,
@@ -120,7 +119,8 @@
 	let showNotNeeded = $state(false);
 	const shownRows = $derived(rows.filter((r) => r.state !== 'not_applicable' && !notNeededIds.has(r.input)));
 	// the footer's "All values used": today's full list, not-applicable rows excluded; a card that does not apply keeps its own toggle
-	const valueCount = $derived(v?.excluded ? 0 : rows.filter((r) => r.state !== 'not_applicable').length);
+	const valueCount = $derived(shownRows.filter((r) => !!r.value).length); // values actually used: shown, with a value
+	const anyRows = $derived(!v?.excluded && rows.length > 0);
 	const naRows = $derived(rows.filter((r) => r.state === 'not_applicable'));
 	let showNa = $state(false);
 	let showValues = $state(false);
@@ -254,10 +254,10 @@
 {/snippet}
 
 {#snippet footer()}
-	{#if (decided && v && !compact && (v.caveats.length || src.short)) || (!compact && result.reference && !collapsed) || valueCount > 0}
+	{#if (decided && v && !compact && (v.caveats.length || src.short)) || (!compact && result.reference && !collapsed) || anyRows}
 	<div class="cp-aux">
-		{#if valueCount > 0}
-			<button type="button" class="rv-btn rv-btn-ghost cp-aux-toggle cp-values-btn" aria-expanded={showValues} aria-controls="{uid}-values" onclick={() => (showValues = !showValues)}>{showValues ? 'Hide values' : `All values used · ${valueCount}`}</button>
+		{#if anyRows}
+			<button type="button" class="rv-btn rv-btn-ghost cp-aux-toggle cp-values-btn" aria-expanded={showValues} aria-controls="{uid}-values" onclick={() => (showValues = !showValues)}>{showValues ? 'Hide values' : valueCount > 0 ? `All values used · ${valueCount}` : 'All values'}</button>
 		{/if}
 		{#if decided && v && !compact}
 			{#if v.caveats.length}
@@ -292,7 +292,7 @@
 			<Reference reference={result.reference} />
 		{/if}
 	</div>
-	{#if valueCount > 0}<div class="cp-values-open">{@render valueList()}</div>{/if}
+	{#if anyRows}<div class="cp-values-open">{@render valueList()}</div>{/if}
 	{/if}
 	{#if p?.degraded}
 		<p class="cp-p cp-muted cp-degraded">Some values could not be checked</p>

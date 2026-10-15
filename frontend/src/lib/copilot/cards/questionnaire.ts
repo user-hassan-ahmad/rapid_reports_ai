@@ -2,7 +2,7 @@
 // in the tree's order, the answers so far, and whether the card is ready to apply. Pure: from the preview, the card's
 // answers (`edits`, "Not stated" = "Not known") and its ticks (input → the exact value affirmed; never sent).
 import { NOT_STATED } from '../state';
-import type { Ask, DraftValue, Preview, Proposal } from '../types';
+import type { Ask, Preview, Proposal } from '../types';
 import { assumptionsOf, scopeDoubts, shownValue } from './format';
 
 export interface CheckItem { input: string; label: string; value: string; options: string[]; kind: 'prefilled' | 'assumed' | 'doubt'; basis: string; quote: string; byExam: boolean; affirmed: boolean }
@@ -33,12 +33,6 @@ export function checkItems(p: Preview | null | undefined, ticks: Record<string, 
 		});
 	}
 	return out;
-}
-
-/** The shown values not in Check (read, answered, edited, non-decisive guesses): the "Based on" line. */
-export function basedOn(p: Preview | null | undefined, check: CheckItem[]): DraftValue[] {
-	const inCheck = new Set(check.map((c) => c.input));
-	return (p?.draft ?? []).filter((d) => !inCheck.has(d.input) && d.value && d.state !== 'asked' && d.state !== 'not_applicable');
 }
 
 const open = (p: Preview | null | undefined, edits: Record<string, string>): Ask[] =>

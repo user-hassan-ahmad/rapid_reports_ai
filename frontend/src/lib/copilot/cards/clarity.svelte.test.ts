@@ -441,5 +441,22 @@ describe('values behind one footer button', () => {
 		await expect.element(page.getByRole('button', { name: /^values/ })).toBeInTheDocument();
 		await expect.element(page.getByRole('button', { name: /^All values used/ })).not.toBeInTheDocument();
 	});
-});
 
+	it('the count is the values actually used: asked and not-needed rows are not counted; all N/A still offers "All values"', async () => {
+		const p = reached({
+			draft: [
+				draft({ input: 'size', label: 'Size', state: 'read', value: '7 mm' }),
+				draft({ input: 'kind', label: 'Type', state: 'prefilled', value: 'solid', decisive: true }),
+				draft({ input: 'ask1', label: 'Smoker', state: 'asked', needed: true }),
+				draft({ input: 'ask2', label: 'Family history', state: 'asked' }),
+				draft({ input: 'ask3', label: 'Emphysema', state: 'asked' }),
+				draft({ input: 'side', label: 'Side', state: 'not_applicable' })
+			]
+		});
+		show(p);
+		await expect.element(page.getByRole('button', { name: 'All values used · 2' })).toBeInTheDocument();
+		cleanup();
+		show(reached({ draft: [draft({ input: 'side', label: 'Side', state: 'not_applicable' })] }));
+		await expect.element(page.getByRole('button', { name: 'All values' })).toBeInTheDocument();
+	});
+});
