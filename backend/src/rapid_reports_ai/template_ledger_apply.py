@@ -645,8 +645,9 @@ def _shown_absent(uid, st: tss.SheetStructure, uid_map: Dict[str, str], known: D
     """True only on positive evidence that the unit `uid` named is absent from this parse (end review C1), all of:
     the registry knows the uid and no unit of this parse holds it; its stored parent (paragraph, else section) is
     matched in this parse (a paragraph renamed beyond the rename rule leaves no evidence); no unit of its kind anywhere
-    in the parse carries its last text (rep_key; a line moved elsewhere is not absent); and, for a normal, no NORMAL
-    in that paragraph has its structure label and side."""
+    in the parse carries its last text (rep_key; a line moved elsewhere is not absent); no line of its kind under that
+    parent lacks a live uid (a new or reworded line beside where it was: a card, never silently kept); and, for a
+    normal, no NORMAL in that paragraph has its structure label and side."""
     entry = known.get(uid) if isinstance(uid, str) else None
     if not isinstance(entry, dict) or uid in uid_map.values():
         return False
@@ -658,6 +659,9 @@ def _shown_absent(uid, st: tss.SheetStructure, uid_map: Dict[str, str], known: D
     here = tlr.units(st)
     text = tlm.rep_key(entry.get("text") or "")
     if text and any(u.kind == kind and tlm.rep_key(u.text) == text for u in here):
+        return False
+    # a line of its kind with no live uid beside where it was may be it, reworded: never evidence of absence
+    if any(u.kind == kind and u.ref not in uid_map and (u.paragraph or u.section) == refs[parent] for u in here):
         return False
     if kind == "normal":
         label, side = td._name(ident.get("structure") or ""), ident.get("side") or ""

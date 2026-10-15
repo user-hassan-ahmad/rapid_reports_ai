@@ -688,9 +688,9 @@ def test_a_removal_is_satisfied_only_when_its_line_is_shown_absent():
     reworded = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."', 'NEGATIVE "No focal hepatic lesion."')
     # no uid: nothing shows the line is gone (a reworded negative) -> a card, as today
     assert [e["key"] for e in tla.apply_ledger(reworded, [removal], registry=reg).unmatched] == [NEG]
-    # its uid names no unit of this sheet: the line is gone -> satisfied, never a card
+    # with its uid: a new (reworded) negative stands beside where it was -> still a card, never satisfied (C1, 4th)
     res = tla.apply_ledger(reworded, [_with_uid(removal, uid)], registry=reg)
-    assert res.sheet == reworded and res.unmatched == [] and [e["key"] for e in res.satisfied] == [NEG]
+    assert res.sheet == reworded and res.satisfied == [] and [e["key"] for e in res.unmatched] == [NEG]
     # paragraph renamed with the negative still there, no uid: a card (never silently satisfied)
     renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Abdomen (FINDINGS)")
     assert [e["key"] for e in tla.apply_ledger(renamed, [removal], registry=_reg(renamed)).unmatched] == [NEG]
