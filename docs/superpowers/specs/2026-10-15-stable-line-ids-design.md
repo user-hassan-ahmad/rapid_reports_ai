@@ -164,6 +164,7 @@ The endpoint:
   "sheet_rev": 12,
   "sheet_hash": "c0ffee12",
   "group_name": "coronary arteries",
+  "rules": "",
   "user_id": 42,
   "at": "2026-10-15T10:04:52Z"
 }
@@ -180,7 +181,7 @@ The endpoint:
 **State**, `confirm_state(group, record, registry)`:
 
 - `valid`: the group's current attestable units are exactly the record's units, each with the same `text_hash`.
-- `stale`: anything else: a unit added, removed or gone, or **any unit's `text_hash` changed**, including a normal reworded in place that kept its slot uid (a normal's identity holds no text, so the `text_hash` check is what catches it); **or the group's paragraph or section has been renamed since the confirm** (`group_name` differs), even if every sentence carried over unchanged. The record stores the group name after `rep_key` (`group_name`) to check this; any rename, case included, makes it stale. A confirm given in one context ("Arterial phase") never silently covers another. A stale confirm is asked again and never counts as confirmed.
+- `stale`: anything else: a unit added, removed or gone, or **any unit's `text_hash` changed**, including a normal reworded in place that kept its slot uid (a normal's identity holds no text, so the `text_hash` check is what catches it); **or the group's paragraph or section has been renamed since the confirm** (`group_name` differs), even if every sentence carried over unchanged. The record stores the group name after `rep_key` (`group_name`) to check this; any rename, case included, makes it stale. A confirm given in one context ("Arterial phase") never silently covers another. **Or a rule acting on the group changed** (end review M5): the record stores `rules`, a hash over the RULE lines that suppress, replace or are anchored on one of the group's units (matched as the generator matches), SUPPRESS NEGATIVES in its paragraph and SUPPRESS_SECTION of its section (`""` when there are none); adding, removing or changing any of them makes the confirm stale, while a rule on other lines never does. A stale confirm is asked again and never counts as confirmed.
 - `missing`: no record for the group.
 
 Confirms are never written by code and never carried across a text change.

@@ -1,4 +1,6 @@
 """The normals confirm record (spec 2026-10-15-stable-line-ids-design, decision 5): groups, chunks, state."""
+import pytest
+
 from rapid_reports_ai import template_line_registry as tlr
 from rapid_reports_ai import template_normal_confirms as tnc
 from rapid_reports_ai import template_sheet_grammar as tsg
@@ -107,3 +109,49 @@ def test_a_unit_without_text_hash_is_never_confirmable_and_never_crashes():
     assert tnc.confirm_state(g, rec, bad) == tnc.STALE
     good = tnc.record(g, reg, sheet_rev=1, sheet_hash="h", user_id="u")
     assert tnc.confirm_state(g, good, bad) == tnc.STALE
+
+
+# ── a rule on the group's units makes a confirm stale when added, removed or changed (end review M5) ────────────
+
+_NEG = 'NEGATIVE "No focal liver lesion."'
+_SUPPRESS = 'RULE WHEN [context: the dictation states contrast was given] SUPPRESS "No focal liver lesion."'
+
+
+def _with(sheet, after, line):
+    return sheet.replace(after, f"{after}\n{line}", 1)
+
+
+def _state_after(base, edited):
+    reg = _reg(base)
+    _, rec = _confirmed(base, reg)
+    reg2 = _reg(edited, reg)
+    return tnc.confirm_state(_groups(edited, reg2)[0], rec, reg2)
+
+
+@pytest.mark.parametrize("line, after", [
+    (_SUPPRESS, _NEG),
+    ('RULE WHEN [context: the dictation states contrast was given] REPLACE "The liver is normal in size." '
+     'WITH "The liver is normal."', _NEG),
+    ("RULE WHEN [context: a limited protocol is stated in the request] SUPPRESS_SECTION FINDINGS",
+     'TERM PREFER "hepatic"'),
+])
+def test_adding_a_rule_that_suppresses_or_replaces_a_confirmed_unit_makes_the_confirm_stale(line, after):
+    edited = _with(LEDGER_SHEET, after, line)
+    _st(edited)
+    assert _state_after(LEDGER_SHEET, edited) == "stale"
+
+
+def test_removing_or_changing_such_a_rule_makes_the_confirm_stale():
+    base = _with(LEDGER_SHEET, _NEG, _SUPPRESS)
+    assert _state_after(base, LEDGER_SHEET) == "stale"
+    changed = base.replace("contrast was given", "a contrast agent was given")
+    assert _state_after(base, changed) == "stale"
+
+
+def test_an_unrelated_rule_leaves_the_confirm_valid():
+    edited = _with(LEDGER_SHEET, 'FIXED "No previous imaging available."',
+                   'RULE WHEN [context: the dictation names a previous study] SUPPRESS "No previous imaging available."')
+    _st(edited)
+    assert _state_after(LEDGER_SHEET, edited) == "valid"
+    with_rule = _with(LEDGER_SHEET, _NEG, _SUPPRESS)
+    assert _state_after(with_rule, with_rule) == "valid"

@@ -13,7 +13,9 @@ State: valid (the group's current attestable units are exactly the record's, eac
 paragraph or section still has the recorded name), stale (anything else: a unit added, removed or gone; ANY unit's
 text_hash changed, including a normal reworded in place that kept its slot uid (a normal's identity holds no text, so
 this check is the safety net); or a paragraph or section rename (group_name), even when every sentence carried over:
-a confirm given in one context never silently covers another), missing (no record). A stale confirm is asked again and never counts. The confirm UI is offered only
+a confirm given in one context never silently covers another; or a RULE that suppresses, replaces or is anchored on
+one of the group's units, or suppresses its section, added, removed or changed (rules_hash, end review M5)), missing
+(no record). A stale confirm is asked again and never counts. The confirm UI is offered only
 once the template is saved: there are no creation-time confirms."""
 from __future__ import annotations
 
@@ -24,7 +26,7 @@ from typing import Dict, List, Optional, Tuple
 
 from . import template_line_match as tlm
 from . import template_line_registry as tlr
-from .hybrid_stack.template import paragraph_regions
+from .hybrid_stack.template import norm_key, paragraph_regions
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,7 @@ class Group:
     label: str
     units: Tuple[str, ...]   # uids, in document order
     name: str = ""           # the paragraph's or section's name (group_name): a rename makes a confirm stale
+    rules: str = ""          # rules_hash of the rules acting on the group ("" when none): any change makes it stale
 
 
 def attestable(st) -> List[str]:
@@ -59,6 +62,26 @@ def _positions(sheet: str, st) -> Dict[str, int]:
             taken.add(i)
             out[u.ref] = i
     return out
+
+
+_ON_TEXT = ("suppress", "replace", "insert_before")
+
+
+def rules_hash(st, refs: List[str], section: str, paragraph: str) -> str:
+    """A hash over the RULE lines that can change what the group's units print (end review M5): a rule that
+    suppresses or replaces one of the units' text, or is anchored on it (norm_key, the generator's own matching);
+    SUPPRESS NEGATIVES in the group's paragraph; SUPPRESS_SECTION of its section. "" when there are none, so adding,
+    removing or changing any of them makes the confirm stale while an unrelated rule never does."""
+    by_ref = {u.ref: u for u in tlr.units(st)}
+    texts = {norm_key(by_ref[r].text) for r in refs if r in by_ref}
+    hit = []
+    for r in st.rules:
+        on_text = r.effect in _ON_TEXT and (norm_key(r.target) in texts or (r.anchor and norm_key(r.anchor) in texts))
+        on_para = r.effect == "suppress_paragraph_negatives" and paragraph and r.paragraph == paragraph
+        on_section = r.effect == "suppress_section" and tlm.rep_key(r.target) == tlm.rep_key(section)
+        if on_text or on_para or on_section:
+            hit.append(tlm.rep_key(str(r.source_lines[0]) if r.source_lines else r.id))
+    return tlr.text_hash("\n".join(sorted(hit))) if hit else ""
 
 
 def group_name(name: str) -> str:
@@ -90,16 +113,18 @@ def groups(st, sheet: str, registry) -> List[Group]:
         for parent, label, raw_name, refs in buckets:
             if not refs:
                 continue
+            para = parent if not parent.startswith("S:") else ""
             if parent not in uids or any(r not in uids for r in refs):
                 logger.info("[confirms] group %s left out: a unit has no uid", label)
                 continue
             members = tuple(uids[r] for r in refs)
             name = group_name(raw_name)
             if len(members) <= MAX_GROUP:
-                out.append(Group(uids[parent], label, members, name))
+                out.append(Group(uids[parent], label, members, name, rules_hash(st, refs, sec.name, para)))
                 continue
-            chunks = [members[k:k + MAX_GROUP] for k in range(0, len(members), MAX_GROUP)]
-            out += [Group(f"{uids[parent]}#{n}", f"{label} ({n}/{len(chunks)})", c, name)
+            chunks = [refs[k:k + MAX_GROUP] for k in range(0, len(refs), MAX_GROUP)]
+            out += [Group(f"{uids[parent]}#{n}", f"{label} ({n}/{len(chunks)})", tuple(uids[r] for r in c), name,
+                          rules_hash(st, c, sec.name, para))
                     for n, c in enumerate(chunks, 1)]
     return out
 
@@ -109,7 +134,8 @@ def record(group: Group, registry, *, sheet_rev: int, sheet_hash: str, user_id: 
     """The confirm record of one group, its units' text_hash read from the stored registry. A unit the registry
     cannot vouch for (absent or malformed) is left out, so the record is never valid (confirm_state)."""
     return {"group": group.id, "label": group.label, "units": _hashes(group, registry),
-            "sheet_rev": sheet_rev, "sheet_hash": sheet_hash, "group_name": group.name, "user_id": user_id,
+            "sheet_rev": sheet_rev, "sheet_hash": sheet_hash, "group_name": group.name, "rules": group.rules,
+            "user_id": user_id,
             "at": now or datetime.now(timezone.utc).isoformat(timespec="seconds")}
 
 
@@ -119,6 +145,8 @@ def confirm_state(group: Optional[Group], rec: Optional[dict], registry) -> str:
     if not isinstance(rec, dict):
         return MISSING
     if group is None or rec.get("group_name") != group.name:   # a renamed paragraph or section (decision 5)
+        return STALE
+    if (rec.get("rules") or "") != group.rules:   # a rule acting on the group added, removed or changed (M5)
         return STALE
     now = _hashes(group, registry)
     return VALID if len(now) == len(group.units) and rec.get("units") == now else STALE
