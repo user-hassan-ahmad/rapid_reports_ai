@@ -245,12 +245,23 @@ def _keyword(line: str) -> str:
     return body.split(" ", 1)[0]
 
 
+_CONDITION = re.compile(r"\bWHEN\s*\[([^\]]*)\]")
+
+
+def _condition(line: str) -> str:
+    """A RULE line's condition ("<source>: <statement>", rep_key), "" when it has none."""
+    m = _CONDITION.search(line)
+    return tlm.rep_key(m.group(1)) if m else ""
+
+
 def _paired_rewrites(old: List[str], new: List[str]) -> List[Tuple[str, str]]:
-    """(old line, new line) for a block rewritten line for line: same count and the same keyword in each place;
-    anything else is a removal plus an insert (no uid carried)."""
+    """(old line, new line) for a block rewritten line for line: same count, the same keyword in each place and, for
+    a RULE, the same condition (a rule under another condition is another rule, end review M1: that pair alone is
+    dropped); anything else is a removal plus an insert (no uid carried)."""
     if len(old) != len(new) or any(_keyword(o) != _keyword(n) for o, n in zip(old, new)):
         return []
-    return [(o, n) for o, n in zip(old, new) if o != n]
+    return [(o, n) for o, n in zip(old, new)
+            if o != n and (_keyword(o) != "RULE" or _condition(o) == _condition(n))]
 
 
 def _concept(lines, st, entry, added: Optional[Set[str]] = None):

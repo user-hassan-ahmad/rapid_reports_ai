@@ -806,3 +806,12 @@ def test_an_orphaned_removal_uid_never_satisfies_on_a_later_save():
         assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [NEG]
         reg, _ = tlr.rebind(reg, _clean(res.sheet), res.carried, now="T")
         led, sheet = tla.stamp_uids(res.ledger, _clean(res.sheet), reg), res.sheet
+
+
+def test_paired_rewrites_pair_rule_lines_only_with_the_same_condition():   # end review M1
+    fixed = 'FIXED "No previous imaging available."'
+    a = 'RULE WHEN [context: the dictation names a previous study] SUPPRESS "No previous imaging available."'
+    b = 'RULE WHEN [context: the dictation names a previous study] REPLACE "No previous imaging available." WITH "x."'
+    c = 'RULE WHEN [context: the dictation states contrast was given] SUPPRESS "No previous imaging available."'
+    assert tla._paired_rewrites([fixed, a], [fixed, b]) == [(a, b)]
+    assert tla._paired_rewrites([fixed, a], [fixed, c]) == []
