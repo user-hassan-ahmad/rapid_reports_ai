@@ -40,7 +40,7 @@
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
 	import CopilotRail from '$lib/copilot/cards/CopilotRail.svelte';
 	import { applyOn } from '$lib/copilot/flag';
-	import { recommendationsForGate, recommendationsKey } from '$lib/copilot/applied';
+	import { recommendationsForGate, recommendationsKey, staleBlocks } from '$lib/copilot/applied';
 	import type { CopilotSession, CopilotState } from '$lib/copilot/session';
 	import { mountCopilot } from '$lib/copilot/mount';
 	import { unresolved, type Unresolved } from '$lib/copilot/gate';
@@ -415,9 +415,16 @@
 	$: gateConclusion = dictatedConclusion || draft?.text || '';
 	$: if (copilotActive) copilot?.checkConclusion(gateConclusion);
 	let guidelinesUnresolved: Unresolved[] = [];
-	$: guidelinesUnresolved = copilotActive && $copilotState?.on ? unresolved($copilotState, $copilotState.seen, $copilotState.concl) : [];
+	$: guidelinesUnresolved = [
+		...(copilotActive && $copilotState?.on ? unresolved($copilotState, $copilotState.seen, $copilotState.concl) : []),
+		...staleBlocks(recsNow)
+	] as Unresolved[];
 	let copilotRail: { reveal(ref: string): Promise<void> } | null = null;
 	function openGuideline(key: string): void {
+		if (key.startsWith('rec:')) {
+			document.querySelector('[data-testid="recommendations"]')?.scrollIntoView({ block: 'nearest' });
+			return;
+		}
 		const ref = guidelinesUnresolved.find((u) => u.key === key)?.card ?? key;
 		void copilotRail?.reveal(ref);
 	}

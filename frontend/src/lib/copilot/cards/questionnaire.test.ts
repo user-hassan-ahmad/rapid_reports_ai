@@ -68,6 +68,7 @@ describe('readiness and the status line', () => {
 		const left = { g: NOT_STATED };
 		expect(readiness(p, left)).toBe('pick');
 		expect(statusLine(p, left)).toBe('Pick the outcome that fits');
+		expect(statusLine({ ...p, candidates: [] }, left)).toBe('');
 		expect(readiness(p, left, {}, 'pet')).toBe('incomplete');
 		expect(readiness(p, left, {}, 'ct3')).toBeNull();
 		expect(readiness(p, left, {}, 'gone')).toBe('pick');

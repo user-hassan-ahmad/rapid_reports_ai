@@ -200,7 +200,7 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 			const exam = rec.finding_id === 'exam';
 			const there = exam || findings.some((f) => f.id === rec.finding_id);
 			const base = k.includes('#') ? k.slice(0, k.lastIndexOf('#')) : k;
-			const v = there && (exam || grouped.has(base)) ? targetOf(k)?.get() : undefined;
+			const v = there && (exam || grouped.has(k) || grouped.has(base)) ? targetOf(k)?.get() : undefined;
 			if (v?.loading) {
 				out[k] = rec;
 				continue;
@@ -748,7 +748,6 @@ export function createCopilotSession(api: CopilotApi = defaultApi): CopilotSessi
 		matchFailed = false;
 		otherState = 'idle';
 		seen = {};
-		applied = {};
 		concl = {};
 		conclFinding = {};
 		conclFor = null;

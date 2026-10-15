@@ -1,7 +1,7 @@
 // Applied recommendations (spec 2026-10-14 §7): the item Apply writes, and when it goes stale. SYNTHETIC.
 import { describe, expect, it } from 'vitest';
 import { card, draft, outcome, preview } from './cards/fixtures';
-import { buildApplied, CHANGED, recommendationsForGate, recommendationsKey, staleOf } from './applied';
+import { buildApplied, CHANGED, recommendationsForGate, recommendationsKey, staleBlocks, staleOf } from './applied';
 import type { Calculation } from './types';
 
 const bts = card({ key: 'bts-pulmonary-nodule', name: 'BTS 2015' });
@@ -62,5 +62,17 @@ describe('staleOf', () => {
 		expect(recommendationsKey([b, a])).toBe(k);
 		expect(recommendationsKey([{ ...a, text: '  One. ' }, b])).toBe(k);
 		expect(recommendationsKey([])).toBe(recommendationsKey(recommendationsForGate(false, { k: rec })));
+	});
+	it('the key follows a line going amber or being re-applied with a new outcome', () => {
+		const a = { ...rec, key: 'a' };
+		expect(recommendationsKey([{ ...a, stale: 'values' as const }])).not.toBe(recommendationsKey([a]));
+		expect(recommendationsKey([{ ...a, outcome: 'pet' }])).not.toBe(recommendationsKey([a]));
+	});
+	it('staleBlocks: one gate item per amber line, named for why', () => {
+		expect(staleBlocks([rec])).toEqual([]);
+		expect(staleBlocks([{ ...rec, key: 'a', stale: 'values' }, { ...rec, key: 'b', stale: 'finding' }])).toEqual([
+			{ key: 'rec:a', name: 'BTS 2015 recommendation (values changed)' },
+			{ key: 'rec:b', name: 'BTS 2015 recommendation (finding removed)' }
+		]);
 	});
 });

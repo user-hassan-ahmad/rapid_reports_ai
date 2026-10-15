@@ -1055,7 +1055,7 @@ describe('session: ticks, pick and Apply (questionnaire card, spec 2026-10-14)',
 		expect(state().applied?.[ref]).toMatchObject({ outcome: 'ct3', chosen_from: 2, text: 'Solid nodule: CT at 3 months (BTS 2015).' });
 	});
 
-	it('edit and remove change only that line; re-apply replaces it; a new case clears them', async () => {
+	it('edit and remove change only that line; re-apply replaces it; a history edit keeps them, amber', async () => {
 		await openedBts();
 		await applied();
 		s.editApplied(ref, 'My wording.');
@@ -1068,7 +1068,8 @@ describe('session: ticks, pick and Apply (questionnaire card, spec 2026-10-14)',
 		await applied();
 		s.setContext({ scanType: 'CT chest', history: 'new case' });
 		await vi.advanceTimersByTimeAsync(CONTEXT_DEBOUNCE_MS + 1);
-		expect(state().applied ?? {}).toEqual({});
+		expect(Object.keys(state().applied ?? {})).toEqual([ref]); // editing the history deletes nothing
+		expect(state().applied?.[ref].stale).toBe('values');
 	});
 
 	it('a value change marks the line "values"; a deleted finding marks it "finding"', async () => {
@@ -1131,5 +1132,27 @@ describe('session: ticks, pick and Apply (questionnaire card, spec 2026-10-14)',
 		expect(state().views[ref].pick).toBeUndefined();
 		api.calls.calculate[0].resolve({ calculation: calcOk(), ms: 3, error: null });
 		await flush();
+	});
+
+	it("a '#' in the finding text does not confuse the stale check of a single card", async () => {
+		const H = 'Nodule #2 in the right lower lobe';
+		const hc = card({ key: 'bts-pulmonary-nodule', name: 'BTS 2015', finding_id: 'u1', finding: H });
+		const us = [unit(1, H)];
+		s.round(us, true, G);
+		api.calls.match[0].resolve(matched([]));
+		await flush();
+		s.round(us, true, G);
+		api.calls.match[1].resolve(matched([hc]));
+		await flush();
+		const r = cardRef(hc);
+		s.open(r);
+		api.calls.open[0].resolve(result(hc, preview({ proposal: null, draft_outcome: outcome({ classification: 'BTS 2015 · Solid nodule 6-8 mm', recommendation: 'CT at 3 months.', headline: 'Solid nodule', action: 'CT at 3 months', category: 'surveillance' }), trace: { outcome: 'ct3' }, draft: rows() })));
+		await flush();
+		s.tick(r, 'kind', 'solid');
+		s.apply(r);
+		api.calls.calculate.at(-1)!.resolve({ calculation: calcOk(), ms: 3, error: null });
+		await flush();
+		expect(state().applied?.[r]).toBeDefined();
+		expect(state().applied?.[r].stale).toBeUndefined();
 	});
 });

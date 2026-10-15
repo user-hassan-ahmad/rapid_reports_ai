@@ -66,7 +66,12 @@ export function recommendationsForGate(on: boolean, applied: Record<string, Appl
 	return on ? Object.values(applied ?? {}) : [];
 }
 
+/** The stale (amber) lines as gate items (spec §7.4: the radiologist's to resolve before Confirm). */
+export function staleBlocks(recs: AppliedRec[]): { key: string; name: string }[] {
+	return recs.filter((r) => r.stale).map((r) => ({ key: `rec:${r.key}`, name: `${r.source} recommendation (${r.stale === 'finding' ? 'finding removed' : 'values changed'})` }));
+}
+
 /** A stable key for the lines the gate record carries (key and trimmed text, by key): any change to them stales a confirmed gate. */
 export function recommendationsKey(recs: AppliedRec[]): string {
-	return JSON.stringify(recs.map((r) => [r.key, r.text.trim()]).sort());
+	return JSON.stringify(recs.map((r) => [r.key, r.text.trim(), r.stale ?? '', r.verdict, r.outcome]).sort());
 }

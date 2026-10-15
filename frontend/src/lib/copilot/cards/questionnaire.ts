@@ -80,7 +80,7 @@ export function statusLine(p: Preview | null | undefined, edits: Record<string, 
 	if (!p) return '';
 	if (b === 'question') return `${p.bounded ? '' : 'up to '}${plural(remaining(p, edits), 'question', 'questions')} to a recommendation`;
 	if (b === 'check') return `Check ${plural(checkItems(p, ticks).filter((c) => !c.affirmed).length, 'value', 'values')} to apply`;
-	if (b === 'pick') return 'Pick the outcome that fits';
+	if (b === 'pick' && (p.candidates ?? []).length > 0) return 'Pick the outcome that fits';
 	return '';
 }
 
