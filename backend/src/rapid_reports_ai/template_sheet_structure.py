@@ -268,13 +268,15 @@ def sheet_hash(sheet: str) -> str:
 def generation_stamp(template_id: str, config: dict | None, path: str) -> dict | None:
     """Which sheet produced a report or a session (template pipeline spec, block 4). Total: a malformed config
     gives empty fields, any surprise gives None (logged) -- a stamp never breaks the save it rides on. An empty
-    sheet has no hash, so a sheet-less version never matches every other sheet-less one."""
+    sheet has no hash, so a sheet-less version never matches every other sheet-less one. sheet_rev (stable line IDs spec) is recorded beside sheet_hash: the pair is the sheet's reference, never sheet_rev alone."""
     try:
         config = config if isinstance(config, dict) else {}
         sheet = config.get("skill_sheet")
         sheet = sheet if isinstance(sheet, str) else ""
         version = config.get("analyser_version")
+        rev = config.get("sheet_rev")
         return {"template_id": str(template_id), "sheet_hash": sheet_hash(sheet) if sheet.strip() else None,
+                "sheet_rev": rev if isinstance(rev, int) and not isinstance(rev, bool) else None,
                 "grammar_version": STRUCTURE_VERSION,
                 "analyser_version": version[:64] if isinstance(version, str) else "", "path": str(path)}
     except Exception as e:  # noqa: BLE001 -- evidence only
