@@ -14,6 +14,7 @@
 	import CardStatus from './CardStatus.svelte';
 	import AssumedChip from './AssumedChip.svelte';
 	import { assumptionsOf, categoryColor, scopeDoubts, verdictOf } from './format';
+	import type { AppliedRec } from '$lib/hybrid-stack/types';
 	import PackBody from './PackBody.svelte';
 	import UnresolvedNote from './UnresolvedNote.svelte';
 	import type { Unresolved } from '../gate';
@@ -29,6 +30,11 @@
 		action = null,
 		category = null,
 		onEdit = null,
+		applyOn = false,
+		applied = null,
+		onTick = null,
+		onPick = null,
+		onApply = null,
 		unresolved = null,
 		onSeen = null,
 		onOpen,
@@ -46,6 +52,12 @@
 		category?: ActionCategory | null;
 		/** Slice B2: answer or change a value; absent keeps the card read-only. */
 		onEdit?: ((ref: string, input: string, value: string) => void) | null;
+		/** The Apply flag; with it, the card offers ✓, the outcome pick and Apply. */
+		applyOn?: boolean;
+		applied?: AppliedRec | null;
+		onTick?: ((ref: string, input: string, value: string) => void) | null;
+		onPick?: ((ref: string, outcome: string | null) => void) | null;
+		onApply?: ((ref: string) => void) | null;
 		/** The card blocks Confirm (§7.12 item 5): its reason and "Seen, leave as is" lead the body. */
 		unresolved?: Unresolved | null;
 		onSeen?: ((key: string) => void) | null;
@@ -88,6 +100,16 @@
 			onEdit={onEdit ? (input, value) => onEdit(ref, input, value) : null}
 			busy={view.loading}
 			editError={view.editError ?? null}
+			edits={view.edits ?? {}}
+			ticks={view.ticks ?? {}}
+			pick={view.pick ?? null}
+			applying={!!view.applying}
+			applyError={view.applyError ?? null}
+			{applied}
+			{applyOn}
+			onTick={onTick ? (input, value) => onTick(ref, input, value) : null}
+			onPick={onPick ? (outcome) => onPick(ref, outcome) : null}
+			onApply={onApply ? () => onApply(ref) : null}
 		/>
 	{/if}
 {/snippet}

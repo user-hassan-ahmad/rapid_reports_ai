@@ -152,6 +152,7 @@ describe('CopilotCards', () => {
 		expect(at('2.2 cm')).toBeLessThan(at('Growth on prior imaging'));
 		expect(at('Growth on prior imaging')).toBeLessThan(at('Benign adenoma'));
 		await expect.element(page.getByText('set by the exam').first()).toBeInTheDocument();
+		await page.getByRole('button', { name: /^Based on/ }).click(); // the values wait behind "Based on"
 		const quote = page.getByText('“2.2 cm left adrenal nodule”');
 		await expect.element(quote).not.toBeVisible();
 		const row = document.querySelector('.cp-val[tabindex]') as HTMLElement;
@@ -343,10 +344,11 @@ describe('CopilotCards', () => {
 		});
 		const p = { ...single(c, v(result(c, pv), { open: true })), onEdit: vi.fn() };
 		render(CopilotCards, p);
+		await page.getByRole('button', { name: /^Based on/ }).click();
 		await page.getByRole('button', { name: 'Answer Brock risk' }).click();
 		await page.getByRole('combobox', { name: 'Answer for Brock risk' }).selectOptions('Under 10%');
 		expect(p.onEdit).toHaveBeenCalledWith(cardRef(c), 'brock', 'Under 10%');
-		await page.getByRole('button', { name: 'Change Known cancer' }).click();
+		await page.getByRole('button', { name: 'Change Known cancer' }).first().click(); // Check holds the assumed value; the list repeats it
 		await page.getByRole('combobox', { name: 'Answer for Known cancer' }).selectOptions('Yes');
 		expect(p.onEdit).toHaveBeenCalledWith(cardRef(c), 'cancer', 'Yes');
 		const names = [...document.querySelectorAll('button, [role="button"]')].map((b) => (b.textContent ?? '').trim());
@@ -416,7 +418,8 @@ describe('CopilotCards', () => {
 			draft: [draft({ input: 'size', label: 'Size', state: 'read', value: '2.2 cm' }), draft({ input: 'side', label: 'Solid component', state: 'not_applicable' })]
 		});
 		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
-		await expect.element(page.getByText('2.2 cm')).toBeInTheDocument();
+		await page.getByRole('button', { name: /^Based on/ }).click();
+		await expect.element(page.getByText('2.2 cm', { exact: true })).toBeInTheDocument();
 		expect(document.querySelector('.cp-recommendation')).toBeNull(); // the pill already says it
 		expect(document.body.textContent).not.toContain('Solid component');
 		await page.getByRole('button', { name: '+1 not applicable' }).click();
@@ -490,9 +493,13 @@ describe('CopilotCards', () => {
 		await expect.element(page.getByTestId('cp-scope-doubt-chip')).toHaveTextContent('⚠ check applicability');
 		expect(document.querySelector('.gl-title-row')!.textContent).not.toContain('check first'); // said once
 		const note = page.getByTestId('cp-scope-doubt');
-		await expect.element(note).toHaveTextContent('Maximum diameter: 35 mm (pre-filled) would make NHS AAA surveillance not apply — confirm or change it');
-		// first in the body
-		expect(document.querySelector('.gl-body .cp-pack-body')!.firstElementChild!.getAttribute('data-testid')).toBe('cp-scope-doubt');
+		await expect.element(note).toHaveTextContent('Maximum diameter: 35 mm');
+		await expect.element(note).toHaveTextContent('pre-filled · would make NHS AAA surveillance not apply');
+		// first in the body: the Check zone holds it
+		const first = document.querySelector('.gl-body .cp-pack-body')!.firstElementChild!;
+		expect(first.getAttribute('data-testid')).toBe('cp-check');
+		expect(first.contains(note.element())).toBe(true);
+		await page.getByRole('button', { name: /^Based on/ }).click();
 		const row = [...document.querySelectorAll('.cp-val')].find((e) => e.textContent!.includes('Maximum diameter'))!;
 		expect(row.classList.contains('cp-val--doubt')).toBe(true);
 		await page.getByRole('button', { name: 'Confirm Maximum diameter 35 mm' }).click();
@@ -515,7 +522,8 @@ describe('CopilotCards', () => {
 		const p = { ...single(c, v(result(c, pv), { open: true })), onEdit: vi.fn() };
 		render(CopilotCards, p);
 		const note = page.getByTestId('cp-scope-doubt');
-		await expect.element(note).toHaveTextContent('Growth: Diameter clear growth (pre-filled)');
+		await expect.element(note).toHaveTextContent('Growth: Diameter clear growth');
+		await expect.element(note).toHaveTextContent('pre-filled');
 		expect(note.element().textContent).not.toContain('diameter_clear_growth');
 		await page.getByRole('button', { name: 'Confirm Growth Diameter clear growth' }).click();
 		expect(p.onEdit).toHaveBeenCalledWith(cardRef(c), 'growth', 'diameter_clear_growth');
