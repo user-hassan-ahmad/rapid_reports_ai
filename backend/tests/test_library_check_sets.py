@@ -1,6 +1,7 @@
 """Spec 2026-10-14 §9.2: on each launch pack's golden cases, with every golden input drafted as pre-filled (the
 worst case: nothing read), the exact inputs the card's Check zone lists (decisive pre-filled or assumed values, and
-scope doubts), pinned in fixtures/check_sets.json; and `decisive` agrees with flipping each value through `finish`.
+scope doubts), pinned in fixtures/check_sets.json; and `decisive` agrees with flipping each value through `finish` (the outcome changes or, with no outcome yet,
+which outcomes remain possible).
 Regenerate the pin with UPDATE_CHECK_SETS=1 only after a reviewed engine or pack change."""
 import json
 import os
@@ -63,6 +64,7 @@ def test_decisive_agrees_with_flipping_each_prefilled_value():
                 if d.state != "prefilled" or d.decisive is None:
                     continue
                 others = [o for o in d.options if o not in (d.value, PP.NOT_STATED)]
-                moved = any((PP.finish(e, s, {d.input: o}, None, []).trace or {}).get("outcome") != base
-                            for o in others)
+                flips = [PP.finish(e, s, {d.input: o}, None, []) for o in others]
+                moved = any((fp.trace or {}).get("outcome") != base
+                            or (base is None and set(fp.possible) != set(p.possible)) for fp in flips)
                 assert d.decisive == moved, (pack_id, c["name"], d.input)
