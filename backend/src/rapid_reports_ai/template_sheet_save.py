@@ -309,8 +309,9 @@ class Persisted:
 
 
 # Server-written config keys (stable line IDs spec): never taken from a client config. persist_sheet writes
-# line_registry and sheet_rev; the confirm endpoint writes normal_confirms; `uncertain` is reserved for slice 4 (no
-# writer yet). main._carry_structure keeps the stored copies on a PUT or a restore.
+# line_registry and sheet_rev; normal_confirms is written only through template_normal_confirms.build_confirms, by the
+# confirm endpoint or a save carrying ticked groups; `uncertain` is reserved for slice 4 (no writer yet).
+# main._carry_structure keeps the stored copies on a PUT or a restore.
 SERVER_WRITTEN = ("line_registry", "uncertain", "normal_confirms", "sheet_rev")
 # The server-written keys a save does not own: every writer re-reads them from the stored row (under its lock, where
 # it holds one) and keeps them, so a confirm recorded meanwhile is never overwritten.

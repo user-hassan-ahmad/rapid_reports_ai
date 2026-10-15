@@ -1943,13 +1943,12 @@ async def normal_confirm_endpoint(
         db.rollback()
         raise HTTPException(status_code=409, detail="The template has changed; reload it and confirm again.")
     st = tsg.parse_sheet(sheet, mode="template").structure if tsg.is_grammar_sheet(sheet) else None
-    found = tnc.groups(st, sheet, cfg.get("line_registry")) if st is not None else []
-    group = next((g for g in found if g.id == request.group), None)
-    if group is None:
+    built = tnc.build_confirms(st, sheet, cfg.get("line_registry"), ids=[request.group], sheet_rev=request.sheet_rev,
+                               sheet_hash=request.sheet_hash, user_id=str(current_user.id)) if st is not None else None
+    if not built or not built.picked:
         db.rollback()
         raise HTTPException(status_code=422, detail="Unknown group.")
-    rec = tnc.record(group, cfg.get("line_registry"), sheet_rev=request.sheet_rev, sheet_hash=request.sheet_hash,
-                     user_id=str(current_user.id))
+    group, rec = built.picked[0], built.records[built.picked[0].id]
     confirms = cfg.get("normal_confirms") if isinstance(cfg.get("normal_confirms"), dict) else {}
     row.template_config = {**cfg, "normal_confirms": {**confirms, group.id: rec}}
     flag_modified(row, "template_config")

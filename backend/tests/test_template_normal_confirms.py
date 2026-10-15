@@ -155,3 +155,85 @@ def test_an_unrelated_rule_leaves_the_confirm_valid():
     assert _state_after(LEDGER_SHEET, edited) == "valid"
     with_rule = _with(LEDGER_SHEET, _NEG, _SUPPRESS)
     assert _state_after(with_rule, with_rule) == "valid"
+
+
+# ── shared groups before the first save, the impression left out, sig, build_confirms (Refine v1, H1 / H6) ─────
+
+def test_groups_before_the_first_save_group_by_parse_refs_and_carry_the_same_sig():
+    reg = _reg(LEDGER_SHEET)
+    st = _st(LEDGER_SHEET)
+    uids = tlr.uids_for(st, reg)
+    pre, post = tnc.groups(st, LEDGER_SHEET), _groups(LEDGER_SHEET, reg)
+    assert [(g.id, g.units, g.refs) for g in pre] == [("p1", (), ("m0", "n0"))]
+    assert [(g.id, g.units, g.refs) for g in post] == [(uids["p1"], (uids["m0"], uids["n0"]), ("m0", "n0"))]
+    assert [(g.label, g.name, g.rules, g.sig) for g in pre] == [(g.label, g.name, g.rules, g.sig) for g in post]
+    assert pre[0].sig
+
+
+def test_groups_before_the_first_save_chunk_like_after():
+    extra = "\n".join(f'NORMAL [s{k}] "Structure {k} is normal."' for k in range(9))
+    sheet = LEDGER_SHEET.replace('COVERS ["liver" | "gallbladder"]',
+                                 'COVERS ["liver" | "gallbladder" | ' + " | ".join(f'"s{k}"' for k in range(9)) + "]") \
+                        .replace('NEGATIVE "No focal liver lesion."', f'NEGATIVE "No focal liver lesion."\n{extra}')
+    pre = tnc.groups(_st(sheet), sheet)
+    assert [g.id for g in pre] == ["p1#1", "p1#2"]
+    assert [g.sig for g in pre] == [g.sig for g in _groups(sheet, _reg(sheet))]
+
+
+_IMPRESSION_NORMAL = LEDGER_SHEET.replace('Opening: "Normal study."',
+                                          'Opening: "Normal study."\nNORMAL [study] "Normal study."')
+
+
+def test_the_impression_is_never_a_confirm_group():
+    st = _st(_IMPRESSION_NORMAL)
+    assert any(u.section == "S:IMPRESSION" and u.ref in tnc.attestable(st) for u in tlr.units(st))
+    reg = _reg(_IMPRESSION_NORMAL)
+    for gs in (tnc.groups(st, _IMPRESSION_NORMAL), _groups(_IMPRESSION_NORMAL, reg)):
+        assert [g.label for g in gs] == ["Findings › Liver"]
+
+
+def _sig(sheet):
+    return tnc.groups(_st(sheet), sheet)[0].sig
+
+
+def test_sig_changes_with_a_reworded_unit_a_rename_or_a_rule_on_the_group_and_not_otherwise():
+    base = _sig(LEDGER_SHEET)
+    assert _sig(LEDGER_SHEET.replace('"No focal liver lesion."', '"No focal hepatic lesion."')) != base
+    assert _sig(LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatic (FINDINGS)")) != base
+    assert _sig(_with(LEDGER_SHEET, _NEG, _SUPPRESS)) != base
+    unrelated = _with(LEDGER_SHEET, 'FIXED "No previous imaging available."',
+                      'RULE WHEN [context: the dictation names a previous study] SUPPRESS "No previous imaging available."')
+    assert _sig(unrelated) == base
+
+
+def _build(sheet, reg, **kw):
+    return tnc.build_confirms(_st(sheet), sheet, reg, sheet_rev=1, sheet_hash=tss.sheet_hash(sheet), user_id="u",
+                              now="T", **kw)
+
+
+def test_build_confirms_by_group_id_records_what_record_records():
+    reg = _reg(LEDGER_SHEET)
+    g = _groups(LEDGER_SHEET, reg)[0]
+    out = _build(LEDGER_SHEET, reg, ids=[g.id])
+    rec = tnc.record(g, reg, sheet_rev=1, sheet_hash=tss.sheet_hash(LEDGER_SHEET), user_id="u", now="T")
+    assert out.records == {g.id: rec} and out.picked == [g] and out.unpicked == []
+    assert rec["sig"] == g.sig and tnc.confirm_state(g, rec, reg) == "valid"
+
+
+def test_build_confirms_by_sig_matches_the_pre_save_preview_and_lists_unpicked_groups():
+    sheet = LEDGER_SHEET.replace('FIXED "Axial images were acquired."',
+                                 'FIXED "Axial images were acquired."\nNORMAL [coverage] "Coverage is complete."')
+    preview = tnc.groups(_st(sheet), sheet)                       # what Refine shows before the save
+    reg = _reg(sheet)
+    saved = _groups(sheet, reg)
+    out = _build(sheet, reg, sigs=[preview[1].sig])
+    assert list(out.records) == [saved[1].id] and [g.id for g in out.unpicked] == [saved[0].id]
+    everything = _build(sheet, reg, sigs=[g.sig for g in preview])
+    assert set(everything.records) == {g.id for g in saved} and everything.unpicked == []
+
+
+def test_build_confirms_unknown_id_or_sig_records_nothing_and_never_uses_a_missing_registry_as_pre_save():
+    reg = _reg(LEDGER_SHEET)
+    assert _build(LEDGER_SHEET, reg, ids=["nope"], sigs=["nope"]).records == {}
+    out = _build(LEDGER_SHEET, None, ids=["p1"], sigs=[_sig(LEDGER_SHEET)])   # no stored registry: no uids, no group
+    assert out.records == {} and out.unpicked == []
