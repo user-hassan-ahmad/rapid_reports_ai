@@ -146,7 +146,7 @@ Several endpoints are stateless: they return a sheet to the client and never wri
 
 ## The normals confirm record
 
-Decision 5: normals are confirmed in small groups beside their sentences, each confirm recorded. Stored at `template_config["normal_confirms"]`, server-written only, through a dedicated endpoint (`POST /api/templates/{id}/normal-confirms`, used by slice 3). It is not a ledger kind: it changes no sheet text, and keeping it out of the client-held ledger means a client can't forge one.
+Decision 5: normals are confirmed in small groups beside their sentences, each confirm recorded. Stored at `template_config["normal_confirms"]`, server-written only. Confirms are written by the confirm endpoint (`POST /api/templates/{id}/normal-confirms`, for a saved template) or by a save that carries ticked groups (`POST /skill-sheet/save` with `normal_confirms`, Refine v1 decision H1: "Use this template" saves the template and its confirms in one request), both through the one pure function `build_confirms` (`template_normal_confirms.py`), inside the same transaction as the template write (the insert, for a first save); never by any other code. It is not a ledger kind: it changes no sheet text, and keeping it out of the client-held ledger means a client can't forge one.
 
 The endpoint:
 
@@ -154,7 +154,9 @@ The endpoint:
 - Rejects the confirm (409) if `sheet_rev` / `sheet_hash` differ from the stored ones, so a concurrent edit is never attested unseen.
 - Works out the group's units and their `text_hash` from the stored sheet and registry itself; never from the client.
 - Sets `user_id` from the session.
-- Confirms exist only on a saved template. The creator flow refines before Create (refine, card and apply-decisions accept requests with no `template_id`), so constraint for slice 3: the confirm UI is offered only once the template is saved; there are no creation-time confirms. The endpoint returns 404 for a template that doesn't exist (tested).
+- Returns 404 for a template that doesn't exist (tested) and 422 for a group that isn't one of the template's current groups.
+
+The save path (Refine v1; wired by Refine, not by this slice): the creator ticks groups on a pre-save preview, which has no uids yet, so a tick is the group's `sig` (below), never a uid. The save handler persists the sheet (`persist_sheet`: uids minted, `sheet_rev` set), then calls `build_confirms(..., sigs=[…], user_id=<session user>)` on the persisted sheet and registry; every group must be matched by a `sig` or no row is written. Units, `text_hash` and `user_id` are computed on the server exactly as for the endpoint; the client sends only the `sig`s it was shown. A record is stored only for what the radiologist saw.
 
 ```json
 {
@@ -165,6 +167,7 @@ The endpoint:
   "sheet_hash": "c0ffee12",
   "group_name": "coronary arteries",
   "rules": "",
+  "sig": "sha256:3b9e…",
   "user_id": 42,
   "at": "2026-10-15T10:04:52Z"
 }
@@ -173,7 +176,8 @@ The endpoint:
 **Groups** (one definition, no threshold flip):
 
 - In the findings section: one group per paragraph from `paragraph_regions` (`hybrid_stack/template.py:42`), the groups the scratchpad shows. Findings-section units with no paragraph form one section-level group.
-- Every other section: one group per section.
+- Every other section: one group per section, except the impression / conclusion, which is never a confirm group until slice 5 (Refine v1 decision H6). The exclusion is inside `groups()`, so no caller can forget it.
+- `groups(st, sheet, registry=None)` groups by parse refs. With no registry (before the first save) a group's `id` is its parent's parse ref (`p1`, `S:TECHNIQUE`, `p1#2`) and it has no uids; with a registry, `id` and `units` are uids and a group with a unit that has no uid is left out. Each group carries `sig`: a hash over its `group_name`, its attestable units' `text_hash` in document order and its `rules` hash, so the same group has the same `sig` before and after the save, and anything that would make a confirm stale changes it. The record stores `sig`.
 - A group with more than 8 attestable units is split into consecutive chunks of at most 8, in document order (`group` = `<uid>#1`, `#2`, …). Inserting or removing a normal shifts later chunks, so every chunk from that point goes stale and is confirmed again. That is the safe outcome and is accepted.
 
 **Attestable units** of a group: its live NORMAL lines and its unconditional default NEGATIVE lines. One predicate is used both when confirming and when checking.
@@ -184,7 +188,7 @@ The endpoint:
 - `stale`: anything else: a unit added, removed or gone, or **any unit's `text_hash` changed**, including a normal reworded in place that kept its slot uid (a normal's identity holds no text, so the `text_hash` check is what catches it); **or the group's paragraph or section has been renamed since the confirm** (`group_name` differs), even if every sentence carried over unchanged. The record stores the group name after `rep_key` (`group_name`) to check this; any rename, case included, makes it stale. A confirm given in one context ("Arterial phase") never silently covers another. **Or a rule acting on the group changed** (end review M5): the record stores `rules`, a hash over the RULE lines that suppress, replace or are anchored on one of the group's units (matched as the generator matches), SUPPRESS NEGATIVES in its paragraph and SUPPRESS_SECTION of its section (`""` when there are none); adding, removing or changing any of them makes the confirm stale, while a rule on other lines never does. A stale confirm is asked again and never counts as confirmed.
 - `missing`: no record for the group.
 
-Confirms are never written by code and never carried across a text change.
+Confirms are never written by code on its own (only on a radiologist's tick, through the endpoint or the save) and never carried across a text change.
 
 ## Sheet revision
 
@@ -232,14 +236,14 @@ Existing suites:
 - `test_template_sheet_save.py` / route tests: `persist_sheet` runs on the five persisting paths (including the upgrade script) and never on the stateless ones; `_carry_structure` ignores a client `line_registry`, `uncertain`, `normal_confirms` and `sheet_rev`; `sheet_rev` increments from the stored value only on a sheet change.
 - Confirm endpoint: 409 on a stale `sheet_rev` / `sheet_hash`; units computed server-side; a client-sent unit list is ignored.
 - Restore of a version with no registry rebinds against the current registry.
-- Confirms: grouping (findings paragraphs, other sections, chunks of ≤ 8), `valid` / `stale` / `missing`, endpoint sets `user_id` from the session. Stale safety nets: (a) a normal reworded in place keeps its slot uid but its changed `text_hash` makes the confirm stale; (b) a paragraph or section rename with every sentence identical makes the confirm stale (`group_name`).
+- Confirms: grouping (findings paragraphs, other sections, chunks of ≤ 8), `valid` / `stale` / `missing`, endpoint sets `user_id` from the session. Stale safety nets: (a) a normal reworded in place keeps its slot uid but its changed `text_hash` makes the confirm stale; (b) a paragraph or section rename with every sentence identical makes the confirm stale (`group_name`). The impression is never a group; `groups()` without a registry gives the same groups and `sig`s as with one; `build_confirms` picks by id or `sig` and lists unpicked groups.
 - Rebuild fixture: two writer outputs for the same synthetic reports. Primary metric: wrong matches (0). Secondary: resolved share against text matching.
 
 ## Decisions taken (2026-10-15)
 
 1. No similarity threshold; zero wrong matches on adversarial pairs is the pass condition, survival rate the secondary metric. (The cosmetic equivalence first chosen here is superseded by decision 7.)
 2. Uids carry only when nothing meaningful changed: rules need the same condition and output, values the same name and unit; fixed lines carry when exactly equal; a changed normal makes its group's confirm stale. One known, safe exception: today's key fallback for habits matches on paragraph and condition, so a habit answer still carries when only its question wording changes; the ledger then re-imposes its own question.
-3. Normals are confirmed per group (findings paragraphs, other sections), chunked at 8, through a server-computed endpoint that rejects a stale sheet.
+3. Normals are confirmed per group (findings paragraphs, other sections, the impression excluded until slice 5), chunked at 8, through a server-computed endpoint that rejects a stale sheet, or in the creator's first save by `sig` (Refine v1 H1, Hassan 2026-10-15), both through `build_confirms`.
 4. Superseded by decision 7 (it defined the cosmetic layer's tokens, gates and filler protection).
 5. A normal's answer follows a renamed paragraph only if its own text is exactly equal (option c); any paragraph or section rename makes that group's normal confirm stale (Hassan, 2026-10-15).
 6. Independent review before the implementation plan: round 1 not ready (11 findings), round 2 ready with fixes (9 findings), round 3 ready (one wording fix); all addressed.
