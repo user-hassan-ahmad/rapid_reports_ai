@@ -42,8 +42,9 @@ MISSING_VALUES_RULE = (
 REMOVED_RULE = (
     "FINDINGS statements always win over these removed sentences. Every statement in the FINDINGS input except its "
     "own DO NOT ASSERT line appears with its meaning unchanged, even one about the same structure as a removed "
-    "sentence, whether it names that structure differently or adds a value. Each FINDINGS statement is written in "
-    "its own words: a removed sentence's wording is never used to express it. A DO NOT ASSERT line never removes, "
+    "sentence, whether it names that structure differently or adds a value. Where a FINDINGS statement's wording "
+    "would match a removed sentence, it keeps its own words; a removed sentence's wording is never used to express "
+    "it. A DO NOT ASSERT line never removes, "
     "shortens or rewords a FINDINGS statement; it forbids only the removed sentence itself, in any wording, where no "
     "FINDINGS statement says it.")
 

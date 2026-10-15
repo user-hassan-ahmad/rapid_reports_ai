@@ -69,7 +69,7 @@ def test_the_findings_inputs_own_do_not_assert_line_is_not_a_statement():
 
 def test_each_findings_statement_keeps_its_own_words():
     rule = stack_brief(LEAN, "", ["X."]).split("## Removed by the Radiologist\n", 1)[1].split("- DO NOT ASSERT", 1)[0]
-    assert "written in its own words" in rule and "removed sentence's wording is never used to express it" in rule
+    assert "Where a FINDINGS statement's wording would match a removed sentence, it keeps its own words" in rule and "removed sentence's wording is never used to express it" in rule
 
 
 def test_the_stack_checklist_lets_dictated_findings_win():
@@ -77,7 +77,7 @@ def test_the_stack_checklist_lets_dictated_findings_win():
     no_assert = next(l for l in lines if l.startswith("- No DO NOT ASSERT statement"))
     stays = next(l for l in lines if l.startswith("- Every FINDINGS statement stays"))
     assert "in any wording" in no_assert and "unless a FINDINGS statement says it" in no_assert
-    assert "same structure" in stays and "own words" in stays and "same structure" not in no_assert
+    assert "written in its own words" not in stays and "same structure" in stays and "would match a removed sentence, it keeps its own words" in stays and "same structure" not in no_assert
 
 
 def test_no_conclusion_or_removals_no_sections():
