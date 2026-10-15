@@ -226,7 +226,7 @@ def test_a_read_excluding_value_is_a_scope_doubt_not_an_exclusion():
     p = PP.finish(e, s, {}, None, [])
     assert p.state == "check_first" and p.exclusion is None and p.scope_doubt == ["age"]
     row = next(d for d in p.draft if d.input == "age")
-    assert row.state == "prefilled" and PP.WHY_WOULD_EXCLUDE in row.why          # shown to confirm, never read
+    assert row.state == "read" and PP.WHY_WOULD_EXCLUDE in row.why     # honest provenance; scope_doubt carries the tap
     assert PP.finish(e, s, {"age": "30"}, None, []).state == "does_not_apply"    # confirmed (answered): excludes
     assert PP.finish(e, PP.Settlement(), {"exclusion": "Yes"}, None, []).state == "does_not_apply"
 
@@ -241,7 +241,7 @@ def test_calculate_leaves_an_unconfirmed_read_doubt_out_and_a_confirmed_one_excl
     e, s = _fleischner_age(30.0)
     c = PP.calculate(e, s, {"age": "30"}, None, [], "b1")
     assert c.outcome != "does_not_apply" and c.scope_doubt == ["age"]
-    assert next(v for v in c.values if v.input == "age").state == "prefilled"
+    assert next(v for v in c.values if v.input == "age").state == "read"
     c = PP.calculate(e, s, {"age": "30"}, None, [], "b1", answered={"age": "30"})
     assert c.outcome == "does_not_apply"
 
@@ -275,7 +275,7 @@ def test_a_drafted_clinical_value_never_excludes_but_an_answered_one_does(pack, 
         p = PP.finish(e, s, extra, None, [])
         assert p.state == "check_first" and p.scope_doubt == ["diameter_mm"] and p.exclusion is None, (pack, tier)
         d = next(x for x in p.draft if x.input == "diameter_mm")
-        assert d.value == "35 mm" and d.state == "prefilled" and PP.WHY_WOULD_EXCLUDE in d.why
+        assert d.value == "35 mm" and d.state == tier and PP.WHY_WOULD_EXCLUDE in d.why
         assert PP.finish(e, s, {**extra, "diameter_mm": "35"}, None, []).state == "does_not_apply"
 
 
@@ -634,3 +634,18 @@ def test_an_exclusion_that_is_still_possible_is_never_a_candidate(toy):
     assert c.outcome is None and c.candidates
     assert "the toy guideline does not apply" in c.possible                       # the exclusion is still possible
     assert "does_not_apply" not in [x.outcome for x in c.candidates]
+
+
+def test_an_exam_preset_never_excludes_unconfirmed():
+    """Review m-1: a preset behind an exclusion is a scope doubt too (no pack's preset excludes today: a toy preset)."""
+    from tests.test_library_pack_preview import _aaa
+    e = _aaa()
+    excluding = next(o for o in e.input("sex").options if o.lower() == "female")
+    s = PP.Settlement(values={"diameter_cm": PP.Drafted(InputValue(value=2.4), "aorta 2.4 cm", "read")})
+    p = PP.finish(e, s, {}, None, [], presets={"sex": excluding})
+    assert p.state != "does_not_apply" and "sex" in p.scope_doubt
+    c = PP.calculate(e, s, {"diameter_cm": "2.4 cm", "sex": excluding}, None, [], "b1", presets={"sex": excluding})
+    assert c.outcome != "does_not_apply" and "sex" in c.scope_doubt
+    c = PP.calculate(e, s, {"diameter_cm": "2.4 cm", "sex": excluding}, None, [], "b1", presets={"sex": excluding},
+                     answered={"sex": excluding})
+    assert c.outcome == "does_not_apply"

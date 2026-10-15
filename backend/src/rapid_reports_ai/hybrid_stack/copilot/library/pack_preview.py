@@ -883,7 +883,7 @@ def finish(e: Entry, s: Settlement, answered: dict[str, str], patient: dict[str,
         elif is_answered:
             st = "answered"
         elif a is None and d is not None:
-            st = "prefilled" if i.id in doubt else d.tier      # a read doubt needs its tap: shown pre-filled
+            st = d.tier          # a read doubt stays read (honest provenance); scope_doubt carries its tap
         elif a is None and i.id in preset:
             st = "prefilled"
         elif i.id in signs:
@@ -1018,23 +1018,23 @@ def _likely(e: Entry, t: engine.Trace, base: dict[str, InputValue], sources: lis
 
 def _no_prefilled_exclusion(e: Entry, t: engine.Trace, s: Settlement, answers: dict[str, InputValue],
                             given: dict[str, InputValue]) -> tuple[engine.Trace, list[str]]:
-    """Nothing is excluded unconfirmed (Hassan 2026-10-13 for a guess; 2026-10-15 for any drafted value): only an
-    answered or stated value may give does_not_apply. When the draft excludes and drafted values (read or pre-filled)
-    are behind it, of any role (an eligibility value, or a clinical one such as a diameter over 3 cm), the ones whose
-    removal lifts the exclusion are the scope doubt: the draft is recomputed over every other value (the remaining
-    drafted values stay in it), they are shown pre-filled with WHY_WOULD_EXCLUDE (a read one too: it now needs a
-    tap), and the card stays check_first. Calculate takes such a value as sent once the radiologist confirms it."""
+    """Nothing is excluded unconfirmed (Hassan 2026-10-13 for a guess; 2026-10-15 for any value): only an answer, on
+    this card or as a shared patient answer, may give does_not_apply. When the draft excludes and other values are
+    behind it (read, pre-filled, an exam preset or an assumed-absent sign; of any role: an eligibility value, or a
+    clinical one such as a diameter over 3 cm), the ones whose removal lifts the exclusion are the scope doubt: the
+    draft is recomputed over every other value (the remaining ones stay in it), they carry WHY_WOULD_EXCLUDE in their
+    own state (a read one stays read), and the card stays check_first. Calculate takes such a value as sent once the
+    radiologist confirms it."""
     if t.outcome != DOES_NOT_APPLY:
         return t, []
-    pre = [k for k, d in s.values.items() if d.tier in ("prefilled", "read") and k not in answers
-           and e.input(k) is not None]
+    pre = [k for k in _known(given) if k not in answers and e.input(k) is not None]
     if not pre:
         return t, []
     known = _known(given)
 
     def without(ks) -> engine.Trace:
         return engine.evaluate(e, {k: v for k, v in known.items() if k not in ks}, assume_eligible=True)
-    if without(pre).outcome == DOES_NOT_APPLY:        # excluded anyway, by an answered or stated value
+    if without(pre).outcome == DOES_NOT_APPLY:        # excluded anyway, by an answer
         return t, []
     doubt = [k for k in pre if without([k]).outcome != DOES_NOT_APPLY]          # removing it alone lifts it
     if not doubt:                                      # several together: each that alone excludes, else them all
@@ -1078,15 +1078,20 @@ def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str
     - a value equal to its draft keeps the draft's state (a preset's: pre-filled, by the exam); one equal to the shared
       patient answer is answered; one the preview showed assumed, sent back unchanged and not answered, stays assumed;
       any other is edited (answered when nothing was drafted);
-    - a drafted value (read or pre-filled) the preview held as a scope doubt, sent back unchanged and not answered
-      (confirmed), is left out of the evaluation and returned in scope_doubt: it never becomes a silent exclusion."""
+    - a value the preview held as a scope doubt (read, pre-filled, a preset or a sign), sent back unchanged and not
+      answered (confirmed), is left out of the evaluation and returned in scope_doubt: it never becomes a silent
+      exclusion."""
     answered = answered or {}
     given = _given(e, values)                         # NOT_STATED -> unknown
     try:
         card = finish(e, s, answered, patient, sources, presets)
         shown = {d.input: d for d in card.draft}
-        doubt = [k for k in card.scope_doubt if k not in answered and k in given and k in s.values
-                 and _same_shown(e, e.input(k), s.values[k].value, given[k])]
+        def unchanged(k: str) -> bool:
+            """Sent back as the card showed it: a drafted value by its draft, a preset or a sign by its shown text."""
+            if k in s.values:
+                return _same_shown(e, e.input(k), s.values[k].value, given[k])
+            return k in shown and shown[k].value == _show(e, e.input(k), given[k])
+        doubt = [k for k in card.scope_doubt if k not in answered and k in given and unchanged(k)]
         known = {k: v for k, v in _known(given).items() if k not in doubt}
         t = engine.evaluate(e, known)
     except (engine.EvaluationError, ValueError) as ex:
@@ -1106,7 +1111,7 @@ def calculate(e: Entry, s: Settlement, values: dict[str, str], patient: dict[str
         elif _same_shown(e, i, shared.get(i.id), g):
             st = "answered"
         elif d is not None and _same_shown(e, i, d.value, g):
-            st = "prefilled" if i.id in doubt else d.tier
+            st = d.tier
         elif d is None and _same_shown(e, i, p, g):
             st, by = "prefilled", "exam"
         elif (sv is not None and sv.state == "assumed" and i.id not in answered
