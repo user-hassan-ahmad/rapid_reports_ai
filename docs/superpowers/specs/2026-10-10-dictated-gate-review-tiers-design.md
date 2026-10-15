@@ -90,7 +90,7 @@ Behind `RR_DICTATED_GATE=live` (§7), the gate is the only source of "dictated":
 |---|---|
 | `provenance.build_items` skip chain (W1n sup, pair score, lexicon normal) | gate verdict; skip chain deleted at stage 3 |
 | `provenance.confirm` / `synthesis_items` / `_proposed_runs` on suppressed items | replaced by §4.2 rule 4 + §4.3 |
-| `_rec_dictated` and the confirm rec drop | kept (2026-10-15): a "rec" clause gets no item when `_rec_dictated` or confirm's Jev drop (`rec_dictated_spans`) calls it dictated. The gate scored writer rewordings of dictated recommendations 0.55–0.66 (P3) |
+| `_rec_dictated` and the confirm rec drop | replaced (2026-10-15) by the gate's own Jev question: every "rec" clause is asked the lab P4 Q3 question on its anchor (`dictated_gate.ask_recs`, one batched request); P(stated) + P(synonym_or_equivalent) ≥ 0.5 → no item, else the item stays. The gate's all-stated question scored writer rewordings of dictated recommendations 0.55–0.66 (P3). Synthetic lab 2026-10-15 (24 cases, 2 runs, stable): 6/6 added, 6/6 blended with an added part, 4/4 changed interval / study / side flagged; 7/8 rewordings cleared. Only when Jev has no answer does a word rule decide (`_rec_said`: one dictated line holds every word and number of the clause). |
 | Negatives classifier `dictated` suppressing an item | gate decides. Classifier `dictated` + gate added → quiet item (`assumed_normal`, form `normal`). The classifier keeps `default` / `implicated` / `contradicted` |
 | Brief full-label `dictated` suppressing an item | gate decides the same way. Brief anchors still own selection, amber for finding-linked negatives, conflict cards and the removal veto |
 

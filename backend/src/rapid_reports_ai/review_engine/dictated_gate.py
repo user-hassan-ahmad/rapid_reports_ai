@@ -254,8 +254,9 @@ _NUM = re.compile(r"\d+(?:\.\d+)?")
 
 
 def _rec_said(al: Alignment, c: ReportClause) -> bool:
-    """A recommendation clause the radiologist dictated: one dictated line, confidently paired with the clause or a
-    recommendation itself, holds every content word of the clause beyond the recommending words. Stricter than
+    """The word-rule backstop, used only when Jev has no answer (`ask_recs`): a recommendation clause the radiologist
+    dictated when one dictated line, confidently paired with the clause or a recommendation itself, holds every
+    content word of the clause beyond the recommending words. Stricter than
     `provenance._rec_dictated` (a pair, or any one shared word): a pair or a shared modality word alone would let an
     undictated addition in the same sentence ("... and refer to MDT.") pass unflagged. Numbers count as words
     (`content_words` drops them), so "CT in 12 months." is not cleared by a dictated "CT in 3 months"."""
@@ -269,8 +270,41 @@ def _rec_said(al: Alignment, c: ReportClause) -> bool:
     return bool(words) and any((l.id in paired or recommendation(l.text)) and words <= toks(l.text) for l in al.lines)
 
 
+async def ask_recs(inp: ReviewInput, al: Alignment, gate: List[GateClause]
+                   ) -> Tuple[Dict[Tuple[int, int], Optional[float]], dict]:
+    """({anchor (start, end): P(dictated) or None}, log) for every "rec" clause: one batched Jev request with the lab
+    P4 Q3 question (`provenance.q_synthesis`, dictation as state) on each recommendation's anchored text, the same
+    anchor `apply` places. A failed request returns {} (the error is logged); an unreadable answer is None. Synthetic
+    lab 2026-10-15 (24 recommendations, 2 runs): 6/6 added, 6/6 blended with an added part, 4/4 changed interval /
+    study / side flagged, 7/8 rewordings cleared (the miss added "hepatobiliary" to a dictated "MDT discussion")."""
+    from .. import report_reconcile as rc
+    from .provenance import _rec_target, p_dictated, q_synthesis, synthesis_state
+    report = inp.artifacts.report or ""
+    names = list(inp.artifacts.sections or [])
+    targets: List[Tuple[int, int, str]] = []
+    seen: set = set()
+    for g in gate:
+        c = g.aclause
+        if g.tier != "rec" or c is None or c.sentence_start in seen:
+            continue
+        seen.add(c.sentence_start)
+        sentence = report[c.sentence_start:c.sentence_end]
+        s, e, _ = _rec_target(report, c, sentence, names)
+        targets.append((s, e, sentence))
+    log: dict = {"asked": len(targets), "error": None}
+    if not targets:
+        return {}, log
+    qs = {f"rec{k}": q_synthesis(sentence, report[s:e]) for k, (s, e, sentence) in enumerate(targets)}
+    try:
+        ans = await rc._jev(synthesis_state(inp), qs) or {}
+    except Exception as ex:  # noqa: BLE001 - no answer: the word rule decides, never a silent drop
+        log["error"] = f"{type(ex).__name__}: {str(ex)[:200]}"
+        return {}, log
+    return {(s, e): p_dictated(ans.get(f"rec{k}")) for k, (s, e, _) in enumerate(targets)}, log
+
+
 def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], neg_items: list, brief_items: list,
-          rec_dictated_spans=()):
+          rec_jev: Optional[Dict[Tuple[int, int], Optional[float]]] = None):
     """Live (spec §4.4): (provenance items, negatives items, brief items, log). Inputs are not mutated.
     - dictated clause: AI-layer items (assumed_normal / ai_generated, cls info) that touch no added clause are dropped;
       cards (check, removed, ...) stay;
@@ -280,16 +314,14 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
     - rec clause: one `recommendation` item per sentence, placed and given its removal by provenance's code, unless
       the radiologist dictated it in other words. The gate cannot say so: `tier_of` makes every added recommendation
       clause "rec", and a writer's rewording of a dictated recommendation (integration spec D22: "suggest non-urgent
-      ultrasound" → "Non-urgent thyroid ultrasound is recommended.") scores below GATE_MIN. So today's two rules
-      decide: `_rec_said` (a confident pair, or one dictated recommendation line holding every content word of the
-      clause; one shared word is not enough, so "CT in 3 months and refer to MDT." for "suggest CT in 3 months" keeps
-      its item) and `rec_dictated_spans`, the anchors `provenance.confirm`'s Jev question called dictated. A
-      recommendation neither rule finds dictated keeps its item."""
+      ultrasound" → "Non-urgent thyroid ultrasound is recommended.") scores below GATE_MIN. So Jev decides: `rec_jev`
+      (`ask_recs`, the Q3 question on the item's anchor) drops the item at P(dictated) >= SYNTH_DICTATED and keeps it
+      below. Only when Jev has no answer for it (request failed, answer unreadable) does the word rule `_rec_said`
+      decide: near-verbatim rewordings clear, partial overlap keeps the item."""
     from .items import text_hash
-    from .provenance import (DETECTOR_REC, KIND_REC, MAX_AI_ITEMS, _ai_item, _new_item, _rec_target, template_spans,
-                             untemplated)
-    jev_dictated = {tuple(sp) for sp in rec_dictated_spans or ()}
-    rec_dictated = 0
+    from .provenance import (DETECTOR_REC, KIND_REC, MAX_AI_ITEMS, SYNTH_DICTATED, _ai_item, _new_item, _rec_target,
+                             template_spans, untemplated)
+    rec_by = {"jev": 0, "backstop": 0}
     report = inp.artifacts.report or ""
     names = list(inp.artifacts.sections or [])
     h = text_hash(report)
@@ -341,8 +373,10 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
             rec_seen.add(c.sentence_start)
             sentence = report[c.sentence_start:c.sentence_end]
             s, e, edit = _rec_target(report, c, sentence, names)
-            if _rec_said(al, c) or (s, e) in jev_dictated:
-                rec_dictated += 1
+            p = (rec_jev or {}).get((s, e))
+            by = "jev" if p is not None else "backstop"
+            if (p >= SYNTH_DICTATED) if p is not None else _rec_said(al, c):
+                rec_by[by] += 1
                 continue
             ok = edit is not None
             prov.append(_new_item(inp, run_id, "additions", KIND_REC, "minor", DETECTOR_REC, c.section, s, e,
@@ -352,7 +386,8 @@ def apply(inp: ReviewInput, run_id: str, al: Alignment, gate: List[GateClause], 
                                    "contra": None, "unconfirmed": True}))
     log = {"mode": "live", "clauses": [_clause_log(g) for g in gate], "dropped": dropped,
            "quiet": sum(1 for it in prov if it.kind == "assumed_normal"), "synthesis": synth,
-           "recommendation": len(rec_seen) - rec_dictated, "rec_dictated": rec_dictated, "capped": capped,
+           "recommendation": len(rec_seen) - sum(rec_by.values()), "rec_dictated": sum(rec_by.values()),
+           "rec_by_jev": rec_by["jev"], "rec_by_backstop": rec_by["backstop"], "capped": capped,
            "unplaced": unplaced,
            "template_owned": template_owned}
     return prov, neg, brief, log

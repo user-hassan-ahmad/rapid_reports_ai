@@ -681,8 +681,8 @@ RREC_REPORT = ("FINDINGS:\nThere is a 2 cm crescentic mass in the right kidney.\
     ({"probabilities": {"stated": 0.05, "synonym_or_equivalent": 0.1, "not_stated": 0.85}},
      ["Urology referral is recommended."]),
 ])
-async def test_live_gate_recommendation_obeys_the_confirm_question(monkeypatch, rec_answer, want):
-    # dictated in other words with no pair and no shared recommendation line: only confirm's Jev question knows
+async def test_live_gate_recommendation_obeys_its_jev_question(monkeypatch, rec_answer, want):
+    # dictated in other words with no pair and no shared recommendation line: the gate's Jev question decides
     monkeypatch.setenv("RR_DICTATED_GATE", "live")
     _gate_jev(monkeypatch, {"Urology": 0.6, "crescentic": 0.2})
     gated = rc._jev
@@ -694,5 +694,23 @@ async def test_live_gate_recommendation_obeys_the_confirm_question(monkeypatch, 
     monkeypatch.setattr(rc, "_jev", fake)
     res = await engine.run_review(inp(RREC_REPORT, "- 2 cm right renal mass\n- for the kidney surgeons"),
                                   "00000000-0000-0000-0000-0000000000a1")
-    assert res.run["dictated_gate"]["mode"] == "live"
+    g = res.run["dictated_gate"]
+    assert g["mode"] == "live" and g["rec_jev"] == {"asked": 1, "error": None} and g["rec_by_backstop"] == 0
     assert [i.anchor.text for i in res.items if i.kind == "recommendation"] == want
+
+
+async def test_live_gate_recommendation_falls_back_to_the_word_rule_when_its_jev_question_fails(monkeypatch):
+    monkeypatch.setenv("RR_DICTATED_GATE", "live")
+    _gate_jev(monkeypatch, {"Urology": 0.6, "crescentic": 0.2})
+    gated = rc._jev
+
+    async def fake(state, qs):
+        if any(k.startswith("rec") for k in qs):
+            raise RuntimeError("jev down")
+        return await gated(state, qs)
+    monkeypatch.setattr(rc, "_jev", fake)
+    res = await engine.run_review(inp(RREC_REPORT, "- 2 cm right renal mass\n- for the kidney surgeons"),
+                                  "00000000-0000-0000-0000-0000000000a1")
+    g = res.run["dictated_gate"]
+    assert g["rec_jev"]["error"] and res.run["errors"]["rec_jev"] and g["rec_by_backstop"] == 0
+    assert [i.anchor.text for i in res.items if i.kind == "recommendation"] == ["Urology referral is recommended."]
