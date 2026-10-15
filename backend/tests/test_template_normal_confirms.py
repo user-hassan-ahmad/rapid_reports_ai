@@ -237,3 +237,57 @@ def test_build_confirms_unknown_id_or_sig_records_nothing_and_never_uses_a_missi
     assert _build(LEDGER_SHEET, reg, ids=["nope"], sigs=["nope"]).records == {}
     out = _build(LEDGER_SHEET, None, ids=["p1"], sigs=[_sig(LEDGER_SHEET)])   # no stored registry: no uids, no group
     assert out.records == {} and out.unpicked == []
+
+
+# ── second review: a confirm goes stale whenever what prints in the group could change (I1, I2, M1, M3) ─────────
+
+_BUNDLED = LEDGER_SHEET.replace(_NEG, 'NEGATIVE "No focal liver lesion or biliary dilatation."')
+_BUNDLE_NEG = 'NEGATIVE "No focal liver lesion or biliary dilatation."'
+_WHEN = "RULE WHEN [context: the dictation states contrast was given]"
+
+
+@pytest.mark.parametrize("rule", [
+    f'{_WHEN} REPLACE "No biliary dilatation." WITH "Mild biliary dilatation."',   # a part of a bundled NEGATIVE
+    f'{_WHEN} REPLACE "normal in size" WITH "enlarged"',                         # a substring of a NORMAL
+    f'{_WHEN} USE "The liver is unremarkable."',                                 # a paragraph-level USE
+])
+def test_a_rule_on_part_of_a_unit_or_writing_into_the_paragraph_makes_the_confirm_stale(rule):
+    edited = _with(_BUNDLED, _BUNDLE_NEG, rule)
+    _st(edited)
+    assert _state_after(_BUNDLED, edited) == "stale"
+    assert _sig(edited) != _sig(_BUNDLED)
+
+
+def test_sig_changes_with_a_unit_kind_or_identity_at_the_same_text():
+    base = _sig(LEDGER_SHEET)
+    assert _sig(LEDGER_SHEET.replace("NORMAL [liver]", "NORMAL [right liver]")) != base
+    assert _sig(LEDGER_SHEET.replace('NORMAL [liver] "The liver is normal in size."',
+                                     'NEGATIVE "The liver is normal in size."')) != base
+
+
+def test_a_record_with_another_sig_is_stale():
+    reg = _reg(LEDGER_SHEET)
+    g, rec = _confirmed(LEDGER_SHEET, reg)
+    assert tnc.confirm_state(g, {**rec, "sig": "other"}, reg) == "stale"
+
+
+def test_a_group_without_units_is_never_valid():
+    st = _st(LEDGER_SHEET)
+    reg = _reg(LEDGER_SHEET)
+    pre = tnc.groups(st, LEDGER_SHEET)[0]                     # before the first save: no uids
+    rec = tnc.record(pre, reg, sheet_rev=1, sheet_hash="h", user_id="u")
+    assert pre.units == () and rec["units"] == {}
+    assert tnc.confirm_state(pre, rec, reg) == "stale"
+    assert tnc.confirm_state(pre, rec, None) == "stale"
+
+
+def test_identical_same_named_paragraphs_in_different_sections_have_different_sigs():
+    sheet = LEDGER_SHEET.replace(
+        'SECTION IMPRESSION', 'SECTION ADDENDUM | header: "Addendum:" | role: findings\nSECTION IMPRESSION').replace(
+        "## Paragraph: Impression (IMPRESSION)",
+        '## Paragraph: Liver (ADDENDUM)\nCOVERS ["liver"]\nNORMAL [liver] "The liver is normal in size."\n'
+        'NEGATIVE "No focal liver lesion."\n\n'
+        "## Paragraph: Impression (IMPRESSION)")
+    gs = tnc.groups(_st(sheet), sheet)
+    assert [(g.name, len(g.refs), g.rules) for g in gs] == [("Liver", 2, ""), ("Liver", 2, "")]
+    assert gs[0].sig != gs[1].sig

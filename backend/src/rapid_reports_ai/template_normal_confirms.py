@@ -12,16 +12,18 @@ not attested yet). A group with more than MAX_GROUP attestable units is split in
 document order ("<uid>#1", "#2", …). Inserting or removing a normal shifts later chunks, so they go stale and are
 confirmed again (accepted). Attestable units: the group's NORMAL lines and its unconditional template NEGATIVE lines.
 Groups are built from parse refs, so the same function serves before the first save (no registry: no uids, ids are
-parse refs) and after it (ids and units are uids). Each group carries `sig`, a hash over its group_name, its units'
-text_hash in document order and its rules hash: equal before and after the save, so the save matches a confirm the
-radiologist ticked on a pre-save preview by sig.
+parse refs) and after it (ids and units are uids). Each group carries `sig`, a hash over its section name, its
+group_name, each unit's kind, identity fields and text in document order, and its rules hash: equal before and after
+the save, so the save matches a confirm the radiologist ticked on a pre-save preview by sig.
 
 State: valid (the group's current attestable units are exactly the record's, each with the same text_hash, and its
 paragraph or section still has the recorded name), stale (anything else: a unit added, removed or gone; ANY unit's
 text_hash changed, including a normal reworded in place that kept its slot uid (a normal's identity holds no text, so
 this check is the safety net); or a paragraph or section rename (group_name), even when every sentence carried over:
 a confirm given in one context never silently covers another; or a RULE that suppresses, replaces or is anchored on
-one of the group's units, or suppresses its section, added, removed or changed (rules_hash, end review M5)), missing
+one of the group's units or a part or substring of one, writes into its paragraph, or suppresses its section, added,
+removed or changed (rules_hash, end review M5, second review I1); or a sig change (a unit's kind or identity at the
+same text); or a group with no units), missing
 (no record). A stale confirm is asked again and never counts. The confirm UI is offered only
 once the template is saved: there are no creation-time confirms."""
 from __future__ import annotations
@@ -31,6 +33,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
+from . import report_reconcile as rc
 from . import template_line_match as tlm
 from . import template_line_registry as tlr
 from .hybrid_stack.template import norm_key, paragraph_regions
@@ -81,21 +84,35 @@ def _positions(sheet: str, st) -> Dict[str, int]:
 
 
 _ON_TEXT = ("suppress", "replace", "insert_before")
+_WRITES = ("append", "use", "insert_before", "ask")   # print a sentence of their own where they are scoped
+
+
+def _touches(target: str, texts: List[str]) -> bool:
+    """`target` names a unit's text, a part of it or a substring of it: the whole text, a substring (norm_key), or a
+    claim whose words all appear in it (a part of a bundled NEGATIVE, "No B" in "No A or B", as the brief's split
+    and _target_in_bundle apply it). Over-matching only makes a confirm stale; under-matching would hide a change."""
+    k = norm_key(target)
+    claim = rc._words(target) - rc._NEGATION
+    return bool(k) and any(k in norm_key(t) or (claim and claim <= rc._words(t)) for t in texts)
 
 
 def rules_hash(st, refs: List[str], section: str, paragraph: str) -> str:
-    """A hash over the RULE lines that can change what the group's units print (end review M5): a rule that
-    suppresses or replaces one of the units' text, or is anchored on it (norm_key, the generator's own matching);
-    SUPPRESS NEGATIVES in the group's paragraph; SUPPRESS_SECTION of its section. "" when there are none, so adding,
-    removing or changing any of them makes the confirm stale while an unrelated rule never does."""
+    """A hash over the RULE lines that can change what the group's units print (end review M5, second review I1):
+    a SUPPRESS / REPLACE / INSERT_BEFORE whose target or anchor names one of the units' text, a part or a substring of
+    it (_touches; the brief applies a rule to a part of a bundled NEGATIVE and prints an unmatched target as an OMIT
+    line); an APPEND / USE / INSERT_BEFORE / ASK scoped to the group's paragraph (or, with no paragraph, its section),
+    whatever its anchor; SUPPRESS NEGATIVES in the group's paragraph; SUPPRESS_SECTION of its section. "" when there are
+    none, so adding, removing or changing any of them makes the confirm stale while an unrelated rule never does."""
     by_ref = {u.ref: u for u in tlr.units(st)}
-    texts = {norm_key(by_ref[r].text) for r in refs if r in by_ref}
+    texts = [by_ref[r].text for r in refs if r in by_ref]
     hit = []
     for r in st.rules:
-        on_text = r.effect in _ON_TEXT and (norm_key(r.target) in texts or (r.anchor and norm_key(r.anchor) in texts))
+        scoped = r.paragraph == paragraph if r.paragraph else tlm.rep_key(r.section) == tlm.rep_key(section)
+        on_text = r.effect in _ON_TEXT and any(_touches(t, texts) for t in (r.target, r.anchor) if t)
+        writes = r.effect in _WRITES and scoped
         on_para = r.effect == "suppress_paragraph_negatives" and paragraph and r.paragraph == paragraph
         on_section = r.effect == "suppress_section" and tlm.rep_key(r.target) == tlm.rep_key(section)
-        if on_text or on_para or on_section:
+        if on_text or writes or on_para or on_section:
             hit.append(tlm.rep_key(str(r.source_lines[0]) if r.source_lines else r.id))
     return tlr.text_hash("\n".join(sorted(hit))) if hit else ""
 
@@ -106,8 +123,11 @@ def group_name(name: str) -> str:
     return tlm.rep_key(name)
 
 
-def _sig(name: str, texts: List[str], rules: str) -> str:
-    return tlr.text_hash("\n".join([name, *(tlr.text_hash(t) for t in texts), rules]))
+def _sig(section: str, name: str, units: List[tlr.Unit], rules: str) -> str:
+    """The group's section and name, each unit's kind, identity fields (structure, side, condition, kind, origin…)
+    and text in document order, and its rules hash (second review I2, M3)."""
+    return tlr.text_hash("\n".join([tlm.rep_key(section), name,
+                                    *(tlr.text_hash(repr((u.kind, u.fields, u.text))) for u in units), rules]))
 
 
 def groups(st, sheet: str, registry=None) -> List[Group]:
@@ -147,7 +167,7 @@ def groups(st, sheet: str, registry=None) -> List[Group]:
                 gid, glabel = (base, label) if len(chunks) == 1 else (f"{base}#{n}", f"{label} ({n}/{len(chunks)})")
                 rules = rules_hash(st, c, sec.name, para)
                 out.append(Group(gid, glabel, tuple(uids[r] for r in c) if uids is not None else (), name, rules,
-                                 tuple(c), _sig(name, [by_ref[r].text for r in c], rules)))
+                                 tuple(c), _sig(sec.name, name, [by_ref[r] for r in c], rules)))
     return out
 
 
@@ -178,10 +198,13 @@ def record(group: Group, registry, *, sheet_rev: int, sheet_hash: str, user_id: 
 
 def confirm_state(group: Optional[Group], rec: Optional[dict], registry) -> str:
     """valid / stale / missing for one group (module doc). `group` None: the group no longer exists (stale when a
-    record names it). The same attestable predicate is used when confirming and when checking."""
+    record names it). A group with no units (a pre-save group, which has no uids) is never valid (second review M1).
+    The same attestable predicate is used when confirming and when checking."""
     if not isinstance(rec, dict):
         return MISSING
-    if group is None or rec.get("group_name") != group.name:   # a renamed paragraph or section (decision 5)
+    if group is None or not group.units or rec.get("group_name") != group.name:   # a rename (decision 5)
+        return STALE
+    if rec.get("sig") != group.sig:   # a unit's kind or identity, the section, or anything else sig covers changed
         return STALE
     if (rec.get("rules") or "") != group.rules:   # a rule acting on the group added, removed or changed (M5)
         return STALE
