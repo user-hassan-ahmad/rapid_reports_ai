@@ -1,6 +1,6 @@
 """Removed sentences (D12, integration spec §7 steps 0 and 3): dictation wins over an earlier removal (reconcile), and
-a report clause that asserts a removed sentence is cut only in the safe case (exactly a removed sentence, not stated
-by the radiologist), else a high-severity review item. One Jev call per step in the ask_rows shape; it runs whatever
+a report clause that asserts a removed sentence is cut only in the safe case (exactly a removed sentence), else a
+high-severity review item; a clause the radiologist's statements state is kept and never flagged. One Jev call per step in the ask_rows shape; it runs whatever
 RR_QUALITY_CHECK says, and a Jev failure never edits the report."""
 from __future__ import annotations
 
@@ -87,9 +87,9 @@ async def guard(report: str, removed: list[str], plain: str) -> tuple[str, list[
     edits: list[dict] = []
     items: list[dict] = []
     for clause, c in zip(clauses, rows):
-        if c.removed < REMOVED_MIN:
+        if c.removed < REMOVED_MIN or c.stated >= STATED_MIN:   # dictation wins: a stated clause is never flagged
             continue
-        if _norm(clause) in exact and c.stated < STATED_MIN and report.count(clause) == 1:
+        if _norm(clause) in exact and report.count(clause) == 1:
             report = _cut(report, clause)
             edits.append({"type": "removal", "clause": clause})
         else:

@@ -43,9 +43,20 @@ async def test_guard_flags_a_reworded_assertion(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_guard_keeps_an_exact_sentence_the_statements_support(monkeypatch):
+    # Dictation wins (D12): a clause the statements state is kept and never flagged
     monkeypatch.setattr(RG, "ask_rows", _rows({"No ascites.": (0.9, 0.0, 0.9)}))
     report, edits, items = await RG.guard("No ascites.", ["No ascites."], "No ascites.")
-    assert report == "No ascites." and edits == [] and items[0]["kind"] == "removed_asserted"
+    assert (report, edits, items) == ("No ascites.", [], [])
+
+
+@pytest.mark.asyncio
+async def test_guard_does_not_flag_a_dictated_clause_that_resembles_a_removed_one(monkeypatch):
+    # SYNTHETIC: a dictated valve sentence scored close to a removed valve normal
+    clause = "The aortic and mitral valves are normal."
+    monkeypatch.setattr(RG, "ask_rows", _rows({clause: (0.92, 0.0, 0.8)}))
+    report, edits, items = await RG.guard(f"Ventricles normal. {clause}", ["Tricuspid valve normal."],
+                                          f"Ventricles normal. {clause}")
+    assert edits == [] and items == []
 
 
 @pytest.mark.asyncio
