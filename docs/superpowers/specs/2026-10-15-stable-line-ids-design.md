@@ -39,7 +39,7 @@ A uid names a **slot** in the template, not a string. What defines the slot depe
 | --- | --- | --- |
 | section | normalised name | n/a |
 | paragraph | section uid + normalised name; or, for a rename, section uid + the **same non-empty** COVERS set, with the names passing the clinical gates | n/a |
-| normal | paragraph uid + normalised structure | No. The normal's answer is its text (`_normal` rewrites the line), so text is tracked by `text_hash`, not identity |
+| normal | paragraph uid + normalised structure | No, within an unchanged paragraph: the normal's answer is its text (`_normal` rewrites the line), so text is tracked by `text_hash`. **Across a paragraph rename** (the paragraph kept its uid by the COVERS rule) a normal keeps its uid only if its text is also exact or cosmetic; otherwise it is a new unit and its answer is asked again |
 | negative | paragraph uid + `condition` + `condition_source` + `kind` + `origin` + text | Yes (exact or cosmetic) |
 | fixed | section uid + `paragraph` + text | Yes (exact or cosmetic) |
 | rule (incl. LIST_MISSING, ASK) | section uid + paragraph uid (or none for section-level rules) + `effect` + `condition` + `condition_source` + `target` + `anchor` + `position` + output (`then_text`, `else_text`, `items`, `question`) | Yes: condition and every output field, exact or cosmetic |
@@ -55,11 +55,23 @@ Consequences, by design:
 
 Carrying an answer to the wrong line is a clinical error; losing one costs a repeat question. Word-overlap similarity is unsafe ("No pleural effusion" / "No pericardial effusion", "left" / "right", "mild" / "moderate", "no evidence of" / "evidence of"). So there is **no similarity threshold**. A text field matches only if it is exactly equal after `norm_key`, or cosmetically equal:
 
-1. **Tokenise first, normalise after.** Numbers (including decimals: `1.5` is one token, distinct from `15`), comparators (`<`, `>`, `≤`, `≥`, `=`, `±`, `+`, `/`, `%`) and units are split into their own tokens before anything else, and are never removed.
-2. **Normalise:** lower case; collapse whitespace; drop sentence punctuation (`. , ; :` and quotes) only, never the tokens in step 1; map spelling with a fixed UK↔US lookup table (no suffix rules); remove a fixed list of filler phrases: "is seen", "is noted", "is identified", "is demonstrated", "there is", "there are".
-3. **Compare every remaining token, in order.** No stopword removal: "with" / "without", "and" / "or" stay. Order is kept because reordering can swap laterality between structures ("left kidney, right adrenal").
-4. **Hard gates, checked on the raw tokens, fail closed:** negation tokens (`no`, `not`, `without`, `absent`, `neither`, `nor`, `non-` prefix, `negative for`), laterality (`left`, `right`, `bilateral`, `unilateral`), severity grades (`minimal`, `mild`, `moderate`, `severe`, `marked`, `small`, `large`, grade and category numbers), numbers, comparators and units must be identical as multisets and in order.
-5. When in doubt, a new uid. The filler list and spelling table are versioned constants with a collision test (no two distinct words map to the same form).
+1. **Unify lookalike characters first:** en and em dashes and minus signs → `-`; curly quotes and apostrophes → straight; `×` → `x`; non-breaking and other Unicode spaces → space. This is the only step that merges characters, so cosmetic typography never causes a re-ask.
+2. **Tokenise, then normalise.** These are split into their own tokens before anything else and are never removed:
+   - numbers, including decimals with or without a leading digit (`1.5`, `.5`; `1.5` ≠ `15`, `.5` ≠ `5`);
+   - comparators and operators: `<`, `>`, `≤`, `≥`, `=`, `±`, `+`, `/`, `%`, and `x` between numbers (`5 x 3 mm` ≠ `53 mm`);
+   - units;
+   - punctuation inside the sentence: `.`, `;`, `:`, `,`, `(`, `)`, `?` (`No fracture. Dislocation.` ≠ `No fracture, dislocation.`).
+   Hyphenated words stay one token (`non-enhancing` ≠ `enhancing`; `well-defined` ≠ `defined`).
+3. **Normalise:** lower case; collapse whitespace; drop only a final full stop and quotation marks; map spelling with a fixed UK↔US lookup table (no suffix rules); remove a fixed list of filler phrases: "is seen", "is noted", "is identified", "is demonstrated", "there is", "there are".
+4. **Compare every remaining token, in order.** No stopword removal: "with" / "without", "and" / "or" stay. Order is kept because reordering can swap laterality between structures ("left kidney, right adrenal").
+5. **Hard gates, checked on the raw tokens, fail closed.** These must be identical as multisets and in order:
+   - negation: `no`, `not`, `without`, `absent`, `neither`, `nor`, `negative`, `non-` and `un-` prefixes;
+   - hedging: `possible`, `possibly`, `likely`, `probable`, `probably`, `suspicious`, `suggestive`, `may`, `query`, `?`, `cannot be excluded`, `not excluded`, `in keeping with`, `consistent with`;
+   - laterality: `left`, `right`, `bilateral`, `unilateral`;
+   - severity: `minimal`, `mild`, `moderate`, `severe`, `marked`, `small`, `large`, grade and category numbers;
+   - numbers, comparators, operators and units.
+6. **Protected words:** the filler list can never contain, or delete, a negation or hedge word. A filler phrase is removed only as an exact whole-phrase match, so "is not seen" never tidies to the same thing as "is seen". A constant-level test enforces this.
+7. When in doubt, a new uid. The lookalike map, filler list and spelling table are versioned constants with a collision test (no two distinct words map to the same form).
 
 ## The registry
 
@@ -157,6 +169,7 @@ The endpoint:
   "units": {"n_k3f9qa": "sha256:9f2c…", "g_b71xpd": "sha256:41d0…"},
   "sheet_rev": 12,
   "sheet_hash": "c0ffee12",
+  "group_name": "coronary arteries",
   "user_id": 42,
   "at": "2026-10-15T10:04:52Z"
 }
@@ -173,7 +186,7 @@ The endpoint:
 **State**, `confirm_state(group, record, registry)`:
 
 - `valid`: the group's current attestable units are exactly the record's units, each with the same `text_hash`.
-- `stale`: anything else (a unit added, removed, gone, or its text changed). A stale confirm is asked again and never counts as confirmed.
+- `stale`: anything else (a unit added, removed, gone, or its text changed), **or the group's paragraph or section has been renamed since the confirm**, even if every sentence carried over unchanged. The record stores the normalised group name (`group_name`) to check this. A confirm given in one context ("Arterial phase") never silently covers another. A stale confirm is asked again and never counts as confirmed.
 - `missing`: no record for the group.
 
 Confirms are never written by code and never carried across a text change.
@@ -216,7 +229,9 @@ Per persisted save: the rebind report and origin. Per rebuild: share of earlier 
 - First save mints a uid per line-bound unit; an identical second save is all `exact`.
 - Reordering sections or paragraphs keeps every uid. Inserting a normal mints one uid and changes no other.
 - A cosmetic rewording ("There is no pleural effusion." → "No pleural effusion") keeps the uid; any token change gives `gone` + `new`.
-- **Adversarial pairs never match** (pass condition: zero wrong matches): pleural / pericardial effusion; left / right; mild / moderate; "no evidence of" / "evidence of"; with / without; "score > 0" / "score < 0" / "score ≥ 100"; `1.5` / `15`; mGycm / mGy; "left kidney, right adrenal" / "right kidney, left adrenal"; the same normal text under a different structure; a conditional and an unconditional negative with the same text; two SUPPRESS rules with the same condition and different targets; identical FIXED lines in two paragraphs.
+- **Adversarial pairs never match** (pass condition: zero wrong matches): pleural / pericardial effusion; left / right; mild / moderate; "no evidence of" / "evidence of"; with / without; "score > 0" / "score < 0" / "score ≥ 100"; `1.5` / `15`; mGycm / mGy; "left kidney, right adrenal" / "right kidney, left adrenal"; the same normal text under a different structure; a conditional and an unconditional negative with the same text; two SUPPRESS rules with the same condition and different targets; identical FIXED lines in two paragraphs; `.5 mm` / `5 mm`; "No fracture. Dislocation." / "No fracture, dislocation."; "No mass; effusion." / "No mass effusion."; `<25%` / `25%`; `5 x 3 mm` / `53 mm`; "non-enhancing" / "enhancing"; "is seen" / "is not seen"; "likely pneumonia" / "pneumonia"; "cannot be excluded" / "excluded"; "possible" / "probable".
+- **Cosmetic typography always matches:** en dash / hyphen, curly / straight quotes, `×` / `x`, non-breaking space / space.
+- Paragraph rename (Arterial phase → Portal venous phase, same COVERS): a normal with different text gets a new uid; a word-for-word identical normal keeps its uid, **and** that group's confirm becomes stale.
 - Paragraph rename keeps uids only with an identical non-empty COVERS set and passing name gates.
 - One old uid matched by two new lines, and two old by one new: both `ambiguous`, new uids.
 - Carried units keep their uid after `apply_ledger` rewrites them, including context rules retargeted by `_normal` and a line edited by two steps.
@@ -241,4 +256,6 @@ Existing suites:
 1. No similarity threshold: exact or cosmetic equivalence only, tokenised before normalising, with hard clinical-token gates; zero wrong matches on adversarial pairs is the pass condition, survival rate the secondary metric.
 2. Uids carry only when nothing meaningful changed: rules need the same condition and output, values the same name and unit; fixed lines carry when cosmetically equal; a changed normal makes its group's confirm stale. One known, safe exception: today's key fallback for habits matches on paragraph and condition, so a habit answer still carries when only its question wording changes; the ledger then re-imposes its own question.
 3. Normals are confirmed per group (findings paragraphs, other sections), chunked at 8, through a server-computed endpoint that rejects a stale sheet.
-4. Independent review before the implementation plan: round 1 not ready (11 findings), round 2 ready with fixes (9 findings), round 3 ready (one wording fix); all addressed.
+4. Punctuation inside a sentence, comparators, operators, `x` between numbers and hyphen prefixes are meaningful tokens; only lookalike characters, the final full stop and quotes are cosmetic. Negation and hedge words are hard gates and can never be part of the filler list (Hassan, 2026-10-15).
+5. A normal's answer follows a renamed paragraph only if its own text is exact or cosmetic (option c); any paragraph or section rename makes that group's normal confirm stale (Hassan, 2026-10-15).
+6. Independent review before the implementation plan: round 1 not ready (11 findings), round 2 ready with fixes (9 findings), round 3 ready (one wording fix); all addressed.
