@@ -40,7 +40,7 @@
 	import HybridStackView from '$lib/hybrid-stack/HybridStackView.svelte';
 	import CopilotRail from '$lib/copilot/cards/CopilotRail.svelte';
 	import { applyOn } from '$lib/copilot/flag';
-	import { recommendationsForGate } from '$lib/copilot/applied';
+	import { recommendationsForGate, recommendationsKey } from '$lib/copilot/applied';
 	import type { CopilotSession, CopilotState } from '$lib/copilot/session';
 	import { mountCopilot } from '$lib/copilot/mount';
 	import { unresolved, type Unresolved } from '$lib/copilot/gate';
@@ -451,9 +451,11 @@
 			if (checksBehind && !reviewBehind && !isRecording && run !== 'none') void runChecks(verbatimNow, run === 'semantic');
 		}, 1500);
 	}
+	// the applied lines the gate record carries: one expression for the view, the gate key and the confirm record
+	$: recsNow = recommendationsForGate(copilotApply && !!copilotActive && !!copilot, $copilotState?.applied);
 	$: gateKey = gateKeyOf(scanType, [verbatimNow, JSON.stringify(checks.map((c) => c.key)), JSON.stringify(checkAnswers), findingsHash(stackUnits), dictatedConclusion || draft?.text || '', regionView.assumedNormal.join('|'),
 		regionView.remainder.join('|'), String(rowsOpen), Object.keys(tappedRows).join('|'), Object.keys(skippedRows).join('|'), removedSentences.join('|'),
-		JSON.stringify(shownAssumed), templateKey(tappedRows, templateRequired), valuesKey(valueChips)]);
+		JSON.stringify(shownAssumed), templateKey(tappedRows, templateRequired), valuesKey(valueChips), recommendationsKey(recsNow)]);
 	$: if (confirmNote && !confirming) {
 		void gateKey;
 		if (confirmNoteKey === null) confirmNoteKey = gateKey;
@@ -2154,7 +2156,7 @@
 		const tail = asTailUnits(liveTail(verbatimNow, stackUnits));
 		const assumed = shownNormals(confirmedAssumed, stackRegionNormals, stackLevelGroups, regionView.assumedNormal, placedGroups,
 			removedSentences, blockedSegments(stackLevelGroups, [...stackUnits, ...tail]));
-		const recs = recommendationsForGate(copilotApply && !!copilot, $copilotState?.applied);
+		const recs = recsNow;
 		const gate: GateRecord = {
 			confirmed_at: new Date().toISOString(),
 			conclusion_text: dictatedConclusion || draft?.text || '',
@@ -2862,7 +2864,7 @@
 							</p>
 						{/if}
 						<HybridStackView units={stackUnits} groups={stackGroups} pillRegions={shownPills} pending={stripNow}
-							recommendations={recommendationsForGate(copilotApply && !!copilotActive, $copilotState?.applied)} onRecEdit={(k, t) => copilot?.editApplied(k, t)} onRecDelete={(k) => copilot?.removeApplied(k)}
+							recommendations={recsNow} onRecEdit={(k, t) => copilot?.editApplied(k, t)} onRecDelete={(k) => copilot?.removeApplied(k)}
 							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView.show ? moreView.rows : []} moreWaiting={moreView.waiting} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={shownAssumed} structures={stackStructures} flagged={flaggedNow}
 							checks={placedChecks} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {guidelinesUnresolved} onOpenGuideline={openGuideline} {deleteRegion}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}

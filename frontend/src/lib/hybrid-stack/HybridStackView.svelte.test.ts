@@ -611,4 +611,16 @@ describe('HybridStackView v2', () => {
 		await expect.element(page.getByText(/guidelines? unresolved/)).not.toBeInTheDocument();
 		await expect.element(page.getByRole('button', { name: 'Confirm' })).toBeEnabled();
 	});
+
+	it('applied recommendations: their own region renders after the Conclusion; none, no region', async () => {
+		const rec = { key: 'k1', finding_id: 'u1', pack: 'p', version: 'v', bundle: 'b', source: 'BTS 2015', outcome: 'o', verdict: 'x', sentence: 'CT at 3 months (BTS 2015).', text: 'CT at 3 months (BTS 2015).', values: [] };
+		const units = [u(0, 'A 7 mm solid nodule.', 'Liver', { abnormal: true, covers: ['Liver'] })];
+		const r = render(HybridStackView, { ...base(), units, recommendations: [rec] });
+		await expect.element(page.getByRole('region', { name: 'Recommendations' })).toHaveTextContent('CT at 3 months (BTS 2015).');
+		const html = document.body.innerHTML;
+		expect(html.indexOf('aria-label="Conclusion"')).toBeGreaterThan(-1);
+		expect(html.indexOf('aria-label="Recommendations"')).toBeGreaterThan(html.indexOf('aria-label="Conclusion"'));
+		await r.rerender({ ...base(), units, recommendations: [] });
+		await expect.element(page.getByRole('region', { name: 'Recommendations' })).not.toBeInTheDocument();
+	});
 });

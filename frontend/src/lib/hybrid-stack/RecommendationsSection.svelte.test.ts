@@ -34,4 +34,25 @@ describe('Recommendations section', () => {
 		await page.getByRole('button', { name: 'Delete recommendation 1' }).click();
 		expect(onDelete).toHaveBeenCalledWith('k1');
 	});
+
+	it('Escape cancels the edit without saving', async () => {
+		const onEdit = vi.fn();
+		render(RecommendationsSection, { lines: [line()], onEdit, onDelete: vi.fn() });
+		await page.getByRole('button', { name: 'Edit recommendation 1' }).click();
+		await page.getByRole('textbox', { name: 'Recommendation 1' }).fill('Discarded.');
+		await userEvent.keyboard('{Escape}');
+		await expect.element(page.getByRole('textbox', { name: 'Recommendation 1' })).not.toBeInTheDocument();
+		expect(onEdit).not.toHaveBeenCalled();
+		await expect.element(page.getByRole('region', { name: 'Recommendations' })).toHaveTextContent('Solid nodule: CT at 3 months (BTS 2015).');
+	});
+
+	it('leaving the field saves once', async () => {
+		const onEdit = vi.fn();
+		render(RecommendationsSection, { lines: [line()], onEdit, onDelete: vi.fn() });
+		await page.getByRole('button', { name: 'Edit recommendation 1' }).click();
+		await page.getByRole('textbox', { name: 'Recommendation 1' }).fill('Blur wording.');
+		await page.getByRole('heading', { name: 'Recommendations' }).click();
+		expect(onEdit).toHaveBeenCalledTimes(1);
+		expect(onEdit).toHaveBeenCalledWith('k1', 'Blur wording.');
+	});
 });

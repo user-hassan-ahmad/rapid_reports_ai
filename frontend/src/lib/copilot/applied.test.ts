@@ -1,7 +1,7 @@
 // Applied recommendations (spec 2026-10-14 §7): the item Apply writes, and when it goes stale. SYNTHETIC.
 import { describe, expect, it } from 'vitest';
 import { card, draft, outcome, preview } from './cards/fixtures';
-import { buildApplied, CHANGED, recommendationsForGate, staleOf } from './applied';
+import { buildApplied, CHANGED, recommendationsForGate, recommendationsKey, staleOf } from './applied';
 import type { Calculation } from './types';
 
 const bts = card({ key: 'bts-pulmonary-nodule', name: 'BTS 2015' });
@@ -51,5 +51,16 @@ describe('staleOf', () => {
 		expect(recommendationsForGate(false, { k: rec })).toEqual([]);
 		expect(recommendationsForGate(true, { k: rec })).toEqual([rec]);
 		expect(recommendationsForGate(true, undefined)).toEqual([]);
+	});
+	it('the gate key follows the lines: text, removal and addition change it; order and spacing do not', () => {
+		const a = { ...rec, key: 'a', text: 'One.' };
+		const b = { ...rec, key: 'b', text: 'Two.' };
+		const k = recommendationsKey([a, b]);
+		expect(recommendationsKey([{ ...a, text: 'One changed.' }, b])).not.toBe(k);
+		expect(recommendationsKey([a])).not.toBe(k);
+		expect(recommendationsKey([a, b, { ...rec, key: 'c', text: 'Three.' }])).not.toBe(k);
+		expect(recommendationsKey([b, a])).toBe(k);
+		expect(recommendationsKey([{ ...a, text: '  One. ' }, b])).toBe(k);
+		expect(recommendationsKey([])).toBe(recommendationsKey(recommendationsForGate(false, { k: rec })));
 	});
 });

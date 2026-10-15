@@ -65,3 +65,8 @@ export function staleOf(rec: AppliedRec, preview: Preview | null, findingThere: 
 export function recommendationsForGate(on: boolean, applied: Record<string, AppliedRec> | undefined): AppliedRec[] {
 	return on ? Object.values(applied ?? {}) : [];
 }
+
+/** A stable key for the lines the gate record carries (key and trimmed text, by key): any change to them stales a confirmed gate. */
+export function recommendationsKey(recs: AppliedRec[]): string {
+	return JSON.stringify(recs.map((r) => [r.key, r.text.trim()]).sort());
+}
