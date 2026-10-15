@@ -40,7 +40,7 @@ export interface BundleRouteResponse {
 	asr_flags?: { word: string; score: number }[];
 	repair_ms?: number | null;
 	/** Scratchpad v2 (hybrid stack): the voice command of this final, when stack regions were sent. */
-	stack_command?: { action: 'dictate' | 'delete' | 'answer'; region: string | null; item: string | null; command: string | null; confidence: number | null } | null;
+	stack_command?: { action: 'dictate' | 'delete' | 'answer' | 'instruction'; region: string | null; item: string | null; command: string | null; confidence: number | null; instruction?: number } | null;
 }
 
 /** One routed utterance. No text. */

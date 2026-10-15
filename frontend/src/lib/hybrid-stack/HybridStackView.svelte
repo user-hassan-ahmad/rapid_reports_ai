@@ -11,7 +11,7 @@
 	import { coveredStructures, regionChips } from './subPills';
 	import { checkLabel, replaced, segments, withoutQuote, type CheckAnswer, type CheckFlag } from './checks';
 	import { QUIET_MAX, anchorRegion, answerLabel, isFlagged as flaggedIn, openCount, quietLine, rowSentences, unansweredChecks, waiting } from './items';
-	import type { AppliedRec, StackItem, StackUnit, ValueChip, ViewRow } from './types';
+	import type { AppliedRec, HeldInstruction, StackItem, StackUnit, ValueChip, ViewRow } from './types';
 	import RecommendationsSection from './RecommendationsSection.svelte';
 	import FindingMarker from '$lib/copilot/cards/FindingMarker.svelte';
 	import ValueChips from './ValueChips.svelte';
@@ -73,6 +73,9 @@
 		guidelinesUnresolved = [],
 		onOpenGuideline = () => {},
 		deleteRegion = null,
+		held = [],
+		onKeepHeld = () => {},
+		onRemoveHeld = () => {},
 		incoming = null,
 		onMove,
 		onEditLine,
@@ -180,6 +183,10 @@
 		onOpenGuideline?: (key: string) => void;
 		/** A voice "delete the X line": the region whose lines wait for a Delete click (null: none). */
 		deleteRegion?: string | null;
+		/** Finals held as instructions to the software (instruction flag): not in the report until kept as text. */
+		held?: HeldInstruction[];
+		onKeepHeld?: (id: number) => void;
+		onRemoveHeld?: (id: number) => void;
 		/** Dictation for the field open for editing: inserted at its caret / over its selection. */
 		incoming?: { seq: number; text: string } | null;
 		onMove: (id: number, group: string) => void;
@@ -1025,6 +1032,15 @@
 				{#if ghost}<li class="text-sm italic leading-6 text-gray-500">{ghost}</li>{/if}
 			</ul>
 		</div>
+		{#each held as h (h.id)}
+			<div class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-amber-400/20 bg-amber-500/[0.05] px-3 py-1.5 text-xs" role="status" data-testid="held-instruction">
+				<p class="min-w-0 flex-1 text-amber-200/90">This sounded like an instruction, not report text: <span class="text-gray-200">“{h.text}”</span>. It is not in the report.</p>
+				<span class="flex gap-3">
+					<button type="button" class="text-amber-200 hover:text-amber-100" onclick={() => onKeepHeld(h.id)}>Keep as text</button>
+					<button type="button" class="text-gray-400 hover:text-gray-200" onclick={() => onRemoveHeld(h.id)}>Remove</button>
+				</span>
+			</div>
+		{/each}
 		<div class="flex items-center gap-2 border-t border-white/5 px-3 py-1.5">
 			<input
 				bind:this={newField}

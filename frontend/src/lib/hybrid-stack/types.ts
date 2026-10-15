@@ -186,4 +186,8 @@ export interface GateRecord {
 	/** findingsHash of the units sent at Confirm (incl. the live tail): the server refuses a stale gate. */
 	findings_hash?: string;
 }
-export interface StackCommand { action: 'dictate' | 'delete' | 'answer'; region: string | null; item: string | null; command: string | null; confidence: number | null }
+/** `instruction` (RR_STACK_INSTRUCTION_FLAG): an instruction to the software no command covers; held, never written.
+ *  `instruction` the score: present only when the flag asked it. */
+export interface StackCommand { action: 'dictate' | 'delete' | 'answer' | 'instruction'; region: string | null; item: string | null; command: string | null; confidence: number | null; instruction?: number }
+/** A final held as an instruction: shown with Keep as text / Remove; outside the verbatim text until kept. */
+export interface HeldInstruction { id: number; text: string }

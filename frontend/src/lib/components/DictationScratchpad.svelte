@@ -57,7 +57,7 @@
 	import { CONCLUSION, OTHER, conclusionText, findingsHash, regionStates, regionText } from '$lib/hybrid-stack/regionState';
 	import { backstopRun, checkKey, toChecks, unitFor, type CheckAnswer, type CheckFlag } from '$lib/hybrid-stack/checks';
 	import { asTailUnits, assumedKey, blockedSegments, pickBody, pickKey, placedRegions, shownNormals, visiblePills, withoutSegments, type ProtocolPick } from '$lib/hybrid-stack/protocol';
-	import type { GateItem, GateRecord, ItemsResult, Region, StackCommand, StackItem, StackUnit, ValueChip } from '$lib/hybrid-stack/types';
+	import type { GateItem, GateRecord, HeldInstruction, ItemsResult, Region, StackCommand, StackItem, StackUnit, ValueChip } from '$lib/hybrid-stack/types';
 	import { markdown } from '@codemirror/lang-markdown';
 	import { history, defaultKeymap, historyKeymap } from '@codemirror/commands';
 	import { syntaxHighlighting, HighlightStyle } from '@codemirror/language';
@@ -353,6 +353,10 @@
 	let stackIncoming: { seq: number; text: string } | null = null;
 	let incomingSeq = 0;
 	let deleteRegion: string | null = null;
+	// Instruction flag: finals that sounded like instructions to the software. Held outside the verbatim text, so no
+	// unit, draft, gate conclusion or Generate input carries them until the radiologist keeps one as text.
+	let heldInstructions: HeldInstruction[] = [];
+	let heldSeq = 0;
 	$: pillRegions = stackRegions.map((r) => r.name).filter((n) => n !== OTHER);
 	// The v2 view takes over only once a schema exists: a failed schema fetch leaves today's editor in place.
 	$: stackView = hybridStack && stackRegions.length > 0;
@@ -1280,14 +1284,17 @@
 		}
 
 		// Voice commands (v2 §7.3, checklist §9): answer a named row, or select a named region's lines for a Delete
-		// click. The command's own words are never written.
+		// click. The command's own words are never written. An instruction no command covers (instruction flag) is
+		// held for the radiologist: never written, never obeyed.
 		const cmd = (data?.stack_command ?? null) as StackCommand | null;
 		if (hybridStack && !heldNow && pend && pendingText === chunk.trim() && cmd &&
-			((cmd.action === 'answer' && !!cmd.item && isOpenRow(cmd.item)) || (cmd.action === 'delete' && cmd.region))) {
+			((cmd.action === 'answer' && !!cmd.item && isOpenRow(cmd.item)) || (cmd.action === 'delete' && cmd.region) ||
+				cmd.action === 'instruction')) {
 			isQwenWriting = true;
 			editor.dispatch(replaceAndClear({ from: pend.from, to: pend.to, insert: '' }));
 			isQwenWriting = false;
 			if (cmd.action === 'answer' && cmd.item) answerRow(cmd.item);
+			else if (cmd.action === 'instruction') holdInstruction(chunk);
 			else deleteRegion = cmd.region;
 			emitDecision({ ...({} as DecisionRecord), id: data?.decision_id ?? `local-${++localDecisionSeq}`, seq: ++decisionSeq,
 				at: Date.now(), route: 'skip', reason: `stack_${cmd.action}`, qset: data?.qset ?? null, action: data?.action ?? null,
@@ -2110,10 +2117,25 @@
 		const cmd = (data?.stack_command ?? null) as StackCommand | null;
 		if (cmd?.action === 'answer' && cmd.item && isOpenRow(cmd.item)) return answerRow(cmd.item);
 		if (cmd?.action === 'delete') return; // in an open line, the keyboard deletes
+		if (cmd?.action === 'instruction') return holdInstruction(chunk); // never into the line or the conclusion
 		const text = (data?.clean_text || data?.text || chunk).trim();
 		if (!text) return;
 		if (stackEditing) stackIncoming = { seq: ++incomingSeq, text };
 		else stackAppend(text); // the field closed while the words were being cleaned: never drop them
+	}
+	/** Instruction flag: hold a final as said (Deepgram's words, not a polish), outside the verbatim text. */
+	function holdInstruction(chunk: string): void {
+		const text = chunk.trim();
+		if (text) heldInstructions = [...heldInstructions, { id: ++heldSeq, text }];
+	}
+	/** Keep as text: the held words are appended as dictation and take the normal path from there. */
+	function keepHeld(id: number): void {
+		const h = heldInstructions.find((x) => x.id === id);
+		heldInstructions = heldInstructions.filter((x) => x.id !== id);
+		if (h) stackAppend(h.text);
+	}
+	function removeHeld(id: number): void {
+		heldInstructions = heldInstructions.filter((x) => x.id !== id);
 	}
 	/** A finding typed into the view's new-line field: appended to the verbatim text as said. */
 	function stackAppend(text: string): void {
@@ -2333,6 +2355,7 @@
 		draft = null;
 		draftFailed = false;
 		deleteRegion = null;
+		heldInstructions = [];
 		if (stackGate) {
 			stackGate = null;
 			onStackGate(null, [], []);
@@ -2923,6 +2946,7 @@
 							recommendations={recsNow} onRecEdit={(k, t) => copilot?.editApplied(k, t)} onRecDelete={(k) => copilot?.removeApplied(k)}
 							ghost={stackEditing ? '' : ghostNow} editGhost={stackEditing ? ghostNow : ''} items={viewItems} more={moreView.show ? moreView.rows : []} moreWaiting={moreView.waiting} {moreOpen} onToggleMore={() => { moreOpen = !moreOpen; moreOpened ||= moreOpen; }} {namedNormals} tapped={Object.keys(tappedRows)} removed={removedSentences} assumed={shownAssumed} structures={stackStructures} flagged={flaggedNow}
 							checks={[...placedChecks, ...sideNow]} notReported={stackTemplateId ? {} : struckNow} sideFailed={assumedSnap?.side_failed ? (assumedSnap.side_asks?.length ? 'kept' : 'plain') : null} {checkAnswers} onCheckAnswer={answerCheck} conclusion={conclusionView} conclusionNote={conclusionNote} onNoteSuggest={suggestConclusion} onNoteAccept={acceptConclusion} onNoteDismiss={() => (conclusionNote = null)} gateConfirmed={stackGate !== null} {guidelinesUnresolved} onOpenGuideline={openGuideline} {deleteRegion}
+							held={heldInstructions} onKeepHeld={keepHeld} onRemoveHeld={removeHeld}
 							incoming={stackIncoming} onMove={stackMove} onEditLine={stackEditLine} onEditing={(a) => (stackEditing = a)}
 							skipped={Object.keys(skippedRows)} reviewing={reviewing || (reviewBehind && !isRecording && reviewedAbnormal === null)} reviewWaiting={reviewBehind && isRecording} {reviewFailed} assumedReady={assumedSnap !== null} assumedFailed={assumedState === 'failed'} actionsReady={!isRecording && !!verbatimNow.trim() && (reviewedFor === verbatimNow || (reviewedAbnormal !== null && !reviewing))} recording={isRecording} onToggleMic={toggleRecording} onSkip={skipRow} onAbnormal={abnormalRow} onEditAssumed={editAssumed}
 							onAnswer={answerRow} onAnswerTemplate={answerTemplateRow} onRemoveSentence={removeSentence} onDraftEdit={stackDraftEdit} onDraftRefresh={stackDraftRefresh}
