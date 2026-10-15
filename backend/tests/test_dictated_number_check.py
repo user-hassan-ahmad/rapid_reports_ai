@@ -133,3 +133,81 @@ def test_lab_spellings_match():   # lab 2026-10-15: both were false flags on a f
     assert missing("Adenosine 140 micrograms per kilogram per minute.", "Adenosine 140 mcg/kg/min.") == []
     assert missing("Escalated at three minutes.", "Escalated after 3 minutes.") == []
     assert missing("Escalated at three mm.", "Escalated after 3 minutes.") == ["3 minutes"]
+
+
+# --- review fixes 2026-10-15 ---
+
+@pytest.mark.parametrize("dictated, report", [
+    ("Defect in segment 4.", "Defect in segment IV."),
+    ("Bosniak 2F cyst.", "Bosniak IIF cyst."),
+    ("Grade 2 reflux.", "Grade II reflux."),
+    ("Segment 1 is spared.", "Segment I is spared."),
+    ("Segment 4 defect.", "Defect in the 4th segment."),
+    ("Segment 4 defect.", "Defect in the fourth segment."),
+    ("Rib 2 fracture.", "Fracture of the second rib."),
+    ("Rib 12 fracture.", "Fracture of the twelfth rib."),
+])
+def test_a_bare_value_matches_a_roman_numeral_or_an_ordinal(dictated, report):
+    assert missing(report, dictated) == []
+
+
+def test_a_lone_roman_i_or_iv_contrast_is_not_a_numeral():
+    assert missing("I reviewed the images.", "Thinned 1.") == ["1"]
+    assert missing("IV contrast was given.", "Segment 4 defect.") == ["4"]
+
+
+def test_a_minus_sign_is_part_of_the_value():
+    assert vals("density -20 HU") == [(-20.0, "hu")]
+    assert vals("density minus 20 HU") == [(-20.0, "hu")]
+    assert vals("density −20 HU") == [(-20.0, "hu")]
+    assert missing("Density 20 HU.", "Density -20 HU.") == ["-20 HU"]
+    assert missing("Density minus 20 HU.", "Density -20 HU.") == []
+    assert missing("Density 20.", "Density -20.") == ["-20"]
+
+
+def test_a_range_hyphen_is_not_a_sign():
+    assert vals("3-5 mm") == [(3.0, "mm"), (5.0, "mm")]
+    assert vals("from -20 to -10 HU") == [(-20.0, "hu"), (-10.0, "hu")]
+
+
+def test_comma_decimals_before_a_unit():
+    assert vals("1,5 cm") == [(1.5, "cm")]
+    assert vals("1,25 x 0,8 cm") == [(1.25, "cm"), (0.8, "cm")]
+    assert missing("Nodule 1.5 cm.", "Nodule 1,5 cm.") == []
+    assert vals("Agatston 1,260") == [(1260.0, None)]
+    assert vals("1,000 ml") == [(1000.0, "ml")]
+
+
+def test_a_comma_list_without_a_unit_is_not_a_decimal():
+    assert vals("segments 6,7") == [(6.0, None), (7.0, None)]
+
+
+def test_series_and_image_references_are_not_numbers():
+    assert vals("nodule (series 3, image 45) measures 4 mm") == [(4.0, "mm")]
+    assert vals("nodule (3/45) measures 4 mm") == [(4.0, "mm")]
+    assert vals("see image 112 of series 4") == []
+    assert vals("se 5 im 88") == []
+
+
+def test_a_year_after_since_in_or_from_is_not_a_number():
+    assert vals("stable since 2019, unchanged from 2021, resected in 2015") == []
+    assert vals("drained 2015 ml") == [(2015.0, "ml")]
+
+
+def test_uk_follow_up_fractions_read_as_months_or_weeks():
+    assert vals("follow-up CT in 3/12") == [(3.0, "month")]
+    assert vals("repeat in 6/52") == [(6.0, "week")]
+    assert missing("Follow-up CT in 3 months.", "Follow up CT in 3/12.") == []
+    assert missing("Follow-up CT in 6 months.", "Follow up CT in 3/12.") == ["3/12"]
+
+
+@pytest.mark.parametrize("text", [
+    "ADC 0.8 x 10-3 mm2/s", "ADC 0.8 x 10^-3 mm2/s", "ADC 0.8×10⁻³ mm²/s", "ADC 0.8 x10-3 mm2/s",
+    "ADC 0.0008 mm2/s", "ADC 800 x 10^-6 mm2/s"])
+def test_an_exponent_reads_as_one_value(text):
+    assert vals(text) == [(0.0008, "mm2/s")]
+
+
+def test_exponent_notations_match_each_other():
+    assert missing("ADC 0.8 × 10⁻³ mm²/s.", "ADC 0.8 x 10-3 mm2/s.") == []
+    assert missing("ADC 0.9 × 10⁻³ mm²/s.", "ADC 0.8 x 10-3 mm2/s.") == ["0.8 x 10-3 mm2/s"]

@@ -53,6 +53,7 @@ _UNITS = [
     (r"msv", "msv"),
     (r"mm\s*hg", "mmhg"),
     (rf"beats{_PER}min(?:ute)?|bpm", "bpm"),
+    (rf"(?:mm|millimet(?:re|er)s?){_SQ}{_PER}s(?:ec(?:ond)?)?", "mm2/s"),
     (rf"(?:mm|millimet(?:re|er)s?){_SQ}|sq(?:uare)?\s*mm", "mm2"),
     (rf"(?:cm|centimet(?:re|er)s?){_SQ}|sq(?:uare)?\s*cm", "cm2"),
     (r"(?:cm|centimet(?:re|er)s?)(?:3|³)|cc|ml|millilit(?:re|er)s?", "ml"),
@@ -79,11 +80,33 @@ _UNITS = [
 ]
 _UNIT_RX = [(re.compile(rf"(?i)[\s-]*(?:{p})(?![a-z0-9])"), n) for p, n in _UNITS]
 _NUM = r"(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?|\.\d+)"
+_NUM_RX = re.compile(_NUM)
 _START = re.compile(rf"(?:(?<![\w.])|(?<=\d[x×])){_NUM}")
-_LINK = re.compile(rf"(?i)\s*(?:x|×|by|-|–|—|to|/)\s*({_NUM})")
+_LINK = re.compile(r"(?i)\s*(?:(to)|x|×|by|-|–|—|/)\s*")
+_COMMA_DEC = re.compile(r",(\d{1,2})(?![\d,])")             # "1,5" (kept only when a unit follows the chain)
+_SUP = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁻−", "0123456789--")
+# "x 10-3", "x10^-3", "×10⁻³", "* 10^3": a power of ten belongs to the number before it
+_EXP = re.compile(r"\s*[x×*]\s*10\s*(?:\^\s*([-−⁻]?\s*\d{1,2})|([-−]\d{1,2})|(⁻?[⁰¹²³⁴⁵⁶⁷⁸⁹]{1,2}))(?![\d.])")
+_MINUS = re.compile(r"(?i)\bminus\s+\Z")
+_SIGN_AFTER = re.compile(r"(?i)[-−](?=\d)|minus\s+")
+_FOLLOW_UP = re.compile(r"(\d{1,2})\s*/\s*(12|52)(?![\d/]|[.,]\d)")   # UK "3/12" = 3 months, "6/52" = 6 weeks
+_REF_MASKS = [   # numbers that are not findings
+    re.compile(r"(?i)\b(?:series|image|img|se|im)\s*(?:no\.?|number|#)?\s*:?\s*\d+(?:\s*/\s*\d+)?\b"),
+    re.compile(r"\(\s*\d+\s*/\s*\d+\s*\)"),                                     # "(3/45)" image reference
+]
+_YEAR = re.compile(r"(?i)\b(?:since|in|from)\s+((?:19|20)\d{2})\b(?![.,]\d)")
 _WORD_NUMS = ("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
               "seventeen eighteen nineteen twenty").split()
 _WORD_RX = re.compile(rf"(?i)\b({'|'.join(_WORD_NUMS)})\b")
+_ORDINALS = ("first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth thirteenth fourteenth "
+             "fifteenth sixteenth seventeenth eighteenth nineteenth twentieth").split()
+_ORDINAL_RX = re.compile(rf"(?i)\b({'|'.join(_ORDINALS)})\b")
+_ROMAN = {r: i + 1 for i, r in enumerate("I II III IV V VI VII VIII IX X XI XII".split())}
+# upper case only, an optional subtype suffix ("IIF", "IVa"); "IV contrast" is intravenous
+_ROMAN_RX = re.compile(r"\b(XII|XI|X|IX|VIII|VII|VI|V|IV|III|II|I)(?:[A-F]|[ab])?\b"
+                       r"(?!\s+(?:contrast|access|cannula|line|injection|administration|fluids?|drug)\b)")
+_ROMAN_CUE = re.compile(r"(?i)\b(?:segments?|grade|stage|class|type|category|level|tier|bosniak|zone|phase|lobe)"
+                        r"\s+(?:and\s+|or\s+)?\Z")   # a one-letter numeral ("I", "V", "X") needs one of these
 
 
 @dataclass(frozen=True)
@@ -95,7 +118,7 @@ class Num:
 
 
 def _f(s: str) -> float:
-    return round(float(s.replace(",", "")), 6)
+    return float(f"{float(s.replace(',', '')):.10g}")
 
 
 def _unit_at(text: str, pos: int):
@@ -106,23 +129,82 @@ def _unit_at(text: str, pos: int):
     return None, pos
 
 
+def _value_at(scan: str, text: str, pos: int, comma: bool):
+    """(value, end, used a comma decimal) for the number at `pos`, its power of ten included, or None."""
+    m = _NUM_RX.match(scan, pos)
+    if not m:
+        return None
+    raw, end, used = m.group(0), m.end(), False
+    if comma and "," not in raw and "." not in raw and (c := _COMMA_DEC.match(scan, end)):
+        raw, end, used = f"{raw}.{c.group(1)}", c.end(), True
+    if e := _EXP.match(text, end):
+        exp = next(g for g in e.groups() if g).translate(_SUP).replace(" ", "")
+        return _f(f"{raw.replace(',', '')}e{exp}"), e.end(), used
+    return _f(raw), end, used
+
+
+def _chain(scan: str, text: str, start: int, comma: bool, negative: bool):
+    """([values], end, used a comma decimal) for the chain whose first number starts at `start`."""
+    v, end, used = _value_at(scan, text, start, comma)
+    values = [-v if negative else v]
+    while (link := _LINK.match(scan, end)) is not None:
+        p, neg = link.end(), False
+        if link.group(1) and (sg := _SIGN_AFTER.match(scan, p)):   # "-20 to -10 HU"; a bare hyphen is a range
+            p, neg = sg.end(), True
+        nxt = _value_at(scan, text, p, comma)
+        if nxt is None:
+            break
+        values.append(-nxt[0] if neg else nxt[0])
+        end, used = nxt[1], used or nxt[2]
+    return values, end, used
+
+
+def _sign_start(scan: str, s: int) -> int:
+    """Where a minus sign ("-20", "−20", "minus 20") before the number at `s` starts, else `s`. A hyphen after a
+    word or number ("3-5", "T2-") is not a sign: those are links or masked."""
+    if s >= 1 and scan[s - 1] in "-−" and (s == 1 or scan[s - 2] in " \t\n(:=,;["):
+        return s - 1
+    m = _MINUS.search(scan, max(0, s - 12), s)
+    return m.start() if m else s
+
+
+def _scan(text: str) -> str:
+    """`text` with identifiers, dates, times, list markers, image references and years after since/in/from blanked."""
+    out = _masked(text, set())
+    for rx in _REF_MASKS:
+        for m in list(rx.finditer(out)):
+            out = out[:m.start()] + " " * (m.end() - m.start()) + out[m.end():]
+    for m in list(_YEAR.finditer(out)):
+        if _unit_at(text, m.end(1))[0] is None:
+            out = out[:m.start(1)] + "    " + out[m.end(1):]
+    return out
+
+
 def extract(text: Optional[str]) -> List[Num]:
     """Every digit number in `text`, a chain's unit on each of its numbers. Starts are found on the masked text
-    (identifiers, dates, times, list markers blanked); chains and units are read from the original."""
+    (identifiers, dates, times, list markers, image references, years blanked); chains and units are read from the
+    original."""
     text = (text or "").replace("\r\n", "\n")
-    scan = _masked(text, set())
+    scan = _scan(text)
     out: List[Num] = []
     pos = 0
     for m in _START.finditer(scan):
-        if m.start() < pos:
+        s = m.start()
+        if s < pos:
             continue
-        values, end = [m.group(0)], m.end()
-        while (link := _LINK.match(scan, end)) is not None:
-            values.append(link.group(1))
-            end = link.end()
+        f = _FOLLOW_UP.match(scan, s)
+        if f and _unit_at(text, f.end())[0] is None:
+            out.append(Num(_f(f.group(1)), "month" if f.group(2) == "12" else "week", text[s:f.end()], s))
+            pos = f.end()
+            continue
+        first = _sign_start(scan, s)
+        values, end, used = _chain(scan, text, s, True, first < s)
         unit, uend = _unit_at(text, end)
-        chain = text[m.start():uend].strip()
-        out += [Num(_f(v), unit, chain, m.start()) for v in values]
+        if used and unit is None:   # "segments 6,7" is a list, not 6.7
+            values, end, _ = _chain(scan, text, s, False, first < s)
+            unit, uend = _unit_at(text, end)
+        chain = text[first:uend].strip()
+        out += [Num(v, unit, chain, first) for v in values]
         pos = uend
     return out
 
@@ -133,13 +215,18 @@ def missing_dictated_numbers(report: Optional[str], sources: Iterable[Optional[s
     values); never the history, assumed normals or a removed sentence."""
     try:
         found = extract(report)
-        any_unit = {n.value for n in found}
+        bare = {n.value for n in found}   # what a dictated value without a unit may match
+        bare |= {float(_ORDINALS.index(m.group(1).lower()) + 1) for m in _ORDINAL_RX.finditer(report or "")}
+        for m in _ROMAN_RX.finditer(report or ""):
+            if len(m.group(1)) > 1 or _ROMAN_CUE.search(report, max(0, m.start() - 24), m.start()):
+                bare.add(float(_ROMAN[m.group(1)]))
         words = set()   # number words: (value, unit) when a unit follows, else (value, None)
         held: Counter = Counter((n.value, n.unit) for n in found if n.unit)   # report occurrences per (value, unit)
         for m in _WORD_RX.finditer(report or ""):
             v = float(_WORD_NUMS.index(m.group(1).lower()))
             u = _unit_at(report, m.end())[0]
             words.add((v, u))
+            bare.add(v)
             if u:
                 held[(v, u)] += 1
         out: List[dict] = []
@@ -151,7 +238,7 @@ def missing_dictated_numbers(report: Optional[str], sources: Iterable[Optional[s
             used: Counter = Counter()   # one-to-one within a source; each source is matched afresh
             for n in extract(src):
                 if n.unit is None:
-                    ok = n.value in any_unit or any(v == n.value for v, _ in words)
+                    ok = n.value in bare
                 else:
                     key = (n.value, n.unit)
                     ok = used[key] < held[key]
