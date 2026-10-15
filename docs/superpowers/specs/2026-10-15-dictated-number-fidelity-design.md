@@ -22,7 +22,13 @@ checks the reverse direction (numbers in the report that nobody dictated).
   words in the dictation ("two lesions") are ignored in v1: a count reworded is not a dropped measurement, and "one"
   is too often not a number.
 - **Not numbers** (masked as in `template_number_check`): identifiers (T2, L4/5, b1000, S1), dates, clock times,
-  list markers.
+  list markers. Also masked here: series and image numbers ("series 3, image 45", "se 5 im 88"), "(3/45)" image
+  references, and a four-digit year after since/in/from ("stable since 2019") unless a unit follows.
+- **Value forms** (review fixes 2026-10-15): a minus sign or "minus" before a number is part of the value ("-20 HU"
+  is not "20 HU"); a hyphen after a number or word is a range or identifier, never a sign. A power of ten belongs to
+  its number ("0.8 x 10-3", "10^-3", "×10⁻³" all read as 0.0008). A comma decimal ("1,5 cm") reads as 1.5 only when
+  the chain has a unit; without one, "6,7" stays a list of two numbers, and "1,260" stays a thousands-grouped
+  integer. UK follow-up "3/12" and "6/52" read as 3 months and 6 weeks, so "3 months" in the report holds them.
 
 ## How a number is matched in the report
 
@@ -33,7 +39,10 @@ A dictated value is **present** when the report holds a number token with the sa
   counts: "three minutes" holds "3 minutes"). A bare report number never satisfies a dictated unit: "segment 4"
   does not hold "4 minutes" (tightened 2026-10-15, Hassan Q1, after the lab's coincidental-match misses);
 - dictated without a unit -> any report token with that value (the writer may add a unit: "LVEF 55" -> "55%").
-- A unitless dictated value up to 20 also matches its number word in the report ("2 lesions" -> "two lesions").
+- A unitless dictated value up to 20 also matches its number word in the report ("2 lesions" -> "two lesions"),
+  its ordinal ("4th", "fourth") and its Roman numeral I-XII with an optional subtype letter ("segment IV", "Bosniak
+  IIF", "IVa"). Numerals are upper case only; a one-letter numeral (I, V, X) counts only after a cue word (segment,
+  grade, stage, class, type, ...), and "IV contrast/access/line" is intravenous, not 4.
 
 **One-to-one (unit-bearing values).** Each report occurrence of a (value, unit) satisfies one dictated occurrence:
 "4 mm and 4 mm" or "4 x 4 mm" needs two "4 mm" in the report, and "12 mm, previously 12 mm" with one "12 mm" in the
@@ -51,7 +60,11 @@ precision.
 Matching is anywhere in the report, not sentence-aligned. This trades a little recall (a dropped "72 bpm" is missed
 when another "72 bpm" appears elsewhere) for simplicity and precision. Lab re-score after the Q1 tightening, same
 stored outputs: precision 4/4, recall 4/5 (was 2/2, 2/5); the one miss is a prior "12 mm" whose value the report
-restates in a summary line.
+restates in a summary line. The review fixes (numerals, signs, exponents, comma decimals, masks) leave the lab score
+unchanged (4/4, 4/5): the synthetic dictations hold none of those forms, so they are covered by unit tests only.
+
+On the rail, each missing number is its own item: the key is the dictated sentence plus the number's text, so two
+numbers dropped from one sentence are two items.
 
 This is a mechanical question (is this value written?), so code is the right owner (feedback: code for mechanics,
 Jev for meaning). If the lab shows matching needs judgement (paraphrased values), a Jev/Qwen step goes after the code
