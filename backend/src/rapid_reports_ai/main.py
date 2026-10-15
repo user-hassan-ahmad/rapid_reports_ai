@@ -1860,6 +1860,14 @@ async def create_template_endpoint(
         return {"success": False, "error": str(e)}
 
 
+def _locked_confirm_keys(db: Session, template_id) -> dict:
+    """The stored confirm keys (tsave.CONFIRM_KEYS) re-read under a row lock held until the caller commits, so a
+    confirm committed while a save was vetting is kept (as scripts.template_upgrade_apply._write; end review I1)."""
+    row = db.query(Template).filter(Template.id == template_id).with_for_update().populate_existing().first()
+    stored = (row.template_config if row else None) or {}
+    return {k: stored[k] for k in tsave.CONFIRM_KEYS if k in stored}
+
+
 @app.put("/api/templates/{template_id}")
 async def update_template_endpoint(
     template_id: str,
@@ -1883,12 +1891,8 @@ async def update_template_endpoint(
                                                                           "chat")
             if refusal:
                 return {"success": False, "error": refusal}
-            # a confirm (or `uncertain`) committed while this save was vetting is kept: re-read under the row lock,
-            # held until update_template commits (as scripts.template_upgrade_apply._write; end review I1)
-            locked = db.query(Template).filter(Template.id == existing.id).with_for_update().populate_existing().first()
-            stored = (locked.template_config if locked else None) or {}
             template_config = {k: v for k, v in template_config.items() if k not in tsave.CONFIRM_KEYS}
-            template_config.update({k: stored[k] for k in tsave.CONFIRM_KEYS if k in stored})
+            template_config.update(_locked_confirm_keys(db, existing.id))
         updated_template = update_template(
             db=db,
             template_id=template_id,
