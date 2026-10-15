@@ -11,27 +11,32 @@
 		reason,
 		more = 0,
 		confirm = null,
-		unresolved = false,
+		unresolvedKey = null,
 		onConfirm = null,
-		onToggle
+		onSeen = null,
+		onToggle,
+		controls = undefined
 	}: {
 		reason: string;
 		more?: number;
 		confirm?: { input: string; label: string; value: string } | null;
-		unresolved?: boolean;
+		/** The gate lists this guideline as unresolved (its key): marker, and "Seen" keeps the gate one tap. */
+		unresolvedKey?: string | null;
 		onConfirm?: ((input: string, value: string) => void) | null;
+		onSeen?: ((key: string) => void) | null;
 		onToggle: () => void;
+		controls?: string;
 	} = $props();
 </script>
 
 <div class="cp-collapsed" data-testid="cp-collapsed">
 	<p class="cp-p cp-collapsed-reason">
 		{reason}{#if more > 0}<span class="cp-muted"> · +{more} more</span>{/if}
-		{#if unresolved}<span class="cp-chip cp-chip-warn" data-testid="cp-collapsed-unresolved">unresolved</span>{/if}
+		{#if unresolvedKey}<span class="cp-chip cp-chip-warn" data-testid="cp-collapsed-unresolved">unresolved</span>{#if onSeen} <button type="button" class="cp-link" onclick={() => onSeen?.(unresolvedKey)}>Seen, leave as is</button>{/if}{/if}
 	</p>
 	<span class="cp-collapsed-actions">
 		{#if confirm && onConfirm}<button type="button" class="rv-btn" aria-label={`Confirm ${confirm.label} ${shownValue(confirm.value)}`} onclick={() => onConfirm?.(confirm.input, confirm.value)}>Confirm</button>{/if}
-		<button type="button" class="cp-link cp-aux-toggle" aria-expanded="false" onclick={onToggle}>Show details <span class="cp-caret"><Icon name="chev" size={11} /></span></button>
+		<button type="button" class="cp-link cp-aux-toggle" aria-expanded="false" aria-controls={controls} onclick={onToggle}>Show details <span class="cp-caret"><Icon name="chev" size={11} /></span></button>
 	</span>
 </div>
 

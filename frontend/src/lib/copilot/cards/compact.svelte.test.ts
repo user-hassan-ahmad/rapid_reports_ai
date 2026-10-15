@@ -123,7 +123,7 @@ describe('the calmer card', () => {
 		const key = cardRef(bts);
 		render(PackCard, { card: bts, view: { ...closedView, open: true, result: result(bts, decided()) }, unresolved: { key, card: key, name: 'BTS 2015' }, onSeen, ...handlers() });
 		const note = page.getByTestId('cp-unresolved');
-		await expect.element(note).toHaveTextContent('Not in your conclusion yet: apply it, add it to the conclusion, or mark it seen.');
+		await expect.element(note).toHaveTextContent('Not in your conclusion yet: add it to the conclusion, or mark it seen.'); // Apply off
 		const verdict = document.querySelector('[aria-label="Verdict"]')!;
 		expect(verdict.compareDocumentPosition(note.element()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 		await page.getByRole('button', { name: 'Seen, leave as is' }).click();
@@ -178,5 +178,37 @@ describe('the calmer card', () => {
 		expect(pill.textContent).toContain('CT at 3 months');
 		expect(pill.getAttribute('title')).toBe('CT at 3 months');
 		expect(pill.querySelector('.cp-pill-text')).not.toBeNull();
+	});
+
+	it('the gate note offers "apply it" only when Apply is on', async () => {
+		const key = cardRef(bts);
+		body(decided(), { unresolved: { key, card: key, name: 'BTS 2015' }, applyOn: true });
+		await expect.element(page.getByTestId('cp-unresolved')).toHaveTextContent('Not in your conclusion yet: apply it, add it to the conclusion, or mark it seen.');
+	});
+
+	it('the collapsed row carries Seen, leave as is beside the marker', async () => {
+		const onSeen = vi.fn();
+		const key = cardRef(bts);
+		body(doubtful(), { unresolved: { key, card: key, name: 'BTS 2015' }, onSeen });
+		await page.getByRole('button', { name: 'Seen, leave as is' }).click();
+		expect(onSeen).toHaveBeenCalledWith(key);
+	});
+
+	it('the Show details and Hide details toggles name the body they control', async () => {
+		body(doubtful(), { expanded: true, onExpand: vi.fn() });
+		const id = page.getByRole('button', { name: /Hide details/ }).element().getAttribute('aria-controls')!;
+		expect(document.getElementById(id)).not.toBeNull();
+	});
+
+	it('siblings: the applicable column leads even when the primary column is the doubtful one', async () => {
+		const fl = card({ siblings: ['bts-pulmonary-nodule'], sibling_names: ['BTS 2015'] });
+		const columns = {
+			'fleischner-pulmonary-nodule': { loading: false, error: null, result: result(fl, doubtful()) },
+			'bts-pulmonary-nodule': { loading: false, error: null, result: result(bts, decided()) }
+		};
+		render(SiblingColumns, { card: fl, view: { ...closedView, open: true, columns }, layout: 'stacked', ...handlers() });
+		const row = document.querySelector('[data-testid="cp-collapsed"]')!;
+		const verdict = document.querySelector('[aria-label="Verdict"]')!;
+		expect(verdict.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 	});
 });

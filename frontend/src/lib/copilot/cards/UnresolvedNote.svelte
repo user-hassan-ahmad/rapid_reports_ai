@@ -3,12 +3,12 @@
 	 *  tap that always clears it, "Seen, leave as is" (held until the card's verdict changes). */
 	import type { Unresolved } from '../gate';
 
-	let { item, onSeen = null }: { item: Unresolved; onSeen?: ((key: string) => void) | null } = $props();
+	let { item, onSeen = null, applyOn = false }: { item: Unresolved; onSeen?: ((key: string) => void) | null; applyOn?: boolean } = $props();
 </script>
 
 <div class="cp-unresolved" role="note" data-testid="cp-unresolved">
 	<p class="cp-unresolved-text">
-		Not in your conclusion yet: apply it, add it to the conclusion, or mark it seen.{#if item.reason}<span class="cp-unresolved-why"> {item.reason}</span>{/if}
+		Not in your conclusion yet: {applyOn ? 'apply it, add it to the conclusion, or mark it seen.' : 'add it to the conclusion, or mark it seen.'}{#if item.reason}<span class="cp-unresolved-why"> {item.reason}</span>{/if}
 	</p>
 	{#if onSeen}
 		<button type="button" class="cp-link cp-seen" onclick={(e) => (e.stopPropagation(), onSeen?.(item.key))}>Seen, leave as is</button>

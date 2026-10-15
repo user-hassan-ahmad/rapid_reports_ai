@@ -162,9 +162,10 @@
 	{:else}
 		{#if editError}<p class="cp-p cp-edit-error" role="alert">{editError}</p>{/if}
 		{#if collapsed && reason}
-			<CollapsedRow reason={reason.text} more={reason.more} confirm={reason.confirm} unresolved={!!unresolved} onConfirm={onEdit} onToggle={toggle} />
+			<CollapsedRow reason={reason.text} more={reason.more} confirm={reason.confirm} unresolvedKey={unresolved?.key ?? null} onConfirm={onEdit} {onSeen} onToggle={toggle} controls="{uid}-body" />
 		{:else}
-		{#if canCollapse}<button type="button" class="cp-link cp-aux-toggle cp-hide-details" aria-expanded="true" onclick={toggle}>Hide details <span class="cp-caret"><Icon name="chev" size={11} /></span></button>{/if}
+		{#if canCollapse}<button type="button" class="cp-link cp-aux-toggle cp-hide-details" aria-expanded="true" aria-controls="{uid}-body" onclick={toggle}>Hide details <span class="cp-caret"><Icon name="chev" size={11} /></span></button>{/if}
+		<div id="{uid}-body" class="cp-body-inner">
 		{#if p.state === 'does_not_apply'}
 			{#each doubts as d (d.input)}
 				<div class="cp-doubt" role="note" data-testid="cp-scope-doubt">
@@ -264,7 +265,7 @@
 				aria-busy={busy}
 			>
 				<p class="cp-p cp-headline">{v.headline}</p>
-				<!-- the action is in the pill; here only what the recommendation adds to it (later steps, conditions) -->
+				<!-- the pill is only the category word: the whole recommendation (the action and its later steps) shows here -->
 				{#if recText}<p class="cp-p cp-recommendation">{recText}</p>{/if}
 				{#if v.excluded && v.classification && v.classification !== v.headline}
 					<!-- does not apply: the specific reason leads; the generic exclusion text waits behind "full reason" -->
@@ -335,7 +336,7 @@
 			</section>
 		{/if}
 
-		{#if unresolved}<UnresolvedNote item={unresolved} {onSeen} />{/if}
+		{#if unresolved}<UnresolvedNote item={unresolved} {onSeen} {applyOn} />{/if}
 		{#if p.state !== 'does_not_apply'}
 			<ResultZone candidates={cands} pick={pickNow} {blocker} missingLabel={missing?.label ?? ''} {applyOn} {applied} current={verdictKey(p)} currentOutcome={pickNow ?? ((p.trace?.['outcome'] as string | undefined) ?? null)} {applying} {applyError}
 				onPick={applyOn ? onPick : null} {onApply} onAnswerMissing={missing && onEdit ? () => (editingChip = missing.input) : null} />
@@ -376,6 +377,7 @@
 		{#if p.degraded}
 			<p class="cp-p cp-muted cp-degraded">Some values could not be checked</p>
 		{/if}
+		</div>
 		{/if}
 	{/if}
 	{#if !compact && result.reference && !collapsed}
@@ -453,15 +455,19 @@
 		align-self: flex-start;
 		font-size: 0.75rem;
 	}
-	.cp-onvalues:empty {
-		display: none;
-	}
+	/* the busy note is for screen readers: the live region stays in the tree, off screen */
 	.cp-onvalues {
-		font-size: 0.6875rem;
-		color: var(--rv-muted);
-		opacity: 0.85;
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
 	}
-
+	.cp-body-inner {
+		display: contents;
+	}
 	/* ── 2–3. notes and source: two quiet lines ── */
 	.cp-aux {
 		display: flex;

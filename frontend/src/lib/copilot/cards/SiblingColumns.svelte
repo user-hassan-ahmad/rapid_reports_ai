@@ -75,7 +75,9 @@
 	const CARD_CHROME_PX = 34; // the GlCard body's left and right padding
 	const stacked = $derived(layout === 'stacked' || (layout === 'auto' && width > 0 && (width - CARD_CHROME_PX) / cols.length < MIN_COLUMN_PX));
 	// stacked: every guideline at full width, one under the other, none chosen (§7.1); columns: a title expands one
-	const shown = $derived(!stacked && chosen ? cols.filter((c) => c.key === chosen) : cols);
+	// applicable guidelines first, those that may not apply (collapsed rows) after them; otherwise in pack order
+	const ordered = $derived([...cols.filter((c) => !collapsible(colView(c.key).result?.preview)), ...cols.filter((c) => collapsible(colView(c.key).result?.preview))]);
+	const shown = $derived(!stacked && chosen ? ordered.filter((c) => c.key === chosen) : ordered);
 </script>
 
 {#snippet column(c: { key: string; title: string }, full: boolean)}

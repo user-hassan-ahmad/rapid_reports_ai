@@ -372,7 +372,7 @@ describe('CopilotCards', () => {
 		expect(document.body.textContent).not.toContain('On these values');
 	});
 
-	it('the pill is the category word; the verdict carries the full recommendation (here its later steps) the recommendation shows in full when it says more (here its later steps)', async () => {
+	it('the pill is the category word; the verdict carries the full recommendation (here its later steps)', async () => {
 		const c = card({ key: 'bosniak-renal-cyst', name: 'Bosniak 2019', finding: finding.text });
 		const pv = preview({
 			proposal: null,
@@ -406,7 +406,7 @@ describe('CopilotCards', () => {
 		});
 		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
 		await expect.element(page.getByRole('region', { name: 'Verdict' })).toHaveTextContent('Not cystic');
-		expect(document.querySelector('.cp-pill')!.textContent).toContain('Not applicable'); // the category word
+		expect(document.querySelector('.cp-pill')!.textContent).toContain('Manage as solid renal mass'); // not a category word: it must not read like "Does not apply"
 		await expect.element(page.getByRole('region', { name: 'Verdict' })).toHaveTextContent('Manage as a solid renal mass');
 		expect(document.querySelector('.gl-card')!.classList.contains('gl-card--dim')).toBe(false);
 		expect(document.body.textContent).not.toContain('Does not apply');
@@ -500,8 +500,8 @@ describe('CopilotCards', () => {
 		await expect.element(note).toHaveTextContent('Maximum diameter: 35 mm');
 		await expect.element(note).toHaveTextContent('pre-filled · would make NHS AAA surveillance not apply');
 		// first in the body: the Check zone holds it
-		// (after the "Hide details" toggle a doubtful card carries)
-		const first = [...document.querySelector('.gl-body .cp-pack-body')!.children].find((e) => !e.classList.contains('cp-hide-details'))!;
+		// (inside the body the "Hide details" toggle controls)
+		const first = document.querySelector('.gl-body .cp-body-inner')!.firstElementChild!;
 		expect(first.getAttribute('data-testid')).toBe('cp-check');
 		expect(first.contains(note.element())).toBe(true);
 		await page.getByRole('button', { name: /^Based on/ }).click();

@@ -325,7 +325,7 @@ export const categoryColor = (c: VerdictCategory) =>
 
 /** The opened card's pill word (calmer card): the outcome's category, the action itself living in the verdict
  *  beneath. null for the states that already read as words ("May not apply", "Does not apply", open, likely). */
-const PILL_WORD: Partial<Record<VerdictCategory, string>> = { none: 'No action', surveillance: 'Follow-up', workup: 'Investigate', refer: 'Refer', info: 'Info', not_applicable: 'Not applicable' };
+const PILL_WORD: Partial<Record<VerdictCategory, string>> = { none: 'No action', surveillance: 'Follow-up', workup: 'Investigate', refer: 'Refer', info: 'Info' };
 export function pillWord(v: Verdict | null | undefined): string | null {
 	if (!v || v.excluded || v.tentative) return null;
 	return PILL_WORD[v.category] ?? null;
@@ -336,8 +336,16 @@ export function pillWord(v: Verdict | null | undefined): string | null {
 export function restates(classification: string, headline: string): boolean {
 	const strip = (s: string) => s.replace(/^.*? · /, '').trim().replace(/[.;:,]+$/, '').toLowerCase();
 	const c = strip(classification);
-	const h = headline.trim().replace(/[.;:,]+$/, '').toLowerCase();
+	const h = strip(headline);
 	if (!c || !h) return false;
 	if (c === h) return true;
-	return c.includes(h) && c.split(/\s+/).length - h.split(/\s+/).length < 4;
+	// never hide a size or number the headline does not carry ("6-8 mm", "Grade 2")
+	const nums = (s: string) => s.match(/\d+(?:\.\d+)?/g) ?? [];
+	const hn = new Set(nums(h));
+	if (nums(c).some((n) => !hn.has(n))) return false;
+	// whole words only: "part-solid nodule" does not contain "solid nodule"
+	const cw = c.split(/\s+/);
+	const hw = h.split(/\s+/);
+	const at = cw.findIndex((_, i) => hw.every((w, k) => cw[i + k] === w));
+	return at >= 0 && cw.length - hw.length < 4;
 }
