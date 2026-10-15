@@ -126,3 +126,62 @@ def test_stateless_paths_never_persist_or_mint(client, auth_headers, monkeypatch
         "changes": [{"kind": "normal", "key": "Knee :: menisci", "choice": {"text": "The menisci are normal."}}]}).json()
     assert r["success"] and all("uid" not in e for e in r["decisions"])
     assert all(reg is None for reg in seen)
+
+# ── the normals confirm endpoint ──────────────────────────────────────────────────────────────────────────────
+
+def _confirmable(client, auth_headers):
+    t = client.post("/api/templates", headers=auth_headers, json={"name": "Liver", "template_config": {
+        "generation_mode": "skill_sheet_guided", "skill_sheet": LEDGER_SHEET}}).json()["template"]
+    cfg = t["template_config"]
+    return t, cfg, _uids(LEDGER_SHEET, cfg["line_registry"])["p1"]
+
+
+def test_a_confirm_is_computed_server_side_and_records_the_session_user(client, auth_headers, test_user):
+    t, cfg, group = _confirmable(client, auth_headers)
+    r = client.post(CONFIRM.format(t["id"]), headers=auth_headers, json={
+        "group": group, "sheet_rev": cfg["sheet_rev"], "sheet_hash": tss.sheet_hash(LEDGER_SHEET),
+        "units": {"n_forged": "sha256:x"}, "user_id": "someone-else"})
+    assert r.status_code == 200, r.text
+    rec = r.json()["confirm"]
+    uids = _uids(LEDGER_SHEET, cfg["line_registry"])
+    assert set(rec["units"]) == {uids["m0"], uids["n0"]} and rec["user_id"] == str(test_user.id)
+    assert rec["units"][uids["m0"]] == cfg["line_registry"]["units"][uids["m0"]]["text_hash"]
+    assert _get(client, auth_headers, t["id"])["template_config"]["normal_confirms"] == {group: rec}
+
+
+@pytest.mark.parametrize("field", ["sheet_rev", "sheet_hash"])
+def test_a_confirm_on_a_stale_sheet_is_409(client, auth_headers, field):
+    t, cfg, group = _confirmable(client, auth_headers)
+    body = {"group": group, "sheet_rev": cfg["sheet_rev"], "sheet_hash": tss.sheet_hash(LEDGER_SHEET)}
+    body[field] = 0 if field == "sheet_rev" else "f" * 64
+    assert client.post(CONFIRM.format(t["id"]), headers=auth_headers, json=body).status_code == 409
+    assert "normal_confirms" not in _get(client, auth_headers, t["id"])["template_config"]
+
+
+def test_a_confirm_for_a_missing_template_is_404_and_an_unknown_group_422(client, auth_headers):
+    body = {"group": "p_aaaaaa", "sheet_rev": 1, "sheet_hash": "x"}
+    assert client.post(CONFIRM.format(uuid.uuid4()), headers=auth_headers, json=body).status_code == 404
+    t, cfg, _ = _confirmable(client, auth_headers)
+    body = {**body, "sheet_rev": cfg["sheet_rev"], "sheet_hash": tss.sheet_hash(LEDGER_SHEET)}
+    assert client.post(CONFIRM.format(t["id"]), headers=auth_headers, json=body).status_code == 422
+
+
+def test_confirms_survive_a_put_that_sends_its_own_copy(client, auth_headers):
+    t, cfg, group = _confirmable(client, auth_headers)
+    client.post(CONFIRM.format(t["id"]), headers=auth_headers, json={
+        "group": group, "sheet_rev": cfg["sheet_rev"], "sheet_hash": tss.sheet_hash(LEDGER_SHEET)})
+    stored = _get(client, auth_headers, t["id"])["template_config"]["normal_confirms"]
+    r = client.put(f"/api/templates/{t['id']}", headers=auth_headers, json={"template_config": {
+        **cfg, "normal_confirms": {}}}).json()
+    assert r["template"]["template_config"]["normal_confirms"] == stored
+
+
+def test_a_confirm_on_a_template_saved_before_sheet_rev_compares_against_0(client, auth_headers, db_session):
+    from rapid_reports_ai.database.models import Template
+    t, cfg, group = _confirmable(client, auth_headers)
+    row = db_session.get(Template, uuid.UUID(t["id"]))
+    row.template_config = {k: v for k, v in row.template_config.items() if k != "sheet_rev"}
+    db_session.commit()
+    r = client.post(CONFIRM.format(t["id"]), headers=auth_headers, json={
+        "group": group, "sheet_rev": 0, "sheet_hash": tss.sheet_hash(LEDGER_SHEET)})
+    assert r.status_code == 200, r.text

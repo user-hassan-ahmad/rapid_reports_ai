@@ -666,6 +666,15 @@ class TemplateCreate(BaseModel):
     is_pinned: Optional[bool] = False
 
 
+class NormalConfirmRequest(BaseModel):
+    """A normals confirm (spec 2026-10-15-stable-line-ids-design): the group and the sheet the radiologist saw. Any
+    other field (a unit list, a user id) is ignored: the units are worked out from the stored sheet, the user from
+    the session."""
+    group: str = Field(max_length=64)
+    sheet_rev: int
+    sheet_hash: str = Field(max_length=128)
+
+
 class TemplateUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
@@ -1899,6 +1908,43 @@ async def update_template_endpoint(
         import traceback
         traceback.print_exc()
         return {"success": False, "error": str(e)}
+
+
+@app.post("/api/templates/{template_id}/normal-confirms")
+async def normal_confirm_endpoint(
+    template_id: str,
+    request: NormalConfirmRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Record a normals confirm for one group of a saved template (spec 2026-10-15-stable-line-ids-design). 404: no
+    such template (confirms exist only once a template is saved); 409: the sheet changed since the radiologist saw it
+    (sheet_rev / sheet_hash differ), so a concurrent edit is never attested unseen; 422: no such group. The units and
+    their text_hash come from the stored sheet and registry; user_id from the session."""
+    from sqlalchemy.orm.attributes import flag_modified
+    from . import template_normal_confirms as tnc
+    template = get_template(db, template_id, user_id=str(current_user.id))
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+    row = db.query(Template).filter(Template.id == template.id).with_for_update().populate_existing().first()
+    cfg = dict(row.template_config or {})
+    sheet = cfg.get("skill_sheet") or ""
+    if request.sheet_rev != tsave.stored_rev(cfg.get("sheet_rev")) or request.sheet_hash != tss.sheet_hash(sheet):
+        db.rollback()
+        raise HTTPException(status_code=409, detail="The template has changed; reload it and confirm again.")
+    st = tsg.parse_sheet(sheet, mode="template").structure if tsg.is_grammar_sheet(sheet) else None
+    found = tnc.groups(st, sheet, cfg.get("line_registry")) if st is not None else []
+    group = next((g for g in found if g.id == request.group), None)
+    if group is None:
+        db.rollback()
+        raise HTTPException(status_code=422, detail="Unknown group.")
+    rec = tnc.record(group, cfg.get("line_registry"), sheet_rev=request.sheet_rev, sheet_hash=request.sheet_hash,
+                     user_id=str(current_user.id))
+    confirms = cfg.get("normal_confirms") if isinstance(cfg.get("normal_confirms"), dict) else {}
+    row.template_config = {**cfg, "normal_confirms": {**confirms, group.id: rec}}
+    flag_modified(row, "template_config")
+    db.commit()
+    return {"success": True, "confirm": rec, "state": tnc.VALID}
 
 
 @app.delete("/api/templates/{template_id}")
