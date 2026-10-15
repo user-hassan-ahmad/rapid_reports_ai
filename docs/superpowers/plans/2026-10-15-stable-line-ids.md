@@ -14,7 +14,7 @@
 
 ## Spec gaps found while planning
 
-Each of these is either a place where the spec's wording cannot be met literally, or a choice the spec leaves open. Hassan should read 1, 2 and 4 before execution starts. The plan follows the spec as of `b9df0b93` (Hassan's decisions 4 and 5: the wider meaningful-token set with protected negation and hedge words, Task 1; a normal follows a renamed paragraph only with its own text unchanged, Task 3; a renamed group's confirm is stale, Task 13).
+Each of these is either a place where the spec's wording cannot be met literally, or a choice the spec leaves open. Hassan should read 1, 2 and 4 before execution starts. The plan follows the spec as of `d234b67a` (Hassan's decisions 4 and 5: the wider meaningful-token set with protected negation and hedge words, filler scope ending at the sentence's earlier negation or hedge, quote-after-number as a unit token, Task 1; a normal follows a renamed paragraph only with its own text unchanged, Task 3; a renamed group's confirm is stale, Task 13).
 
 1. **Uid-first resolution uses `match`, not `uids_for` (spec "Registry threading": "resolves uid-first (via `uids_for` on the current parse)").** `uids_for` pairs by exact identity only. During a rebuild, a renamed paragraph (same COVERS), the normals in it whose text is unchanged (decision 5), or a cosmetically reworded negative therefore have no uid on the incoming parse, so the entry would fall back to key matching, become a card, and heal only on the save after next. The plan adds `tlr.match(st, registry)`: the pairing `rebind` would make (exact and cosmetic tiers against live units only, no revival, no minting, nothing stored). It uses the same safety rules as rebind, so it adds no new matching logic. `uids_for` is still the read-time function the spec describes (confirms, stamping, `uncertain`). **To follow the spec literally instead**, change one line in `_uid_map` (Task 6) from `tlr.match(...)` to `tlr.uids_for(...)` and delete `test_across_a_paragraph_rename_a_normal_entry_follows_only_an_unchanged_line`.
 2. **"Removal decisions … never become cards" is narrowed (plan review H1).** A removal counts as satisfied only when its line is *shown* absent: the entry carries a uid the registry knows, and no unit of the current parse holds that uid. Without that evidence (no uid, a paragraph not found or ambiguous, a reworded negative) it stays a card, as today. It applies only on the registry path (persisted saves), so `registry=None` stays exactly as today and `test_removing_a_negative_the_sheet_reworded_is_unmatched_not_kept` is unchanged.
@@ -124,6 +124,9 @@ ADVERSARIAL = [
     ("Malignancy cannot be excluded.", "Malignancy excluded."),
     ("Possible collection.", "Probable collection."),
     ("Well-defined margin.", "Defined margin."),
+    ("No collapse, there is consolidation.", "No collapse, consolidation."),
+    ("No mass, fluid is seen.", "No mass, fluid."),
+    ("Length 5'.", "Length 5."),
 ]
 
 
@@ -136,6 +139,8 @@ def test_cosmetic_rewordings_are_the_same_line():
     assert tlm.same_text("There is no pleural effusion.", "No pleural effusion") == "cosmetic"
     assert tlm.same_text("Oedema is seen.", "Edema") == "cosmetic"
     assert tlm.same_text("No focal liver lesion.", "no focal liver lesion") == "exact"
+    assert tlm.same_text("No mass. There is fluid.", "No mass. Fluid.") == "cosmetic"   # the scope ends at "."
+    assert tlm.same_text("Possible mass; there is fluid.", "Possible mass; fluid.") == "cosmetic"   # and at ";"
 
 
 @pytest.mark.parametrize("a,b", [
@@ -157,6 +162,7 @@ def test_meaningful_tokens_are_their_own_tokens():
     assert tlm.gates("Mild left 1.5 mm effusion, no mass.") == ("mild", "left", "1.5", "mm", "no")
     assert tlm.gates("Possibly 5 x 3 mm; cannot be excluded.") == ("possibly", "5", "x", "3", "mm", "cannot be excluded")
     assert tlm.gates("Unremarkable, non-enhancing.") == ("unremarkable", "non-enhancing")
+    assert tlm.tokens("5' and \"x\" 6\"") == ("5", "\u2032", "and", '"', "x", '"', "6", "\u2033")
 
 
 def test_spelling_table_lookalikes_and_filler_list_do_not_collide():
@@ -257,17 +263,28 @@ HEDGE_WORDS = frozenset({"possible", "possibly", "likely", "probable", "probably
 HEDGE_PHRASES: Tuple[Tuple[str, ...], ...] = (
     ("cannot", "be", "excluded"), ("not", "excluded"), ("in", "keeping", "with"), ("consistent", "with"),
 )
+_HEDGE_PHRASE_WORDS = frozenset({"cannot", "excluded", "keeping", "consistent"})
 LATERALITY = frozenset({"left", "right", "bilateral", "unilateral"})
 SEVERITY = frozenset({"minimal", "mild", "moderate", "severe", "marked", "small", "large", "grade", "category"})
+UNIT_QUOTES = {"'": "\u2032", '"': "\u2033"}   # 5' and 5": prime and double prime unit tokens
 UNITS = frozenset({"mm", "cm", "m", "ml", "l", "mg", "g", "kg", "mgy", "mgycm", "msv", "hu", "ms", "s", "bpm",
-                   "mmhg", "cc"})
+                   "mmhg", "cc", *UNIT_QUOTES.values()})
+_SENTENCE_END = frozenset({".", ";"})
 OPERATORS = frozenset("<>≤≥=±+/%")
 _NUMBER = re.compile(r"\d*\.\d+$|\d+$")
 
 
 def tokens(text: str) -> Tuple[str, ...]:
-    """Every token of the text after the lookalike map, lower case, nothing removed."""
-    return tuple(_TOKEN.findall((text or "").translate(_LOOKALIKE).lower()))
+    """Every token of the text after the lookalike map, lower case, nothing removed. A quote mark directly after a
+    digit is a unit (5' feet, 5" inches) and becomes its own unit token, never a dropped quotation mark."""
+    t = (text or "").translate(_LOOKALIKE).lower()
+    out = []
+    for m in _TOKEN.finditer(t):
+        tok = m.group()
+        if tok in _QUOTE_TOKENS and m.start() > 0 and t[m.start() - 1].isdigit():
+            tok = UNIT_QUOTES[tok]
+        out.append(tok)
+    return tuple(out)
 
 
 def _gate(toks: Tuple[str, ...], i: int) -> bool:
@@ -298,20 +315,28 @@ def gates(text: str) -> Tuple[str, ...]:
     return tuple(out)
 
 
+def _protected(t: str) -> bool:
+    return t in NEGATION or bool(_NEGATION_PREFIX.match(t)) or t in HEDGE_WORDS or t in _HEDGE_PHRASE_WORDS
+
+
 def form(text: str) -> Tuple[str, ...]:
     """The cosmetic form: tokens without quotation marks or a final full stop, spelling mapped, filler phrases removed
-    as exact whole runs, order kept."""
+    as exact whole runs, order kept. Scope: a filler is never removed once a negation or hedge token has appeared in
+    the same sentence (since the last "." or ";"): "No collapse, there is consolidation." keeps its "there is"."""
     toks = [SPELLING.get(t, t) for t in tokens(text) if t not in _QUOTE_TOKENS]
     if toks and toks[-1] == ".":
         toks.pop()
     out: list = []
+    guarded = False   # a negation or hedge token earlier in this sentence
     i = 0
     while i < len(toks):
-        hit = next((f for f in FILLERS if tuple(toks[i:i + len(f)]) == f), None)
+        hit = None if guarded else next((f for f in FILLERS if tuple(toks[i:i + len(f)]) == f), None)
         if hit:
             i += len(hit)
             continue
-        out.append(toks[i])
+        t = toks[i]
+        guarded = False if t in _SENTENCE_END else guarded or _protected(t)
+        out.append(t)
         i += 1
     return tuple(out)
 
@@ -332,7 +357,7 @@ def same_text(a: str, b: str) -> Optional[str]:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_line_registry.py`
-Expected: `33 passed` (22 adversarial pairs and 7 typography pairs, parametrised, plus 4 others).
+Expected: `36 passed` (25 adversarial pairs and 7 typography pairs, parametrised, plus 4 others).
 
 - [ ] **Step 5: Commit**
 
@@ -584,7 +609,7 @@ def _cosmetic(kind: str, ident: dict) -> Optional[tuple]:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_line_registry.py`
-Expected: `35 passed`.
+Expected: `38 passed`.
 
 - [ ] **Step 5: Commit**
 
@@ -982,7 +1007,7 @@ def summary(report: dict) -> str:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_line_registry.py`
-Expected: `76 passed` (35 before + 41 new, 22 of them adversarial).
+Expected: `82 passed` (38 before + 44 new, 25 of them adversarial).
 
 - [ ] **Step 5: Commit**
 
@@ -1065,7 +1090,7 @@ def match(st, registry) -> Dict[str, str]:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `PYTEST tests/test_template_line_registry.py`
-Expected: `78 passed`.
+Expected: `84 passed`.
 
 - [ ] **Step 5: Commit**
 
