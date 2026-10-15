@@ -568,6 +568,8 @@ def taps_to_ready(e: Entry, s, label: dict, patient: dict, picked: bool = False,
     """Taps to a ready questionnaire card (spec 2026-10-14 §6.3): taps() plus one ✓ per decisive (or unweighed)
     pre-filled or assumed value the final card still shows; never a read or answered value, never a scope doubt."""
     n, p, _, answered, _, _ = _walk(e, s, label, patient, picked, presets)
+    if p.state == "does_not_apply":   # the real card shows no Check zone on an excluded card: nothing to ✓
+        return n
     return n + sum(1 for d in p.draft if d.state in ("prefilled", "assumed") and d.value and d.decisive is not False
                    and d.input not in p.scope_doubt and d.input not in answered)
 

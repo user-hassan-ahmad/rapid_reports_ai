@@ -538,3 +538,16 @@ def test_taps_to_ready_add_one_tick_per_decisive_guess_left_on_the_card(toy_entr
     read = Settlement(values={"kind": Drafted(InputValue(value="solid"), "solid", "read"),
                               "size": Drafted(InputValue(value=7.0), "7 mm", "read")})
     assert RL.taps_to_ready(toy_entry, read, lab, patient={}) == 1       # nothing guessed: no ✓
+
+
+def test_an_excluded_card_has_no_tick_in_taps_to_ready(toy):
+    """The real card shows no Check zone once the pack does not apply: taps_to_ready equals taps."""
+    from tests.test_library_pack_preview import _elig
+    e = _elig(toy)
+    s = Settlement(values={"kind": Drafted(InputValue(value="solid"), "solid", "prefilled", ["x"]),
+                           "size": Drafted(InputValue(value=7.0), "7 mm", "read"),
+                           "known_cancer": Drafted(InputValue(value=True), "Yes", "read")})
+    lab = _label(kind=("solid", None), size=("7", None), risk=(None, "high"), margin=(None, None), known_cancer=("Yes", None))
+    n, outcome = RL.taps(e, s, lab, patient={})
+    assert outcome == "does_not_apply"
+    assert RL.taps_to_ready(e, s, lab, patient={}) == n
