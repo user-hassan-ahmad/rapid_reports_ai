@@ -596,6 +596,13 @@ def apply_ledger(sheet: str, ledger: List[dict], before: str = "", registry: Opt
             # a removal is satisfied only on positive evidence that its line is absent (_shown_absent); "its uid
             # matched nothing" alone is never that evidence. Otherwise it stays a card, as today (end review C1)
             known = tlr.load(registry)["units"] if mapped else {}
+            # a removal with a uid whose edit found nothing ("kept": _fixed, _normal) is never kept on that alone: it
+            # goes through the same absence check (absent -> satisfied, otherwise a card). No registry: as today
+            if mapped and isinstance(arg, dict) and arg.get("uid") and is_removal(arg):
+                kept = [a for a in applied if a.get("action") == "kept" and a.get("key") == arg.get("key")]
+                if kept:
+                    applied = [a for a in applied if a not in kept]
+                    unmatched = unmatched + [arg]
             done = [x for x in unmatched if is_removal(x) and _shown_absent(x.get("uid"), st, uid_map, known)]
             unmatched = [x for x in unmatched if x not in done]
             res.satisfied += done

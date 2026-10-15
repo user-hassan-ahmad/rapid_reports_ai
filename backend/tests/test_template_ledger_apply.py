@@ -825,6 +825,49 @@ def test_a_section_level_line_is_not_shown_absent_while_a_new_line_of_its_kind_s
     assert not absent(to_para)                                     # a new negative in a paragraph of its section
 
 
+# a removal whose edit finds nothing ("kept") still goes through the absence check when it has a uid (third review)
+
+def test_a_negative_removal_not_found_in_its_paragraph_is_a_card_when_reworded_at_section_level():
+    reg = _reg(LEDGER_SHEET)
+    removal = _with_uid(_led(("normal", NEG, {"text": ""}))[0], _uid(LEDGER_SHEET, reg, "n0"))
+    sheet = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."\n', '').replace(
+        'TERM PREFER "hepatic"\n', 'TERM PREFER "hepatic"\nNEGATIVE "No focal hepatic lesion."\n')
+    res = tla.apply_ledger(sheet, [removal], registry=reg)
+    assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [NEG] and res.applied == []
+    assert [a["action"] for a in tla.apply_ledger(sheet, [removal]).applied] == ["kept"]   # no registry: as today
+
+
+def test_a_normal_removal_is_a_card_when_the_same_sentence_was_relabelled():
+    reg = _reg(LEDGER_SHEET)
+    key = td.normal_key("Liver", "liver")
+    removal = _with_uid(_led(("normal", key, {"text": ""}))[0], _uid(LEDGER_SHEET, reg, "m0"))
+    sheet = LEDGER_SHEET.replace("NORMAL [liver]", "NORMAL [hepatic parenchyma]")
+    res = tla.apply_ledger(sheet, [removal], registry=reg)
+    assert "NORMAL [hepatic parenchyma]" in res.sheet
+    assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [key]
+
+
+def test_a_fixed_removal_is_a_card_when_the_line_was_reworded():
+    reg = _reg(LEDGER_SHEET)
+    fixed = "No previous imaging available."
+    ref = next(u.ref for u in tlr.units(_clean(LEDGER_SHEET)) if u.kind == "fixed" and u.text == fixed)
+    removal = _with_uid(_led(("fixed", fixed, {"keep": "remove"}))[0], _uid(LEDGER_SHEET, reg, ref))
+    sheet = LEDGER_SHEET.replace(f'FIXED "{fixed}"', 'FIXED "No prior imaging is available."')
+    res = tla.apply_ledger(sheet, [removal], registry=reg)
+    assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [fixed]
+    gone = LEDGER_SHEET.replace(f'FIXED "{fixed}"\n', '')
+    res = tla.apply_ledger(gone, [removal], registry=reg)
+    assert res.unmatched == [] and [e["key"] for e in res.satisfied] == [fixed]
+
+
+def test_a_negative_removal_not_found_and_genuinely_gone_is_satisfied():
+    reg = _reg(LEDGER_SHEET)
+    removal = _with_uid(_led(("normal", NEG, {"text": ""}))[0], _uid(LEDGER_SHEET, reg, "n0"))
+    gone = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."\n', '')
+    res = tla.apply_ledger(gone, [removal], registry=reg)
+    assert res.unmatched == [] and [e["key"] for e in res.satisfied] == [NEG] and res.sheet == gone
+
+
 def test_an_orphaned_removal_uid_never_satisfies_on_a_later_save():
     reg = _reg(LEDGER_SHEET)
     removal = _with_uid(_led(("normal", NEG, {"text": ""}))[0], _uid(LEDGER_SHEET, reg, "n0"))
