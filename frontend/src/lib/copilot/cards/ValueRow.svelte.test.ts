@@ -40,38 +40,38 @@ describe('ValueRow', () => {
 		expect(li().hasAttribute('tabindex')).toBe(false);
 	});
 
-	it('prefilled: amber-soft value, a "pre-filled" chip, and the reasons in the description', async () => {
+	it('prefilled: amber-soft value, a "probably from your dictation" chip, and the reasons in the description', async () => {
 		show(row({ state: 'prefilled', quote: '7 mm solid nodule', why: ['another number in this finding'] }));
-		await expect.element(page.getByText('pre-filled', { exact: true })).toBeInTheDocument();
+		await expect.element(page.getByText('probably from your dictation', { exact: true })).toBeInTheDocument();
 		expect(li().querySelector('.cp-prefill')!.textContent).toBe('7 mm');
 		expect(getComputedStyle(li().querySelector('.cp-prefill')!).backgroundColor).not.toBe('rgba(0, 0, 0, 0)');
 		// no native title anywhere on the row: the bubble is the one tooltip (a title showed the quote twice)
 		expect(li().querySelectorAll('[title]').length + (li().hasAttribute('title') ? 1 : 0)).toBe(0);
 		const desc = document.getElementById(li().getAttribute('aria-describedby')!)!.textContent!;
 		expect(desc).toContain('“7 mm solid nodule”');
-		expect(desc).toContain('Pre-filled: another number in this finding');
+		expect(desc).toContain('Not verified: another number in this finding');
 	});
 
-	it('an exam preset: "set by the exam", no highlight and no "pre-filled" chip', async () => {
+	it('an exam preset: "set by the exam", no highlight and no "probably from your dictation" chip', async () => {
 		show(row({ state: 'prefilled', byExam: true, value: 'unenhanced CT', why: ['set by the exam'] }));
 		await expect.element(page.getByText('set by the exam')).toBeInTheDocument();
 		expect(li().querySelector('.cp-prefill')).toBeNull();
-		expect(document.body.textContent).not.toContain('pre-filled');
+		expect(document.body.textContent).not.toContain('probably from your dictation');
 		expect(li().hasAttribute('tabindex')).toBe(false);
 	});
 
 	it('a pre-filled row with no quote or reasons is still focusable, and says why', async () => {
 		show(row({ state: 'prefilled', quote: '', why: [] }));
-		await expect.element(page.getByText('pre-filled', { exact: true })).toBeInTheDocument();
+		await expect.element(page.getByText('probably from your dictation', { exact: true })).toBeInTheDocument();
 		expect(li().getAttribute('tabindex')).toBe('0');
-		expect(document.getElementById(li().getAttribute('aria-describedby')!)!.textContent).toContain('Pre-filled: not read with certainty');
+		expect(document.getElementById(li().getAttribute('aria-describedby')!)!.textContent).toContain('Not verified: not read with certainty');
 	});
 
 	it('an exam-set row that also has a real reason shows both chips and the reason', async () => {
 		show(row({ state: 'prefilled', byExam: true, value: 'unenhanced CT', why: ['set by the exam', 'the check did not run'] }));
 		await expect.element(page.getByText('set by the exam')).toBeInTheDocument();
-		await expect.element(page.getByText('pre-filled', { exact: true })).toBeInTheDocument();
-		expect(document.getElementById(li().getAttribute('aria-describedby')!)!.textContent).toContain('Pre-filled: the check did not run');
+		await expect.element(page.getByText('probably from your dictation', { exact: true })).toBeInTheDocument();
+		expect(document.getElementById(li().getAttribute('aria-describedby')!)!.textContent).toContain('Not verified: the check did not run');
 		expect(document.getElementById(li().getAttribute('aria-describedby')!)!.textContent).not.toContain('set by the exam');
 	});
 

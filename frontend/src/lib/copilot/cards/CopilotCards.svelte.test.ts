@@ -180,12 +180,13 @@ describe('CopilotCards', () => {
 		});
 		render(CopilotCards, single(c, v(result(c, pv), { open: true })));
 		// the open card names the assumed value in Check, so the head's chip steps aside
-		await expect.element(page.getByTestId('cp-check')).toHaveTextContent('Known cancer: No');
+		await expect.element(page.getByTestId('cp-check')).toHaveTextContent('Known cancer');
+		expect(document.querySelector('[data-testid="cp-check"] .cp-check-answer')!.textContent).toBe('No'); // the first group: not dictated
 		expect(document.querySelector('.cp-assumed-chip')).toBeNull();
 		const labels = [...document.querySelectorAll('.cp-val .cp-val-label')].map((e) => e.textContent);
 		expect(labels).toEqual(['Known cancer', 'Unenhanced HU', 'Size', 'Growth on prior imaging']);
 		const badges = [...document.querySelectorAll('.cp-val')].map((e) => [...e.querySelectorAll('.cp-chip')].map((c) => c.textContent).join(','));
-		expect(badges).toEqual(['assumed', 'pre-filled', 'read', '']);
+		expect(badges).toEqual(['assumed', 'probably from your dictation', 'read', '']);
 		const body = document.querySelector('.gl-body')!.textContent!;
 		expect(body.indexOf('Benign adenoma')).toBeLessThan(body.indexOf('Growth on prior imaging')); // the recommendation now leads
 		expect(body).not.toContain('Growth rate'); // waiting: hidden
@@ -498,8 +499,9 @@ describe('CopilotCards', () => {
 		await expect.element(page.getByTestId('cp-scope-doubt-chip')).toHaveTextContent('⚠ check applicability');
 		expect(document.querySelector('.gl-title-row')!.textContent).not.toContain('check first'); // said once
 		const note = page.getByTestId('cp-scope-doubt');
-		await expect.element(note).toHaveTextContent('Maximum diameter: 35 mm');
-		await expect.element(note).toHaveTextContent('probably from your dictation · would make NHS AAA surveillance not apply');
+		await expect.element(note).toHaveTextContent('Maximum diameter');
+		expect(note.element().querySelector('.cp-check-answer')!.textContent).toBe('35 mm');
+		await expect.element(note).toHaveTextContent('would make NHS AAA surveillance not apply');
 		// the Check zone holds it, under "What this rests on" (the recommendation leads the body now)
 		const zone = document.querySelector('[data-testid="cp-check"]')!;
 		expect(zone.contains(note.element())).toBe(true);
@@ -527,8 +529,8 @@ describe('CopilotCards', () => {
 		const p = { ...single(c, v(result(c, pv), { open: true, expanded: true })), onEdit: vi.fn() };
 		render(CopilotCards, p);
 		const note = page.getByTestId('cp-scope-doubt');
-		await expect.element(note).toHaveTextContent('Growth: Diameter clear growth');
-		await expect.element(note).toHaveTextContent('probably from your dictation');
+		await expect.element(note).toHaveTextContent('Growth');
+		expect(note.element().querySelector('.cp-check-answer')!.textContent).toBe('Diameter clear growth');
 		expect(note.element().textContent).not.toContain('diameter_clear_growth');
 		await page.getByRole('button', { name: 'Confirm Growth Diameter clear growth' }).click();
 		expect(p.onEdit).toHaveBeenCalledWith(cardRef(c), 'growth', 'diameter_clear_growth');

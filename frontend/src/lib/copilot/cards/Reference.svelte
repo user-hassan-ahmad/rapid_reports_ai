@@ -16,7 +16,7 @@
 </script>
 
 {#if !empty}
-	<div class="cp-ref">
+	<div class="cp-ref" class:cp-ref--open={shown}>
 		<button type="button" class="rv-btn rv-btn-ghost cp-ref-toggle" aria-expanded={shown} onclick={() => (shown = !shown)}
 			>Reference</button
 		>
@@ -60,6 +60,9 @@
 {/if}
 
 <style>
+	.cp-ref--open {
+		flex: 1 1 100%;
+	}
 	.cp-ref-toggle {
 		font-size: 0.75rem;
 	}

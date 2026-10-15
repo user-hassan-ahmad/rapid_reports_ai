@@ -142,16 +142,15 @@
 	const pickNow = $derived(p?.draft_outcome ? null : pick); // a leftover pick never counts once an outcome is reached
 	const blocker = $derived(readiness(p, edits, ticks, pickNow));
 	const cands = $derived(p && !p.draft_outcome && !next && p.state !== 'does_not_apply' ? (p.candidates ?? []) : []);
-	const missing = $derived(chips.find((c) => c.value === NOT_STATED) ?? null);
-	// the toggle names where the other values came from: read from the dictation, set by the exam, or otherwise used
-	const based = $derived.by(() => {
+	// the toggle names where the other values came from, on two lines: read from the dictation (or set by the exam),
+	// then the guesses that do not decide the outcome (and the answers the radiologist gave)
+	const basedLines = $derived.by(() => {
 		const list = basedOn(p, check);
 		const part = (head: string, rs: typeof list) => (rs.length ? `${head}: ${rs.map((d) => `${d.label} ${displayValue(d.value, d.basis ?? '')}`).join(' · ')}` : '');
-		return [
-			part('Read from your dictation', list.filter((d) => d.state === 'read' && d.by !== 'exam')),
-			part('Set by the exam', list.filter((d) => d.by === 'exam')),
-			part('Also used', list.filter((d) => d.state !== 'read' && d.by !== 'exam'))
-		].filter(Boolean).join('; ');
+		const guess = (d: (typeof list)[number]) => (d.state === 'prefilled' || d.state === 'assumed') && d.by !== 'exam';
+		const line1 = [part('Read from your dictation', list.filter((d) => d.state === 'read' && d.by !== 'exam')), part('Set by the exam', list.filter((d) => d.by === 'exam'))].filter(Boolean).join('; ');
+		const line2 = [part('Also used (not decisive)', list.filter(guess)), part('Answered by you', list.filter((d) => d.state === 'answered' || d.state === 'edited'))].filter(Boolean).join('; ');
+		return [line1, line2].filter(Boolean);
 	});
 	let editingChip = $state<string | null>(null);
 	let doubtEditing = $state<string | null>(null); // the excluded layout's scope-doubt banner only
@@ -165,25 +164,34 @@
 	// the recommendation slot: an outcome, a scope doubt's "if it applies", or the likeliest outcome and what decides it
 	const likelyBlock = $derived(!decided && !next && !v?.ifApplies && (!!likely || (branches.length > 0 && !!decidingQ)));
 	const slotHasRec = $derived(decided || !!v?.ifApplies || likelyBlock);
-	// provisional while the card is not ready (Apply on) or rests on values not dictated (Apply off): muted + one line
+	// provisional while the card is not ready (values can be ticked: Apply on) or rests on values not dictated
+	// (otherwise), or no outcome yet: the amber dashed border cue and one ◐ line, never a fade
 	const unconfirmed = $derived(check.filter((c) => !c.affirmed).length);
-	const muted = $derived(applyOn ? blocker !== null : check.length > 0);
+	const canTick = $derived(applyOn && !!onTick);
+	const provisionalCue = $derived(blocker === 'question' || (canTick ? blocker !== null : check.length > 0));
 	const provisional = $derived.by(() => {
-		if (!muted) return '';
-		if (!applyOn) return `Rests on ${plural(check.length, 'value', 'values')} not stated in your dictation — check them below`;
+		if (blocker === 'question') return 'Provisional — answer the question above to settle it';
+		if (!provisionalCue) return '';
+		if (!canTick) return `Rests on ${plural(check.length, 'value', 'values')} not stated in your dictation — check them below`;
 		if (blocker === 'check') return `Provisional — confirm the ${plural(unconfirmed, 'value', 'values')} below to use it`;
 		if (blocker === 'pick') return 'Provisional — choose the outcome that fits below';
-		if (blocker === 'incomplete') return 'Provisional — answer the open question below to use it';
-		return 'Provisional — answer the question below to settle it';
+		return 'Provisional — answer the open question below to use it';
 	});
-	const asked = $derived(p?.asks.length ?? 0);
-	const questionLabel = $derived(`QUESTION ${asked - remaining(p, edits) + 1} ${p?.bounded === false ? '· UP TO' : 'OF'} ${asked}`);
+	// the question slot holds only the questions the card asked (now or answered: an "answered" row, or still in asks)
+	const askChips = $derived(chips.filter((c) => p?.draft?.find((d) => d.input === c.input)?.state === 'answered' || !!p?.asks.some((a) => a.input === c.input)));
+	const missing = $derived(askChips.find((c) => c.value === NOT_STATED) ?? null);
+	let slotH = $state(0);
+	let heldH = $state(0); // the slot keeps the height of the question it showed, so the recommendation never jumps
+	$effect(() => {
+		if (next && slotH) heldH = slotH;
+	});
+	const questionLabel = $derived(`QUESTION ${askChips.length + 1} OF ${p?.bounded === false ? 'UP TO ' : ''}${askChips.length + remaining(p, edits)}`);
 </script>
 
-{#snippet verdictBlock(vv: Verdict, muted: boolean)}
+{#snippet verdictBlock(vv: Verdict, cue: boolean)}
 	<section
 		class="cp-verdict"
-		class:cp-rec-provisional={muted}
+		class:cp-rec-provisional={cue}
 		style:--cp-cat={categoryColor(vv.category)}
 		style:--cp-cat-text={categoryText(vv.category)}
 		data-cat={vv.category}
@@ -222,7 +230,7 @@
 				>
 			{:else}
 				<button type="button" class="rv-btn rv-btn-ghost cp-aux-toggle cp-based" aria-expanded={showValues} aria-controls="{uid}-values" onclick={() => (showValues = !showValues)}
-					>{based || 'Values used'} <span class="cp-caret"><Icon name="chev" size={11} /></span></button
+					>{#each basedLines as l (l)}<span class="cp-based-line">{l}</span>{/each}{#if !basedLines.length}Values used{/if} <span class="cp-caret"><Icon name="chev" size={11} /></span></button
 				>
 			{/if}
 			<ul class="cp-val-list" id="{uid}-values" hidden={!showValues}>
@@ -255,10 +263,10 @@
 {/snippet}
 
 {#snippet footer()}
-	{#if decided && v && !compact && (v.caveats.length || src.short)}
-		<div class="cp-aux">
+	<div class="cp-aux">
+		{#if decided && v && !compact}
 			{#if v.caveats.length}
-				<div class="cp-notes">
+				<div class="cp-notes" class:cp-aux-open={showNotes}>
 					<button type="button" class="rv-btn rv-btn-ghost cp-aux-toggle" aria-expanded={showNotes} aria-controls="{uid}-notes" onclick={() => (showNotes = !showNotes)}
 						>{v.caveats.length} {v.caveats.length === 1 ? 'note' : 'notes'} <span class="cp-caret"><Icon name="chev" size={11} /></span></button
 					>
@@ -274,7 +282,7 @@
 				</div>
 			{/if}
 			{#if src.short}
-				<div class="cp-source">
+				<div class="cp-source" class:cp-aux-open={showSource}>
 					<button type="button" class="rv-btn rv-btn-ghost cp-aux-toggle" aria-expanded={showSource} aria-controls="{uid}-src" onclick={() => (showSource = !showSource)}
 						>{src.short}{#if src.more}<span class="cp-muted cp-src-more">+{src.more}</span>{/if}
 						<span class="cp-caret"><Icon name="chev" size={11} /></span></button
@@ -284,8 +292,11 @@
 					</ul>
 				</div>
 			{/if}
-		</div>
-	{/if}
+		{/if}
+		{#if !compact && result.reference && !collapsed}
+			<Reference reference={result.reference} />
+		{/if}
+	</div>
 	{#if p?.degraded}
 		<p class="cp-p cp-muted cp-degraded">Some values could not be checked</p>
 	{/if}
@@ -306,7 +317,7 @@
 				<div class="cp-doubt" role="note" data-testid="cp-scope-doubt">
 					<p class="cp-p">
 						<Icon name="warn" size={13} />
-						<span><b>{d.label}: {shownValue(d.value)}</b> (pre-filled) would make {guideline || 'this guideline'} not apply — confirm or change it</span>
+						<span><b>{d.label}: {shownValue(d.value)}</b> (probably from your dictation) would make {guideline || 'this guideline'} not apply — confirm or change it</span>
 					</p>
 					{#if onEdit}
 						<div class="cp-doubt-actions">
@@ -336,10 +347,10 @@
 			{@render footer()}
 		{:else}
 			<!-- 1. QUESTION: the deciding question leads; answered, its slot becomes the answered line and the recommendation below updates in place -->
-			{#if onEdit && (chips.length || next)}
-				<section class="cp-sect" data-testid="cp-section" aria-label="Question">
+			{#if onEdit && (askChips.length || next)}
+				<section class="cp-sect cp-qslot" data-testid="cp-section" aria-label="Question" bind:clientHeight={slotH} style:min-height={!next && heldH ? `${heldH}px` : undefined}>
 					{#if next}<div class="cp-sect-label" data-testid="cp-section-label">{questionLabel}</div>{/if}
-					<AnswerChips {chips} bind:editing={editingChip} onAnswer={onEdit} />
+					<AnswerChips chips={askChips} bind:editing={editingChip} onAnswer={onEdit} />
 					{#if next}{#key next.input}<NextQuestion ask={next} onAnswer={onEdit} />{/key}{/if}
 				</section>
 			{/if}
@@ -352,18 +363,18 @@
 				</section>
 			{/if}
 
-			<!-- 2. RECOMMENDATION: what the card would tell the report, muted while it still rests on unchecked values -->
+			<!-- 2. RECOMMENDATION: what the card would tell the report, cued (dashed border, ◐ line) while it is provisional -->
 			{#if slotHasRec || next || cands.length || p.possible.length}
 				<section class="cp-sect" data-testid="cp-section" aria-label="Recommendation">
 					<div class="cp-sect-label" data-testid="cp-section-label">RECOMMENDATION</div>
 					{#if decided && v}
-						{@render verdictBlock(v, muted)}
+						{@render verdictBlock(v, provisionalCue)}
 					{:else if v?.ifApplies}
-						<p class="cp-p cp-if-applies" class:cp-rec-provisional={muted} data-testid="cp-if-applies">{v.ifApplies}</p>
+						<p class="cp-p cp-if-applies" class:cp-rec-provisional={provisionalCue} data-testid="cp-if-applies">{v.ifApplies}</p>
 					{:else if likelyBlock}
 						<!-- no outcome yet: the likeliest one when there is one, and what genuinely decides it (max three branches);
 						     the full list stays behind "show all" -->
-						<section class="cp-likely" class:cp-rec-provisional={muted} aria-label={likely ? 'Most likely' : 'What decides it'}>
+						<section class="cp-likely" class:cp-rec-provisional={provisionalCue} aria-label={likely ? 'Most likely' : 'What decides it'}>
 							{#if likely}
 							<p class="cp-p cp-likely-line" style:--cp-cat={categoryColor(likely.category || 'neutral')} style:--cp-cat-text={categoryText(likely.category || 'neutral')}>
 								<Icon name={icon[likely.category || 'neutral']} size={13} />
@@ -405,9 +416,11 @@
 							</ul>
 						</section>
 					{:else if next}
-						<p class="cp-p cp-no-rec">No recommendation yet — {plural(remaining(p, edits), 'question', 'questions')} to answer</p>
+						<p class="cp-p cp-no-rec cp-rec-provisional">No recommendation yet — {plural(remaining(p, edits), 'question', 'questions')} to answer</p>
+					{:else if cands.length}
+						<p class="cp-p cp-no-rec">{applyOn && onPick ? 'Choose the outcome that fits below' : `${cands.length} outcomes are still possible — see below`}</p>
 					{/if}
-					{#if provisional && slotHasRec}<p class="cp-p cp-provisional" data-testid="cp-provisional">◐ {provisional}</p>{/if}
+					{#if provisional && !(cands.length && !slotHasRec && !next && blocker === 'pick')}<p class="cp-p cp-provisional" data-testid="cp-provisional">◐ {provisional}</p>{/if}
 				</section>
 			{/if}
 
@@ -434,9 +447,6 @@
 		{/if}
 		</div>
 		{/if}
-	{/if}
-	{#if !compact && result.reference && !collapsed}
-		<Reference reference={result.reference} />
 	{/if}
 </div>
 
@@ -524,11 +534,23 @@
 		display: contents;
 	}
 	/* ── 2–3. notes and source: two quiet lines ── */
+	/* notes, sources and Reference: one wrapping row of small buttons; an open one takes the full row */
 	.cp-aux {
 		display: flex;
-		flex-direction: column;
-		gap: 4px;
+		flex-direction: row;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		gap: 6px;
 		font-size: 0.8125rem;
+	}
+	.cp-aux > :global(*) {
+		min-width: 0;
+	}
+	.cp-aux-open {
+		flex: 1 1 100%;
+	}
+	.cp-based-line {
+		display: block;
 	}
 	.cp-aux-toggle {
 		align-self: flex-start;

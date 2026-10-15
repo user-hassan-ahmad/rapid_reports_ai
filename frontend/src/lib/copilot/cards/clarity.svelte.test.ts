@@ -82,7 +82,7 @@ describe('provisional until the values are checked', () => {
 		await expect.element(page.getByTestId('cp-rests-note')).toHaveTextContent('Not verified in your dictation. Change any that are wrong.');
 	});
 
-	it('provenance tags: not dictated, from your dictation, or the basis', async () => {
+	it('the Check rows are grouped by where the value came from (heading and count)', async () => {
 		const p = reached({
 			draft: [
 				draft({ input: 'a', label: 'Age', state: 'assumed', value: '18 or over', decisive: true }),
@@ -91,10 +91,10 @@ describe('provisional until the values are checked', () => {
 			]
 		});
 		show(p);
+		const heads = [...document.querySelectorAll('[data-testid="cp-check-group-label"]')].map((e) => e.textContent!.trim());
+		expect(heads).toEqual(['NOT DICTATED · 1', 'PROBABLY FROM YOUR DICTATION · 1', 'WORKED OUT · 1']);
 		const t = document.querySelector('[data-testid="cp-check"]')!.textContent!;
-		expect(t).toContain('not dictated');
-		expect(t).toContain('Check: probably from your dictation');
-		expect(t).toContain('Check: worked out — from the CT of 12 Mar 2025');
+		expect(t).toContain('from the CT of 12 Mar 2025'); // the basis, muted after the answer
 		expect(t).not.toContain('pre-filled');
 	});
 });
@@ -196,10 +196,10 @@ describe('durations, answered slot', () => {
 	it('60 days or more shows as months (with the date when the basis has one); under 60 stays in days', async () => {
 		const row = (value: string, basis = '') => draft({ input: 'iv', label: 'Interval', state: 'prefilled', value, decisive: true, basis });
 		show(reached({ draft: [row('120 days', 'from the CT of 12 Mar 2025')] }));
-		await expect.element(page.getByTestId('cp-check')).toHaveTextContent('Interval: 4 months (since Mar 2025)');
+		await expect.element(page.getByTestId('cp-check')).toHaveTextContent('4 months (since Mar 2025)');
 		cleanup();
 		show(reached({ draft: [row('45 days')] }));
-		await expect.element(page.getByTestId('cp-check')).toHaveTextContent('Interval: 45 days');
+		await expect.element(page.getByTestId('cp-check')).toHaveTextContent('45 days');
 	});
 
 	it('answering keeps the slot: the answered line, then the next question in the same place; the recommendation follows', async () => {
@@ -231,3 +231,147 @@ describe('buttons, not bare links', () => {
 		await expect.element(page.getByRole('button', { name: 'Show details' })).toHaveClass('rv-btn');
 	});
 });
+
+describe('clarity polish', () => {
+	const ask = (input: string, label: string) => ({ input, label, options: ['Yes', 'No'] });
+	const twoAsks = () => preview({ proposal: null, asks: [ask('g', 'Growth'), ask('s', 'Smoker')], draft: [draft({ input: 'g', label: 'Growth', state: 'asked' }), draft({ input: 's', label: 'Smoker', state: 'asked' })] });
+
+	it('provisional says "confirm" only when the values can be ticked; otherwise it rests on them', async () => {
+		show(reached(), { onTick: null });
+		await expect.element(page.getByTestId('cp-provisional')).toHaveTextContent('Rests on 1 value not stated in your dictation — check them below');
+	});
+
+	it('"No recommendation yet" is provisional too: the line and the cue', async () => {
+		show(twoAsks());
+		await expect.element(page.getByTestId('cp-provisional')).toHaveTextContent('Provisional — answer the question above to settle it');
+		expect(document.querySelector('.cp-no-rec.cp-rec-provisional')).not.toBeNull();
+	});
+
+	it('the counter advances on a real answer: 1 OF 2, then 2 OF 2; unbounded reads OF UP TO', async () => {
+		const r = render(PackBody, { result: result(bts, twoAsks()), guideline: 'BTS 2015', onEdit: vi.fn() });
+		expect(labels()).toContain('QUESTION 1 OF 2');
+		const one = preview({ proposal: null, asks: [ask('s', 'Smoker')], draft: [draft({ input: 'g', label: 'Growth', state: 'answered', value: 'Yes' }), draft({ input: 's', label: 'Smoker', state: 'asked' })] });
+		await r.rerender({ result: result(bts, one), edits: { g: 'Yes' } });
+		expect(labels()).toContain('QUESTION 2 OF 2');
+		cleanup();
+		render(PackBody, { result: result(bts, { ...twoAsks(), bounded: false }), guideline: 'BTS 2015', onEdit: vi.fn() });
+		expect(labels()).toContain('QUESTION 1 OF UP TO 2');
+	});
+
+	it('a Check-row edit never adds a QUESTION block above the recommendation', async () => {
+		const edited = reached({ draft: [draft({ input: 'kind', label: 'Type', state: 'edited', value: 'subsolid', decisive: true })] });
+		show(edited, { edits: { kind: 'subsolid' } });
+		expect(labels().some((l) => l.startsWith('QUESTION'))).toBe(false);
+		await expect.element(page.getByTestId('cp-answers')).not.toBeInTheDocument();
+		expect(labels()[0]).toBe('RECOMMENDATION');
+	});
+
+	it('answering the last question keeps the slot: the recommendation does not move', async () => {
+		const asks = preview({ proposal: null, draft_outcome: rec(), trace: { outcome: 'ct3' }, asks: [ask('g', 'Growth')], draft: [draft({ input: 'g', label: 'Growth', state: 'asked' })] });
+		const r = render(PackBody, { result: result(bts, asks), guideline: 'BTS 2015', onEdit: vi.fn() });
+		await expect.element(page.getByTestId('cp-question')).toBeInTheDocument();
+		const top = () => (document.querySelector('[aria-label="Recommendation"]') as HTMLElement).offsetTop;
+		const before = top();
+		const done = preview({ proposal: null, draft_outcome: rec(), trace: { outcome: 'ct3' }, asks: [], draft: [draft({ input: 'g', label: 'Growth', state: 'answered', value: 'Yes' })] });
+		await r.rerender({ result: result(bts, done), edits: { g: 'Yes' } });
+		await expect.element(page.getByTestId('cp-answers')).toBeInTheDocument();
+		expect(Math.abs(top() - before)).toBeLessThanOrEqual(4);
+	});
+
+	it('candidates with no likeliest line: the section points to the picker instead of staying empty', async () => {
+		const cands = [{ outcome: 'a', headline: 'CT at 3 months', category: 'surveillance' as const, proposal: rec() }, { outcome: 'b', headline: 'PET-CT', category: 'workup' as const, proposal: rec() }];
+		show(preview({ proposal: null, candidates: cands, asks: [], draft: [] }));
+		await expect.element(page.getByLabelText('Recommendation')).toHaveTextContent('Choose the outcome that fits below');
+	});
+
+	it('the collapsed row\'s buttons have unique names, no chevron on Show details', async () => {
+		show(reached({ state: 'check_first', scope_doubt: ['g'], draft: [draft({ input: 'g', label: 'Growth', state: 'prefilled', value: 'Yes', quote: 'x', options: ['Yes', 'No'] })] }));
+		await expect.element(page.getByRole('button', { name: 'Correct: Growth' })).toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: "That's not right — apply BTS 2015" })).toHaveAttribute('aria-label', "That's not right — apply BTS 2015");
+		expect(page.getByRole('button', { name: 'Show details' }).element().querySelector('svg')).toBeNull();
+	});
+
+	it('the values toggle has two lines: read from the dictation, then the non-decisive guesses', async () => {
+		const p = reached({
+			draft: [
+				draft({ input: 'size', label: 'Size', state: 'read', value: '7 mm' }),
+				draft({ input: 'phase', label: 'Phase', state: 'prefilled', value: 'unenhanced', by: 'exam', decisive: false }),
+				draft({ input: 'sm', label: 'Smoker', state: 'prefilled', value: 'No', decisive: false }),
+				draft({ input: 'kind', label: 'Type', state: 'prefilled', value: 'solid', decisive: true })
+			]
+		});
+		show(p);
+		const t = page.getByRole('button', { name: /^Read from your dictation/ }).element();
+		const lines = [...t.querySelectorAll('.cp-based-line')].map((e) => e.textContent!.trim());
+		expect(lines).toEqual(['Read from your dictation: Size 7 mm; Set by the exam: Phase unenhanced', 'Also used (not decisive): Smoker No']);
+		cleanup();
+		show(reached({ draft: [draft({ input: 'sm', label: 'Smoker', state: 'prefilled', value: 'No', decisive: false })] }));
+		await expect.element(page.getByRole('button', { name: /^Also used \(not decisive\): Smoker No/ })).toBeInTheDocument();
+	});
+
+	it('notes, sources and Reference share one wrapping row', async () => {
+		show(reached({ draft_outcome: outcome({ ...rec(), caveats: ['A note'], citations: [{ source: 'S1', title: 'Guideline', edition: '2017', page: 3 }] }) }), { ticks: { kind: 'solid' } });
+		const aux = document.querySelector('.cp-aux') as HTMLElement;
+		expect(getComputedStyle(aux).flexDirection).toBe('row');
+		expect(getComputedStyle(aux).flexWrap).toBe('wrap');
+	});
+});
+
+describe('the Check rows', () => {
+	const rowsP = (extra: ReturnType<typeof draft>[] = [], over = {}) =>
+		reached({
+			draft: [
+				draft({ input: 'a', label: 'Age', state: 'assumed', value: '18 or over', decisive: true }),
+				draft({ input: 'k', label: 'Type', state: 'prefilled', value: 'solid', decisive: true, quote: 'a solid nodule', options: ['solid', 'subsolid'] }),
+				draft({ input: 'p', label: 'Phase', state: 'prefilled', value: 'unenhanced', decisive: true, by: 'exam' }),
+				...extra
+			],
+			...over
+		});
+
+	it('groups with counts, in order: not dictated, probably from your dictation, set by the exam', async () => {
+		show(rowsP([draft({ input: 'k2', label: 'Margin', state: 'prefilled', value: 'smooth', decisive: true })]));
+		const heads = [...document.querySelectorAll('[data-testid="cp-check-group-label"]')].map((e) => e.textContent!.trim());
+		expect(heads).toEqual(['NOT DICTATED · 1', 'PROBABLY FROM YOUR DICTATION · 2', 'SET BY THE EXAM · 1']);
+	});
+
+	it('a row is its question and its answer in separate elements; no per-row tag', async () => {
+		show(rowsP());
+		const li = document.querySelectorAll('[data-testid="cp-check-item"]')[1];
+		expect(li.querySelector('.cp-check-q')!.textContent).toBe('Type');
+		expect(li.querySelector('.cp-check-answer')!.textContent).toBe('solid');
+		expect(li.textContent).not.toContain('probably from your dictation');
+	});
+
+	it('↗ shows the quote under the answer', async () => {
+		show(rowsP());
+		await expect.element(page.getByTestId('cp-check-quote')).not.toBeInTheDocument();
+		await page.getByRole('button', { name: 'Show the quote for Type' }).click();
+		await expect.element(page.getByTestId('cp-check-quote')).toHaveTextContent('“a solid nodule”');
+	});
+
+	it('a confirmed row shows "Confirmed" in place of ✓ and stays in its group', async () => {
+		show(rowsP(), { ticks: { k: 'solid' } });
+		await expect.element(page.getByTestId('cp-confirmed')).toHaveTextContent('Confirmed');
+		await expect.element(page.getByRole('button', { name: 'Confirm Type solid' })).not.toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Change Type' })).toBeInTheDocument();
+		const heads = [...document.querySelectorAll('[data-testid="cp-check-group-label"]')].map((e) => e.textContent!.trim());
+		expect(heads).toContain('PROBABLY FROM YOUR DICTATION · 1');
+	});
+
+	it('Apply off: the same rows with the edit button only', async () => {
+		show(rowsP(), { applyOn: false });
+		await expect.element(page.getByRole('button', { name: 'Confirm Type solid' })).not.toBeInTheDocument();
+		await expect.element(page.getByRole('button', { name: 'Change Type' })).toBeInTheDocument();
+		expect(document.querySelectorAll('[data-testid="cp-check-group"]').length).toBe(3);
+	});
+
+	it('scope-doubt rows come first, outside the groups', async () => {
+		show(rowsP([], { state: 'check_first', scope_doubt: ['k'] }), { expanded: true, onExpand: vi.fn() });
+		const doubt = document.querySelector('[data-testid="cp-scope-doubt"]')!;
+		const group = document.querySelector('[data-testid="cp-check-group"]')!;
+		expect(doubt.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+		expect(group.contains(doubt)).toBe(false);
+	});
+});
+

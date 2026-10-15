@@ -5,7 +5,6 @@
 	 * answers named by what they do: Correct (an answer: the value stands, onEdit) or the other value, applying the
 	 * guideline. "Show details" opens today's full body.
 	 */
-	import Icon from './Icon.svelte';
 	import type { CollapsedReason } from './questionnaire';
 	import ValueEdit from './ValueEdit.svelte';
 
@@ -42,19 +41,19 @@
 	{/if}
 	<span class="cp-collapsed-actions">
 		{#if reason.kind === 'doubt' && onConfirm && !changing}
-			{#if reason.value}<button type="button" class="rv-btn rv-btn-primary" onclick={() => onConfirm?.(reason.input, reason.value)}>Correct</button>{/if}
+			{#if reason.value}<button type="button" class="rv-btn rv-btn-primary" aria-label={`Correct: ${reason.fact}`} onclick={() => onConfirm?.(reason.input, reason.value)}>Correct</button>{/if}
 			{#if alt && alt.kind === 'boolean'}
-				<button type="button" class="rv-btn" onclick={() => onConfirm?.(reason.input, alt.value)}>That's not right — apply {name}</button>
+				<button type="button" class="rv-btn" aria-label={`That's not right — apply ${name}`} onclick={() => onConfirm?.(reason.input, alt.value)}>That's not right — apply {name}</button>
 			{:else if alt}
-				<button type="button" class="rv-btn" onclick={() => onConfirm?.(reason.input, alt.value)}>{alt.label} — apply {name}</button>
+				<button type="button" class="rv-btn" aria-label={`${alt.label} — apply ${name}`} onclick={() => onConfirm?.(reason.input, alt.value)}>{alt.label} — apply {name}</button>
 			{:else if reason.other}
-				<button type="button" class="rv-btn" onclick={() => (changing = true)}>Choose another value — apply {name}</button>
+				<button type="button" class="rv-btn" aria-label={`Choose another value — apply ${name}`} onclick={() => (changing = true)}>Choose another value — apply {name}</button>
 			{/if}
 		{/if}
 		{#if reason.kind === 'doubt' && reason.more > 0}
 			<button type="button" class="rv-btn rv-btn-ghost" aria-expanded="false" aria-controls={controls} onclick={onToggle}>+{reason.more} more</button>
 		{/if}
-		<button type="button" class="rv-btn rv-btn-ghost" aria-expanded="false" aria-controls={controls} onclick={onToggle}>Show details<span class="cp-caret"><Icon name="chev" size={11} /></span></button>
+		<button type="button" class="rv-btn rv-btn-ghost" aria-expanded="false" aria-controls={controls} onclick={onToggle}>Show details</button>
 	</span>
 </div>
 
@@ -66,5 +65,4 @@
 	.cp-quote-btn { padding: 0 6px; }
 	.cp-fact-quote { font-style: italic; font-size: 0.75rem; }
 	.cp-collapsed-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; }
-	.cp-caret { display: inline-block; margin-left: 2px; }
 </style>

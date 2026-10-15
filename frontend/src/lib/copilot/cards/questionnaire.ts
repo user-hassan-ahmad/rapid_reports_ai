@@ -5,7 +5,7 @@ import { NOT_STATED } from '../state';
 import type { Ask, DraftValue, Preview, Proposal } from '../types';
 import { assumptionsOf, scopeDoubts, shownValue } from './format';
 
-export interface CheckItem { input: string; label: string; value: string; options: string[]; kind: 'prefilled' | 'assumed' | 'doubt'; basis: string; byExam: boolean; affirmed: boolean }
+export interface CheckItem { input: string; label: string; value: string; options: string[]; kind: 'prefilled' | 'assumed' | 'doubt'; basis: string; quote: string; byExam: boolean; affirmed: boolean }
 export interface Chip { input: string; label: string; value: string; options: string[]; basis: string }
 export type Blocker = 'excluded' | 'question' | 'check' | 'pick' | 'incomplete' | null;
 
@@ -27,6 +27,7 @@ export function checkItems(p: Preview | null | undefined, ticks: Record<string, 
 			options: d.options,
 			kind: doubt ? 'doubt' : (d.state as 'prefilled' | 'assumed'),
 			basis: d.basis ?? '',
+			quote: d.quote ?? '',
 			byExam: d.by === 'exam',
 			affirmed: !doubt && ticks[d.input] === d.value
 		});

@@ -84,7 +84,7 @@
 		{/if}
 		{#if prefilled && !editing}
 			<!-- no native title: the row's own bubble shows the reasons (a title showed them twice, Hassan 2026-10-13) -->
-			<span class="cp-chip cp-val-chip cp-chip-why">pre-filled</span>
+			<span class="cp-chip cp-val-chip cp-chip-why">probably from your dictation</span>
 		{/if}
 		{#if editable && !editing}
 			<button
@@ -98,7 +98,7 @@
 	{#if described}
 		<span class="cp-quote" id={descId}>
 			{#if row.quote}<span class="cp-quote-text">“{row.quote}”</span>{/if}
-			{#if prefilled}<span class="cp-why">Pre-filled: {reasons}</span>{/if}
+			{#if prefilled}<span class="cp-why">Not verified: {reasons}</span>{/if}
 		</span>
 	{/if}
 </li>

@@ -28,15 +28,16 @@ describe('the questionnaire card', () => {
 	it('Check holds the decisive pre-filled value; ✓ ticks it; Apply waits for it', async () => {
 		const h = show(reached());
 		await expect.element(page.getByTestId('cp-provisional')).toHaveTextContent('Provisional — confirm the 1 value below to use it');
-		await expect.element(page.getByTestId('cp-check-item')).toHaveTextContent('Type: solid');
+		await expect.element(page.getByTestId('cp-check-item')).toHaveTextContent('Type');
+		expect(document.querySelector('[data-testid="cp-check-item"] .cp-check-answer')!.textContent).toBe('solid');
 		await expect.element(page.getByRole('button', { name: 'Apply' })).toBeDisabled();
 		await page.getByRole('button', { name: 'Confirm Type solid' }).click();
 		expect(h.onTick).toHaveBeenCalledWith('kind', 'solid');
 	});
 
-	it('ticked: "confirmed by you", Apply enabled and sends', async () => {
+	it('ticked: "Confirmed" replaces the ✓, Apply enabled and sends', async () => {
 		const h = show(reached(), { ticks: { kind: 'solid' } });
-		await expect.element(page.getByTestId('cp-check-item')).toHaveTextContent('confirmed by you');
+		await expect.element(page.getByTestId('cp-check-item')).toHaveTextContent('Confirmed');
 		await page.getByRole('button', { name: 'Apply' }).click();
 		expect(h.onApply).toHaveBeenCalled();
 	});
