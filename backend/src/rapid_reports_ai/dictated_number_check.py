@@ -95,15 +95,15 @@ _REF_MASKS = [   # numbers that are not findings
     re.compile(r"(?i)\b(?:series|image|img|se|im)\s*(?:no\.?|number|#)?\s*:?\s*\d+(?:\s*/\s*\d+)?\b"),
     re.compile(r"\(\s*\d+\s*/\s*\d+\s*\)"),                                     # "(3/45)" image reference
 ]
-_YEAR = re.compile(r"(?i)\b(?:since|in|from)\s+((?:19|20)\d{2})\b(?![.,]\d)")
-_YEAR_RANGE = re.compile(r"(?i)\s*(?:to|-|–|—)\s*\d+(?:[.,]\d+)?")   # "from 1950 to 2100 ml" is a range, not a year
+_YEAR = re.compile(r"(?i)\b(since|in|from)\s+((?:19|20)\d{2})\b(?![.,]\d)")
+_YEAR_RANGE = re.compile(r"(?i)\s*(?:to|-|–|—)\s*\d{3,4}(?:[.,]\d+)?(?!\d)")   # "from 1950 to 2100 ml" is a range, not a year
 _WORD_NUMS = ("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
               "seventeen eighteen nineteen twenty").split()
 _WORD_RX = re.compile(rf"(?i)\b({'|'.join(_WORD_NUMS)})\b")
 _COVER_CUE = re.compile(r"(?i)\b(?:both|each|bilateral(?:ly)?|all)\b")
 _COUNT_BEFORE = re.compile(rf"(?i)(?:\b(?:{'|'.join(_WORD_NUMS[2:13])})|(?<![\w.])(\d{{1,2}}))\s+\Z")   # "two 4 mm nodules"
 _LABEL_BEFORE = re.compile(r"(?i)\b(?:segments?|seg|levels?|grade|stage|type|class|category|image|img|series|se|im|ribs?"
-                           r"|vertebrae?|zone|lobe|phase|tier|bosniak)\.?\s*\Z")   # "segment 7 4 mm" is no count
+                           r"|vertebrae?|zone|lobe|phase|tier|bosniak|stations?|nodes?|score|[a-z]{1,2}-?rads)\.?\s*\Z")   # "segment 7 4 mm" is no count
 _CLAUSE_END = re.compile(r"[;,.!?\n]")
 _ORDINALS = ("first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth thirteenth fourteenth "
              "fifteenth sixteenth seventeenth eighteenth nineteenth twentieth").split()
@@ -183,9 +183,9 @@ def _scan(text: str) -> str:
             if _unit_at(text, m.end())[0] is None:   # "image 4 cm lesion" keeps 4 cm
                 out = out[:m.start()] + " " * (m.end() - m.start()) + out[m.end():]
     for m in list(_YEAR.finditer(out)):
-        rng = _YEAR_RANGE.match(text, m.end(1))
-        if _unit_at(text, m.end(1))[0] is None and not (rng and _unit_at(text, rng.end())[0]):
-            out = out[:m.start(1)] + "    " + out[m.end(1):]
+        rng = m.group(1).lower() == "from" and _YEAR_RANGE.match(text, m.end(2))
+        if _unit_at(text, m.end(2))[0] is None and not (rng and _unit_at(text, rng.end())[0]):
+            out = out[:m.start(2)] + "    " + out[m.end(2):]
     return out
 
 

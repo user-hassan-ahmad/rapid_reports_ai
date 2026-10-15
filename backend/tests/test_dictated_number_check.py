@@ -269,3 +269,15 @@ def test_an_image_number_followed_by_a_unit_is_kept():
 
 def test_a_year_like_start_of_a_range_with_a_unit_is_kept():
     assert vals("output from 1950 to 2100 ml") == [(1950.0, "ml"), (2100.0, "ml")]
+
+
+@pytest.mark.parametrize("report", ["Station 7 4 mm node.", "BI-RADS 4 4 mm mass.", "LI-RADS 3 4 mm mass.",
+                                    "Score 2 4 mm mass.", "Node 3 4 mm."])
+def test_a_station_score_or_rads_digit_is_not_a_count(report):
+    assert missing(report, "4 mm lesion and 4 mm lesion.") == ["4 mm"]
+
+
+def test_only_a_from_year_with_a_long_second_number_is_a_range():
+    assert vals("Nodule 8 mm in 2019 to 12 mm now") == [(8.0, "mm"), (12.0, "mm")]
+    assert vals("Stable since 2019 - 5 mm nodule") == [(5.0, "mm")]
+    assert vals("output from 1950 to 2100 ml") == [(1950.0, "ml"), (2100.0, "ml")]

@@ -56,12 +56,13 @@ unit) when the report says it covers several: "both", "each", "bilateral(ly)", "
 , ; .) and within 30 characters of the value, or a count right before the value ("two 4 mm nodules", "2 4 mm
 nodules"). "Both kidneys 11 cm" holds "right kidney 11 cm, left kidney 11 cm"; "Both kidneys normal; a 4 mm nodule"
 does not cover two 4 mm nodules. A count is a number word (two to twelve) or a 1-2 digit number not after a label
-("segment 7 4 mm" is no count). A dimension chain is not a count: "3 x 5 mm" holds one "5 mm". Elsewhere one-to-one
+such as segment, level, grade, station, node, score or a -RADS name ("segment 7 4 mm", "BI-RADS 4 4 mm" are no count). A dimension chain is not a count: "3 x 5 mm" holds one "5 mm". Elsewhere one-to-one
 stands, so a plain repeat still needs two occurrences. Lab re-score with the exception: unchanged (4/4, 4/5).
 
 Re-check fixes: a bare hyphen power of ten ("x 10-3") needs a decimal mantissa ("1.1 x 10-3"), so "3 x 10-12 mm" is
 a dimension range; "10^-3" and "10⁻³" always read as exponents. An image or series number followed by a unit is kept
-("image 4 cm lesion"), and a year-like number that starts a range with a unit is kept ("from 1950 to 2100 ml").
+("image 4 cm lesion"). A year-like number after "from" that starts a range to another 3-4 digit number with a unit
+is kept ("from 1950 to 2100 ml"); "in 2019 to 12 mm" and "since 2019 - 5 mm" still mask the year.
 
 Unit spellings are normalised (millimetre/mm, ml/mL/cc, mGy·cm / mGycm / mGy.cm / mGy cm, bpm / beats per minute,
 mmHg, mcg/kg/min / micrograms/kg/min, ml/m2 / ml/m², g/m2, ms, HU, %, s, mg, ...). **No unit conversion**: dictated
