@@ -5,8 +5,8 @@
 <script lang="ts">
 	/**
 	 * The Copilot's card list, presentational: groups (exam first, then one per finding) of cards, each drawn by
-	 * kind. It takes state and callbacks and never calls the API; the session store (A6) owns requests. Slice A is
-	 * read-only throughout: no inputs, no Calculate, no Apply.
+	 * kind. It takes state and callbacks and never calls the API; the session store (A6) owns requests. Without handlers
+	 * (Slice A) a card is read-only; with them it answers, ticks, picks and, behind the Apply flag, applies.
 	 */
 	import type { AppliedRec } from '$lib/hybrid-stack/types';
 	import RailSkeleton from '$lib/rail/RailSkeleton.svelte';

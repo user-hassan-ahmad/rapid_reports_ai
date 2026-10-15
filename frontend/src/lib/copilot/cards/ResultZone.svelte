@@ -17,6 +17,7 @@
 		applyOn = false,
 		applied = null,
 		current = '',
+		currentOutcome = null,
 		applying = false,
 		applyError = null,
 		onPick = null,
@@ -30,6 +31,8 @@
 		applyOn?: boolean;
 		applied?: AppliedRec | null;
 		current?: string;
+		/** The outcome on screen (the pick, or the reached outcome); Applied only when it is the one applied. */
+		currentOutcome?: string | null;
 		applying?: boolean;
 		applyError?: string | null;
 		onPick?: ((outcome: string | null) => void) | null;
@@ -37,7 +40,7 @@
 		onAnswerMissing?: (() => void) | null;
 	} = $props();
 	const uid = $props.id();
-	const isApplied = $derived(!!applied && !applied.stale && applied.verdict === current);
+	const isApplied = $derived(!!applied && !applied.stale && applied.verdict === current && applied.outcome === currentOutcome);
 	const showApply = $derived(applyOn && !!onApply && (blocker === null || blocker === 'check' || blocker === 'incomplete'));
 </script>
 

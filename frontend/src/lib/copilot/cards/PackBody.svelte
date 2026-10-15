@@ -10,7 +10,8 @@
 	 *    candidates to pick from, then Apply when the Apply flag is on;
 	 * 7. notes and source, collapsed.
 	 * A card that does not apply leads with the specific reason; its values wait behind "values". `compact` (a
-	 * side-by-side sibling column) keeps the values and the result only.
+	 * side-by-side sibling column) shows the status line only when it can be acted on, keeps Based on collapsed, and
+	 * has no question or Apply unless the column is answerable (the parent binds the handlers).
 	 */
 	import type { AppliedRec } from '$lib/hybrid-stack/types';
 	import { verdictKey } from '../gate';
@@ -19,6 +20,7 @@
 	import AnswerChips from './AnswerChips.svelte';
 	import CheckZone from './CheckZone.svelte';
 	import NextQuestion from './NextQuestion.svelte';
+	import ValueEdit from './ValueEdit.svelte';
 	import ResultZone from './ResultZone.svelte';
 	import { answeredChips, basedOn, checkItems, nextAsk, readiness, remaining, statusLine } from './questionnaire';
 	import Icon, { type IconName } from './Icon.svelte';
@@ -130,6 +132,7 @@
 	const missing = $derived(chips.find((c) => c.value === NOT_STATED) ?? null);
 	const based = $derived(basedOn(p, check).map((d) => `${d.label} ${shownValue(d.value)}`).join(' · '));
 	let editingChip = $state<string | null>(null);
+	let doubtEditing = $state<string | null>(null); // the excluded layout's scope-doubt banner only
 </script>
 
 <div class="cp-pack-body" class:cp-compact={compact}>
@@ -137,8 +140,38 @@
 		{#if result.entry?.content.summary}<p class="cp-p">{result.entry.content.summary}</p>{/if}
 	{:else}
 		{#if editError}<p class="cp-p cp-edit-error" role="alert">{editError}</p>{/if}
+		{#if p.state === 'does_not_apply'}
+			{#each doubts as d (d.input)}
+				<div class="cp-doubt" role="note" data-testid="cp-scope-doubt">
+					<p class="cp-p">
+						<Icon name="warn" size={13} />
+						<span><b>{d.label}: {shownValue(d.value)}</b> (pre-filled) would make {guideline || 'this guideline'} not apply — confirm or change it</span>
+					</p>
+					{#if onEdit}
+						<div class="cp-doubt-actions">
+							{#if doubtEditing === d.input}
+								<ValueEdit
+									label={d.label}
+									value={d.value}
+									options={d.options}
+									onSave={(val) => {
+										doubtEditing = null;
+										onEdit?.(d.input, val);
+									}}
+									onCancel={() => (doubtEditing = null)}
+								/>
+							{:else}
+								<!-- confirming sends the value back as the radiologist's answer: only then can it exclude -->
+								{#if d.value}<button type="button" class="rv-btn" aria-label={`Confirm ${d.label} ${shownValue(d.value)}`} onclick={() => onEdit?.(d.input, d.value)}>Confirm</button>{/if}
+								<button type="button" class="rv-btn" aria-label={`Change ${d.label}`} onclick={() => (doubtEditing = d.input)}>Change</button>
+							{/if}
+						</div>
+					{/if}
+				</div>
+			{/each}
+		{/if}
 		{#if p.state !== 'does_not_apply'}
-			{#if status && (applyOn || blocker === 'question')}<p class="cp-p cp-status" data-testid="cp-status">{status}</p>{/if}
+			{#if status && (blocker === 'question' || (applyOn && onTick))}<p class="cp-p cp-status" data-testid="cp-status">{status}</p>{/if}
 			<CheckZone items={check} {guideline} onTick={applyOn ? onTick : null} {onEdit} />
 		{/if}
 		<!-- 2. the values -->
@@ -279,7 +312,7 @@
 		{/if}
 
 		{#if p.state !== 'does_not_apply'}
-			<ResultZone candidates={cands} pick={pickNow} {blocker} missingLabel={missing?.label ?? ''} {applyOn} {applied} current={verdictKey(p)} {applying} {applyError}
+			<ResultZone candidates={cands} pick={pickNow} {blocker} missingLabel={missing?.label ?? ''} {applyOn} {applied} current={verdictKey(p)} currentOutcome={pickNow ?? ((p.trace?.['outcome'] as string | undefined) ?? null)} {applying} {applyError}
 				onPick={applyOn ? onPick : null} {onApply} onAnswerMissing={missing && onEdit ? () => (editingChip = missing.input) : null} />
 		{/if}
 
@@ -553,6 +586,32 @@
 	.cp-open-q + .cp-verdict {
 		padding-top: 10px;
 		border-top: 1px solid var(--rv-border);
+	}
+	.cp-doubt {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		padding: 8px 10px;
+		border-radius: 8px;
+		border: 1px solid color-mix(in srgb, var(--rv-amber-line) 55%, transparent);
+		background: var(--rv-amber-bg);
+		color: var(--rv-text);
+		font-size: 0.8125rem;
+	}
+	.cp-doubt p {
+		display: flex;
+		gap: 6px;
+		align-items: flex-start;
+	}
+	.cp-doubt p :global(.cp-icon) {
+		color: var(--rv-amber-text);
+		margin-top: 2px;
+	}
+	.cp-doubt-actions {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: 6px;
 	}
 	.cp-status {
 		font-size: 0.8125rem;

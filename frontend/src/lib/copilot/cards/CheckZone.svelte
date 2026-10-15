@@ -36,7 +36,7 @@
 					{:else if onEdit}
 						<span class="cp-check-actions">
 							{#if c.kind === 'doubt'}
-								<button type="button" class="rv-btn" aria-label={`Confirm ${c.label} ${shownValue(c.value)}`} onclick={() => onEdit?.(c.input, c.value)}>Confirm</button>
+								{#if c.value}<button type="button" class="rv-btn" aria-label={`Confirm ${c.label} ${shownValue(c.value)}`} onclick={() => onEdit?.(c.input, c.value)}>Confirm</button>{/if}
 							{:else if !c.affirmed && onTick}
 								<button type="button" class="rv-btn" aria-label={`Confirm ${c.label} ${shownValue(c.value)}`} onclick={() => onTick?.(c.input, c.value)}>✓</button>
 							{/if}

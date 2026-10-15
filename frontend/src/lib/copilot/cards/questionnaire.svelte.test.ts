@@ -101,4 +101,27 @@ describe('the questionnaire card', () => {
 		await expect.element(page.getByTestId('cp-pick')).toHaveTextContent('PET-CT');
 		await expect.element(page.getByRole('radio')).not.toBeInTheDocument();
 	});
+
+	it('Applied only names the outcome on screen: applied A, picked B shows Apply', async () => {
+		const { verdictKey } = await import('../gate');
+		const cands: Candidate[] = [{ outcome: 'A', headline: 'CT at 3 months', category: 'surveillance', proposal: outcome() }, { outcome: 'B', headline: 'PET-CT', category: 'workup', proposal: outcome() }];
+		const p = preview({ proposal: null, candidates: cands, asks: [], draft: [] });
+		const rec = { key: 'k', finding_id: 'u1', pack: bts.key, version: 'v', bundle: 'b', source: 'BTS 2015', outcome: 'A', verdict: verdictKey(p), sentence: 's', text: 's', values: [] };
+		show(p, { pick: 'B', applied: rec });
+		await expect.element(page.getByRole('button', { name: 'Apply' })).toBeInTheDocument();
+		cleanup();
+		show(p, { pick: 'A', applied: rec });
+		await expect.element(page.getByTestId('cp-apply')).toHaveTextContent('Applied · in Recommendations');
+	});
+
+	it('an excluded card keeps its scope-doubt banner', async () => {
+		const p = preview({ state: 'does_not_apply', proposal: null, scope_doubt: ['kind'], draft: [draft({ input: 'kind', label: 'Type', state: 'prefilled', value: 'solid', options: ['solid', 'subsolid'] })] });
+		show(p);
+		await expect.element(page.getByTestId('cp-scope-doubt')).toHaveTextContent('would make');
+	});
+
+	it('a read-only column never says "Check N values to apply" without a ✓', async () => {
+		show(reached(), { onTick: null });
+		await expect.element(page.getByTestId('cp-status')).not.toBeInTheDocument();
+	});
 });
