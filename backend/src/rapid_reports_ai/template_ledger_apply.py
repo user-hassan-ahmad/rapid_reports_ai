@@ -688,6 +688,70 @@ def _by_uid(entry: dict, st: tss.SheetStructure, uid_map: Dict[str, str], res: L
     return moved
 
 
+def locate(entry: dict, st: tss.SheetStructure) -> Optional[str]:
+    """The parse ref of the one unit a line-bound entry names by today's exact key and text matching; None when there
+    is none or more than one (never guessed). The backfill uses it as-is (never cosmetic)."""
+    kind = entry.get("kind")
+    try:
+        if kind == "normal":
+            para_name, label, neg = td.split_normal_key(entry["key"])
+            para = _paragraph(st, para_name)
+            if para is None:
+                return None
+            if neg:
+                text = (entry.get("choice") or {}).get("text") or ""
+                keys = {norm_key(label)} | ({norm_key(text)} if text else set())
+                hits = [n.id for n in st.negatives if n.paragraph == para.id and n.origin == "template"
+                        and not n.condition and norm_key(n.text) in keys]
+            else:
+                hits = [n.id for n in st.normals if n.paragraph == para.id
+                        and td._name(td.structure_label(n.structure)) == td._name(label)]
+        elif kind == "fixed":
+            hits = [f.id for f in st.fixed_blocks if norm_key(f.text) == norm_key(entry["key"])]
+        elif kind == "habit":
+            para_name, cond = td.split_habit_key(entry["key"])
+            para = _habit_paragraph(st, para_name)
+            if para is None:
+                return None
+            rules, negs = _habit_units(st, para.id, cond)
+            hits = [r.id for r in rules] + [n.id for n in negs]
+        else:
+            return None
+    except (td.DecisionError, KeyError, TypeError, AttributeError):
+        return None
+    return hits[0] if len(hits) == 1 else None
+
+
+def stamp_uids(ledger: List[dict], st: tss.SheetStructure, registry: dict) -> List[dict]:
+    """The ledger with each line-bound entry's uid set to the uid of the unit it names in the final parse (after the
+    rebind). A uid the registry does not know is dropped (a client-held ledger cannot forge one); an entry whose line
+    is not found keeps a known uid (visibly orphaned when that unit is gone). Never mutates `ledger`."""
+    known = set((registry or {}).get("units") or {})
+    uids = tlr.uids_for(st, registry)
+    out: List[dict] = []
+    for e in ledger or []:
+        ref = locate(e, st)
+        uid = uids.get(ref) if ref else None
+        if uid:
+            e = {**e, "uid": uid}
+        elif e.get("uid") and e["uid"] not in known:
+            e = {k: v for k, v in e.items() if k != "uid"}
+        out.append(e)
+    return out
+
+
+def uid_share(ledger: List[dict], sheet: str, registry: Optional[dict]) -> dict:
+    """The rebuild metric (logged, never a gate): of the ledger's line-bound entries, how many the incoming sheet
+    resolves by uid (tlr.match) and how many by today's key and text matching (locate)."""
+    if not tsg.is_grammar_sheet(sheet or ""):
+        return {"line_bound": 0, "by_uid": 0, "by_text": 0}
+    st = _parse(sheet)
+    live = set(tlr.match(st, registry).values()) if registry else set()
+    bound = [e for e in ledger or [] if e.get("kind") in td.LINE_BOUND]
+    return {"line_bound": len(bound), "by_uid": sum(1 for e in bound if e.get("uid") in live),
+            "by_text": sum(1 for e in bound if locate(e, st) is not None)}
+
+
 RESTATED = "prose quotes a decided standard line"
 _EXAMPLE_PROSE = re.compile(r"^\s*(?:-\s+)?(?:Opening|Order|Measurement)\b")
 _QUOTED = re.compile(r'"([^"]*)"')
@@ -838,7 +902,8 @@ def reconcile_chat(before: str, after: str, ledger: List[dict]) -> Tuple[List[di
     """Fold a chat rewrite into the ledger: an entry whose item the rewrite changed (before != after) takes the new
     state (source "chat"; the reply names a confirmed one); values the rewrite added to LIST_MISSING become entries
     when the ledger owns the value list. A rewrite that removed a whole item (_wholesale) leaves the entry as it was
-    and returns a one-tap card instead. Returns (ledger, changes, cards)."""
+    and returns a one-tap card instead. Returns (ledger, changes, cards). An entry it re-keys (td.rekey_decision)
+    comes back without its uid; persist_sheet's post-rebind stamp gives it the new line's."""
     from . import template_rules_cards as trc
     if not ledger or not tsg.is_grammar_sheet(before or "") or not tsg.is_grammar_sheet(after or ""):
         return list(ledger or []), [], []

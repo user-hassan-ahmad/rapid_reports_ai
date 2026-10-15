@@ -696,3 +696,48 @@ def test_is_removal():
     assert tla.is_removal({"kind": "normal", "choice": {"text": ""}})
     assert not tla.is_removal({"kind": "normal", "choice": {"text": "x"}})
     assert not tla.is_removal({"kind": "habit", "choice": {"mode": "removed"}})
+
+
+def test_locate_names_one_unit_or_none():
+    st = _clean(LEDGER_SHEET)
+    assert tla.locate({"kind": "normal", "key": "Liver :: liver", "choice": {"text": "x"}}, st) == "m0"
+    assert tla.locate({"kind": "normal", "key": NEG, "choice": {"text": ""}}, st) == "n0"
+    assert tla.locate({"kind": "fixed", "key": "No previous imaging available", "choice": {"keep": "always"}}, st) == "f1"
+    assert tla.locate({"kind": "normal", "key": "Spleen :: spleen", "choice": {"text": "x"}}, st) is None
+    assert tla.locate({"kind": "value", "key": "LVEF", "choice": {"need": "every"}}, st) is None
+
+
+def test_stamp_uids_sets_known_uids_drops_unknown_ones_and_keeps_an_orphans():
+    reg = _reg(LEDGER_SHEET)
+    st = _clean(LEDGER_SHEET)
+    led = _led(("normal", td.normal_key("Liver", "liver"), {"text": "The liver is normal in size."}),
+               ("fixed", "A line the sheet lacks.", {"keep": "always"}), ("value", "LVEF", {"need": "every"}))
+    led = [led[0], _with_uid(led[1], "f_zzzzzz"), led[2]]
+    out = tla.stamp_uids(led, st, reg)
+    assert out[0]["uid"] == tlr.uids_for(st, reg)["m0"] and "uid" not in out[1] and "uid" not in out[2]
+    orphan = _with_uid(led[1], tlr.uids_for(st, reg)["f0"])
+    assert tla.stamp_uids([orphan], st, reg) == [orphan]
+    assert led[1]["uid"] == "f_zzzzzz"                                   # never mutated
+
+
+def test_reconcile_chat_clears_the_uid_of_a_rekeyed_entry_and_the_stamp_restores_the_right_one():
+    reg = _reg(LEDGER_SHEET)
+    old_uid = _uid(LEDGER_SHEET, reg, "f0")
+    led = [_with_uid(_led(("fixed", "Axial images were acquired.", {"keep": "always"}))[0], old_uid)]
+    after = LEDGER_SHEET.replace('FIXED "Axial images were acquired."', 'FIXED "Axial images acquired."')
+    out, changes, _ = tla.reconcile_chat(LEDGER_SHEET, after, led)
+    assert out[0]["key"] == "Axial images acquired." and "uid" not in out[0] and changes
+    res = tla.apply_ledger(after, out, registry=reg)
+    reg2, _ = tlr.rebind(reg, _clean(res.sheet), res.carried, now="T")
+    stamped = tla.stamp_uids(res.ledger, _clean(res.sheet), reg2)
+    assert stamped[0]["uid"] == tlr.uids_for(_clean(res.sheet), reg2)["f0"] != old_uid
+
+
+def test_uid_share_counts_line_bound_entries_by_uid_and_by_text():
+    reg = _reg(LEDGER_SHEET)
+    uid = _uid(LEDGER_SHEET, reg, "n0")
+    led = [_with_uid(_led(("normal", NEG, {"text": "No focal liver lesion."}))[0], uid),
+           *_led(("value", "LVEF", {"need": "every"}))]
+    cosmetic = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
+    assert tla.uid_share(led, cosmetic, reg) == {"line_bound": 1, "by_uid": 1, "by_text": 0}
+    assert tla.uid_share(led, "# free", reg) == {"line_bound": 0, "by_uid": 0, "by_text": 0}
