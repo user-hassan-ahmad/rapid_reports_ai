@@ -36,6 +36,14 @@ MISSING_VALUES_RULE = (
     "\n- **Missing values:** this template's required values are handled outside the report, and code "
     "adds the \"Values not provided\" line itself: write no list of missing or unprovided values, and no "
     "placeholder for one.")
+# Dictation wins over an earlier removal (as the scratchpad's reconcile does, hybrid_stack.removed_guard): the writer
+# must never resolve "every FINDINGS statement appears" against "no DO NOT ASSERT statement appears" by dropping a
+# dictated statement about the same structure (fidelity track Q3, 2026-10-15).
+REMOVED_RULE = (
+    "The radiologist removed these default sentences. Dictated findings always win: every statement in the FINDINGS "
+    "input appears with its meaning unchanged, even one about the same structure as a removed sentence, under "
+    "another name or with a value. A DO NOT ASSERT line never removes, shortens or rewords a FINDINGS statement; it "
+    "forbids only the removed sentence itself, in any wording, where no FINDINGS statement says it.")
 
 
 def _strip(sheet: str) -> List[str]:
@@ -108,7 +116,8 @@ def stack_brief(sheet: str, conclusion: str, declined: Sequence[str] = (), value
     parts.append(session)
     removed = [t.strip() for t in declined if t.strip()]
     if removed:
-        parts.append("## Removed by the Radiologist\n" + "\n".join(f'- DO NOT ASSERT: "{t}"' for t in removed))
+        parts.append("## Removed by the Radiologist\n" + REMOVED_RULE + "\n"
+                     + "\n".join(f'- DO NOT ASSERT: "{t}"' for t in removed))
     if conclusion.strip():
         parts.append(
             "## Confirmed Conclusion\n"

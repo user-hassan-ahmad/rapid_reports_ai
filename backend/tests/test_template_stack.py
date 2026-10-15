@@ -44,9 +44,24 @@ def test_a_dropped_block_ends_at_the_next_grammar_context():
 
 def test_conclusion_and_removed_sentences_are_carried():
     b = stack_brief(LEAN, "  Normal cardiac MRI.  ", ["No pericardial effusion.", "  "])
-    assert '- DO NOT ASSERT: "No pericardial effusion."' in b and b.count("DO NOT ASSERT") == 1
+    assert '- DO NOT ASSERT: "No pericardial effusion."' in b and b.count('- DO NOT ASSERT: "') == 1
     assert b.rstrip().endswith('"Normal cardiac MRI."') and "## Confirmed Conclusion" in b
     assert "outrank every other rule" in b
+
+
+def test_dictated_findings_win_over_a_removed_sentence():
+    """Fidelity Q3: a DO NOT ASSERT line never removes or rewords a FINDINGS statement, even one about the same
+    structure under another name or with a value; it forbids only the removed wording where nothing dictated says it."""
+    b = stack_brief(LEAN, "", ["No pericardial effusion."])
+    removed = b.split("## Removed by the Radiologist", 1)[1]
+    rule = removed.split('- DO NOT ASSERT: "', 1)[0]
+    assert "every statement in the findings input" in rule.lower() and "same structure" in rule
+    assert "never removes, shortens or rewords" in rule and "where no FINDINGS statement says it" in rule
+
+
+def test_the_stack_checklist_lets_dictated_findings_win():
+    line = next(l for l in g.VERIFICATION_CHECKLIST_STACK.splitlines() if "DO NOT ASSERT" in l)
+    assert "in any wording" in line and "FINDINGS statement" in line and "same structure" in line
 
 
 def test_no_conclusion_or_removals_no_sections():

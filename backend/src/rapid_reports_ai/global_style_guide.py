@@ -519,7 +519,7 @@ VERIFICATION_CHECKLIST_STACK = _swaps(
     VERIFICATION_CHECKLIST,
     (_between(VERIFICATION_CHECKLIST, "- Every mandatory negative", "- No suppressed terms"),
      """- Every statement in FINDINGS appears with its meaning unchanged; no normal or negative statement appears that FINDINGS does not contain, for any structure
-- No DO NOT ASSERT statement appears anywhere, in any wording, impression included
+- No DO NOT ASSERT statement appears anywhere, in any wording, impression included, unless a FINDINGS statement says it; every FINDINGS statement stays, even one about the same structure as a DO NOT ASSERT line
 - The impression phrases the confirmed conclusion: every finding it names, nothing it does not contain
 """),
     ("- All triggered interpretive clauses are appended\n", ""),
