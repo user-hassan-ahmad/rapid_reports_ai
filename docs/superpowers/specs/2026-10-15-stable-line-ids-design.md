@@ -37,11 +37,13 @@ A uid names a **slot** in the template, not a string. What defines the slot depe
 | Kind | Identity (all must match) | Text in identity? |
 | --- | --- | --- |
 | section | name | n/a |
-| paragraph | section uid + name; or, for a rename, section uid + the **same non-empty** COVERS set (the name ignored) | n/a |
-| normal | paragraph uid + structure | No, within an unchanged paragraph: the normal's answer is its text (`_normal` rewrites the line), so text is tracked by `text_hash`. **Across a paragraph rename** (the paragraph kept its uid by the COVERS rule) a normal keeps its uid only if its text is also exactly equal; otherwise it is a new unit and its answer is asked again |
+| paragraph | section uid + name; or, for a rename, section uid + the **same non-empty** COVERS set + the **same side** (the laterality of the old and new names, decision 9; the rest of the name ignored) | n/a |
+| normal | paragraph uid + side + structure (side: the structure's own laterality if its name states one, else the paragraph name's, else none; decision 9) | No, within an unchanged paragraph: the normal's answer is its text (`_normal` rewrites the line), so text is tracked by `text_hash`. **Across a paragraph rename** (the paragraph kept its uid by the COVERS rule) a normal keeps its uid only if its text is also exactly equal; otherwise it is a new unit and its answer is asked again |
 | negative | paragraph uid + `condition` + `condition_source` + `kind` + `origin` + text | Yes (exact) |
 | fixed | section uid + `paragraph` + text | Yes (exact) |
 | rule (incl. LIST_MISSING, ASK) | section uid + paragraph uid (or none for section-level rules) + `effect` + `condition` + `condition_source` + `target` + `anchor` + `position` + output (`then_text`, `else_text`, `items`, `question`) | Yes: condition and every output field, exact |
+
+Side is the whole words `left`, `right`, `bilateral` (case-insensitive) in a name: one distinct side is that side, several are kept together ("left and right" never equals "left"), none is no side. Left, right and bilateral never share a slot, whatever the paragraph is called.
 
 Every name, structure, COVERS entry and text in the table compares **exactly** after representation-only normalising (below); nothing in identity is case-folded.
 
@@ -240,3 +242,4 @@ Existing suites:
 6. Independent review before the implementation plan: round 1 not ready (11 findings), round 2 ready with fixes (9 findings), round 3 ready (one wording fix); all addressed.
 7. Exact matching only, representation-normalised; cosmetic layer removed (Hassan, 2026-10-15). Lookalike characters and whitespace are the only normalisation; case, punctuation, spelling and filler words are significant. A paragraph rename is the COVERS rule alone (no name gates).
 8. Writer uncertainty (the writer naming a line per uncertainty, resolved at Create) moves to slice 4 (Hassan, 2026-10-15).
+9. Laterality is part of identity: left/right/bilateral can never share a slot, whatever the paragraph is called (Hassan, 2026-10-15). (Numbered 9 because decision 8 was already taken by writer uncertainty.)

@@ -2846,6 +2846,44 @@ Dropped (2026-10-15): production count 47 active / 0 with answers / 0 grammar sh
 
 ---
 
+### Task 18b: Laterality in slot identity (spec decision 9; Hassan, 2026-10-15)
+
+Left, right and bilateral can never share a slot, whatever the paragraph is called.
+
+**Files:**
+- Modify: `backend/src/rapid_reports_ai/template_line_registry.py`
+- Modify: `backend/tests/test_template_line_registry.py`
+
+- [ ] **Step 1: Failing tests** (append to `test_template_line_registry.py`)
+
+- `laterality(name)`: whole words `left` / `right` / `bilateral`, case-insensitive → that side; several distinct → sorted, joined with `+` (`"left+right"`); none (incl. `Leftover`, `Upright`, `""`, `None`) → `None`.
+- A rename `Left kidney` → `Right kidney` with identical `COVERS ["kidney"]` and identical `NORMAL [kidney] "Normal."` (the side only in the paragraph name, the variant of the near-miss in `test_a_paragraph_rename_keeps_uids_only_with_the_same_covers` that puts the side in COVERS): the paragraph and the normal are gone and minted anew; `Left kidney` → `Kidney` likewise.
+- A rename without a side (`Liver` → `Hepatobiliary`) and one keeping it (`Left kidney` → `Left renal`) still keep every uid.
+- Structure `kidney` under `Left kidney` and under `Right kidney`: identity side `left` / `right`; a structure's own side wins over the paragraph's (`right renal vein` under `Left kidney` → `right`); no side anywhere → `""`.
+
+Run: `PYTEST tests/test_template_line_registry.py`. Expected: the new tests fail (`laterality` missing).
+
+- [ ] **Step 2: Implement**
+
+```python
+_SIDE = re.compile(r"\b(left|right|bilateral)\b", re.IGNORECASE)
+
+
+def laterality(name) -> Optional[str]:
+    sides = sorted({m.lower() for m in _SIDE.findall(name or "")})
+    return "+".join(sides) if sides else None
+```
+
+- `_FIELDS["normal"]` becomes `(("side", "plain"), ("structure", "text"))`; `units()` sets a normal's side to `laterality(structure) or laterality(<its paragraph's name>) or ""`.
+- `_rename` adds `laterality(ident.get("name"))` to the rename key, so a COVERS rename keeps the paragraph uid only when the old and new names state the same side.
+- Module docstring: the paragraph and normal identity lines name the side (decision 9).
+
+Run: `PYTEST tests/test_template_line_registry.py` and `reg.sh`. Expected: all pass.
+
+- [ ] **Step 3: Commit** code + tests (`feat(line-ids): laterality is part of slot identity …`), then spec + plan (`docs(line-ids): …`).
+
+---
+
 ### Task 19: Rebuild fixture: wrong matches (primary) and resolved share (secondary)
 
 **Files:**
