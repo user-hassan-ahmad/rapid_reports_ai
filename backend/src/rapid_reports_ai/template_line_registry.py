@@ -4,8 +4,10 @@ persist_sheet). Pure code, no model call. The sheet text is never changed.
 
 A uid names a slot, not a string. Identity per kind (all must match):
     section    normalised name
-    paragraph  section uid + normalised name; or (a rename) section uid + the same non-empty COVERS set
-    normal     section uid + paragraph uid + structure (its text is tracked by text_hash, not identity); across a
+    paragraph  section uid + normalised name; or (a rename) section uid + the same non-empty COVERS set + the same
+               side (laterality() of the old and new names; decision 9)
+    normal     section uid + paragraph uid + side + structure (its text is tracked by text_hash, not identity); side is
+               the structure's own laterality, else its paragraph name's, else none (decision 9); across a
                paragraph rename (the COVERS rule) its text must also be exactly equal (decision 5)
     negative   section uid + paragraph uid + condition + condition_source + kind + origin + text
     fixed      section uid + paragraph uid + text
@@ -49,7 +51,7 @@ PREFIX = {"section": "s_", "paragraph": "p_", "normal": "n_", "negative": "g_", 
 _FIELDS: Dict[str, Tuple[Tuple[str, str], ...]] = {
     "section": (("name", "text"),),
     "paragraph": (("name", "text"),),
-    "normal": (("structure", "text"),),
+    "normal": (("side", "plain"), ("structure", "text")),
     "negative": (("condition", "text"), ("condition_source", "plain"), ("kind", "plain"), ("origin", "plain"),
                  ("text", "text")),
     "fixed": (("text", "text"),),
@@ -80,16 +82,30 @@ def _structure_label(s: str) -> str:
     return s[1:-1].strip() if len(s) > 2 and s.startswith('"') and s.endswith('"') else s
 
 
+_SIDE = re.compile(r"\b(left|right|bilateral)\b", re.IGNORECASE)
+
+
+def laterality(name) -> Optional[str]:
+    """The side a name states (decision 9): the whole words left / right / bilateral, case-insensitive. One distinct
+    side -> that side; several -> them sorted and joined with "+" (so "left and right" never equals "left"); none ->
+    None. Left, right and bilateral never share a slot."""
+    sides = sorted({m.lower() for m in _SIDE.findall(name or "")})
+    return "+".join(sides) if sides else None
+
+
 def units(st) -> List[Unit]:
     """Every line-bound unit of a parsed sheet, parents first, each kind in parse order."""
     out: List[Unit] = []
+    pnames = {p.id: p.name for p in st.paragraphs}
     for s in sorted(st.sections, key=lambda x: x.order):
         out.append(Unit(f"S:{s.name}", "section", "", s.name, (("name", s.name),)))
     for p in st.paragraphs:
         out.append(Unit(p.id, "paragraph", "", p.name, (("name", p.name),), section=f"S:{p.section}",
                         covers=tuple(p.covers)))
     for n in st.normals:
-        out.append(Unit(n.id, "normal", str(n.source_line), n.text, (("structure", _structure_label(n.structure)),),
+        structure = _structure_label(n.structure)
+        side = laterality(structure) or laterality(pnames.get(n.paragraph, "")) or ""
+        out.append(Unit(n.id, "normal", str(n.source_line), n.text, (("side", side), ("structure", structure)),
                         section=f"S:{n.section}", paragraph=n.paragraph))
     for n in st.negatives:
         out.append(Unit(n.id, "negative", str(n.source_lines[0]) if n.source_lines else "", n.text,
@@ -159,12 +175,12 @@ def _exact(kind: str, ident: dict) -> tuple:
 
 
 def _rename(kind: str, ident: dict) -> Optional[tuple]:
-    """A paragraph's rename identity (decision 5): section uid + the same non-empty COVERS set, the name ignored.
-    None for every other kind, and for a paragraph without COVERS."""
+    """A paragraph's rename identity (decision 5): section uid + the same non-empty COVERS set + the name's side
+    (decision 9), the rest of the name ignored. None for every other kind, and for a paragraph without COVERS."""
     if kind != "paragraph":
         return None
     covers = frozenset(tlm.rep_key(c) for c in ident.get("covers") or [])
-    return (kind, ident.get("section", ""), covers) if covers else None
+    return (kind, ident.get("section", ""), covers, laterality(ident.get("name"))) if covers else None
 
 
 def _mint(kind: str, ident: dict, taken: set, salt: str = "") -> str:

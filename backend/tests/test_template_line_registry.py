@@ -384,3 +384,61 @@ def test_match_pairs_renames_but_never_rewordings_without_minting():
     assert (got["p1"], got["m0"]) == (exact["p1"], exact["m0"]) and "n0" not in got
     assert "p1" not in tlr.uids_for(_st(renamed), reg) and repr(reg) == snapshot
     assert tlr.match(_st(LEDGER_SHEET), None) == {}
+
+
+# Laterality in slot identity (Task 18b; spec decision 9): left / right / bilateral never share a slot.
+
+@pytest.mark.parametrize("name,side", [
+    ("Left kidney", "left"), ("RIGHT adrenal", "right"), ("Bilateral hips", "bilateral"), ("kidney, left", "left"),
+    ("Liver", None), ("Leftover fluid", None), ("Upright film", None), ("", None), (None, None),
+    ("Left and right kidneys", "left+right")])
+def test_laterality_reads_whole_words_only(name, side):
+    assert tlr.laterality(name) == side
+
+
+def _kidney(name, structure="kidney"):
+    return _sheet(f'## Paragraph: {name} (FINDINGS)\nCOVERS ["{structure}"]\nNORMAL [{structure}] "Normal."')
+
+
+def test_a_rename_to_the_other_side_with_the_same_covers_and_text_is_a_new_slot():
+    reg, _ = _bind(_kidney("Left kidney"))
+    para, normal = _live(reg, "Left kidney"), _live(reg, "Normal.")
+    _, rep = _bind(_kidney("Right kidney"), reg)
+    assert para in rep["gone"] and normal in rep["gone"]                    # side only in the name: still no match
+    assert _counts(rep) == {"exact": 4, "new": 2, "gone": 2}                 # sections + Impression exact
+    _, rep2 = _bind(_kidney("Kidney"), reg)
+    assert para in rep2["gone"] and normal in rep2["gone"]                  # a side lost is a side changed
+
+
+def test_a_rename_without_a_side_still_keeps_its_uids():
+    a = _sheet('## Paragraph: Liver (FINDINGS)\nCOVERS ["liver" | "gallbladder"]\nNORMAL [liver] "The liver is normal."')
+    reg, _ = _bind(a)
+    _, rep = _bind(a.replace("Paragraph: Liver", "Paragraph: Hepatobiliary"), reg)
+    assert _live(reg, "Liver") in rep["exact"] and _live(reg, "The liver is normal.") in rep["exact"]
+    _, rep2 = _bind(_kidney("Left kidney").replace("Paragraph: Left kidney", "Paragraph: Left renal"),
+                    _bind(_kidney("Left kidney"))[0])
+    assert _counts(rep2) == {"exact": 6}                                    # same side: the COVERS rule keeps it
+
+
+def test_a_structure_without_a_side_takes_its_paragraphs_side():
+    both = _sheet(*(f'## Paragraph: {n} (FINDINGS)\nCOVERS ["kidney"]\nNORMAL [kidney] "Normal."'
+                    for n in ("Left kidney", "Right kidney")))
+    reg, _ = _bind(both)
+    normals = sorted(e["identity"]["side"] for e in reg["units"].values() if e["kind"] == "normal")
+    assert normals == ["left", "right"]
+    own = _sheet('## Paragraph: Left kidney (FINDINGS)\nCOVERS ["right renal vein"]\nNORMAL [right renal vein] "Normal."')
+    (n,) = [e for e in _bind(own)[0]["units"].values() if e["kind"] == "normal"]
+    assert n["identity"]["side"] == "right"                                 # the structure's own side wins
+    plain = _sheet('## Paragraph: Kidneys (FINDINGS)\nCOVERS ["kidneys"]\nNORMAL [kidneys] "Normal."')
+    (n,) = [e for e in _bind(plain)[0]["units"].values() if e["kind"] == "normal"]
+    assert n["identity"]["side"] == ""
+
+
+def test_the_same_structure_under_another_side_never_shares_a_slot():
+    a = _sheet('## Paragraph: Kidneys (FINDINGS)\nCOVERS ["left kidney" | "kidney"]\nNORMAL [left kidney] "Normal."')
+    reg, _ = _bind(a)
+    normal = _live(reg, "Normal.")
+    b = a.replace('COVERS ["left kidney" | "kidney"]', 'COVERS ["right kidney" | "kidney"]').replace(
+        "NORMAL [left kidney]", "NORMAL [right kidney]")
+    _, rep = _bind(b, reg)
+    assert normal in rep["gone"]
