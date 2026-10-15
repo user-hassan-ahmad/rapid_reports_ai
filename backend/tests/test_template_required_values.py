@@ -267,3 +267,56 @@ def test_a_report_without_a_preamble_starts_with_the_line():
     _, rec = apply_required_values(CMR, ["LVEF"])
     report = CMR_REPORT.split("\n\n", 1)[1]
     assert write_missing(report, CMR, rec["lists"])[0].startswith("Values not provided: LVEF.\n\nLEFT VENTRICLE\nNormal LV.")
+
+
+# ── a value the confirm gate filled from the dictation (P3 2026-10-15: a captured value listed as not provided) ──
+# SYNTHETIC: the writer dropped a dictated measurement; the gate had captured it with its sentence.
+
+async def test_a_filled_value_the_report_lacks_is_flagged_but_never_listed_as_not_provided():
+    _, rec = apply_required_values(SHEET, ["RVEF"])
+    lists, flags, b = await backstop("Findings:\nNormal LV.", rec["lists"], ["LVEF"], ask=_scores([0.1]),
+                                     list_missing=False)
+    assert lists[0]["na"] == ["RVEF"]                      # only what the radiologist marked N/A
+    assert [f["text"] for f in flags] == ["LVEF"] and b["missing"] == ["LVEF"]
+    assert "LVEF" not in write_missing("Findings:\nNormal LV.", SHEET, lists)[0]
+
+
+def test_restore_writes_the_dictated_sentence_at_the_end_of_its_region_section():
+    from rapid_reports_ai.template_required_values import restore_values
+    quotes = {"aortic root diameter": {"quote": "Aortic sinus measuring 41 mm.", "region": "ATRIA"}}
+    out, edits, restored = restore_values(CMR_REPORT, CMR, ["aortic root diameter"], quotes)
+    assert "ATRIA\nNormal atria. Aortic sinus measuring 41 mm.\n\nSUMMARY" in out
+    assert edits == [{"type": "insertion", "sentence": "Aortic sinus measuring 41 mm."}]
+    assert restored == ["aortic root diameter"]
+
+
+def test_restore_without_a_matching_region_goes_at_the_end_of_the_findings():
+    from rapid_reports_ai.template_required_values import restore_values
+    quotes = {"LVEF": {"quote": "Ejection fraction 47%", "region": "Somewhere else"}}
+    out, edits, _ = restore_values(CMR_REPORT, CMR, ["lvef"], quotes)
+    assert "ATRIA\nNormal atria. Ejection fraction 47%.\n\nSUMMARY" in out
+    assert edits == [{"type": "insertion", "sentence": "Ejection fraction 47%."}]
+    # a report without headers: the end of the report's findings text
+    out, _, _ = restore_values("Normal LV.", SHEET, ["LVEF"], quotes)
+    assert out == "Normal LV. Ejection fraction 47%."
+
+
+def test_restore_skips_a_sentence_already_in_the_report_and_an_item_without_a_quote():
+    from rapid_reports_ai.template_required_values import restore_values
+    report = CMR_REPORT.replace("Normal LV.", "Normal LV. Ejection fraction  47%.")
+    quotes = {"LVEF": {"quote": "ejection fraction 47%.", "region": "LEFT VENTRICLE"},
+              "aortic root diameter": {"quote": "", "region": ""}}
+    out, edits, restored = restore_values(report, CMR, ["LVEF", "aortic root diameter"], quotes)
+    assert out == report and edits == [] and restored == ["LVEF"]   # already there: nothing vanished
+
+
+def test_restore_never_raises(monkeypatch):
+    import rapid_reports_ai.template_required_values as M
+    from rapid_reports_ai.template_required_values import restore_values
+
+    def boom(*a, **k):
+        raise RuntimeError("sections down")
+    monkeypatch.setattr(M, "_clean", boom)
+    monkeypatch.setattr("rapid_reports_ai.template_lean.report_sections", boom)
+    out, edits, restored = restore_values(CMR_REPORT, CMR, ["LVEF"], {"LVEF": {"quote": "LVEF 47%.", "region": ""}})
+    assert (out, edits, restored) == (CMR_REPORT, [], [])

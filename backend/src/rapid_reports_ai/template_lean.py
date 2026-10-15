@@ -29,7 +29,8 @@ from .template_number_check import undictated_numbers
 from .template_brief import _scores
 from .template_context_rules import (decided_block, resolve_context_rules, sheet_headers, strip_slot_sentences,
                                      without_habits)
-from .template_required_values import apply_required_values, backstop, values_applied, write_missing
+from .hybrid_stack.template import norm_key
+from .template_required_values import apply_required_values, backstop, restore_values, values_applied, write_missing
 from .template_manager import TemplateManager
 from .template_sheet_structure import _key
 
@@ -542,7 +543,11 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
     vrec = rec.get("required_values")
     values_on = vrec is not None and values_applied(vrec)
     filled = vrec.get("check") if values_on and "check" in vrec else (stack or {}).get("values_filled") or []
-    bs_t = asyncio.ensure_future(backstop(report, vrec["lists"], filled)) if values_on else None
+    # A value the gate filled was provided: one the report lacks is written back from its dictated sentence, never
+    # listed as not provided. Only the code-owned check (no cluster) lists what the report does not state.
+    gate_filled = values_on and vrec.get("source") == "cluster"
+    bs_t = (asyncio.ensure_future(backstop(report, vrec["lists"], filled, list_missing=not gate_filled))
+            if values_on else None)
     try:
         final, checked_opts, quality = await checked()
     except BaseException:
@@ -555,10 +560,20 @@ async def generate_template_report_lean(*, sheet: str, scan_type: str, findings:
     if bs_t is not None:
         # The N/A line, by code, at its section's TOP / END (never sent through the check's repair)
         lists, flags, vrec["backstop"] = await bs_t
+        final, vrec["stripped"] = write_missing(final, sheet, lists, rec=vrec)
+        if gate_filled and vrec["backstop"]["missing"]:
+            before = final
+            final, edits, vrec["restored"] = restore_values(final, sheet, vrec["backstop"]["missing"],
+                                                            (stack or {}).get("values_quotes") or {})
+            back = {norm_key(x) for x in vrec["restored"]}
+            flags = [f for f in flags if norm_key(f["text"]) not in back]
+            if edits:   # shown on the rail as pre-applied insertions, like the check's own
+                quality = {**(quality or {"enabled": False})}
+                quality.setdefault("pre_edit_report", before)
+                quality["applied_edits"] = [*(quality.get("applied_edits") or []), *edits]
         if flags:
             quality = {**(quality or {"enabled": False})}
             quality["review"] = [*(quality.get("review") or []), *flags]
-        final, vrec["stripped"] = write_missing(final, sheet, lists, rec=vrec)
     # Numbers the writer added that no source supplies (a sheet's score/grade/time window): review flags only
     numbers = undictated_numbers(final, [check_text, history, (stack or {}).get("conclusion")], sheet)
     if numbers:

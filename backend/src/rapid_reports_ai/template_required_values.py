@@ -11,7 +11,8 @@ typed, or marked N/A. Code owns the missing-values list (Hassan 2026-10-13: alwa
   findings one) goes at the TOP or END of that section; with no findings section found, the report itself.
 - backstop: before the line is written, Jev asks whether the generated report states each value whose chip was
   filled (a false "stated" must never let a value vanish from both the report and the line); each "no" joins its
-  list's N/A items and becomes a value_missing review flag.
+  list's N/A items and becomes a value_missing review flag. A value the scratchpad gate filled from the dictation
+  was provided, so it never joins the line: restore_values writes its dictated sentence back (P3 2026-10-15).
 The stored sheet is never changed. Regex here only reads the grammar's own syntax and our own literal line. Never
 raises: a sheet that does not parse clean, or any error, leaves things as they came with the reason in the record;
 values_applied() then says the generator must not be told the values were decided."""
@@ -83,11 +84,14 @@ def values_applied(rec: dict) -> bool:
             and all(e.get("outcome") == "applied" for e in rec["lists"]))
 
 
-async def backstop(report: str, lists: List[dict], filled: Sequence[str], ask=None) -> Tuple[List[dict], List[dict], dict]:
+async def backstop(report: str, lists: List[dict], filled: Sequence[str], ask=None,
+                   list_missing: bool = True) -> Tuple[List[dict], List[dict], dict]:
     """The post-generation backstop: (lists with every filled value the report does not state added to its list's
     N/A items, value_missing review flags, record). Jev decides (ask_report_values, BACKSTOP_MIN); code lists and
     flags. A Jev failure or a short reply changes nothing and adds one value_check_unavailable flag (never silent);
-    no filled items: no call."""
+    no filled items: no call. `list_missing` False (the value cluster: the gate filled these values from the
+    dictation): a value the report lacks was provided, so it is flagged and recorded but never listed as not
+    provided; the caller writes it back (restore_values)."""
     rec: dict = {"asked": 0, "missing": [], "error": None}
     required = {norm_key(x) for e in lists for x in e["items"]}   # the client's items, checked against the template
     items = list(dict.fromkeys(x.strip() for x in filled
@@ -110,6 +114,10 @@ async def backstop(report: str, lists: List[dict], filled: Sequence[str], ask=No
     rec["missing"] = missing
     if not missing:
         return lists, [], rec
+    flags = [{"kind": VALUE_MISSING, "text": i, "message": f"Required value {i} not found in the report"} for i in missing]
+    logger.info("[template.required_values] backstop asked=%d missing=%d", len(items), len(missing))
+    if not list_missing:
+        return lists, flags, rec
     out = [dict(e, na=list(e["na"])) for e in lists]
     listed = {norm_key(x) for e in out for x in e["na"]}
     for item in missing:
@@ -118,9 +126,68 @@ async def backstop(report: str, lists: List[dict], filled: Sequence[str], ask=No
             continue
         listed.add(k)
         next(e for e in out if k in {norm_key(x) for x in e["items"]})["na"].append(item)
-    flags = [{"kind": VALUE_MISSING, "text": i, "message": f"Required value {i} not found in the report"} for i in missing]
-    logger.info("[template.required_values] backstop asked=%d missing=%d", len(items), len(missing))
     return out, flags, rec
+
+
+def _flat(s: str) -> str:
+    return " ".join((s or "").split()).rstrip(".").lower()
+
+
+def _append(text: str, a: int, b: int, sentence: str) -> str:
+    """The sentence at the end of text[a:b]: after its last sentence on the same line, else on its own line."""
+    k = a + len(text[a:b].rstrip())
+    last = text[a:k].rsplit("\n", 1)[-1].strip()
+    if last and last[-1] in ".!?" and not re.match(r"^(?:[-*•]|\d+[.)])\s", last):
+        return text[:k] + " " + sentence + text[k:]
+    sep = "\n" if k > a or (k > 0 and text[k - 1] != "\n") else ""
+    return text[:k] + sep + sentence + text[k:]
+
+
+def restore_values(report: str, sheet: str, missing: Sequence[str],
+                   quotes: dict) -> Tuple[str, List[dict], List[str]]:
+    """A value the gate filled from the dictation never vanishes (P3 2026-10-15): (the report with each missing
+    value's dictated sentence written back, the insertion edits, the items the report now holds). `quotes`: item ->
+    {"quote": the dictated sentence the gate read the value from, "region": its scratchpad region}. The sentence goes
+    at the end of the report section named like its region, else at the end of the findings (before the impression).
+    A sentence already in the report is not written again; an item without a sentence stays a flag only. Never raises:
+    on any error the report comes back as it was."""
+    try:
+        from .report_review import section_spans
+        from .template_lean import report_sections
+        by = {norm_key(k): v for k, v in (quotes or {}).items() if isinstance(v, dict)}
+        st = _clean(sheet)
+        # a region is a sheet section's name or its header; the report's sections are named by their header lines
+        alias = {}
+        for s in (st.sections if st else []):
+            for n in (s.name, (s.header or "").strip().rstrip(":").strip()):
+                if n:
+                    alias[" ".join(n.split()).upper()] = {s.name.upper(), (s.header or s.name).strip().rstrip(":").strip().upper()}
+        text, edits, restored = report or "", [], []
+        for item in missing:
+            q = by.get(norm_key(item)) or {}
+            sent = " ".join(str(q.get("quote") or "").split())
+            if not sent:
+                continue
+            sent = sent if sent[-1] in ".!?" else sent + "."
+            if _flat(sent) in _flat(text):
+                restored.append(item)
+                continue
+            spans = section_spans(text, report_sections(text, sheet))
+            region = " ".join(str(q.get("region") or "").split()).upper()
+            want = alias.get(region, {region}) if region else set()
+            hit = next(((a, b) for s, a, b in spans if s.name in want), None)
+            if hit is None:
+                findings = [(s, a, b) for s, a, b in spans if s.role == "findings"]
+                findings = [f for f in findings if f[0].header] or findings
+                hit = (findings[-1][1], findings[-1][2]) if findings else (0, len(text))
+            text = _append(text, hit[0], hit[1], sent)
+            edits.append({"type": "insertion", "sentence": sent})
+            restored.append(item)
+        logger.info("[template.required_values] restored=%d", len(edits))
+        return text, edits, restored
+    except Exception as e:  # noqa: BLE001 -- never break Generate
+        logger.warning("[template.required_values] restore error=%s", f"{type(e).__name__}: {e}"[:200])
+        return report, [], []
 
 
 def _insert(text: str, a: int, b: int, line: str, end: bool) -> str:

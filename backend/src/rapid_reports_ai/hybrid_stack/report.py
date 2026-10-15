@@ -18,7 +18,7 @@ from ..quick_report_generator import _describe, generate_quick_report
 from ..review_engine.engine import schedule_review
 from ..template_lean import generate_template_report_lean
 from ..template_number_check import undictated_numbers
-from .findings import findings_block
+from .findings import filled_value_quotes, findings_block
 from .gate_model import findings_hash
 from .removed_guard import guard, reconcile
 from .resolution import TokenError, verify as verify_token
@@ -80,6 +80,7 @@ async def run(req, user, db: Session) -> AsyncIterator[dict]:
         if req.gate.values is not None:
             stack["values_na"] = [c.item for c in req.gate.values if c.state == "na"]
             stack["values_filled"] = [c.item for c in req.gate.values if c.state in ("filled", "picked")]
+            stack["values_quotes"] = filled_value_quotes(req.units, req.gate)   # a dropped value is written back
         out = await generate_template_report_lean(
             sheet=cfg.get("skill_sheet", ""), scan_type=req.scan_type, findings=st.block, history=req.history,
             case=None, signature=None, declined=removed, stack=stack, check_findings=plain)

@@ -96,6 +96,25 @@ def _value_statements(gate: GateRecord) -> list[str]:
     return [f"{c.item} {c.value}" for c in (gate.values or []) if c.state == "entered" and c.value]
 
 
+def filled_value_quotes(units: list[StackUnit], gate: GateRecord) -> dict[str, dict[str, str]]:
+    """Each value the gate filled from the dictation: {item: {"quote": the sentence it was read from, "region": the
+    scratchpad region of the unit holding that sentence, "" when none does}}. Generate writes a sentence back when
+    the writer dropped it (template_required_values.restore_values); a chip without a sentence has no entry."""
+    def flat(s: str) -> str:
+        return " ".join(s.split()).rstrip(".").lower()
+    placed = [(flat(i.text), i.group) for i in _items(units)]
+    placed += [(flat(u.text), u.group) for u in units if not u.heading and u.group is not None]
+    out: dict[str, dict[str, str]] = {}
+    for c in gate.values or []:
+        q = (c.quote or "").strip()
+        if c.state not in ("filled", "picked") or not q:
+            continue
+        fq = flat(q)
+        region = next((g for t, g in placed if t and (fq in t or t in fq)), "")
+        out[c.item] = {"quote": q, "region": region}
+    return out
+
+
 def findings_block(units: list[StackUnit], groups: list[str], gate: GateRecord,
                    removed: list[str] | None = None) -> Statements:
     """What Generate receives (checklist spec §7): the radiologist's sentences, tapped rows, confirmed region normals,
