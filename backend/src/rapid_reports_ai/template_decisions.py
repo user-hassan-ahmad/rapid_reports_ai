@@ -3,6 +3,8 @@ template's rules, stored as template_config["decisions"] and applied by code on 
 (template_ledger_apply.apply_ledger, called by template_sheet_save.vet_sheet).
 
 One entry per (kind, key): {"kind", "key", "choice", "by", "at", "source"}.
+A line-bound entry (normal, fixed, habit) may also carry "uid": the line registry's id of the line it names
+(template_line_registry; stamped by template_sheet_save.persist_sheet after each persisted save).
 
     kind     key                                             choice
     value    the value's short name                          {"need": "every" | "relevant" | "not_needed"}
@@ -53,6 +55,8 @@ NEEDS = ("every", "relevant", "not_needed")
 KEEPS = ("always", "dictated", "remove")
 MAX_VALUE_WORDS = 8
 _SEP = " :: "
+LINE_BOUND = ("normal", "fixed", "habit")   # kinds whose entry names one sheet line (and may carry its uid)
+UID = re.compile(r"[spngfr]_[a-z2-7]{6}")   # template_line_registry uid: kind prefix + 6 base32 characters
 
 
 class DecisionError(ValueError):
@@ -333,6 +337,8 @@ def set_decision(ledger: List[Entry], kind: str, key: str, choice: dict, *, sour
     old = find(ledger, kind, key)
     entry: Entry = {"kind": kind, "key": old["key"] if old else key, "choice": choice, "by": by,
                     "at": at or _now(), "source": source}
+    if old and old.get("uid"):   # the same line, a new answer: the slot keeps its uid
+        entry["uid"] = old["uid"]
     out = [entry if e is old else e for e in ledger] if old else [*(ledger or []), entry]
     if old and old["choice"] == choice:
         return out, None
@@ -351,7 +357,8 @@ def rekey_decision(ledger: List[Entry], kind: str, key: str, new_key: str, *, so
                    choice: Optional[dict] = None) -> Tuple[List[Entry], Change]:
     """The entry (kind, key) moved to `new_key` (a reworded line), its choice kept unless `choice` is given (a
     reworded NEGATIVE carries its new text), and the change (its old entry carries the old key). Never mutates
-    `ledger`. DecisionError when invalid."""
+    `ledger`. DecisionError when invalid. The moved entry has no uid: the post-rebind stamp gives it the new
+    line's."""
     if source not in SOURCES:
         raise DecisionError(f"unknown source {source!r}")
     if by not in BY:
@@ -469,7 +476,10 @@ def clean_ledger(entries) -> List[Entry]:
         except DecisionError as err:
             logger.warning("[ledger] stored entry dropped: %s", err)
             continue
-        out.append({"kind": e["kind"], "key": key, "choice": choice,
-                    "by": e.get("by") if e.get("by") in BY else "code", "at": str(e.get("at") or ""),
-                    "source": e.get("source") if e.get("source") in SOURCES else "default"})
+        entry = {"kind": e["kind"], "key": key, "choice": choice,
+                 "by": e.get("by") if e.get("by") in BY else "code", "at": str(e.get("at") or ""),
+                 "source": e.get("source") if e.get("source") in SOURCES else "default"}
+        if e["kind"] in LINE_BOUND and isinstance(e.get("uid"), str) and UID.fullmatch(e["uid"]):
+            entry["uid"] = e["uid"]
+        out.append(entry)
     return out
