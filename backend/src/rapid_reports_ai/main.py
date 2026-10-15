@@ -1726,7 +1726,8 @@ def _normalize_template_config_styles(config: dict) -> dict:
 
 
 def _carry_structure(new_config: dict, old_config: dict) -> dict:
-    """sheet_structure is server-written only: drop any client copy, carry the stored one when the sheet is unchanged."""
+    """sheet_structure and the stable-line-ID keys (tsave.SERVER_WRITTEN) are server-written only: drop any client
+    copy, carry the stored one (sheet_structure only while the sheet is unchanged)."""
     new = {k: v for k, v in (new_config or {}).items() if k != "sheet_structure"}
     old = old_config or {}
     if new.get("skill_sheet") and old.get("skill_sheet") == new["skill_sheet"] and old.get("sheet_structure"):
@@ -1741,6 +1742,12 @@ def _carry_structure(new_config: dict, old_config: dict) -> dict:
     new.pop("ledger_unmatched", None)
     if old.get("ledger_unmatched"):
         new["ledger_unmatched"] = old["ledger_unmatched"]
+    # stable line IDs (spec 2026-10-15): the registry, `uncertain` (slice 4), the normals confirms and the sheet
+    # revision are server-written only: a client (or a restored version's) copy is dropped, the stored one kept
+    for k in tsave.SERVER_WRITTEN:
+        new.pop(k, None)
+        if k in old:
+            new[k] = old[k]
     return new
 
 
@@ -1754,7 +1761,8 @@ async def _vet_config(new_cfg: Optional[dict], old_cfg: Optional[dict], origin: 
     cards: whole decided items a chat edit would have removed (kept; the notice says to use the card). The ledger
     entries the sheet could not take are stored as ledger_unmatched and shown as cards at the next review (/decide).
     Also refuses emptying a guided sheet (or creating a guided template without one) and switching a
-    grammar-sheet template to another generation mode."""
+    grammar-sheet template to another generation mode. The save itself is template_sheet_save.persist_sheet (the line
+    registry, the ledger's uids, sheet_rev)."""
     old = old_cfg or {}
     before = old.get("skill_sheet") or ""
     if not new_cfg:
@@ -1774,18 +1782,18 @@ async def _vet_config(new_cfg: Optional[dict], old_cfg: Optional[dict], origin: 
     ledger = td.clean_ledger(new_cfg["decisions"]) if isinstance(new_cfg.get("decisions"), list) else stored
     if sheet == before and ledger == stored:
         return new_cfg, "", "", []
-    out = await tsave.vet_sheet(sheet, origin=origin, previous=before, ledger=ledger or None)
+    saved = await tsave.persist_sheet(new_cfg, old, origin, ledger=ledger or None)
+    out = saved.outcome
     if out.status == "refused":
         return None, out.message, "", []
+    # persist_sheet returns skill_sheet (the stored one when unchanged), coverage_sections only for a changed sheet,
+    # decisions stamped with their uids, line_registry and sheet_rev
     if ledger:
-        cfg = {**new_cfg, "decisions": out.ledger, "ledger_unmatched": out.ledger_unmatched}
+        cfg = {**saved.config, "ledger_unmatched": out.ledger_unmatched}
     else:
-        cfg = {k: v for k, v in new_cfg.items() if k != "ledger_unmatched"}
+        cfg = {k: v for k, v in saved.config.items() if k != "ledger_unmatched"}
     notice = " ".join(x for x in [out.message or "", *tsave.ledger_notes(out)] if x)
-    if out.status == "unchanged":   # the stored sheet stands (the ledger may have put back what the edit changed)
-        return {**cfg, "skill_sheet": out.sheet}, "", notice, out.ledger_cards
-    return ({**cfg, "skill_sheet": out.sheet, "coverage_sections": out.coverage_sections}, "", notice,
-            out.ledger_cards)
+    return cfg, "", notice, out.ledger_cards
 
 
 def _queue_structure(template_id: str, config: dict) -> None:

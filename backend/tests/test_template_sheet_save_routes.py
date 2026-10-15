@@ -81,7 +81,7 @@ def test_update_saves_a_changed_sheet_with_coverage_and_origin_chat(client, auth
     seen = {}
     real = S.vet_sheet
 
-    async def spy(sheet, origin, previous="", ledger=None):
+    async def spy(sheet, origin, previous="", ledger=None, **kw):
         seen.update(origin=origin, previous=previous)
         return await real(sheet, origin, previous)
     monkeypatch.setattr(S, "vet_sheet", spy)
@@ -96,7 +96,7 @@ def test_update_saves_a_changed_sheet_with_coverage_and_origin_chat(client, auth
 def test_update_returns_the_adjustment_notice(client, auth_headers, monkeypatch):
     t = _guided(client, auth_headers)["template"]
 
-    async def adjusted(sheet, origin, previous="", ledger=None):
+    async def adjusted(sheet, origin, previous="", ledger=None, **kw):
         return S.VetOutcome("saved", sheet, message=S.ADJUSTED, coverage_sections=["FINDINGS", "IMPRESSION"])
     monkeypatch.setattr(S, "vet_sheet", adjusted)
     r = client.put(f"/api/templates/{t['id']}", headers=auth_headers, json={
@@ -167,7 +167,7 @@ def test_restore_vets_a_grammar_version_with_origin_restore(client, auth_headers
     seen = {}
     real = S.vet_sheet
 
-    async def spy(sheet, origin, previous="", ledger=None):
+    async def spy(sheet, origin, previous="", ledger=None, **kw):
         seen.update(origin=origin, previous=previous)
         return await real(sheet, origin, previous)
     monkeypatch.setattr(S, "vet_sheet", spy)
@@ -182,7 +182,7 @@ def test_restore_refusal_leaves_the_template_unchanged(client, auth_headers, db_
     t = _guided(client, auth_headers, sheet=EDITED)["template"]
     vid = _version_with(db_session, t["id"], GOOD)
 
-    async def refuse(sheet, origin, previous="", ledger=None):
+    async def refuse(sheet, origin, previous="", ledger=None, **kw):
         return S.VetOutcome("refused", previous, S.UNSAFE)
     monkeypatch.setattr(S, "vet_sheet", refuse)
     r = client.post(f"/api/templates/{t['id']}/versions/{vid}/restore", headers=auth_headers).json()
