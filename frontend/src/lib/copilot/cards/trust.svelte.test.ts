@@ -1,4 +1,4 @@
-// Spec §7.12 on the cards: the not-needed line, the growth exclusion's wording, "Seen, leave as is" and the rail
+// Spec §7.12 on the cards: the not-needed line, the growth exclusion's wording, "Not in this report" (session.seen) and the rail
 // revealing a card. SYNTHETIC fixtures; the Copilot API is never called (presentational).
 import { describe, expect, it, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
@@ -54,8 +54,8 @@ describe('an exclusion worded by its outcome (§7.12 item 1)', () => {
 	});
 });
 
-describe('"Seen, leave as is" (§7.12 item 5)', () => {
-	it('an unresolved card shows its reason and "Seen, leave as is"; clicking calls seen(key)', async () => {
+describe('"Not in this report" (§7.12 item 5)', () => {
+	it('an unresolved card shows its reason and "Not in this report"; clicking calls seen(key)', async () => {
 		const onSeen = vi.fn();
 		const key = cardRef(bts);
 		render(PackCard, {

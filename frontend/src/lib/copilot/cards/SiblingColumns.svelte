@@ -56,7 +56,7 @@
 		onApply?: (ref: string) => void;
 		/** Opens or collapses a column that may not apply (view.expanded), by columnRef. */
 		onExpand?: (ref: string, open: boolean) => void;
-		/** Columns that block Confirm (§7.12 item 5), by columnRef: each carries its reason and "Seen, leave as is". */
+		/** Columns that block Confirm (§7.12 item 5), by columnRef: each carries its reason and "Not in this report". */
 		unresolved?: Record<string, Unresolved>;
 		onSeen?: ((key: string) => void) | null;
 	} = $props();

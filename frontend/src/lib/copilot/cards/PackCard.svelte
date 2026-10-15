@@ -59,7 +59,7 @@
 		onTick?: ((ref: string, input: string, value: string) => void) | null;
 		onPick?: ((ref: string, outcome: string | null) => void) | null;
 		onApply?: ((ref: string) => void) | null;
-		/** The card blocks Confirm (§7.12 item 5): its note and "Seen, leave as is" sit above the result. */
+		/** The card blocks Confirm (§7.12 item 5): its note and "Not in this report" sit above the result. */
 		unresolved?: Unresolved | null;
 		onSeen?: ((key: string) => void) | null;
 		onOpen: (ref: string) => void;
