@@ -306,13 +306,14 @@ def test_assumed_applies_the_templates_context_rules_and_labels(authed, monkeypa
     assert seen["labels"] == {"Unremarkable.": "ventricles"} and seen["clinical_history"] == "Headache."
     assert seen["rules"] is None and seen["confirm"] is False   # the first refresh decides the session's rules
     assert seen["scan_type"] == ""   # this template stores no scan type
+    assert seen["sides"] is False   # "Which side?" is quick only (side brief 2026-10-14)
     t.template_config = {**t.template_config, "scan_type": "MRI brain with contrast"}
     db_session.commit()
     authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"Brain": ["Unremarkable."]},
                                                    "template_id": str(t.id)})
     assert seen["scan_type"] == "MRI brain with contrast"
     authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"Brain": ["Unremarkable."]}})
-    assert seen["suppressions"] == [] and seen["labels"] == {}
+    assert seen["suppressions"] == [] and seen["labels"] == {} and seen["sides"] is True
     authed.post("/api/canvas/stack/assumed", json={"dictation": "x", "region_normals": {"Brain": ["Unremarkable."]},
                                                    "template_id": str(t.id), "confirm": True,
                                                    "rules": {"no previous study is available": 0.9}})

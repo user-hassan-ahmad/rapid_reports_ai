@@ -269,6 +269,10 @@ async def test_the_duplicate_and_fixed_checks_run_concurrently(monkeypatch):
         return []
     monkeypatch.setattr(V, "concept_duplicates", dup)
     monkeypatch.setattr(V, "fixed_flags", fixed)
+
+    async def uncovered(*a, **k):
+        return []
+    monkeypatch.setattr(V, "uncovered_checked", uncovered)   # hermetic: no live Jev call
     out = await V.sheet_checks(LEDGER_SHEET, [])
     assert order[:2] == ["dup start", "fixed start"] and out["errors"] == []
 

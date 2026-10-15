@@ -127,7 +127,7 @@ async def test_a_partial_reply_binds_what_it_has_and_is_not_cached():
     assert len(seen) == 2   # not cached
 
 
-async def test_a_slow_jev_is_cut_off_whole_and_not_cached(monkeypatch):
+async def test_a_slow_jev_leaves_every_negative_unbound_and_nothing_cached_yet(monkeypatch):
     import asyncio
     monkeypatch.setattr(structures, "BIND_BUDGET_S", 0.05)
 
@@ -138,3 +138,33 @@ async def test_a_slow_jev_is_cut_off_whole_and_not_cached(monkeypatch):
     assert out["Other Findings"] == {"Cardiac chambers": ["Normal appearance of the cardiac chambers."],
                                      "Great vessels": ["Normal calibre aortic root and pulmonary trunk."]}
     assert not structures._CACHE
+    structures.clear_cache()   # the binding still running in the background, cancelled inside the loop
+    await asyncio.sleep(0)
+
+
+async def test_a_slow_binding_finishes_in_the_background_and_later_calls_do_not_wait(monkeypatch):
+    import asyncio
+    import time
+    monkeypatch.setattr(structures, "BIND_BUDGET_S", 0.05)
+    calls: list = []
+    release = asyncio.Event()
+    real = structures._bind
+
+    async def slow(*a, **k):
+        calls.append(1)
+        await release.wait()
+        return await real(*a, **k)
+    monkeypatch.setattr(structures, "_bind", slow)
+    picks = {"No suspicious parenchymal nodules.": ("LUNGS", 0.9), "No pleural or pericardial effusion.": ("EFFUSIONS", 0.9),
+             "No aggressive osseous lesion.": ("BONES", 0.9), "No incidental finding of note.": ("none", 0.9)}
+    t = _jev(picks, [])
+    first = await structure_normals(_st(), transport=t)
+    assert "Lungs" not in first["Other Findings"]           # over budget: unbound for now
+    t0 = time.monotonic()
+    second = await structure_normals(_st(), transport=t)    # joins the running binding, and does not wait for it
+    assert time.monotonic() - t0 < 0.04 and second == first and len(calls) == 1
+    release.set()
+    await asyncio.sleep(0.01)
+    third = await structure_normals(_st(), transport=t)     # the background binding cached itself
+    assert third["Other Findings"]["Lungs"] == ["No suspicious parenchymal nodules."] and len(calls) == 1
+    assert not structures._SLOW and not structures._INFLIGHT
