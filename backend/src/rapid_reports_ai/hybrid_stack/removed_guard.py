@@ -1,7 +1,8 @@
 """Removed sentences (D12, integration spec §7 steps 0 and 3): dictation wins over an earlier removal (reconcile), and
-a report clause that asserts a removed sentence is cut only in the safe case (exactly a removed sentence), else a
-high-severity review item; a clause the radiologist's statements state is kept and never flagged. One Jev call per step in the ask_rows shape; it runs whatever
-RR_QUALITY_CHECK says, and a Jev failure never edits the report."""
+a report clause that asserts a removed sentence is cut only in the safe case (exactly a removed sentence, not stated
+by the radiologist), else a review item: high, or medium when the statements state the clause (a stated clause can be a
+wrong match or a removed normal blended into a dictated sentence, so it is never cut and never silent). One Jev call per
+step in the ask_rows shape; it runs whatever RR_QUALITY_CHECK says, and a Jev failure never edits the report."""
 from __future__ import annotations
 
 import logging
@@ -87,11 +88,15 @@ async def guard(report: str, removed: list[str], plain: str) -> tuple[str, list[
     edits: list[dict] = []
     items: list[dict] = []
     for clause, c in zip(clauses, rows):
-        if c.removed < REMOVED_MIN or c.stated >= STATED_MIN:   # dictation wins: a stated clause is never flagged
+        if c.removed < REMOVED_MIN:
             continue
-        if _norm(clause) in exact and report.count(clause) == 1:
+        stated = c.stated >= STATED_MIN
+        if _norm(clause) in exact and not stated and report.count(clause) == 1:
             report = _cut(report, clause)
             edits.append({"type": "removal", "clause": clause})
+        elif stated:
+            items.append({"kind": "removed_asserted", "severity": "medium", "text": clause,
+                          "message": "May repeat a removed sentence; the dictation also states it"})
         else:
             items.append({"kind": "removed_asserted", "severity": "high", "text": clause,
                           "message": "Asserts a removed sentence; not auto-removed"})

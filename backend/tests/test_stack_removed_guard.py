@@ -43,20 +43,33 @@ async def test_guard_flags_a_reworded_assertion(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_guard_keeps_an_exact_sentence_the_statements_support(monkeypatch):
-    # Dictation wins (D12): a clause the statements state is kept and never flagged
+    # D12: a stated clause is never cut; it is still flagged, at medium (not high), so nothing passes silently
     monkeypatch.setattr(RG, "ask_rows", _rows({"No ascites.": (0.9, 0.0, 0.9)}))
     report, edits, items = await RG.guard("No ascites.", ["No ascites."], "No ascites.")
-    assert (report, edits, items) == ("No ascites.", [], [])
+    assert report == "No ascites." and edits == []
+    assert [(i["kind"], i["severity"]) for i in items] == [("removed_asserted", "medium")]
 
 
 @pytest.mark.asyncio
-async def test_guard_does_not_flag_a_dictated_clause_that_resembles_a_removed_one(monkeypatch):
-    # SYNTHETIC: a dictated valve sentence scored close to a removed valve normal
+async def test_guard_flags_a_dictated_clause_that_resembles_a_removed_one_at_medium(monkeypatch):
+    # SYNTHETIC: a dictated valve sentence scored close to a removed valve normal (a likely wrong match)
     clause = "The aortic and mitral valves are normal."
     monkeypatch.setattr(RG, "ask_rows", _rows({clause: (0.92, 0.0, 0.8)}))
     report, edits, items = await RG.guard(f"Ventricles normal. {clause}", ["Tricuspid valve normal."],
                                           f"Ventricles normal. {clause}")
-    assert edits == [] and items == []
+    assert clause in report and edits == []
+    assert [(i["kind"], i["severity"], i["text"]) for i in items] == [("removed_asserted", "medium", clause)]
+
+
+@pytest.mark.asyncio
+async def test_guard_never_lets_a_removed_normal_blended_into_a_dictated_sentence_pass_unflagged(monkeypatch):
+    # SYNTHETIC: the writer folds the removed tricuspid normal into the dictated valve sentence
+    clause = "The aortic, mitral and tricuspid valves are normal."
+    monkeypatch.setattr(RG, "ask_rows", _rows({clause: (0.85, 0.0, 0.9)}))
+    report, edits, items = await RG.guard(f"Ventricles normal. {clause}", ["Tricuspid valve normal."],
+                                          "Ventricles normal. The aortic and mitral valves are normal.")
+    assert clause in report and edits == []
+    assert len(items) == 1 and items[0]["kind"] == "removed_asserted" and items[0]["text"] == clause
 
 
 @pytest.mark.asyncio
