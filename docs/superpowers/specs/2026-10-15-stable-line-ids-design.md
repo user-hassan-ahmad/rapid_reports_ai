@@ -136,7 +136,8 @@ Several endpoints are stateless: they return a sheet to the client and never wri
   1. `uid` known and live → the unit's current line; run the existing edit path on it.
   2. `uid` unknown, gone, or absent → today's key and text matching; on success the matched unit's uid is stamped after the rebind (above).
   3. Otherwise unmatched, as today (card through `unmatched_cards`).
-- **Removal decisions** (fixed `keep: remove`, normal `text: ""`) whose line is absent count as **satisfied**, not unmatched; they never become cards.
+- **Removal decisions** (fixed `keep: remove`, normal `text: ""`) whose line is **shown** absent count as **satisfied**, not unmatched; they never become cards.
+  "Its uid matched nothing" is never that evidence on its own (end review C1). Satisfied needs all of: the registry knows the uid and no unit of the parse holds it; the uid's stored parent (paragraph, else section) uid is matched in the current parse; no unit of that kind anywhere in the parse carries the registry's last text for the uid (`rep_key`); and, for a normal, no NORMAL in that paragraph has the same structure label and side. Anything else (a paragraph renamed beyond the COVERS rule, a line moved to another paragraph, the NORMAL still there) stays unmatched, a card. The check runs on every save, so an orphaned uid that `stamp_uids` keeps never re-satisfies a removal on its own.
 - A normal entry binds to the slot (paragraph uid + structure), so it survives a writer rewording and keeps rewriting the line to the radiologist's text.
 - `reconcile_chat` (`template_ledger_apply.py:688`) runs inside `vet_sheet` before any new uid exists, so it **clears** `uid` on any entry it re-keys; the post-rebind stamping then gives it the right one.
 - When resolution keeps a uid on a line whose key label differs, the entry's `key` is updated to the new label and the change logged.

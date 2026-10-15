@@ -32,6 +32,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Set, Tuple
 
 from . import template_decisions as td
+from . import template_line_match as tlm
 from . import template_line_registry as tlr
 from . import template_sheet_grammar as tsg
 from . import template_sheet_structure as tss
@@ -55,7 +56,7 @@ class LedgerResult:
     pending: List[dict] = field(default_factory=list)    # habit lines with no entry: inactive, asked on a card
     # with a registry only (stable line IDs spec): the ledger as resolved (entries re-keyed to their uid's line), the
     # uid -> final raw line of every line this run rewrote (rebind keeps those uids), removal entries whose line is
-    # absent (satisfied, never a card) and the re-keys made
+    # shown absent (satisfied, never a card; _shown_absent) and the re-keys made
     ledger: List[dict] = field(default_factory=list)
     carried: Dict[str, str] = field(default_factory=dict)
     satisfied: List[dict] = field(default_factory=list)
@@ -516,8 +517,8 @@ def apply_ledger(sheet: str, ledger: List[dict], before: str = "", registry: Opt
     `before`: the sheet this one replaces, when known; it tells a reworded concept default's added line apart.
     `registry` (template_config["line_registry"], persisted saves only; None: exactly today's key and text matching):
     an entry whose uid names a live unit is re-keyed to that unit's current line before its edit (uid first, key
-    second); every line rewritten is returned in `carried` ({uid: final raw line}); a removal whose line is absent is
-    `satisfied`, never unmatched."""
+    second); every line rewritten is returned in `carried` ({uid: final raw line}); a removal whose line is shown
+    absent (_shown_absent: positive evidence, never "its uid matched nothing" alone) is `satisfied`, never unmatched."""
     res = LedgerResult(sheet=sheet, ledger=list(ledger or []))
     if not tsg.is_grammar_sheet(sheet or ""):
         return res
@@ -581,11 +582,10 @@ def apply_ledger(sheet: str, ledger: List[dict], before: str = "", registry: Opt
         res.sheet = new
         if registry is not None:
             _carry(rewrites, st, uid_map, res.carried)
-            # a removal is satisfied only when its line is shown absent: its uid is in the registry and no unit of this
-            # parse holds it; without that evidence (no uid, paragraph not found or ambiguous, a reworded negative) it
-            # stays a card, as today (plan review H1)
-            known = set(tlr.load(registry)["units"]) if mapped else set()
-            done = [x for x in unmatched if is_removal(x) and x.get("uid") in known and x["uid"] not in uid_map.values()]
+            # a removal is satisfied only on positive evidence that its line is absent (_shown_absent); "its uid
+            # matched nothing" alone is never that evidence. Otherwise it stays a card, as today (end review C1)
+            known = tlr.load(registry)["units"] if mapped else {}
+            done = [x for x in unmatched if is_removal(x) and _shown_absent(x.get("uid"), st, uid_map, known)]
             unmatched = [x for x in unmatched if x not in done]
             res.satisfied += done
             applied = applied + [{"kind": x["kind"], "key": x["key"], "action": "kept"} for x in done]
@@ -628,6 +628,32 @@ def _uid_map(st: tss.SheetStructure, registry: Optional[dict], carried: Dict[str
                 out = {r: x for r, x in out.items() if x != uid}
                 out[hits[0]] = uid
     return out
+
+
+def _shown_absent(uid, st: tss.SheetStructure, uid_map: Dict[str, str], known: Dict[str, dict]) -> bool:
+    """True only on positive evidence that the unit `uid` named is absent from this parse (end review C1), all of:
+    the registry knows the uid and no unit of this parse holds it; its stored parent (paragraph, else section) is
+    matched in this parse (a paragraph renamed beyond the rename rule leaves no evidence); no unit of its kind anywhere
+    in the parse carries its last text (rep_key; a line moved elsewhere is not absent); and, for a normal, no NORMAL
+    in that paragraph has its structure label and side."""
+    entry = known.get(uid) if isinstance(uid, str) else None
+    if not isinstance(entry, dict) or uid in uid_map.values():
+        return False
+    kind, ident = entry.get("kind"), entry.get("identity") or {}
+    parent = ident.get("paragraph") or ident.get("section")
+    refs = {v: r for r, v in uid_map.items()}
+    if not parent or parent not in refs:
+        return False
+    here = tlr.units(st)
+    text = tlm.rep_key(entry.get("text") or "")
+    if text and any(u.kind == kind and tlm.rep_key(u.text) == text for u in here):
+        return False
+    if kind == "normal":
+        label, side = td._name(ident.get("structure") or ""), ident.get("side") or ""
+        if any(u.kind == "normal" and u.paragraph == refs[parent] and td._name(dict(u.fields)["structure"]) == label
+               and (dict(u.fields)["side"] or "") == side for u in here):
+            return False
+    return True
 
 
 def _carry(rewrites: List[Tuple[str, str]], st: tss.SheetStructure, uid_map: Dict[str, str],
@@ -725,7 +751,8 @@ def locate(entry: dict, st: tss.SheetStructure) -> Optional[str]:
 def stamp_uids(ledger: List[dict], st: tss.SheetStructure, registry: dict) -> List[dict]:
     """The ledger with each line-bound entry's uid set to the uid of the unit it names in the final parse (after the
     rebind). A uid the registry does not know is dropped (a client-held ledger cannot forge one); an entry whose line
-    is not found keeps a known uid (visibly orphaned when that unit is gone). Never mutates `ledger`."""
+    is not found keeps a known uid (visibly orphaned when that unit is gone). A kept orphan never re-satisfies a
+    removal on its own: apply_ledger asks _shown_absent for positive evidence on every save. Never mutates `ledger`."""
     known = set((registry or {}).get("units") or {})
     uids = tlr.uids_for(st, registry)
     out: List[dict] = []

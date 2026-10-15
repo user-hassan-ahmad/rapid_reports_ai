@@ -751,3 +751,58 @@ def test_uid_share_counts_line_bound_entries_by_uid_and_by_text():
     reworded = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
     assert tla.uid_share(led, reworded, reg) == {"line_bound": 1, "by_uid": 0, "by_text": 0}   # exact matching only
     assert tla.uid_share(led, "# free", reg) == {"line_bound": 0, "by_uid": 0, "by_text": 0}
+
+
+# ── a removal is satisfied only on positive evidence of absence (end review C1) ─────────────────────────────────
+
+# renamed with a different COVERS set: the rename rule cannot pair it (a new paragraph uid)
+NO_COVERS = LEDGER_SHEET.replace('## Paragraph: Liver (FINDINGS)\nCOVERS ["liver" | "gallbladder"]\n',
+                                 '## Paragraph: Abdomen (FINDINGS)\nCOVERS ["abdomen"]\n')
+TWO_NEGS = LEDGER_SHEET.replace('NEGATIVE "No focal liver lesion."\n',
+                                'NEGATIVE "No focal liver lesion."\nNEGATIVE "No biliary dilatation."\n')
+
+
+def test_a_removal_is_a_card_when_its_paragraph_was_renamed_beyond_the_rename_rule_and_the_negative_is_still_there():
+    reg = _reg(LEDGER_SHEET)
+    removal = _with_uid(_led(("normal", NEG, {"text": ""}))[0], _uid(LEDGER_SHEET, reg, "n0"))
+    res = tla.apply_ledger(NO_COVERS, [removal], registry=reg)
+    assert 'NEGATIVE "No focal liver lesion."' in res.sheet
+    assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [NEG]
+
+
+def test_a_normal_removal_is_a_card_when_its_paragraph_was_renamed_beyond_the_rename_rule_and_the_normal_is_still_there():
+    reg = _reg(LEDGER_SHEET)
+    key = td.normal_key("Liver", "liver")
+    removal = _with_uid(_led(("normal", key, {"text": ""}))[0], _uid(LEDGER_SHEET, reg, "m0"))
+    res = tla.apply_ledger(NO_COVERS, [removal], registry=reg)
+    assert 'NORMAL [liver]' in res.sheet
+    assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [key]
+
+
+def test_a_removal_is_a_card_when_its_line_moved_to_another_paragraph():
+    reg = _reg(TWO_NEGS)
+    removal = _with_uid(_led(("normal", NEG, {"text": ""}))[0], _uid(TWO_NEGS, reg, "n0"))
+    moved = TWO_NEGS.replace('NEGATIVE "No focal liver lesion."\n', '').replace(
+        'FIXED "Axial images were acquired."\n', 'FIXED "Axial images were acquired."\nNEGATIVE "No focal liver lesion."\n')
+    _clean(moved)
+    res = tla.apply_ledger(moved, [removal], registry=reg)
+    assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [NEG]
+
+
+def test_a_removal_whose_line_is_genuinely_absent_is_satisfied():
+    reg = _reg(TWO_NEGS)
+    removal = _with_uid(_led(("normal", NEG, {"text": ""}))[0], _uid(TWO_NEGS, reg, "n0"))
+    absent = TWO_NEGS.replace('NEGATIVE "No focal liver lesion."\n', '')
+    res = tla.apply_ledger(absent, [removal], registry=reg)
+    assert res.unmatched == [] and [e["key"] for e in res.satisfied] == [NEG] and res.sheet == absent
+
+
+def test_an_orphaned_removal_uid_never_satisfies_on_a_later_save():
+    reg = _reg(LEDGER_SHEET)
+    removal = _with_uid(_led(("normal", NEG, {"text": ""}))[0], _uid(LEDGER_SHEET, reg, "n0"))
+    led, sheet = [removal], NO_COVERS
+    for _ in range(3):   # save after save: apply -> rebind -> stamp, as persist_sheet does
+        res = tla.apply_ledger(sheet, led, registry=reg)
+        assert res.satisfied == [] and [e["key"] for e in res.unmatched] == [NEG]
+        reg, _ = tlr.rebind(reg, _clean(res.sheet), res.carried, now="T")
+        led, sheet = tla.stamp_uids(res.ledger, _clean(res.sheet), reg), res.sheet
