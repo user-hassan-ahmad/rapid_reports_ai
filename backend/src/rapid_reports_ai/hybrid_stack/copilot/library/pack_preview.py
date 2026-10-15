@@ -16,6 +16,7 @@ over the values the card shows."""
 from __future__ import annotations
 
 import asyncio
+from datetime import date
 import json
 import logging
 import os
@@ -99,6 +100,10 @@ class _Evals:
 WHY_WOULD_EXCLUDE = "this pre-filled value would make the guideline not apply: confirm it"   # a scope doubt, any role
 WHY_SUSPECTED = "suspected, not established"   # a hedged cancer Yes (spec §7.12 item 6): a scope doubt, never assumed No
 WHY_APPROX_DATE = "approximate date: only the month or year of the earlier study is stated"   # spec §7.12 item 4
+# Hassan 2026-10-14: an interval worked out from a date is an assumption: pre-filled, never read, confirmed before a
+# calculation rests on it
+WHY_FROM_DATE = "worked out from the date of the earlier study: confirm it"
+DATE_MIN = 0.8      # Jev's comparison-date pick (reading lab 2026-10-15, wording 2: 0 wrong at 0.8)
 SETTLE_SYS = """You settle the inputs of one published radiology classification system for ONE finding. INPUTS lists each open input's id, scope, type and allowed values: use nothing else.
 An input's scope decides where it may be settled from:
 - [lesion]: the FINDING only, never another lesion in the dictation, even one of the same kind;
@@ -391,25 +396,70 @@ def _given(e: Entry, answered: dict[str, str], patient: dict[str, str] | None = 
 
 @dataclass
 class Dated:
-    """A since-study value computed from the earlier study's date (spec §7.12 item 4): never put to Jev or the
-    number checks; exact is read, approximate is pre-filled."""
+    """A since-study value computed from the earlier study's date (spec §7.12 item 4): never put to the value claim or
+    the number checks; always pre-filled (WHY_FROM_DATE), approximate also WHY_APPROX_DATE."""
     exact: bool
     basis: str
 
 
-def _since(i: InputDef, quote: str, finding: str, findings: str, history: str) -> tuple[InputValue, Dated] | None:
-    """The days since the dated study, or None (asked): no date in the quote (a duration keeps the quantity path), more
-    than one distinct date across the dictation and the history (which study is meant is not stated), a future date or
-    an interval of zero or less, or a value outside the input's range."""
+def _date_candidates(findings: str, history: str, finding: str) -> list[dict]:
+    """Every date code can read in the history and the dictation (and the finding, when it is not part of the
+    dictation), each with its sentence: the options Jev picks the comparison date from."""
+    out = []
+    texts = [("history", history), ("dictation", findings)]
+    if finding and finding not in findings:
+        texts.append(("finding", finding))
+    for where, text in texts:
+        for p in DT._scan(text or "") or []:
+            a = max(text.rfind(".", 0, p.start), text.rfind("\n", 0, p.start)) + 1
+            ends = [x for x in (text.find(".", p.end), text.find("\n", p.end)) if x >= 0]
+            sentence = text[a:min(ends) + 1 if ends else len(text)].strip()
+            out.append({"key": f"d{len(out)}", "day": p.day, "text": p.text, "where": where, "sentence": sentence})
+    return out
+
+
+def _date_question(cands: list[dict]) -> dict:
+    """Reading lab 2026-10-15, wording 2: it names the dates that are not the comparison."""
+    crit = {c["key"]: f"{c['text']} ({c['where']}: \"{c['sentence']}\")" for c in cands}
+    crit["none"] = ("None of them: no date of the comparison study is given, or several earlier studies are compared "
+                    "and it cannot be told which one the comparison measurement comes from.")
+    return {"type": "choice", "criteria": crit, "instructions": (
+        "This report compares the current scan with an earlier imaging study. Which option is that earlier study's "
+        "date? Not a referral, birth, surgery, biopsy or appointment date, and not the date of a different study that "
+        "is not the comparison.")}
+
+
+async def _comparison_date(cands: list[dict], findings: str, history: str) -> date | None:
+    """The date Jev picks as the comparison study's, at DATE_MIN; None for none, low confidence or a failed call."""
+    state = f"CLINICAL HISTORY:\n{history or 'none given'}\n\nDICTATION:\n{findings}"
+    try:
+        _, picks = await _jev({"date": _date_question(cands)}, state)
+    except Exception as ex:
+        logger.info("[library.preview] comparison date pick failed (%s); interval asked", type(ex).__name__)
+        return None
+    key, conf = picks["date"]
+    return next((c["day"] for c in cands if c["key"] == key), None) if conf >= DATE_MIN else None
+
+
+async def _since(i: InputDef, quote: str, finding: str, findings: str, history: str) -> tuple[InputValue, Dated] | None:
+    """The days since the dated study, or None (asked): no date in the quote (a duration keeps the quantity path), a
+    future date or an interval of zero or less, a value outside the input's range, an impossible date or a written
+    date code cannot read beside it (which study is meant is not stated), or a date that is not the one Jev picks as
+    the comparison study's from every dated sentence (even when it is the only date: a referral date is not a
+    comparison)."""
     p = DT.parse(quote)
     if p is None:
         return None
-    texts = f"{findings}\n{history}\n{finding}"
-    if DT.several_dates(texts) or DT.distinct_dates(texts) != [p.day]:
-        logger.info("[library.preview] %s: several dates in the dictation; interval asked", i.id)
-        return None
     days = DT.days_since(p.day)
     if days <= 0 or not i.in_range(float(days)):
+        return None
+    texts = f"{findings}\n{history}\n{finding}"
+    cands = _date_candidates(findings, history, finding)
+    if DT._scan(texts) is None or (DT.several_dates(texts) and len({c["day"] for c in cands}) < 2):
+        logger.info("[library.preview] %s: a date code cannot read beside it; interval asked", i.id)
+        return None
+    if await _comparison_date(cands, findings, history) != p.day:
+        logger.info("[library.preview] %s: not the comparison date Jev picks; interval asked", i.id)
         return None
     return InputValue(value=float(days)), Dated(p.exact, DT.basis(quote, p, [finding, findings, history]))
 
@@ -434,7 +484,7 @@ async def _settle(e: Entry, given: dict[str, InputValue], finding: str, findings
         if i is None or i.id not in ids or not q or not _in_scope(i, q, finding, findings, history):
             continue
         if i.since_study and DT.parse(q) is not None:      # a date: code converts it, or it is asked
-            got = _since(i, q, finding, findings, history)
+            got = await _since(i, q, finding, findings, history)
             if got is not None:
                 out[i.id] = (got[0], Settled(input=i.id, value=_show(e, i, got[0]), quote=q))
                 dated[i.id] = got[1]
@@ -740,9 +790,9 @@ async def settle_pack(e: Entry, findings: str, history: str, finding: str = "") 
         why = _read_reasons(e, i, v, q, _texts(i, finding, findings, history))
         why += [r for r in reasons.get(k, []) if r not in why]
         values[k] = Drafted(v, q, "prefilled" if why else "read", why)
-    for k, d in dated.items():          # exact: read; month or year only: pre-filled, so it never decides alone
+    for k, d in dated.items():          # an assumption (Hassan 2026-10-14): pre-filled, so it never decides alone
         v, st = model[k]
-        values[k] = Drafted(v, st.quote, "read" if d.exact else "prefilled", [] if d.exact else [WHY_APPROX_DATE],
+        values[k] = Drafted(v, st.quote, "prefilled", [WHY_FROM_DATE] + ([] if d.exact else [WHY_APPROX_DATE]),
                             basis=d.basis)
     return Settlement(values=values, failed=degraded or jev_failed, no_unit=no_unit)
 

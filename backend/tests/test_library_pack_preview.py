@@ -41,7 +41,8 @@ def jev(monkeypatch):
             raise TimeoutError("jev slow")
         def answer(q):
             if q["type"] == "choice":      # a yes/no's four-way question: by a label fragment, else the default
-                c, conf = next((v for k, v in st["stated"].items() if k in q["instructions"]), st["stated_default"])
+                v = next((v for k, v in st["stated"].items() if k in q["instructions"]), st["stated_default"])
+                c, conf = v(q) if callable(v) else v       # a callable answers from the question (date picks)
                 return {"choice": c, "confidence": conf}
             return {"noul": score(q["instructions"])}
         return _Resp({"answers": {k: answer(q) for k, q in payload["questions"].items()}})
