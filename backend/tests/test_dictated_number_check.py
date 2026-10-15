@@ -238,3 +238,34 @@ def test_a_dimension_chain_is_not_a_count():
 
 def test_the_cover_cue_must_be_in_the_sentence_holding_the_value():
     assert missing("Both kidneys normal. Kidney 11 cm.", "Right kidney 11 cm, left kidney 11 cm.") == ["11 cm"]
+
+
+# --- re-check fixes 2026-10-15 ---
+
+@pytest.mark.parametrize("report, dictated", [
+    ("Both kidneys normal; a 4 mm nodule in the RLL.", "4 mm nodule RLL and 4 mm nodule LLL."),
+    ("Each ovary is normal; 5 mm cyst left adnexa.", "5 mm cyst left adnexa, 5 mm cyst right adnexa."),
+    ("Not all margins seen; 4 mm nodule.", "4 mm nodule and 4 mm nodule."),
+])
+def test_a_cover_cue_in_another_clause_does_not_cover(report, dictated):
+    assert len(missing(report, dictated)) == 1
+
+
+def test_a_labelled_digit_before_a_value_is_not_a_count():
+    out = missing_dictated_numbers("Segment 7 4 mm lesion.", ["4 mm lesion seg 7. 4 mm lesion seg 8."])
+    assert [i["text"] for i in out] == ["4 mm", "8"]
+    assert out[0]["sentence"] == "4 mm lesion seg 8."
+
+
+def test_a_bare_hyphen_power_of_ten_needs_a_decimal_mantissa():
+    assert vals("3 x 10-12 mm") == [(3.0, "mm"), (10.0, "mm"), (12.0, "mm")]
+    assert missing("Lesion 3 x 10 to 12 mm.", "Lesion 3 x 10-12 mm.") == []
+    assert vals("ADC 1.1 x 10-3 mm2/s") == [(0.0011, "mm2/s")]
+
+
+def test_an_image_number_followed_by_a_unit_is_kept():
+    assert vals("image 4 cm lesion") == [(4.0, "cm")]
+
+
+def test_a_year_like_start_of_a_range_with_a_unit_is_kept():
+    assert vals("output from 1950 to 2100 ml") == [(1950.0, "ml"), (2100.0, "ml")]

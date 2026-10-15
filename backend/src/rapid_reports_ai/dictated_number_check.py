@@ -96,11 +96,15 @@ _REF_MASKS = [   # numbers that are not findings
     re.compile(r"\(\s*\d+\s*/\s*\d+\s*\)"),                                     # "(3/45)" image reference
 ]
 _YEAR = re.compile(r"(?i)\b(?:since|in|from)\s+((?:19|20)\d{2})\b(?![.,]\d)")
+_YEAR_RANGE = re.compile(r"(?i)\s*(?:to|-|–|—)\s*\d+(?:[.,]\d+)?")   # "from 1950 to 2100 ml" is a range, not a year
 _WORD_NUMS = ("zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen "
               "seventeen eighteen nineteen twenty").split()
 _WORD_RX = re.compile(rf"(?i)\b({'|'.join(_WORD_NUMS)})\b")
 _COVER_CUE = re.compile(r"(?i)\b(?:both|each|bilateral(?:ly)?|all)\b")
-_COUNT_BEFORE = re.compile(rf"(?i)(?:\b(?:{'|'.join(_WORD_NUMS[2:])})|(?<![\w.])\d+)\s+\Z")   # "two 4 mm nodules"
+_COUNT_BEFORE = re.compile(rf"(?i)(?:\b(?:{'|'.join(_WORD_NUMS[2:13])})|(?<![\w.])(\d{{1,2}}))\s+\Z")   # "two 4 mm nodules"
+_LABEL_BEFORE = re.compile(r"(?i)\b(?:segments?|seg|levels?|grade|stage|type|class|category|image|img|series|se|im|ribs?"
+                           r"|vertebrae?|zone|lobe|phase|tier|bosniak)\.?\s*\Z")   # "segment 7 4 mm" is no count
+_CLAUSE_END = re.compile(r"[;,.!?\n]")
 _ORDINALS = ("first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth thirteenth fourteenth "
              "fifteenth sixteenth seventeenth eighteenth nineteenth twentieth").split()
 _ORDINAL_RX = re.compile(rf"(?i)\b({'|'.join(_ORDINALS)})\b")
@@ -140,7 +144,7 @@ def _value_at(scan: str, text: str, pos: int, comma: bool):
     raw, end, used = m.group(0), m.end(), False
     if comma and "," not in raw and "." not in raw and (c := _COMMA_DEC.match(scan, end)):
         raw, end, used = f"{raw}.{c.group(1)}", c.end(), True
-    if e := _EXP.match(text, end):
+    if (e := _EXP.match(text, end)) and (e.group(2) is None or "." in raw):   # "3 x 10-12 mm" is a range
         exp = next(g for g in e.groups() if g).translate(_SUP).replace(" ", "")
         return _f(f"{raw.replace(',', '')}e{exp}"), e.end(), used
     return _f(raw), end, used
@@ -176,9 +180,11 @@ def _scan(text: str) -> str:
     out = _masked(text, set())
     for rx in _REF_MASKS:
         for m in list(rx.finditer(out)):
-            out = out[:m.start()] + " " * (m.end() - m.start()) + out[m.end():]
+            if _unit_at(text, m.end())[0] is None:   # "image 4 cm lesion" keeps 4 cm
+                out = out[:m.start()] + " " * (m.end() - m.start()) + out[m.end():]
     for m in list(_YEAR.finditer(out)):
-        if _unit_at(text, m.end(1))[0] is None:
+        rng = _YEAR_RANGE.match(text, m.end(1))
+        if _unit_at(text, m.end(1))[0] is None and not (rng and _unit_at(text, rng.end())[0]):
             out = out[:m.start(1)] + "    " + out[m.end(1):]
     return out
 
@@ -212,6 +218,22 @@ def extract(text: Optional[str]) -> List[Num]:
     return out
 
 
+def _covers(report: str, n: Num) -> bool:
+    """The report says this value covers several: a cue (both, each, bilateral, all) in the same clause and within
+    30 characters ("both kidneys 11 cm", "11 cm each"), or a count right before it ("two 4 mm nodules"; a labelled
+    digit, "segment 7 4 mm", is not a count)."""
+    lo, hi = max(0, n.start - 30), min(len(report), n.start + len(n.text) + 30)
+    before, after = report[lo:n.start], report[n.start + len(n.text):hi]
+    before = _CLAUSE_END.split(before)[-1]
+    after = _CLAUSE_END.split(after)[0]
+    if _COVER_CUE.search(before) or _COVER_CUE.search(after):
+        return True
+    c = _COUNT_BEFORE.search(report, max(0, n.start - 12), n.start)
+    if not c:
+        return False
+    return c.group(1) is None or not _LABEL_BEFORE.search(report, max(0, c.start() - 16), c.start())
+
+
 def missing_dictated_numbers(report: Optional[str], sources: Iterable[Optional[str]]) -> List[dict]:
     """[{"kind", "text", "sentence", "severity": "high", "message", "values"}], one per dictated chain with a value
     the report does not hold. `sources`: the radiologist's own statements only (dictated units, tapped rows, typed
@@ -227,8 +249,7 @@ def missing_dictated_numbers(report: Optional[str], sources: Iterable[Optional[s
         held: Counter = Counter((n.value, n.unit) for n in found if n.unit)   # report occurrences per (value, unit)
         # Q5: a report value said to cover several ("both kidneys 11 cm", "11 cm each", "two 4 mm nodules") satisfies
         # every dictated occurrence of that (value, unit). A dimension chain ("3 x 5 mm") is not a count.
-        covers = {(n.value, n.unit) for n in found if n.unit and (
-            _COVER_CUE.search(_sentence(report, n.start)) or _COUNT_BEFORE.search(report, max(0, n.start - 12), n.start))}
+        covers = {(n.value, n.unit) for n in found if n.unit and _covers(report, n)}
         for m in _WORD_RX.finditer(report or ""):
             v = float(_WORD_NUMS.index(m.group(1).lower()))
             u = _unit_at(report, m.end())[0]
