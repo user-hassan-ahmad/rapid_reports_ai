@@ -47,8 +47,16 @@ export interface ExclusionReason { input: string; label: string; value: string; 
 export interface DecidingInput { input: string; label: string }
 export type ActionCategory = 'none' | 'surveillance' | 'workup' | 'refer' | 'info' | 'not_applicable'; // info: no management stated
 export interface Settled { input: string; value: string; quote: string; fact: string; by: '' | 'exam' }
-/** pack_preview._asks: one per missing input (A5 reads input + label; the rest is for Slice B). */
-export interface Ask { input: string; label: string; role?: string; [k: string]: unknown } // role: 'eligibility' | 'clinical' | …
+/** pack_preview._asks: one per missing input, in the tree's order (§7.4). */
+export interface Ask {
+	input: string;
+	label: string;
+	role?: string; // 'eligibility' | 'clinical' | …
+	options?: string[]; // display_options (not "Not stated")
+	definition?: { text: string; citation: Citation | null }; // citation() may return None
+	decides_between?: { outcome: string; classification: string; citation: Citation | null }[];
+	[k: string]: unknown;
+}
 export type ValueState = 'read' | 'prefilled' | 'assumed' | 'asked' | 'answered' | 'edited' | 'not_applicable'; // Task 3
 export interface DraftValue {
 	// Task 3
