@@ -1037,7 +1037,7 @@
 				<p class="min-w-0 flex-1 text-amber-200/90">This sounded like an instruction, not report text: <span class="text-gray-200">“{h.text}”</span>. It is not in the report.</p>
 				<span class="flex gap-3">
 					<button type="button" class="text-amber-200 hover:text-amber-100" onclick={() => onKeepHeld(h.id)}>Keep as text</button>
-					<button type="button" class="text-gray-400 hover:text-gray-200" onclick={() => onRemoveHeld(h.id)}>Remove</button>
+					<button type="button" class="text-gray-400 hover:text-gray-200" onclick={() => onRemoveHeld(h.id)}>Discard</button>
 				</span>
 			</div>
 		{/each}

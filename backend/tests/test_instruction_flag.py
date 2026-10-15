@@ -82,15 +82,32 @@ def test_flag_off_decisions_are_todays():
     assert J.decide_command({"command": "instruction", "confidence": 1.0, "region": None, "chip": None})["action"] == "dictate"
 
 
-def test_settle_lets_the_bundle_route_win_when_it_does_not_write():
-    held = {"action": "instruction", "region": None, "item": None, "command": "instruction", "confidence": 0.9}
+def test_held_decisions_carry_the_pre_hold_fallback():
+    assert J.decide_command(_parsed("instruction", ins=0.95))["fallback"] == "dictate"
+    # a region-less delete held as an instruction falls back to the delete it was (an open line drops its words)
+    d = J.decide_command(_parsed("delete", conf=0.7, ins=0.2, p_delete=0.7))
+    assert d["action"] == "instruction" and d["fallback"] == "delete"
+    assert "fallback" not in J.decide_command(_parsed("dictate", ins=0.1))
+
+
+def test_settle_restores_the_pre_hold_decision_when_the_route_does_not_write():
+    held = {"action": "instruction", "fallback": "dictate", "region": None, "item": None, "command": "instruction",
+            "confidence": 0.9}
     for route in ("skip", "delete", "command"):
         assert J.settle_instruction(held, route)["action"] == "dictate"
+    was_delete = {**held, "fallback": "delete", "command": "delete"}
+    assert J.settle_instruction(was_delete, "skip")["action"] == "delete"
     for route in ("fast_append", "polish"):
         assert J.settle_instruction(held, route)["action"] == "instruction"
     assert J.settle_instruction(None, "polish") is None
     other = {**held, "action": "delete"}
     assert J.settle_instruction(other, "skip") is other
+
+
+def test_bundle_restores_a_region_less_delete_when_not_writing():
+    # fallback never leaks into the response
+    out = J.settle_instruction({"action": "instruction", "fallback": "delete", "region": None}, "command")
+    assert out == {"action": "delete", "region": None}
 
 
 def test_bundle_returns_a_held_instruction(authed_client, lab, monkeypatch):  # noqa: F811

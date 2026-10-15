@@ -50,10 +50,14 @@ WRITING_ROUTES = ("fast_append", "polish")   # bundle routes that write the word
 
 def settle_instruction(stack: dict | None, bundle_route: str) -> dict | None:
     """A held instruction is flagged only when the bundle would write the words (fast_append, or polish, which also
-    takes fillers and "remove the last sentence"): a delete, skip or formatting command route stands, unflagged."""
-    if stack and stack.get("action") == INSTRUCTION and bundle_route not in WRITING_ROUTES:
-        return {**stack, "action": "dictate"}
-    return stack
+    takes fillers and "remove the last sentence"): a delete, skip or formatting command route stands, unflagged, and
+    the stack decision returns to what it was before the hold (`fallback`)."""
+    if not stack or stack.get("action") != INSTRUCTION:
+        return stack
+    out = {k: v for k, v in stack.items() if k != "fallback"}   # never in the response
+    if bundle_route not in WRITING_ROUTES:   # the pre-hold decision (a region-less delete stays a delete)
+        out["action"] = stack.get("fallback") or "dictate"
+    return out
 
 
 def instruction_on() -> bool:
@@ -215,7 +219,8 @@ def decide_command(parsed: dict, instruction_min: float | None = None) -> dict:
     if delete and (parsed.get("region") or not asked):
         return {"action": "delete", "region": parsed.get("region"), "chip": None}
     if asked and held_score(parsed) >= (INSTRUCTION_MIN if instruction_min is None else instruction_min):
-        return {"action": INSTRUCTION, "region": None, "chip": None}
+        # fallback: the decision without the hold, restored when the bundle's route does not write (settle_instruction)
+        return {"action": INSTRUCTION, "region": None, "chip": None, "fallback": "delete" if delete else "dictate"}
     if delete:   # no region: the bundle's own route decides (the last thing said)
         return {"action": "delete", "region": None, "chip": None}
     return {"action": "dictate", "region": None, "chip": None}

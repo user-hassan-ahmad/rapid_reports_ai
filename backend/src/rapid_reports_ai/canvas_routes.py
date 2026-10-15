@@ -1139,6 +1139,8 @@ async def _stack_command(request: "BundleRequest") -> Optional[dict]:
            "command": parsed.get("command"), "confidence": parsed.get("confidence")}
     if "instruction" in parsed:   # the instruction flag asked it: "instruction" = held for the radiologist, not written
         out["instruction"] = round(held_score(parsed), 3)
+        if "fallback" in d:       # read and removed by settle_instruction
+            out["fallback"] = d["fallback"]
     return out
 
 

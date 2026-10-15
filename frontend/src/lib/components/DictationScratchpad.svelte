@@ -703,6 +703,7 @@
 	}
 
 	export function reset(newDoc: string): void {
+		heldInstructions = []; // held finals belong to the case being replaced
 		if (!editor) return;
 		structured = emptyStructured();
 		showStructured('');
@@ -1293,6 +1294,8 @@
 			isQwenWriting = true;
 			editor.dispatch(replaceAndClear({ from: pend.from, to: pend.to, insert: '' }));
 			isQwenWriting = false;
+			// The command's words leave the session transcript too, so a later polish never writes them back.
+			sessionTranscript = substituteLast(sessionTranscript, chunk, '');
 			if (cmd.action === 'answer' && cmd.item) answerRow(cmd.item);
 			else if (cmd.action === 'instruction') holdInstruction(chunk);
 			else deleteRegion = cmd.region;
