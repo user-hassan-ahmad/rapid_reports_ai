@@ -349,3 +349,26 @@ def test_gone_units_revive_on_exact_identity_only():
     assert not rep["revived"] and len(rep["new"]) == 1
     reg4, rep4 = _bind(LEDGER_SHEET, reg2)
     assert rep4["revived"] == [uid] and reg4["units"][uid]["status"] == "live"
+
+# ── reading uids ───────────────────────────────────────────────────────────────────────────────────────────────
+
+def test_uids_for_reads_exact_identity_against_live_units_only():
+    assert tlr.uids_for(_st(LEDGER_SHEET), None) == {}
+    reg, _ = _bind(LEDGER_SHEET)
+    got = tlr.uids_for(_st(LEDGER_SHEET), reg)
+    assert set(got) == {"S:TECHNIQUE", "S:FINDINGS", "S:IMPRESSION", "p0", "p1", "p2", "m0", "n0", "f0", "f1"}
+    assert got["n0"] == _live(reg, "No focal liver lesion.")
+    cosmetic = LEDGER_SHEET.replace('"No focal liver lesion."', '"There is no focal liver lesion"')
+    assert "n0" not in tlr.uids_for(_st(cosmetic), reg)    # reading never pairs cosmetically
+
+
+def test_match_pairs_cosmetic_rewordings_and_renames_without_minting():
+    reg, _ = _bind(LEDGER_SHEET)
+    snapshot = repr(reg)
+    exact = tlr.uids_for(_st(LEDGER_SHEET), reg)
+    renamed = LEDGER_SHEET.replace("## Paragraph: Liver (FINDINGS)", "## Paragraph: Hepatobiliary (FINDINGS)") \
+                          .replace('"No focal liver lesion."', '"There is no focal liver lesion"')
+    got = tlr.match(_st(renamed), reg)
+    assert (got["p1"], got["m0"], got["n0"]) == (exact["p1"], exact["m0"], exact["n0"])
+    assert "p1" not in tlr.uids_for(_st(renamed), reg) and repr(reg) == snapshot
+    assert tlr.match(_st(LEDGER_SHEET), None) == {}

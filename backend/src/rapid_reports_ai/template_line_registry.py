@@ -310,3 +310,25 @@ def _bind(registry, st, carried, now):
 def summary(report: dict) -> str:
     """The rebind report as one log fragment: "exact=9 cosmetic=1 …"."""
     return " ".join(f"{k}={len(v)}" for k, v in report.items())
+
+def uids_for(st, registry) -> Dict[str, str]:
+    """{unit ref: uid} for the parse's units that match a live registry unit by exact identity, parents first, 1:1
+    (a unit with two candidates gets none). Pure; never mints. Consumers call it at read time: uids are never stored
+    on the cached sheet_structure."""
+    reg = load(registry)
+    out: Dict[str, str] = {}
+    for kind in KINDS:
+        live = {uid: e for uid, e in reg["units"].items() if e["kind"] == kind and e.get("status") == "live"}
+        todo = [(u, _identity(u, out)) for u in units(st) if u.kind == kind]
+        paired, _, _ = _pair(todo, live, lambda k, i, t: _exact(k, i))
+        out.update(paired)
+    return out
+
+
+def match(st, registry) -> Dict[str, str]:
+    """{unit ref: uid} for the units rebind would pair with a live unit of `registry` (exact or cosmetic identity, a
+    paragraph rename included), without minting or storing anything: apply_ledger's uid-first resolution (spec gap 1).
+    Gone units are never matched here (a gone uid falls back to key matching)."""
+    _, report, assigned = _bind(registry, st, None, "")
+    kept = set(report["exact"]) | set(report["cosmetic"])
+    return {ref: uid for ref, uid in assigned.items() if uid in kept}
