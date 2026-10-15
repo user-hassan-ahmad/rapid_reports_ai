@@ -93,3 +93,31 @@ def test_no_filler_contains_or_can_delete_a_negation_or_hedge_word():
             for w in sorted(tlm.NEGATION | tlm.HEDGE_WORDS):
                 broken = " ".join(words[:k] + [w] + words[k:])
                 assert tlm.same_text(f"Effusion {broken}.", f"Effusion {' '.join(words)}.") is None
+
+# ── the registry module ────────────────────────────────────────────────────────────────────────────────────────
+
+from rapid_reports_ai import template_line_registry as tlr
+from rapid_reports_ai import template_sheet_grammar as tsg
+
+
+def _st(sheet):
+    res = tsg.parse_sheet(sheet)
+    assert not res.errors and res.structure.usable, res.errors
+    return res.structure
+
+
+def test_units_lists_every_line_bound_unit_parents_first():
+    us = tlr.units(_st(LEDGER_SHEET))
+    assert [u.ref for u in us] == ["S:TECHNIQUE", "S:FINDINGS", "S:IMPRESSION", "p0", "p1", "p2", "m0", "n0", "f0", "f1"]
+    neg = next(u for u in us if u.ref == "n0")
+    assert (neg.kind, neg.raw, neg.text, neg.section, neg.paragraph) == (
+        "negative", 'NEGATIVE "No focal liver lesion."', "No focal liver lesion.", "S:FINDINGS", "p1")
+    assert tlr.text_hash("x") == "sha256:" + hashlib.sha256(b"x").hexdigest()
+
+
+def test_load_drops_malformed_units_and_never_raises():
+    assert tlr.load(None) == tlr.empty() and tlr.load("x") == tlr.empty()
+    raw = {"v": 1, "units": {"n_aaaaaa": {"kind": "normal", "identity": {}}, "bad": {"kind": "normal", "identity": {}},
+                             "g_bbbbbb": {"kind": "nope", "identity": {}}, "f_cccccc": "x"}, "salt": "0a1b2c3d"}
+    assert list(tlr.load(raw)["units"]) == ["n_aaaaaa"] and tlr.load(raw)["salt"] == "0a1b2c3d"
+    assert "salt" not in tlr.load({**raw, "salt": "not hex!"})
